@@ -1,0 +1,47 @@
+services:
+  # PHP-FPM application container
+  app:
+    build:
+      context: .
+      target: app
+    image: qrmenu-app
+    env_file: .env.docker
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      # Persist uploaded images (public disk) and logs across rebuilds.
+      - storage-data:/var/www/html/storage
+    restart: unless-stopped
+
+  # Nginx — serves static assets and proxies PHP requests to `app`
+  web:
+    build:
+      context: .
+      target: web
+    image: qrmenu-web
+    depends_on:
+      - app
+    ports:
+      - "8080:80"
+    restart: unless-stopped
+
+  # PostgreSQL database
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${DB_DATABASE:-qrmenu}
+      POSTGRES_USER: ${DB_USERNAME:-qrmenu}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-secret}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-qrmenu} -d ${DB_DATABASE:-qrmenu}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  storage-data:
+  pgdata:
