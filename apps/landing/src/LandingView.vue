@@ -23,6 +23,10 @@ onMounted(async () => {
 // Pick the active locale from a bilingual { en, ar } field.
 const L = (field) => (field && (field[locale.value] ?? field.en)) || ''
 
+// "See a live menu" points at the demo restaurant on its own subdomain — the
+// same {slug}.host/menu form that real QR codes encode (Restaurant::publicUrl).
+const demoMenuUrl = `${window.location.protocol}//xorderrest.${window.location.host.replace(/^www\./, '')}/menu`
+
 function toggleLang() { setLocale(locale.value === 'ar' ? 'en' : 'ar') }
 const targetLocaleKey = () => locale.value === 'ar' ? 'languages.en' : 'languages.ar'
 const targetLocaleAriaKey = () => locale.value === 'ar' ? 'common.switch_to_english' : 'common.switch_to_arabic'
@@ -63,7 +67,7 @@ const targetLocaleAriaKey = () => locale.value === 'ar' ? 'common.switch_to_engl
                         <p class="lp-lead">{{ L(content.hero.sub) }}</p>
                         <div class="lp-hero-cta">
                             <a href="#contact" class="btn btn-accent lp-btn-lg">{{ L(content.hero.cta) }}</a>
-                            <a href="/r/xorderrest" class="btn btn-ghost lp-btn-lg">{{ L(content.hero.secondary) }}</a>
+                            <a :href="demoMenuUrl" class="btn btn-ghost lp-btn-lg">{{ L(content.hero.secondary) }}</a>
                         </div>
 
                         <div class="lp-stats">
