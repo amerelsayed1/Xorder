@@ -51,7 +51,8 @@ a { color: inherit; text-decoration: none; }
 .lang a { padding: 7px 13px; font-size: 13.5px; font-weight: 600; font-family: 'Tajawal', sans-serif; color: var(--muted); }
 .lang a.on { background: var(--accent); color: #fff; }
 .wa { display: inline-flex; align-items: center; gap: 6px; background: var(--green); color: #fff;
-    padding: 9px 15px; border-radius: 9px; font-size: 14px; font-weight: 600; font-family: 'Tajawal', sans-serif; }
+    padding: 9px 15px; border-radius: 9px; font-size: 14px; font-weight: 600; font-family: 'Tajawal', sans-serif;
+    white-space: nowrap; }
 
 /* ---- Hero ---- */
 .hero { position: relative; height: 380px; overflow: hidden; background: var(--accent); }
@@ -175,13 +176,34 @@ main { padding: 30px 20px 0; }
 @media (max-width: 760px) {
     .hero { height: 320px; }
     .hero-nm { font-size: 42px; }
-    .subnav { top: 68px; }
+    .subnav { top: 70px; }
     .subnav-in { flex-direction: column; align-items: stretch; gap: 10px; }
     .search input { width: 100%; max-width: none; }
+    /* Header + two-row sub-nav are both sticky here, so anchor jumps need a taller offset. */
+    .section { scroll-margin-top: 184px; }
     .ftr-in { grid-template-columns: 1fr; gap: 22px; }
     .brand-tag { display: none; }
 }
+@media (max-width: 480px) {
+    /* Tighten the header so brand + lang + WhatsApp sit comfortably on one row. */
+    .hdr-in { padding: 10px 14px; gap: 10px; }
+    .brand { gap: 10px; }
+    .brand-mark { width: 42px; height: 42px; border-radius: 12px; font-size: 22px; }
+    .brand-nm { font-size: 20px; }
+    .hdr-actions { gap: 8px; }
+    .lang a { padding: 7px 11px; }
+    .wa { padding: 9px 12px; font-size: 13px; }
+    .subnav { top: 62px; }
+    .subnav-in { padding: 11px 14px; }
+    /* Header (62) + stacked sub-nav (~115) for on-mobile anchor jumps. */
+    .section { scroll-margin-top: 178px; margin-bottom: 30px; }
+    main { padding: 22px 14px 0; }
+    .sec-title { font-size: 26px; }
+    /* A touch taller so the food photo carries the card. */
+    .item-img { height: 200px; }
+    .catchip { padding: 9px 16px; }
+}
 @media (max-width: 420px) {
-    .hero-nm { font-size: 36px; }
-    .hdr-in { gap: 8px; }
+    .hero { height: 300px; }
+    .hero-nm { font-size: 34px; }
 }
