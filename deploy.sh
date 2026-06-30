@@ -32,8 +32,8 @@ BACKUP_DIR="$DEPLOY_DIR/backups"
 LOG_FILE="$DEPLOY_DIR/logs/deploy.log"
 LOCK_FILE="/tmp/xorder-deploy.lock"
 # Internal, cert-independent health check — proves xorder itself serves without
-# depending on Operix's nginx or the TLS cert. (web binds 127.0.0.1:8081.)
-HEALTH_URL="${XORDER_HEALTH_URL:-http://127.0.0.1:8081/up}"
+# depending on Operix's nginx or the TLS cert. (web binds 127.0.0.1:8082.)
+HEALTH_URL="${XORDER_HEALTH_URL:-http://127.0.0.1:8082/up}"
 HEALTH_TIMEOUT=120
 
 # Service names (must match docker-compose.cohost.yml)

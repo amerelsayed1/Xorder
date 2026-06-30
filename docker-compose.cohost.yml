@@ -47,9 +47,9 @@ services:
     depends_on:
       - app
     # Localhost-only, for health checks / debugging. NOT publicly exposed.
-    # 8081 (not 8080) — Rakeeza's co-host already owns 127.0.0.1:8080.
+    # 8082 — 8080 is Rakeeza's co-host, 8081 is tourism-app on this VPS.
     ports:
-      - "127.0.0.1:8081:80"
+      - "127.0.0.1:8082:80"
     volumes:
       # Read-only access to uploaded images so nginx can serve /storage/*.
       - xorder-storage:/var/www/html/storage:ro
