@@ -10,6 +10,7 @@ const mark = computed(() => (title.value || 'R').trim().charAt(0).toUpperCase())
 
 const nav = [
     { to: { name: 'dashboard.home' }, labelKey: 'nav.dashboard', icon: '▦', end: true },
+    { to: { name: 'dashboard.insights' }, labelKey: 'nav.insights', icon: '📊' },
     { to: { name: 'dashboard.items' }, labelKey: 'nav.items', icon: '☰' },
     { to: { name: 'dashboard.categories' }, labelKey: 'nav.categories', icon: '▤' },
     { to: { name: 'dashboard.qr' }, labelKey: 'nav.qr', icon: '▢' },
