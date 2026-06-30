@@ -22,6 +22,7 @@ class RestaurantProvisioningTest extends TestCase
             'name_en' => 'Tasty',
             'slug' => 'tasty',
             'default_language' => 'en',
+            'currency' => 'EGP',
             'admin' => ['name' => 'Owner', 'email' => 'owner@tasty.com'],
         ])->assertCreated()
             ->assertJsonPath('data.slug', 'tasty')
