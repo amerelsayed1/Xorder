@@ -1,10 +1,16 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import api, { ensureCsrf } from '@xorder/api-client/api.js'
 import BiField from '../../components/BiField.vue'
+import { publicOrigin } from '../../lib/host.js'
 
 const { t } = useI18n()
+
+const demoPreviewUrl = computed(() => {
+    const slug = content.value?.demo?.restaurant_slug?.trim()
+    return slug ? `${publicOrigin()}/r/${slug}` : ''
+})
 
 const content = ref(null)
 const loading = ref(true)
@@ -14,14 +20,28 @@ const savedFlash = ref(false)
 
 onMounted(load)
 
+const bi = () => ({ en: '', ar: '' })
+
 async function load() {
     loading.value = true
     const { data } = await api.get('api/admin/landing-content')
-    content.value = data.data
+    content.value = normalize(data.data)
     loading.value = false
 }
 
-const bi = () => ({ en: '', ar: '' })
+// Guarantee every section/field the editor binds to exists, even on rows saved
+// before a section was introduced. Defaults are already merged server-side, but
+// list items (packages) need per-item back-filling here.
+function normalize(c) {
+    c.pricing.plans.forEach((p) => {
+        p.subtitle ??= p.note ?? bi()
+        p.price_label ??= p.price ?? bi()
+        if (p.recommended === undefined) p.recommended = p.popular ?? false
+        if (p.enabled === undefined) p.enabled = true
+        p.features ??= []
+    })
+    return c
+}
 
 // --- repeater helpers (add / remove / reorder) ---
 function move(arr, i, dir) {
@@ -35,8 +55,13 @@ function removeAt(arr, i) { arr.splice(i, 1) }
 function addProof() { content.value.proof.push({ title: bi(), text: bi() }) }
 function addFeature() { content.value.features.items.push({ icon: '★', title: bi(), text: bi() }) }
 function addStep() { content.value.steps.items.push({ title: bi(), text: bi() }) }
+function addBenefit() { content.value.offer.items.push({ icon: '★', text: bi() }) }
+function addProblem() { content.value.problem.problems.push({ text: bi() }) }
+function addThird() { content.value.no_commission.third_party.push({ text: bi() }) }
+function addXorder() { content.value.no_commission.xorder.push({ text: bi() }) }
+function addIndustry() { content.value.industries.items.push({ icon: '🍽️', text: bi() }) }
 function addPlan() {
-    content.value.pricing.plans.push({ name: bi(), price: bi(), per: bi(), note: bi(), popular: false, features: [] })
+    content.value.pricing.plans.push({ name: bi(), subtitle: bi(), price_label: bi(), recommended: false, enabled: true, features: [] })
 }
 function addPlanFeature(plan) { plan.features.push(bi()) }
 
@@ -46,7 +71,7 @@ async function save() {
     try {
         await ensureCsrf()
         const { data } = await api.put('api/admin/landing-content', { content: content.value })
-        content.value = data.data
+        content.value = normalize(data.data)
         savedFlash.value = true
         setTimeout(() => { savedFlash.value = false }, 2500)
         window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -91,6 +116,25 @@ async function save() {
             <div v-if="loading" class="card mt-5 p-8 text-center page-sub">{{ t('common.loading') }}</div>
 
             <template v-else-if="content">
+                <!-- SEO -->
+                <section class="card p-5 mt-5">
+                    <h2 class="h-card mb-4">{{ t('landing_admin.sec_seo') }}</h2>
+                    <div class="space-y-3">
+                        <label class="block"><span class="label">{{ t('landing_admin.seo_title') }}</span>
+                            <input v-model="content.seo.title" class="input mt-1.5" maxlength="255" /></label>
+                        <label class="block"><span class="label">{{ t('landing_admin.seo_desc') }}</span>
+                            <textarea v-model="content.seo.description" class="input mt-1.5" rows="2" maxlength="500"></textarea></label>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <label class="block"><span class="label">{{ t('landing_admin.og_title') }}</span>
+                                <input v-model="content.seo.og_title" class="input mt-1.5" maxlength="255" /></label>
+                            <label class="block"><span class="label">{{ t('landing_admin.og_image') }}</span>
+                                <input v-model="content.seo.og_image" class="input mt-1.5" placeholder="https://…" maxlength="500" /></label>
+                        </div>
+                        <label class="block"><span class="label">{{ t('landing_admin.og_desc') }}</span>
+                            <textarea v-model="content.seo.og_description" class="input mt-1.5" rows="2" maxlength="500"></textarea></label>
+                    </div>
+                </section>
+
                 <!-- HERO -->
                 <section class="card p-5 mt-5">
                     <h2 class="h-card mb-4">{{ t('landing_admin.sec_hero') }}</h2>
@@ -98,8 +142,37 @@ async function save() {
                         <BiField :label="t('landing_admin.l_badge')" v-model:en="content.hero.badge.en" v-model:ar="content.hero.badge.ar" />
                         <BiField :label="t('landing_admin.l_title')" v-model:en="content.hero.title.en" v-model:ar="content.hero.title.ar" />
                         <BiField :label="t('landing_admin.l_subtitle')" textarea v-model:en="content.hero.sub.en" v-model:ar="content.hero.sub.ar" />
-                        <BiField :label="t('landing_admin.l_primary_button')" v-model:en="content.hero.cta.en" v-model:ar="content.hero.cta.ar" />
-                        <BiField :label="t('landing_admin.l_secondary_link')" v-model:en="content.hero.secondary.en" v-model:ar="content.hero.secondary.ar" />
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            <BiField :label="t('landing_admin.l_primary_button')" v-model:en="content.hero.cta.en" v-model:ar="content.hero.cta.ar" />
+                            <label class="block"><span class="label">{{ t('landing_admin.l_primary_link') }}</span>
+                                <input v-model="content.hero.primary_link" class="input mt-1.5" placeholder="#lead" /></label>
+                        </div>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            <BiField :label="t('landing_admin.l_secondary_button')" v-model:en="content.hero.secondary.en" v-model:ar="content.hero.secondary.ar" />
+                            <label class="block"><span class="label">{{ t('landing_admin.l_secondary_link') }}</span>
+                                <input v-model="content.hero.secondary_link" class="input mt-1.5" :placeholder="t('landing_admin.demo_link_ph')" /></label>
+                        </div>
+                        <BiField :label="t('landing_admin.l_no_commission_label')" v-model:en="content.hero.no_commission_label.en" v-model:ar="content.hero.no_commission_label.ar" />
+                        <BiField :label="t('landing_admin.l_ready_label')" v-model:en="content.hero.ready_label.en" v-model:ar="content.hero.ready_label.ar" />
+                        <BiField :label="t('landing_admin.l_whatsapp_label')" v-model:en="content.hero.whatsapp_label.en" v-model:ar="content.hero.whatsapp_label.ar" />
+                    </div>
+                </section>
+
+                <!-- WHATSAPP SETTINGS -->
+                <section class="card p-5 mt-5">
+                    <h2 class="h-card mb-4">{{ t('landing_admin.sec_whatsapp') }}</h2>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <label class="block"><span class="label">{{ t('landing_admin.wa_number') }}</span>
+                            <input v-model="content.whatsapp.number" class="input mt-1.5" placeholder="201234567890" dir="ltr" /></label>
+                    </div>
+                    <BiField class="mt-3" :label="t('landing_admin.wa_message')" textarea v-model:en="content.whatsapp.default_message.en" v-model:ar="content.whatsapp.default_message.ar" />
+                    <div class="flex flex-wrap gap-5 mt-3">
+                        <label class="flex items-center gap-2 label" style="cursor:pointer">
+                            <input type="checkbox" v-model="content.whatsapp.floating_enabled" /> {{ t('landing_admin.wa_floating') }}
+                        </label>
+                        <label class="flex items-center gap-2 label" style="cursor:pointer">
+                            <input type="checkbox" v-model="content.whatsapp.hero_enabled" /> {{ t('landing_admin.wa_hero') }}
+                        </label>
                     </div>
                 </section>
 
@@ -114,15 +187,98 @@ async function save() {
                             <div class="flex items-center justify-between mb-2">
                                 <span class="label">#{{ i + 1 }}</span>
                                 <div class="flex gap-1">
-                                    <button class="icon-btn" :disabled="i === 0" :title="t('landing_admin.move_up')" @click="move(content.proof, i, -1)">↑</button>
-                                    <button class="icon-btn" :disabled="i === content.proof.length - 1" :title="t('landing_admin.move_down')" @click="move(content.proof, i, 1)">↓</button>
-                                    <button class="icon-btn icon-btn-danger" :title="t('landing_admin.remove')" @click="removeAt(content.proof, i)">✕</button>
+                                    <button class="icon-btn" :disabled="i === 0" @click="move(content.proof, i, -1)">↑</button>
+                                    <button class="icon-btn" :disabled="i === content.proof.length - 1" @click="move(content.proof, i, 1)">↓</button>
+                                    <button class="icon-btn icon-btn-danger" @click="removeAt(content.proof, i)">✕</button>
                                 </div>
                             </div>
                             <BiField :label="t('landing_admin.l_title')" v-model:en="p.title.en" v-model:ar="p.title.ar" />
                             <BiField :label="t('landing_admin.l_text')" class="mt-2" v-model:en="p.text.en" v-model:ar="p.text.ar" />
                         </div>
-                        <p v-if="!content.proof.length" class="page-sub">{{ t('landing_admin.no_proof') }}</p>
+                    </div>
+                </section>
+
+                <!-- OFFER -->
+                <section class="card p-5 mt-5">
+                    <h2 class="h-card mb-4">{{ t('landing_admin.sec_offer') }}</h2>
+                    <BiField :label="t('landing_admin.l_section_title')" v-model:en="content.offer.title.en" v-model:ar="content.offer.title.ar" />
+                    <BiField :label="t('landing_admin.l_section_subtitle')" class="mt-2" textarea v-model:en="content.offer.text.en" v-model:ar="content.offer.text.ar" />
+                    <div class="flex items-center justify-between mt-5 mb-3">
+                        <span class="label">{{ t('landing_admin.benefits') }}</span>
+                        <button class="btn btn-ghost btn-sm" @click="addBenefit">{{ t('landing_admin.add') }}</button>
+                    </div>
+                    <div class="space-y-3">
+                        <div v-for="(it, i) in content.offer.items" :key="i" class="rounded-xl p-3" style="background: var(--page); border: 1px solid var(--line);">
+                            <div class="flex items-center justify-between mb-2 gap-2">
+                                <div class="flex items-center gap-2">
+                                    <span class="label">{{ t('landing_admin.icon') }}</span>
+                                    <input v-model="it.icon" class="input" style="width:64px;text-align:center" maxlength="4" />
+                                </div>
+                                <div class="flex gap-1">
+                                    <button class="icon-btn" :disabled="i === 0" @click="move(content.offer.items, i, -1)">↑</button>
+                                    <button class="icon-btn" :disabled="i === content.offer.items.length - 1" @click="move(content.offer.items, i, 1)">↓</button>
+                                    <button class="icon-btn icon-btn-danger" @click="removeAt(content.offer.items, i)">✕</button>
+                                </div>
+                            </div>
+                            <BiField v-model:en="it.text.en" v-model:ar="it.text.ar" />
+                        </div>
+                    </div>
+                </section>
+
+                <!-- PROBLEM / SOLUTION -->
+                <section class="card p-5 mt-5">
+                    <h2 class="h-card mb-4">{{ t('landing_admin.sec_problem') }}</h2>
+                    <BiField :label="t('landing_admin.l_section_title')" v-model:en="content.problem.title.en" v-model:ar="content.problem.title.ar" />
+                    <BiField :label="t('landing_admin.l_section_subtitle')" class="mt-2" v-model:en="content.problem.sub.en" v-model:ar="content.problem.sub.ar" />
+                    <div class="flex items-center justify-between mt-5 mb-3">
+                        <span class="label">{{ t('landing_admin.problems') }}</span>
+                        <button class="btn btn-ghost btn-sm" @click="addProblem">{{ t('landing_admin.add') }}</button>
+                    </div>
+                    <div class="space-y-3">
+                        <div v-for="(p, i) in content.problem.problems" :key="i" class="flex items-start gap-2">
+                            <BiField class="flex-1" v-model:en="p.text.en" v-model:ar="p.text.ar" />
+                            <button class="icon-btn icon-btn-danger mt-1" @click="removeAt(content.problem.problems, i)">✕</button>
+                        </div>
+                    </div>
+                    <div class="mt-5 space-y-3">
+                        <BiField :label="t('landing_admin.l_solution_title')" v-model:en="content.problem.solution_title.en" v-model:ar="content.problem.solution_title.ar" />
+                        <BiField :label="t('landing_admin.l_solution_text')" textarea v-model:en="content.problem.solution_text.en" v-model:ar="content.problem.solution_text.ar" />
+                    </div>
+                </section>
+
+                <!-- NO COMMISSION -->
+                <section class="card p-5 mt-5">
+                    <h2 class="h-card mb-4">{{ t('landing_admin.sec_no_commission') }}</h2>
+                    <BiField :label="t('landing_admin.l_section_title')" v-model:en="content.no_commission.title.en" v-model:ar="content.no_commission.title.ar" />
+                    <BiField :label="t('landing_admin.l_section_subtitle')" class="mt-2" textarea v-model:en="content.no_commission.text.en" v-model:ar="content.no_commission.text.ar" />
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-5">
+                        <div class="rounded-xl p-3" style="background: var(--page); border: 1px solid var(--line);">
+                            <BiField :label="t('landing_admin.l_compare_title')" v-model:en="content.no_commission.third_party_title.en" v-model:ar="content.no_commission.third_party_title.ar" />
+                            <div class="flex items-center justify-between mt-3 mb-2">
+                                <span class="label">{{ t('landing_admin.third_party') }}</span>
+                                <button class="btn btn-ghost btn-sm" @click="addThird">{{ t('landing_admin.add') }}</button>
+                            </div>
+                            <div class="space-y-2">
+                                <div v-for="(it, i) in content.no_commission.third_party" :key="i" class="flex items-start gap-2">
+                                    <BiField class="flex-1" v-model:en="it.text.en" v-model:ar="it.text.ar" />
+                                    <button class="icon-btn icon-btn-danger mt-1" @click="removeAt(content.no_commission.third_party, i)">✕</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="rounded-xl p-3" style="background: var(--page); border: 1px solid var(--line);">
+                            <BiField :label="t('landing_admin.l_compare_title')" v-model:en="content.no_commission.xorder_title.en" v-model:ar="content.no_commission.xorder_title.ar" />
+                            <div class="flex items-center justify-between mt-3 mb-2">
+                                <span class="label">{{ t('landing_admin.xorder_pts') }}</span>
+                                <button class="btn btn-ghost btn-sm" @click="addXorder">{{ t('landing_admin.add') }}</button>
+                            </div>
+                            <div class="space-y-2">
+                                <div v-for="(it, i) in content.no_commission.xorder" :key="i" class="flex items-start gap-2">
+                                    <BiField class="flex-1" v-model:en="it.text.en" v-model:ar="it.text.ar" />
+                                    <button class="icon-btn icon-btn-danger mt-1" @click="removeAt(content.no_commission.xorder, i)">✕</button>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </section>
 
@@ -145,9 +301,9 @@ async function save() {
                                     <input v-model="f.icon" class="input" style="width: 64px; text-align: center;" maxlength="4" />
                                 </div>
                                 <div class="flex gap-1">
-                                    <button class="icon-btn" :disabled="i === 0" :title="t('landing_admin.move_up')" @click="move(content.features.items, i, -1)">↑</button>
-                                    <button class="icon-btn" :disabled="i === content.features.items.length - 1" :title="t('landing_admin.move_down')" @click="move(content.features.items, i, 1)">↓</button>
-                                    <button class="icon-btn icon-btn-danger" :title="t('landing_admin.remove')" @click="removeAt(content.features.items, i)">✕</button>
+                                    <button class="icon-btn" :disabled="i === 0" @click="move(content.features.items, i, -1)">↑</button>
+                                    <button class="icon-btn" :disabled="i === content.features.items.length - 1" @click="move(content.features.items, i, 1)">↓</button>
+                                    <button class="icon-btn icon-btn-danger" @click="removeAt(content.features.items, i)">✕</button>
                                 </div>
                             </div>
                             <BiField :label="t('landing_admin.l_title')" v-model:en="f.title.en" v-model:ar="f.title.ar" />
@@ -156,22 +312,38 @@ async function save() {
                     </div>
                 </section>
 
-                <!-- STEPS -->
+                <!-- DEMO + STEPS -->
                 <section class="card p-5 mt-5">
-                    <h2 class="h-card mb-4">{{ t('landing_admin.sec_steps') }}</h2>
-                    <BiField :label="t('landing_admin.l_section_title')" v-model:en="content.steps.title.en" v-model:ar="content.steps.title.ar" />
+                    <div class="flex items-center justify-between mb-4">
+                        <h2 class="h-card">{{ t('landing_admin.sec_demo') }}</h2>
+                        <label class="flex items-center gap-2 label" style="cursor:pointer">
+                            <input type="checkbox" v-model="content.demo.enabled" /> {{ t('landing_admin.demo_enabled') }}
+                        </label>
+                    </div>
+                    <div class="space-y-3">
+                        <BiField :label="t('landing_admin.l_section_title')" v-model:en="content.demo.title.en" v-model:ar="content.demo.title.ar" />
+                        <BiField :label="t('landing_admin.l_section_subtitle')" textarea v-model:en="content.demo.text.en" v-model:ar="content.demo.text.ar" />
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            <BiField :label="t('landing_admin.l_demo_button')" v-model:en="content.demo.button.en" v-model:ar="content.demo.button.ar" />
+                            <label class="block"><span class="label">{{ t('landing_admin.l_demo_slug') }}</span>
+                                <input v-model="content.demo.restaurant_slug" class="input mt-1.5" placeholder="xorderrest" dir="ltr" />
+                                <span class="page-sub" style="font-size:12px">{{ t('landing_admin.demo_slug_hint') }}</span>
+                                <a v-if="demoPreviewUrl" :href="demoPreviewUrl" target="_blank" rel="noopener" class="mt-1.5 inline-block" style="font-size:13px;color:var(--accent)">{{ t('landing_admin.preview_demo') }} ↗</a></label>
+                        </div>
+                    </div>
                     <div class="flex items-center justify-between mt-5 mb-3">
-                        <span class="label">{{ t('landing_admin.steps') }}</span>
+                        <span class="label">{{ t('landing_admin.flow_steps') }}</span>
                         <button class="btn btn-ghost btn-sm" @click="addStep">{{ t('landing_admin.add_step') }}</button>
                     </div>
+                    <BiField :label="t('landing_admin.l_section_title')" class="mb-3" v-model:en="content.steps.title.en" v-model:ar="content.steps.title.ar" />
                     <div class="space-y-3">
                         <div v-for="(s, i) in content.steps.items" :key="i" class="rounded-xl p-3" style="background: var(--page); border: 1px solid var(--line);">
                             <div class="flex items-center justify-between mb-2">
                                 <span class="label">{{ t('landing_admin.step', { n: i + 1 }) }}</span>
                                 <div class="flex gap-1">
-                                    <button class="icon-btn" :disabled="i === 0" :title="t('landing_admin.move_up')" @click="move(content.steps.items, i, -1)">↑</button>
-                                    <button class="icon-btn" :disabled="i === content.steps.items.length - 1" :title="t('landing_admin.move_down')" @click="move(content.steps.items, i, 1)">↓</button>
-                                    <button class="icon-btn icon-btn-danger" :title="t('landing_admin.remove')" @click="removeAt(content.steps.items, i)">✕</button>
+                                    <button class="icon-btn" :disabled="i === 0" @click="move(content.steps.items, i, -1)">↑</button>
+                                    <button class="icon-btn" :disabled="i === content.steps.items.length - 1" @click="move(content.steps.items, i, 1)">↓</button>
+                                    <button class="icon-btn icon-btn-danger" @click="removeAt(content.steps.items, i)">✕</button>
                                 </div>
                             </div>
                             <BiField :label="t('landing_admin.l_title')" v-model:en="s.title.en" v-model:ar="s.title.ar" />
@@ -180,37 +352,39 @@ async function save() {
                     </div>
                 </section>
 
-                <!-- PRICING -->
+                <!-- PACKAGES -->
                 <section class="card p-5 mt-5">
-                    <h2 class="h-card mb-4">{{ t('landing_admin.sec_pricing') }}</h2>
+                    <h2 class="h-card mb-4">{{ t('landing_admin.sec_packages') }}</h2>
                     <div class="space-y-3">
                         <BiField :label="t('landing_admin.l_section_title')" v-model:en="content.pricing.title.en" v-model:ar="content.pricing.title.ar" />
                         <BiField :label="t('landing_admin.l_section_subtitle')" v-model:en="content.pricing.sub.en" v-model:ar="content.pricing.sub.ar" />
-                        <BiField :label="t('landing_admin.l_popular_label')" v-model:en="content.pricing.popular_label.en" v-model:ar="content.pricing.popular_label.ar" />
+                        <BiField :label="t('landing_admin.l_recommended_label')" v-model:en="content.pricing.popular_label.en" v-model:ar="content.pricing.popular_label.ar" />
                         <BiField :label="t('landing_admin.l_choose_label')" v-model:en="content.pricing.choose_label.en" v-model:ar="content.pricing.choose_label.ar" />
                     </div>
                     <div class="flex items-center justify-between mt-5 mb-3">
-                        <span class="label">{{ t('landing_admin.plans') }}</span>
-                        <button class="btn btn-ghost btn-sm" @click="addPlan">{{ t('landing_admin.add_plan') }}</button>
+                        <span class="label">{{ t('landing_admin.packages') }}</span>
+                        <button class="btn btn-ghost btn-sm" @click="addPlan">{{ t('landing_admin.add_package') }}</button>
                     </div>
                     <div class="space-y-4">
                         <div v-for="(plan, i) in content.pricing.plans" :key="i" class="rounded-xl p-3" style="background: var(--page); border: 1px solid var(--line);">
-                            <div class="flex items-center justify-between mb-2">
-                                <label class="flex items-center gap-2 label" style="cursor: pointer;">
-                                    <input type="checkbox" v-model="plan.popular" /> {{ t('landing_admin.most_popular') }}
-                                </label>
+                            <div class="flex items-center justify-between mb-2 gap-3 flex-wrap">
+                                <div class="flex items-center gap-4">
+                                    <label class="flex items-center gap-2 label" style="cursor: pointer;">
+                                        <input type="checkbox" v-model="plan.recommended" /> {{ t('landing_admin.recommended') }}
+                                    </label>
+                                    <label class="flex items-center gap-2 label" style="cursor: pointer;">
+                                        <input type="checkbox" v-model="plan.enabled" /> {{ t('landing_admin.visible') }}
+                                    </label>
+                                </div>
                                 <div class="flex gap-1">
-                                    <button class="icon-btn" :disabled="i === 0" :title="t('landing_admin.move_up')" @click="move(content.pricing.plans, i, -1)">↑</button>
-                                    <button class="icon-btn" :disabled="i === content.pricing.plans.length - 1" :title="t('landing_admin.move_down')" @click="move(content.pricing.plans, i, 1)">↓</button>
-                                    <button class="icon-btn icon-btn-danger" :title="t('landing_admin.remove')" @click="removeAt(content.pricing.plans, i)">✕</button>
+                                    <button class="icon-btn" :disabled="i === 0" @click="move(content.pricing.plans, i, -1)">↑</button>
+                                    <button class="icon-btn" :disabled="i === content.pricing.plans.length - 1" @click="move(content.pricing.plans, i, 1)">↓</button>
+                                    <button class="icon-btn icon-btn-danger" @click="removeAt(content.pricing.plans, i)">✕</button>
                                 </div>
                             </div>
                             <BiField :label="t('landing_admin.l_name')" v-model:en="plan.name.en" v-model:ar="plan.name.ar" />
-                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
-                                <BiField :label="t('landing_admin.l_price')" v-model:en="plan.price.en" v-model:ar="plan.price.ar" />
-                                <BiField :label="t('landing_admin.l_per')" v-model:en="plan.per.en" v-model:ar="plan.per.ar" />
-                            </div>
-                            <BiField :label="t('landing_admin.l_note')" class="mt-2" v-model:en="plan.note.en" v-model:ar="plan.note.ar" />
+                            <BiField :label="t('landing_admin.l_subtitle')" class="mt-2" textarea v-model:en="plan.subtitle.en" v-model:ar="plan.subtitle.ar" />
+                            <BiField :label="t('landing_admin.l_price_label')" class="mt-2" v-model:en="plan.price_label.en" v-model:ar="plan.price_label.ar" />
                             <div class="flex items-center justify-between mt-3 mb-2">
                                 <span class="label">{{ t('landing_admin.plan_features') }}</span>
                                 <button class="btn btn-ghost btn-sm" @click="addPlanFeature(plan)">{{ t('landing_admin.add_feature') }}</button>
@@ -218,11 +392,41 @@ async function save() {
                             <div class="space-y-2">
                                 <div v-for="(feat, fi) in plan.features" :key="fi" class="flex items-start gap-2">
                                     <BiField class="flex-1" v-model:en="feat.en" v-model:ar="feat.ar" />
-                                    <button class="icon-btn icon-btn-danger mt-1" :title="t('landing_admin.remove')" @click="removeAt(plan.features, fi)">✕</button>
+                                    <button class="icon-btn icon-btn-danger mt-1" @click="removeAt(plan.features, fi)">✕</button>
                                 </div>
                             </div>
                         </div>
                     </div>
+                </section>
+
+                <!-- INDUSTRIES -->
+                <section class="card p-5 mt-5">
+                    <h2 class="h-card mb-4">{{ t('landing_admin.sec_industries') }}</h2>
+                    <BiField :label="t('landing_admin.l_section_title')" v-model:en="content.industries.title.en" v-model:ar="content.industries.title.ar" />
+                    <BiField :label="t('landing_admin.l_section_subtitle')" class="mt-2" v-model:en="content.industries.sub.en" v-model:ar="content.industries.sub.ar" />
+                    <div class="flex items-center justify-between mt-5 mb-3">
+                        <span class="label">{{ t('landing_admin.industries') }}</span>
+                        <button class="btn btn-ghost btn-sm" @click="addIndustry">{{ t('landing_admin.add') }}</button>
+                    </div>
+                    <div class="space-y-3">
+                        <div v-for="(it, i) in content.industries.items" :key="i" class="flex items-start gap-2">
+                            <input v-model="it.icon" class="input mt-1" style="width:56px;text-align:center" maxlength="4" />
+                            <BiField class="flex-1" v-model:en="it.text.en" v-model:ar="it.text.ar" />
+                            <button class="icon-btn icon-btn-danger mt-1" @click="removeAt(content.industries.items, i)">✕</button>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- LEAD FORM -->
+                <section class="card p-5 mt-5">
+                    <h2 class="h-card mb-4">{{ t('landing_admin.sec_lead_form') }}</h2>
+                    <div class="space-y-3">
+                        <BiField :label="t('landing_admin.l_section_title')" v-model:en="content.lead_form.title.en" v-model:ar="content.lead_form.title.ar" />
+                        <BiField :label="t('landing_admin.l_section_subtitle')" v-model:en="content.lead_form.sub.en" v-model:ar="content.lead_form.sub.ar" />
+                        <BiField :label="t('landing_admin.l_button')" v-model:en="content.lead_form.button.en" v-model:ar="content.lead_form.button.ar" />
+                        <BiField :label="t('landing_admin.l_success')" textarea v-model:en="content.lead_form.success.en" v-model:ar="content.lead_form.success.ar" />
+                    </div>
+                    <p class="page-sub mt-3" style="font-size:12px">{{ t('landing_admin.leads_hint') }}</p>
                 </section>
 
                 <!-- CTA -->
@@ -234,16 +438,10 @@ async function save() {
                         <BiField :label="t('landing_admin.l_button')" v-model:en="content.cta.button.en" v-model:ar="content.cta.button.ar" />
                         <BiField :label="t('landing_admin.l_whatsapp_label')" v-model:en="content.cta.whatsapp_label.en" v-model:ar="content.cta.whatsapp_label.ar" />
                     </div>
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
-                        <label class="block">
-                            <span class="label">{{ t('landing_admin.contact_email') }}</span>
-                            <input v-model="content.contact.email" class="input mt-1.5" type="email" placeholder="hello@xorder.app" />
-                        </label>
-                        <label class="block">
-                            <span class="label">{{ t('landing_admin.whatsapp_number') }}</span>
-                            <input v-model="content.contact.whatsapp" class="input mt-1.5" placeholder="201234567890" />
-                        </label>
-                    </div>
+                    <label class="block mt-4">
+                        <span class="label">{{ t('landing_admin.contact_email') }}</span>
+                        <input v-model="content.contact.email" class="input mt-1.5" type="email" placeholder="hello@xorder.app" />
+                    </label>
                 </section>
 
                 <!-- FOOTER -->

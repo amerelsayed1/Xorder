@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Admin\InsightsController as AdminInsightsController;
 use App\Http\Controllers\Admin\LandingContentController as AdminLandingContentController;
+use App\Http\Controllers\Admin\LeadController as AdminLeadController;
 use App\Http\Controllers\Admin\PlanController as AdminPlanController;
 use App\Http\Controllers\Admin\RestaurantAdminController as AdminRestaurantAdminController;
 use App\Http\Controllers\Admin\RestaurantController as AdminRestaurantController;
@@ -19,6 +20,7 @@ use App\Http\Controllers\Dashboard\MenuItemController;
 use App\Http\Controllers\Dashboard\RestaurantProfileController;
 use App\Http\Controllers\Dashboard\StatsController;
 use App\Http\Controllers\Public\LandingContentController as PublicLandingContentController;
+use App\Http\Controllers\Public\LeadController as PublicLeadController;
 use App\Http\Controllers\Public\PublicMenuApiController;
 use App\Http\Controllers\Public\RestaurantBrandingController;
 use App\Http\Controllers\UploadController;
@@ -71,6 +73,11 @@ Route::prefix('admin')
         // Landing page content (CMS)
         Route::get('landing-content', [AdminLandingContentController::class, 'show']);
         Route::put('landing-content', [AdminLandingContentController::class, 'update']);
+
+        // Landing page leads (sales inbox)
+        Route::get('leads', [AdminLeadController::class, 'index']);
+        Route::get('leads/export', [AdminLeadController::class, 'export']);
+        Route::patch('leads/{lead}', [AdminLeadController::class, 'update']);
     });
 
 /*
@@ -141,6 +148,9 @@ Route::get('public/restaurants/{slug}/menu', [PublicMenuApiController::class, 's
 
 Route::get('public/landing-content', [PublicLandingContentController::class, 'show'])
     ->middleware('throttle:120,1');
+
+Route::post('public/leads', [PublicLeadController::class, 'store'])
+    ->middleware('throttle:10,1');
 
 Route::get('public/restaurants/{slug}/branding', [RestaurantBrandingController::class, 'show'])
     ->middleware('throttle:120,1');

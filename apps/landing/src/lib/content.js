@@ -11,3 +11,23 @@ export async function fetchLandingContent() {
     const json = await res.json()
     return json.data
 }
+
+/**
+ * Submit a landing-page demo-request lead. Resolves on success; throws an
+ * Error whose `.fields` holds per-field validation messages on a 422.
+ */
+export async function postLead(payload) {
+    const res = await fetch(`${BASE}/api/public/leads`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify(payload),
+    })
+    if (res.status === 201) return
+    if (res.status === 422) {
+        const body = await res.json().catch(() => ({}))
+        const err = new Error('validation')
+        err.fields = body.errors || {}
+        throw err
+    }
+    throw new Error(`Failed to submit lead (${res.status})`)
+}

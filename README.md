@@ -8,55 +8,96 @@ Menu-only multi-tenant SaaS. A **Super Admin** provisions restaurants and their 
 · Sanctum cookie auth · SQLite (dev) / PostgreSQL (prod). See [ARCHITECTURE.md](ARCHITECTURE.md) for the
 full design.
 
-## Quick start
+## Repo layout
+
+pnpm + Turborepo monorepo. The four apps are independent and talk over HTTP:
+
+| Path | What | Dev URL |
+|---|---|---|
+| `apps/api` | Laravel API + Blade public menu (`/api`, `/r/{slug}`) | `:8000` |
+| `apps/web` | Vue SPA — Super Admin + Restaurant dashboards | `:5173` |
+| `apps/landing` | Vue marketing site (xorder.io) | `:5174` |
+| `apps/menu` | Vue customer ordering SPA | `:5175` |
+| `packages/ui`, `packages/api-client` | shared Vue components, i18n, API client | — |
+
+> The files referencing **Operix** (`docker-compose.cohost.yml`, `deploy.sh`, `go-live.sh`,
+> `issue-cert.sh`, `CO-HOST-PREP.md`, `.env.production.example`, `docker/nginx/*`) are **production
+> co-host** scaffolding only — Operix is a separate product that shares Xorder's prod VPS. Ignore
+> them when running Xorder locally.
+
+## Run locally
+
+### One command
 
 ```bash
+./scripts/dev.sh
+```
+
+First run installs deps, creates a SQLite `.env`, migrates + seeds (Super Admin + demo restaurant),
+builds the public-menu assets, then starts all three servers. Open <http://localhost:5174> (landing)
+and <http://localhost:5173> (Super Admin). Ctrl-C stops everything. Prefer to do it by hand? See below.
+
+### Option A — dev servers (fastest; hot reload)
+
+Two terminals. The SPAs proxy `/api`, `/sanctum` and `/r` to the API, which **must run on port 8000**.
+
+```bash
+# Terminal 1 — API (apps/api)
+cd apps/api
 composer install
-npm install
-cp .env.example .env          # then set SUPER_ADMIN_* and APP_URL
+cp .env.example .env
+#   use SQLite locally: set DB_CONNECTION=sqlite and remove DB_HOST/PORT/DATABASE/USERNAME/PASSWORD
 php artisan key:generate
 touch database/database.sqlite
-php artisan migrate --seed     # creates the Super Admin from .env
-php artisan db:seed --class=DemoSeeder   # optional: a demo restaurant at /r/demo
-npm run build                  # or: npm run dev
-php artisan serve
+php artisan migrate --seed                      # creates the Super Admin from .env
+php artisan db:seed --class=DemoSeeder          # optional: demo restaurant at /r/xorderrest
+npm run build                                   # builds the public-menu CSS (Vite manifest)
+php artisan serve --port=8000                   # MUST be 8000 (the SPAs proxy here)
+
+# Terminal 2 — front-ends (repo root)
+pnpm install
+pnpm dev:landing    # http://localhost:5174   (marketing site)
+pnpm dev:web        # http://localhost:5173   (Super Admin → Landing Management, Leads)
 ```
 
 Open:
-- **Public menu:** `/r/demo`
-- **Login (SPA):** `/login` → Super Admin redirects to `/admin`, Restaurant Admin to `/dashboard`
-- **Super Admin:** the seeded `SUPER_ADMIN_EMAIL` / `SUPER_ADMIN_PASSWORD`
-- **Demo restaurant admin:** `owner@demo.test` / `password`
+- **Landing:** <http://localhost:5174>
+- **Super Admin:** <http://localhost:5173> — log in with the seeded `SUPER_ADMIN_EMAIL` /
+  `SUPER_ADMIN_PASSWORD` from `apps/api/.env`.
+- **Public menu:** <http://localhost:8000/r/xorderrest>
 
-> SPA cookie auth requires the browser origin to be listed in `SANCTUM_STATEFUL_DOMAINS`. The default
-> covers `127.0.0.1:8123`; if you run `php artisan serve` on another port, add it there.
+> `pnpm dev` (turbo) starts the **front-ends only** — the API is a separate `php artisan serve`.
+> SPA cookie auth needs the browser origin in `SANCTUM_STATEFUL_DOMAINS`; the default already covers
+> `localhost:5173`, `localhost:5174` and `localhost:8000`.
 
-## Run with Docker
+### Option B — full stack in Docker (one container, closest to prod)
 
-Multi-stage build → **Nginx + PHP-FPM + PostgreSQL**. Front-end assets are compiled in an image
-stage, so no Node is needed on the host.
+Multi-stage build → **Nginx + PHP-FPM + PostgreSQL**, all four apps behind one nginx. No Node/PHP
+needed on the host. Uses the standalone [`docker-compose.yml`](docker-compose.yml) (not the co-host one).
 
 ```bash
-# 1. Create the compose env, then set APP_KEY + passwords inside it
-cp .env.docker.example .env.docker
-docker compose run --rm app php artisan key:generate --show   # paste into APP_KEY
+cp apps/api/.env.docker.example apps/api/.env.docker
+docker compose run --rm app php artisan key:generate --show   # paste into APP_KEY in apps/api/.env.docker
+#   also set DB_PASSWORD and SUPER_ADMIN_PASSWORD in apps/api/.env.docker
 docker compose up -d --build
+docker compose exec app php artisan db:seed --class=DemoSeeder --force   # optional demo data
 ```
 
-On first boot the app container waits for Postgres, runs migrations, seeds the Super Admin
+On first boot the app container waits for Postgres, migrates, seeds the Super Admin
 (`SEED_ON_START=true`), and caches config/routes/views. Then:
 
-- App: <http://localhost:8080>  · public menu at `/r/{slug}` · SPA at `/login`
+- **Landing:** <http://localhost:8080>  · **public menu:** `/r/xorderrest`
+- **Super Admin:** <http://admin.localhost:8080> (Host-routed to the admin subdomain;
+  browsers resolve `*.localhost` automatically)
 - Postgres is internal; data persists in the `pgdata` volume, uploads in `storage-data`.
 
 ```bash
-docker compose logs -f app           # follow app logs (logged to stderr)
-docker compose exec app php artisan db:seed --class=DemoSeeder --force   # optional demo data
+docker compose logs -f app           # follow app logs (stderr)
 docker compose down                  # stop (add -v to wipe db + uploads)
 ```
 
 Files: [`Dockerfile`](Dockerfile) (stages `assets`/`vendor`/`app`/`web`),
-[`docker-compose.yml`](docker-compose.yml), [`.env.docker`](.env.docker),
+[`docker-compose.yml`](docker-compose.yml), `apps/api/.env.docker`,
 [`docker/`](docker/) (nginx conf, php.ini, entrypoint).
 
 > Behavior toggles via env: `RUN_MIGRATIONS`, `SEED_ON_START`, `HIDE_MENU_WHEN_EXPIRED`,
@@ -66,11 +107,16 @@ Files: [`Dockerfile`](Dockerfile) (stages `assets`/`vendor`/`app`/`web`),
 ## Tests
 
 ```bash
-php artisan test
+cd apps/api && php artisan test tests/Feature
 ```
 
-30 feature tests cover auth, role gates, **tenant isolation** (cross-restaurant access → 404),
-provisioning, validation rules, subscription/status gating, and public-menu visibility.
+> Run the `tests/Feature` suite explicitly — bare `php artisan test` errors on a missing `tests/Unit`
+> directory.
+
+62 feature tests cover auth, role gates, **tenant isolation** (cross-restaurant access → 404),
+provisioning, validation rules, subscription/status gating, public-menu visibility, the landing-page
+**leads** inbox (submit/validate/list/filter/status/CSV), and the **landing content** CMS
+(all sections, defaults-merge fallback, super-admin-only editing).
 
 ## Public menu domain
 

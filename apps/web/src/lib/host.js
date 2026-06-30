@@ -28,3 +28,9 @@ export function superAdminUrl(path = '/') {
 export function restaurantUrl(slug, path = '/') {
     return `${origin(`${slug}.${rootDomain}`)}${path}`
 }
+
+// The public menu lives on the ROOT domain (e.g. xorder.io/r/{slug}), never on
+// the admin or a restaurant subdomain. Used for slug previews and public links.
+export function publicOrigin() {
+    return origin(rootDomain)
+}

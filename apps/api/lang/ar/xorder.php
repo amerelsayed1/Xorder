@@ -26,6 +26,8 @@ return [
         'menu_unavailable' => 'هذه القائمة غير متاحة حالياً.',
         'profile_updated' => 'تم تحديث الملف الشخصي.',
         'landing_updated' => 'تم تحديث الصفحة الرئيسية.',
+        'lead_received' => 'شكراً لك! استلمنا طلبك وسنتواصل معك قريباً.',
+        'lead_updated' => 'تم تحديث العميل المحتمل.',
         'branch_created' => 'تم إنشاء الفرع.',
         'branch_updated' => 'تم تحديث الفرع.',
         'branch_deleted' => 'تم حذف الفرع.',

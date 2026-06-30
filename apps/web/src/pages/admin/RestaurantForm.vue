@@ -5,6 +5,7 @@ import { useI18n } from 'vue-i18n'
 import api, { ensureCsrf } from '@xorder/api-client/api.js'
 import ImageUploader from '@xorder/ui/ImageUploader.vue'
 import FormError from '@xorder/ui/FormError.vue'
+import { publicOrigin } from '../../lib/host.js'
 
 const route = useRoute()
 const router = useRouter()
@@ -13,7 +14,7 @@ const { t, locale } = useI18n()
 const isEdit = computed(() => !!route.params.id)
 const backArrow = computed(() => locale.value === 'ar' ? '→' : '←')
 const forwardArrow = computed(() => locale.value === 'ar' ? '←' : '→')
-const slugPrefix = `${window.location.origin}/r/`
+const slugPrefix = `${publicOrigin()}/r/`
 const form = reactive({
     name_en: '', name_ar: '', slug: '',
     description_en: '', description_ar: '',

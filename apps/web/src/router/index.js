@@ -30,6 +30,7 @@ const superAdminRoutes = [
             { path: 'plans/create', name: 'admin.plans.create', component: () => import('../pages/admin/PlanForm.vue') },
             { path: 'plans/:id/edit', name: 'admin.plans.edit', component: () => import('../pages/admin/PlanForm.vue') },
             { path: 'landing', name: 'admin.landing', component: () => import('../pages/admin/LandingContentView.vue') },
+            { path: 'leads', name: 'admin.leads', component: () => import('../pages/admin/LeadsView.vue') },
         ],
     },
     { path: '/:pathMatch(.*)*', redirect: '/' },

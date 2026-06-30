@@ -17,6 +17,8 @@ export default defineConfig({
         proxy: {
             '/api': { target: API_TARGET, changeOrigin: true },
             '/sanctum': { target: API_TARGET, changeOrigin: true },
+            // Public menu / QR preview links (/r/{slug}) resolve in dev too.
+            '/r': { target: API_TARGET, changeOrigin: true },
         },
     },
 })
