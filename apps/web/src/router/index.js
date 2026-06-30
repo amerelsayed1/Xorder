@@ -21,6 +21,7 @@ const superAdminRoutes = [
         meta: { role: 'SUPER_ADMIN' },
         children: [
             { path: '', name: 'admin.dashboard', component: () => import('../pages/admin/DashboardView.vue') },
+            { path: 'insights', name: 'admin.insights', component: () => import('../pages/admin/InsightsView.vue') },
             { path: 'restaurants', name: 'admin.restaurants', component: () => import('../pages/admin/RestaurantsList.vue') },
             { path: 'restaurants/create', name: 'admin.restaurants.create', component: () => import('../pages/admin/RestaurantForm.vue') },
             { path: 'restaurants/:id', name: 'admin.restaurants.show', component: () => import('../pages/admin/RestaurantDetails.vue') },
@@ -42,6 +43,7 @@ const restaurantRoutes = [
         meta: { role: 'RESTAURANT_ADMIN' },
         children: [
             { path: '', name: 'dashboard.home', component: () => import('../pages/dashboard/HomeView.vue') },
+            { path: 'insights', name: 'dashboard.insights', component: () => import('../pages/dashboard/InsightsView.vue') },
             { path: 'branches', name: 'dashboard.branches', component: () => import('../pages/dashboard/BranchesView.vue') },
             { path: 'profile', name: 'dashboard.profile', component: () => import('../pages/dashboard/ProfileView.vue') },
             { path: 'categories', name: 'dashboard.categories', component: () => import('../pages/dashboard/CategoriesView.vue') },

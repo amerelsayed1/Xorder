@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Admin\InsightsController as AdminInsightsController;
 use App\Http\Controllers\Admin\LandingContentController as AdminLandingContentController;
 use App\Http\Controllers\Admin\PlanController as AdminPlanController;
 use App\Http\Controllers\Admin\RestaurantAdminController as AdminRestaurantAdminController;
@@ -13,6 +14,7 @@ use App\Http\Controllers\Dashboard\BranchController;
 use App\Http\Controllers\Dashboard\CategoryController;
 use App\Http\Controllers\Dashboard\ComboController;
 use App\Http\Controllers\Dashboard\DashboardQrController;
+use App\Http\Controllers\Dashboard\InsightsController as DashboardInsightsController;
 use App\Http\Controllers\Dashboard\MenuItemController;
 use App\Http\Controllers\Dashboard\RestaurantProfileController;
 use App\Http\Controllers\Dashboard\StatsController;
@@ -46,6 +48,7 @@ Route::prefix('auth')->group(function () {
 Route::prefix('admin')
     ->middleware(['auth:sanctum', 'role:SUPER_ADMIN'])
     ->group(function () {
+        Route::get('insights', [AdminInsightsController::class, 'index']);
         Route::get('restaurants', [AdminRestaurantController::class, 'index']);
         Route::post('restaurants', [AdminRestaurantController::class, 'store']);
         Route::get('restaurants/{restaurant}', [AdminRestaurantController::class, 'show']);
@@ -82,6 +85,7 @@ Route::prefix('dashboard')
         // Reads
         Route::get('restaurant', [RestaurantProfileController::class, 'show']);
         Route::get('stats', [StatsController::class, 'index']);
+        Route::get('insights', [DashboardInsightsController::class, 'index']);
         Route::get('branches', [BranchController::class, 'index']);
         Route::get('combos', [ComboController::class, 'index']);
         Route::get('categories', [CategoryController::class, 'index']);

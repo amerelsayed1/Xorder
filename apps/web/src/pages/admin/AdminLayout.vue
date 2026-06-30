@@ -8,6 +8,7 @@ const role = computed(() => t('roles.super_admin'))
 
 const nav = [
     { to: { name: 'admin.dashboard' }, labelKey: 'nav.dashboard', icon: 'pi pi-th-large', end: true },
+    { to: { name: 'admin.insights' }, labelKey: 'nav.insights', icon: 'pi pi-chart-bar' },
     { to: { name: 'admin.restaurants' }, labelKey: 'nav.restaurants', icon: 'pi pi-building' },
     { to: { name: 'admin.plans' }, labelKey: 'nav.plans', icon: 'pi pi-tags' },
     { to: { name: 'admin.landing' }, labelKey: 'nav.landing', icon: 'pi pi-megaphone' },

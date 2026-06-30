@@ -15,6 +15,7 @@ const role = computed(() => t('roles.restaurant_admin'))
 
 const nav = [
     { to: { name: 'dashboard.home' }, labelKey: 'nav.dashboard', icon: 'pi pi-th-large', end: true },
+    { to: { name: 'dashboard.insights' }, labelKey: 'nav.insights', icon: 'pi pi-chart-bar' },
     { to: { name: 'dashboard.items' }, labelKey: 'nav.items', icon: 'pi pi-list' },
     { to: { name: 'dashboard.categories' }, labelKey: 'nav.categories', icon: 'pi pi-tags' },
     { to: { name: 'dashboard.combos' }, labelKey: 'nav.combos', icon: 'pi pi-gift' },
