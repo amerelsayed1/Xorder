@@ -27,6 +27,16 @@ pnpm + Turborepo monorepo. The four apps are independent and talk over HTTP:
 
 ## Run locally
 
+### One command
+
+```bash
+./scripts/dev.sh
+```
+
+First run installs deps, creates a SQLite `.env`, migrates + seeds (Super Admin + demo restaurant),
+builds the public-menu assets, then starts all three servers. Open <http://localhost:5174> (landing)
+and <http://localhost:5173> (Super Admin). Ctrl-C stops everything. Prefer to do it by hand? See below.
+
 ### Option A — dev servers (fastest; hot reload)
 
 Two terminals. The SPAs proxy `/api`, `/sanctum` and `/r` to the API, which **must run on port 8000**.
