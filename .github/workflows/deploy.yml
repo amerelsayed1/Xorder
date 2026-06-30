@@ -1,0 +1,78 @@
+name: Deploy to production
+
+# Triggers: every push to main, or a manual run from the Actions tab.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Never let two production deploys overlap.
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  # ── 1. Verify the monorepo builds before touching production ───────────────
+  build-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Front-ends (apps/web, apps/landing, apps/menu) + api Vite build.
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+
+      # Laravel API (apps/api).
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+          extensions: pdo, pdo_pgsql, mbstring, bcmath, zip, intl, gd
+      - name: Composer install (apps/api)
+        working-directory: apps/api
+        run: composer install --no-interaction --prefer-dist --no-progress
+      - name: Lint PHP (apps/api)
+        working-directory: apps/api
+        run: |
+          find app routes config database -name '*.php' -print0 | xargs -0 -n1 -P4 php -l > /dev/null
+
+  # ── 2. Deploy over SSH (runs deploy.sh on the VPS) ─────────────────────────
+  deploy:
+    needs: build-check
+    runs-on: ubuntu-latest
+    # Optional: gate on a GitHub "production" environment for required reviewers.
+    environment: production
+    steps:
+      - name: Deploy via SSH
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+          # Compose file to use on the server (defaults to the co-host layout).
+          COMPOSE_FILE: ${{ vars.XORDER_COMPOSE_FILE }}
+          # Where the repo is checked out on the VPS (defaults to /opt/xorder).
+          DEPLOY_PATH: ${{ vars.XORDER_DEPLOY_PATH }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SSH_HOST:-}" ] || [ -z "${SSH_USER:-}" ] || [ -z "${SSH_KEY:-}" ]; then
+            echo "::error::SSH secrets not configured. Add SSH_HOST, SSH_USER, and SSH_KEY (plus optional SSH_PORT) under repo Settings → Secrets and variables → Actions, then re-run. See CO-HOST-PREP.md → CI/CD."
+            exit 1
+          fi
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          PORT="${SSH_PORT:-22}"
+          # Trust the host key (use a SSH_KNOWN_HOSTS secret for stricter pinning).
+          ssh-keyscan -p "$PORT" -H "$SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+          REMOTE_PATH="${DEPLOY_PATH:-/opt/xorder}"
+          REMOTE_COMPOSE="${COMPOSE_FILE:-$REMOTE_PATH/docker-compose.cohost.yml}"
+          ssh -i ~/.ssh/id_deploy -p "$PORT" "$SSH_USER@$SSH_HOST" \
+            "cd '$REMOTE_PATH' && export XORDER_COMPOSE_FILE='$REMOTE_COMPOSE' && ./deploy.sh --ci"

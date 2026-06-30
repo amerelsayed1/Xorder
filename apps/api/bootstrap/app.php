@@ -16,6 +16,12 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // Behind a reverse proxy (in production, Operix's nginx -> the app's own
+        // internal nginx) the app must trust forwarded headers, otherwise it
+        // generates http:// URLs and drops the secure session cookie. Ingress is
+        // only ever through the trusted proxy chain, so trust all hops.
+        $middleware->trustProxies(at: '*');
+
         // Enable Sanctum SPA cookie authentication for first-party requests.
         $middleware->statefulApi();
         $middleware->append(SetLocale::class);

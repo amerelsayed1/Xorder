@@ -79,7 +79,11 @@ CMD ["php-fpm"]
 # Stage 4 — Nginx: serves landing + SPA statics, proxies PHP to `app`
 # ---------------------------------------------------------------------------
 FROM nginx:1.27-alpine AS web
-COPY docker/nginx/default.conf /etc/nginx/conf.d/default.conf
+# Which server-block config to bake in. Defaults to the dev/localhost one so
+# `docker compose up` is unchanged. The production co-host stack overrides this
+# with docker/nginx/default.prod.conf (xorder.io + *.xorder.io) via build args.
+ARG NGINX_SITE_CONF=docker/nginx/default.conf
+COPY ${NGINX_SITE_CONF} /etc/nginx/conf.d/default.conf
 COPY docker/nginx/laravel.conf /etc/nginx/snippets/laravel.conf
 # Laravel public dir (index.php target + /build assets) and the two front-ends.
 # The SPA is built with base /, so it lives at the spa root.

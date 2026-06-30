@@ -1,0 +1,89 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Co-host Xorder on the SAME VPS as Operix + Rakeeza, BEHIND Operix's nginx.
+#
+# Xorder runs app (PHP-FPM) + web (its OWN internal nginx) + Postgres here.
+# No Caddy, no ports 80/443. Operix's nginx stays the sole owner of 80/443 and
+# proxies xorder.io + *.xorder.io to the `xorder-web` container over the shared
+# Docker network. `web` then routes apex vs subdomains internally.
+#
+#   docker compose --env-file .env.production -f docker-compose.cohost.yml up -d --build
+#
+# Set OPERIX_PROXY_NETWORK in .env.production to the Docker network Operix's
+# nginx is attached to (find it with: docker network ls).
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+  # PHP-FPM application container (Laravel API + public menu).
+  app:
+    build:
+      context: .
+      target: app
+    image: xorder-app
+    container_name: xorder-app
+    restart: unless-stopped
+    env_file: .env.production
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      # Persist uploaded images (public disk) and logs across rebuilds.
+      - xorder-storage:/var/www/html/storage
+    networks:
+      - internal
+
+  # Internal nginx — serves landing + SPA statics, proxies PHP to `app`.
+  # Reachable from Operix's nginx as http://xorder-web:80 over the proxy network.
+  web:
+    build:
+      context: .
+      target: web
+      args:
+        # Bake the production server names (xorder.io + *.xorder.io) instead of
+        # the dev localhost config.
+        NGINX_SITE_CONF: docker/nginx/default.prod.conf
+    image: xorder-web
+    container_name: xorder-web
+    restart: unless-stopped
+    depends_on:
+      - app
+    # Localhost-only, for health checks / debugging. NOT publicly exposed.
+    # 8081 (not 8080) — Rakeeza's co-host already owns 127.0.0.1:8080.
+    ports:
+      - "127.0.0.1:8081:80"
+    volumes:
+      # Read-only access to uploaded images so nginx can serve /storage/*.
+      - xorder-storage:/var/www/html/storage:ro
+    networks:
+      - internal   # reach `app` (PHP-FPM)
+      - proxy       # shared with Operix's nginx
+
+  # PostgreSQL database.
+  db:
+    image: postgres:16-alpine
+    container_name: xorder-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_DATABASE}
+      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - xorder-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME} -d ${DB_DATABASE}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    networks:
+      - internal
+
+volumes:
+  xorder-db-data:
+  xorder-storage:
+
+networks:
+  internal:
+  # Operix's existing proxy network (where its nginx/frontend container lives).
+  # `external: true` means Compose will NOT create it — it must already exist.
+  proxy:
+    external: true
+    name: ${OPERIX_PROXY_NETWORK:-operix_default}
