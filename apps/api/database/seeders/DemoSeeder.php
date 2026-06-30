@@ -39,7 +39,7 @@ class DemoSeeder extends Seeder
 
     public function run(): void
     {
-        $this->seedZaytoun();
+        $this->seedXorderRest();
 
         // Additional tenants so the Super Admin list is populated — each with a
         // logo, cover, an admin, and a small menu (images included).
@@ -65,25 +65,29 @@ class DemoSeeder extends Seeder
             $this->seedRestaurant($x);
         }
 
-        $this->command?->info('Demo seeded: Zaytoun (/r/demo) + 5 tenants for the Super Admin list.');
+        $this->command?->info('Demo seeded: XorderRest (/r/xorderrest) + 5 tenants for the Super Admin list.');
     }
 
-    private function seedZaytoun(): void
+    private function seedXorderRest(): void
     {
-        $r = Restaurant::updateOrCreate(['slug' => 'demo'], [
-            'name_en' => 'Zaytoun', 'name_ar' => 'زيتون',
-            'description_en' => 'Modern Levantine kitchen — mezze, charcoal grills and homemade sweets, served warm.',
-            'description_ar' => 'مطبخ شامي حديث — مقبلات ومشاوي على الفحم وحلويات منزلية تُقدّم طازجة.',
+        // Replace the legacy 'demo' restaurant (formerly Zaytoun) in place on an
+        // already-seeded database, so its menu is rebranded rather than duplicated.
+        Restaurant::where('slug', 'demo')->update(['slug' => 'xorderrest']);
+
+        $r = Restaurant::updateOrCreate(['slug' => 'xorderrest'], [
+            'name_en' => 'XorderRest', 'name_ar' => 'إكس أوردر',
+            'description_en' => 'The Xorder showcase restaurant — a modern Levantine kitchen with mezze, charcoal grills and homemade sweets, all on a live digital menu.',
+            'description_ar' => 'مطعم إكس أوردر النموذجي — مطبخ شامي حديث من مقبلات ومشاوي على الفحم وحلويات منزلية، كله على قائمة رقمية حية.',
             'phone' => '+971 4 555 0192', 'whatsapp_number' => '+971455501920',
             'address' => 'Jumeirah 1, Dubai', 'opening_hours' => 'Daily · 12:00 – 23:30',
-            'brand_color' => '#b8431f', 'secondary_color' => '#9a3717',
+            'brand_color' => '#f89a06', 'secondary_color' => '#d9850a',
             'logo_url' => $this->logo('photo-1414235077428-338989a2e8c0'),
             'cover_image_url' => $this->img('photo-1414235077428-338989a2e8c0', 1400),
             'default_language' => LanguageEnum::EN,
             'subscription_status' => SubscriptionStatus::ACTIVE, 'subscription_plan' => 'Pro',
         ]);
 
-        $this->admin($r, 'owner@demo.test', 'Zaytoun Owner');
+        $this->admin($r, 'owner@xorderrest.test', 'XorderRest Owner');
 
         $menu = [
             ['Mezze', 'المقبلات', [

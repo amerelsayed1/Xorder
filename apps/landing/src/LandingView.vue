@@ -23,9 +23,6 @@ onMounted(async () => {
 // Pick the active locale from a bilingual { en, ar } field.
 const L = (field) => (field && (field[locale.value] ?? field.en)) || ''
 
-// "Log in" points to the super-admin portal on the admin subdomain.
-const adminLoginUrl = `${window.location.protocol}//admin.${window.location.host}/login`
-
 function toggleLang() { setLocale(locale.value === 'ar' ? 'en' : 'ar') }
 const targetLocaleKey = () => locale.value === 'ar' ? 'languages.en' : 'languages.ar'
 const targetLocaleAriaKey = () => locale.value === 'ar' ? 'common.switch_to_english' : 'common.switch_to_arabic'
@@ -46,7 +43,6 @@ const targetLocaleAriaKey = () => locale.value === 'ar' ? 'common.switch_to_engl
                 </nav>
 
                 <div class="lp-actions">
-                    <a :href="adminLoginUrl" class="lp-login">{{ t('landing.login') }}</a>
                     <a href="#contact" class="btn btn-accent">{{ t('landing.get_started') }}</a>
                     <button class="lp-lang" @click="toggleLang"
                         :title="t(targetLocaleKey())"
@@ -67,7 +63,7 @@ const targetLocaleAriaKey = () => locale.value === 'ar' ? 'common.switch_to_engl
                         <p class="lp-lead">{{ L(content.hero.sub) }}</p>
                         <div class="lp-hero-cta">
                             <a href="#contact" class="btn btn-accent lp-btn-lg">{{ L(content.hero.cta) }}</a>
-                            <a href="/r/demo" class="btn btn-ghost lp-btn-lg">{{ L(content.hero.secondary) }}</a>
+                            <a href="/r/xorderrest" class="btn btn-ghost lp-btn-lg">{{ L(content.hero.secondary) }}</a>
                         </div>
 
                         <div class="lp-stats">
@@ -225,8 +221,6 @@ const targetLocaleAriaKey = () => locale.value === 'ar' ? 'common.switch_to_engl
 .lp-lang { width: 38px; height: 38px; border-radius: 9px; display: grid; place-items: center;
     background: none; border: none; cursor: pointer; color: var(--muted); transition: background .15s, color .15s; }
 .lp-lang:hover { background: var(--accent-soft); color: var(--accent); }
-.lp-login { color: var(--ink); font-size: 16px; font-weight: 500; text-decoration: none; }
-.lp-login:hover { color: var(--accent); }
 
 /* Boot state */
 .lp-boot { min-height: 70vh; display: grid; place-items: center; }
@@ -345,7 +339,6 @@ const targetLocaleAriaKey = () => locale.value === 'ar' ? 'common.switch_to_engl
     .lp-h1 { font-size: 44px; }
     .lp-links { display: none; }
     .lp-feature-grid, .lp-steps { grid-template-columns: 1fr; }
-    .lp-login { display: none; }
 }
 @media (max-width: 560px) {
     .lp-h1 { font-size: 36px; }

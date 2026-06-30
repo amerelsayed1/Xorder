@@ -216,6 +216,14 @@ main() {
   log_step "Running migrations..."
   safe_compose exec -T "$APP_SVC" php artisan migrate --force 2>&1 | tee -a "$LOG_FILE"
 
+  # Provision/refresh the public demo data (XorderRest at /r/xorderrest plus the
+  # showcase tenants for the Super Admin list). Idempotent updateOrCreate, so it
+  # is safe to re-run on every deploy. Set SEED_DEMO=false to skip.
+  if [ "${SEED_DEMO:-true}" = "true" ]; then
+    log_step "Seeding demo data (XorderRest + showcase tenants)..."
+    safe_compose exec -T "$APP_SVC" php artisan db:seed --class=DemoSeeder --force 2>&1 | tee -a "$LOG_FILE"
+  fi
+
   log_step "Warming caches..."
   safe_compose exec -T "$APP_SVC" php artisan optimize 2>&1 | tee -a "$LOG_FILE"
 
