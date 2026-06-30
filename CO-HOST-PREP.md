@@ -105,6 +105,11 @@ already created** in this pass; `[ ]` are optional follow-ups.
       the cert to `/etc/letsencrypt/live/xorder.io/`, and reloads Operix's nginx
       (auto-detected or `NGINX_CONTAINER=…`). Sets up auto-renew. Run on the VPS with
       `NAMECOM_USERNAME` + `NAMECOM_TOKEN` exported.
+- [x] **`go-live.sh`** (repo root) — **one-command first bring-up.** Preflight →
+      start xorder stack → wait for `127.0.0.1:8081/up` → issue cert
+      (`issue-cert.sh`) → install the Operix vhost (`nginx -t`-gated, **auto-revert**
+      on failure) → verify public endpoints. Toggles: `SKIP_CERT=1`, `SKIP_VHOST=1`,
+      `NGINX_CONTAINER=`, `NGINX_CONFD=`. Run on the VPS with name.com creds exported.
 - [ ] **`bootstrap-cohost.sh`** (optional) — adapt Rakeeza's: detect Operix's nginx
       container + network, generate `APP_KEY`/`DB_PASSWORD`, bring the stack up, curl
       internal `/up`, then (gated by `nginx -t`) install the vhost. For wildcard TLS
