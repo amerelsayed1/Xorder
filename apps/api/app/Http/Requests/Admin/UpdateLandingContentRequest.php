@@ -14,8 +14,9 @@ class UpdateLandingContentRequest extends FormRequest
 
     /**
      * Validate the landing content document. Bilingual leaves are { en, ar }
-     * string pairs; repeaters (proof, features.items, steps.items,
-     * pricing.plans) are arrays the admin can add to, remove from, and reorder.
+     * string pairs; repeaters are arrays the admin can add to, remove from, and
+     * reorder. Note: only validated keys survive ($request->validated()), so
+     * every persisted field must appear here.
      */
     public function rules(): array
     {
@@ -34,11 +35,41 @@ class UpdateLandingContentRequest extends FormRequest
             $bi('content.hero.sub'),
             $bi('content.hero.cta'),
             $bi('content.hero.secondary'),
+            $bi('content.hero.no_commission_label'),
+            $bi('content.hero.ready_label'),
+            $bi('content.hero.whatsapp_label'),
+            ['content.hero.primary_link' => ['nullable', 'string', 'max:255']],
+            ['content.hero.secondary_link' => ['nullable', 'string', 'max:255']],
 
             // Proof points (repeater)
             ['content.proof' => ['present', 'array', 'max:12']],
             $bi('content.proof.*.title'),
             $bi('content.proof.*.text'),
+
+            // Offer
+            $bi('content.offer.title'),
+            $bi('content.offer.text'),
+            ['content.offer.items' => ['present', 'array', 'max:24']],
+            ['content.offer.items.*.icon' => ['nullable', 'string', 'max:8']],
+            $bi('content.offer.items.*.text'),
+
+            // Problem / solution
+            $bi('content.problem.title'),
+            $bi('content.problem.sub'),
+            ['content.problem.problems' => ['present', 'array', 'max:12']],
+            $bi('content.problem.problems.*.text'),
+            $bi('content.problem.solution_title'),
+            $bi('content.problem.solution_text'),
+
+            // No commission
+            $bi('content.no_commission.title'),
+            $bi('content.no_commission.text'),
+            $bi('content.no_commission.third_party_title'),
+            ['content.no_commission.third_party' => ['present', 'array', 'max:12']],
+            $bi('content.no_commission.third_party.*.text'),
+            $bi('content.no_commission.xorder_title'),
+            ['content.no_commission.xorder' => ['present', 'array', 'max:12']],
+            $bi('content.no_commission.xorder.*.text'),
 
             // Features
             $bi('content.features.title'),
@@ -48,31 +79,66 @@ class UpdateLandingContentRequest extends FormRequest
             $bi('content.features.items.*.title'),
             $bi('content.features.items.*.text'),
 
-            // Steps
+            // Demo
+            ['content.demo.enabled' => ['required', 'boolean']],
+            $bi('content.demo.title'),
+            $bi('content.demo.text'),
+            $bi('content.demo.button'),
+            ['content.demo.restaurant_slug' => ['nullable', 'string', 'max:80']],
+
+            // Steps (ordering flow)
             $bi('content.steps.title'),
             ['content.steps.items' => ['present', 'array', 'max:12']],
             $bi('content.steps.items.*.title'),
             $bi('content.steps.items.*.text'),
 
-            // Pricing
+            // Packages (pricing)
             $bi('content.pricing.title'),
             $bi('content.pricing.sub'),
             $bi('content.pricing.popular_label'),
             $bi('content.pricing.choose_label'),
             ['content.pricing.plans' => ['present', 'array', 'max:8']],
             $bi('content.pricing.plans.*.name'),
-            $bi('content.pricing.plans.*.price'),
-            $bi('content.pricing.plans.*.per'),
-            $bi('content.pricing.plans.*.note'),
-            ['content.pricing.plans.*.popular' => ['required', 'boolean']],
+            $bi('content.pricing.plans.*.subtitle'),
+            $bi('content.pricing.plans.*.price_label'),
+            ['content.pricing.plans.*.recommended' => ['required', 'boolean']],
+            ['content.pricing.plans.*.enabled' => ['required', 'boolean']],
             ['content.pricing.plans.*.features' => ['present', 'array', 'max:24']],
             $bi('content.pricing.plans.*.features.*'),
 
-            // CTA
+            // Industries
+            $bi('content.industries.title'),
+            $bi('content.industries.sub'),
+            ['content.industries.items' => ['present', 'array', 'max:24']],
+            ['content.industries.items.*.icon' => ['nullable', 'string', 'max:8']],
+            $bi('content.industries.items.*.text'),
+
+            // Lead form
+            $bi('content.lead_form.title'),
+            $bi('content.lead_form.sub'),
+            $bi('content.lead_form.button'),
+            $bi('content.lead_form.success'),
+
+            // CTA band
             $bi('content.cta.title'),
             $bi('content.cta.sub'),
             $bi('content.cta.button'),
             $bi('content.cta.whatsapp_label'),
+
+            // WhatsApp settings
+            ['content.whatsapp' => ['required', 'array']],
+            ['content.whatsapp.number' => ['nullable', 'string', 'max:32']],
+            $bi('content.whatsapp.default_message'),
+            ['content.whatsapp.floating_enabled' => ['required', 'boolean']],
+            ['content.whatsapp.hero_enabled' => ['required', 'boolean']],
+
+            // SEO
+            ['content.seo' => ['required', 'array']],
+            ['content.seo.title' => ['nullable', 'string', 'max:255']],
+            ['content.seo.description' => ['nullable', 'string', 'max:500']],
+            ['content.seo.og_title' => ['nullable', 'string', 'max:255']],
+            ['content.seo.og_description' => ['nullable', 'string', 'max:500']],
+            ['content.seo.og_image' => ['nullable', 'string', 'max:500']],
 
             // Contact
             ['content.contact' => ['required', 'array']],

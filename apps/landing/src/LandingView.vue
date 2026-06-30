@@ -1,10 +1,11 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { setLocale } from '@xorder/ui/i18n'
 import XorderLogo from '@xorder/ui/XorderLogo.vue'
 import Icon from '@xorder/ui/Icon.vue'
-import { fetchLandingContent } from './lib/content.js'
+import { fetchLandingContent, postLead } from './lib/content.js'
+import { track } from './lib/analytics.js'
 
 const { t, locale } = useI18n()
 
@@ -15,10 +16,14 @@ const loadError = ref(false)
 onMounted(async () => {
     try {
         content.value = await fetchLandingContent()
+        applySeo(content.value.seo)
     } catch {
         loadError.value = true
     }
 })
+
+// Keep the document title/meta in sync if the language changes after load.
+watch(locale, () => { if (content.value) applySeo(content.value.seo) })
 
 // Pick the active locale from a bilingual { en, ar } field.
 const L = (field) => (field && (field[locale.value] ?? field.en)) || ''
@@ -26,6 +31,84 @@ const L = (field) => (field && (field[locale.value] ?? field.en)) || ''
 function toggleLang() { setLocale(locale.value === 'ar' ? 'en' : 'ar') }
 const targetLocaleKey = () => locale.value === 'ar' ? 'languages.en' : 'languages.ar'
 const targetLocaleAriaKey = () => locale.value === 'ar' ? 'common.switch_to_english' : 'common.switch_to_arabic'
+
+// ---- Derived links -------------------------------------------------------
+const demoSlug = computed(() => content.value?.demo?.restaurant_slug || 'xorderrest')
+const demoUrl = computed(() => `/r/${demoSlug.value}`)
+const heroPrimaryLink = computed(() => content.value?.hero?.primary_link || '#lead')
+const heroSecondaryLink = computed(() => content.value?.hero?.secondary_link || demoUrl.value)
+
+const waNumber = computed(() =>
+    (content.value?.whatsapp?.number || content.value?.contact?.whatsapp || '').replace(/[^0-9]/g, ''))
+const waHref = computed(() => {
+    if (!waNumber.value) return ''
+    const msg = L(content.value?.whatsapp?.default_message)
+    return `https://wa.me/${waNumber.value}${msg ? `?text=${encodeURIComponent(msg)}` : ''}`
+})
+const floatingWa = computed(() => content.value?.whatsapp?.floating_enabled !== false && !!waHref.value)
+const heroWa = computed(() => content.value?.whatsapp?.hero_enabled !== false && !!waHref.value)
+
+// ---- Packages ------------------------------------------------------------
+const enabledPlans = computed(() => (content.value?.pricing?.plans || []).filter((p) => p.enabled !== false))
+const planRecommended = (p) => p.recommended ?? p.popular ?? false
+const planPrice = (p) => L(p.price_label) || L(p.price)
+
+// ---- Analytics handlers --------------------------------------------------
+const onRequestDemo = () => track('landing_request_demo_clicked')
+const onViewDemo = () => track('landing_view_demo_clicked')
+const onWhatsapp = () => track('landing_whatsapp_clicked')
+const onPackageCta = (name) => track('landing_package_cta_clicked', { package: name })
+
+// ---- Lead form -----------------------------------------------------------
+const businessTypes = computed(() => [
+    t('landing.bt_restaurant'), t('landing.bt_cafe'), t('landing.bt_dessert'),
+    t('landing.bt_cloud'), t('landing.bt_truck'), t('landing.bt_takeaway'),
+    t('landing.bt_brand'), t('landing.bt_other'),
+])
+
+const form = reactive({
+    restaurant_name: '', contact_name: '', whatsapp: '',
+    city: '', business_type: '', message: '',
+})
+const submitting = ref(false)
+const submitted = ref(false)
+const formErrors = ref({})
+
+async function submitLead() {
+    submitting.value = true
+    formErrors.value = {}
+    try {
+        await postLead({ ...form, source: 'landing_lead_form' })
+        submitted.value = true
+        track('landing_lead_submitted')
+    } catch (e) {
+        if (e.fields) formErrors.value = e.fields
+        else formErrors.value = { _: [t('landing.lead_error')] }
+    } finally {
+        submitting.value = false
+    }
+}
+
+// ---- SEO -----------------------------------------------------------------
+function setMeta(attr, key, value) {
+    if (!value) return
+    let el = document.head.querySelector(`meta[${attr}="${key}"]`)
+    if (!el) {
+        el = document.createElement('meta')
+        el.setAttribute(attr, key)
+        document.head.appendChild(el)
+    }
+    el.setAttribute('content', value)
+}
+function applySeo(seo) {
+    if (!seo) return
+    if (seo.title) document.title = seo.title
+    setMeta('name', 'description', seo.description)
+    setMeta('property', 'og:title', seo.og_title || seo.title)
+    setMeta('property', 'og:description', seo.og_description || seo.description)
+    setMeta('property', 'og:type', 'website')
+    if (seo.og_image) setMeta('property', 'og:image', seo.og_image)
+}
 </script>
 
 <template>
@@ -38,12 +121,13 @@ const targetLocaleAriaKey = () => locale.value === 'ar' ? 'common.switch_to_engl
                 </a>
 
                 <nav class="lp-links">
-                    <a href="#features">{{ t('landing.nav_features') }}</a>
-                    <a href="#how">{{ t('landing.nav_how') }}</a>
+                    <a href="#offer">{{ t('landing.nav_features') }}</a>
+                    <a href="#packages">{{ t('landing.nav_pricing') }}</a>
+                    <a href="#demo">{{ t('landing.nav_demo') }}</a>
                 </nav>
 
                 <div class="lp-actions">
-                    <a href="#contact" class="btn btn-accent">{{ t('landing.get_started') }}</a>
+                    <a href="#lead" class="btn btn-accent" @click="onRequestDemo">{{ L(content?.hero?.cta) || t('landing.get_started') }}</a>
                     <button class="lp-lang" @click="toggleLang"
                         :title="t(targetLocaleKey())"
                         :aria-label="t(targetLocaleAriaKey())">
@@ -61,10 +145,19 @@ const targetLocaleAriaKey = () => locale.value === 'ar' ? 'common.switch_to_engl
                         <span class="lp-badge">{{ L(content.hero.badge) }}</span>
                         <h1 class="lp-h1">{{ L(content.hero.title) }}</h1>
                         <p class="lp-lead">{{ L(content.hero.sub) }}</p>
+
+                        <ul class="lp-trust">
+                            <li><span class="lp-trust-ic">✓</span>{{ L(content.hero.no_commission_label) }}</li>
+                            <li><span class="lp-trust-ic">✓</span>{{ L(content.hero.ready_label) }}</li>
+                        </ul>
+
                         <div class="lp-hero-cta">
-                            <a href="#contact" class="btn btn-accent lp-btn-lg">{{ L(content.hero.cta) }}</a>
-                            <a href="/r/xorderrest" class="btn btn-ghost lp-btn-lg">{{ L(content.hero.secondary) }}</a>
+                            <a :href="heroPrimaryLink" class="btn btn-accent lp-btn-lg" @click="onRequestDemo">{{ L(content.hero.cta) }}</a>
+                            <a :href="heroSecondaryLink" class="btn btn-ghost lp-btn-lg" @click="onViewDemo">{{ L(content.hero.secondary) }}</a>
                         </div>
+                        <a v-if="heroWa" :href="waHref" target="_blank" rel="noopener" class="lp-hero-wa" @click="onWhatsapp">
+                            <span class="lp-wa-ic">✆</span>{{ L(content.hero.whatsapp_label) }}
+                        </a>
 
                         <div class="lp-stats">
                             <div v-for="(p, i) in content.proof" :key="i">
@@ -74,7 +167,7 @@ const targetLocaleAriaKey = () => locale.value === 'ar' ? 'common.switch_to_engl
                         </div>
                     </div>
 
-                    <!-- Phone mockup (static demo) -->
+                    <!-- Phone mockup + QR -->
                     <div class="lp-hero-art">
                         <div class="lp-phone">
                             <div class="lp-phone-notch"></div>
@@ -99,19 +192,83 @@ const targetLocaleAriaKey = () => locale.value === 'ar' ? 'common.switch_to_engl
                                     </div>
                                     <div class="lp-menu-price">85</div>
                                 </div>
+                                <div class="lp-menu-order">{{ t('landing.demo_order') }}</div>
                             </div>
                         </div>
                         <div class="lp-qr-float">
                             <div class="lp-qr-grid">
                                 <span v-for="n in 64" :key="n" :class="['lp-qr-cell', (n * 7 + (n % 5)) % 3 === 0 ? 'on' : '']"></span>
                             </div>
+                            <span class="lp-qr-cap">{{ t('landing.scan_to_order') }}</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Offer -->
+            <section id="offer" class="lp-section">
+                <div class="lp-container">
+                    <div class="lp-section-head">
+                        <h2 class="lp-h2">{{ L(content.offer.title) }}</h2>
+                        <p class="lp-sub">{{ L(content.offer.text) }}</p>
+                    </div>
+                    <div class="lp-offer-grid">
+                        <div class="lp-offer-item" v-for="(it, i) in content.offer.items" :key="i">
+                            <span class="lp-offer-ic">{{ it.icon }}</span>
+                            <span class="lp-offer-text">{{ L(it.text) }}</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Problem / Solution -->
+            <section id="problem" class="lp-section lp-section-alt">
+                <div class="lp-container">
+                    <div class="lp-section-head">
+                        <h2 class="lp-h2">{{ L(content.problem.title) }}</h2>
+                        <p class="lp-sub">{{ L(content.problem.sub) }}</p>
+                    </div>
+                    <div class="lp-problem-grid">
+                        <ul class="lp-problem-list">
+                            <li v-for="(p, i) in content.problem.problems" :key="i">
+                                <span class="lp-x">✕</span>{{ L(p.text) }}
+                            </li>
+                        </ul>
+                        <div class="lp-solution card">
+                            <span class="lp-solution-badge">{{ t('landing.solution') }}</span>
+                            <h3 class="lp-solution-title">{{ L(content.problem.solution_title) }}</h3>
+                            <p class="lp-solution-text">{{ L(content.problem.solution_text) }}</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- No commission -->
+            <section id="no-commission" class="lp-section">
+                <div class="lp-container">
+                    <div class="lp-section-head">
+                        <h2 class="lp-h2">{{ L(content.no_commission.title) }}</h2>
+                        <p class="lp-sub">{{ L(content.no_commission.text) }}</p>
+                    </div>
+                    <div class="lp-compare">
+                        <div class="lp-compare-col lp-compare-them">
+                            <h3 class="lp-compare-title">{{ L(content.no_commission.third_party_title) }}</h3>
+                            <ul>
+                                <li v-for="(it, i) in content.no_commission.third_party" :key="i"><span class="lp-x">✕</span>{{ L(it.text) }}</li>
+                            </ul>
+                        </div>
+                        <div class="lp-compare-col lp-compare-us">
+                            <h3 class="lp-compare-title">{{ L(content.no_commission.xorder_title) }}</h3>
+                            <ul>
+                                <li v-for="(it, i) in content.no_commission.xorder" :key="i"><span class="lp-check">✓</span>{{ L(it.text) }}</li>
+                            </ul>
                         </div>
                     </div>
                 </div>
             </section>
 
             <!-- Features -->
-            <section id="features" class="lp-section">
+            <section id="features" class="lp-section lp-section-alt">
                 <div class="lp-container">
                     <div class="lp-section-head">
                         <h2 class="lp-h2">{{ L(content.features.title) }}</h2>
@@ -127,42 +284,52 @@ const targetLocaleAriaKey = () => locale.value === 'ar' ? 'common.switch_to_engl
                 </div>
             </section>
 
-            <!-- How it works -->
-            <section id="how" class="lp-section lp-section-alt">
-                <div class="lp-container">
-                    <div class="lp-section-head">
-                        <h2 class="lp-h2">{{ L(content.steps.title) }}</h2>
+            <!-- Demo -->
+            <section v-if="content.demo.enabled !== false" id="demo" class="lp-section">
+                <div class="lp-container lp-demo-grid">
+                    <div>
+                        <h2 class="lp-h2">{{ L(content.demo.title) }}</h2>
+                        <p class="lp-sub lp-demo-sub">{{ L(content.demo.text) }}</p>
+                        <ol class="lp-flow">
+                            <li v-for="(s, i) in content.steps.items" :key="i">
+                                <span class="lp-flow-num">{{ i + 1 }}</span>
+                                <span>
+                                    <span class="lp-flow-title">{{ L(s.title) }}</span>
+                                    <span class="lp-flow-text">{{ L(s.text) }}</span>
+                                </span>
+                            </li>
+                        </ol>
+                        <a :href="demoUrl" target="_blank" rel="noopener" class="btn btn-accent lp-btn-lg" @click="onViewDemo">{{ L(content.demo.button) }}</a>
                     </div>
-                    <div class="lp-steps">
-                        <div class="lp-step" v-for="(s, i) in content.steps.items" :key="i">
-                            <div class="lp-step-num">{{ i + 1 }}</div>
-                            <h3 class="lp-feature-title">{{ L(s.title) }}</h3>
-                            <p class="lp-feature-text">{{ L(s.text) }}</p>
+                    <div class="lp-demo-card card">
+                        <div class="lp-qr-grid lp-qr-grid-lg">
+                            <span v-for="n in 144" :key="n" :class="['lp-qr-cell', (n * 5 + (n % 7)) % 3 === 0 ? 'on' : '']"></span>
                         </div>
+                        <div class="lp-demo-stand">{{ t('landing.demo_stand') }}</div>
                     </div>
                 </div>
             </section>
 
-            <!-- Pricing -->
-            <section id="pricing" class="lp-section">
+            <!-- Packages -->
+            <section id="packages" class="lp-section lp-section-alt">
                 <div class="lp-container">
                     <div class="lp-section-head">
                         <h2 class="lp-h2">{{ L(content.pricing.title) }}</h2>
                         <p class="lp-sub">{{ L(content.pricing.sub) }}</p>
                     </div>
                     <div class="lp-pricing-grid">
-                        <div class="lp-plan card" v-for="(plan, i) in content.pricing.plans" :key="i" :class="{ 'lp-plan-popular': plan.popular }">
-                            <span v-if="plan.popular" class="lp-plan-badge">{{ L(content.pricing.popular_label) }}</span>
+                        <div class="lp-plan card" v-for="(plan, i) in enabledPlans" :key="i" :class="{ 'lp-plan-popular': planRecommended(plan) }">
+                            <span v-if="planRecommended(plan)" class="lp-plan-badge">{{ L(content.pricing.popular_label) }}</span>
                             <h3 class="lp-plan-name">{{ L(plan.name) }}</h3>
+                            <p class="lp-plan-note">{{ L(plan.subtitle) || L(plan.note) }}</p>
                             <div class="lp-plan-price">
-                                <span class="lp-plan-amount">{{ L(plan.price) }}</span>
-                                <span class="lp-plan-per">{{ L(plan.per) }}</span>
+                                <span class="lp-plan-amount">{{ planPrice(plan) }}</span>
                             </div>
-                            <p class="lp-plan-note">{{ L(plan.note) }}</p>
                             <ul class="lp-plan-feats">
                                 <li v-for="(feat, fi) in plan.features" :key="fi">{{ L(feat) }}</li>
                             </ul>
-                            <a href="#contact" class="btn lp-btn-lg" :class="plan.popular ? 'btn-accent' : 'btn-ghost'">
+                            <a href="#lead" class="btn lp-btn-lg" :class="planRecommended(plan) ? 'btn-accent' : 'btn-ghost'"
+                                @click="onPackageCta(L(plan.name)); onRequestDemo()">
                                 {{ L(content.pricing.choose_label) }}
                             </a>
                         </div>
@@ -170,14 +337,88 @@ const targetLocaleAriaKey = () => locale.value === 'ar' ? 'common.switch_to_engl
                 </div>
             </section>
 
-            <!-- Contact -->
+            <!-- Industries -->
+            <section id="industries" class="lp-section">
+                <div class="lp-container">
+                    <div class="lp-section-head">
+                        <h2 class="lp-h2">{{ L(content.industries.title) }}</h2>
+                        <p class="lp-sub">{{ L(content.industries.sub) }}</p>
+                    </div>
+                    <div class="lp-industries">
+                        <span class="lp-industry" v-for="(it, i) in content.industries.items" :key="i">
+                            <span class="lp-industry-ic">{{ it.icon }}</span>{{ L(it.text) }}
+                        </span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Lead form -->
+            <section id="lead" class="lp-section lp-section-alt lp-lead-sec">
+                <div class="lp-container lp-lead-grid">
+                    <div class="lp-lead-copy">
+                        <h2 class="lp-h2">{{ L(content.lead_form.title) }}</h2>
+                        <p class="lp-sub">{{ L(content.lead_form.sub) }}</p>
+                        <a v-if="heroWa" :href="waHref" target="_blank" rel="noopener" class="lp-hero-wa" @click="onWhatsapp">
+                            <span class="lp-wa-ic">✆</span>{{ L(content.hero.whatsapp_label) }}
+                        </a>
+                    </div>
+
+                    <div class="lp-lead-card card">
+                        <div v-if="submitted" class="lp-lead-done">
+                            <span class="lp-lead-done-ic">✓</span>
+                            <p>{{ L(content.lead_form.success) }}</p>
+                        </div>
+                        <form v-else class="lp-form" @submit.prevent="submitLead">
+                            <label class="lp-field">
+                                <span>{{ t('landing.lead_restaurant') }} *</span>
+                                <input v-model="form.restaurant_name" required maxlength="150" />
+                                <small v-if="formErrors.restaurant_name" class="lp-err">{{ formErrors.restaurant_name[0] }}</small>
+                            </label>
+                            <div class="lp-field-row">
+                                <label class="lp-field">
+                                    <span>{{ t('landing.lead_contact') }}</span>
+                                    <input v-model="form.contact_name" maxlength="150" />
+                                </label>
+                                <label class="lp-field">
+                                    <span>{{ t('landing.lead_whatsapp') }} *</span>
+                                    <input v-model="form.whatsapp" required maxlength="40" dir="ltr" placeholder="+20…" />
+                                    <small v-if="formErrors.whatsapp" class="lp-err">{{ formErrors.whatsapp[0] }}</small>
+                                </label>
+                            </div>
+                            <div class="lp-field-row">
+                                <label class="lp-field">
+                                    <span>{{ t('landing.lead_city') }}</span>
+                                    <input v-model="form.city" maxlength="100" />
+                                </label>
+                                <label class="lp-field">
+                                    <span>{{ t('landing.lead_business') }}</span>
+                                    <select v-model="form.business_type">
+                                        <option value="">—</option>
+                                        <option v-for="bt in businessTypes" :key="bt" :value="bt">{{ bt }}</option>
+                                    </select>
+                                </label>
+                            </div>
+                            <label class="lp-field">
+                                <span>{{ t('landing.lead_message') }}</span>
+                                <textarea v-model="form.message" rows="3" maxlength="2000"></textarea>
+                            </label>
+                            <p v-if="formErrors._" class="lp-err">{{ formErrors._[0] }}</p>
+                            <button type="submit" class="btn btn-accent lp-btn-lg lp-form-submit" :disabled="submitting">
+                                {{ submitting ? t('landing.lead_sending') : L(content.lead_form.button) }}
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Final CTA -->
             <section id="contact" class="lp-cta-band">
                 <div class="lp-container lp-cta-inner">
                     <h2 class="lp-cta-title">{{ L(content.cta.title) }}</h2>
                     <p class="lp-cta-sub">{{ L(content.cta.sub) }}</p>
                     <div class="lp-cta-actions">
-                        <a :href="`mailto:${content.contact.email}`" class="btn lp-btn-lg lp-cta-btn">{{ L(content.cta.button) }}</a>
-                        <a v-if="content.contact.whatsapp" :href="`https://wa.me/${content.contact.whatsapp}`" target="_blank" rel="noopener" class="btn btn-ghost lp-btn-lg lp-cta-wa">{{ L(content.cta.whatsapp_label) }}</a>
+                        <a href="#lead" class="btn lp-btn-lg lp-cta-btn" @click="onRequestDemo">{{ L(content.cta.button) }}</a>
+                        <a v-if="waHref" :href="waHref" target="_blank" rel="noopener" class="btn btn-ghost lp-btn-lg lp-cta-wa" @click="onWhatsapp">{{ L(content.cta.whatsapp_label) }}</a>
                     </div>
                     <a v-if="content.contact.email" :href="`mailto:${content.contact.email}`" class="lp-cta-email">{{ content.contact.email }}</a>
                 </div>
@@ -195,8 +436,12 @@ const targetLocaleAriaKey = () => locale.value === 'ar' ? 'common.switch_to_engl
             </footer>
         </main>
 
+        <!-- Floating WhatsApp -->
+        <a v-if="content && floatingWa" :href="waHref" target="_blank" rel="noopener" class="lp-wa-float"
+            :aria-label="L(content.hero.whatsapp_label)" @click="onWhatsapp">✆</a>
+
         <!-- Loading / error states -->
-        <div v-else class="lp-boot">
+        <div v-if="!content" class="lp-boot">
             <p v-if="loadError" class="lp-boot-msg">Unable to load content. Please refresh.</p>
             <div v-else class="lp-boot-spin" aria-label="Loading"></div>
         </div>
@@ -212,7 +457,6 @@ const targetLocaleAriaKey = () => locale.value === 'ar' ? 'common.switch_to_engl
     backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
 .lp-nav { display: flex; align-items: center; justify-content: space-between; height: 68px; gap: 24px; }
 .lp-brand { display: flex; align-items: center; gap: 11px; text-decoration: none; }
-.lp-brand-name { font-family: var(--font-display); font-weight: 600; font-size: 18px; color: var(--ink); }
 .lp-logo { height: 30px; width: auto; color: var(--ink); display: block; }
 .lp-links { display: flex; gap: 28px; }
 .lp-links a { color: var(--body); font-size: 16px; text-decoration: none; transition: color .15s; }
@@ -230,23 +474,32 @@ const targetLocaleAriaKey = () => locale.value === 'ar' ? 'common.switch_to_engl
 @keyframes lp-spin { to { transform: rotate(360deg); } }
 
 /* Hero */
-.lp-hero { padding: 72px 0 84px; overflow: hidden; }
+.lp-hero { padding: 64px 0 78px; overflow: hidden; }
 .lp-hero-grid { display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 56px; align-items: center; }
 .lp-badge { display: inline-block; background: var(--accent-soft); color: var(--accent);
     font-size: 13px; font-weight: 600; padding: 6px 13px; border-radius: 20px; font-family: var(--font-display); }
-.lp-h1 { font-family: var(--font-display); font-weight: 800; font-size: 56px; line-height: 1.08;
+.lp-h1 { font-family: var(--font-display); font-weight: 800; font-size: 50px; line-height: 1.1;
     color: var(--ink); margin: 18px 0 0; letter-spacing: -0.02em; }
-.lp-lead { font-size: 19.5px; line-height: 1.62; color: var(--body); margin: 20px 0 0; max-width: 30em; }
-.lp-hero-cta { display: flex; gap: 14px; margin-top: 30px; flex-wrap: wrap; }
+.lp-lead { font-size: 19px; line-height: 1.62; color: var(--body); margin: 18px 0 0; max-width: 32em; }
+.lp-trust { list-style: none; padding: 0; margin: 20px 0 0; display: flex; flex-wrap: wrap; gap: 10px 22px; }
+.lp-trust li { display: flex; align-items: center; gap: 8px; font-weight: 600; color: var(--ink); font-size: 15px; }
+.lp-trust-ic { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%;
+    background: var(--green-soft); color: var(--green); font-size: 13px; font-weight: 700; }
+.lp-hero-cta { display: flex; gap: 14px; margin-top: 26px; flex-wrap: wrap; }
 .lp-btn-lg { padding: 14px 28px; font-size: 17px; }
-.lp-stats { display: flex; gap: 28px 40px; margin-top: 44px; flex-wrap: wrap; }
-.lp-stats > div { display: flex; flex-direction: column; min-width: 118px; }
+.lp-hero-wa { display: inline-flex; align-items: center; gap: 8px; margin-top: 16px; color: var(--green);
+    font-weight: 600; font-size: 15.5px; text-decoration: none; }
+.lp-hero-wa:hover { text-decoration: underline; }
+.lp-wa-ic { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%;
+    background: var(--green); color: #fff; font-size: 14px; }
+.lp-stats { display: flex; gap: 28px 40px; margin-top: 38px; flex-wrap: wrap; }
+.lp-stats > div { display: flex; flex-direction: column; min-width: 100px; }
 .lp-stat-num { font-family: var(--font-display); font-weight: 800; font-size: 28px; color: var(--ink); }
 .lp-stat-lbl { font-size: 14.5px; color: var(--muted); margin-top: 2px; }
 
 /* Phone mockup */
 .lp-hero-art { position: relative; display: grid; place-items: center; }
-.lp-phone { width: 290px; height: 580px; background: var(--sidebar); border-radius: 40px; padding: 12px;
+.lp-phone { width: 288px; height: 580px; background: var(--sidebar); border-radius: 40px; padding: 12px;
     box-shadow: 0 40px 80px -30px rgba(42,30,20,.55); position: relative; }
 .lp-phone-notch { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); width: 120px; height: 24px;
     background: var(--sidebar); border-radius: 0 0 16px 16px; z-index: 2; }
@@ -267,19 +520,58 @@ const targetLocaleAriaKey = () => locale.value === 'ar' ? 'common.switch_to_engl
 .lp-menu-itemname { font-family: var(--font-display); font-weight: 600; font-size: 14px; color: var(--ink); }
 .lp-menu-desc { font-size: 11.5px; color: var(--muted); }
 .lp-menu-price { font-family: var(--font-display); font-weight: 700; color: var(--accent); font-size: 15px; }
+.lp-menu-order { margin-top: 6px; text-align: center; background: var(--accent); color: #fff; font-weight: 700;
+    font-family: var(--font-display); font-size: 14px; padding: 11px; border-radius: 12px; }
 
-.lp-qr-float { position: absolute; bottom: 24px; inset-inline-end: -8px; background: #fff; border-radius: 18px;
-    padding: 14px; box-shadow: 0 20px 50px -18px rgba(42,30,20,.5); border: 1px solid var(--line); }
+.lp-qr-float { position: absolute; bottom: 18px; inset-inline-end: -8px; background: #fff; border-radius: 18px;
+    padding: 14px; box-shadow: 0 20px 50px -18px rgba(42,30,20,.5); border: 1px solid var(--line);
+    display: flex; flex-direction: column; align-items: center; gap: 8px; }
 .lp-qr-grid { width: 92px; height: 92px; display: grid; grid-template-columns: repeat(8, 1fr); gap: 2px; }
 .lp-qr-cell { background: transparent; border-radius: 2px; }
 .lp-qr-cell.on { background: var(--ink); }
+.lp-qr-cap { font-size: 11px; font-weight: 600; color: var(--muted); font-family: var(--font-display); }
 
 /* Sections */
-.lp-section { padding: 84px 0; scroll-margin-top: 80px; }
+.lp-section { padding: 78px 0; scroll-margin-top: 76px; }
 .lp-section-alt { background: var(--accent-soft); }
-.lp-section-head { text-align: center; max-width: 40em; margin: 0 auto 48px; }
-.lp-h2 { font-family: var(--font-display); font-weight: 800; font-size: 38px; color: var(--ink); letter-spacing: -0.01em; }
-.lp-sub { font-size: 18px; color: var(--muted); margin-top: 12px; }
+.lp-section-head { text-align: center; max-width: 42em; margin: 0 auto 44px; }
+.lp-h2 { font-family: var(--font-display); font-weight: 800; font-size: 36px; color: var(--ink); letter-spacing: -0.01em; }
+.lp-sub { font-size: 18px; color: var(--muted); margin-top: 12px; line-height: 1.6; }
+
+/* Offer */
+.lp-offer-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; max-width: 820px; margin: 0 auto; }
+.lp-offer-item { display: flex; align-items: center; gap: 13px; background: var(--card); border: 1px solid var(--line);
+    border-radius: 14px; padding: 16px 18px; }
+.lp-offer-ic { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 11px; flex-shrink: 0;
+    background: var(--accent-soft); color: var(--accent); font-size: 19px; }
+.lp-offer-text { font-size: 16px; font-weight: 600; color: var(--ink); }
+
+/* Problem / solution */
+.lp-problem-grid { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 28px; align-items: start; }
+.lp-problem-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 12px; }
+.lp-problem-list li { display: flex; align-items: flex-start; gap: 12px; background: var(--card); border: 1px solid var(--line);
+    border-radius: 13px; padding: 15px 17px; font-size: 16px; color: var(--body); }
+.lp-x { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; flex-shrink: 0;
+    background: var(--red-soft); color: var(--red); font-size: 12px; font-weight: 700; margin-top: 1px; }
+.lp-solution { padding: 28px; border-color: var(--accent); }
+.lp-solution-badge { display: inline-block; background: var(--accent); color: #fff; font-family: var(--font-display);
+    font-weight: 600; font-size: 12.5px; padding: 4px 12px; border-radius: 16px; }
+.lp-solution-title { font-family: var(--font-display); font-weight: 800; font-size: 23px; color: var(--ink); margin: 14px 0 8px; }
+.lp-solution-text { font-size: 16.5px; line-height: 1.6; color: var(--body); }
+
+/* No commission comparison */
+.lp-compare { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; max-width: 880px; margin: 0 auto; }
+.lp-compare-col { border-radius: 18px; padding: 28px; }
+.lp-compare-them { background: var(--card); border: 1px solid var(--line); }
+.lp-compare-us { background: var(--ink); color: #fff; box-shadow: 0 24px 60px -30px var(--ink); }
+.lp-compare-title { font-family: var(--font-display); font-weight: 700; font-size: 20px; margin-bottom: 16px; }
+.lp-compare-them .lp-compare-title { color: var(--ink); }
+.lp-compare-col ul { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 12px; }
+.lp-compare-col li { display: flex; align-items: flex-start; gap: 11px; font-size: 16px; }
+.lp-compare-them li { color: var(--body); }
+.lp-check { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; flex-shrink: 0;
+    background: var(--green); color: #fff; font-size: 12px; font-weight: 700; }
+.lp-compare-us .lp-x { background: rgba(255,255,255,.16); color: #fff; }
 
 /* Features */
 .lp-feature-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; }
@@ -289,32 +581,62 @@ const targetLocaleAriaKey = () => locale.value === 'ar' ? 'common.switch_to_engl
 .lp-feature-title { font-family: var(--font-display); font-weight: 700; font-size: 19px; color: var(--ink); margin: 18px 0 8px; }
 .lp-feature-text { font-size: 16px; line-height: 1.62; color: var(--body); }
 
-/* Steps */
-.lp-steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 28px; }
-.lp-step { text-align: center; padding: 8px; }
-.lp-step-num { width: 54px; height: 54px; margin: 0 auto 18px; border-radius: 16px; background: var(--accent); color: #fff;
-    display: grid; place-items: center; font-family: var(--font-display); font-weight: 700; font-size: 24px; }
+/* Demo */
+.lp-demo-grid { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 48px; align-items: center; }
+.lp-demo-sub { margin: 12px 0 0; }
+.lp-flow { list-style: none; padding: 0; margin: 26px 0 28px; display: flex; flex-direction: column; gap: 16px; }
+.lp-flow li { display: flex; align-items: flex-start; gap: 14px; }
+.lp-flow-num { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 11px; flex-shrink: 0;
+    background: var(--accent); color: #fff; font-family: var(--font-display); font-weight: 700; }
+.lp-flow-title { display: block; font-family: var(--font-display); font-weight: 700; font-size: 17px; color: var(--ink); }
+.lp-flow-text { display: block; font-size: 15px; color: var(--muted); margin-top: 2px; }
+.lp-demo-card { display: flex; flex-direction: column; align-items: center; gap: 16px; padding: 34px; }
+.lp-qr-grid-lg { width: 168px; height: 168px; grid-template-columns: repeat(12, 1fr); }
+.lp-demo-stand { font-family: var(--font-display); font-weight: 600; color: var(--muted); font-size: 14px; }
 
-/* Pricing */
-.lp-pricing-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 22px; max-width: 760px; margin: 0 auto; }
+/* Packages */
+.lp-pricing-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 22px; max-width: 1000px; margin: 0 auto; }
 .lp-plan { padding: 28px; display: flex; flex-direction: column; position: relative; }
 .lp-plan-popular { border-color: var(--accent); box-shadow: 0 20px 50px -28px var(--accent); }
 .lp-plan-badge { position: absolute; top: -12px; inset-inline-start: 28px; background: var(--accent); color: #fff;
     font-family: var(--font-display); font-weight: 600; font-size: 12.5px; padding: 4px 12px; border-radius: 16px; }
-.lp-plan-name { font-family: var(--font-display); font-weight: 700; font-size: 20px; color: var(--ink); }
+.lp-plan-name { font-family: var(--font-display); font-weight: 700; font-size: 21px; color: var(--ink); }
+.lp-plan-note { font-size: 14.5px; color: var(--muted); margin: 8px 0 0; min-height: 3.2em; line-height: 1.5; }
 .lp-plan-price { display: flex; align-items: baseline; gap: 4px; margin: 14px 0 4px; }
-.lp-plan-amount { font-family: var(--font-display); font-weight: 800; font-size: 38px; color: var(--ink); }
-.lp-plan-per { font-size: 15px; color: var(--muted); }
-.lp-plan-note { font-size: 14.5px; color: var(--muted); min-height: 2.6em; }
+.lp-plan-amount { font-family: var(--font-display); font-weight: 800; font-size: 24px; color: var(--accent); }
 .lp-plan-feats { list-style: none; padding: 0; margin: 18px 0 24px; display: flex; flex-direction: column; gap: 10px; flex: 1; }
 .lp-plan-feats li { position: relative; padding-inline-start: 24px; font-size: 15px; color: var(--body); }
 .lp-plan-feats li::before { content: '✓'; position: absolute; inset-inline-start: 0; color: var(--green); font-weight: 700; }
 .lp-plan .btn { justify-content: center; }
 
+/* Industries */
+.lp-industries { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; max-width: 880px; margin: 0 auto; }
+.lp-industry { display: inline-flex; align-items: center; gap: 9px; background: var(--card); border: 1px solid var(--line);
+    border-radius: 30px; padding: 11px 20px; font-size: 16px; font-weight: 600; color: var(--ink); }
+.lp-industry-ic { font-size: 19px; }
+
+/* Lead form */
+.lp-lead-grid { display: grid; grid-template-columns: 0.9fr 1.1fr; gap: 44px; align-items: start; }
+.lp-lead-copy { padding-top: 8px; }
+.lp-lead-card { padding: 28px; }
+.lp-form { display: flex; flex-direction: column; gap: 14px; }
+.lp-field { display: flex; flex-direction: column; gap: 6px; }
+.lp-field > span { font-size: 13.5px; font-weight: 600; color: var(--ink); }
+.lp-field input, .lp-field select, .lp-field textarea { width: 100%; padding: 11px 13px; border: 1px solid var(--line);
+    border-radius: 11px; background: var(--page); font-family: inherit; font-size: 15px; color: var(--ink); }
+.lp-field input:focus, .lp-field select:focus, .lp-field textarea:focus { outline: none; border-color: var(--accent); }
+.lp-field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.lp-form-submit { justify-content: center; margin-top: 4px; }
+.lp-err { color: var(--red); font-size: 13px; }
+.lp-lead-done { text-align: center; padding: 36px 16px; }
+.lp-lead-done-ic { display: inline-grid; place-items: center; width: 56px; height: 56px; border-radius: 50%;
+    background: var(--green-soft); color: var(--green); font-size: 28px; font-weight: 700; margin-bottom: 16px; }
+.lp-lead-done p { font-size: 17px; color: var(--ink); font-weight: 600; }
+
 /* CTA band */
-.lp-cta-band { background: var(--sidebar); padding: 72px 0; scroll-margin-top: 80px; }
+.lp-cta-band { background: var(--sidebar); padding: 70px 0; scroll-margin-top: 76px; }
 .lp-cta-inner { text-align: center; }
-.lp-cta-title { font-family: var(--font-display); font-weight: 800; font-size: 36px; color: #fff; }
+.lp-cta-title { font-family: var(--font-display); font-weight: 800; font-size: 34px; color: #fff; }
 .lp-cta-sub { font-size: 18px; color: var(--sidebar-muted); margin: 12px 0 28px; }
 .lp-cta-actions { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
 .lp-cta-btn { background: var(--accent); color: #fff; }
@@ -333,16 +655,28 @@ const targetLocaleAriaKey = () => locale.value === 'ar' ? 'common.switch_to_engl
 .lp-footer-tag { font-size: 13px; color: var(--muted); }
 .lp-footer-copy { font-size: 13.5px; color: var(--muted); }
 
+/* Floating WhatsApp */
+.lp-wa-float { position: fixed; bottom: 22px; inset-inline-end: 22px; z-index: 40; width: 56px; height: 56px;
+    border-radius: 50%; background: var(--green); color: #fff; display: grid; place-items: center; font-size: 26px;
+    text-decoration: none; box-shadow: 0 14px 30px -8px rgba(31,122,61,.6); transition: transform .15s; }
+.lp-wa-float:hover { transform: scale(1.06); }
+
 /* Responsive */
 @media (max-width: 900px) {
-    .lp-hero-grid { grid-template-columns: 1fr; gap: 48px; }
-    .lp-h1 { font-size: 44px; }
+    .lp-hero-grid, .lp-problem-grid, .lp-demo-grid, .lp-lead-grid { grid-template-columns: 1fr; gap: 40px; }
+    .lp-h1 { font-size: 40px; }
     .lp-links { display: none; }
-    .lp-feature-grid, .lp-steps { grid-template-columns: 1fr; }
+    .lp-feature-grid { grid-template-columns: 1fr 1fr; }
+    .lp-offer-grid { grid-template-columns: 1fr; }
+    .lp-hero-art { order: -1; }
 }
-@media (max-width: 560px) {
-    .lp-h1 { font-size: 36px; }
-    .lp-stats { gap: 24px; }
-    .lp-hero { padding: 44px 0 56px; }
+@media (max-width: 620px) {
+    .lp-h1 { font-size: 33px; }
+    .lp-h2 { font-size: 29px; }
+    .lp-hero { padding: 40px 0 52px; }
+    .lp-section { padding: 56px 0; }
+    .lp-feature-grid, .lp-compare, .lp-field-row { grid-template-columns: 1fr; }
+    .lp-stats { gap: 22px; }
+    .lp-cta-title { font-size: 28px; }
 }
 </style>

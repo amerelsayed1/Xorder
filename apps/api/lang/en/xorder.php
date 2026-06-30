@@ -11,6 +11,8 @@ return [
         'subscription_inactive' => 'Your subscription is not active. The dashboard is read-only until it is renewed.',
     ],
     'messages' => [
+        'lead_received' => 'Thanks! We received your request and will be in touch shortly.',
+        'lead_updated' => 'Lead updated.',
         'logged_in' => 'Logged in successfully.',
         'logged_out' => 'Logged out successfully.',
         'reset_link_sent' => 'If that email exists, a reset link has been sent.',
