@@ -12,6 +12,8 @@ export default defineConfig({
         port: 5174,
         proxy: {
             '/api': { target: API_TARGET, changeOrigin: true },
+            // So the "View Live Menu Demo" link (/r/{slug}) resolves in dev too.
+            '/r': { target: API_TARGET, changeOrigin: true },
         },
     },
 })
