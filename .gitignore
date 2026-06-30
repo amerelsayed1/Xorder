@@ -1,3 +1,16 @@
+# --- monorepo (pnpm + turborepo) ---
+node_modules/
+**/node_modules/
+**/dist/
+.turbo/
+**/.turbo/
+# Laravel API app (apps/api)
+/apps/api/vendor/
+/apps/api/public/build/
+/apps/api/public/storage
+/apps/api/public/hot
+/apps/api/storage/*.key
+
 *.log
 .DS_Store
 .env

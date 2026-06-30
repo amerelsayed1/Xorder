@@ -1,0 +1,10 @@
+@layer theme, base, primevue;
+
+@import 'tailwindcss';
+@import 'tailwindcss-primeui';
+
+/* Shared design system (tokens + component primitives) used by web + landing. */
+@import '../../../packages/ui/src/theme.css';
+
+@source './**/*.{vue,js}';
+@source '../../../packages/ui/src/**/*.{vue,js}';

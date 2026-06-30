@@ -1,0 +1,22 @@
+import { defineConfig } from 'vite'
+import vue from '@vitejs/plugin-vue'
+import tailwindcss from '@tailwindcss/vite'
+
+// Standalone SPA (super-admin + restaurant dashboard). Talks to the Laravel
+// API over HTTP. In dev, leave VITE_API_URL unset so requests stay same-origin
+// and are proxied to the API below (keeps Sanctum cookies working without CORS).
+// In prod, set VITE_API_URL to the API origin (e.g. https://api.tryorder.net).
+const API_TARGET = process.env.VITE_API_URL || 'http://localhost:8000'
+
+export default defineConfig({
+    // Served at the root of each admin subdomain (admin.* and {slug}.*).
+    base: '/',
+    plugins: [vue(), tailwindcss()],
+    server: {
+        port: 5173,
+        proxy: {
+            '/api': { target: API_TARGET, changeOrigin: true },
+            '/sanctum': { target: API_TARGET, changeOrigin: true },
+        },
+    },
+})

@@ -1,0 +1,13 @@
+{
+    "name": "@xorder/api-client",
+    "version": "0.0.0",
+    "private": true,
+    "type": "module",
+    "exports": {
+        "./*": "./src/*"
+    },
+    "dependencies": {
+        "axios": "^1.18.1",
+        "pinia": "^2.3.1"
+    }
+}
