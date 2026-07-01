@@ -23,6 +23,7 @@ use App\Http\Controllers\Public\LandingContentController as PublicLandingContent
 use App\Http\Controllers\Public\LeadController as PublicLeadController;
 use App\Http\Controllers\Public\PublicMenuApiController;
 use App\Http\Controllers\Public\RestaurantBrandingController;
+use App\Http\Controllers\Public\RestaurantQrController as PublicRestaurantQrController;
 use App\Http\Controllers\UploadController;
 use Illuminate\Support\Facades\Route;
 
@@ -153,4 +154,7 @@ Route::post('public/leads', [PublicLeadController::class, 'store'])
     ->middleware('throttle:10,1');
 
 Route::get('public/restaurants/{slug}/branding', [RestaurantBrandingController::class, 'show'])
+    ->middleware('throttle:120,1');
+
+Route::get('public/restaurants/{slug}/qr', [PublicRestaurantQrController::class, 'show'])
     ->middleware('throttle:120,1');

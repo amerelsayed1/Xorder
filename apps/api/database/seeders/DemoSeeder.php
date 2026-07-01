@@ -39,6 +39,10 @@ class DemoSeeder extends Seeder
 
     public function run(): void
     {
+        // Subscription plans catalog (also runs here so deploy.sh, which only
+        // calls DemoSeeder, keeps /plans populated). Idempotent.
+        $this->call(PlanSeeder::class);
+
         $this->seedXorderRest();
 
         // Additional tenants so the Super Admin list is populated — each with a
@@ -83,7 +87,7 @@ class DemoSeeder extends Seeder
             'brand_color' => '#f89a06', 'secondary_color' => '#d9850a',
             'logo_url' => $this->logo('photo-1414235077428-338989a2e8c0'),
             'cover_image_url' => $this->img('photo-1414235077428-338989a2e8c0', 1400),
-            'default_language' => LanguageEnum::EN,
+            'default_language' => LanguageEnum::AR,
             'subscription_status' => SubscriptionStatus::ACTIVE, 'subscription_plan' => 'Pro',
         ]);
 
@@ -147,7 +151,7 @@ class DemoSeeder extends Seeder
             'brand_color' => $x['color'],
             'logo_url' => $this->logo($x['logo']),
             'cover_image_url' => $this->img($x['cover'], 1400),
-            'default_language' => LanguageEnum::EN,
+            'default_language' => LanguageEnum::AR,
             'status' => $x['status'],
             'subscription_status' => $x['sub'], 'subscription_plan' => $x['plan'],
         ]);

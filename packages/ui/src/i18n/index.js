@@ -6,7 +6,8 @@ const messages = {
         languages: { en: 'English', ar: 'العربية' },
         landing: {
             nav_features: 'Features', nav_how: 'How it works', nav_contact: 'Contact',
-            nav_pricing: 'Packages', nav_demo: 'Demo',
+            nav_pricing: 'Packages', nav_demo: 'Demo', nav_no_commission: 'No commission',
+            nav_qr_menu: 'QR Menu', nav_ordering: 'Direct Ordering',
             login: 'Log in', get_started: 'Request a Demo',
             solution: 'The solution',
             scan_to_order: 'Scan to order', demo_order: 'Add to order',
@@ -167,6 +168,7 @@ const messages = {
             opening_hours: 'Opening hours',
             brand_color: 'Brand color', secondary_color: 'Secondary color',
             language: 'Default language', currency: 'Currency', subscription: 'Subscription', plan: 'Plan',
+            bilingual: 'Bilingual menu', bilingual_hint: 'Show the menu in both Arabic and English with an EN/AR switcher. When off, guests only see the default language.',
             ordering_enabled: 'Enable ordering', ordering_enabled_hint: 'Let customers add items to a cart and order via WhatsApp. When off, the public menu is view-only.',
             public_url: 'Public URL', generated_password: 'Generated password',
             generated_password_note: 'Copy this now — it will not be shown again.',
@@ -332,7 +334,8 @@ const messages = {
         languages: { en: 'English', ar: 'العربية' },
         landing: {
             nav_features: 'المميزات', nav_how: 'كيف يعمل', nav_contact: 'تواصل',
-            nav_pricing: 'الباقات', nav_demo: 'العرض',
+            nav_pricing: 'الباقات', nav_demo: 'العرض', nav_no_commission: 'بدون عمولة',
+            nav_qr_menu: 'قائمة QR', nav_ordering: 'الطلب المباشر',
             login: 'تسجيل الدخول', get_started: 'اطلب عرضاً',
             solution: 'الحل',
             scan_to_order: 'امسح للطلب', demo_order: 'أضف إلى الطلب',
@@ -493,6 +496,7 @@ const messages = {
             opening_hours: 'ساعات العمل',
             brand_color: 'لون العلامة', secondary_color: 'اللون الثانوي',
             language: 'اللغة الافتراضية', currency: 'العملة', subscription: 'الاشتراك', plan: 'الخطة',
+            bilingual: 'قائمة ثنائية اللغة', bilingual_hint: 'عرض القائمة بالعربية والإنجليزية مع مبدّل اللغة. عند الإيقاف يرى الزوار اللغة الافتراضية فقط.',
             ordering_enabled: 'تفعيل الطلب', ordering_enabled_hint: 'السماح للعملاء بإضافة الأصناف إلى السلة والطلب عبر واتساب. عند الإيقاف تكون القائمة للعرض فقط.',
             public_url: 'الرابط العام', generated_password: 'كلمة المرور المُنشأة',
             generated_password_note: 'انسخها الآن — لن تظهر مرة أخرى.',
@@ -657,7 +661,7 @@ const messages = {
 
 export const i18n = createI18n({
     legacy: false,
-    locale: localStorage.getItem('locale') || 'en',
+    locale: localStorage.getItem('locale') || 'ar',
     fallbackLocale: 'en',
     messages,
 })

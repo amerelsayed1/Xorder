@@ -32,6 +32,7 @@ class RestaurantResource extends JsonResource
             'brand_color' => $this->brand_color,
             'secondary_color' => $this->secondary_color,
             'default_language' => $this->default_language->value,
+            'bilingual' => $this->bilingual,
             'currency' => $this->currency->value,
             'currency_symbol' => $this->currency->symbol(),
             'ordering_enabled' => $this->ordering_enabled,

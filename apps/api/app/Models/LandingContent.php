@@ -73,7 +73,7 @@ class LandingContent extends Model
     /**
      * Default content for the sales-focused landing page. A super admin can
      * override every field; this is the fallback the public site renders until
-     * then.
+     * then. Positioning: QR menu + direct ordering + no commission + easy setup.
      */
     public static function defaultContent(): array
     {
@@ -81,95 +81,104 @@ class LandingContent extends Model
 
         return [
             'hero' => [
-                'badge' => $bi('QR menu & direct ordering — no commission', 'قائمة QR وطلب مباشر — بدون عمولة'),
+                'badge' => $bi('QR menu · Direct ordering · No commission', 'قائمة QR · طلب مباشر · بدون عمولة'),
                 'title' => $bi(
-                    'QR Menu & Direct Ordering System for Restaurants — No Commission',
-                    'نظام قائمة QR والطلب المباشر للمطاعم — بدون عمولة'
+                    'QR Menu & Direct Ordering System for Restaurants',
+                    'نظام قائمة QR والطلب المباشر للمطاعم'
                 ),
                 'sub' => $bi(
-                    'Create a professional digital menu for your restaurant, let customers order directly from their phones, and manage orders easily without paying commission on every order.',
-                    'أنشئ قائمة رقمية احترافية لمطعمك، ودع العملاء يطلبون مباشرة من هواتفهم، وأدر الطلبات بسهولة دون دفع عمولة على كل طلب.'
+                    'Create a professional digital menu for your restaurant or cafe, let customers order directly from their phones straight to your WhatsApp, and manage orders easily — without paying commission on every order.',
+                    'أنشئ قائمة رقمية احترافية لمطعمك أو مقهاك، ودع عملاءك يطلبون مباشرة من هواتفهم إلى واتساب مطعمك، وأدر الطلبات بسهولة — دون دفع عمولة على كل طلب.'
                 ),
                 'cta' => $bi('Request a Demo', 'اطلب عرضاً توضيحياً'),
                 'primary_link' => '#lead',
-                'secondary' => $bi('View Live Menu Demo', 'شاهد قائمة حية'),
+                'secondary' => $bi('View Live Menu Demo', 'شاهد القائمة الحية'),
                 'secondary_link' => '',
-                'no_commission_label' => $bi('0% commission per order', '٠٪ عمولة على كل طلب'),
-                'ready_label' => $bi('Ready in 48 hours', 'جاهز خلال ٤٨ ساعة'),
+                'value_points' => [
+                    $bi('No commission on orders', 'بدون عمولة على الطلبات'),
+                    $bi('QR menu ready to share', 'قائمة QR جاهزة للمشاركة'),
+                    $bi('Easy menu updates', 'تحديث سهل للقائمة'),
+                    $bi('Direct customer orders', 'طلبات مباشرة من العملاء'),
+                ],
+                // Kept so rows saved before value_points existed still resolve.
+                'no_commission_label' => $bi('No commission on orders', 'بدون عمولة على الطلبات'),
+                'ready_label' => $bi('QR menu ready to share', 'قائمة QR جاهزة للمشاركة'),
                 'whatsapp_label' => $bi('Chat on WhatsApp', 'تواصل عبر واتساب'),
             ],
 
             'proof' => [
                 ['title' => $bi('0%', '٠٪'), 'text' => $bi('Commission per order', 'عمولة على كل طلب')],
-                ['title' => $bi('48h', '٤٨ ساعة'), 'text' => $bi('Ready to launch', 'جاهز للإطلاق')],
-                ['title' => $bi('No app', 'بدون تطبيق'), 'text' => $bi('Guests just scan', 'يكفي أن يمسح الضيوف')],
+                ['title' => $bi('WhatsApp', 'واتساب'), 'text' => $bi('Orders sent straight to you', 'الطلبات تصلك مباشرة')],
+                ['title' => $bi('No app', 'بدون تطبيق'), 'text' => $bi('Customers just scan', 'يكفي أن يمسح العملاء')],
             ],
 
             'offer' => [
-                'title' => $bi('Start with a QR Menu for Your Restaurant', 'ابدأ بقائمة QR لمطعمك'),
+                'title' => $bi('Start With a Professional QR Menu', 'ابدأ بقائمة QR احترافية'),
                 'text' => $bi(
-                    'Launch a professional QR menu for your restaurant or cafe, update items and prices anytime, and give your customers a smooth mobile ordering experience.',
-                    'أطلق قائمة QR احترافية لمطعمك أو مقهاك، وحدّث الأصناف والأسعار في أي وقت، وامنح عملاءك تجربة طلب سلسة من الهاتف.'
+                    'Launch a clean, mobile-friendly QR menu for your restaurant or cafe. Add your categories, products, prices, images, and restaurant information, then share it with customers using a QR code or a direct link.',
+                    'أطلق قائمة QR أنيقة وسهلة الاستخدام على الهاتف لمطعمك أو مقهاك. أضف الأقسام والمنتجات والأسعار والصور ومعلومات المطعم، ثم شاركها مع عملائك عبر رمز QR أو رابط مباشر.'
                 ),
                 'items' => [
-                    ['icon' => '▦', 'text' => $bi('Digital QR menu', 'قائمة QR رقمية')],
-                    ['icon' => '✎', 'text' => $bi('Easy menu updates', 'تحديث سهل للقائمة')],
-                    ['icon' => '✦', 'text' => $bi('Product photos and prices', 'صور المنتجات والأسعار')],
-                    ['icon' => '☰', 'text' => $bi('Categories and item details', 'الأقسام وتفاصيل الأصناف')],
-                    ['icon' => '⚡', 'text' => $bi('Direct ordering', 'طلب مباشر')],
-                    ['icon' => '✆', 'text' => $bi('WhatsApp or dashboard order receiving', 'استقبال الطلبات عبر واتساب أو لوحة التحكم')],
-                    ['icon' => '％', 'text' => $bi('No commission per order', 'بدون عمولة على الطلب')],
+                    ['icon' => '▦', 'text' => $bi('Replace printed and PDF menus', 'استبدل القوائم المطبوعة وملفات PDF')],
+                    ['icon' => '✎', 'text' => $bi('Update prices and items anytime', 'حدّث الأسعار والأصناف في أي وقت')],
+                    ['icon' => '✦', 'text' => $bi('Show product photos and descriptions', 'اعرض صور المنتجات وأوصافها')],
+                    ['icon' => '↗', 'text' => $bi('Share by QR code, WhatsApp, or social media', 'شارك عبر رمز QR أو واتساب أو السوشيال ميديا')],
+                    ['icon' => '✆', 'text' => $bi('Give customers a better mobile experience', 'امنح عملاءك تجربة أفضل على الهاتف')],
                 ],
             ],
 
             'problem' => [
-                'title' => $bi('Sound familiar?', 'هل يبدو هذا مألوفاً؟'),
-                'sub' => $bi('The everyday headaches of running a menu the old way.', 'متاعب يومية لإدارة القائمة بالطريقة القديمة.'),
+                'title' => $bi('Still Managing Your Menu and Orders Manually?', 'ما زلت تدير قائمتك وطلباتك يدوياً؟'),
+                'sub' => $bi('The everyday headaches of running a menu the old way.', 'المتاعب اليومية لإدارة القائمة بالطريقة القديمة.'),
                 'problems' => [
-                    ['text' => $bi('Still sending menu images or PDFs on WhatsApp', 'لا تزال ترسل صور القائمة أو ملفات PDF على واتساب')],
-                    ['text' => $bi('Printing new menus every time prices change', 'تطبع قوائم جديدة كلما تغيّرت الأسعار')],
-                    ['text' => $bi('Receiving messy manual orders', 'تستقبل طلبات يدوية غير منظمة')],
-                    ['text' => $bi('Paying high commissions to ordering platforms', 'تدفع عمولات مرتفعة لمنصّات الطلب')],
-                    ['text' => $bi('Losing the direct customer relationship', 'تفقد العلاقة المباشرة مع العميل')],
+                    ['text' => $bi('Sending menu images or PDFs on WhatsApp', 'إرسال صور القائمة أو ملفات PDF على واتساب')],
+                    ['text' => $bi('Reprinting menus whenever prices change', 'إعادة طباعة القوائم كلما تغيّرت الأسعار')],
+                    ['text' => $bi('Receiving incomplete or messy orders', 'استقبال طلبات ناقصة أو غير منظمة')],
+                    ['text' => $bi('Depending only on third-party platforms', 'الاعتماد فقط على المنصّات الوسيطة')],
+                    ['text' => $bi('Paying commission while losing direct customer access', 'دفع العمولة وفقدان الوصول المباشر للعملاء')],
                 ],
-                'solution_title' => $bi('A channel you control', 'قناة تتحكم بها أنت'),
+                'solution_title' => $bi('A simpler, more professional way', 'طريقة أبسط وأكثر احترافية'),
                 'solution_text' => $bi(
-                    'Xorder gives restaurants a professional digital menu and direct ordering channel that they fully control.',
-                    'يمنح Xorder المطاعم قائمة رقمية احترافية وقناة طلب مباشر يتحكمون بها بالكامل.'
+                    'Xorder gives you a digital menu and direct ordering system that helps your restaurant look more professional, update faster, and receive orders in a more organized way.',
+                    'يمنحك Xorder قائمة رقمية ونظام طلب مباشر يجعل مطعمك يبدو أكثر احترافية، ويحدّث أسرع، ويستقبل الطلبات بشكل أكثر تنظيماً.'
                 ),
+            ],
+
+            // Direct ordering — how customers order and why it beats manual/third-party.
+            'features' => [
+                'title' => $bi('Receive Orders Directly From Your Customers', 'استقبل الطلبات مباشرة من عملائك'),
+                'sub' => $bi(
+                    'Let customers browse your menu, add items to the cart, and send their order straight to your restaurant’s WhatsApp — no app for you or your customers to install.',
+                    'دع عملاءك يتصفحون قائمتك، ويضيفون الأصناف إلى السلة، ويرسلون طلبهم مباشرة إلى واتساب مطعمك — بدون تطبيق لك أو لعملائك.'
+                ),
+                'items' => [
+                    ['icon' => '🛒', 'title' => $bi('Add to cart', 'أضف إلى السلة'), 'text' => $bi('Customers pick items and build their order right on their phone.', 'يختار العملاء الأصناف ويجهّزون طلبهم مباشرة من هواتفهم.')],
+                    ['icon' => '✆', 'title' => $bi('Sent to your WhatsApp', 'تصلك على واتساب'), 'text' => $bi('The full order arrives on your WhatsApp, ready to confirm and prepare.', 'يصلك الطلب كاملاً على واتساب، جاهزاً للتأكيد والتحضير.')],
+                    ['icon' => '🚗', 'title' => $bi('Pickup, delivery, or table', 'استلام أو توصيل أو طاولة'), 'text' => $bi('Support the order types that fit your restaurant (if available).', 'ادعم أنواع الطلبات التي تناسب مطعمك (إن وُجدت).')],
+                    ['icon' => '✓', 'title' => $bi('Fewer order mistakes', 'أخطاء أقل في الطلبات'), 'text' => $bi('Clear, organized orders reduce manual errors and mix-ups.', 'طلبات واضحة ومنظمة تقلّل الأخطاء اليدوية والالتباس.')],
+                    ['icon' => '♥', 'title' => $bi('Own your customers', 'عملاؤك ملكك'), 'text' => $bi('Keep the relationship with your restaurant, not a middleman.', 'احتفظ بعلاقتك المباشرة مع عملائك بدلاً من وسيط.')],
+                    ['icon' => '％', 'title' => $bi('No commission', 'بدون عمولة'), 'text' => $bi('You never pay a percentage on any order.', 'لن تدفع نسبة على أي طلب أبداً.')],
+                ],
             ],
 
             'no_commission' => [
-                'title' => $bi('Keep More of Every Order', 'احتفظ بالمزيد من كل طلب'),
+                'title' => $bi('No Commission on Every Order', 'بدون عمولة على كل طلب'),
                 'text' => $bi(
-                    'With Xorder, your customers order directly from your restaurant. You pay a predictable subscription instead of losing a percentage from every order.',
-                    'مع Xorder يطلب عملاؤك مباشرة من مطعمك. تدفع اشتراكاً ثابتاً بدلاً من خسارة نسبة من كل طلب.'
+                    'With Xorder, customers order directly from your restaurant. Instead of losing a percentage on every order, you use your own direct ordering channel with a simple, predictable subscription.',
+                    'مع Xorder يطلب العملاء مباشرة من مطعمك. وبدلاً من خسارة نسبة من كل طلب، تستخدم قناة طلب مباشرة خاصة بك باشتراك بسيط وثابت.'
                 ),
-                'third_party_title' => $bi('Third-party platforms', 'منصّات الطرف الثالث'),
+                'third_party_title' => $bi('Third-party ordering platforms', 'منصّات الطلب الوسيطة'),
                 'third_party' => [
-                    ['text' => $bi('Commission on every order', 'عمولة على كل طلب')],
-                    ['text' => $bi('Less control over customers', 'تحكم أقل في العملاء')],
-                    ['text' => $bi('Higher long-term cost', 'تكلفة أعلى على المدى الطويل')],
+                    ['text' => $bi('Charge commission on every order', 'تأخذ عمولة على كل طلب')],
+                    ['text' => $bi('Limit your control over customers', 'تحدّ من تحكمك في عملائك')],
+                    ['text' => $bi('Cost grows as your orders grow', 'تزيد التكلفة كلما زادت طلباتك')],
                 ],
                 'xorder_title' => $bi('Xorder', 'Xorder'),
                 'xorder' => [
-                    ['text' => $bi('No commission', 'بدون عمولة')],
-                    ['text' => $bi('Direct customer orders', 'طلبات مباشرة من العملاء')],
-                    ['text' => $bi('Full menu control', 'تحكم كامل في القائمة')],
-                    ['text' => $bi('Own branded ordering experience', 'تجربة طلب بهويتك الخاصة')],
-                ],
-            ],
-
-            'features' => [
-                'title' => $bi('Everything you need to sell directly', 'كل ما تحتاجه للبيع مباشرة'),
-                'sub' => $bi('Built for restaurants, cafés, and cloud kitchens across the region.', 'مصمم للمطاعم والمقاهي والمطابخ السحابية في المنطقة.'),
-                'items' => [
-                    ['icon' => '▦', 'title' => $bi('One QR, forever', 'رمز واحد للأبد'), 'text' => $bi('Print it once. Your menu updates instantly — the code never changes.', 'اطبعه مرة واحدة. تتحدث قائمتك فوراً والرمز لا يتغير أبداً.')],
-                    ['icon' => '⇆', 'title' => $bi('Bilingual by default', 'ثنائي اللغة افتراضياً'), 'text' => $bi('Arabic and English side by side, with full right-to-left support.', 'العربية والإنجليزية جنباً إلى جنب مع دعم كامل للكتابة من اليمين لليسار.')],
-                    ['icon' => '⚡', 'title' => $bi('Live updates', 'تحديثات لحظية'), 'text' => $bi('Mark items sold out or change prices and customers see it immediately.', 'حدّد الأصناف كمنتهية أو غيّر الأسعار ليراها العملاء فوراً.')],
-                    ['icon' => '✦', 'title' => $bi('Your brand', 'هويتك'), 'text' => $bi('Custom colors and logo so the menu feels like part of your restaurant.', 'ألوان وشعار مخصص لتبدو القائمة جزءاً من مطعمك.')],
-                    ['icon' => '☰', 'title' => $bi('Categories & featured', 'أقسام وأصناف مميزة'), 'text' => $bi('Organize dishes into sections and highlight your best sellers.', 'نظّم الأطباق في أقسام وسلّط الضوء على الأكثر مبيعاً.')],
-                    ['icon' => '◍', 'title' => $bi('Simple dashboard', 'لوحة تحكم بسيطة'), 'text' => $bi('Manage everything from one clean panel — no technical skills needed.', 'أدر كل شيء من لوحة واحدة أنيقة — بدون مهارات تقنية.')],
+                    ['text' => $bi('No commission on orders', 'بدون عمولة على الطلبات')],
+                    ['text' => $bi('Direct relationship with your customers', 'علاقة مباشرة مع عملائك')],
+                    ['text' => $bi('Full control over your menu', 'تحكم كامل في قائمتك')],
+                    ['text' => $bi('Branded ordering experience for your restaurant', 'تجربة طلب بهوية مطعمك')],
                 ],
             ],
 
@@ -177,101 +186,127 @@ class LandingContent extends Model
                 'enabled' => true,
                 'title' => $bi('Try the Customer Experience', 'جرّب تجربة العميل'),
                 'text' => $bi(
-                    'Scan the QR code or open the live demo to see how your customers will browse the menu and place an order.',
-                    'امسح رمز QR أو افتح العرض الحي لترى كيف سيتصفح عملاؤك القائمة ويقدمون طلباً.'
+                    'Open the live demo or scan the QR code to see how your customers will browse the menu, select items, and place an order from their phones.',
+                    'افتح العرض الحي أو امسح رمز QR لترى كيف سيتصفح عملاؤك القائمة، ويختارون الأصناف، ويقدمون طلباً من هواتفهم.'
                 ),
-                'button' => $bi('Open live demo', 'افتح العرض الحي'),
+                'button' => $bi('Open Live Demo', 'افتح العرض الحي'),
                 'restaurant_slug' => 'xorderrest',
             ],
 
             'steps' => [
-                'title' => $bi('How ordering works', 'كيف يتم الطلب'),
+                'title' => $bi('How Xorder Works', 'كيف يعمل Xorder'),
                 'items' => [
-                    ['title' => $bi('Customer scans QR', 'العميل يمسح رمز QR'), 'text' => $bi('Guests open your live menu on their phone — no app to install.', 'يفتح الضيوف قائمتك الحية على هواتفهم — بدون تطبيق.')],
-                    ['title' => $bi('Customer selects items', 'العميل يختار الأصناف'), 'text' => $bi('They browse categories, add items to the cart and confirm.', 'يتصفحون الأقسام ويضيفون الأصناف إلى السلة ويؤكدون.')],
-                    ['title' => $bi('Restaurant receives the order', 'المطعم يستقبل الطلب'), 'text' => $bi('The order arrives on WhatsApp or your dashboard, ready to prepare.', 'يصل الطلب عبر واتساب أو لوحة التحكم، جاهزاً للتحضير.')],
+                    ['title' => $bi('Create your digital menu', 'أنشئ قائمتك الرقمية'), 'text' => $bi('Add categories, items, prices, images, and your restaurant details.', 'أضف الأقسام والأصناف والأسعار والصور وتفاصيل مطعمك.')],
+                    ['title' => $bi('Share your QR code or link', 'شارك رمز QR أو الرابط'), 'text' => $bi('Place the QR code on tables, packaging, social media, or WhatsApp.', 'ضع رمز QR على الطاولات أو التغليف أو السوشيال ميديا أو واتساب.')],
+                    ['title' => $bi('Receive orders on WhatsApp', 'استقبل الطلبات على واتساب'), 'text' => $bi('Customers browse, select items, and send their order straight to your restaurant’s WhatsApp.', 'يتصفح العملاء ويختارون الأصناف ويرسلون طلبهم مباشرة إلى واتساب مطعمك.')],
                 ],
             ],
 
             'pricing' => [
-                'title' => $bi('Packages that grow with you', 'باقات تنمو معك'),
-                'sub' => $bi('Start with a menu, add ordering when you are ready.', 'ابدأ بقائمة، وأضف الطلب عندما تكون جاهزاً.'),
+                'title' => $bi('Packages That Grow With You', 'باقات تنمو معك'),
+                'sub' => $bi('Start with a QR menu, add direct ordering when you are ready.', 'ابدأ بقائمة QR، وأضف الطلب المباشر عندما تكون جاهزاً.'),
                 'popular_label' => $bi('Recommended', 'موصى به'),
                 'choose_label' => $bi('Request a Demo', 'اطلب عرضاً'),
+                // Monthly/yearly toggle. Numbers below are placeholders anchored to
+                // the one real price in the project (749 EGP) + the free tier; a
+                // super admin can set the real amounts from Landing Management.
+                'billing' => [
+                    'monthly' => $bi('Monthly', 'شهري'),
+                    'yearly' => $bi('Yearly', 'سنوي'),
+                    'save' => $bi('2 months free', 'شهران مجاناً'),
+                ],
                 'plans' => [
                     [
                         'name' => $bi('Menu Starter', 'باقة القائمة'),
-                        'subtitle' => $bi('Best for small cafes and restaurants that need a professional QR menu.', 'الأنسب للمقاهي والمطاعم الصغيرة التي تحتاج قائمة QR احترافية.'),
-                        'price_label' => $bi('Contact Sales', 'تواصل مع المبيعات'),
+                        'subtitle' => $bi('Best for small cafes and restaurants that need a clean QR menu.', 'الأنسب للمقاهي والمطاعم الصغيرة التي تحتاج قائمة QR أنيقة.'),
+                        'price_label' => $bi('Free', 'مجاني'),
+                        'price_monthly' => $bi('Free', 'مجاني'),
+                        'price_yearly' => $bi('Free', 'مجاني'),
+                        'cta' => $bi('Start With QR Menu', 'ابدأ بقائمة QR'),
                         'recommended' => false,
                         'enabled' => true,
                         'features' => [
                             $bi('QR menu', 'قائمة QR'),
                             $bi('Menu categories', 'أقسام القائمة'),
                             $bi('Product images', 'صور المنتجات'),
-                            $bi('Price updates', 'تحديث الأسعار'),
-                            $bi('Restaurant info page', 'صفحة معلومات المطعم'),
-                            $bi('QR code ready for printing', 'رمز QR جاهز للطباعة'),
+                            $bi('Price and item updates', 'تحديث الأسعار والأصناف'),
+                            $bi('Restaurant information page', 'صفحة معلومات المطعم'),
+                            $bi('Shareable menu link', 'رابط قائمة قابل للمشاركة'),
                         ],
                     ],
                     [
                         'name' => $bi('Menu Plus', 'باقة القائمة بلس'),
-                        'subtitle' => $bi('Best for restaurants that want customers to order directly.', 'الأنسب للمطاعم التي تريد أن يطلب العملاء مباشرة.'),
-                        'price_label' => $bi('Starts from', 'يبدأ من'),
+                        'subtitle' => $bi('Best for restaurants that want customers to order directly from the menu.', 'الأنسب للمطاعم التي تريد أن يطلب العملاء مباشرة من القائمة.'),
+                        'price_label' => $bi('749 EGP / mo', '٧٤٩ ج.م / شهر'),
+                        'price_monthly' => $bi('749 EGP / mo', '٧٤٩ ج.م / شهر'),
+                        'price_yearly' => $bi('7,490 EGP / yr', '٧٬٤٩٠ ج.م / سنة'),
+                        'cta' => $bi('Request Menu Plus Demo', 'اطلب عرض القائمة بلس'),
                         'recommended' => true,
                         'enabled' => true,
                         'features' => [
                             $bi('Everything in Menu Starter', 'كل ما في باقة القائمة'),
-                            $bi('Cart', 'سلة المشتريات'),
-                            $bi('Direct ordering', 'الطلب المباشر'),
-                            $bi('WhatsApp or dashboard order receiving', 'استقبال الطلبات عبر واتساب أو لوحة التحكم'),
-                            $bi('Offers / coupons', 'العروض والكوبونات'),
-                            $bi('Basic order tracking', 'تتبع أساسي للطلبات'),
+                            $bi('Add to cart', 'إضافة إلى السلة'),
+                            $bi('Direct order submission', 'إرسال الطلب مباشرة'),
+                            $bi('Orders received on WhatsApp', 'استقبال الطلبات عبر واتساب'),
+                            $bi('Pickup, delivery, or table orders (if available)', 'طلبات الاستلام أو التوصيل أو الطاولة (إن وُجدت)'),
+                            $bi('Offers / coupons (if available)', 'العروض والكوبونات (إن وُجدت)'),
                         ],
                     ],
                     [
                         'name' => $bi('Restaurant Pro', 'باقة المطعم برو'),
-                        'subtitle' => $bi('Best for restaurants with delivery, pickup, or multiple branches.', 'الأنسب للمطاعم ذات التوصيل أو الاستلام أو الفروع المتعددة.'),
-                        'price_label' => $bi('Contact Sales', 'تواصل مع المبيعات'),
+                        'subtitle' => $bi('Best for restaurants that need a more complete ordering and management setup.', 'الأنسب للمطاعم التي تحتاج إعداداً أكمل للطلب والإدارة.'),
+                        'price_label' => $bi('Custom pricing', 'تسعير مخصص'),
+                        'price_monthly' => $bi('Custom pricing', 'تسعير مخصص'),
+                        'price_yearly' => $bi('Custom pricing', 'تسعير مخصص'),
+                        'cta' => $bi('Talk to Sales', 'تحدث مع المبيعات'),
                         'recommended' => false,
                         'enabled' => true,
                         'features' => [
                             $bi('Everything in Menu Plus', 'كل ما في باقة القائمة بلس'),
                             $bi('Order management dashboard', 'لوحة إدارة الطلبات'),
-                            $bi('Pickup and delivery orders', 'طلبات الاستلام والتوصيل'),
+                            $bi('Delivery and pickup management', 'إدارة التوصيل والاستلام'),
                             $bi('Table ordering', 'الطلب من الطاولة'),
-                            $bi('Reports', 'التقارير'),
-                            $bi('Branch support', 'دعم الفروع'),
-                            $bi('Driver app', 'تطبيق السائق'),
+                            $bi('Reports and insights', 'التقارير والتحليلات'),
+                            $bi('Branch support (if available)', 'دعم الفروع (إن وُجد)'),
+                            $bi('Driver app (if available)', 'تطبيق السائق (إن وُجد)'),
                         ],
                     ],
                 ],
             ],
 
             'industries' => [
-                'title' => $bi('Made for your kind of place', 'مصمم لنوع مكانك'),
-                'sub' => $bi('Xorder fits any food business that takes orders.', 'يناسب Xorder أي نشاط طعام يستقبل الطلبات.'),
+                'title' => $bi('Built for Food Businesses of All Sizes', 'مصمم لأنشطة الطعام بكل أحجامها'),
+                'sub' => $bi(
+                    'Whether you run a small cafe or a growing restaurant brand, Xorder helps you present your menu professionally and receive orders directly from your customers.',
+                    'سواء كنت تدير مقهى صغيراً أو علامة مطاعم متنامية، يساعدك Xorder على تقديم قائمتك باحترافية واستقبال الطلبات مباشرة من عملائك.'
+                ),
                 'items' => [
                     ['icon' => '🍽️', 'text' => $bi('Restaurants', 'المطاعم')],
                     ['icon' => '☕', 'text' => $bi('Cafes', 'المقاهي')],
                     ['icon' => '🧁', 'text' => $bi('Dessert shops', 'محلات الحلويات')],
                     ['icon' => '🍱', 'text' => $bi('Cloud kitchens', 'المطابخ السحابية')],
+                    ['icon' => '🥡', 'text' => $bi('Takeaway restaurants', 'مطاعم الوجبات الجاهزة')],
                     ['icon' => '🚚', 'text' => $bi('Food trucks', 'عربات الطعام')],
-                    ['icon' => '🥡', 'text' => $bi('Takeaway restaurants', 'مطاعم الوجبات السريعة')],
                     ['icon' => '🏷️', 'text' => $bi('Local food brands', 'العلامات الغذائية المحلية')],
                 ],
             ],
 
             'lead_form' => [
-                'title' => $bi('Request My Demo', 'اطلب عرضي التوضيحي'),
-                'sub' => $bi('Tell us about your restaurant and we’ll set up a personalised demo.', 'أخبرنا عن مطعمك وسنجهّز لك عرضاً مخصصاً.'),
+                'title' => $bi('Ready to Launch Your QR Menu?', 'جاهز لإطلاق قائمة QR الخاصة بك؟'),
+                'sub' => $bi(
+                    'Tell us about your restaurant and we’ll show you how Xorder can work for your menu, orders, and customer experience. No commitment — we’ll contact you to understand your needs and suggest the best setup.',
+                    'أخبرنا عن مطعمك وسنوضح لك كيف يمكن أن يعمل Xorder مع قائمتك وطلباتك وتجربة عملائك. دون أي التزام — سنتواصل معك لفهم احتياجاتك واقتراح الإعداد الأنسب.'
+                ),
                 'button' => $bi('Request My Demo', 'اطلب عرضي التوضيحي'),
-                'success' => $bi('Thanks! We received your request and will be in touch shortly.', 'شكراً لك! استلمنا طلبك وسنتواصل معك قريباً.'),
+                'success' => $bi('Thanks! We received your request and will contact you shortly.', 'شكراً لك! استلمنا طلبك وسنتواصل معك قريباً.'),
             ],
 
             'cta' => [
-                'title' => $bi('Ready to launch your menu?', 'جاهز لإطلاق قائمتك؟'),
-                'sub' => $bi('Tell us about your restaurant and we’ll set up your digital menu.', 'أخبرنا عن مطعمك وسنجهّز قائمتك الرقمية.'),
+                'title' => $bi('Start Receiving Direct Orders — Without Commission', 'ابدأ باستقبال الطلبات مباشرة — بدون عمولة'),
+                'sub' => $bi(
+                    'Give your customers a better ordering experience and keep more control over your orders, menu, and customer relationship.',
+                    'امنح عملاءك تجربة طلب أفضل واحتفظ بتحكم أكبر في طلباتك وقائمتك وعلاقتك بعملائك.'
+                ),
                 'button' => $bi('Request a Demo', 'اطلب عرضاً توضيحياً'),
                 'whatsapp_label' => $bi('WhatsApp', 'واتساب'),
             ],
@@ -280,17 +315,29 @@ class LandingContent extends Model
                 'number' => '',
                 'default_message' => $bi(
                     'Hi Xorder, I’d like a demo for my restaurant.',
-                    'مرحباً Xorder، أريد عرضاً توضيحياً لمطعمي.'
+                    'مرحباً Xorder، أرغب في عرض توضيحي لمطعمي.'
                 ),
                 'floating_enabled' => true,
                 'hero_enabled' => true,
             ],
 
             'seo' => [
-                'title' => 'Xorder — QR Menu & Direct Ordering for Restaurants (No Commission)',
-                'description' => 'Create a professional QR menu, take direct orders from customers, and manage orders without paying commission on every order. Ready in 48 hours.',
-                'og_title' => 'Xorder — QR Menu & Direct Ordering, No Commission',
-                'og_description' => 'A professional QR menu and direct ordering channel your restaurant fully controls.',
+                'title' => $bi(
+                    'Xorder | QR Menu & Direct Ordering System for Restaurants',
+                    'Xorder | نظام قائمة QR والطلب المباشر للمطاعم'
+                ),
+                'description' => $bi(
+                    'Create a professional QR menu for your restaurant, receive direct customer orders, and manage your menu easily without paying commission on every order.',
+                    'أنشئ قائمة QR احترافية لمطعمك، واستقبل طلبات عملائك مباشرة، وأدر قائمتك بسهولة دون دفع عمولة على كل طلب.'
+                ),
+                'og_title' => $bi(
+                    'QR Menu & Direct Ordering for Restaurants',
+                    'قائمة QR والطلب المباشر للمطاعم'
+                ),
+                'og_description' => $bi(
+                    'Launch a digital menu, share it with a QR code, and receive direct orders from your customers with Xorder.',
+                    'أطلق قائمة رقمية، وشاركها عبر رمز QR، واستقبل طلبات عملائك مباشرة مع Xorder.'
+                ),
                 'og_image' => '',
             ],
 
@@ -300,7 +347,7 @@ class LandingContent extends Model
             ],
 
             'footer' => [
-                'tagline' => $bi('QR menus and direct ordering, made simple.', 'قوائم QR وطلب مباشر، ببساطة.'),
+                'tagline' => $bi('QR menus and direct ordering for restaurants — no commission.', 'قوائم QR وطلب مباشر للمطاعم — بدون عمولة.'),
                 'rights' => $bi('All rights reserved.', 'جميع الحقوق محفوظة.'),
             ],
         ];

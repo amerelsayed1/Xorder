@@ -29,6 +29,7 @@ class Restaurant extends Model
         'brand_color',
         'secondary_color',
         'default_language',
+        'bilingual',
         'currency',
         'ordering_enabled',
         'status',
@@ -42,6 +43,7 @@ class Restaurant extends Model
     {
         return [
             'default_language' => LanguageEnum::class,
+            'bilingual' => 'boolean',
             'currency' => CurrencyEnum::class,
             'ordering_enabled' => 'boolean',
             'status' => RestaurantStatus::class,

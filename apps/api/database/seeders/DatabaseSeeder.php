@@ -29,5 +29,8 @@ class DatabaseSeeder extends Seeder
         );
 
         $this->command?->info("Super Admin ready: {$email}");
+
+        // Subscription plans catalog (managed at /plans).
+        $this->call(PlanSeeder::class);
     }
 }

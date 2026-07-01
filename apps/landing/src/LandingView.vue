@@ -44,6 +44,10 @@ const demoMenuUrl = computed(() => {
         ? `/r/${demoSlug.value}`
         : `${window.location.protocol}//${demoSlug.value}.${host}/menu`
 })
+// Real, scannable QR for the demo restaurant, rendered server-side (SVG).
+const demoQrUrl = computed(
+    () => `${import.meta.env.VITE_API_URL || ''}/api/public/restaurants/${demoSlug.value}/qr`,
+)
 const heroPrimaryLink = computed(() => content.value?.hero?.primary_link || '#lead')
 const heroSecondaryLink = computed(() => content.value?.hero?.secondary_link || demoMenuUrl.value)
 
@@ -60,7 +64,10 @@ const heroWa = computed(() => content.value?.whatsapp?.hero_enabled !== false &&
 // ---- Packages ------------------------------------------------------------
 const enabledPlans = computed(() => (content.value?.pricing?.plans || []).filter((p) => p.enabled !== false))
 const planRecommended = (p) => p.recommended ?? p.popular ?? false
-const planPrice = (p) => L(p.price_label) || L(p.price)
+// Billing period toggle: monthly ⇄ yearly. Falls back to the single price_label
+// for plans (or admin rows) that don't define per-period prices.
+const billingPeriod = ref('monthly')
+const planPrice = (p) => L(p[`price_${billingPeriod.value}`]) || L(p.price_label) || L(p.price)
 
 // ---- Analytics handlers --------------------------------------------------
 const onRequestDemo = () => track('landing_request_demo_clicked')
@@ -111,10 +118,14 @@ function setMeta(attr, key, value) {
 }
 function applySeo(seo) {
     if (!seo) return
-    if (seo.title) document.title = seo.title
-    setMeta('name', 'description', seo.description)
-    setMeta('property', 'og:title', seo.og_title || seo.title)
-    setMeta('property', 'og:description', seo.og_description || seo.description)
+    // SEO fields are bilingual { en, ar }; tolerate legacy plain strings too.
+    const pick = (f) => (f && typeof f === 'object') ? L(f) : f
+    const title = pick(seo.title)
+    const description = pick(seo.description)
+    if (title) document.title = title
+    setMeta('name', 'description', description)
+    setMeta('property', 'og:title', pick(seo.og_title) || title)
+    setMeta('property', 'og:description', pick(seo.og_description) || description)
     setMeta('property', 'og:type', 'website')
     if (seo.og_image) setMeta('property', 'og:image', seo.og_image)
 }
@@ -130,9 +141,10 @@ function applySeo(seo) {
                 </a>
 
                 <nav class="lp-links">
-                    <a href="#offer">{{ t('landing.nav_features') }}</a>
+                    <a href="#offer">{{ t('landing.nav_qr_menu') }}</a>
+                    <a href="#features">{{ t('landing.nav_ordering') }}</a>
+                    <a href="#no-commission">{{ t('landing.nav_no_commission') }}</a>
                     <a href="#packages">{{ t('landing.nav_pricing') }}</a>
-                    <a href="#demo">{{ t('landing.nav_demo') }}</a>
                 </nav>
 
                 <div class="lp-actions">
@@ -156,8 +168,9 @@ function applySeo(seo) {
                         <p class="lp-lead">{{ L(content.hero.sub) }}</p>
 
                         <ul class="lp-trust">
-                            <li><span class="lp-trust-ic">✓</span>{{ L(content.hero.no_commission_label) }}</li>
-                            <li><span class="lp-trust-ic">✓</span>{{ L(content.hero.ready_label) }}</li>
+                            <li v-for="(v, i) in (content.hero.value_points || [content.hero.no_commission_label, content.hero.ready_label])" :key="i">
+                                <span class="lp-trust-ic">✓</span>{{ L(v) }}
+                            </li>
                         </ul>
 
                         <div class="lp-hero-cta">
@@ -203,12 +216,6 @@ function applySeo(seo) {
                                 </div>
                                 <div class="lp-menu-order">{{ t('landing.demo_order') }}</div>
                             </div>
-                        </div>
-                        <div class="lp-qr-float">
-                            <div class="lp-qr-grid">
-                                <span v-for="n in 64" :key="n" :class="['lp-qr-cell', (n * 7 + (n % 5)) % 3 === 0 ? 'on' : '']"></span>
-                            </div>
-                            <span class="lp-qr-cap">{{ t('landing.scan_to_order') }}</span>
                         </div>
                     </div>
                 </div>
@@ -311,9 +318,8 @@ function applySeo(seo) {
                         <a :href="demoMenuUrl" target="_blank" rel="noopener" class="btn btn-accent lp-btn-lg" @click="onViewDemo">{{ L(content.demo.button) }}</a>
                     </div>
                     <div class="lp-demo-card card">
-                        <div class="lp-qr-grid lp-qr-grid-lg">
-                            <span v-for="n in 144" :key="n" :class="['lp-qr-cell', (n * 5 + (n % 7)) % 3 === 0 ? 'on' : '']"></span>
-                        </div>
+                        <img class="lp-qr-img" :src="demoQrUrl" width="200" height="200"
+                            alt="QR" loading="lazy" />
                         <div class="lp-demo-stand">{{ t('landing.demo_stand') }}</div>
                     </div>
                 </div>
@@ -325,6 +331,15 @@ function applySeo(seo) {
                     <div class="lp-section-head">
                         <h2 class="lp-h2">{{ L(content.pricing.title) }}</h2>
                         <p class="lp-sub">{{ L(content.pricing.sub) }}</p>
+                    </div>
+                    <div v-if="content.pricing.billing" class="lp-billing">
+                        <button type="button" class="lp-billing-opt" :class="{ on: billingPeriod === 'monthly' }"
+                            @click="billingPeriod = 'monthly'">{{ L(content.pricing.billing.monthly) }}</button>
+                        <button type="button" class="lp-billing-opt" :class="{ on: billingPeriod === 'yearly' }"
+                            @click="billingPeriod = 'yearly'">
+                            {{ L(content.pricing.billing.yearly) }}
+                            <span v-if="L(content.pricing.billing.save)" class="lp-billing-save">{{ L(content.pricing.billing.save) }}</span>
+                        </button>
                     </div>
                     <div class="lp-pricing-grid">
                         <div class="lp-plan card" v-for="(plan, i) in enabledPlans" :key="i" :class="{ 'lp-plan-popular': planRecommended(plan) }">
@@ -339,7 +354,7 @@ function applySeo(seo) {
                             </ul>
                             <a href="#lead" class="btn lp-btn-lg" :class="planRecommended(plan) ? 'btn-accent' : 'btn-ghost'"
                                 @click="onPackageCta(L(plan.name)); onRequestDemo()">
-                                {{ L(content.pricing.choose_label) }}
+                                {{ L(plan.cta) || L(content.pricing.choose_label) }}
                             </a>
                         </div>
                     </div>
@@ -532,13 +547,6 @@ function applySeo(seo) {
 .lp-menu-order { margin-top: 6px; text-align: center; background: var(--accent); color: #fff; font-weight: 700;
     font-family: var(--font-display); font-size: 14px; padding: 11px; border-radius: 12px; }
 
-.lp-qr-float { position: absolute; bottom: 18px; inset-inline-end: -8px; background: #fff; border-radius: 18px;
-    padding: 14px; box-shadow: 0 20px 50px -18px rgba(42,30,20,.5); border: 1px solid var(--line);
-    display: flex; flex-direction: column; align-items: center; gap: 8px; }
-.lp-qr-grid { width: 92px; height: 92px; display: grid; grid-template-columns: repeat(8, 1fr); gap: 2px; }
-.lp-qr-cell { background: transparent; border-radius: 2px; }
-.lp-qr-cell.on { background: var(--ink); }
-.lp-qr-cap { font-size: 11px; font-weight: 600; color: var(--muted); font-family: var(--font-display); }
 
 /* Sections */
 .lp-section { padding: 78px 0; scroll-margin-top: 76px; }
@@ -600,10 +608,19 @@ function applySeo(seo) {
 .lp-flow-title { display: block; font-family: var(--font-display); font-weight: 700; font-size: 17px; color: var(--ink); }
 .lp-flow-text { display: block; font-size: 15px; color: var(--muted); margin-top: 2px; }
 .lp-demo-card { display: flex; flex-direction: column; align-items: center; gap: 16px; padding: 34px; }
-.lp-qr-grid-lg { width: 168px; height: 168px; grid-template-columns: repeat(12, 1fr); }
+.lp-qr-img { width: 200px; height: 200px; display: block; border-radius: 8px; }
 .lp-demo-stand { font-family: var(--font-display); font-weight: 600; color: var(--muted); font-size: 14px; }
 
 /* Packages */
+.lp-billing { display: flex; width: fit-content; gap: 4px; margin: 0 auto 28px; padding: 4px; border-radius: 999px;
+    background: var(--card); border: 1px solid var(--line); }
+.lp-billing-opt { display: inline-flex; align-items: center; gap: 8px; border: 0; cursor: pointer;
+    background: transparent; color: var(--body); font-family: inherit; font-size: 15px; font-weight: 600;
+    padding: 9px 20px; border-radius: 999px; transition: background .15s, color .15s; }
+.lp-billing-opt.on { background: var(--accent); color: #fff; }
+.lp-billing-save { font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 999px;
+    background: rgba(16,185,129,.15); color: #0f9d6b; }
+.lp-billing-opt.on .lp-billing-save { background: rgba(255,255,255,.22); color: #fff; }
 .lp-pricing-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 22px; max-width: 1000px; margin: 0 auto; }
 .lp-plan { padding: 28px; display: flex; flex-direction: column; position: relative; }
 .lp-plan-popular { border-color: var(--accent); box-shadow: 0 20px 50px -28px var(--accent); }

@@ -132,12 +132,12 @@ class UpdateLandingContentRequest extends FormRequest
             ['content.whatsapp.floating_enabled' => ['required', 'boolean']],
             ['content.whatsapp.hero_enabled' => ['required', 'boolean']],
 
-            // SEO
+            // SEO (title/description/OG are bilingual { en, ar })
             ['content.seo' => ['required', 'array']],
-            ['content.seo.title' => ['nullable', 'string', 'max:255']],
-            ['content.seo.description' => ['nullable', 'string', 'max:500']],
-            ['content.seo.og_title' => ['nullable', 'string', 'max:255']],
-            ['content.seo.og_description' => ['nullable', 'string', 'max:500']],
+            $bi('content.seo.title'),
+            $bi('content.seo.description'),
+            $bi('content.seo.og_title'),
+            $bi('content.seo.og_description'),
             ['content.seo.og_image' => ['nullable', 'string', 'max:500']],
 
             // Contact

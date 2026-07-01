@@ -22,6 +22,7 @@ const form = reactive({
     logo_url: '', cover_image_url: '',
     brand_color: '#f89a06', secondary_color: '',
     default_language: 'en',
+    bilingual: true,
     currency: 'EGP',
     ordering_enabled: true,
     status: 'ACTIVE', subscription_status: 'TRIAL',
@@ -137,6 +138,13 @@ async function submit() {
                         </select>
                         <FormError :errors="errors" field="currency" /></label>
                 </div>
+                <label class="flex items-start gap-3 rounded-lg border p-3 cursor-pointer" style="border-color:var(--line)">
+                    <input v-model="form.bilingual" type="checkbox" class="mt-0.5 h-4 w-4" />
+                    <span>
+                        <span class="label" style="margin:0">{{ t('restaurant.bilingual') }}</span>
+                        <span class="block text-xs mt-0.5" style="color:var(--muted)">{{ t('restaurant.bilingual_hint') }}</span>
+                    </span>
+                </label>
                 <label class="flex items-start gap-3 rounded-lg border p-3 cursor-pointer" style="border-color:var(--line)">
                     <input v-model="form.ordering_enabled" type="checkbox" class="mt-0.5 h-4 w-4" />
                     <span>

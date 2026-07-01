@@ -28,7 +28,7 @@ const XorderAura = definePreset(Aura, {
     },
 })
 
-setLocale(localStorage.getItem('locale') || 'en')
+setLocale(localStorage.getItem('locale') || 'ar')
 
 createApp(App)
     .use(createPinia())

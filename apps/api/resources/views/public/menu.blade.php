@@ -1,7 +1,10 @@
 @php
     use App\Support\Localize;
 
-    $lang = request('lang', $restaurant->default_language->value);
+    // Single-language restaurants are pinned to their default language; only
+    // bilingual ones honour the ?lang override (and render the EN/ع switcher).
+    $default = $restaurant->default_language->value;
+    $lang = $restaurant->bilingual ? request('lang', $default) : $default;
     $lang = in_array($lang, ['ar', 'en'], true) ? $lang : 'en';
     $dir = $lang === 'ar' ? 'rtl' : 'ltr';
     $isAr = $lang === 'ar';
@@ -83,10 +86,12 @@
                 </span>
             </a>
             <div class="hdr-actions">
+                @if ($restaurant->bilingual)
                 <span class="lang">
                     <a href="?lang=en" class="{{ ! $isAr ? 'on' : '' }}">EN</a>
                     <a href="?lang=ar" class="{{ $isAr ? 'on' : '' }}">ع</a>
                 </span>
+                @endif
                 @if ($waDigits)
                     <a href="https://wa.me/{{ $waDigits }}" target="_blank" rel="noopener" class="wa">✆ {{ $t['wa'] }}</a>
                 @endif
@@ -272,11 +277,23 @@
             });
             document.getElementById('no-results').style.display = any ? 'none' : '';
         }
-        // Scroll-spy for category chips.
+        // Scroll-spy for category chips — highlights the active category and
+        // keeps its chip scrolled into view within the horizontal tab row.
         const chips = document.querySelectorAll('[data-chip]');
+        const catsEl = document.querySelector('.cats');
+        function setActiveChip(id) {
+            chips.forEach((c) => {
+                const on = c.dataset.chip === id;
+                c.classList.toggle('on', on);
+                if (on && catsEl) {
+                    const left = c.offsetLeft - (catsEl.clientWidth - c.offsetWidth) / 2;
+                    catsEl.scrollTo({ left: Math.max(0, left), behavior: 'smooth' });
+                }
+            });
+        }
         const obs = new IntersectionObserver((entries) => {
             entries.forEach(e => {
-                if (e.isIntersecting) chips.forEach(c => c.classList.toggle('on', c.dataset.chip === e.target.id.replace('cat-', '')));
+                if (e.isIntersecting) setActiveChip(e.target.id.replace('cat-', ''));
             });
         }, { rootMargin: '-45% 0px -50% 0px' });
         document.querySelectorAll('[data-category]').forEach(s => obs.observe(s));

@@ -120,18 +120,12 @@ async function save() {
                 <section class="card p-5 mt-5">
                     <h2 class="h-card mb-4">{{ t('landing_admin.sec_seo') }}</h2>
                     <div class="space-y-3">
-                        <label class="block"><span class="label">{{ t('landing_admin.seo_title') }}</span>
-                            <input v-model="content.seo.title" class="input mt-1.5" maxlength="255" /></label>
-                        <label class="block"><span class="label">{{ t('landing_admin.seo_desc') }}</span>
-                            <textarea v-model="content.seo.description" class="input mt-1.5" rows="2" maxlength="500"></textarea></label>
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            <label class="block"><span class="label">{{ t('landing_admin.og_title') }}</span>
-                                <input v-model="content.seo.og_title" class="input mt-1.5" maxlength="255" /></label>
-                            <label class="block"><span class="label">{{ t('landing_admin.og_image') }}</span>
-                                <input v-model="content.seo.og_image" class="input mt-1.5" placeholder="https://…" maxlength="500" /></label>
-                        </div>
-                        <label class="block"><span class="label">{{ t('landing_admin.og_desc') }}</span>
-                            <textarea v-model="content.seo.og_description" class="input mt-1.5" rows="2" maxlength="500"></textarea></label>
+                        <BiField :label="t('landing_admin.seo_title')" v-model:en="content.seo.title.en" v-model:ar="content.seo.title.ar" />
+                        <BiField :label="t('landing_admin.seo_desc')" textarea v-model:en="content.seo.description.en" v-model:ar="content.seo.description.ar" />
+                        <BiField :label="t('landing_admin.og_title')" v-model:en="content.seo.og_title.en" v-model:ar="content.seo.og_title.ar" />
+                        <BiField :label="t('landing_admin.og_desc')" textarea v-model:en="content.seo.og_description.en" v-model:ar="content.seo.og_description.ar" />
+                        <label class="block"><span class="label">{{ t('landing_admin.og_image') }}</span>
+                            <input v-model="content.seo.og_image" class="input mt-1.5" placeholder="https://…" maxlength="500" /></label>
                     </div>
                 </section>
 

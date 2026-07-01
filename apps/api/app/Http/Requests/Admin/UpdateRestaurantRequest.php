@@ -39,6 +39,7 @@ class UpdateRestaurantRequest extends FormRequest
             'brand_color' => ['nullable', 'regex:/^#[0-9a-fA-F]{6}$/'],
             'secondary_color' => ['nullable', 'regex:/^#[0-9a-fA-F]{6}$/'],
             'default_language' => ['sometimes', 'required', Rule::enum(LanguageEnum::class)],
+            'bilingual' => ['sometimes', 'boolean'],
             'currency' => ['sometimes', 'required', Rule::enum(CurrencyEnum::class)],
             'ordering_enabled' => ['sometimes', 'boolean'],
         ];
