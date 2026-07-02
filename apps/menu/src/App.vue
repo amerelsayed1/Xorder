@@ -47,6 +47,9 @@ const waDigits = computed(() => (restaurant.value.whatsapp_number || '').replace
 // Super admin can turn ordering off per restaurant → view-only menu (no cart).
 // Treat a missing flag as enabled so older payloads keep working.
 const orderingEnabled = computed(() => restaurant.value.ordering_enabled !== false)
+// Bilingual restaurants show the EN/AR switcher; single-language ones are
+// pinned to their default language (no switcher). Missing flag = bilingual.
+const bilingual = computed(() => restaurant.value.bilingual !== false)
 
 function L(obj, field = 'name') {
     if (!obj) return ''
@@ -78,10 +81,25 @@ onMounted(async () => {
     window.addEventListener('scroll', onScroll, { passive: true })
     try {
         const res = await fetchMenu(slug)
-        if (res.available === false) unavailable.value = true
-        else { payload.value = res.data; document.title = L(res.data.restaurant) || 'Menu' }
-    } catch { error.value = true } finally { loading.value = false }
+        if (res.available === false) { unavailable.value = true; noindex() }
+        else {
+            payload.value = res.data
+            // Open in the restaurant's default language (single-language
+            // restaurants stay pinned there since the switcher is hidden).
+            const dl = res.data.restaurant?.default_language
+            if (dl === 'en' || dl === 'ar') locale.value = dl
+            document.title = L(res.data.restaurant) || 'Menu'
+        }
+    } catch { error.value = true; noindex() } finally { loading.value = false }
 })
+// Unknown/unavailable menus are served on a 200 SPA shell (static hosting can't
+// return a real 404), so keep them out of search results.
+function noindex() {
+    const m = document.createElement('meta')
+    m.name = 'robots'
+    m.content = 'noindex'
+    document.head.appendChild(m)
+}
 function syncDir() {
     document.documentElement.lang = locale.value
     document.documentElement.dir = isAr.value ? 'rtl' : 'ltr'
@@ -236,7 +254,7 @@ function toggleLang() { locale.value = isAr.value ? 'en' : 'ar' }
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" class="w-6 h-6"><path d="m5 11 4-7"/><path d="m19 11-4-7"/><path d="M2 11h20"/><path d="m3.5 11 1.6 7.4a2 2 0 0 0 2 1.6h9.8a2 2 0 0 0 2-1.6l1.6-7.4"/><path d="m9 11 1 9"/><path d="M4.5 15.5h15"/><path d="m15 11-1 9"/></svg>
                             <span v-if="cartCount" class="absolute -top-1 -end-1 text-white text-[10px] font-bold rounded-full h-4 min-w-[16px] px-1 grid place-items-center" :style="{ background: accent }">{{ cartCount }}</span>
                         </button>
-                        <div class="flex rounded-full border border-stone-200 overflow-hidden text-sm font-bold bg-white">
+                        <div v-if="bilingual" class="flex rounded-full border border-stone-200 overflow-hidden text-sm font-bold bg-white">
                             <button class="px-3 py-1.5" :style="isAr ? { background: accent, color: '#fff' } : { color: '#8a7c68' }" @click="locale = 'ar'">ع</button>
                             <button class="px-3 py-1.5" :style="!isAr ? { background: accent, color: '#fff' } : { color: '#8a7c68' }" @click="locale = 'en'">EN</button>
                         </div>

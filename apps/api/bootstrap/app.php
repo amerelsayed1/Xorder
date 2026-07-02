@@ -2,6 +2,7 @@
 
 use App\Http\Middleware\EnsureRole;
 use App\Http\Middleware\EnsureSubscriptionAllowsWrites;
+use App\Http\Middleware\ForceJsonResponse;
 use App\Http\Middleware\SetLocale;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -25,6 +26,9 @@ return Application::configure(basePath: dirname(__DIR__))
         // Enable Sanctum SPA cookie authentication for first-party requests.
         $middleware->statefulApi();
         $middleware->append(SetLocale::class);
+
+        // API is JSON-only → framework errors (401/422/404) always render JSON.
+        $middleware->prependToGroup('api', ForceJsonResponse::class);
 
         $middleware->alias([
             'role' => EnsureRole::class,
