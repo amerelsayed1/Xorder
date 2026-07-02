@@ -46,6 +46,26 @@ class OrderingToggleTest extends TestCase
             ->assertJsonPath('data.restaurant.ordering_enabled', false);
     }
 
+    public function test_ordering_flag_is_per_restaurant_on_public_menus(): void
+    {
+        $enabled = Restaurant::factory()->create(['slug' => 'orders-open', 'ordering_enabled' => true]);
+        $disabled = Restaurant::factory()->create(['slug' => 'orders-closed', 'ordering_enabled' => false]);
+
+        foreach ([$enabled, $disabled] as $r) {
+            $cat = Category::factory()->for($r)->create(['is_active' => true]);
+            MenuItem::factory()->for($r)->for($cat)->create();
+        }
+
+        // Each menu reflects its own restaurant's flag, not a global toggle.
+        $this->getJson('/api/public/restaurants/orders-open/menu')
+            ->assertOk()
+            ->assertJsonPath('data.restaurant.ordering_enabled', true);
+
+        $this->getJson('/api/public/restaurants/orders-closed/menu')
+            ->assertOk()
+            ->assertJsonPath('data.restaurant.ordering_enabled', false);
+    }
+
     public function test_ordering_flag_is_not_writable_by_restaurant_admin(): void
     {
         $r = Restaurant::factory()->create(['ordering_enabled' => true]);

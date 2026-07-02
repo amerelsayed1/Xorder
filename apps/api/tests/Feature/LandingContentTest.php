@@ -59,17 +59,18 @@ class LandingContentTest extends TestCase
     {
         $sa = User::factory()->superAdmin()->create();
         $content = LandingContent::defaultContent();
-        $content['seo']['title'] = 'Edited title';
+        $content['seo']['title'] = ['en' => 'Edited title', 'ar' => 'عنوان معدل'];
         $content['pricing']['plans'][2]['enabled'] = false;
 
         $this->actingAs($sa)->putJson('/api/admin/landing-content', ['content' => $content])
             ->assertOk()
-            ->assertJsonPath('data.seo.title', 'Edited title')
+            ->assertJsonPath('data.seo.title.en', 'Edited title')
+            ->assertJsonPath('data.seo.title.ar', 'عنوان معدل')
             ->assertJsonPath('data.pricing.plans.2.enabled', false);
 
         // Persisted and visible publicly.
         $this->getJson('/api/public/landing-content')
-            ->assertJsonPath('data.seo.title', 'Edited title')
+            ->assertJsonPath('data.seo.title.en', 'Edited title')
             ->assertJsonPath('data.pricing.plans.2.enabled', false);
     }
 }
