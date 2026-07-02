@@ -157,7 +157,7 @@ const countFor = (k) => k === '' ? counts.value.ALL : counts.value[k]
                 <tbody>
                     <tr v-if="loading"><td colspan="6" class="px-5 py-8 text-center" style="color:var(--muted)">{{ t('common.loading') }}</td></tr>
                     <tr v-else-if="!rows.length"><td colspan="6" class="px-5 py-8 text-center" style="color:var(--muted)">{{ t('admin.no_restaurants') }}</td></tr>
-                    <tr v-for="r in rows" :key="r.id" class="border-t cursor-pointer hover:bg-black/[.015]"
+                    <tr v-for="r in loading ? [] : rows" :key="r.id" class="border-t cursor-pointer hover:bg-black/[.015]"
                         :style="{ borderColor: 'var(--line)', opacity: r.status === 'ARCHIVED' ? 0.6 : 1 }"
                         @click="router.push({ name: 'admin.restaurants.show', params: { id: r.id } })">
                         <td class="px-5 py-3">

@@ -4,7 +4,6 @@ namespace Tests\Feature;
 
 use App\Enums\RestaurantStatus;
 use App\Enums\SubscriptionStatus;
-use App\Models\Category;
 use App\Models\Restaurant;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -50,6 +49,39 @@ class SubscriptionAndStatusTest extends TestCase
 
         $this->actingAs($admin)->postJson('/api/dashboard/categories', ['name_en' => 'X'])
             ->assertForbidden();
+    }
+
+    public function test_active_subscription_requires_start_and_end_dates(): void
+    {
+        $sa = User::factory()->superAdmin()->create();
+        $r = Restaurant::factory()->create();
+
+        $this->actingAs($sa)->patchJson("/api/admin/restaurants/{$r->id}/subscription", ['subscription_status' => 'ACTIVE'])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['subscription_start_date', 'subscription_end_date']);
+
+        $this->actingAs($sa)->patchJson("/api/admin/restaurants/{$r->id}/subscription", [
+            'subscription_status' => 'ACTIVE',
+            'subscription_start_date' => now()->toDateString(),
+            'subscription_end_date' => now()->addMonth()->toDateString(),
+        ])->assertOk();
+        $this->assertSame(SubscriptionStatus::ACTIVE, $r->fresh()->subscription_status);
+    }
+
+    public function test_trial_subscription_requires_end_date_only(): void
+    {
+        $sa = User::factory()->superAdmin()->create();
+        $r = Restaurant::factory()->create();
+
+        $this->actingAs($sa)->patchJson("/api/admin/restaurants/{$r->id}/subscription", ['subscription_status' => 'TRIAL'])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['subscription_end_date'])
+            ->assertJsonMissingValidationErrors(['subscription_start_date']);
+
+        $this->actingAs($sa)->patchJson("/api/admin/restaurants/{$r->id}/subscription", [
+            'subscription_status' => 'TRIAL',
+            'subscription_end_date' => now()->addDays(14)->toDateString(),
+        ])->assertOk();
     }
 
     public function test_restaurant_admin_cannot_change_subscription(): void

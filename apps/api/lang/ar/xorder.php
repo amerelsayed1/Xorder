@@ -64,5 +64,7 @@ return [
         'delete_confirmation' => 'اكتب معرّف المطعم لتأكيد الحذف.',
         'discounted_price_lt' => 'يجب أن يكون السعر بعد الخصم أقل من السعر الأصلي.',
         'category_wrong_restaurant' => 'القسم المحدد لا ينتمي إلى مطعمك.',
+        'subscription_start_date_required' => 'تاريخ البداية مطلوب للاشتراك النشط.',
+        'subscription_end_date_required' => 'تاريخ الانتهاء مطلوب للاشتراكات النشطة والتجريبية — تعتمد عليه تنبيهات التجديد والانتهاء.',
     ],
 ];

@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref, reactive, onMounted } from 'vue'
+import { computed, ref, reactive, onMounted, watch } from 'vue'
 import { useRoute, useRouter, RouterLink } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import api, { ensureCsrf } from '@xorder/api-client/api.js'
@@ -18,6 +18,7 @@ const qr = ref(null)
 const sub = reactive({ subscription_status: '', subscription_plan: '', subscription_start_date: '', subscription_end_date: '' })
 const plans = ref([])
 const msg = ref('')
+const errMsg = ref('')
 const resettingPw = ref(false)
 const newPassword = ref('')
 const pwCopied = ref(false)
@@ -41,11 +42,23 @@ async function loadPlans() {
 onMounted(() => { load(); loadPlans() })
 
 // Active plan names, plus the restaurant's current value if it's a legacy /
-// custom plan no longer in the catalog (so we never silently drop it).
+// custom plan no longer in the catalog (so we never silently drop it) —
+// flagged as such so the admin can tell it apart from catalog plans.
 const planOptions = computed(() => {
     const names = plans.value.map(p => p.name)
-    if (sub.subscription_plan && !names.includes(sub.subscription_plan)) names.unshift(sub.subscription_plan)
-    return names
+    const options = names.map(name => ({ value: name, label: name }))
+    if (sub.subscription_plan && !names.includes(sub.subscription_plan)) {
+        options.unshift({ value: sub.subscription_plan, label: `${sub.subscription_plan} (${t('plan.legacy_suffix')})` })
+    }
+    return options
+})
+
+// Active subscriptions need dates for expiry alerts to work; default the
+// start date to today when the admin flips the status and it's still empty.
+watch(() => sub.subscription_status, (s) => {
+    if (s === 'ACTIVE' && !sub.subscription_start_date) {
+        sub.subscription_start_date = new Date().toISOString().slice(0, 10)
+    }
 })
 
 async function setStatus(status) {
@@ -62,15 +75,21 @@ async function setOrdering(enabled) {
     await load()
 }
 async function saveSubscription() {
-    await ensureCsrf()
-    await api.patch(`api/admin/restaurants/${id}/subscription`, {
-        ...sub,
-        subscription_plan: sub.subscription_plan || null,
-        subscription_start_date: sub.subscription_start_date || null,
-        subscription_end_date: sub.subscription_end_date || null,
-    })
-    msg.value = t('admin.subscription_updated')
-    await load()
+    errMsg.value = ''
+    try {
+        await ensureCsrf()
+        await api.patch(`api/admin/restaurants/${id}/subscription`, {
+            ...sub,
+            subscription_plan: sub.subscription_plan || null,
+            subscription_start_date: sub.subscription_start_date || null,
+            subscription_end_date: sub.subscription_end_date || null,
+        })
+        msg.value = t('admin.subscription_updated')
+        await load()
+    } catch (err) {
+        const errors = err.response?.data?.errors
+        errMsg.value = errors ? Object.values(errors).flat()[0] : (err.response?.data?.message || t('admin.subscription_save_failed'))
+    }
 }
 function downloadQr() { window.open(`/api/admin/restaurants/${id}/qr/download`, '_blank') }
 async function resetAdminPassword() {
@@ -187,6 +206,7 @@ const initial = (x) => localizedInitial(x, 'name', locale.value)
         </div>
 
         <p v-if="msg" class="badge badge-green"><span class="dot"></span>{{ msg }}</p>
+        <p v-if="errMsg" class="badge badge-red"><span class="dot"></span>{{ errMsg }}</p>
 
         <!-- Status -->
         <section class="card p-5">
@@ -234,12 +254,13 @@ const initial = (x) => localizedInitial(x, 'name', locale.value)
 
         <!-- Subscription -->
         <section class="card p-5">
-            <h2 class="h-card mb-3">{{ t('restaurant.subscription') }}</h2>
+            <h2 class="h-card mb-1">{{ t('restaurant.subscription') }}</h2>
+            <p class="page-sub mb-3">{{ t('admin.subscription_dates_hint') }}</p>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <label class="block"><span class="label">{{ t('restaurant.plan') }}</span>
                     <select v-model="sub.subscription_plan" class="input">
                         <option value="">{{ t('plan.none_option') }}</option>
-                        <option v-for="name in planOptions" :key="name" :value="name">{{ name }}</option>
+                        <option v-for="opt in planOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
                     </select></label>
                 <div class="block">
                     <span class="label">{{ t('common.status') }}</span>

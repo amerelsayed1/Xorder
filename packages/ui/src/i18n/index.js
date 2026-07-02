@@ -122,6 +122,7 @@ const messages = {
             sort_order: 'Sort order', restaurants_on: 'On this plan',
             delete_title: 'Delete plan?', delete_message: 'This removes the plan from the catalog. Restaurants already assigned keep their current plan name.',
             none_option: 'No plan',
+            legacy_suffix: 'legacy — not in the plans catalog',
         },
         combo: {
             subtitle: '{count} offers',
@@ -227,6 +228,8 @@ const messages = {
             ordering_help: 'When disabled, the public menu is view-only — no cart or WhatsApp ordering.',
             ordering_on: 'Enabled', ordering_off: 'Disabled', ordering_updated: 'Ordering updated.',
             subscription_updated: 'Subscription updated',
+            subscription_dates_hint: 'Active and trial subscriptions need an end date — renewal and expiry alerts depend on it.',
+            subscription_save_failed: 'Could not save the subscription.',
             start_date: 'Start date',
             end_date: 'End date',
             save_subscription: 'Save subscription',
@@ -450,6 +453,7 @@ const messages = {
             sort_order: 'الترتيب', restaurants_on: 'على هذه الخطة',
             delete_title: 'حذف الخطة؟', delete_message: 'سيؤدي هذا إلى إزالة الخطة من الكتالوج. المطاعم المُسندة إليها تحتفظ باسم خطتها الحالي.',
             none_option: 'بدون خطة',
+            legacy_suffix: 'قديمة — غير موجودة في كتالوج الخطط',
         },
         combo: {
             subtitle: '{count} عرض',
@@ -555,6 +559,8 @@ const messages = {
             ordering_help: 'عند الإيقاف تكون القائمة العامة للعرض فقط — بدون سلة أو طلب عبر واتساب.',
             ordering_on: 'مُفعّل', ordering_off: 'موقوف', ordering_updated: 'تم تحديث حالة الطلب.',
             subscription_updated: 'تم تحديث الاشتراك',
+            subscription_dates_hint: 'الاشتراكات النشطة والتجريبية تحتاج تاريخ انتهاء — تعتمد عليه تنبيهات التجديد والانتهاء.',
+            subscription_save_failed: 'تعذّر حفظ الاشتراك.',
             start_date: 'تاريخ البداية',
             end_date: 'تاريخ النهاية',
             save_subscription: 'حفظ الاشتراك',

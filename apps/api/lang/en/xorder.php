@@ -64,5 +64,7 @@ return [
         'delete_confirmation' => 'Type the restaurant slug to confirm deletion.',
         'discounted_price_lt' => 'The discounted price must be lower than the original price.',
         'category_wrong_restaurant' => 'The selected category does not belong to your restaurant.',
+        'subscription_start_date_required' => 'A start date is required for an active subscription.',
+        'subscription_end_date_required' => 'An end date is required for active and trial subscriptions — renewal and expiry alerts depend on it.',
     ],
 ];
