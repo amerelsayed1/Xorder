@@ -68,6 +68,9 @@ const planRecommended = (p) => p.recommended ?? p.popular ?? false
 // for plans (or admin rows) that don't define per-period prices.
 const billingPeriod = ref('monthly')
 const planPrice = (p) => L(p[`price_${billingPeriod.value}`]) || L(p.price_label) || L(p.price)
+// A plan with no concrete price is a contact-sales ("custom") plan — show a
+// clear "Contact us" instead of a blank amount so it doesn't read as a bug.
+const planHasPrice = (p) => !!planPrice(p)
 
 // ---- Analytics handlers --------------------------------------------------
 const onRequestDemo = () => track('landing_request_demo_clicked')
@@ -347,8 +350,10 @@ function applySeo(seo) {
                             <h3 class="lp-plan-name">{{ L(plan.name) }}</h3>
                             <p class="lp-plan-note">{{ L(plan.subtitle) || L(plan.note) }}</p>
                             <div class="lp-plan-price">
-                                <span class="lp-plan-amount">{{ planPrice(plan) }}</span>
+                                <span v-if="planHasPrice(plan)" class="lp-plan-amount">{{ planPrice(plan) }}</span>
+                                <span v-else class="lp-plan-amount">{{ t('landing.price_contact') }}</span>
                             </div>
+                            <p v-if="!planHasPrice(plan)" class="lp-plan-note">{{ t('landing.price_contact_note') }}</p>
                             <ul class="lp-plan-feats">
                                 <li v-for="(feat, fi) in plan.features" :key="fi">{{ L(feat) }}</li>
                             </ul>
