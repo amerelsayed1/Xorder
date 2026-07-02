@@ -29,6 +29,7 @@ class DemoSeeder extends Seeder
     private function img(string $id, int $w = 800, ?int $h = null): string
     {
         $hp = $h ? "&h={$h}" : '';
+
         return "https://images.unsplash.com/{$id}?auto=format&fit=crop&w={$w}{$hp}&q=70";
     }
 
@@ -47,22 +48,30 @@ class DemoSeeder extends Seeder
 
         // Additional tenants so the Super Admin list is populated — each with a
         // logo, cover, an admin, and a small menu (images included).
+        // Subscription dates are relative to "now" so the Super Admin insights
+        // (expiring in 7/30 days, past-end-date) always show realistic figures:
+        // Cedar & Coal's trial expires within 7 days; Saffron/Beit Aleppo are past due.
         $extras = [
             ['name' => 'Nakhla Café', 'ar' => 'نخلة', 'slug' => 'nakhla-cafe', 'color' => '#1f7a3d',
-             'status' => RestaurantStatus::ACTIVE, 'sub' => SubscriptionStatus::TRIAL, 'plan' => null,
-             'cover' => 'photo-1467003909585-2f8a72700288', 'logo' => 'photo-1455619452474-d2be8b1e70cd', 'city' => 'Sharjah'],
+                'status' => RestaurantStatus::ACTIVE, 'sub' => SubscriptionStatus::TRIAL, 'plan' => null,
+                'start' => now()->subDays(4)->startOfDay(), 'end' => now()->addDays(10)->startOfDay(),
+                'cover' => 'photo-1467003909585-2f8a72700288', 'logo' => 'photo-1455619452474-d2be8b1e70cd', 'city' => 'Sharjah'],
             ['name' => 'Saffron House', 'ar' => 'بيت الزعفران', 'slug' => 'saffron-house', 'color' => '#c46a1b',
-             'status' => RestaurantStatus::SUSPENDED, 'sub' => SubscriptionStatus::EXPIRED, 'plan' => 'Pro',
-             'cover' => 'photo-1504674900247-0877df9cc836', 'logo' => 'photo-1540189549336-e6e99c3679fe', 'city' => 'Dubai'],
+                'status' => RestaurantStatus::SUSPENDED, 'sub' => SubscriptionStatus::EXPIRED, 'plan' => 'Restaurant Pro',
+                'start' => now()->subDays(60)->startOfDay(), 'end' => now()->subDays(5)->startOfDay(),
+                'cover' => 'photo-1504674900247-0877df9cc836', 'logo' => 'photo-1540189549336-e6e99c3679fe', 'city' => 'Dubai'],
             ['name' => 'Olea Mezze Bar', 'ar' => 'أوليا', 'slug' => 'olea-mezze', 'color' => '#3d4a7a',
-             'status' => RestaurantStatus::ACTIVE, 'sub' => SubscriptionStatus::ACTIVE, 'plan' => 'Pro',
-             'cover' => 'photo-1512621776951-a57141f2eefd', 'logo' => 'photo-1432139555190-58524dae6a55', 'city' => 'Abu Dhabi'],
+                'status' => RestaurantStatus::ACTIVE, 'sub' => SubscriptionStatus::ACTIVE, 'plan' => 'Restaurant Pro',
+                'start' => now()->subDays(30)->startOfDay(), 'end' => now()->addDays(335)->startOfDay(),
+                'cover' => 'photo-1512621776951-a57141f2eefd', 'logo' => 'photo-1432139555190-58524dae6a55', 'city' => 'Abu Dhabi'],
             ['name' => 'Cedar & Coal', 'ar' => 'الأرز والفحم', 'slug' => 'cedar-coal', 'color' => '#7a4a2b',
-             'status' => RestaurantStatus::ACTIVE, 'sub' => SubscriptionStatus::TRIAL, 'plan' => null,
-             'cover' => 'photo-1544025162-d76694265947', 'logo' => 'photo-1529006557810-274b9b2fc783', 'city' => 'Dubai'],
+                'status' => RestaurantStatus::ACTIVE, 'sub' => SubscriptionStatus::TRIAL, 'plan' => null,
+                'start' => now()->subDays(9)->startOfDay(), 'end' => now()->addDays(5)->startOfDay(),
+                'cover' => 'photo-1544025162-d76694265947', 'logo' => 'photo-1529006557810-274b9b2fc783', 'city' => 'Dubai'],
             ['name' => 'Beit Aleppo', 'ar' => 'بيت حلب', 'slug' => 'beit-aleppo', 'color' => '#6b748c',
-             'status' => RestaurantStatus::ARCHIVED, 'sub' => SubscriptionStatus::SUSPENDED, 'plan' => 'Pro',
-             'cover' => 'photo-1519676867240-f03562e64548', 'logo' => 'photo-1490645935967-10de6ba17061', 'city' => 'Cairo'],
+                'status' => RestaurantStatus::ARCHIVED, 'sub' => SubscriptionStatus::SUSPENDED, 'plan' => 'Restaurant Pro',
+                'start' => now()->subDays(120)->startOfDay(), 'end' => now()->subDays(30)->startOfDay(),
+                'cover' => 'photo-1519676867240-f03562e64548', 'logo' => 'photo-1490645935967-10de6ba17061', 'city' => 'Cairo'],
         ];
 
         foreach ($extras as $x) {
@@ -88,7 +97,13 @@ class DemoSeeder extends Seeder
             'logo_url' => $this->logo('photo-1414235077428-338989a2e8c0'),
             'cover_image_url' => $this->img('photo-1414235077428-338989a2e8c0', 1400),
             'default_language' => LanguageEnum::AR,
-            'subscription_status' => SubscriptionStatus::ACTIVE, 'subscription_plan' => 'Pro',
+            // Use the catalog plan name (not the legacy "Pro") and carry real
+            // dates so the showcase tenant matches how an active subscription is
+            // meant to look — and so expiry/renewal insights have data to work with.
+            'subscription_status' => SubscriptionStatus::ACTIVE,
+            'subscription_plan' => 'Restaurant Pro',
+            'subscription_start_date' => now()->startOfDay(),
+            'subscription_end_date' => now()->addYear()->startOfDay(),
         ]);
 
         $this->admin($r, 'owner@xorderrest.test', 'XorderRest Owner');
@@ -145,8 +160,8 @@ class DemoSeeder extends Seeder
             'name_en' => $x['name'], 'name_ar' => $x['ar'],
             'description_en' => "{$x['name']} — a Levantine table in {$x['city']}.",
             'description_ar' => 'مطعم شامي بنكهة أصيلة.',
-            'phone' => '+971 4 555 0' . random_int(100, 999),
-            'whatsapp_number' => '+9714555' . random_int(1000, 9999),
+            'phone' => '+971 4 555 0'.random_int(100, 999),
+            'whatsapp_number' => '+9714555'.random_int(1000, 9999),
             'address' => $x['city'], 'opening_hours' => 'Daily · 11:00 – 23:00',
             'brand_color' => $x['color'],
             'logo_url' => $this->logo($x['logo']),
@@ -154,9 +169,11 @@ class DemoSeeder extends Seeder
             'default_language' => LanguageEnum::AR,
             'status' => $x['status'],
             'subscription_status' => $x['sub'], 'subscription_plan' => $x['plan'],
+            'subscription_start_date' => $x['start'] ?? null,
+            'subscription_end_date' => $x['end'] ?? null,
         ]);
 
-        $this->admin($r, 'owner@' . str_replace('-', '', $x['slug']) . '.test', $x['name'] . ' Owner');
+        $this->admin($r, 'owner@'.str_replace('-', '', $x['slug']).'.test', $x['name'].' Owner');
 
         $template = [
             ['Mezze', 'المقبلات', [['Hummus', 18], ['Falafel', 16], ['Tabbouleh', 19], ['Labneh', 17]]],
