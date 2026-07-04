@@ -5,10 +5,12 @@ namespace App\Services;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
-use Intervention\Image\ImageManagerStatic as Image;
+use Intervention\Image\ImageManager;
 
 class ImageUploadService
 {
+    public function __construct(private ImageManager $imageManager) {}
+
     /**
      * Validate-and-store an uploaded image. The file is re-encoded (stripping
      * EXIF/metadata and any embedded payloads), constrained to a max dimension,
@@ -19,7 +21,7 @@ class ImageUploadService
         $disk = config('platform.uploads.disk', 'public');
         $maxDim = (int) config('platform.uploads.max_dimension', 2000);
 
-        $image = Image::read($file->getRealPath());
+        $image = $this->imageManager->read($file->getRealPath());
 
         // Downscale only if larger than the cap; never upscale.
         $image->scaleDown(width: $maxDim, height: $maxDim);
