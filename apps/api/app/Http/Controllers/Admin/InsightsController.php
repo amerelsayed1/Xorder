@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Enums\RestaurantStatus;
+use App\Enums\RoleEnum;
 use App\Enums\SubscriptionStatus;
 use App\Http\Controllers\Controller;
 use App\Models\Category;
@@ -78,7 +79,7 @@ class InsightsController extends Controller
                     'total_categories' => Category::count(),
                     'total_menu_items' => MenuItem::count(),
                     'available_menu_items' => MenuItem::where('is_available', true)->count(),
-                    'restaurant_admins' => User::where('role', \App\Enums\RoleEnum::RESTAURANT_ADMIN)->count(),
+                    'restaurant_admins' => User::where('role', RoleEnum::RESTAURANT_ADMIN)->count(),
                 ],
                 'needs_attention' => [
                     'restaurants_without_menu_items' => Restaurant::doesntHave('menuItems')->count(),
