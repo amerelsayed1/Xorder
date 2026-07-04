@@ -219,13 +219,13 @@ const pendingLineItem = ref(null) // Holds item data while collecting customer i
 const customer = reactive({ name: '', phone: '', address: '', note: '' })
 const customerModal = ref(false) // Modal for entering customer details before add to cart
 const orderConfirmModal = ref(false) // Modal for confirming order before sending to WhatsApp
+const orderDialog = ref(false) // Modal for entering customer order details
 const canOrder = computed(() => cart.value.length > 0 && !!waDigits.value && customer.phone.trim().length > 0)
 
-function orderViaWhatsApp() {
+function openOrderDialog() {
     if (!canOrder.value) return
-    // Close cart drawer and open order confirmation dialog
-    cartDrawer.value = false
-    orderConfirmModal.value = true
+    // Open the order details dialog
+    orderDialog.value = true
 }
 
 function confirmOrder() {
@@ -563,19 +563,48 @@ function toggleLang() { locale.value = isAr.value ? 'en' : 'ar' }
                             </div>
                         </div>
                         <div class="flex justify-between items-center font-bold"><span>{{ t('total') }}</span><span :style="{ color: accent }">{{ money(cartTotal) }}</span></div>
-                        <div class="mt-4 pt-3 border-t border-stone-100 space-y-2">
-                            <p class="text-sm font-bold text-stone-600">{{ t('your_details') }}</p>
-                            <input v-model="customer.name" type="text" :placeholder="t('f_name')" class="w-full h-10 rounded-lg border border-stone-200 px-3 text-sm focus:outline-none focus:border-stone-400" />
-                            <input v-model="customer.phone" type="tel" dir="ltr" :placeholder="t('f_phone') + ' *'" class="w-full h-10 rounded-lg border border-stone-200 px-3 text-sm text-start focus:outline-none focus:border-stone-400" />
-                            <input v-model="customer.address" type="text" :placeholder="t('f_address')" class="w-full h-10 rounded-lg border border-stone-200 px-3 text-sm focus:outline-none focus:border-stone-400" />
-                            <textarea v-model="customer.note" rows="2" :placeholder="t('f_note')" class="w-full rounded-lg border border-stone-200 px-3 py-2 text-sm resize-none focus:outline-none focus:border-stone-400"></textarea>
+                        <div class="mt-4 pt-3 border-t border-stone-100">
+                            <button class="w-full h-12 rounded-xl bg-green-600 text-white font-bold disabled:opacity-50" :disabled="!canOrder" @click="openOrderDialog">
+                                {{ t('new_order') }}
+                            </button>
                         </div>
-                        <button class="w-full mt-3 h-12 rounded-xl bg-green-600 text-white font-bold flex items-center justify-center gap-2 disabled:opacity-50" :disabled="!canOrder" @click="orderViaWhatsApp">
-                            <svg viewBox="0 0 24 24" fill="currentColor" class="w-5 h-5"><path d="M19.05 4.91A9.82 9.82 0 0 0 12.04 2c-5.46 0-9.91 4.45-9.91 9.91 0 1.75.46 3.45 1.32 4.95L2.05 22l5.25-1.38c1.45.79 3.08 1.21 4.74 1.21h.004c5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01zM12.04 20.15h-.003a8.2 8.2 0 0 1-4.18-1.15l-.3-.18-3.11.82.83-3.04-.2-.31a8.18 8.18 0 0 1-1.26-4.38c0-4.54 3.7-8.24 8.25-8.24 2.2 0 4.27.86 5.83 2.42a8.2 8.2 0 0 1 2.41 5.83c0 4.54-3.7 8.24-8.24 8.24zm4.52-6.16c-.25-.12-1.47-.72-1.69-.81-.23-.08-.39-.12-.56.12-.16.25-.64.81-.79.97-.14.17-.29.19-.54.06-.25-.12-1.05-.39-1.99-1.23-.74-.66-1.23-1.47-1.38-1.72-.14-.25-.01-.38.11-.5.11-.11.25-.29.37-.43.12-.14.16-.25.25-.41.08-.17.04-.31-.02-.43-.06-.12-.56-1.34-.76-1.84-.2-.48-.41-.42-.56-.43-.14-.01-.31-.01-.48-.01a.92.92 0 0 0-.66.31c-.23.25-.87.85-.87 2.07 0 1.22.89 2.4 1.01 2.56.12.17 1.75 2.67 4.23 3.74.59.26 1.05.41 1.41.52.59.19 1.13.16 1.56.1.48-.07 1.47-.6 1.67-1.18.21-.58.21-1.07.14-1.18-.06-.11-.22-.17-.47-.29z"/></svg>
-                            {{ t('order_wa') }}</button>
                     </template>
                 </div>
             </div>
+            <!-- Order Dialog (Customer Details Form) -->
+            <div v-if="orderDialog" class="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+                <div class="absolute inset-0 bg-black/50" @click.self="orderDialog = false"></div>
+                <div class="relative bg-white w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl max-h-[92vh] overflow-y-auto shadow-2xl">
+                    <div class="p-5">
+                        <h3 class="text-xl font-extrabold mb-4">{{ t('your_details') }}</h3>
+                        <div class="space-y-3">
+                            <div>
+                                <label class="block text-sm font-medium mb-1">{{ t('f_name') }}</label>
+                                <input v-model="customer.name" type="text" :placeholder="t('f_name')" class="w-full h-10 rounded-lg border border-stone-200 px-3 text-sm focus:outline-none focus:border-stone-400" />
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium mb-1">{{ t('f_phone') }} *</label>
+                                <input v-model="customer.phone" type="tel" dir="ltr" :placeholder="t('f_phone')" class="w-full h-10 rounded-lg border border-stone-200 px-3 text-sm text-start focus:outline-none focus:border-stone-400" />
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium mb-1">{{ t('f_address') }}</label>
+                                <input v-model="customer.address" type="text" :placeholder="t('f_address')" class="w-full h-10 rounded-lg border border-stone-200 px-3 text-sm focus:outline-none focus:border-stone-400" />
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium mb-1">{{ t('f_note') }}</label>
+                                <textarea v-model="customer.note" rows="2" :placeholder="t('f_note')" class="w-full rounded-lg border border-stone-200 px-3 py-2 text-sm resize-none focus:outline-none focus:border-stone-400"></textarea>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="sticky bottom-0 bg-white border-t border-stone-100 p-4 flex gap-3">
+                        <button @click="orderDialog = false" class="flex-1 h-12 rounded-xl border border-stone-200 font-bold">{{ t('new_order') }}</button>
+                        <button @click="confirmOrder" :disabled="!customer.phone.trim()" class="flex-1 h-12 rounded-xl text-white font-bold disabled:opacity-50 flex items-center justify-center gap-2" :style="{ background: accent }}">
+                            <svg viewBox="0 0 24 24" fill="currentColor" class="w-5 h-5"><path d="M19.05 4.91A9.82 9.82 0 0 0 12.04 2c-5.46 0-9.91 4.45-9.91 9.91 0 1.75.46 3.45 1.32 4.95L2.05 22l5.25-1.38c1.45.79 3.08 1.21 4.74 1.21h.004c5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01zM12.04 20.15h-.003a8.2 8.2 0 0 1-4.18-1.15l-.3-.18-3.11.82.83-3.04-.2-.31a8.18 8.18 0 0 1-1.26-4.38c0-4.54 3.7-8.24 8.25-8.24 2.2 0 4.27.86 5.83 2.42a8.2 8.2 0 0 1 2.41 5.83c0 4.54-3.7 8.24-8.24 8.24zm4.52-6.16c-.25-.12-1.47-.72-1.69-.81-.23-.08-.39-.12-.56.12-.16.25-.64.81-.79.97-.14.17-.29.19-.54.06-.25-.12-1.05-.39-1.99-1.23-.74-.66-1.23-1.47-1.38-1.72-.14-.25-.01-.38.11-.5.11-.11.25-.29.37-.43.12-.14.16-.25.25-.41.08-.17.04-.31-.02-.43-.06-.12-.56-1.34-.76-1.84-.2-.48-.41-.42-.56-.43-.14-.01-.31-.01-.48-.01a.92.92 0 0 0-.66.31c-.23.25-.87.85-.87 2.07 0 1.22.89 2.4 1.01 2.56.12.17 1.75 2.67 4.23 3.74.59.26 1.05.41 1.41.52.59.19 1.13.16 1.56.1.48-.07 1.47-.6 1.67-1.18.21-.58.21-1.07.14-1.18-.06-.11-.22-.17-.47-.29z"/></svg>
+                            {{ t('order_wa') }}</button>
+                    </div>
+                </div>
+            </div>
+
             <!-- Side menu (opens from the start side: right in AR, left in EN) -->
             <div v-if="navDrawer" class="fixed inset-0 z-50">
                 <div class="absolute inset-0 bg-black/40" @click="navDrawer = false"></div>
