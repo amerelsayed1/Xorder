@@ -21,12 +21,12 @@ class ImageUploadService
         $disk = config('platform.uploads.disk', 'public');
         $maxDim = (int) config('platform.uploads.max_dimension', 2000);
 
-        $image = $this->imageManager->read($file->getRealPath());
+        $image = $this->imageManager->decodePath($file->getRealPath());
 
         // Downscale only if larger than the cap; never upscale.
         $image->scaleDown(width: $maxDim, height: $maxDim);
 
-        $encoded = $image->toWebp(quality: 85);
+        $encoded = $image->encodeUsingFileExtension('webp', quality: 85);
 
         $path = $folder . '/' . Str::ulid() . '.webp';
         Storage::disk($disk)->put($path, (string) $encoded);
