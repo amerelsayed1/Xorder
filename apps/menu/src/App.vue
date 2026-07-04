@@ -218,10 +218,17 @@ function removeLine(line) { cart.value = cart.value.filter(l => l.uid !== line.u
 const pendingLineItem = ref(null) // Holds item data while collecting customer info
 const customer = reactive({ name: '', phone: '', address: '', note: '' })
 const customerModal = ref(false) // Modal for entering customer details before add to cart
+const orderConfirmModal = ref(false) // Modal for confirming order before sending to WhatsApp
 const canOrder = computed(() => cart.value.length > 0 && !!waDigits.value && customer.phone.trim().length > 0)
 
 function orderViaWhatsApp() {
     if (!canOrder.value) return
+    // Open order confirmation dialog instead of directly sending
+    orderConfirmModal.value = true
+}
+
+function confirmOrder() {
+    if (!customer.phone.trim()) return
     const lines = cart.value.map(l => {
         const opts = lineOptions(l)
         const optTxt = opts.length ? ` (${opts.join('، ')})` : ''
@@ -242,6 +249,11 @@ function orderViaWhatsApp() {
         ...details,
     ].join('\n')
     window.open(`https://wa.me/${waDigits.value}?text=${encodeURIComponent(msg)}`, '_blank')
+    // Reset state after order
+    cart.value = []
+    customer.name = customer.phone = customer.address = customer.note = ''
+    cartDrawer.value = false
+    orderConfirmModal.value = false
 }
 function toggleLang() { locale.value = isAr.value ? 'en' : 'ar' }
 </script>
@@ -482,6 +494,44 @@ function toggleLang() { locale.value = isAr.value ? 'en' : 'ar' }
                     <div class="sticky bottom-0 bg-white border-t border-stone-100 p-4 flex gap-3">
                         <button @click="customerModal = false" class="flex-1 h-12 rounded-xl border border-stone-200 font-bold">{{ t('new_order') }}</button>
                         <button @click="confirmAddToCart" :disabled="!customer.phone.trim()" class="flex-1 h-12 rounded-xl text-white font-bold disabled:opacity-50" :style="{ background: accent }}">{{ t('add') }}</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Order Confirmation Modal -->
+            <div v-if="orderConfirmModal" class="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+                <div class="absolute inset-0 bg-black/50" @click.self="orderConfirmModal = false"></div>
+                <div class="relative bg-white w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl max-h-[92vh] overflow-y-auto shadow-2xl">
+                    <div class="p-5">
+                        <h3 class="text-xl font-extrabold mb-4">تأكيد الطلب / Confirm Order</h3>
+                        <div class="space-y-3 mb-4">
+                            <div class="bg-stone-50 p-3 rounded-lg">
+                                <p class="text-xs text-stone-600 mb-2">{{ t('your_details') }}</p>
+                                <div class="space-y-2">
+                                    <div v-if="customer.name" class="flex justify-between text-sm">
+                                        <span class="font-medium">{{ t('f_name') }}:</span>
+                                        <span>{{ customer.name }}</span>
+                                    </div>
+                                    <div class="flex justify-between text-sm">
+                                        <span class="font-medium">{{ t('f_phone') }}:</span>
+                                        <span>{{ customer.phone }}</span>
+                                    </div>
+                                    <div v-if="customer.address" class="flex justify-between text-sm">
+                                        <span class="font-medium">{{ t('f_address') }}:</span>
+                                        <span>{{ customer.address }}</span>
+                                    </div>
+                                    <div v-if="customer.note" class="flex justify-between text-sm">
+                                        <span class="font-medium">{{ t('f_note') }}:</span>
+                                        <span>{{ customer.note }}</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <button @click="orderConfirmModal = false; cartDrawer = true" class="w-full text-sm text-blue-600 hover:text-blue-700 font-medium p-2 text-center">✎ {{ t('f_name') }} / {{ t('f_phone') }}</button>
+                        </div>
+                    </div>
+                    <div class="sticky bottom-0 bg-white border-t border-stone-100 p-4 flex gap-3">
+                        <button @click="orderConfirmModal = false" class="flex-1 h-12 rounded-xl border border-stone-200 font-bold">إلغاء / Cancel</button>
+                        <button @click="confirmOrder" class="flex-1 h-12 rounded-xl text-white font-bold" :style="{ background: accent }}">{{ t('order_wa') }}</button>
                     </div>
                 </div>
             </div>
