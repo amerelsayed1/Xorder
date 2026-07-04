@@ -223,7 +223,8 @@ const canOrder = computed(() => cart.value.length > 0 && !!waDigits.value && cus
 
 function orderViaWhatsApp() {
     if (!canOrder.value) return
-    // Open order confirmation dialog instead of directly sending
+    // Close cart drawer and open order confirmation dialog
+    cartDrawer.value = false
     orderConfirmModal.value = true
 }
 
