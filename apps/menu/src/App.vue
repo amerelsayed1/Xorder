@@ -419,9 +419,10 @@ function toggleLang() { locale.value = isAr.value ? 'en' : 'ar' }
             </main>
 
             <!-- Item / Combo modal -->
-            <div v-if="modal" class="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
-                <div class="absolute inset-0 bg-black/50" @click="closeModal"></div>
-                <div class="relative bg-white w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl max-h-[92vh] overflow-y-auto shadow-2xl">
+            <Teleport to="body">
+                <div v-if="modal" class="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+                    <div class="absolute inset-0 bg-black/50" @click="closeModal"></div>
+                    <div class="relative bg-white w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl max-h-[92vh] overflow-y-auto shadow-2xl">
                     <div class="relative h-44 bg-stone-100">
                         <img v-if="modal.ref.image_url" :src="modal.ref.image_url" class="h-full w-full object-cover" />
                         <button class="absolute top-3 start-3 h-9 w-9 rounded-full bg-white/90 grid place-items-center text-xl" @click="closeModal">×</button>
@@ -459,42 +460,45 @@ function toggleLang() { locale.value = isAr.value ? 'en' : 'ar' }
                         </button>
                     </div>
                 </div>
-            </div>
+            </Teleport>
 
             <!-- Customer Details Modal -->
-            <div v-if="customerModal" class="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
-                <div class="absolute inset-0 bg-black/50" @click.self="customerModal = false"></div>
-                <div class="relative bg-white w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl max-h-[92vh] overflow-y-auto shadow-2xl">
-                    <div class="p-5">
-                        <h3 class="text-xl font-extrabold mb-4">{{ t('your_details') }}</h3>
-                        <div class="space-y-3">
-                            <div>
-                                <label class="block text-sm font-medium mb-1">{{ t('f_name') }}</label>
-                                <input v-model="customer.name" type="text" :placeholder="t('f_name')" class="w-full h-10 rounded-lg border border-stone-200 px-3 text-sm focus:outline-none focus:border-stone-400" />
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium mb-1">{{ t('f_phone') }} *</label>
-                                <input v-model="customer.phone" type="tel" dir="ltr" :placeholder="t('f_phone')" class="w-full h-10 rounded-lg border border-stone-200 px-3 text-sm text-start focus:outline-none focus:border-stone-400" />
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium mb-1">{{ t('f_address') }}</label>
-                                <input v-model="customer.address" type="text" :placeholder="t('f_address')" class="w-full h-10 rounded-lg border border-stone-200 px-3 text-sm focus:outline-none focus:border-stone-400" />
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium mb-1">{{ t('f_note') }}</label>
-                                <textarea v-model="customer.note" rows="2" :placeholder="t('f_note')" class="w-full rounded-lg border border-stone-200 px-3 py-2 text-sm resize-none focus:outline-none focus:border-stone-400"></textarea>
+            <Teleport to="body">
+                <div v-if="customerModal" class="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+                    <div class="absolute inset-0 bg-black/50" @click.self="customerModal = false"></div>
+                    <div class="relative bg-white w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl max-h-[92vh] overflow-y-auto shadow-2xl">
+                        <div class="p-5">
+                            <h3 class="text-xl font-extrabold mb-4">{{ t('your_details') }}</h3>
+                            <div class="space-y-3">
+                                <div>
+                                    <label class="block text-sm font-medium mb-1">{{ t('f_name') }}</label>
+                                    <input v-model="customer.name" type="text" :placeholder="t('f_name')" class="w-full h-10 rounded-lg border border-stone-200 px-3 text-sm focus:outline-none focus:border-stone-400" />
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium mb-1">{{ t('f_phone') }} *</label>
+                                    <input v-model="customer.phone" type="tel" dir="ltr" :placeholder="t('f_phone')" class="w-full h-10 rounded-lg border border-stone-200 px-3 text-sm text-start focus:outline-none focus:border-stone-400" />
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium mb-1">{{ t('f_address') }}</label>
+                                    <input v-model="customer.address" type="text" :placeholder="t('f_address')" class="w-full h-10 rounded-lg border border-stone-200 px-3 text-sm focus:outline-none focus:border-stone-400" />
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium mb-1">{{ t('f_note') }}</label>
+                                    <textarea v-model="customer.note" rows="2" :placeholder="t('f_note')" class="w-full rounded-lg border border-stone-200 px-3 py-2 text-sm resize-none focus:outline-none focus:border-stone-400"></textarea>
+                                </div>
                             </div>
                         </div>
-                    </div>
-                    <div class="sticky bottom-0 bg-white border-t border-stone-100 p-4 flex gap-3">
-                        <button @click="customerModal = false" class="flex-1 h-12 rounded-xl border border-stone-200 font-bold">{{ t('new_order') }}</button>
-                        <button @click="confirmAddToCart" :disabled="!customer.phone.trim()" class="flex-1 h-12 rounded-xl text-white font-bold disabled:opacity-50" :style="{ background: accent }}">{{ t('add') }}</button>
+                        <div class="sticky bottom-0 bg-white border-t border-stone-100 p-4 flex gap-3">
+                            <button @click="customerModal = false" class="flex-1 h-12 rounded-xl border border-stone-200 font-bold">{{ t('new_order') }}</button>
+                            <button @click="confirmAddToCart" :disabled="!customer.phone.trim()" class="flex-1 h-12 rounded-xl text-white font-bold disabled:opacity-50" :style="{ background: accent }">{{ t('add') }}</button>
+                        </div>
                     </div>
                 </div>
-            </div>
+            </Teleport>
 
             <!-- Order Confirmation Modal -->
-            <div v-if="orderConfirmModal" class="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+            <Teleport to="body">
+                <div v-if="orderConfirmModal" class="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
                 <div class="absolute inset-0 bg-black/50" @click.self="orderConfirmModal = false"></div>
                 <div class="relative bg-white w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl max-h-[92vh] overflow-y-auto shadow-2xl">
                     <div class="p-5">
@@ -529,15 +533,16 @@ function toggleLang() { locale.value = isAr.value ? 'en' : 'ar' }
                         <button @click="confirmOrder" class="flex-1 h-12 rounded-xl text-white font-bold" :style="{ background: accent }}">{{ t('order_wa') }}</button>
                     </div>
                 </div>
-            </div>
+            </Teleport>
 
             <!-- Mobile cart bar + drawer -->
             <button v-if="orderingEnabled && cartCount && !cartDrawer" class="lg:hidden fixed bottom-0 inset-x-0 z-40 m-3 h-13 rounded-2xl text-white font-bold flex items-center justify-between px-5 shadow-lg" style="height:52px" :style="{ background: accent }" @click="cartDrawer = true">
                 <span>{{ t('view_cart') }} ({{ cartCount }})</span><span>{{ money(cartTotal) }}</span>
             </button>
-            <div v-if="orderingEnabled && cartDrawer" class="lg:hidden fixed inset-0 z-50">
-                <div class="absolute inset-0 bg-black/40" @click="cartDrawer = false"></div>
-                <div class="absolute bottom-0 inset-x-0 bg-white rounded-t-3xl max-h-[85vh] overflow-y-auto p-5">
+            <Teleport to="body">
+                <div v-if="orderingEnabled && cartDrawer" class="lg:hidden fixed inset-0 z-50">
+                    <div class="absolute inset-0 bg-black/40" @click="cartDrawer = false"></div>
+                    <div class="absolute bottom-0 inset-x-0 bg-white rounded-t-3xl max-h-[85vh] overflow-y-auto p-5">
                     <div class="flex items-center justify-between mb-4">
                         <h3 class="font-bold">{{ t('cart') }}</h3>
                         <button class="text-xl text-stone-400" @click="cartDrawer = false">×</button>
@@ -564,9 +569,10 @@ function toggleLang() { locale.value = isAr.value ? 'en' : 'ar' }
                         </div>
                     </template>
                 </div>
-            </div>
+            </Teleport>
             <!-- Order Dialog (Customer Details Form) -->
-            <div v-if="orderDialog" class="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+            <Teleport to="body">
+                <div v-if="orderDialog" class="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
                 <div class="absolute inset-0 bg-black/50" @click.self="orderDialog = false"></div>
                 <div class="relative bg-white w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl max-h-[92vh] overflow-y-auto shadow-2xl">
                     <div class="p-5">
@@ -597,10 +603,11 @@ function toggleLang() { locale.value = isAr.value ? 'en' : 'ar' }
                             {{ t('order_wa') }}</button>
                     </div>
                 </div>
-            </div>
+            </Teleport>
 
             <!-- Side menu (opens from the start side: right in AR, left in EN) -->
-            <div v-if="navDrawer" class="fixed inset-0 z-50">
+            <Teleport to="body">
+                <div v-if="navDrawer" class="fixed inset-0 z-50">
                 <div class="absolute inset-0 bg-black/40" @click="navDrawer = false"></div>
                 <nav class="absolute start-0 top-0 h-full w-72 max-w-[80%] bg-white shadow-xl flex flex-col">
                     <div class="flex items-center justify-end h-14 px-4 border-b border-stone-100">
@@ -609,7 +616,8 @@ function toggleLang() { locale.value = isAr.value ? 'en' : 'ar' }
                     <button class="text-start px-5 py-4 border-b border-stone-100 font-semibold hover:bg-stone-50" @click="goHome">{{ t('home') }}</button>
                     <button v-if="branches.length" class="text-start px-5 py-4 border-b border-stone-100 font-semibold hover:bg-stone-50" @click="goBranches">{{ t('branches') }}</button>
                 </nav>
-            </div>
+                </div>
+            </Teleport>
         </template>
     </div>
 </template>
