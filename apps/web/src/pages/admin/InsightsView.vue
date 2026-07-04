@@ -45,7 +45,7 @@ function fmtDate(iso) {
 
         <template v-else-if="data">
             <!-- Headline counters -->
-            <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div class="grid grid-cols-2 lg:grid-cols-3 gap-4">
                 <div class="stat">
                     <div class="stat-label">{{ t('insights.total_restaurants') }}</div>
                     <div class="stat-num">{{ data.restaurants.total }}</div>
@@ -53,10 +53,6 @@ function fmtDate(iso) {
                 <div class="stat">
                     <div class="stat-label">{{ t('insights.active') }}</div>
                     <div class="stat-num" style="color:var(--green)">{{ data.restaurants.by_status.ACTIVE }}</div>
-                </div>
-                <div class="stat">
-                    <div class="stat-label">{{ t('insights.total_items') }}</div>
-                    <div class="stat-num">{{ data.content.total_menu_items }}</div>
                 </div>
                 <div class="stat">
                     <div class="stat-label">{{ t('insights.total_categories') }}</div>

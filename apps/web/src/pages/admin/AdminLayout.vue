@@ -13,6 +13,7 @@ const nav = [
     { to: { name: 'admin.plans' }, labelKey: 'nav.plans', icon: 'pi pi-tags' },
     { to: { name: 'admin.landing' }, labelKey: 'nav.landing', icon: 'pi pi-megaphone' },
     { to: { name: 'admin.leads' }, labelKey: 'nav.leads', icon: 'pi pi-inbox' },
+    { to: { name: 'admin.menu-parser' }, labelKey: 'nav.menu_parser', icon: 'pi pi-image' },
 ]
 </script>
 

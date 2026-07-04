@@ -3,7 +3,6 @@
 namespace Database\Seeders;
 
 use App\Enums\LanguageEnum;
-use App\Enums\RestaurantStatus;
 use App\Enums\RoleEnum;
 use App\Enums\SubscriptionStatus;
 use App\Enums\UserStatus;
@@ -16,14 +15,13 @@ use Illuminate\Support\Facades\Hash;
 
 class DemoSeeder extends Seeder
 {
-    /** Pool of real food photo ids (from the design handoff). */
-    private array $pool = [
-        'photo-1432139555190-58524dae6a55', 'photo-1455619452474-d2be8b1e70cd',
-        'photo-1467003909585-2f8a72700288', 'photo-1490645935967-10de6ba17061',
-        'photo-1504674900247-0877df9cc836', 'photo-1512621776951-a57141f2eefd',
-        'photo-1519676867240-f03562e64548', 'photo-1529006557810-274b9b2fc783',
-        'photo-1540189549336-e6e99c3679fe', 'photo-1544025162-d76694265947',
-        'photo-1488477181946-6428a0291777', 'photo-1414235077428-338989a2e8c0',
+    /**
+     * Demo tenants that used to be seeded alongside XorderRest. They are no
+     * longer wanted; since deploy.sh re-runs this seeder on every deploy,
+     * listing them here removes them from existing databases too.
+     */
+    private array $retiredSlugs = [
+        'nakhla-cafe', 'saffron-house', 'olea-mezze', 'cedar-coal', 'beit-aleppo',
     ];
 
     private function img(string $id, int $w = 800, ?int $h = null): string
@@ -45,40 +43,30 @@ class DemoSeeder extends Seeder
         $this->call(PlanSeeder::class);
 
         $this->seedXorderRest();
+        $this->removeRetiredDemoTenants();
 
-        // Additional tenants so the Super Admin list is populated — each with a
-        // logo, cover, an admin, and a small menu (images included).
-        // Subscription dates are relative to "now" so the Super Admin insights
-        // (expiring in 7/30 days, past-end-date) always show realistic figures:
-        // Cedar & Coal's trial expires within 7 days; Saffron/Beit Aleppo are past due.
-        $extras = [
-            ['name' => 'Nakhla Café', 'ar' => 'نخلة', 'slug' => 'nakhla-cafe', 'color' => '#1f7a3d',
-                'status' => RestaurantStatus::ACTIVE, 'sub' => SubscriptionStatus::TRIAL, 'plan' => null,
-                'start' => now()->subDays(4)->startOfDay(), 'end' => now()->addDays(10)->startOfDay(),
-                'cover' => 'photo-1467003909585-2f8a72700288', 'logo' => 'photo-1455619452474-d2be8b1e70cd', 'city' => 'Sharjah'],
-            ['name' => 'Saffron House', 'ar' => 'بيت الزعفران', 'slug' => 'saffron-house', 'color' => '#c46a1b',
-                'status' => RestaurantStatus::SUSPENDED, 'sub' => SubscriptionStatus::EXPIRED, 'plan' => 'Restaurant Pro',
-                'start' => now()->subDays(60)->startOfDay(), 'end' => now()->subDays(5)->startOfDay(),
-                'cover' => 'photo-1504674900247-0877df9cc836', 'logo' => 'photo-1540189549336-e6e99c3679fe', 'city' => 'Dubai'],
-            ['name' => 'Olea Mezze Bar', 'ar' => 'أوليا', 'slug' => 'olea-mezze', 'color' => '#3d4a7a',
-                'status' => RestaurantStatus::ACTIVE, 'sub' => SubscriptionStatus::ACTIVE, 'plan' => 'Restaurant Pro',
-                'start' => now()->subDays(30)->startOfDay(), 'end' => now()->addDays(335)->startOfDay(),
-                'cover' => 'photo-1512621776951-a57141f2eefd', 'logo' => 'photo-1432139555190-58524dae6a55', 'city' => 'Abu Dhabi'],
-            ['name' => 'Cedar & Coal', 'ar' => 'الأرز والفحم', 'slug' => 'cedar-coal', 'color' => '#7a4a2b',
-                'status' => RestaurantStatus::ACTIVE, 'sub' => SubscriptionStatus::TRIAL, 'plan' => null,
-                'start' => now()->subDays(9)->startOfDay(), 'end' => now()->addDays(5)->startOfDay(),
-                'cover' => 'photo-1544025162-d76694265947', 'logo' => 'photo-1529006557810-274b9b2fc783', 'city' => 'Dubai'],
-            ['name' => 'Beit Aleppo', 'ar' => 'بيت حلب', 'slug' => 'beit-aleppo', 'color' => '#6b748c',
-                'status' => RestaurantStatus::ARCHIVED, 'sub' => SubscriptionStatus::SUSPENDED, 'plan' => 'Restaurant Pro',
-                'start' => now()->subDays(120)->startOfDay(), 'end' => now()->subDays(30)->startOfDay(),
-                'cover' => 'photo-1519676867240-f03562e64548', 'logo' => 'photo-1490645935967-10de6ba17061', 'city' => 'Cairo'],
-        ];
+        $this->command?->info('Demo seeded: XorderRest (/r/xorderrest).');
+    }
 
-        foreach ($extras as $x) {
-            $this->seedRestaurant($x);
+    /**
+     * Delete the retired demo tenants and their seeded owner accounts.
+     * Categories, menu items, combos, branches and options cascade with the
+     * restaurant; owner users must go first (their FK nulls on delete).
+     * Idempotent — a no-op once they are gone.
+     */
+    private function removeRetiredDemoTenants(): void
+    {
+        $ids = Restaurant::whereIn('slug', $this->retiredSlugs)->pluck('id');
+        if ($ids->isEmpty()) {
+            return;
         }
 
-        $this->command?->info('Demo seeded: XorderRest (/r/xorderrest) + 5 tenants for the Super Admin list.');
+        User::whereIn('restaurant_id', $ids)
+            ->where('role', RoleEnum::RESTAURANT_ADMIN)
+            ->delete();
+        Restaurant::whereIn('id', $ids)->delete();
+
+        $this->command?->info("Removed {$ids->count()} retired demo tenant(s).");
     }
 
     private function seedXorderRest(): void
@@ -149,56 +137,6 @@ class DemoSeeder extends Seeder
                         'is_featured' => (bool) $featured, 'display_order' => $ii,
                     ],
                 );
-            }
-        }
-    }
-
-    /** Seed a secondary tenant with a logo, cover, admin and a small image-rich menu. */
-    private function seedRestaurant(array $x): void
-    {
-        $r = Restaurant::updateOrCreate(['slug' => $x['slug']], [
-            'name_en' => $x['name'], 'name_ar' => $x['ar'],
-            'description_en' => "{$x['name']} — a Levantine table in {$x['city']}.",
-            'description_ar' => 'مطعم شامي بنكهة أصيلة.',
-            'phone' => '+971 4 555 0'.random_int(100, 999),
-            'whatsapp_number' => '+9714555'.random_int(1000, 9999),
-            'address' => $x['city'], 'opening_hours' => 'Daily · 11:00 – 23:00',
-            'brand_color' => $x['color'],
-            'logo_url' => $this->logo($x['logo']),
-            'cover_image_url' => $this->img($x['cover'], 1400),
-            'default_language' => LanguageEnum::AR,
-            'status' => $x['status'],
-            'subscription_status' => $x['sub'], 'subscription_plan' => $x['plan'],
-            'subscription_start_date' => $x['start'] ?? null,
-            'subscription_end_date' => $x['end'] ?? null,
-        ]);
-
-        $this->admin($r, 'owner@'.str_replace('-', '', $x['slug']).'.test', $x['name'].' Owner');
-
-        $template = [
-            ['Mezze', 'المقبلات', [['Hummus', 18], ['Falafel', 16], ['Tabbouleh', 19], ['Labneh', 17]]],
-            ['Mains', 'الأطباق الرئيسية', [['Chicken Shawarma', 38], ['Lamb Mandi', 62], ['Veggie Platter', 34], ['Grilled Fish', 55]]],
-            ['Drinks', 'المشروبات', [['Mint Lemonade', 16], ['Turkish Coffee', 14], ['Ayran', 12]]],
-        ];
-
-        $p = 0;
-        foreach ($template as $ci => [$en, $ar, $items]) {
-            $cat = Category::updateOrCreate(
-                ['restaurant_id' => $r->id, 'name_en' => $en],
-                ['name_ar' => $ar, 'display_order' => $ci, 'is_active' => true],
-            );
-            foreach ($items as $ii => [$nen, $price]) {
-                MenuItem::updateOrCreate(
-                    ['restaurant_id' => $r->id, 'category_id' => $cat->id, 'name_en' => $nen],
-                    [
-                        'price' => $price,
-                        'image_url' => $this->img($this->pool[$p % count($this->pool)]),
-                        'is_available' => $ii !== 3,
-                        'is_featured' => $ii === 0,
-                        'display_order' => $ii,
-                    ],
-                );
-                $p++;
             }
         }
     }

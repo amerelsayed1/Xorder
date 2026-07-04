@@ -3,6 +3,7 @@
 use App\Http\Controllers\Admin\InsightsController as AdminInsightsController;
 use App\Http\Controllers\Admin\LandingContentController as AdminLandingContentController;
 use App\Http\Controllers\Admin\LeadController as AdminLeadController;
+use App\Http\Controllers\Admin\MenuParserController as AdminMenuParserController;
 use App\Http\Controllers\Admin\PlanController as AdminPlanController;
 use App\Http\Controllers\Admin\RestaurantAdminController as AdminRestaurantAdminController;
 use App\Http\Controllers\Admin\RestaurantController as AdminRestaurantController;
@@ -79,6 +80,9 @@ Route::prefix('admin')
         Route::get('leads', [AdminLeadController::class, 'index']);
         Route::get('leads/export', [AdminLeadController::class, 'export']);
         Route::patch('leads/{lead}', [AdminLeadController::class, 'update']);
+
+        // Menu image parser
+        Route::post('menu-parser/parse', [AdminMenuParserController::class, 'parse']);
     });
 
 /*

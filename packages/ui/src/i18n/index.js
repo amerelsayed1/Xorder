@@ -65,7 +65,7 @@ const messages = {
             dashboard: 'Dashboard', restaurants: 'Restaurants', profile: 'Profile',
             categories: 'Categories', items: 'Menu Items', qr: 'QR Code', logout: 'Logout',
             landing: 'Landing Management', branches: 'Branches', combos: 'Offers', plans: 'Plans',
-            insights: 'Insights', leads: 'Leads',
+            insights: 'Insights', leads: 'Leads', menu_parser: 'Menu Parser',
         },
         leads: {
             title: 'Leads', subtitle: '{n} demo requests from the landing page.',
@@ -160,6 +160,7 @@ const messages = {
             name_ar: 'Name (Arabic)', name_en: 'Name (English)',
             description_ar: 'Description (Arabic)', description_en: 'Description (English)',
             available: 'Available', unavailable: 'Unavailable', featured: 'Featured',
+            paste_url: 'or paste URL', clear: 'Clear',
         },
         restaurant: {
             create: 'Create Restaurant', name: 'Restaurant name', slug: 'Slug',
@@ -239,6 +240,14 @@ const messages = {
             generate_password: 'Generate',
             save_changes: 'Save changes',
             create_restaurant_admin: 'Create restaurant & admin',
+            menu_parser: 'Menu Image Parser',
+            menu_parser_subtitle: 'Upload a menu image and extract items with prices automatically using AI.',
+            upload_image: 'Upload Menu Image',
+            click_to_upload: 'Click to upload menu image',
+            image_formats: 'Supported formats: JPEG, PNG, GIF (Max 10MB)',
+            parse_menu: 'Parse Menu',
+            parsed_items: 'Extracted Items',
+            view_json: 'View as JSON',
         },
         dashboard: {
             subtitle: "Here's how your menu is doing today.",
@@ -397,7 +406,7 @@ const messages = {
             dashboard: 'لوحة التحكم', restaurants: 'المطاعم', profile: 'الملف الشخصي',
             categories: 'الأقسام', items: 'الأصناف', qr: 'رمز QR', logout: 'تسجيل الخروج',
             landing: 'إدارة الصفحة الرئيسية', branches: 'الفروع', combos: 'العروض', plans: 'الخطط',
-            insights: 'إحصاءات', leads: 'العملاء المحتملون',
+            insights: 'إحصاءات', leads: 'العملاء المحتملون', menu_parser: 'محلل القائمة',
         },
         leads: {
             title: 'العملاء المحتملون', subtitle: '{n} طلب عرض من الصفحة الرئيسية.',
@@ -492,6 +501,7 @@ const messages = {
             name_ar: 'الاسم (عربي)', name_en: 'الاسم (إنجليزي)',
             description_ar: 'الوصف (عربي)', description_en: 'الوصف (إنجليزي)',
             available: 'متاح', unavailable: 'غير متاح', featured: 'مميز',
+            paste_url: 'أو اللصق برابط صورة', clear: 'حذف',
         },
         restaurant: {
             create: 'إنشاء مطعم', name: 'اسم المطعم', slug: 'المعرّف',
@@ -571,6 +581,14 @@ const messages = {
             generate_password: 'توليد',
             save_changes: 'حفظ التغييرات',
             create_restaurant_admin: 'إنشاء المطعم والمسؤول',
+            menu_parser: 'محلل صور القوائم',
+            menu_parser_subtitle: 'حمّل صورة القائمة واستخرج الأصناف والأسعار تلقائياً باستخدام الذكاء الاصطناعي.',
+            upload_image: 'حمّل صورة القائمة',
+            click_to_upload: 'اضغط لحمل صورة القائمة',
+            image_formats: 'الصيغ المدعومة: JPEG, PNG, GIF (أقصى 10MB)',
+            parse_menu: 'تحليل القائمة',
+            parsed_items: 'الأصناف المستخرجة',
+            view_json: 'عرض بصيغة JSON',
         },
         dashboard: {
             subtitle: 'هذه نظرة سريعة على أداء قائمتك اليوم.',

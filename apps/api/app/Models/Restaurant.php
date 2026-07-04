@@ -6,6 +6,7 @@ use App\Enums\CurrencyEnum;
 use App\Enums\LanguageEnum;
 use App\Enums\RestaurantStatus;
 use App\Enums\SubscriptionStatus;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -51,6 +52,34 @@ class Restaurant extends Model
             'subscription_start_date' => 'date',
             'subscription_end_date' => 'date',
         ];
+    }
+
+    protected function phone(): Attribute
+    {
+        return Attribute::make(
+            set: fn(?string $value) => $this->normalizePhoneDigits($value),
+        );
+    }
+
+    protected function whatsappNumber(): Attribute
+    {
+        return Attribute::make(
+            set: fn(?string $value) => $this->normalizePhoneDigits($value),
+        );
+    }
+
+    private function normalizePhoneDigits(?string $value): ?string
+    {
+        if (is_null($value)) {
+            return null;
+        }
+
+        $arabicDigits = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
+        $englishDigits = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
+        $persianDigits = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
+
+        $value = str_replace($arabicDigits, $englishDigits, $value);
+        return str_replace($persianDigits, $englishDigits, $value);
     }
 
     public function users(): HasMany

@@ -3,6 +3,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import api, { ensureCsrf } from '@xorder/api-client/api.js'
 import BiField from '../../components/BiField.vue'
+import AdminSection from '../../components/AdminSection.vue'
 import { publicOrigin } from '../../lib/host.js'
 
 const { t } = useI18n()
@@ -117,8 +118,7 @@ async function save() {
 
             <template v-else-if="content">
                 <!-- SEO -->
-                <section class="card p-5 mt-5">
-                    <h2 class="h-card mb-4">{{ t('landing_admin.sec_seo') }}</h2>
+                <AdminSection :title="t('landing_admin.sec_seo')" open>
                     <div class="space-y-3">
                         <BiField :label="t('landing_admin.seo_title')" v-model:en="content.seo.title.en" v-model:ar="content.seo.title.ar" />
                         <BiField :label="t('landing_admin.seo_desc')" textarea v-model:en="content.seo.description.en" v-model:ar="content.seo.description.ar" />
@@ -127,11 +127,10 @@ async function save() {
                         <label class="block"><span class="label">{{ t('landing_admin.og_image') }}</span>
                             <input v-model="content.seo.og_image" class="input mt-1.5" placeholder="https://…" maxlength="500" /></label>
                     </div>
-                </section>
+                </AdminSection>
 
                 <!-- HERO -->
-                <section class="card p-5 mt-5">
-                    <h2 class="h-card mb-4">{{ t('landing_admin.sec_hero') }}</h2>
+                <AdminSection :title="t('landing_admin.sec_hero')">
                     <div class="space-y-3">
                         <BiField :label="t('landing_admin.l_badge')" v-model:en="content.hero.badge.en" v-model:ar="content.hero.badge.ar" />
                         <BiField :label="t('landing_admin.l_title')" v-model:en="content.hero.title.en" v-model:ar="content.hero.title.ar" />
@@ -150,11 +149,10 @@ async function save() {
                         <BiField :label="t('landing_admin.l_ready_label')" v-model:en="content.hero.ready_label.en" v-model:ar="content.hero.ready_label.ar" />
                         <BiField :label="t('landing_admin.l_whatsapp_label')" v-model:en="content.hero.whatsapp_label.en" v-model:ar="content.hero.whatsapp_label.ar" />
                     </div>
-                </section>
+                </AdminSection>
 
                 <!-- WHATSAPP SETTINGS -->
-                <section class="card p-5 mt-5">
-                    <h2 class="h-card mb-4">{{ t('landing_admin.sec_whatsapp') }}</h2>
+                <AdminSection :title="t('landing_admin.sec_whatsapp')">
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <label class="block"><span class="label">{{ t('landing_admin.wa_number') }}</span>
                             <input v-model="content.whatsapp.number" class="input mt-1.5" placeholder="201234567890" dir="ltr" /></label>
@@ -168,14 +166,13 @@ async function save() {
                             <input type="checkbox" v-model="content.whatsapp.hero_enabled" /> {{ t('landing_admin.wa_hero') }}
                         </label>
                     </div>
-                </section>
+                </AdminSection>
 
                 <!-- PROOF POINTS -->
-                <section class="card p-5 mt-5">
-                    <div class="flex items-center justify-between mb-4">
-                        <h2 class="h-card">{{ t('landing_admin.sec_proof') }}</h2>
+                <AdminSection :title="t('landing_admin.sec_proof')">
+                    <template #actions>
                         <button class="btn btn-ghost btn-sm" @click="addProof">{{ t('landing_admin.add') }}</button>
-                    </div>
+                    </template>
                     <div class="space-y-3">
                         <div v-for="(p, i) in content.proof" :key="i" class="rounded-xl p-3" style="background: var(--page); border: 1px solid var(--line);">
                             <div class="flex items-center justify-between mb-2">
@@ -190,11 +187,10 @@ async function save() {
                             <BiField :label="t('landing_admin.l_text')" class="mt-2" v-model:en="p.text.en" v-model:ar="p.text.ar" />
                         </div>
                     </div>
-                </section>
+                </AdminSection>
 
                 <!-- OFFER -->
-                <section class="card p-5 mt-5">
-                    <h2 class="h-card mb-4">{{ t('landing_admin.sec_offer') }}</h2>
+                <AdminSection :title="t('landing_admin.sec_offer')">
                     <BiField :label="t('landing_admin.l_section_title')" v-model:en="content.offer.title.en" v-model:ar="content.offer.title.ar" />
                     <BiField :label="t('landing_admin.l_section_subtitle')" class="mt-2" textarea v-model:en="content.offer.text.en" v-model:ar="content.offer.text.ar" />
                     <div class="flex items-center justify-between mt-5 mb-3">
@@ -217,11 +213,10 @@ async function save() {
                             <BiField v-model:en="it.text.en" v-model:ar="it.text.ar" />
                         </div>
                     </div>
-                </section>
+                </AdminSection>
 
                 <!-- PROBLEM / SOLUTION -->
-                <section class="card p-5 mt-5">
-                    <h2 class="h-card mb-4">{{ t('landing_admin.sec_problem') }}</h2>
+                <AdminSection :title="t('landing_admin.sec_problem')">
                     <BiField :label="t('landing_admin.l_section_title')" v-model:en="content.problem.title.en" v-model:ar="content.problem.title.ar" />
                     <BiField :label="t('landing_admin.l_section_subtitle')" class="mt-2" v-model:en="content.problem.sub.en" v-model:ar="content.problem.sub.ar" />
                     <div class="flex items-center justify-between mt-5 mb-3">
@@ -238,11 +233,10 @@ async function save() {
                         <BiField :label="t('landing_admin.l_solution_title')" v-model:en="content.problem.solution_title.en" v-model:ar="content.problem.solution_title.ar" />
                         <BiField :label="t('landing_admin.l_solution_text')" textarea v-model:en="content.problem.solution_text.en" v-model:ar="content.problem.solution_text.ar" />
                     </div>
-                </section>
+                </AdminSection>
 
                 <!-- NO COMMISSION -->
-                <section class="card p-5 mt-5">
-                    <h2 class="h-card mb-4">{{ t('landing_admin.sec_no_commission') }}</h2>
+                <AdminSection :title="t('landing_admin.sec_no_commission')">
                     <BiField :label="t('landing_admin.l_section_title')" v-model:en="content.no_commission.title.en" v-model:ar="content.no_commission.title.ar" />
                     <BiField :label="t('landing_admin.l_section_subtitle')" class="mt-2" textarea v-model:en="content.no_commission.text.en" v-model:ar="content.no_commission.text.ar" />
 
@@ -274,11 +268,10 @@ async function save() {
                             </div>
                         </div>
                     </div>
-                </section>
+                </AdminSection>
 
                 <!-- FEATURES -->
-                <section class="card p-5 mt-5">
-                    <h2 class="h-card mb-4">{{ t('landing_admin.sec_features') }}</h2>
+                <AdminSection :title="t('landing_admin.sec_features')">
                     <div class="space-y-3">
                         <BiField :label="t('landing_admin.l_section_title')" v-model:en="content.features.title.en" v-model:ar="content.features.title.ar" />
                         <BiField :label="t('landing_admin.l_section_subtitle')" textarea v-model:en="content.features.sub.en" v-model:ar="content.features.sub.ar" />
@@ -304,16 +297,15 @@ async function save() {
                             <BiField :label="t('landing_admin.l_text')" class="mt-2" textarea v-model:en="f.text.en" v-model:ar="f.text.ar" />
                         </div>
                     </div>
-                </section>
+                </AdminSection>
 
                 <!-- DEMO + STEPS -->
-                <section class="card p-5 mt-5">
-                    <div class="flex items-center justify-between mb-4">
-                        <h2 class="h-card">{{ t('landing_admin.sec_demo') }}</h2>
+                <AdminSection :title="t('landing_admin.sec_demo')">
+                    <template #actions>
                         <label class="flex items-center gap-2 label" style="cursor:pointer">
                             <input type="checkbox" v-model="content.demo.enabled" /> {{ t('landing_admin.demo_enabled') }}
                         </label>
-                    </div>
+                    </template>
                     <div class="space-y-3">
                         <BiField :label="t('landing_admin.l_section_title')" v-model:en="content.demo.title.en" v-model:ar="content.demo.title.ar" />
                         <BiField :label="t('landing_admin.l_section_subtitle')" textarea v-model:en="content.demo.text.en" v-model:ar="content.demo.text.ar" />
@@ -344,11 +336,10 @@ async function save() {
                             <BiField :label="t('landing_admin.l_text')" class="mt-2" textarea v-model:en="s.text.en" v-model:ar="s.text.ar" />
                         </div>
                     </div>
-                </section>
+                </AdminSection>
 
                 <!-- PACKAGES -->
-                <section class="card p-5 mt-5">
-                    <h2 class="h-card mb-4">{{ t('landing_admin.sec_packages') }}</h2>
+                <AdminSection :title="t('landing_admin.sec_packages')">
                     <div class="space-y-3">
                         <BiField :label="t('landing_admin.l_section_title')" v-model:en="content.pricing.title.en" v-model:ar="content.pricing.title.ar" />
                         <BiField :label="t('landing_admin.l_section_subtitle')" v-model:en="content.pricing.sub.en" v-model:ar="content.pricing.sub.ar" />
@@ -391,11 +382,10 @@ async function save() {
                             </div>
                         </div>
                     </div>
-                </section>
+                </AdminSection>
 
                 <!-- INDUSTRIES -->
-                <section class="card p-5 mt-5">
-                    <h2 class="h-card mb-4">{{ t('landing_admin.sec_industries') }}</h2>
+                <AdminSection :title="t('landing_admin.sec_industries')">
                     <BiField :label="t('landing_admin.l_section_title')" v-model:en="content.industries.title.en" v-model:ar="content.industries.title.ar" />
                     <BiField :label="t('landing_admin.l_section_subtitle')" class="mt-2" v-model:en="content.industries.sub.en" v-model:ar="content.industries.sub.ar" />
                     <div class="flex items-center justify-between mt-5 mb-3">
@@ -409,11 +399,10 @@ async function save() {
                             <button class="icon-btn icon-btn-danger mt-1" @click="removeAt(content.industries.items, i)">✕</button>
                         </div>
                     </div>
-                </section>
+                </AdminSection>
 
                 <!-- LEAD FORM -->
-                <section class="card p-5 mt-5">
-                    <h2 class="h-card mb-4">{{ t('landing_admin.sec_lead_form') }}</h2>
+                <AdminSection :title="t('landing_admin.sec_lead_form')">
                     <div class="space-y-3">
                         <BiField :label="t('landing_admin.l_section_title')" v-model:en="content.lead_form.title.en" v-model:ar="content.lead_form.title.ar" />
                         <BiField :label="t('landing_admin.l_section_subtitle')" v-model:en="content.lead_form.sub.en" v-model:ar="content.lead_form.sub.ar" />
@@ -421,11 +410,10 @@ async function save() {
                         <BiField :label="t('landing_admin.l_success')" textarea v-model:en="content.lead_form.success.en" v-model:ar="content.lead_form.success.ar" />
                     </div>
                     <p class="page-sub mt-3" style="font-size:12px">{{ t('landing_admin.leads_hint') }}</p>
-                </section>
+                </AdminSection>
 
                 <!-- CTA -->
-                <section class="card p-5 mt-5">
-                    <h2 class="h-card mb-4">{{ t('landing_admin.sec_cta') }}</h2>
+                <AdminSection :title="t('landing_admin.sec_cta')">
                     <div class="space-y-3">
                         <BiField :label="t('landing_admin.l_title')" v-model:en="content.cta.title.en" v-model:ar="content.cta.title.ar" />
                         <BiField :label="t('landing_admin.l_subtitle')" textarea v-model:en="content.cta.sub.en" v-model:ar="content.cta.sub.ar" />
@@ -436,16 +424,15 @@ async function save() {
                         <span class="label">{{ t('landing_admin.contact_email') }}</span>
                         <input v-model="content.contact.email" class="input mt-1.5" type="email" placeholder="hello@xorder.app" />
                     </label>
-                </section>
+                </AdminSection>
 
                 <!-- FOOTER -->
-                <section class="card p-5 mt-5">
-                    <h2 class="h-card mb-4">{{ t('landing_admin.sec_footer') }}</h2>
+                <AdminSection :title="t('landing_admin.sec_footer')">
                     <div class="space-y-3">
                         <BiField :label="t('landing_admin.l_tagline')" v-model:en="content.footer.tagline.en" v-model:ar="content.footer.tagline.ar" />
                         <BiField :label="t('landing_admin.l_rights')" v-model:en="content.footer.rights.en" v-model:ar="content.footer.rights.ar" />
                     </div>
-                </section>
+                </AdminSection>
 
                 <!-- Save bar -->
                 <div class="flex justify-end mt-6 pb-10">
