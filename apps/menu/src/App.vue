@@ -170,12 +170,29 @@ const modalUnit = computed(() => modal.value ? priceOf(modal.value.kind, modal.v
 
 function addToCart() {
     if (!modalValid.value) return
-    const groups = JSON.parse(JSON.stringify(sel.groups))
-    const sig = `${modal.value.kind}:${modal.value.ref.id}:${JSON.stringify(groups)}`
-    const existing = cart.value.find(l => l.sig === sig)
-    if (existing) existing.qty += qty.value
-    else cart.value.push({ uid: Date.now() + Math.random(), sig, kind: modal.value.kind, ref: modal.value.ref, groups, qty: qty.value })
+    // Open customer modal to collect details before adding to cart
+    pendingLineItem.value = {
+        kind: modal.value.kind,
+        ref: modal.value.ref,
+        groups: JSON.parse(JSON.stringify(sel.groups)),
+        qty: qty.value,
+    }
     closeModal()
+    customerModal.value = true
+}
+
+
+function confirmAddToCart() {
+    if (!customer.phone.trim()) return
+    if (!pendingLineItem.value) return
+    const line = pendingLineItem.value
+    const sig = `${line.kind}:${line.ref.id}:${JSON.stringify(line.groups)}`
+    const existing = cart.value.find(l => l.sig === sig)
+    if (existing) existing.qty += line.qty
+    else cart.value.push({ uid: Date.now() + Math.random(), sig, kind: line.kind, ref: line.ref, groups: line.groups, qty: line.qty })
+    pendingLineItem.value = null
+    customerModal.value = false
+    cartDrawer.value = true
 }
 
 // ---- cart helpers ----
@@ -198,7 +215,9 @@ function removeLine(line) { cart.value = cart.value.filter(l => l.uid !== line.u
 
 // Customer details attached to the order. Phone is required so the restaurant
 // can reach the customer; name/address/note are optional (pickup vs delivery).
+const pendingLineItem = ref(null) // Holds item data while collecting customer info
 const customer = reactive({ name: '', phone: '', address: '', note: '' })
+const customerModal = ref(false) // Modal for entering customer details before add to cart
 const canOrder = computed(() => cart.value.length > 0 && !!waDigits.value && customer.phone.trim().length > 0)
 
 function orderViaWhatsApp() {
@@ -431,6 +450,38 @@ function toggleLang() { locale.value = isAr.value ? 'en' : 'ar' }
                         <button class="flex-1 h-12 rounded-xl text-white font-bold disabled:opacity-50" :style="{ background: accent }" :disabled="!modalValid" @click="addToCart">
                             {{ t('add') }} ({{ money(modalUnit * qty) }})
                         </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Customer Details Modal -->
+            <div v-if="customerModal" class="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+                <div class="absolute inset-0 bg-black/50" @click.self="customerModal = false"></div>
+                <div class="relative bg-white w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl max-h-[92vh] overflow-y-auto shadow-2xl">
+                    <div class="p-5">
+                        <h3 class="text-xl font-extrabold mb-4">{{ t('your_details') }}</h3>
+                        <div class="space-y-3">
+                            <div>
+                                <label class="block text-sm font-medium mb-1">{{ t('f_name') }}</label>
+                                <input v-model="customer.name" type="text" :placeholder="t('f_name')" class="w-full h-10 rounded-lg border border-stone-200 px-3 text-sm focus:outline-none focus:border-stone-400" />
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium mb-1">{{ t('f_phone') }} *</label>
+                                <input v-model="customer.phone" type="tel" dir="ltr" :placeholder="t('f_phone')" class="w-full h-10 rounded-lg border border-stone-200 px-3 text-sm text-start focus:outline-none focus:border-stone-400" />
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium mb-1">{{ t('f_address') }}</label>
+                                <input v-model="customer.address" type="text" :placeholder="t('f_address')" class="w-full h-10 rounded-lg border border-stone-200 px-3 text-sm focus:outline-none focus:border-stone-400" />
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium mb-1">{{ t('f_note') }}</label>
+                                <textarea v-model="customer.note" rows="2" :placeholder="t('f_note')" class="w-full rounded-lg border border-stone-200 px-3 py-2 text-sm resize-none focus:outline-none focus:border-stone-400"></textarea>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="sticky bottom-0 bg-white border-t border-stone-100 p-4 flex gap-3">
+                        <button @click="customerModal = false" class="flex-1 h-12 rounded-xl border border-stone-200 font-bold">{{ t('new_order') }}</button>
+                        <button @click="confirmAddToCart" :disabled="!customer.phone.trim()" class="flex-1 h-12 rounded-xl text-white font-bold disabled:opacity-50" :style="{ background: accent }}">{{ t('add') }}</button>
                     </div>
                 </div>
             </div>
