@@ -472,8 +472,8 @@ html[dir='ltr'] .hero-overlay { background: linear-gradient(270deg, #1a130b4d, #
     flex-direction: column;
     justify-content: center;
     align-items: center;
-    min-height: 340px;
-    padding: 50px 35px;
+    min-height: 220px;
+    padding: 36px 30px 44px;
     display: flex;
 }
 .empty-cart > span {
@@ -936,6 +936,9 @@ html[dir='ltr'] .side-panel { animation-name: sideInLtr; }
     .category-section:last-of-type { min-height: calc(100dvh - 200px); }
     .section-heading h2 { font-size: 23px; }
     .product-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 11px; }
+    /* 2-up cards are narrow — a taller crop keeps food photos from looking
+       stretched-wide (16:10 reads as squished at this width). */
+    .product-image-wrap { aspect-ratio: 4/3; }
     .product-card { border-radius: 16px; }
     .product-body { padding: 12px; }
     .product-title-row { display: block; }

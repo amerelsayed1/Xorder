@@ -142,8 +142,8 @@ function addToCartHandler(note) {
     if (!modalValid.value) return
     track('menu_add_to_cart', { slug, kind: modal.value.kind })
     addToCart(modal.value.kind, modal.value.ref, sel.groups, qty.value, note)
+    // Just add and bump the header count — don't pop the cart dialog open.
     closeModal()
-    cartDrawer.value = true
 }
 
 function submitOrder(details) {
