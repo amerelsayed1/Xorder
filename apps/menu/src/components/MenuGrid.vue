@@ -6,7 +6,6 @@ const props = defineProps({
     categories: Array,
     combos: Array,
     search: String,
-    restaurantName: String,
     t: Function,
     money: Function,
     localize: Function,
@@ -113,14 +112,6 @@ const priceOf = (section, item) => {
 <template>
     <div ref="menuRoot" class="content-layout">
         <section class="menu-content">
-            <div class="menu-intro">
-                <div>
-                    <span class="eyebrow">{{ t('todays_picks') }}</span>
-                    <h2>{{ t('menu_of') }} {{ restaurantName }}</h2>
-                </div>
-                <span>{{ countText(totalCount) }}</span>
-            </div>
-
             <section
                 v-for="section in sections"
                 :id="`section-${section.id}`"

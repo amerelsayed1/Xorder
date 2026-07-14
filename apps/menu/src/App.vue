@@ -81,7 +81,6 @@ const waDigits = computed(() => (restaurant.value?.whatsapp_number || '').replac
 const orderingEnabled = computed(() => restaurant.value?.ordering_enabled !== false)
 const bilingual = computed(() => restaurant.value?.bilingual !== false)
 const canOrder = computed(() => cartCount.value > 0 && !!waDigits.value)
-const restaurantName = computed(() => isAr.value ? (restaurant.value?.name_ar || restaurant.value?.name_en) : (restaurant.value?.name_en || restaurant.value?.name_ar))
 
 // Order type (delivery / pickup / dine-in). Frontend-only: rides along in the
 // WhatsApp message so the restaurant knows how the diner wants to receive it.
@@ -247,7 +246,6 @@ function updateUserField(field, value) {
                         :categories="categories"
                         :combos="combos"
                         :search="searchQuery"
-                        :restaurantName="restaurantName"
                         :t="t"
                         :money="money"
                         :localize="localize"
