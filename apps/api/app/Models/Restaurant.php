@@ -57,14 +57,14 @@ class Restaurant extends Model
     protected function phone(): Attribute
     {
         return Attribute::make(
-            set: fn(?string $value) => $this->normalizePhoneDigits($value),
+            set: fn (?string $value) => $this->normalizePhoneDigits($value),
         );
     }
 
     protected function whatsappNumber(): Attribute
     {
         return Attribute::make(
-            set: fn(?string $value) => $this->normalizePhoneDigits($value),
+            set: fn (?string $value) => $this->normalizePhoneDigits($value),
         );
     }
 
@@ -79,6 +79,7 @@ class Restaurant extends Model
         $persianDigits = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
 
         $value = str_replace($arabicDigits, $englishDigits, $value);
+
         return str_replace($persianDigits, $englishDigits, $value);
     }
 
@@ -126,7 +127,7 @@ class Restaurant extends Model
             return "{$scheme}://{$this->slug}.{$domain}{$portPart}/menu";
         }
 
-        return rtrim(config('app.url'), '/') . '/r/' . $this->slug;
+        return rtrim(config('app.url'), '/').'/r/'.$this->slug;
     }
 
     public function isPubliclyVisible(): bool

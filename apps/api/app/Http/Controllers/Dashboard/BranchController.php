@@ -7,6 +7,7 @@ use App\Http\Requests\Dashboard\StoreBranchRequest;
 use App\Http\Requests\Dashboard\UpdateBranchRequest;
 use App\Http\Resources\BranchResource;
 use App\Models\Branch;
+use App\Services\PlanLimitService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -19,8 +20,14 @@ class BranchController extends Controller
         return BranchResource::collection($branches)->response();
     }
 
-    public function store(StoreBranchRequest $request): JsonResponse
+    public function store(StoreBranchRequest $request, PlanLimitService $limits): JsonResponse
     {
+        if (($limit = $limits->branchLimitReached($request->user()->restaurant)) !== null) {
+            return response()->json([
+                'message' => __('xorder.messages.plan_limit_branches', ['limit' => $limit]),
+            ], 422);
+        }
+
         // restaurant_id is stamped by the BelongsToRestaurant trait.
         $branch = Branch::create($request->validated());
 

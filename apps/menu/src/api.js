@@ -8,3 +8,14 @@ export async function fetchMenu(slug) {
     })
     return data
 }
+
+/**
+ * Record the order server-side before the WhatsApp handoff, so the
+ * restaurant keeps history even if the customer never sends the message.
+ */
+export async function postOrder(slug, payload) {
+    const { data } = await axios.post(`${BASE}/api/public/restaurants/${slug}/orders`, payload, {
+        headers: { Accept: 'application/json' },
+    })
+    return data
+}

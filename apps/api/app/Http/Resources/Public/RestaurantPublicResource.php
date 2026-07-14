@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources\Public;
 
+use App\Models\Restaurant;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -9,7 +10,7 @@ use Illuminate\Http\Resources\Json\JsonResource;
  * Public restaurant header. Deliberately omits status, subscription and other
  * internal fields — only what a diner needs to see.
  *
- * @mixin \App\Models\Restaurant
+ * @mixin Restaurant
  */
 class RestaurantPublicResource extends JsonResource
 {

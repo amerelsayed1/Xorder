@@ -16,6 +16,33 @@ services:
       # Persist uploaded images (public disk) and logs across rebuilds.
       - storage-data:/var/www/html/storage
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pidof php-fpm || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
+
+  # Laravel scheduler — daily subscription expiry + warnings.
+  scheduler:
+    image: qrmenu-app
+    env_file: apps/api/.env.docker
+    environment:
+      RUN_MIGRATIONS: "false"
+      SEED_ON_START: "false"
+    command: ["php", "artisan", "schedule:work"]
+    depends_on:
+      db:
+        condition: service_healthy
+      app:
+        condition: service_started
+    volumes:
+      - storage-data:/var/www/html/storage
+    restart: unless-stopped
 
   # Nginx — serves static assets and proxies PHP requests to `app`
   web:

@@ -2,13 +2,14 @@
 
 namespace App\Http\Resources\Public;
 
+use App\Models\Combo;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 /**
  * Public combo/offer shape for the guest menu.
  *
- * @mixin \App\Models\Combo
+ * @mixin Combo
  */
 class ComboPublicResource extends JsonResource
 {

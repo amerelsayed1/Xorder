@@ -1,12 +1,19 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { RouterLink } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import api from '@xorder/api-client/api.js'
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const data = ref(null)
 const loading = ref(true)
+
+// 14-day engagement chart: bar heights as a % of the busiest day.
+const daily = computed(() => data.value?.engagement?.daily || [])
+const dailyMax = computed(() => Math.max(1, ...daily.value.flatMap(d => [d.views, d.orders])))
+const barHeight = (v) => `${Math.max(v > 0 ? 4 : 2, Math.round((v / dailyMax.value) * 100))}%`
+const dayLabel = (iso) => new Date(iso + 'T00:00:00').toLocaleDateString(locale.value, { day: 'numeric' })
+const dayTitle = (d) => `${d.date} — ${t('insights.views')}: ${d.views} · ${t('insights.orders')}: ${d.orders}`
 
 onMounted(async () => {
     try {
@@ -65,6 +72,51 @@ function money(v) {
                     <div class="stat-num" style="color:var(--accent)">{{ data.menu.discounted_items }}</div>
                 </div>
             </div>
+
+            <!-- Engagement -->
+            <template v-if="data.engagement">
+                <div class="grid grid-cols-2 lg:grid-cols-5 gap-4">
+                    <div class="stat">
+                        <div class="stat-label">{{ t('stats.views_today') }}</div>
+                        <div class="stat-num">{{ data.engagement.views_today }}</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-label">{{ t('insights.views_14d') }}</div>
+                        <div class="stat-num">{{ data.engagement.views_14d }}</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-label">{{ t('insights.orders_total') }}</div>
+                        <div class="stat-num">{{ data.engagement.orders_total }}</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-label">{{ t('stats.new_orders') }}</div>
+                        <div class="stat-num" style="color:var(--accent)">{{ data.engagement.orders_new }}</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-label">{{ t('insights.orders_14d') }}</div>
+                        <div class="stat-num">{{ data.engagement.orders_14d }}</div>
+                    </div>
+                </div>
+
+                <div v-if="daily.length" class="card p-5">
+                    <div class="flex items-center justify-between gap-3 flex-wrap mb-4">
+                        <h2 class="h-card">{{ t('insights.engagement') }} — {{ t('insights.last_14_days') }}</h2>
+                        <div class="flex items-center gap-4 text-xs" style="color:var(--muted)">
+                            <span class="flex items-center gap-1.5"><span class="dot-legend" style="background:var(--accent)"></span>{{ t('insights.views') }}</span>
+                            <span class="flex items-center gap-1.5"><span class="dot-legend" style="background:var(--green)"></span>{{ t('insights.orders') }}</span>
+                        </div>
+                    </div>
+                    <div class="flex items-end gap-1.5" style="height:140px">
+                        <div v-for="d in daily" :key="d.date" class="flex-1 h-full flex items-end justify-center gap-0.5" :title="dayTitle(d)">
+                            <div class="eng-bar" style="background:var(--accent)" :style="{ height: barHeight(d.views) }"></div>
+                            <div class="eng-bar" style="background:var(--green)" :style="{ height: barHeight(d.orders) }"></div>
+                        </div>
+                    </div>
+                    <div class="flex gap-1.5 mt-1.5">
+                        <div v-for="d in daily" :key="d.date" class="flex-1 text-center" style="font-size:10px;color:var(--muted)">{{ dayLabel(d.date) }}</div>
+                    </div>
+                </div>
+            </template>
 
             <!-- Needs attention -->
             <div class="card p-5">
@@ -133,3 +185,8 @@ function money(v) {
         </template>
     </div>
 </template>
+
+<style scoped>
+.eng-bar { width: 45%; max-width: 14px; border-radius: 3px 3px 0 0; min-height: 2px; }
+.dot-legend { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+</style>

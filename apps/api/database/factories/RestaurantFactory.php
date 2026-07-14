@@ -20,12 +20,12 @@ class RestaurantFactory extends Factory
 
         return [
             'name_en' => $nameEn,
-            'name_ar' => 'مطعم ' . fake()->unique()->word(),
-            'slug' => Str::slug($nameEn) . '-' . fake()->unique()->numberBetween(100, 9999),
+            'name_ar' => 'مطعم '.fake()->unique()->word(),
+            'slug' => Str::slug($nameEn).'-'.fake()->unique()->numberBetween(100, 9999),
             'description_en' => fake()->sentence(),
             'description_ar' => 'وصف المطعم',
-            'phone' => '+2010' . fake()->numerify('########'),
-            'whatsapp_number' => '+2010' . fake()->numerify('########'),
+            'phone' => '+2010'.fake()->numerify('########'),
+            'whatsapp_number' => '+2010'.fake()->numerify('########'),
             'address' => fake()->address(),
             'brand_color' => fake()->hexColor(),
             'default_language' => LanguageEnum::AR,

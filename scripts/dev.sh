@@ -4,10 +4,10 @@
 #
 #   ./scripts/dev.sh
 #
-# Boots the Laravel API on :8000 and the two Vue dev servers (landing :5174,
-# super-admin :5173). First run also installs deps, creates a SQLite .env,
-# migrates + seeds (Super Admin + demo restaurant), and builds the public-menu
-# CSS. Ctrl-C stops everything.
+# Boots the Laravel API on :8100 and the three Vue dev servers (dashboard
+# :5173, landing :5174, customer menu :5175). First run also installs deps,
+# creates a SQLite .env, migrates + seeds, and builds the public-menu SPA shell.
+# Ctrl-C stops everything.
 # ===========================================================================
 set -euo pipefail
 
@@ -50,25 +50,27 @@ if ! (cd "$API" && php artisan tinker --execute="exit(\App\Models\User::query()-
     (cd "$API" && php artisan db:seed --force && php artisan db:seed --class=DemoSeeder --force)
 fi
 
-# --- Front-end deps + public-menu assets ----------------------------------
+# --- Front-end deps + public-menu shell -----------------------------------
 if [ ! -d "$ROOT/node_modules" ]; then
     say "Installing workspace dependencies (pnpm)"
     pnpm install
 fi
-say "Building public-menu assets"
-pnpm --filter @xorder/api build >/dev/null
+say "Building public-menu shell"
+pnpm --filter @xorder/menu build >/dev/null
 
 # --- Launch everything ----------------------------------------------------
 pids=()
 cleanup() { echo; say "Stopping…"; for p in "${pids[@]}"; do kill "$p" 2>/dev/null || true; done; }
 trap cleanup EXIT INT TERM
 
-say "API        → http://localhost:8000"
-(cd "$API" && php artisan serve --host=127.0.0.1 --port=8000) & pids+=($!)
+say "API        → http://localhost:8100"
+(cd "$API" && php artisan serve --host=127.0.0.1 --port=8100) & pids+=($!)
 say "Landing    → http://localhost:5174"
 pnpm --filter @xorder/landing dev & pids+=($!)
 say "Super Admin→ http://localhost:5173"
 pnpm --filter @xorder/web dev & pids+=($!)
+say "Menu       → http://localhost:5175/menu/?r=xorderrest"
+pnpm --filter @xorder/menu dev & pids+=($!)
 
 cat <<EOF
 
@@ -76,7 +78,7 @@ cat <<EOF
   Xorder is starting. Open in your browser:
     • Landing      http://localhost:5174
     • Super Admin  http://localhost:5173
-    • Public menu  http://localhost:8000/r/xorderrest
+    • Public menu  http://localhost:5175/menu/?r=xorderrest
   Login: the SUPER_ADMIN_EMAIL / SUPER_ADMIN_PASSWORD in apps/api/.env
   Press Ctrl-C to stop.
 ────────────────────────────────────────────────────────

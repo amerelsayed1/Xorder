@@ -13,9 +13,7 @@ use Illuminate\Support\Str;
 
 class RestaurantProvisioningService
 {
-    public function __construct(private readonly SlugService $slugs)
-    {
-    }
+    public function __construct(private readonly SlugService $slugs) {}
 
     /**
      * Create a restaurant and its first Restaurant Admin in a single

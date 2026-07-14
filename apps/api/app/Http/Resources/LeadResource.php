@@ -2,13 +2,14 @@
 
 namespace App\Http\Resources;
 
+use App\Models\Lead;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 /**
  * Landing-page lead for the Super Admin lead inbox.
  *
- * @mixin \App\Models\Lead
+ * @mixin Lead
  */
 class LeadResource extends JsonResource
 {

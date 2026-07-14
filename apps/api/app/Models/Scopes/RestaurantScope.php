@@ -2,7 +2,6 @@
 
 namespace App\Models\Scopes;
 
-use App\Enums\RoleEnum;
 use App\Support\TenantContext;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
@@ -27,6 +26,6 @@ class RestaurantScope implements Scope
             return;
         }
 
-        $builder->where($model->getTable() . '.restaurant_id', $restaurantId);
+        $builder->where($model->getTable().'.restaurant_id', $restaurantId);
     }
 }

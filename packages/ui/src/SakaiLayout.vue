@@ -73,6 +73,7 @@ const profileItems = computed(() => [
                         <a :href="href" class="sakai-menu-item" :class="{ active: link.end ? isExactActive : isActive }"
                             @click="navigate($event); mobileOpen = false">
                             <i :class="link.icon" /><span>{{ t(link.labelKey) }}</span>
+                            <span v-if="link.badge" class="sakai-menu-badge">{{ link.badge }}</span>
                         </a>
                     </RouterLink>
                 </li>
@@ -122,6 +123,9 @@ const profileItems = computed(() => [
 .sakai-menu-item:hover { background: var(--p-surface-100); }
 .sakai-menu-item.active { background: var(--p-primary-50); color: var(--p-primary-color); }
 .sakai-menu-item.active i { color: var(--p-primary-color); }
+.sakai-menu-badge { margin-inline-start: auto; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 700; background: var(--p-primary-color); color: #fff; }
 .sakai-powered { display: flex; align-items: center; gap: 7px; padding: 14px 8px 4px; font-size: 12px; color: var(--p-text-muted-color); }
 .sakai-powered svg { height: 14px; width: auto; color: var(--p-text-color); opacity: .8; }
 

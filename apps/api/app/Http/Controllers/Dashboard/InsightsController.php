@@ -2,12 +2,16 @@
 
 namespace App\Http\Controllers\Dashboard;
 
+use App\Enums\OrderStatus;
 use App\Http\Controllers\Controller;
 use App\Models\Category;
 use App\Models\MenuItem;
+use App\Models\MenuViewDaily;
+use App\Models\Order;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 
 /**
  * Actionable "menu-health" insights for a Restaurant Admin.
@@ -95,6 +99,7 @@ class InsightsController extends Controller
                     'min_price' => $pricing?->min_price !== null ? (float) $pricing->min_price : null,
                     'max_price' => $pricing?->max_price !== null ? (float) $pricing->max_price : null,
                 ],
+                'engagement' => $this->engagement(),
                 'category_breakdown' => $categoryBreakdown,
                 'needs_attention' => $this->needsAttention(
                     emptyActiveCategories: $emptyActiveCategories,
@@ -109,11 +114,53 @@ class InsightsController extends Controller
     }
 
     /**
+     * Menu views + orders — the numbers that show owners the QR menu is
+     * working for them. Queries are tenant-scoped by the global scope.
+     *
+     * @return array<string, mixed>
+     */
+    private function engagement(): array
+    {
+        $today = now()->toDateString();
+        $since = now()->subDays(13)->toDateString();
+
+        $viewRows = MenuViewDaily::whereDate('date', '>=', $since)
+            ->orderBy('date')
+            ->get(['date', 'views'])
+            ->keyBy(fn (MenuViewDaily $row) => $row->date->toDateString());
+
+        $orderRows = Order::where('created_at', '>=', now()->subDays(13)->startOfDay())
+            ->selectRaw('date(created_at) as day, count(*) as total')
+            ->groupBy('day')
+            ->pluck('total', 'day');
+
+        // Dense 14-day series so charts don't have holes on quiet days.
+        $series = collect(range(13, 0))->map(function (int $daysAgo) use ($viewRows, $orderRows) {
+            $day = now()->subDays($daysAgo)->toDateString();
+
+            return [
+                'date' => $day,
+                'views' => (int) ($viewRows[$day]->views ?? 0),
+                'orders' => (int) ($orderRows[$day] ?? 0),
+            ];
+        })->values();
+
+        return [
+            'views_today' => (int) ($viewRows[$today]->views ?? 0),
+            'views_14d' => (int) $viewRows->sum('views'),
+            'orders_total' => Order::count(),
+            'orders_new' => Order::where('status', OrderStatus::NEW)->count(),
+            'orders_14d' => (int) $orderRows->sum(),
+            'daily' => $series,
+        ];
+    }
+
+    /**
      * Build a prioritised, frontend-friendly list of actionable issues.
      * Each entry: { key, count, severity, sample? }. Items with count 0 are
      * dropped so the UI only shows real to-dos.
      *
-     * @param  \Illuminate\Support\Collection  $emptyActiveCategories
+     * @param  Collection  $emptyActiveCategories
      * @return array<int, array<string, mixed>>
      */
     private function needsAttention(

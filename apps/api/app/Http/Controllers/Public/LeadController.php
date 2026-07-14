@@ -16,7 +16,12 @@ class LeadController extends Controller
      */
     public function store(StoreLeadRequest $request): JsonResponse
     {
-        Lead::create($request->validated() + ['status' => LeadStatus::NEW->value]);
+        // Honeypot: the landing form ships a visually-hidden "website" field
+        // humans never fill. Bots that fill it get the normal success response
+        // (so they can't tell they were caught) but no lead is stored.
+        if (! $request->filled('website')) {
+            Lead::create($request->validated() + ['status' => LeadStatus::NEW->value]);
+        }
 
         return response()->json([
             'message' => __('xorder.messages.lead_received'),

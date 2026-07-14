@@ -6,7 +6,6 @@
         "dev": "turbo run dev",
         "dev:web": "pnpm --filter @xorder/web dev",
         "dev:landing": "pnpm --filter @xorder/landing dev",
-        "dev:api": "pnpm --filter @xorder/api dev",
         "build": "turbo run build",
         "lint": "turbo run lint"
     },

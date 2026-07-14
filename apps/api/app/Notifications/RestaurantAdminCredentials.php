@@ -14,8 +14,7 @@ class RestaurantAdminCredentials extends Notification
     public function __construct(
         public readonly Restaurant $restaurant,
         public readonly string $password,
-    ) {
-    }
+    ) {}
 
     public function via(object $notifiable): array
     {
@@ -30,7 +29,7 @@ class RestaurantAdminCredentials extends Notification
             ->line("A dashboard has been created for {$this->restaurant->name_en}.")
             ->line("Email: {$notifiable->email}")
             ->line("Temporary password: {$this->password}")
-            ->action('Open Dashboard', rtrim(config('app.url'), '/') . '/login')
+            ->action('Open Dashboard', rtrim(config('app.url'), '/').'/login')
             ->line('Please change your password after your first login.');
     }
 }

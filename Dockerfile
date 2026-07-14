@@ -16,10 +16,8 @@ RUN corepack enable
 WORKDIR /repo
 COPY . .
 RUN pnpm install --frozen-lockfile
-# apps/api build = public-menu CSS (manifest for Blade @vite).
 # apps/web build = SPA (base /).  apps/landing build = marketing site.
-RUN pnpm --filter @xorder/api build \
-    && pnpm --filter @xorder/web build \
+RUN pnpm --filter @xorder/web build \
     && pnpm --filter @xorder/landing build \
     && pnpm --filter @xorder/menu build
 
@@ -60,10 +58,12 @@ WORKDIR /var/www/html
 
 COPY apps/api/docker/php/php.ini /usr/local/etc/php/conf.d/zz-app.ini
 
-# Laravel app code, vendor, and the built public-menu assets.
+# Laravel app code and vendor.
 COPY apps/api .
 COPY --from=vendor /app/vendor ./vendor
-COPY --from=assets /repo/apps/api/public/build ./public/build
+# Guest-menu SPA shell: MenuShellService serves it with per-restaurant SEO
+# tags injected, so PHP needs its own copy of the built index.html.
+COPY --from=assets /repo/apps/menu/dist /var/www/menu
 
 RUN chown -R www-data:www-data storage bootstrap/cache && \
     chmod -R 775 storage bootstrap/cache
@@ -85,9 +85,9 @@ FROM nginx:1.27-alpine AS web
 ARG NGINX_SITE_CONF=docker/nginx/default.conf
 COPY ${NGINX_SITE_CONF} /etc/nginx/conf.d/default.conf
 COPY docker/nginx/laravel.conf /etc/nginx/snippets/laravel.conf
-# Laravel public dir (index.php target + /build assets) and the two front-ends.
+# Laravel public dir (index.php target) and the two front-ends.
 # The SPA is built with base /, so it lives at the spa root.
 COPY --from=app /var/www/html/public /var/www/html/public
 COPY --from=assets /repo/apps/web/dist /var/www/spa
 COPY --from=assets /repo/apps/landing/dist /var/www/landing
-COPY --from=assets /repo/apps/menu/dist /var/www/menu/menu
+COPY --from=assets /repo/apps/menu/dist /var/www/menu

@@ -83,6 +83,19 @@ until curl -sf --max-time 10 "$HEALTH_URL" >/dev/null 2>&1; do
 done
 log_ok "xorder is serving internally ($HEALTH_URL = 200)."
 
+# ── 2b. One-time seeding (Super Admin + plans + demo data) ──────────────────
+# Seeding lives HERE, not in deploy.sh / SEED_ON_START: DatabaseSeeder
+# updateOrCreate()s the Super Admin, so re-running it on every deploy would
+# reset the Super Admin password back to the .env value. Seed once, then
+# leave SEED_ON_START=false in .env.production.
+log_step "Seeding Super Admin + subscription plans (one-time, idempotent)…"
+compose exec -T app php artisan db:seed --force
+if [ "${SEED_DEMO:-true}" = "true" ]; then
+  log_step "Seeding demo data (XorderRest + showcase tenants)…"
+  compose exec -T app php artisan db:seed --class=DemoSeeder --force
+  log_ok "Demo data seeded. Deploys do NOT re-seed; refresh with: SEED_DEMO=true ./deploy.sh"
+fi
+
 # ── 3. Wildcard cert (name.com DNS-01) ──────────────────────────────────────
 if [ "${SKIP_CERT:-0}" = "1" ]; then
   log_warn "SKIP_CERT=1 — skipping cert issuance."

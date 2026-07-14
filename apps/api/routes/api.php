@@ -18,13 +18,16 @@ use App\Http\Controllers\Dashboard\ComboController;
 use App\Http\Controllers\Dashboard\DashboardQrController;
 use App\Http\Controllers\Dashboard\InsightsController as DashboardInsightsController;
 use App\Http\Controllers\Dashboard\MenuItemController;
+use App\Http\Controllers\Dashboard\OrderController as DashboardOrderController;
 use App\Http\Controllers\Dashboard\RestaurantProfileController;
 use App\Http\Controllers\Dashboard\StatsController;
 use App\Http\Controllers\Public\LandingContentController as PublicLandingContentController;
 use App\Http\Controllers\Public\LeadController as PublicLeadController;
 use App\Http\Controllers\Public\PublicMenuApiController;
+use App\Http\Controllers\Public\PublicOrderController;
 use App\Http\Controllers\Public\RestaurantBrandingController;
 use App\Http\Controllers\Public\RestaurantQrController as PublicRestaurantQrController;
+use App\Http\Controllers\Public\SignupController;
 use App\Http\Controllers\UploadController;
 use Illuminate\Support\Facades\Route;
 
@@ -107,6 +110,13 @@ Route::prefix('dashboard')
         Route::get('qr', [DashboardQrController::class, 'show']);
         Route::get('qr/download', [DashboardQrController::class, 'download']);
 
+        // Orders — deliberately NOT behind subscription.writable: a restaurant
+        // whose subscription just expired must still be able to process the
+        // orders that already came in.
+        Route::get('orders', [DashboardOrderController::class, 'index']);
+        Route::get('orders/new-count', [DashboardOrderController::class, 'newCount']);
+        Route::patch('orders/{order}/status', [DashboardOrderController::class, 'updateStatus']);
+
         // Writes (subscription-gated)
         Route::middleware('subscription.writable')->group(function () {
             Route::put('restaurant', [RestaurantProfileController::class, 'update']);
@@ -154,8 +164,19 @@ Route::get('public/restaurants/{slug}/menu', [PublicMenuApiController::class, 's
 Route::get('public/landing-content', [PublicLandingContentController::class, 'show'])
     ->middleware('throttle:120,1');
 
+// Self-serve signup — 404s unless SELF_SERVE_SIGNUP=true (see config/platform.php).
+Route::post('public/signup', [SignupController::class, 'store'])
+    ->middleware('throttle:5,10');
+
+// A human submits this form once, maybe twice after a validation error.
+// 5 per 10 minutes per IP caps sustained spam at ~30/hour instead of 600.
 Route::post('public/leads', [PublicLeadController::class, 'store'])
-    ->middleware('throttle:10,1');
+    ->middleware('throttle:5,10');
+
+// Guest order recording (pre-WhatsApp handoff). Kept loose enough for many
+// diners behind one restaurant-WiFi IP.
+Route::post('public/restaurants/{slug}/orders', [PublicOrderController::class, 'store'])
+    ->middleware('throttle:20,1');
 
 Route::get('public/restaurants/{slug}/branding', [RestaurantBrandingController::class, 'show'])
     ->middleware('throttle:120,1');

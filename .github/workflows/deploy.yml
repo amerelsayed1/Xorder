@@ -42,6 +42,20 @@ jobs:
         run: |
           find app routes config database -name '*.php' -print0 | xargs -0 -n1 -P4 php -l > /dev/null
 
+      - name: Code style (pint)
+        working-directory: apps/api
+        run: ./vendor/bin/pint --test
+
+      # Full feature suite (SQLite in-memory) — a red test blocks the deploy.
+      # Covers auth, tenant isolation, provisioning, public menu + SEO shell,
+      # subscription gating, leads.
+      - name: Feature tests (apps/api)
+        working-directory: apps/api
+        run: |
+          cp .env.example .env
+          php artisan key:generate --quiet
+          php artisan test tests/Feature
+
   # ── 2. Deploy over SSH (runs deploy.sh on the VPS) ─────────────────────────
   deploy:
     needs: build-check

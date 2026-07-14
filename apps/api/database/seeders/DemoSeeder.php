@@ -16,12 +16,12 @@ use Illuminate\Support\Facades\Hash;
 class DemoSeeder extends Seeder
 {
     /**
-     * Demo tenants that used to be seeded alongside XorderRest. They are no
-     * longer wanted; since deploy.sh re-runs this seeder on every deploy,
-     * listing them here removes them from existing databases too.
+     * Retired demo tenants are removed whenever this idempotent seeder runs,
+     * keeping Mahsoub as the only showcase restaurant across deployments.
      */
     private array $retiredSlugs = [
-        'nakhla-cafe', 'saffron-house', 'olea-mezze', 'cedar-coal', 'beit-aleppo',
+        'demo', 'xorderrest', 'nakhla-cafe', 'saffron-house', 'olea-mezze',
+        'cedar-coal', 'beit-aleppo',
     ];
 
     private function img(string $id, int $w = 800, ?int $h = null): string
@@ -42,10 +42,10 @@ class DemoSeeder extends Seeder
         // calls DemoSeeder, keeps /plans populated). Idempotent.
         $this->call(PlanSeeder::class);
 
-        $this->seedXorderRest();
+        $this->seedMahsoub();
         $this->removeRetiredDemoTenants();
 
-        $this->command?->info('Demo seeded: XorderRest (/r/xorderrest).');
+        $this->command?->info('Demo seeded: Mahsoub (/r/mahsoub-restaurnt).');
     }
 
     /**
@@ -69,18 +69,14 @@ class DemoSeeder extends Seeder
         $this->command?->info("Removed {$ids->count()} retired demo tenant(s).");
     }
 
-    private function seedXorderRest(): void
+    private function seedMahsoub(): void
     {
-        // Replace the legacy 'demo' restaurant (formerly Zaytoun) in place on an
-        // already-seeded database, so its menu is rebranded rather than duplicated.
-        Restaurant::where('slug', 'demo')->update(['slug' => 'xorderrest']);
-
-        $r = Restaurant::updateOrCreate(['slug' => 'xorderrest'], [
-            'name_en' => 'XorderRest', 'name_ar' => 'إكس أوردر',
-            'description_en' => 'The Xorder showcase restaurant — a modern Levantine kitchen with mezze, charcoal grills and homemade sweets, all on a live digital menu.',
-            'description_ar' => 'مطعم إكس أوردر النموذجي — مطبخ شامي حديث من مقبلات ومشاوي على الفحم وحلويات منزلية، كله على قائمة رقمية حية.',
-            'phone' => '+971 4 555 0192', 'whatsapp_number' => '+971455501920',
-            'address' => 'Jumeirah 1, Dubai', 'opening_hours' => 'Daily · 12:00 – 23:30',
+        $r = Restaurant::updateOrCreate(['slug' => 'mahsoub-restaurnt'], [
+            'name_en' => 'Mahsoub', 'name_ar' => 'محسوب',
+            'description_en' => 'Mahsoub is a modern Cairo restaurant serving fresh mezze, charcoal grills and homemade oriental sweets.',
+            'description_ar' => 'محسوب مطعم قاهري عصري يقدم المقبلات الطازجة والمشاوي على الفحم والحلويات الشرقية المنزلية.',
+            'phone' => '+20 100 555 0192', 'whatsapp_number' => '+201005550192',
+            'address' => 'Cairo, Egypt', 'opening_hours' => 'Daily · 12:00 – 23:30',
             'brand_color' => '#f89a06', 'secondary_color' => '#d9850a',
             'logo_url' => $this->logo('photo-1414235077428-338989a2e8c0'),
             'cover_image_url' => $this->img('photo-1414235077428-338989a2e8c0', 1400),
@@ -94,7 +90,7 @@ class DemoSeeder extends Seeder
             'subscription_end_date' => now()->addYear()->startOfDay(),
         ]);
 
-        $this->admin($r, 'owner@xorderrest.test', 'XorderRest Owner');
+        $this->admin($r, 'owner@mahsoub.test', 'Mahsoub Owner');
 
         $menu = [
             ['Mezze', 'المقبلات', [

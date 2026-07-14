@@ -2,10 +2,10 @@
 
 namespace App\Http\Controllers\Admin;
 
+use Anthropic\Anthropic;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Anthropic\Anthropic;
 
 class MenuParserController extends Controller
 {
@@ -17,7 +17,7 @@ class MenuParserController extends Controller
 
         $apiKey = config('services.anthropic.api_key') ?? env('ANTHROPIC_API_KEY');
 
-        if (!$apiKey) {
+        if (! $apiKey) {
             return response()->json([
                 'error' => 'Anthropic API key is not configured',
             ], 500);
@@ -62,7 +62,7 @@ class MenuParserController extends Controller
 
             $items = json_decode($content, true);
 
-            if (!is_array($items)) {
+            if (! is_array($items)) {
                 return response()->json([
                     'error' => 'Failed to parse menu items from image',
                     'raw_response' => $content,
@@ -75,7 +75,7 @@ class MenuParserController extends Controller
             ]);
         } catch (\Exception $e) {
             return response()->json([
-                'error' => 'Failed to parse menu: ' . $e->getMessage(),
+                'error' => 'Failed to parse menu: '.$e->getMessage(),
             ], 500);
         }
     }

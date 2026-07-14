@@ -9,6 +9,7 @@ use App\Http\Requests\Dashboard\UpdateMenuItemRequest;
 use App\Http\Resources\MenuItemResource;
 use App\Models\MenuItem;
 use App\Models\OptionGroup;
+use App\Services\PlanLimitService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -23,7 +24,7 @@ class MenuItemController extends Controller
                 $q->where('is_available', $request->string('availability') === 'available');
             })
             ->when($request->filled('search'), function ($q) use ($request) {
-                $term = '%' . $request->string('search') . '%';
+                $term = '%'.$request->string('search').'%';
                 $q->where(fn ($q) => $q->where('name_en', 'like', $term)->orWhere('name_ar', 'like', $term));
             })
             ->with('category')
@@ -35,8 +36,14 @@ class MenuItemController extends Controller
         return MenuItemResource::collection($items)->response();
     }
 
-    public function store(StoreMenuItemRequest $request): JsonResponse
+    public function store(StoreMenuItemRequest $request, PlanLimitService $limits): JsonResponse
     {
+        if (($limit = $limits->itemLimitReached($request->user()->restaurant)) !== null) {
+            return response()->json([
+                'message' => __('xorder.messages.plan_limit_items', ['limit' => $limit]),
+            ], 422);
+        }
+
         $data = $request->validated();
         $groups = $data['option_groups'] ?? [];
         unset($data['option_groups']);

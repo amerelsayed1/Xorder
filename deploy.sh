@@ -118,6 +118,21 @@ backup_database() {
   # Keep only the last 30 pre-deploy backups.
   ls -t "$BACKUP_DIR"/pre_deploy_*.sql.gz 2>/dev/null | tail -n +31 | xargs rm -f || true
   export LAST_BACKUP_FILE="$BACKUP_FILE"
+
+  # Offsite copy — local backups share the VPS disk with Postgres, so a disk
+  # failure loses both. Set BACKUP_S3_URI (any s3-compatible target, e.g.
+  # s3://xorder-backups) in .env.production to also push each backup offsite.
+  if [ -n "${BACKUP_S3_URI:-}" ]; then
+    if command -v aws >/dev/null 2>&1; then
+      if aws s3 cp "$BACKUP_FILE" "${BACKUP_S3_URI%/}/$(date +%Y/%m)/$(basename "$BACKUP_FILE")" >>"$LOG_FILE" 2>&1; then
+        log_ok "Offsite backup uploaded to ${BACKUP_S3_URI}."
+      else
+        log_warn "Offsite backup upload FAILED — deploy continues with the local copy only."
+      fi
+    else
+      log_warn "BACKUP_S3_URI is set but the 'aws' CLI is not installed — offsite copy skipped."
+    fi
+  fi
 }
 
 # ─── Health checks ───────────────────────────────────────────────────────────
@@ -216,11 +231,11 @@ main() {
   log_step "Running migrations..."
   safe_compose exec -T "$APP_SVC" php artisan migrate --force 2>&1 | tee -a "$LOG_FILE"
 
-  # Provision/refresh the public demo data (XorderRest at /r/xorderrest plus the
-  # showcase tenants for the Super Admin list). Idempotent updateOrCreate, so it
-  # is safe to re-run on every deploy. Set SEED_DEMO=false to skip.
-  if [ "${SEED_DEMO:-true}" = "true" ]; then
-    log_step "Seeding demo data (XorderRest + showcase tenants)..."
+  # Demo data (XorderRest + showcase tenants) is seeded ONCE by go-live.sh.
+  # Re-seeding on every deploy would silently overwrite any live edits made to
+  # the demo tenants. Opt in explicitly (SEED_DEMO=true ./deploy.sh) to refresh.
+  if [ "${SEED_DEMO:-false}" = "true" ]; then
+    log_step "Re-seeding demo data (XorderRest + showcase tenants)..."
     safe_compose exec -T "$APP_SVC" php artisan db:seed --class=DemoSeeder --force 2>&1 | tee -a "$LOG_FILE"
   fi
 

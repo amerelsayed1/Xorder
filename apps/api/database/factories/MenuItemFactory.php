@@ -18,7 +18,7 @@ class MenuItemFactory extends Factory
             'restaurant_id' => Restaurant::factory(),
             'category_id' => Category::factory(),
             'name_en' => fake()->unique()->words(2, true),
-            'name_ar' => 'صنف ' . fake()->unique()->word(),
+            'name_ar' => 'صنف '.fake()->unique()->word(),
             'description_en' => fake()->sentence(),
             'price' => fake()->randomFloat(2, 5, 200),
             'discounted_price' => null,

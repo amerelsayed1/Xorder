@@ -1,518 +1,350 @@
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch, reactive } from 'vue'
-import { fetchMenu } from './api.js'
+import { ref, computed, reactive, watch, onMounted, onUnmounted } from 'vue'
+import { postOrder } from './api.js'
+import { track } from './lib/analytics.js'
+import { useLocale } from './composables/useLocale'
+import { useCart } from './composables/useCart'
+import { useOrder } from './composables/useOrder'
+import { useMenu } from './composables/useMenu'
+import { useUserInfo } from './composables/useUserInfo'
+import Header from './components/Header.vue'
+import Hero from './components/Hero.vue'
+import CategoryTabs from './components/CategoryTabs.vue'
+import MenuGrid from './components/MenuGrid.vue'
+import Footer from './components/Footer.vue'
+import BranchesPage from './components/BranchesPage.vue'
+import CartDrawer from './components/CartDrawer.vue'
+import ItemModal from './components/ItemModal.vue'
+import OrderSuccessModal from './components/OrderSuccessModal.vue'
+import UserInfoDialog from './components/UserInfoDialog.vue'
+import SideMenu from './components/SideMenu.vue'
 
-const slug = window.location.hostname.split('.')[0]
+// Slug normally comes from the subdomain (e.g. acme.xorder.io → "acme").
+// On a bare host (localhost / IP) there is no subdomain, so fall back to a
+// ?r=<slug> query param for local development.
+const sub = window.location.hostname.split('.')[0]
+const bareHost = sub === 'localhost' || /^\d+$/.test(sub)
+const slug = (bareHost && new URLSearchParams(window.location.search).get('r')) || sub
 
-const payload = ref(null)
-const loading = ref(true)
-const error = ref(false)
-const unavailable = ref(false)
-const locale = ref('ar')
-const activeCat = ref('offers')
+const { locale, isAr, t, localize } = useLocale('ar')
+const { cart, cartCount, cartTotal, addToCart, removeLine, bumpLine, clearCart, getLineOptions, calculateLinePrice } = useCart(slug)
+const { submittingOrder, orderSuccess, lastOrderUrl, lastOrderCode, customer, buildOrderData, sendToWhatsApp } = useOrder()
+const { userInfoDialog, isEditing, userInfo, editForm, saveSuccess, hasUserInfo, initials, loadUserInfo, saveUserInfo, enterEditMode, cancelEdit, clearUserInfo, openDialog, closeDialog } = useUserInfo()
 
-// cart
-const cart = ref([])          // [{ uid, kind, ref, groups, qty }]
+// Hydrate any saved diner info up front so the checkout form can prefill.
+loadUserInfo()
+
+const { payload, loading, error, unavailable, activeCat, view, restaurant, categories, combos, branches, navCats, scrollTo, goHome, goBranches } = useMenu(slug)
+
+// Funnel: one menu_viewed event per visit, once the payload actually loads.
+let viewTracked = false
+watch(payload, (loaded) => {
+    if (loaded && !viewTracked) {
+        viewTracked = true
+        track('menu_viewed', { slug })
+    }
+})
+
+const navDrawer = ref(false)
 const cartDrawer = ref(false)
-const navDrawer = ref(false)  // side menu
-const view = ref('menu')      // 'menu' | 'branches'
-
-// modal
-const modal = ref(null)       // { kind:'item'|'combo', ref }
-const sel = reactive({ groups: {} })   // groups[gi] = index | [indices]
+const searchQuery = ref('')
+const modal = ref(null)
+const sel = reactive({ groups: {} })
 const qty = ref(1)
 
-const T = {
-    ar: { home: 'الرئيسية', offers: 'العروض', branches: 'الفروع', cart: 'السلة', cart_empty: 'اختر أصنافك من القائمة وسنجهّزها في رسالة طلب جاهزة لإرسالها عبر واتساب',
-        required: 'مطلوب', choose: 'اختر', open: 'مفتوح', closed: 'مغلق', add: 'إضافة', from: 'يبدأ من',
-        location: 'الموقع', total: 'الإجمالي', order_wa: 'اطلب عبر واتساب', remove: 'حذف',
-        unavailable: 'القائمة غير متاحة حالياً', view_cart: 'عرض السلة', new_order: 'طلب جديد', qty: 'الكمية',
-        your_details: 'بيانات الطلب', f_name: 'الاسم', f_phone: 'رقم الهاتف', f_address: 'العنوان', f_note: 'ملاحظات' },
-    en: { home: 'Home', offers: 'Offers', branches: 'Branches', cart: 'Cart', cart_empty: 'Pick your items and we’ll turn them into a ready order message to send on WhatsApp',
-        required: 'Required', choose: 'Choose', open: 'Open', closed: 'Closed', add: 'Add', from: 'From',
-        location: 'Location', total: 'Total', order_wa: 'Order via WhatsApp', remove: 'Remove',
-        unavailable: 'The menu is currently unavailable', view_cart: 'View cart', new_order: 'New order', qty: 'Qty',
-        your_details: 'Order details', f_name: 'Name', f_phone: 'Phone number', f_address: 'Address', f_note: 'Notes' },
-}
-const t = (k) => T[locale.value][k] || k
-const isAr = computed(() => locale.value === 'ar')
+const hasOverlay = computed(() => Boolean(
+    modal.value || cartDrawer.value || navDrawer.value || userInfoDialog.value || orderSuccess.value
+))
 
-const restaurant = computed(() => payload.value?.restaurant || {})
-const categories = computed(() => payload.value?.categories || [])
-const combos = computed(() => payload.value?.combos || [])
-const branches = computed(() => payload.value?.branches || [])
-const accent = computed(() => restaurant.value.brand_color || '#ee6c2b')
-const sym = computed(() => restaurant.value.currency_symbol || '')
-const waDigits = computed(() => (restaurant.value.whatsapp_number || '').replace(/[^0-9]/g, ''))
-// Super admin can turn ordering off per restaurant → view-only menu (no cart).
-// Treat a missing flag as enabled so older payloads keep working.
-const orderingEnabled = computed(() => restaurant.value.ordering_enabled !== false)
-// Bilingual restaurants show the EN/AR switcher; single-language ones are
-// pinned to their default language (no switcher). Missing flag = bilingual.
-const bilingual = computed(() => restaurant.value.bilingual !== false)
+watch(hasOverlay, (locked) => {
+    document.body.style.overflow = locked ? 'hidden' : ''
+}, { immediate: true })
 
-function L(obj, field = 'name') {
-    if (!obj) return ''
-    return obj[`${field}_${locale.value}`] || obj[`${field}_en`] || obj[`${field}_ar`] || ''
-}
-const money = (v) => `${Number(v).toFixed(2)} ${sym.value}`
-const initial = computed(() => (L(restaurant.value) || 'M').charAt(0))
-const altName = computed(() => isAr.value ? restaurant.value.name_en : restaurant.value.name_ar)
-
-// Scroll-spy: highlight the category whose section is at the top as you scroll.
-function onScroll() {
-    if (view.value !== 'menu') return
-    const offset = 130   // header (64) + sticky category bar (~50) + a little
-    let current = null
-    for (const c of navCats.value) {
-        const el = document.getElementById(c.id)
-        if (el && el.getBoundingClientRect().top - offset <= 1) current = c.id
-    }
-    if (current && current !== activeCat.value) activeCat.value = current
+function closeTopOverlay(event) {
+    if (event.key !== 'Escape') return
+    if (modal.value) closeModal()
+    else if (cartDrawer.value) cartDrawer.value = false
+    else if (navDrawer.value) navDrawer.value = false
+    else if (userInfoDialog.value) closeDialog()
+    else if (orderSuccess.value) orderSuccess.value = false
 }
 
-// Keep the active chip in view in the mobile category bar.
-watch(activeCat, (id) => {
-    document.querySelector(`[data-chip="${id}"]`)?.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' })
+onMounted(() => window.addEventListener('keydown', closeTopOverlay))
+onUnmounted(() => {
+    window.removeEventListener('keydown', closeTopOverlay)
+    document.body.style.overflow = ''
 })
 
-onMounted(async () => {
-    syncDir()
-    window.addEventListener('scroll', onScroll, { passive: true })
-    try {
-        const res = await fetchMenu(slug)
-        if (res.available === false) { unavailable.value = true; noindex() }
-        else {
-            payload.value = res.data
-            // Open in the restaurant's default language (single-language
-            // restaurants stay pinned there since the switcher is hidden).
-            const dl = res.data.restaurant?.default_language
-            if (dl === 'en' || dl === 'ar') locale.value = dl
-            document.title = L(res.data.restaurant) || 'Menu'
-        }
-    } catch { error.value = true; noindex() } finally { loading.value = false }
-})
-// Unknown/unavailable menus are served on a 200 SPA shell (static hosting can't
-// return a real 404), so keep them out of search results.
-function noindex() {
-    const m = document.createElement('meta')
-    m.name = 'robots'
-    m.content = 'noindex'
-    document.head.appendChild(m)
-}
-function syncDir() {
-    document.documentElement.lang = locale.value
-    document.documentElement.dir = isAr.value ? 'rtl' : 'ltr'
-}
-watch(locale, syncDir)
-onUnmounted(() => window.removeEventListener('scroll', onScroll))
+const accent = computed(() => restaurant.value?.brand_color || '#f59e0b')
+const sym = computed(() => restaurant.value?.currency_symbol || '')
+const waDigits = computed(() => (restaurant.value?.whatsapp_number || '').replace(/[^0-9]/g, ''))
+const orderingEnabled = computed(() => restaurant.value?.ordering_enabled !== false)
+const bilingual = computed(() => restaurant.value?.bilingual !== false)
+const canOrder = computed(() => cartCount.value > 0 && !!waDigits.value)
+const restaurantName = computed(() => isAr.value ? (restaurant.value?.name_ar || restaurant.value?.name_en) : (restaurant.value?.name_en || restaurant.value?.name_ar))
 
-const navCats = computed(() => {
-    const list = []
-    if (combos.value.length) list.push({ id: 'offers', label: t('offers') })
-    categories.value.forEach(c => list.push({ id: `cat-${c.id}`, label: L(c) }))
-    return list
-})
-function scrollTo(id) {
-    activeCat.value = id
-    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-}
-function goHome() { navDrawer.value = false; view.value = 'menu'; window.scrollTo({ top: 0 }) }
-function goBranches() { navDrawer.value = false; view.value = 'branches'; window.scrollTo({ top: 0 }) }
+// Order type (delivery / pickup / dine-in). Frontend-only: rides along in the
+// WhatsApp message so the restaurant knows how the diner wants to receive it.
+const orderType = ref('pickup')
+const orderTypes = computed(() => [
+    { value: 'pickup', label: t('pickup') },
+    { value: 'delivery', label: t('delivery') },
+    { value: 'dine_in', label: t('dine_in') },
+])
+const orderTypeLabel = computed(() => orderTypes.value.find(o => o.value === orderType.value)?.label || '')
 
-// ---- modal ----
-function openModal(kind, ref_) {
-    modal.value = { kind, ref: ref_ }
-    sel.groups = {}
-    qty.value = 1
-}
-function closeModal() { modal.value = null }
 const modalGroups = computed(() => {
     if (!modal.value) return []
     return modal.value.kind === 'item' ? (modal.value.ref.option_groups || []) : (modal.value.ref.groups || [])
 })
-const groupOptions = (g) => (modal.value.kind === 'item' ? g.options : g.items) || []
-function isSelected(gi, oi) {
-    const s = sel.groups[gi]
-    return Array.isArray(s) ? s.includes(oi) : s === oi
+
+const modalValid = computed(() => {
+    return modalGroups.value.every((g, gi) => {
+        const need = modal.value.kind === 'combo' ? true : !!g.is_required
+        const selected = Array.isArray(sel.groups[gi]) ? sel.groups[gi] : (sel.groups[gi] == null ? [] : [sel.groups[gi]])
+        return need ? selected.length >= 1 : true
+    })
+})
+
+const modalUnit = computed(() => {
+    if (!modal.value) return 0
+    return calculateLinePrice(modal.value.kind, modal.value.ref, sel.groups)
+})
+
+const money = (v) => {
+    const amount = Number(v ?? 0)
+    return `${Number.isFinite(amount) ? amount.toFixed(2) : '0.00'} ${sym.value}`
 }
+
 function toggleOption(gi, oi, group) {
     const max = group.max_select || 1
-    if (max === 1) { sel.groups[gi] = sel.groups[gi] === oi ? undefined : oi; return }
+    if (max === 1) {
+        sel.groups[gi] = sel.groups[gi] === oi ? undefined : oi
+        return
+    }
     const arr = Array.isArray(sel.groups[gi]) ? [...sel.groups[gi]] : []
     const at = arr.indexOf(oi)
     if (at >= 0) arr.splice(at, 1)
     else if (arr.length < max) arr.push(oi)
     sel.groups[gi] = arr
 }
-function selectedIdxs(gi) {
-    const s = sel.groups[gi]
-    return Array.isArray(s) ? s : (s == null ? [] : [s])
-}
-// required: item groups flagged required; combo groups always need ≥1
-const modalValid = computed(() => {
-    return modalGroups.value.every((g, gi) => {
-        const need = modal.value.kind === 'combo' ? true : !!g.is_required
-        return need ? selectedIdxs(gi).length >= 1 : true
-    })
-})
-function priceOf(kind, ref_, groups) {
-    let base = kind === 'item' ? Number(ref_.discounted_price ?? ref_.price) : Number(ref_.base_price)
-    const gs = kind === 'item' ? ref_.option_groups : ref_.groups
-    ;(gs || []).forEach((g, gi) => {
-        const idxs = Array.isArray(groups[gi]) ? groups[gi] : (groups[gi] == null ? [] : [groups[gi]])
-        const opts = kind === 'item' ? g.options : g.items
-        idxs.forEach(oi => { base += Number((kind === 'item' ? opts[oi]?.price : opts[oi]?.extra_price) || 0) })
-    })
-    return base
-}
-const modalUnit = computed(() => modal.value ? priceOf(modal.value.kind, modal.value.ref, sel.groups) : 0)
 
-function addToCart() {
+function openModal(kind, ref_) {
+    modal.value = { kind, ref: ref_ }
+    sel.groups = {}
+    qty.value = 1
+}
+
+function closeModal() {
+    modal.value = null
+}
+
+function addToCartHandler(note) {
     if (!modalValid.value) return
-    const line = {
-        kind: modal.value.kind,
-        ref: modal.value.ref,
-        groups: JSON.parse(JSON.stringify(sel.groups)),
-        qty: qty.value,
-    }
-    const sig = `${line.kind}:${line.ref.id}:${JSON.stringify(line.groups)}`
-    const existing = cart.value.find(l => l.sig === sig)
-    if (existing) existing.qty += line.qty
-    else cart.value.push({ uid: Date.now() + Math.random(), sig, kind: line.kind, ref: line.ref, groups: line.groups, qty: line.qty })
+    track('menu_add_to_cart', { slug, kind: modal.value.kind })
+    addToCart(modal.value.kind, modal.value.ref, sel.groups, qty.value, note)
     closeModal()
     cartDrawer.value = true
 }
 
+function submitOrder(details) {
+    // Guard against double-clicks racing the disabled state.
+    if (submittingOrder.value || !canOrder.value) return
+    submittingOrder.value = true
 
-function confirmAddToCart() {
-    if (!customer.phone.trim()) return
-    if (!pendingLineItem.value) return
-    const line = pendingLineItem.value
-    const sig = `${line.kind}:${line.ref.id}:${JSON.stringify(line.groups)}`
-    const existing = cart.value.find(l => l.sig === sig)
-    if (existing) existing.qty += line.qty
-    else cart.value.push({ uid: Date.now() + Math.random(), sig, kind: line.kind, ref: line.ref, groups: line.groups, qty: line.qty })
-    pendingLineItem.value = null
-    customerModal.value = false
-    cartDrawer.value = true
-}
+    // Remember the diner for next time and carry the details on the order.
+    Object.assign(editForm, { name: details.name, phone: details.phone })
+    saveUserInfo()
+    customer.name = details.name
+    customer.phone = details.phone
+    customer.note = details.note
 
-// ---- cart helpers ----
-function lineOptions(line) {
-    const out = []
-    const gs = line.kind === 'item' ? line.ref.option_groups : line.ref.groups
-    ;(gs || []).forEach((g, gi) => {
-        const idxs = Array.isArray(line.groups[gi]) ? line.groups[gi] : (line.groups[gi] == null ? [] : [line.groups[gi]])
-        const opts = line.kind === 'item' ? g.options : g.items
-        idxs.forEach(oi => { if (opts[oi]) out.push(L(opts[oi])) })
-    })
-    return out
-}
-const lineUnit = (line) => priceOf(line.kind, line.ref, line.groups)
-const lineTotal = (line) => lineUnit(line) * line.qty
-const cartTotal = computed(() => cart.value.reduce((s, l) => s + lineTotal(l), 0))
-const cartCount = computed(() => cart.value.reduce((s, l) => s + l.qty, 0))
-function bumpLine(line, d) { line.qty = Math.max(1, line.qty + d) }
-function removeLine(line) { cart.value = cart.value.filter(l => l.uid !== line.uid) }
+    const orderData = buildOrderData(cart.value, restaurant.value, cartCount.value, cartTotal.value, money, localize, getLineOptions, orderTypeLabel.value)
 
-// Customer details attached to the order. Phone is required so the restaurant
-// can reach the customer; name/address/note are optional (pickup vs delivery).
-const pendingLineItem = ref(null) // Holds item data while collecting customer info
-const customer = reactive({ name: '', phone: '', address: '', note: '' })
-const customerModal = ref(false) // Modal for entering customer details before add to cart
-const orderConfirmModal = ref(false) // Modal for confirming order before sending to WhatsApp
-const orderDialog = ref(false) // Modal for entering customer order details
-const canOrder = computed(() => cart.value.length > 0 && !!waDigits.value)
+    // Durable record first — fire-and-forget: window.open must stay inside
+    // the user gesture, so the API call is never awaited. The order code
+    // fills into the success dialog when the response lands.
+    lastOrderCode.value = ''
+    const snapshot = {
+        items: cart.value.map(line => ({
+            name: localize(line.ref),
+            qty: line.qty,
+            options: getLineOptions(line, localize),
+            note: line.note || null,
+            line_total: +(line.qty * line.price).toFixed(2),
+        })),
+        total: +cartTotal.value.toFixed(2),
+        customer_name: details.name || null,
+        customer_phone: details.phone || null,
+        customer_note: details.note || null,
+        order_type: orderTypeLabel.value || null,
+    }
+    postOrder(slug, snapshot)
+        .then(res => { lastOrderCode.value = res?.data?.code || '' })
+        .catch(() => { /* WhatsApp handoff still carries the order */ })
 
-function openOrderDialog() {
-    if (!cart.value.length || !waDigits.value) return
-    confirmOrder()
-}
+    sendToWhatsApp(orderData, waDigits.value, t)
+    track('menu_order_submitted', { slug, total: snapshot.total, items: cartCount.value })
 
-function confirmOrder() {
-    const lines = cart.value.map(l => {
-        const opts = lineOptions(l)
-        const optTxt = opts.length ? ` (${opts.join('، ')})` : ''
-        return `• ${l.qty}× ${L(l.ref)}${optTxt} — ${money(lineTotal(l))}`
-    })
-    const msg = [
-        `*${t('new_order')} — ${L(restaurant.value)}*`,
-        '',
-        ...lines,
-        '',
-        `*${t('total')}: ${money(cartTotal.value)}*`,
-    ].join('\n')
-    window.open(`https://wa.me/${waDigits.value}?text=${encodeURIComponent(msg)}`, '_blank')
-    // Reset state after order
-    cart.value = []
-    customer.name = customer.phone = customer.address = customer.note = ''
     cartDrawer.value = false
-    orderConfirmModal.value = false
-    orderDialog.value = false
+    clearCart()
+    submittingOrder.value = false
+    // Explicit confirmation with a re-open link — popup blockers and missing
+    // WhatsApp installs would otherwise swallow the order silently.
+    orderSuccess.value = true
 }
-function toggleLang() { locale.value = isAr.value ? 'en' : 'ar' }
+
+function updateUserField(field, value) {
+    editForm[field] = value
+}
 </script>
 
 <template>
-    <div :style="{ '--acc': accent }" class="min-h-full pb-20 lg:pb-0">
+    <div :style="{ '--accent': accent, '--acc': accent }" class="site-shell">
         <div v-if="loading" class="min-h-screen grid place-items-center">
             <div class="h-10 w-10 rounded-full border-4 border-black/10" :style="{ borderTopColor: accent }" style="animation: spin .8s linear infinite"></div>
         </div>
+
         <div v-else-if="error || unavailable" class="min-h-screen grid place-items-center text-center px-6">
-            <p class="text-lg text-stone-500">{{ unavailable ? t('unavailable') : 'Something went wrong.' }}</p>
+            <p class="text-lg text-stone-500">{{ unavailable ? t('unavailable') : t('error_generic') }}</p>
         </div>
 
         <template v-else>
-            <!-- Header (original clean style) -->
-            <header class="sticky top-0 z-30 backdrop-blur border-b border-stone-200/70" style="background:rgba(250,243,230,.9)">
-                <div class="max-w-6xl mx-auto flex items-center justify-between gap-3 px-4 h-16">
-                    <div class="flex items-center gap-3 min-w-0">
-                        <button class="grid place-items-center h-10 w-10 rounded-xl hover:bg-black/5 text-2xl flex-shrink-0" :style="{ color: accent }" aria-label="menu" @click="navDrawer = true">☰</button>
-                        <img v-if="restaurant.logo_url" :src="restaurant.logo_url" class="h-11 w-11 rounded-xl object-cover" :alt="L(restaurant)" />
-                        <div v-else class="h-11 w-11 rounded-xl grid place-items-center text-white font-extrabold" :style="{ background: accent }">{{ initial }}</div>
-                        <div class="min-w-0">
-                            <div class="font-extrabold text-lg leading-tight truncate" style="color:#2a2118">{{ L(restaurant) }}</div>
-                            <div v-if="altName" class="text-xs text-stone-400 truncate" :dir="isAr ? 'ltr' : 'rtl'">{{ altName }}</div>
-                        </div>
-                    </div>
-                    <div class="flex items-center gap-2">
-                        <button v-if="orderingEnabled" class="lg:hidden relative grid place-items-center h-9 w-9 rounded-lg hover:bg-black/5" :style="{ color: accent }" aria-label="cart" @click="cartDrawer = true">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" class="w-6 h-6"><path d="m5 11 4-7"/><path d="m19 11-4-7"/><path d="M2 11h20"/><path d="m3.5 11 1.6 7.4a2 2 0 0 0 2 1.6h9.8a2 2 0 0 0 2-1.6l1.6-7.4"/><path d="m9 11 1 9"/><path d="M4.5 15.5h15"/><path d="m15 11-1 9"/></svg>
-                            <span v-if="cartCount" class="absolute -top-1 -end-1 text-white text-[10px] font-bold rounded-full h-4 min-w-[16px] px-1 grid place-items-center" :style="{ background: accent }">{{ cartCount }}</span>
-                        </button>
-                        <div v-if="bilingual" class="flex rounded-full border border-stone-200 overflow-hidden text-sm font-bold bg-white">
-                            <button class="px-3 py-1.5" :style="isAr ? { background: accent, color: '#fff' } : { color: '#8a7c68' }" @click="locale = 'ar'">ع</button>
-                            <button class="px-3 py-1.5" :style="!isAr ? { background: accent, color: '#fff' } : { color: '#8a7c68' }" @click="locale = 'en'">EN</button>
-                        </div>
-                        <a v-if="waDigits" :href="`https://wa.me/${waDigits}`" target="_blank" rel="noopener"
-                            class="hidden sm:flex items-center gap-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg px-3 h-9 text-sm font-semibold">
-                            <svg viewBox="0 0 24 24" fill="currentColor" class="w-4 h-4"><path d="M19.05 4.91A9.82 9.82 0 0 0 12.04 2c-5.46 0-9.91 4.45-9.91 9.91 0 1.75.46 3.45 1.32 4.95L2.05 22l5.25-1.38c1.45.79 3.08 1.21 4.74 1.21h.004c5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01zM12.04 20.15h-.003a8.2 8.2 0 0 1-4.18-1.15l-.3-.18-3.11.82.83-3.04-.2-.31a8.18 8.18 0 0 1-1.26-4.38c0-4.54 3.7-8.24 8.25-8.24 2.2 0 4.27.86 5.83 2.42a8.2 8.2 0 0 1 2.41 5.83c0 4.54-3.7 8.24-8.24 8.24zm4.52-6.16c-.25-.12-1.47-.72-1.69-.81-.23-.08-.39-.12-.56.12-.16.25-.64.81-.79.97-.14.17-.29.19-.54.06-.25-.12-1.05-.39-1.99-1.23-.74-.66-1.23-1.47-1.38-1.72-.14-.25-.01-.38.11-.5.11-.11.25-.29.37-.43.12-.14.16-.25.25-.41.08-.17.04-.31-.02-.43-.06-.12-.56-1.34-.76-1.84-.2-.48-.41-.42-.56-.43-.14-.01-.31-.01-.48-.01a.92.92 0 0 0-.66.31c-.23.25-.87.85-.87 2.07 0 1.22.89 2.4 1.01 2.56.12.17 1.75 2.67 4.23 3.74.59.26 1.05.41 1.41.52.59.19 1.13.16 1.56.1.48-.07 1.47-.6 1.67-1.18.21-.58.21-1.07.14-1.18-.06-.11-.22-.17-.47-.29z"/></svg>
-                            WhatsApp</a>
-                    </div>
-                </div>
-            </header>
+            <Header
+                :restaurant="restaurant"
+                :cartCount="cartCount"
+                :bilingual="bilingual"
+                :isAr="isAr"
+                :waDigits="waDigits"
+                :orderingEnabled="orderingEnabled"
+                :locale="locale"
+                :t="t"
+                @openCart="cartDrawer = true"
+                @changeLocale="locale = $event"
+                @openMenu="navDrawer = true"
+            />
 
-            <!-- Mobile category bar -->
-            <div v-if="view === 'menu' && navCats.length" class="lg:hidden sticky top-16 z-20 border-b border-stone-200/70" style="background:rgba(250,243,230,.95);backdrop-filter:blur(8px)">
-                <div class="flex gap-2 overflow-x-auto no-sb px-4 py-2.5">
-                    <button v-for="c in navCats" :key="c.id" :data-chip="c.id"
-                        class="whitespace-nowrap px-3.5 py-1.5 rounded-full text-sm font-semibold border transition"
-                        :class="activeCat === c.id ? 'text-white border-transparent' : 'bg-white text-stone-600 border-stone-200'"
-                        :style="activeCat === c.id ? { background: accent } : {}"
-                        @click="scrollTo(c.id)">{{ c.label }}</button>
-                </div>
+            <div class="page-wrap">
+                <template v-if="view === 'menu'">
+                    <Hero
+                        :restaurant="restaurant"
+                        :isAr="isAr"
+                        :t="t"
+                        :localize="localize"
+                    />
+
+                    <CategoryTabs
+                        :navCats="navCats"
+                        :activeCat="activeCat"
+                        :search="searchQuery"
+                        :t="t"
+                        :localize="localize"
+                        @selectCategory="scrollTo"
+                        @update:search="searchQuery = $event"
+                    />
+
+                    <MenuGrid
+                        :categories="categories"
+                        :combos="combos"
+                        :search="searchQuery"
+                        :restaurantName="restaurantName"
+                        :t="t"
+                        :money="money"
+                        :localize="localize"
+                        @openModal="openModal"
+                        @activeSection="activeCat = $event"
+                    />
+                </template>
+
+                <BranchesPage
+                    v-else-if="view === 'branches'"
+                    :branches="branches"
+                    :t="t"
+                    :accent="accent"
+                    @goHome="goHome(); navDrawer = false"
+                />
             </div>
 
-            <div v-if="view === 'menu'" class="max-w-6xl mx-auto px-4 py-6">
-                <div class="menu-grid">
-                    <!-- Category sidebar (right in RTL) -->
-                    <aside class="hidden lg:block sticky top-20 bg-white rounded-2xl border border-stone-200/70 p-2" style="order:1">
-                        <button v-for="c in navCats" :key="c.id"
-                            class="w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl text-sm font-semibold transition"
-                            :class="activeCat === c.id ? 'text-white' : 'hover:bg-stone-50 text-stone-700'"
-                            :style="activeCat === c.id ? { background: accent } : {}"
-                            @click="scrollTo(c.id)">
-                            <span>{{ c.label }}</span><span class="opacity-50">›</span>
-                        </button>
-                    </aside>
+            <Footer :t="t" />
 
-                    <!-- Center -->
-                    <main class="min-w-0" style="order:2">
-                        <section v-if="combos.length" id="offers" class="mb-8 scroll-mt-32">
-                            <h2 class="text-xl font-extrabold mb-3">{{ t('offers') }}</h2>
-                            <div class="space-y-3">
-                                <button v-for="c in combos" :key="c.id" class="w-full text-start bg-white rounded-2xl border border-stone-200/70 p-3 flex gap-3 items-center hover:shadow-sm transition" @click="openModal('combo', c)">
-                                    <img v-if="c.image_url" :src="c.image_url" class="h-20 w-20 rounded-xl object-cover flex-shrink-0" :alt="L(c)" />
-                                    <div v-else class="h-20 w-20 rounded-xl flex-shrink-0 grid place-items-center text-2xl" :style="{ background: accent + '22', color: accent }">★</div>
-                                    <div class="flex-1 min-w-0">
-                                        <div class="font-bold">{{ L(c) }}</div>
-                                        <div v-if="L(c, 'description')" class="text-sm text-stone-500 truncate">{{ L(c, 'description') }}</div>
-                                        <div class="text-sm font-semibold mt-1" :style="{ color: accent }">{{ t('from') }} {{ money(c.base_price) }}</div>
-                                    </div>
-                                </button>
-                            </div>
-                        </section>
+            <CartDrawer
+                v-if="orderingEnabled"
+                :isOpen="cartDrawer"
+                :cart="cart"
+                :cartCount="cartCount"
+                :cartTotal="cartTotal"
+                :canOrder="canOrder"
+                :isSubmitting="submittingOrder"
+                :orderType="orderType"
+                :orderTypes="orderTypes"
+                :userInfo="userInfo"
+                :t="t"
+                :money="money"
+                :localize="localize"
+                :getLineOptions="getLineOptions"
+                @close="cartDrawer = false"
+                @removeLine="removeLine"
+                @bumpLine="bumpLine"
+                @clearCart="clearCart"
+                @changeOrderType="orderType = $event"
+                @submit="submitOrder"
+            />
 
-                        <section v-for="c in categories" :key="c.id" :id="`cat-${c.id}`" class="mb-8 scroll-mt-32">
-                            <h2 class="text-xl font-extrabold mb-3">{{ L(c) }}</h2>
-                            <div class="grid sm:grid-cols-2 gap-3">
-                                <button v-for="it in c.items" :key="it.id"
-                                    class="text-start bg-white rounded-2xl border border-stone-200/70 overflow-hidden hover:shadow-sm transition flex flex-col"
-                                    :class="{ 'opacity-60': !it.is_available }"
-                                    :disabled="!it.is_available"
-                                    @click="openModal('item', it)">
-                                    <div v-if="it.image_url" class="h-36 w-full overflow-hidden"><img :src="it.image_url" class="h-full w-full object-cover" :class="{ grayscale: !it.is_available }" :alt="L(it)" /></div>
-                                    <div class="p-3 flex-1">
-                                        <div class="flex items-start justify-between gap-2">
-                                            <div class="font-bold">{{ L(it) }}</div>
-                                            <div class="font-bold whitespace-nowrap" :style="{ color: accent }">{{ money(it.discounted_price ?? it.price) }}</div>
-                                        </div>
-                                        <p v-if="L(it, 'description')" class="text-sm text-stone-500 mt-1 line-clamp-2">{{ L(it, 'description') }}</p>
-                                    </div>
-                                </button>
-                            </div>
-                        </section>
+            <ItemModal
+                :isOpen="!!modal"
+                :item="modal?.ref"
+                :kind="modal?.kind"
+                :quantity="qty"
+                :selectedGroups="sel.groups"
+                :orderingEnabled="orderingEnabled"
+                :t="t"
+                :money="money"
+                :localize="localize"
+                :isValid="modalValid"
+                :unitPrice="modalUnit"
+                @close="closeModal"
+                @toggleOption="toggleOption"
+                @updateQuantity="qty = $event"
+                @addToCart="addToCartHandler"
+            />
 
-                    </main>
+            <OrderSuccessModal
+                :isOpen="orderSuccess"
+                :reopenUrl="lastOrderUrl"
+                :orderCode="lastOrderCode"
+                :t="t"
+                @close="orderSuccess = false"
+            />
 
-                    <!-- Cart sidebar (left in RTL) -->
-                    <aside v-if="orderingEnabled" class="hidden lg:block sticky top-20 bg-white rounded-2xl border border-stone-200/70 p-4" style="order:3">
-                        <h3 class="font-bold mb-3">{{ t('cart') }} <span v-if="cartCount" class="text-sm font-normal text-stone-400">({{ cartCount }})</span></h3>
-                        <div v-if="!cart.length" class="text-center py-10 text-stone-400">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="w-12 h-12 mx-auto mb-3 text-stone-300"><path d="m5 11 4-7"/><path d="m19 11-4-7"/><path d="M2 11h20"/><path d="m3.5 11 1.6 7.4a2 2 0 0 0 2 1.6h9.8a2 2 0 0 0 2-1.6l1.6-7.4"/><path d="m9 11 1 9"/><path d="M4.5 15.5h15"/><path d="m15 11-1 9"/></svg><p class="text-sm">{{ t('cart_empty') }}</p>
-                        </div>
-                        <template v-else>
-                            <div class="space-y-3 max-h-[50vh] overflow-y-auto -mx-1 px-1">
-                                <div v-for="line in cart" :key="line.uid" class="border-b border-stone-100 pb-3">
-                                    <div class="flex justify-between gap-2">
-                                        <div class="font-semibold text-sm">{{ L(line.ref) }}</div>
-                                        <button class="text-stone-300 hover:text-red-500 text-xs" @click="removeLine(line)">✕</button>
-                                    </div>
-                                    <div v-if="lineOptions(line).length" class="text-xs text-stone-400 mt-0.5">{{ lineOptions(line).join('، ') }}</div>
-                                    <div class="flex items-center justify-between mt-2">
-                                        <div class="flex items-center gap-2 border border-stone-200 rounded-lg px-1">
-                                            <button class="h-6 w-6 text-stone-500" @click="bumpLine(line, -1)">−</button>
-                                            <span class="text-sm font-bold w-4 text-center">{{ line.qty }}</span>
-                                            <button class="h-6 w-6 text-stone-500" @click="bumpLine(line, 1)">+</button>
-                                        </div>
-                                        <span class="text-sm font-bold" :style="{ color: accent }">{{ money(lineTotal(line)) }}</span>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="flex justify-between items-center mt-4 font-bold">
-                                <span>{{ t('total') }}</span><span :style="{ color: accent }">{{ money(cartTotal) }}</span>
-                            </div>
-                            <div class="mt-4 pt-3 border-t border-stone-100">
-                                <button class="w-full h-11 rounded-xl bg-green-600 hover:bg-green-700 text-white font-bold disabled:opacity-50" :disabled="!canOrder" @click="openOrderDialog">
-                                    {{ t('new_order') }}
-                                </button>
-                            </div>
-                        </template>
-                    </aside>
-                </div>
-            </div>
+            <SideMenu
+                :isOpen="navDrawer"
+                :hasBranches="branches.length > 0"
+                :waDigits="waDigits"
+                :restaurant="restaurant"
+                :isAr="isAr"
+                :t="t"
+                @close="navDrawer = false"
+                @goHome="goHome(); navDrawer = false"
+                @goBranches="goBranches(); navDrawer = false"
+            />
 
-            <!-- Branches page -->
-            <main v-else-if="view === 'branches'" class="max-w-3xl mx-auto px-4 py-8">
-                <button class="font-semibold mb-5" :style="{ color: accent }" @click="goHome">‹ {{ t('home') }}</button>
-                <h1 class="text-2xl font-extrabold mb-5">{{ t('branches') }}</h1>
-                <div class="space-y-3">
-                    <div v-for="b in branches" :key="b.id" class="bg-white rounded-2xl border border-stone-200/70 p-5">
-                        <div class="flex items-start justify-between gap-2">
-                            <div class="font-bold text-lg">{{ L(b) }}</div>
-                            <span class="text-xs font-semibold px-2.5 py-1 rounded-full whitespace-nowrap" :class="b.is_open ? 'bg-green-100 text-green-700' : 'bg-stone-100 text-stone-500'">{{ b.is_open ? t('open') : t('closed') }}</span>
-                        </div>
-                        <div v-if="b.address" class="text-sm text-stone-500 mt-1">{{ b.address }}</div>
-                        <div v-if="b.opening_hours" class="text-sm text-stone-500 mt-1">🕒 {{ b.opening_hours }}</div>
-                        <div class="flex flex-wrap gap-2 mt-3">
-                            <a v-if="b.map_url" :href="b.map_url" target="_blank" rel="noopener" class="text-sm font-semibold px-3 py-1.5 rounded-lg border border-stone-200" :style="{ color: accent }">📍 {{ t('location') }}</a>
-                            <a v-if="b.phone" :href="`tel:${b.phone}`" dir="ltr" class="text-sm font-semibold px-3 py-1.5 rounded-lg border border-stone-200" :style="{ color: accent }">✆ {{ b.phone }}</a>
-                        </div>
-                    </div>
-                </div>
-            </main>
-
-            <!-- Item / Combo modal -->
-            <Teleport to="body">
-                <div v-if="modal" class="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
-                    <div class="absolute inset-0 bg-black/50" @click="closeModal"></div>
-                    <div class="relative bg-white w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl max-h-[92vh] overflow-y-auto shadow-2xl">
-                    <div class="relative h-44 bg-stone-100">
-                        <img v-if="modal.ref.image_url" :src="modal.ref.image_url" class="h-full w-full object-cover" />
-                        <button class="absolute top-3 start-3 h-9 w-9 rounded-full bg-white/90 grid place-items-center text-xl" @click="closeModal">×</button>
-                    </div>
-                    <div class="p-5">
-                        <h3 class="text-xl font-extrabold">{{ L(modal.ref) }}</h3>
-                        <p v-if="L(modal.ref, 'description')" class="text-stone-500 mt-1">{{ L(modal.ref, 'description') }}</p>
-                        <p v-if="modal.kind === 'combo'" class="text-stone-500 mt-1">{{ t('from') }} {{ money(modal.ref.base_price) }}</p>
-
-                        <div v-for="(g, gi) in modalGroups" :key="gi" class="mt-5">
-                            <div class="flex items-center gap-2 mb-1">
-                                <span class="font-bold">{{ L(g) }}</span>
-                                <span v-if="modal.kind === 'item' && g.is_required" class="text-xs font-semibold px-2 py-0.5 rounded-full bg-green-100 text-green-700">{{ t('required') }}</span>
-                                <span class="ms-auto text-xs text-stone-400">{{ t('choose') }} {{ g.max_select }}</span>
-                            </div>
-                            <label v-for="(o, oi) in groupOptions(g)" :key="oi" class="flex items-center gap-3 py-3 border-t border-stone-100 cursor-pointer" @click="toggleOption(gi, oi, g)">
-                                <span class="h-5 w-5 border-2 flex-shrink-0 grid place-items-center"
-                                    :class="(g.max_select || 1) > 1 ? 'rounded-md' : 'rounded-full'"
-                                    :style="{ borderColor: accent, background: isSelected(gi, oi) ? accent : 'transparent' }">
-                                    <span v-if="isSelected(gi, oi)" class="text-white text-xs">✓</span>
-                                </span>
-                                <span class="flex-1">{{ L(o) }}</span>
-                                <span v-if="Number(o.price || o.extra_price) > 0" class="font-semibold" :style="{ color: accent }">+{{ money(o.price || o.extra_price) }}</span>
-                            </label>
-                        </div>
-                    </div>
-                    <div v-if="orderingEnabled" class="sticky bottom-0 bg-white border-t border-stone-100 p-4 flex items-center gap-3">
-                        <div class="flex items-center gap-3 border border-stone-200 rounded-xl px-2 py-1">
-                            <button class="h-8 w-8 grid place-items-center text-lg" @click="qty = Math.max(1, qty - 1)">−</button>
-                            <span class="w-5 text-center font-bold">{{ qty }}</span>
-                            <button class="h-8 w-8 grid place-items-center text-lg" @click="qty++">+</button>
-                        </div>
-                        <button class="flex-1 h-12 rounded-xl text-white font-bold disabled:opacity-50" :style="{ background: accent }" :disabled="!modalValid" @click="addToCart">
-                            {{ t('add') }} ({{ money(modalUnit * qty) }})
-                        </button>
-                    </div>
-                </div>
-            </Teleport>
-
-
-
-            <!-- Mobile cart bar + drawer -->
-            <button v-if="orderingEnabled && cartCount && !cartDrawer" class="lg:hidden fixed bottom-0 inset-x-0 z-40 m-3 h-13 rounded-2xl text-white font-bold flex items-center justify-between px-5 shadow-lg" style="height:52px" :style="{ background: accent }" @click="cartDrawer = true">
-                <span>{{ t('view_cart') }} ({{ cartCount }})</span><span>{{ money(cartTotal) }}</span>
-            </button>
-            <Teleport to="body">
-                <div v-if="orderingEnabled && cartDrawer" class="lg:hidden fixed inset-0 z-50">
-                    <div class="absolute inset-0 bg-black/40" @click="cartDrawer = false"></div>
-                    <div class="absolute bottom-0 inset-x-0 bg-white rounded-t-3xl max-h-[85vh] overflow-y-auto p-5">
-                    <div class="flex items-center justify-between mb-4">
-                        <h3 class="font-bold">{{ t('cart') }}</h3>
-                        <button class="text-xl text-stone-400" @click="cartDrawer = false">×</button>
-                    </div>
-                    <div v-if="!cart.length" class="text-center py-10 text-stone-400"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="w-12 h-12 mx-auto mb-3 text-stone-300"><path d="m5 11 4-7"/><path d="m19 11-4-7"/><path d="M2 11h20"/><path d="m3.5 11 1.6 7.4a2 2 0 0 0 2 1.6h9.8a2 2 0 0 0 2-1.6l1.6-7.4"/><path d="m9 11 1 9"/><path d="M4.5 15.5h15"/><path d="m15 11-1 9"/></svg><p class="text-sm">{{ t('cart_empty') }}</p></div>
-                    <template v-else>
-                        <div v-for="line in cart" :key="line.uid" class="border-b border-stone-100 pb-3 mb-3">
-                            <div class="flex justify-between gap-2"><div class="font-semibold text-sm">{{ L(line.ref) }}</div><button class="text-stone-300 text-xs" @click="removeLine(line)">✕</button></div>
-                            <div v-if="lineOptions(line).length" class="text-xs text-stone-400 mt-0.5">{{ lineOptions(line).join('، ') }}</div>
-                            <div class="flex items-center justify-between mt-2">
-                                <div class="flex items-center gap-2 border border-stone-200 rounded-lg px-1">
-                                    <button class="h-6 w-6 text-stone-500" @click="bumpLine(line, -1)">−</button>
-                                    <span class="text-sm font-bold w-4 text-center">{{ line.qty }}</span>
-                                    <button class="h-6 w-6 text-stone-500" @click="bumpLine(line, 1)">+</button>
-                                </div>
-                                <span class="text-sm font-bold" :style="{ color: accent }">{{ money(lineTotal(line)) }}</span>
-                            </div>
-                        </div>
-                        <div class="flex justify-between items-center font-bold"><span>{{ t('total') }}</span><span :style="{ color: accent }">{{ money(cartTotal) }}</span></div>
-                        <div class="mt-4 pt-3 border-t border-stone-100">
-                            <button class="w-full h-12 rounded-xl bg-green-600 text-white font-bold disabled:opacity-50" :disabled="!canOrder" @click="openOrderDialog">
-                                {{ t('new_order') }}
-                            </button>
-                        </div>
-                    </template>
-                </div>
-            </Teleport>
-
-            <!-- Side menu (opens from the start side: right in AR, left in EN) -->
-            <Teleport to="body">
-                <div v-if="navDrawer" class="fixed inset-0 z-50">
-                <div class="absolute inset-0 bg-black/40" @click="navDrawer = false"></div>
-                <nav class="absolute start-0 top-0 h-full w-72 max-w-[80%] bg-white shadow-xl flex flex-col">
-                    <div class="flex items-center justify-end h-14 px-4 border-b border-stone-100">
-                        <button class="text-2xl text-stone-400 leading-none" @click="navDrawer = false">×</button>
-                    </div>
-                    <button class="text-start px-5 py-4 border-b border-stone-100 font-semibold hover:bg-stone-50" @click="goHome">{{ t('home') }}</button>
-                    <button v-if="branches.length" class="text-start px-5 py-4 border-b border-stone-100 font-semibold hover:bg-stone-50" @click="goBranches">{{ t('branches') }}</button>
-                </nav>
-                </div>
-            </Teleport>
+            <UserInfoDialog
+                :isOpen="userInfoDialog"
+                :isEditing="isEditing"
+                :userInfo="userInfo"
+                :editForm="editForm"
+                :saveSuccess="saveSuccess"
+                :hasUserInfo="hasUserInfo"
+                :initials="initials"
+                :accent="accent"
+                :t="t"
+                @close="closeDialog"
+                @enterEdit="enterEditMode"
+                @cancelEdit="cancelEdit"
+                @save="saveUserInfo"
+                @clear="clearUserInfo"
+                @updateField="updateUserField"
+            />
         </template>
     </div>
 </template>
-
-<style>
-@keyframes spin { to { transform: rotate(360deg); } }
-.line-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-</style>

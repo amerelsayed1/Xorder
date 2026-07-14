@@ -21,7 +21,7 @@ class RestaurantController extends Controller
         $restaurants = Restaurant::query()
             ->when($request->filled('status'), fn ($q) => $q->where('status', $request->string('status')))
             ->when($request->filled('search'), function ($q) use ($request) {
-                $term = '%' . $request->string('search') . '%';
+                $term = '%'.$request->string('search').'%';
                 $q->where(fn ($q) => $q
                     ->where('name_en', 'like', $term)
                     ->orWhere('name_ar', 'like', $term)

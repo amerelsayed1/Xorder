@@ -16,7 +16,7 @@ class CategoryFactory extends Factory
         return [
             'restaurant_id' => Restaurant::factory(),
             'name_en' => fake()->unique()->words(2, true),
-            'name_ar' => 'قسم ' . fake()->unique()->word(),
+            'name_ar' => 'قسم '.fake()->unique()->word(),
             'description_en' => fake()->sentence(),
             'display_order' => 0,
             'is_active' => true,

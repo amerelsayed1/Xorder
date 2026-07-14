@@ -2,8 +2,10 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import tailwindcss from '@tailwindcss/vite'
 
-// Public guest menu SPA, served at /menu on each restaurant subdomain.
-const API_TARGET = process.env.VITE_API_URL || 'http://localhost:8000'
+// Keep the menu dev server aligned with the landing/dashboard proxies and the
+// one-command local development script. Docker builds are static and do not
+// use this development-only proxy.
+const API_TARGET = process.env.VITE_API_URL || 'http://127.0.0.1:8100'
 
 export default defineConfig({
     base: '/menu/',

@@ -2,9 +2,9 @@
 
 namespace Tests\Feature;
 
-use App\Enums\RestaurantStatus;
 use App\Models\Category;
 use App\Models\MenuItem;
+use App\Models\MenuViewDaily;
 use App\Models\Restaurant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -33,8 +33,14 @@ class PublicMenuTest extends TestCase
             ->assertOk()
             ->assertJsonPath('available', false);
 
-        // Web page shows the unavailable message with HTTP 200 (not 404).
-        $this->get('/r/closed?lang=en')->assertOk()->assertSee('currently unavailable', false);
+        // Legacy web path: with a menu domain the canonical URL is the
+        // subdomain (302); without one it serves the SPA shell directly,
+        // marked noindex because the restaurant is hidden.
+        config(['platform.menu_domain' => 'xorder.io', 'platform.menu_secure' => true, 'platform.menu_port' => null]);
+        $this->get('/r/closed')->assertRedirect('https://closed.xorder.io/menu');
+
+        config(['platform.menu_domain' => null, 'platform.menu_shell_path' => base_path('tests/Fixtures/menu-shell.html')]);
+        $this->get('/r/closed')->assertOk()->assertSee('noindex', false);
     }
 
     public function test_inactive_and_empty_categories_are_hidden(): void
@@ -66,9 +72,41 @@ class PublicMenuTest extends TestCase
             ->assertJsonPath('data.categories.0.items.0.is_available', false);
     }
 
+    public function test_menu_fetch_records_a_daily_view(): void
+    {
+        $r = Restaurant::factory()->create(['slug' => 'counted']);
+        $cat = Category::factory()->for($r)->create(['is_active' => true]);
+        MenuItem::factory()->for($r)->for($cat)->create();
+
+        $this->getJson('/api/public/restaurants/counted/menu')->assertOk();
+        $this->getJson('/api/public/restaurants/counted/menu')->assertOk();
+
+        $row = MenuViewDaily::withoutGlobalScopes()
+            ->where('restaurant_id', $r->id)
+            ->whereDate('date', now()->toDateString())
+            ->first();
+
+        $this->assertNotNull($row);
+        $this->assertSame(2, $row->views);
+    }
+
     public function test_unknown_slug_returns_404(): void
     {
         $this->getJson('/api/public/restaurants/nope/menu')->assertNotFound();
+    }
+
+    public function test_sitemap_lists_visible_restaurants_only(): void
+    {
+        config(['platform.menu_domain' => 'xorder.io', 'platform.menu_secure' => true, 'platform.menu_port' => null]);
+        Restaurant::factory()->create(['slug' => 'visible']);
+        Restaurant::factory()->suspended()->create(['slug' => 'hidden']);
+
+        $res = $this->get('/sitemap.xml');
+
+        $res->assertOk();
+        $this->assertStringContainsString('application/xml', $res->headers->get('content-type'));
+        $res->assertSee('https://visible.xorder.io/menu', false);
+        $res->assertDontSee('https://hidden.xorder.io/menu', false);
     }
 
     public function test_public_payload_excludes_internal_fields(): void

@@ -12,6 +12,27 @@
 # nginx is attached to (find it with: docker network ls).
 # ─────────────────────────────────────────────────────────────────────────────
 
+# Shared VPS: caps + rotation keep xorder from starving Operix/Rakeeza of
+# RAM/CPU or filling the disk with container logs.
+x-limits-app: &limits-app
+  deploy:
+    resources:
+      limits:
+        memory: 512M
+        cpus: "1.0"
+x-limits-light: &limits-light
+  deploy:
+    resources:
+      limits:
+        memory: 128M
+        cpus: "0.5"
+x-logging: &logging
+  logging:
+    driver: json-file
+    options:
+      max-size: "50m"
+      max-file: "3"
+
 services:
   # PHP-FPM application container (Laravel API + public menu).
   app:
@@ -30,6 +51,36 @@ services:
       - xorder-storage:/var/www/html/storage
     networks:
       - internal
+    <<: [*limits-app, *logging]
+    # Liveness: the FPM master process. Without this a silently-dead FPM keeps
+    # the container "running" while every request 502s.
+    healthcheck:
+      test: ["CMD-SHELL", "pidof php-fpm || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  # Laravel scheduler — runs subscriptions:process daily (expiry + warnings).
+  # Same image as `app`; skips migrations/seeding (the app container owns those).
+  scheduler:
+    image: xorder-app
+    container_name: xorder-scheduler
+    restart: unless-stopped
+    env_file: .env.production
+    environment:
+      RUN_MIGRATIONS: "false"
+      SEED_ON_START: "false"
+    command: ["php", "artisan", "schedule:work"]
+    depends_on:
+      db:
+        condition: service_healthy
+      app:
+        condition: service_started
+    volumes:
+      - xorder-storage:/var/www/html/storage
+    networks:
+      - internal
+    <<: [*limits-light, *logging]
 
   # Internal nginx — serves landing + SPA statics, proxies PHP to `app`.
   # Reachable from Operix's nginx as http://xorder-web:80 over the proxy network.
@@ -56,6 +107,7 @@ services:
     networks:
       - internal   # reach `app` (PHP-FPM)
       - proxy       # shared with Operix's nginx
+    <<: [*limits-light, *logging]
 
   # PostgreSQL database.
   db:
@@ -75,6 +127,12 @@ services:
       retries: 12
     networks:
       - internal
+    <<: [*logging]
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1.0"
 
 volumes:
   xorder-db-data:

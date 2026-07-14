@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources\Public;
 
+use App\Models\MenuItem;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -9,7 +10,7 @@ use Illuminate\Http\Resources\Json\JsonResource;
  * Public, customer-facing item shape. Exposes only menu data — no internal
  * ids beyond what the page needs, no timestamps, no tenant internals.
  *
- * @mixin \App\Models\MenuItem
+ * @mixin MenuItem
  */
 class MenuItemPublicResource extends JsonResource
 {

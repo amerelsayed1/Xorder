@@ -2,7 +2,6 @@
 
 namespace Tests\Feature;
 
-use App\Enums\RoleEnum;
 use App\Enums\UserStatus;
 use App\Models\Restaurant;
 use App\Models\User;

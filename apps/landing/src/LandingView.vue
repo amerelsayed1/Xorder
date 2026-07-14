@@ -88,6 +88,7 @@ const businessTypes = computed(() => [
 const form = reactive({
     restaurant_name: '', contact_name: '', whatsapp: '',
     city: '', business_type: '', message: '',
+    website: '', // honeypot — hidden from humans; the API drops leads that fill it
 })
 const submitting = ref(false)
 const submitted = ref(false)
@@ -398,6 +399,10 @@ function applySeo(seo) {
                             <p>{{ L(content.lead_form.success) }}</p>
                         </div>
                         <form v-else class="lp-form" @submit.prevent="submitLead">
+                            <!-- Honeypot: off-screen, skipped by keyboard/screen readers; bots auto-fill it. -->
+                            <input v-model="form.website" type="text" name="website" tabindex="-1" autocomplete="off"
+                                aria-hidden="true"
+                                style="position:absolute;inset-inline-start:-9999px;height:0;width:0;opacity:0;pointer-events:none;" />
                             <label class="lp-field">
                                 <span>{{ t('landing.lead_restaurant') }} *</span>
                                 <input v-model="form.restaurant_name" required maxlength="150" />

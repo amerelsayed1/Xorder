@@ -2,13 +2,14 @@
 
 namespace App\Http\Resources\Public;
 
+use App\Models\Branch;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 /**
  * Public branch info shown to guests (branch picker + branches screen).
  *
- * @mixin \App\Models\Branch
+ * @mixin Branch
  */
 class BranchPublicResource extends JsonResource
 {

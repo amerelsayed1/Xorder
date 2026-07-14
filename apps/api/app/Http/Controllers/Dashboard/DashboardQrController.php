@@ -10,9 +10,7 @@ use Illuminate\Http\Response;
 
 class DashboardQrController extends Controller
 {
-    public function __construct(private readonly QrCodeService $qr)
-    {
-    }
+    public function __construct(private readonly QrCodeService $qr) {}
 
     public function show(Request $request): JsonResponse
     {
@@ -32,7 +30,7 @@ class DashboardQrController extends Controller
 
         return response($this->qr->png($restaurant), 200, [
             'Content-Type' => 'image/png',
-            'Content-Disposition' => 'attachment; filename="' . $this->qr->downloadFilename($restaurant) . '"',
+            'Content-Disposition' => 'attachment; filename="'.$this->qr->downloadFilename($restaurant).'"',
         ]);
     }
 }

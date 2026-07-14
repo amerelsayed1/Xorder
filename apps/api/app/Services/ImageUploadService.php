@@ -28,7 +28,7 @@ class ImageUploadService
 
         $encoded = $image->encodeUsingFileExtension('webp', quality: 85);
 
-        $path = $folder . '/' . Str::ulid() . '.webp';
+        $path = $folder.'/'.Str::ulid().'.webp';
         Storage::disk($disk)->put($path, (string) $encoded);
 
         return Storage::disk($disk)->url($path);

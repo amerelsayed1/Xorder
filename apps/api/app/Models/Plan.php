@@ -12,6 +12,8 @@ class Plan extends Model
         'price',
         'currency',
         'features',
+        'max_items',
+        'max_branches',
         'is_active',
         'sort_order',
     ];

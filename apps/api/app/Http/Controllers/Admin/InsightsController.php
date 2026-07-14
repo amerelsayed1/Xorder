@@ -12,6 +12,7 @@ use App\Models\Restaurant;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 
 /**
  * Platform-wide insights for the Super Admin.
@@ -120,7 +121,7 @@ class InsightsController extends Controller
      * Normalise a grouped count keyed by enum value, ensuring every case is
      * present (zero-filled) regardless of whether rows exist for it.
      *
-     * @param  \Illuminate\Support\Collection<string, int>  $counts
+     * @param  Collection<string, int>  $counts
      * @param  array<int, \BackedEnum>  $cases
      * @return array<string, int>
      */

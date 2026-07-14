@@ -38,6 +38,17 @@ class LeadTest extends TestCase
             ->assertJsonValidationErrors(['restaurant_name', 'whatsapp']);
     }
 
+    public function test_honeypot_submission_fakes_success_without_storing(): void
+    {
+        $this->postJson('/api/public/leads', [
+            'restaurant_name' => 'Bot Cafe',
+            'whatsapp' => '+201234567890',
+            'website' => 'https://spam.example.com', // hidden field humans never fill
+        ])->assertCreated();
+
+        $this->assertDatabaseMissing('leads', ['restaurant_name' => 'Bot Cafe']);
+    }
+
     public function test_leads_inbox_requires_super_admin(): void
     {
         $r = Restaurant::factory()->create();

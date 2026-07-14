@@ -2,9 +2,12 @@
 
 namespace App\Http\Controllers\Dashboard;
 
+use App\Enums\OrderStatus;
 use App\Http\Controllers\Controller;
 use App\Models\Category;
 use App\Models\MenuItem;
+use App\Models\MenuViewDaily;
+use App\Models\Order;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -27,6 +30,8 @@ class StatsController extends Controller
                 'available_items' => $availableItems,
                 'unavailable_items' => $totalItems - $availableItems,
                 'featured_items' => MenuItem::where('is_featured', true)->count(),
+                'new_orders' => Order::where('status', OrderStatus::NEW)->count(),
+                'views_today' => (int) MenuViewDaily::whereDate('date', now()->toDateString())->sum('views'),
             ],
         ]);
     }

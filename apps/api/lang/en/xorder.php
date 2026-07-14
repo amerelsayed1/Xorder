@@ -11,6 +11,12 @@ return [
         'subscription_inactive' => 'Your subscription is not active. The dashboard is read-only until it is renewed.',
     ],
     'messages' => [
+        'signup_received' => 'Your restaurant is ready! Check your email for your dashboard login details.',
+        'plan_limit_items' => 'Your plan allows up to :limit menu items. Upgrade to add more.',
+        'plan_limit_branches' => 'Your plan allows up to :limit branches. Upgrade to add more.',
+        'order_received' => 'Order received.',
+        'order_updated' => 'Order updated.',
+        'ordering_disabled' => 'Ordering is currently disabled for this restaurant.',
         'lead_received' => 'Thanks! We received your request and will be in touch shortly.',
         'lead_updated' => 'Lead updated.',
         'logged_in' => 'Logged in successfully.',

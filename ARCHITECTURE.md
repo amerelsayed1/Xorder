@@ -1,8 +1,8 @@
-# QR Menu SaaS — MVP Architecture Proposal
+# Xorder Architecture
 
-**Status:** v1 (Menu-only MVP)
-**Stack:** Laravel 12 (API) · Vue 3 SPA (Super Admin + Restaurant dashboards) · Blade SSR (public menu) · PostgreSQL
-**Core rule:** Only the Super Admin creates restaurants. No self-registration. No cart / orders / payments.
+**Status:** Active
+**Stack:** Laravel 13 JSON API · Vue 3 SPAs (dashboard, landing, customer menu) · PostgreSQL
+**Core rule:** Tenant isolation is enforced server-side; the public menu consumes only dedicated public resources.
 
 ---
 
@@ -23,11 +23,12 @@ Rules of thumb:
 - **Controllers stay thin** — validate (Form Request), authorize (Policy), call a Service or Model, return a Resource.
 - **Services only when justified** — restaurant provisioning (create restaurant + admin user + initial data in one transaction), reorder logic, QR generation. Simple CRUD does not need a service.
 - **Tenant isolation is structural, not manual** — enforced by a global Eloquent scope + a middleware-injected `restaurant_id`, never read from the request body.
-- **Two HTTP surfaces:** stateless-ish JSON API (`/api/*`) for dashboards; server-rendered Blade for the public menu (`/r/:slug`) for SEO + speed.
+- **Two HTTP surfaces:** JSON APIs (`/api/*`) and lightweight HTML shells for the Vue SPAs.
 
-### Why two frontends
+### Why separate frontends
 - **Dashboards (Super Admin + Restaurant Admin):** Vue 3 SPA. Rich, interactive, behind auth, not indexed. SEO irrelevant.
-- **Public menu:** Blade SSR. Must be crawlable, fast on mobile, RTL/LTR, shareable via QR. Server-rendered HTML wins here; sprinkle Alpine.js for search/filter interactivity (no SPA needed).
+- **Public menu:** Vue 3 SPA with a Laravel-served shell. Laravel injects restaurant-specific title,
+  canonical, Open Graph, and JSON-LD metadata so crawlers and link-preview bots do not need to execute JavaScript.
 
 ---
 
@@ -163,7 +164,9 @@ All dashboard/admin APIs return JSON, are auth-protected, and are tenant-scoped 
 
 ### Public (no auth)
 | GET | `/api/public/restaurants/:slug/menu` | JSON, only public/active data |
-| GET | `/r/:slug` | **Blade SSR page** (this is the human-facing route) |
+| POST | `/api/public/restaurants/:slug/orders` | records a customer order before WhatsApp handoff |
+| GET | `/menu/*` | customer-menu SPA shell with restaurant metadata |
+| GET | `/r/:slug` | legacy QR route; redirects to the canonical menu URL |
 
 **Standard response envelope:**
 ```json
@@ -184,8 +187,8 @@ app/
       Admin/             RestaurantController, SubscriptionController, QrController
       Dashboard/         RestaurantProfileController, CategoryController, ItemController,
                          StatsController, QrController
-      Public/            PublicMenuController          (Blade)
-      Api/Public/        PublicMenuApiController        (JSON)
+      Public/            MenuShellController, PublicMenuApiController,
+                         PublicOrderController, RestaurantQrController
       UploadController
     Middleware/
       EnsureRole.php                 (role:SUPER_ADMIN / role:RESTAURANT_ADMIN)
@@ -204,14 +207,14 @@ app/
                          ReorderService, SlugService
 database/
   migrations/  factories/  seeders/
-resources/
-  js/                    Vue 3 SPA (Super Admin + Dashboard)
-    app.js  router/  stores/  pages/admin/  pages/dashboard/  components/  composables/  lib/api.js
-  views/public/          Blade: menu.blade.php, unavailable.blade.php, layouts/public.blade.php
 routes/
   api.php  web.php  (web.php hosts /r/:slug + serves SPA shell)
 tests/
   Feature/  Unit/
+
+apps/menu/               Vue 3 customer menu, cart, ordering, and bilingual UI
+apps/web/                Vue 3 admin and restaurant dashboards
+apps/landing/            Vue 3 marketing site
 ```
 
 ---
@@ -258,7 +261,8 @@ Super Admin queries bypass the scope (they operate by explicit `:id`).
 7. **Dashboard CRUD** — profile, categories, items, availability toggle, reorder, stats counters.
 8. **Uploads** — `ImageUploadService`: validate, resize, store to `public`/S3 disk, return URL.
 9. **QR** — `QrCodeService` renders PNG pointing at `config('app.url')/r/{slug}`; stream as download.
-10. **Public** — `PublicMenuApiController` (JSON) + `PublicMenuController` (Blade); both share a query that hides inactive categories, empty categories, deleted/unavailable-from-listing rules, and short-circuits on SUSPENDED/ARCHIVED.
+10. **Public** — `PublicMenuApiController` exposes the public menu query; `MenuShellController` serves
+    the built Vue shell and injects restaurant metadata. Suspended/archived visibility is handled consistently by both.
 11. **Tests** — feature tests per role, especially **tenant-isolation negative tests** (Admin A cannot touch Restaurant B).
 
 ---
@@ -273,13 +277,13 @@ Super Admin queries bypass the scope (they operate by explicit `:id`).
 - Reusable: `ImageUploader`, `BilingualField` (ar/en tabs), `StatusBadge`, `SortableList` (drag reorder → PATCH reorder), `ConfirmDialog`.
 - i18n: `vue-i18n`, dashboard UI in ar + en, RTL toggle on `<html dir>`.
 
-### Blade public menu (`/r/:slug`)
-- Mobile-first Tailwind. Server-rendered for SEO.
+### Vue customer menu (`/menu/`)
+- Mobile-first Vue UI with a Laravel-served SEO shell.
 - `dir` + `lang` from `default_language`, with a language switch.
-- Sections: hero (cover + logo + name + description), sticky category nav, featured strip, categories→items grid, search box (Alpine.js client filter), WhatsApp/contact float button.
+- Sections: hero, sticky category navigation, search, category/item grids, item options, cart, and WhatsApp checkout.
 - Unavailable items render greyed with an "Unavailable / غير متاح" badge.
 - SEO: `<title>`, meta description, Open Graph (logo/cover), JSON-LD `Restaurant`/`Menu` schema, canonical URL.
-- Suspended/archived → render `unavailable.blade.php` with HTTP 200 (or 503) and the "This menu is currently unavailable" message.
+- Suspended/archived restaurants receive the same SPA shell and the menu API returns an unavailable state.
 
 ---
 
@@ -302,8 +306,8 @@ Super Admin queries bypass the scope (they operate by explicit `:id`).
 12. Vue SPA shell, router, auth store, guards, layouts; build dashboard pages.
 
 **Phase 3 — Public menu**
-13. Public JSON + Blade controllers and shared visibility query.
-14. Blade menu UI: hero, nav, featured, search, badges, WhatsApp button.
+13. Public menu JSON, order, QR, and SEO shell controllers.
+14. Vue menu UI: hero, navigation, search, badges, cart, options, and WhatsApp checkout.
 15. RTL/LTR + i18n + mobile responsiveness.
 
 **Phase 4 — QR, subscription behavior, deploy**

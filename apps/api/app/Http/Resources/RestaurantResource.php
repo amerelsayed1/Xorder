@@ -3,6 +3,7 @@
 namespace App\Http\Resources;
 
 use App\Enums\RoleEnum;
+use App\Models\Restaurant;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -10,7 +11,7 @@ use Illuminate\Http\Resources\Json\JsonResource;
  * Full restaurant representation for authenticated dashboards / admin.
  * Public-facing data uses RestaurantPublicResource instead.
  *
- * @mixin \App\Models\Restaurant
+ * @mixin Restaurant
  */
 class RestaurantResource extends JsonResource
 {

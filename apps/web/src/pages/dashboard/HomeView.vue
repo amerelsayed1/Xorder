@@ -31,7 +31,16 @@ const featured = computed(() => {
     const f = items.value.filter(i => i.is_featured)
     return (f.length ? f : items.value).slice(0, 5)
 })
-const needsSetup = computed(() => stats.value && (stats.value.total_categories === 0 || stats.value.total_items === 0))
+// Setup guide: steps we can detect from stats/auth data, plus a final
+// non-trackable "print your QR" step. The card hides once every detectable
+// step is done.
+const setupSteps = computed(() => stats.value ? [
+    { key: 'category', labelKey: 'dashboard.step_category', to: { name: 'dashboard.categories' }, done: stats.value.total_categories > 0 },
+    { key: 'item', labelKey: 'dashboard.step_item', to: { name: 'dashboard.items' }, done: stats.value.total_items > 0 },
+    { key: 'logo', labelKey: 'dashboard.step_logo', to: { name: 'dashboard.profile' }, done: !!auth.restaurant?.logo_url },
+    { key: 'qr', labelKey: 'dashboard.step_qr', to: { name: 'dashboard.qr' }, done: null },
+] : [])
+const setupComplete = computed(() => setupSteps.value.filter(s => s.done !== null).every(s => s.done))
 const itemName = (it) => pickLocalized(it, 'name', locale.value)
 const itemAltName = (it) => locale.value === 'ar' ? (it.name_en || '') : (it.name_ar || '')
 
@@ -57,19 +66,26 @@ function copyUrl() {
             </div>
         </div>
 
-        <div v-if="needsSetup" class="card p-5 flex flex-wrap items-center justify-between gap-4">
-            <div>
-                <h2 class="h-card">{{ t('dashboard.setup_title') }}</h2>
-                <p class="page-sub">{{ t('dashboard.setup_text') }}</p>
-            </div>
-            <div class="flex flex-wrap gap-2">
-                <RouterLink :to="{ name: 'dashboard.categories' }" class="btn btn-ghost"><Icon name="categories" :size="16" />{{ t('dashboard.create_category') }}</RouterLink>
-                <RouterLink :to="{ name: 'dashboard.items' }" class="btn btn-accent" :class="{ 'opacity-60 pointer-events-none': stats.total_categories === 0 }"><Icon name="plus" :size="16" />{{ t('dashboard.add_first_item') }}</RouterLink>
-            </div>
+        <!-- Setup guide (hidden once every detectable step is done) -->
+        <div v-if="!setupComplete" class="card p-5">
+            <h2 class="h-card">{{ t('dashboard.setup_guide') }}</h2>
+            <p class="page-sub">{{ t('dashboard.setup_guide_sub') }}</p>
+            <ul class="mt-3">
+                <li v-for="step in setupSteps" :key="step.key" class="border-t first:border-t-0" style="border-color:var(--line)">
+                    <RouterLink :to="step.to" class="flex items-center gap-3 py-2.5 group">
+                        <span class="h-6 w-6 rounded-full grid place-items-center flex-shrink-0"
+                            :style="step.done ? 'background:var(--green-soft);color:var(--green)' : 'border:1.5px solid var(--line);color:var(--muted)'">
+                            <Icon v-if="step.done" name="check" :size="14" />
+                        </span>
+                        <span class="text-sm flex-1" :style="step.done ? 'color:var(--muted);text-decoration:line-through' : 'color:var(--ink)'">{{ t(step.labelKey) }}</span>
+                        <Icon name="chevronDown" :size="14" class="rtl:rotate-90 -rotate-90" style="color:var(--muted)" />
+                    </RouterLink>
+                </li>
+            </ul>
         </div>
 
         <!-- Stat cards -->
-        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div class="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
             <div class="stat flex items-center gap-3.5">
                 <span class="stat-ico"><Icon name="categories" :size="20" /></span>
                 <div>
@@ -96,6 +112,20 @@ function copyUrl() {
                 <div>
                     <div class="stat-num" style="font-size:26px;color:var(--amber)">{{ stats.unavailable_items }}</div>
                     <div class="stat-label">{{ t('stats.unavailable_items') }}</div>
+                </div>
+            </div>
+            <RouterLink :to="{ name: 'dashboard.orders' }" class="stat flex items-center gap-3.5">
+                <span class="stat-ico" style="background:var(--accent-soft);color:var(--accent)"><i class="pi pi-shopping-bag" style="font-size:19px" /></span>
+                <div>
+                    <div class="stat-num" style="font-size:26px;color:var(--accent)">{{ stats.new_orders ?? 0 }}</div>
+                    <div class="stat-label">{{ t('stats.new_orders') }}</div>
+                </div>
+            </RouterLink>
+            <div class="stat flex items-center gap-3.5">
+                <span class="stat-ico"><i class="pi pi-eye" style="font-size:19px" /></span>
+                <div>
+                    <div class="stat-num" style="font-size:26px">{{ stats.views_today ?? 0 }}</div>
+                    <div class="stat-label">{{ t('stats.views_today') }}</div>
                 </div>
             </div>
         </div>

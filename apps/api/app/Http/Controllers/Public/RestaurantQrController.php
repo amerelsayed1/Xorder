@@ -9,9 +9,7 @@ use Illuminate\Http\Response;
 
 class RestaurantQrController extends Controller
 {
-    public function __construct(private readonly QrCodeService $qr)
-    {
-    }
+    public function __construct(private readonly QrCodeService $qr) {}
 
     /**
      * Public SVG QR of a restaurant's menu URL. Used on the marketing site to

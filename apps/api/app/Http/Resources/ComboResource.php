@@ -2,10 +2,11 @@
 
 namespace App\Http\Resources;
 
+use App\Models\Combo;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
-/** @mixin \App\Models\Combo */
+/** @mixin Combo */
 class ComboResource extends JsonResource
 {
     public function toArray(Request $request): array

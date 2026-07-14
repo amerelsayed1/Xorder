@@ -1,7 +1,5 @@
 <?php
 
-use App\Enums\SubscriptionStatus;
-
 return [
 
     /*
@@ -24,11 +22,28 @@ return [
     'menu_secure' => env('MENU_SECURE', true),
     'menu_port' => env('MENU_PORT'), // e.g. 8080 for local; unset on standard 80/443
 
+    // Built guest-menu SPA entry (apps/menu). MenuShellService injects the
+    // per-restaurant SEO tags into this file when serving /menu. Leave unset
+    // to use the Docker/monorepo default locations.
+    'menu_shell_path' => env('MENU_SHELL_PATH'),
+
     // Slugs that would collide with system subdomains — never assignable.
     'reserved_slugs' => [
         'www', 'app', 'api', 'admin', 'dashboard', 'mail', 'ftp', 'cdn',
         'assets', 'static', 'menu', 'qr', 'support', 'help', 'status',
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Self-serve signup
+    |--------------------------------------------------------------------------
+    | OFF by default: the platform launches sales-led (landing → leads inbox →
+    | manual provisioning). Flip SELF_SERVE_SIGNUP=true to open
+    | POST /api/public/signup, which provisions a restaurant + admin with a
+    | TRIAL subscription automatically.
+    */
+    'self_serve_signup' => env('SELF_SERVE_SIGNUP', false),
+    'signup_trial_days' => env('SIGNUP_TRIAL_DAYS', 14),
 
     'super_admin' => [
         'name' => env('SUPER_ADMIN_NAME', 'Super Admin'),

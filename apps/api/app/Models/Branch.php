@@ -38,14 +38,14 @@ class Branch extends Model
     protected function phone(): Attribute
     {
         return Attribute::make(
-            set: fn(?string $value) => $this->normalizePhoneDigits($value),
+            set: fn (?string $value) => $this->normalizePhoneDigits($value),
         );
     }
 
     protected function whatsappNumber(): Attribute
     {
         return Attribute::make(
-            set: fn(?string $value) => $this->normalizePhoneDigits($value),
+            set: fn (?string $value) => $this->normalizePhoneDigits($value),
         );
     }
 
@@ -60,6 +60,7 @@ class Branch extends Model
         $persianDigits = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
 
         $value = str_replace($arabicDigits, $englishDigits, $value);
+
         return str_replace($persianDigits, $englishDigits, $value);
     }
 }

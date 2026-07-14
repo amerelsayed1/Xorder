@@ -16,6 +16,7 @@ class CategoryAndItemTest extends TestCase
     private function admin(): User
     {
         $r = Restaurant::factory()->create();
+
         return User::factory()->restaurantAdmin($r->id)->create();
     }
 
