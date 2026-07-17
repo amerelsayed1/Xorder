@@ -51,11 +51,11 @@ async function share() {
 
 <template>
     <section class="restaurant-hero" :aria-label="t('info')">
-        <img v-if="restaurant.cover_image_url" class="hero-image" :src="restaurant.cover_image_url" :alt="name" />
+        <img v-if="restaurant.cover_image_url" class="hero-image" :src="restaurant.cover_image_url" :alt="name" fetchpriority="high" decoding="async" />
         <div class="hero-overlay"></div>
 
         <div class="restaurant-profile">
-            <img v-if="restaurant.logo_url" :src="restaurant.logo_url" :alt="name" />
+            <img v-if="restaurant.logo_url" :src="restaurant.logo_url" :alt="name" decoding="async" />
             <div v-else class="profile-fallback">{{ initial }}</div>
             <div class="restaurant-copy">
                 <div class="restaurant-title-row">

@@ -58,8 +58,11 @@ function clearImage() {
             <!-- Two Upload Options -->
             <div v-else class="space-y-2">
                 <!-- Option 1: Upload File -->
-                <label class="block border-2 border-dashed rounded-lg p-4 cursor-pointer hover:bg-gray-50 transition text-center">
-                    <div style="color:var(--muted)" class="text-sm font-medium">{{ uploading ? '…' : t('common.upload') }}</div>
+                <label class="block border-2 border-dashed rounded-lg p-4 cursor-pointer hover:bg-gray-50 transition text-center" :class="{ 'is-uploading': uploading }">
+                    <div style="color:var(--muted)" class="text-sm font-medium flex items-center justify-center gap-2">
+                        <span v-if="uploading" class="iu-spinner"></span>
+                        {{ uploading ? t('common.loading') : t('common.upload') }}
+                    </div>
                     <div style="color:var(--muted)" class="text-xs mt-1">{{ t('item.image') }} (JPG, PNG, GIF)</div>
                     <input type="file" accept="image/*" class="hidden" @change="onChange" :disabled="uploading" />
                 </label>
@@ -83,3 +86,19 @@ function clearImage() {
         <p v-if="error" class="text-xs mt-2" style="color:#c0392b">{{ error }}</p>
     </div>
 </template>
+
+<style scoped>
+/* Self-contained spinner so upload progress is obvious without depending on
+   Tailwind's animate-spin being generated for this shared-package component. */
+.iu-spinner {
+    width: 14px;
+    height: 14px;
+    border: 2px solid color-mix(in srgb, var(--accent, #f59e0b) 30%, transparent);
+    border-top-color: var(--accent, #f59e0b);
+    border-radius: 50%;
+    display: inline-block;
+    animation: iu-spin .6s linear infinite;
+}
+.is-uploading { pointer-events: none; opacity: .75; }
+@keyframes iu-spin { to { transform: rotate(360deg); } }
+</style>

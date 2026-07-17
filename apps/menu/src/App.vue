@@ -11,6 +11,7 @@ import Header from './components/Header.vue'
 import Hero from './components/Hero.vue'
 import CategoryTabs from './components/CategoryTabs.vue'
 import MenuGrid from './components/MenuGrid.vue'
+import MenuSkeleton from './components/MenuSkeleton.vue'
 import Footer from './components/Footer.vue'
 import BranchesPage from './components/BranchesPage.vue'
 import CartDrawer from './components/CartDrawer.vue'
@@ -88,7 +89,6 @@ const orderType = ref('pickup')
 const orderTypes = computed(() => [
     { value: 'pickup', label: t('pickup') },
     { value: 'delivery', label: t('delivery') },
-    { value: 'dine_in', label: t('dine_in') },
 ])
 const orderTypeLabel = computed(() => orderTypes.value.find(o => o.value === orderType.value)?.label || '')
 
@@ -200,9 +200,7 @@ function updateUserField(field, value) {
 
 <template>
     <div :style="{ '--accent': accent, '--acc': accent }" class="site-shell">
-        <div v-if="loading" class="min-h-screen grid place-items-center">
-            <div class="h-10 w-10 rounded-full border-4 border-black/10" :style="{ borderTopColor: accent }" style="animation: spin .8s linear infinite"></div>
-        </div>
+        <MenuSkeleton v-if="loading" />
 
         <div v-else-if="error || unavailable" class="min-h-screen grid place-items-center text-center px-6">
             <p class="text-lg text-stone-500">{{ unavailable ? t('unavailable') : t('error_generic') }}</p>

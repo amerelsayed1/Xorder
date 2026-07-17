@@ -13,6 +13,7 @@ import { confirm } from '@xorder/ui/confirm.js'
 const { t, locale } = useI18n()
 const rows = ref([])
 const loading = ref(true)
+const saving = ref(false)
 const showModal = ref(false)
 const editing = ref(null)
 const errors = ref({})
@@ -39,6 +40,8 @@ function openEdit(c) {
     showModal.value = true
 }
 async function save() {
+    if (saving.value) return // guard against double-submit (double-click)
+    saving.value = true
     errors.value = {}
     try {
         await ensureCsrf()
@@ -47,6 +50,7 @@ async function save() {
         showModal.value = false
         await load()
     } catch (err) { errors.value = err.response?.data?.errors || {} }
+    finally { saving.value = false }
 }
 async function toggle(c) {
     await ensureCsrf()
@@ -134,8 +138,11 @@ const categoryAltName = (c) => locale.value === 'ar' ? (c.name_en || '') : (c.na
                     {{ t('common.active') }}
                 </label>
                 <div class="flex justify-end gap-2 pt-2">
-                    <button @click="showModal = false" class="btn btn-ghost">{{ t('common.cancel') }}</button>
-                    <button @click="save" class="btn btn-accent">{{ t('common.save') }}</button>
+                    <button @click="showModal = false" :disabled="saving" class="btn btn-ghost">{{ t('common.cancel') }}</button>
+                    <button @click="save" :disabled="saving" class="btn btn-accent">
+                        <Icon v-if="saving" name="loading" :size="16" class="animate-spin" />
+                        {{ saving ? t('common.saving') : t('common.save') }}
+                    </button>
                 </div>
             </div>
         </Modal>

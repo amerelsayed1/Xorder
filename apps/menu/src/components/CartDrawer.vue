@@ -97,7 +97,7 @@ function submit() {
                     <template v-else-if="step === 1">
                         <div class="cart-items">
                             <div v-for="line in cart" :key="line.uid" class="cart-item">
-                                <img v-if="line.ref.image_url" :src="line.ref.image_url" alt="" />
+                                <img v-if="line.ref.image_url" v-img-fade :src="line.ref.image_url" alt="" loading="lazy" decoding="async" />
                                 <div v-else class="cart-thumb-fallback">◉</div>
                                 <div class="cart-item-copy">
                                     <strong>{{ localize(line.ref) }}</strong>

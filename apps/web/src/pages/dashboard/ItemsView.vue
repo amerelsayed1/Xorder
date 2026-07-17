@@ -16,6 +16,7 @@ const cur = computed(() => auth.restaurant?.currency_symbol || '')
 const items = ref([])
 const categories = ref([])
 const loading = ref(true)
+const saving = ref(false)
 const filterCat = ref('')
 const search = ref('')
 const showModal = ref(false)
@@ -87,6 +88,8 @@ function openEdit(it) {
     showModal.value = true
 }
 async function save() {
+    if (saving.value) return // guard against double-submit (double-click)
+    saving.value = true
     errors.value = {}
     const payload = {
         ...form,
@@ -104,6 +107,7 @@ async function save() {
         showModal.value = false
         await load()
     } catch (err) { errors.value = err.response?.data?.errors || {} }
+    finally { saving.value = false }
 }
 async function toggleAvail(it) {
     await ensureCsrf()
@@ -151,9 +155,9 @@ async function remove(it) {
                 <span class="absolute top-1/2 -translate-y-1/2 inset-inline-start-3 pointer-events-none" style="inset-inline-start:12px;color:var(--muted)"><Icon name="search" :size="17" /></span>
                 <input v-model="search" :placeholder="t('common.search')" class="input" style="padding-inline-start:38px" />
             </div>
-            <div class="segmented overflow-x-auto">
-                <button :class="{ active: filterCat === '' }" @click="filterCat = ''">{{ t('common.all') }}</button>
-                <button v-for="c in categories" :key="c.id" :class="{ active: filterCat === c.id }" @click="filterCat = c.id">
+            <div class="cat-filter">
+                <button class="cat-chip" :class="{ active: filterCat === '' }" @click="filterCat = ''">{{ t('common.all') }}</button>
+                <button v-for="c in categories" :key="c.id" class="cat-chip" :class="{ active: filterCat === c.id }" @click="filterCat = c.id">
                     {{ catName(c.id) }}
                 </button>
             </div>
@@ -279,10 +283,50 @@ async function remove(it) {
                 </div>
 
                 <div class="flex justify-end gap-2 pt-2">
-                    <button @click="showModal = false" class="btn btn-ghost">{{ t('common.cancel') }}</button>
-                    <button @click="save" class="btn btn-accent">{{ t('common.save') }}</button>
+                    <button @click="showModal = false" :disabled="saving" class="btn btn-ghost">{{ t('common.cancel') }}</button>
+                    <button @click="save" :disabled="saving" class="btn btn-accent">
+                        <Icon v-if="saving" name="loading" :size="16" class="animate-spin" />
+                        {{ saving ? t('common.saving') : t('common.save') }}
+                    </button>
                 </div>
             </div>
         </Modal>
     </div>
 </template>
+
+<style scoped>
+/* Horizontal chip filter — handles many categories (with long bilingual
+   names) without wrapping into tall cramped tabs like the segmented control. */
+.cat-filter {
+    display: flex;
+    gap: 6px;
+    flex: 1 1 100%;
+    min-width: 0;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    scrollbar-width: thin;
+}
+.cat-filter::-webkit-scrollbar { height: 5px; }
+.cat-filter::-webkit-scrollbar-thumb { background: var(--line); border-radius: 999px; }
+.cat-chip {
+    flex: none;
+    white-space: nowrap;
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 13px;
+    line-height: 1.2;
+    padding: 8px 15px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    background: var(--card);
+    color: var(--muted);
+    cursor: pointer;
+    transition: color .15s, background .15s, border-color .15s;
+}
+.cat-chip:hover { border-color: var(--accent); color: var(--accent); }
+.cat-chip.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+}
+</style>

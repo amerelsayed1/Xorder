@@ -49,7 +49,7 @@ function isSelected(gi, oi) {
                 <button class="modal-close" :aria-label="t('close')" @click="$emit('close')">×</button>
 
                 <div v-if="item.image_url" class="modal-image-wrap">
-                    <img :src="item.image_url" :alt="localize(item)" />
+                    <img v-img-fade :src="item.image_url" :alt="localize(item)" decoding="async" />
                     <span v-if="item.is_featured" class="popular-badge">{{ t('popular') }}</span>
                 </div>
 

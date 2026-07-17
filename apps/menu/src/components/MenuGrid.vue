@@ -142,7 +142,7 @@ const priceOf = (section, item) => {
                         @keydown.enter="item.is_available !== false && $emit('openModal', section.kind, item)"
                     >
                         <div class="product-image-wrap">
-                            <img v-if="item.image_url" :src="item.image_url" :alt="localize(item)" loading="lazy" />
+                            <img v-if="item.image_url" v-img-fade :src="item.image_url" :alt="localize(item)" loading="lazy" decoding="async" />
                             <div v-else class="image-placeholder">{{ section.glyph }}</div>
                             <span v-if="item.is_featured && item.is_available !== false" class="popular-badge">{{ t('popular') }}</span>
                             <span v-if="item.is_available === false" class="unavailable-badge">{{ t('item_unavailable') }}</span>
