@@ -3,6 +3,7 @@ import { ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import api, { ensureCsrf } from '@xorder/api-client/api.js'
 import Icon from '@xorder/ui/Icon.vue'
+import Skeleton from '@xorder/ui/Skeleton.vue'
 import { confirm } from '@xorder/ui/confirm.js'
 
 const { t, locale } = useI18n()
@@ -117,7 +118,11 @@ function fmtTime(iso) {
                     </tr>
                 </thead>
                 <tbody>
-                    <tr v-if="loading"><td colspan="7" class="px-5 py-8 text-center" style="color:var(--muted)">{{ t('common.loading') }}</td></tr>
+                    <template v-if="loading">
+                        <tr v-for="n in 6" :key="'sk' + n" class="border-t" :style="{ borderColor: 'var(--line)' }">
+                            <td v-for="c in 7" :key="c" class="px-5 py-4"><Skeleton :h="'14px'" :w="c === 7 ? '60%' : '80%'" /></td>
+                        </tr>
+                    </template>
                     <tr v-else-if="!rows.length"><td colspan="7" class="px-5 py-8 text-center" style="color:var(--muted)">{{ t('orders.none') }}</td></tr>
                     <tr v-for="order in rows" :key="order.id" class="border-t align-top" :style="{ borderColor: 'var(--line)' }">
                         <td class="px-5 py-3 font-medium whitespace-nowrap" style="color:var(--ink)">{{ order.code }}</td>

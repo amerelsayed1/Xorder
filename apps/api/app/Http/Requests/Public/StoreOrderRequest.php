@@ -28,6 +28,10 @@ class StoreOrderRequest extends FormRequest
             'total' => ['required', 'numeric', 'min:0', 'max:1000000'],
             'customer_name' => ['nullable', 'string', 'max:150'],
             'customer_phone' => ['nullable', 'string', 'max:32'],
+            'customer_email' => ['nullable', 'email', 'max:150'],
+            'customer_address' => ['nullable', 'string', 'max:500'],
+            'address_label' => ['nullable', 'string', 'max:60'],
+            'order_type' => ['nullable', 'string', 'in:pickup,delivery,dine_in'],
             'note' => ['nullable', 'string', 'max:1000'],
         ];
     }

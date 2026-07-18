@@ -43,7 +43,7 @@ const profileItems = computed(() => [
         <!-- Topbar -->
         <header class="sakai-topbar">
             <div class="flex items-center gap-2">
-                <button class="sakai-icon-btn lg:hidden" @click="mobileOpen = !mobileOpen"><i class="pi pi-bars" /></button>
+                <button class="sakai-icon-btn sakai-mobile-only" :aria-label="t('common.menu')" @click="mobileOpen = !mobileOpen"><i class="pi pi-bars" /></button>
                 <RouterLink :to="homeTo" class="flex items-center gap-2.5">
                     <template v-if="props.logo">
                         <img :src="props.logo" class="sakai-brand-logo" :alt="props.title" />
@@ -64,7 +64,7 @@ const profileItems = computed(() => [
         </header>
 
         <!-- Sidebar -->
-        <div v-if="mobileOpen" class="sakai-scrim lg:hidden" @click="mobileOpen = false"></div>
+        <div v-if="mobileOpen" class="sakai-scrim sakai-mobile-only" @click="mobileOpen = false"></div>
         <aside class="sakai-sidebar" :class="{ open: mobileOpen }">
             <ul class="sakai-menu">
                 <li class="sakai-menu-label">{{ t('common.menu') }}</li>
@@ -140,5 +140,12 @@ const profileItems = computed(() => [
     [dir=rtl] .sakai-sidebar { transform: translateX(100%); }
     .sakai-sidebar.open { transform: translateX(0); }
     .sakai-content { margin-inline-start: 0; }
+}
+
+/* Hamburger + scrim exist only below 1024px, where the sidebar is a drawer.
+   Scoped here (not a Tailwind `lg:hidden` utility) so it can't be dropped by
+   content-scanning and leave a dead button on desktop. */
+@media (min-width: 1024px) {
+    .sakai-mobile-only { display: none; }
 }
 </style>

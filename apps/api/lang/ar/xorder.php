@@ -58,6 +58,13 @@ return [
         'availability_updated' => 'تم تحديث الإتاحة.',
         'items_not_found' => 'لم يتم العثور على صنف واحد أو أكثر.',
         'items_reordered' => 'تمت إعادة ترتيب الأصناف.',
+        'import_done' => 'اكتمل الاستيراد.',
+        'import_empty' => 'الملف لا يحتوي على صفوف.',
+        'import_bad_headers' => 'يجب أن يحتوي الملف على عمود للاسم وعمود للسعر على الأقل.',
+        'import_row_no_name' => 'اسم الصنف مفقود.',
+        'import_row_no_category' => 'القسم مفقود.',
+        'import_row_bad_price' => 'السعر مفقود أو غير صحيح.',
+        'import_row_limit' => 'تم التخطي — تم بلوغ حد الأصناف في باقتك.',
     ],
     'validation' => [
         'restaurant_name_required' => 'أدخل اسم المطعم بلغة واحدة على الأقل.',

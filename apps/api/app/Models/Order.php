@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Enums\OrderStatus;
 use App\Models\Concerns\BelongsToRestaurant;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Order extends Model
 {
@@ -15,8 +16,11 @@ class Order extends Model
         'items',
         'total',
         'currency',
+        'customer_id',
+        'customer_address_id',
         'customer_name',
         'customer_phone',
+        'order_type',
         'note',
         'source',
     ];
@@ -34,5 +38,15 @@ class Order extends Model
     public function code(): string
     {
         return 'ORD-'.$this->id;
+    }
+
+    public function customer(): BelongsTo
+    {
+        return $this->belongsTo(Customer::class);
+    }
+
+    public function customerAddress(): BelongsTo
+    {
+        return $this->belongsTo(CustomerAddress::class);
     }
 }

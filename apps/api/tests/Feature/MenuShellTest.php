@@ -23,6 +23,7 @@ class MenuShellTest extends TestCase
             'name_ar' => 'مطعم التجربة',
             'name_en' => 'Demo Restaurant',
             'description_ar' => 'أفضل مطعم',
+            'logo_url' => '/storage/logos/demo.webp',
         ]);
 
         $res = $this->get('http://demo.xorder.io/menu');
@@ -35,6 +36,10 @@ class MenuShellTest extends TestCase
         $res->assertSee('application/ld+json', false);
         $res->assertSee('"@type":"Restaurant"', false);
         $res->assertSee('lang="ar" dir="rtl"', false);
+        // The restaurant's logo becomes the browser-tab favicon (resolved to an absolute URL).
+        $res->assertSee('rel="icon" href="http://', false);
+        $res->assertSee('/storage/logos/demo.webp">', false);
+        $res->assertSee('rel="apple-touch-icon"', false);
         // The SPA markup itself is intact.
         $res->assertSee('<div id="app"></div>', false);
     }

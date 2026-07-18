@@ -58,6 +58,13 @@ return [
         'availability_updated' => 'Availability updated.',
         'items_not_found' => 'One or more items were not found.',
         'items_reordered' => 'Items reordered.',
+        'import_done' => 'Import finished.',
+        'import_empty' => 'The file has no rows.',
+        'import_bad_headers' => 'The file needs at least a name column and a price column.',
+        'import_row_no_name' => 'Missing item name.',
+        'import_row_no_category' => 'Missing category.',
+        'import_row_bad_price' => 'Missing or invalid price.',
+        'import_row_limit' => 'Skipped — your plan item limit was reached.',
     ],
     'validation' => [
         'restaurant_name_required' => 'Provide the restaurant name in at least one language.',

@@ -47,6 +47,7 @@ const restaurantRoutes = [
             { path: '', name: 'dashboard.home', component: () => import('../pages/dashboard/HomeView.vue') },
             { path: 'insights', name: 'dashboard.insights', component: () => import('../pages/dashboard/InsightsView.vue') },
             { path: 'orders', name: 'dashboard.orders', component: () => import('../pages/dashboard/OrdersView.vue') },
+            { path: 'customers', name: 'dashboard.customers', component: () => import('../pages/dashboard/CustomersView.vue') },
             { path: 'branches', name: 'dashboard.branches', component: () => import('../pages/dashboard/BranchesView.vue') },
             { path: 'profile', name: 'dashboard.profile', component: () => import('../pages/dashboard/ProfileView.vue') },
             { path: 'categories', name: 'dashboard.categories', component: () => import('../pages/dashboard/CategoriesView.vue') },
@@ -64,11 +65,14 @@ const router = createRouter({
 })
 
 // Bounce the browser to the subdomain that matches the signed-in user.
+// Restaurant subdomains serve the public menu at their root ("/"), so we land
+// admins on /login — the guest guard immediately forwards an authenticated
+// admin to their dashboard client-side, without a full load of "/".
 function redirectToCorrectHost(auth) {
     if (auth.isSuperAdmin) {
         window.location.href = superAdminUrl('/')
     } else if (auth.restaurant?.slug) {
-        window.location.href = restaurantUrl(auth.restaurant.slug, '/')
+        window.location.href = restaurantUrl(auth.restaurant.slug, '/login')
     } else {
         window.location.href = superAdminUrl('/')
     }

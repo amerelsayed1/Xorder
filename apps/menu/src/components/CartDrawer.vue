@@ -23,6 +23,8 @@ const step = ref(1)
 const name = ref('')
 const phone = ref('')
 const note = ref('')
+const email = ref('')
+const address = ref('')
 
 // Fresh dialog every open: back to step 1, prefill saved diner info.
 watch(() => props.isOpen, (open) => {
@@ -30,6 +32,8 @@ watch(() => props.isOpen, (open) => {
         step.value = 1
         name.value = props.userInfo?.name || ''
         phone.value = props.userInfo?.phone || ''
+        email.value = props.userInfo?.email || ''
+        address.value = props.userInfo?.address || ''
         note.value = ''
     }
 })
@@ -39,13 +43,24 @@ watch(() => props.cart.length, (len) => {
     if (len === 0) step.value = 1
 })
 
-const canSubmit = computed(() => props.canOrder && phone.value.trim().length >= 8 && !props.isSubmitting)
+// Delivery needs an address; pickup / dine-in don't.
+const needsAddress = computed(() => props.orderType === 'delivery')
+const canSubmit = computed(() =>
+    props.canOrder && phone.value.trim().length >= 8 && !props.isSubmitting &&
+    (!needsAddress.value || address.value.trim().length >= 5)
+)
 
 const itemsText = computed(() => `${props.cartCount} ${props.cartCount === 1 ? props.t('item_count') : props.t('items_count')}`)
 
 function submit() {
     if (!canSubmit.value) return
-    emit('submit', { name: name.value.trim(), phone: phone.value.trim(), note: note.value.trim() })
+    emit('submit', {
+        name: name.value.trim(),
+        phone: phone.value.trim(),
+        email: email.value.trim(),
+        address: needsAddress.value ? address.value.trim() : '',
+        note: note.value.trim(),
+    })
 }
 </script>
 
@@ -162,6 +177,14 @@ function submit() {
                             <label>
                                 <span>{{ t('f_phone') }} *</span>
                                 <input v-model="phone" :placeholder="t('f_phone_ph')" inputmode="tel" dir="ltr" />
+                            </label>
+                            <label v-if="needsAddress">
+                                <span>{{ t('f_address') }} *</span>
+                                <textarea v-model="address" :placeholder="t('f_address_ph')"></textarea>
+                            </label>
+                            <label>
+                                <span>{{ t('f_email') }}</span>
+                                <input v-model="email" :placeholder="t('f_email_ph')" inputmode="email" dir="ltr" />
                             </label>
                             <label>
                                 <span>{{ t('f_note') }}</span>

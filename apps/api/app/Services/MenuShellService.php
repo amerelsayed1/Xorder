@@ -77,9 +77,14 @@ class MenuShellService
         $name = $this->displayName($restaurant);
         $description = $this->displayDescription($restaurant);
         $image = $this->absoluteImage($restaurant);
+        $logo = $this->toAbsolute($restaurant->logo_url, $restaurant);
 
         $tags = array_filter([
             $description ? '<meta name="description" content="'.e($description).'">' : null,
+            // Per-restaurant favicon: the guest-menu shell ships with no icon,
+            // so each restaurant's tab shows its own logo when one is set.
+            $logo ? '<link rel="icon" href="'.e($logo).'">' : null,
+            $logo ? '<link rel="apple-touch-icon" href="'.e($logo).'">' : null,
             '<link rel="canonical" href="'.e($url).'">',
             '<meta property="og:type" content="restaurant.menu">',
             '<meta property="og:site_name" content="'.e(config('app.name')).'">',
@@ -131,7 +136,12 @@ class MenuShellService
     /** OG images must be absolute; uploads are stored as /storage/... paths. */
     private function absoluteImage(Restaurant $restaurant): ?string
     {
-        $image = $restaurant->cover_image_url ?: $restaurant->logo_url;
+        return $this->toAbsolute($restaurant->cover_image_url ?: $restaurant->logo_url, $restaurant);
+    }
+
+    /** Resolve a stored /storage/... path (or existing absolute URL) to an absolute URL. */
+    private function toAbsolute(?string $image, Restaurant $restaurant): ?string
+    {
         if (! $image) {
             return null;
         }

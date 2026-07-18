@@ -17,6 +17,8 @@ use App\Http\Controllers\Dashboard\CategoryController;
 use App\Http\Controllers\Dashboard\ComboController;
 use App\Http\Controllers\Dashboard\DashboardQrController;
 use App\Http\Controllers\Dashboard\InsightsController as DashboardInsightsController;
+use App\Http\Controllers\Dashboard\CustomerController;
+use App\Http\Controllers\Dashboard\MenuImportController;
 use App\Http\Controllers\Dashboard\MenuItemController;
 use App\Http\Controllers\Dashboard\OrderController as DashboardOrderController;
 use App\Http\Controllers\Dashboard\RestaurantProfileController;
@@ -107,6 +109,8 @@ Route::prefix('dashboard')
         Route::get('categories/{category}', [CategoryController::class, 'show']);
         Route::get('items', [MenuItemController::class, 'index']);
         Route::get('items/{item}', [MenuItemController::class, 'show']);
+        Route::get('customers', [CustomerController::class, 'index']);
+        Route::get('customers/{customer}', [CustomerController::class, 'show']);
         Route::get('qr', [DashboardQrController::class, 'show']);
         Route::get('qr/download', [DashboardQrController::class, 'download']);
 
@@ -137,6 +141,7 @@ Route::prefix('dashboard')
             Route::patch('categories/{category}/status', [CategoryController::class, 'toggleStatus']);
             Route::delete('categories/{category}', [CategoryController::class, 'destroy']);
 
+            Route::post('items/import', [MenuImportController::class, 'import']);
             Route::post('items', [MenuItemController::class, 'store']);
             Route::patch('items/reorder', [MenuItemController::class, 'reorder']);
             Route::put('items/{item}', [MenuItemController::class, 'update']);

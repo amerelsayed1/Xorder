@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import api, { ensureCsrf } from '@xorder/api-client/api.js'
 import { pickLocalized } from '@xorder/ui/localize.js'
 import Modal from '@xorder/ui/Modal.vue'
+import ListSkeleton from '@xorder/ui/ListSkeleton.vue'
 import StatusBadge from '@xorder/ui/StatusBadge.vue'
 import FormError from '@xorder/ui/FormError.vue'
 import Icon from '@xorder/ui/Icon.vue'
@@ -90,7 +91,7 @@ const branchName = (b) => pickLocalized(b, 'name', locale.value)
         </div>
 
         <div class="card overflow-hidden">
-            <div v-if="loading" class="p-8 text-center" style="color:var(--muted)">{{ t('common.loading') }}</div>
+            <ListSkeleton v-if="loading" />
             <div v-else-if="!rows.length" class="p-8 text-center" style="color:var(--muted)">{{ t('branch.none') }}</div>
             <ul v-else>
                 <li v-for="b in rows" :key="b.id" class="flex items-center gap-3 px-5 py-3 border-t first:border-t-0" style="border-color:var(--line)">

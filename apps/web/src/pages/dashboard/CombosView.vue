@@ -5,13 +5,16 @@ import api, { ensureCsrf } from '@xorder/api-client/api.js'
 import { useAuth } from '@xorder/api-client/auth.js'
 import { pickLocalized } from '@xorder/ui/localize.js'
 import Modal from '@xorder/ui/Modal.vue'
+import ListSkeleton from '@xorder/ui/ListSkeleton.vue'
 import StatusBadge from '@xorder/ui/StatusBadge.vue'
 import ImageUploader from '@xorder/ui/ImageUploader.vue'
 import FormError from '@xorder/ui/FormError.vue'
 import Icon from '@xorder/ui/Icon.vue'
 import { confirm } from '@xorder/ui/confirm.js'
+import { useMenuLang } from '../../lib/menuLang.js'
 
 const { t, locale } = useI18n()
+const { langs, bilingual } = useMenuLang()
 const auth = useAuth()
 const cur = () => auth.restaurant?.currency_symbol || ''
 const rows = ref([])
@@ -114,7 +117,7 @@ async function remove(c) {
         </div>
 
         <div class="card overflow-hidden">
-            <div v-if="loading" class="p-8 text-center" style="color:var(--muted)">{{ t('common.loading') }}</div>
+            <ListSkeleton v-if="loading" />
             <div v-else-if="!rows.length" class="p-8 text-center" style="color:var(--muted)">{{ t('combo.none') }}</div>
             <ul v-else>
                 <li v-for="c in rows" :key="c.id" class="flex items-center gap-3 px-5 py-3 border-t first:border-t-0" style="border-color:var(--line)">
@@ -134,15 +137,15 @@ async function remove(c) {
 
         <Modal v-if="showModal" :title="editing ? t('common.edit') : t('nav.combos')" @close="showModal = false">
             <div class="space-y-4">
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <label class="block"><span class="label">{{ t('common.name_en') }}</span>
-                        <input v-model="form.name_en" class="input" />
-                        <FormError :errors="errors" field="name_en" /></label>
-                    <label class="block" dir="rtl"><span class="label">{{ t('common.name_ar') }}</span>
-                        <input v-model="form.name_ar" class="input" /></label>
+                <div class="grid grid-cols-1 gap-3" :class="{ 'sm:grid-cols-2': bilingual }">
+                    <label v-for="lng in langs" :key="'n' + lng" class="block" :dir="lng === 'ar' ? 'rtl' : 'ltr'">
+                        <span class="label">{{ bilingual ? t('common.name_' + lng) : t('common.name') }}</span>
+                        <input v-model="form['name_' + lng]" class="input" />
+                        <FormError :errors="errors" :field="'name_' + lng" /></label>
                 </div>
-                <label class="block"><span class="label">{{ t('common.description_en') }}</span>
-                    <textarea v-model="form.description_en" rows="2" class="input"></textarea></label>
+                <label v-for="lng in langs" :key="'d' + lng" class="block" :dir="lng === 'ar' ? 'rtl' : 'ltr'">
+                    <span class="label">{{ bilingual ? t('common.description_' + lng) : t('common.description') }}</span>
+                    <textarea v-model="form['description_' + lng]" rows="2" class="input"></textarea></label>
                 <label class="block" style="max-width:200px"><span class="label">{{ t('combo.base_price') }}<template v-if="cur()"> ({{ cur() }})</template></span>
                     <input v-model="form.base_price" type="number" step="0.01" min="0" class="input" />
                     <FormError :errors="errors" field="base_price" /></label>
@@ -156,9 +159,9 @@ async function remove(c) {
                     </div>
                     <p v-if="!form.groups.length" class="text-xs" style="color:var(--muted)">{{ t('combo.no_groups') }}</p>
                     <div v-for="(g, gi) in form.groups" :key="gi" class="rounded-xl p-3 mb-3" style="background:var(--page);border:1px solid var(--line)">
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                            <input v-model="g.name_en" class="input" :placeholder="t('combo.group_name_en')" />
-                            <input v-model="g.name_ar" class="input" dir="rtl" :placeholder="t('item.group_name_ar')" />
+                        <div class="grid grid-cols-1 gap-2" :class="{ 'sm:grid-cols-2': bilingual }">
+                            <input v-for="lng in langs" :key="'g' + lng" v-model="g['name_' + lng]" class="input"
+                                :dir="lng === 'ar' ? 'rtl' : 'ltr'" :placeholder="lng === 'ar' ? t('item.group_name_ar') : t('combo.group_name_en')" />
                         </div>
                         <div class="flex items-center gap-4 flex-wrap mt-2">
                             <label class="flex items-center gap-2 text-xs" style="color:var(--body)">

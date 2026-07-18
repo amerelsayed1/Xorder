@@ -4,13 +4,16 @@ import { useI18n } from 'vue-i18n'
 import api, { ensureCsrf } from '@xorder/api-client/api.js'
 import { pickLocalized } from '@xorder/ui/localize.js'
 import Modal from '@xorder/ui/Modal.vue'
+import ListSkeleton from '@xorder/ui/ListSkeleton.vue'
 import StatusBadge from '@xorder/ui/StatusBadge.vue'
 import ImageUploader from '@xorder/ui/ImageUploader.vue'
 import FormError from '@xorder/ui/FormError.vue'
 import Icon from '@xorder/ui/Icon.vue'
 import { confirm } from '@xorder/ui/confirm.js'
+import { useMenuLang } from '../../lib/menuLang.js'
 
 const { t, locale } = useI18n()
+const { langs, bilingual } = useMenuLang()
 const rows = ref([])
 const loading = ref(true)
 const saving = ref(false)
@@ -98,7 +101,7 @@ const categoryAltName = (c) => locale.value === 'ar' ? (c.name_en || '') : (c.na
         </div>
 
         <div class="card overflow-hidden">
-            <div v-if="loading" class="p-8 text-center" style="color:var(--muted)">{{ t('common.loading') }}</div>
+            <ListSkeleton v-if="loading" />
             <div v-else-if="!rows.length" class="p-8 text-center" style="color:var(--muted)">{{ t('common.none') }}</div>
             <ul v-else>
                 <li v-for="(c, i) in rows" :key="c.id" class="flex items-center gap-3 px-5 py-3 border-t first:border-t-0" style="border-color:var(--line)">
@@ -124,14 +127,13 @@ const categoryAltName = (c) => locale.value === 'ar' ? (c.name_en || '') : (c.na
 
         <Modal v-if="showModal" :title="editing ? t('common.edit') : t('common.create')" @close="showModal = false">
             <div class="space-y-4">
-                <label class="block"><span class="label">{{ t('common.name_en') }}</span>
-                    <input v-model="form.name_en" class="input" />
-                    <FormError :errors="errors" field="name_en" /></label>
-                <label class="block" dir="rtl"><span class="label">{{ t('common.name_ar') }}</span>
-                    <input v-model="form.name_ar" class="input" />
-                    <FormError :errors="errors" field="name_ar" /></label>
-                <label class="block"><span class="label">{{ t('common.description_en') }}</span>
-                    <textarea v-model="form.description_en" rows="2" class="input"></textarea></label>
+                <label v-for="lng in langs" :key="'n' + lng" class="block" :dir="lng === 'ar' ? 'rtl' : 'ltr'">
+                    <span class="label">{{ bilingual ? t('common.name_' + lng) : t('common.name') }}</span>
+                    <input v-model="form['name_' + lng]" class="input" />
+                    <FormError :errors="errors" :field="'name_' + lng" /></label>
+                <label v-for="lng in langs" :key="'d' + lng" class="block" :dir="lng === 'ar' ? 'rtl' : 'ltr'">
+                    <span class="label">{{ bilingual ? t('common.description_' + lng) : t('common.description') }}</span>
+                    <textarea v-model="form['description_' + lng]" rows="2" class="input"></textarea></label>
                 <ImageUploader v-model="form.image_url" folder="categories" :label="t('category.image')" />
                 <label class="flex items-center gap-2 text-sm" style="color:var(--body)">
                     <button type="button" class="switch" :class="{ on: form.is_active }" @click="form.is_active = !form.is_active"></button>

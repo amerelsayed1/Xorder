@@ -152,7 +152,7 @@ function submitOrder(details) {
     submittingOrder.value = true
 
     // Remember the diner for next time and carry the details on the order.
-    Object.assign(editForm, { name: details.name, phone: details.phone })
+    Object.assign(editForm, { name: details.name, phone: details.phone, email: details.email, address: details.address })
     saveUserInfo()
     customer.name = details.name
     customer.phone = details.phone
@@ -175,8 +175,10 @@ function submitOrder(details) {
         total: +cartTotal.value.toFixed(2),
         customer_name: details.name || null,
         customer_phone: details.phone || null,
-        customer_note: details.note || null,
-        order_type: orderTypeLabel.value || null,
+        customer_email: details.email || null,
+        customer_address: details.address || null,
+        note: details.note || null,
+        order_type: orderType.value || null,
     }
     postOrder(slug, snapshot)
         .then(res => { lastOrderCode.value = res?.data?.code || '' })

@@ -4,8 +4,10 @@ import { useI18n } from 'vue-i18n'
 import api, { ensureCsrf } from '@xorder/api-client/api.js'
 import ImageUploader from '@xorder/ui/ImageUploader.vue'
 import FormError from '@xorder/ui/FormError.vue'
+import { useMenuLang } from '../../lib/menuLang.js'
 
 const { t } = useI18n()
+const { langs, bilingual } = useMenuLang()
 const form = reactive({
     name_en: '', name_ar: '', description_en: '', description_ar: '',
     phone: '', whatsapp_number: '', address: '', opening_hours: '',
@@ -46,17 +48,15 @@ async function submit() {
 
         <div class="card p-6 space-y-5">
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <label class="block"><span class="label">{{ t('common.name_en') }}</span>
-                    <input v-model="form.name_en" class="input" />
-                    <FormError :errors="errors" field="name_en" /></label>
-                <label class="block" dir="rtl"><span class="label">{{ t('common.name_ar') }}</span>
-                    <input v-model="form.name_ar" class="input" /></label>
+                <label v-for="lng in langs" :key="'n' + lng" class="block" :dir="lng === 'ar' ? 'rtl' : 'ltr'">
+                    <span class="label">{{ bilingual ? t('common.name_' + lng) : t('common.name') }}</span>
+                    <input v-model="form['name_' + lng]" class="input" />
+                    <FormError :errors="errors" :field="'name_' + lng" /></label>
             </div>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <label class="block"><span class="label">{{ t('common.description_en') }}</span>
-                    <textarea v-model="form.description_en" rows="2" class="input"></textarea></label>
-                <label class="block" dir="rtl"><span class="label">{{ t('common.description_ar') }}</span>
-                    <textarea v-model="form.description_ar" rows="2" class="input"></textarea></label>
+                <label v-for="lng in langs" :key="'d' + lng" class="block" :dir="lng === 'ar' ? 'rtl' : 'ltr'">
+                    <span class="label">{{ bilingual ? t('common.description_' + lng) : t('common.description') }}</span>
+                    <textarea v-model="form['description_' + lng]" rows="2" class="input"></textarea></label>
             </div>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <label class="block"><span class="label">{{ t('restaurant.phone') }}</span>

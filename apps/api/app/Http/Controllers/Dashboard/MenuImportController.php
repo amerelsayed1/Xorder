@@ -1,0 +1,329 @@
+<?php
+
+namespace App\Http\Controllers\Dashboard;
+
+use App\Http\Controllers\Controller;
+use App\Models\Category;
+use App\Models\MenuItem;
+use App\Services\PlanLimitService;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use PhpOffice\PhpSpreadsheet\Reader\Csv as CsvReader;
+use PhpOffice\PhpSpreadsheet\Reader\Xls as XlsReader;
+use PhpOffice\PhpSpreadsheet\Reader\Xlsx as XlsxReader;
+
+/**
+ * Bulk-imports categories and menu items from an uploaded CSV or Excel file.
+ *
+ * The file is a flat sheet: one row per item, with a header row naming the
+ * columns. Categories are created on demand and reused by name. Existing items
+ * (matched by name within their category) are updated in place — re-running the
+ * same file is safe (upsert), not duplicating.
+ *
+ * Recognised headers (case-insensitive, spaces or underscores):
+ *   category | category_en | category_ar   (a plain "category" maps to the
+ *   name | name_en | name_ar                 restaurant's default language)
+ *   description | description_en | description_ar
+ *   price          (required, numeric)
+ *   discounted_price | sale_price
+ *   available | is_available   (yes/no/true/false/1/0/نعم/لا)
+ *   featured  | is_featured
+ */
+class MenuImportController extends Controller
+{
+    private const MAX_NAME = 150;
+    private const MAX_DESC = 2000;
+
+    public function import(Request $request, PlanLimitService $limits): JsonResponse
+    {
+        $request->validate([
+            'file' => ['required', 'file', 'mimes:csv,txt,xlsx,xls', 'max:5120'],
+        ]);
+
+        $rows = $this->readRows($request->file('file'));
+        if (count($rows) < 2) {
+            return response()->json(['message' => __('xorder.messages.import_empty')], 422);
+        }
+
+        $header = $this->headerMap(array_shift($rows));
+        if (! isset($header['price']) || ! $this->hasAny($header, ['name', 'name_en', 'name_ar'])) {
+            return response()->json(['message' => __('xorder.messages.import_bad_headers')], 422);
+        }
+
+        $restaurant = $request->user()->restaurant;
+        $defaultLang = $restaurant->default_language->value; // 'ar' | 'en'
+
+        // Tenant-scoped category cache, keyed by lowercased name (either language).
+        $categories = Category::all();
+        $catByName = [];
+        foreach ($categories as $c) {
+            $this->indexCategory($catByName, $c);
+        }
+        $nextCatOrder = (int) (Category::max('display_order') ?? -1) + 1;
+
+        $summary = ['categories_created' => 0, 'items_created' => 0, 'items_updated' => 0, 'skipped' => 0, 'errors' => []];
+
+        foreach ($rows as $i => $raw) {
+            $line = $i + 2; // 1-based, +1 for the header we shifted off
+            try {
+                $row = $this->mapRow($header, $raw, $defaultLang);
+                if ($row === null) {
+                    continue; // blank row
+                }
+                if ($row['name_en'] === null && $row['name_ar'] === null) {
+                    $summary['errors'][] = ['row' => $line, 'message' => __('xorder.messages.import_row_no_name')];
+                    continue;
+                }
+                if ($row['cat_en'] === null && $row['cat_ar'] === null) {
+                    $summary['errors'][] = ['row' => $line, 'message' => __('xorder.messages.import_row_no_category')];
+                    continue;
+                }
+                if ($row['price'] === null) {
+                    $summary['errors'][] = ['row' => $line, 'message' => __('xorder.messages.import_row_bad_price')];
+                    continue;
+                }
+
+                $category = $this->resolveCategory($catByName, $row, $nextCatOrder, $summary);
+
+                // Upsert the item by name within its category.
+                $existing = $this->findItem($category, $row);
+                if ($existing) {
+                    $existing->fill($this->itemAttributes($row))->save();
+                    $summary['items_updated']++;
+                } else {
+                    if ($limits->itemLimitReached($restaurant) !== null) {
+                        $summary['skipped']++;
+                        $summary['errors'][] = ['row' => $line, 'message' => __('xorder.messages.import_row_limit')];
+                        continue;
+                    }
+                    $item = new MenuItem($this->itemAttributes($row));
+                    $item->category_id = $category->id;
+                    $item->save();
+                    $summary['items_created']++;
+                }
+            } catch (\Throwable $e) {
+                $summary['errors'][] = ['row' => $line, 'message' => $e->getMessage()];
+            }
+        }
+
+        return response()->json([
+            'data' => $summary,
+            'message' => __('xorder.messages.import_done'),
+        ]);
+    }
+
+    /** Read the sheet into a plain array of rows (first row = headers). */
+    private function readRows($file): array
+    {
+        $ext = strtolower($file->getClientOriginalExtension());
+        $reader = match ($ext) {
+            'xlsx' => new XlsxReader,
+            'xls' => new XlsReader,
+            default => tap(new CsvReader, fn ($r) => $r->setInputEncoding('UTF-8')),
+        };
+        $reader->setReadDataOnly(true);
+        $sheet = $reader->load($file->getRealPath())->getActiveSheet();
+
+        return $sheet->toArray(null, true, true, false); // 0-indexed columns
+    }
+
+    /** Map header labels -> column index. Lowercased, trimmed, spaces->underscores. */
+    private function headerMap(array $headerRow): array
+    {
+        $map = [];
+        foreach ($headerRow as $idx => $label) {
+            $key = strtolower(trim((string) $label));
+            $key = preg_replace('/\s+/', '_', $key);
+            $key = $this->aliasHeader($key);
+            if ($key !== '') {
+                $map[$key] = $idx;
+            }
+        }
+
+        return $map;
+    }
+
+    private function aliasHeader(string $key): string
+    {
+        return match ($key) {
+            'discount', 'discount_price', 'sale_price', 'offer_price' => 'discounted_price',
+            'is_available', 'availability' => 'available',
+            'is_featured', 'popular' => 'featured',
+            'name_english', 'title_en' => 'name_en',
+            'name_arabic', 'title_ar' => 'name_ar',
+            'category_english' => 'category_en',
+            'category_arabic' => 'category_ar',
+            default => $key,
+        };
+    }
+
+    /** Extract normalized fields from one data row; null for a fully-blank row. */
+    private function mapRow(array $header, array $raw, string $defaultLang): ?array
+    {
+        $get = function (array $keys) use ($header, $raw) {
+            foreach ($keys as $k) {
+                if (isset($header[$k])) {
+                    $v = trim((string) ($raw[$header[$k]] ?? ''));
+                    if ($v !== '') {
+                        return $v;
+                    }
+                }
+            }
+
+            return null;
+        };
+
+        // A plain "name"/"category"/"description" maps to the default language.
+        $plainName = $get(['name']);
+        $plainCat = $get(['category']);
+        $plainDesc = $get(['description']);
+
+        $nameEn = $get(['name_en']) ?? ($defaultLang === 'en' ? $plainName : null);
+        $nameAr = $get(['name_ar']) ?? ($defaultLang === 'ar' ? $plainName : null);
+        $catEn = $get(['category_en']) ?? ($defaultLang === 'en' ? $plainCat : null);
+        $catAr = $get(['category_ar']) ?? ($defaultLang === 'ar' ? $plainCat : null);
+        $descEn = $get(['description_en']) ?? ($defaultLang === 'en' ? $plainDesc : null);
+        $descAr = $get(['description_ar']) ?? ($defaultLang === 'ar' ? $plainDesc : null);
+
+        $isBlank = ! $nameEn && ! $nameAr && ! $catEn && ! $catAr && $get(['price']) === null;
+        if ($isBlank) {
+            return null;
+        }
+
+        $price = $this->parsePrice($get(['price']));
+        $discount = $this->parsePrice($get(['discounted_price']));
+        if ($discount !== null && $price !== null && $discount >= $price) {
+            $discount = null; // ignore a discount that isn't actually lower
+        }
+
+        return [
+            'name_en' => $this->clip($nameEn, self::MAX_NAME),
+            'name_ar' => $this->clip($nameAr, self::MAX_NAME),
+            'cat_en' => $this->clip($catEn, self::MAX_NAME),
+            'cat_ar' => $this->clip($catAr, self::MAX_NAME),
+            'desc_en' => $this->clip($descEn, self::MAX_DESC),
+            'desc_ar' => $this->clip($descAr, self::MAX_DESC),
+            'price' => $price,
+            'discounted_price' => $discount,
+            'is_available' => $this->parseBool($get(['available']), true),
+            'is_featured' => $this->parseBool($get(['featured']), false),
+        ];
+    }
+
+    private function itemAttributes(array $row): array
+    {
+        return [
+            'name_en' => $row['name_en'],
+            'name_ar' => $row['name_ar'],
+            'description_en' => $row['desc_en'],
+            'description_ar' => $row['desc_ar'],
+            'price' => $row['price'],
+            'discounted_price' => $row['discounted_price'],
+            'is_available' => $row['is_available'],
+            'is_featured' => $row['is_featured'],
+        ];
+    }
+
+    /** Find an existing category by either-language name, or create one. */
+    private function resolveCategory(array &$catByName, array $row, int &$nextOrder, array &$summary): Category
+    {
+        foreach ([$row['cat_en'], $row['cat_ar']] as $name) {
+            if ($name && isset($catByName[$this->key($name)])) {
+                return $catByName[$this->key($name)];
+            }
+        }
+
+        $category = Category::create([
+            'name_en' => $row['cat_en'],
+            'name_ar' => $row['cat_ar'],
+            'display_order' => $nextOrder++,
+            'is_active' => true,
+        ]);
+        $this->indexCategory($catByName, $category);
+        $summary['categories_created']++;
+
+        return $category;
+    }
+
+    private function findItem(Category $category, array $row): ?MenuItem
+    {
+        return MenuItem::where('category_id', $category->id)
+            ->where(function ($q) use ($row) {
+                if ($row['name_en']) {
+                    $q->orWhereRaw('LOWER(name_en) = ?', [mb_strtolower($row['name_en'])]);
+                }
+                if ($row['name_ar']) {
+                    $q->orWhere('name_ar', $row['name_ar']);
+                }
+            })
+            ->first();
+    }
+
+    private function indexCategory(array &$catByName, Category $c): void
+    {
+        foreach ([$c->name_en, $c->name_ar] as $name) {
+            if ($name) {
+                $catByName[$this->key($name)] = $c;
+            }
+        }
+    }
+
+    private function key(?string $name): string
+    {
+        return mb_strtolower(trim((string) $name));
+    }
+
+    private function clip(?string $v, int $max): ?string
+    {
+        if ($v === null) {
+            return null;
+        }
+
+        return mb_substr($v, 0, $max);
+    }
+
+    private function parsePrice(?string $v): ?float
+    {
+        if ($v === null) {
+            return null;
+        }
+        // Keep digits, dot and minus; strip currency symbols, commas, spaces, Arabic digits.
+        $v = strtr($v, ['٠' => '0', '١' => '1', '٢' => '2', '٣' => '3', '٤' => '4', '٥' => '5', '٦' => '6', '٧' => '7', '٨' => '8', '٩' => '9', '٫' => '.', '،' => '']);
+        $v = preg_replace('/[^0-9.\-]/', '', $v);
+        if ($v === '' || ! is_numeric($v)) {
+            return null;
+        }
+        $n = round((float) $v, 2);
+
+        return ($n < 0 || $n > 9999999.99) ? null : $n;
+    }
+
+    private function parseBool(?string $v, bool $default): bool
+    {
+        if ($v === null) {
+            return $default;
+        }
+        $v = mb_strtolower(trim($v));
+
+        if (in_array($v, ['1', 'true', 'yes', 'y', 'available', 'نعم', 'متاح', 'مميز'], true)) {
+            return true;
+        }
+        if (in_array($v, ['0', 'false', 'no', 'n', 'unavailable', 'لا', 'غير متاح'], true)) {
+            return false;
+        }
+
+        return $default;
+    }
+
+    private function hasAny(array $header, array $keys): bool
+    {
+        foreach ($keys as $k) {
+            if (isset($header[$k])) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+}

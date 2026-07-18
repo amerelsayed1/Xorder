@@ -5,12 +5,15 @@ import api, { ensureCsrf } from '@xorder/api-client/api.js'
 import { useAuth } from '@xorder/api-client/auth.js'
 import { pickLocalized } from '@xorder/ui/localize.js'
 import Modal from '@xorder/ui/Modal.vue'
+import ListSkeleton from '@xorder/ui/ListSkeleton.vue'
 import ImageUploader from '@xorder/ui/ImageUploader.vue'
 import FormError from '@xorder/ui/FormError.vue'
 import Icon from '@xorder/ui/Icon.vue'
 import { confirm } from '@xorder/ui/confirm.js'
+import { useMenuLang } from '../../lib/menuLang.js'
 
 const { t, locale } = useI18n()
+const { langs, bilingual } = useMenuLang()
 const auth = useAuth()
 const cur = computed(() => auth.restaurant?.currency_symbol || '')
 const items = ref([])
@@ -136,6 +139,58 @@ async function remove(it) {
         alert(t('common.delete_failed'))
     }
 }
+
+// --- CSV / Excel import ---
+const showImport = ref(false)
+const importing = ref(false)
+const importFile = ref(null)
+const importResult = ref(null)
+const importError = ref('')
+
+function openImport() {
+    importFile.value = null
+    importResult.value = null
+    importError.value = ''
+    showImport.value = true
+}
+function onImportFile(e) {
+    importFile.value = e.target.files?.[0] || null
+    importResult.value = null
+    importError.value = ''
+}
+
+// A ready-to-fill template in the restaurant's own default language.
+function downloadTemplate() {
+    const ar = auth.restaurant?.default_language !== 'en'
+    const headers = ['category', 'name', 'description', 'price', 'discounted_price', 'available', 'featured']
+    const sample = ar
+        ? ['مشروبات', 'قهوة سادة', 'قهوة عربية طازجة', '30', '', 'نعم', 'لا']
+        : ['Drinks', 'Espresso', 'Freshly brewed', '30', '', 'yes', 'no']
+    const csv = '﻿' + [headers.join(','), sample.map(v => /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v).join(',')].join('\n')
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }))
+    const a = document.createElement('a')
+    a.href = url; a.download = 'menu-template.csv'; a.click()
+    URL.revokeObjectURL(url)
+}
+
+async function submitImport() {
+    if (!importFile.value || importing.value) return
+    importing.value = true
+    importError.value = ''
+    importResult.value = null
+    try {
+        await ensureCsrf()
+        const fd = new FormData()
+        fd.append('file', importFile.value)
+        const { data } = await api.post('api/dashboard/items/import', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
+        importResult.value = data.data
+        await load()
+    } catch (err) {
+        importError.value = err.response?.data?.message || t('import.failed')
+    } finally {
+        importing.value = false
+    }
+}
 </script>
 
 <template>
@@ -145,7 +200,10 @@ async function remove(it) {
                 <h1 class="page-title">{{ t('nav.items') }}</h1>
                 <p class="page-sub">{{ t('item.subtitle', { items: items.length, categories: categories.length }) }}</p>
             </div>
-            <button @click="openCreate" :disabled="!categories.length" class="btn btn-accent"><Icon name="plus" :size="16" />{{ t('common.create') }}</button>
+            <div class="flex items-center gap-2">
+                <button @click="openImport" class="btn btn-ghost"><Icon name="upload" :size="16" />{{ t('import.button') }}</button>
+                <button @click="openCreate" :disabled="!categories.length" class="btn btn-accent"><Icon name="plus" :size="16" />{{ t('common.create') }}</button>
+            </div>
         </div>
         <p v-if="!categories.length" class="text-sm" style="color:var(--amber)">{{ t('item.create_category_first') }}</p>
 
@@ -165,7 +223,7 @@ async function remove(it) {
 
         <!-- Table -->
         <div class="card overflow-hidden">
-            <div v-if="loading" class="p-8 text-center" style="color:var(--muted)">{{ t('common.loading') }}</div>
+            <ListSkeleton v-if="loading" />
             <div v-else-if="!filtered.length" class="p-8 text-center" style="color:var(--muted)">{{ t('common.none') }}</div>
             <table v-else class="w-full text-sm">
                 <thead>
@@ -219,15 +277,13 @@ async function remove(it) {
                         <option v-for="c in categories" :key="c.id" :value="c.id">{{ catName(c.id) }}</option>
                     </select>
                     <FormError :errors="errors" field="category_id" /></label>
-                <label class="block"><span class="label">{{ t('common.name_en') }}</span>
-                    <input v-model="form.name_en" class="input" />
-                    <FormError :errors="errors" field="name_en" /></label>
-                <label class="block" dir="rtl"><span class="label">{{ t('common.name_ar') }}</span>
-                    <input v-model="form.name_ar" class="input" /></label>
-                <label class="block"><span class="label">{{ t('common.description_en') }}</span>
-                    <textarea v-model="form.description_en" rows="2" class="input"></textarea></label>
-                <label class="block" dir="rtl"><span class="label">{{ t('common.description_ar') }}</span>
-                    <textarea v-model="form.description_ar" rows="2" class="input"></textarea></label>
+                <label v-for="lng in langs" :key="'n' + lng" class="block" :dir="lng === 'ar' ? 'rtl' : 'ltr'">
+                    <span class="label">{{ bilingual ? t('common.name_' + lng) : t('common.name') }}</span>
+                    <input v-model="form['name_' + lng]" class="input" />
+                    <FormError :errors="errors" :field="'name_' + lng" /></label>
+                <label v-for="lng in langs" :key="'d' + lng" class="block" :dir="lng === 'ar' ? 'rtl' : 'ltr'">
+                    <span class="label">{{ bilingual ? t('common.description_' + lng) : t('common.description') }}</span>
+                    <textarea v-model="form['description_' + lng]" rows="2" class="input"></textarea></label>
                 <div class="grid grid-cols-2 gap-3">
                     <label class="block"><span class="label">{{ t('item.price') }}<template v-if="cur"> ({{ cur }})</template></span>
                         <input v-model="form.price" type="number" step="0.01" min="0" class="input" />
@@ -255,9 +311,9 @@ async function remove(it) {
                     </div>
                     <p v-if="!form.option_groups.length" class="text-xs" style="color:var(--muted)">{{ t('item.no_options') }}</p>
                     <div v-for="(g, gi) in form.option_groups" :key="gi" class="rounded-xl p-3 mb-3" style="background:var(--page);border:1px solid var(--line)">
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                            <input v-model="g.name_en" class="input" :placeholder="t('item.group_name_en')" />
-                            <input v-model="g.name_ar" class="input" dir="rtl" :placeholder="t('item.group_name_ar')" />
+                        <div class="grid grid-cols-1 gap-2" :class="{ 'sm:grid-cols-2': bilingual }">
+                            <input v-for="lng in langs" :key="'g' + lng" v-model="g['name_' + lng]" class="input"
+                                :dir="lng === 'ar' ? 'rtl' : 'ltr'" :placeholder="t('item.group_name_' + lng)" />
                         </div>
                         <div class="flex items-center gap-4 flex-wrap mt-2">
                             <label class="flex items-center gap-2 text-xs" style="color:var(--body)">
@@ -272,8 +328,8 @@ async function remove(it) {
                         </div>
                         <div class="mt-2 space-y-2">
                             <div v-for="(o, oi) in g.options" :key="oi" class="flex items-center gap-2">
-                                <input v-model="o.name_en" class="input flex-1" :placeholder="t('item.option_en')" />
-                                <input v-model="o.name_ar" class="input flex-1" dir="rtl" :placeholder="t('item.option_ar')" />
+                                <input v-for="lng in langs" :key="'o' + lng" v-model="o['name_' + lng]" class="input flex-1"
+                                    :dir="lng === 'ar' ? 'rtl' : 'ltr'" :placeholder="t('item.option_' + lng)" />
                                 <input v-model="o.price" type="number" step="0.01" min="0" class="input" style="width:90px" :placeholder="cur || '+0'" />
                                 <button type="button" class="icon-btn icon-btn-danger" :title="t('common.delete')" @click="removeOption(g, oi)"><Icon name="close" :size="16" /></button>
                             </div>
@@ -287,6 +343,49 @@ async function remove(it) {
                     <button @click="save" :disabled="saving" class="btn btn-accent">
                         <Icon v-if="saving" name="loading" :size="16" class="animate-spin" />
                         {{ saving ? t('common.saving') : t('common.save') }}
+                    </button>
+                </div>
+            </div>
+        </Modal>
+
+        <!-- Import from CSV / Excel -->
+        <Modal v-if="showImport" :title="t('import.title')" @close="showImport = false">
+            <div class="space-y-4">
+                <p class="text-sm" style="color:var(--body)">{{ t('import.help') }}</p>
+                <div class="rounded-xl p-3 text-xs" style="background:var(--page);border:1px solid var(--line);color:var(--muted)">
+                    {{ t('import.columns_help') }}
+                </div>
+                <button type="button" class="btn btn-ghost btn-sm" @click="downloadTemplate">
+                    <Icon name="download" :size="15" />{{ t('import.template') }}
+                </button>
+
+                <label class="block">
+                    <span class="label">{{ t('import.choose_file') }}</span>
+                    <input type="file" accept=".csv,.xlsx,.xls,text/csv" class="input" @change="onImportFile" />
+                    <span class="text-xs" style="color:var(--muted)">{{ t('import.formats') }}</span>
+                </label>
+
+                <p v-if="importError" class="text-sm" style="color:var(--red, #dc2626)">{{ importError }}</p>
+
+                <!-- Result summary -->
+                <div v-if="importResult" class="rounded-xl p-3 space-y-2" style="background:var(--page);border:1px solid var(--line)">
+                    <div class="flex flex-wrap gap-x-4 gap-y-1 text-sm" style="color:var(--ink)">
+                        <span>✓ {{ t('import.created', { n: importResult.items_created }) }}</span>
+                        <span>↻ {{ t('import.updated', { n: importResult.items_updated }) }}</span>
+                        <span v-if="importResult.categories_created">＋ {{ t('import.cats_created', { n: importResult.categories_created }) }}</span>
+                        <span v-if="importResult.skipped">⊘ {{ t('import.skipped', { n: importResult.skipped }) }}</span>
+                    </div>
+                    <div v-if="importResult.errors?.length" class="text-xs space-y-1" style="color:var(--muted);max-height:150px;overflow:auto">
+                        <div class="font-medium" style="color:var(--amber)">{{ t('import.errors') }}</div>
+                        <div v-for="(er, i) in importResult.errors" :key="i">{{ t('import.row', { n: er.row }) }}: {{ er.message }}</div>
+                    </div>
+                </div>
+
+                <div class="flex justify-end gap-2 pt-2">
+                    <button @click="showImport = false" :disabled="importing" class="btn btn-ghost">{{ importResult ? t('common.close') : t('common.cancel') }}</button>
+                    <button v-if="!importResult" @click="submitImport" :disabled="importing || !importFile" class="btn btn-accent">
+                        <Icon v-if="importing" name="loading" :size="16" class="animate-spin" />
+                        {{ importing ? t('import.uploading') : t('import.button') }}
                     </button>
                 </div>
             </div>
