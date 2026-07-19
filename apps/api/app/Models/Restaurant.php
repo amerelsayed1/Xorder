@@ -182,4 +182,24 @@ class Restaurant extends Model
     {
         return $this->status->isPubliclyVisible();
     }
+
+    /**
+     * Order types offered on the public menu, driven by the pickup/delivery
+     * feature flags. A restaurant with no feature rows at all (created before
+     * the feature system) keeps the legacy default so its menu never silently
+     * loses ordering.
+     *
+     * @return list<string>
+     */
+    public function availableOrderTypes(): array
+    {
+        if ($this->features->isEmpty()) {
+            return ['pickup', 'delivery'];
+        }
+
+        return array_values(array_filter([
+            $this->hasFeature(Feature::PICKUP) ? 'pickup' : null,
+            $this->hasFeature(Feature::DELIVERY) ? 'delivery' : null,
+        ]));
+    }
 }

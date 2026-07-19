@@ -15,7 +15,7 @@ class PublicMenuService
      */
     public function findBySlug(string $slug): ?Restaurant
     {
-        return Restaurant::where('slug', $slug)->first();
+        return Restaurant::where('slug', $slug)->with('features')->first();
     }
 
     /**

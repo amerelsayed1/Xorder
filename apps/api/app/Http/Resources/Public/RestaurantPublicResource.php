@@ -35,6 +35,7 @@ class RestaurantPublicResource extends JsonResource
             'currency' => $this->currency->value,
             'currency_symbol' => $this->currency->symbol(),
             'ordering_enabled' => $this->ordering_enabled,
+            'order_types' => $this->availableOrderTypes(),
         ];
     }
 }

@@ -161,7 +161,7 @@ function submit() {
                                 <small>{{ t('data_safe') }}</small>
                             </div>
 
-                            <div class="order-type">
+                            <div v-if="orderTypes.length" class="order-type">
                                 <button
                                     v-for="o in orderTypes"
                                     :key="o.value"

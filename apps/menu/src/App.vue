@@ -96,13 +96,19 @@ const orderingEnabled = computed(() => restaurant.value?.ordering_enabled !== fa
 const bilingual = computed(() => restaurant.value?.bilingual !== false)
 const canOrder = computed(() => cartCount.value > 0 && !!waDigits.value)
 
-// Order type (delivery / pickup / dine-in). Frontend-only: rides along in the
-// WhatsApp message so the restaurant knows how the diner wants to receive it.
+// Order type. Driven by the restaurant's enabled features (pickup/delivery);
+// at a scanned table it is dine-in only. Older payloads without order_types
+// fall back to both so nothing regresses.
 const orderType = ref('pickup')
-const orderTypes = computed(() => [
-    { value: 'pickup', label: t('pickup') },
-    { value: 'delivery', label: t('delivery') },
-])
+const orderTypes = computed(() => {
+    if (hasTable.value) return [{ value: 'dine_in', label: t('dine_in') }]
+    const enabled = restaurant.value?.order_types ?? ['pickup', 'delivery']
+    return enabled.map(v => ({ value: v, label: t(v) }))
+})
+// Keep the selected type valid as options load / change.
+watch(orderTypes, (opts) => {
+    if (!opts.some(o => o.value === orderType.value)) orderType.value = opts[0]?.value || ''
+}, { immediate: true })
 const orderTypeLabel = computed(() => orderTypes.value.find(o => o.value === orderType.value)?.label || '')
 
 const modalGroups = computed(() => {
