@@ -161,7 +161,9 @@ function submit() {
                                 <small>{{ t('data_safe') }}</small>
                             </div>
 
-                            <div v-if="orderTypes.length" class="order-type">
+                            <!-- With a single order type there is nothing to choose — it's
+                                 auto-selected, so we hide the selector entirely. -->
+                            <div v-if="orderTypes.length > 1" class="order-type">
                                 <button
                                     v-for="o in orderTypes"
                                     :key="o.value"
