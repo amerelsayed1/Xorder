@@ -15,6 +15,10 @@ const barHeight = (v) => `${Math.max(v > 0 ? 4 : 2, Math.round((v / dailyMax.val
 const dayLabel = (iso) => new Date(iso + 'T00:00:00').toLocaleDateString(locale.value, { day: 'numeric' })
 const dayTitle = (d) => `${d.date} — ${t('insights.views')}: ${d.views} · ${t('insights.orders')}: ${d.orders}`
 
+// Most-ordered items — horizontal bars scaled to the top item.
+const topItems = computed(() => data.value?.top_items || [])
+const topMax = computed(() => Math.max(1, ...topItems.value.map(i => i.qty)))
+
 onMounted(async () => {
     try {
         const res = await api.get('api/dashboard/insights')
@@ -118,6 +122,22 @@ function money(v) {
                 </div>
             </template>
 
+            <!-- Most ordered items -->
+            <div class="card p-5">
+                <h2 class="h-card mb-4">{{ t('insights.top_items') }}</h2>
+                <p v-if="!topItems.length" class="text-sm" style="color:var(--muted)">{{ t('insights.top_items_none') }}</p>
+                <ul v-else class="space-y-3">
+                    <li v-for="(it, i) in topItems" :key="it.name" class="flex items-center gap-3">
+                        <span class="rank">{{ i + 1 }}</span>
+                        <span class="text-sm truncate" style="width:150px;color:var(--ink)" :title="it.name">{{ it.name }}</span>
+                        <div class="flex-1 bar-track">
+                            <div class="bar-fill" :style="{ width: Math.round(it.qty / topMax * 100) + '%' }"></div>
+                        </div>
+                        <span class="text-sm font-bold" style="min-width:34px;text-align:end;color:var(--accent-dark)">{{ it.qty }}</span>
+                    </li>
+                </ul>
+            </div>
+
             <div class="grid gap-6 lg:grid-cols-2">
                 <!-- Categories -->
                 <div class="card p-5">
@@ -169,4 +189,8 @@ function money(v) {
 <style scoped>
 .eng-bar { width: 45%; max-width: 14px; border-radius: 3px 3px 0 0; min-height: 2px; }
 .dot-legend { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.rank { width: 22px; height: 22px; flex: none; display: grid; place-items: center; border-radius: 50%;
+    background: var(--accent-soft); color: var(--accent-dark); font-size: 11px; font-weight: 700; }
+.bar-track { height: 12px; border-radius: 6px; background: var(--accent-soft); overflow: hidden; }
+.bar-fill { height: 100%; border-radius: 6px; background: var(--accent); min-width: 3px; transition: width .4s ease; }
 </style>

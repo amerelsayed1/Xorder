@@ -100,6 +100,7 @@ class InsightsController extends Controller
                     'max_price' => $pricing?->max_price !== null ? (float) $pricing->max_price : null,
                 ],
                 'engagement' => $this->engagement(),
+                'top_items' => $this->topItems(),
                 'category_breakdown' => $categoryBreakdown,
                 'needs_attention' => $this->needsAttention(
                     emptyActiveCategories: $emptyActiveCategories,
@@ -153,6 +154,40 @@ class InsightsController extends Controller
             'orders_14d' => (int) $orderRows->sum(),
             'daily' => $series,
         ];
+    }
+
+    /**
+     * Most-ordered menu items, aggregated from the order snapshots (orders
+     * store their line items as JSON). Cancelled orders don't count. Returns
+     * [{ name, qty }] sorted by total quantity, top $limit.
+     *
+     * @return array<int, array{name: string, qty: int}>
+     */
+    private function topItems(int $limit = 8): array
+    {
+        $counts = [];
+
+        Order::where('status', '!=', OrderStatus::CANCELLED->value)
+            ->select('items')
+            ->chunk(500, function ($orders) use (&$counts) {
+                foreach ($orders as $order) {
+                    foreach (($order->items ?? []) as $line) {
+                        $name = trim((string) ($line['name'] ?? ''));
+                        if ($name === '') {
+                            continue;
+                        }
+                        $counts[$name] = ($counts[$name] ?? 0) + max(1, (int) ($line['qty'] ?? 1));
+                    }
+                }
+            });
+
+        arsort($counts);
+
+        return collect($counts)
+            ->take($limit)
+            ->map(fn (int $qty, string $name) => ['name' => $name, 'qty' => $qty])
+            ->values()
+            ->all();
     }
 
     /**
