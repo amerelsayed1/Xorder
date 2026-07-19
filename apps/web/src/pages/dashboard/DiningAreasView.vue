@@ -82,6 +82,8 @@ async function remove(a) {
 }
 
 const areaName = (a) => pickLocalized(a, 'name', locale.value)
+// Localize the built-in Indoor/Outdoor presets; show a custom type as entered.
+const typeLabel = (type) => (['indoor', 'outdoor'].includes(type) ? t(`tbl.type_${type}`) : type)
 const branchName = (b) => pickLocalized(b, 'name', locale.value)
 const branchLabel = (id) => { const b = branches.value.find(x => x.id === id); return b ? branchName(b) : '—' }
 
@@ -116,7 +118,7 @@ function onTypeModeChange() {
                     <div class="h-11 w-11 rounded-lg grid place-items-center flex-shrink-0" style="background:var(--accent-soft);color:var(--accent)"><Icon name="store" :size="18" /></div>
                     <div class="flex-1 min-w-0">
                         <div class="font-medium" style="color:var(--ink)">{{ areaName(a) }}</div>
-                        <div class="text-xs truncate" style="color:var(--muted)">{{ branchLabel(a.branch_id) }} · {{ a.type }} · {{ t('tbl.tables_count', { count: a.tables_count ?? 0 }) }}</div>
+                        <div class="text-xs truncate" style="color:var(--muted)">{{ branchLabel(a.branch_id) }} · {{ typeLabel(a.type) }} · {{ t('tbl.tables_count', { count: a.tables_count ?? 0 }) }}</div>
                     </div>
                     <StatusBadge :value="a.is_active" :label="a.is_active ? t('common.active') : t('common.inactive')" />
                     <button class="switch" :class="{ on: a.is_active }" @click="toggleActive(a)"></button>
