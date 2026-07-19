@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import api from '@xorder/api-client/api.js'
 import { useAuth } from '@xorder/api-client/auth.js'
+import { currencyLabel } from '../../lib/currency.js'
 import Skeleton from '@xorder/ui/Skeleton.vue'
 import Icon from '@xorder/ui/Icon.vue'
 import { withMinDuration } from '../../lib/minLoading.js'
@@ -12,7 +13,7 @@ const { t, locale } = useI18n()
 const route = useRoute()
 const router = useRouter()
 const auth = useAuth()
-const cur = () => auth.restaurant?.currency_symbol || ''
+const cur = () => currencyLabel(auth.restaurant?.currency, locale.value, auth.restaurant?.currency_symbol)
 
 const loading = ref(true)
 const customer = ref(null)

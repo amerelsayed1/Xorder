@@ -77,7 +77,12 @@ onUnmounted(() => {
 })
 
 const accent = computed(() => restaurant.value?.brand_color || '#f59e0b')
-const sym = computed(() => restaurant.value?.currency_symbol || '')
+const sym = computed(() => {
+    const r = restaurant.value
+    // Egypt: EGP in English, ج٫م in Arabic; other currencies keep the API symbol.
+    if (r?.currency === 'EGP') return isAr.value ? 'ج٫م' : 'EGP'
+    return r?.currency_symbol || r?.currency || ''
+})
 const waDigits = computed(() => (restaurant.value?.whatsapp_number || '').replace(/[^0-9]/g, ''))
 const orderingEnabled = computed(() => restaurant.value?.ordering_enabled !== false)
 const bilingual = computed(() => restaurant.value?.bilingual !== false)

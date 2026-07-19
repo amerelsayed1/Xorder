@@ -2,6 +2,7 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import api, { ensureCsrf } from '@xorder/api-client/api.js'
+import { currencyLabel } from '../../lib/currency.js'
 import { withMinDuration } from '../../lib/minLoading.js'
 import Icon from '@xorder/ui/Icon.vue'
 import Skeleton from '@xorder/ui/Skeleton.vue'
@@ -169,7 +170,7 @@ function fmtTime(iso) {
                             </div>
                             <div v-if="order.note" class="text-xs mt-1" style="color:var(--muted)">{{ t('orders.note') }}: {{ order.note }}</div>
                         </td>
-                        <td class="px-3 py-3 whitespace-nowrap font-medium" style="color:var(--ink)">{{ order.total }} {{ order.currency }}</td>
+                        <td class="px-3 py-3 whitespace-nowrap font-medium" style="color:var(--ink)">{{ order.total }} {{ currencyLabel(order.currency, locale) }}</td>
                         <td class="px-3 py-3"><span class="badge" :class="badgeClass[order.status]">{{ t('orders.status.' + order.status) }}</span></td>
                         <td class="px-5 py-3 text-end whitespace-nowrap">
                             <div class="inline-flex items-center gap-2">

@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import api, { ensureCsrf } from '@xorder/api-client/api.js'
 import { withMinDuration } from '../../lib/minLoading.js'
 import { useAuth } from '@xorder/api-client/auth.js'
+import { currencyLabel } from '../../lib/currency.js'
 import { pickLocalized } from '@xorder/ui/localize.js'
 import Modal from '@xorder/ui/Modal.vue'
 import ListSkeleton from '@xorder/ui/ListSkeleton.vue'
@@ -17,7 +18,7 @@ import { useMenuLang } from '../../lib/menuLang.js'
 const { t, locale } = useI18n()
 const { langs, bilingual } = useMenuLang()
 const auth = useAuth()
-const cur = () => auth.restaurant?.currency_symbol || ''
+const cur = () => currencyLabel(auth.restaurant?.currency, locale.value, auth.restaurant?.currency_symbol)
 const rows = ref([])
 const menuItems = ref([])
 const loading = ref(true)

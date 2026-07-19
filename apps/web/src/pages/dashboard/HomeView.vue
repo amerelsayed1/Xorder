@@ -4,12 +4,13 @@ import { RouterLink } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import api from '@xorder/api-client/api.js'
 import { useAuth } from '@xorder/api-client/auth.js'
+import { currencyLabel } from '../../lib/currency.js'
 import { pickLocalized } from '@xorder/ui/localize.js'
 import Icon from '@xorder/ui/Icon.vue'
 
 const { t, locale } = useI18n()
 const auth = useAuth()
-const cur = computed(() => auth.restaurant?.currency_symbol || '')
+const cur = computed(() => currencyLabel(auth.restaurant?.currency, locale.value, auth.restaurant?.currency_symbol))
 const stats = ref(null)
 const qr = ref(null)
 const items = ref([])

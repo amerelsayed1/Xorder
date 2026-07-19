@@ -20,7 +20,7 @@ enum CurrencyEnum: string
     public function symbol(): string
     {
         return match ($this) {
-            self::EGP => 'E£',
+            self::EGP => 'EGP',
             self::SAR => 'SR',
             self::AED => 'AED',
             self::USD => '$',
