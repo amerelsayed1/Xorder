@@ -19,6 +19,7 @@ use App\Http\Controllers\Dashboard\DashboardQrController;
 use App\Http\Controllers\Dashboard\InsightsController as DashboardInsightsController;
 use App\Http\Controllers\Dashboard\CustomerController;
 use App\Http\Controllers\Dashboard\MenuImportController;
+use App\Http\Controllers\Dashboard\PushTokenController;
 use App\Http\Controllers\Dashboard\MenuItemController;
 use App\Http\Controllers\Dashboard\OrderController as DashboardOrderController;
 use App\Http\Controllers\Dashboard\RestaurantProfileController;
@@ -111,6 +112,10 @@ Route::prefix('dashboard')
         Route::get('items/{item}', [MenuItemController::class, 'show']);
         Route::get('customers', [CustomerController::class, 'index']);
         Route::get('customers/{customer}', [CustomerController::class, 'show']);
+
+        // Push-notification device tokens (not subscription-gated).
+        Route::post('push/token', [PushTokenController::class, 'store']);
+        Route::delete('push/token', [PushTokenController::class, 'destroy']);
         Route::get('qr', [DashboardQrController::class, 'show']);
         Route::get('qr/download', [DashboardQrController::class, 'download']);
 

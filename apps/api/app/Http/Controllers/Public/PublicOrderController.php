@@ -49,6 +49,21 @@ class PublicOrderController extends Controller
         $order->customer_address_id = $address?->id;
         $order->save();
 
+        // Notify the restaurant's admin devices — after the response is flushed
+        // so the FCM round-trip never delays order recording. Best-effort.
+        $lang = $restaurant->default_language->value;
+        $title = __('xorder.messages.push_new_order_title', [], $lang);
+        $body = __('xorder.messages.push_new_order_body', [
+            'code' => $order->code(),
+            'total' => $order->total,
+            'currency' => $order->currency,
+        ], $lang);
+        app()->terminating(function () use ($restaurant, $order, $title, $body) {
+            app(\App\Services\PushService::class)->newOrderToRestaurant(
+                $restaurant->id, $title, $body, ['order_id' => (string) $order->id],
+            );
+        });
+
         return response()->json([
             'data' => ['id' => $order->id, 'code' => $order->code()],
             'message' => __('xorder.messages.order_received'),

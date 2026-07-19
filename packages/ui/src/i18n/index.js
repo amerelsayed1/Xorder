@@ -128,6 +128,8 @@ const messages = {
             update_failed: 'Could not update the order. Please try again.',
             new_toast: 'New order · {n} waiting',
             new_toast_sub: 'Tap to view orders',
+            sound_on: 'Order sound on (click to test / mute)',
+            sound_off: 'Order sound off (click to enable)',
         },
         import: {
             button: 'Import',
@@ -526,6 +528,8 @@ const messages = {
             update_failed: 'تعذّر تحديث الطلب. حاول مرة أخرى.',
             new_toast: 'طلب جديد · {n} بالانتظار',
             new_toast_sub: 'اضغط لعرض الطلبات',
+            sound_on: 'صوت الطلبات مُفعّل (اضغط للاختبار / الكتم)',
+            sound_off: 'صوت الطلبات مُغلق (اضغط للتفعيل)',
         },
         import: {
             button: 'استيراد',

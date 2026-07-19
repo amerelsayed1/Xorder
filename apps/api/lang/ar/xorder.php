@@ -65,6 +65,8 @@ return [
         'import_row_no_category' => 'القسم مفقود.',
         'import_row_bad_price' => 'السعر مفقود أو غير صحيح.',
         'import_row_limit' => 'تم التخطي — تم بلوغ حد الأصناف في باقتك.',
+        'push_new_order_title' => 'طلب جديد',
+        'push_new_order_body' => ':code · :total :currency',
     ],
     'validation' => [
         'restaurant_name_required' => 'أدخل اسم المطعم بلغة واحدة على الأقل.',

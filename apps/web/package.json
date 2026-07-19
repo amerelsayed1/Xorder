@@ -12,6 +12,7 @@
         "@primeuix/themes": "^2.0.3",
         "@xorder/api-client": "workspace:*",
         "@xorder/ui": "workspace:*",
+        "firebase": "^12.16.0",
         "pinia": "^2.3.1",
         "primeicons": "^7.0.0",
         "primevue": "^4.5.5",

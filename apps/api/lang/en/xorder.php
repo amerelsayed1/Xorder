@@ -65,6 +65,8 @@ return [
         'import_row_no_category' => 'Missing category.',
         'import_row_bad_price' => 'Missing or invalid price.',
         'import_row_limit' => 'Skipped — your plan item limit was reached.',
+        'push_new_order_title' => 'New order',
+        'push_new_order_body' => ':code · :total :currency',
     ],
     'validation' => [
         'restaurant_name_required' => 'Provide the restaurant name in at least one language.',
