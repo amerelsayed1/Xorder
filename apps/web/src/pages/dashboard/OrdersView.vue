@@ -2,6 +2,7 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import api, { ensureCsrf } from '@xorder/api-client/api.js'
+import { withMinDuration } from '../../lib/minLoading.js'
 import Icon from '@xorder/ui/Icon.vue'
 import Skeleton from '@xorder/ui/Skeleton.vue'
 import { confirm } from '@xorder/ui/confirm.js'
@@ -26,9 +27,9 @@ let pollTimer
 async function load() {
     loading.value = true
     try {
-        const { data } = await api.get('api/dashboard/orders', {
+        const { data } = await withMinDuration(api.get('api/dashboard/orders', {
             params: { status: statusFilter.value || undefined, page: page.value },
-        })
+        }))
         rows.value = data.data
         meta.value = data.meta || null
     } finally {

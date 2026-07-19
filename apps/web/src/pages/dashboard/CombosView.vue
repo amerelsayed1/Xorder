@@ -2,6 +2,7 @@
 import { ref, reactive, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import api, { ensureCsrf } from '@xorder/api-client/api.js'
+import { withMinDuration } from '../../lib/minLoading.js'
 import { useAuth } from '@xorder/api-client/auth.js'
 import { pickLocalized } from '@xorder/ui/localize.js'
 import Modal from '@xorder/ui/Modal.vue'
@@ -30,10 +31,10 @@ const form = reactive(blank())
 async function load() {
     loading.value = true
     try {
-        const [cb, it] = await Promise.all([
+        const [cb, it] = await withMinDuration(Promise.all([
             api.get('api/dashboard/combos'),
             api.get('api/dashboard/items'),
-        ])
+        ]))
         rows.value = cb.data.data
         menuItems.value = it.data.data
     } finally { loading.value = false }

@@ -2,6 +2,7 @@
 import { ref, reactive, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import api, { ensureCsrf } from '@xorder/api-client/api.js'
+import { withMinDuration } from '../../lib/minLoading.js'
 import { pickLocalized } from '@xorder/ui/localize.js'
 import Modal from '@xorder/ui/Modal.vue'
 import ListSkeleton from '@xorder/ui/ListSkeleton.vue'
@@ -22,7 +23,7 @@ const form = reactive(blank())
 
 async function load() {
     loading.value = true
-    const { data } = await api.get('api/dashboard/branches')
+    const { data } = await withMinDuration(api.get('api/dashboard/branches'))
     rows.value = data.data
     loading.value = false
 }

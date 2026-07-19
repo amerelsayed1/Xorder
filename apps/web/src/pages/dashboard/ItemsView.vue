@@ -2,6 +2,7 @@
 import { ref, reactive, onMounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import api, { ensureCsrf } from '@xorder/api-client/api.js'
+import { withMinDuration } from '../../lib/minLoading.js'
 import { useAuth } from '@xorder/api-client/auth.js'
 import { pickLocalized } from '@xorder/ui/localize.js'
 import Modal from '@xorder/ui/Modal.vue'
@@ -50,10 +51,10 @@ const filtered = computed(() => {
 async function load() {
     loading.value = true
     try {
-        const [it, cats] = await Promise.all([
+        const [it, cats] = await withMinDuration(Promise.all([
             api.get('api/dashboard/items'),
             api.get('api/dashboard/categories'),
-        ])
+        ]))
         items.value = it.data.data
         categories.value = cats.data.data
     } catch (e) {

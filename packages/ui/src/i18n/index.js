@@ -159,6 +159,8 @@ const messages = {
             no_addresses: 'No saved addresses.',
             default: 'Default',
             recent_orders: 'Recent orders',
+            orders_label: 'Orders',
+            total_spent: 'Total spent',
         },
         order_type: {
             pickup: 'Pickup', delivery: 'Delivery', dine_in: 'Dine-in',
@@ -559,6 +561,8 @@ const messages = {
             no_addresses: 'لا توجد عناوين محفوظة.',
             default: 'افتراضي',
             recent_orders: 'أحدث الطلبات',
+            orders_label: 'الطلبات',
+            total_spent: 'إجمالي الإنفاق',
         },
         order_type: {
             pickup: 'استلام', delivery: 'توصيل', dine_in: 'في المطعم',
