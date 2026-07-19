@@ -37,39 +37,62 @@ async function loadNewCount() {
     } catch (err) { /* keep the last known count */ }
 }
 
+let notifyReady = false
+
 function announce(arrived) {
     chime()
     toast.value = { arrived }
     clearTimeout(toastTimer)
     toastTimer = setTimeout(() => (toast.value = null), 7000)
+    // When the dashboard tab is in the background, a system notification (with
+    // its own OS sound) is what actually reaches the user.
+    if (notifyReady && document.visibilityState !== 'visible') {
+        try {
+            const n = new Notification(t('orders.new_toast', { n: arrived }), {
+                body: t('orders.new_toast_sub'), tag: 'xorder-order', renotify: true,
+            })
+            n.onclick = () => { window.focus(); goOrders(); n.close() }
+        } catch (err) { /* ignore */ }
+    }
 }
 
-// A short two-note chime via Web Audio — no asset to ship. Browsers gate audio
-// until the user has interacted with the page, so we also unlock on first click.
+// One soft sine note via Web Audio — no asset to ship.
+function blip(freq, when = 0) {
+    if (!audioCtx) return
+    const t0 = audioCtx.currentTime + when
+    const o = audioCtx.createOscillator()
+    const g = audioCtx.createGain()
+    o.type = 'sine'
+    o.frequency.value = freq
+    g.gain.setValueAtTime(0.0001, t0)
+    g.gain.exponentialRampToValueAtTime(0.22, t0 + 0.02)
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.26)
+    o.connect(g); g.connect(audioCtx.destination)
+    o.start(t0); o.stop(t0 + 0.28)
+}
 function chime() {
     try {
         audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)()
         if (audioCtx.state === 'suspended') audioCtx.resume()
-        const now = audioCtx.currentTime
-        ;[880, 1174].forEach((freq, i) => {
-            const o = audioCtx.createOscillator()
-            const g = audioCtx.createGain()
-            o.type = 'sine'
-            o.frequency.value = freq
-            const start = now + i * 0.18
-            g.gain.setValueAtTime(0.0001, start)
-            g.gain.exponentialRampToValueAtTime(0.22, start + 0.02)
-            g.gain.exponentialRampToValueAtTime(0.0001, start + 0.28)
-            o.connect(g); g.connect(audioCtx.destination)
-            o.start(start); o.stop(start + 0.3)
-        })
+        blip(880, 0)
+        blip(1174, 0.18)
     } catch (err) { /* audio unavailable — toast + title still fire */ }
 }
-function unlockAudio() {
+
+// Browsers gate audio and notifications behind a user gesture, so arm both on
+// the first interaction. A short confirmation blip proves sound is working.
+function armAlerts() {
     try {
         audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)()
-        audioCtx.resume()
+        audioCtx.resume().then(() => blip(1320)).catch(() => {})
     } catch (err) { /* ignore */ }
+    if ('Notification' in window) {
+        if (Notification.permission === 'granted') {
+            notifyReady = true
+        } else if (Notification.permission === 'default') {
+            Notification.requestPermission().then((p) => { notifyReady = p === 'granted' })
+        }
+    }
 }
 
 function goOrders() {
@@ -83,13 +106,17 @@ watch(newOrders, (n) => {
 })
 
 onMounted(() => {
+    if ('Notification' in window) notifyReady = Notification.permission === 'granted'
     loadNewCount()
     pollTimer = setInterval(loadNewCount, 20_000)
-    window.addEventListener('pointerdown', unlockAudio, { once: true })
+    window.addEventListener('pointerdown', armAlerts, { once: true })
+    window.addEventListener('keydown', armAlerts, { once: true })
 })
 onUnmounted(() => {
     clearInterval(pollTimer)
     clearTimeout(toastTimer)
+    window.removeEventListener('pointerdown', armAlerts)
+    window.removeEventListener('keydown', armAlerts)
     document.title = baseTitle
 })
 
