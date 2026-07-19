@@ -105,9 +105,6 @@ async function setStatus(order, status) {
     }
 }
 
-// "2x برجر (جبنة إضافية)" — one line per order item.
-const itemLine = (it) => `${it.qty}x ${it.name}${it.options?.length ? ` (${it.options.join(', ')})` : ''}`
-
 function fmtTime(iso) {
     if (!iso) return ''
     const d = new Date(iso)
@@ -166,7 +163,10 @@ function fmtTime(iso) {
                             <div v-if="order.customer_phone" class="text-xs" style="color:var(--muted)" dir="ltr">{{ order.customer_phone }}</div>
                         </td>
                         <td class="px-3 py-3">
-                            <div v-for="(it, i) in order.items" :key="i" style="color:var(--body)">{{ itemLine(it) }}</div>
+                            <div v-for="(it, i) in order.items" :key="i" class="order-item" style="color:var(--body)">
+                                <span class="order-item-qty">{{ it.qty }}×</span>
+                                <span>{{ it.name }}<template v-if="it.options?.length"> ({{ it.options.join(', ') }})</template></span>
+                            </div>
                             <div v-if="order.note" class="text-xs mt-1" style="color:var(--muted)">{{ t('orders.note') }}: {{ order.note }}</div>
                         </td>
                         <td class="px-3 py-3 whitespace-nowrap font-medium" style="color:var(--ink)">{{ order.total }} {{ order.currency }}</td>
@@ -210,6 +210,10 @@ function fmtTime(iso) {
     border: 1px solid var(--line); background: var(--card); color: var(--body); font-size: 13.5px; font-weight: 600; cursor: pointer; }
 .chip-on { background: var(--accent); color: #fff; border-color: var(--accent); }
 .btn-cancel { color: #c0392b; }
+/* Order line: quantity leads (inline-start), name follows — isolated so the
+   Latin "3×" never gets reordered next to an Arabic name. */
+.order-item { display: flex; align-items: baseline; gap: 6px; }
+.order-item-qty { flex: none; font-weight: 700; color: var(--accent-dark); unicode-bidi: isolate; }
 /* Briefly highlight a just-arrived order. */
 .order-row-new { animation: order-flash 5s ease-out; }
 @keyframes order-flash {
