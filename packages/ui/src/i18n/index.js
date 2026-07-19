@@ -120,6 +120,7 @@ const messages = {
             qr_regen_confirm: 'Regenerate this QR? The current printed code will stop working.',
             qr_url: 'Menu URL', scan_hint: 'Scan to view the menu for this table.',
             tables_count: '{count} tables', no_area_first: 'Create a dining area first.',
+            no_branch_first: 'Add a branch first — dining areas belong to a branch.',
         },
         leads: {
             title: 'Leads', subtitle: '{n} demo requests from the landing page.',
@@ -576,6 +577,7 @@ const messages = {
             qr_regen_confirm: 'إعادة إنشاء الرمز؟ سيتوقف الرمز المطبوع الحالي عن العمل.',
             qr_url: 'رابط القائمة', scan_hint: 'امسح لعرض قائمة هذه الطاولة.',
             tables_count: '{count} طاولة', no_area_first: 'أنشئ منطقة جلوس أولاً.',
+            no_branch_first: 'أضف فرعًا أولاً — مناطق الجلوس تتبع فرعًا.',
         },
         leads: {
             title: 'العملاء المحتملون', subtitle: '{n} طلب عرض من الصفحة الرئيسية.',

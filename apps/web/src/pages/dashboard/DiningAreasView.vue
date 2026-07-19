@@ -93,6 +93,8 @@ const typeOptions = computed(() => ['indoor', 'outdoor', 'custom'])
             <button @click="openCreate" :disabled="!branches.length" class="btn btn-accent"><Icon name="plus" :size="16" />{{ t('common.create') }}</button>
         </div>
 
+        <p v-if="!loading && !branches.length" class="card p-4 text-sm" style="color:var(--muted)">{{ t('tbl.no_branch_first') }}</p>
+
         <div class="card overflow-hidden">
             <ListSkeleton v-if="loading" />
             <div v-else-if="!rows.length" class="p-8 text-center" style="color:var(--muted)">{{ t('tbl.none_areas') }}</div>
