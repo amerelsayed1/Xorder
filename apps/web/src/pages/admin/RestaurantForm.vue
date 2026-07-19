@@ -63,6 +63,11 @@ const langConfig = ref('bilingual') // 'ar_only' | 'en_only' | 'bilingual'
 const primaryLanguage = ref('ar')
 const showAr = computed(() => langConfig.value !== 'en_only')
 const showEn = computed(() => langConfig.value !== 'ar_only')
+const bilingualLang = computed(() => langConfig.value === 'bilingual')
+// In single-language mode the "(English)/(Arabic)" qualifier is noise — there
+// is only one name — so fall back to a plain "Name" label.
+const nameLabelEn = computed(() => bilingualLang.value ? t('common.name_en') : t('common.name'))
+const nameLabelAr = computed(() => bilingualLang.value ? t('common.name_ar') : t('common.name'))
 
 function chooseLang(cfg) {
     langConfig.value = cfg
@@ -271,7 +276,6 @@ async function submitCreate() {
                         <span v-if="i < steps.length - 1" class="flex-1 h-px" style="background:var(--line)"></span>
                     </template>
                 </div>
-                <p class="text-xs mt-3" style="color:var(--muted)">{{ t('wizard.step_of', { n: currentStep, total: totalSteps }) }}</p>
             </div>
 
             <!-- Step 1: Language -->
@@ -301,10 +305,10 @@ async function submitCreate() {
             <div v-show="currentStep === 2" class="card p-6 space-y-4">
                 <h2 class="h-card">{{ t('wizard.basics_title') }}</h2>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <label v-if="showEn" class="block"><span class="label">{{ t('common.name_en') }}</span>
+                    <label v-if="showEn" class="block"><span class="label">{{ nameLabelEn }}</span>
                         <input v-model="form.name_en" @input="autoSlug" class="input" />
                         <FormError :errors="errors" field="name_en" /></label>
-                    <label v-if="showAr" class="block" dir="rtl"><span class="label">{{ t('common.name_ar') }}</span>
+                    <label v-if="showAr" class="block" dir="rtl"><span class="label">{{ nameLabelAr }}</span>
                         <input v-model="form.name_ar" class="input" />
                         <FormError :errors="errors" field="name_ar" /></label>
                 </div>
@@ -382,10 +386,10 @@ async function submitCreate() {
                 <p v-if="!branchEnabled" class="text-sm rounded-lg p-3" style="background:var(--page);color:var(--muted)">{{ t('wizard.branch_skip_note') }}</p>
                 <template v-if="branchEnabled">
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <label v-if="showEn" class="block"><span class="label">{{ t('common.name_en') }}</span>
+                        <label v-if="showEn" class="block"><span class="label">{{ nameLabelEn }}</span>
                             <input v-model="branch.name_en" class="input" />
                             <FormError :errors="errors" field="branch.name_en" /></label>
-                        <label v-if="showAr" class="block" dir="rtl"><span class="label">{{ t('common.name_ar') }}</span>
+                        <label v-if="showAr" class="block" dir="rtl"><span class="label">{{ nameLabelAr }}</span>
                             <input v-model="branch.name_ar" class="input" /></label>
                     </div>
                     <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
