@@ -64,7 +64,7 @@ class AuthController extends Controller
     /** Current authenticated user + restaurant context (for the SPA bootstrap). */
     public function me(Request $request): JsonResponse
     {
-        $user = $request->user()->loadMissing('restaurant');
+        $user = $request->user()->loadMissing('restaurant.features');
 
         return response()->json(['data' => UserResource::make($user)]);
     }

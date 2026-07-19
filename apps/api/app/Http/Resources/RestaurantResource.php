@@ -53,6 +53,8 @@ class RestaurantResource extends JsonResource
                 ] : null;
             }),
             'public_url' => $this->publicUrl(),
+            'features' => $this->whenLoaded('features', fn () => $this->features
+                ->where('is_enabled', true)->pluck('feature_key')->values()),
             'categories_count' => $this->whenCounted('categories'),
             'menu_items_count' => $this->whenCounted('menuItems'),
             'created_at' => $this->created_at?->toIso8601String(),

@@ -7,6 +7,7 @@ import { useCart } from './composables/useCart'
 import { useOrder } from './composables/useOrder'
 import { useMenu } from './composables/useMenu'
 import { useUserInfo } from './composables/useUserInfo'
+import { useTableSession } from './composables/useTableSession'
 import Header from './components/Header.vue'
 import Hero from './components/Hero.vue'
 import CategoryTabs from './components/CategoryTabs.vue'
@@ -28,6 +29,13 @@ const bareHost = sub === 'localhost' || /^\d+$/.test(sub)
 const slug = (bareHost && new URLSearchParams(window.location.search).get('r')) || sub
 
 const { locale, isAr, t, localize } = useLocale('ar')
+// A table QR scan (…/t/{token}) binds this visit to a physical table.
+const { hasTable, sessionToken, tableLabel, area: tableArea, tableError } = useTableSession(locale.value)
+const tableAreaName = computed(() => {
+    const a = tableArea.value
+    if (!a) return ''
+    return isAr.value ? (a.name_ar || a.name_en) : (a.name_en || a.name_ar)
+})
 const { cart, cartCount, cartTotal, addToCart, removeLine, bumpLine, clearCart, getLineOptions, calculateLinePrice } = useCart(slug)
 const { submittingOrder, orderSuccess, lastOrderUrl, lastOrderCode, customer, buildOrderData, sendToWhatsApp } = useOrder()
 const { userInfoDialog, isEditing, userInfo, editForm, saveSuccess, hasUserInfo, initials, loadUserInfo, saveUserInfo, enterEditMode, cancelEdit, clearUserInfo, openDialog, closeDialog } = useUserInfo()
@@ -184,6 +192,7 @@ function submitOrder(details) {
         customer_address: details.address || null,
         note: details.note || null,
         order_type: orderType.value || null,
+        session_token: sessionToken.value || undefined,
     }
     postOrder(slug, snapshot)
         .then(res => { lastOrderCode.value = res?.data?.code || '' })
@@ -227,6 +236,12 @@ function updateUserField(field, value) {
                 @changeLocale="locale = $event"
                 @openMenu="navDrawer = true"
             />
+
+            <div v-if="hasTable" class="table-banner">
+                <span class="table-banner__pin">◈</span>
+                <span>{{ isAr ? 'طاولة' : 'Table' }} {{ tableLabel }}<span v-if="tableAreaName"> — {{ tableAreaName }}</span></span>
+            </div>
+            <div v-else-if="tableError" class="table-banner table-banner--error">{{ tableError }}</div>
 
             <div class="page-wrap">
                 <template v-if="view === 'menu'">

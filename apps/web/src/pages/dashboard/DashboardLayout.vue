@@ -111,6 +111,8 @@ onUnmounted(() => {
     document.title = baseTitle
 })
 
+const hasTables = computed(() => (r.value?.features || []).includes('table_management'))
+
 const nav = computed(() => [
     { to: { name: 'dashboard.home' }, labelKey: 'nav.dashboard', icon: 'pi pi-th-large', end: true },
     { to: { name: 'dashboard.orders' }, labelKey: 'nav.orders', icon: 'pi pi-shopping-bag', badge: newOrders.value },
@@ -121,6 +123,10 @@ const nav = computed(() => [
     { to: { name: 'dashboard.combos' }, labelKey: 'nav.combos', icon: 'pi pi-gift' },
     { to: { name: 'dashboard.qr' }, labelKey: 'nav.qr', icon: 'pi pi-qrcode' },
     { to: { name: 'dashboard.branches' }, labelKey: 'nav.branches', icon: 'pi pi-map-marker' },
+    ...(hasTables.value ? [
+        { to: { name: 'dashboard.areas' }, labelKey: 'nav.areas', icon: 'pi pi-th-large' },
+        { to: { name: 'dashboard.tables' }, labelKey: 'nav.tables', icon: 'pi pi-table' },
+    ] : []),
     { to: { name: 'dashboard.profile' }, labelKey: 'nav.profile', icon: 'pi pi-cog' },
 ])
 </script>

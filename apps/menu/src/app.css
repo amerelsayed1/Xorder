@@ -2303,3 +2303,24 @@ html[dir='ltr'] .side-panel {
         animation-duration: .01ms !important;
     }
 }
+
+/* Table QR banner — shows the detected table under the header. */
+.table-banner {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 10px 16px;
+    font-weight: 600;
+    font-size: 0.95rem;
+    color: var(--accent-dark);
+    background: var(--accent-soft);
+    border-bottom: 1px solid var(--accent-border);
+}
+.table-banner__pin { color: var(--accent); }
+.table-banner--error {
+    color: #b42318;
+    background: color-mix(in srgb, #b42318 10%, white);
+    border-bottom-color: color-mix(in srgb, #b42318 30%, white);
+    font-weight: 500;
+}

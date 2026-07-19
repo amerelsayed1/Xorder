@@ -19,3 +19,11 @@ export async function postOrder(slug, payload) {
     })
     return data
 }
+
+/** Open a table menu session from a scanned table QR token. */
+export async function createTableSession(token, language) {
+    const { data } = await axios.post(`${BASE}/api/public/tables/${token}/sessions`, { language }, {
+        headers: { Accept: 'application/json' },
+    })
+    return data
+}

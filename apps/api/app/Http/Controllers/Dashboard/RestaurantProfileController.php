@@ -13,7 +13,7 @@ class RestaurantProfileController extends Controller
     public function show(Request $request): JsonResponse
     {
         return response()->json([
-            'data' => RestaurantResource::make($request->user()->restaurant),
+            'data' => RestaurantResource::make($request->user()->restaurant->loadMissing('features')),
         ]);
     }
 
