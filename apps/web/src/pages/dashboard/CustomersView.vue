@@ -52,7 +52,6 @@ function openCustomer(c) {
                     <div class="h-11 w-11 rounded-full grid place-items-center flex-shrink-0 font-bold" style="background:var(--accent-soft);color:var(--accent)">{{ (c.name || '؟').charAt(0).toUpperCase() }}</div>
                     <div class="flex-1 min-w-0">
                         <div class="font-medium" style="color:var(--ink)">{{ c.name || t('customer.no_name') }}</div>
-                        <div class="text-xs" style="color:var(--muted)" dir="ltr">{{ c.phone }}</div>
                     </div>
                     <div class="text-xs text-end" style="color:var(--muted)">
                         <div>{{ t('customer.orders_n', { n: c.orders_count }) }}</div>
