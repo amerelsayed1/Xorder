@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import api, { ensureCsrf } from '@xorder/api-client/api.js'
 import { withMinDuration } from '../../lib/minLoading.js'
 import { pickLocalized } from '@xorder/ui/localize.js'
+import { useMenuLang } from '../../lib/menuLang.js'
 import Modal from '@xorder/ui/Modal.vue'
 import ListSkeleton from '@xorder/ui/ListSkeleton.vue'
 import StatusBadge from '@xorder/ui/StatusBadge.vue'
@@ -12,6 +13,7 @@ import Icon from '@xorder/ui/Icon.vue'
 import { confirm } from '@xorder/ui/confirm.js'
 
 const { t, locale } = useI18n()
+const { langs, bilingual } = useMenuLang()
 const rows = ref([])
 const branches = ref([])
 const loading = ref(true)
@@ -121,11 +123,10 @@ const typeOptions = computed(() => ['indoor', 'outdoor', 'custom'])
                     </select>
                     <FormError :errors="errors" field="branch_id" /></label>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <label class="block"><span class="label">{{ t('common.name_en') }}</span>
-                        <input v-model="form.name_en" class="input" />
-                        <FormError :errors="errors" field="name_en" /></label>
-                    <label class="block" dir="rtl"><span class="label">{{ t('common.name_ar') }}</span>
-                        <input v-model="form.name_ar" class="input" /></label>
+                    <label v-for="lng in langs" :key="'n' + lng" class="block" :dir="lng === 'ar' ? 'rtl' : 'ltr'">
+                        <span class="label">{{ bilingual ? t('common.name_' + lng) : t('common.name') }}</span>
+                        <input v-model="form['name_' + lng]" class="input" />
+                        <FormError :errors="errors" :field="'name_' + lng" /></label>
                 </div>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <label class="block"><span class="label">{{ t('tbl.type') }}</span>
