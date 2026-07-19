@@ -39,8 +39,11 @@ const superAdminRoutes = [
 
 const restaurantRoutes = [
     loginRoute,
+    // The restaurant admin lives under /admin: on a restaurant subdomain the
+    // bare root ("/") is the public menu (nginx redirects it), so the dashboard
+    // needs its own path to stay reachable and refresh-safe.
     {
-        path: '/',
+        path: '/admin',
         component: () => import('../pages/dashboard/DashboardLayout.vue'),
         meta: { role: 'RESTAURANT_ADMIN' },
         children: [
@@ -56,7 +59,7 @@ const restaurantRoutes = [
             { path: 'qr', name: 'dashboard.qr', component: () => import('../pages/dashboard/QrView.vue') },
         ],
     },
-    { path: '/:pathMatch(.*)*', redirect: '/' },
+    { path: '/:pathMatch(.*)*', redirect: '/admin' },
 ]
 
 const router = createRouter({
@@ -65,14 +68,13 @@ const router = createRouter({
 })
 
 // Bounce the browser to the subdomain that matches the signed-in user.
-// Restaurant subdomains serve the public menu at their root ("/"), so we land
-// admins on /login — the guest guard immediately forwards an authenticated
-// admin to their dashboard client-side, without a full load of "/".
+// Restaurant subdomains serve the public menu at their root ("/"), so the
+// restaurant dashboard lives at /admin.
 function redirectToCorrectHost(auth) {
     if (auth.isSuperAdmin) {
         window.location.href = superAdminUrl('/')
     } else if (auth.restaurant?.slug) {
-        window.location.href = restaurantUrl(auth.restaurant.slug, '/login')
+        window.location.href = restaurantUrl(auth.restaurant.slug, '/admin')
     } else {
         window.location.href = superAdminUrl('/')
     }
