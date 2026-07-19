@@ -12,6 +12,27 @@ class StoreOrderRequest extends FormRequest
     }
 
     /**
+     * Never reject an order over the soft order_type field: older/cached menu
+     * clients send a localized label ("توصيل") rather than the enum value.
+     * Normalize known labels to the enum; drop anything unknown to null.
+     */
+    protected function prepareForValidation(): void
+    {
+        if (! $this->has('order_type')) {
+            return;
+        }
+
+        $raw = trim((string) $this->input('order_type'));
+        $map = [
+            'pickup' => 'pickup', 'delivery' => 'delivery',
+            'dine_in' => 'dine_in', 'dine-in' => 'dine_in', 'dine in' => 'dine_in',
+            'استلام' => 'pickup', 'توصيل' => 'delivery', 'في المطعم' => 'dine_in', 'محلي' => 'dine_in',
+        ];
+
+        $this->merge(['order_type' => $map[mb_strtolower($raw)] ?? $map[$raw] ?? null]);
+    }
+
+    /**
      * Totals are informational — no payment is taken through this endpoint
      * (the order is fulfilled over WhatsApp), so the snapshot only needs to
      * be well-formed, not re-priced server-side.
