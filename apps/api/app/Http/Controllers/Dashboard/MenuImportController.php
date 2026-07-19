@@ -8,7 +8,6 @@ use App\Models\MenuItem;
 use App\Services\PlanLimitService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use PhpOffice\PhpSpreadsheet\Reader\Csv as CsvReader;
 use PhpOffice\PhpSpreadsheet\Reader\Xls as XlsReader;
 use PhpOffice\PhpSpreadsheet\Reader\Xlsx as XlsxReader;
@@ -33,6 +32,7 @@ use PhpOffice\PhpSpreadsheet\Reader\Xlsx as XlsxReader;
 class MenuImportController extends Controller
 {
     private const MAX_NAME = 150;
+
     private const MAX_DESC = 2000;
 
     public function import(Request $request, PlanLimitService $limits): JsonResponse
@@ -73,14 +73,17 @@ class MenuImportController extends Controller
                 }
                 if ($row['name_en'] === null && $row['name_ar'] === null) {
                     $summary['errors'][] = ['row' => $line, 'message' => __('xorder.messages.import_row_no_name')];
+
                     continue;
                 }
                 if ($row['cat_en'] === null && $row['cat_ar'] === null) {
                     $summary['errors'][] = ['row' => $line, 'message' => __('xorder.messages.import_row_no_category')];
+
                     continue;
                 }
                 if ($row['price'] === null) {
                     $summary['errors'][] = ['row' => $line, 'message' => __('xorder.messages.import_row_bad_price')];
+
                     continue;
                 }
 
@@ -95,6 +98,7 @@ class MenuImportController extends Controller
                     if ($limits->itemLimitReached($restaurant) !== null) {
                         $summary['skipped']++;
                         $summary['errors'][] = ['row' => $line, 'message' => __('xorder.messages.import_row_limit')];
+
                         continue;
                     }
                     $item = new MenuItem($this->itemAttributes($row));

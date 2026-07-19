@@ -6,8 +6,10 @@ use App\Enums\OrderStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Public\StoreOrderRequest;
 use App\Models\Customer;
+use App\Models\CustomerAddress;
 use App\Models\Order;
 use App\Services\PublicMenuService;
+use App\Services\PushService;
 use App\Support\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Log;
@@ -49,6 +51,10 @@ class PublicOrderController extends Controller
         $order->customer_address_id = $address?->id;
         $order->save();
 
+        // Release the tenant pin so it can't leak into a later request in the
+        // same process (matters for tests; harmless per-request in production).
+        TenantContext::clearOverride();
+
         // Notify the restaurant's admin devices — after the response is flushed
         // so the FCM round-trip never delays order recording. Best-effort.
         $lang = $restaurant->default_language->value;
@@ -59,7 +65,7 @@ class PublicOrderController extends Controller
             'currency' => $order->currency,
         ], $lang);
         app()->terminating(function () use ($restaurant, $order, $title, $body) {
-            app(\App\Services\PushService::class)->newOrderToRestaurant(
+            app(PushService::class)->newOrderToRestaurant(
                 $restaurant->id, $title, $body, ['order_id' => (string) $order->id],
             );
         });
@@ -74,7 +80,7 @@ class PublicOrderController extends Controller
      * Upsert the directory customer (by phone) and, for deliveries, remember
      * the address. Best-effort: a hiccup here must never block the order.
      *
-     * @return array{0: ?Customer, 1: ?\App\Models\CustomerAddress}
+     * @return array{0: ?Customer, 1: ?CustomerAddress}
      */
     private function resolveCustomer(array $data): array
     {
