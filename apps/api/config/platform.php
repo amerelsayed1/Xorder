@@ -45,6 +45,9 @@ return [
     'self_serve_signup' => env('SELF_SERVE_SIGNUP', false),
     'signup_trial_days' => env('SIGNUP_TRIAL_DAYS', 14),
 
+    // How long a table menu session stays valid without activity (FR-SESSION-009).
+    'table_session_ttl_minutes' => env('TABLE_SESSION_TTL_MINUTES', 240),
+
     'super_admin' => [
         'name' => env('SUPER_ADMIN_NAME', 'Super Admin'),
         'email' => env('SUPER_ADMIN_EMAIL', 'admin@qrmenu.test'),

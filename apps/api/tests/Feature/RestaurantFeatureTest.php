@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Enums\Feature;
 use App\Models\Restaurant;
+use App\Models\User;
 use App\Services\RestaurantProvisioningService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Notification;
@@ -121,7 +122,7 @@ class RestaurantFeatureTest extends TestCase
     public function test_super_admin_creates_client_with_branch_and_features_over_http(): void
     {
         Notification::fake();
-        $sa = \App\Models\User::factory()->superAdmin()->create();
+        $sa = User::factory()->superAdmin()->create();
 
         $this->actingAs($sa)->postJson('/api/admin/restaurants', [
             'name_en' => 'Wizard Co', 'slug' => 'wizard-co',

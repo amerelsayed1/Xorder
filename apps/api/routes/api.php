@@ -17,6 +17,7 @@ use App\Http\Controllers\Dashboard\CategoryController;
 use App\Http\Controllers\Dashboard\ComboController;
 use App\Http\Controllers\Dashboard\CustomerController;
 use App\Http\Controllers\Dashboard\DashboardQrController;
+use App\Http\Controllers\Dashboard\DiningAreaController;
 use App\Http\Controllers\Dashboard\InsightsController as DashboardInsightsController;
 use App\Http\Controllers\Dashboard\MenuImportController;
 use App\Http\Controllers\Dashboard\MenuItemController;
@@ -24,10 +25,12 @@ use App\Http\Controllers\Dashboard\OrderController as DashboardOrderController;
 use App\Http\Controllers\Dashboard\PushTokenController;
 use App\Http\Controllers\Dashboard\RestaurantProfileController;
 use App\Http\Controllers\Dashboard\StatsController;
+use App\Http\Controllers\Dashboard\TableController;
 use App\Http\Controllers\Public\LandingContentController as PublicLandingContentController;
 use App\Http\Controllers\Public\LeadController as PublicLeadController;
 use App\Http\Controllers\Public\PublicMenuApiController;
 use App\Http\Controllers\Public\PublicOrderController;
+use App\Http\Controllers\Public\PublicTableController;
 use App\Http\Controllers\Public\RestaurantBrandingController;
 use App\Http\Controllers\Public\RestaurantQrController as PublicRestaurantQrController;
 use App\Http\Controllers\Public\SignupController;
@@ -153,6 +156,27 @@ Route::prefix('dashboard')
             Route::patch('items/{item}/availability', [MenuItemController::class, 'toggleAvailability']);
             Route::delete('items/{item}', [MenuItemController::class, 'destroy']);
         });
+
+        // Table experience (Phase 1) — gated on the table_management feature.
+        Route::middleware('feature:table_management')->group(function () {
+            Route::get('dining-areas', [DiningAreaController::class, 'index']);
+            Route::get('tables', [TableController::class, 'index']);
+            Route::get('tables/{table}/qr', [TableController::class, 'qr']);
+            Route::get('tables/{table}/qr/download', [TableController::class, 'qrDownload']);
+
+            Route::middleware('subscription.writable')->group(function () {
+                Route::post('dining-areas', [DiningAreaController::class, 'store']);
+                Route::put('dining-areas/{area}', [DiningAreaController::class, 'update']);
+                Route::patch('dining-areas/{area}/status', [DiningAreaController::class, 'toggleStatus']);
+                Route::delete('dining-areas/{area}', [DiningAreaController::class, 'destroy']);
+
+                Route::post('tables', [TableController::class, 'store']);
+                Route::put('tables/{table}', [TableController::class, 'update']);
+                Route::patch('tables/{table}/status', [TableController::class, 'toggleStatus']);
+                Route::post('tables/{table}/qr/regenerate', [TableController::class, 'regenerateQr']);
+                Route::delete('tables/{table}', [TableController::class, 'destroy']);
+            });
+        });
     });
 
 /*
@@ -190,6 +214,12 @@ Route::post('public/restaurants/{slug}/orders', [PublicOrderController::class, '
 
 Route::get('public/restaurants/{slug}/branding', [RestaurantBrandingController::class, 'show'])
     ->middleware('throttle:120,1');
+
+// Table QR scan → context + menu session (Phase 1).
+Route::get('public/tables/{token}', [PublicTableController::class, 'show'])
+    ->middleware('throttle:120,1');
+Route::post('public/tables/{token}/sessions', [PublicTableController::class, 'createSession'])
+    ->middleware('throttle:30,1');
 
 Route::get('public/restaurants/{slug}/qr', [PublicRestaurantQrController::class, 'show'])
     ->middleware('throttle:120,1');

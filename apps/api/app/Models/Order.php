@@ -23,6 +23,10 @@ class Order extends Model
         'order_type',
         'note',
         'source',
+        'branch_id',
+        'dining_area_id',
+        'table_id',
+        'menu_session_id',
     ];
 
     protected function casts(): array
@@ -48,5 +52,25 @@ class Order extends Model
     public function customerAddress(): BelongsTo
     {
         return $this->belongsTo(CustomerAddress::class);
+    }
+
+    public function branch(): BelongsTo
+    {
+        return $this->belongsTo(Branch::class);
+    }
+
+    public function diningArea(): BelongsTo
+    {
+        return $this->belongsTo(DiningArea::class);
+    }
+
+    public function table(): BelongsTo
+    {
+        return $this->belongsTo(DiningTable::class, 'table_id');
+    }
+
+    public function menuSession(): BelongsTo
+    {
+        return $this->belongsTo(MenuSession::class);
     }
 }

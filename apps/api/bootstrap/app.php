@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\EnsureFeatureEnabled;
 use App\Http\Middleware\EnsureRole;
 use App\Http\Middleware\EnsureSubscriptionAllowsWrites;
 use App\Http\Middleware\ForceJsonResponse;
@@ -33,6 +34,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'role' => EnsureRole::class,
             'subscription.writable' => EnsureSubscriptionAllowsWrites::class,
+            'feature' => EnsureFeatureEnabled::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

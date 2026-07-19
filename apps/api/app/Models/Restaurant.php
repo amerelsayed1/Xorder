@@ -148,6 +148,32 @@ class Restaurant extends Model
         return rtrim(config('app.url'), '/').'/r/'.$this->slug;
     }
 
+    /** Same host as publicUrl(), but pointing at a specific table's QR entry. */
+    public function tableUrl(string $token): string
+    {
+        $domain = config('platform.menu_domain');
+
+        if ($domain) {
+            $scheme = config('platform.menu_secure', true) ? 'https' : 'http';
+            $port = config('platform.menu_port');
+            $portPart = $port ? ":{$port}" : '';
+
+            return "{$scheme}://{$this->slug}.{$domain}{$portPart}/t/{$token}";
+        }
+
+        return rtrim(config('app.url'), '/').'/r/'.$this->slug.'/t/'.$token;
+    }
+
+    public function diningAreas(): HasMany
+    {
+        return $this->hasMany(DiningArea::class);
+    }
+
+    public function tables(): HasMany
+    {
+        return $this->hasMany(DiningTable::class);
+    }
+
     public function isPubliclyVisible(): bool
     {
         return $this->status->isPubliclyVisible();

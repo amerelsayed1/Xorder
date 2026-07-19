@@ -54,6 +54,8 @@ class StoreOrderRequest extends FormRequest
             'address_label' => ['nullable', 'string', 'max:60'],
             'order_type' => ['nullable', 'string', 'in:pickup,delivery,dine_in'],
             'note' => ['nullable', 'string', 'max:1000'],
+            // Present when the order comes from a table QR session (Phase 1).
+            'session_token' => ['nullable', 'string', 'size:40'],
         ];
     }
 }

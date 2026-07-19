@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Public\StoreOrderRequest;
 use App\Models\Customer;
 use App\Models\CustomerAddress;
+use App\Models\MenuSession;
 use App\Models\Order;
 use App\Services\PublicMenuService;
 use App\Services\PushService;
@@ -49,6 +50,12 @@ class PublicOrderController extends Controller
         $order->restaurant_id = $restaurant->id;
         $order->customer_id = $customer?->id;
         $order->customer_address_id = $address?->id;
+
+        // A table QR session binds the order to its physical table/area/branch
+        // and pins it to Dine-in (FR-ORDER-001/009). A stale token simply
+        // records an untagged order rather than losing it.
+        $this->bindTableSession($order, $restaurant->id, $request->input('session_token'));
+
         $order->save();
 
         // Release the tenant pin so it can't leak into a later request in the
@@ -74,6 +81,34 @@ class PublicOrderController extends Controller
             'data' => ['id' => $order->id, 'code' => $order->code()],
             'message' => __('xorder.messages.order_received'),
         ], 201);
+    }
+
+    /**
+     * Stamp the order with its table context from a menu session, if the token
+     * resolves to one belonging to this restaurant.
+     */
+    private function bindTableSession(Order $order, int $restaurantId, ?string $token): void
+    {
+        if (empty($token)) {
+            return;
+        }
+
+        $session = MenuSession::withoutGlobalScopes()
+            ->where('restaurant_id', $restaurantId)
+            ->where('session_token', $token)
+            ->first();
+
+        if ($session === null) {
+            return;
+        }
+
+        $order->menu_session_id = $session->id;
+        $order->table_id = $session->table_id;
+        $order->dining_area_id = $session->dining_area_id;
+        $order->branch_id = $session->branch_id;
+        $order->order_type = 'dine_in';
+
+        $session->forceFill(['last_activity_at' => now()])->save();
     }
 
     /**
