@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import api, { ensureCsrf } from '@xorder/api-client/api.js'
 import Icon from '@xorder/ui/Icon.vue'
@@ -20,6 +20,8 @@ const loading = ref(true)
 const statusFilter = ref('')
 const page = ref(1)
 const updating = ref(null)
+const newIds = ref(new Set())
+let pollTimer
 
 async function load() {
     loading.value = true
@@ -33,7 +35,38 @@ async function load() {
         loading.value = false
     }
 }
-onMounted(load)
+
+// Live updates: pull orders that arrived since the last check and prepend them,
+// so an order that just triggered a notification appears without a refresh.
+// Only on page 1 with the current filter — pagination is left untouched.
+async function pollNew() {
+    if (loading.value || page.value !== 1 || document.hidden) return
+    try {
+        const { data } = await api.get('api/dashboard/orders', {
+            params: { status: statusFilter.value || undefined, page: 1 },
+        })
+        const known = new Set(rows.value.map((r) => r.id))
+        const fresh = (data.data || []).filter((o) => !known.has(o.id))
+        if (fresh.length) {
+            rows.value = [...fresh, ...rows.value]
+            meta.value = data.meta || meta.value
+            const ids = new Set(newIds.value)
+            fresh.forEach((o) => ids.add(o.id))
+            newIds.value = ids
+            setTimeout(() => {
+                const s = new Set(newIds.value)
+                fresh.forEach((o) => s.delete(o.id))
+                newIds.value = s
+            }, 5000)
+        }
+    } catch (err) { /* keep current view */ }
+}
+
+onMounted(() => {
+    load()
+    pollTimer = setInterval(pollNew, 12_000)
+})
+onUnmounted(() => clearInterval(pollTimer))
 
 function setFilter(s) {
     statusFilter.value = s
@@ -124,7 +157,7 @@ function fmtTime(iso) {
                         </tr>
                     </template>
                     <tr v-else-if="!rows.length"><td colspan="7" class="px-5 py-8 text-center" style="color:var(--muted)">{{ t('orders.none') }}</td></tr>
-                    <tr v-for="order in rows" :key="order.id" class="border-t align-top" :style="{ borderColor: 'var(--line)' }">
+                    <tr v-for="order in rows" :key="order.id" class="border-t align-top" :class="{ 'order-row-new': newIds.has(order.id) }" :style="{ borderColor: 'var(--line)' }">
                         <td class="px-5 py-3 font-medium whitespace-nowrap" style="color:var(--ink)">{{ order.code }}</td>
                         <td class="px-3 py-3 whitespace-nowrap" style="color:var(--muted)">{{ fmtTime(order.created_at) }}</td>
                         <td class="px-3 py-3">
@@ -176,4 +209,11 @@ function fmtTime(iso) {
     border: 1px solid var(--line); background: var(--card); color: var(--body); font-size: 13.5px; font-weight: 600; cursor: pointer; }
 .chip-on { background: var(--accent); color: #fff; border-color: var(--accent); }
 .btn-cancel { color: #c0392b; }
+/* Briefly highlight a just-arrived order. */
+.order-row-new { animation: order-flash 5s ease-out; }
+@keyframes order-flash {
+    0% { background: var(--accent-soft, #fdebd0); }
+    100% { background: transparent; }
+}
+@media (prefers-reduced-motion: reduce) { .order-row-new { animation: none; } }
 </style>
