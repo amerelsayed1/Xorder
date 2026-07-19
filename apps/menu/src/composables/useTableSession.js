@@ -20,8 +20,7 @@ export function useTableSession(language = 'ar') {
     async function init() {
         if (!token) return
         try {
-            const { data } = await createTableSession(token, language)
-            const ctx = data.data
+            const { data: ctx } = await createTableSession(token, language)
             sessionToken.value = ctx.session_token
             tableLabel.value = ctx.table?.label || ''
             area.value = ctx.area
