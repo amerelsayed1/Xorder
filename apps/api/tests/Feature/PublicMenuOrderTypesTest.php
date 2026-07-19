@@ -29,6 +29,18 @@ class PublicMenuOrderTypesTest extends TestCase
         $this->assertSame(['pickup'], $this->menuOrderTypes('pk-only'));
     }
 
+    public function test_dine_in_can_be_offered_as_an_order_type(): void
+    {
+        $r = Restaurant::factory()->create(['status' => RestaurantStatus::ACTIVE, 'slug' => 'dine-cafe']);
+        $r->features()->createMany([
+            ['feature_key' => 'dine_in', 'is_enabled' => true],
+            ['feature_key' => 'pickup', 'is_enabled' => true],
+            ['feature_key' => 'delivery', 'is_enabled' => false],
+        ]);
+
+        $this->assertSame(['dine_in', 'pickup'], $this->menuOrderTypes('dine-cafe'));
+    }
+
     public function test_legacy_restaurant_without_feature_rows_keeps_both(): void
     {
         Restaurant::factory()->create(['status' => RestaurantStatus::ACTIVE, 'slug' => 'legacy']);

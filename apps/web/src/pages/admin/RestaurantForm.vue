@@ -90,12 +90,17 @@ function toggleOrderType(tp) {
     else branch.supported_order_types.push(tp)
 }
 
-const featureKeys = ['qr_menu', 'whatsapp_ordering', 'table_management', 'bill_requests', 'internal_reviews', 'product_analytics', 'pickup', 'delivery']
-const featureRequires = { bill_requests: ['table_management'] }
+// Order types the client offers, shown first in the Features step.
+const orderTypeKeys = ['dine_in', 'pickup', 'delivery']
+const capabilityKeys = ['qr_menu', 'whatsapp_ordering', 'table_management', 'bill_requests', 'internal_reviews', 'product_analytics']
+const featureRequires = {
+    bill_requests: ['table_management'],
+    table_management: ['dine_in'],
+}
 const features = reactive({
+    dine_in: true, pickup: true, delivery: true,
     qr_menu: true, whatsapp_ordering: true, table_management: false,
     bill_requests: false, internal_reviews: false, product_analytics: false,
-    pickup: true, delivery: true,
 })
 // Enabling a feature pulls in its prerequisites; disabling one drops anything
 // that depended on it (mirrors Feature::resolve on the backend).
@@ -109,7 +114,7 @@ function setFeature(key, val) {
         }
     }
 }
-const enabledFeatureLabels = computed(() => featureKeys.filter(k => features[k]).map(k => t(`feature.${k}`)))
+const enabledFeatureLabels = computed(() => [...orderTypeKeys, ...capabilityKeys].filter(k => features[k]).map(k => t(`feature.${k}`)))
 const langConfigLabel = computed(() => langOptionLabel(langConfig.value))
 
 const stepValid = computed(() => {
@@ -412,20 +417,32 @@ async function submitCreate() {
             </div>
 
             <!-- Step 5: Features -->
-            <div v-show="currentStep === 5" class="card p-6 space-y-3">
+            <div v-show="currentStep === 5" class="card p-6 space-y-4">
                 <div>
                     <h2 class="h-card">{{ t('wizard.features_title') }}</h2>
                     <p class="text-sm mt-1" style="color:var(--muted)">{{ t('wizard.features_help') }}</p>
                 </div>
-                <label v-for="key in featureKeys" :key="key" class="flex items-start gap-3 rounded-lg border p-3 cursor-pointer" style="border-color:var(--line)">
-                    <input type="checkbox" :checked="features[key]" @change="setFeature(key, $event.target.checked)" class="mt-0.5 h-4 w-4" />
-                    <span>
+
+                <div class="space-y-3">
+                    <h3 class="label" style="margin:0">{{ t('wizard.order_types_group') }}</h3>
+                    <label v-for="key in orderTypeKeys" :key="key" class="flex items-start gap-3 rounded-lg border p-3 cursor-pointer" style="border-color:var(--line)">
+                        <input type="checkbox" :checked="features[key]" @change="setFeature(key, $event.target.checked)" class="mt-0.5 h-4 w-4" />
                         <span class="label" style="margin:0">{{ t(`feature.${key}`) }}</span>
-                        <span v-if="featureRequires[key]" class="block text-xs mt-0.5" style="color:var(--muted)">
-                            {{ t('wizard.feature_requires', { feature: featureRequires[key].map(f => t(`feature.${f}`)).join(', ') }) }}
+                    </label>
+                </div>
+
+                <div class="space-y-3 pt-2" style="border-top:1px solid var(--line)">
+                    <h3 class="label" style="margin:0">{{ t('wizard.capabilities_group') }}</h3>
+                    <label v-for="key in capabilityKeys" :key="key" class="flex items-start gap-3 rounded-lg border p-3 cursor-pointer" style="border-color:var(--line)">
+                        <input type="checkbox" :checked="features[key]" @change="setFeature(key, $event.target.checked)" class="mt-0.5 h-4 w-4" />
+                        <span>
+                            <span class="label" style="margin:0">{{ t(`feature.${key}`) }}</span>
+                            <span v-if="featureRequires[key]" class="block text-xs mt-0.5" style="color:var(--muted)">
+                                {{ t('wizard.feature_requires', { feature: featureRequires[key].map(f => t(`feature.${f}`)).join(', ') }) }}
+                            </span>
                         </span>
-                    </span>
-                </label>
+                    </label>
+                </div>
             </div>
 
             <!-- Step 6: Review -->

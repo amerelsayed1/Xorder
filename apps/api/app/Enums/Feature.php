@@ -20,6 +20,7 @@ enum Feature: string
     case BILL_REQUESTS = 'bill_requests';
     case INTERNAL_REVIEWS = 'internal_reviews';
     case PRODUCT_ANALYTICS = 'product_analytics';
+    case DINE_IN = 'dine_in';
     case PICKUP = 'pickup';
     case DELIVERY = 'delivery';
 
@@ -41,6 +42,8 @@ enum Feature: string
     {
         return match ($this) {
             self::BILL_REQUESTS => [self::TABLE_MANAGEMENT],
+            // Seating diners at tables implies dine-in ordering (FR-FEATURES-005).
+            self::TABLE_MANAGEMENT => [self::DINE_IN],
             default => [],
         };
     }

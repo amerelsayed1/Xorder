@@ -198,6 +198,7 @@ class Restaurant extends Model
         }
 
         return array_values(array_filter([
+            $this->hasFeature(Feature::DINE_IN) ? 'dine_in' : null,
             $this->hasFeature(Feature::PICKUP) ? 'pickup' : null,
             $this->hasFeature(Feature::DELIVERY) ? 'delivery' : null,
         ]));
