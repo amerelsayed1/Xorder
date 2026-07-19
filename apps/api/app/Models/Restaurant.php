@@ -148,7 +148,11 @@ class Restaurant extends Model
         return rtrim(config('app.url'), '/').'/r/'.$this->slug;
     }
 
-    /** Same host as publicUrl(), but pointing at a specific table's QR entry. */
+    /**
+     * The table QR entry point. It lives under the guest menu path (/menu/t/…)
+     * because nginx serves the menu SPA there; the app root and other paths on
+     * a restaurant subdomain belong to the dashboard SPA.
+     */
     public function tableUrl(string $token): string
     {
         $domain = config('platform.menu_domain');
@@ -158,7 +162,7 @@ class Restaurant extends Model
             $port = config('platform.menu_port');
             $portPart = $port ? ":{$port}" : '';
 
-            return "{$scheme}://{$this->slug}.{$domain}{$portPart}/t/{$token}";
+            return "{$scheme}://{$this->slug}.{$domain}{$portPart}/menu/t/{$token}";
         }
 
         return rtrim(config('app.url'), '/').'/r/'.$this->slug.'/t/'.$token;

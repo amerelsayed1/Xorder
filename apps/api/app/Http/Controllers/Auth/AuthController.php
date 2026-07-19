@@ -42,7 +42,7 @@ class AuthController extends Controller
         if ($request->hasSession()) {
             $request->session()->regenerate();
         }
-        $user->loadMissing('restaurant');
+        $user->loadMissing('restaurant.features');
 
         return response()->json([
             'data' => UserResource::make($user),
