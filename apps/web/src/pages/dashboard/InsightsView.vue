@@ -118,26 +118,6 @@ function money(v) {
                 </div>
             </template>
 
-            <!-- Needs attention -->
-            <div class="card p-5">
-                <h2 class="h-card mb-3">{{ t('insights.needs_attention') }}</h2>
-                <p v-if="!data.needs_attention.length" style="color:var(--green)" class="text-sm">{{ t('insights.menu_healthy') }}</p>
-                <ul v-else class="space-y-3">
-                    <li v-for="issue in data.needs_attention" :key="issue.key" class="flex items-start justify-between gap-3">
-                        <div>
-                            <div class="text-sm">{{ t('insights.attn.' + issue.key) }}</div>
-                            <div v-if="issue.sample && issue.sample.length" class="text-xs mt-1" style="color:var(--muted)">
-                                {{ issue.sample.join(' · ') }}
-                            </div>
-                        </div>
-                        <span class="badge"
-                            :class="issue.severity === 'high' ? 'badge-red' : issue.severity === 'medium' ? 'badge-amber' : 'badge-gray'">
-                            {{ issue.count }}
-                        </span>
-                    </li>
-                </ul>
-            </div>
-
             <div class="grid gap-6 lg:grid-cols-2">
                 <!-- Categories -->
                 <div class="card p-5">
