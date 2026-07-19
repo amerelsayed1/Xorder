@@ -53,6 +53,23 @@ class StoreRestaurantRequest extends FormRequest
             'admin.name' => ['required', 'string', 'max:150'],
             'admin.email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')],
             'admin.password' => ['nullable', 'string', Password::min(8)],
+
+            // Feature flags (Step 5). Unknown keys are ignored by Feature::resolve.
+            'features' => ['nullable', 'array'],
+            'features.*' => ['boolean'],
+
+            // Optional first branch (Step 4). Omit the object entirely to skip.
+            'branch' => ['nullable', 'array'],
+            'branch.name_ar' => ['nullable', 'string', 'max:150'],
+            'branch.name_en' => ['nullable', 'string', 'max:150'],
+            'branch.code' => ['nullable', 'string', 'max:40'],
+            'branch.city' => ['nullable', 'string', 'max:120'],
+            'branch.country' => ['nullable', 'string', 'size:2'],
+            'branch.address' => ['nullable', 'string', 'max:1000'],
+            'branch.phone' => ['nullable', 'string', 'max:32'],
+            'branch.whatsapp_number' => ['nullable', 'string', 'max:32'],
+            'branch.supported_order_types' => ['nullable', 'array'],
+            'branch.supported_order_types.*' => ['string', Rule::in(['dine_in', 'pickup', 'delivery'])],
         ];
     }
 

@@ -37,9 +37,13 @@ class RestaurantController extends Controller
 
     public function store(StoreRestaurantRequest $request, RestaurantProvisioningService $provisioner): JsonResponse
     {
+        $branch = $request->validated('branch');
+
         $result = $provisioner->provision(
-            restaurantData: $request->safe()->except('admin'),
+            restaurantData: $request->safe()->except(['admin', 'branch', 'features']),
             adminData: $request->validated('admin'),
+            branchData: filled($branch) ? $branch : null,
+            features: $request->validated('features') ?? [],
         );
 
         return response()->json([

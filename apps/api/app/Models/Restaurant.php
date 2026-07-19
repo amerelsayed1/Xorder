@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\CurrencyEnum;
+use App\Enums\Feature;
 use App\Enums\LanguageEnum;
 use App\Enums\RestaurantStatus;
 use App\Enums\SubscriptionStatus;
@@ -106,6 +107,23 @@ class Restaurant extends Model
     public function combos(): HasMany
     {
         return $this->hasMany(Combo::class)->orderBy('sort_order')->orderBy('id');
+    }
+
+    public function features(): HasMany
+    {
+        return $this->hasMany(RestaurantFeature::class);
+    }
+
+    /**
+     * Whether a per-restaurant feature flag is enabled. Reads the loaded
+     * relation when present to avoid an extra query in hot paths.
+     */
+    public function hasFeature(Feature|string $feature): bool
+    {
+        $key = $feature instanceof Feature ? $feature->value : $feature;
+
+        return (bool) $this->features
+            ->firstWhere('feature_key', $key)?->is_enabled;
     }
 
     /**

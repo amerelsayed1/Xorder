@@ -13,7 +13,12 @@ class Branch extends Model
     protected $fillable = [
         'name_ar',
         'name_en',
+        'code',
         'address',
+        'address_ar',
+        'address_en',
+        'city',
+        'country',
         'phone',
         'whatsapp_number',
         'opening_hours',
@@ -22,6 +27,7 @@ class Branch extends Model
         'longitude',
         'is_open',
         'is_active',
+        'supported_order_types',
         'sort_order',
     ];
 
@@ -32,6 +38,7 @@ class Branch extends Model
             'is_active' => 'boolean',
             'latitude' => 'float',
             'longitude' => 'float',
+            'supported_order_types' => 'array',
         ];
     }
 

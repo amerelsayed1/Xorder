@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\Feature;
 use App\Enums\RoleEnum;
 use App\Enums\UserStatus;
 use App\Models\Restaurant;
@@ -13,18 +14,34 @@ use Illuminate\Support\Str;
 
 class RestaurantProvisioningService
 {
-    public function __construct(private readonly SlugService $slugs) {}
+    public function __construct(
+        private readonly SlugService $slugs,
+        private readonly RestaurantFeatureService $features,
+    ) {}
 
     /**
-     * Create a restaurant and its first Restaurant Admin in a single
-     * transaction. If no password is supplied, a strong one is generated and
-     * returned (and emailed) so the Super Admin can hand it over.
+     * Create a restaurant and its first Restaurant Admin — and, when supplied,
+     * its first branch and feature flags — in a single transaction. If no
+     * password is supplied, a strong one is generated and returned (and
+     * emailed) so the Super Admin can hand it over.
+     *
+     * This is the one provisioning core shared by both front doors: the
+     * Super Admin creation wizard and self-serve signup. Passing $branchData
+     * and $features lets the wizard commit the whole client atomically while
+     * signup keeps calling it with sensible defaults.
      *
      * @param  array<string,mixed>  $restaurantData
+     * @param  array<string,mixed>  $adminData
+     * @param  array<string,mixed>|null  $branchData  First branch, or null to skip (FR-BRANCH-007).
+     * @param  array<string,bool>  $features  Requested flag map; [] applies the default set.
      * @return array{restaurant: Restaurant, admin: User, generated_password: ?string}
      */
-    public function provision(array $restaurantData, array $adminData): array
-    {
+    public function provision(
+        array $restaurantData,
+        array $adminData,
+        ?array $branchData = null,
+        array $features = [],
+    ): array {
         $generatedPassword = null;
         $plainPassword = $adminData['password'] ?? null;
 
@@ -37,7 +54,9 @@ class RestaurantProvisioningService
         // ultimate guard; this avoids a noisy 500 in the common case).
         $restaurantData['slug'] = $this->slugs->unique($restaurantData['slug']);
 
-        [$restaurant, $admin] = DB::transaction(function () use ($restaurantData, $adminData, $plainPassword) {
+        $featureSet = $features === [] ? Feature::defaultSet() : $features;
+
+        [$restaurant, $admin] = DB::transaction(function () use ($restaurantData, $adminData, $plainPassword, $branchData, $featureSet) {
             $restaurant = Restaurant::create($restaurantData);
 
             $admin = User::create([
@@ -49,6 +68,13 @@ class RestaurantProvisioningService
                 'status' => UserStatus::ACTIVE,
                 'email_verified_at' => now(),
             ]);
+
+            if ($branchData !== null) {
+                // restaurant_id is stamped by the HasMany relation.
+                $restaurant->branches()->create($branchData);
+            }
+
+            $this->features->apply($restaurant, $featureSet);
 
             return [$restaurant, $admin];
         });
