@@ -39,6 +39,7 @@ onMounted(load)
 function openCreate() {
     editing.value = null; errors.value = {}
     Object.assign(form, blank(), { branch_id: branches.value[0]?.id || '' })
+    syncTypeMode()
     showModal.value = true
 }
 function openEdit(a) {
@@ -47,6 +48,7 @@ function openEdit(a) {
         branch_id: a.branch_id, name_en: a.name_en || '', name_ar: a.name_ar || '',
         type: a.type || 'indoor', display_order: a.display_order || 0, is_active: a.is_active,
     })
+    syncTypeMode()
     showModal.value = true
 }
 async function save() {
@@ -82,7 +84,16 @@ async function remove(a) {
 const areaName = (a) => pickLocalized(a, 'name', locale.value)
 const branchName = (b) => pickLocalized(b, 'name', locale.value)
 const branchLabel = (id) => { const b = branches.value.find(x => x.id === id); return b ? branchName(b) : '—' }
-const typeOptions = computed(() => ['indoor', 'outdoor', 'custom'])
+
+// Area type: Indoor / Outdoor presets, or a custom label (Garden, Rooftop, VIP…).
+const typeMode = ref('indoor') // 'indoor' | 'outdoor' | 'custom'
+function syncTypeMode() {
+    typeMode.value = ['indoor', 'outdoor'].includes(form.type) ? form.type : (form.type ? 'custom' : 'indoor')
+}
+function onTypeModeChange() {
+    if (typeMode.value !== 'custom') form.type = typeMode.value
+    else if (['indoor', 'outdoor'].includes(form.type)) form.type = ''
+}
 </script>
 
 <template>
@@ -130,10 +141,12 @@ const typeOptions = computed(() => ['indoor', 'outdoor', 'custom'])
                 </div>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <label class="block"><span class="label">{{ t('tbl.type') }}</span>
-                        <input v-model="form.type" class="input" list="area-types" />
-                        <datalist id="area-types">
-                            <option v-for="tp in typeOptions" :key="tp" :value="tp">{{ t(`tbl.type_${tp}`) }}</option>
-                        </datalist></label>
+                        <select v-model="typeMode" @change="onTypeModeChange" class="input">
+                            <option value="indoor">{{ t('tbl.type_indoor') }}</option>
+                            <option value="outdoor">{{ t('tbl.type_outdoor') }}</option>
+                            <option value="custom">{{ t('tbl.type_custom') }}</option>
+                        </select>
+                        <input v-if="typeMode === 'custom'" v-model="form.type" class="input mt-2" :placeholder="t('tbl.type_custom_ph')" /></label>
                     <label class="block"><span class="label">{{ t('tbl.display_order') }}</span>
                         <input v-model.number="form.display_order" type="number" min="0" class="input" /></label>
                 </div>
