@@ -124,12 +124,16 @@ onUnmounted(() => {
 
 const hasTables = computed(() => (r.value?.features || []).includes('table_management'))
 const hasBillRequests = computed(() => (r.value?.features || []).includes('bill_requests'))
+const hasReviews = computed(() => (r.value?.features || []).includes('internal_reviews'))
 
 const nav = computed(() => [
     { to: { name: 'dashboard.home' }, labelKey: 'nav.dashboard', icon: 'pi pi-th-large', end: true },
     { to: { name: 'dashboard.orders' }, labelKey: 'nav.orders', icon: 'pi pi-shopping-bag', badge: newOrders.value },
     ...(hasBillRequests.value ? [
         { to: { name: 'dashboard.requests' }, labelKey: 'nav.requests', icon: 'pi pi-bell', badge: newRequests.value },
+    ] : []),
+    ...(hasReviews.value ? [
+        { to: { name: 'dashboard.reviews' }, labelKey: 'nav.reviews', icon: 'pi pi-star' },
     ] : []),
     { to: { name: 'dashboard.customers' }, labelKey: 'nav.customers', icon: 'pi pi-users' },
     { to: { name: 'dashboard.insights' }, labelKey: 'nav.insights', icon: 'pi pi-chart-bar' },

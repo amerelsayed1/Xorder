@@ -39,6 +39,9 @@ class Restaurant extends Model
         'subscription_plan',
         'subscription_start_date',
         'subscription_end_date',
+        'review_public_url',
+        'review_thank_you_ar',
+        'review_thank_you_en',
     ];
 
     protected function casts(): array

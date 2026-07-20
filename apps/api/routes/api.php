@@ -25,6 +25,7 @@ use App\Http\Controllers\Dashboard\MenuItemController;
 use App\Http\Controllers\Dashboard\OrderController as DashboardOrderController;
 use App\Http\Controllers\Dashboard\PushTokenController;
 use App\Http\Controllers\Dashboard\RestaurantProfileController;
+use App\Http\Controllers\Dashboard\ReviewController;
 use App\Http\Controllers\Dashboard\StatsController;
 use App\Http\Controllers\Dashboard\TableController;
 use App\Http\Controllers\Public\LandingContentController as PublicLandingContentController;
@@ -32,6 +33,7 @@ use App\Http\Controllers\Public\LeadController as PublicLeadController;
 use App\Http\Controllers\Public\PublicBillRequestController;
 use App\Http\Controllers\Public\PublicMenuApiController;
 use App\Http\Controllers\Public\PublicOrderController;
+use App\Http\Controllers\Public\PublicReviewController;
 use App\Http\Controllers\Public\PublicTableController;
 use App\Http\Controllers\Public\RestaurantBrandingController;
 use App\Http\Controllers\Public\RestaurantQrController as PublicRestaurantQrController;
@@ -190,6 +192,20 @@ Route::prefix('dashboard')
                 Route::patch('bill-requests/{bill}/status', [BillRequestController::class, 'updateStatus']);
             });
         });
+
+        // Internal customer reviews (Phase 3) — gated on the internal_reviews
+        // feature. Reads stay available when the subscription lapsed; writes
+        // (status + notes) are subscription-gated.
+        Route::middleware('feature:internal_reviews')->group(function () {
+            Route::get('reviews', [ReviewController::class, 'index']);
+            Route::get('reviews/summary', [ReviewController::class, 'summary']);
+            Route::get('reviews/{review}', [ReviewController::class, 'show']);
+
+            Route::middleware('subscription.writable')->group(function () {
+                Route::patch('reviews/{review}/status', [ReviewController::class, 'updateStatus']);
+                Route::post('reviews/{review}/notes', [ReviewController::class, 'addNote']);
+            });
+        });
     });
 
 /*
@@ -241,6 +257,10 @@ Route::get('public/bill-requests/{token}', [PublicBillRequestController::class, 
     ->middleware('throttle:60,1');
 Route::patch('public/bill-requests/{token}/cancel', [PublicBillRequestController::class, 'cancel'])
     ->middleware('throttle:20,1');
+
+// Private customer reviews left from the menu (Phase 3).
+Route::post('public/restaurants/{slug}/reviews', [PublicReviewController::class, 'store'])
+    ->middleware('throttle:10,1');
 
 Route::get('public/restaurants/{slug}/qr', [PublicRestaurantQrController::class, 'show'])
     ->middleware('throttle:120,1');

@@ -95,6 +95,7 @@ class PublicTableController extends Controller
             'table' => ['label' => $table->label],
             'order_type' => 'dine_in',
             'bill_requests' => (bool) $table->restaurant->hasFeature('bill_requests'),
+            'internal_reviews' => (bool) $table->restaurant->hasFeature('internal_reviews'),
         ];
     }
 }

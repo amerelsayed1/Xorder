@@ -53,3 +53,11 @@ export async function cancelBillRequest(token) {
     })
     return data
 }
+
+/** Leave private feedback (rating + optional comment/contact) for the restaurant. */
+export async function createReview(slug, payload, locale = 'ar') {
+    const { data } = await axios.post(`${BASE}/api/public/restaurants/${slug}/reviews`, payload, {
+        headers: { Accept: 'application/json', 'X-Locale': locale },
+    })
+    return data
+}

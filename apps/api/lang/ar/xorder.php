@@ -91,6 +91,11 @@ return [
         'bill_status_updated' => 'تم تحديث طلب الحساب.',
         'push_bill_request_title' => 'طلب حساب',
         'push_bill_request_body' => 'طلبت الطاولة :table الحساب.',
+        'review_thanks' => 'شكرًا لتقييمك!',
+        'review_created' => 'شكرًا لتقييمك!',
+        'review_status_updated' => 'تم تحديث التقييم.',
+        'review_note_added' => 'تمت إضافة الملاحظة.',
+        'review_not_found' => 'لم يتم العثور على التقييم.',
     ],
     'validation' => [
         'restaurant_name_required' => 'أدخل اسم المطعم بلغة واحدة على الأقل.',

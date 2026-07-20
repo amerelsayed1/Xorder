@@ -36,6 +36,11 @@ class RestaurantPublicResource extends JsonResource
             'currency_symbol' => $this->currency->symbol(),
             'ordering_enabled' => $this->ordering_enabled,
             'order_types' => $this->availableOrderTypes(),
+            'internal_reviews' => (bool) $this->hasFeature('internal_reviews'),
+            'review_public_url' => $this->review_public_url,
+            'review_thank_you' => app()->getLocale() === 'ar'
+                ? ($this->review_thank_you_ar ?: $this->review_thank_you_en)
+                : ($this->review_thank_you_en ?: $this->review_thank_you_ar),
         ];
     }
 }

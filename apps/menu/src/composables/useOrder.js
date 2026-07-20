@@ -6,6 +6,7 @@ export function useOrder() {
     const orderSuccess = ref(false)
     const lastOrderUrl = ref('')
     const lastOrderCode = ref('')
+    const lastOrderId = ref(null)
     const customer = reactive({})
     const orderErrors = reactive({})
 
@@ -69,6 +70,7 @@ export function useOrder() {
         orderSuccess,
         lastOrderUrl,
         lastOrderCode,
+        lastOrderId,
         customer,
         orderErrors,
         buildOrderData,

@@ -91,6 +91,11 @@ return [
         'bill_status_updated' => 'Bill request updated.',
         'push_bill_request_title' => 'Bill requested',
         'push_bill_request_body' => 'Table :table requested the bill.',
+        'review_thanks' => 'Thank you for your feedback!',
+        'review_created' => 'Thank you for your feedback!',
+        'review_status_updated' => 'Review updated.',
+        'review_note_added' => 'Note added.',
+        'review_not_found' => 'Review not found.',
     ],
     'validation' => [
         'restaurant_name_required' => 'Provide the restaurant name in at least one language.',

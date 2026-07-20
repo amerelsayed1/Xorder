@@ -51,6 +51,10 @@ return [
     // Cooldown before the same session can raise another bill request (FR-BILL-009).
     'bill_request_cooldown_seconds' => env('BILL_REQUEST_COOLDOWN_SECONDS', 120),
 
+    // A private review with a rating at or below this threshold is "low" — it is
+    // flagged in the dashboard and counted separately (Phase 3).
+    'review_low_rating_threshold' => env('REVIEW_LOW_RATING_THRESHOLD', 3),
+
     'super_admin' => [
         'name' => env('SUPER_ADMIN_NAME', 'Super Admin'),
         'email' => env('SUPER_ADMIN_EMAIL', 'admin@qrmenu.test'),

@@ -21,6 +21,7 @@ import OrderSuccessModal from './components/OrderSuccessModal.vue'
 import UserInfoDialog from './components/UserInfoDialog.vue'
 import SideMenu from './components/SideMenu.vue'
 import BillRequestButton from './components/BillRequestButton.vue'
+import ReviewPromptModal from './components/ReviewPromptModal.vue'
 
 // Slug normally comes from the subdomain (e.g. acme.xorder.io → "acme").
 // On a bare host (localhost / IP) there is no subdomain, so fall back to a
@@ -31,14 +32,14 @@ const slug = (bareHost && new URLSearchParams(window.location.search).get('r')) 
 
 const { locale, isAr, t, localize } = useLocale('ar')
 // A table QR scan (…/t/{token}) binds this visit to a physical table.
-const { hasTable, sessionToken, tableLabel, area: tableArea, billRequests, tableError } = useTableSession(locale.value)
+const { hasTable, sessionToken, tableLabel, area: tableArea, billRequests, internalReviews, tableError } = useTableSession(locale.value)
 const tableAreaName = computed(() => {
     const a = tableArea.value
     if (!a) return ''
     return isAr.value ? (a.name_ar || a.name_en) : (a.name_en || a.name_ar)
 })
 const { cart, cartCount, cartTotal, addToCart, removeLine, bumpLine, clearCart, getLineOptions, calculateLinePrice } = useCart(slug)
-const { submittingOrder, orderSuccess, lastOrderUrl, lastOrderCode, customer, buildOrderData, sendToWhatsApp } = useOrder()
+const { submittingOrder, orderSuccess, lastOrderUrl, lastOrderCode, lastOrderId, customer, buildOrderData, sendToWhatsApp } = useOrder()
 const { userInfoDialog, isEditing, userInfo, editForm, saveSuccess, hasUserInfo, initials, loadUserInfo, saveUserInfo, enterEditMode, cancelEdit, clearUserInfo, openDialog, closeDialog } = useUserInfo()
 
 // Hydrate any saved diner info up front so the checkout form can prefill.
@@ -57,14 +58,27 @@ watch(payload, (loaded) => {
 
 const navDrawer = ref(false)
 const cartDrawer = ref(false)
+const reviewPrompt = ref(false)
+const reviewSubmitted = ref(false)
 const searchQuery = ref('')
+
+// Private post-order feedback is available when the feature is on — from the
+// table context at a scanned table, otherwise from the menu payload.
+const reviewsEnabled = computed(() => internalReviews.value || restaurant.value?.internal_reviews === true)
 const modal = ref(null)
 const sel = reactive({ groups: {} })
 const qty = ref(1)
 
 const hasOverlay = computed(() => Boolean(
-    modal.value || cartDrawer.value || navDrawer.value || userInfoDialog.value || orderSuccess.value
+    modal.value || cartDrawer.value || navDrawer.value || userInfoDialog.value || orderSuccess.value || reviewPrompt.value
 ))
+
+// Closing the order confirmation flows into the private feedback prompt, once
+// per checkout, when reviews are enabled.
+function closeOrderSuccess() {
+    orderSuccess.value = false
+    if (reviewsEnabled.value && !reviewSubmitted.value) reviewPrompt.value = true
+}
 
 watch(hasOverlay, (locked) => {
     document.body.style.overflow = locked ? 'hidden' : ''
@@ -76,7 +90,8 @@ function closeTopOverlay(event) {
     else if (cartDrawer.value) cartDrawer.value = false
     else if (navDrawer.value) navDrawer.value = false
     else if (userInfoDialog.value) closeDialog()
-    else if (orderSuccess.value) orderSuccess.value = false
+    else if (orderSuccess.value) closeOrderSuccess()
+    else if (reviewPrompt.value) reviewPrompt.value = false
 }
 
 onMounted(() => window.addEventListener('keydown', closeTopOverlay))
@@ -184,6 +199,8 @@ function submitOrder(details) {
     // the user gesture, so the API call is never awaited. The order code
     // fills into the success dialog when the response lands.
     lastOrderCode.value = ''
+    lastOrderId.value = null
+    reviewSubmitted.value = false
     const snapshot = {
         items: cart.value.map(line => ({
             name: localize(line.ref),
@@ -202,7 +219,7 @@ function submitOrder(details) {
         session_token: sessionToken.value || undefined,
     }
     postOrder(slug, snapshot)
-        .then(res => { lastOrderCode.value = res?.data?.code || '' })
+        .then(res => { lastOrderCode.value = res?.data?.code || ''; lastOrderId.value = res?.data?.id || null })
         .catch(() => { /* WhatsApp handoff still carries the order */ })
 
     sendToWhatsApp(orderData, waDigits.value, t)
@@ -339,7 +356,21 @@ function updateUserField(field, value) {
                 :reopenUrl="lastOrderUrl"
                 :orderCode="lastOrderCode"
                 :t="t"
-                @close="orderSuccess = false"
+                @close="closeOrderSuccess"
+            />
+
+            <ReviewPromptModal
+                v-if="reviewsEnabled"
+                :isOpen="reviewPrompt"
+                :slug="slug"
+                :locale="locale"
+                :sessionToken="sessionToken"
+                :orderId="lastOrderId"
+                :publicReviewUrl="restaurant?.review_public_url || ''"
+                :thankYou="restaurant?.review_thank_you || ''"
+                :t="t"
+                @submitted="reviewSubmitted = true"
+                @close="reviewPrompt = false"
             />
 
             <SideMenu
