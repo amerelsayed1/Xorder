@@ -125,6 +125,7 @@ onUnmounted(() => {
 const hasTables = computed(() => (r.value?.features || []).includes('table_management'))
 const hasBillRequests = computed(() => (r.value?.features || []).includes('bill_requests'))
 const hasReviews = computed(() => (r.value?.features || []).includes('internal_reviews'))
+const hasReports = computed(() => (r.value?.features || []).includes('product_analytics'))
 
 const nav = computed(() => [
     { to: { name: 'dashboard.home' }, labelKey: 'nav.dashboard', icon: 'pi pi-th-large', end: true },
@@ -137,6 +138,9 @@ const nav = computed(() => [
     ] : []),
     { to: { name: 'dashboard.customers' }, labelKey: 'nav.customers', icon: 'pi pi-users' },
     { to: { name: 'dashboard.insights' }, labelKey: 'nav.insights', icon: 'pi pi-chart-bar' },
+    ...(hasReports.value ? [
+        { to: { name: 'dashboard.reports' }, labelKey: 'nav.reports', icon: 'pi pi-chart-line' },
+    ] : []),
     { to: { name: 'dashboard.items' }, labelKey: 'nav.items', icon: 'pi pi-list' },
     { to: { name: 'dashboard.categories' }, labelKey: 'nav.categories', icon: 'pi pi-tags' },
     { to: { name: 'dashboard.qr' }, labelKey: 'nav.qr', icon: 'pi pi-qrcode' },

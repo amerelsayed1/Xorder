@@ -24,6 +24,7 @@ use App\Http\Controllers\Dashboard\MenuImportController;
 use App\Http\Controllers\Dashboard\MenuItemController;
 use App\Http\Controllers\Dashboard\OrderController as DashboardOrderController;
 use App\Http\Controllers\Dashboard\PushTokenController;
+use App\Http\Controllers\Dashboard\ReportController;
 use App\Http\Controllers\Dashboard\RestaurantProfileController;
 use App\Http\Controllers\Dashboard\ReviewController;
 use App\Http\Controllers\Dashboard\StatsController;
@@ -205,6 +206,14 @@ Route::prefix('dashboard')
                 Route::patch('reviews/{review}/status', [ReviewController::class, 'updateStatus']);
                 Route::post('reviews/{review}/notes', [ReviewController::class, 'addNote']);
             });
+        });
+
+        // Product analytics / reports (Phase 4) — gated on the product_analytics
+        // feature. All reads; the export streams a CSV/XLSX file.
+        Route::middleware('feature:product_analytics')->group(function () {
+            Route::get('reports/products-by-time', [ReportController::class, 'productsByTime']);
+            Route::get('reports/products-by-time/export', [ReportController::class, 'export']);
+            Route::get('reports/dining-areas', [ReportController::class, 'diningAreas']);
         });
     });
 

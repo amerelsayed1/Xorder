@@ -33,6 +33,7 @@ class Restaurant extends Model
         'default_language',
         'bilingual',
         'currency',
+        'timezone',
         'ordering_enabled',
         'status',
         'subscription_status',

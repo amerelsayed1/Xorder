@@ -55,6 +55,24 @@ return [
     // flagged in the dashboard and counted separately (Phase 3).
     'review_low_rating_threshold' => env('REVIEW_LOW_RATING_THRESHOLD', 3),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Report day-part periods (Phase 4 — Product Analytics)
+    |--------------------------------------------------------------------------
+    | Ordered windows used to bucket each order into a "time of day" for the
+    | products-by-time report (FR-REPORT-005). Times are local to the
+    | restaurant's timezone (restaurant.timezone ?? app.timezone). The last
+    | window wraps past midnight (22:00 -> 02:00); orders that fall outside
+    | every window land in a synthetic "other" bucket. "afternoon" is folded
+    | into lunch to keep the windows contiguous and non-overlapping.
+    */
+    'report_periods' => [
+        ['key' => 'breakfast', 'from' => '08:00', 'to' => '12:00'],
+        ['key' => 'lunch', 'from' => '12:00', 'to' => '17:00'],
+        ['key' => 'dinner', 'from' => '17:00', 'to' => '22:00'],
+        ['key' => 'late_night', 'from' => '22:00', 'to' => '02:00'],
+    ],
+
     'super_admin' => [
         'name' => env('SUPER_ADMIN_NAME', 'Super Admin'),
         'email' => env('SUPER_ADMIN_EMAIL', 'admin@qrmenu.test'),

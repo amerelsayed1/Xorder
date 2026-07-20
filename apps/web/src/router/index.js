@@ -52,6 +52,7 @@ const restaurantRoutes = [
             { path: 'orders', name: 'dashboard.orders', component: () => import('../pages/dashboard/OrdersView.vue') },
             { path: 'requests', name: 'dashboard.requests', component: () => import('../pages/dashboard/LiveRequestsView.vue') },
             { path: 'reviews', name: 'dashboard.reviews', component: () => import('../pages/dashboard/ReviewsView.vue') },
+            { path: 'reports', name: 'dashboard.reports', component: () => import('../pages/dashboard/ReportsView.vue') },
             { path: 'customers', name: 'dashboard.customers', component: () => import('../pages/dashboard/CustomersView.vue') },
             { path: 'customers/:id', name: 'dashboard.customer', component: () => import('../pages/dashboard/CustomerDetailView.vue') },
             { path: 'branches', name: 'dashboard.branches', component: () => import('../pages/dashboard/BranchesView.vue') },
