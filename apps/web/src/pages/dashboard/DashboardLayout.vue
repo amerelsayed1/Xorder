@@ -21,6 +21,7 @@ const role = computed(() => t('roles.restaurant_admin'))
 // order sound, show a toast, badge the tab title, and (if the tab is
 // backgrounded) fire a system notification — so a busy kitchen notices.
 const newOrders = ref(0)
+const newRequests = ref(0)
 const prevCount = ref(null) // null until the first poll — never alert on load
 const toast = ref(null)
 let pollTimer, toastTimer, alarm
@@ -34,6 +35,15 @@ async function loadNewCount() {
         if (prevCount.value !== null && count > prevCount.value) announce(count - prevCount.value)
         prevCount.value = count
         newOrders.value = count
+    } catch (err) { /* keep the last known count */ }
+}
+
+// Live bill-request badge. Only polled when the feature is enabled.
+async function loadRequestCount() {
+    if (!hasBillRequests.value) return
+    try {
+        const { data } = await api.get('api/dashboard/bill-requests/new-count')
+        newRequests.value = data.count ?? 0
     } catch (err) { /* keep the last known count */ }
 }
 
@@ -99,7 +109,8 @@ watch(newOrders, (n) => {
 onMounted(() => {
     if ('Notification' in window) notifyReady = Notification.permission === 'granted'
     loadNewCount()
-    pollTimer = setInterval(loadNewCount, 20_000)
+    loadRequestCount()
+    pollTimer = setInterval(() => { loadNewCount(); loadRequestCount() }, 20_000)
     window.addEventListener('pointerdown', armAlerts, { once: true })
     window.addEventListener('keydown', armAlerts, { once: true })
 })
@@ -112,10 +123,14 @@ onUnmounted(() => {
 })
 
 const hasTables = computed(() => (r.value?.features || []).includes('table_management'))
+const hasBillRequests = computed(() => (r.value?.features || []).includes('bill_requests'))
 
 const nav = computed(() => [
     { to: { name: 'dashboard.home' }, labelKey: 'nav.dashboard', icon: 'pi pi-th-large', end: true },
     { to: { name: 'dashboard.orders' }, labelKey: 'nav.orders', icon: 'pi pi-shopping-bag', badge: newOrders.value },
+    ...(hasBillRequests.value ? [
+        { to: { name: 'dashboard.requests' }, labelKey: 'nav.requests', icon: 'pi pi-bell', badge: newRequests.value },
+    ] : []),
     { to: { name: 'dashboard.customers' }, labelKey: 'nav.customers', icon: 'pi pi-users' },
     { to: { name: 'dashboard.insights' }, labelKey: 'nav.insights', icon: 'pi pi-chart-bar' },
     { to: { name: 'dashboard.items' }, labelKey: 'nav.items', icon: 'pi pi-list' },

@@ -51,4 +51,38 @@ class PushService
             Log::warning('FCM send failed', ['error' => $e->getMessage()]);
         }
     }
+
+    public function newBillRequestToRestaurant(int $restaurantId, string $title, string $body, array $data = []): void
+    {
+        $tokens = DeviceToken::where('restaurant_id', $restaurantId)->pluck('token')->all();
+        if ($tokens === []) {
+            return;
+        }
+
+        try {
+            $messaging = app(Messaging::class);
+        } catch (\Throwable $e) {
+            Log::info('FCM not configured; skipping push', ['error' => $e->getMessage()]);
+
+            return;
+        }
+
+        $message = CloudMessage::new()
+            ->withNotification(FcmNotification::create($title, $body))
+            ->withData($data + ['url' => '/admin/requests'])
+            ->withWebPushConfig(WebPushConfig::fromArray([
+                'notification' => ['requireInteraction' => true],
+                'fcm_options' => ['link' => '/admin/requests'],
+            ]));
+
+        try {
+            $report = $messaging->sendMulticast($message, $tokens);
+
+            foreach ([...$report->invalidTokens(), ...$report->unknownTokens()] as $dead) {
+                DeviceToken::where('token', $dead)->delete();
+            }
+        } catch (\Throwable $e) {
+            Log::warning('FCM send failed', ['error' => $e->getMessage()]);
+        }
+    }
 }

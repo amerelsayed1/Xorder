@@ -57,7 +57,7 @@ class PublicTableController extends Controller
     private function resolve(string $token): DiningTable
     {
         $table = DiningTable::withoutGlobalScopes()
-            ->with(['restaurant', 'branch', 'diningArea'])
+            ->with(['restaurant.features', 'branch', 'diningArea'])
             ->where('public_token', $token)
             ->first();
 
@@ -94,6 +94,7 @@ class PublicTableController extends Controller
             'area' => $table->diningArea ? ['name_ar' => $table->diningArea->name_ar, 'name_en' => $table->diningArea->name_en] : null,
             'table' => ['label' => $table->label],
             'order_type' => 'dine_in',
+            'bill_requests' => (bool) $table->restaurant->hasFeature('bill_requests'),
         ];
     }
 }

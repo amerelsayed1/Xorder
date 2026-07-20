@@ -27,3 +27,29 @@ export async function createTableSession(token, language) {
     })
     return data
 }
+
+/** Ask a staff member to bring the bill for the current table session. */
+export async function createBillRequest(sessionToken, note) {
+    const { data } = await axios.post(
+        `${BASE}/api/public/sessions/${sessionToken}/bill-requests`,
+        { note: note || undefined },
+        { headers: { Accept: 'application/json' } },
+    )
+    return data
+}
+
+/** Poll a bill request's status by its opaque token. */
+export async function getBillRequest(token) {
+    const { data } = await axios.get(`${BASE}/api/public/bill-requests/${token}`, {
+        headers: { Accept: 'application/json' },
+    })
+    return data
+}
+
+/** Cancel a bill request while it is still pending. */
+export async function cancelBillRequest(token) {
+    const { data } = await axios.patch(`${BASE}/api/public/bill-requests/${token}/cancel`, {}, {
+        headers: { Accept: 'application/json' },
+    })
+    return data
+}

@@ -48,6 +48,9 @@ return [
     // How long a table menu session stays valid without activity (FR-SESSION-009).
     'table_session_ttl_minutes' => env('TABLE_SESSION_TTL_MINUTES', 240),
 
+    // Cooldown before the same session can raise another bill request (FR-BILL-009).
+    'bill_request_cooldown_seconds' => env('BILL_REQUEST_COOLDOWN_SECONDS', 120),
+
     'super_admin' => [
         'name' => env('SUPER_ADMIN_NAME', 'Super Admin'),
         'email' => env('SUPER_ADMIN_EMAIL', 'admin@qrmenu.test'),

@@ -15,6 +15,7 @@ export function useTableSession(language = 'ar') {
     const tableLabel = ref('')
     const area = ref(null)
     const branch = ref(null)
+    const billRequests = ref(false)
     const tableError = ref('')
 
     async function init() {
@@ -25,6 +26,7 @@ export function useTableSession(language = 'ar') {
             tableLabel.value = ctx.table?.label || ''
             area.value = ctx.area
             branch.value = ctx.branch
+            billRequests.value = !!ctx.bill_requests
             hasTable.value = true
         } catch (e) {
             // Invalid / disabled table / disabled branch (ERR-001/002).
@@ -34,5 +36,5 @@ export function useTableSession(language = 'ar') {
 
     init()
 
-    return { hasTable, sessionToken, tableLabel, area, branch, tableError }
+    return { hasTable, sessionToken, tableLabel, area, branch, billRequests, tableError }
 }

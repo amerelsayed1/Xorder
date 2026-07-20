@@ -105,7 +105,7 @@ const messages = {
             orders: 'Orders', customers: 'Customers',
             landing: 'Landing Management', branches: 'Branches', combos: 'Offers', plans: 'Plans',
             insights: 'Insights', leads: 'Leads', menu_parser: 'Menu Parser',
-            areas: 'Dining Areas', tables: 'Tables',
+            areas: 'Dining Areas', tables: 'Tables', requests: 'Live Requests',
         },
         tbl: {
             areas_title: 'Dining Areas', areas_sub: '{count} areas',
@@ -187,6 +187,17 @@ const messages = {
             new_toast_sub: 'Tap to view orders',
             sound_on: 'Order sound on (click to test / mute)',
             sound_off: 'Order sound off (click to enable)',
+        },
+        req: {
+            title: 'Live Requests',
+            subtitle: 'Bill requests raised from tables, oldest first.',
+            none: 'No bill requests right now.',
+            table: 'Table', area: 'Area', note: 'Note', waiting: 'Waiting {time}',
+            history: 'History',
+            status: { REQUESTED: 'Requested', SEEN: 'Seen', IN_PROGRESS: 'In progress', COMPLETED: 'Completed', CANCELLED: 'Cancelled' },
+            act_seen: 'Seen', act_progress: 'In progress', act_complete: 'Completed', act_cancel: 'Cancel',
+            all_areas: 'All areas',
+            update_failed: 'Could not update the request. Please try again.',
         },
         import: {
             button: 'Import',
@@ -564,7 +575,7 @@ const messages = {
             orders: 'الطلبات', customers: 'العملاء',
             landing: 'إدارة الصفحة الرئيسية', branches: 'الفروع', combos: 'العروض', plans: 'الخطط',
             insights: 'إحصاءات', leads: 'العملاء المحتملون', menu_parser: 'محلل القائمة',
-            areas: 'مناطق الجلوس', tables: 'الطاولات',
+            areas: 'مناطق الجلوس', tables: 'الطاولات', requests: 'الطلبات المباشرة',
         },
         tbl: {
             areas_title: 'مناطق الجلوس', areas_sub: '{count} منطقة',
@@ -646,6 +657,17 @@ const messages = {
             new_toast_sub: 'اضغط لعرض الطلبات',
             sound_on: 'صوت الطلبات مُفعّل (اضغط للاختبار / الكتم)',
             sound_off: 'صوت الطلبات مُغلق (اضغط للتفعيل)',
+        },
+        req: {
+            title: 'الطلبات المباشرة',
+            subtitle: 'طلبات الحساب الواردة من الطاولات، الأقدم أولاً.',
+            none: 'لا توجد طلبات حساب حالياً.',
+            table: 'طاولة', area: 'المنطقة', note: 'ملاحظة', waiting: 'بالانتظار {time}',
+            history: 'السجل',
+            status: { REQUESTED: 'مطلوب', SEEN: 'تمت المشاهدة', IN_PROGRESS: 'قيد التنفيذ', COMPLETED: 'مكتمل', CANCELLED: 'ملغى' },
+            act_seen: 'تمت المشاهدة', act_progress: 'قيد التنفيذ', act_complete: 'مكتمل', act_cancel: 'إلغاء',
+            all_areas: 'كل المناطق',
+            update_failed: 'تعذّر تحديث الطلب. حاول مرة أخرى.',
         },
         import: {
             button: 'استيراد',

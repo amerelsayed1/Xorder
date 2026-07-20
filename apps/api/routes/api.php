@@ -12,6 +12,7 @@ use App\Http\Controllers\Admin\RestaurantStatusController;
 use App\Http\Controllers\Admin\SubscriptionController;
 use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\Auth\PasswordResetController;
+use App\Http\Controllers\Dashboard\BillRequestController;
 use App\Http\Controllers\Dashboard\BranchController;
 use App\Http\Controllers\Dashboard\CategoryController;
 use App\Http\Controllers\Dashboard\ComboController;
@@ -28,6 +29,7 @@ use App\Http\Controllers\Dashboard\StatsController;
 use App\Http\Controllers\Dashboard\TableController;
 use App\Http\Controllers\Public\LandingContentController as PublicLandingContentController;
 use App\Http\Controllers\Public\LeadController as PublicLeadController;
+use App\Http\Controllers\Public\PublicBillRequestController;
 use App\Http\Controllers\Public\PublicMenuApiController;
 use App\Http\Controllers\Public\PublicOrderController;
 use App\Http\Controllers\Public\PublicTableController;
@@ -177,6 +179,17 @@ Route::prefix('dashboard')
                 Route::delete('tables/{table}', [TableController::class, 'destroy']);
             });
         });
+
+        // Bill requests (Phase 2) — gated on the bill_requests feature. Reads stay
+        // available even when the subscription lapsed; the status write is gated.
+        Route::middleware('feature:bill_requests')->group(function () {
+            Route::get('bill-requests', [BillRequestController::class, 'index']);
+            Route::get('bill-requests/new-count', [BillRequestController::class, 'newCount']);
+
+            Route::middleware('subscription.writable')->group(function () {
+                Route::patch('bill-requests/{bill}/status', [BillRequestController::class, 'updateStatus']);
+            });
+        });
     });
 
 /*
@@ -220,6 +233,14 @@ Route::get('public/tables/{token}', [PublicTableController::class, 'show'])
     ->middleware('throttle:120,1');
 Route::post('public/tables/{token}/sessions', [PublicTableController::class, 'createSession'])
     ->middleware('throttle:30,1');
+
+// Bill requests raised from a table session (Phase 2).
+Route::post('public/sessions/{sessionToken}/bill-requests', [PublicBillRequestController::class, 'store'])
+    ->middleware('throttle:20,1');
+Route::get('public/bill-requests/{token}', [PublicBillRequestController::class, 'show'])
+    ->middleware('throttle:60,1');
+Route::patch('public/bill-requests/{token}/cancel', [PublicBillRequestController::class, 'cancel'])
+    ->middleware('throttle:20,1');
 
 Route::get('public/restaurants/{slug}/qr', [PublicRestaurantQrController::class, 'show'])
     ->middleware('throttle:120,1');

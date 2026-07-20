@@ -20,6 +20,7 @@ import ItemModal from './components/ItemModal.vue'
 import OrderSuccessModal from './components/OrderSuccessModal.vue'
 import UserInfoDialog from './components/UserInfoDialog.vue'
 import SideMenu from './components/SideMenu.vue'
+import BillRequestButton from './components/BillRequestButton.vue'
 
 // Slug normally comes from the subdomain (e.g. acme.xorder.io → "acme").
 // On a bare host (localhost / IP) there is no subdomain, so fall back to a
@@ -30,7 +31,7 @@ const slug = (bareHost && new URLSearchParams(window.location.search).get('r')) 
 
 const { locale, isAr, t, localize } = useLocale('ar')
 // A table QR scan (…/t/{token}) binds this visit to a physical table.
-const { hasTable, sessionToken, tableLabel, area: tableArea, tableError } = useTableSession(locale.value)
+const { hasTable, sessionToken, tableLabel, area: tableArea, billRequests, tableError } = useTableSession(locale.value)
 const tableAreaName = computed(() => {
     const a = tableArea.value
     if (!a) return ''
@@ -351,6 +352,13 @@ function updateUserField(field, value) {
                 @close="navDrawer = false"
                 @goHome="goHome(); navDrawer = false"
                 @goBranches="goBranches(); navDrawer = false"
+            />
+
+            <BillRequestButton
+                v-if="hasTable && billRequests"
+                :sessionToken="sessionToken"
+                :tableLabel="tableLabel"
+                :t="t"
             />
 
             <UserInfoDialog
