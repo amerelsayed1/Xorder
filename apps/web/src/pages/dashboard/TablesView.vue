@@ -4,7 +4,7 @@ import { useI18n } from 'vue-i18n'
 import api, { ensureCsrf } from '@xorder/api-client/api.js'
 import { withMinDuration } from '../../lib/minLoading.js'
 import { pickLocalized } from '@xorder/ui/localize.js'
-import Modal from '@xorder/ui/Modal.vue'
+import Dialog from '@xorder/ui/Dialog.vue'
 import ListSkeleton from '@xorder/ui/ListSkeleton.vue'
 import StatusBadge from '@xorder/ui/StatusBadge.vue'
 import FormError from '@xorder/ui/FormError.vue'
@@ -170,7 +170,7 @@ const areaLabel = (id) => { const a = areas.value.find(x => x.id === id); return
         </div>
 
         <!-- Create / edit modal -->
-        <Modal v-if="showModal" :title="editing ? t('common.edit') : t('tbl.tables_title')" @close="showModal = false">
+        <Dialog v-if="showModal" :title="editing ? t('common.edit') : t('tbl.tables_title')" @close="showModal = false">
             <div class="space-y-4">
                 <label class="block"><span class="label">{{ t('tbl.area') }}</span>
                     <select v-model="form.dining_area_id" class="input">
@@ -198,10 +198,10 @@ const areaLabel = (id) => { const a = areas.value.find(x => x.id === id); return
                     </button>
                 </div>
             </div>
-        </Modal>
+        </Dialog>
 
         <!-- QR modal -->
-        <Modal v-if="qrModal" :title="`${t('tbl.qr')} · ${qrModal.table.label}`" @close="qrModal = null">
+        <Dialog v-if="qrModal" :title="`${t('tbl.qr')} · ${qrModal.table.label}`" @close="qrModal = null">
             <div class="space-y-4 text-center">
                 <div v-if="qrLoading" class="py-10" style="color:var(--muted)">…</div>
                 <div v-else class="mx-auto w-56 h-56 grid place-items-center" v-html="qrModal.svg"></div>
@@ -212,6 +212,6 @@ const areaLabel = (id) => { const a = areas.value.find(x => x.id === id); return
                     <button @click="downloadQr" class="btn btn-accent"><Icon name="download" :size="16" />{{ t('tbl.qr_download') }}</button>
                 </div>
             </div>
-        </Modal>
+        </Dialog>
     </div>
 </template>
