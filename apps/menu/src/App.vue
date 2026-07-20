@@ -302,6 +302,7 @@ function updateUserField(field, value) {
                 :orderType="orderType"
                 :orderTypes="orderTypes"
                 :userInfo="userInfo"
+                :isAr="isAr"
                 :t="t"
                 :money="money"
                 :localize="localize"

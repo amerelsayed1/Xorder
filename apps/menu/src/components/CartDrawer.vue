@@ -11,6 +11,7 @@ const props = defineProps({
     orderType: String,
     orderTypes: Array,
     userInfo: Object,
+    isAr: Boolean,
     t: Function,
     money: Function,
     localize: Function,
@@ -42,6 +43,22 @@ watch(() => props.isOpen, (open) => {
 watch(() => props.cart.length, (len) => {
     if (len === 0) step.value = 1
 })
+
+// Force the phone to Latin digits — Arabic/Persian numerals get converted as
+// the customer types, so the order record and WhatsApp message are consistent.
+function toLatinDigits(s) {
+    return (s || '')
+        .replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d))
+        .replace(/[۰-۹]/g, d => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d))
+}
+watch(phone, (v) => {
+    const n = toLatinDigits(v)
+    if (n !== v) phone.value = n
+})
+
+// Phone/email are LTR content but should sit on the reading side: right in
+// Arabic, left in English.
+const fieldAlign = computed(() => (props.isAr ? 'right' : 'left'))
 
 // Delivery needs an address; pickup / dine-in don't.
 const needsAddress = computed(() => props.orderType === 'delivery')
@@ -178,7 +195,7 @@ function submit() {
                             </label>
                             <label>
                                 <span>{{ t('f_phone') }} *</span>
-                                <input v-model="phone" :placeholder="t('f_phone_ph')" inputmode="tel" dir="ltr" />
+                                <input v-model="phone" :placeholder="t('f_phone_ph')" inputmode="tel" dir="ltr" :style="{ textAlign: fieldAlign }" />
                             </label>
                             <label v-if="needsAddress">
                                 <span>{{ t('f_address') }} *</span>
@@ -186,7 +203,7 @@ function submit() {
                             </label>
                             <label>
                                 <span>{{ t('f_email') }}</span>
-                                <input v-model="email" :placeholder="t('f_email_ph')" inputmode="email" dir="ltr" />
+                                <input v-model="email" :placeholder="t('f_email_ph')" inputmode="email" dir="ltr" :style="{ textAlign: fieldAlign }" />
                             </label>
                             <label>
                                 <span>{{ t('f_note') }}</span>
