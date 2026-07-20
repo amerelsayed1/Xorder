@@ -5,7 +5,7 @@ import api, { ensureCsrf } from '@xorder/api-client/api.js'
 import { withMinDuration } from '../../lib/minLoading.js'
 import { pickLocalized } from '@xorder/ui/localize.js'
 import { useMenuLang } from '../../lib/menuLang.js'
-import Modal from '@xorder/ui/Modal.vue'
+import Dialog from '@xorder/ui/Dialog.vue'
 import ListSkeleton from '@xorder/ui/ListSkeleton.vue'
 import StatusBadge from '@xorder/ui/StatusBadge.vue'
 import FormError from '@xorder/ui/FormError.vue'
@@ -128,7 +128,7 @@ function onTypeModeChange() {
             </ul>
         </div>
 
-        <Modal v-if="showModal" :title="editing ? t('common.edit') : t('tbl.areas_title')" @close="showModal = false">
+        <Dialog v-if="showModal" :title="editing ? t('common.edit') : t('tbl.areas_title')" @close="showModal = false">
             <div class="space-y-4">
                 <label class="block"><span class="label">{{ t('tbl.branch') }}</span>
                     <select v-model="form.branch_id" class="input">
@@ -164,6 +164,6 @@ function onTypeModeChange() {
                     </button>
                 </div>
             </div>
-        </Modal>
+        </Dialog>
     </div>
 </template>
