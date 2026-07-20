@@ -197,10 +197,10 @@ const areaLabel = (id) => { const a = areas.value.find(x => x.id === id); return
         </Dialog>
 
         <!-- QR modal -->
-        <Dialog v-if="qrModal" :title="`${t('tbl.qr')} · ${qrModal.table.label}`" @close="qrModal = null">
+        <Dialog v-if="qrModal" :title="`${t('tbl.table')} : ${qrModal.table.label}`" @close="qrModal = null">
             <div class="space-y-4 text-center">
                 <div v-if="qrLoading" class="py-10" style="color:var(--muted)">…</div>
-                <div v-else class="mx-auto w-56 h-56 grid place-items-center" v-html="qrModal.svg"></div>
+                <div v-else class="mx-auto qr-box" v-html="qrModal.svg"></div>
                 <p class="text-xs break-all" style="color:var(--muted)" dir="ltr">{{ qrModal.url }}</p>
                 <p class="text-sm" style="color:var(--body)">{{ t('tbl.scan_hint') }}</p>
                 <div class="flex justify-center gap-2 pt-1">
@@ -211,3 +211,10 @@ const areaLabel = (id) => { const a = areas.value.find(x => x.id === id); return
         </Dialog>
     </div>
 </template>
+
+<style scoped>
+/* The QR SVG is generated at a fixed pixel size; make it fit its box so it
+   never overflows onto the URL/hint text below. */
+.qr-box { width: 15rem; height: 15rem; }
+.qr-box :deep(svg) { width: 100%; height: 100%; display: block; }
+</style>
