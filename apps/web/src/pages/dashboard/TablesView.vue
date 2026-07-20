@@ -158,7 +158,7 @@ const areaLabel = (id) => { const a = areas.value.find(x => x.id === id); return
                     <div class="h-11 w-11 rounded-lg grid place-items-center flex-shrink-0 font-semibold" style="background:var(--accent-soft);color:var(--accent)">{{ tbl.label }}</div>
                     <div class="flex-1 min-w-0">
                         <div class="font-medium" style="color:var(--ink)">{{ tbl.label }}</div>
-                        <div class="text-xs truncate" style="color:var(--muted)">{{ areaLabel(tbl.dining_area_id) }}<span v-if="tbl.seats_count"> · {{ tbl.seats_count }} {{ t('tbl.seats') }}</span></div>
+                        <div class="text-xs truncate" style="color:var(--muted)">{{ areaLabel(tbl.dining_area_id) }}</div>
                     </div>
                     <StatusBadge :value="tbl.is_active" :label="tbl.is_active ? t('common.active') : t('common.inactive')" />
                     <button class="switch" :class="{ on: tbl.is_active }" @click="toggleActive(tbl)"></button>
@@ -177,13 +177,9 @@ const areaLabel = (id) => { const a = areas.value.find(x => x.id === id); return
                         <option v-for="a in activeAreas" :key="a.id" :value="a.id">{{ areaName(a) }}</option>
                     </select>
                     <FormError :errors="errors" field="dining_area_id" /></label>
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <label class="block"><span class="label">{{ t('tbl.label') }}</span>
-                        <input v-model="form.label" class="input" />
-                        <FormError :errors="errors" field="label" /></label>
-                    <label class="block"><span class="label">{{ t('tbl.seats') }}</span>
-                        <input v-model.number="form.seats_count" type="number" min="1" class="input" /></label>
-                </div>
+                <label class="block"><span class="label">{{ t('tbl.label') }}</span>
+                    <input v-model="form.label" class="input" />
+                    <FormError :errors="errors" field="label" /></label>
                 <label class="block"><span class="label">{{ t('tbl.notes') }}</span>
                     <textarea v-model="form.notes" rows="2" class="input"></textarea></label>
                 <label class="flex items-center gap-2 text-sm" style="color:var(--body)">
