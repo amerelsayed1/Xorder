@@ -42,6 +42,8 @@ class UpdateRestaurantRequest extends FormRequest
             'bilingual' => ['sometimes', 'boolean'],
             'currency' => ['sometimes', 'required', Rule::enum(CurrencyEnum::class)],
             'ordering_enabled' => ['sometimes', 'boolean'],
+            'features' => ['sometimes', 'array'],
+            'features.*' => ['boolean'],
         ];
     }
 

@@ -8,6 +8,7 @@ use App\Http\Requests\Admin\StoreRestaurantRequest;
 use App\Http\Requests\Admin\UpdateRestaurantRequest;
 use App\Http\Resources\RestaurantResource;
 use App\Models\Restaurant;
+use App\Services\RestaurantFeatureService;
 use App\Services\RestaurantProvisioningService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -56,17 +57,21 @@ class RestaurantController extends Controller
 
     public function show(Restaurant $restaurant): JsonResponse
     {
-        $restaurant->loadCount(['categories', 'menuItems'])->load('users');
+        $restaurant->loadCount(['categories', 'menuItems'])->load(['users', 'features']);
 
         return response()->json(['data' => RestaurantResource::make($restaurant)]);
     }
 
-    public function update(UpdateRestaurantRequest $request, Restaurant $restaurant): JsonResponse
+    public function update(UpdateRestaurantRequest $request, Restaurant $restaurant, RestaurantFeatureService $features): JsonResponse
     {
-        $restaurant->update($request->validated());
+        $restaurant->update($request->safe()->except('features'));
+
+        if ($request->has('features')) {
+            $features->apply($restaurant, $request->validated('features'));
+        }
 
         return response()->json([
-            'data' => RestaurantResource::make($restaurant->fresh()),
+            'data' => RestaurantResource::make($restaurant->fresh()->load('features')),
             'message' => __('xorder.messages.restaurant_updated'),
         ]);
     }

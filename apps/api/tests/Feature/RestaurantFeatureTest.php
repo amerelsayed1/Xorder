@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Enums\Feature;
 use App\Models\Restaurant;
 use App\Models\User;
+use App\Services\RestaurantFeatureService;
 use App\Services\RestaurantProvisioningService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Notification;
@@ -144,6 +145,30 @@ class RestaurantFeatureTest extends TestCase
         $branch = $restaurant->branches()->firstOrFail();
         $this->assertSame('Downtown', $branch->name_en);
         $this->assertSame(['dine_in', 'delivery'], $branch->supported_order_types);
+    }
+
+    public function test_super_admin_can_edit_features_of_an_existing_client(): void
+    {
+        Notification::fake();
+        $sa = User::factory()->superAdmin()->create();
+        $r = Restaurant::factory()->create(['slug' => 'edit-feat']);
+        app(RestaurantFeatureService::class)->apply($r, Feature::defaultSet());
+        $this->assertFalse($r->fresh()->hasFeature(Feature::TABLE_MANAGEMENT));
+
+        // The wizard/edit form always posts the full flag map.
+        $payload = Feature::defaultSet();
+        $payload['table_management'] = true;
+        $payload['delivery'] = false;
+
+        $this->actingAs($sa)->putJson("/api/admin/restaurants/{$r->id}", [
+            'features' => $payload,
+        ])->assertOk();
+
+        $r->refresh()->load('features');
+        $this->assertTrue($r->hasFeature(Feature::TABLE_MANAGEMENT));
+        $this->assertTrue($r->hasFeature(Feature::DINE_IN)); // prerequisite auto-enabled
+        $this->assertFalse($r->hasFeature(Feature::DELIVERY));
+        $this->assertTrue($r->hasFeature(Feature::PICKUP)); // untouched default
     }
 
     public function test_self_serve_signup_provisions_default_feature_flags(): void

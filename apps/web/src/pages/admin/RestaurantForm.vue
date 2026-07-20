@@ -151,6 +151,9 @@ onMounted(async () => {
     if (isEdit.value) {
         const { data } = await api.get(`api/admin/restaurants/${route.params.id}`)
         Object.assign(form, { ...data.data, secondary_color: data.data.secondary_color || '' })
+        // Prefill the feature flags from the loaded client (list of enabled keys).
+        const enabled = data.data.features || []
+        for (const key of [...orderTypeKeys, ...capabilityKeys]) features[key] = enabled.includes(key)
     }
 })
 
@@ -165,7 +168,7 @@ async function submitEdit() {
     errors.value = {}; saving.value = true
     try {
         await ensureCsrf()
-        const payload = { ...form }; delete payload.admin
+        const payload = { ...form, features: { ...features } }; delete payload.admin
         await api.put(`api/admin/restaurants/${route.params.id}`, payload)
         router.push({ name: 'admin.restaurants.show', params: { id: route.params.id } })
     } catch (err) {
@@ -255,6 +258,31 @@ async function submitCreate() {
                     </span>
                 </label>
             </div>
+
+            <!-- Features & order types — editable for existing clients too. -->
+            <div class="card p-6 space-y-4">
+                <h2 class="h-card">{{ t('wizard.features_title') }}</h2>
+                <div class="space-y-3">
+                    <h3 class="label" style="margin:0">{{ t('wizard.order_types_group') }}</h3>
+                    <label v-for="key in orderTypeKeys" :key="key" class="flex items-center gap-3 rounded-lg border p-3 cursor-pointer" style="border-color:var(--line)">
+                        <input type="checkbox" :checked="features[key]" @change="setFeature(key, $event.target.checked)" class="h-4 w-4" />
+                        <span class="label" style="margin:0">{{ t(`feature.${key}`) }}</span>
+                    </label>
+                </div>
+                <div class="space-y-3 pt-2" style="border-top:1px solid var(--line)">
+                    <h3 class="label" style="margin:0">{{ t('wizard.capabilities_group') }}</h3>
+                    <label v-for="key in capabilityKeys" :key="key" class="flex items-start gap-3 rounded-lg border p-3 cursor-pointer" style="border-color:var(--line)">
+                        <input type="checkbox" :checked="features[key]" @change="setFeature(key, $event.target.checked)" class="mt-0.5 h-4 w-4" />
+                        <span>
+                            <span class="label" style="margin:0">{{ t(`feature.${key}`) }}</span>
+                            <span v-if="featureRequires[key]" class="block text-xs mt-0.5" style="color:var(--muted)">
+                                {{ t('wizard.feature_requires', { feature: featureRequires[key].map(f => t(`feature.${f}`)).join(', ') }) }}
+                            </span>
+                        </span>
+                    </label>
+                </div>
+            </div>
+
             <div class="flex justify-end gap-2">
                 <RouterLink :to="{ name: 'admin.restaurants' }" class="btn btn-ghost">{{ t('common.cancel') }}</RouterLink>
                 <button type="submit" :disabled="saving" class="btn btn-accent">{{ saving ? t('common.saving') : t('admin.save_changes') }}</button>
