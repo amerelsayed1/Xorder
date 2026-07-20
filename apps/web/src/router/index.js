@@ -58,7 +58,6 @@ const restaurantRoutes = [
             { path: 'profile', name: 'dashboard.profile', component: () => import('../pages/dashboard/ProfileView.vue') },
             { path: 'categories', name: 'dashboard.categories', component: () => import('../pages/dashboard/CategoriesView.vue') },
             { path: 'items', name: 'dashboard.items', component: () => import('../pages/dashboard/ItemsView.vue') },
-            { path: 'combos', name: 'dashboard.combos', component: () => import('../pages/dashboard/CombosView.vue') },
             { path: 'qr', name: 'dashboard.qr', component: () => import('../pages/dashboard/QrView.vue') },
         ],
     },
