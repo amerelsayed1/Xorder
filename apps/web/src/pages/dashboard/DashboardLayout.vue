@@ -7,6 +7,7 @@ import api from '@xorder/api-client/api.js'
 import { useAuth } from '@xorder/api-client/auth.js'
 import { localizedInitial, pickLocalized } from '@xorder/ui/localize.js'
 import { registerPush } from '../../lib/push.js'
+import { buildDashboardNav } from './nav.config.js'
 
 const auth = useAuth()
 const router = useRouter()
@@ -122,35 +123,15 @@ onUnmounted(() => {
     document.title = baseTitle
 })
 
-const hasTables = computed(() => (r.value?.features || []).includes('table_management'))
 const hasBillRequests = computed(() => (r.value?.features || []).includes('bill_requests'))
-const hasReviews = computed(() => (r.value?.features || []).includes('internal_reviews'))
-const hasReports = computed(() => (r.value?.features || []).includes('product_analytics'))
 
-const nav = computed(() => [
-    { to: { name: 'dashboard.home' }, labelKey: 'nav.dashboard', icon: 'pi pi-th-large', end: true },
-    { to: { name: 'dashboard.orders' }, labelKey: 'nav.orders', icon: 'pi pi-shopping-bag', badge: newOrders.value },
-    ...(hasBillRequests.value ? [
-        { to: { name: 'dashboard.requests' }, labelKey: 'nav.requests', icon: 'pi pi-bell', badge: newRequests.value },
-    ] : []),
-    ...(hasReviews.value ? [
-        { to: { name: 'dashboard.reviews' }, labelKey: 'nav.reviews', icon: 'pi pi-star' },
-    ] : []),
-    { to: { name: 'dashboard.customers' }, labelKey: 'nav.customers', icon: 'pi pi-users' },
-    { to: { name: 'dashboard.insights' }, labelKey: 'nav.insights', icon: 'pi pi-chart-bar' },
-    ...(hasReports.value ? [
-        { to: { name: 'dashboard.reports' }, labelKey: 'nav.reports', icon: 'pi pi-chart-line' },
-    ] : []),
-    { to: { name: 'dashboard.items' }, labelKey: 'nav.items', icon: 'pi pi-list' },
-    { to: { name: 'dashboard.categories' }, labelKey: 'nav.categories', icon: 'pi pi-tags' },
-    { to: { name: 'dashboard.qr' }, labelKey: 'nav.qr', icon: 'pi pi-qrcode' },
-    { to: { name: 'dashboard.branches' }, labelKey: 'nav.branches', icon: 'pi pi-map-marker' },
-    ...(hasTables.value ? [
-        { to: { name: 'dashboard.areas' }, labelKey: 'nav.areas', icon: 'pi pi-th-large' },
-        { to: { name: 'dashboard.tables' }, labelKey: 'nav.tables', icon: 'pi pi-table' },
-    ] : []),
-    { to: { name: 'dashboard.profile' }, labelKey: 'nav.profile', icon: 'pi pi-cog' },
-])
+// Build the grouped sidebar from the declarative schema. Feature flags gate
+// which children (and therefore which groups) appear; the live badge counts are
+// stamped in from here so polling stays owned by this layout.
+const nav = computed(() => buildDashboardNav({
+    features: r.value?.features || [],
+    badges: { orders: newOrders.value, requests: newRequests.value },
+}))
 </script>
 
 <template>

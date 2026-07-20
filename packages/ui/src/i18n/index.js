@@ -107,6 +107,9 @@ const messages = {
             insights: 'Insights', leads: 'Leads', menu_parser: 'Menu Parser',
             areas: 'Dining Areas', tables: 'Tables', requests: 'Live Requests',
             reviews: 'Reviews', reports: 'Reports',
+            group_menu: 'Menu Management', group_place: 'Place Management',
+            group_engagement: 'Customers & Engagement', group_analytics: 'Analytics',
+            group_settings: 'Settings',
         },
         tbl: {
             areas_title: 'Dining Areas', areas_sub: '{count} areas',
@@ -621,6 +624,9 @@ const messages = {
             insights: 'إحصاءات', leads: 'العملاء المحتملون', menu_parser: 'محلل القائمة',
             areas: 'مناطق الجلوس', tables: 'الطاولات', requests: 'الطلبات المباشرة',
             reviews: 'التقييمات', reports: 'التقارير',
+            group_menu: 'إدارة المنيو', group_place: 'إدارة المكان',
+            group_engagement: 'العملاء والتفاعل', group_analytics: 'التحليلات',
+            group_settings: 'الإعدادات',
         },
         tbl: {
             areas_title: 'مناطق الجلوس', areas_sub: '{count} منطقة',
