@@ -13,6 +13,6 @@ defineProps({
     <img
         :src="iconOnly ? iconLogo : fullLogo"
         alt="XORDER"
-        style="display:block; width:auto; object-fit:contain;"
+        style="display:block; width:auto; max-width:none; flex:none; object-fit:contain;"
     />
 </template>
