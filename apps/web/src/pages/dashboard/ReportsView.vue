@@ -227,7 +227,7 @@ const hasAreas = computed(() => (areaReport.value?.areas || []).some((a) => a.to
                                 <span class="badge badge-green">{{ p.quantity }}</span>
                             </div>
                         </div>
-                        <div class="rep-perf-col">
+                        <div v-if="report.low_performers?.length" class="rep-perf-col">
                             <div class="label mb-1.5">{{ t('rep.low_performers') }}</div>
                             <div v-for="p in report.low_performers" :key="'low' + p.name" class="rep-perf-row">
                                 <span class="rep-perf-name">{{ p.name }}</span>

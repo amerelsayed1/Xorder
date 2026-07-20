@@ -92,6 +92,10 @@ class ReportService
             }
         }
 
+        // Full product table sorted best-first; top/low are disjoint slices of it.
+        $allProducts = $this->shapeOverall($overall, $totalOrders);
+        $topLimit = 5;
+
         return [
             'group' => $group,
             'totals' => [
@@ -100,9 +104,12 @@ class ReportService
                 'sales' => round(array_sum(array_column($overall, 'total_sales')), 2),
             ],
             'periods' => $this->shapeBuckets($buckets, $group),
-            'products' => $this->shapeOverall($overall, $totalOrders),
-            'top_performers' => $this->shapeOverall($overall, $totalOrders, sortBy: 'quantity', limit: 5),
-            'low_performers' => $this->shapeOverall($overall, $totalOrders, sortBy: 'quantity', limit: 5, ascending: true),
+            'products' => $allProducts,
+            'top_performers' => array_slice($allProducts, 0, $topLimit),
+            // The lowest performers BEYOND the top set — never overlaps top, and
+            // empty for a small catalog (so the UI hides the section) rather than
+            // repeating the same few items as both "best" and "worst".
+            'low_performers' => array_slice(array_reverse(array_slice($allProducts, $topLimit)), 0, $topLimit),
         ];
     }
 
