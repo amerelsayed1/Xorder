@@ -5,7 +5,6 @@ import { useI18n } from 'vue-i18n'
 import { useAuth } from '@xorder/api-client/auth.js'
 import { setLocale } from './i18n'
 import Icon from './Icon.vue'
-import XorderLogo from './XorderLogo.vue'
 
 const props = defineProps({
     title: { type: String, required: true },
@@ -73,7 +72,7 @@ function toggleLang() { setLocale(locale.value === 'ar' ? 'en' : 'ar') }
             </div>
 
             <div v-if="theme === 'theme-warm'" class="side-powered">
-                <span>{{ t('app.powered_by') }}</span><XorderLogo />
+                <span>{{ t('app.powered_by') }}</span><strong>Xorder</strong>
             </div>
         </aside>
 

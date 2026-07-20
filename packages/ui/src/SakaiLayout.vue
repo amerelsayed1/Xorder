@@ -48,14 +48,15 @@ function toggleGroup(key) {
 
 // Follow the active route: expand the group that owns it (collapsing others),
 // or collapse everything on a group-less page like the dashboard home.
-watch(
-    () => [route.path, props.nav],
-    () => {
-        const active = props.nav.find((n) => n.children && isGroupActive(n))
-        openGroup.value = active ? active.key : null
-    },
-    { immediate: true, deep: true },
-)
+function syncActiveGroup() {
+    const active = props.nav.find((n) => n.children && isGroupActive(n))
+    openGroup.value = active ? active.key : null
+}
+// Re-sync on navigation, and when the SET of groups changes (e.g. features load
+// late). Deliberately NOT on the whole `nav` array — its reference changes on
+// every badge poll, which would otherwise snap a hand-opened group shut.
+watch(() => route.path, syncActiveGroup, { immediate: true })
+watch(() => props.nav.map((n) => n.key).join('|'), syncActiveGroup)
 
 const userInitial = computed(() => (auth.user?.name || 'U').trim().charAt(0).toUpperCase())
 const homeTo = computed(() => auth.homeRoute())
@@ -114,7 +115,8 @@ const profileItems = computed(() => [
                             <span v-if="link.badge" class="sakai-menu-badge">{{ link.badge }}</span>
                             <i class="pi pi-angle-down sakai-group-arrow" :class="{ open: openGroup === link.key }" aria-hidden="true" />
                         </button>
-                        <div class="sakai-submenu-wrap" :class="{ open: openGroup === link.key }">
+                        <div class="sakai-submenu-wrap" :class="{ open: openGroup === link.key }"
+                            :inert="openGroup !== link.key">
                             <ul :id="`sakai-group-${link.key}`" class="sakai-submenu" role="region">
                                 <li v-for="child in link.children" :key="child.key ?? child.to.name">
                                     <RouterLink :to="child.to" custom v-slot="{ href, navigate, isActive, isExactActive }">
@@ -140,7 +142,7 @@ const profileItems = computed(() => [
                 </li>
             </ul>
             <div class="sakai-powered">
-                <span>{{ t('app.powered_by') }}</span><XorderLogo />
+                <span>{{ t('app.powered_by') }}</span><strong>Xorder</strong>
             </div>
         </aside>
 
@@ -211,7 +213,7 @@ const profileItems = computed(() => [
     display: inline-flex; align-items: center; justify-content: center;
     font-size: 11px; font-weight: 700; background: var(--p-primary-color); color: #fff; }
 .sakai-powered { display: flex; align-items: center; gap: 7px; padding: 14px 8px 4px; font-size: 12px; color: var(--p-text-muted-color); }
-.sakai-powered svg { height: 14px; width: auto; color: var(--p-text-color); opacity: .8; }
+.sakai-powered :where(svg, img) { height: 14px; width: auto; color: var(--p-text-color); opacity: .8; }
 
 .sakai-scrim { position: fixed; inset: 0; z-index: 24; background: rgba(0,0,0,.4); }
 

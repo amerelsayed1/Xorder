@@ -80,7 +80,7 @@ body { font-family: var(--font-sans); font-size: 16px; }
 .nav-item.active .nav-ico { background: rgba(255,255,255,.18); }
 .side-sub { margin-top: auto; background: var(--sidebar-card); border-radius: 13px; padding: 12px; }
 .side-powered { display: flex; align-items: center; gap: 7px; padding: 14px 8px 4px; color: var(--sidebar-muted); font-size: 12px; }
-.side-powered svg { height: 15px; width: auto; color: #fff; opacity: .85; }
+.side-powered :where(svg, img) { height: 15px; width: auto; color: #fff; opacity: .85; }
 
 /* Avatar */
 .avatar { width: 36px; height: 36px; border-radius: 50%; flex-shrink: 0; display: grid; place-items: center;
