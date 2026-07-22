@@ -14,7 +14,11 @@ return new class extends Migration
         Restaurant::with('features')->get()->each(function (Restaurant $r) {
             $target = $r->effectiveOrderingMode() ?? OrderingMode::WHATSAPP;
             if ($r->ordering_mode !== $target) {
-                $r->update(['ordering_mode' => $target->value]);
+                // updateQuietly: a system backfill must not fire model events.
+                // The Auditable `updated` hook would try to write to audit_logs,
+                // which this migration predates — on Postgres that failed insert
+                // aborts the whole migration transaction.
+                $r->updateQuietly(['ordering_mode' => $target->value]);
             }
         });
     }
