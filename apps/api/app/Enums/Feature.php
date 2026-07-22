@@ -16,6 +16,8 @@ enum Feature: string
 {
     case QR_MENU = 'qr_menu';
     case WHATSAPP_ORDERING = 'whatsapp_ordering';
+    case SYSTEM_ORDERING = 'system_ordering';
+    case CUSTOMER_TRACKING = 'customer_tracking';
     case TABLE_MANAGEMENT = 'table_management';
     case BILL_REQUESTS = 'bill_requests';
     case INTERNAL_REVIEWS = 'internal_reviews';
@@ -23,6 +25,7 @@ enum Feature: string
     case DINE_IN = 'dine_in';
     case PICKUP = 'pickup';
     case DELIVERY = 'delivery';
+    case MULTI_BRANCH = 'multi_branch';
 
     /** @return list<string> */
     public static function values(): array
@@ -44,6 +47,9 @@ enum Feature: string
             self::BILL_REQUESTS => [self::TABLE_MANAGEMENT],
             // Seating diners at tables implies dine-in ordering (FR-FEATURES-005).
             self::TABLE_MANAGEMENT => [self::DINE_IN],
+            // The customer database is populated from durable system orders, so
+            // tracking customers is meaningless without system ordering.
+            self::CUSTOMER_TRACKING => [self::SYSTEM_ORDERING],
             default => [],
         };
     }

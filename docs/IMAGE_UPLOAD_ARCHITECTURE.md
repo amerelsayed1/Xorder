@@ -133,7 +133,6 @@ All these pages now use the unified system:
 - Menu items (item image)
 - Categories (category image)
 - Combos (combo image)
-- Menu parser
 
 ## Benefits
 

@@ -1,6 +1,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useAuth } from '@xorder/api-client/auth.js'
 import api, { ensureCsrf } from '@xorder/api-client/api.js'
 import { currencyLabel } from '../../lib/currency.js'
 import { withMinDuration } from '../../lib/minLoading.js'
@@ -9,6 +10,7 @@ import Skeleton from '@xorder/ui/Skeleton.vue'
 import { confirm } from '@xorder/ui/confirm.js'
 
 const { t, locale } = useI18n()
+const auth = useAuth()
 
 const STATUSES = ['NEW', 'CONFIRMED', 'COMPLETED', 'CANCELLED']
 const badgeClass = { NEW: 'badge-amber', CONFIRMED: 'badge-indigo', COMPLETED: 'badge-green', CANCELLED: 'badge-red' }
@@ -173,7 +175,7 @@ function fmtTime(iso) {
                         <td class="px-3 py-3 whitespace-nowrap font-medium" style="color:var(--ink)">{{ order.total }} {{ currencyLabel(order.currency, locale) }}</td>
                         <td class="px-3 py-3"><span class="badge" :class="badgeClass[order.status]">{{ t('orders.status.' + order.status) }}</span></td>
                         <td class="px-5 py-3 text-end whitespace-nowrap">
-                            <div class="inline-flex items-center gap-2">
+                            <div v-if="!auth.isReadOnly" class="inline-flex items-center gap-2">
                                 <button v-for="next in nextActions[order.status] || []" :key="next"
                                     class="btn btn-sm" :class="next === 'CANCELLED' ? 'btn-ghost btn-cancel' : 'btn-accent'"
                                     :disabled="updating === order.id" @click="setStatus(order, next)">

@@ -115,7 +115,7 @@ async function remove(c) {
                 <h1 class="page-title">{{ t('nav.combos') }}</h1>
                 <p class="page-sub">{{ t('combo.subtitle', { count: rows.length }) }}</p>
             </div>
-            <button @click="openCreate" class="btn btn-accent"><Icon name="plus" :size="16" />{{ t('common.create') }}</button>
+            <button v-if="!auth.isReadOnly" @click="openCreate" class="btn btn-accent"><Icon name="plus" :size="16" />{{ t('common.create') }}</button>
         </div>
 
         <div class="card overflow-hidden">
@@ -130,9 +130,9 @@ async function remove(c) {
                         <div class="text-xs" style="color:var(--muted)">{{ t('combo.from') }} {{ c.base_price }} {{ cur() }} · {{ (c.groups || []).length }} {{ t('combo.groups') }}</div>
                     </div>
                     <StatusBadge :value="c.is_active" :label="c.is_active ? t('common.active') : t('common.inactive')" />
-                    <button class="switch" :class="{ on: c.is_active }" @click="toggle(c)"></button>
-                    <button @click="openEdit(c)" class="icon-btn" :title="t('common.edit')"><Icon name="edit" :size="17" /></button>
-                    <button @click="remove(c)" class="icon-btn icon-btn-danger" :title="t('common.delete')"><Icon name="trash" :size="17" /></button>
+                    <button v-if="!auth.isReadOnly" class="switch" :class="{ on: c.is_active }" @click="toggle(c)"></button>
+                    <button v-if="!auth.isReadOnly" @click="openEdit(c)" class="icon-btn" :title="t('common.edit')"><Icon name="edit" :size="17" /></button>
+                    <button v-if="!auth.isReadOnly" @click="remove(c)" class="icon-btn icon-btn-danger" :title="t('common.delete')"><Icon name="trash" :size="17" /></button>
                 </li>
             </ul>
         </div>

@@ -10,8 +10,10 @@ import StatusBadge from '@xorder/ui/StatusBadge.vue'
 import FormError from '@xorder/ui/FormError.vue'
 import Icon from '@xorder/ui/Icon.vue'
 import { confirm } from '@xorder/ui/confirm.js'
+import { useAuth } from '@xorder/api-client/auth.js'
 
 const { t, locale } = useI18n()
+const auth = useAuth()
 const rows = ref([])
 const areas = ref([])
 const loading = ref(true)
@@ -132,7 +134,7 @@ const areaLabel = (id) => { const a = areas.value.find(x => x.id === id); return
                 <h1 class="page-title">{{ t('tbl.tables_title') }}</h1>
                 <p class="page-sub">{{ t('tbl.tables_sub', { count: rows.length }) }}</p>
             </div>
-            <button @click="openCreate" :disabled="!activeAreas.length" class="btn btn-accent"><Icon name="plus" :size="16" />{{ t('common.create') }}</button>
+            <button v-if="!auth.isReadOnly" @click="openCreate" :disabled="!activeAreas.length" class="btn btn-accent"><Icon name="plus" :size="16" />{{ t('common.create') }}</button>
         </div>
 
         <p v-if="!areas.length" class="card p-4 text-sm" style="color:var(--muted)">{{ t('tbl.no_area_first') }}</p>
@@ -161,10 +163,10 @@ const areaLabel = (id) => { const a = areas.value.find(x => x.id === id); return
                         <div class="text-xs truncate" style="color:var(--muted)">{{ areaLabel(tbl.dining_area_id) }}</div>
                     </div>
                     <StatusBadge :value="tbl.is_active" :label="tbl.is_active ? t('common.active') : t('common.inactive')" />
-                    <button class="switch" :class="{ on: tbl.is_active }" @click="toggleActive(tbl)"></button>
+                    <button v-if="!auth.isReadOnly" class="switch" :class="{ on: tbl.is_active }" @click="toggleActive(tbl)"></button>
                     <button @click="openQr(tbl)" class="icon-btn" :title="t('tbl.qr')"><Icon name="qr" :size="17" /></button>
-                    <button @click="openEdit(tbl)" class="icon-btn" :title="t('common.edit')"><Icon name="edit" :size="17" /></button>
-                    <button @click="remove(tbl)" class="icon-btn icon-btn-danger" :title="t('common.delete')"><Icon name="trash" :size="17" /></button>
+                    <button v-if="!auth.isReadOnly" @click="openEdit(tbl)" class="icon-btn" :title="t('common.edit')"><Icon name="edit" :size="17" /></button>
+                    <button v-if="!auth.isReadOnly" @click="remove(tbl)" class="icon-btn icon-btn-danger" :title="t('common.delete')"><Icon name="trash" :size="17" /></button>
                 </li>
             </ul>
         </div>
@@ -204,7 +206,7 @@ const areaLabel = (id) => { const a = areas.value.find(x => x.id === id); return
                 <p class="text-xs break-all" style="color:var(--muted)" dir="ltr">{{ qrModal.url }}</p>
                 <p class="text-sm" style="color:var(--body)">{{ t('tbl.scan_hint') }}</p>
                 <div class="flex justify-center gap-2 pt-1">
-                    <button @click="regenerateQr" class="btn btn-ghost">{{ t('tbl.qr_regenerate') }}</button>
+                    <button v-if="!auth.isReadOnly" @click="regenerateQr" class="btn btn-ghost">{{ t('tbl.qr_regenerate') }}</button>
                     <button @click="downloadQr" class="btn btn-accent"><Icon name="download" :size="16" />{{ t('tbl.qr_download') }}</button>
                 </div>
             </div>

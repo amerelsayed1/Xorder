@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Enums\Feature;
+use App\Models\Plan;
 use App\Models\Restaurant;
 use App\Models\User;
 use App\Services\RestaurantFeatureService;
@@ -120,16 +121,25 @@ class RestaurantFeatureTest extends TestCase
         $this->assertSame(0, $result['restaurant']->branches()->count());
     }
 
-    public function test_super_admin_creates_client_with_branch_and_features_over_http(): void
+    public function test_super_admin_created_client_derives_features_strictly_from_its_plan(): void
     {
         Notification::fake();
         $sa = User::factory()->superAdmin()->create();
 
+        // The plan is the single source of truth for capabilities.
+        Plan::create([
+            'name' => 'Starter',
+            'currency' => 'EGP',
+            'feature_keys' => ['qr_menu', 'bill_requests'],
+        ]);
+
         $this->actingAs($sa)->postJson('/api/admin/restaurants', [
             'name_en' => 'Wizard Co', 'slug' => 'wizard-co',
             'default_language' => 'en', 'currency' => 'EGP',
-            'admin' => ['name' => 'Owner', 'email' => 'owner@wizard.test'],
-            'features' => ['bill_requests' => true, 'product_analytics' => true],
+            'subscription_plan' => 'Starter',
+            'admin' => ['name' => 'Owner', 'username' => 'wizardowner', 'email' => 'owner@wizard.test'],
+            // A conflicting flag map is ignored — creation respects the plan.
+            'features' => ['product_analytics' => true, 'whatsapp_ordering' => true],
             'branch' => [
                 'name_en' => 'Downtown', 'code' => 'DT1',
                 'supported_order_types' => ['dine_in', 'delivery'],
@@ -138,37 +148,49 @@ class RestaurantFeatureTest extends TestCase
 
         $restaurant = Restaurant::where('slug', 'wizard-co')->firstOrFail();
 
+        // Granted: the plan's entitlements (bill_requests auto-expands its
+        // table_management prerequisite).
+        $this->assertTrue($restaurant->hasFeature(Feature::QR_MENU));
         $this->assertTrue($restaurant->hasFeature(Feature::BILL_REQUESTS));
-        $this->assertTrue($restaurant->hasFeature(Feature::TABLE_MANAGEMENT)); // prerequisite
-        $this->assertTrue($restaurant->hasFeature(Feature::PRODUCT_ANALYTICS));
+        $this->assertTrue($restaurant->hasFeature(Feature::TABLE_MANAGEMENT));
+        // NOT granted: the hand-passed flags the plan doesn't include.
+        $this->assertFalse($restaurant->hasFeature(Feature::PRODUCT_ANALYTICS));
+        $this->assertFalse($restaurant->hasFeature(Feature::WHATSAPP_ORDERING));
 
         $branch = $restaurant->branches()->firstOrFail();
         $this->assertSame('Downtown', $branch->name_en);
         $this->assertSame(['dine_in', 'delivery'], $branch->supported_order_types);
     }
 
-    public function test_super_admin_can_edit_features_of_an_existing_client(): void
+    public function test_changing_a_clients_plan_re_derives_its_features(): void
     {
         Notification::fake();
         $sa = User::factory()->superAdmin()->create();
+
+        // The plan strictly decides features: hand-passed flags are ignored and
+        // the restaurant's capabilities are re-derived from the assigned plan.
+        Plan::create([
+            'name' => 'Pro',
+            'currency' => 'EGP',
+            'feature_keys' => ['qr_menu', 'whatsapp_ordering', 'table_management'],
+        ]);
+
         $r = Restaurant::factory()->create(['slug' => 'edit-feat']);
         app(RestaurantFeatureService::class)->apply($r, Feature::defaultSet());
         $this->assertFalse($r->fresh()->hasFeature(Feature::TABLE_MANAGEMENT));
 
-        // The wizard/edit form always posts the full flag map.
-        $payload = Feature::defaultSet();
-        $payload['table_management'] = true;
-        $payload['delivery'] = false;
-
         $this->actingAs($sa)->putJson("/api/admin/restaurants/{$r->id}", [
-            'features' => $payload,
+            'subscription_plan' => 'Pro',
+            // Even a bogus flag map is ignored — the plan is authoritative.
+            'features' => ['product_analytics' => true],
         ])->assertOk();
 
         $r->refresh()->load('features');
         $this->assertTrue($r->hasFeature(Feature::TABLE_MANAGEMENT));
         $this->assertTrue($r->hasFeature(Feature::DINE_IN)); // prerequisite auto-enabled
-        $this->assertFalse($r->hasFeature(Feature::DELIVERY));
-        $this->assertTrue($r->hasFeature(Feature::PICKUP)); // untouched default
+        $this->assertTrue($r->hasFeature(Feature::QR_MENU));
+        $this->assertFalse($r->hasFeature(Feature::DELIVERY)); // not in the plan
+        $this->assertFalse($r->hasFeature(Feature::PRODUCT_ANALYTICS)); // hand-passed flag ignored
     }
 
     public function test_self_serve_signup_provisions_default_feature_flags(): void

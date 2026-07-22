@@ -21,7 +21,7 @@ class PlanResource extends JsonResource
             'price' => $this->price !== null ? (float) $this->price : null,
             'currency' => $this->currency->value,
             'currency_symbol' => $this->currency->symbol(),
-            'features' => $this->features ?? [],
+            'feature_keys' => $this->feature_keys ?? [],
             'max_items' => $this->max_items,
             'max_branches' => $this->max_branches,
             'is_active' => $this->is_active,

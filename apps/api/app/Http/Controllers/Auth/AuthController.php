@@ -6,58 +6,111 @@ use App\Enums\UserStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\LoginRequest;
 use App\Http\Resources\UserResource;
+use App\Models\Restaurant;
+use App\Services\AuditLogger;
+use App\Support\Jwt;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
 {
     /**
-     * Sanctum SPA login: authenticate against the session guard, regenerate
-     * the session, and return the user with role for client-side redirection.
+     * JWT login: verify the credentials against the tenant resolved from the
+     * request host, then mint a stateless access token. The token is the
+     * client's sole credential for subsequent `auth:jwt` requests.
      */
     public function login(LoginRequest $request): JsonResponse
     {
-        $credentials = $request->only('email', 'password');
-        $remember = $request->boolean('remember');
+        // Usernames are unique per tenant, so the account is only unambiguous
+        // once we know the tenant. Resolve it from the subdomain the request
+        // arrived on: {slug}.<domain> is that restaurant; the super-admin host
+        // (admin.<domain> / bare host) resolves to null. This also means an
+        // account can only sign in on its own subdomain.
+        $tenantId = $this->resolveLoginTenantId($request);
+        $credentials = [
+            'username' => $request->input('username'),
+            'restaurant_id' => $tenantId,
+            'password' => $request->input('password'),
+        ];
 
-        if (! Auth::attempt($credentials, $remember)) {
-            throw ValidationException::withMessages([
-                'email' => __('auth.failed'),
+        // Reuse the Eloquent provider so tenant-scoped lookup and password
+        // hashing behave exactly as the framework's own auth would.
+        $provider = Auth::createUserProvider('users');
+        $user = $provider->retrieveByCredentials($credentials);
+
+        // Wrong username/password is an authentication failure → 401 (not a
+        // 422 validation error: the request itself is well-formed).
+        if (! $user || ! $provider->validateCredentials($user, $credentials)) {
+            AuditLogger::record('auth.login_failed', [
+                'restaurant_id' => $tenantId,
+                'actor_role' => 'ANONYMOUS',
+                'description' => sprintf('Failed login for "%s"', $request->input('username')),
             ]);
+
+            return response()->json(['message' => __('auth.failed')], 401);
         }
 
-        $user = Auth::user();
-
+        // A known account that isn't allowed in (suspended/inactive) → 403.
         if ($user->status !== UserStatus::ACTIVE) {
-            Auth::logout();
-            throw ValidationException::withMessages([
-                'email' => __('xorder.errors.account_suspended'),
+            AuditLogger::record('auth.login_blocked', [
+                'actor' => $user,
+                'auditable' => $user,
+                'description' => sprintf('Blocked login — account is %s', $user->status->value),
             ]);
+
+            return response()->json(['message' => __('xorder.errors.account_suspended')], 403);
         }
 
-        // Stateful (SPA) requests have a session; guard defensively so a
-        // stateless/token call never 500s on session regeneration.
-        if ($request->hasSession()) {
-            $request->session()->regenerate();
-        }
         $user->loadMissing('restaurant.features');
+        $token = Jwt::issue($user);
+
+        AuditLogger::record('auth.login', [
+            'actor' => $user,
+            'auditable' => $user,
+            'description' => 'Signed in',
+        ]);
 
         return response()->json([
             'data' => UserResource::make($user),
+            'token' => $token,
+            'token_type' => 'Bearer',
+            'expires_in' => (int) config('jwt.ttl') * 60,
             'message' => __('xorder.messages.logged_in'),
         ]);
     }
 
-    public function logout(Request $request): JsonResponse
+    /**
+     * The restaurant a login request targets, from its Host subdomain.
+     * {slug}.<domain> → that restaurant's id; the super-admin host
+     * (admin.<domain>, a reserved subdomain, or a bare host) → null.
+     */
+    private function resolveLoginTenantId(Request $request): ?int
     {
-        Auth::guard('web')->logout();
-        if ($request->hasSession()) {
-            $request->session()->invalidate();
-            $request->session()->regenerateToken();
+        $host = strtolower($request->getHost());
+        $sub = strtok($host, '.');
+
+        // Bare host (no subdomain) → super-admin portal.
+        if ($sub === $host) {
+            return null;
         }
 
+        // Reserved / unknown subdomains match no restaurant → null (super host).
+        return Restaurant::where('slug', $sub)->value('id');
+    }
+
+    public function logout(Request $request): JsonResponse
+    {
+        AuditLogger::record('auth.logout', [
+            'actor' => $request->user(),
+            'auditable' => $request->user(),
+            'description' => 'Signed out',
+        ]);
+
+        // Stateless JWT: there is no server-side session to tear down — the
+        // client discards its token. The token's TTL bounds a leaked token's
+        // remaining lifetime; add a token blocklist here if hard revocation is
+        // ever required.
         return response()->json(['message' => __('xorder.messages.logged_out')]);
     }
 

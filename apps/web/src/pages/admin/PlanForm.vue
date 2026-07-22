@@ -4,7 +4,6 @@ import { useRoute, useRouter, RouterLink } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import api, { ensureCsrf } from '@xorder/api-client/api.js'
 import FormError from '@xorder/ui/FormError.vue'
-import Icon from '@xorder/ui/Icon.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -13,9 +12,23 @@ const { t, locale } = useI18n()
 const isEdit = computed(() => !!route.params.id)
 const backArrow = computed(() => locale.value === 'ar' ? '→' : '←')
 const form = reactive({
-    name: '', price: '', currency: 'EGP', features: [''], is_active: true, sort_order: 0,
+    name: '', price: '', currency: 'EGP', feature_keys: [], is_active: true, sort_order: 0,
 })
 const currencies = ['EGP', 'SAR', 'AED', 'USD', 'KWD', 'QAR', 'BHD', 'OMR', 'JOD', 'EUR', 'GBP']
+
+// Capability flags a plan can grant. Prerequisites (e.g. table_management→dine_in,
+// customer_tracking→system_ordering) are auto-expanded server-side, so the admin
+// only checks the headline capabilities.
+const entitlementKeys = [
+    'qr_menu', 'whatsapp_ordering', 'system_ordering', 'customer_tracking',
+    'table_management', 'bill_requests', 'internal_reviews', 'product_analytics',
+    'dine_in', 'pickup', 'delivery', 'multi_branch',
+]
+function toggleEntitlement(key, on) {
+    const i = form.feature_keys.indexOf(key)
+    if (on && i < 0) form.feature_keys.push(key)
+    else if (!on && i >= 0) form.feature_keys.splice(i, 1)
+}
 const errors = ref({})
 const saving = ref(false)
 
@@ -27,15 +40,12 @@ onMounted(async () => {
             name: p.name,
             price: p.price ?? '',
             currency: p.currency,
-            features: p.features.length ? [...p.features] : [''],
+            feature_keys: Array.isArray(p.feature_keys) ? [...p.feature_keys] : [],
             is_active: p.is_active,
             sort_order: p.sort_order,
         })
     }
 })
-
-function addFeature() { form.features.push('') }
-function removeFeature(i) { form.features.splice(i, 1); if (!form.features.length) form.features.push('') }
 
 async function submit() {
     errors.value = {}; saving.value = true
@@ -45,7 +55,7 @@ async function submit() {
             name: form.name,
             price: form.price === '' ? null : Number(form.price),
             currency: form.currency,
-            features: form.features.map(f => f.trim()).filter(Boolean),
+            feature_keys: [...form.feature_keys],
             is_active: form.is_active,
             sort_order: Number(form.sort_order) || 0,
         }
@@ -85,15 +95,15 @@ async function submit() {
                 </div>
 
                 <div class="block">
-                    <span class="label">{{ t('plan.features') }}</span>
-                    <p class="text-xs mb-2" style="color:var(--muted)">{{ t('plan.features_hint') }}</p>
-                    <div class="space-y-2">
-                        <div v-for="(f, i) in form.features" :key="i" class="flex items-center gap-2">
-                            <input v-model="form.features[i]" class="input" style="margin-top:0" />
-                            <button type="button" @click="removeFeature(i)" class="icon-btn" :aria-label="t('common.delete')"><Icon name="trash" :size="16" /></button>
-                        </div>
+                    <span class="label">{{ t('plan.entitlements') }}</span>
+                    <p class="text-xs mb-2" style="color:var(--muted)">{{ t('plan.entitlements_hint') }}</p>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <label v-for="key in entitlementKeys" :key="key" class="flex items-center gap-2 rounded-lg border p-2.5 cursor-pointer" style="border-color:var(--line)">
+                            <input type="checkbox" :checked="form.feature_keys.includes(key)" @change="toggleEntitlement(key, $event.target.checked)" class="h-4 w-4" />
+                            <span class="text-sm" style="color:var(--ink)">{{ t(`feature.${key}`) }}</span>
+                        </label>
                     </div>
-                    <button type="button" @click="addFeature" class="btn btn-ghost btn-sm mt-2"><Icon name="plus" :size="14" />{{ t('plan.add_feature') }}</button>
+                    <FormError :errors="errors" field="feature_keys" />
                 </div>
 
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">

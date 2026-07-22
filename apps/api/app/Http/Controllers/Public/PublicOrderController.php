@@ -32,7 +32,19 @@ class PublicOrderController extends Controller
             return response()->json(['message' => __('xorder.messages.restaurant_not_found')], 404);
         }
 
-        if (! $restaurant->ordering_enabled) {
+        // The plan decides whether this menu takes orders at all: with no
+        // entitled ordering channel the public menu is display-only. Read the
+        // plan-capped mode, never the raw column, so a plan change is honoured
+        // immediately without waiting for a reconciliation.
+        $mode = $restaurant->effectiveOrderingMode();
+
+        if ($mode === null) {
+            return response()->json(['message' => __('xorder.messages.ordering_disabled')], 422);
+        }
+
+        // WhatsApp-only restaurants take orders through WhatsApp, not the system,
+        // so there is no order record to create here.
+        if (! $mode->usesSystem()) {
             return response()->json(['message' => __('xorder.messages.ordering_disabled')], 422);
         }
 
@@ -45,7 +57,7 @@ class PublicOrderController extends Controller
         $order = new Order($request->validated() + [
             'status' => OrderStatus::NEW->value,
             'currency' => $restaurant->currency->value,
-            'source' => 'whatsapp',
+            'source' => $mode->usesWhatsapp() ? 'whatsapp' : 'system',
         ]);
         $order->restaurant_id = $restaurant->id;
         $order->customer_id = $customer?->id;

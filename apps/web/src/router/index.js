@@ -29,9 +29,23 @@ const superAdminRoutes = [
             { path: 'plans', name: 'admin.plans', component: () => import('../pages/admin/PlansList.vue') },
             { path: 'plans/create', name: 'admin.plans.create', component: () => import('../pages/admin/PlanForm.vue') },
             { path: 'plans/:id/edit', name: 'admin.plans.edit', component: () => import('../pages/admin/PlanForm.vue') },
-            { path: 'landing', name: 'admin.landing', component: () => import('../pages/admin/LandingContentView.vue') },
             { path: 'leads', name: 'admin.leads', component: () => import('../pages/admin/LeadsView.vue') },
-            { path: 'menu-parser', name: 'admin.menu-parser', component: () => import('../pages/admin/MenuParserView.vue') },
+            { path: 'audit-logs', name: 'admin.audit', component: () => import('../pages/admin/AuditLogsView.vue') },
+            {
+                path: 'settings',
+                component: () => import('../pages/admin/settings/SettingsView.vue'),
+                children: [
+                    { path: '', redirect: { name: 'admin.settings.seo' } },
+                    { path: 'seo', name: 'admin.settings.seo', component: () => import('../pages/admin/settings/SeoSettings.vue') },
+                    { path: 'hero', name: 'admin.settings.hero', component: () => import('../pages/admin/settings/HeroSettings.vue') },
+                    { path: 'whatsapp', name: 'admin.settings.whatsapp', component: () => import('../pages/admin/settings/WhatsappSettings.vue') },
+                    { path: 'highlights', name: 'admin.settings.highlights', component: () => import('../pages/admin/settings/HighlightsSettings.vue') },
+                    { path: 'features', name: 'admin.settings.features', component: () => import('../pages/admin/settings/FeaturesSettings.vue') },
+                    { path: 'demo', name: 'admin.settings.demo', component: () => import('../pages/admin/settings/DemoSettings.vue') },
+                    { path: 'packages', name: 'admin.settings.packages', component: () => import('../pages/admin/settings/PackagesSettings.vue') },
+                    { path: 'lead-cta', name: 'admin.settings.lead_cta', component: () => import('../pages/admin/settings/LeadCtaSettings.vue') },
+                ],
+            },
         ],
     },
     { path: '/:pathMatch(.*)*', redirect: '/' },
@@ -48,6 +62,7 @@ const restaurantRoutes = [
         meta: { role: 'RESTAURANT_ADMIN' },
         children: [
             { path: '', name: 'dashboard.home', component: () => import('../pages/dashboard/HomeView.vue') },
+            { path: 'live', name: 'dashboard.live', component: () => import('../pages/dashboard/LiveBoardView.vue') },
             { path: 'insights', name: 'dashboard.insights', component: () => import('../pages/dashboard/InsightsView.vue') },
             { path: 'orders', name: 'dashboard.orders', component: () => import('../pages/dashboard/OrdersView.vue') },
             { path: 'requests', name: 'dashboard.requests', component: () => import('../pages/dashboard/LiveRequestsView.vue') },
@@ -61,6 +76,8 @@ const restaurantRoutes = [
             { path: 'profile', name: 'dashboard.profile', component: () => import('../pages/dashboard/ProfileView.vue') },
             { path: 'categories', name: 'dashboard.categories', component: () => import('../pages/dashboard/CategoriesView.vue') },
             { path: 'items', name: 'dashboard.items', component: () => import('../pages/dashboard/ItemsView.vue') },
+            { path: 'items/create', name: 'dashboard.items.create', component: () => import('../pages/dashboard/ItemForm.vue') },
+            { path: 'items/:id/edit', name: 'dashboard.items.edit', component: () => import('../pages/dashboard/ItemForm.vue') },
             { path: 'qr', name: 'dashboard.qr', component: () => import('../pages/dashboard/QrView.vue') },
         ],
     },
@@ -75,7 +92,7 @@ const router = createRouter({
 // Bounce the browser to the subdomain that matches the signed-in user.
 // Restaurant subdomains serve the public menu at their root ("/"), so the
 // restaurant dashboard lives at /admin.
-function redirectToCorrectHost(auth) {
+export function redirectToCorrectHost(auth) {
     if (auth.isSuperAdmin) {
         window.location.href = superAdminUrl('/')
     } else if (auth.restaurant?.slug) {
@@ -87,7 +104,7 @@ function redirectToCorrectHost(auth) {
 
 // Is the signed-in user the right kind for THIS host? Returns the in-portal home
 // route, or null if they belong on a different subdomain.
-function inPortalHome(auth) {
+export function inPortalHome(auth) {
     if (isSuperAdminHost) {
         return auth.isSuperAdmin ? { name: 'admin.dashboard' } : null
     }

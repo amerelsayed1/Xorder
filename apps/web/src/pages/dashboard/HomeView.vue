@@ -63,7 +63,7 @@ function copyUrl() {
             </div>
             <div class="flex items-center gap-2">
                 <a :href="stats.public_url" target="_blank" class="btn btn-ghost"><Icon name="external" :size="16" />{{ t('dashboard.view_menu') }}</a>
-                <RouterLink :to="{ name: 'dashboard.items' }" class="btn btn-accent"><Icon name="plus" :size="16" />{{ t('dashboard.add_item') }}</RouterLink>
+                <RouterLink v-if="!auth.isReadOnly" :to="{ name: 'dashboard.items' }" class="btn btn-accent"><Icon name="plus" :size="16" />{{ t('dashboard.add_item') }}</RouterLink>
             </div>
         </div>
 

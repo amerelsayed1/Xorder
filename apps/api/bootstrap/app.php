@@ -24,8 +24,8 @@ return Application::configure(basePath: dirname(__DIR__))
         // only ever through the trusted proxy chain, so trust all hops.
         $middleware->trustProxies(at: '*');
 
-        // Enable Sanctum SPA cookie authentication for first-party requests.
-        $middleware->statefulApi();
+        // API auth is stateless JWT (Authorization: Bearer) — no SPA session
+        // cookie, so statefulApi()/CSRF is intentionally not enabled.
         $middleware->append(SetLocale::class);
 
         // API is JSON-only → framework errors (401/422/404) always render JSON.

@@ -4,6 +4,7 @@ namespace App\Http\Requests\Admin;
 
 use App\Enums\CurrencyEnum;
 use App\Enums\LanguageEnum;
+use App\Enums\OrderingMode;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -41,7 +42,10 @@ class UpdateRestaurantRequest extends FormRequest
             'default_language' => ['sometimes', 'required', Rule::enum(LanguageEnum::class)],
             'bilingual' => ['sometimes', 'boolean'],
             'currency' => ['sometimes', 'required', Rule::enum(CurrencyEnum::class)],
-            'ordering_enabled' => ['sometimes', 'boolean'],
+            'ordering_mode' => ['sometimes', Rule::enum(OrderingMode::class)],
+            // The plan strictly decides features; changing it here re-derives them.
+            'subscription_plan' => ['sometimes', 'nullable', 'string', 'max:100'],
+            // Accepted for backward-compat but ignored — features come from the plan.
             'features' => ['sometimes', 'array'],
             'features.*' => ['boolean'],
         ];

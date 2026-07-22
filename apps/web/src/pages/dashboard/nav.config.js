@@ -16,10 +16,11 @@
 
 export const DASHBOARD_NAV = [
     { key: 'home', labelKey: 'nav.dashboard', icon: 'pi pi-th-large', to: { name: 'dashboard.home' }, end: true },
+    { key: 'live', labelKey: 'nav.live', icon: 'pi pi-bolt', to: { name: 'dashboard.live' }, badgeKey: 'live', permissionAny: ['bill_requests', 'system_ordering'] },
     {
         key: 'orders', labelKey: 'nav.orders', icon: 'pi pi-shopping-bag', badgeKey: 'orders',
         children: [
-            { key: 'orders.list', labelKey: 'nav.orders', icon: 'pi pi-shopping-bag', to: { name: 'dashboard.orders' } },
+            { key: 'orders.list', labelKey: 'nav.orders', icon: 'pi pi-shopping-bag', to: { name: 'dashboard.orders' }, permission: 'system_ordering' },
             { key: 'orders.live', labelKey: 'nav.requests', icon: 'pi pi-bell', to: { name: 'dashboard.requests' }, permission: 'bill_requests', badgeKey: 'requests' },
         ],
     },
@@ -42,7 +43,7 @@ export const DASHBOARD_NAV = [
     {
         key: 'engagement', labelKey: 'nav.group_engagement', icon: 'pi pi-users',
         children: [
-            { key: 'customers', labelKey: 'nav.customers', icon: 'pi pi-user', to: { name: 'dashboard.customers' } },
+            { key: 'customers', labelKey: 'nav.customers', icon: 'pi pi-user', to: { name: 'dashboard.customers' }, permission: 'customer_tracking' },
             { key: 'reviews', labelKey: 'nav.reviews', icon: 'pi pi-star', to: { name: 'dashboard.reviews' }, permission: 'internal_reviews' },
         ],
     },
@@ -66,16 +67,19 @@ export const DASHBOARD_NAV = [
 //   - hides a group entirely when none of its children are visible
 //   - stamps each node's `badge` from `badges[badgeKey]`
 export function buildDashboardNav({ features = [], badges = {} } = {}) {
-    const allowed = (perm) => !perm || features.includes(perm)
+    // A node is visible when it has no `permission` gate (or the flag is held)
+    // and, if it declares `permissionAny`, at least one of those flags is held.
+    const allowed = (node) => (!node.permission || features.includes(node.permission))
+        && (!node.permissionAny || node.permissionAny.some((p) => features.includes(p)))
     const withBadge = (node) => (node.badgeKey ? { ...node, badge: badges[node.badgeKey] ?? 0 } : node)
 
     const out = []
     for (const node of DASHBOARD_NAV) {
         if (node.children) {
-            const children = node.children.filter((c) => allowed(c.permission)).map(withBadge)
+            const children = node.children.filter(allowed).map(withBadge)
             if (!children.length) continue // hide empty group
             out.push({ ...withBadge(node), children })
-        } else if (allowed(node.permission)) {
+        } else if (allowed(node)) {
             out.push(withBadge(node))
         }
     }

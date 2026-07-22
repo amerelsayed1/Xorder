@@ -60,11 +60,11 @@ async function removePlan(p) {
         <div class="card overflow-x-auto">
             <table class="w-full text-sm" style="min-width:640px">
                 <thead>
-                    <tr class="text-left" style="color:var(--muted)">
-                        <th class="px-5 py-3 font-medium" style="font-size:11px;letter-spacing:.06em;text-transform:uppercase">{{ t('plan.name') }}</th>
-                        <th class="px-3 py-3 font-medium" style="font-size:11px;text-transform:uppercase">{{ t('plan.price') }}</th>
-                        <th class="px-3 py-3 font-medium" style="font-size:11px;text-transform:uppercase">{{ t('plan.features') }}</th>
-                        <th class="px-3 py-3 font-medium" style="font-size:11px;text-transform:uppercase">{{ t('common.status') }}</th>
+                    <tr style="color:var(--muted)">
+                        <th class="px-5 py-3 font-medium text-start" style="font-size:11px;letter-spacing:.06em;text-transform:uppercase">{{ t('plan.name') }}</th>
+                        <th class="px-3 py-3 font-medium text-center" style="font-size:11px;text-transform:uppercase">{{ t('plan.price') }}</th>
+                        <th class="px-3 py-3 font-medium text-center" style="font-size:11px;text-transform:uppercase">{{ t('plan.entitlements') }}</th>
+                        <th class="px-3 py-3 font-medium text-center" style="font-size:11px;text-transform:uppercase">{{ t('common.status') }}</th>
                         <th class="px-5 py-3 font-medium text-end" style="font-size:11px;text-transform:uppercase">{{ t('common.actions') }}</th>
                     </tr>
                 </thead>
@@ -74,10 +74,15 @@ async function removePlan(p) {
                     <tr v-for="p in rows" :key="p.id" class="border-t cursor-pointer hover:bg-black/[.015]"
                         :style="{ borderColor: 'var(--line)', opacity: p.is_active ? 1 : 0.6 }"
                         @click="router.push({ name: 'admin.plans.edit', params: { id: p.id } })">
-                        <td class="px-5 py-3 font-medium" style="color:var(--ink)">{{ p.name }}</td>
-                        <td class="px-3 py-3" style="color:var(--body)">{{ price(p) }}</td>
-                        <td class="px-3 py-3" style="color:var(--body)">{{ p.features.length }}</td>
+                        <td class="px-5 py-3 font-medium text-start" style="color:var(--ink)">{{ p.name }}</td>
+                        <td class="px-3 py-3 text-center" style="color:var(--body)">{{ price(p) }}</td>
                         <td class="px-3 py-3">
+                            <div class="flex flex-wrap justify-center gap-1" style="max-width:340px;margin-inline:auto">
+                                <span v-for="k in (p.feature_keys || [])" :key="k" class="plan-cap">{{ t('feature.' + k) }}</span>
+                                <span v-if="!(p.feature_keys && p.feature_keys.length)" style="color:var(--muted)">—</span>
+                            </div>
+                        </td>
+                        <td class="px-3 py-3 text-center">
                             <span class="badge" :class="p.is_active ? 'badge-green' : 'badge-gray'">{{ p.is_active ? t('plan.active') : t('plan.inactive') }}</span>
                         </td>
                         <td class="px-5 py-3 text-end whitespace-nowrap" @click.stop>
@@ -94,3 +99,15 @@ async function removePlan(p) {
         </div>
     </div>
 </template>
+
+<style scoped>
+.plan-cap {
+    font-size: 11.5px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: var(--accent-soft, color-mix(in srgb, var(--accent) 10%, transparent));
+    color: var(--accent-dark, var(--accent));
+    white-space: nowrap;
+}
+</style>

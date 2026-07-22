@@ -33,7 +33,12 @@ class EnsureSubscriptionAllowsWrites
 
         if (config('platform.subscription.enforce_dashboard_writes')
             && ! $restaurant->subscription_status->allowsDashboardWrites()) {
-            abort(403, __('xorder.errors.subscription_inactive'));
+            // Machine-readable code so the SPA can recognise this specific block
+            // (and show its read-only notice) regardless of the message locale.
+            return response()->json([
+                'message' => __('xorder.errors.subscription_inactive'),
+                'code' => 'subscription_inactive',
+            ], 403);
         }
 
         return $next($request);

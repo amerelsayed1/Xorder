@@ -6,6 +6,9 @@ const props = defineProps({
     categories: Array,
     combos: Array,
     search: String,
+    // Display-only menus (plan grants no ordering channel) hide the quick-add
+    // button; the card still opens the item modal for viewing.
+    orderingEnabled: { type: Boolean, default: true },
     t: Function,
     money: Function,
     localize: Function,
@@ -157,7 +160,7 @@ const priceOf = (section, item) => {
                             </div>
                             <p>{{ localize(item, 'description') }}</p>
                             <button
-                                v-if="item.is_available !== false"
+                                v-if="item.is_available !== false && orderingEnabled"
                                 class="add-button"
                                 :aria-label="`${t('add')} ${localize(item)}`"
                                 @click.stop="$emit('openModal', section.kind, item)"

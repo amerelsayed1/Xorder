@@ -1,25 +1,42 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useAuth } from '@xorder/api-client/auth.js'
 import api, { ensureCsrf } from '@xorder/api-client/api.js'
 import { withMinDuration } from '../../lib/minLoading.js'
 import Skeleton from '@xorder/ui/Skeleton.vue'
 import { confirm } from '@xorder/ui/confirm.js'
 
 const { t, locale } = useI18n()
+const auth = useAuth()
 
 const STATUSES = ['REQUESTED', 'SEEN', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED']
 const badgeClass = {
     REQUESTED: 'badge-amber', SEEN: 'badge-indigo', IN_PROGRESS: 'badge-indigo',
     COMPLETED: 'badge-green', CANCELLED: 'badge-red',
 }
-// Which statuses each open request can advance to, rendered as per-card buttons.
-const nextActions = {
-    REQUESTED: ['SEEN', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'],
-    SEEN: ['IN_PROGRESS', 'COMPLETED', 'CANCELLED'],
-    IN_PROGRESS: ['COMPLETED', 'CANCELLED'],
-}
+// One clear next step per open status (the natural progression); a "Complete"
+// shortcut and "Cancel" are offered as lower-emphasis secondary actions.
+const PRIMARY_NEXT = { REQUESTED: 'SEEN', SEEN: 'IN_PROGRESS', IN_PROGRESS: 'COMPLETED' }
 const actionLabel = { SEEN: 'req.act_seen', IN_PROGRESS: 'req.act_progress', COMPLETED: 'req.act_complete', CANCELLED: 'req.act_cancel' }
+const primaryNext = (bill) => PRIMARY_NEXT[bill.status] || null
+const canComplete = (bill) => ['REQUESTED', 'SEEN'].includes(bill.status)
+const canCancel = (bill) => ['REQUESTED', 'SEEN', 'IN_PROGRESS'].includes(bill.status)
+
+// Freshly-arrived requests get a brief highlight so staff spot them at a glance.
+const knownIds = new Set()
+const newIds = ref(new Set())
+function seedKnown(list) { list.forEach((b) => knownIds.add(b.id)) }
+function detectArrivals(list) {
+    const fresh = list.filter((b) => !knownIds.has(b.id))
+    if (!fresh.length) return
+    const next = new Set(newIds.value)
+    fresh.forEach((b) => { knownIds.add(b.id); next.add(b.id) })
+    newIds.value = next
+    fresh.forEach((b) => setTimeout(() => {
+        const s = new Set(newIds.value); s.delete(b.id); newIds.value = s
+    }, 8000))
+}
 // An open request untouched for this long is visually flagged as overdue.
 const OVERDUE_SECONDS = 300
 
@@ -48,6 +65,7 @@ async function load() {
             },
         }))
         rows.value = data.data
+        seedKnown(rows.value)
     } finally {
         loading.value = false
     }
@@ -64,13 +82,14 @@ async function poll() {
             },
         })
         rows.value = data.data
+        detectArrivals(rows.value)
     } catch (err) { /* keep current view */ }
 }
 
 onMounted(() => {
     loadAreas()
     load()
-    pollTimer = setInterval(poll, 12_000)
+    pollTimer = setInterval(poll, 6_000)
 })
 onUnmounted(() => clearInterval(pollTimer))
 
@@ -167,13 +186,15 @@ function fmtElapsed(iso) {
             {{ t('req.none') }}
         </div>
         <div v-else class="req-grid">
-            <div v-for="bill in rows" :key="bill.id" class="card req-card" :class="{ 'req-card--overdue': isOverdue(bill) }">
+            <div v-for="bill in rows" :key="bill.id" class="card req-card"
+                :class="{ 'req-card--overdue': isOverdue(bill), 'req-card--new': newIds.has(bill.id) }">
                 <div class="flex items-start justify-between gap-2">
                     <div>
                         <div class="req-table">{{ t('req.table') }} {{ bill.table_label || '—' }}</div>
                         <div v-if="areaName(bill)" class="text-xs" style="color:var(--muted)">{{ areaName(bill) }}</div>
                     </div>
-                    <span class="badge" :class="badgeClass[bill.status]">{{ t('req.status.' + bill.status) }}</span>
+                    <span v-if="newIds.has(bill.id)" class="req-new-pill">{{ t('req.just_arrived') }}</span>
+                    <span v-else class="badge" :class="badgeClass[bill.status]">{{ t('req.status.' + bill.status) }}</span>
                 </div>
 
                 <div class="req-time" :class="{ 'req-time--overdue': isOverdue(bill) }">
@@ -185,12 +206,19 @@ function fmtElapsed(iso) {
                     {{ t('req.note') }}: {{ bill.customer_note }}
                 </div>
 
-                <div v-if="nextActions[bill.status]" class="req-actions">
-                    <button v-for="next in nextActions[bill.status]" :key="next"
-                        class="btn btn-sm" :class="next === 'CANCELLED' ? 'btn-ghost btn-cancel' : 'btn-accent'"
-                        :disabled="updating === bill.id" @click="setStatus(bill, next)">
-                        {{ t(actionLabel[next]) }}
+                <!-- One prominent next step; Complete + Cancel are lower-emphasis. -->
+                <div v-if="primaryNext(bill) && !auth.isReadOnly" class="req-actions">
+                    <button class="req-primary" :disabled="updating === bill.id" @click="setStatus(bill, primaryNext(bill))">
+                        {{ t(actionLabel[primaryNext(bill)]) }}
                     </button>
+                    <div v-if="canComplete(bill) || canCancel(bill)" class="req-secondary">
+                        <button v-if="canComplete(bill)" class="req-sec" :disabled="updating === bill.id" @click="setStatus(bill, 'COMPLETED')">
+                            {{ t('req.act_complete') }}
+                        </button>
+                        <button v-if="canCancel(bill)" class="req-cancel" :disabled="updating === bill.id" @click="setStatus(bill, 'CANCELLED')">
+                            {{ t('req.act_cancel') }}
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -202,14 +230,42 @@ function fmtElapsed(iso) {
     border: 1px solid var(--line); background: var(--card); color: var(--body); font-size: 13.5px; font-weight: 600; cursor: pointer; }
 .chip-on { background: var(--accent); color: #fff; border-color: var(--accent); }
 .chip-select { padding-inline-end: 10px; }
-.btn-cancel { color: #c0392b; }
 .req-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
 .req-card { padding: 16px; display: flex; flex-direction: column; gap: 10px; }
 .req-card--overdue { border-color: #e0a106; box-shadow: 0 0 0 1px #e0a10633; }
+.req-card--new { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 22%, transparent); animation: req-pop .35s ease; }
+@keyframes req-pop { from { transform: scale(.98); } to { transform: scale(1); } }
 .req-table { font-weight: 700; color: var(--ink); font-size: 15px; }
 .req-time { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
 .req-time-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex: none; }
 .req-time--overdue { color: #b26b00; font-weight: 700; }
 .req-note { font-size: 13px; color: var(--body); background: var(--accent-soft); border-radius: 10px; padding: 8px 10px; }
-.req-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 2px; }
+
+.req-new-pill {
+    flex: none; align-self: flex-start; font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 999px;
+    color: #fff; background: var(--accent); animation: req-blink 1.1s ease-in-out infinite;
+}
+@keyframes req-blink { 50% { opacity: .55; } }
+
+/* Action hierarchy: one full-width primary, then a quiet secondary row. */
+.req-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
+.req-primary {
+    width: 100%; padding: 10px 14px; border: 0; border-radius: 10px; cursor: pointer;
+    background: var(--accent); color: #fff; font-size: 14px; font-weight: 700;
+    transition: filter .15s;
+}
+.req-primary:hover { filter: brightness(1.05); }
+.req-primary:disabled { opacity: .6; cursor: default; }
+.req-secondary { display: flex; align-items: center; gap: 6px; }
+.req-sec {
+    flex: 1; padding: 7px 12px; border-radius: 9px; cursor: pointer; font-size: 13px; font-weight: 600;
+    border: 1px solid var(--line); background: var(--card); color: var(--body); transition: border-color .15s, color .15s;
+}
+.req-sec:hover { border-color: var(--accent); color: var(--accent); }
+.req-cancel {
+    padding: 7px 12px; border: 0; background: none; cursor: pointer; font-size: 13px; font-weight: 600; color: var(--muted);
+    border-radius: 9px; transition: color .15s;
+}
+.req-cancel:hover { color: #c0392b; }
+.req-sec:disabled, .req-cancel:disabled { opacity: .6; cursor: default; }
 </style>

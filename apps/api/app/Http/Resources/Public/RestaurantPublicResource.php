@@ -16,6 +16,11 @@ class RestaurantPublicResource extends JsonResource
 {
     public function toArray(Request $request): array
     {
+        // Ordering availability and channel are decided by the plan entitlements
+        // (never the raw ordering_mode column), so the menu SPA reflects exactly
+        // what the plan grants.
+        $mode = $this->effectiveOrderingMode();
+
         return [
             'name_ar' => $this->name_ar,
             'name_en' => $this->name_en,
@@ -28,13 +33,15 @@ class RestaurantPublicResource extends JsonResource
             'whatsapp_number' => $this->whatsapp_number,
             'address' => $this->address,
             'opening_hours' => $this->opening_hours,
+            'social_links' => (object) $this->publicSocialLinks(),
             'brand_color' => $this->brand_color,
             'secondary_color' => $this->secondary_color,
             'default_language' => $this->default_language->value,
             'bilingual' => $this->bilingual,
             'currency' => $this->currency->value,
             'currency_symbol' => $this->currency->symbol(),
-            'ordering_enabled' => $this->ordering_enabled,
+            'ordering_enabled' => $mode !== null,
+            'ordering_mode' => $mode?->value,
             'order_types' => $this->availableOrderTypes(),
             'internal_reviews' => (bool) $this->hasFeature('internal_reviews'),
             'review_public_url' => $this->review_public_url,

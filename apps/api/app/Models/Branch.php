@@ -2,13 +2,14 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\Auditable;
 use App\Models\Concerns\BelongsToRestaurant;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 
 class Branch extends Model
 {
-    use BelongsToRestaurant;
+    use Auditable, BelongsToRestaurant;
 
     protected $fillable = [
         'name_ar',

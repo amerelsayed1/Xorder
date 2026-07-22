@@ -17,6 +17,9 @@ const props = defineProps({
     // Flat items [{ to, labelKey, icon }] or collapsible groups
     // [{ key, labelKey, icon, badge?, children: [{ to, labelKey, icon, badge? }] }].
     nav: { type: Array, required: true },
+    // Hide the EN/AR toggle. The restaurant dashboard locks its language to the
+    // Super-Admin-configured default, so it passes true; the admin keeps it.
+    hideLangToggle: { type: Boolean, default: false },
 })
 
 const auth = useAuth()
@@ -88,7 +91,7 @@ const profileItems = computed(() => [
                 </RouterLink>
             </div>
             <div class="flex items-center gap-2">
-                <Button :label="targetLocaleName" icon="pi pi-globe" text severity="secondary" size="small" @click="toggleLang" />
+                <Button v-if="!hideLangToggle" :label="targetLocaleName" icon="pi pi-globe" text severity="secondary" size="small" @click="toggleLang" />
                 <button class="sakai-profile" @click="profileMenu.toggle($event)">
                     <Avatar :label="userInitial" shape="circle" style="background:var(--p-primary-color);color:#fff;font-weight:700" />
                     <span class="hidden sm:block sakai-profile-name">{{ auth.user?.name }}</span>
@@ -149,6 +152,7 @@ const profileItems = computed(() => [
         <!-- Content -->
         <main class="sakai-content theme-warm">
             <div class="sakai-content-inner">
+                <slot name="banner" />
                 <RouterView />
             </div>
         </main>

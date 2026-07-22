@@ -1,9 +1,9 @@
 <?php
 
+use App\Http\Controllers\Admin\AuditLogController as AdminAuditLogController;
 use App\Http\Controllers\Admin\InsightsController as AdminInsightsController;
 use App\Http\Controllers\Admin\LandingContentController as AdminLandingContentController;
 use App\Http\Controllers\Admin\LeadController as AdminLeadController;
-use App\Http\Controllers\Admin\MenuParserController as AdminMenuParserController;
 use App\Http\Controllers\Admin\PlanController as AdminPlanController;
 use App\Http\Controllers\Admin\RestaurantAdminController as AdminRestaurantAdminController;
 use App\Http\Controllers\Admin\RestaurantController as AdminRestaurantController;
@@ -52,7 +52,7 @@ Route::prefix('auth')->group(function () {
     Route::post('forgot-password', [PasswordResetController::class, 'forgot'])->middleware('throttle:5,1');
     Route::post('reset-password', [PasswordResetController::class, 'reset'])->middleware('throttle:5,1');
 
-    Route::middleware('auth:sanctum')->group(function () {
+    Route::middleware('auth:jwt')->group(function () {
         Route::post('logout', [AuthController::class, 'logout']);
         Route::get('me', [AuthController::class, 'me']);
     });
@@ -64,7 +64,7 @@ Route::prefix('auth')->group(function () {
 |--------------------------------------------------------------------------
 */
 Route::prefix('admin')
-    ->middleware(['auth:sanctum', 'role:SUPER_ADMIN'])
+    ->middleware(['auth:jwt', 'role:SUPER_ADMIN'])
     ->group(function () {
         Route::get('insights', [AdminInsightsController::class, 'index']);
         Route::get('restaurants', [AdminRestaurantController::class, 'index']);
@@ -95,8 +95,9 @@ Route::prefix('admin')
         Route::get('leads/export', [AdminLeadController::class, 'export']);
         Route::patch('leads/{lead}', [AdminLeadController::class, 'update']);
 
-        // Menu image parser
-        Route::post('menu-parser/parse', [AdminMenuParserController::class, 'parse']);
+        // Audit trail — read-only activity log across all tenants.
+        Route::get('audit-logs', [AdminAuditLogController::class, 'index']);
+        Route::get('audit-logs/filters', [AdminAuditLogController::class, 'filters']);
     });
 
 /*
@@ -106,7 +107,7 @@ Route::prefix('admin')
 | Writes additionally pass through `subscription.writable`.
 */
 Route::prefix('dashboard')
-    ->middleware(['auth:sanctum', 'role:RESTAURANT_ADMIN'])
+    ->middleware(['auth:jwt', 'role:RESTAURANT_ADMIN'])
     ->group(function () {
         // Reads
         Route::get('restaurant', [RestaurantProfileController::class, 'show']);
@@ -118,8 +119,12 @@ Route::prefix('dashboard')
         Route::get('categories/{category}', [CategoryController::class, 'show']);
         Route::get('items', [MenuItemController::class, 'index']);
         Route::get('items/{item}', [MenuItemController::class, 'show']);
-        Route::get('customers', [CustomerController::class, 'index']);
-        Route::get('customers/{customer}', [CustomerController::class, 'show']);
+        // Customer database — gated on the customer_tracking feature (Restaurant
+        // Pro). WhatsApp-only plans never build a customer list.
+        Route::middleware('feature:customer_tracking')->group(function () {
+            Route::get('customers', [CustomerController::class, 'index']);
+            Route::get('customers/{customer}', [CustomerController::class, 'show']);
+        });
 
         // Push-notification device tokens (not subscription-gated).
         Route::post('push/token', [PushTokenController::class, 'store']);
@@ -127,18 +132,25 @@ Route::prefix('dashboard')
         Route::get('qr', [DashboardQrController::class, 'show']);
         Route::get('qr/download', [DashboardQrController::class, 'download']);
 
-        // Orders — deliberately NOT behind subscription.writable: a restaurant
-        // whose subscription just expired must still be able to process the
-        // orders that already came in.
-        Route::get('orders', [DashboardOrderController::class, 'index']);
-        Route::get('orders/new-count', [DashboardOrderController::class, 'newCount']);
-        Route::patch('orders/{order}/status', [DashboardOrderController::class, 'updateStatus']);
+        // Order management — gated on the system_ordering feature (Restaurant
+        // Pro). WhatsApp-only plans hand orders off to WhatsApp and have no
+        // durable order queue to manage. Deliberately NOT behind
+        // subscription.writable: a restaurant whose subscription just expired
+        // must still be able to process the orders that already came in.
+        Route::middleware('feature:system_ordering')->group(function () {
+            Route::get('orders', [DashboardOrderController::class, 'index']);
+            Route::get('orders/new-count', [DashboardOrderController::class, 'newCount']);
+            Route::patch('orders/{order}/status', [DashboardOrderController::class, 'updateStatus']);
+        });
 
         // Writes (subscription-gated)
         Route::middleware('subscription.writable')->group(function () {
             Route::put('restaurant', [RestaurantProfileController::class, 'update']);
 
-            Route::post('branches', [BranchController::class, 'store']);
+            // Adding branches is a plan capability (multi_branch): single-branch
+            // plans can still edit/toggle/delete their existing branch, but only
+            // entitled plans may create new ones.
+            Route::middleware('feature:multi_branch')->post('branches', [BranchController::class, 'store']);
             Route::put('branches/{branch}', [BranchController::class, 'update']);
             Route::patch('branches/{branch}/status', [BranchController::class, 'toggleOpen']);
             Route::delete('branches/{branch}', [BranchController::class, 'destroy']);
@@ -223,7 +235,7 @@ Route::prefix('dashboard')
 |--------------------------------------------------------------------------
 */
 Route::post('uploads/image', [UploadController::class, 'store'])
-    ->middleware(['auth:sanctum', 'throttle:60,1']);
+    ->middleware(['auth:jwt', 'throttle:60,1']);
 
 /*
 |--------------------------------------------------------------------------

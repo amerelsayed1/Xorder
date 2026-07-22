@@ -5,12 +5,19 @@ namespace Tests\Feature;
 use App\Models\Order;
 use App\Models\Restaurant;
 use App\Models\User;
+use App\Services\RestaurantFeatureService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 class OrderTest extends TestCase
 {
     use RefreshDatabase;
+
+    /** Order management is gated on the system_ordering feature. */
+    private function enableSystemOrdering(Restaurant $r): void
+    {
+        app(RestaurantFeatureService::class)->apply($r, ['qr_menu' => true, 'system_ordering' => true]);
+    }
 
     private function payload(): array
     {
@@ -27,7 +34,7 @@ class OrderTest extends TestCase
 
     public function test_guest_can_record_an_order(): void
     {
-        $r = Restaurant::factory()->create(['slug' => 'demo', 'ordering_enabled' => true]);
+        $r = Restaurant::factory()->withOrdering()->create(['slug' => 'demo']);
 
         $res = $this->postJson('/api/public/restaurants/demo/orders', $this->payload());
 
@@ -42,7 +49,7 @@ class OrderTest extends TestCase
 
     public function test_order_requires_items(): void
     {
-        Restaurant::factory()->create(['slug' => 'demo', 'ordering_enabled' => true]);
+        Restaurant::factory()->withOrdering()->create(['slug' => 'demo']);
 
         $this->postJson('/api/public/restaurants/demo/orders', ['items' => [], 'total' => 0])
             ->assertStatus(422)
@@ -51,7 +58,7 @@ class OrderTest extends TestCase
 
     public function test_hidden_restaurant_rejects_orders(): void
     {
-        Restaurant::factory()->suspended()->create(['slug' => 'closed', 'ordering_enabled' => true]);
+        Restaurant::factory()->suspended()->withOrdering()->create(['slug' => 'closed']);
 
         $this->postJson('/api/public/restaurants/closed/orders', $this->payload())
             ->assertNotFound();
@@ -59,7 +66,8 @@ class OrderTest extends TestCase
 
     public function test_ordering_disabled_rejects_orders(): void
     {
-        Restaurant::factory()->create(['slug' => 'view-only', 'ordering_enabled' => false]);
+        // No ordering entitlement on the plan → the public menu is display-only.
+        Restaurant::factory()->create(['slug' => 'view-only']);
 
         $this->postJson('/api/public/restaurants/view-only/orders', $this->payload())
             ->assertStatus(422);
@@ -67,9 +75,10 @@ class OrderTest extends TestCase
 
     public function test_admin_sees_only_own_orders(): void
     {
-        $mine = Restaurant::factory()->create(['ordering_enabled' => true]);
-        $other = Restaurant::factory()->create(['ordering_enabled' => true]);
+        $mine = Restaurant::factory()->create();
+        $other = Restaurant::factory()->withOrdering()->create();
         $admin = User::factory()->restaurantAdmin($mine->id)->create();
+        $this->enableSystemOrdering($mine);
 
         $this->postJson("/api/public/restaurants/{$mine->slug}/orders", $this->payload())->assertCreated();
         $this->postJson("/api/public/restaurants/{$other->slug}/orders", $this->payload())->assertCreated();
@@ -85,9 +94,10 @@ class OrderTest extends TestCase
 
     public function test_admin_can_update_order_status_but_not_foreign_orders(): void
     {
-        $mine = Restaurant::factory()->create(['ordering_enabled' => true]);
-        $other = Restaurant::factory()->create(['ordering_enabled' => true]);
+        $mine = Restaurant::factory()->create();
+        $other = Restaurant::factory()->withOrdering()->create();
         $admin = User::factory()->restaurantAdmin($mine->id)->create();
+        $this->enableSystemOrdering($mine);
 
         $this->postJson("/api/public/restaurants/{$mine->slug}/orders", $this->payload());
         $this->postJson("/api/public/restaurants/{$other->slug}/orders", $this->payload());
@@ -106,8 +116,9 @@ class OrderTest extends TestCase
 
     public function test_order_status_rejects_unknown_value(): void
     {
-        $r = Restaurant::factory()->create(['ordering_enabled' => true]);
+        $r = Restaurant::factory()->create();
         $admin = User::factory()->restaurantAdmin($r->id)->create();
+        $this->enableSystemOrdering($r);
         $this->postJson("/api/public/restaurants/{$r->slug}/orders", $this->payload());
         $order = Order::withoutGlobalScopes()->where('restaurant_id', $r->id)->first();
 
@@ -118,8 +129,9 @@ class OrderTest extends TestCase
 
     public function test_orders_filter_by_status(): void
     {
-        $r = Restaurant::factory()->create(['ordering_enabled' => true]);
+        $r = Restaurant::factory()->create();
         $admin = User::factory()->restaurantAdmin($r->id)->create();
+        $this->enableSystemOrdering($r);
         $this->postJson("/api/public/restaurants/{$r->slug}/orders", $this->payload());
         $this->postJson("/api/public/restaurants/{$r->slug}/orders", $this->payload());
 

@@ -6,6 +6,7 @@ import api, { ensureCsrf } from '@xorder/api-client/api.js'
 import { localizedInitial, pickLocalized } from '@xorder/ui/localize.js'
 import Icon from '@xorder/ui/Icon.vue'
 import { confirm } from '@xorder/ui/confirm.js'
+import AuditLogList from '../../components/AuditLogList.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -22,6 +23,8 @@ const errMsg = ref('')
 const resettingPw = ref(false)
 const newPassword = ref('')
 const pwCopied = ref(false)
+const auditRows = ref([])
+const auditLoading = ref(true)
 
 async function load() {
     const { data } = await api.get(`api/admin/restaurants/${id}`)
@@ -39,7 +42,33 @@ async function loadPlans() {
     const { data } = await api.get('api/admin/plans', { params: { active_only: true } })
     plans.value = data.data
 }
-onMounted(() => { load(); loadPlans() })
+async function loadAudit() {
+    auditLoading.value = true
+    try {
+        const { data } = await api.get('api/admin/audit-logs', { params: { restaurant_id: id, per_page: 8 } })
+        auditRows.value = data.data
+    } finally {
+        auditLoading.value = false
+    }
+}
+onMounted(() => { load(); loadPlans(); loadAudit() })
+
+// At-a-glance subscription health for the summary strip.
+const daysLeft = computed(() => {
+    if (!sub.subscription_end_date) return null
+    const end = new Date(sub.subscription_end_date)
+    return Math.ceil((end - new Date()) / 86400000)
+})
+const subBadgeClass = computed(() => ({
+    ACTIVE: 'badge-green', TRIAL: 'badge-amber', EXPIRED: 'badge-red', SUSPENDED: 'badge-red',
+}[sub.subscription_status] || 'badge-gray'))
+const statusBadgeClass = computed(() => ({
+    ACTIVE: 'badge-green', SUSPENDED: 'badge-red', ARCHIVED: 'badge-gray',
+}[r.value?.status] || 'badge-gray'))
+// Ordering is plan-gated: available_ordering_modes is what the plan entitles.
+// Empty → the plan grants no ordering channel, so ordering is unavailable
+// regardless of any raw toggle.
+const orderingAvailable = computed(() => (r.value?.available_ordering_modes?.length || 0) > 0)
 
 // Active plan names, plus the restaurant's current value if it's a legacy /
 // custom plan no longer in the catalog (so we never silently drop it) —
@@ -65,13 +94,6 @@ async function setStatus(status) {
     await ensureCsrf()
     await api.patch(`api/admin/restaurants/${id}/status`, { status })
     msg.value = t('admin.status_updated', { status: t('status.' + status) })
-    await load()
-}
-async function setOrdering(enabled) {
-    if (r.value.ordering_enabled === enabled) return
-    await ensureCsrf()
-    await api.put(`api/admin/restaurants/${id}`, { ordering_enabled: enabled })
-    msg.value = t('admin.ordering_updated')
     await load()
 }
 async function saveSubscription() {
@@ -177,31 +199,30 @@ const initial = (x) => localizedInitial(x, 'name', locale.value)
     <div v-if="r" class="space-y-6 max-w-3xl">
         <div class="flex items-center justify-between gap-3">
             <RouterLink :to="{ name: 'admin.restaurants' }" class="text-sm" style="color:var(--muted)">{{ backArrow }} {{ t('common.back') }}</RouterLink>
-            <div class="flex flex-wrap justify-end items-center gap-2">
-                <RouterLink :to="{ name: 'admin.restaurants.edit', params: { id } }" class="btn btn-ghost"><Icon name="edit" :size="16" />{{ t('admin.edit_details') }}</RouterLink>
-                <button
-                    v-if="r.status !== 'ARCHIVED'"
-                    @click="archiveRestaurant"
-                    :disabled="archiving"
-                    class="btn btn-ghost"
-                >{{ archiving ? t('admin.archiving') : t('common.archive') }}</button>
-                <button
-                    v-else
-                    @click="hardDeleteRestaurant"
-                    :disabled="deleting"
-                    class="btn btn-ghost"
-                    style="color:#c0392b;border-color:#f1c9c4"
-                ><Icon name="trash" :size="16" />{{ deleting ? t('admin.deleting') : t('common.delete') }}</button>
-            </div>
+            <RouterLink :to="{ name: 'admin.restaurants.edit', params: { id } }" class="btn btn-ghost"><Icon name="edit" :size="16" />{{ t('admin.edit_details') }}</RouterLink>
         </div>
 
-        <div class="flex items-center gap-4">
-            <span v-if="!r.logo_url" class="grid place-items-center text-white font-semibold"
-                style="width:56px;height:56px;border-radius:13px;font-size:22px;font-family:var(--font-display);background:var(--accent)">{{ initial(r) }}</span>
-            <img v-else :src="r.logo_url" class="h-14 w-14 rounded-xl object-cover" />
-            <div>
-                <h1 class="page-title">{{ restaurantName(r) }}</h1>
-                <a :href="r.public_url" target="_blank" class="mono text-sm underline" style="color:var(--accent)">{{ r.public_url }}</a>
+        <!-- Identity + at-a-glance health -->
+        <div class="card p-5 space-y-4">
+            <div class="flex items-center gap-4">
+                <span v-if="!r.logo_url" class="grid place-items-center text-white font-semibold flex-shrink-0"
+                    style="width:56px;height:56px;border-radius:13px;font-size:22px;font-family:var(--font-display);background:var(--accent)">{{ initial(r) }}</span>
+                <img v-else :src="r.logo_url" class="h-14 w-14 rounded-xl object-cover flex-shrink-0" />
+                <div class="min-w-0">
+                    <h1 class="page-title truncate">{{ restaurantName(r) }}</h1>
+                    <a :href="r.public_url" target="_blank" class="mono text-sm underline" style="color:var(--accent)">{{ r.public_url }}</a>
+                </div>
+            </div>
+            <div class="flex flex-wrap items-center gap-2 pt-1">
+                <span class="badge" :class="statusBadgeClass"><span class="dot"></span>{{ t('status.' + r.status) }}</span>
+                <span class="badge" :class="subBadgeClass">{{ t('subscription_status.' + sub.subscription_status) }}</span>
+                <span v-if="sub.subscription_plan" class="badge badge-gray">{{ sub.subscription_plan }}</span>
+                <span v-if="daysLeft !== null" class="badge" :class="daysLeft <= 7 ? 'badge-red' : 'badge-gray'">
+                    {{ daysLeft >= 0 ? t('admin.days_left', { n: daysLeft }) : t('admin.expired_ago', { n: -daysLeft }) }}
+                </span>
+                <span class="badge" :class="orderingAvailable ? 'badge-green' : 'badge-gray'">
+                    {{ t('admin.ordering_title') }}: {{ orderingAvailable ? t('admin.ordering_on') : t('admin.ordering_unavailable') }}
+                </span>
             </div>
         </div>
 
@@ -214,16 +235,6 @@ const initial = (x) => localizedInitial(x, 'name', locale.value)
             <p class="page-sub mb-3">{{ t('admin.status_help') }}</p>
             <div class="segmented">
                 <button v-for="s in statuses" :key="s" :class="{ active: r.status === s }" @click="setStatus(s)">{{ t('status.' + s) }}</button>
-            </div>
-        </section>
-
-        <!-- Ordering -->
-        <section class="card p-5">
-            <h2 class="h-card mb-1">{{ t('admin.ordering_title') }}</h2>
-            <p class="page-sub mb-3">{{ t('admin.ordering_help') }}</p>
-            <div class="segmented">
-                <button :class="{ active: r.ordering_enabled }" @click="setOrdering(true)">{{ t('admin.ordering_on') }}</button>
-                <button :class="{ active: !r.ordering_enabled }" @click="setOrdering(false)">{{ t('admin.ordering_off') }}</button>
             </div>
         </section>
 
@@ -285,6 +296,39 @@ const initial = (x) => localizedInitial(x, 'name', locale.value)
                     <button @click="downloadQr" class="btn btn-ghost">{{ t('admin.download_png') }}</button>
                     <a :href="r.public_url" target="_blank" class="btn btn-dark">{{ t('dashboard.view_menu') }}</a>
                 </div>
+            </div>
+        </section>
+
+        <!-- Activity / audit trail for this restaurant -->
+        <section class="card p-5">
+            <div class="flex items-center justify-between gap-3 mb-1">
+                <h2 class="h-card">{{ t('audit.recent_title') }}</h2>
+                <RouterLink :to="{ name: 'admin.audit', query: { restaurant_id: id } }" class="text-sm" style="color:var(--accent)">
+                    {{ t('audit.view_all') }} {{ backArrow === '←' ? '→' : '←' }}
+                </RouterLink>
+            </div>
+            <p class="page-sub mb-2">{{ t('audit.recent_sub') }}</p>
+            <AuditLogList :rows="auditRows" :loading="auditLoading" :show-tenant="false" />
+        </section>
+
+        <!-- Danger zone -->
+        <section class="card p-5" style="border-color:#f1c9c4">
+            <h2 class="h-card mb-1" style="color:#c0392b">{{ t('admin.danger_zone') }}</h2>
+            <p class="page-sub mb-3">{{ t('admin.danger_zone_help') }}</p>
+            <div class="flex flex-wrap gap-2">
+                <button
+                    v-if="r.status !== 'ARCHIVED'"
+                    @click="archiveRestaurant"
+                    :disabled="archiving"
+                    class="btn btn-ghost"
+                >{{ archiving ? t('admin.archiving') : t('common.archive') }}</button>
+                <button
+                    v-else
+                    @click="hardDeleteRestaurant"
+                    :disabled="deleting"
+                    class="btn btn-ghost"
+                    style="color:#c0392b;border-color:#f1c9c4"
+                ><Icon name="trash" :size="16" />{{ deleting ? t('admin.deleting') : t('common.delete') }}</button>
             </div>
         </section>
     </div>

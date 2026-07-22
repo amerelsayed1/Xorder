@@ -24,8 +24,8 @@ class OrderTableAssociationTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->restaurant = Restaurant::factory()->create([
-            'status' => RestaurantStatus::ACTIVE, 'slug' => 'cafe', 'ordering_enabled' => true,
+        $this->restaurant = Restaurant::factory()->withOrdering()->create([
+            'status' => RestaurantStatus::ACTIVE, 'slug' => 'cafe',
         ]);
         $branch = new Branch(['name_en' => 'Main']);
         $branch->restaurant_id = $this->restaurant->id;

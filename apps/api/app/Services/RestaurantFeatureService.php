@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Enums\Feature;
+use App\Enums\OrderingMode;
 use App\Models\Restaurant;
 use Illuminate\Support\Facades\Auth;
 
@@ -33,6 +34,18 @@ class RestaurantFeatureService
                     'enabled_by' => $enabled ? $actorId : null,
                 ],
             );
+        }
+
+        // Keep the ordering-channel preference within what the plan now grants:
+        // WhatsApp and system ordering are separate entitlements, so dropping one
+        // coerces ordering_mode down. This is the single place the mode and the
+        // entitlements are reconciled, so the stored ordering_mode is always a
+        // value the plan actually permits (with 'whatsapp' the safe default when
+        // no ordering channel is entitled — never silently records orders).
+        $restaurant->load('features');
+        $target = $restaurant->effectiveOrderingMode() ?? OrderingMode::WHATSAPP;
+        if ($restaurant->ordering_mode !== $target) {
+            $restaurant->update(['ordering_mode' => $target]);
         }
     }
 }

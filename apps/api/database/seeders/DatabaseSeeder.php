@@ -20,6 +20,7 @@ class DatabaseSeeder extends Seeder
             ['email' => $email],
             [
                 'name' => config('platform.super_admin.name'),
+                'username' => config('platform.super_admin.username'),
                 'password' => Hash::make(config('platform.super_admin.password')),
                 'role' => RoleEnum::SUPER_ADMIN,
                 'restaurant_id' => null,

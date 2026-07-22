@@ -5,21 +5,38 @@ import api, { ensureCsrf } from '@xorder/api-client/api.js'
 import ImageUploader from '@xorder/ui/ImageUploader.vue'
 import FormError from '@xorder/ui/FormError.vue'
 import { useMenuLang } from '../../lib/menuLang.js'
+import { useAuth } from '@xorder/api-client/auth.js'
 
 const { t } = useI18n()
+const auth = useAuth()
 const { langs, bilingual } = useMenuLang()
 const form = reactive({
     name_en: '', name_ar: '', description_en: '', description_ar: '',
     phone: '', whatsapp_number: '', address: '', opening_hours: '',
-    logo_url: '', cover_image_url: '', brand_color: '#f89a06', secondary_color: '', default_language: 'ar',
+    logo_url: '', cover_image_url: '',
+    ordering_mode: 'both',
+    social_links: { instagram: '', facebook: '', tiktok: '' },
 })
 const errors = ref({})
 const saved = ref(false)
 const saving = ref(false)
+// Ordering channels the restaurant's plan grants; the selector is capped to these.
+const orderingModeOptions = ref([])
 
 onMounted(async () => {
     const { data } = await api.get('api/dashboard/restaurant')
-    Object.assign(form, { ...data.data, secondary_color: data.data.secondary_color || '' })
+    Object.assign(form, {
+        ...data.data,
+        // The API sends {} when nothing is set — keep every known field present
+        // so the inputs stay controlled.
+        social_links: { instagram: '', facebook: '', tiktok: '', ...(data.data.social_links || {}) },
+    })
+    orderingModeOptions.value = data.data.available_ordering_modes?.length === 3
+        ? ['both', 'whatsapp', 'system']
+        : (data.data.available_ordering_modes || [])
+    if (orderingModeOptions.value.length && !orderingModeOptions.value.includes(form.ordering_mode)) {
+        form.ordering_mode = orderingModeOptions.value[0]
+    }
 })
 
 async function submit() {
@@ -70,22 +87,58 @@ async function submit() {
                 <input v-model="form.opening_hours" class="input" /></label>
 
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <ImageUploader v-model="form.logo_url" folder="logos" :label="t('restaurant.logo')" />
-                <ImageUploader v-model="form.cover_image_url" folder="covers" :label="t('restaurant.cover_image')" />
+                <ImageUploader v-model="form.logo_url" folder="logos" :label="t('restaurant.logo')" :disabled="auth.isReadOnly" />
+                <ImageUploader v-model="form.cover_image_url" folder="covers" :label="t('restaurant.cover_image')" :disabled="auth.isReadOnly" />
             </div>
 
-            <div class="grid grid-cols-3 gap-4 items-end">
-                <label class="block"><span class="label">{{ t('restaurant.brand_color') }}</span>
-                    <input v-model="form.brand_color" type="color" class="mt-1.5 w-full h-11 rounded-lg border cursor-pointer" style="border-color:var(--line)" /></label>
-                <label class="block"><span class="label">{{ t('restaurant.secondary_color') }}</span>
-                    <input v-model="form.secondary_color" type="color" class="mt-1.5 w-full h-11 rounded-lg border cursor-pointer" style="border-color:var(--line)" /></label>
-                <label class="block"><span class="label">{{ t('restaurant.language') }}</span>
-                    <select v-model="form.default_language" class="input">
-                        <option value="ar">{{ t('languages.ar') }}</option><option value="en">{{ t('languages.en') }}</option>
-                    </select></label>
+            <div class="block">
+                <span class="label">{{ t('restaurant.social_links') }}</span>
+                <p class="page-sub" style="margin:2px 0 8px">{{ t('restaurant.social_hint') }}</p>
+                <div class="flex flex-col gap-3">
+                    <label class="flex items-center gap-3">
+                        <i class="pi pi-instagram social-ico" style="color:#e4405f" aria-hidden="true"></i>
+                        <span class="flex-1 min-w-0">
+                            <input v-model="form.social_links.instagram" type="url" dir="ltr" aria-label="Instagram" placeholder="https://instagram.com/…" class="input" />
+                            <FormError :errors="errors" field="social_links.instagram" />
+                        </span>
+                    </label>
+                    <label class="flex items-center gap-3">
+                        <i class="pi pi-facebook social-ico" style="color:#1877f2" aria-hidden="true"></i>
+                        <span class="flex-1 min-w-0">
+                            <input v-model="form.social_links.facebook" type="url" dir="ltr" aria-label="Facebook" placeholder="https://facebook.com/…" class="input" />
+                            <FormError :errors="errors" field="social_links.facebook" />
+                        </span>
+                    </label>
+                    <label class="flex items-center gap-3">
+                        <i class="pi pi-tiktok social-ico" style="color:var(--ink)" aria-hidden="true"></i>
+                        <span class="flex-1 min-w-0">
+                            <input v-model="form.social_links.tiktok" type="url" dir="ltr" aria-label="TikTok" placeholder="https://tiktok.com/@…" class="input" />
+                            <FormError :errors="errors" field="social_links.tiktok" />
+                        </span>
+                    </label>
+                </div>
             </div>
+
+            <div v-if="orderingModeOptions.length > 1" class="block">
+                <span class="label">{{ t('restaurant.ordering_mode') }}</span>
+                <div class="flex gap-2 mt-1.5 flex-wrap">
+                    <button v-for="m in orderingModeOptions" :key="m" type="button" @click="form.ordering_mode = m"
+                        class="btn" :class="form.ordering_mode === m ? 'btn-dark' : 'btn-ghost'">{{ t('restaurant.ordering_mode_' + m) }}</button>
+                </div>
+                <span class="block text-xs mt-1.5" style="color:var(--muted)">{{ t('restaurant.ordering_mode_hint') }}</span>
+            </div>
+
         </div>
 
-        <button type="submit" :disabled="saving" class="btn btn-accent">{{ saving ? t('common.saving') : t('common.save') }}</button>
+        <button type="submit" :disabled="saving || auth.isReadOnly" class="btn btn-accent">{{ saving ? t('common.saving') : t('common.save') }}</button>
     </form>
 </template>
+
+<style scoped>
+.social-ico {
+    font-size: 20px;
+    width: 24px;
+    text-align: center;
+    flex: none;
+}
+</style>

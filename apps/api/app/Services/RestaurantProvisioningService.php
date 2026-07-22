@@ -17,6 +17,7 @@ class RestaurantProvisioningService
     public function __construct(
         private readonly SlugService $slugs,
         private readonly RestaurantFeatureService $features,
+        private readonly PlanEntitlementService $entitlements,
     ) {}
 
     /**
@@ -54,14 +55,24 @@ class RestaurantProvisioningService
         // ultimate guard; this avoids a noisy 500 in the common case).
         $restaurantData['slug'] = $this->slugs->unique($restaurantData['slug']);
 
-        $featureSet = $features === [] ? Feature::defaultSet() : $features;
+        // The Super Admin wizard supplies an explicit username; self-serve
+        // signup doesn't, so derive one from the (already-unique) slug.
+        if (empty($adminData['username'])) {
+            $adminData['username'] = $this->uniqueUsername($restaurantData['slug']);
+        }
 
-        [$restaurant, $admin] = DB::transaction(function () use ($restaurantData, $adminData, $plainPassword, $branchData, $featureSet) {
+        // The plan strictly decides features; this only applies when the
+        // restaurant has no plan (e.g. self-serve signup) or the plan predates
+        // the entitlement set.
+        $fallback = $features === [] ? Feature::defaultSet() : $features;
+
+        [$restaurant, $admin] = DB::transaction(function () use ($restaurantData, $adminData, $plainPassword, $branchData, $fallback) {
             $restaurant = Restaurant::create($restaurantData);
 
             $admin = User::create([
                 'name' => $adminData['name'],
-                'email' => $adminData['email'],
+                'username' => $adminData['username'],
+                'email' => $adminData['email'] ?? null,
                 'password' => Hash::make($plainPassword),
                 'role' => RoleEnum::RESTAURANT_ADMIN,
                 'restaurant_id' => $restaurant->id,
@@ -74,7 +85,7 @@ class RestaurantProvisioningService
                 $restaurant->branches()->create($branchData);
             }
 
-            $this->features->apply($restaurant, $featureSet);
+            $this->features->apply($restaurant, $this->entitlements->resolvedMapFor($restaurant, $fallback));
 
             return [$restaurant, $admin];
         });
@@ -109,5 +120,22 @@ class RestaurantProvisioningService
     {
         // 16 chars, URL-safe, plenty of entropy.
         return Str::password(16, symbols: false);
+    }
+
+    /** A login username derived from the slug, suffixed until unique. */
+    private function uniqueUsername(string $base): string
+    {
+        $base = Str::of($base)->lower()->replaceMatches('/[^a-z0-9._-]/', '')->toString();
+        if ($base === '') {
+            $base = 'owner';
+        }
+
+        $username = $base;
+        $i = 1;
+        while (User::where('username', $username)->exists()) {
+            $username = $base.(++$i);
+        }
+
+        return $username;
     }
 }

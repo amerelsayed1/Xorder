@@ -14,31 +14,43 @@ class AuthTest extends TestCase
 
     public function test_super_admin_can_log_in(): void
     {
-        $admin = User::factory()->superAdmin()->create(['email' => 'sa@test.com']);
+        User::factory()->superAdmin()->create(['username' => 'superadmin']);
 
-        $this->postJson('/api/auth/login', ['email' => 'sa@test.com', 'password' => 'password'])
+        $this->postJson('/api/auth/login', ['username' => 'superadmin', 'password' => 'password'])
             ->assertOk()
             ->assertJsonPath('data.role', 'SUPER_ADMIN');
     }
 
+    public function test_login_is_case_insensitive_for_username(): void
+    {
+        User::factory()->superAdmin()->create(['username' => 'superadmin']);
+
+        $this->postJson('/api/auth/login', ['username' => 'SuperAdmin', 'password' => 'password'])
+            ->assertOk()
+            ->assertJsonPath('data.username', 'superadmin');
+    }
+
     public function test_login_fails_with_wrong_password(): void
     {
-        User::factory()->superAdmin()->create(['email' => 'sa@test.com']);
+        User::factory()->superAdmin()->create(['username' => 'superadmin']);
 
-        $this->postJson('/api/auth/login', ['email' => 'sa@test.com', 'password' => 'nope'])
-            ->assertStatus(422);
+        // Wrong credentials are an authentication failure → 401.
+        $this->postJson('/api/auth/login', ['username' => 'superadmin', 'password' => 'nope'])
+            ->assertStatus(401);
     }
 
     public function test_suspended_user_cannot_log_in(): void
     {
-        $r = Restaurant::factory()->create();
+        $r = Restaurant::factory()->create(['slug' => 'susp']);
         User::factory()->restaurantAdmin($r->id)->create([
-            'email' => 'ra@test.com',
+            'username' => 'suspendedadmin',
             'status' => UserStatus::SUSPENDED,
         ]);
 
-        $this->postJson('/api/auth/login', ['email' => 'ra@test.com', 'password' => 'password'])
-            ->assertStatus(422);
+        // On the account's own subdomain, so the attempt reaches the status check.
+        // A known-but-not-allowed account → 403 (distinct from wrong-credentials 401).
+        $this->postJson('http://susp.example.com/api/auth/login', ['username' => 'suspendedadmin', 'password' => 'password'])
+            ->assertStatus(403);
     }
 
     public function test_me_returns_restaurant_context_for_restaurant_admin(): void

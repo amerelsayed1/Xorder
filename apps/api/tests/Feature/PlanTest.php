@@ -25,7 +25,7 @@ class PlanTest extends TestCase
         $this->getJson('/api/admin/plans')->assertUnauthorized();
     }
 
-    public function test_super_admin_can_create_plan_with_features(): void
+    public function test_super_admin_can_create_plan_with_entitlements(): void
     {
         $sa = User::factory()->superAdmin()->create();
 
@@ -33,12 +33,12 @@ class PlanTest extends TestCase
             'name' => 'Pro',
             'price' => 500,
             'currency' => 'EGP',
-            'features' => ['Unlimited items', 'QR code'],
+            'feature_keys' => ['qr_menu', 'whatsapp_ordering'],
             'is_active' => true,
             'sort_order' => 2,
         ])->assertCreated()
             ->assertJsonPath('data.name', 'Pro')
-            ->assertJsonPath('data.features.0', 'Unlimited items')
+            ->assertJsonPath('data.feature_keys.0', 'qr_menu')
             ->assertJsonPath('data.is_active', true);
 
         $this->assertDatabaseHas('plans', ['name' => 'Pro', 'price' => 500]);

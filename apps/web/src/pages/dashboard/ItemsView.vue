@@ -1,5 +1,6 @@
 <script setup>
-import { ref, reactive, onMounted, computed } from 'vue'
+import { ref, onMounted, computed } from 'vue'
+import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import api, { ensureCsrf } from '@xorder/api-client/api.js'
 import { withMinDuration } from '../../lib/minLoading.js'
@@ -8,36 +9,18 @@ import { currencyLabel } from '../../lib/currency.js'
 import { pickLocalized } from '@xorder/ui/localize.js'
 import Modal from '@xorder/ui/Modal.vue'
 import ListSkeleton from '@xorder/ui/ListSkeleton.vue'
-import ImageUploader from '@xorder/ui/ImageUploader.vue'
-import FormError from '@xorder/ui/FormError.vue'
 import Icon from '@xorder/ui/Icon.vue'
 import { confirm } from '@xorder/ui/confirm.js'
-import { useMenuLang } from '../../lib/menuLang.js'
 
 const { t, locale } = useI18n()
-const { langs, bilingual } = useMenuLang()
+const router = useRouter()
 const auth = useAuth()
 const cur = computed(() => currencyLabel(auth.restaurant?.currency, locale.value, auth.restaurant?.currency_symbol))
 const items = ref([])
 const categories = ref([])
 const loading = ref(true)
-const saving = ref(false)
 const filterCat = ref('')
 const search = ref('')
-const showModal = ref(false)
-const editing = ref(null)
-const errors = ref({})
-const form = reactive({
-    category_id: '', name_en: '', name_ar: '', description_en: '', description_ar: '',
-    price: '', discounted_price: '', image_url: '', is_available: true, is_featured: false,
-    option_groups: [],
-})
-
-// --- option-group builder helpers ---
-function addGroup() { form.option_groups.push({ name_en: '', name_ar: '', is_required: false, max_select: 1, options: [] }) }
-function removeGroup(i) { form.option_groups.splice(i, 1) }
-function addOption(g) { g.options.push({ name_en: '', name_ar: '', price: '' }) }
-function removeOption(g, i) { g.options.splice(i, 1) }
 
 const filtered = computed(() => {
     let list = filterCat.value
@@ -72,48 +55,11 @@ function catName(id) {
 }
 const itemName = (it) => pickLocalized(it, 'name', locale.value)
 const itemAltName = (it) => locale.value === 'ar' ? (it.name_en || '') : (it.name_ar || '')
-function openCreate() {
-    editing.value = null; errors.value = {}
-    Object.assign(form, { category_id: categories.value[0]?.id || '', name_en: '', name_ar: '',
-        description_en: '', description_ar: '', price: '', discounted_price: '', image_url: '',
-        is_available: true, is_featured: false, option_groups: [] })
-    showModal.value = true
+function goCreate() {
+    if (!categories.value.length) return
+    router.push({ name: 'dashboard.items.create' })
 }
-function openEdit(it) {
-    editing.value = it; errors.value = {}
-    Object.assign(form, { category_id: it.category_id, name_en: it.name_en || '', name_ar: it.name_ar || '',
-        description_en: it.description_en || '', description_ar: it.description_ar || '',
-        price: it.price, discounted_price: it.discounted_price || '', image_url: it.image_url || '',
-        is_available: it.is_available, is_featured: it.is_featured,
-        option_groups: (it.option_groups || []).map(g => ({
-            name_en: g.name_en || '', name_ar: g.name_ar || '',
-            is_required: !!g.is_required, max_select: g.max_select || 1,
-            options: (g.options || []).map(o => ({ name_en: o.name_en || '', name_ar: o.name_ar || '', price: o.price ?? '' })),
-        })) })
-    showModal.value = true
-}
-async function save() {
-    if (saving.value) return // guard against double-submit (double-click)
-    saving.value = true
-    errors.value = {}
-    const payload = {
-        ...form,
-        discounted_price: form.discounted_price === '' ? null : form.discounted_price,
-        option_groups: form.option_groups.map(g => ({
-            name_en: g.name_en, name_ar: g.name_ar,
-            is_required: g.is_required, max_select: Number(g.max_select) || 1,
-            options: g.options.map(o => ({ name_en: o.name_en, name_ar: o.name_ar, price: o.price === '' ? 0 : Number(o.price) })),
-        })),
-    }
-    try {
-        await ensureCsrf()
-        if (editing.value) await api.put(`api/dashboard/items/${editing.value.id}`, payload)
-        else await api.post('api/dashboard/items', payload)
-        showModal.value = false
-        await load()
-    } catch (err) { errors.value = err.response?.data?.errors || {} }
-    finally { saving.value = false }
-}
+function goEdit(it) { router.push({ name: 'dashboard.items.edit', params: { id: it.id } }) }
 async function toggleAvail(it) {
     await ensureCsrf()
     await api.patch(`api/dashboard/items/${it.id}/availability`, { is_available: !it.is_available })
@@ -203,8 +149,8 @@ async function submitImport() {
                 <p class="page-sub">{{ t('item.subtitle', { items: items.length, categories: categories.length }) }}</p>
             </div>
             <div class="flex items-center gap-2">
-                <button @click="openImport" class="btn btn-ghost"><Icon name="upload" :size="16" />{{ t('import.button') }}</button>
-                <button @click="openCreate" :disabled="!categories.length" class="btn btn-accent"><Icon name="plus" :size="16" />{{ t('common.create') }}</button>
+                <button v-if="!auth.isReadOnly" @click="openImport" class="btn btn-ghost"><Icon name="upload" :size="16" />{{ t('import.button') }}</button>
+                <button v-if="!auth.isReadOnly" @click="goCreate" :disabled="!categories.length" class="btn btn-accent"><Icon name="plus" :size="16" />{{ t('common.create') }}</button>
             </div>
         </div>
         <p v-if="!categories.length" class="text-sm" style="color:var(--amber)">{{ t('item.create_category_first') }}</p>
@@ -256,99 +202,21 @@ async function submitImport() {
                             <span v-if="it.discounted_price" class="text-xs line-through ms-1" style="color:var(--muted)">{{ it.price }} {{ cur }}</span>
                         </td>
                         <td class="px-3 py-3 hidden sm:table-cell">
-                            <button class="star" :class="{ on: it.is_featured }" @click="toggleFeatured(it)">★</button>
+                            <button v-if="!auth.isReadOnly" class="star" :class="{ on: it.is_featured }" @click="toggleFeatured(it)">★</button>
                         </td>
                         <td class="px-3 py-3">
-                            <button class="switch" :class="{ on: it.is_available }" @click="toggleAvail(it)"></button>
+                            <button v-if="!auth.isReadOnly" class="switch" :class="{ on: it.is_available }" @click="toggleAvail(it)"></button>
                         </td>
                         <td class="px-5 py-3 text-end whitespace-nowrap">
                             <div class="inline-flex items-center gap-1">
-                                <button @click="openEdit(it)" class="icon-btn" :title="t('common.edit')"><Icon name="edit" :size="17" /></button>
-                                <button @click="remove(it)" class="icon-btn icon-btn-danger" :title="t('common.delete')"><Icon name="trash" :size="17" /></button>
+                                <button v-if="!auth.isReadOnly" @click="goEdit(it)" class="icon-btn" :title="t('common.edit')"><Icon name="edit" :size="17" /></button>
+                                <button v-if="!auth.isReadOnly" @click="remove(it)" class="icon-btn icon-btn-danger" :title="t('common.delete')"><Icon name="trash" :size="17" /></button>
                             </div>
                         </td>
                     </tr>
                 </tbody>
             </table>
         </div>
-
-        <Modal v-if="showModal" :title="editing ? t('common.edit') : t('common.create')" @close="showModal = false">
-            <div class="space-y-4">
-                <label class="block"><span class="label">{{ t('item.category') }}</span>
-                    <select v-model="form.category_id" class="input">
-                        <option v-for="c in categories" :key="c.id" :value="c.id">{{ catName(c.id) }}</option>
-                    </select>
-                    <FormError :errors="errors" field="category_id" /></label>
-                <label v-for="lng in langs" :key="'n' + lng" class="block" :dir="lng === 'ar' ? 'rtl' : 'ltr'">
-                    <span class="label">{{ bilingual ? t('common.name_' + lng) : t('common.name') }}</span>
-                    <input v-model="form['name_' + lng]" class="input" />
-                    <FormError :errors="errors" :field="'name_' + lng" /></label>
-                <label v-for="lng in langs" :key="'d' + lng" class="block" :dir="lng === 'ar' ? 'rtl' : 'ltr'">
-                    <span class="label">{{ bilingual ? t('common.description_' + lng) : t('common.description') }}</span>
-                    <textarea v-model="form['description_' + lng]" rows="2" class="input"></textarea></label>
-                <div class="grid grid-cols-2 gap-3">
-                    <label class="block"><span class="label">{{ t('item.price') }}<template v-if="cur"> ({{ cur }})</template></span>
-                        <input v-model="form.price" type="number" step="0.01" min="0" class="input" />
-                        <FormError :errors="errors" field="price" /></label>
-                    <label class="block"><span class="label">{{ t('item.discounted_price') }}</span>
-                        <input v-model="form.discounted_price" type="number" step="0.01" min="0" class="input" />
-                        <FormError :errors="errors" field="discounted_price" /></label>
-                </div>
-                <ImageUploader v-model="form.image_url" folder="items" :label="t('item.image')" />
-                <div class="flex gap-5">
-                    <label class="flex items-center gap-2 text-sm" style="color:var(--body)">
-                        <button type="button" class="switch" :class="{ on: form.is_available }" @click="form.is_available = !form.is_available"></button>
-                        {{ t('common.available') }}
-                    </label>
-                    <label class="flex items-center gap-2 text-sm" style="color:var(--body)">
-                        <button type="button" class="star" :class="{ on: form.is_featured }" @click="form.is_featured = !form.is_featured">★</button>
-                        {{ t('common.featured') }}
-                    </label>
-                </div>
-                <!-- Option groups builder -->
-                <div class="pt-2 border-t" style="border-color:var(--line)">
-                    <div class="flex items-center justify-between mb-2">
-                        <span class="label">{{ t('item.options') }}</span>
-                        <button type="button" class="btn btn-ghost btn-sm" @click="addGroup">+ {{ t('item.add_group') }}</button>
-                    </div>
-                    <p v-if="!form.option_groups.length" class="text-xs" style="color:var(--muted)">{{ t('item.no_options') }}</p>
-                    <div v-for="(g, gi) in form.option_groups" :key="gi" class="rounded-xl p-3 mb-3" style="background:var(--page);border:1px solid var(--line)">
-                        <div class="grid grid-cols-1 gap-2" :class="{ 'sm:grid-cols-2': bilingual }">
-                            <input v-for="lng in langs" :key="'g' + lng" v-model="g['name_' + lng]" class="input"
-                                :dir="lng === 'ar' ? 'rtl' : 'ltr'" :placeholder="t('item.group_name_' + lng)" />
-                        </div>
-                        <div class="flex items-center gap-4 flex-wrap mt-2">
-                            <label class="flex items-center gap-2 text-xs" style="color:var(--body)">
-                                <button type="button" class="switch" :class="{ on: g.is_required }" @click="g.is_required = !g.is_required"></button>
-                                {{ t('item.required') }}
-                            </label>
-                            <label class="flex items-center gap-2 text-xs" style="color:var(--body)">
-                                {{ t('item.max_select') }}
-                                <input v-model.number="g.max_select" type="number" min="1" class="input" style="width:64px;padding:5px 8px" />
-                            </label>
-                            <button type="button" class="icon-btn icon-btn-danger ms-auto" :title="t('common.delete')" @click="removeGroup(gi)"><Icon name="trash" :size="16" /></button>
-                        </div>
-                        <div class="mt-2 space-y-2">
-                            <div v-for="(o, oi) in g.options" :key="oi" class="flex items-center gap-2">
-                                <input v-for="lng in langs" :key="'o' + lng" v-model="o['name_' + lng]" class="input flex-1"
-                                    :dir="lng === 'ar' ? 'rtl' : 'ltr'" :placeholder="t('item.option_' + lng)" />
-                                <input v-model="o.price" type="number" step="0.01" min="0" class="input" style="width:90px" :placeholder="cur || '+0'" />
-                                <button type="button" class="icon-btn icon-btn-danger" :title="t('common.delete')" @click="removeOption(g, oi)"><Icon name="close" :size="16" /></button>
-                            </div>
-                            <button type="button" class="btn btn-ghost btn-sm" @click="addOption(g)">+ {{ t('item.add_option') }}</button>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="flex justify-end gap-2 pt-2">
-                    <button @click="showModal = false" :disabled="saving" class="btn btn-ghost">{{ t('common.cancel') }}</button>
-                    <button @click="save" :disabled="saving" class="btn btn-accent">
-                        <Icon v-if="saving" name="loading" :size="16" class="animate-spin" />
-                        {{ saving ? t('common.saving') : t('common.save') }}
-                    </button>
-                </div>
-            </div>
-        </Modal>
 
         <!-- Import from CSV / Excel -->
         <Modal v-if="showImport" :title="t('import.title')" @close="showImport = false">

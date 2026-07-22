@@ -98,7 +98,6 @@ const fmtDate = (d) => d ? new Date(d).toLocaleDateString(locale.value, { month:
                             :style="{ background: avatarColor(r) }">{{ initial(r) }}</span>
                         <div class="min-w-0 flex-1">
                             <div class="font-medium truncate" style="color:var(--ink)">{{ restaurantName(r) }}</div>
-                            <div class="mono text-xs truncate" style="color:var(--muted)">/r/{{ r.slug }}</div>
                         </div>
                         <span class="text-xs hidden sm:block" style="color:var(--muted)">{{ t('admin.item_count', { count: r.menu_items_count ?? 0 }) }}</span>
                         <StatusBadge :value="r.status" />

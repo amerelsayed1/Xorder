@@ -23,13 +23,14 @@ class RestaurantProvisioningTest extends TestCase
             'slug' => 'tasty',
             'default_language' => 'en',
             'currency' => 'EGP',
-            'admin' => ['name' => 'Owner', 'email' => 'owner@tasty.com'],
+            'admin' => ['name' => 'Owner', 'username' => 'owner', 'email' => 'owner@tasty.com'],
         ])->assertCreated()
             ->assertJsonPath('data.slug', 'tasty')
             ->assertJsonStructure(['generated_password']);
 
         $this->assertDatabaseHas('restaurants', ['slug' => 'tasty']);
-        $admin = User::where('email', 'owner@tasty.com')->first();
+        $this->assertDatabaseHas('users', ['username' => 'owner', 'email' => 'owner@tasty.com']);
+        $admin = User::where('username', 'owner')->first();
         $this->assertSame(RoleEnum::RESTAURANT_ADMIN, $admin->role);
         $this->assertNotNull($admin->restaurant_id);
     }

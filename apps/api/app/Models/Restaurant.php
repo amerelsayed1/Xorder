@@ -5,8 +5,10 @@ namespace App\Models;
 use App\Enums\CurrencyEnum;
 use App\Enums\Feature;
 use App\Enums\LanguageEnum;
+use App\Enums\OrderingMode;
 use App\Enums\RestaurantStatus;
 use App\Enums\SubscriptionStatus;
+use App\Models\Concerns\Auditable;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -14,7 +16,23 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Restaurant extends Model
 {
-    use HasFactory;
+    use Auditable, HasFactory;
+
+    // The restaurant *is* the tenant — audit rows about it scope to its own id.
+    public function auditRestaurantId(): ?int
+    {
+        return $this->id;
+    }
+
+    protected function auditIsTenantRoot(): bool
+    {
+        return true;
+    }
+
+    protected function auditLabel(): string
+    {
+        return $this->name_en ?: ($this->name_ar ?: $this->slug);
+    }
 
     protected $fillable = [
         'name_ar',
@@ -28,13 +46,14 @@ class Restaurant extends Model
         'whatsapp_number',
         'address',
         'opening_hours',
+        'social_links',
         'brand_color',
         'secondary_color',
         'default_language',
         'bilingual',
         'currency',
         'timezone',
-        'ordering_enabled',
+        'ordering_mode',
         'status',
         'subscription_status',
         'subscription_plan',
@@ -49,14 +68,75 @@ class Restaurant extends Model
     {
         return [
             'default_language' => LanguageEnum::class,
+            'social_links' => 'array',
             'bilingual' => 'boolean',
             'currency' => CurrencyEnum::class,
-            'ordering_enabled' => 'boolean',
+            'ordering_mode' => OrderingMode::class,
             'status' => RestaurantStatus::class,
             'subscription_status' => SubscriptionStatus::class,
             'subscription_start_date' => 'date',
             'subscription_end_date' => 'date',
         ];
+    }
+
+    /** Social platforms the menu footer knows how to render, in display order. */
+    public const SOCIAL_PLATFORMS = ['instagram', 'facebook', 'tiktok'];
+
+    /**
+     * Configured social links restricted to known platforms with a non-empty
+     * URL. Empty/unknown entries are dropped so the public menu only ever links
+     * to profiles the restaurant actually set.
+     *
+     * @return array<string, string>
+     */
+    public function publicSocialLinks(): array
+    {
+        $links = $this->social_links ?? [];
+
+        return collect(self::SOCIAL_PLATFORMS)
+            ->mapWithKeys(fn (string $key) => [$key => trim((string) ($links[$key] ?? ''))])
+            ->filter()
+            ->all();
+    }
+
+    /**
+     * Ordering channels the plan entitlements permit. WhatsApp and system
+     * ordering are separate paid capabilities (Feature flags), so the chosen
+     * ordering_mode is only ever offered within — and capped to — what the
+     * plan actually grants.
+     *
+     * @return list<OrderingMode>
+     */
+    public function availableOrderingModes(): array
+    {
+        // Referenced by string so this doesn't hard-depend on the Feature enum
+        // carrying a SYSTEM_ORDERING case (the flag lives in restaurant_features).
+        $wa = $this->hasFeature('whatsapp_ordering');
+        $sys = $this->hasFeature('system_ordering');
+
+        return match (true) {
+            $wa && $sys => [OrderingMode::WHATSAPP, OrderingMode::SYSTEM, OrderingMode::BOTH],
+            $wa => [OrderingMode::WHATSAPP],
+            $sys => [OrderingMode::SYSTEM],
+            default => [],
+        };
+    }
+
+    /**
+     * The configured ordering_mode capped to what the plan entitles. Returns
+     * null when no ordering channel is entitled at all. This is the mode the
+     * public menu and order pipeline must honour — never the raw column, which
+     * only records the restaurant's preference.
+     */
+    public function effectiveOrderingMode(): ?OrderingMode
+    {
+        $available = $this->availableOrderingModes();
+
+        if ($available === []) {
+            return null;
+        }
+
+        return in_array($this->ordering_mode, $available, true) ? $this->ordering_mode : $available[0];
     }
 
     protected function phone(): Attribute

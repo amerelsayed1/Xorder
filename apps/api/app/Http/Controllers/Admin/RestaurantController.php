@@ -8,7 +8,7 @@ use App\Http\Requests\Admin\StoreRestaurantRequest;
 use App\Http\Requests\Admin\UpdateRestaurantRequest;
 use App\Http\Resources\RestaurantResource;
 use App\Models\Restaurant;
-use App\Services\RestaurantFeatureService;
+use App\Services\PlanEntitlementService;
 use App\Services\RestaurantProvisioningService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -40,11 +40,13 @@ class RestaurantController extends Controller
     {
         $branch = $request->validated('branch');
 
+        // No `features` argument: capabilities are derived strictly from the
+        // chosen plan inside provisioning, so admin creation can't grant more
+        // than the plan entitles.
         $result = $provisioner->provision(
             restaurantData: $request->safe()->except(['admin', 'branch', 'features']),
             adminData: $request->validated('admin'),
             branchData: filled($branch) ? $branch : null,
-            features: $request->validated('features') ?? [],
         );
 
         return response()->json([
@@ -62,13 +64,13 @@ class RestaurantController extends Controller
         return response()->json(['data' => RestaurantResource::make($restaurant)]);
     }
 
-    public function update(UpdateRestaurantRequest $request, Restaurant $restaurant, RestaurantFeatureService $features): JsonResponse
+    public function update(UpdateRestaurantRequest $request, Restaurant $restaurant, PlanEntitlementService $entitlements): JsonResponse
     {
         $restaurant->update($request->safe()->except('features'));
 
-        if ($request->has('features')) {
-            $features->apply($restaurant, $request->validated('features'));
-        }
+        // Features are strictly derived from the plan — any hand-passed
+        // `features` are ignored. Re-sync so a plan change here takes effect.
+        $entitlements->sync($restaurant->fresh());
 
         return response()->json([
             'data' => RestaurantResource::make($restaurant->fresh()->load('features')),

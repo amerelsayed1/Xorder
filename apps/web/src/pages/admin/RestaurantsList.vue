@@ -167,7 +167,6 @@ const countFor = (k) => k === '' ? counts.value.ALL : counts.value[k]
                                     :style="{ background: avatarColor(r) }">{{ initial(r) }}</span>
                                 <div>
                                     <div class="font-medium" style="color:var(--ink)">{{ restaurantName(r) }}</div>
-                                    <div class="mono text-xs" style="color:var(--muted)">/r/{{ r.slug }}</div>
                                 </div>
                             </div>
                         </td>

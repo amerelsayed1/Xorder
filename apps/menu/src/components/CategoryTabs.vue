@@ -1,6 +1,5 @@
 <script setup>
 import { ref, watch } from 'vue'
-import { OFFERS_CATEGORY_GLYPH, menuCategoryGlyph } from '../lib/menuCategories'
 
 const props = defineProps({
     navCats: Array,
@@ -17,14 +16,6 @@ const scrollContainer = ref(null)
 const label = (cat) => {
     if (cat.isOffers) return props.t('offers')
     return props.localize(cat.category)
-}
-
-const glyph = (cat) => {
-    if (cat.isOffers) return OFFERS_CATEGORY_GLYPH
-    const categoryIndex = props.navCats
-        .filter(entry => entry.category)
-        .findIndex(entry => entry.id === cat.id)
-    return menuCategoryGlyph(Math.max(0, categoryIndex))
 }
 
 watch(
@@ -50,7 +41,7 @@ watch(
                 :class="{ active: activeCat === cat.id }"
                 @click="$emit('selectCategory', cat.id)"
             >
-                <span>{{ glyph(cat) }}</span>{{ label(cat) }}
+                {{ label(cat) }}
             </button>
         </div>
         <label class="search-box">

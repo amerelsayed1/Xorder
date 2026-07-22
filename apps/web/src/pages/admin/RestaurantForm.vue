@@ -1,5 +1,5 @@
 <script setup>
-import { reactive, ref, computed, onMounted } from 'vue'
+import { reactive, ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter, RouterLink } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import api, { ensureCsrf } from '@xorder/api-client/api.js'
@@ -25,9 +25,10 @@ const form = reactive({
     default_language: 'ar',
     bilingual: true,
     currency: 'EGP',
-    ordering_enabled: true,
+    ordering_mode: 'both',
     status: 'ACTIVE', subscription_status: 'TRIAL',
-    admin: { name: '', email: '', password: '' },
+    subscription_plan: '',
+    admin: { name: '', username: '', email: '', password: '' },
 })
 const currencies = [
     { code: 'EGP', label: 'EGP — Egyptian Pound' },
@@ -90,31 +91,57 @@ function toggleOrderType(tp) {
     else branch.supported_order_types.push(tp)
 }
 
-// Order types the client offers, shown first in the Features step.
-const orderTypeKeys = ['dine_in', 'pickup', 'delivery']
-const capabilityKeys = ['qr_menu', 'whatsapp_ordering', 'table_management', 'bill_requests', 'internal_reviews', 'product_analytics']
+// Plan-driven capabilities. The plan strictly decides which features a client
+// gets; the wizard just previews the resolved set. Prerequisites are expanded
+// here to mirror Feature::resolve on the backend.
+const plans = ref([])
 const featureRequires = {
     bill_requests: ['table_management'],
     table_management: ['dine_in'],
+    customer_tracking: ['system_ordering'],
 }
-const features = reactive({
-    dine_in: true, pickup: true, delivery: true,
-    qr_menu: true, whatsapp_ordering: true, table_management: false,
-    bill_requests: false, internal_reviews: false, product_analytics: false,
-})
-// Enabling a feature pulls in its prerequisites; disabling one drops anything
-// that depended on it (mirrors Feature::resolve on the backend).
-function setFeature(key, val) {
-    features[key] = val
-    if (val) {
-        (featureRequires[key] || []).forEach(p => setFeature(p, true))
-    } else {
-        for (const [k, reqs] of Object.entries(featureRequires)) {
-            if (reqs.includes(key) && features[k]) setFeature(k, false)
+// Display order for the derived-capabilities preview.
+const featureDisplayOrder = [
+    'qr_menu', 'whatsapp_ordering', 'system_ordering', 'customer_tracking',
+    'dine_in', 'pickup', 'delivery',
+    'table_management', 'bill_requests', 'internal_reviews', 'product_analytics',
+    'multi_branch',
+]
+
+/** Expand feature keys with their prerequisites (mirrors Feature::resolve). */
+function resolveKeys(keys) {
+    const set = new Set(keys)
+    let changed = true
+    while (changed) {
+        changed = false
+        for (const k of [...set]) {
+            for (const p of (featureRequires[k] || [])) {
+                if (!set.has(p)) { set.add(p); changed = true }
+            }
         }
     }
+    return set
 }
-const enabledFeatureLabels = computed(() => [...orderTypeKeys, ...capabilityKeys].filter(k => features[k]).map(k => t(`feature.${k}`)))
+
+const selectedPlan = computed(() => plans.value.find(p => p.name === form.subscription_plan) || null)
+const derivedFeatureKeys = computed(() => {
+    const resolved = resolveKeys(selectedPlan.value?.feature_keys || [])
+    return featureDisplayOrder.filter(k => resolved.has(k))
+})
+const enabledFeatureLabels = computed(() => derivedFeatureKeys.value.map(k => t(`feature.${k}`)))
+
+// The ordering-mode choice is capped to the channels the selected plan grants:
+// both WhatsApp + system → all three; only one entitled → that one.
+const orderingModeOptions = computed(() => {
+    const has = (k) => derivedFeatureKeys.value.includes(k)
+    if (has('whatsapp_ordering') && has('system_ordering')) return ['both', 'whatsapp', 'system']
+    if (has('whatsapp_ordering')) return ['whatsapp']
+    if (has('system_ordering')) return ['system']
+    return []
+})
+watch(orderingModeOptions, (opts) => {
+    if (opts.length && !opts.includes(form.ordering_mode)) form.ordering_mode = opts[0]
+}, { immediate: true })
 const langConfigLabel = computed(() => langOptionLabel(langConfig.value))
 
 const stepValid = computed(() => {
@@ -123,7 +150,7 @@ const stepValid = computed(() => {
             return (!showEn.value || !!form.name_en.trim())
                 && (!showAr.value || !!form.name_ar.trim())
                 && !!form.slug.trim()
-                && !!form.admin.name.trim() && !!form.admin.email.trim()
+                && !!form.admin.name.trim() && !!form.admin.username.trim()
         case 4:
             if (!branchEnabled.value) return true
             return (((showEn.value && branch.name_en.trim()) || (showAr.value && branch.name_ar.trim())) && branch.supported_order_types.length > 0)
@@ -148,19 +175,22 @@ function generatePassword() {
 }
 
 onMounted(async () => {
+    // Active plans populate the plan picker; the picked plan drives capabilities.
+    try {
+        const { data } = await api.get('api/admin/plans', { params: { active_only: 1 } })
+        plans.value = data.data || []
+    } catch (err) { /* leave the picker empty on failure */ }
+
     if (isEdit.value) {
         const { data } = await api.get(`api/admin/restaurants/${route.params.id}`)
-        Object.assign(form, { ...data.data, secondary_color: data.data.secondary_color || '' })
-        // Prefill the feature flags from the loaded client (list of enabled keys).
-        const enabled = data.data.features || []
-        for (const key of [...orderTypeKeys, ...capabilityKeys]) features[key] = enabled.includes(key)
+        Object.assign(form, { ...data.data, secondary_color: data.data.secondary_color || '', subscription_plan: data.data.subscription_plan || '' })
     }
 })
 
 function stepForError(key) {
     if (/^branch\./.test(key)) return 4
     if (/^(name_en|name_ar|slug|admin\.)/.test(key)) return 2
-    if (/^features/.test(key)) return 5
+    if (/^(features|subscription_plan)/.test(key)) return 5
     return 3
 }
 
@@ -168,7 +198,8 @@ async function submitEdit() {
     errors.value = {}; saving.value = true
     try {
         await ensureCsrf()
-        const payload = { ...form, features: { ...features } }; delete payload.admin
+        // Features are derived from the plan server-side — send the plan, not flags.
+        const payload = { ...form }; delete payload.admin
         await api.put(`api/admin/restaurants/${route.params.id}`, payload)
         router.push({ name: 'admin.restaurants.show', params: { id: route.params.id } })
     } catch (err) {
@@ -184,7 +215,8 @@ async function submitCreate() {
         await ensureCsrf()
         form.bilingual = langConfig.value === 'bilingual'
         form.default_language = primaryLanguage.value
-        const payload = { ...form, features: { ...features } }
+        // Features are derived from the plan server-side — send the plan, not flags.
+        const payload = { ...form }
         if (branchEnabled.value) payload.branch = { ...branch }
         const { data } = await api.post('api/admin/restaurants', payload)
         if (data.generated_password) generatedPassword.value = data.generated_password
@@ -250,36 +282,32 @@ async function submitCreate() {
                         </select>
                         <FormError :errors="errors" field="currency" /></label>
                 </div>
-                <label class="flex items-start gap-3 rounded-lg border p-3 cursor-pointer" style="border-color:var(--line)">
-                    <input v-model="form.ordering_enabled" type="checkbox" class="mt-0.5 h-4 w-4" />
-                    <span>
-                        <span class="label" style="margin:0">{{ t('restaurant.ordering_enabled') }}</span>
-                        <span class="block text-xs mt-0.5" style="color:var(--muted)">{{ t('restaurant.ordering_enabled_hint') }}</span>
-                    </span>
-                </label>
+                <div v-if="orderingModeOptions.length > 1">
+                    <span class="label">{{ t('restaurant.ordering_mode') }}</span>
+                    <div class="flex gap-2 mt-1.5 flex-wrap">
+                        <button v-for="m in orderingModeOptions" :key="m" type="button" @click="form.ordering_mode = m"
+                            class="btn" :class="form.ordering_mode === m ? 'btn-dark' : 'btn-ghost'">{{ t('restaurant.ordering_mode_' + m) }}</button>
+                    </div>
+                    <span class="block text-xs mt-1.5" style="color:var(--muted)">{{ t('restaurant.ordering_mode_hint') }}</span>
+                </div>
             </div>
 
-            <!-- Features & order types — editable for existing clients too. -->
+            <!-- Plan & capabilities — the plan strictly decides what this client gets. -->
             <div class="card p-6 space-y-4">
                 <h2 class="h-card">{{ t('wizard.features_title') }}</h2>
-                <div class="space-y-3">
-                    <h3 class="label" style="margin:0">{{ t('wizard.order_types_group') }}</h3>
-                    <label v-for="key in orderTypeKeys" :key="key" class="flex items-center gap-3 rounded-lg border p-3 cursor-pointer" style="border-color:var(--line)">
-                        <input type="checkbox" :checked="features[key]" @change="setFeature(key, $event.target.checked)" class="h-4 w-4" />
-                        <span class="label" style="margin:0">{{ t(`feature.${key}`) }}</span>
-                    </label>
-                </div>
-                <div class="space-y-3 pt-2" style="border-top:1px solid var(--line)">
-                    <h3 class="label" style="margin:0">{{ t('wizard.capabilities_group') }}</h3>
-                    <label v-for="key in capabilityKeys" :key="key" class="flex items-start gap-3 rounded-lg border p-3 cursor-pointer" style="border-color:var(--line)">
-                        <input type="checkbox" :checked="features[key]" @change="setFeature(key, $event.target.checked)" class="mt-0.5 h-4 w-4" />
-                        <span>
-                            <span class="label" style="margin:0">{{ t(`feature.${key}`) }}</span>
-                            <span v-if="featureRequires[key]" class="block text-xs mt-0.5" style="color:var(--muted)">
-                                {{ t('wizard.feature_requires', { feature: featureRequires[key].map(f => t(`feature.${f}`)).join(', ') }) }}
-                            </span>
-                        </span>
-                    </label>
+                <label class="block"><span class="label">{{ t('wizard.plan_group') }}</span>
+                    <select v-model="form.subscription_plan" class="input">
+                        <option value="">{{ t('wizard.select_plan') }}</option>
+                        <option v-for="p in plans" :key="p.id" :value="p.name">{{ p.name }}</option>
+                    </select>
+                    <span class="block text-xs mt-1" style="color:var(--muted)">{{ t('wizard.plan_help') }}</span>
+                    <FormError :errors="errors" field="subscription_plan" /></label>
+                <div class="pt-2" style="border-top:1px solid var(--line)">
+                    <h3 class="label" style="margin:0">{{ t('wizard.features_derived') }}</h3>
+                    <div v-if="derivedFeatureKeys.length" class="flex flex-wrap gap-2 mt-2">
+                        <span v-for="key in derivedFeatureKeys" :key="key" class="rounded-full px-3 py-1 text-xs" style="background:var(--page);border:1px solid var(--line);color:var(--ink)">{{ t(`feature.${key}`) }}</span>
+                    </div>
+                    <p v-else class="text-sm mt-2" style="color:var(--muted)">{{ t('wizard.features_derived_none') }}</p>
                 </div>
             </div>
 
@@ -369,10 +397,14 @@ async function submitCreate() {
                         <label class="block"><span class="label">{{ t('restaurant.admin_name') }}</span>
                             <input v-model="form.admin.name" class="input" />
                             <FormError :errors="errors" field="admin.name" /></label>
-                        <label class="block"><span class="label">{{ t('restaurant.admin_email') }}</span>
-                            <input v-model="form.admin.email" type="email" class="input" />
-                            <FormError :errors="errors" field="admin.email" /></label>
+                        <label class="block" dir="ltr"><span class="label">{{ t('restaurant.admin_username') }}</span>
+                            <input v-model="form.admin.username" type="text" autocapitalize="none" spellcheck="false" class="input" />
+                            <span class="block text-xs mt-1" style="color:var(--muted)">{{ t('restaurant.admin_username_hint') }}</span>
+                            <FormError :errors="errors" field="admin.username" /></label>
                     </div>
+                    <label class="block mt-3"><span class="label">{{ t('restaurant.admin_email') }}</span>
+                        <input v-model="form.admin.email" type="email" class="input" />
+                        <FormError :errors="errors" field="admin.email" /></label>
                     <label class="block mt-3"><span class="label">{{ t('restaurant.admin_password') }}</span>
                         <div class="flex gap-2 mt-1.5">
                             <input v-model="form.admin.password" type="text" class="input" style="margin-top:0" :placeholder="t('restaurant.password_hint')" />
@@ -451,25 +483,29 @@ async function submitCreate() {
                     <p class="text-sm mt-1" style="color:var(--muted)">{{ t('wizard.features_help') }}</p>
                 </div>
 
-                <div class="space-y-3">
-                    <h3 class="label" style="margin:0">{{ t('wizard.order_types_group') }}</h3>
-                    <label v-for="key in orderTypeKeys" :key="key" class="flex items-start gap-3 rounded-lg border p-3 cursor-pointer" style="border-color:var(--line)">
-                        <input type="checkbox" :checked="features[key]" @change="setFeature(key, $event.target.checked)" class="mt-0.5 h-4 w-4" />
-                        <span class="label" style="margin:0">{{ t(`feature.${key}`) }}</span>
-                    </label>
+                <div v-if="orderingModeOptions.length > 1" class="space-y-3 pb-2" style="border-bottom:1px solid var(--line)">
+                    <h3 class="label" style="margin:0">{{ t('restaurant.ordering_mode') }}</h3>
+                    <div class="flex gap-2 flex-wrap">
+                        <button v-for="m in orderingModeOptions" :key="m" type="button" @click="form.ordering_mode = m"
+                            class="btn" :class="form.ordering_mode === m ? 'btn-dark' : 'btn-ghost'">{{ t('restaurant.ordering_mode_' + m) }}</button>
+                    </div>
+                    <p class="text-xs" style="color:var(--muted)">{{ t('restaurant.ordering_mode_hint') }}</p>
                 </div>
 
-                <div class="space-y-3 pt-2" style="border-top:1px solid var(--line)">
-                    <h3 class="label" style="margin:0">{{ t('wizard.capabilities_group') }}</h3>
-                    <label v-for="key in capabilityKeys" :key="key" class="flex items-start gap-3 rounded-lg border p-3 cursor-pointer" style="border-color:var(--line)">
-                        <input type="checkbox" :checked="features[key]" @change="setFeature(key, $event.target.checked)" class="mt-0.5 h-4 w-4" />
-                        <span>
-                            <span class="label" style="margin:0">{{ t(`feature.${key}`) }}</span>
-                            <span v-if="featureRequires[key]" class="block text-xs mt-0.5" style="color:var(--muted)">
-                                {{ t('wizard.feature_requires', { feature: featureRequires[key].map(f => t(`feature.${f}`)).join(', ') }) }}
-                            </span>
-                        </span>
-                    </label>
+                <label class="block"><span class="label">{{ t('wizard.plan_group') }}</span>
+                    <select v-model="form.subscription_plan" class="input">
+                        <option value="">{{ t('wizard.select_plan') }}</option>
+                        <option v-for="p in plans" :key="p.id" :value="p.name">{{ p.name }}</option>
+                    </select>
+                    <span class="block text-xs mt-1" style="color:var(--muted)">{{ t('wizard.plan_help') }}</span>
+                    <FormError :errors="errors" field="subscription_plan" /></label>
+
+                <div class="pt-2" style="border-top:1px solid var(--line)">
+                    <h3 class="label" style="margin:0">{{ t('wizard.features_derived') }}</h3>
+                    <div v-if="derivedFeatureKeys.length" class="flex flex-wrap gap-2 mt-2">
+                        <span v-for="key in derivedFeatureKeys" :key="key" class="rounded-full px-3 py-1 text-xs" style="background:var(--page);border:1px solid var(--line);color:var(--ink)">{{ t(`feature.${key}`) }}</span>
+                    </div>
+                    <p v-else class="text-sm mt-2" style="color:var(--muted)">{{ t('wizard.features_derived_none') }}</p>
                 </div>
             </div>
 

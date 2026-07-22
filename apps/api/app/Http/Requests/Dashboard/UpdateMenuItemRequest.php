@@ -50,7 +50,10 @@ class UpdateMenuItemRequest extends FormRequest
         $validator->after(function ($validator) {
             if (($this->has('name_ar') || $this->has('name_en'))
                 && blank($this->input('name_ar')) && blank($this->input('name_en'))) {
-                $validator->errors()->add('name_en', __('xorder.validation.item_name_still_required'));
+                // Report on the default-language name field — the one the form
+                // always renders — so single-language menus see the error.
+                $lang = $this->user()->restaurant->default_language?->value ?? 'ar';
+                $validator->errors()->add("name_{$lang}", __('xorder.validation.item_name_still_required'));
             }
         });
     }

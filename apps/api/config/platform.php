@@ -75,6 +75,7 @@ return [
 
     'super_admin' => [
         'name' => env('SUPER_ADMIN_NAME', 'Super Admin'),
+        'username' => env('SUPER_ADMIN_USERNAME', 'admin'),
         'email' => env('SUPER_ADMIN_EMAIL', 'admin@qrmenu.test'),
         'password' => env('SUPER_ADMIN_PASSWORD', 'password'),
     ],

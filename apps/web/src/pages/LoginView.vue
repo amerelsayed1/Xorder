@@ -8,13 +8,14 @@ import { setLocale } from '@xorder/ui/i18n'
 import { pickLocalized } from '@xorder/ui/localize.js'
 import XorderLogo from '@xorder/ui/XorderLogo.vue'
 import { restaurantSlug } from '../lib/host.js'
+import { inPortalHome, redirectToCorrectHost } from '../router/index.js'
 
 const auth = useAuth()
 const router = useRouter()
 const route = useRoute()
 const { t, locale } = useI18n()
 
-const form = ref({ email: '', password: '', remember: false })
+const form = ref({ username: '', password: '', remember: false })
 const error = ref('')
 const loading = ref(false)
 
@@ -34,7 +35,18 @@ async function submit() {
     loading.value = true
     try {
         await auth.login(form.value)
-        router.push(route.query.redirect || auth.homeRoute())
+        // Where the signed-in user belongs depends on the host. On the correct
+        // portal, go to its home (honouring any post-login redirect). If the
+        // account belongs elsewhere — e.g. a restaurant admin who opened the
+        // super-admin URL — send the browser to their own subdomain instead of
+        // pushing a route that doesn't exist here and surfacing it as a false
+        // "login failed".
+        const home = inPortalHome(auth)
+        if (home) {
+            router.push(route.query.redirect || home)
+        } else {
+            redirectToCorrectHost(auth)
+        }
     } catch (err) {
         error.value = err.response?.data?.errors?.email?.[0]
             || err.response?.data?.message
@@ -68,8 +80,8 @@ const targetLocaleName = () => t(locale.value === 'ar' ? 'languages.en' : 'langu
 
                 <form @submit.prevent="submit" class="space-y-4">
                     <label class="block">
-                        <span class="label">{{ t('auth.email') }}</span>
-                        <input v-model="form.email" type="email" required autocomplete="username" class="input" />
+                        <span class="label">{{ t('auth.username') }}</span>
+                        <input v-model="form.username" type="text" required autocomplete="username" autocapitalize="none" spellcheck="false" class="input" />
                     </label>
                     <label class="block">
                         <span class="label">{{ t('auth.password') }}</span>

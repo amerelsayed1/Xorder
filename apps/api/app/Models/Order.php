@@ -3,13 +3,27 @@
 namespace App\Models;
 
 use App\Enums\OrderStatus;
+use App\Models\Concerns\Auditable;
 use App\Models\Concerns\BelongsToRestaurant;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Order extends Model
 {
-    use BelongsToRestaurant;
+    use Auditable, BelongsToRestaurant;
+
+    // Orders placed on the public menu have no authenticated user; attribute
+    // them to the diner in the audit trail.
+    protected function auditActorRoleFallback(): ?string
+    {
+        return 'CUSTOMER';
+    }
+
+    // The order's own labels are its short code, not a name/title column.
+    protected function auditLabel(): string
+    {
+        return $this->code();
+    }
 
     protected $fillable = [
         'status',

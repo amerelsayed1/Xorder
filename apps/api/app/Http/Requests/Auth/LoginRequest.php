@@ -14,9 +14,17 @@ class LoginRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'email' => ['required', 'email', 'max:255'],
+            'username' => ['required', 'string', 'max:150'],
             'password' => ['required', 'string'],
             'remember' => ['sometimes', 'boolean'],
         ];
+    }
+
+    /** Usernames are case-insensitive; normalise before matching. */
+    protected function prepareForValidation(): void
+    {
+        if ($this->has('username')) {
+            $this->merge(['username' => mb_strtolower(trim((string) $this->input('username')))]);
+        }
     }
 }

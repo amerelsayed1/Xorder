@@ -2,10 +2,13 @@
 
 namespace Database\Factories;
 
+use App\Enums\Feature;
 use App\Enums\LanguageEnum;
+use App\Enums\OrderingMode;
 use App\Enums\RestaurantStatus;
 use App\Enums\SubscriptionStatus;
 use App\Models\Restaurant;
+use App\Services\RestaurantFeatureService;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Str;
 
@@ -29,9 +32,27 @@ class RestaurantFactory extends Factory
             'address' => fake()->address(),
             'brand_color' => fake()->hexColor(),
             'default_language' => LanguageEnum::AR,
+            'ordering_mode' => OrderingMode::BOTH,
             'status' => RestaurantStatus::ACTIVE,
             'subscription_status' => SubscriptionStatus::TRIAL,
         ];
+    }
+
+    /**
+     * Grant the ordering entitlements a normally-provisioned client has, so the
+     * public menu accepts orders. Both channels are enabled, leaving the chosen
+     * ordering_mode (WhatsApp / system / both) fully honoured — since ordering
+     * availability is now decided by the plan, tests that place orders opt in
+     * with this state.
+     */
+    public function withOrdering(): static
+    {
+        return $this->afterCreating(function (Restaurant $restaurant) {
+            app(RestaurantFeatureService::class)->apply(
+                $restaurant,
+                array_merge(Feature::defaultSet(), ['system_ordering' => true]),
+            );
+        });
     }
 
     public function suspended(): static

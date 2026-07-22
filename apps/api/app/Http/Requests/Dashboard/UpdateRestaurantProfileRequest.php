@@ -2,7 +2,7 @@
 
 namespace App\Http\Requests\Dashboard;
 
-use App\Enums\LanguageEnum;
+use App\Enums\OrderingMode;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -30,9 +30,14 @@ class UpdateRestaurantProfileRequest extends FormRequest
             'whatsapp_number' => ['nullable', 'string', 'max:32'],
             'address' => ['nullable', 'string', 'max:1000'],
             'opening_hours' => ['nullable', 'string', 'max:2000'],
-            'brand_color' => ['nullable', 'regex:/^#[0-9a-fA-F]{6}$/'],
-            'secondary_color' => ['nullable', 'regex:/^#[0-9a-fA-F]{6}$/'],
-            'default_language' => ['sometimes', 'required', Rule::enum(LanguageEnum::class)],
+            'social_links' => ['nullable', 'array'],
+            'social_links.instagram' => ['nullable', 'string', 'url', 'max:2048'],
+            'social_links.facebook' => ['nullable', 'string', 'url', 'max:2048'],
+            'social_links.tiktok' => ['nullable', 'string', 'url', 'max:2048'],
+            // Branding (brand_color, secondary_color) and default_language are
+            // NOT editable here — they are set by the Super Admin. Any such keys
+            // in the payload are ignored (never reach ->update(validated())).
+            'ordering_mode' => ['sometimes', Rule::enum(OrderingMode::class)],
         ];
     }
 
@@ -41,7 +46,11 @@ class UpdateRestaurantProfileRequest extends FormRequest
         $validator->after(function ($validator) {
             if ($this->has('name_ar') || $this->has('name_en')) {
                 if (blank($this->input('name_ar')) && blank($this->input('name_en'))) {
-                    $validator->errors()->add('name_en', __('xorder.validation.restaurant_name_still_required'));
+                    // Report on the default-language name field — the one the
+                    // profile form always renders — so single-language
+                    // restaurants see the error instead of a silent failure.
+                    $lang = $this->user()->restaurant->default_language?->value ?? 'ar';
+                    $validator->errors()->add("name_{$lang}", __('xorder.validation.restaurant_name_still_required'));
                 }
             }
         });

@@ -16,7 +16,7 @@ return [
     */
 
     'defaults' => [
-        'guard' => env('AUTH_GUARD', 'web'),
+        'guard' => env('AUTH_GUARD', 'jwt'),
         'passwords' => env('AUTH_PASSWORD_BROKER', 'users'),
     ],
 
@@ -38,6 +38,15 @@ return [
     */
 
     'guards' => [
+        // Stateless API guard. Its 'jwt' driver is registered in
+        // AppServiceProvider via Auth::viaRequest(); the Bearer token is the
+        // sole credential (no session, no CSRF cookie).
+        'jwt' => [
+            'driver' => 'jwt',
+            'provider' => 'users',
+        ],
+
+        // Retained for the password-reset broker and any first-party web use.
         'web' => [
             'driver' => 'session',
             'provider' => 'users',

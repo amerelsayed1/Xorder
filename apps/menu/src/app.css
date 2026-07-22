@@ -442,7 +442,6 @@ img {
 /* ---------- Hero ---------- */
 .restaurant-hero {
     min-height: 310px;
-    box-shadow: var(--shadow);
     isolation: isolate;
     border-radius: 28px;
     position: relative;
@@ -561,20 +560,17 @@ html[dir='ltr'] .hero-overlay {
 /* ---------- Toolbar ---------- */
 .menu-toolbar {
     z-index: 20;
-    border: 1px solid var(--line);
-    -webkit-backdrop-filter: blur(14px);
-    backdrop-filter: blur(14px);
-    background: #fffffff0;
-    border-radius: 18px;
+    /* No card — the toolbar sits directly on the page. Opaque cream background
+       keeps the sticky tabs legible over content scrolling underneath. */
+    background: var(--cream);
     justify-content: space-between;
     align-items: center;
     gap: 18px;
     margin-top: 18px;
-    padding: 10px 12px;
+    padding: 10px 0;
     display: flex;
     position: sticky;
     top: 94px;
-    box-shadow: 0 8px 30px #4b37180f;
 }
 
 .category-list {
@@ -594,14 +590,16 @@ html[dir='ltr'] .hero-overlay {
     cursor: pointer;
     background: 0 0;
     border: 0;
-    border-radius: 12px;
+    /* Underline tab: transparent track that becomes accent when active. */
+    border-bottom: 2px solid transparent;
+    border-radius: 0;
     flex: none;
     align-items: center;
     gap: 8px;
     min-height: 46px;
-    padding: 0 18px;
+    padding: 0 14px;
     font-weight: 700;
-    transition: all .2s;
+    transition: color .2s, border-color .2s;
     display: inline-flex;
     white-space: nowrap;
 }
@@ -612,13 +610,12 @@ html[dir='ltr'] .hero-overlay {
 
 .category:hover {
     color: var(--accent-dark);
-    background: var(--accent-softer);
+    border-bottom-color: var(--accent-softer);
 }
 
 .category.active {
     color: var(--accent-dark);
-    box-shadow: inset 0 -2px 0 var(--accent);
-    background: var(--accent-soft);
+    border-bottom-color: var(--accent);
 }
 
 .search-box {
@@ -1390,6 +1387,18 @@ html[dir='ltr'] .back-step, html[dir='ltr'] .continue-button b {
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
+.checkout-form input[aria-invalid="true"], .checkout-form textarea[aria-invalid="true"] {
+    border-color: #d64545;
+}
+
+.checkout-form .field-error {
+    display: block;
+    margin-top: 5px;
+    color: #c0392b;
+    font-size: 12px;
+    font-weight: 600;
+}
+
 .whatsapp-order {
     background: var(--green);
     color: #fff;
@@ -1414,11 +1423,21 @@ html[dir='ltr'] .back-step, html[dir='ltr'] .continue-button b {
     transform: translateY(-1px);
 }
 
-.whatsapp-order.disabled, .whatsapp-order:disabled {
+.whatsapp-order:disabled {
     cursor: not-allowed;
     pointer-events: none;
     background: #bad6c3;
 }
+
+/* Not-yet-valid: muted, but still clickable so the tap surfaces the field
+   errors instead of doing nothing. */
+.whatsapp-order.muted {
+    background: #bad6c3;
+}
+
+/* System-ordering mode isn't a WhatsApp handoff — use the brand accent. */
+.whatsapp-order.is-system { background: var(--accent); }
+.whatsapp-order.is-system.muted { background: color-mix(in srgb, var(--accent) 45%, #fff); }
 
 .whatsapp-note {
     text-align: center;
@@ -1637,6 +1656,10 @@ html[dir='ltr'] .back-step, html[dir='ltr'] .continue-button b {
     align-items: center;
     min-height: 48px;
     display: flex;
+}
+
+.option-row--readonly {
+    cursor: default;
 }
 
 .option-row > span {
@@ -1994,10 +2017,9 @@ html[dir='ltr'] .side-panel {
     }
 
     .menu-toolbar {
-        border-radius: 16px;
         flex-direction: column;
         align-items: stretch;
-        padding: 8px;
+        padding: 8px 0;
         top: 76px;
     }
 

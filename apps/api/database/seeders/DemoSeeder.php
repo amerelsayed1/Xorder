@@ -141,6 +141,7 @@ class DemoSeeder extends Seeder
     {
         User::updateOrCreate(['email' => $email], [
             'name' => $name,
+            'username' => mb_strtolower(explode('@', $email)[0]),
             'password' => Hash::make('password'),
             'role' => RoleEnum::RESTAURANT_ADMIN,
             'restaurant_id' => $r->id,

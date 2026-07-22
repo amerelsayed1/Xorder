@@ -19,42 +19,31 @@ class PlanSeeder extends Seeder
                 'price' => null, // Free
                 'currency' => 'EGP',
                 'sort_order' => 1,
-                'features' => [
-                    'QR menu',
-                    'Menu categories',
-                    'Product images',
-                    'Price and item updates',
-                    'Restaurant information page',
-                    'Shareable menu link',
-                ],
+                // Digital menu only — no ordering of any kind.
+                'feature_keys' => ['qr_menu'],
             ],
             [
                 'name' => 'Menu Plus',
                 'price' => 749.00,
                 'currency' => 'EGP',
                 'sort_order' => 2,
-                'features' => [
-                    'Everything in Menu Starter',
-                    'Add to cart',
-                    'Direct order submission',
-                    'Orders received on WhatsApp',
-                    'Pickup, delivery, or table orders (if available)',
-                    'Offers / coupons (if available)',
-                ],
+                // WhatsApp ordering: cart hands off to WhatsApp. No order
+                // management dashboard or customer tracking.
+                'feature_keys' => ['qr_menu', 'whatsapp_ordering', 'pickup', 'delivery'],
             ],
             [
                 'name' => 'Restaurant Pro',
                 'price' => null, // Custom pricing
                 'currency' => 'EGP',
                 'sort_order' => 3,
-                'features' => [
-                    'Everything in Menu Plus',
-                    'Order management dashboard',
-                    'Delivery and pickup management',
-                    'Table ordering',
-                    'Reports and insights',
-                    'Branch support (if available)',
-                    'Driver app (if available)',
+                // Full system ordering: durable orders, customer tracking, table
+                // service and analytics. Feature::resolve pulls in prerequisites
+                // (table_management→dine_in, bill_requests→table_management,
+                // customer_tracking→system_ordering).
+                'feature_keys' => [
+                    'qr_menu', 'whatsapp_ordering', 'system_ordering', 'customer_tracking',
+                    'table_management', 'bill_requests', 'internal_reviews', 'product_analytics',
+                    'dine_in', 'pickup', 'delivery', 'multi_branch',
                 ],
             ],
         ];

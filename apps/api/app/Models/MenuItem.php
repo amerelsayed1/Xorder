@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\Auditable;
 use App\Models\Concerns\BelongsToRestaurant;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -11,7 +12,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 
 class MenuItem extends Model
 {
-    use BelongsToRestaurant, HasFactory, SoftDeletes;
+    use Auditable, BelongsToRestaurant, HasFactory, SoftDeletes;
 
     protected $fillable = [
         'category_id',

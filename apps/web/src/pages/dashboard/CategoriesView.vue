@@ -3,6 +3,7 @@ import { ref, reactive, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import api, { ensureCsrf } from '@xorder/api-client/api.js'
 import { withMinDuration } from '../../lib/minLoading.js'
+import { useAuth } from '@xorder/api-client/auth.js'
 import { pickLocalized } from '@xorder/ui/localize.js'
 import Modal from '@xorder/ui/Modal.vue'
 import ListSkeleton from '@xorder/ui/ListSkeleton.vue'
@@ -15,6 +16,7 @@ import { useMenuLang } from '../../lib/menuLang.js'
 
 const { t, locale } = useI18n()
 const { langs, bilingual } = useMenuLang()
+const auth = useAuth()
 const rows = ref([])
 const loading = ref(true)
 const saving = ref(false)
@@ -98,7 +100,7 @@ const categoryAltName = (c) => locale.value === 'ar' ? (c.name_en || '') : (c.na
                 <h1 class="page-title">{{ t('nav.categories') }}</h1>
                 <p class="page-sub">{{ t('category.subtitle', { count: rows.length }) }}</p>
             </div>
-            <button @click="openCreate" class="btn btn-accent"><Icon name="plus" :size="16" />{{ t('common.create') }}</button>
+            <button v-if="!auth.isReadOnly" @click="openCreate" class="btn btn-accent"><Icon name="plus" :size="16" />{{ t('common.create') }}</button>
         </div>
 
         <div class="card overflow-hidden">
@@ -106,7 +108,7 @@ const categoryAltName = (c) => locale.value === 'ar' ? (c.name_en || '') : (c.na
             <div v-else-if="!rows.length" class="p-8 text-center" style="color:var(--muted)">{{ t('common.none') }}</div>
             <ul v-else>
                 <li v-for="(c, i) in rows" :key="c.id" class="flex items-center gap-3 px-5 py-3 border-t first:border-t-0" style="border-color:var(--line)">
-                    <div class="flex flex-col">
+                    <div v-if="!auth.isReadOnly" class="flex flex-col">
                         <button @click="move(i, -1)" :disabled="i === 0" class="icon-btn" style="width:24px;height:18px"><Icon name="chevronUp" :size="15" /></button>
                         <button @click="move(i, 1)" :disabled="i === rows.length - 1" class="icon-btn" style="width:24px;height:18px"><Icon name="chevronDown" :size="15" /></button>
                     </div>
@@ -119,9 +121,9 @@ const categoryAltName = (c) => locale.value === 'ar' ? (c.name_en || '') : (c.na
                         </div>
                     </div>
                     <StatusBadge :value="c.is_active" :label="c.is_active ? t('common.active') : t('common.inactive')" />
-                    <button class="switch" :class="{ on: c.is_active }" @click="toggle(c)"></button>
-                    <button @click="openEdit(c)" class="icon-btn" :title="t('common.edit')"><Icon name="edit" :size="17" /></button>
-                    <button @click="remove(c)" class="icon-btn icon-btn-danger" :title="t('common.delete')"><Icon name="trash" :size="17" /></button>
+                    <button v-if="!auth.isReadOnly" class="switch" :class="{ on: c.is_active }" @click="toggle(c)"></button>
+                    <button v-if="!auth.isReadOnly" @click="openEdit(c)" class="icon-btn" :title="t('common.edit')"><Icon name="edit" :size="17" /></button>
+                    <button v-if="!auth.isReadOnly" @click="remove(c)" class="icon-btn icon-btn-danger" :title="t('common.delete')"><Icon name="trash" :size="17" /></button>
                 </li>
             </ul>
         </div>

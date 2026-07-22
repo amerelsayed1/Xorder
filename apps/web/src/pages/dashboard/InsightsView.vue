@@ -44,19 +44,6 @@ function money(v) {
         <p v-if="loading" style="color:var(--muted)">{{ t('common.loading') }}</p>
 
         <template v-else-if="data">
-            <!-- Subscription banner -->
-            <div v-if="data.subscription.days_remaining !== null && data.subscription.days_remaining <= 14"
-                class="card p-4" :style="data.subscription.days_remaining < 0 ? 'border-color:#c0392b' : ''">
-                <div class="flex items-center justify-between gap-3">
-                    <span class="text-sm">
-                        <strong>{{ t('insights.subscription') }}:</strong>
-                        <template v-if="data.subscription.days_remaining < 0">{{ t('insights.sub_expired') }}</template>
-                        <template v-else>{{ t('insights.sub_days_left', { n: data.subscription.days_remaining }) }}</template>
-                    </span>
-                    <span class="badge" :class="data.subscription.writable ? 'badge-amber' : 'badge-red'">{{ t('insights.sub.' + data.subscription.status) }}</span>
-                </div>
-            </div>
-
             <!-- Menu overview -->
             <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
                 <div class="stat">

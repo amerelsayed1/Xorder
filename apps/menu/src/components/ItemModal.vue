@@ -62,16 +62,25 @@ function isSelected(gi, oi) {
                         <strong>{{ money(kind === 'combo' ? item.base_price : (item.discounted_price ?? item.price)) }}</strong>
                     </div>
 
+                    <!-- Options + prices are shown on a display-only menu too, so a
+                         diner can see the choices — but on such a menu they're purely
+                         informational: no selector control and no "required" badge. -->
                     <div v-for="(group, gi) in getGroups()" :key="gi" class="options-section">
                         <div class="options-title">
                             <strong>{{ localize(group) || t('choose_options') }}</strong>
-                            <span :class="{ required: kind === 'combo' || group.is_required }">
+                            <span v-if="orderingEnabled" :class="{ required: kind === 'combo' || group.is_required }">
                                 {{ (kind === 'combo' || group.is_required) ? t('required') : t('optional') }}
                             </span>
                         </div>
-                        <label v-for="(opt, oi) in getOptions(group)" :key="oi" class="option-row">
+                        <label
+                            v-for="(opt, oi) in getOptions(group)"
+                            :key="oi"
+                            class="option-row"
+                            :class="{ 'option-row--readonly': !orderingEnabled }"
+                        >
                             <span>
                                 <input
+                                    v-if="orderingEnabled"
                                     :type="(group.max_select || 1) > 1 ? 'checkbox' : 'radio'"
                                     :checked="isSelected(gi, oi)"
                                     @click.prevent="$emit('toggleOption', gi, oi, group)"
@@ -82,7 +91,7 @@ function isSelected(gi, oi) {
                         </label>
                     </div>
 
-                    <label class="item-note">
+                    <label v-if="orderingEnabled" class="item-note">
                         <span>{{ t('item_note') }}</span>
                         <textarea v-model="note" :placeholder="t('item_note_ph')"></textarea>
                     </label>

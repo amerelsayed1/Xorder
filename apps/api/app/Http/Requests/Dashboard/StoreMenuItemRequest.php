@@ -51,7 +51,11 @@ class StoreMenuItemRequest extends FormRequest
     {
         $validator->after(function ($validator) {
             if (blank($this->input('name_ar')) && blank($this->input('name_en'))) {
-                $validator->errors()->add('name_en', __('xorder.validation.item_name_required'));
+                // Attach to the restaurant's default-language name field — that's
+                // the one the form always renders (a single-language menu only
+                // shows its default), so the error is actually visible.
+                $lang = $this->user()->restaurant->default_language?->value ?? 'ar';
+                $validator->errors()->add("name_{$lang}", __('xorder.validation.item_name_required'));
             }
         });
     }

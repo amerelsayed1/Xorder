@@ -4,6 +4,7 @@ namespace App\Http\Requests\Admin;
 
 use App\Enums\CurrencyEnum;
 use App\Enums\LanguageEnum;
+use App\Enums\OrderingMode;
 use App\Enums\RestaurantStatus;
 use App\Enums\SubscriptionStatus;
 use Illuminate\Foundation\Http\FormRequest;
@@ -42,7 +43,7 @@ class StoreRestaurantRequest extends FormRequest
             'default_language' => ['required', Rule::enum(LanguageEnum::class)],
             'bilingual' => ['nullable', 'boolean'],
             'currency' => ['required', Rule::enum(CurrencyEnum::class)],
-            'ordering_enabled' => ['nullable', 'boolean'],
+            'ordering_mode' => ['nullable', Rule::enum(OrderingMode::class)],
             'status' => ['nullable', Rule::enum(RestaurantStatus::class)],
             'subscription_status' => ['nullable', Rule::enum(SubscriptionStatus::class)],
             'subscription_plan' => ['nullable', 'string', 'max:100'],
@@ -51,12 +52,16 @@ class StoreRestaurantRequest extends FormRequest
 
             // First Restaurant Admin.
             'admin.name' => ['required', 'string', 'max:150'],
-            'admin.email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')],
+            // Unique per tenant, enforced by the DB index; a brand-new
+            // restaurant has no users yet, so no cross-tenant check is needed here.
+            'admin.username' => ['required', 'string', 'min:3', 'max:150', 'regex:/^[a-z0-9._-]+$/'],
+            'admin.email' => ['nullable', 'email', 'max:255', Rule::unique('users', 'email')],
             'admin.password' => ['nullable', 'string', Password::min(8)],
 
-            // Feature flags (Step 5). Unknown keys are ignored by Feature::resolve.
-            'features' => ['nullable', 'array'],
-            'features.*' => ['boolean'],
+            // Capabilities are NOT accepted here: a client's features are strictly
+            // derived from its subscription_plan (PlanEntitlementService). Any
+            // hand-passed feature map would conflict with the plan, so the wizard
+            // sends only the plan and the server resolves the rest.
 
             // Optional first branch (Step 4). Omit the object entirely to skip.
             'branch' => ['nullable', 'array'],
@@ -71,6 +76,15 @@ class StoreRestaurantRequest extends FormRequest
             'branch.supported_order_types' => ['nullable', 'array'],
             'branch.supported_order_types.*' => ['string', Rule::in(['dine_in', 'pickup', 'delivery'])],
         ];
+    }
+
+    /** Usernames are case-insensitive; normalise before unique + storage. */
+    protected function prepareForValidation(): void
+    {
+        $username = $this->input('admin.username');
+        if ($username !== null) {
+            $this->merge(['admin' => [...$this->input('admin', []), 'username' => mb_strtolower(trim((string) $username))]]);
+        }
     }
 
     public function withValidator($validator): void

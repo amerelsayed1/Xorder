@@ -110,7 +110,13 @@ const sym = computed(() => {
 const waDigits = computed(() => (restaurant.value?.whatsapp_number || '').replace(/[^0-9]/g, ''))
 const orderingEnabled = computed(() => restaurant.value?.ordering_enabled !== false)
 const bilingual = computed(() => restaurant.value?.bilingual !== false)
-const canOrder = computed(() => cartCount.value > 0 && !!waDigits.value)
+// How checkout completes: 'whatsapp' (WhatsApp only, no record), 'system'
+// (order record only, no WhatsApp), or 'both' (record + WhatsApp).
+const orderingMode = computed(() => restaurant.value?.ordering_mode || 'both')
+const usesWhatsapp = computed(() => orderingMode.value !== 'system')
+const usesSystem = computed(() => orderingMode.value !== 'whatsapp')
+// A WhatsApp handoff needs a number; a system-only menu does not.
+const canOrder = computed(() => cartCount.value > 0 && (!usesWhatsapp.value || !!waDigits.value))
 
 // Order type. Driven by the restaurant's enabled features (pickup/delivery);
 // at a scanned table it is dine-in only. Older payloads without order_types
@@ -218,11 +224,18 @@ function submitOrder(details) {
         order_type: orderType.value || null,
         session_token: sessionToken.value || undefined,
     }
-    postOrder(slug, snapshot)
-        .then(res => { lastOrderCode.value = res?.data?.code || ''; lastOrderId.value = res?.data?.id || null })
-        .catch(() => { /* WhatsApp handoff still carries the order */ })
+    // System / both modes persist a durable order record; WhatsApp / both modes
+    // open the WhatsApp handoff. Fire-and-forget so window.open stays inside the
+    // user gesture; the order code fills into the success dialog when it lands.
+    if (usesSystem.value) {
+        postOrder(slug, snapshot)
+            .then(res => { lastOrderCode.value = res?.data?.code || ''; lastOrderId.value = res?.data?.id || null })
+            .catch(() => { /* WhatsApp handoff still carries the order in 'both' mode */ })
+    }
 
-    sendToWhatsApp(orderData, waDigits.value, t)
+    if (usesWhatsapp.value) {
+        sendToWhatsApp(orderData, waDigits.value, t)
+    }
     track('menu_order_submitted', { slug, total: snapshot.total, items: cartCount.value })
 
     cartDrawer.value = false
@@ -290,6 +303,7 @@ function updateUserField(field, value) {
                         :categories="categories"
                         :combos="combos"
                         :search="searchQuery"
+                        :orderingEnabled="orderingEnabled"
                         :t="t"
                         :money="money"
                         :localize="localize"
@@ -307,7 +321,7 @@ function updateUserField(field, value) {
                 />
             </div>
 
-            <Footer :t="t" />
+            <Footer :t="t" :socials="restaurant?.social_links" />
 
             <CartDrawer
                 v-if="orderingEnabled"
@@ -316,6 +330,7 @@ function updateUserField(field, value) {
                 :cartCount="cartCount"
                 :cartTotal="cartTotal"
                 :canOrder="canOrder"
+                :viaWhatsapp="usesWhatsapp"
                 :isSubmitting="submittingOrder"
                 :orderType="orderType"
                 :orderTypes="orderTypes"
@@ -355,6 +370,7 @@ function updateUserField(field, value) {
                 :isOpen="orderSuccess"
                 :reopenUrl="lastOrderUrl"
                 :orderCode="lastOrderCode"
+                :viaWhatsapp="usesWhatsapp"
                 :t="t"
                 @close="closeOrderSuccess"
             />

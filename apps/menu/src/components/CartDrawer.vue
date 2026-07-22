@@ -7,6 +7,7 @@ const props = defineProps({
     cartCount: Number,
     cartTotal: Number,
     canOrder: Boolean,
+    viaWhatsapp: { type: Boolean, default: true },
     isSubmitting: Boolean,
     orderType: String,
     orderTypes: Array,
@@ -26,6 +27,9 @@ const phone = ref('')
 const note = ref('')
 const email = ref('')
 const address = ref('')
+// Only surface field errors once the customer tries to submit, so the form
+// doesn't scold them before they've filled anything in.
+const attempted = ref(false)
 
 // Fresh dialog every open: back to step 1, prefill saved diner info.
 watch(() => props.isOpen, (open) => {
@@ -36,6 +40,7 @@ watch(() => props.isOpen, (open) => {
         email.value = props.userInfo?.email || ''
         address.value = props.userInfo?.address || ''
         note.value = ''
+        attempted.value = false
     }
 })
 
@@ -62,15 +67,20 @@ const fieldAlign = computed(() => (props.isAr ? 'right' : 'left'))
 
 // Delivery needs an address; pickup / dine-in don't.
 const needsAddress = computed(() => props.orderType === 'delivery')
+const phoneInvalid = computed(() => phone.value.trim().length < 8)
+const addressInvalid = computed(() => needsAddress.value && address.value.trim().length < 5)
 const canSubmit = computed(() =>
-    props.canOrder && phone.value.trim().length >= 8 && !props.isSubmitting &&
-    (!needsAddress.value || address.value.trim().length >= 5)
+    props.canOrder && !props.isSubmitting && !phoneInvalid.value && !addressInvalid.value
 )
 
 const itemsText = computed(() => `${props.cartCount} ${props.cartCount === 1 ? props.t('item_count') : props.t('items_count')}`)
 
 function submit() {
-    if (!canSubmit.value) return
+    // Reveal the field errors instead of silently doing nothing when a required
+    // field (phone, or delivery address) is missing.
+    attempted.value = true
+    if (props.isSubmitting || !props.canOrder) return
+    if (phoneInvalid.value || addressInvalid.value) return
     emit('submit', {
         name: name.value.trim(),
         phone: phone.value.trim(),
@@ -195,11 +205,13 @@ function submit() {
                             </label>
                             <label>
                                 <span>{{ t('f_phone') }} *</span>
-                                <input v-model="phone" :placeholder="t('f_phone_ph')" inputmode="tel" dir="ltr" :style="{ textAlign: fieldAlign }" />
+                                <input v-model="phone" :placeholder="t('f_phone_ph')" inputmode="tel" dir="ltr" :style="{ textAlign: fieldAlign }" :aria-invalid="attempted && phoneInvalid" />
+                                <small v-if="attempted && phoneInvalid" class="field-error">{{ t('f_phone_required') }}</small>
                             </label>
                             <label v-if="needsAddress">
                                 <span>{{ t('f_address') }} *</span>
-                                <textarea v-model="address" :placeholder="t('f_address_ph')"></textarea>
+                                <textarea v-model="address" :placeholder="t('f_address_ph')" :aria-invalid="attempted && addressInvalid"></textarea>
+                                <small v-if="attempted && addressInvalid" class="field-error">{{ t('f_address_required') }}</small>
                             </label>
                             <label>
                                 <span>{{ t('f_email') }}</span>
@@ -210,11 +222,11 @@ function submit() {
                                 <textarea v-model="note" :placeholder="t('f_note_ph')"></textarea>
                             </label>
 
-                            <button class="whatsapp-order" :class="{ disabled: !canSubmit }" :disabled="!canSubmit" @click="submit">
-                                <span>{{ isSubmitting ? t('sending') : t('order_wa') }}</span>
-                                <svg viewBox="0 0 24 24" fill="currentColor" style="width:18px;height:18px"><path d="M19.05 4.91A9.82 9.82 0 0 0 12.04 2c-5.46 0-9.91 4.45-9.91 9.91 0 1.75.46 3.45 1.32 4.95L2.05 22l5.25-1.38c1.45.79 3.08 1.21 4.74 1.21h.004c5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01zm-7.01 15.24h-.003a8.2 8.2 0 0 1-4.18-1.15l-.3-.18-3.11.82.83-3.04-.2-.31a8.18 8.18 0 0 1-1.26-4.38c0-4.54 3.7-8.24 8.25-8.24 2.2 0 4.27.86 5.83 2.42a8.2 8.2 0 0 1 2.41 5.83c0 4.54-3.7 8.24-8.24 8.24zm4.52-6.16c-.25-.12-1.47-.72-1.69-.81-.23-.08-.39-.12-.56.12-.16.25-.64.81-.79.97-.14.17-.29.19-.54.06-.25-.12-1.05-.39-1.99-1.23-.74-.66-1.23-1.47-1.38-1.72-.14-.25-.01-.38.11-.5.11-.11.25-.29.37-.43.12-.14.16-.25.25-.41.08-.17.04-.31-.02-.43-.06-.12-.56-1.34-.76-1.84-.2-.48-.41-.42-.56-.43-.14-.01-.31-.01-.48-.01a.92.92 0 0 0-.66.31c-.23.25-.87.85-.87 2.07 0 1.22.89 2.4 1.01 2.56.12.17 1.75 2.67 4.23 3.74.59.26 1.05.41 1.41.52.59.19 1.13.16 1.56.1.48-.07 1.47-.6 1.67-1.18.21-.58.21-1.07.14-1.18-.06-.11-.22-.17-.47-.29z"/></svg>
+                            <button class="whatsapp-order" :class="{ muted: !canSubmit, 'is-system': !viaWhatsapp }" :disabled="isSubmitting" @click="submit">
+                                <span>{{ isSubmitting ? t('sending') : (viaWhatsapp ? t('order_wa') : t('place_order')) }}</span>
+                                <svg v-if="viaWhatsapp" viewBox="0 0 24 24" fill="currentColor" style="width:18px;height:18px"><path d="M19.05 4.91A9.82 9.82 0 0 0 12.04 2c-5.46 0-9.91 4.45-9.91 9.91 0 1.75.46 3.45 1.32 4.95L2.05 22l5.25-1.38c1.45.79 3.08 1.21 4.74 1.21h.004c5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01zm-7.01 15.24h-.003a8.2 8.2 0 0 1-4.18-1.15l-.3-.18-3.11.82.83-3.04-.2-.31a8.18 8.18 0 0 1-1.26-4.38c0-4.54 3.7-8.24 8.25-8.24 2.2 0 4.27.86 5.83 2.42a8.2 8.2 0 0 1 2.41 5.83c0 4.54-3.7 8.24-8.24 8.24zm4.52-6.16c-.25-.12-1.47-.72-1.69-.81-.23-.08-.39-.12-.56.12-.16.25-.64.81-.79.97-.14.17-.29.19-.54.06-.25-.12-1.05-.39-1.99-1.23-.74-.66-1.23-1.47-1.38-1.72-.14-.25-.01-.38.11-.5.11-.11.25-.29.37-.43.12-.14.16-.25.25-.41.08-.17.04-.31-.02-.43-.06-.12-.56-1.34-.76-1.84-.2-.48-.41-.42-.56-.43-.14-.01-.31-.01-.48-.01a.92.92 0 0 0-.66.31c-.23.25-.87.85-.87 2.07 0 1.22.89 2.4 1.01 2.56.12.17 1.75 2.67 4.23 3.74.59.26 1.05.41 1.41.52.59.19 1.13.16 1.56.1.48-.07 1.47-.6 1.67-1.18.21-.58.21-1.07.14-1.18-.06-.11-.22-.17-.47-.29z"/></svg>
                             </button>
-                            <p class="whatsapp-note">{{ t('wa_note') }}</p>
+                            <p class="whatsapp-note">{{ viaWhatsapp ? t('wa_note') : t('system_note') }}</p>
                         </div>
                     </template>
                 </aside>

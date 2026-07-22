@@ -63,6 +63,9 @@ class PlanLimitTest extends TestCase
     {
         Plan::create(['name' => 'Solo', 'max_branches' => 0]);
         $r = Restaurant::factory()->create(['subscription_plan' => 'Solo']);
+        // The plan grants the multi_branch capability but caps the count, so the
+        // request clears the feature gate and is rejected on the numeric limit.
+        $r->features()->create(['feature_key' => 'multi_branch', 'is_enabled' => true]);
         $admin = User::factory()->restaurantAdmin($r->id)->create();
 
         $this->actingAs($admin)

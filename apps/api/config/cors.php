@@ -8,16 +8,16 @@ return [
     |--------------------------------------------------------------------------
     |
     | The SPA (apps/web) and landing (apps/landing) are decoupled and call this
-    | API from a different origin. For Sanctum cookie auth to work, CORS must
-    | allow credentials, and the allowed origins must be listed explicitly
-    | (a wildcard "*" is not permitted alongside credentialed requests).
+    | API from a different origin. Auth is a stateless JWT Bearer token, so
+    | credentialed (cookie) requests are not required — but origins are still
+    | listed explicitly so the browser permits the cross-origin XHR.
     |
     | Set CORS_ALLOWED_ORIGINS in .env to a comma-separated list of frontend
     | origins, e.g. https://app.tryorder.net,https://xorder.net
     |
     */
 
-    'paths' => ['api/*', 'sanctum/csrf-cookie', 'login', 'logout'],
+    'paths' => ['api/*'],
 
     'allowed_methods' => ['*'],
 
@@ -34,6 +34,8 @@ return [
 
     'max_age' => 0,
 
-    'supports_credentials' => true,
+    // Auth travels in the Authorization header, not cookies, so credentialed
+    // (cookie-bearing) cross-origin requests are no longer needed.
+    'supports_credentials' => false,
 
 ];
