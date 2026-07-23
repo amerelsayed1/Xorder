@@ -3,10 +3,18 @@ import { ref, computed, onMounted } from 'vue'
 import { RouterLink } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import api from '@xorder/api-client/api.js'
+import { useAuth } from '@xorder/api-client/auth.js'
+import Skeleton from '@xorder/ui/Skeleton.vue'
 
 const { t, locale } = useI18n()
+const auth = useAuth()
 const data = ref(null)
 const loading = ref(true)
+
+// Order analytics (totals, "most ordered", the orders series) only mean
+// anything when the restaurant takes system orders — WhatsApp orders aren't
+// recorded and QR-only plans have no Order rows at all. Menu views stay shown.
+const showOrders = computed(() => auth.hasFeature('system_ordering'))
 
 // 14-day engagement chart: bar heights as a % of the busiest day.
 const daily = computed(() => data.value?.engagement?.daily || [])
@@ -41,7 +49,16 @@ function money(v) {
             <p class="page-sub">{{ t('insights.dashboard_sub') }}</p>
         </div>
 
-        <p v-if="loading" style="color:var(--muted)">{{ t('common.loading') }}</p>
+        <div v-if="loading" class="space-y-6">
+            <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                <Skeleton v-for="n in 4" :key="n" w="100%" h="82px" rounded="14px" />
+            </div>
+            <Skeleton w="100%" h="220px" rounded="14px" />
+            <div class="grid gap-6 lg:grid-cols-2">
+                <Skeleton w="100%" h="200px" rounded="14px" />
+                <Skeleton w="100%" h="200px" rounded="14px" />
+            </div>
+        </div>
 
         <template v-else-if="data">
             <!-- Menu overview -->
@@ -66,7 +83,7 @@ function money(v) {
 
             <!-- Engagement -->
             <template v-if="data.engagement">
-                <div class="grid grid-cols-2 lg:grid-cols-5 gap-4">
+                <div class="grid grid-cols-2 gap-4" :class="showOrders ? 'lg:grid-cols-5' : 'sm:grid-cols-2'">
                     <div class="stat">
                         <div class="stat-label">{{ t('stats.views_today') }}</div>
                         <div class="stat-num">{{ data.engagement.views_today }}</div>
@@ -75,18 +92,20 @@ function money(v) {
                         <div class="stat-label">{{ t('insights.views_14d') }}</div>
                         <div class="stat-num">{{ data.engagement.views_14d }}</div>
                     </div>
-                    <div class="stat">
-                        <div class="stat-label">{{ t('insights.orders_total') }}</div>
-                        <div class="stat-num">{{ data.engagement.orders_total }}</div>
-                    </div>
-                    <div class="stat">
-                        <div class="stat-label">{{ t('stats.new_orders') }}</div>
-                        <div class="stat-num" style="color:var(--accent)">{{ data.engagement.orders_new }}</div>
-                    </div>
-                    <div class="stat">
-                        <div class="stat-label">{{ t('insights.orders_14d') }}</div>
-                        <div class="stat-num">{{ data.engagement.orders_14d }}</div>
-                    </div>
+                    <template v-if="showOrders">
+                        <div class="stat">
+                            <div class="stat-label">{{ t('insights.orders_total') }}</div>
+                            <div class="stat-num">{{ data.engagement.orders_total }}</div>
+                        </div>
+                        <div class="stat">
+                            <div class="stat-label">{{ t('stats.new_orders') }}</div>
+                            <div class="stat-num" style="color:var(--accent)">{{ data.engagement.orders_new }}</div>
+                        </div>
+                        <div class="stat">
+                            <div class="stat-label">{{ t('insights.orders_14d') }}</div>
+                            <div class="stat-num">{{ data.engagement.orders_14d }}</div>
+                        </div>
+                    </template>
                 </div>
 
                 <div v-if="daily.length" class="card p-5">
@@ -94,13 +113,13 @@ function money(v) {
                         <h2 class="h-card">{{ t('insights.engagement') }} — {{ t('insights.last_14_days') }}</h2>
                         <div class="flex items-center gap-4 text-xs" style="color:var(--muted)">
                             <span class="flex items-center gap-1.5"><span class="dot-legend" style="background:var(--accent)"></span>{{ t('insights.views') }}</span>
-                            <span class="flex items-center gap-1.5"><span class="dot-legend" style="background:var(--green)"></span>{{ t('insights.orders') }}</span>
+                            <span v-if="showOrders" class="flex items-center gap-1.5"><span class="dot-legend" style="background:var(--green)"></span>{{ t('insights.orders') }}</span>
                         </div>
                     </div>
                     <div class="flex items-end gap-1.5" style="height:140px">
                         <div v-for="d in daily" :key="d.date" class="flex-1 h-full flex items-end justify-center gap-0.5" :title="dayTitle(d)">
                             <div class="eng-bar" style="background:var(--accent)" :style="{ height: barHeight(d.views) }"></div>
-                            <div class="eng-bar" style="background:var(--green)" :style="{ height: barHeight(d.orders) }"></div>
+                            <div v-if="showOrders" class="eng-bar" style="background:var(--green)" :style="{ height: barHeight(d.orders) }"></div>
                         </div>
                     </div>
                     <div class="flex gap-1.5 mt-1.5">
@@ -110,7 +129,7 @@ function money(v) {
             </template>
 
             <!-- Most ordered items -->
-            <div class="card p-5">
+            <div v-if="showOrders" class="card p-5">
                 <h2 class="h-card mb-4">{{ t('insights.top_items') }}</h2>
                 <p v-if="!topItems.length" class="text-sm" style="color:var(--muted)">{{ t('insights.top_items_none') }}</p>
                 <ul v-else class="space-y-3">

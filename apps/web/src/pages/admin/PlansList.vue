@@ -4,6 +4,7 @@ import { useRouter, RouterLink } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import api, { ensureCsrf } from '@xorder/api-client/api.js'
 import Icon from '@xorder/ui/Icon.vue'
+import TableSkeleton from '@xorder/ui/TableSkeleton.vue'
 import { confirm } from '@xorder/ui/confirm.js'
 
 const router = useRouter()
@@ -69,7 +70,7 @@ async function removePlan(p) {
                     </tr>
                 </thead>
                 <tbody>
-                    <tr v-if="loading"><td colspan="5" class="px-5 py-8 text-center" style="color:var(--muted)">{{ t('common.loading') }}</td></tr>
+                    <TableSkeleton v-if="loading" :cols="5" />
                     <tr v-else-if="!rows.length"><td colspan="5" class="px-5 py-8 text-center" style="color:var(--muted)">{{ t('plan.none') }}</td></tr>
                     <tr v-for="p in rows" :key="p.id" class="border-t cursor-pointer hover:bg-black/[.015]"
                         :style="{ borderColor: 'var(--line)', opacity: p.is_active ? 1 : 0.6 }"

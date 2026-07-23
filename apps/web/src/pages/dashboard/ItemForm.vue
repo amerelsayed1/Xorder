@@ -9,6 +9,7 @@ import { pickLocalized } from '@xorder/ui/localize.js'
 import ImageUploader from '@xorder/ui/ImageUploader.vue'
 import FormError from '@xorder/ui/FormError.vue'
 import Icon from '@xorder/ui/Icon.vue'
+import Skeleton from '@xorder/ui/Skeleton.vue'
 import { useMenuLang } from '../../lib/menuLang.js'
 
 const route = useRoute()
@@ -102,7 +103,12 @@ async function save() {
         <RouterLink :to="{ name: 'dashboard.items' }" class="text-sm" style="color:var(--muted)">{{ backArrow }} {{ t('common.back') }}</RouterLink>
         <h1 class="page-title my-3">{{ isEdit ? t('item.edit_item') : t('item.new_item') }}</h1>
 
-        <div v-if="loading" class="card p-6" style="color:var(--muted)">{{ t('common.saving') }}</div>
+        <div v-if="loading" class="card p-6 space-y-5">
+            <div v-for="n in 4" :key="n" class="space-y-2.5">
+                <Skeleton w="28%" h="13px" />
+                <Skeleton w="100%" h="40px" rounded="10px" />
+            </div>
+        </div>
 
         <form v-else @submit.prevent="save" class="space-y-5">
             <div class="card p-6 space-y-4">
