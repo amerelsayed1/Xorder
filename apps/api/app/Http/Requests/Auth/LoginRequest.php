@@ -17,6 +17,11 @@ class LoginRequest extends FormRequest
             'username' => ['required', 'string', 'max:150'],
             'password' => ['required', 'string'],
             'remember' => ['sometimes', 'boolean'],
+            // Optional tenant hint: the restaurant subdomain the SPA is serving.
+            // Lets tenant login resolve the account without a trustworthy Host
+            // header (dev proxy / decoupled API origin). Omitted by the
+            // super-admin portal, which resolves to no tenant.
+            'restaurant' => ['sometimes', 'nullable', 'string', 'max:255'],
         ];
     }
 

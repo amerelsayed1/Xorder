@@ -34,7 +34,10 @@ async function submit() {
     error.value = ''
     loading.value = true
     try {
-        await auth.login(form.value)
+        // Tell the API which tenant this login targets. The SPA knows its own
+        // subdomain, so we don't depend on the Host header surviving a dev
+        // proxy or a decoupled API origin. Null on the super-admin portal.
+        await auth.login({ ...form.value, restaurant: restaurantSlug })
         // Where the signed-in user belongs depends on the host. On the correct
         // portal, go to its home (honouring any post-login redirect). If the
         // account belongs elsewhere — e.g. a restaurant admin who opened the
