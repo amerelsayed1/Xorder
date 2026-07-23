@@ -253,12 +253,6 @@ const year = new Date().getFullYear()
                         <a :href="heroSecondaryLink" class="btn btn-ghost lp-btn-lg" @click="onViewDemo">{{ L(content.hero.secondary) }}</a>
                     </div>
 
-                    <ul class="lp-trust">
-                        <li v-for="(v, i) in (content.hero.value_points || [content.hero.no_commission_label, content.hero.ready_label])" :key="i">
-                            <span class="lp-trust-ic"><Icon name="check" :size="13" /></span>{{ L(v) }}
-                        </li>
-                    </ul>
-
                     <!-- Dashboard illustration (vector). Decorative abstract UI — food
                          emoji + bars + a trend chart — so nothing reads as real data. -->
                     <div class="lp-hero-figure">
@@ -670,7 +664,7 @@ const year = new Date().getFullYear()
 .lp-btn-lg { padding: 13px 26px; font-size: 16px; }
 
 /* =============================== Hero ============================== */
-.lp-hero { position: relative; padding: clamp(48px, 7vw, 96px) 0 clamp(56px, 8vw, 104px); overflow: hidden; }
+.lp-hero { position: relative; padding: clamp(24px, 3vw, 48px) 0 clamp(32px, 4vw, 64px); overflow: hidden; }
 .lp-hero-blob { position: absolute; border-radius: 50%; filter: blur(70px); opacity: .55; z-index: 0; pointer-events: none; }
 .lp-hero-blob-1 { width: 460px; height: 460px; inset-inline-end: -120px; top: -140px;
     background: radial-gradient(circle, var(--accent-soft), transparent 70%); }
@@ -683,12 +677,7 @@ const year = new Date().getFullYear()
 .lp-h1 { font-family: var(--font-display); font-weight: 800; font-size: clamp(32px, 5vw, 52px); line-height: 1.08;
     color: var(--ink); margin: 18px 0 0; letter-spacing: -0.02em; }
 .lp-lead { font-size: clamp(16px, 2vw, 19px); line-height: 1.62; color: var(--body); margin: 18px auto 0; max-width: 40em; }
-.lp-trust { list-style: none; padding: 0; margin: 24px auto 0; display: flex; flex-wrap: wrap;
-    justify-content: center; gap: 10px 24px; }
-.lp-trust li { display: flex; align-items: center; gap: 8px; font-weight: 600; color: var(--ink); font-size: 15px; }
-.lp-trust-ic { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%;
-    background: var(--green-soft); color: var(--green); }
-.lp-hero-cta { display: flex; gap: 12px; margin-top: 28px; flex-wrap: wrap; justify-content: center; }
+.lp-hero-cta { display: flex; gap: 12px; margin-top: 26px; flex-wrap: wrap; justify-content: center; }
 .lp-hero-wa { display: inline-flex; align-items: center; gap: 8px; margin-top: 16px; color: var(--green);
     font-weight: 600; font-size: 15.5px; text-decoration: none; }
 .lp-hero-wa:hover { text-decoration: underline; }
@@ -701,7 +690,7 @@ const year = new Date().getFullYear()
 .lp-stat-lbl { font-size: 14px; color: var(--muted); margin-top: 2px; }
 
 /* Dashboard illustration (vector) */
-.lp-hero-figure { width: 100%; margin-top: clamp(40px, 6vw, 68px); display: flex; justify-content: center; }
+.lp-hero-figure { width: 100%; margin-top: clamp(20px, 3vw, 36px); display: flex; justify-content: center; }
 .lp-dash-illus { width: 100%; max-width: 920px; height: auto; display: block;
     filter: drop-shadow(0 40px 80px rgba(42,30,20,.16)); }
 .il-shadow { fill: rgba(42,30,20,.10); }
