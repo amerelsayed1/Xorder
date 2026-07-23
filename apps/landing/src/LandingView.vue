@@ -28,7 +28,6 @@ const NAV = [
     { id: 'how', key: 'landing.nav_how' },
     { id: 'packages', key: 'landing.nav_pricing' },
     { id: 'faq', key: 'landing.nav_faq' },
-    { id: 'contact', key: 'landing.nav_contact' },
 ]
 
 function closeNav() { navOpen.value = false }
@@ -470,6 +469,7 @@ const year = new Date().getFullYear()
                         <a v-if="heroWa" :href="waHref" target="_blank" rel="noopener" class="lp-hero-wa" @click="onWhatsapp">
                             <span class="lp-wa-ic">✆</span>{{ L(content.hero.whatsapp_label) }}
                         </a>
+                        <a v-if="content.contact.email" :href="`mailto:${content.contact.email}`" class="lp-lead-email">{{ content.contact.email }}</a>
                     </div>
 
                     <div class="lp-lead-card">
@@ -521,19 +521,6 @@ const year = new Date().getFullYear()
                             </button>
                         </form>
                     </div>
-                </div>
-            </section>
-
-            <!-- ======================== Final CTA ========================= -->
-            <section id="contact" class="lp-cta-band">
-                <div class="lp-cta-blob" aria-hidden="true"></div>
-                <div class="lp-container lp-cta-inner">
-                    <h2 class="lp-cta-title">{{ L(content.cta.title) }}</h2>
-                    <p class="lp-cta-sub">{{ L(content.cta.sub) }}</p>
-                    <div class="lp-cta-actions">
-                        <a href="#lead" class="btn lp-btn-lg lp-cta-btn" @click="onRequestDemo">{{ L(content.cta.button) }}</a>
-                    </div>
-                    <a v-if="content.contact.email" :href="`mailto:${content.contact.email}`" class="lp-cta-email">{{ content.contact.email }}</a>
                 </div>
             </section>
 
@@ -767,6 +754,8 @@ const year = new Date().getFullYear()
 /* Lead form */
 .lp-lead-grid { display: grid; grid-template-columns: 1fr 1.1fr; gap: clamp(28px, 5vw, 56px); align-items: center; }
 .lp-lead-copy .lp-sub { max-width: 30em; }
+.lp-lead-email { display: inline-block; margin-top: 12px; color: var(--muted); font-size: 15px; text-decoration: none; }
+.lp-lead-email:hover { color: var(--ink); text-decoration: underline; }
 .lp-lead-card { background: var(--card); border: 1px solid var(--line); border-radius: 20px; padding: clamp(22px, 3vw, 32px);
     box-shadow: 0 30px 60px -42px rgba(42,30,20,.5); }
 .lp-form { display: flex; flex-direction: column; gap: 15px; }
@@ -782,23 +771,6 @@ const year = new Date().getFullYear()
 .lp-lead-done { text-align: center; padding: 40px 20px; display: flex; flex-direction: column; align-items: center; gap: 16px; }
 .lp-lead-done-ic { display: grid; place-items: center; width: 60px; height: 60px; border-radius: 50%; background: var(--green-soft); color: var(--green); }
 .lp-lead-done p { font-size: 17px; color: var(--ink); font-weight: 600; max-width: 22em; }
-
-/* Final CTA */
-.lp-cta-band { position: relative; overflow: hidden; background: var(--ink); scroll-margin-top: 80px;
-    min-height: 100svh; display: flex; flex-direction: column; justify-content: center;
-    padding: clamp(56px, 8vh, 96px) 0; }
-.lp-cta-blob { position: absolute; width: 520px; height: 520px; border-radius: 50%; filter: blur(90px); opacity: .35;
-    inset-inline-end: -120px; top: -160px; background: radial-gradient(circle, var(--accent), transparent 70%); }
-.lp-cta-inner { position: relative; z-index: 1; text-align: center; max-width: 40em; margin-inline: auto; }
-.lp-cta-title { font-family: var(--font-display); font-weight: 800; font-size: clamp(26px, 4vw, 40px); color: #fff; letter-spacing: -.01em; }
-.lp-cta-sub { font-size: clamp(15px, 2vw, 18px); color: rgba(255,255,255,.72); margin-top: 14px; line-height: 1.6; }
-.lp-cta-actions { display: flex; gap: 12px; justify-content: center; margin-top: 28px; flex-wrap: wrap; }
-.lp-cta-btn { background: var(--accent); color: #fff; }
-.lp-cta-btn:hover { background: var(--accent-dark); }
-.lp-cta-wa { background: rgba(255,255,255,.12); color: #fff; border: 1px solid rgba(255,255,255,.24); }
-.lp-cta-wa:hover { background: rgba(255,255,255,.2); }
-.lp-cta-email { display: inline-block; margin-top: 20px; color: rgba(255,255,255,.66); font-size: 15px; text-decoration: none; }
-.lp-cta-email:hover { color: #fff; text-decoration: underline; }
 
 /* Footer */
 .lp-footer { background: var(--page); border-top: 1px solid var(--line); padding: 44px 0; }
