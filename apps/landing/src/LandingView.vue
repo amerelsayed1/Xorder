@@ -714,7 +714,8 @@ const year = new Date().getFullYear()
 .il-emoji-sm { font-size: 30px; }
 
 /* ============================= Sections ============================ */
-.lp-section { padding: clamp(56px, 8vw, 104px) 0; scroll-margin-top: 80px; }
+.lp-section { min-height: 100svh; display: flex; flex-direction: column; justify-content: center;
+    padding: clamp(64px, 9vh, 104px) 0; scroll-margin-top: 80px; }
 .lp-section-alt { background: color-mix(in srgb, var(--accent-soft) 55%, var(--page)); }
 .lp-section-head { text-align: center; max-width: 44em; margin: 0 auto clamp(36px, 5vw, 56px); }
 .lp-eyebrow { display: inline-block; font-family: var(--font-display); font-weight: 700; font-size: 13px;
@@ -847,7 +848,8 @@ const year = new Date().getFullYear()
 
 /* Final CTA */
 .lp-cta-band { position: relative; overflow: hidden; background: var(--ink); scroll-margin-top: 80px;
-    padding: clamp(56px, 8vw, 96px) 0; }
+    min-height: 100svh; display: flex; flex-direction: column; justify-content: center;
+    padding: clamp(56px, 8vh, 96px) 0; }
 .lp-cta-blob { position: absolute; width: 520px; height: 520px; border-radius: 50%; filter: blur(90px); opacity: .35;
     inset-inline-end: -120px; top: -160px; background: radial-gradient(circle, var(--accent), transparent 70%); }
 .lp-cta-inner { position: relative; z-index: 1; text-align: center; max-width: 40em; margin-inline: auto; }
