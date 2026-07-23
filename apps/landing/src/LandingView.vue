@@ -117,7 +117,6 @@ const planHasPrice = (p) => !!planPrice(p)
 
 // A missing demo restaurant makes the server-rendered QR 404; hide it cleanly
 // rather than showing a broken-image icon (the brief: images must not break layout).
-const heroQrOk = ref(true)
 const demoQrOk = ref(true)
 
 // ---- FAQ accordion -------------------------------------------------------
@@ -268,38 +267,80 @@ const year = new Date().getFullYear()
                         </div>
                     </div>
 
-                    <!-- Phone mockup -->
+                    <!-- Menu illustration (vector). Decorative: abstract bars stand
+                         in for menu content so nothing reads as fabricated data. -->
                     <div class="lp-hero-art">
-                        <div class="lp-phone">
-                            <div class="lp-phone-notch"></div>
-                            <div class="lp-phone-screen">
-                                <div class="lp-menu-head">
-                                    <div class="lp-menu-logo">Q</div>
-                                    <div>
-                                        <div class="lp-menu-name">{{ t('landing.demo_name') }}</div>
-                                        <div class="lp-menu-tag">{{ t('landing.demo_tag') }}</div>
-                                    </div>
-                                </div>
-                                <div class="lp-menu-cats">
-                                    <span class="lp-chip lp-chip-on">{{ t('landing.demo_cat_mains') }}</span>
-                                    <span class="lp-chip">{{ t('landing.demo_cat_starters') }}</span>
-                                    <span class="lp-chip">{{ t('landing.demo_cat_drinks') }}</span>
-                                </div>
-                                <div class="lp-menu-item" v-for="i in 3" :key="i">
-                                    <div class="lp-menu-thumb"></div>
-                                    <div class="lp-menu-meta">
-                                        <div class="lp-menu-itemname">{{ t('landing.demo_item') }}</div>
-                                        <div class="lp-menu-desc">{{ t('landing.demo_desc') }}</div>
-                                    </div>
-                                    <div class="lp-menu-price">85</div>
-                                </div>
-                                <div class="lp-menu-order">{{ t('landing.demo_order') }}</div>
-                            </div>
-                        </div>
-                        <div v-if="heroQrOk" class="lp-hero-qr" aria-hidden="true">
-                            <img :src="demoQrUrl" width="72" height="72" alt="" loading="lazy" @error="heroQrOk = false" />
-                            <span>{{ t('landing.scan_to_order') }}</span>
-                        </div>
+                        <svg class="lp-menu-illus" viewBox="0 0 400 560" xmlns="http://www.w3.org/2000/svg"
+                            role="img" :aria-label="t('landing.nav_qr_menu')">
+                            <defs>
+                                <linearGradient id="lpThumb" x1="0" y1="0" x2="1" y2="1">
+                                    <stop offset="0" stop-color="#fef0d9" />
+                                    <stop offset="1" stop-color="#efd9c5" />
+                                </linearGradient>
+                            </defs>
+
+                            <!-- soft backdrop + device -->
+                            <rect class="il-glow" x="28" y="44" width="300" height="476" rx="40" />
+                            <rect class="il-body" x="60" y="16" width="272" height="528" rx="44" />
+                            <rect class="il-screen" x="72" y="28" width="248" height="504" rx="34" />
+                            <rect class="il-body" x="160" y="30" width="72" height="16" rx="8" />
+
+                            <!-- header: logo + title/subtitle bars -->
+                            <rect class="il-accent" x="92" y="62" width="40" height="40" rx="11" />
+                            <rect class="il-bar-strong" x="144" y="68" width="96" height="10" rx="5" />
+                            <rect class="il-bar-soft" x="144" y="86" width="60" height="8" rx="4" />
+
+                            <!-- category chips -->
+                            <rect class="il-chip-on" x="92" y="120" width="66" height="26" rx="13" />
+                            <rect class="il-chip" x="166" y="120" width="52" height="26" rx="13" />
+                            <rect class="il-chip" x="226" y="120" width="52" height="26" rx="13" />
+
+                            <!-- menu item rows -->
+                            <g v-for="n in 3" :key="n" :transform="`translate(0, ${164 + (n - 1) * 82})`">
+                                <rect class="il-card" x="92" y="0" width="216" height="70" rx="16" />
+                                <rect class="il-thumb" x="104" y="12" width="46" height="46" rx="11" fill="url(#lpThumb)" />
+                                <rect class="il-bar-strong" x="162" y="20" width="104" height="9" rx="4.5" />
+                                <rect class="il-bar-soft" x="162" y="36" width="72" height="7" rx="3.5" />
+                                <rect class="il-price" x="274" y="27" width="24" height="15" rx="7.5" />
+                            </g>
+
+                            <!-- order button -->
+                            <rect class="il-accent" x="92" y="420" width="216" height="46" rx="14" />
+                            <rect class="il-btn-label" x="164" y="438" width="72" height="10" rx="5" />
+
+                            <!-- floating QR tile -->
+                            <g>
+                                <rect class="il-qr-shadow" x="250" y="446" width="122" height="104" rx="18" />
+                                <rect class="il-card" x="248" y="442" width="122" height="104" rx="18" />
+                                <g transform="translate(264, 458)">
+                                    <!-- finders -->
+                                    <rect class="il-qr-mod" x="0" y="0" width="22" height="22" rx="5" />
+                                    <rect class="il-qr-bg" x="5" y="5" width="12" height="12" rx="3" />
+                                    <rect class="il-qr-mod" x="9" y="9" width="4" height="4" rx="1" />
+                                    <rect class="il-qr-mod" x="50" y="0" width="22" height="22" rx="5" />
+                                    <rect class="il-qr-bg" x="55" y="5" width="12" height="12" rx="3" />
+                                    <rect class="il-qr-mod" x="59" y="9" width="4" height="4" rx="1" />
+                                    <rect class="il-qr-mod" x="0" y="50" width="22" height="22" rx="5" />
+                                    <rect class="il-qr-bg" x="5" y="55" width="12" height="12" rx="3" />
+                                    <rect class="il-qr-mod" x="9" y="59" width="4" height="4" rx="1" />
+                                    <!-- modules -->
+                                    <rect class="il-qr-mod" x="30" y="4" width="5" height="5" />
+                                    <rect class="il-qr-mod" x="38" y="4" width="5" height="5" />
+                                    <rect class="il-qr-mod" x="30" y="12" width="5" height="5" />
+                                    <rect class="il-qr-mod" x="32" y="30" width="6" height="6" />
+                                    <rect class="il-qr-mod" x="44" y="30" width="6" height="6" />
+                                    <rect class="il-qr-mod" x="56" y="30" width="6" height="6" />
+                                    <rect class="il-qr-mod" x="4" y="30" width="6" height="6" />
+                                    <rect class="il-qr-mod" x="16" y="30" width="6" height="6" />
+                                    <rect class="il-qr-mod" x="32" y="42" width="6" height="6" />
+                                    <rect class="il-qr-mod" x="44" y="44" width="6" height="6" />
+                                    <rect class="il-qr-mod" x="56" y="42" width="6" height="6" />
+                                    <rect class="il-qr-mod" x="44" y="56" width="6" height="6" />
+                                    <rect class="il-qr-mod" x="56" y="56" width="6" height="6" />
+                                    <rect class="il-qr-mod" x="32" y="60" width="6" height="6" />
+                                </g>
+                            </g>
+                        </svg>
                     </div>
                 </div>
             </section>
@@ -666,36 +707,23 @@ const year = new Date().getFullYear()
 .lp-stat-num { font-family: var(--font-display); font-weight: 800; font-size: 27px; color: var(--ink); }
 .lp-stat-lbl { font-size: 14px; color: var(--muted); margin-top: 2px; }
 
-/* Phone mockup */
+/* Menu illustration (vector) */
 .lp-hero-art { position: relative; display: grid; place-items: center; }
-.lp-phone { width: 288px; height: 578px; background: var(--sidebar); border-radius: 42px; padding: 12px;
-    box-shadow: 0 44px 90px -34px rgba(42,30,20,.6); position: relative; }
-.lp-phone-notch { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); width: 120px; height: 24px;
-    background: var(--sidebar); border-radius: 0 0 16px 16px; z-index: 2; }
-.lp-phone-screen { background: var(--page); border-radius: 32px; height: 100%; padding: 22px 16px; overflow: hidden; }
-.lp-menu-head { display: flex; align-items: center; gap: 11px; margin-top: 8px; }
-.lp-menu-logo { width: 40px; height: 40px; border-radius: 11px; background: var(--accent); color: #fff;
-    display: grid; place-items: center; font-family: var(--font-display); font-weight: 700; }
-.lp-menu-name { font-family: var(--font-display); font-weight: 600; font-size: 16px; color: var(--ink); }
-.lp-menu-tag { font-size: 12px; color: var(--muted); }
-.lp-menu-cats { display: flex; gap: 7px; margin: 18px 0 14px; }
-.lp-chip { font-size: 12px; font-weight: 600; padding: 5px 12px; border-radius: 16px; background: var(--card);
-    border: 1px solid var(--line); color: var(--muted); font-family: var(--font-display); }
-.lp-chip-on { background: var(--accent); color: #fff; border-color: var(--accent); }
-.lp-menu-item { display: flex; align-items: center; gap: 11px; background: var(--card); border: 1px solid var(--line);
-    border-radius: 13px; padding: 10px; margin-bottom: 10px; }
-.lp-menu-thumb { width: 46px; height: 46px; border-radius: 9px; background: linear-gradient(135deg, var(--accent-soft), #efd9c5); flex-shrink: 0; }
-.lp-menu-meta { flex: 1; min-width: 0; }
-.lp-menu-itemname { font-family: var(--font-display); font-weight: 600; font-size: 14px; color: var(--ink); }
-.lp-menu-desc { font-size: 11.5px; color: var(--muted); }
-.lp-menu-price { font-family: var(--font-display); font-weight: 700; color: var(--accent); font-size: 15px; }
-.lp-menu-order { margin-top: 6px; text-align: center; background: var(--accent); color: #fff; font-weight: 700;
-    font-family: var(--font-display); font-size: 14px; padding: 11px; border-radius: 12px; }
-.lp-hero-qr { position: absolute; inset-block-end: 14px; inset-inline-start: -6px; display: flex; align-items: center; gap: 9px;
-    background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 9px 13px 9px 9px;
-    box-shadow: 0 18px 40px -22px rgba(42,30,20,.5); }
-.lp-hero-qr img { border-radius: 8px; display: block; }
-.lp-hero-qr span { font-family: var(--font-display); font-weight: 600; font-size: 13px; color: var(--ink); max-width: 8em; line-height: 1.25; }
+.lp-menu-illus { width: min(100%, 380px); height: auto; display: block; }
+.il-glow { fill: var(--accent-soft); opacity: .55; }
+.il-body { fill: var(--sidebar); }
+.il-screen { fill: var(--page); }
+.il-accent { fill: var(--accent); }
+.il-bar-strong { fill: var(--ink); opacity: .8; }
+.il-bar-soft { fill: var(--muted); opacity: .45; }
+.il-chip-on { fill: var(--accent); }
+.il-chip { fill: var(--card); stroke: var(--line); stroke-width: 1.5; }
+.il-card { fill: var(--card); stroke: var(--line); stroke-width: 1.5; }
+.il-price { fill: var(--accent); opacity: .85; }
+.il-btn-label { fill: #fff; opacity: .92; }
+.il-qr-shadow { fill: rgba(42,30,20,.16); }
+.il-qr-bg { fill: var(--card); }
+.il-qr-mod { fill: var(--ink); }
 
 /* ============================= Sections ============================ */
 .lp-section { padding: clamp(56px, 8vw, 104px) 0; scroll-margin-top: 80px; }
