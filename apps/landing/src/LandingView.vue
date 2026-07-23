@@ -664,7 +664,8 @@ const year = new Date().getFullYear()
 .lp-btn-lg { padding: 13px 26px; font-size: 16px; }
 
 /* =============================== Hero ============================== */
-.lp-hero { position: relative; padding: clamp(24px, 3vw, 48px) 0 clamp(32px, 4vw, 64px); overflow: hidden; }
+.lp-hero { position: relative; min-height: 100svh; display: flex; flex-direction: column; justify-content: center;
+    padding: clamp(80px, 9vh, 100px) 0 clamp(24px, 4vh, 44px); overflow: hidden; }
 .lp-hero-blob { position: absolute; border-radius: 50%; filter: blur(70px); opacity: .55; z-index: 0; pointer-events: none; }
 .lp-hero-blob-1 { width: 460px; height: 460px; inset-inline-end: -120px; top: -140px;
     background: radial-gradient(circle, var(--accent-soft), transparent 70%); }
@@ -683,15 +684,15 @@ const year = new Date().getFullYear()
 .lp-hero-wa:hover { text-decoration: underline; }
 .lp-wa-ic { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%;
     background: var(--green); color: #fff; font-size: 14px; }
-.lp-stats { display: flex; gap: 24px 48px; margin: clamp(36px, 5vw, 52px) auto 0; flex-wrap: wrap; justify-content: center;
-    padding-top: 30px; border-top: 1px solid var(--line); max-width: 760px; width: 100%; }
+.lp-stats { display: flex; gap: 18px 48px; margin: clamp(14px, 2.2vh, 26px) auto 0; flex-wrap: wrap; justify-content: center;
+    padding-top: clamp(14px, 2vh, 22px); border-top: 1px solid var(--line); max-width: 760px; width: 100%; }
 .lp-stats > div { display: flex; flex-direction: column; min-width: 96px; align-items: center; }
 .lp-stat-num { font-family: var(--font-display); font-weight: 800; font-size: 27px; color: var(--ink); }
 .lp-stat-lbl { font-size: 14px; color: var(--muted); margin-top: 2px; }
 
 /* Dashboard illustration (vector) */
-.lp-hero-figure { width: 100%; margin-top: clamp(20px, 3vw, 36px); display: flex; justify-content: center; }
-.lp-dash-illus { width: 100%; max-width: 920px; height: auto; display: block;
+.lp-hero-figure { width: 100%; margin-top: clamp(12px, 2vh, 24px); display: flex; justify-content: center; }
+.lp-dash-illus { width: 100%; max-width: 920px; max-height: 38vh; height: auto; display: block;
     filter: drop-shadow(0 40px 80px rgba(42,30,20,.16)); }
 .il-shadow { fill: rgba(42,30,20,.10); }
 .il-panel { fill: var(--card); stroke: var(--line); stroke-width: 1.5; }
