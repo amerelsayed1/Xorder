@@ -27,6 +27,7 @@ const NAV = [
     { id: 'features', key: 'landing.nav_features' },
     { id: 'how', key: 'landing.nav_how' },
     { id: 'packages', key: 'landing.nav_pricing' },
+    { id: 'industries', key: 'landing.who_for' },
     { id: 'faq', key: 'landing.nav_faq' },
 ]
 
