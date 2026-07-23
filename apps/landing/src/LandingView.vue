@@ -733,10 +733,13 @@ const year = new Date().getFullYear()
 .lp-plan-cta { width: 100%; justify-content: center; }
 
 /* Industries */
-.lp-industries { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; max-width: 860px; margin: 0 auto; }
-.lp-industry { display: inline-flex; align-items: center; gap: 10px; background: var(--card); border: 1px solid var(--line);
-    border-radius: 40px; padding: 11px 20px; font-family: var(--font-display); font-weight: 600; color: var(--ink); font-size: 15.5px; }
-.lp-industry-ic { font-size: 20px; }
+.lp-industries { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; max-width: 920px; margin: 0 auto; }
+.lp-industry { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; text-align: center;
+    background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 26px 16px;
+    font-family: var(--font-display); font-weight: 600; color: var(--ink); font-size: 15.5px;
+    transition: border-color .15s, box-shadow .15s, transform .15s; }
+.lp-industry:hover { border-color: var(--accent); box-shadow: 0 16px 32px -24px rgba(42,30,20,.55); transform: translateY(-2px); }
+.lp-industry-ic { font-size: 32px; line-height: 1; }
 
 /* FAQ */
 .lp-faq-wrap { max-width: 820px; }
@@ -805,6 +808,7 @@ const year = new Date().getFullYear()
     .lp-showcase, .lp-problem-grid, .lp-compare, .lp-demo-grid, .lp-lead-grid { grid-template-columns: 1fr; }
     .lp-demo-grid .lp-demo-card { order: -1; }
     .lp-feature-grid, .lp-steps { grid-template-columns: repeat(2, 1fr); }
+    .lp-industries { grid-template-columns: repeat(3, 1fr); }
     .lp-pricing-grid { grid-template-columns: 1fr; max-width: 460px; margin-inline: auto; }
 }
 @media (max-width: 820px) {
@@ -825,6 +829,7 @@ const year = new Date().getFullYear()
 @media (max-width: 560px) {
     .lp-container { width: calc(100% - 32px); }
     .lp-feature-grid, .lp-steps { grid-template-columns: 1fr; }
+    .lp-industries { grid-template-columns: repeat(2, 1fr); }
     .lp-field-row { grid-template-columns: 1fr; }
     .lp-footer-inner { flex-direction: column; align-items: flex-start; }
     .lp-hero-qr { inset-inline-start: 50%; transform: translateX(-50%); inset-block-end: -18px; }
