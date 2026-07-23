@@ -35,7 +35,7 @@ export const DASHBOARD_NAV = [
     {
         key: 'place', labelKey: 'nav.group_place', icon: 'pi pi-building',
         children: [
-            { key: 'branches', labelKey: 'nav.branches', icon: 'pi pi-map-marker', to: { name: 'dashboard.branches' } },
+            { key: 'branches', labelKey: 'nav.branches', icon: 'pi pi-map-marker', to: { name: 'dashboard.branches' }, permission: 'multi_branch' },
             { key: 'areas', labelKey: 'nav.areas', icon: 'pi pi-th-large', to: { name: 'dashboard.areas' }, permission: 'table_management' },
             { key: 'tables', labelKey: 'nav.tables', icon: 'pi pi-table', to: { name: 'dashboard.tables' }, permission: 'table_management' },
         ],

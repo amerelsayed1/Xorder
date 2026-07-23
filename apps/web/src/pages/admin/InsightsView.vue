@@ -3,6 +3,7 @@ import { ref, onMounted, computed } from 'vue'
 import { RouterLink } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import api from '@xorder/api-client/api.js'
+import Skeleton from '@xorder/ui/Skeleton.vue'
 
 const { t } = useI18n()
 const data = ref(null)
@@ -41,7 +42,16 @@ function fmtDate(iso) {
             <p class="page-sub">{{ t('insights.admin_sub') }}</p>
         </div>
 
-        <p v-if="loading" style="color:var(--muted)">{{ t('common.loading') }}</p>
+        <div v-if="loading" class="space-y-6">
+            <div class="grid grid-cols-2 lg:grid-cols-3 gap-4">
+                <Skeleton v-for="n in 3" :key="n" w="100%" h="82px" rounded="14px" />
+            </div>
+            <Skeleton w="100%" h="140px" rounded="14px" />
+            <div class="grid gap-6 lg:grid-cols-2">
+                <Skeleton w="100%" h="200px" rounded="14px" />
+                <Skeleton w="100%" h="200px" rounded="14px" />
+            </div>
+        </div>
 
         <template v-else-if="data">
             <!-- Headline counters -->

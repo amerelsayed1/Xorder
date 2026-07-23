@@ -2,10 +2,24 @@
   "version": "0.0.1",
   "configurations": [
     {
+      "name": "web-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--prefix", "apps/web", "--", "--host", "0.0.0.0", "--port", "5190"],
+      "port": 5190,
+      "autoPort": true
+    },
+    {
       "name": "menu-dev",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--prefix", "apps/menu"],
-      "port": 5175,
+      "runtimeArgs": ["run", "dev", "--prefix", "apps/menu", "--", "--host", "0.0.0.0", "--port", "5191"],
+      "port": 5191,
+      "autoPort": true
+    },
+    {
+      "name": "landing-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--prefix", "apps/landing", "--", "--host", "0.0.0.0", "--port", "5192"],
+      "port": 5192,
       "autoPort": true
     }
   ]

@@ -1,5 +1,6 @@
 <script setup>
 import { useI18n } from 'vue-i18n'
+import Skeleton from '@xorder/ui/Skeleton.vue'
 
 const props = defineProps({
     rows: { type: Array, default: () => [] },
@@ -59,7 +60,15 @@ function fmtWhen(iso) {
 
 <template>
     <div>
-        <div v-if="loading" class="py-10 text-center" style="color:var(--muted)">{{ t('common.loading') }}</div>
+        <ul v-if="loading" class="audit-feed" aria-hidden="true">
+            <li v-for="n in 6" :key="n" class="audit-row">
+                <Skeleton w="34px" h="34px" rounded="9px" />
+                <div class="audit-body flex flex-col gap-2">
+                    <Skeleton w="45%" h="14px" />
+                    <Skeleton w="30%" h="12px" />
+                </div>
+            </li>
+        </ul>
         <div v-else-if="!rows.length" class="py-10 text-center" style="color:var(--muted)">{{ t('audit.none') }}</div>
 
         <ul v-else class="audit-feed">

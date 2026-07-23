@@ -6,6 +6,7 @@ import api, { ensureCsrf } from '@xorder/api-client/api.js'
 import { localizedInitial, pickLocalized } from '@xorder/ui/localize.js'
 import StatusBadge from '@xorder/ui/StatusBadge.vue'
 import Icon from '@xorder/ui/Icon.vue'
+import TableSkeleton from '@xorder/ui/TableSkeleton.vue'
 import { confirm } from '@xorder/ui/confirm.js'
 
 const router = useRouter()
@@ -155,7 +156,7 @@ const countFor = (k) => k === '' ? counts.value.ALL : counts.value[k]
                     </tr>
                 </thead>
                 <tbody>
-                    <tr v-if="loading"><td colspan="6" class="px-5 py-8 text-center" style="color:var(--muted)">{{ t('common.loading') }}</td></tr>
+                    <TableSkeleton v-if="loading" :cols="6" />
                     <tr v-else-if="!rows.length"><td colspan="6" class="px-5 py-8 text-center" style="color:var(--muted)">{{ t('admin.no_restaurants') }}</td></tr>
                     <tr v-for="r in loading ? [] : rows" :key="r.id" class="border-t cursor-pointer hover:bg-black/[.015]"
                         :style="{ borderColor: 'var(--line)', opacity: r.status === 'ARCHIVED' ? 0.6 : 1 }"

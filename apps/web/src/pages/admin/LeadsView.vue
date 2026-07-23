@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import api, { ensureCsrf } from '@xorder/api-client/api.js'
 import Icon from '@xorder/ui/Icon.vue'
 import Modal from '@xorder/ui/Modal.vue'
+import TableSkeleton from '@xorder/ui/TableSkeleton.vue'
 
 const { t } = useI18n()
 
@@ -118,7 +119,7 @@ const fmtDate = (iso) => iso ? new Date(iso).toLocaleDateString() : ''
                         </tr>
                     </thead>
                     <tbody>
-                        <tr v-if="loading"><td colspan="6" class="px-5 py-8 text-center" style="color:var(--muted)">{{ t('common.loading') }}</td></tr>
+                        <TableSkeleton v-if="loading" :cols="6" />
                         <tr v-else-if="!rows.length"><td colspan="6" class="px-5 py-8 text-center" style="color:var(--muted)">{{ t('leads.none') }}</td></tr>
                         <tr v-for="lead in rows" :key="lead.id" class="border-t cursor-pointer hover:bg-black/[.015]"
                             :style="{ borderColor: 'var(--line)' }" @click="openLead(lead)">

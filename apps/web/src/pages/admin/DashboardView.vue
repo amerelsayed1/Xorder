@@ -6,6 +6,7 @@ import api from '@xorder/api-client/api.js'
 import { localizedInitial, pickLocalized } from '@xorder/ui/localize.js'
 import Icon from '@xorder/ui/Icon.vue'
 import StatusBadge from '@xorder/ui/StatusBadge.vue'
+import Skeleton from '@xorder/ui/Skeleton.vue'
 
 const router = useRouter()
 const { t, locale } = useI18n()
@@ -121,13 +122,13 @@ const fmtDate = (d) => d ? new Date(d).toLocaleDateString(locale.value, { month:
 
     <!-- Loading skeleton -->
     <div v-else class="space-y-6">
-        <div class="h-8 w-44 rounded-lg" style="background:var(--line)"></div>
+        <Skeleton w="176px" h="32px" rounded="10px" />
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <div v-for="n in 4" :key="n" class="stat" style="height:74px"></div>
+            <Skeleton v-for="n in 4" :key="n" w="100%" h="74px" rounded="14px" />
         </div>
         <div class="grid gap-6 lg:grid-cols-3">
-            <div class="lg:col-span-2 card" style="height:300px"></div>
-            <div class="card" style="height:300px"></div>
+            <Skeleton class="lg:col-span-2" w="100%" h="300px" rounded="14px" />
+            <Skeleton w="100%" h="300px" rounded="14px" />
         </div>
     </div>
 </template>

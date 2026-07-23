@@ -16,17 +16,17 @@ use Illuminate\Support\Facades\Auth;
 class AuthController extends Controller
 {
     /**
-     * JWT login: verify the credentials against the tenant resolved from the
-     * request host, then mint a stateless access token. The token is the
-     * client's sole credential for subsequent `auth:jwt` requests.
+     * JWT login: verify the credentials against the tenant the request targets,
+     * then mint a stateless access token. The token is the client's sole
+     * credential for subsequent `auth:jwt` requests.
      */
     public function login(LoginRequest $request): JsonResponse
     {
         // Usernames are unique per tenant, so the account is only unambiguous
-        // once we know the tenant. Resolve it from the subdomain the request
-        // arrived on: {slug}.<domain> is that restaurant; the super-admin host
-        // (admin.<domain> / bare host) resolves to null. This also means an
-        // account can only sign in on its own subdomain.
+        // once we know the tenant. It comes from the `restaurant` slug the SPA
+        // sends (falling back to the Host subdomain): {slug} is that restaurant;
+        // the super-admin portal sends no slug and resolves to null. This also
+        // means an account can only sign in on its own tenant.
         $tenantId = $this->resolveLoginTenantId($request);
         $credentials = [
             'username' => $request->input('username'),
@@ -81,12 +81,25 @@ class AuthController extends Controller
     }
 
     /**
-     * The restaurant a login request targets, from its Host subdomain.
-     * {slug}.<domain> → that restaurant's id; the super-admin host
-     * (admin.<domain>, a reserved subdomain, or a bare host) → null.
+     * The restaurant a login request targets.
+     *
+     * Prefer an explicit `restaurant` slug from the client: the SPA already
+     * knows which subdomain it is serving, and sending it makes tenant login
+     * work even when the Host header can't be trusted — a dev proxy that
+     * rewrites it (`changeOrigin`) or a decoupled API origin (the SPA on
+     * {slug}.<domain> calling api.<domain>). The Host subdomain remains the
+     * fallback for same-origin requests that omit the hint.
+     *
+     * {slug} → that restaurant's id; the super-admin host (admin.<domain>, a
+     * reserved/unknown subdomain, or a bare host) → null.
      */
     private function resolveLoginTenantId(Request $request): ?int
     {
+        $slug = $request->input('restaurant');
+        if (is_string($slug) && $slug !== '') {
+            return Restaurant::where('slug', strtolower($slug))->value('id');
+        }
+
         $host = strtolower($request->getHost());
         $sub = strtok($host, '.');
 
