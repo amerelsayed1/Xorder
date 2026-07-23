@@ -349,7 +349,7 @@ const year = new Date().getFullYear()
                 </div>
             </section>
 
-            <!-- ======================= How it works ======================= -->
+            <!-- =================== How it works + Live demo ================ -->
             <section id="how" class="lp-section">
                 <div class="lp-container">
                     <div class="lp-section-head">
@@ -363,21 +363,19 @@ const year = new Date().getFullYear()
                             <p class="lp-step-text">{{ L(s.text) }}</p>
                         </li>
                     </ol>
-                </div>
-            </section>
 
-            <!-- ========================== Demo ============================ -->
-            <section v-if="content.demo.enabled !== false" id="demo" class="lp-section lp-section-alt">
-                <div class="lp-container lp-demo-grid">
-                    <div class="lp-demo-card" :class="{ 'lp-demo-card-empty': !demoQrOk }">
-                        <img v-show="demoQrOk" class="lp-qr-img" :src="demoQrUrl" width="200" height="200" alt="QR" loading="lazy" @error="demoQrOk = false" />
-                        <div class="lp-demo-stand">{{ t('landing.demo_stand') }}</div>
-                    </div>
-                    <div class="lp-demo-copy">
-                        <span class="lp-eyebrow">{{ t('landing.nav_demo') }}</span>
-                        <h2 class="lp-h2">{{ L(content.demo.title) }}</h2>
-                        <p class="lp-sub">{{ L(content.demo.text) }}</p>
-                        <a :href="demoMenuUrl" target="_blank" rel="noopener" class="btn btn-accent lp-btn-lg" @click="onViewDemo">{{ L(content.demo.button) }}</a>
+                    <!-- Live demo, merged into the How-it-works section. -->
+                    <div v-if="content.demo.enabled !== false" class="lp-demo-grid lp-how-demo">
+                        <div class="lp-demo-card" :class="{ 'lp-demo-card-empty': !demoQrOk }">
+                            <img v-show="demoQrOk" class="lp-qr-img" :src="demoQrUrl" width="200" height="200" alt="QR" loading="lazy" @error="demoQrOk = false" />
+                            <div class="lp-demo-stand">{{ t('landing.demo_stand') }}</div>
+                        </div>
+                        <div class="lp-demo-copy">
+                            <span class="lp-eyebrow">{{ t('landing.nav_demo') }}</span>
+                            <h3 class="lp-demo-title">{{ L(content.demo.title) }}</h3>
+                            <p class="lp-sub">{{ L(content.demo.text) }}</p>
+                            <a :href="demoMenuUrl" target="_blank" rel="noopener" class="btn btn-accent lp-btn-lg" @click="onViewDemo">{{ L(content.demo.button) }}</a>
+                        </div>
                     </div>
                 </div>
             </section>
@@ -720,6 +718,9 @@ const year = new Date().getFullYear()
     box-shadow: 0 30px 60px -40px rgba(42,30,20,.5); justify-self: center; max-width: 320px; }
 .lp-qr-img { width: 100%; max-width: 220px; height: auto; border-radius: 12px; }
 .lp-demo-stand { margin-top: 14px; font-family: var(--font-display); font-weight: 600; color: var(--muted); font-size: 14px; }
+.lp-how-demo { margin-top: clamp(40px, 6vh, 72px); padding-top: clamp(32px, 4vh, 48px); border-top: 1px solid var(--line); }
+.lp-demo-title { font-family: var(--font-display); font-weight: 800; font-size: clamp(22px, 3vw, 30px); color: var(--ink); margin-top: 6px; }
+.lp-demo-copy .btn { margin-top: 22px; }
 
 /* Pricing */
 .lp-billing { display: flex; width: fit-content; gap: 4px; padding: 5px; background: var(--card); border: 1px solid var(--line);
