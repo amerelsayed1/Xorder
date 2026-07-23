@@ -331,45 +331,6 @@ const year = new Date().getFullYear()
                 </div>
             </section>
 
-            <!-- ===================== Offer / Benefits ===================== -->
-            <section id="offer" class="lp-section">
-                <div class="lp-container lp-showcase">
-                    <div class="lp-showcase-copy">
-                        <span class="lp-eyebrow">{{ t('landing.nav_qr_menu') }}</span>
-                        <h2 class="lp-h2">{{ L(content.offer.title) }}</h2>
-                        <p class="lp-sub">{{ L(content.offer.text) }}</p>
-                    </div>
-                    <ul class="lp-showcase-list">
-                        <li v-for="(it, i) in content.offer.items" :key="i">
-                            <span class="lp-offer-ic">{{ it.icon }}</span>
-                            <span class="lp-offer-text">{{ L(it.text) }}</span>
-                        </li>
-                    </ul>
-                </div>
-            </section>
-
-            <!-- ===================== Problem / Solution ==================== -->
-            <section id="problem" class="lp-section lp-section-alt">
-                <div class="lp-container">
-                    <div class="lp-section-head">
-                        <h2 class="lp-h2">{{ L(content.problem.title) }}</h2>
-                        <p class="lp-sub">{{ L(content.problem.sub) }}</p>
-                    </div>
-                    <div class="lp-problem-grid">
-                        <ul class="lp-problem-list">
-                            <li v-for="(p, i) in content.problem.problems" :key="i">
-                                <span class="lp-x">✕</span>{{ L(p.text) }}
-                            </li>
-                        </ul>
-                        <div class="lp-solution">
-                            <span class="lp-solution-badge">{{ t('landing.solution') }}</span>
-                            <h3 class="lp-solution-title">{{ L(content.problem.solution_title) }}</h3>
-                            <p class="lp-solution-text">{{ L(content.problem.solution_text) }}</p>
-                        </div>
-                    </div>
-                </div>
-            </section>
-
             <!-- ========================= Features ========================= -->
             <section id="features" class="lp-section">
                 <div class="lp-container">
@@ -383,31 +344,6 @@ const year = new Date().getFullYear()
                             <span class="lp-feature-ico">{{ f.icon }}</span>
                             <h3 class="lp-feature-title">{{ L(f.title) }}</h3>
                             <p class="lp-feature-text">{{ L(f.text) }}</p>
-                        </div>
-                    </div>
-                </div>
-            </section>
-
-            <!-- ====================== No commission ======================= -->
-            <section id="no-commission" class="lp-section lp-section-alt">
-                <div class="lp-container">
-                    <div class="lp-section-head">
-                        <span class="lp-eyebrow">{{ t('landing.nav_no_commission') }}</span>
-                        <h2 class="lp-h2">{{ L(content.no_commission.title) }}</h2>
-                        <p class="lp-sub">{{ L(content.no_commission.text) }}</p>
-                    </div>
-                    <div class="lp-compare">
-                        <div class="lp-compare-col lp-compare-them">
-                            <h3 class="lp-compare-title">{{ L(content.no_commission.third_party_title) }}</h3>
-                            <ul>
-                                <li v-for="(it, i) in content.no_commission.third_party" :key="i"><span class="lp-x">✕</span>{{ L(it.text) }}</li>
-                            </ul>
-                        </div>
-                        <div class="lp-compare-col lp-compare-us">
-                            <h3 class="lp-compare-title">{{ L(content.no_commission.xorder_title) }}</h3>
-                            <ul>
-                                <li v-for="(it, i) in content.no_commission.xorder" :key="i"><span class="lp-check"><Icon name="check" :size="12" /></span>{{ L(it.text) }}</li>
-                            </ul>
                         </div>
                     </div>
                 </div>
