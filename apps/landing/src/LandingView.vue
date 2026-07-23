@@ -243,104 +243,96 @@ const year = new Date().getFullYear()
             <section id="home" class="lp-hero">
                 <div class="lp-hero-blob lp-hero-blob-1" aria-hidden="true"></div>
                 <div class="lp-hero-blob lp-hero-blob-2" aria-hidden="true"></div>
-                <div class="lp-container lp-hero-grid">
-                    <div class="lp-hero-copy">
-                        <span class="lp-badge">{{ L(content.hero.badge) }}</span>
-                        <h1 class="lp-h1">{{ L(content.hero.title) }}</h1>
-                        <p class="lp-lead">{{ L(content.hero.sub) }}</p>
+                <div class="lp-container lp-hero-inner">
+                    <span class="lp-badge">{{ L(content.hero.badge) }}</span>
+                    <h1 class="lp-h1">{{ L(content.hero.title) }}</h1>
+                    <p class="lp-lead">{{ L(content.hero.sub) }}</p>
 
-                        <ul class="lp-trust">
-                            <li v-for="(v, i) in (content.hero.value_points || [content.hero.no_commission_label, content.hero.ready_label])" :key="i">
-                                <span class="lp-trust-ic"><Icon name="check" :size="13" /></span>{{ L(v) }}
-                            </li>
-                        </ul>
-
-                        <div class="lp-hero-cta">
-                            <a :href="heroPrimaryLink" class="btn btn-accent lp-btn-lg" @click="onRequestDemo">{{ L(content.hero.cta) }}</a>
-                            <a :href="heroSecondaryLink" class="btn btn-ghost lp-btn-lg" @click="onViewDemo">{{ L(content.hero.secondary) }}</a>
-                        </div>
-                        <div class="lp-stats">
-                            <div v-for="(p, i) in content.proof" :key="i">
-                                <span class="lp-stat-num">{{ L(p.title) }}</span>
-                                <span class="lp-stat-lbl">{{ L(p.text) }}</span>
-                            </div>
-                        </div>
+                    <div class="lp-hero-cta">
+                        <a :href="heroPrimaryLink" class="btn btn-accent lp-btn-lg" @click="onRequestDemo">{{ L(content.hero.cta) }}</a>
+                        <a :href="heroSecondaryLink" class="btn btn-ghost lp-btn-lg" @click="onViewDemo">{{ L(content.hero.secondary) }}</a>
                     </div>
 
-                    <!-- Menu illustration (vector). Decorative: abstract bars stand
-                         in for menu content so nothing reads as fabricated data. -->
-                    <div class="lp-hero-art">
-                        <svg class="lp-menu-illus" viewBox="0 0 400 560" xmlns="http://www.w3.org/2000/svg"
+                    <ul class="lp-trust">
+                        <li v-for="(v, i) in (content.hero.value_points || [content.hero.no_commission_label, content.hero.ready_label])" :key="i">
+                            <span class="lp-trust-ic"><Icon name="check" :size="13" /></span>{{ L(v) }}
+                        </li>
+                    </ul>
+
+                    <!-- Dashboard illustration (vector). Decorative abstract UI — food
+                         emoji + bars + a trend chart — so nothing reads as real data. -->
+                    <div class="lp-hero-figure">
+                        <svg class="lp-dash-illus" viewBox="0 0 980 620" xmlns="http://www.w3.org/2000/svg"
                             role="img" :aria-label="t('landing.nav_qr_menu')">
-                            <defs>
-                                <linearGradient id="lpThumb" x1="0" y1="0" x2="1" y2="1">
-                                    <stop offset="0" stop-color="#fef0d9" />
-                                    <stop offset="1" stop-color="#efd9c5" />
-                                </linearGradient>
-                            </defs>
+                            <!-- main dashboard panel -->
+                            <rect class="il-shadow" x="158" y="100" width="664" height="470" rx="26" />
+                            <rect class="il-panel" x="150" y="88" width="664" height="470" rx="26" />
 
-                            <!-- soft backdrop + device -->
-                            <rect class="il-glow" x="28" y="44" width="300" height="476" rx="40" />
-                            <rect class="il-body" x="60" y="16" width="272" height="528" rx="44" />
-                            <rect class="il-screen" x="72" y="28" width="248" height="504" rx="34" />
-                            <rect class="il-body" x="160" y="30" width="72" height="16" rx="8" />
+                            <!-- panel header: branch title + category pills -->
+                            <rect class="il-bar-strong" x="678" y="120" width="118" height="12" rx="6" />
+                            <rect class="il-bar-soft" x="706" y="140" width="90" height="8" rx="4" />
+                            <rect class="il-pill-on" x="726" y="166" width="70" height="26" rx="13" />
+                            <rect class="il-pill" x="644" y="166" width="70" height="26" rx="13" />
+                            <rect class="il-pill" x="562" y="166" width="70" height="26" rx="13" />
+                            <rect class="il-pill" x="480" y="166" width="70" height="26" rx="13" />
 
-                            <!-- header: logo + title/subtitle bars -->
-                            <rect class="il-accent" x="92" y="62" width="40" height="40" rx="11" />
-                            <rect class="il-bar-strong" x="144" y="68" width="96" height="10" rx="5" />
-                            <rect class="il-bar-soft" x="144" y="86" width="60" height="8" rx="4" />
+                            <!-- soft tint bands behind the grid -->
+                            <rect class="il-band-a" x="176" y="214" width="300" height="60" rx="14" />
+                            <rect class="il-band-b" x="488" y="214" width="300" height="60" rx="14" />
 
-                            <!-- category chips -->
-                            <rect class="il-chip-on" x="92" y="120" width="66" height="26" rx="13" />
-                            <rect class="il-chip" x="166" y="120" width="52" height="26" rx="13" />
-                            <rect class="il-chip" x="226" y="120" width="52" height="26" rx="13" />
-
-                            <!-- menu item rows -->
-                            <g v-for="n in 3" :key="n" :transform="`translate(0, ${164 + (n - 1) * 82})`">
-                                <rect class="il-card" x="92" y="0" width="216" height="70" rx="16" />
-                                <rect class="il-thumb" x="104" y="12" width="46" height="46" rx="11" fill="url(#lpThumb)" />
-                                <rect class="il-bar-strong" x="162" y="20" width="104" height="9" rx="4.5" />
-                                <rect class="il-bar-soft" x="162" y="36" width="72" height="7" rx="3.5" />
-                                <rect class="il-price" x="274" y="27" width="24" height="15" rx="7.5" />
+                            <!-- menu item cards (generic food emoji + abstract bars) -->
+                            <g v-for="(em, i) in ['🍔','🌮','🥙','🧆']" :key="i" :transform="`translate(${644 - i * 162}, 300)`">
+                                <rect class="il-card" x="0" y="0" width="150" height="224" rx="16" />
+                                <text class="il-emoji" x="75" y="96" text-anchor="middle">{{ em }}</text>
+                                <rect class="il-bar-strong" x="22" y="150" width="72" height="9" rx="4.5" />
+                                <rect class="il-price" x="104" y="149" width="24" height="12" rx="6" />
+                                <rect class="il-bar-soft" x="22" y="172" width="106" height="7" rx="3.5" />
+                                <rect class="il-bar-soft" x="22" y="188" width="72" height="7" rx="3.5" />
                             </g>
 
-                            <!-- order button -->
-                            <rect class="il-accent" x="92" y="420" width="216" height="46" rx="14" />
-                            <rect class="il-btn-label" x="164" y="438" width="72" height="10" rx="5" />
-
-                            <!-- floating QR tile -->
+                            <!-- floating: sales report + trend chart -->
                             <g>
-                                <rect class="il-qr-shadow" x="250" y="446" width="122" height="104" rx="18" />
-                                <rect class="il-card" x="248" y="442" width="122" height="104" rx="18" />
-                                <g transform="translate(264, 458)">
-                                    <!-- finders -->
-                                    <rect class="il-qr-mod" x="0" y="0" width="22" height="22" rx="5" />
-                                    <rect class="il-qr-bg" x="5" y="5" width="12" height="12" rx="3" />
-                                    <rect class="il-qr-mod" x="9" y="9" width="4" height="4" rx="1" />
-                                    <rect class="il-qr-mod" x="50" y="0" width="22" height="22" rx="5" />
-                                    <rect class="il-qr-bg" x="55" y="5" width="12" height="12" rx="3" />
-                                    <rect class="il-qr-mod" x="59" y="9" width="4" height="4" rx="1" />
-                                    <rect class="il-qr-mod" x="0" y="50" width="22" height="22" rx="5" />
-                                    <rect class="il-qr-bg" x="5" y="55" width="12" height="12" rx="3" />
-                                    <rect class="il-qr-mod" x="9" y="59" width="4" height="4" rx="1" />
-                                    <!-- modules -->
-                                    <rect class="il-qr-mod" x="30" y="4" width="5" height="5" />
-                                    <rect class="il-qr-mod" x="38" y="4" width="5" height="5" />
-                                    <rect class="il-qr-mod" x="30" y="12" width="5" height="5" />
-                                    <rect class="il-qr-mod" x="32" y="30" width="6" height="6" />
-                                    <rect class="il-qr-mod" x="44" y="30" width="6" height="6" />
-                                    <rect class="il-qr-mod" x="56" y="30" width="6" height="6" />
-                                    <rect class="il-qr-mod" x="4" y="30" width="6" height="6" />
-                                    <rect class="il-qr-mod" x="16" y="30" width="6" height="6" />
-                                    <rect class="il-qr-mod" x="32" y="42" width="6" height="6" />
-                                    <rect class="il-qr-mod" x="44" y="44" width="6" height="6" />
-                                    <rect class="il-qr-mod" x="56" y="42" width="6" height="6" />
-                                    <rect class="il-qr-mod" x="44" y="56" width="6" height="6" />
-                                    <rect class="il-qr-mod" x="56" y="56" width="6" height="6" />
-                                    <rect class="il-qr-mod" x="32" y="60" width="6" height="6" />
-                                </g>
+                                <rect class="il-shadow" x="70" y="196" width="210" height="188" rx="20" />
+                                <rect class="il-float" x="62" y="188" width="210" height="188" rx="20" />
+                                <circle class="il-accent" cx="88" cy="216" r="8" />
+                                <rect class="il-bar-soft" x="104" y="212" width="86" height="8" rx="4" />
+                                <rect class="il-bar-strong" x="86" y="236" width="120" height="16" rx="6" />
+                                <rect class="il-bar-soft" x="86" y="262" width="74" height="8" rx="4" />
+                                <path class="il-chart-fill" d="M84 350 L106 338 L128 342 L150 322 L172 328 L194 304 L216 310 L238 286 L252 280 L252 360 L84 360 Z" />
+                                <path class="il-chart-line" d="M84 350 L106 338 L128 342 L150 322 L172 328 L194 304 L216 310 L238 286 L252 280" />
+                            </g>
+
+                            <!-- floating: new order notification -->
+                            <g>
+                                <rect class="il-shadow" x="700" y="212" width="220" height="94" rx="16" />
+                                <rect class="il-float" x="692" y="204" width="220" height="94" rx="16" />
+                                <circle class="il-accent" cx="890" cy="230" r="6" />
+                                <rect class="il-bar-strong" x="756" y="224" width="120" height="10" rx="5" />
+                                <rect class="il-price" x="712" y="222" width="36" height="14" rx="7" />
+                                <rect class="il-bar-soft" x="724" y="250" width="164" height="8" rx="4" />
+                                <rect class="il-bar-soft" x="770" y="268" width="118" height="8" rx="4" />
+                            </g>
+
+                            <!-- floating: loyalty points -->
+                            <g>
+                                <rect class="il-shadow" x="686" y="452" width="222" height="140" rx="20" />
+                                <rect class="il-float" x="678" y="444" width="222" height="140" rx="20" />
+                                <text class="il-emoji-sm" x="716" y="490" text-anchor="middle">🥐</text>
+                                <rect class="il-bar-soft" x="748" y="468" width="130" height="8" rx="4" />
+                                <rect class="il-bar-strong" x="778" y="486" width="100" height="10" rx="5" />
+                                <rect class="il-track" x="700" y="516" width="178" height="8" rx="4" />
+                                <rect class="il-accent" x="700" y="516" width="112" height="8" rx="4" />
+                                <rect class="il-accent" x="700" y="540" width="92" height="30" rx="10" />
+                                <rect class="il-btn-label" x="720" y="552" width="52" height="8" rx="4" />
                             </g>
                         </svg>
+                    </div>
+
+                    <div class="lp-stats">
+                        <div v-for="(p, i) in content.proof" :key="i">
+                            <span class="lp-stat-num">{{ L(p.title) }}</span>
+                            <span class="lp-stat-lbl">{{ L(p.text) }}</span>
+                        </div>
                     </div>
                 </div>
             </section>
@@ -684,46 +676,52 @@ const year = new Date().getFullYear()
     background: radial-gradient(circle, var(--accent-soft), transparent 70%); }
 .lp-hero-blob-2 { width: 360px; height: 360px; inset-inline-start: -140px; bottom: -160px;
     background: radial-gradient(circle, var(--green-soft), transparent 70%); }
-.lp-hero-grid { position: relative; z-index: 1; display: grid; grid-template-columns: 1.05fr .95fr; gap: 56px; align-items: center; }
+.lp-hero-inner { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; text-align: center; }
 .lp-badge { display: inline-block; background: var(--card); color: var(--accent); border: 1px solid var(--accent-soft);
     font-size: 13px; font-weight: 600; padding: 7px 14px; border-radius: 20px; font-family: var(--font-display);
     box-shadow: 0 2px 10px -6px rgba(42,30,20,.3); }
 .lp-h1 { font-family: var(--font-display); font-weight: 800; font-size: clamp(32px, 5vw, 52px); line-height: 1.08;
     color: var(--ink); margin: 18px 0 0; letter-spacing: -0.02em; }
-.lp-lead { font-size: clamp(16px, 2vw, 19px); line-height: 1.62; color: var(--body); margin: 18px 0 0; max-width: 34em; }
-.lp-trust { list-style: none; padding: 0; margin: 22px 0 0; display: grid;
-    grid-template-columns: repeat(2, minmax(0, max-content)); gap: 12px 28px; }
+.lp-lead { font-size: clamp(16px, 2vw, 19px); line-height: 1.62; color: var(--body); margin: 18px auto 0; max-width: 40em; }
+.lp-trust { list-style: none; padding: 0; margin: 24px auto 0; display: flex; flex-wrap: wrap;
+    justify-content: center; gap: 10px 24px; }
 .lp-trust li { display: flex; align-items: center; gap: 8px; font-weight: 600; color: var(--ink); font-size: 15px; }
 .lp-trust-ic { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%;
     background: var(--green-soft); color: var(--green); }
-.lp-hero-cta { display: flex; gap: 12px; margin-top: 28px; flex-wrap: wrap; }
+.lp-hero-cta { display: flex; gap: 12px; margin-top: 28px; flex-wrap: wrap; justify-content: center; }
 .lp-hero-wa { display: inline-flex; align-items: center; gap: 8px; margin-top: 16px; color: var(--green);
     font-weight: 600; font-size: 15.5px; text-decoration: none; }
 .lp-hero-wa:hover { text-decoration: underline; }
 .lp-wa-ic { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%;
     background: var(--green); color: #fff; font-size: 14px; }
-.lp-stats { display: flex; gap: 24px 40px; margin-top: 40px; flex-wrap: wrap; padding-top: 28px; border-top: 1px solid var(--line); }
-.lp-stats > div { display: flex; flex-direction: column; min-width: 96px; }
+.lp-stats { display: flex; gap: 24px 48px; margin: clamp(36px, 5vw, 52px) auto 0; flex-wrap: wrap; justify-content: center;
+    padding-top: 30px; border-top: 1px solid var(--line); max-width: 760px; width: 100%; }
+.lp-stats > div { display: flex; flex-direction: column; min-width: 96px; align-items: center; }
 .lp-stat-num { font-family: var(--font-display); font-weight: 800; font-size: 27px; color: var(--ink); }
 .lp-stat-lbl { font-size: 14px; color: var(--muted); margin-top: 2px; }
 
-/* Menu illustration (vector) */
-.lp-hero-art { position: relative; display: grid; place-items: center; }
-.lp-menu-illus { width: min(100%, 380px); height: auto; display: block; }
-.il-glow { fill: var(--accent-soft); opacity: .55; }
-.il-body { fill: var(--sidebar); }
-.il-screen { fill: var(--page); }
+/* Dashboard illustration (vector) */
+.lp-hero-figure { width: 100%; margin-top: clamp(40px, 6vw, 68px); display: flex; justify-content: center; }
+.lp-dash-illus { width: 100%; max-width: 920px; height: auto; display: block;
+    filter: drop-shadow(0 40px 80px rgba(42,30,20,.16)); }
+.il-shadow { fill: rgba(42,30,20,.10); }
+.il-panel { fill: var(--card); stroke: var(--line); stroke-width: 1.5; }
+.il-float { fill: var(--card); stroke: var(--line); stroke-width: 1.5; }
+.il-card { fill: var(--page); stroke: var(--line); stroke-width: 1.5; }
 .il-accent { fill: var(--accent); }
 .il-bar-strong { fill: var(--ink); opacity: .8; }
-.il-bar-soft { fill: var(--muted); opacity: .45; }
-.il-chip-on { fill: var(--accent); }
-.il-chip { fill: var(--card); stroke: var(--line); stroke-width: 1.5; }
-.il-card { fill: var(--card); stroke: var(--line); stroke-width: 1.5; }
+.il-bar-soft { fill: var(--muted); opacity: .4; }
+.il-pill-on { fill: var(--ink); }
+.il-pill { fill: var(--accent-soft); }
+.il-band-a { fill: var(--accent-soft); opacity: .7; }
+.il-band-b { fill: var(--green-soft); opacity: .7; }
 .il-price { fill: var(--accent); opacity: .85; }
+.il-track { fill: var(--line); }
 .il-btn-label { fill: #fff; opacity: .92; }
-.il-qr-shadow { fill: rgba(42,30,20,.16); }
-.il-qr-bg { fill: var(--card); }
-.il-qr-mod { fill: var(--ink); }
+.il-chart-fill { fill: var(--green-soft); }
+.il-chart-line { fill: none; stroke: var(--green); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+.il-emoji { font-size: 46px; }
+.il-emoji-sm { font-size: 30px; }
 
 /* ============================= Sections ============================ */
 .lp-section { padding: clamp(56px, 8vw, 104px) 0; scroll-margin-top: 80px; }
@@ -902,8 +900,6 @@ const year = new Date().getFullYear()
 
 /* ============================ Responsive =========================== */
 @media (max-width: 980px) {
-    .lp-hero-grid { grid-template-columns: 1fr; gap: 40px; }
-    .lp-hero-art { order: -1; }
     .lp-showcase, .lp-problem-grid, .lp-compare, .lp-demo-grid, .lp-lead-grid { grid-template-columns: 1fr; }
     .lp-demo-grid .lp-demo-card { order: -1; }
     .lp-feature-grid, .lp-steps { grid-template-columns: repeat(2, 1fr); }
