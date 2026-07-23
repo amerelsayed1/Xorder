@@ -36,6 +36,31 @@ class RestaurantController extends Controller
         return RestaurantResource::collection($restaurants)->response();
     }
 
+    /**
+     * Aggregate counts for the admin dashboard tiles. A single grouped query
+     * returns the per-status totals so the dashboard no longer has to fetch the
+     * full restaurant list once per status just to count it.
+     */
+    public function stats(): JsonResponse
+    {
+        $counts = Restaurant::query()
+            ->selectRaw('status, count(*) as aggregate')
+            ->groupBy('status')
+            ->pluck('aggregate', 'status');
+
+        $byStatus = [];
+        foreach (RestaurantStatus::cases() as $status) {
+            $byStatus[$status->value] = (int) ($counts[$status->value] ?? 0);
+        }
+
+        return response()->json([
+            'data' => [
+                'total' => array_sum($byStatus),
+                'by_status' => $byStatus,
+            ],
+        ]);
+    }
+
     public function store(StoreRestaurantRequest $request, RestaurantProvisioningService $provisioner): JsonResponse
     {
         $branch = $request->validated('branch');

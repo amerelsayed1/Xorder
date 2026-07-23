@@ -68,6 +68,7 @@ Route::prefix('admin')
     ->group(function () {
         Route::get('insights', [AdminInsightsController::class, 'index']);
         Route::get('restaurants', [AdminRestaurantController::class, 'index']);
+        Route::get('restaurants/stats', [AdminRestaurantController::class, 'stats']);
         Route::post('restaurants', [AdminRestaurantController::class, 'store']);
         Route::get('restaurants/{restaurant}', [AdminRestaurantController::class, 'show']);
         Route::put('restaurants/{restaurant}', [AdminRestaurantController::class, 'update']);

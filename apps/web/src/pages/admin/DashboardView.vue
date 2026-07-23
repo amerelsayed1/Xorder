@@ -16,15 +16,16 @@ const recent = ref([])
 
 onMounted(async () => {
     try {
-        const all = await api.get('api/admin/restaurants')
-        total.value = all.data.meta?.total ?? all.data.data.length
-        recent.value = all.data.data.slice(0, 6)
-        const results = await Promise.all(
-            ['ACTIVE', 'SUSPENDED', 'ARCHIVED'].map(s =>
-                api.get('api/admin/restaurants', { params: { status: s } })
-                    .then(r => [s, r.data.meta?.total ?? r.data.data.length])),
-        )
-        byStatus.value = Object.fromEntries(results)
+        // Two parallel requests: a single grouped-count query for the tiles, and
+        // the first page of restaurants for the "recent" list. This replaces the
+        // old 4-request waterfall (full list fetched once per status).
+        const [stats, list] = await Promise.all([
+            api.get('api/admin/restaurants/stats'),
+            api.get('api/admin/restaurants'),
+        ])
+        total.value = stats.data.data.total
+        byStatus.value = stats.data.data.by_status
+        recent.value = list.data.data.slice(0, 6)
     } finally {
         loading.value = false
     }
