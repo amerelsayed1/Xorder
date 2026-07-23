@@ -94,11 +94,14 @@ class LandingContent extends Model
                 'primary_link' => '#lead',
                 'secondary' => $bi('View Live Menu Demo', 'شاهد القائمة الحية'),
                 'secondary_link' => '',
+                // Capabilities — kept distinct from the `proof` stats below (which
+                // carry the "0% commission / WhatsApp / no app" positioning) so the
+                // hero doesn't say the same thing twice.
                 'value_points' => [
-                    $bi('No commission on orders', 'بدون عمولة على الطلبات'),
                     $bi('QR menu ready to share', 'قائمة QR جاهزة للمشاركة'),
-                    $bi('Easy menu updates', 'تحديث سهل للقائمة'),
-                    $bi('Direct customer orders', 'طلبات مباشرة من العملاء'),
+                    $bi('Cart & direct ordering', 'سلة وطلب مباشر'),
+                    $bi('Instant price & item updates', 'تحديث فوري للأسعار والأصناف'),
+                    $bi('Arabic & English', 'العربية والإنجليزية'),
                 ],
                 // Kept so rows saved before value_points existed still resolve.
                 'no_commission_label' => $bi('No commission on orders', 'بدون عمولة على الطلبات'),
@@ -190,7 +193,7 @@ class LandingContent extends Model
                     'افتح العرض الحي أو امسح رمز QR لترى كيف سيتصفح عملاؤك القائمة، ويختارون الأصناف، ويقدمون طلباً من هواتفهم.'
                 ),
                 'button' => $bi('Open Live Demo', 'افتح العرض الحي'),
-                'restaurant_slug' => 'xorderrest',
+                'restaurant_slug' => 'mahsoub-restaurnt',
             ],
 
             'steps' => [
@@ -288,6 +291,61 @@ class LandingContent extends Model
                     ['icon' => '🥡', 'text' => $bi('Takeaway restaurants', 'مطاعم الوجبات الجاهزة')],
                     ['icon' => '🚚', 'text' => $bi('Food trucks', 'عربات الطعام')],
                     ['icon' => '🏷️', 'text' => $bi('Local food brands', 'العلامات الغذائية المحلية')],
+                ],
+            ],
+
+            'faq' => [
+                'title' => $bi('Frequently Asked Questions', 'الأسئلة الشائعة'),
+                'sub' => $bi('Everything you need to know before you start with Xorder.', 'كل ما تحتاج معرفته قبل أن تبدأ مع Xorder.'),
+                'items' => [
+                    [
+                        'enabled' => true,
+                        'q' => $bi('Do my customers need to install an app?', 'هل يحتاج عملائي إلى تثبيت تطبيق؟'),
+                        'a' => $bi(
+                            'No. Customers simply scan your QR code or open your menu link in any browser — no app to download for you or for them.',
+                            'لا. يكفي أن يمسح العملاء رمز QR أو يفتحوا رابط قائمتك في أي متصفح — بدون تطبيق يُحمّل لك أو لهم.'
+                        ),
+                    ],
+                    [
+                        'enabled' => true,
+                        'q' => $bi('How do I receive orders?', 'كيف أستقبل الطلبات؟'),
+                        'a' => $bi(
+                            'Customers browse your menu, add items to the cart, and send the full order straight to your restaurant’s WhatsApp, ready to confirm and prepare.',
+                            'يتصفح العملاء قائمتك، ويضيفون الأصناف إلى السلة، ويرسلون الطلب كاملاً مباشرة إلى واتساب مطعمك، جاهزاً للتأكيد والتحضير.'
+                        ),
+                    ],
+                    [
+                        'enabled' => true,
+                        'q' => $bi('Do you take a commission on orders?', 'هل تأخذون عمولة على الطلبات؟'),
+                        'a' => $bi(
+                            'No. Xorder never charges a commission on any order. You use your own direct ordering channel with a simple subscription.',
+                            'لا. لا يأخذ Xorder أي عمولة على أي طلب. تستخدم قناة الطلب المباشرة الخاصة بك باشتراك بسيط.'
+                        ),
+                    ],
+                    [
+                        'enabled' => true,
+                        'q' => $bi('Can I update my menu and prices anytime?', 'هل يمكنني تحديث قائمتي وأسعاري في أي وقت؟'),
+                        'a' => $bi(
+                            'Yes. Update items, prices, images, and categories whenever you like — changes appear instantly, with no reprinting.',
+                            'نعم. حدّث الأصناف والأسعار والصور والأقسام متى شئت — تظهر التغييرات فوراً، دون إعادة طباعة.'
+                        ),
+                    ],
+                    [
+                        'enabled' => true,
+                        'q' => $bi('Does the menu work in Arabic and English?', 'هل تعمل القائمة بالعربية والإنجليزية؟'),
+                        'a' => $bi(
+                            'Yes. Xorder supports Arabic and English so you can present your menu to customers in the language they prefer.',
+                            'نعم. يدعم Xorder العربية والإنجليزية لتقدّم قائمتك لعملائك باللغة التي يفضّلونها.'
+                        ),
+                    ],
+                    [
+                        'enabled' => true,
+                        'q' => $bi('What kind of businesses is Xorder for?', 'لمن صُمم Xorder؟'),
+                        'a' => $bi(
+                            'Restaurants, cafes, dessert shops, cloud kitchens, takeaway spots, food trucks, and local food brands — any business with a menu.',
+                            'المطاعم والمقاهي ومحلات الحلويات والمطابخ السحابية ومطاعم الوجبات الجاهزة وعربات الطعام والعلامات الغذائية المحلية — أي نشاط لديه قائمة.'
+                        ),
+                    ],
                 ],
             ],
 

@@ -1,4 +1,4 @@
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import api, { ensureCsrf } from '@xorder/api-client/api.js'
 
@@ -10,6 +10,12 @@ const loading = ref(false)
 const saving = ref(false)
 const errorList = ref([])
 const savedFlash = ref(false)
+// Snapshot of the last loaded/saved document. isDirty compares the live editor
+// state against it so the Settings area can warn before discarding edits.
+const savedSnapshot = ref('')
+const isDirty = computed(() =>
+    !!content.value && JSON.stringify(content.value) !== savedSnapshot.value
+)
 
 const bi = () => ({ en: '', ar: '' })
 
@@ -24,6 +30,8 @@ function normalize(c) {
         if (p.enabled === undefined) p.enabled = true
         p.features ??= []
     })
+    // FAQ items: back-fill the visibility flag on rows saved before FAQ existed.
+    c.faq?.items?.forEach((f) => { if (f.enabled === undefined) f.enabled = true })
     return c
 }
 
@@ -44,6 +52,7 @@ function addProblem() { content.value.problem.problems.push({ text: bi() }) }
 function addThird() { content.value.no_commission.third_party.push({ text: bi() }) }
 function addXorder() { content.value.no_commission.xorder.push({ text: bi() }) }
 function addIndustry() { content.value.industries.items.push({ icon: '🍽️', text: bi() }) }
+function addFaq() { content.value.faq.items.push({ enabled: true, q: bi(), a: bi() }) }
 function addPlan() {
     content.value.pricing.plans.push({ name: bi(), subtitle: bi(), price_label: bi(), recommended: false, enabled: true, features: [] })
 }
@@ -57,6 +66,7 @@ export function useLandingContent() {
         errorList.value = []
         const { data } = await api.get('api/admin/landing-content')
         content.value = normalize(data.data)
+        savedSnapshot.value = JSON.stringify(content.value)
         loading.value = false
     }
 
@@ -67,6 +77,7 @@ export function useLandingContent() {
             await ensureCsrf()
             const { data } = await api.put('api/admin/landing-content', { content: content.value })
             content.value = normalize(data.data)
+            savedSnapshot.value = JSON.stringify(content.value)
             savedFlash.value = true
             setTimeout(() => { savedFlash.value = false }, 2500)
             window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -83,9 +94,9 @@ export function useLandingContent() {
     }
 
     return {
-        content, loading, saving, errorList, savedFlash,
+        content, loading, saving, errorList, savedFlash, isDirty,
         bi, load, save, move, removeAt,
         addProof, addFeature, addStep, addBenefit, addProblem,
-        addThird, addXorder, addIndustry, addPlan, addPlanFeature,
+        addThird, addXorder, addIndustry, addPlan, addPlanFeature, addFaq,
     }
 }

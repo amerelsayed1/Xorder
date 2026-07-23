@@ -1,12 +1,40 @@
 <script setup>
-import { onMounted } from 'vue'
+import { onMounted, onBeforeUnmount } from 'vue'
+import { onBeforeRouteLeave } from 'vue-router'
 import { useI18n } from 'vue-i18n'
+import Skeleton from '@xorder/ui/Skeleton.vue'
+import { confirm } from '@xorder/ui/confirm.js'
 import { useLandingContent } from '../../../composables/useLandingContent.js'
 
 const { t } = useI18n()
-const { content, loading, saving, errorList, savedFlash, load, save } = useLandingContent()
+const { content, loading, saving, errorList, savedFlash, isDirty, load, save } = useLandingContent()
 
-onMounted(load)
+// Preview opens the public landing app. Set VITE_LANDING_URL for production;
+// in dev it defaults to the landing dev server (see apps/landing package.json).
+const previewUrl = import.meta.env.VITE_LANDING_URL || (import.meta.env.DEV ? 'http://localhost:5174' : '')
+
+// Save-direct model: publishing is immediate, so confirm before it goes live.
+async function confirmAndSave() {
+    const ok = await confirm({
+        title: t('landing_admin.save_confirm_title'),
+        message: t('landing_admin.save_confirm_body'),
+        confirmText: t('landing_admin.save_confirm_ok'),
+    })
+    if (ok) await save()
+}
+
+// Warn before losing unsaved edits — on in-app navigation and on tab close.
+onBeforeRouteLeave(() => {
+    if (isDirty.value && !window.confirm(t('landing_admin.unsaved_warning'))) return false
+})
+function onBeforeUnload(e) {
+    if (isDirty.value) { e.preventDefault(); e.returnValue = '' }
+}
+onMounted(() => {
+    load()
+    window.addEventListener('beforeunload', onBeforeUnload)
+})
+onBeforeUnmount(() => window.removeEventListener('beforeunload', onBeforeUnload))
 </script>
 
 <template>
@@ -20,7 +48,11 @@ onMounted(load)
                 </div>
                 <div class="flex items-center gap-3">
                     <span v-if="savedFlash" class="badge badge-green"><span class="dot"></span> {{ t('common.saved') }}</span>
-                    <button class="btn btn-accent" :disabled="saving || loading" @click="save">
+                    <span v-else-if="isDirty" class="badge"><span class="dot"></span> {{ t('common.unsaved_changes') }}</span>
+                    <a v-if="previewUrl" :href="previewUrl" target="_blank" rel="noopener" class="btn btn-ghost">
+                        {{ t('landing_admin.preview_site') }}
+                    </a>
+                    <button class="btn btn-accent" :disabled="saving || loading" @click="confirmAndSave">
                         {{ saving ? t('common.saving') : t('admin.save_changes') }}
                     </button>
                 </div>
@@ -34,7 +66,12 @@ onMounted(load)
                 </ul>
             </div>
 
-            <div v-if="loading" class="card mt-5 p-8 text-center page-sub">{{ t('common.loading') }}</div>
+            <div v-if="loading" class="card mt-5 p-6 space-y-5">
+                <div v-for="n in 3" :key="n" class="space-y-2.5">
+                    <Skeleton w="30%" h="13px" />
+                    <Skeleton w="100%" h="40px" rounded="10px" />
+                </div>
+            </div>
 
             <!-- Active settings sub-page. Mounts only once the document is loaded
                  so children can bind to `content` without null guards. -->
@@ -43,7 +80,7 @@ onMounted(load)
 
                 <!-- Save bar -->
                 <div class="flex justify-end mt-6 pb-10">
-                    <button class="btn btn-accent" :disabled="saving" @click="save">
+                    <button class="btn btn-accent" :disabled="saving" @click="confirmAndSave">
                         {{ saving ? t('common.saving') : t('admin.save_changes') }}
                     </button>
                 </div>

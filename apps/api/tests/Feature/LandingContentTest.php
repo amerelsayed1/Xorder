@@ -74,4 +74,82 @@ class LandingContentTest extends TestCase
             ->assertJsonPath('data.seo.title.en', 'Edited title')
             ->assertJsonPath('data.pricing.plans.2.enabled', false);
     }
+
+    public function test_public_landing_content_includes_faq_section(): void
+    {
+        $this->getJson('/api/public/landing-content')
+            ->assertOk()
+            ->assertJsonStructure([
+                'data' => [
+                    'faq' => [
+                        'title' => ['en', 'ar'],
+                        'sub' => ['en', 'ar'],
+                        'items' => [['enabled', 'q' => ['en', 'ar'], 'a' => ['en', 'ar']]],
+                    ],
+                ],
+            ]);
+    }
+
+    public function test_super_admin_can_manage_faq_items_and_order_is_preserved(): void
+    {
+        $sa = User::factory()->superAdmin()->create();
+        $content = LandingContent::defaultContent();
+
+        // Replace FAQ with a known, explicitly-ordered set; disable the middle one.
+        $content['faq']['items'] = [
+            ['enabled' => true, 'q' => ['en' => 'First?', 'ar' => 'الأول؟'], 'a' => ['en' => 'A1', 'ar' => 'ج1']],
+            ['enabled' => false, 'q' => ['en' => 'Second?', 'ar' => 'الثاني؟'], 'a' => ['en' => 'A2', 'ar' => 'ج2']],
+            ['enabled' => true, 'q' => ['en' => 'Third?', 'ar' => 'الثالث؟'], 'a' => ['en' => 'A3', 'ar' => 'ج3']],
+        ];
+
+        $this->actingAs($sa)->putJson('/api/admin/landing-content', ['content' => $content])
+            ->assertOk()
+            ->assertJsonPath('data.faq.items.0.q.en', 'First?')
+            ->assertJsonPath('data.faq.items.1.enabled', false)
+            ->assertJsonPath('data.faq.items.2.q.en', 'Third?');
+
+        // Order and the disabled flag round-trip through the public endpoint.
+        $this->getJson('/api/public/landing-content')
+            ->assertJsonPath('data.faq.items.0.q.en', 'First?')
+            ->assertJsonPath('data.faq.items.1.enabled', false)
+            ->assertJsonPath('data.faq.items.2.q.en', 'Third?')
+            ->assertJsonCount(3, 'data.faq.items');
+    }
+
+    public function test_faq_validation_rejects_invalid_items(): void
+    {
+        $sa = User::factory()->superAdmin()->create();
+
+        // Missing the required boolean `enabled` flag.
+        $content = LandingContent::defaultContent();
+        $content['faq']['items'] = [['q' => ['en' => 'Q', 'ar' => ''], 'a' => ['en' => 'A', 'ar' => '']]];
+        $this->actingAs($sa)->putJson('/api/admin/landing-content', ['content' => $content])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('content.faq.items.0.enabled');
+
+        // Answer longer than the 2000-char cap.
+        $content = LandingContent::defaultContent();
+        $content['faq']['items'] = [['enabled' => true, 'q' => ['en' => 'Q', 'ar' => ''], 'a' => ['en' => str_repeat('x', 2001), 'ar' => '']]];
+        $this->actingAs($sa)->putJson('/api/admin/landing-content', ['content' => $content])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('content.faq.items.0.a.en');
+    }
+
+    public function test_unknown_and_unsafe_keys_are_stripped_by_the_whitelist(): void
+    {
+        $sa = User::factory()->superAdmin()->create();
+        $content = LandingContent::defaultContent();
+        // An attacker-style extra key with a script payload is not in the ruleset.
+        $content['faq']['malicious'] = '<script>alert(1)</script>';
+        $content['totally_unknown_section'] = ['foo' => 'bar'];
+
+        $this->actingAs($sa)->putJson('/api/admin/landing-content', ['content' => $content])
+            ->assertOk()
+            ->assertJsonMissingPath('data.faq.malicious')
+            ->assertJsonMissingPath('data.totally_unknown_section');
+
+        $this->getJson('/api/public/landing-content')
+            ->assertJsonMissingPath('data.faq.malicious')
+            ->assertJsonMissingPath('data.totally_unknown_section');
+    }
 }

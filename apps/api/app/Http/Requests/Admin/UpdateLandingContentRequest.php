@@ -113,6 +113,14 @@ class UpdateLandingContentRequest extends FormRequest
             ['content.industries.items.*.icon' => ['nullable', 'string', 'max:8']],
             $bi('content.industries.items.*.text'),
 
+            // FAQ (accordion)
+            $bi('content.faq.title'),
+            $bi('content.faq.sub'),
+            ['content.faq.items' => ['present', 'array', 'max:30']],
+            ['content.faq.items.*.enabled' => ['required', 'boolean']],
+            $bi('content.faq.items.*.q'),
+            $bi('content.faq.items.*.a'),
+
             // Lead form
             $bi('content.lead_form.title'),
             $bi('content.lead_form.sub'),

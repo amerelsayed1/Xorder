@@ -43,6 +43,7 @@ const superAdminRoutes = [
                     { path: 'features', name: 'admin.settings.features', component: () => import('../pages/admin/settings/FeaturesSettings.vue') },
                     { path: 'demo', name: 'admin.settings.demo', component: () => import('../pages/admin/settings/DemoSettings.vue') },
                     { path: 'packages', name: 'admin.settings.packages', component: () => import('../pages/admin/settings/PackagesSettings.vue') },
+                    { path: 'faq', name: 'admin.settings.faq', component: () => import('../pages/admin/settings/FaqSettings.vue') },
                     { path: 'lead-cta', name: 'admin.settings.lead_cta', component: () => import('../pages/admin/settings/LeadCtaSettings.vue') },
                 ],
             },
