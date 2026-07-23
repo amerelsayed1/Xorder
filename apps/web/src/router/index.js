@@ -41,6 +41,7 @@ const superAdminRoutes = [
                     { path: 'whatsapp', name: 'admin.settings.whatsapp', component: () => import('../pages/admin/settings/WhatsappSettings.vue') },
                     { path: 'highlights', name: 'admin.settings.highlights', component: () => import('../pages/admin/settings/HighlightsSettings.vue') },
                     { path: 'features', name: 'admin.settings.features', component: () => import('../pages/admin/settings/FeaturesSettings.vue') },
+                    { path: 'industries', name: 'admin.settings.industries', component: () => import('../pages/admin/settings/IndustriesSettings.vue') },
                     { path: 'demo', name: 'admin.settings.demo', component: () => import('../pages/admin/settings/DemoSettings.vue') },
                     { path: 'packages', name: 'admin.settings.packages', component: () => import('../pages/admin/settings/PackagesSettings.vue') },
                     { path: 'faq', name: 'admin.settings.faq', component: () => import('../pages/admin/settings/FaqSettings.vue') },
