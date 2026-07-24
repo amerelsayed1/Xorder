@@ -77,13 +77,8 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', onBeforeUnload)
                  so children can bind to `content` without null guards. -->
             <template v-else-if="content">
                 <RouterView />
-
-                <!-- Save bar -->
-                <div class="flex justify-end mt-6 pb-10">
-                    <button class="btn btn-accent" :disabled="saving" @click="confirmAndSave">
-                        {{ saving ? t('common.saving') : t('admin.save_changes') }}
-                    </button>
-                </div>
+                <!-- Single Save action lives in the header above; no duplicate bottom bar. -->
+                <div class="pb-10"></div>
             </template>
         </div>
     </div>
