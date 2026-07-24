@@ -66,6 +66,17 @@ class RestaurantProvisioningService
         // the entitlement set.
         $fallback = $features === [] ? Feature::defaultSet() : $features;
 
+        // Every new restaurant starts on a one-month trial unless the caller
+        // supplied explicit subscription dates (e.g. a paid plan from the admin
+        // wizard). Server time is the source of truth; addMonth() handles
+        // month-end boundaries safely (e.g. Jan 31 → Feb 28/29).
+        if (empty($restaurantData['subscription_start_date'])) {
+            $restaurantData['subscription_start_date'] = now()->toDateString();
+        }
+        if (empty($restaurantData['subscription_end_date'])) {
+            $restaurantData['subscription_end_date'] = now()->addMonth()->toDateString();
+        }
+
         [$restaurant, $admin] = DB::transaction(function () use ($restaurantData, $adminData, $plainPassword, $branchData, $fallback) {
             $restaurant = Restaurant::create($restaurantData);
 
