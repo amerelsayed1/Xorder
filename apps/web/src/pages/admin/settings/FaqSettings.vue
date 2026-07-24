@@ -9,7 +9,7 @@ const { content, move, removeAt, addFaq } = useLandingContent()
 </script>
 
 <template>
-    <AdminSection :title="t('landing_admin.sec_faq')" open>
+    <AdminSection :title="t('landing_admin.sec_faq')" :collapsible="false">
         <div class="space-y-3">
             <BiField :label="t('landing_admin.l_section_title')" v-model:en="content.faq.title.en" v-model:ar="content.faq.title.ar" />
             <BiField :label="t('landing_admin.l_section_subtitle')" v-model:en="content.faq.sub.en" v-model:ar="content.faq.sub.ar" />

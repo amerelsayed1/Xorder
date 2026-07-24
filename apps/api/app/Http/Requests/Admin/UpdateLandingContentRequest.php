@@ -111,6 +111,7 @@ class UpdateLandingContentRequest extends FormRequest
             $bi('content.industries.sub'),
             ['content.industries.items' => ['present', 'array', 'max:24']],
             ['content.industries.items.*.icon' => ['nullable', 'string', 'max:8']],
+            ['content.industries.items.*.image' => ['nullable', 'string', 'max:500']],
             $bi('content.industries.items.*.text'),
 
             // FAQ (accordion)

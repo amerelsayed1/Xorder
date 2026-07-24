@@ -27,8 +27,8 @@ const NAV = [
     { id: 'features', key: 'landing.nav_features' },
     { id: 'how', key: 'landing.nav_how' },
     { id: 'packages', key: 'landing.nav_pricing' },
+    { id: 'industries', key: 'landing.who_for' },
     { id: 'faq', key: 'landing.nav_faq' },
-    { id: 'contact', key: 'landing.nav_contact' },
 ]
 
 function closeNav() { navOpen.value = false }
@@ -428,8 +428,11 @@ const year = new Date().getFullYear()
                         <p class="lp-sub">{{ L(content.industries.sub) }}</p>
                     </div>
                     <div class="lp-industries">
-                        <span class="lp-industry" v-for="(it, i) in content.industries.items" :key="i">
-                            <span class="lp-industry-ic">{{ it.icon }}</span>{{ L(it.text) }}
+                        <span class="lp-industry" v-for="(it, i) in content.industries.items" :key="i"
+                            :class="{ 'lp-industry--photo': it.image }"
+                            :style="it.image ? { backgroundImage: `url(${it.image})` } : null">
+                            <span v-if="!it.image" class="lp-industry-ic">{{ it.icon }}</span>
+                            <span class="lp-industry-label">{{ L(it.text) }}</span>
                         </span>
                     </div>
                 </div>
@@ -470,6 +473,7 @@ const year = new Date().getFullYear()
                         <a v-if="heroWa" :href="waHref" target="_blank" rel="noopener" class="lp-hero-wa" @click="onWhatsapp">
                             <span class="lp-wa-ic">✆</span>{{ L(content.hero.whatsapp_label) }}
                         </a>
+                        <a v-if="content.contact.email" :href="`mailto:${content.contact.email}`" class="lp-lead-email">{{ content.contact.email }}</a>
                     </div>
 
                     <div class="lp-lead-card">
@@ -524,19 +528,6 @@ const year = new Date().getFullYear()
                 </div>
             </section>
 
-            <!-- ======================== Final CTA ========================= -->
-            <section id="contact" class="lp-cta-band">
-                <div class="lp-cta-blob" aria-hidden="true"></div>
-                <div class="lp-container lp-cta-inner">
-                    <h2 class="lp-cta-title">{{ L(content.cta.title) }}</h2>
-                    <p class="lp-cta-sub">{{ L(content.cta.sub) }}</p>
-                    <div class="lp-cta-actions">
-                        <a href="#lead" class="btn lp-btn-lg lp-cta-btn" @click="onRequestDemo">{{ L(content.cta.button) }}</a>
-                    </div>
-                    <a v-if="content.contact.email" :href="`mailto:${content.contact.email}`" class="lp-cta-email">{{ content.contact.email }}</a>
-                </div>
-            </section>
-
             <!-- ========================== Footer ========================== -->
             <footer class="lp-footer">
                 <div class="lp-container lp-footer-inner">
@@ -554,7 +545,9 @@ const year = new Date().getFullYear()
 
         <!-- Floating WhatsApp -->
         <a v-if="content && floatingWa" :href="waHref" target="_blank" rel="noopener" class="lp-wa-float"
-            :aria-label="L(content.hero.whatsapp_label)" @click="onWhatsapp">✆</a>
+            :aria-label="L(content.hero.whatsapp_label)" @click="onWhatsapp">
+            <svg class="lp-wa-svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/></svg>
+        </a>
 
         <!-- Loading / error states -->
         <div v-if="!content" class="lp-boot">
@@ -745,10 +738,21 @@ const year = new Date().getFullYear()
 .lp-plan-cta { width: 100%; justify-content: center; }
 
 /* Industries */
-.lp-industries { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; max-width: 860px; margin: 0 auto; }
-.lp-industry { display: inline-flex; align-items: center; gap: 10px; background: var(--card); border: 1px solid var(--line);
-    border-radius: 40px; padding: 11px 20px; font-family: var(--font-display); font-weight: 600; color: var(--ink); font-size: 15.5px; }
-.lp-industry-ic { font-size: 20px; }
+.lp-industries { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; max-width: 920px; margin: 0 auto; }
+.lp-industry { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+    min-height: 140px; text-align: center; overflow: hidden;
+    background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 26px 16px;
+    font-family: var(--font-display); font-weight: 600; color: var(--ink); font-size: 15.5px;
+    transition: border-color .15s, box-shadow .15s, transform .15s; }
+.lp-industry:hover { border-color: var(--accent); box-shadow: 0 16px 32px -24px rgba(42,30,20,.55); transform: translateY(-2px); }
+.lp-industry-ic { font-size: 32px; line-height: 1; }
+.lp-industry-label { position: relative; z-index: 1; }
+/* Photo variant: image fills the card, label sits over a dark scrim. */
+.lp-industry--photo { justify-content: flex-end; align-items: stretch; padding: 0; border-color: transparent; color: #fff;
+    background-size: cover; background-position: center; }
+.lp-industry--photo::before { content: ''; position: absolute; inset: 0;
+    background: linear-gradient(to top, rgba(20,12,6,.82), rgba(20,12,6,.28) 55%, rgba(20,12,6,.05)); }
+.lp-industry--photo .lp-industry-label { padding: 14px 16px; text-align: start; font-size: 16px; text-shadow: 0 1px 10px rgba(0,0,0,.55); }
 
 /* FAQ */
 .lp-faq-wrap { max-width: 820px; }
@@ -767,6 +771,8 @@ const year = new Date().getFullYear()
 /* Lead form */
 .lp-lead-grid { display: grid; grid-template-columns: 1fr 1.1fr; gap: clamp(28px, 5vw, 56px); align-items: center; }
 .lp-lead-copy .lp-sub { max-width: 30em; }
+.lp-lead-email { display: inline-block; margin-top: 12px; color: var(--muted); font-size: 15px; text-decoration: none; }
+.lp-lead-email:hover { color: var(--ink); text-decoration: underline; }
 .lp-lead-card { background: var(--card); border: 1px solid var(--line); border-radius: 20px; padding: clamp(22px, 3vw, 32px);
     box-shadow: 0 30px 60px -42px rgba(42,30,20,.5); }
 .lp-form { display: flex; flex-direction: column; gap: 15px; }
@@ -783,23 +789,6 @@ const year = new Date().getFullYear()
 .lp-lead-done-ic { display: grid; place-items: center; width: 60px; height: 60px; border-radius: 50%; background: var(--green-soft); color: var(--green); }
 .lp-lead-done p { font-size: 17px; color: var(--ink); font-weight: 600; max-width: 22em; }
 
-/* Final CTA */
-.lp-cta-band { position: relative; overflow: hidden; background: var(--ink); scroll-margin-top: 80px;
-    min-height: 100svh; display: flex; flex-direction: column; justify-content: center;
-    padding: clamp(56px, 8vh, 96px) 0; }
-.lp-cta-blob { position: absolute; width: 520px; height: 520px; border-radius: 50%; filter: blur(90px); opacity: .35;
-    inset-inline-end: -120px; top: -160px; background: radial-gradient(circle, var(--accent), transparent 70%); }
-.lp-cta-inner { position: relative; z-index: 1; text-align: center; max-width: 40em; margin-inline: auto; }
-.lp-cta-title { font-family: var(--font-display); font-weight: 800; font-size: clamp(26px, 4vw, 40px); color: #fff; letter-spacing: -.01em; }
-.lp-cta-sub { font-size: clamp(15px, 2vw, 18px); color: rgba(255,255,255,.72); margin-top: 14px; line-height: 1.6; }
-.lp-cta-actions { display: flex; gap: 12px; justify-content: center; margin-top: 28px; flex-wrap: wrap; }
-.lp-cta-btn { background: var(--accent); color: #fff; }
-.lp-cta-btn:hover { background: var(--accent-dark); }
-.lp-cta-wa { background: rgba(255,255,255,.12); color: #fff; border: 1px solid rgba(255,255,255,.24); }
-.lp-cta-wa:hover { background: rgba(255,255,255,.2); }
-.lp-cta-email { display: inline-block; margin-top: 20px; color: rgba(255,255,255,.66); font-size: 15px; text-decoration: none; }
-.lp-cta-email:hover { color: #fff; text-decoration: underline; }
-
 /* Footer */
 .lp-footer { background: var(--page); border-top: 1px solid var(--line); padding: 44px 0; }
 .lp-footer-inner { display: flex; align-items: center; justify-content: space-between; gap: 24px; flex-wrap: wrap; }
@@ -813,9 +802,10 @@ const year = new Date().getFullYear()
 
 /* Floating WhatsApp */
 .lp-wa-float { position: fixed; inset-block-end: 22px; inset-inline-end: 22px; z-index: 45; width: 54px; height: 54px;
-    border-radius: 50%; background: var(--green); color: #fff; display: grid; place-items: center; font-size: 24px;
+    border-radius: 50%; background: var(--green); color: #fff; display: grid; place-items: center;
     text-decoration: none; box-shadow: 0 16px 36px -14px rgba(31,122,61,.7); transition: transform .15s; }
 .lp-wa-float:hover { transform: scale(1.06); }
+.lp-wa-svg { width: 28px; height: 28px; display: block; }
 
 /* Boot state */
 .lp-boot { min-height: 70vh; display: grid; place-items: center; }
@@ -832,6 +822,7 @@ const year = new Date().getFullYear()
     .lp-showcase, .lp-problem-grid, .lp-compare, .lp-demo-grid, .lp-lead-grid { grid-template-columns: 1fr; }
     .lp-demo-grid .lp-demo-card { order: -1; }
     .lp-feature-grid, .lp-steps { grid-template-columns: repeat(2, 1fr); }
+    .lp-industries { grid-template-columns: repeat(3, 1fr); }
     .lp-pricing-grid { grid-template-columns: 1fr; max-width: 460px; margin-inline: auto; }
 }
 @media (max-width: 820px) {
@@ -852,6 +843,7 @@ const year = new Date().getFullYear()
 @media (max-width: 560px) {
     .lp-container { width: calc(100% - 32px); }
     .lp-feature-grid, .lp-steps { grid-template-columns: 1fr; }
+    .lp-industries { grid-template-columns: repeat(2, 1fr); }
     .lp-field-row { grid-template-columns: 1fr; }
     .lp-footer-inner { flex-direction: column; align-items: flex-start; }
     .lp-hero-qr { inset-inline-start: 50%; transform: translateX(-50%); inset-block-end: -18px; }

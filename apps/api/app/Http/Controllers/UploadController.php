@@ -14,7 +14,9 @@ class UploadController extends Controller
         $mimes = implode(',', config('platform.uploads.mimes', ['jpg', 'jpeg', 'png', 'webp']));
 
         $request->validate([
-            'image' => ['required', 'image', "mimes:{$mimes}", "max:{$maxKb}"],
+            // `file` + `mimes` (not the strict `image` rule) so modern formats
+            // like avif are accepted; the mimes list still restricts to images.
+            'image' => ['required', 'file', "mimes:{$mimes}", "max:{$maxKb}"],
             'folder' => ['nullable', 'string', 'in:logos,covers,categories,items,uploads'],
         ]);
 

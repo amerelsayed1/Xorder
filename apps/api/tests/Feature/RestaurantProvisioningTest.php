@@ -35,6 +35,45 @@ class RestaurantProvisioningTest extends TestCase
         $this->assertNotNull($admin->restaurant_id);
     }
 
+    public function test_new_client_gets_a_one_month_trial_by_default(): void
+    {
+        $sa = User::factory()->superAdmin()->create();
+
+        $this->actingAs($sa)->postJson('/api/admin/restaurants', [
+            'name_en' => 'Trial Co',
+            'slug' => 'trial-co',
+            'default_language' => 'en',
+            'currency' => 'EGP',
+            'admin' => ['name' => 'Owner', 'username' => 'trialowner', 'email' => 'owner@trial.com'],
+        ])->assertCreated();
+
+        $r = Restaurant::where('slug', 'trial-co')->first();
+        $this->assertNotNull($r->subscription_start_date);
+        $this->assertNotNull($r->subscription_end_date);
+        $this->assertSame(now()->toDateString(), $r->subscription_start_date->toDateString());
+        $this->assertSame(now()->addMonth()->toDateString(), $r->subscription_end_date->toDateString());
+    }
+
+    public function test_explicit_subscription_dates_are_preserved(): void
+    {
+        $sa = User::factory()->superAdmin()->create();
+
+        $this->actingAs($sa)->postJson('/api/admin/restaurants', [
+            'name_en' => 'Paid Co',
+            'slug' => 'paid-co',
+            'default_language' => 'en',
+            'currency' => 'EGP',
+            'subscription_status' => 'ACTIVE',
+            'subscription_start_date' => '2026-01-01',
+            'subscription_end_date' => '2027-01-01',
+            'admin' => ['name' => 'O', 'username' => 'paidowner', 'email' => 'o@paid.com'],
+        ])->assertCreated();
+
+        $r = Restaurant::where('slug', 'paid-co')->first();
+        $this->assertSame('2026-01-01', $r->subscription_start_date->toDateString());
+        $this->assertSame('2027-01-01', $r->subscription_end_date->toDateString());
+    }
+
     public function test_slug_must_be_unique(): void
     {
         $sa = User::factory()->superAdmin()->create();

@@ -9,7 +9,7 @@ const { content } = useLandingContent()
 </script>
 
 <template>
-    <AdminSection :title="t('landing_admin.sec_seo')" open>
+    <AdminSection :title="t('landing_admin.sec_seo')" :collapsible="false">
         <div class="space-y-3">
             <BiField :label="t('landing_admin.seo_title')" v-model:en="content.seo.title.en" v-model:ar="content.seo.title.ar" />
             <BiField :label="t('landing_admin.seo_desc')" textarea v-model:en="content.seo.description.en" v-model:ar="content.seo.description.ar" />

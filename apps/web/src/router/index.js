@@ -41,15 +41,20 @@ const superAdminRoutes = [
                     { path: 'whatsapp', name: 'admin.settings.whatsapp', component: () => import('../pages/admin/settings/WhatsappSettings.vue') },
                     { path: 'highlights', name: 'admin.settings.highlights', component: () => import('../pages/admin/settings/HighlightsSettings.vue') },
                     { path: 'features', name: 'admin.settings.features', component: () => import('../pages/admin/settings/FeaturesSettings.vue') },
+                    { path: 'industries', name: 'admin.settings.industries', component: () => import('../pages/admin/settings/IndustriesSettings.vue') },
                     { path: 'demo', name: 'admin.settings.demo', component: () => import('../pages/admin/settings/DemoSettings.vue') },
-                    { path: 'packages', name: 'admin.settings.packages', component: () => import('../pages/admin/settings/PackagesSettings.vue') },
+                    // Packages settings were replaced by Plans management (/plans).
+                    // Redirect the old path so saved bookmarks keep working.
+                    { path: 'packages', redirect: { name: 'admin.plans' } },
                     { path: 'faq', name: 'admin.settings.faq', component: () => import('../pages/admin/settings/FaqSettings.vue') },
                     { path: 'lead-cta', name: 'admin.settings.lead_cta', component: () => import('../pages/admin/settings/LeadCtaSettings.vue') },
                 ],
             },
+            // Themed, auth-guarded 404 for any unknown admin path (inherits the
+            // SUPER_ADMIN guard, so unauthenticated users still go to login).
+            { path: ':pathMatch(.*)*', name: 'admin.notfound', component: () => import('../pages/admin/NotFoundView.vue') },
         ],
     },
-    { path: '/:pathMatch(.*)*', redirect: '/' },
 ]
 
 const restaurantRoutes = [
