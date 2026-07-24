@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch } from 'vue'
+import { nextTick, ref, watch } from 'vue'
 
 const props = defineProps({
     isOpen: Boolean,
@@ -18,9 +18,22 @@ const props = defineProps({
 const emit = defineEmits(['close', 'toggleOption', 'updateQuantity', 'addToCart'])
 
 const note = ref('')
+const noteEl = ref(null)
+
+// The notes field starts at a single practical row and grows with its content
+// up to a cap (then scrolls), so it isn't a big empty box by default.
+function autoGrowNote() {
+    const el = noteEl.value
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${Math.min(el.scrollHeight, 132)}px`
+}
 
 watch(() => props.isOpen, (open) => {
-    if (open) note.value = ''
+    if (open) {
+        note.value = ''
+        nextTick(autoGrowNote)
+    }
 })
 
 function getGroups() {
@@ -93,7 +106,7 @@ function isSelected(gi, oi) {
 
                     <label v-if="orderingEnabled" class="item-note">
                         <span>{{ t('item_note') }}</span>
-                        <textarea v-model="note" :placeholder="t('item_note_ph')"></textarea>
+                        <textarea ref="noteEl" v-model="note" rows="1" :placeholder="t('item_note_ph')" @input="autoGrowNote"></textarea>
                     </label>
 
                     <div v-if="orderingEnabled" class="modal-footer">

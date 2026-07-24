@@ -29,6 +29,23 @@
     --green: #16a34a;
     --green-dark: #0b7a35;
     --shadow: 0 16px 42px #573f1b17;
+
+    /* Sticky-stack heights. useStickyLayout overwrites these with exact measured
+       values (inline on <html>, so JS always wins); these are breakpoint-correct
+       fallbacks so the sticky offsets are right even before JS runs — otherwise
+       the toolbar/heading fall back to desktop offsets and leave a gap over the
+       shorter mobile topbar. */
+    --topbar-h: 78px;
+    --stack-h: 142px;
+    --footer-h: 56px;
+}
+
+@media (width <= 900px) {
+    :root {
+        --topbar-h: 66px;
+        /* topbar (66) + stacked search/tabs toolbar (~108); JS refines it. */
+        --stack-h: 174px;
+    }
 }
 
 * {
@@ -80,13 +97,6 @@ img {
     unicode-bidi: isolate;
 }
 
-.line-clamp-2 {
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-}
-
 /* ---------- Loading: shimmer + skeleton + image fade-in ---------- */
 @keyframes shimmer {
     0% {
@@ -123,12 +133,25 @@ img {
     opacity: 1;
 }
 
-/* Shimmer the wrapper only while its image is still loading. */
+/* Shimmer the wrapper only while its image is still loading (not once it has
+   settled, success or error). */
 .product-image-wrap:has(img:not(.is-loaded)),
 .modal-image-wrap:has(> img:not(.is-loaded)) {
     background: linear-gradient(100deg, var(--cream-deep) 28%, #fdf3e1 46%, #fff8ec 54%, var(--cream-deep) 72%);
     background-size: 200% 100%;
     animation: shimmer 1.25s linear infinite;
+}
+
+/* Hide the fallback glyph while a usable image is loading or shown, so loading
+   reads as a clean shimmer and a loaded photo covers it. The glyph stays visible
+   when there is no image, or when the image failed (img.is-error). */
+.product-image-wrap:has(img:not(.is-error)) .image-placeholder {
+    visibility: hidden;
+}
+
+/* A broken modal image collapses to the neutral cream backdrop. */
+.modal-image-wrap > img.is-error {
+    display: none;
 }
 
 .cart-item > img {
@@ -230,15 +253,16 @@ img {
 .site-shell {
     background: radial-gradient(circle at 88% 7%, color-mix(in srgb, var(--accent) 8%, transparent), transparent 24%), var(--cream);
     min-height: 100vh;
-    padding-top: 78px;
+    /* Clears the fixed topbar. Measured into --topbar-h (useStickyLayout); the
+       fallback matches the topbar's default height for the first paint. */
+    padding-top: var(--topbar-h, 78px);
 }
 
 /* ---------- Topbar ---------- */
 .topbar {
     z-index: 50;
-    -webkit-backdrop-filter: blur(16px);
-    backdrop-filter: blur(16px);
-    background: #fffbf3f0;
+    /* Fully opaque so nothing shows through while content scrolls under it. */
+    background: #fffdf7;
     border-bottom: 1px solid #ddceb6cc;
     height: 78px;
     position: fixed;
@@ -260,11 +284,6 @@ img {
     align-items: center;
     gap: 11px;
     display: flex;
-}
-
-.brand-text {
-    width: 100%;
-    direction: rtl;
 }
 
 .brand img, .brand-fallback {
@@ -436,7 +455,11 @@ img {
 .page-wrap {
     max-width: 1480px;
     margin: 0 auto;
-    padding: 10px 28px 110px;
+    padding-inline: 28px;
+    padding-top: 10px;
+    /* Reserve the fixed footer's measured height plus the device safe area, so
+       the final product always scrolls clear above it. */
+    padding-bottom: calc(var(--footer-h, 64px) + env(safe-area-inset-bottom, 0px) + 28px);
 }
 
 /* ---------- Hero ---------- */
@@ -516,15 +539,6 @@ html[dir='ltr'] .hero-overlay {
     display: flex;
 }
 
-.open-pill {
-    color: #16843a;
-    background: #e9ffe9;
-    border-radius: 999px;
-    padding: 6px 11px;
-    font-size: 12px;
-    font-weight: 800;
-}
-
 .restaurant-meta {
     color: #ffffffe6;
     flex-wrap: wrap;
@@ -561,7 +575,8 @@ html[dir='ltr'] .hero-overlay {
 .menu-toolbar {
     z-index: 20;
     /* No card — the toolbar sits directly on the page. Opaque cream background
-       keeps the sticky tabs legible over content scrolling underneath. */
+       keeps the sticky tabs legible over content scrolling underneath. Sticks
+       directly below the fixed topbar (measured height). */
     background: var(--cream);
     justify-content: space-between;
     align-items: center;
@@ -570,7 +585,7 @@ html[dir='ltr'] .hero-overlay {
     padding: 10px 0;
     display: flex;
     position: sticky;
-    top: 78px;
+    top: var(--topbar-h, 78px);
 }
 
 .category-list {
@@ -579,6 +594,12 @@ html[dir='ltr'] .hero-overlay {
     gap: 4px;
     display: flex;
     overflow-x: auto;
+    /* Breathing room so the first/last tab is never clipped against the edge,
+       and scroll-padding so scrolling a tab into view leaves it clear of both
+       ends. Logical props keep this correct in RTL. */
+    padding-inline: 6px;
+    scroll-padding-inline: 28px;
+    overscroll-behavior-x: contain;
 }
 
 .category-list::-webkit-scrollbar {
@@ -650,27 +671,11 @@ html[dir='ltr'] .hero-overlay {
     min-width: 0;
 }
 
-.menu-intro {
-    border-bottom: 1px solid var(--line);
-    justify-content: space-between;
-    align-items: end;
-    padding: 0 4px 14px;
-    display: flex;
-}
-
-.menu-intro h2 {
-    margin: 4px 0 0;
-    font-size: 30px;
-}
-
-.menu-intro > span {
-    color: var(--muted);
-    font-size: 13px;
-}
-
 .category-section {
     padding-top: 8px;
-    scroll-margin-top: 150px;
+    /* Land a jumped-to section fully below the sticky stack (topbar + toolbar),
+       measured into --stack-h. The small extra keeps a hair of gap. */
+    scroll-margin-block-start: calc(var(--stack-h, 150px) + 12px);
 }
 
 .category-section + .category-section {
@@ -679,7 +684,9 @@ html[dir='ltr'] .hero-overlay {
 }
 
 .category-section:last-of-type {
-    min-height: calc(100dvh - 170px);
+    /* Enough runway that the last (possibly short) section can still scroll up
+       to the top of the stack when its tab is selected. */
+    min-height: calc(100dvh - var(--stack-h, 170px) - var(--footer-h, 56px));
 }
 
 /* Each category title sticks just under the toolbar while its items scroll,
@@ -687,7 +694,7 @@ html[dir='ltr'] .hero-overlay {
    behind cleanly; z-index below the toolbar (20) so it tucks under it. */
 .section-heading {
     position: sticky;
-    top: 142px;
+    top: var(--stack-h, 142px);
     z-index: 12;
     background: var(--cream);
     justify-content: space-between;
@@ -732,17 +739,19 @@ html[dir='ltr'] .hero-overlay {
     font-size: 13px;
 }
 
-.eyebrow {
-    color: var(--accent-dark);
-    font-size: 12px;
-    font-weight: 800;
-}
-
 /* ---------- Product cards ---------- */
 .product-grid {
     grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 16px;
     display: grid;
+}
+
+/* A section with a single product shouldn't leave an empty column. On desktop
+   the lone card keeps a normal card footprint aligned to the start; on mobile
+   it spans the full content width (handled in the mobile block below). */
+.product-grid:has(> .product-card:only-child) {
+    grid-template-columns: minmax(0, 340px);
+    justify-content: start;
 }
 
 .product-card {
@@ -779,7 +788,14 @@ html[dir='ltr'] .hero-overlay {
     object-fit: cover;
     width: 100%;
     height: 100%;
+    /* Sits above the fallback glyph; a broken URL is hidden so the glyph shows. */
+    position: relative;
+    z-index: 1;
     transition: transform .35s;
+}
+
+.product-image-wrap img.is-error {
+    display: none;
 }
 
 .product-card:hover .product-image-wrap img {
@@ -787,8 +803,8 @@ html[dir='ltr'] .hero-overlay {
 }
 
 .image-placeholder {
-    width: 100%;
-    height: 100%;
+    position: absolute;
+    inset: 0;
     display: grid;
     place-items: center;
     color: color-mix(in srgb, var(--accent) 45%, #d8c9ac);
@@ -802,6 +818,8 @@ html[dir='ltr'] .hero-overlay {
     font-size: 11px;
     font-weight: 800;
     position: absolute;
+    /* Above the image (z-index:1) and the fallback glyph. */
+    z-index: 2;
     top: 12px;
     inset-inline-start: 12px;
 }
@@ -835,13 +853,26 @@ html[dir='ltr'] .hero-overlay {
 .product-title-row h3 {
     margin: 0;
     font-size: 17px;
+    overflow-wrap: anywhere;
 }
 
-.product-title-row strong {
+/* Price block: discounted price is dominant; the old price sits smaller with a
+   strikethrough. Each part is nowrap so a number never splits from its currency,
+   but the two parts may wrap relative to each other on very narrow cards. */
+.product-title-row strong,
+.product-price {
     color: var(--accent-dark);
-    white-space: nowrap;
     direction: ltr;
-    font-size: 14px;
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 3px 7px;
+}
+
+.product-price .new-price {
+    font-size: 15px;
+    font-weight: 800;
+    white-space: nowrap;
 }
 
 .old-price {
@@ -849,7 +880,7 @@ html[dir='ltr'] .hero-overlay {
     text-decoration: line-through;
     font-weight: 500;
     font-size: 11px;
-    margin-inline-end: 5px;
+    white-space: nowrap;
 }
 
 .product-body p {
@@ -864,28 +895,42 @@ html[dir='ltr'] .hero-overlay {
     overflow: hidden;
 }
 
+/* One cohesive, tappable pill (≥44px tall) rather than a loose label + circle. */
 .add-button {
     color: var(--accent-dark);
     cursor: pointer;
-    background: 0 0;
-    border: 0;
+    background: var(--accent-soft);
+    border: 1px solid var(--accent-border);
     align-items: center;
-    gap: 7px;
-    padding: 0;
+    gap: 8px;
+    min-height: 44px;
+    padding-inline: 6px 16px;
+    border-radius: 999px;
     font-weight: 800;
+    font-size: 14px;
     display: inline-flex;
+    align-self: flex-start;
     margin-top: auto;
+    transition: background .18s, border-color .18s;
 }
 
-.add-button span {
+.add-button:hover,
+.add-button:focus-visible {
+    background: color-mix(in srgb, var(--accent) 24%, white);
+    border-color: var(--accent);
+}
+
+.add-button__icon {
     background: var(--accent);
     color: #fff;
     border-radius: 50%;
     place-items: center;
-    width: 28px;
-    height: 28px;
+    width: 32px;
+    height: 32px;
     font-size: 20px;
+    line-height: 1;
     display: grid;
+    flex: none;
 }
 
 .product-card.unavailable {
@@ -1449,20 +1494,21 @@ html[dir='ltr'] .back-step, html[dir='ltr'] .continue-button b {
 /* ---------- Fixed footer ---------- */
 .fixed-footer {
     z-index: 45;
-    -webkit-backdrop-filter: blur(16px);
-    backdrop-filter: blur(16px);
-    background: #fffcf6f5;
+    /* Fully opaque so product cards never show through it as they scroll past. */
+    background: #fffdf7;
     border-top: 1px solid #e0d0b8e6;
     justify-content: space-between;
     align-items: center;
     gap: 18px;
     min-height: 56px;
-    padding: 8px max(24px, 50vw - 712px);
+    padding-inline: max(24px, 50vw - 712px);
+    padding-block: 8px;
+    /* Keep content clear of the home-indicator / gesture area. */
+    padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
     display: flex;
     position: fixed;
+    inset-inline: 0;
     bottom: 0;
-    left: 0;
-    right: 0;
     box-shadow: 0 -8px 28px #4b371814;
 }
 
@@ -1612,9 +1658,10 @@ html[dir='ltr'] .back-step, html[dir='ltr'] .continue-button b {
 }
 
 .modal-heading p {
-    color: var(--muted);
+    /* Darker than --muted for readable body contrast on the sheet. */
+    color: #574e43;
     margin: 0;
-    font-size: 13px;
+    font-size: 13.5px;
     line-height: 1.7;
 }
 
@@ -1685,10 +1732,22 @@ html[dir='ltr'] .back-step, html[dir='ltr'] .continue-button b {
     display: block;
 }
 
+/* Starts at one practical row and auto-grows (JS) up to a cap, then scrolls.
+   resize:none removes the corner drag-handle artifact. */
 .item-note textarea {
-    resize: vertical;
-    min-height: 78px;
-    padding: 12px;
+    resize: none;
+    min-height: 46px;
+    max-height: 132px;
+    overflow-y: auto;
+    padding: 11px 12px;
+    line-height: 1.5;
+}
+
+.item-note textarea::placeholder,
+.checkout-form input::placeholder,
+.checkout-form textarea::placeholder {
+    color: #8a8073;
+    opacity: 1;
 }
 
 .modal-footer {
@@ -1705,6 +1764,7 @@ html[dir='ltr'] .back-step, html[dir='ltr'] .continue-button b {
 .quantity-control.large {
     border-radius: 12px;
     flex: 0 0 118px;
+    min-height: 48px;
     grid-template-columns: 38px 42px 38px;
 }
 
@@ -1971,7 +2031,9 @@ html[dir='ltr'] .side-panel {
     }
 
     .page-wrap {
-        padding: 8px 14px 102px;
+        padding-inline: 14px;
+        padding-top: 8px;
+        /* Bottom gutter (footer height + safe area) is inherited from the base rule. */
     }
 
     /* Hide the hero banner entirely on mobile — go straight from the top bar
@@ -2020,8 +2082,9 @@ html[dir='ltr'] .side-panel {
     .menu-toolbar {
         flex-direction: column;
         align-items: stretch;
+        gap: 10px;
         padding: 8px 0;
-        top: 76px;
+        /* Sticky top is the measured topbar height (var); no magic number. */
     }
 
     .category-list {
@@ -2043,17 +2106,12 @@ html[dir='ltr'] .side-panel {
         margin-top: 6px;
     }
 
-    .category-section {
-        scroll-margin-top: 185px;
-    }
-
-    .category-section:last-of-type {
-        min-height: calc(100dvh - 200px);
-    }
-
-    /* Toolbar is taller (stacked search + tabs) on mobile, so headings stick lower. */
+    /* scroll-margin, last-section runway, and the section-heading sticky top are
+       all derived from the measured --stack-h/--footer-h in the base rules — the
+       taller stacked toolbar on mobile is handled automatically. */
     .section-heading {
-        top: 196px;
+        margin-bottom: 10px;
+        padding-block: 8px;
     }
 
     .section-heading h2 {
@@ -2065,10 +2123,20 @@ html[dir='ltr'] .side-panel {
         gap: 11px;
     }
 
-    /* 2-up cards are narrow — a taller crop keeps food photos from looking
-       stretched-wide (16:10 reads as squished at this width). */
+    /* A lone card spans the full content width on mobile so there's no empty
+       column; a wider crop keeps its media from towering. */
+    .product-grid:has(> .product-card:only-child) {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .product-grid:has(> .product-card:only-child) .product-image-wrap {
+        aspect-ratio: 16/9;
+    }
+
+    /* Shorter crop than the desktop 16:10 so more products fit per screen while
+       still reading well at 2-up widths. */
     .product-image-wrap {
-        aspect-ratio: 4/3;
+        aspect-ratio: 3/2;
     }
 
     .product-card {
@@ -2095,12 +2163,13 @@ html[dir='ltr'] .side-panel {
     }
 
     .add-button {
-        font-size: 12px;
+        font-size: 13px;
+        padding-inline: 5px 14px;
     }
 
-    .add-button span {
-        width: 25px;
-        height: 25px;
+    .add-button__icon {
+        width: 30px;
+        height: 30px;
     }
 
     .fixed-footer {
@@ -2121,24 +2190,25 @@ html[dir='ltr'] .side-panel {
 
     .item-modal, .item-modal.no-image {
         width: min(600px, 94vw);
-        max-height: 91vh;
+        max-height: 91dvh;
         display: block;
         overflow-y: auto;
     }
 
     .modal-image-wrap {
-        height: 34vh;
-        min-height: 270px;
+        /* Shorter media → less scrolling to reach the details/CTA. */
+        height: 30vh;
+        min-height: 210px;
     }
 
     .modal-content {
-        padding: 22px;
+        padding: 20px 22px;
         overflow: visible;
     }
 
     .modal-footer {
-        margin: 20px -22px -22px;
-        padding: 14px 22px 18px;
+        margin: 18px -22px -22px;
+        padding: 14px 22px calc(16px + env(safe-area-inset-bottom, 0px));
         bottom: -22px;
     }
 
@@ -2180,8 +2250,8 @@ html[dir='ltr'] .side-panel {
 
     .header-cart-button {
         justify-content: center;
-        width: 39px;
-        min-height: 39px;
+        width: 42px;
+        min-height: 42px;
         padding: 0;
     }
 
@@ -2189,8 +2259,17 @@ html[dir='ltr'] .side-panel {
         display: none;
     }
 
+    /* Icon-only button: the count becomes a corner badge pinned to the icon,
+       instead of an inline chip that overflows the circle and detaches. */
     .header-cart-button i {
-        min-width: 25px;
+        position: absolute;
+        top: -4px;
+        inset-inline-end: -4px;
+        min-width: 19px;
+        height: 19px;
+        padding: 0 4px;
+        font-size: 10px;
+        border: 2px solid var(--cream);
     }
 
     .restaurant-hero {
@@ -2220,11 +2299,6 @@ html[dir='ltr'] .side-panel {
         gap: 7px;
     }
 
-    .open-pill {
-        padding: 4px 7px;
-        font-size: 9px;
-    }
-
     .hero-buttons {
         top: 14px;
         bottom: auto;
@@ -2244,13 +2318,7 @@ html[dir='ltr'] .side-panel {
         font-size: 14px;
     }
 
-    .product-image-wrap {
-        aspect-ratio: 1;
-    }
-
-    .product-title-row strong {
-        font-size: 12px;
-    }
+    /* Keeps the shorter 3/2 crop from the ≤900 block — no square towering media. */
 
     .product-body p {
         display: none;
@@ -2268,8 +2336,8 @@ html[dir='ltr'] .side-panel {
     .item-modal, .item-modal.no-image {
         border-radius: 24px 24px 0 0;
         align-self: end;
-        width: 100vw;
-        max-height: 94vh;
+        width: 100%;
+        max-height: 94dvh;
     }
 
     .modal-backdrop {
@@ -2277,8 +2345,8 @@ html[dir='ltr'] .side-panel {
     }
 
     .modal-image-wrap {
-        height: 29vh;
-        min-height: 220px;
+        height: 26vh;
+        min-height: 180px;
     }
 
     .modal-heading {

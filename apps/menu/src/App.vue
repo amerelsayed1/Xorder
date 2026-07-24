@@ -6,6 +6,7 @@ import { useLocale } from './composables/useLocale'
 import { useCart } from './composables/useCart'
 import { useOrder } from './composables/useOrder'
 import { useMenu } from './composables/useMenu'
+import { useStickyLayout } from './composables/useStickyLayout'
 import { useUserInfo } from './composables/useUserInfo'
 import { useTableSession } from './composables/useTableSession'
 import Header from './components/Header.vue'
@@ -45,7 +46,11 @@ const { userInfoDialog, isEditing, userInfo, editForm, saveSuccess, hasUserInfo,
 // Hydrate any saved diner info up front so the checkout form can prefill.
 loadUserInfo()
 
-const { payload, loading, error, unavailable, activeCat, view, restaurant, categories, combos, branches, navCats, scrollTo, goHome, goBranches } = useMenu(slug)
+const { payload, loading, error, unavailable, activeCat, spyLocked, view, restaurant, categories, combos, branches, navCats, scrollTo, goHome, goBranches } = useMenu(slug)
+
+// Keep the measured sticky/footer heights (--topbar-h / --stack-h / --footer-h)
+// in sync as the payload loads, the view switches, and the table banner shows.
+useStickyLayout(() => [loading.value, view.value, hasTable.value, tableError.value])
 
 // Funnel: one menu_viewed event per visit, once the payload actually loads.
 let viewTracked = false
@@ -115,17 +120,24 @@ const bilingual = computed(() => restaurant.value?.bilingual !== false)
 const orderingMode = computed(() => restaurant.value?.ordering_mode || 'both')
 const usesWhatsapp = computed(() => orderingMode.value !== 'system')
 const usesSystem = computed(() => orderingMode.value !== 'whatsapp')
-// A WhatsApp handoff needs a number; a system-only menu does not.
-const canOrder = computed(() => cartCount.value > 0 && (!usesWhatsapp.value || !!waDigits.value))
+// A WhatsApp handoff needs a number; a system-only menu does not. A resolved
+// order type is also required so a dine-in-only menu can't place a table-less
+// order from the general link (see orderTypes below).
+const canOrder = computed(() => cartCount.value > 0 && !!orderType.value && (!usesWhatsapp.value || !!waDigits.value))
 
 // Order type. Driven by the restaurant's enabled features (pickup/delivery);
 // at a scanned table it is dine-in only. Older payloads without order_types
 // fall back to both so nothing regresses.
 const orderType = ref('pickup')
 const orderTypes = computed(() => {
+    // Dine-in is bound to a physical table by the table QR session, so it is
+    // only offered at a scanned table (there it's the sole option). Off a
+    // scanned table there is no table to route a dine-in order to, so the
+    // general menu link exposes just the takeaway channels — a manual dine-in
+    // pick here would reach the kitchen with no table number.
     if (hasTable.value) return [{ value: 'dine_in', label: t('dine_in') }]
     const enabled = restaurant.value?.order_types ?? ['pickup', 'delivery']
-    return enabled.map(v => ({ value: v, label: t(v) }))
+    return enabled.filter(v => v !== 'dine_in').map(v => ({ value: v, label: t(v) }))
 })
 // Keep the selected type valid as options load / change.
 watch(orderTypes, (opts) => {
@@ -304,6 +316,7 @@ function updateUserField(field, value) {
                         :combos="combos"
                         :search="searchQuery"
                         :orderingEnabled="orderingEnabled"
+                        :scrollLocked="spyLocked"
                         :t="t"
                         :money="money"
                         :localize="localize"

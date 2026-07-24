@@ -226,9 +226,16 @@ const profileItems = computed(() => [
 .sakai-content-inner { max-width: 1400px; margin: 0 auto; padding-inline: 28px; }
 
 @media (max-width: 1023px) {
-    .sakai-sidebar { transform: translateX(-100%); }
+    /* Off-canvas drawer. `visibility: hidden` while closed keeps the panel from
+       being painted (and tappable) once it has slid off-screen. Without it, an
+       RTL sub-pixel/overflow quirk on mobile Chrome leaves the group-arrow tips
+       peeking past the inline edge even though the drawer is translated away.
+       The delayed visibility transition lets the slide-out finish first. */
+    .sakai-sidebar { transform: translateX(-100%); visibility: hidden;
+        transition: transform .2s ease, visibility 0s linear .2s; }
     [dir=rtl] .sakai-sidebar { transform: translateX(100%); }
-    .sakai-sidebar.open { transform: translateX(0); }
+    .sakai-sidebar.open { transform: translateX(0); visibility: visible;
+        transition: transform .2s ease, visibility 0s; }
     .sakai-content { margin-inline-start: 0; }
 }
 

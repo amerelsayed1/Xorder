@@ -8,6 +8,9 @@ export function useMenu(slug) {
     const unavailable = ref(false)
     const activeCat = ref('')
     const view = ref('menu')
+    // While a category jump is animating, the scroll-spy is muted so it doesn't
+    // flicker the active tab through every section the smooth scroll passes.
+    const spyLocked = ref(false)
 
     const restaurant = computed(() => payload.value?.restaurant || {})
     const categories = computed(() => payload.value?.categories || [])
@@ -41,18 +44,42 @@ export function useMenu(slug) {
         }
     }
 
+    let unlockTimer = null
+    let onSettle = null
+
+    // Release the spy once the smooth scroll has settled — detected by a lull in
+    // scroll events — with a timeout backstop for reduced-motion / no-op scrolls.
+    function releaseSpyWhenSettled() {
+        clearTimeout(unlockTimer)
+        if (onSettle) window.removeEventListener('scroll', onSettle)
+        let idle = null
+        const finish = () => {
+            clearTimeout(idle)
+            clearTimeout(unlockTimer)
+            window.removeEventListener('scroll', onSettle)
+            onSettle = null
+            spyLocked.value = false
+        }
+        onSettle = () => {
+            clearTimeout(idle)
+            idle = setTimeout(finish, 100)
+        }
+        window.addEventListener('scroll', onSettle, { passive: true })
+        unlockTimer = setTimeout(finish, 800)
+    }
+
+    // Jump to a category. The vertical offset lives in CSS as
+    // `scroll-margin-block-start: var(--stack-h)` on each section, so a plain
+    // scrollIntoView lands the section fully below the sticky stack at every
+    // width — no hand-computed offsets.
     async function scrollTo(id) {
         activeCat.value = id
+        spyLocked.value = true
         await nextTick()
         const target = document.getElementById(`section-${id}`)
-        if (!target) return
-
-        const toolbar = document.querySelector('.menu-toolbar')
-        const stickyTop = toolbar ? Number.parseFloat(window.getComputedStyle(toolbar).top) || 0 : 0
-        const stickyBottom = stickyTop + (toolbar?.offsetHeight || 0)
-        const targetTop = window.scrollY + target.getBoundingClientRect().top - stickyBottom
-
-        window.scrollTo({ top: Math.max(0, targetTop), behavior: 'smooth' })
+        if (!target) { spyLocked.value = false; return }
+        target.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        releaseSpyWhenSettled()
     }
 
     function goHome() {
@@ -75,6 +102,7 @@ export function useMenu(slug) {
         error,
         unavailable,
         activeCat,
+        spyLocked,
         view,
         restaurant,
         categories,

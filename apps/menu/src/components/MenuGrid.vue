@@ -9,6 +9,8 @@ const props = defineProps({
     // Display-only menus (plan grants no ordering channel) hide the quick-add
     // button; the card still opens the item modal for viewing.
     orderingEnabled: { type: Boolean, default: true },
+    // Muted while a category jump animates so the spy doesn't fight it.
+    scrollLocked: { type: Boolean, default: false },
     t: Function,
     money: Function,
     localize: Function,
@@ -22,12 +24,16 @@ let lastActiveSection = null
 
 function updateActiveSection() {
     scrollFrame = null
+    if (props.scrollLocked) return
 
     const sectionElements = [...(menuRoot.value?.querySelectorAll('[data-category-id]') || [])]
     if (!sectionElements.length) return
 
+    // Activate a section once its top passes a little below the sticky toolbar —
+    // the small threshold matches each section's scroll-margin, so the section a
+    // category jump lands on reads as active instead of the one above it.
     const toolbarBottom = document.querySelector('.menu-toolbar')?.getBoundingClientRect().bottom || 0
-    const activationLine = toolbarBottom
+    const activationLine = toolbarBottom + 24
     let currentSection = sectionElements[0].dataset.categoryId
 
     for (const section of sectionElements) {
@@ -145,17 +151,20 @@ const priceOf = (section, item) => {
                         @keydown.enter="item.is_available !== false && $emit('openModal', section.kind, item)"
                     >
                         <div class="product-image-wrap">
+                            <!-- Fallback glyph sits behind the image; a loaded photo
+                                 covers it, and a broken URL (img.is-error) reveals it
+                                 again — so a card never shows a broken-image icon. -->
+                            <span class="image-placeholder" aria-hidden="true">{{ section.glyph }}</span>
                             <img v-if="item.image_url" v-img-fade :src="item.image_url" :alt="localize(item)" loading="lazy" decoding="async" />
-                            <div v-else class="image-placeholder">{{ section.glyph }}</div>
                             <span v-if="item.is_featured && item.is_available !== false" class="popular-badge">{{ t('popular') }}</span>
                             <span v-if="item.is_available === false" class="unavailable-badge">{{ t('item_unavailable') }}</span>
                         </div>
                         <div class="product-body">
                             <div class="product-title-row">
                                 <h3>{{ localize(item) }}</h3>
-                                <strong>
+                                <strong class="product-price">
                                     <span v-if="section.kind === 'item' && item.discounted_price" class="old-price">{{ money(item.price) }}</span>
-                                    {{ priceOf(section, item) }}
+                                    <span class="new-price">{{ priceOf(section, item) }}</span>
                                 </strong>
                             </div>
                             <p>{{ localize(item, 'description') }}</p>
@@ -165,7 +174,8 @@ const priceOf = (section, item) => {
                                 :aria-label="`${t('add')} ${localize(item)}`"
                                 @click.stop="$emit('openModal', section.kind, item)"
                             >
-                                <span>+</span> {{ t('add') }}
+                                <span class="add-button__icon" aria-hidden="true">+</span>
+                                <span class="add-button__label">{{ t('add') }}</span>
                             </button>
                         </div>
                     </article>
