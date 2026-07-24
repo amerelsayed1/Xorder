@@ -157,7 +157,7 @@ const areaLabel = (id) => { const a = areas.value.find(x => x.id === id); return
             <div v-else-if="!rows.length" class="p-8 text-center" style="color:var(--muted)">{{ t('tbl.none_tables') }}</div>
             <ul v-else>
                 <li v-for="tbl in rows" :key="tbl.id" class="flex items-center gap-3 px-5 py-3 border-t first:border-t-0" style="border-color:var(--line)">
-                    <div class="h-11 w-11 rounded-lg grid place-items-center flex-shrink-0 font-semibold" style="background:var(--accent-soft);color:var(--accent)">{{ tbl.label }}</div>
+                    <div class="h-11 w-11 rounded-lg grid place-items-center flex-shrink-0" style="background:var(--accent-soft);color:var(--accent)"><Icon name="table" :size="22" /></div>
                     <div class="flex-1 min-w-0">
                         <div class="font-medium" style="color:var(--ink)">{{ tbl.label }}</div>
                         <div class="text-xs truncate" style="color:var(--muted)">{{ areaLabel(tbl.dining_area_id) }}</div>
