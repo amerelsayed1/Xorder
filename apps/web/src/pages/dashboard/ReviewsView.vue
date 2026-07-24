@@ -75,9 +75,6 @@ onMounted(() => {
     load()
 })
 
-function setRating(r) { ratingFilter.value = r; load() }
-function setStatus(s) { statusFilter.value = s; load() }
-
 const areaName = (row) => {
     const en = row.area_name_en, ar = row.area_name_ar
     return (locale.value === 'ar' ? (ar || en) : (en || ar)) || ''
@@ -162,18 +159,14 @@ async function addNote() {
         <!-- Filters -->
         <div class="space-y-2">
             <div class="flex items-center gap-2 flex-wrap">
-                <button class="chip" :class="{ 'chip-on': ratingFilter === '' }" @click="setRating('')">{{ t('rev.all_ratings') }}</button>
-                <button v-for="r in [5, 4, 3, 2, 1]" :key="r" class="chip" :class="{ 'chip-on': ratingFilter === r }" @click="setRating(r)">
-                    {{ r }}★
-                </button>
-            </div>
-            <div class="flex items-center gap-2 flex-wrap">
-                <button class="chip" :class="{ 'chip-on': statusFilter === '' }" @click="setStatus('')">{{ t('common.all') }}</button>
-                <button v-for="s in STATUSES" :key="s" class="chip" :class="{ 'chip-on': statusFilter === s }" @click="setStatus(s)">
-                    {{ t('rev.status.' + s) }}
-                </button>
-            </div>
-            <div class="flex items-center gap-2 flex-wrap">
+                <select v-model="ratingFilter" class="chip chip-select" @change="load">
+                    <option value="">{{ t('rev.all_ratings') }}</option>
+                    <option v-for="r in [5, 4, 3, 2, 1]" :key="r" :value="r">{{ r }} ★</option>
+                </select>
+                <select v-model="statusFilter" class="chip chip-select" @change="load">
+                    <option value="">{{ t('common.all') }}</option>
+                    <option v-for="s in STATUSES" :key="s" :value="s">{{ t('rev.status.' + s) }}</option>
+                </select>
                 <select v-model="areaFilter" class="chip chip-select" @change="load">
                     <option value="">{{ t('rev.all_areas') }}</option>
                     <option v-for="a in areas" :key="a.id" :value="a.id">{{ locale === 'ar' ? (a.name_ar || a.name_en) : (a.name_en || a.name_ar) }}</option>
