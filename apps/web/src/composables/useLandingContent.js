@@ -51,7 +51,7 @@ function addBenefit() { content.value.offer.items.push({ icon: '★', text: bi()
 function addProblem() { content.value.problem.problems.push({ text: bi() }) }
 function addThird() { content.value.no_commission.third_party.push({ text: bi() }) }
 function addXorder() { content.value.no_commission.xorder.push({ text: bi() }) }
-function addIndustry() { content.value.industries.items.push({ icon: '🍽️', text: bi() }) }
+function addIndustry() { content.value.industries.items.push({ icon: '🍽️', image: '', text: bi() }) }
 function addFaq() { content.value.faq.items.push({ enabled: true, q: bi(), a: bi() }) }
 function addPlan() {
     content.value.pricing.plans.push({ name: bi(), subtitle: bi(), price_label: bi(), recommended: false, enabled: true, features: [] })

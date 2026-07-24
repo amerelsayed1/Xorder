@@ -284,13 +284,13 @@ class LandingContent extends Model
                     'سواء كنت تدير مقهى صغيراً أو علامة مطاعم متنامية، يساعدك Xorder على تقديم قائمتك باحترافية واستقبال الطلبات مباشرة من عملائك.'
                 ),
                 'items' => [
-                    ['icon' => '🍽️', 'text' => $bi('Restaurants', 'المطاعم')],
-                    ['icon' => '☕', 'text' => $bi('Cafes', 'المقاهي')],
-                    ['icon' => '🧁', 'text' => $bi('Dessert shops', 'محلات الحلويات')],
-                    ['icon' => '🍱', 'text' => $bi('Cloud kitchens', 'المطابخ السحابية')],
-                    ['icon' => '🥡', 'text' => $bi('Takeaway restaurants', 'مطاعم الوجبات الجاهزة')],
-                    ['icon' => '🚚', 'text' => $bi('Food trucks', 'عربات الطعام')],
-                    ['icon' => '🏷️', 'text' => $bi('Local food brands', 'العلامات الغذائية المحلية')],
+                    ['icon' => '🍽️', 'image' => '', 'text' => $bi('Restaurants', 'المطاعم')],
+                    ['icon' => '☕', 'image' => '', 'text' => $bi('Cafes', 'المقاهي')],
+                    ['icon' => '🧁', 'image' => '', 'text' => $bi('Dessert shops', 'محلات الحلويات')],
+                    ['icon' => '🍱', 'image' => '', 'text' => $bi('Cloud kitchens', 'المطابخ السحابية')],
+                    ['icon' => '🥡', 'image' => '', 'text' => $bi('Takeaway restaurants', 'مطاعم الوجبات الجاهزة')],
+                    ['icon' => '🚚', 'image' => '', 'text' => $bi('Food trucks', 'عربات الطعام')],
+                    ['icon' => '🏷️', 'image' => '', 'text' => $bi('Local food brands', 'العلامات الغذائية المحلية')],
                 ],
             ],
 

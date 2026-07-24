@@ -428,8 +428,11 @@ const year = new Date().getFullYear()
                         <p class="lp-sub">{{ L(content.industries.sub) }}</p>
                     </div>
                     <div class="lp-industries">
-                        <span class="lp-industry" v-for="(it, i) in content.industries.items" :key="i">
-                            <span class="lp-industry-ic">{{ it.icon }}</span>{{ L(it.text) }}
+                        <span class="lp-industry" v-for="(it, i) in content.industries.items" :key="i"
+                            :class="{ 'lp-industry--photo': it.image }"
+                            :style="it.image ? { backgroundImage: `url(${it.image})` } : null">
+                            <span v-if="!it.image" class="lp-industry-ic">{{ it.icon }}</span>
+                            <span class="lp-industry-label">{{ L(it.text) }}</span>
                         </span>
                     </div>
                 </div>
@@ -734,12 +737,20 @@ const year = new Date().getFullYear()
 
 /* Industries */
 .lp-industries { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; max-width: 920px; margin: 0 auto; }
-.lp-industry { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; text-align: center;
+.lp-industry { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+    min-height: 140px; text-align: center; overflow: hidden;
     background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 26px 16px;
     font-family: var(--font-display); font-weight: 600; color: var(--ink); font-size: 15.5px;
     transition: border-color .15s, box-shadow .15s, transform .15s; }
 .lp-industry:hover { border-color: var(--accent); box-shadow: 0 16px 32px -24px rgba(42,30,20,.55); transform: translateY(-2px); }
 .lp-industry-ic { font-size: 32px; line-height: 1; }
+.lp-industry-label { position: relative; z-index: 1; }
+/* Photo variant: image fills the card, label sits over a dark scrim. */
+.lp-industry--photo { justify-content: flex-end; align-items: stretch; padding: 0; border-color: transparent; color: #fff;
+    background-size: cover; background-position: center; }
+.lp-industry--photo::before { content: ''; position: absolute; inset: 0;
+    background: linear-gradient(to top, rgba(20,12,6,.82), rgba(20,12,6,.28) 55%, rgba(20,12,6,.05)); }
+.lp-industry--photo .lp-industry-label { padding: 14px 16px; text-align: start; font-size: 16px; text-shadow: 0 1px 10px rgba(0,0,0,.55); }
 
 /* FAQ */
 .lp-faq-wrap { max-width: 820px; }
