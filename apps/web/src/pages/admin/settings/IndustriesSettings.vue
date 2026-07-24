@@ -24,9 +24,10 @@ async function uploadImage(item, i, event) {
         const fd = new FormData()
         fd.append('image', file)
         fd.append('folder', 'uploads')
-        // Let axios set multipart/form-data WITH its boundary — forcing the
-        // header manually strips the boundary and the server can't parse the file.
-        const { data } = await api.post('uploads/image', fd)
+        // Path includes the `api/` prefix (baseURL is same-origin) — matching the
+        // other admin calls. Let axios set multipart/form-data WITH its boundary;
+        // forcing the header manually strips the boundary and the file won't parse.
+        const { data } = await api.post('api/uploads/image', fd)
         item.image = data.data.url
     } catch (e) {
         uploadError.value = e?.response?.data?.message || t('landing_admin.image_upload_failed')
