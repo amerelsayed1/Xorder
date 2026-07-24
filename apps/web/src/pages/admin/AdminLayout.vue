@@ -25,7 +25,6 @@ const nav = [
             { to: { name: 'admin.settings.features' }, labelKey: 'nav.settings_features', icon: 'pi pi-th-large' },
             { to: { name: 'admin.settings.industries' }, labelKey: 'nav.settings_industries', icon: 'pi pi-briefcase' },
             { to: { name: 'admin.settings.demo' }, labelKey: 'nav.settings_demo', icon: 'pi pi-play' },
-            { to: { name: 'admin.settings.packages' }, labelKey: 'nav.settings_packages', icon: 'pi pi-money-bill' },
             { to: { name: 'admin.settings.faq' }, labelKey: 'nav.settings_faq', icon: 'pi pi-question-circle' },
             { to: { name: 'admin.settings.lead_cta' }, labelKey: 'nav.settings_lead_cta', icon: 'pi pi-send' },
         ],
