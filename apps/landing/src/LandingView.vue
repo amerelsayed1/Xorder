@@ -4,7 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { setLocale } from '@xorder/ui/i18n'
 import XorderLogo from '@xorder/ui/XorderLogo.vue'
 import Icon from '@xorder/ui/Icon.vue'
-import { fetchLandingContent, fetchPlans, postLead } from './lib/content.js'
+import { fetchLandingContent, postLead } from './lib/content.js'
 import { track } from './lib/analytics.js'
 
 const { t, locale } = useI18n()
@@ -12,9 +12,6 @@ const { t, locale } = useI18n()
 // Admin-managed content (bilingual). Sections render once it has loaded.
 const content = ref(null)
 const loadError = ref(false)
-// Pricing cards come from the plans catalog (single source of truth), fetched
-// separately so a plans hiccup never blanks the whole page.
-const plans = ref([])
 
 // Pick the active locale from a bilingual { en, ar } field.
 const L = (field) => (field && (field[locale.value] ?? field.en)) || ''
@@ -48,8 +45,6 @@ function nextFramePaint() {
 onMounted(async () => {
     window.addEventListener('scroll', onScroll, { passive: true })
     onScroll()
-    // Pricing cards degrade to hidden if the catalog can't be reached.
-    fetchPlans().then((p) => { plans.value = p }).catch(() => { plans.value = [] })
     try {
         content.value = await fetchLandingContent()
         applySeo(content.value.seo)
@@ -113,25 +108,12 @@ const waHref = computed(() => {
 const floatingWa = computed(() => content.value?.whatsapp?.floating_enabled !== false && !!waHref.value)
 const heroWa = computed(() => content.value?.whatsapp?.hero_enabled !== false && !!waHref.value)
 
-// ---- Packages (sourced from the plans catalog) ---------------------------
+// ---- Packages ------------------------------------------------------------
+const enabledPlans = computed(() => (content.value?.pricing?.plans || []).filter((p) => p.enabled !== false))
+const planRecommended = (p) => p.recommended ?? p.popular ?? false
 const billingPeriod = ref('monthly')
-const enabledPlans = computed(() => plans.value) // API already returns active plans, sorted
-// Bilingual name/subtitle from the catalog's paired columns, so L() can pick.
-const planName = (p) => ({ en: p.name, ar: p.name_ar || p.name })
-const planSubtitle = (p) => ({ en: p.subtitle_en || '', ar: p.subtitle_ar || p.subtitle_en || '' })
-const planRecommended = (p) => !!p.is_recommended
-// Price convention: null = custom ("contact us"), 0 = free, else a real amount.
-const planIsCustom = (p) => p.price == null
-const planHasPrice = (p) => !planIsCustom(p)
-const planPrice = (p) => {
-    if (p.price === 0) return t('landing.price_free')
-    const amount = billingPeriod.value === 'yearly' ? (p.price_yearly ?? p.price) : p.price
-    const suffix = billingPeriod.value === 'yearly' ? t('landing.per_year') : t('landing.per_month')
-    return `${Number(amount).toLocaleString()} ${p.currency_symbol} ${suffix}`
-}
-// Public feature bullets are the plan's entitlement keys, labelled via i18n —
-// the same source the admin catalog chips use.
-const planFeatures = (p) => (p.feature_keys || []).map((k) => t('feature.' + k))
+const planPrice = (p) => L(p[`price_${billingPeriod.value}`]) || L(p.price_label) || L(p.price)
+const planHasPrice = (p) => !!planPrice(p)
 
 // A missing demo restaurant makes the server-rendered QR 404; hide it cleanly
 // rather than showing a broken-image icon (the brief: images must not break layout).
@@ -399,7 +381,7 @@ const year = new Date().getFullYear()
             </section>
 
             <!-- ========================= Packages ========================= -->
-            <section id="packages" class="lp-section" v-if="enabledPlans.length">
+            <section id="packages" class="lp-section">
                 <div class="lp-container">
                     <div class="lp-section-head">
                         <span class="lp-eyebrow">{{ t('landing.nav_pricing') }}</span>
@@ -416,21 +398,21 @@ const year = new Date().getFullYear()
                         </button>
                     </div>
                     <div class="lp-pricing-grid">
-                        <div class="lp-plan" v-for="plan in enabledPlans" :key="plan.id" :class="{ 'lp-plan-popular': planRecommended(plan) }">
+                        <div class="lp-plan" v-for="(plan, i) in enabledPlans" :key="i" :class="{ 'lp-plan-popular': planRecommended(plan) }">
                             <span v-if="planRecommended(plan)" class="lp-plan-badge">{{ L(content.pricing.popular_label) }}</span>
-                            <h3 class="lp-plan-name">{{ L(planName(plan)) }}</h3>
-                            <p class="lp-plan-note">{{ L(planSubtitle(plan)) }}</p>
+                            <h3 class="lp-plan-name">{{ L(plan.name) }}</h3>
+                            <p class="lp-plan-note">{{ L(plan.subtitle) || L(plan.note) }}</p>
                             <div class="lp-plan-price">
                                 <span v-if="planHasPrice(plan)" class="lp-plan-amount">{{ planPrice(plan) }}</span>
                                 <span v-else class="lp-plan-amount">{{ t('landing.price_contact') }}</span>
                             </div>
                             <p v-if="!planHasPrice(plan)" class="lp-plan-note">{{ t('landing.price_contact_note') }}</p>
                             <ul class="lp-plan-feats">
-                                <li v-for="(feat, fi) in planFeatures(plan)" :key="fi"><span class="lp-check"><Icon name="check" :size="12" /></span>{{ feat }}</li>
+                                <li v-for="(feat, fi) in plan.features" :key="fi"><span class="lp-check"><Icon name="check" :size="12" /></span>{{ L(feat) }}</li>
                             </ul>
                             <a href="#lead" class="btn lp-btn-lg lp-plan-cta" :class="planRecommended(plan) ? 'btn-accent' : 'btn-ghost'"
-                                @click="onPackageCta(L(planName(plan))); onRequestDemo()">
-                                {{ L(content.pricing.choose_label) }}
+                                @click="onPackageCta(L(plan.name)); onRequestDemo()">
+                                {{ L(plan.cta) || L(content.pricing.choose_label) }}
                             </a>
                         </div>
                     </div>
@@ -658,9 +640,8 @@ const year = new Date().getFullYear()
 .il-emoji-sm { font-size: 30px; }
 
 /* ============================= Sections ============================ */
-/* Sections size to their content — no forced full-viewport height (which left
-   big empty gaps above/below shorter sections). Padding gives the breathing room. */
-.lp-section { padding: clamp(56px, 7vh, 88px) 0; scroll-margin-top: 80px; }
+.lp-section { min-height: 100svh; display: flex; flex-direction: column; justify-content: center;
+    padding: clamp(64px, 9vh, 104px) 0; scroll-margin-top: 80px; }
 .lp-section-alt { background: color-mix(in srgb, var(--accent-soft) 55%, var(--page)); }
 .lp-section-head { text-align: center; max-width: 44em; margin: 0 auto clamp(36px, 5vw, 56px); }
 .lp-eyebrow { display: inline-block; font-family: var(--font-display); font-weight: 700; font-size: 13px;
