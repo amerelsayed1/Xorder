@@ -24,7 +24,9 @@ async function uploadImage(item, i, event) {
         const fd = new FormData()
         fd.append('image', file)
         fd.append('folder', 'uploads')
-        const { data } = await api.post('uploads/image', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
+        // Let axios set multipart/form-data WITH its boundary — forcing the
+        // header manually strips the boundary and the server can't parse the file.
+        const { data } = await api.post('uploads/image', fd)
         item.image = data.data.url
     } catch (e) {
         uploadError.value = e?.response?.data?.message || t('landing_admin.image_upload_failed')
@@ -60,9 +62,12 @@ async function uploadImage(item, i, event) {
 
                 <div class="flex-1 min-w-0">
                     <div class="flex items-center gap-2 mb-2">
-                        <span class="label">{{ t('landing_admin.icon') }}</span>
-                        <input v-model="it.icon" class="input" style="width: 60px; text-align: center;" maxlength="4" />
-                        <button v-if="it.image" type="button" class="btn btn-ghost btn-sm" @click="it.image = ''">{{ t('landing_admin.remove_image') }}</button>
+                        <!-- Icon only matters as the fallback when there's no image. -->
+                        <template v-if="!it.image">
+                            <span class="label">{{ t('landing_admin.icon') }}</span>
+                            <input v-model="it.icon" class="input" style="width: 60px; text-align: center;" maxlength="4" />
+                        </template>
+                        <button v-else type="button" class="btn btn-ghost btn-sm" @click="it.image = ''">{{ t('landing_admin.remove_image') }}</button>
                     </div>
                     <BiField v-model:en="it.text.en" v-model:ar="it.text.ar" />
                 </div>

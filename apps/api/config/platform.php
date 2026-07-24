@@ -106,7 +106,7 @@ return [
     'uploads' => [
         'disk' => env('UPLOAD_DISK', 'public'),
         'max_kb' => 4096,
-        'mimes' => ['jpg', 'jpeg', 'png', 'webp'],
+        'mimes' => ['jpg', 'jpeg', 'png', 'webp', 'avif'],
         'max_dimension' => 2000,
     ],
 
