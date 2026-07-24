@@ -55,8 +55,9 @@ const steps = computed(() => [
     { n: 1, label: t('wizard.step_language') },
     { n: 2, label: t('wizard.step_basics') },
     { n: 3, label: t('wizard.step_contact') },
-    { n: 4, label: t('wizard.step_branch') },
-    { n: 5, label: t('wizard.step_features') },
+    // Plan is chosen before branches so the branch step can enforce the plan's limit.
+    { n: 4, label: t('wizard.step_features') },
+    { n: 5, label: t('wizard.step_branch') },
     { n: 6, label: t('wizard.step_review') },
 ])
 
@@ -130,6 +131,20 @@ const derivedFeatureKeys = computed(() => {
 })
 const enabledFeatureLabels = computed(() => derivedFeatureKeys.value.map(k => t(`feature.${k}`)))
 
+// The branch step depends on the chosen plan: a plan must be selected first,
+// and its max_branches (null = unlimited) must permit at least the one branch
+// the wizard creates. If the plan changes to one that disallows branches,
+// disable the branch so the user can't submit an over-limit configuration.
+const planBranchLimit = computed(() => {
+    const mb = selectedPlan.value?.max_branches
+    return (mb === null || mb === undefined) ? null : Number(mb) // null = unlimited
+})
+const branchAllowed = computed(() => {
+    if (!selectedPlan.value) return false // must pick a plan before adding branches
+    return planBranchLimit.value === null || planBranchLimit.value >= 1
+})
+watch(branchAllowed, (ok) => { if (!ok) branchEnabled.value = false })
+
 // The ordering-mode choice is capped to the channels the selected plan grants:
 // both WhatsApp + system → all three; only one entitled → that one.
 const orderingModeOptions = computed(() => {
@@ -151,7 +166,7 @@ const stepValid = computed(() => {
                 && (!showAr.value || !!form.name_ar.trim())
                 && !!form.slug.trim()
                 && !!form.admin.name.trim() && !!form.admin.username.trim()
-        case 4:
+        case 5:
             if (!branchEnabled.value) return true
             return (((showEn.value && branch.name_en.trim()) || (showAr.value && branch.name_ar.trim())) && branch.supported_order_types.length > 0)
         default:
@@ -188,9 +203,9 @@ onMounted(async () => {
 })
 
 function stepForError(key) {
-    if (/^branch\./.test(key)) return 4
+    if (/^branch\./.test(key)) return 5
     if (/^(name_en|name_ar|slug|admin\.)/.test(key)) return 2
-    if (/^(features|subscription_plan)/.test(key)) return 5
+    if (/^(features|subscription_plan)/.test(key)) return 4
     return 3
 }
 
@@ -436,20 +451,24 @@ async function submitCreate() {
                 </div>
             </div>
 
-            <!-- Step 4: First branch -->
-            <div v-show="currentStep === 4" class="card p-6 space-y-4">
+            <!-- Step 5: First branch -->
+            <div v-show="currentStep === 5" class="card p-6 space-y-4">
                 <div class="flex items-start justify-between gap-3">
                     <div>
                         <h2 class="h-card">{{ t('wizard.branch_title') }}</h2>
                         <p class="text-sm mt-1" style="color:var(--muted)">{{ t('wizard.branch_optional') }}</p>
                     </div>
-                    <label class="flex items-center gap-2 text-sm whitespace-nowrap">
+                    <label v-if="branchAllowed" class="flex items-center gap-2 text-sm whitespace-nowrap">
                         <input type="checkbox" :checked="!branchEnabled" @change="branchEnabled = !branchEnabled" class="h-4 w-4" />
                         {{ t('wizard.branch_skip') }}
                     </label>
                 </div>
-                <p v-if="!branchEnabled" class="text-sm rounded-lg p-3" style="background:var(--page);color:var(--muted)">{{ t('wizard.branch_skip_note') }}</p>
-                <template v-if="branchEnabled">
+                <!-- Branches require a plan, and the plan's limit gates the form. -->
+                <p v-if="!selectedPlan" class="text-sm rounded-lg p-3" style="background:var(--page);color:var(--muted)">{{ t('wizard.branch_needs_plan') }}</p>
+                <p v-else-if="!branchAllowed" class="text-sm rounded-lg p-3" style="background:var(--page);color:var(--muted)">{{ t('wizard.branch_not_in_plan') }}</p>
+                <p v-if="branchAllowed && planBranchLimit !== null" class="text-xs" style="color:var(--muted)">{{ t('wizard.branch_limit', { n: planBranchLimit }) }}</p>
+                <p v-if="branchAllowed && !branchEnabled" class="text-sm rounded-lg p-3" style="background:var(--page);color:var(--muted)">{{ t('wizard.branch_skip_note') }}</p>
+                <template v-if="branchAllowed && branchEnabled">
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <label v-if="showEn" class="block"><span class="label">{{ nameLabelEn }}</span>
                             <input v-model="branch.name_en" class="input" />
@@ -476,8 +495,8 @@ async function submitCreate() {
                 </template>
             </div>
 
-            <!-- Step 5: Features -->
-            <div v-show="currentStep === 5" class="card p-6 space-y-4">
+            <!-- Step 4: Plan & features -->
+            <div v-show="currentStep === 4" class="card p-6 space-y-4">
                 <div>
                     <h2 class="h-card">{{ t('wizard.features_title') }}</h2>
                     <p class="text-sm mt-1" style="color:var(--muted)">{{ t('wizard.features_help') }}</p>
@@ -525,15 +544,15 @@ async function submitCreate() {
                             <button type="button" @click="goTo(2)" class="ms-2" style="color:var(--accent)">{{ t('wizard.review_edit') }}</button></dd>
                     </div>
                     <div class="flex justify-between gap-4">
+                        <dt style="color:var(--muted)">{{ t('wizard.review_features') }}</dt>
+                        <dd class="text-end" style="color:var(--ink)">{{ enabledFeatureLabels.length ? enabledFeatureLabels.join(', ') : t('wizard.review_features_none') }}
+                            <button type="button" @click="goTo(4)" class="ms-2" style="color:var(--accent)">{{ t('wizard.review_edit') }}</button></dd>
+                    </div>
+                    <div class="flex justify-between gap-4">
                         <dt style="color:var(--muted)">{{ t('wizard.review_branch') }}</dt>
                         <dd class="text-end" style="color:var(--ink)">
                             <template v-if="branchEnabled">{{ showEn ? branch.name_en : branch.name_ar }} ({{ branch.supported_order_types.map(x => t(`order_type.${x}`)).join(', ') }})</template>
                             <template v-else>{{ t('wizard.review_no_branch') }}</template>
-                            <button type="button" @click="goTo(4)" class="ms-2" style="color:var(--accent)">{{ t('wizard.review_edit') }}</button></dd>
-                    </div>
-                    <div class="flex justify-between gap-4">
-                        <dt style="color:var(--muted)">{{ t('wizard.review_features') }}</dt>
-                        <dd class="text-end" style="color:var(--ink)">{{ enabledFeatureLabels.length ? enabledFeatureLabels.join(', ') : t('wizard.review_features_none') }}
                             <button type="button" @click="goTo(5)" class="ms-2" style="color:var(--accent)">{{ t('wizard.review_edit') }}</button></dd>
                     </div>
                 </dl>

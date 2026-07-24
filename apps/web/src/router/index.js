@@ -50,9 +50,11 @@ const superAdminRoutes = [
                     { path: 'lead-cta', name: 'admin.settings.lead_cta', component: () => import('../pages/admin/settings/LeadCtaSettings.vue') },
                 ],
             },
+            // Themed, auth-guarded 404 for any unknown admin path (inherits the
+            // SUPER_ADMIN guard, so unauthenticated users still go to login).
+            { path: ':pathMatch(.*)*', name: 'admin.notfound', component: () => import('../pages/admin/NotFoundView.vue') },
         ],
     },
-    { path: '/:pathMatch(.*)*', redirect: '/' },
 ]
 
 const restaurantRoutes = [
