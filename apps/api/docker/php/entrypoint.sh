@@ -28,6 +28,11 @@ fi
 # Public storage symlink (idempotent).
 php artisan storage:link 2>/dev/null || true
 
+# Uploads run as www-data (php-fpm), but artisan/seeders here run as root and can
+# leave root-owned dirs under the storage volume that www-data then can't write
+# to — uploads fail silently and images 404. Re-assert ownership on every start.
+chown -R www-data:www-data storage/app/public 2>/dev/null || true
+
 if [ "${RUN_MIGRATIONS:-true}" = "true" ]; then
     php artisan migrate --force
 fi

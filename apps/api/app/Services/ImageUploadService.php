@@ -29,7 +29,13 @@ class ImageUploadService
         $encoded = $image->encodeUsingFileExtension('webp', quality: 85);
 
         $path = $folder.'/'.Str::ulid().'.webp';
-        Storage::disk($disk)->put($path, (string) $encoded);
+
+        // put() returns false on a write failure (e.g. an unwritable directory)
+        // WITHOUT throwing. Left unchecked, we'd hand back a URL to a file that
+        // was never stored — the caller thinks it succeeded and the image 404s.
+        if (! Storage::disk($disk)->put($path, (string) $encoded)) {
+            throw new \RuntimeException("Failed to store uploaded image on the [{$disk}] disk at [{$path}].");
+        }
 
         return Storage::disk($disk)->url($path);
     }
