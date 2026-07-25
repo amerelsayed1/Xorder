@@ -3,6 +3,7 @@ import { ref, reactive, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import api, { ensureCsrf } from '@xorder/api-client/api.js'
 import { withMinDuration } from '../../lib/minLoading.js'
+import { collectPhoneErrors } from '../../lib/phone.js'
 import { pickLocalized } from '@xorder/ui/localize.js'
 import Modal from '@xorder/ui/Modal.vue'
 import ListSkeleton from '@xorder/ui/ListSkeleton.vue'
@@ -48,8 +49,13 @@ function openEdit(b) {
 }
 async function save() {
     if (saving.value) return // guard against double-submit (double-click)
-    saving.value = true
     errors.value = {}
+    const phoneErrors = collectPhoneErrors(
+        { phone: form.phone, whatsapp_number: form.whatsapp_number },
+        t('restaurant.phone_invalid'),
+    )
+    if (Object.keys(phoneErrors).length) { errors.value = phoneErrors; return }
+    saving.value = true
     try {
         await ensureCsrf()
         if (editing.value) await api.put(`api/dashboard/branches/${editing.value.id}`, form)
@@ -126,9 +132,11 @@ const branchName = (b) => pickLocalized(b, 'name', locale.value)
                     <FormError :errors="errors" field="address" /></label>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <label class="block"><span class="label">{{ t('restaurant.phone') }}</span>
-                        <input v-model="form.phone" class="input" /></label>
+                        <input v-model="form.phone" class="input" dir="ltr" />
+                        <FormError :errors="errors" field="phone" /></label>
                     <label class="block"><span class="label">{{ t('restaurant.whatsapp') }}</span>
-                        <input v-model="form.whatsapp_number" class="input" /></label>
+                        <input v-model="form.whatsapp_number" class="input" dir="ltr" />
+                        <FormError :errors="errors" field="whatsapp_number" /></label>
                 </div>
                 <label class="block"><span class="label">{{ t('restaurant.opening_hours') }}</span>
                     <input v-model="form.opening_hours" class="input" :placeholder="t('branch.hours_placeholder')" /></label>

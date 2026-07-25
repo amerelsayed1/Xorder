@@ -4,7 +4,9 @@ import { useI18n } from 'vue-i18n'
 import api, { ensureCsrf } from '@xorder/api-client/api.js'
 import ImageUploader from '@xorder/ui/ImageUploader.vue'
 import FormError from '@xorder/ui/FormError.vue'
+import BusinessHoursEditor from '../../components/BusinessHoursEditor.vue'
 import { useMenuLang } from '../../lib/menuLang.js'
+import { collectPhoneErrors } from '../../lib/phone.js'
 import { useAuth } from '@xorder/api-client/auth.js'
 
 const { t } = useI18n()
@@ -13,6 +15,8 @@ const { langs, bilingual } = useMenuLang()
 const form = reactive({
     name_en: '', name_ar: '', description_en: '', description_ar: '',
     phone: '', whatsapp_number: '', address: '', opening_hours: '',
+    business_hours: {}, delivery_time_min: null, delivery_time_max: null,
+    minimum_order: '', latitude: '', longitude: '',
     logo_url: '', cover_image_url: '',
     ordering_mode: 'both',
     social_links: { instagram: '', facebook: '', tiktok: '' },
@@ -40,10 +44,24 @@ onMounted(async () => {
 })
 
 async function submit() {
-    errors.value = {}; saved.value = false; saving.value = true
+    errors.value = {}; saved.value = false
+    const phoneErrors = collectPhoneErrors(
+        { phone: form.phone, whatsapp_number: form.whatsapp_number },
+        t('restaurant.phone_invalid'),
+    )
+    if (Object.keys(phoneErrors).length) { errors.value = phoneErrors; return }
+    saving.value = true
     try {
         await ensureCsrf()
-        await api.put('api/dashboard/restaurant', form)
+        // Blank number inputs arrive as '' — send null so nullable/required_with
+        // rules (e.g. latitude↔longitude) see a truly absent value.
+        const payload = { ...form }
+        for (const k of ['latitude', 'longitude', 'minimum_order', 'delivery_time_min', 'delivery_time_max']) {
+            if (payload[k] === '' || payload[k] === undefined || (typeof payload[k] === 'number' && Number.isNaN(payload[k]))) {
+                payload[k] = null
+            }
+        }
+        await api.put('api/dashboard/restaurant', payload)
         saved.value = true
     } catch (err) {
         errors.value = err.response?.data?.errors || {}
@@ -77,14 +95,51 @@ async function submit() {
             </div>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <label class="block"><span class="label">{{ t('restaurant.phone') }}</span>
-                    <input v-model="form.phone" class="input" /></label>
+                    <input v-model="form.phone" class="input" dir="ltr" />
+                    <FormError :errors="errors" field="phone" /></label>
                 <label class="block"><span class="label">{{ t('restaurant.whatsapp') }}</span>
-                    <input v-model="form.whatsapp_number" class="input" /></label>
+                    <input v-model="form.whatsapp_number" class="input" dir="ltr" />
+                    <FormError :errors="errors" field="whatsapp_number" /></label>
             </div>
             <label class="block"><span class="label">{{ t('restaurant.address') }}</span>
                 <input v-model="form.address" class="input" /></label>
             <label class="block"><span class="label">{{ t('restaurant.opening_hours') }}</span>
                 <input v-model="form.opening_hours" class="input" /></label>
+
+            <div class="block">
+                <span class="label">{{ t('restaurant.business_hours') }}</span>
+                <p class="page-sub" style="margin:2px 0 8px">{{ t('restaurant.business_hours_hint') }}</p>
+                <BusinessHoursEditor v-model="form.business_hours" :disabled="auth.isReadOnly" />
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div class="block">
+                    <span class="label">{{ t('restaurant.delivery_time') }}</span>
+                    <div class="flex items-center gap-2 mt-1.5">
+                        <input v-model.number="form.delivery_time_min" type="number" min="0" max="1440" class="input" :placeholder="t('restaurant.delivery_from')" dir="ltr" />
+                        <span style="color:var(--muted)">–</span>
+                        <input v-model.number="form.delivery_time_max" type="number" min="0" max="1440" class="input" :placeholder="t('restaurant.delivery_to')" dir="ltr" />
+                    </div>
+                    <FormError :errors="errors" field="delivery_time_min" />
+                    <FormError :errors="errors" field="delivery_time_max" />
+                </div>
+                <label class="block"><span class="label">{{ t('restaurant.minimum_order') }}</span>
+                    <input v-model="form.minimum_order" type="number" min="0" step="0.01" class="input" dir="ltr" />
+                    <FormError :errors="errors" field="minimum_order" /></label>
+            </div>
+
+            <div class="block">
+                <span class="label">{{ t('restaurant.map_location') }}</span>
+                <p class="page-sub" style="margin:2px 0 8px">{{ t('restaurant.map_hint') }}</p>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <label class="block"><span class="label">{{ t('restaurant.latitude') }}</span>
+                        <input v-model="form.latitude" type="number" step="any" class="input" dir="ltr" placeholder="30.0444" />
+                        <FormError :errors="errors" field="latitude" /></label>
+                    <label class="block"><span class="label">{{ t('restaurant.longitude') }}</span>
+                        <input v-model="form.longitude" type="number" step="any" class="input" dir="ltr" placeholder="31.2357" />
+                        <FormError :errors="errors" field="longitude" /></label>
+                </div>
+            </div>
 
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <ImageUploader v-model="form.logo_url" folder="logos" :label="t('restaurant.logo')" :disabled="auth.isReadOnly" />

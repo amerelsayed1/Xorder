@@ -1,7 +1,8 @@
 {
   "version": "0.0.1",
   "configurations": [
-    { "name": "landing", "runtimeExecutable": "pnpm", "runtimeArgs": ["--filter", "@xorder/landing", "dev"], "port": 5174 },
-    { "name": "web", "runtimeExecutable": "pnpm", "runtimeArgs": ["--filter", "@xorder/web", "exec", "vite", "--port", "5180"], "port": 5180 }
+    { "name": "landing", "runtimeExecutable": "pnpm", "runtimeArgs": ["--filter", "@xorder/landing", "dev"], "port": 8080 },
+    { "name": "web", "runtimeExecutable": "pnpm", "runtimeArgs": ["--filter", "@xorder/web", "exec", "vite", "--port", "5180"], "port": 8080 },
+    { "name": "menu", "runtimeExecutable": "pnpm", "runtimeArgs": ["--filter", "@xorder/menu", "exec", "vite", "--port", "5185"], "port": 8080 }
   ]
 }

@@ -11,6 +11,7 @@ import { useUserInfo } from './composables/useUserInfo'
 import { useTableSession } from './composables/useTableSession'
 import Header from './components/Header.vue'
 import Hero from './components/Hero.vue'
+import RestaurantInfoModal from './components/RestaurantInfoModal.vue'
 import CategoryTabs from './components/CategoryTabs.vue'
 import MenuGrid from './components/MenuGrid.vue'
 import MenuSkeleton from './components/MenuSkeleton.vue'
@@ -63,6 +64,7 @@ watch(payload, (loaded) => {
 
 const navDrawer = ref(false)
 const cartDrawer = ref(false)
+const infoOpen = ref(false)
 const reviewPrompt = ref(false)
 const reviewSubmitted = ref(false)
 const searchQuery = ref('')
@@ -75,7 +77,7 @@ const sel = reactive({ groups: {} })
 const qty = ref(1)
 
 const hasOverlay = computed(() => Boolean(
-    modal.value || cartDrawer.value || navDrawer.value || userInfoDialog.value || orderSuccess.value || reviewPrompt.value
+    modal.value || cartDrawer.value || navDrawer.value || infoOpen.value || userInfoDialog.value || orderSuccess.value || reviewPrompt.value
 ))
 
 // Closing the order confirmation flows into the private feedback prompt, once
@@ -94,6 +96,7 @@ function closeTopOverlay(event) {
     if (modal.value) closeModal()
     else if (cartDrawer.value) cartDrawer.value = false
     else if (navDrawer.value) navDrawer.value = false
+    else if (infoOpen.value) infoOpen.value = false
     else if (userInfoDialog.value) closeDialog()
     else if (orderSuccess.value) closeOrderSuccess()
     else if (reviewPrompt.value) reviewPrompt.value = false
@@ -284,6 +287,7 @@ function updateUserField(field, value) {
                 @openCart="cartDrawer = true"
                 @changeLocale="locale = $event"
                 @openMenu="navDrawer = true"
+                @openInfo="infoOpen = true"
             />
 
             <div v-if="hasTable" class="table-banner">
@@ -412,6 +416,15 @@ function updateUserField(field, value) {
                 @close="navDrawer = false"
                 @goHome="goHome(); navDrawer = false"
                 @goBranches="goBranches(); navDrawer = false"
+            />
+
+            <RestaurantInfoModal
+                v-if="infoOpen"
+                :restaurant="restaurant"
+                :isAr="isAr"
+                :t="t"
+                :localize="localize"
+                @close="infoOpen = false"
             />
 
             <BillRequestButton

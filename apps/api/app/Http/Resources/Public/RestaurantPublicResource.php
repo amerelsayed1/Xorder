@@ -33,6 +33,15 @@ class RestaurantPublicResource extends JsonResource
             'whatsapp_number' => $this->whatsapp_number,
             'address' => $this->address,
             'opening_hours' => $this->opening_hours,
+            'business_hours' => (object) ($this->business_hours ?? []),
+            'delivery_time_min' => $this->delivery_time_min,
+            'delivery_time_max' => $this->delivery_time_max,
+            'minimum_order' => $this->minimum_order,
+            'latitude' => $this->latitude,
+            'longitude' => $this->longitude,
+            // IANA timezone so the menu can decide "open now" in the restaurant's
+            // own local time regardless of where the diner is browsing from.
+            'timezone' => $this->timezone ?? config('app.timezone'),
             'social_links' => (object) $this->publicSocialLinks(),
             'brand_color' => $this->brand_color,
             'secondary_color' => $this->secondary_color,

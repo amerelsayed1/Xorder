@@ -451,6 +451,48 @@ img {
     height: 18px;
 }
 
+/* Round icon-only header actions (info / share / WhatsApp). */
+.icon-action {
+    width: 42px;
+    height: 42px;
+    flex: none;
+    cursor: pointer;
+    display: inline-grid;
+    place-items: center;
+    color: var(--accent-dark);
+    background: #fff7e7;
+    border: 1px solid #efd7a9;
+    border-radius: 999px;
+    text-decoration: none;
+    transition: transform .2s, background .2s, color .2s, border-color .2s;
+}
+
+.icon-action svg {
+    width: 20px;
+    height: 20px;
+}
+
+.icon-action:hover {
+    background: #fdeecb;
+    transform: translateY(-1px);
+}
+
+.icon-action.is-done {
+    color: #fff;
+    background: var(--green);
+    border-color: var(--green);
+}
+
+.icon-action--wa {
+    color: #fff;
+    background: var(--green);
+    border-color: var(--green);
+}
+
+.icon-action--wa:hover {
+    background: var(--green-dark);
+}
+
 /* ---------- Page ---------- */
 .page-wrap {
     max-width: 1480px;
@@ -2256,6 +2298,32 @@ html[dir='ltr'] .side-panel {
     }
 
     .header-cart-button b {
+        display: none;
+    }
+
+    /* Up to five round actions can crowd a narrow bar — trim the gap, shrink the
+       circles, and give the brand priority so nothing overlaps the logo. */
+    .top-actions {
+        gap: 6px;
+        flex: none;
+    }
+
+    .icon-action {
+        width: 36px;
+        height: 36px;
+    }
+
+    .icon-action svg {
+        width: 17px;
+        height: 17px;
+    }
+
+    .brand strong {
+        max-width: 84px;
+    }
+
+    /* The Latin alt-name is redundant next to the logo when space is tight. */
+    .brand span {
         display: none;
     }
 
