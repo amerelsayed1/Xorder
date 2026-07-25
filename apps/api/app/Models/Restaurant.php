@@ -9,6 +9,7 @@ use App\Enums\OrderingMode;
 use App\Enums\RestaurantStatus;
 use App\Enums\SubscriptionStatus;
 use App\Models\Concerns\Auditable;
+use App\Traits\NormalizesPhoneNumbers;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -16,7 +17,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Restaurant extends Model
 {
-    use Auditable, HasFactory;
+    use Auditable, HasFactory, NormalizesPhoneNumbers;
 
     // The restaurant *is* the tenant — audit rows about it scope to its own id.
     public function auditRestaurantId(): ?int

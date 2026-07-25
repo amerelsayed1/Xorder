@@ -9,8 +9,9 @@ use App\Models\Customer;
 use App\Models\CustomerAddress;
 use App\Models\MenuSession;
 use App\Models\Order;
+use App\Rules\MobileNumber;
+use App\Services\NotificationService;
 use App\Services\PublicMenuService;
-use App\Services\PushService;
 use App\Support\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Log;
@@ -49,30 +50,32 @@ class PublicOrderController extends Controller
         }
 
         // Pin the tenant so the customer directory upsert below is scoped and
-        // stamped to this restaurant (public request has no auth context).
+        // stamped to this restaurant (public request has no auth context). The
+        // override is released in a finally so a thrown exception can never leak
+        // the pin into a later request on a reused worker (Octane/queue).
         TenantContext::overrideId($restaurant->id);
 
-        [$customer, $address] = $this->resolveCustomer($request->validated());
+        try {
+            [$customer, $address] = $this->resolveCustomer($request->validated());
 
-        $order = new Order($request->validated() + [
-            'status' => OrderStatus::NEW->value,
-            'currency' => $restaurant->currency->value,
-            'source' => $mode->usesWhatsapp() ? 'whatsapp' : 'system',
-        ]);
-        $order->restaurant_id = $restaurant->id;
-        $order->customer_id = $customer?->id;
-        $order->customer_address_id = $address?->id;
+            $order = new Order($request->validated() + [
+                'status' => OrderStatus::NEW->value,
+                'currency' => $restaurant->currency->value,
+                'source' => $mode->usesWhatsapp() ? 'whatsapp' : 'system',
+            ]);
+            $order->restaurant_id = $restaurant->id;
+            $order->customer_id = $customer?->id;
+            $order->customer_address_id = $address?->id;
 
-        // A table QR session binds the order to its physical table/area/branch
-        // and pins it to Dine-in (FR-ORDER-001/009). A stale token simply
-        // records an untagged order rather than losing it.
-        $this->bindTableSession($order, $restaurant->id, $request->input('session_token'));
+            // A table QR session binds the order to its physical table/area/branch
+            // and pins it to Dine-in (FR-ORDER-001/009). A stale token simply
+            // records an untagged order rather than losing it.
+            $this->bindTableSession($order, $restaurant->id, $request->input('session_token'));
 
-        $order->save();
-
-        // Release the tenant pin so it can't leak into a later request in the
-        // same process (matters for tests; harmless per-request in production).
-        TenantContext::clearOverride();
+            $order->save();
+        } finally {
+            TenantContext::clearOverride();
+        }
 
         // Notify the restaurant's admin devices — after the response is flushed
         // so the FCM round-trip never delays order recording. Best-effort.
@@ -84,8 +87,13 @@ class PublicOrderController extends Controller
             'currency' => $order->currency,
         ], $lang);
         app()->terminating(function () use ($restaurant, $order, $title, $body) {
-            app(PushService::class)->newOrderToRestaurant(
-                $restaurant->id, $title, $body, ['order_id' => (string) $order->id],
+            app(NotificationService::class)->toRestaurant(
+                $restaurant->id,
+                'order.created',
+                $title,
+                $body,
+                ['order_id' => (string) $order->id],
+                '/admin/orders',
             );
         });
 
@@ -131,7 +139,9 @@ class PublicOrderController extends Controller
      */
     private function resolveCustomer(array $data): array
     {
-        $phone = trim((string) ($data['customer_phone'] ?? ''));
+        // Normalize Arabic/Persian digits so the customer directory keys on a
+        // single canonical form (the unique index is on restaurant_id + phone).
+        $phone = MobileNumber::normalizeDigits((string) ($data['customer_phone'] ?? ''));
         if ($phone === '') {
             return [null, null];
         }

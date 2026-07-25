@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Dashboard;
 
 use App\Enums\OrderingMode;
+use App\Rules\MobileNumber;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -26,8 +27,8 @@ class UpdateRestaurantProfileRequest extends FormRequest
             'description_en' => ['nullable', 'string', 'max:2000'],
             'logo_url' => ['nullable', 'string', 'max:2048'],
             'cover_image_url' => ['nullable', 'string', 'max:2048'],
-            'phone' => ['nullable', 'string', 'max:32'],
-            'whatsapp_number' => ['nullable', 'string', 'max:32'],
+            'phone' => ['nullable', 'string', 'max:32', (new MobileNumber)->allowLandline()],
+            'whatsapp_number' => ['nullable', 'string', 'max:32', new MobileNumber],
             'address' => ['nullable', 'string', 'max:1000'],
             'opening_hours' => ['nullable', 'string', 'max:2000'],
             'social_links' => ['nullable', 'array'],

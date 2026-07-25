@@ -4,6 +4,8 @@ import { useI18n } from 'vue-i18n'
 import api from '@xorder/api-client/api.js'
 import { withMinDuration } from '../../lib/minLoading.js'
 import Skeleton from '@xorder/ui/Skeleton.vue'
+import ApexChart from '../../components/ApexChart.vue'
+import { columnChart, barChart } from '../../lib/charts.js'
 
 const { t, locale } = useI18n()
 
@@ -125,6 +127,31 @@ const maxQty = computed(() => Math.max(1, ...((report.value?.products || []).map
 
 const hasProducts = computed(() => (report.value?.products || []).length > 0)
 const hasAreas = computed(() => (areaReport.value?.areas || []).some((a) => a.total_orders > 0 || a.bill_requests > 0))
+
+// Sales-by-period — Flowbite column chart over the report's period buckets.
+function periodSalesOptions(c) {
+    const periods = report.value?.periods || []
+    return columnChart({
+        colors: c,
+        categories: periods.map((p) => periodLabel(p.key)),
+        series: [{ name: t('rep.sales'), data: periods.map((p) => Number(p.total_sales) || 0) }],
+        palette: [c.accent],
+        money: true,
+        height: 300,
+    })
+}
+
+// Dining-area comparison — Flowbite horizontal bar chart of orders per area.
+const chartAreas = computed(() => (areaReport.value?.areas || []).filter((a) => a.total_orders > 0))
+function areaOrdersOptions(c) {
+    return barChart({
+        colors: c,
+        categories: chartAreas.value.map((a) => localName(a, 'name')),
+        series: [{ name: t('rep.orders'), data: chartAreas.value.map((a) => a.total_orders) }],
+        color: c.accent,
+        height: Math.max(200, chartAreas.value.length * 42),
+    })
+}
 </script>
 
 <template>
@@ -269,6 +296,12 @@ const hasAreas = computed(() => (areaReport.value?.areas || []).some((a) => a.to
                         </table>
                     </div>
 
+                    <!-- Sales by period (chart) -->
+                    <div v-if="(report.periods || []).length">
+                        <div class="label mb-2">{{ t('rep.sales') }} · {{ t('rep.by_period_title') }}</div>
+                        <ApexChart :build="periodSalesOptions" :redraw="[report, locale]" />
+                    </div>
+
                     <!-- Per-period breakdown -->
                     <div>
                         <div class="label mb-2">{{ t('rep.by_period_title') }}</div>
@@ -309,6 +342,12 @@ const hasAreas = computed(() => (areaReport.value?.areas || []).some((a) => a.to
                             <div class="rep-rollup-val">{{ ty.total_orders }}</div>
                             <div class="rep-rollup-sub">{{ t('rep.orders') }} · {{ money(ty.total_sales) }}</div>
                         </div>
+                    </div>
+
+                    <!-- Orders per area (chart) -->
+                    <div v-if="chartAreas.length">
+                        <div class="label mb-2">{{ t('rep.orders') }} · {{ t('rep.area') }}</div>
+                        <ApexChart :build="areaOrdersOptions" :redraw="[areaReport, locale]" />
                     </div>
 
                     <div class="rep-table-wrap">

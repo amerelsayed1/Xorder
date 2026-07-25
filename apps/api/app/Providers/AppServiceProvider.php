@@ -5,9 +5,12 @@ namespace App\Providers;
 use App\Enums\UserStatus;
 use App\Models\User;
 use App\Support\Jwt;
+use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
+use Illuminate\Support\Str;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -25,6 +28,26 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->registerJwtGuard();
+        $this->registerRateLimiters();
+    }
+
+    /**
+     * Named rate limiters. `login` layers a per-account limit on top of the
+     * per-IP one: a plain per-IP throttle does nothing to slow a distributed
+     * brute force against a single known account, so also cap attempts per
+     * (username, IP). Keying on username+IP — not username alone — avoids an
+     * attacker being able to lock a victim out by hammering their username.
+     */
+    private function registerRateLimiters(): void
+    {
+        RateLimiter::for('login', function (Request $request) {
+            $username = Str::lower(trim((string) $request->input('username')));
+
+            return [
+                Limit::perMinute(10)->by('login-ip:'.$request->ip()),
+                Limit::perMinute(5)->by('login-acct:'.$username.'|'.$request->ip()),
+            ];
+        });
     }
 
     /**
@@ -56,6 +79,14 @@ class AppServiceProvider extends ServiceProvider
             }
 
             if (($claims['rid'] ?? null) !== $user->restaurant_id) {
+                return null;
+            }
+
+            // Reject any token minted before the password last changed. A
+            // password reset/change stamps password_changed_at, so a stolen
+            // token cannot outlive the victim's recovery (tokens carry `iat`).
+            if ($user->password_changed_at !== null
+                && (int) ($claims['iat'] ?? 0) < $user->password_changed_at->getTimestamp()) {
                 return null;
             }
 

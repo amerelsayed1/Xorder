@@ -12,6 +12,7 @@ use App\Models\Restaurant;
 use App\Models\User;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 
 class DemoSeeder extends Seeder
 {
@@ -139,14 +140,21 @@ class DemoSeeder extends Seeder
 
     private function admin(Restaurant $r, string $email, string $name): void
     {
-        User::updateOrCreate(['email' => $email], [
+        // Showcase tenants are for public menu display only — no one signs in as
+        // them. Never seed a guessable password: a real, loginable
+        // RESTAURANT_ADMIN with password "password" would be tenant takeover in
+        // production. Use a fresh random secret (rotated every seed run); a
+        // Super Admin can reset it on the rare occasion login is needed.
+        $admin = User::firstOrNew(['email' => $email]);
+        // forceFill: role/restaurant_id are guarded and only set in trusted code.
+        $admin->forceFill([
             'name' => $name,
             'username' => mb_strtolower(explode('@', $email)[0]),
-            'password' => Hash::make('password'),
+            'password' => Hash::make(Str::password(24)),
             'role' => RoleEnum::RESTAURANT_ADMIN,
             'restaurant_id' => $r->id,
             'status' => UserStatus::ACTIVE,
             'email_verified_at' => now(),
-        ]);
+        ])->save();
     }
 }

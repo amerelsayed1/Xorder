@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Admin;
 
+use App\Rules\MobileNumber;
 use Illuminate\Foundation\Http\FormRequest;
 
 class UpdateLandingContentRequest extends FormRequest
@@ -136,7 +137,7 @@ class UpdateLandingContentRequest extends FormRequest
 
             // WhatsApp settings
             ['content.whatsapp' => ['required', 'array']],
-            ['content.whatsapp.number' => ['nullable', 'string', 'max:32']],
+            ['content.whatsapp.number' => ['nullable', 'string', 'max:32', new MobileNumber]],
             $bi('content.whatsapp.default_message'),
             ['content.whatsapp.floating_enabled' => ['required', 'boolean']],
             ['content.whatsapp.hero_enabled' => ['required', 'boolean']],
@@ -152,7 +153,7 @@ class UpdateLandingContentRequest extends FormRequest
             // Contact
             ['content.contact' => ['required', 'array']],
             ['content.contact.email' => ['nullable', 'string', 'email', 'max:255']],
-            ['content.contact.whatsapp' => ['nullable', 'string', 'max:32']],
+            ['content.contact.whatsapp' => ['nullable', 'string', 'max:32', new MobileNumber]],
 
             // Footer
             $bi('content.footer.tagline'),

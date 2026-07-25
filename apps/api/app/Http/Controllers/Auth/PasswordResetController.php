@@ -28,7 +28,10 @@ class PasswordResetController extends Controller
         $request->validate([
             'token' => ['required', 'string'],
             'email' => ['required', 'email'],
-            'password' => ['required', 'confirmed', PasswordRule::min(8)],
+            // Human-chosen password on reset: require length + complexity.
+            // (`uncompromised()` — a HIBP breach check — is a worthwhile further
+            // step but adds a network dependency, so it is left as an opt-in.)
+            'password' => ['required', 'confirmed', PasswordRule::min(12)->mixedCase()->numbers()],
         ]);
 
         $status = Password::reset(
@@ -36,13 +39,21 @@ class PasswordResetController extends Controller
             function ($user, $password) {
                 $user->forceFill([
                     'password' => $password, // hashed by the 'hashed' cast
+                    // Invalidate every JWT issued before this reset (guard checks
+                    // token iat against password_changed_at).
+                    'password_changed_at' => now(),
                     'remember_token' => Str::random(60),
                 ])->save();
             }
         );
 
         if ($status !== Password::PasswordReset) {
-            return response()->json(['message' => __($status)], 422);
+            // Deliberately generic: the broker distinguishes "no such user"
+            // (passwords.user) from "bad token" (passwords.token), which leaks
+            // whether an email is registered. Collapse both into one message.
+            return response()->json([
+                'message' => __('xorder.errors.password_reset_failed'),
+            ], 422);
         }
 
         return response()->json(['message' => __('xorder.messages.password_reset')]);

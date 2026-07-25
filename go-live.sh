@@ -64,9 +64,17 @@ log_step "Preflight"
 command -v docker >/dev/null || die "docker not found."
 [ -f "$ENV_FILE" ] || die "Missing $ENV_FILE — copy .env.production.example and fill APP_KEY, DB_PASSWORD, OPERIX_PROXY_NETWORK."
 set -a; . "$ENV_FILE"; set +a
-for v in APP_KEY DB_PASSWORD OPERIX_PROXY_NETWORK; do
+# JWT_SECRET and SUPER_ADMIN_PASSWORD are seeded/used on first bring-up: an
+# empty JWT_SECRET makes every login 500, and an empty SUPER_ADMIN_PASSWORD
+# would (before the seeder's fail-closed guard) provision a guessable platform
+# admin. Require both here so go-live aborts loudly instead of shipping either.
+for v in APP_KEY DB_PASSWORD OPERIX_PROXY_NETWORK JWT_SECRET SUPER_ADMIN_PASSWORD; do
   [ -n "${!v:-}" ] || die "$v is empty in $ENV_FILE."
 done
+# Provisioning/reset emails carry the generated admin password in cleartext; the
+# `log` mailer would write it to disk. Warn loudly (non-fatal — a real SMTP
+# transport should be configured before any tenant is provisioned).
+[ "${MAIL_MAILER:-}" = "log" ] && log_warn "MAIL_MAILER=log writes admin-credential emails (cleartext passwords) to the log. Configure real SMTP before provisioning tenants."
 docker network inspect "$OPERIX_PROXY_NETWORK" >/dev/null 2>&1 \
   || die "Docker network '$OPERIX_PROXY_NETWORK' not found. Set OPERIX_PROXY_NETWORK to Operix's nginx network (docker network ls)."
 [ -f "$VHOST_SRC" ] || die "Vhost template not found: $VHOST_SRC"

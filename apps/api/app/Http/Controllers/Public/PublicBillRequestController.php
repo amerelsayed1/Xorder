@@ -6,7 +6,8 @@ use App\Enums\BillRequestStatus;
 use App\Http\Controllers\Controller;
 use App\Models\BillRequest;
 use App\Models\MenuSession;
-use App\Services\PushService;
+use App\Rules\MobileNumber;
+use App\Services\NotificationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -17,11 +18,11 @@ use Illuminate\Http\Request;
 class PublicBillRequestController extends Controller
 {
     /** POST /public/sessions/{sessionToken}/bill-requests */
-    public function store(Request $request, string $sessionToken, PushService $push): JsonResponse
+    public function store(Request $request, string $sessionToken, NotificationService $notifications): JsonResponse
     {
         $request->validate([
             'note' => ['nullable', 'string', 'max:500'],
-            'phone' => ['nullable', 'string', 'max:32'],
+            'phone' => ['nullable', 'string', 'max:32', new MobileNumber],
         ]);
 
         $session = $this->resolveSession($sessionToken);
@@ -70,11 +71,15 @@ class PublicBillRequestController extends Controller
         $restaurantId = $session->restaurant_id;
         $lang = $session->restaurant->default_language->value;
         $label = $session->table?->label;
-        app()->terminating(function () use ($push, $restaurantId, $label, $lang) {
-            $push->newBillRequestToRestaurant(
+        $billId = $bill->id;
+        app()->terminating(function () use ($notifications, $restaurantId, $label, $lang, $billId) {
+            $notifications->toRestaurant(
                 $restaurantId,
+                'bill_request.created',
                 __('xorder.messages.push_bill_request_title', [], $lang),
                 __('xorder.messages.push_bill_request_body', ['table' => $label ?? '-'], $lang),
+                ['bill_request_id' => (string) $billId],
+                '/admin/requests',
             );
         });
 

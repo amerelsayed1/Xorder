@@ -19,6 +19,16 @@ class PushTokenController extends Controller
 
         $user = $request->user();
 
+        // The token column is globally unique. Refuse to re-point a token that
+        // is already registered to a DIFFERENT account: without this, an admin
+        // who obtained another tenant's FCM token could POST it here and hijack
+        // that device's push routing. A device legitimately changing hands
+        // clears its old token via the logout `destroy` call first.
+        $existing = DeviceToken::where('token', $data['token'])->first();
+        if ($existing !== null && $existing->user_id !== $user->id) {
+            return response()->json(['message' => 'registered']); // no-op, no oracle
+        }
+
         DeviceToken::updateOrCreate(
             ['token' => $data['token']],
             [

@@ -4,13 +4,14 @@ namespace App\Models;
 
 use App\Enums\ReviewStatus;
 use App\Models\Concerns\BelongsToRestaurant;
+use App\Traits\NormalizesPhoneNumbers;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class InternalReview extends Model
 {
-    use BelongsToRestaurant;
+    use BelongsToRestaurant, NormalizesPhoneNumbers;
 
     protected $fillable = [
         'branch_id',

@@ -8,9 +8,11 @@ import { withMinDuration } from '../../lib/minLoading.js'
 import Icon from '@xorder/ui/Icon.vue'
 import Skeleton from '@xorder/ui/Skeleton.vue'
 import { confirm } from '@xorder/ui/confirm.js'
+import { useRealtime } from '../../stores/realtime.js'
 
 const { t, locale } = useI18n()
 const auth = useAuth()
+const rt = useRealtime()
 
 const STATUSES = ['NEW', 'CONFIRMED', 'COMPLETED', 'CANCELLED']
 const badgeClass = { NEW: 'badge-amber', CONFIRMED: 'badge-indigo', COMPLETED: 'badge-green', CANCELLED: 'badge-red' }
@@ -25,7 +27,7 @@ const statusFilter = ref('')
 const page = ref(1)
 const updating = ref(null)
 const newIds = ref(new Set())
-let pollTimer
+let pollTimer, offTick
 
 async function load() {
     loading.value = true
@@ -68,9 +70,12 @@ async function pollNew() {
 
 onMounted(() => {
     load()
-    pollTimer = setInterval(pollNew, 12_000)
+    // New orders only ever appear when the shared pulse's new-order count rises,
+    // so pull them in the instant it ticks; keep a slow fallback as a safety net.
+    offTick = rt.onTick(() => { if (!document.hidden) pollNew() })
+    pollTimer = setInterval(pollNew, 30_000)
 })
-onUnmounted(() => clearInterval(pollTimer))
+onUnmounted(() => { clearInterval(pollTimer); offTick?.() })
 
 function setFilter(s) {
     statusFilter.value = s

@@ -1,5 +1,6 @@
 <script setup>
 import { ref, computed, watch } from 'vue'
+import { isValidMobile, toLatinDigits } from '../lib/phone.js'
 
 const props = defineProps({
     isOpen: Boolean,
@@ -51,11 +52,6 @@ watch(() => props.cart.length, (len) => {
 
 // Force the phone to Latin digits — Arabic/Persian numerals get converted as
 // the customer types, so the order record and WhatsApp message are consistent.
-function toLatinDigits(s) {
-    return (s || '')
-        .replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d))
-        .replace(/[۰-۹]/g, d => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d))
-}
 watch(phone, (v) => {
     const n = toLatinDigits(v)
     if (n !== v) phone.value = n
@@ -67,7 +63,9 @@ const fieldAlign = computed(() => (props.isAr ? 'right' : 'left'))
 
 // Delivery needs an address; pickup / dine-in don't.
 const needsAddress = computed(() => props.orderType === 'delivery')
-const phoneInvalid = computed(() => phone.value.trim().length < 8)
+// Validate against the number's own country rules (Egyptian by default; any
+// "+CC…" international number is honored). Empty is handled by canSubmit below.
+const phoneInvalid = computed(() => !isValidMobile(phone.value))
 const addressInvalid = computed(() => needsAddress.value && address.value.trim().length < 5)
 const canSubmit = computed(() =>
     props.canOrder && !props.isSubmitting && !phoneInvalid.value && !addressInvalid.value

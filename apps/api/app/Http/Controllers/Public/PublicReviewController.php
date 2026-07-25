@@ -7,6 +7,8 @@ use App\Http\Controllers\Controller;
 use App\Models\InternalReview;
 use App\Models\MenuSession;
 use App\Models\Order;
+use App\Rules\MobileNumber;
+use App\Services\NotificationService;
 use App\Services\PublicMenuService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -20,7 +22,7 @@ class PublicReviewController extends Controller
     public function __construct(private readonly PublicMenuService $menu) {}
 
     /** POST /public/restaurants/{slug}/reviews */
-    public function store(Request $request, string $slug): JsonResponse
+    public function store(Request $request, string $slug, NotificationService $notifications): JsonResponse
     {
         $restaurant = $this->menu->findBySlug($slug);
 
@@ -34,7 +36,7 @@ class PublicReviewController extends Controller
             'rating' => ['required', 'integer', 'between:1,5'],
             'comment' => ['nullable', 'string', 'max:2000'],
             'customer_name' => ['nullable', 'string', 'max:150'],
-            'customer_phone' => ['nullable', 'string', 'max:32'],
+            'customer_phone' => ['nullable', 'string', 'max:32', new MobileNumber],
             'contact_permission' => ['nullable', 'boolean'],
             'session_token' => ['nullable', 'string'],
             'order_id' => ['nullable', 'integer'],
@@ -92,6 +94,24 @@ class PublicReviewController extends Controller
         }
 
         $review->save();
+
+        // Notify the restaurant of the new feedback — after the response is
+        // flushed so the FCM round-trip never delays the diner. Low ratings are
+        // exactly what an owner wants to catch fast.
+        $restaurantId = $restaurant->id;
+        $lang = $restaurant->default_language->value;
+        $rating = (int) $review->rating;
+        $reviewId = $review->id;
+        app()->terminating(function () use ($notifications, $restaurantId, $lang, $rating, $reviewId) {
+            $notifications->toRestaurant(
+                $restaurantId,
+                'review.created',
+                __('xorder.messages.push_new_review_title', [], $lang),
+                __('xorder.messages.push_new_review_body', ['stars' => str_repeat('★', $rating), 'rating' => $rating], $lang),
+                ['review_id' => (string) $reviewId, 'rating' => (string) $rating],
+                '/admin/reviews',
+            );
+        });
 
         return response()->json([
             'data' => $this->payload($restaurant),

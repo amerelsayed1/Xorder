@@ -1,5 +1,6 @@
 <script setup>
 import { computed } from 'vue'
+import { safeUrl } from '../lib/safeUrl'
 
 const props = defineProps({
     t: Function,
@@ -18,8 +19,9 @@ const PLATFORMS = [
 
 const links = computed(() =>
     PLATFORMS
-        .filter(p => props.socials?.[p.key])
-        .map(p => ({ ...p, url: props.socials[p.key] })),
+        .map(p => ({ ...p, url: safeUrl(props.socials?.[p.key]) }))
+        // Drop platforms with no URL or an unsafe scheme (e.g. javascript:).
+        .filter(p => p.url),
 )
 </script>
 

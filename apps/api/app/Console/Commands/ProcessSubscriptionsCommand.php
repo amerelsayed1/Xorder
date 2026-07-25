@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Enums\SubscriptionStatus;
 use App\Models\Restaurant;
 use App\Notifications\SubscriptionExpiringSoon;
+use App\Services\NotificationService;
 use Illuminate\Console\Command;
 
 class ProcessSubscriptionsCommand extends Command
@@ -13,7 +14,7 @@ class ProcessSubscriptionsCommand extends Command
 
     protected $description = 'Expire ended subscriptions and warn admins 7 days (and 1 day) before expiry';
 
-    public function handle(): int
+    public function handle(NotificationService $notifications): int
     {
         $expired = Restaurant::query()
             ->whereIn('subscription_status', [SubscriptionStatus::TRIAL, SubscriptionStatus::ACTIVE])
@@ -39,6 +40,19 @@ class ProcessSubscriptionsCommand extends Command
                 foreach ($restaurant->users as $admin) {
                     $admin->notify(new SubscriptionExpiringSoon($restaurant, $days));
                 }
+
+                // Also drop it in the in-app feed so an owner who never opens the
+                // warning email still sees the renewal reminder on the dashboard.
+                $lang = $restaurant->default_language->value;
+                $notifications->toRestaurant(
+                    $restaurant->id,
+                    'subscription.expiring',
+                    __('xorder.messages.push_subscription_expiring_title', [], $lang),
+                    __('xorder.messages.push_subscription_expiring_body', ['days' => $days], $lang),
+                    ['days' => (string) $days],
+                    '/admin/profile',
+                );
+
                 $this->info("Warned ({$days}d): {$restaurant->slug}");
             }
         }

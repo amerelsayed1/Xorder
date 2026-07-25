@@ -1,7 +1,7 @@
-// Lightweight analytics hook for the landing page. Events are pushed to
-// window.dataLayer (Google Tag Manager / GA4 style) when present, so a future
-// tag manager picks them up with zero code changes here. In dev, or when no
-// tag manager is installed, events are logged to the console for verification.
+// Landing-page analytics. `track()` now forwards to the shared @xorder/analytics
+// module (Firebase GA4 + window.dataLayer mirror), so these events land in GA4
+// with zero changes at the call sites. Still a safe no-op until /firebase-config.js
+// carries a measurementId.
 //
 // Canonical event names (keep in sync with the brief):
 //   landing_view_demo_clicked
@@ -10,16 +10,4 @@
 //   landing_lead_submitted
 //   landing_package_cta_clicked
 
-export function track(event, params = {}) {
-    const payload = { event, ...params }
-    try {
-        if (typeof window !== 'undefined' && Array.isArray(window.dataLayer)) {
-            window.dataLayer.push(payload)
-        } else if (import.meta.env.DEV) {
-            // eslint-disable-next-line no-console
-            console.debug('[analytics]', payload)
-        }
-    } catch {
-        /* analytics must never break the page */
-    }
-}
+export { track } from '@xorder/analytics'

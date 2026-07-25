@@ -9,6 +9,7 @@ use App\Http\Requests\Dashboard\UpdateMenuItemRequest;
 use App\Http\Resources\MenuItemResource;
 use App\Models\MenuItem;
 use App\Models\OptionGroup;
+use App\Models\Restaurant;
 use App\Services\PlanLimitService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -38,22 +39,34 @@ class MenuItemController extends Controller
 
     public function store(StoreMenuItemRequest $request, PlanLimitService $limits): JsonResponse
     {
-        if (($limit = $limits->itemLimitReached($request->user()->restaurant)) !== null) {
-            return response()->json([
-                'message' => __('xorder.messages.plan_limit_items', ['limit' => $limit]),
-            ], 422);
-        }
+        $restaurant = $request->user()->restaurant;
 
         $data = $request->validated();
         $groups = $data['option_groups'] ?? [];
         unset($data['option_groups']);
 
-        $item = DB::transaction(function () use ($data, $groups) {
+        // Limit check + insert are serialized per tenant under a row lock so
+        // concurrent creates cannot all slip past the plan's item cap (TOCTOU).
+        $result = DB::transaction(function () use ($restaurant, $limits, $data, $groups) {
+            Restaurant::whereKey($restaurant->getKey())->lockForUpdate()->first();
+
+            if (($limit = $limits->itemLimitReached($restaurant)) !== null) {
+                return ['limit' => $limit];
+            }
+
             $item = MenuItem::create($data);
             $this->syncOptionGroups($item, $groups);
 
-            return $item;
+            return ['item' => $item];
         });
+
+        if (isset($result['limit'])) {
+            return response()->json([
+                'message' => __('xorder.messages.plan_limit_items', ['limit' => $result['limit']]),
+            ], 422);
+        }
+
+        $item = $result['item'];
 
         return response()->json([
             'data' => MenuItemResource::make($item->load('category', 'optionGroups.options')),

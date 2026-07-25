@@ -80,11 +80,14 @@ class RestaurantProvisioningService
         [$restaurant, $admin] = DB::transaction(function () use ($restaurantData, $adminData, $plainPassword, $branchData, $fallback) {
             $restaurant = Restaurant::create($restaurantData);
 
-            $admin = User::create([
+            // forceCreate: `role` and `restaurant_id` are guarded (non-fillable)
+            // so they can only be set here, in trusted provisioning code.
+            $admin = User::forceCreate([
                 'name' => $adminData['name'],
                 'username' => $adminData['username'],
                 'email' => $adminData['email'] ?? null,
                 'password' => Hash::make($plainPassword),
+                'password_changed_at' => now(),
                 'role' => RoleEnum::RESTAURANT_ADMIN,
                 'restaurant_id' => $restaurant->id,
                 'status' => UserStatus::ACTIVE,
@@ -119,8 +122,13 @@ class RestaurantProvisioningService
     {
         $password = $this->generatePassword();
 
-        // The 'password' => 'hashed' cast hashes on assignment.
-        $admin->update(['password' => $password]);
+        // The 'password' => 'hashed' cast hashes on assignment. Stamp
+        // password_changed_at so any JWT issued before this reset is rejected
+        // by the guard — a compromised admin session cannot outlive the reset.
+        $admin->forceFill([
+            'password' => $password,
+            'password_changed_at' => now(),
+        ])->save();
 
         $admin->notify(new RestaurantAdminCredentials($admin->restaurant, $password));
 

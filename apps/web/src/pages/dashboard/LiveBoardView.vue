@@ -6,16 +6,18 @@ import api, { ensureCsrf } from '@xorder/api-client/api.js'
 import { currencyLabel } from '../../lib/currency.js'
 import Skeleton from '@xorder/ui/Skeleton.vue'
 import { confirm } from '@xorder/ui/confirm.js'
+import { useRealtime } from '../../stores/realtime.js'
 
 const { t, locale } = useI18n()
 const auth = useAuth()
+const rt = useRealtime()
 const feats = computed(() => auth.restaurant?.features || [])
 const showOrders = computed(() => feats.value.includes('system_ordering'))
 const showRequests = computed(() => feats.value.includes('bill_requests'))
 
 const loading = ref(true)
 const updating = ref(null)
-let pollTimer
+let pollTimer, offTick
 
 // Replace a column's list, flagging genuinely-new ids so they briefly highlight.
 function applyList(listRef, next, newIdsRef, highlight) {
@@ -111,10 +113,13 @@ async function refresh(highlight) {
 onMounted(async () => {
     await refresh(false)
     loading.value = false
-    // Poll for live changes; skip while the tab is backgrounded to save calls.
-    pollTimer = setInterval(() => { if (!document.hidden) refresh(true) }, 7000)
+    // Refresh the instant the shared pulse detects new orders/requests. A slower
+    // fallback still catches status changes made by other staff (which don't move
+    // the new-item counts, so the pulse tick wouldn't fire for them).
+    offTick = rt.onTick(() => { if (!document.hidden) refresh(true) })
+    pollTimer = setInterval(() => { if (!document.hidden) refresh(true) }, 20000)
 })
-onUnmounted(() => clearInterval(pollTimer))
+onUnmounted(() => { clearInterval(pollTimer); offTick?.() })
 
 const areaName = (b) => (locale.value === 'ar' ? (b.area_name_ar || b.area_name_en) : (b.area_name_en || b.area_name_ar)) || ''
 function fmtTime(iso) {

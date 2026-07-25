@@ -22,6 +22,17 @@ return [
     'menu_secure' => env('MENU_SECURE', true),
     'menu_port' => env('MENU_PORT'), // e.g. 8080 for local; unset on standard 80/443
 
+    /*
+    |--------------------------------------------------------------------------
+    | Default phone country
+    |--------------------------------------------------------------------------
+    | ISO-3166 alpha-2 region used to parse phone numbers written in local
+    | format (e.g. Egyptian "01xxxxxxxxx"). Numbers written in international
+    | E.164 format ("+9665...") are validated against their own country's
+    | rules regardless of this default. Set to the platform's primary market.
+    */
+    'default_phone_country' => env('PLATFORM_DEFAULT_COUNTRY', 'EG'),
+
     // Built guest-menu SPA entry (apps/menu). MenuShellService injects the
     // per-restaurant SEO tags into this file when serving /menu. Leave unset
     // to use the Docker/monorepo default locations.
@@ -66,6 +77,10 @@ return [
     | every window land in a synthetic "other" bucket. "afternoon" is folded
     | into lunch to keep the windows contiguous and non-overlapping.
     */
+    // Largest date span (in days) a single product-analytics report may query,
+    // bounding in-memory aggregation. Requests beyond this are rejected (422).
+    'report_max_range_days' => env('REPORT_MAX_RANGE_DAYS', 366),
+
     'report_periods' => [
         ['key' => 'breakfast', 'from' => '08:00', 'to' => '12:00'],
         ['key' => 'lunch', 'from' => '12:00', 'to' => '17:00'],
@@ -77,7 +92,10 @@ return [
         'name' => env('SUPER_ADMIN_NAME', 'Super Admin'),
         'username' => env('SUPER_ADMIN_USERNAME', 'admin'),
         'email' => env('SUPER_ADMIN_EMAIL', 'admin@qrmenu.test'),
-        'password' => env('SUPER_ADMIN_PASSWORD', 'password'),
+        // No fallback: the seeder fails closed if SUPER_ADMIN_PASSWORD is unset,
+        // so production can never provision the platform admin with a default
+        // credential. Set a strong value in the environment.
+        'password' => env('SUPER_ADMIN_PASSWORD'),
     ],
 
     /*

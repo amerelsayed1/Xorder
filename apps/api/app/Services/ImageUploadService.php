@@ -21,6 +21,17 @@ class ImageUploadService
         $disk = config('platform.uploads.disk', 'public');
         $maxDim = (int) config('platform.uploads.max_dimension', 2000);
 
+        // Decompression-bomb guard: a 4 MB PNG/WebP can decode to an enormous
+        // bitmap (e.g. 30000×30000 ≈ 3.6 GB) and exhaust PHP memory BEFORE
+        // scaleDown runs. The byte-size cap does not bound decoded pixel area,
+        // so reject by header dimensions first (cheap — reads only the header).
+        $dimensions = @getimagesize($file->getRealPath());
+        $maxSourceDim = (int) config('platform.uploads.max_source_dimension', 10000);
+        if ($dimensions !== false
+            && (($dimensions[0] ?? 0) > $maxSourceDim || ($dimensions[1] ?? 0) > $maxSourceDim)) {
+            throw new \RuntimeException('Uploaded image dimensions exceed the allowed maximum.');
+        }
+
         $image = $this->imageManager->decodePath($file->getRealPath());
 
         // Downscale only if larger than the cap; never upscale.

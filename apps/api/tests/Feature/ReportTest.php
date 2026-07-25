@@ -223,4 +223,21 @@ class ReportTest extends TestCase
         $this->actingAs($this->admin)->getJson('/api/dashboard/reports/dining-areas')->assertStatus(403);
         $this->actingAs($this->admin)->get('/api/dashboard/reports/products-by-time/export?format=csv')->assertStatus(403);
     }
+
+    public function test_report_rejects_excessively_large_date_range(): void
+    {
+        // ~6 years > the 366-day cap → validation error, no unbounded query.
+        $this->actingAs($this->admin)
+            ->getJson('/api/dashboard/reports/products-by-time?date_from=2020-01-01&date_to=2026-01-01')
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('date_to');
+    }
+
+    public function test_report_rejects_inverted_date_range(): void
+    {
+        $this->actingAs($this->admin)
+            ->getJson('/api/dashboard/reports/products-by-time?date_from=2026-01-10&date_to=2026-01-01')
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('date_to');
+    }
 }

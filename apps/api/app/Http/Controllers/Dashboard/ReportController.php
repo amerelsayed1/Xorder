@@ -4,9 +4,12 @@ namespace App\Http\Controllers\Dashboard;
 
 use App\Http\Controllers\Controller;
 use App\Services\ReportService;
+use App\Support\CsvSafe;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx as XlsxWriter;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -83,7 +86,7 @@ class ReportController extends Controller
     {
         $validated = $request->validate([
             'date_from' => ['sometimes', 'nullable', 'date'],
-            'date_to' => ['sometimes', 'nullable', 'date'],
+            'date_to' => ['sometimes', 'nullable', 'date', 'after_or_equal:date_from'],
             'branch_id' => ['sometimes', 'nullable', 'integer'],
             'dining_area_id' => ['sometimes', 'nullable', 'integer'],
             'area_type' => ['sometimes', 'nullable', 'string', 'max:40'],
@@ -91,6 +94,19 @@ class ReportController extends Controller
             'include_cancelled' => ['sometimes', 'boolean'],
             'group' => ['sometimes', Rule::in(['period', 'hour'])],
         ]);
+
+        // Bound the queried span so a single request can't pull an unbounded
+        // history into memory (self-inflicted DoS on a large tenant). The report
+        // loads matching orders and aggregates in PHP, so cap the window.
+        if (! empty($validated['date_from']) && ! empty($validated['date_to'])) {
+            $maxDays = (int) config('platform.report_max_range_days', 366);
+            if (Carbon::parse($validated['date_from'])
+                ->diffInDays(Carbon::parse($validated['date_to'])) > $maxDays) {
+                throw ValidationException::withMessages([
+                    'date_to' => __('xorder.errors.report_range_too_large', ['days' => $maxDays]),
+                ]);
+            }
+        }
 
         $validated['include_cancelled'] = $request->boolean('include_cancelled');
 
@@ -108,7 +124,7 @@ class ReportController extends Controller
             fwrite($out, "\xEF\xBB\xBF"); // UTF-8 BOM for Excel/Arabic
             fputcsv($out, $headers);
             foreach ($rows as $row) {
-                fputcsv($out, $row);
+                fputcsv($out, CsvSafe::row($row));
             }
             fclose($out);
         }, 'products-by-time.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
@@ -125,7 +141,7 @@ class ReportController extends Controller
         $sheet->setTitle('Products by time');
         $sheet->fromArray($headers, null, 'A1');
         if ($rows !== []) {
-            $sheet->fromArray($rows, null, 'A2');
+            $sheet->fromArray(array_map([CsvSafe::class, 'row'], $rows), null, 'A2');
         }
 
         $filename = 'products-by-time.xlsx';

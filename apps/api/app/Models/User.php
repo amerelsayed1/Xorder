@@ -21,13 +21,16 @@ class User extends Authenticatable
     // Never surface credential columns in audit change diffs.
     protected array $auditExclude = ['password', 'remember_token', 'email_verified_at'];
 
+    // `role` and `restaurant_id` are deliberately NOT mass-assignable: they are
+    // the privilege/tenant boundary and must only ever be set explicitly in
+    // trusted provisioning code, never from request input. This prevents a
+    // future `User::create($request->all())`/`update()` from letting a caller
+    // self-promote to SUPER_ADMIN or hop tenants.
     protected $fillable = [
         'name',
         'username',
         'email',
         'password',
-        'role',
-        'restaurant_id',
         'status',
     ];
 
@@ -49,6 +52,7 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'password_changed_at' => 'datetime',
             'role' => RoleEnum::class,
             'status' => UserStatus::class,
         ];

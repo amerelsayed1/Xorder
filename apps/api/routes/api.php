@@ -22,7 +22,9 @@ use App\Http\Controllers\Dashboard\DiningAreaController;
 use App\Http\Controllers\Dashboard\InsightsController as DashboardInsightsController;
 use App\Http\Controllers\Dashboard\MenuImportController;
 use App\Http\Controllers\Dashboard\MenuItemController;
+use App\Http\Controllers\Dashboard\NotificationController;
 use App\Http\Controllers\Dashboard\OrderController as DashboardOrderController;
+use App\Http\Controllers\Dashboard\PulseController;
 use App\Http\Controllers\Dashboard\PushTokenController;
 use App\Http\Controllers\Dashboard\ReportController;
 use App\Http\Controllers\Dashboard\RestaurantProfileController;
@@ -48,7 +50,7 @@ use Illuminate\Support\Facades\Route;
 |--------------------------------------------------------------------------
 */
 Route::prefix('auth')->group(function () {
-    Route::post('login', [AuthController::class, 'login'])->middleware('throttle:10,1');
+    Route::post('login', [AuthController::class, 'login'])->middleware('throttle:login');
     Route::post('forgot-password', [PasswordResetController::class, 'forgot'])->middleware('throttle:5,1');
     Route::post('reset-password', [PasswordResetController::class, 'reset'])->middleware('throttle:5,1');
 
@@ -75,6 +77,7 @@ Route::prefix('admin')
         Route::delete('restaurants/{restaurant}', [AdminRestaurantController::class, 'destroy']);
         Route::patch('restaurants/{restaurant}/status', [RestaurantStatusController::class, 'update']);
         Route::patch('restaurants/{restaurant}/subscription', [SubscriptionController::class, 'update']);
+        Route::patch('restaurants/{restaurant}/admin', [AdminRestaurantAdminController::class, 'update']);
         Route::post('restaurants/{restaurant}/admin/reset-password', [AdminRestaurantAdminController::class, 'resetPassword'])
             ->middleware('throttle:10,1');
         Route::get('restaurants/{restaurant}/qr', [AdminQrController::class, 'show']);
@@ -130,6 +133,19 @@ Route::prefix('dashboard')
         // Push-notification device tokens (not subscription-gated).
         Route::post('push/token', [PushTokenController::class, 'store']);
         Route::delete('push/token', [PushTokenController::class, 'destroy']);
+
+        // Consolidated dashboard heartbeat: new-order + bill-request + unread
+        // notification counts in one ETag'd request, so the shell polls once
+        // instead of three times. Counts respect each feature gate internally.
+        Route::get('pulse', [PulseController::class, 'index']);
+
+        // In-app notification centre. Not subscription- or feature-gated: every
+        // admin keeps their inbox even on a lapsed plan, and notifications span
+        // multiple features (orders, bill requests, reviews, subscription).
+        Route::get('notifications', [NotificationController::class, 'index']);
+        Route::get('notifications/unread-count', [NotificationController::class, 'unreadCount']);
+        Route::post('notifications/read-all', [NotificationController::class, 'markAllRead']);
+        Route::patch('notifications/{notification}/read', [NotificationController::class, 'markRead']);
         Route::get('qr', [DashboardQrController::class, 'show']);
         Route::get('qr/download', [DashboardQrController::class, 'download']);
 

@@ -7,6 +7,8 @@ import { useAuth } from '@xorder/api-client/auth.js'
 import { currencyLabel } from '../../lib/currency.js'
 import { pickLocalized } from '@xorder/ui/localize.js'
 import Icon from '@xorder/ui/Icon.vue'
+import ApexChart from '../../components/ApexChart.vue'
+import { areaChart } from '../../lib/charts.js'
 
 const { t, locale } = useI18n()
 const auth = useAuth()
@@ -14,6 +16,7 @@ const cur = computed(() => currencyLabel(auth.restaurant?.currency, locale.value
 const stats = ref(null)
 const qr = ref(null)
 const items = ref([])
+const engagement = ref(null)
 const copied = ref(false)
 
 onMounted(async () => {
@@ -25,7 +28,25 @@ onMounted(async () => {
     stats.value = s.data.data
     qr.value = q.data.data
     items.value = it.data.data
+    // Views trend is a nicety — never let it block or break the home page.
+    try {
+        const ins = await api.get('api/dashboard/insights')
+        engagement.value = ins.data.data?.engagement || null
+    } catch (err) { /* insights optional */ }
 })
+
+// 14-day views trend — Flowbite area chart.
+const dailyViews = computed(() => engagement.value?.daily || [])
+const dayLabel = (iso) => new Date(iso + 'T00:00:00').toLocaleDateString(locale.value, { day: 'numeric' })
+function viewsTrendOptions(c) {
+    return areaChart({
+        colors: c,
+        categories: dailyViews.value.map(d => dayLabel(d.date)),
+        series: [{ name: t('stats.views_today'), data: dailyViews.value.map(d => d.views) }],
+        color: c.accent,
+        height: 210,
+    })
+}
 
 // Featured items first; fall back to the newest items so the card is never empty.
 const featured = computed(() => {
@@ -144,6 +165,12 @@ function copyUrl() {
                             <Icon :name="copied ? 'check' : 'copy'" :size="16" />{{ copied ? t('common.copied') : t('common.copy') }}
                         </button>
                     </div>
+                </div>
+
+                <!-- Views trend (14 days) -->
+                <div v-if="dailyViews.length" class="card p-5">
+                    <h2 class="h-card mb-1 flex items-center gap-2"><i class="pi pi-eye" style="font-size:15px;color:var(--muted)" />{{ t('insights.views') }} — {{ t('insights.last_14_days') }}</h2>
+                    <ApexChart :build="viewsTrendOptions" :redraw="[dailyViews, locale]" />
                 </div>
 
                 <!-- Featured items -->

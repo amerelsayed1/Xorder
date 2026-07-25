@@ -5,6 +5,8 @@ import { useI18n } from 'vue-i18n'
 import api from '@xorder/api-client/api.js'
 import { useAuth } from '@xorder/api-client/auth.js'
 import Skeleton from '@xorder/ui/Skeleton.vue'
+import ApexChart from '../../components/ApexChart.vue'
+import { columnChart, barChart, donutChart } from '../../lib/charts.js'
 
 const { t, locale } = useI18n()
 const auth = useAuth()
@@ -16,16 +18,47 @@ const loading = ref(true)
 // recorded and QR-only plans have no Order rows at all. Menu views stay shown.
 const showOrders = computed(() => auth.hasFeature('system_ordering'))
 
-// 14-day engagement chart: bar heights as a % of the busiest day.
+// 14-day engagement — Flowbite column chart (views, plus orders when tracked).
 const daily = computed(() => data.value?.engagement?.daily || [])
-const dailyMax = computed(() => Math.max(1, ...daily.value.flatMap(d => [d.views, d.orders])))
-const barHeight = (v) => `${Math.max(v > 0 ? 4 : 2, Math.round((v / dailyMax.value) * 100))}%`
 const dayLabel = (iso) => new Date(iso + 'T00:00:00').toLocaleDateString(locale.value, { day: 'numeric' })
-const dayTitle = (d) => `${d.date} — ${t('insights.views')}: ${d.views} · ${t('insights.orders')}: ${d.orders}`
 
-// Most-ordered items — horizontal bars scaled to the top item.
+function engagementOptions(c) {
+    const categories = daily.value.map(d => dayLabel(d.date))
+    const series = [{ name: t('insights.views'), data: daily.value.map(d => d.views) }]
+    const palette = [c.accent]
+    if (showOrders.value) {
+        series.push({ name: t('insights.orders'), data: daily.value.map(d => d.orders) })
+        palette.push(c.green)
+    }
+    return columnChart({ colors: c, categories, series, palette, height: 280 })
+}
+
+// Most-ordered items — Flowbite horizontal bar chart, scaled to the top item.
 const topItems = computed(() => data.value?.top_items || [])
-const topMax = computed(() => Math.max(1, ...topItems.value.map(i => i.qty)))
+
+function topItemsOptions(c) {
+    return barChart({
+        colors: c,
+        categories: topItems.value.map(i => i.name),
+        series: [{ name: t('insights.orders'), data: topItems.value.map(i => i.qty) }],
+        height: Math.max(180, topItems.value.length * 44),
+    })
+}
+
+// Items-per-category distribution — donut. Only categories that actually hold
+// items are charted; the total gates the chart vs. an empty-state message.
+const categoryBreakdown = computed(() => (data.value?.category_breakdown || []).filter(c => c.menu_items_count > 0))
+const categoryItemsTotal = computed(() => categoryBreakdown.value.reduce((sum, c) => sum + c.menu_items_count, 0))
+
+function categoryDonutOptions(c) {
+    const pool = [c.accent, c.green, c.amber, c.red, c.gray, c.accentDark, c.ink]
+    return donutChart({
+        colors: c,
+        labels: categoryBreakdown.value.map(x => x.name),
+        series: categoryBreakdown.value.map(x => x.menu_items_count),
+        palette: categoryBreakdown.value.map((_, i) => pool[i % pool.length]),
+    })
+}
 
 onMounted(async () => {
     try {
@@ -109,39 +142,16 @@ function money(v) {
                 </div>
 
                 <div v-if="daily.length" class="card p-5">
-                    <div class="flex items-center justify-between gap-3 flex-wrap mb-4">
-                        <h2 class="h-card">{{ t('insights.engagement') }} — {{ t('insights.last_14_days') }}</h2>
-                        <div class="flex items-center gap-4 text-xs" style="color:var(--muted)">
-                            <span class="flex items-center gap-1.5"><span class="dot-legend" style="background:var(--accent)"></span>{{ t('insights.views') }}</span>
-                            <span v-if="showOrders" class="flex items-center gap-1.5"><span class="dot-legend" style="background:var(--green)"></span>{{ t('insights.orders') }}</span>
-                        </div>
-                    </div>
-                    <div class="flex items-end gap-1.5" style="height:140px">
-                        <div v-for="d in daily" :key="d.date" class="flex-1 h-full flex items-end justify-center gap-0.5" :title="dayTitle(d)">
-                            <div class="eng-bar" style="background:var(--accent)" :style="{ height: barHeight(d.views) }"></div>
-                            <div v-if="showOrders" class="eng-bar" style="background:var(--green)" :style="{ height: barHeight(d.orders) }"></div>
-                        </div>
-                    </div>
-                    <div class="flex gap-1.5 mt-1.5">
-                        <div v-for="d in daily" :key="d.date" class="flex-1 text-center" style="font-size:10px;color:var(--muted)">{{ dayLabel(d.date) }}</div>
-                    </div>
+                    <h2 class="h-card mb-1">{{ t('insights.engagement') }} — {{ t('insights.last_14_days') }}</h2>
+                    <ApexChart :build="engagementOptions" :redraw="[daily, showOrders, locale]" />
                 </div>
             </template>
 
             <!-- Most ordered items -->
             <div v-if="showOrders" class="card p-5">
-                <h2 class="h-card mb-4">{{ t('insights.top_items') }}</h2>
+                <h2 class="h-card mb-1">{{ t('insights.top_items') }}</h2>
                 <p v-if="!topItems.length" class="text-sm" style="color:var(--muted)">{{ t('insights.top_items_none') }}</p>
-                <ul v-else class="space-y-3">
-                    <li v-for="(it, i) in topItems" :key="it.name" class="flex items-center gap-3">
-                        <span class="rank">{{ i + 1 }}</span>
-                        <span class="text-sm truncate" style="width:150px;color:var(--ink)" :title="it.name">{{ it.name }}</span>
-                        <div class="flex-1 bar-track">
-                            <div class="bar-fill" :style="{ width: Math.round(it.qty / topMax * 100) + '%' }"></div>
-                        </div>
-                        <span class="text-sm font-bold" style="min-width:34px;text-align:end;color:var(--accent-dark)">{{ it.qty }}</span>
-                    </li>
-                </ul>
+                <ApexChart v-else :build="topItemsOptions" :redraw="[topItems, locale]" />
             </div>
 
             <div class="grid gap-6 lg:grid-cols-2">
@@ -152,7 +162,8 @@ function money(v) {
                         {{ t('insights.categories_summary', { active: data.menu.active_categories, total: data.menu.total_categories }) }}
                     </p>
                     <p v-if="!data.category_breakdown.length" style="color:var(--muted)" class="text-sm">{{ t('common.none') }}</p>
-                    <ul v-else class="space-y-2">
+                    <ApexChart v-if="categoryItemsTotal" :build="categoryDonutOptions" :redraw="[categoryBreakdown, locale]" class="mb-2" />
+                    <ul v-if="data.category_breakdown.length" class="space-y-2">
                         <li v-for="c in data.category_breakdown" :key="c.id" class="flex items-center justify-between gap-3">
                             <span class="text-sm truncate">
                                 {{ c.name }}
@@ -192,11 +203,3 @@ function money(v) {
     </div>
 </template>
 
-<style scoped>
-.eng-bar { width: 45%; max-width: 14px; border-radius: 3px 3px 0 0; min-height: 2px; }
-.dot-legend { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
-.rank { width: 22px; height: 22px; flex: none; display: grid; place-items: center; border-radius: 50%;
-    background: var(--accent-soft); color: var(--accent-dark); font-size: 11px; font-weight: 700; }
-.bar-track { height: 12px; border-radius: 6px; background: var(--accent-soft); overflow: hidden; }
-.bar-fill { height: 100%; border-radius: 6px; background: var(--accent); min-width: 3px; transition: width .4s ease; }
-</style>

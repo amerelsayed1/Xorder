@@ -8,12 +8,15 @@ import api from '@xorder/api-client/api.js'
 import { useAuth } from '@xorder/api-client/auth.js'
 import { localizedInitial, pickLocalized } from '@xorder/ui/localize.js'
 import { registerPush } from '../../lib/push.js'
+import { useRealtime } from '../../stores/realtime.js'
+import NotificationBell from '../../components/NotificationBell.vue'
 import { buildDashboardNav } from './nav.config.js'
 
 const auth = useAuth()
 const router = useRouter()
 const { t, locale } = useI18n()
 const r = computed(() => auth.restaurant)
+const rt = useRealtime()
 
 // The restaurant dashboard follows the language the Super Admin configured for
 // the restaurant — staff can't switch it (the toggle is hidden below). Apply it
@@ -25,41 +28,31 @@ const mark = computed(() => localizedInitial(r.value, 'name', locale.value, 'R')
 const logo = computed(() => r.value?.logo_url || '')
 const role = computed(() => t('roles.restaurant_admin'))
 
-// New-order alerts: poll the unfulfilled-order count; when it rises, play the
-// order sound, show a toast, badge the tab title, and (if the tab is
-// backgrounded) fire a system notification — so a busy kitchen notices.
-const newOrders = ref(0)
-const newRequests = ref(0)
+// New-order / bill-request alerts. Counts now come from the shared realtime
+// store's single consolidated /pulse poll (one request, ETag-gated); this layout
+// only reacts to a rise: play the order sound, show a toast, badge the tab
+// title, and (if the tab is backgrounded) fire a system notification — so a busy
+// kitchen notices.
+const newOrders = computed(() => rt.newOrders)
+const newRequests = computed(() => rt.newRequests)
 const prevCount = ref(null) // null until the first poll — never alert on load
 const prevRequests = ref(null)
 const toast = ref(null)
-let pollTimer, toastTimer, alarm
+let toastTimer, alarm, offTick
 let notifyReady = false
 const baseTitle = document.title
 
-// New-order badge. Only polled when system ordering is enabled — WhatsApp-only
-// plans have no durable order queue (the endpoint would 403).
-async function loadNewCount() {
-    if (!hasSystemOrdering.value) return
-    try {
-        const { data } = await api.get('api/dashboard/orders/new-count')
-        const count = data.data?.new_orders ?? 0
-        if (prevCount.value !== null && count > prevCount.value) announce(count - prevCount.value)
-        prevCount.value = count
-        newOrders.value = count
-    } catch (err) { /* keep the last known count */ }
-}
-
-// Live bill-request badge. Only polled when the feature is enabled.
-async function loadRequestCount() {
-    if (!hasBillRequests.value) return
-    try {
-        const { data } = await api.get('api/dashboard/bill-requests/new-count')
-        const count = data.count ?? 0
-        if (prevRequests.value !== null && count > prevRequests.value) announce(count - prevRequests.value, 'request')
-        prevRequests.value = count
-        newRequests.value = count
-    } catch (err) { /* keep the last known count */ }
+// Fired on every pulse that observed a change. A null count means the plan
+// doesn't have that feature, so it's skipped and never alerts.
+function onPulse(d) {
+    if (d.new_orders != null) {
+        if (prevCount.value !== null && d.new_orders > prevCount.value) announce(d.new_orders - prevCount.value, 'order')
+        prevCount.value = d.new_orders
+    }
+    if (d.new_requests != null) {
+        if (prevRequests.value !== null && d.new_requests > prevRequests.value) announce(d.new_requests - prevRequests.value, 'request')
+        prevRequests.value = d.new_requests
+    }
 }
 
 // The order sound — a real audio file. Autoplay needs one prior user gesture,
@@ -131,15 +124,15 @@ watch(newOrders, (n) => {
 onMounted(() => {
     if ('Notification' in window) notifyReady = Notification.permission === 'granted'
     loadSupportWhatsapp()
-    loadNewCount()
-    loadRequestCount()
-    pollTimer = setInterval(() => { loadNewCount(); loadRequestCount() }, 10_000)
+    offTick = rt.onTick(onPulse)
+    rt.start(10_000)
     window.addEventListener('pointerdown', armAlerts, { once: true })
     window.addEventListener('keydown', armAlerts, { once: true })
     window.addEventListener('xorder:read-only-blocked', onReadOnlyBlocked)
 })
 onUnmounted(() => {
-    clearInterval(pollTimer)
+    offTick?.()
+    rt.stop()
     clearTimeout(toastTimer)
     clearTimeout(readOnlyTimer)
     window.removeEventListener('pointerdown', armAlerts)
@@ -180,13 +173,9 @@ function onReadOnlyBlocked() {
     readOnlyTimer = setTimeout(() => (readOnlyFlash.value = false), 6000)
 }
 
-const hasBillRequests = computed(() => (r.value?.features || []).includes('bill_requests'))
-// System order queue exists unless the restaurant is WhatsApp-only.
-const hasSystemOrdering = computed(() => (r.value?.ordering_mode || 'both') !== 'whatsapp')
-
 // Build the grouped sidebar from the declarative schema. Feature flags gate
 // which children (and therefore which groups) appear; the live badge counts are
-// stamped in from here so polling stays owned by this layout.
+// stamped in from the shared realtime store, which owns the single pulse poll.
 const nav = computed(() => buildDashboardNav({
     features: r.value?.features || [],
     badges: { orders: newOrders.value, requests: newRequests.value, live: newOrders.value + newRequests.value },
@@ -195,6 +184,9 @@ const nav = computed(() => buildDashboardNav({
 
 <template>
     <SakaiLayout :title="title" :role="role" :mark="mark" :logo="logo" :nav="nav" :hide-lang-toggle="true">
+        <template #topbar-actions>
+            <NotificationBell />
+        </template>
         <template #banner>
             <div v-if="isExpired" class="sub-banner" role="alert">
                 <i class="pi pi-exclamation-triangle sub-banner-icon" aria-hidden="true"></i>

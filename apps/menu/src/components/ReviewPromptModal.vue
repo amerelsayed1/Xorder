@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { createReview } from '../api.js'
+import { isValidMobile } from '../lib/phone.js'
 
 const props = defineProps({
     isOpen: Boolean,
@@ -40,6 +41,11 @@ async function submit() {
     if (submitting.value) return
     if (rating.value < 1) {
         errorMsg.value = props.t('review_rating_required')
+        return
+    }
+    // Phone is optional here, but if given it must be a valid number.
+    if (phone.value && !isValidMobile(phone.value)) {
+        errorMsg.value = props.t('f_phone_required')
         return
     }
     submitting.value = true

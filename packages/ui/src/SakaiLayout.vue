@@ -91,6 +91,7 @@ const profileItems = computed(() => [
                 </RouterLink>
             </div>
             <div class="flex items-center gap-2">
+                <slot name="topbar-actions" />
                 <Button v-if="!hideLangToggle" :label="targetLocaleName" icon="pi pi-globe" text severity="secondary" size="small" @click="toggleLang" />
                 <button class="sakai-profile" @click="profileMenu.toggle($event)">
                     <Avatar :label="userInitial" shape="circle" style="background:var(--p-primary-color);color:#fff;font-weight:700" />

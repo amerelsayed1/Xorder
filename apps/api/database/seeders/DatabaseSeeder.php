@@ -15,19 +15,28 @@ class DatabaseSeeder extends Seeder
         // The single platform Super Admin. Credentials come from config/.env so
         // they are never hard-coded. Idempotent: safe to re-run.
         $email = config('platform.super_admin.email');
+        $password = (string) config('platform.super_admin.password');
 
-        User::updateOrCreate(
-            ['email' => $email],
-            [
-                'name' => config('platform.super_admin.name'),
-                'username' => config('platform.super_admin.username'),
-                'password' => Hash::make(config('platform.super_admin.password')),
-                'role' => RoleEnum::SUPER_ADMIN,
-                'restaurant_id' => null,
-                'status' => UserStatus::ACTIVE,
-                'email_verified_at' => now(),
-            ],
-        );
+        // Fail closed: never provision the platform admin with an empty/default
+        // credential. A blank SUPER_ADMIN_PASSWORD must abort seeding rather
+        // than silently create a super-admin whose password is guessable.
+        if (trim($password) === '') {
+            throw new \RuntimeException(
+                'SUPER_ADMIN_PASSWORD is not set. Refusing to seed the platform Super Admin with an empty/default password.'
+            );
+        }
+
+        $admin = User::firstOrNew(['email' => $email]);
+        // forceFill: role/restaurant_id are guarded and only set in trusted code.
+        $admin->forceFill([
+            'name' => config('platform.super_admin.name'),
+            'username' => config('platform.super_admin.username'),
+            'password' => Hash::make($password),
+            'role' => RoleEnum::SUPER_ADMIN,
+            'restaurant_id' => null,
+            'status' => UserStatus::ACTIVE,
+            'email_verified_at' => now(),
+        ])->save();
 
         $this->command?->info("Super Admin ready: {$email}");
 

@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\UpdateLeadRequest;
 use App\Http\Resources\LeadResource;
 use App\Models\Lead;
+use App\Support\CsvSafe;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -78,7 +79,9 @@ class LeadController extends Controller
 
             Lead::query()->latest()->chunk(200, function ($chunk) use ($out) {
                 foreach ($chunk as $lead) {
-                    fputcsv($out, [
+                    // Lead fields come from the fully public lead form — defuse
+                    // any spreadsheet-formula payload before writing.
+                    fputcsv($out, CsvSafe::row([
                         $lead->id,
                         $lead->restaurant_name,
                         $lead->contact_name,
@@ -89,7 +92,7 @@ class LeadController extends Controller
                         $lead->source,
                         $lead->status->value,
                         $lead->created_at?->toDateTimeString(),
-                    ]);
+                    ]));
                 }
             });
 

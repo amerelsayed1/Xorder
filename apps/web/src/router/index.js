@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import { trackPageView } from '@xorder/analytics'
 import { useAuth } from '@xorder/api-client/auth.js'
 import { isSuperAdminHost, restaurantSlug, superAdminUrl, restaurantUrl } from '../lib/host.js'
 
@@ -143,6 +144,13 @@ router.beforeEach(async (to) => {
     }
 
     return true
+})
+
+// GA4 counts the first load automatically; report each SPA navigation by hand.
+// Route names are logged instead of raw paths to keep ids (tokens, slugs) out
+// of analytics.
+router.afterEach((to) => {
+    trackPageView(to.name ? `/${String(to.name)}` : to.path)
 })
 
 export default router

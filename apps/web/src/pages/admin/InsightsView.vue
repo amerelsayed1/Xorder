@@ -4,10 +4,45 @@ import { RouterLink } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import api from '@xorder/api-client/api.js'
 import Skeleton from '@xorder/ui/Skeleton.vue'
+import ApexChart from '../../components/ApexChart.vue'
+import { donutChart } from '../../lib/charts.js'
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const data = ref(null)
 const loading = ref(true)
+
+// Status → localized label + theme color, in display order. Zero-count slices
+// are dropped so an empty status never shows as a hairline wedge.
+const REST_STATUS = [
+    { key: 'ACTIVE', label: () => t('common.active'), color: (c) => c.green },
+    { key: 'SUSPENDED', label: () => t('common.suspended'), color: (c) => c.red },
+    { key: 'ARCHIVED', label: () => t('common.archived'), color: (c) => c.gray },
+]
+const SUB_STATUS = [
+    { key: 'TRIAL', label: () => t('insights.sub.TRIAL'), color: (c) => c.accent },
+    { key: 'ACTIVE', label: () => t('insights.sub.ACTIVE'), color: (c) => c.green },
+    { key: 'EXPIRED', label: () => t('insights.sub.EXPIRED'), color: (c) => c.red },
+    { key: 'SUSPENDED', label: () => t('insights.sub.SUSPENDED'), color: (c) => c.gray },
+]
+
+function statusDonut(defs, counts) {
+    const present = defs.filter((d) => (counts[d.key] || 0) > 0)
+    return (c) => donutChart({
+        colors: c,
+        labels: present.map((d) => d.label()),
+        series: present.map((d) => counts[d.key] || 0),
+        palette: present.map((d) => d.color(c)),
+    })
+}
+
+const restaurantsByStatus = computed(() => data.value?.restaurants?.by_status || {})
+const subsByStatus = computed(() => data.value?.subscriptions?.by_status || {})
+const sum = (obj) => Object.values(obj).reduce((a, b) => a + (b || 0), 0)
+const restaurantsTotal = computed(() => sum(restaurantsByStatus.value))
+const subsTotal = computed(() => sum(subsByStatus.value))
+
+const restaurantsDonut = (c) => statusDonut(REST_STATUS, restaurantsByStatus.value)(c)
+const subsDonut = (c) => statusDonut(SUB_STATUS, subsByStatus.value)(c)
 
 onMounted(async () => {
     try {
@@ -67,6 +102,20 @@ function fmtDate(iso) {
                 <div class="stat">
                     <div class="stat-label">{{ t('insights.total_categories') }}</div>
                     <div class="stat-num">{{ data.content.total_categories }}</div>
+                </div>
+            </div>
+
+            <!-- Status distributions -->
+            <div class="grid gap-6 lg:grid-cols-2">
+                <div class="card p-5">
+                    <h2 class="h-card mb-1">{{ t('insights.restaurants_by_status') }}</h2>
+                    <ApexChart v-if="restaurantsTotal" :build="restaurantsDonut" :redraw="[restaurantsByStatus, locale]" />
+                    <p v-else class="text-sm py-8 text-center" style="color:var(--muted)">{{ t('insights.chart_no_data') }}</p>
+                </div>
+                <div class="card p-5">
+                    <h2 class="h-card mb-1">{{ t('insights.subs_by_status') }}</h2>
+                    <ApexChart v-if="subsTotal" :build="subsDonut" :redraw="[subsByStatus, locale]" />
+                    <p v-else class="text-sm py-8 text-center" style="color:var(--muted)">{{ t('insights.chart_no_data') }}</p>
                 </div>
             </div>
 

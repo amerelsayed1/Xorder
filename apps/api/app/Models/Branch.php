@@ -4,12 +4,13 @@ namespace App\Models;
 
 use App\Models\Concerns\Auditable;
 use App\Models\Concerns\BelongsToRestaurant;
+use App\Traits\NormalizesPhoneNumbers;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 
 class Branch extends Model
 {
-    use Auditable, BelongsToRestaurant;
+    use Auditable, BelongsToRestaurant, NormalizesPhoneNumbers;
 
     protected $fillable = [
         'name_ar',

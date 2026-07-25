@@ -25,16 +25,22 @@ trait NormalizesPhoneNumbers
     }
 
     /**
-     * Normalize phone and whatsapp_number fields.
+     * Phone-like attributes normalized on save. A model may override this by
+     * declaring a `$phoneFields` property to change the covered columns.
+     *
+     * @var list<string>
+     */
+    protected array $defaultPhoneFields = ['phone', 'whatsapp_number', 'whatsapp', 'customer_phone'];
+
+    /**
+     * Normalize every phone-like field the model actually has.
      */
     public function normalizePhoneFields(): void
     {
-        if (isset($this->attributes['phone'])) {
-            $this->attributes['phone'] = $this->convertToEnglishDigits($this->attributes['phone']);
-        }
-
-        if (isset($this->attributes['whatsapp_number'])) {
-            $this->attributes['whatsapp_number'] = $this->convertToEnglishDigits($this->attributes['whatsapp_number']);
+        foreach ($this->phoneFields ?? $this->defaultPhoneFields as $field) {
+            if (isset($this->attributes[$field])) {
+                $this->attributes[$field] = $this->convertToEnglishDigits($this->attributes[$field]);
+            }
         }
     }
 

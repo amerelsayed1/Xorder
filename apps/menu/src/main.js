@@ -1,6 +1,12 @@
 import { createApp } from 'vue'
+import { initAnalytics } from '@xorder/analytics'
 import App from './App.vue'
 import './app.css'
+
+// Firebase Analytics (GA4). No-op until /firebase-config.js carries a
+// measurementId. The firebase SDK is lazy-loaded so it stays out of the
+// menu's initial bundle.
+initAnalytics('menu')
 
 const app = createApp(App)
 

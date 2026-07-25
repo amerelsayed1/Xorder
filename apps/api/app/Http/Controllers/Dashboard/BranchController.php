@@ -7,9 +7,11 @@ use App\Http\Requests\Dashboard\StoreBranchRequest;
 use App\Http\Requests\Dashboard\UpdateBranchRequest;
 use App\Http\Resources\BranchResource;
 use App\Models\Branch;
+use App\Models\Restaurant;
 use App\Services\PlanLimitService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class BranchController extends Controller
 {
@@ -22,17 +24,30 @@ class BranchController extends Controller
 
     public function store(StoreBranchRequest $request, PlanLimitService $limits): JsonResponse
     {
-        if (($limit = $limits->branchLimitReached($request->user()->restaurant)) !== null) {
+        $restaurant = $request->user()->restaurant;
+
+        // Serialize the limit check + insert per tenant. Without the row lock,
+        // N concurrent POSTs all read count < max before any commits and every
+        // one succeeds, over-provisioning past the paid plan limit (TOCTOU).
+        $result = DB::transaction(function () use ($restaurant, $limits, $request) {
+            Restaurant::whereKey($restaurant->getKey())->lockForUpdate()->first();
+
+            if (($limit = $limits->branchLimitReached($restaurant)) !== null) {
+                return ['limit' => $limit];
+            }
+
+            // restaurant_id is stamped by the BelongsToRestaurant trait.
+            return ['branch' => Branch::create($request->validated())];
+        });
+
+        if (isset($result['limit'])) {
             return response()->json([
-                'message' => __('xorder.messages.plan_limit_branches', ['limit' => $limit]),
+                'message' => __('xorder.messages.plan_limit_branches', ['limit' => $result['limit']]),
             ], 422);
         }
 
-        // restaurant_id is stamped by the BelongsToRestaurant trait.
-        $branch = Branch::create($request->validated());
-
         return response()->json([
-            'data' => BranchResource::make($branch),
+            'data' => BranchResource::make($result['branch']),
             'message' => __('xorder.messages.branch_created'),
         ], 201);
     }

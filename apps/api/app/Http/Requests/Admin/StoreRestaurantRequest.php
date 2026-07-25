@@ -7,6 +7,7 @@ use App\Enums\LanguageEnum;
 use App\Enums\OrderingMode;
 use App\Enums\RestaurantStatus;
 use App\Enums\SubscriptionStatus;
+use App\Rules\MobileNumber;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password;
@@ -34,8 +35,8 @@ class StoreRestaurantRequest extends FormRequest
             'description_en' => ['nullable', 'string', 'max:2000'],
             'logo_url' => ['nullable', 'string', 'max:2048'],
             'cover_image_url' => ['nullable', 'string', 'max:2048'],
-            'phone' => ['nullable', 'string', 'max:32'],
-            'whatsapp_number' => ['nullable', 'string', 'max:32'],
+            'phone' => ['nullable', 'string', 'max:32', (new MobileNumber)->allowLandline()],
+            'whatsapp_number' => ['nullable', 'string', 'max:32', new MobileNumber],
             'address' => ['nullable', 'string', 'max:1000'],
             'opening_hours' => ['nullable', 'string', 'max:2000'],
             'brand_color' => ['nullable', 'regex:/^#[0-9a-fA-F]{6}$/'],
@@ -71,8 +72,8 @@ class StoreRestaurantRequest extends FormRequest
             'branch.city' => ['nullable', 'string', 'max:120'],
             'branch.country' => ['nullable', 'string', 'size:2'],
             'branch.address' => ['nullable', 'string', 'max:1000'],
-            'branch.phone' => ['nullable', 'string', 'max:32'],
-            'branch.whatsapp_number' => ['nullable', 'string', 'max:32'],
+            'branch.phone' => ['nullable', 'string', 'max:32', (new MobileNumber)->allowLandline()],
+            'branch.whatsapp_number' => ['nullable', 'string', 'max:32', new MobileNumber],
             'branch.supported_order_types' => ['nullable', 'array'],
             'branch.supported_order_types.*' => ['string', Rule::in(['dine_in', 'pickup', 'delivery'])],
         ];

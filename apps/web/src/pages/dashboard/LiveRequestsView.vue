@@ -6,9 +6,11 @@ import api, { ensureCsrf } from '@xorder/api-client/api.js'
 import { withMinDuration } from '../../lib/minLoading.js'
 import Skeleton from '@xorder/ui/Skeleton.vue'
 import { confirm } from '@xorder/ui/confirm.js'
+import { useRealtime } from '../../stores/realtime.js'
 
 const { t, locale } = useI18n()
 const auth = useAuth()
+const rt = useRealtime()
 
 const STATUSES = ['REQUESTED', 'SEEN', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED']
 const badgeClass = {
@@ -46,7 +48,7 @@ const loading = ref(true)
 const statusFilter = ref('')
 const areaFilter = ref('')
 const updating = ref(null)
-let pollTimer
+let pollTimer, offTick
 
 async function loadAreas() {
     try {
@@ -89,9 +91,12 @@ async function poll() {
 onMounted(() => {
     loadAreas()
     load()
-    pollTimer = setInterval(poll, 6_000)
+    // Refresh the instant the shared pulse detects a new request; a slower
+    // fallback still catches status changes made by other staff.
+    offTick = rt.onTick(() => { if (!document.hidden) poll() })
+    pollTimer = setInterval(poll, 20_000)
 })
-onUnmounted(() => clearInterval(pollTimer))
+onUnmounted(() => { clearInterval(pollTimer); offTick?.() })
 
 function setStatusFilter(s) {
     statusFilter.value = s

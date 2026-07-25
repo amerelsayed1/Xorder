@@ -5,6 +5,7 @@ import { setLocale } from '@xorder/ui/i18n'
 import XorderLogo from '@xorder/ui/XorderLogo.vue'
 import Icon from '@xorder/ui/Icon.vue'
 import { fetchLandingContent, postLead } from './lib/content.js'
+import { isValidMobile } from './lib/phone.js'
 import { track } from './lib/analytics.js'
 
 const { t, locale } = useI18n()
@@ -147,8 +148,13 @@ const submitted = ref(false)
 const formErrors = ref({})
 
 async function submitLead() {
-    submitting.value = true
     formErrors.value = {}
+    // Catch a malformed number before the round-trip; the server re-validates.
+    if (!isValidMobile(form.whatsapp)) {
+        formErrors.value = { whatsapp: [t('landing.lead_whatsapp_invalid')] }
+        return
+    }
+    submitting.value = true
     try {
         await postLead({ ...form, source: 'landing_lead_form' })
         submitted.value = true

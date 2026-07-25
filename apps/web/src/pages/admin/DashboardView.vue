@@ -7,6 +7,8 @@ import { localizedInitial, pickLocalized } from '@xorder/ui/localize.js'
 import Icon from '@xorder/ui/Icon.vue'
 import StatusBadge from '@xorder/ui/StatusBadge.vue'
 import Skeleton from '@xorder/ui/Skeleton.vue'
+import ApexChart from '../../components/ApexChart.vue'
+import { donutChart } from '../../lib/charts.js'
 
 const router = useRouter()
 const { t, locale } = useI18n()
@@ -14,6 +16,23 @@ const loading = ref(true)
 const total = ref(0)
 const byStatus = ref({ ACTIVE: 0, SUSPENDED: 0, ARCHIVED: 0 })
 const recent = ref([])
+
+// Restaurants-by-status donut. Statuses in display order with their theme
+// color; zero-count statuses are dropped so empty wedges never show.
+const REST_STATUS = [
+    { key: 'ACTIVE', label: () => t('common.active'), color: (c) => c.green },
+    { key: 'SUSPENDED', label: () => t('common.suspended'), color: (c) => c.red },
+    { key: 'ARCHIVED', label: () => t('common.archived'), color: (c) => c.gray },
+]
+function statusDonut(c) {
+    const present = REST_STATUS.filter((d) => (byStatus.value[d.key] || 0) > 0)
+    return donutChart({
+        colors: c,
+        labels: present.map((d) => d.label()),
+        series: present.map((d) => byStatus.value[d.key] || 0),
+        palette: present.map((d) => d.color(c)),
+    })
+}
 
 onMounted(async () => {
     try {
@@ -109,12 +128,20 @@ const fmtDate = (d) => d ? new Date(d).toLocaleDateString(locale.value, { month:
                 <p v-else class="text-sm py-6 text-center" style="color:var(--muted)">{{ t('admin.no_restaurants') }}</p>
             </div>
 
-            <!-- Quick actions -->
-            <div class="card p-5">
-                <h2 class="h-card mb-3">{{ t('stats.quick_actions') }}</h2>
-                <div class="flex flex-col gap-2">
-                    <RouterLink :to="{ name: 'admin.restaurants.create' }" class="btn btn-accent justify-start"><Icon name="plus" :size="16" />{{ t('admin.create_restaurant') }}</RouterLink>
-                    <RouterLink :to="{ name: 'admin.restaurants' }" class="btn btn-ghost justify-start"><Icon name="building" :size="16" />{{ t('admin.manage_restaurants') }}</RouterLink>
+            <div class="space-y-6">
+                <!-- Restaurants by status -->
+                <div v-if="total" class="card p-5">
+                    <h2 class="h-card mb-1">{{ t('insights.restaurants_by_status') }}</h2>
+                    <ApexChart :build="statusDonut" :redraw="[byStatus, locale]" />
+                </div>
+
+                <!-- Quick actions -->
+                <div class="card p-5">
+                    <h2 class="h-card mb-3">{{ t('stats.quick_actions') }}</h2>
+                    <div class="flex flex-col gap-2">
+                        <RouterLink :to="{ name: 'admin.restaurants.create' }" class="btn btn-accent justify-start"><Icon name="plus" :size="16" />{{ t('admin.create_restaurant') }}</RouterLink>
+                        <RouterLink :to="{ name: 'admin.restaurants' }" class="btn btn-ghost justify-start"><Icon name="building" :size="16" />{{ t('admin.manage_restaurants') }}</RouterLink>
+                    </div>
                 </div>
             </div>
         </div>

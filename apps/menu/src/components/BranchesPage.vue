@@ -1,4 +1,6 @@
 <script setup>
+import { safeUrl } from '../lib/safeUrl'
+
 defineProps({
     branches: Array,
     t: Function,
@@ -22,7 +24,7 @@ defineEmits(['goHome'])
                         <p v-if="branch.phone">📞 {{ branch.phone }}</p>
                     </div>
                     <div class="flex gap-2">
-                        <a v-if="branch.map_url" :href="branch.map_url" target="_blank" rel="noopener" class="flex-1 px-4 py-2 rounded-lg text-sm font-semibold text-center transition" :style="{ background: accent + '22', color: accent }">Map</a>
+                        <a v-if="safeUrl(branch.map_url)" :href="safeUrl(branch.map_url)" target="_blank" rel="noopener" class="flex-1 px-4 py-2 rounded-lg text-sm font-semibold text-center transition" :style="{ background: accent + '22', color: accent }">Map</a>
                         <a v-if="branch.phone" :href="`tel:${branch.phone}`" class="flex-1 px-4 py-2 rounded-lg text-sm font-semibold text-center transition" :style="{ background: accent + '22', color: accent }">Call</a>
                     </div>
                 </div>

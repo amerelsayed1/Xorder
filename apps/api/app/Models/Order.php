@@ -5,12 +5,13 @@ namespace App\Models;
 use App\Enums\OrderStatus;
 use App\Models\Concerns\Auditable;
 use App\Models\Concerns\BelongsToRestaurant;
+use App\Traits\NormalizesPhoneNumbers;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Order extends Model
 {
-    use Auditable, BelongsToRestaurant;
+    use Auditable, BelongsToRestaurant, NormalizesPhoneNumbers;
 
     // Orders placed on the public menu have no authenticated user; attribute
     // them to the diner in the audit trail.

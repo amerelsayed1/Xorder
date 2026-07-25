@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Public;
 
+use App\Rules\MobileNumber;
 use Illuminate\Foundation\Http\FormRequest;
 
 class StoreOrderRequest extends FormRequest
@@ -48,7 +49,7 @@ class StoreOrderRequest extends FormRequest
             'items.*.line_total' => ['required', 'numeric', 'min:0', 'max:1000000'],
             'total' => ['required', 'numeric', 'min:0', 'max:1000000'],
             'customer_name' => ['nullable', 'string', 'max:150'],
-            'customer_phone' => ['nullable', 'string', 'max:32'],
+            'customer_phone' => ['nullable', 'string', 'max:32', new MobileNumber],
             'customer_email' => ['nullable', 'email', 'max:150'],
             'customer_address' => ['nullable', 'string', 'max:500'],
             'address_label' => ['nullable', 'string', 'max:60'],

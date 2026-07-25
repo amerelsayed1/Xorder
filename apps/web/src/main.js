@@ -4,10 +4,16 @@ import PrimeVue from 'primevue/config'
 import { definePreset } from '@primeuix/themes'
 import Aura from '@primeuix/themes/aura'
 import 'primeicons/primeicons.css'
+import 'flowbite'
 import './app.css'
 import router from './router'
 import { i18n, setLocale } from '@xorder/ui/i18n'
+import { initAnalytics } from '@xorder/analytics'
 import App from './App.vue'
+
+// Firebase Analytics (GA4). No-op until /firebase-config.js carries a
+// measurementId; page views are reported per-route from the router.
+initAnalytics('web')
 
 // Xorder-branded Aura preset: primary = brand orange (#f89a06).
 const XorderAura = definePreset(Aura, {

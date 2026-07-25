@@ -1,7 +1,8 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
+import { isValidMobile } from '../lib/phone.js'
 
-defineProps({
+const props = defineProps({
     isOpen: Boolean,
     isEditing: Boolean,
     userInfo: Object,
@@ -13,7 +14,18 @@ defineProps({
     t: Function,
 })
 
-defineEmits(['close', 'enterEdit', 'cancelEdit', 'save', 'clear', 'updateField'])
+const emit = defineEmits(['close', 'enterEdit', 'cancelEdit', 'save', 'clear', 'updateField'])
+
+// Only scold the customer once they try to save, not while they're still typing.
+const attempted = ref(false)
+const phoneInvalid = computed(() => !isValidMobile(props.editForm?.phone))
+watch(() => props.isEditing, () => { attempted.value = false })
+
+function attemptSave() {
+    attempted.value = true
+    if (phoneInvalid.value) return
+    emit('save')
+}
 </script>
 
 <template>
@@ -64,7 +76,8 @@ defineEmits(['close', 'enterEdit', 'cancelEdit', 'save', 'clear', 'updateField']
                             </div>
                             <div>
                                 <label class="block text-sm font-semibold mb-1.5">{{ t('f_phone') }} <span class="text-red-500">*</span></label>
-                                <input :value="editForm.phone" type="tel" class="w-full px-3.5 py-2.5 rounded-xl border border-stone-200 focus:outline-none ltr" dir="ltr" @input="$emit('updateField', 'phone', $event.target.value)" />
+                                <input :value="editForm.phone" type="tel" class="w-full px-3.5 py-2.5 rounded-xl border focus:outline-none ltr" :class="attempted && phoneInvalid ? 'border-red-400' : 'border-stone-200'" dir="ltr" :aria-invalid="attempted && phoneInvalid" @input="$emit('updateField', 'phone', $event.target.value)" />
+                                <p v-if="attempted && phoneInvalid" class="text-xs text-red-500 mt-1">{{ t('f_phone_required') }}</p>
                             </div>
                             <div>
                                 <label class="block text-sm font-semibold mb-1.5">{{ t('f_email') }}</label>
@@ -89,7 +102,7 @@ defineEmits(['close', 'enterEdit', 'cancelEdit', 'save', 'clear', 'updateField']
                         <button class="w-full h-11 rounded-xl border border-stone-200 bg-white text-stone-700 font-semibold" @click="$emit('close')">Close</button>
                     </template>
                     <template v-else>
-                        <button class="w-full h-12 rounded-xl text-white font-bold" :style="{ background: accent }" @click="$emit('save')">💾 Save</button>
+                        <button class="w-full h-12 rounded-xl text-white font-bold" :style="{ background: accent }" @click="attemptSave">💾 Save</button>
                         <button class="w-full h-11 rounded-xl border border-stone-200 bg-white text-stone-700 font-semibold" @click="$emit('cancelEdit')">Cancel</button>
                     </template>
                 </div>
