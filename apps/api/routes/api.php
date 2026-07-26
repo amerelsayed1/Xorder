@@ -207,6 +207,8 @@ Route::prefix('dashboard')
         Route::middleware('feature:table_management')->group(function () {
             Route::get('dining-areas', [DiningAreaController::class, 'index']);
             Route::get('tables', [TableController::class, 'index']);
+            // Live floor grid: occupancy + active-order + open-request signals per table.
+            Route::get('tables/live', [TableController::class, 'live']);
             Route::get('tables/{table}/qr', [TableController::class, 'qr']);
             Route::get('tables/{table}/qr/download', [TableController::class, 'qrDownload']);
 

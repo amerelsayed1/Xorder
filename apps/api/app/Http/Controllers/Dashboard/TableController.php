@@ -3,11 +3,16 @@
 namespace App\Http\Controllers\Dashboard;
 
 use App\Http\Controllers\Controller;
+use App\Enums\BillRequestStatus;
+use App\Enums\OrderStatus;
 use App\Http\Requests\Dashboard\StoreTableRequest;
 use App\Http\Requests\Dashboard\UpdateTableRequest;
 use App\Http\Resources\DiningTableResource;
+use App\Models\BillRequest;
 use App\Models\DiningArea;
 use App\Models\DiningTable;
+use App\Models\MenuSession;
+use App\Models\Order;
 use App\Services\QrCodeService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -27,6 +32,62 @@ class TableController extends Controller
             ->get();
 
         return DiningTableResource::collection($tables)->response();
+    }
+
+    /**
+     * Live floor grid for the dashboard: every active table with its current
+     * occupancy, active-order count, and whether it has an open bill request
+     * (which makes the card pulse for attention). Kept light — a handful of
+     * grouped queries, no per-table N+1. Tenant scoping is applied by the
+     * BelongsToRestaurant global scope on each model.
+     */
+    public function live(Request $request): JsonResponse
+    {
+        $tables = DiningTable::with('diningArea')
+            ->where('is_active', true)
+            ->when($request->filled('branch_id'), fn ($q) => $q->where('branch_id', $request->integer('branch_id')))
+            ->when($request->filled('dining_area_id'), fn ($q) => $q->where('dining_area_id', $request->integer('dining_area_id')))
+            ->orderBy('dining_area_id')->orderBy('label')
+            ->get();
+
+        $tableIds = $tables->pluck('id');
+
+        // Occupancy signal: a live (non-expired) menu session on the table.
+        $occupied = MenuSession::whereIn('table_id', $tableIds)
+            ->where(fn ($q) => $q->whereNull('expires_at')->orWhere('expires_at', '>', now()))
+            ->pluck('table_id')->flip();
+
+        // Active orders per table (NEW / CONFIRMED) — one grouped query.
+        $activeOrders = Order::whereIn('table_id', $tableIds)
+            ->whereIn('status', [OrderStatus::NEW->value, OrderStatus::CONFIRMED->value])
+            ->selectRaw('table_id, count(*) as c')->groupBy('table_id')
+            ->pluck('c', 'table_id');
+
+        // Tables with an open bill request → they pulse.
+        $openRequests = BillRequest::whereIn('table_id', $tableIds)
+            ->whereIn('status', [
+                BillRequestStatus::REQUESTED->value,
+                BillRequestStatus::SEEN->value,
+                BillRequestStatus::IN_PROGRESS->value,
+            ])->pluck('table_id')->flip();
+
+        $data = $tables->map(function ($t) use ($occupied, $activeOrders, $openRequests) {
+            $orders = (int) ($activeOrders[$t->id] ?? 0);
+
+            return [
+                'id' => $t->id,
+                'label' => $t->label,
+                'dining_area_id' => $t->dining_area_id,
+                'area_name_en' => $t->diningArea?->name_en,
+                'area_name_ar' => $t->diningArea?->name_ar,
+                'active_orders' => $orders,
+                'has_request' => $openRequests->has($t->id),
+                // Occupied if a guest session is live or there are active orders.
+                'occupied' => $occupied->has($t->id) || $orders > 0,
+            ];
+        });
+
+        return response()->json(['data' => $data]);
     }
 
     public function store(StoreTableRequest $request): JsonResponse

@@ -16,9 +16,9 @@
 
 export const DASHBOARD_NAV = [
     { key: 'home', labelKey: 'nav.dashboard', icon: 'pi pi-th-large', to: { name: 'dashboard.home' }, end: true },
-    { key: 'live', labelKey: 'nav.live', icon: 'pi pi-bolt', to: { name: 'dashboard.live' }, badgeKey: 'live', permissionAny: ['bill_requests', 'system_ordering'] },
+    { key: 'live', labelKey: 'nav.live', icon: 'pi pi-bolt', to: { name: 'dashboard.live' }, badgeKey: 'live', permissionAny: ['bill_requests', 'system_ordering', 'table_management'] },
     {
-        key: 'orders', labelKey: 'nav.group_orders', icon: 'pi pi-shopping-bag', badgeKey: 'orders',
+        key: 'orders', labelKey: 'nav.group_orders', icon: 'pi pi-shopping-bag',
         children: [
             { key: 'orders.list', labelKey: 'nav.orders', icon: 'pi pi-shopping-bag', to: { name: 'dashboard.orders' }, permission: 'system_ordering' },
         ],

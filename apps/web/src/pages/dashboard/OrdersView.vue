@@ -8,6 +8,7 @@ import { currencyLabel } from '../../lib/currency.js'
 import { withMinDuration } from '../../lib/minLoading.js'
 import Icon from '@xorder/ui/Icon.vue'
 import Skeleton from '@xorder/ui/Skeleton.vue'
+import Dialog from '@xorder/ui/Dialog.vue'
 import { confirm } from '@xorder/ui/confirm.js'
 import { alert } from '@xorder/ui/alert.js'
 import { useRealtime } from '../../stores/realtime.js'
@@ -37,6 +38,7 @@ const statusFilter = ref('')
 const page = ref(1)
 const updating = ref(null)
 const newIds = ref(new Set())
+const receiptOrder = ref(null) // order shown in the bill/receipt sheet, or null
 let pollTimer, offTick
 
 async function load() {
@@ -154,15 +156,13 @@ function fmtTime(iso) {
 
         <!-- Table -->
         <div class="card overflow-x-auto">
-            <table class="w-full text-sm" style="min-width:860px">
+            <table class="w-full text-sm" style="min-width:720px">
                 <thead>
                     <tr class="text-start" style="color:var(--muted)">
                         <th class="px-5 py-3 font-medium text-start" style="font-size:11px;text-transform:uppercase">#</th>
                         <th class="px-5 py-3 font-medium text-start" style="font-size:11px;text-transform:uppercase">{{ t('orders.order') }}</th>
                         <th class="px-3 py-3 font-medium text-start" style="font-size:11px;text-transform:uppercase">{{ t('orders.time') }}</th>
                         <th class="px-3 py-3 font-medium text-start" style="font-size:11px;text-transform:uppercase">{{ t('orders.customer') }}</th>
-                        <th class="px-3 py-3 font-medium text-start" style="font-size:11px;text-transform:uppercase">{{ t('orders.items') }}</th>
-                        <th class="px-3 py-3 font-medium text-start" style="font-size:11px;text-transform:uppercase">{{ t('orders.total') }}</th>
                         <th class="px-3 py-3 font-medium text-start" style="font-size:11px;text-transform:uppercase">{{ t('common.status') }}</th>
                         <th class="px-5 py-3 font-medium text-end" style="font-size:11px;text-transform:uppercase">{{ t('common.actions') }}</th>
                     </tr>
@@ -170,10 +170,10 @@ function fmtTime(iso) {
                 <tbody>
                     <template v-if="loading">
                         <tr v-for="n in 6" :key="'sk' + n" class="border-t" :style="{ borderColor: 'var(--line)' }">
-                            <td v-for="c in 8" :key="c" class="px-5 py-4"><Skeleton :h="'14px'" :w="c === 8 ? '60%' : '80%'" /></td>
+                            <td v-for="c in 6" :key="c" class="px-5 py-4"><Skeleton :h="'14px'" :w="c === 6 ? '60%' : '80%'" /></td>
                         </tr>
                     </template>
-                    <tr v-else-if="!rows.length"><td colspan="8" class="px-5 py-8 text-center" style="color:var(--muted)">{{ t('orders.none') }}</td></tr>
+                    <tr v-else-if="!rows.length"><td colspan="6" class="px-5 py-8 text-center" style="color:var(--muted)">{{ t('orders.none') }}</td></tr>
                     <tr v-for="(order, idx) in rows" :key="order.id" class="border-t align-top" :class="{ 'order-row-new': newIds.has(order.id) }" :style="{ borderColor: 'var(--line)' }">
                         <td class="px-5 py-3 whitespace-nowrap" style="color:var(--muted)">{{ (meta?.from || 1) + idx }}</td>
                         <td class="px-5 py-3 font-medium whitespace-nowrap" style="color:var(--ink)">{{ order.code }}</td>
@@ -182,24 +182,22 @@ function fmtTime(iso) {
                             <button v-if="canOpenCustomer(order)" type="button" class="cust-link" @click="openCustomer(order)">{{ order.customer_name || '—' }}</button>
                             <div v-else style="color:var(--ink)">{{ order.customer_name || '—' }}</div>
                         </td>
-                        <td class="px-3 py-3">
-                            <div v-for="(it, i) in order.items" :key="i" class="order-item" style="color:var(--body)">
-                                <span class="order-item-qty">{{ it.qty }}×</span>
-                                <span>{{ it.name }}<template v-if="it.options?.length"> ({{ it.options.join(', ') }})</template></span>
-                            </div>
-                            <div v-if="order.note" class="text-xs mt-1" style="color:var(--muted)">{{ t('orders.note') }}: {{ order.note }}</div>
-                        </td>
-                        <td class="px-3 py-3 whitespace-nowrap font-medium" style="color:var(--ink)">{{ order.total }} {{ currencyLabel(order.currency, locale) }}</td>
                         <td class="px-3 py-3"><span class="badge" :class="badgeClass[order.status]">{{ t('orders.status.' + order.status) }}</span></td>
                         <td class="px-5 py-3 text-end whitespace-nowrap">
-                            <div v-if="!auth.isReadOnly" class="inline-flex items-center gap-2">
-                                <button v-for="next in nextActions[order.status] || []" :key="next"
-                                    class="btn btn-sm" :class="next === 'CANCELLED' ? 'btn-ghost btn-cancel' : 'btn-accent'"
-                                    :disabled="updating === order.id" @click="setStatus(order, next)">
-                                    <Icon v-if="next !== 'CANCELLED'" name="check" :size="14" />
-                                    <Icon v-else name="close" :size="14" />
-                                    {{ t(actionLabel[next]) }}
+                            <div class="inline-flex items-center gap-2">
+                                <button type="button" class="btn btn-ghost btn-sm" @click="receiptOrder = order">
+                                    <Icon name="receipt" :size="14" />
+                                    {{ t('orders.view') }}
                                 </button>
+                                <template v-if="!auth.isReadOnly">
+                                    <button v-for="next in nextActions[order.status] || []" :key="next"
+                                        class="btn btn-sm" :class="next === 'CANCELLED' ? 'btn-ghost btn-cancel' : 'btn-accent'"
+                                        :disabled="updating === order.id" @click="setStatus(order, next)">
+                                        <Icon v-if="next !== 'CANCELLED'" name="check" :size="14" />
+                                        <Icon v-else name="close" :size="14" />
+                                        {{ t(actionLabel[next]) }}
+                                    </button>
+                                </template>
                             </div>
                         </td>
                     </tr>
@@ -222,6 +220,47 @@ function fmtTime(iso) {
                 </button>
             </div>
         </div>
+
+        <!-- Bill / receipt sheet -->
+        <Dialog v-if="receiptOrder" :title="receiptOrder.code" :subtitle="t('orders.receipt')" @close="receiptOrder = null">
+            <div class="receipt">
+                <div class="receipt-meta">
+                    <div class="receipt-meta-row">
+                        <span style="color:var(--muted)">{{ t('orders.time') }}</span>
+                        <span style="color:var(--ink)">{{ fmtTime(receiptOrder.created_at) }}</span>
+                    </div>
+                    <div class="receipt-meta-row">
+                        <span style="color:var(--muted)">{{ t('orders.customer') }}</span>
+                        <span style="color:var(--ink)">{{ receiptOrder.customer_name || '—' }}</span>
+                    </div>
+                    <div class="receipt-meta-row">
+                        <span style="color:var(--muted)">{{ t('common.status') }}</span>
+                        <span class="badge" :class="badgeClass[receiptOrder.status]">{{ t('orders.status.' + receiptOrder.status) }}</span>
+                    </div>
+                </div>
+
+                <div class="receipt-divider"></div>
+
+                <div class="receipt-items">
+                    <div v-for="(it, i) in receiptOrder.items" :key="i" class="receipt-line">
+                        <span class="order-item-qty">{{ it.qty }}×</span>
+                        <span class="receipt-line-name">{{ it.name }}<template v-if="it.options?.length"> ({{ it.options.join(', ') }})</template></span>
+                        <span v-if="it.line_total != null" class="receipt-line-total">{{ it.line_total }}</span>
+                    </div>
+                </div>
+
+                <div v-if="receiptOrder.note" class="receipt-note">
+                    <span style="color:var(--muted)">{{ t('orders.note') }}:</span> {{ receiptOrder.note }}
+                </div>
+
+                <div class="receipt-divider"></div>
+
+                <div class="receipt-total">
+                    <span>{{ t('orders.total') }}</span>
+                    <span>{{ receiptOrder.total }} {{ currencyLabel(receiptOrder.currency, locale) }}</span>
+                </div>
+            </div>
+        </Dialog>
     </div>
 </template>
 
@@ -237,6 +276,17 @@ function fmtTime(iso) {
    Latin "3×" never gets reordered next to an Arabic name. */
 .order-item { display: flex; align-items: baseline; gap: 6px; }
 .order-item-qty { flex: none; font-weight: 700; color: var(--accent-dark); unicode-bidi: isolate; }
+/* Bill / receipt sheet */
+.receipt-meta { display: flex; flex-direction: column; gap: 8px; }
+.receipt-meta-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 14px; }
+.receipt-divider { height: 1px; background: var(--line); margin: 16px 0; }
+.receipt-items { display: flex; flex-direction: column; gap: 10px; }
+.receipt-line { display: flex; align-items: baseline; gap: 8px; }
+.receipt-line-name { flex: 1 1 auto; color: var(--body); }
+.receipt-line-total { flex: none; font-weight: 600; color: var(--ink); unicode-bidi: isolate; }
+.receipt-note { margin-top: 14px; font-size: 13px; color: var(--body); }
+.receipt-total { display: flex; align-items: center; justify-content: space-between;
+    font-size: 16px; font-weight: 700; color: var(--ink); }
 /* Briefly highlight a just-arrived order. */
 .order-row-new { animation: order-flash 5s ease-out; }
 @keyframes order-flash {
