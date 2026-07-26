@@ -36,7 +36,8 @@ class ReportService
      */
     public function productsByTime(Restaurant $restaurant, array $filters): array
     {
-        $group = ($filters['group'] ?? 'period') === 'hour' ? 'hour' : 'period';
+        $requested = $filters['group'] ?? 'period';
+        $group = in_array($requested, ['hour', 'day'], true) ? $requested : 'period';
         $tz = $this->timezone($restaurant);
 
         $orders = $this->withinTimeWindow(
@@ -54,9 +55,11 @@ class ReportService
         $overall = [];
 
         foreach ($orders as $order) {
-            $bucketKey = $group === 'hour'
-                ? $this->hourBucket($order->created_at, $tz)
-                : $this->periodBucket($order->created_at, $tz);
+            $bucketKey = match ($group) {
+                'hour' => $this->hourBucket($order->created_at, $tz),
+                'day' => $this->dayBucket($order->created_at, $tz),
+                default => $this->periodBucket($order->created_at, $tz),
+            };
 
             if (! isset($buckets[$bucketKey])) {
                 $buckets[$bucketKey] = ['orders' => 0, 'products' => []];
@@ -285,6 +288,12 @@ class ReportService
         return str_pad((string) $createdAt->copy()->setTimezone($tz)->hour, 2, '0', STR_PAD_LEFT).':00';
     }
 
+    /** Calendar-day bucket key, e.g. "2026-07-01" (local date), for group=day. */
+    private function dayBucket(Carbon $createdAt, string $tz): string
+    {
+        return $createdAt->copy()->setTimezone($tz)->format('Y-m-d');
+    }
+
     private function toMinutes(string $hhmm): int
     {
         [$h, $m] = array_map('intval', explode(':', $hhmm));
@@ -359,12 +368,14 @@ class ReportService
      */
     private function shapeBuckets(array $buckets, string $group): array
     {
-        // Preserve config order for periods; numeric/lexical for hours.
-        $order = $group === 'hour'
+        // Preserve config order for periods; chronological (lexical) for hours
+        // ("08:00") and days ("2026-07-01"), both of which sort correctly as text.
+        $chronological = in_array($group, ['hour', 'day'], true);
+        $order = $chronological
             ? array_keys($buckets)
             : array_merge(array_column((array) config('platform.report_periods', []), 'key'), ['other']);
 
-        if ($group === 'hour') {
+        if ($chronological) {
             sort($order);
         }
 

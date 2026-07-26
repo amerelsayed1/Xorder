@@ -13,6 +13,7 @@ import ImageUploader from '@xorder/ui/ImageUploader.vue'
 import FormError from '@xorder/ui/FormError.vue'
 import Icon from '@xorder/ui/Icon.vue'
 import { confirm } from '@xorder/ui/confirm.js'
+import { alert } from '@xorder/ui/alert.js'
 import { useMenuLang } from '../../lib/menuLang.js'
 
 const { t, locale } = useI18n()

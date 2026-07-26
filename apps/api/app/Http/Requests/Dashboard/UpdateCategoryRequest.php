@@ -20,11 +20,11 @@ class UpdateCategoryRequest extends FormRequest
         return [
             'name_ar' => [
                 'nullable', 'string', 'max:150',
-                Rule::unique('categories', 'name_ar')->where('restaurant_id', $restaurantId)->ignore($categoryId),
+                Rule::unique('categories', 'name_ar')->where('restaurant_id', $restaurantId)->whereNull('deleted_at')->ignore($categoryId),
             ],
             'name_en' => [
                 'nullable', 'string', 'max:150',
-                Rule::unique('categories', 'name_en')->where('restaurant_id', $restaurantId)->ignore($categoryId),
+                Rule::unique('categories', 'name_en')->where('restaurant_id', $restaurantId)->whereNull('deleted_at')->ignore($categoryId),
             ],
             'description_ar' => ['nullable', 'string', 'max:2000'],
             'description_en' => ['nullable', 'string', 'max:2000'],

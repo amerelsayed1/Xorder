@@ -165,6 +165,25 @@ class ReportTest extends TestCase
         $this->assertSame(1, $nineAm['total_orders']);
     }
 
+    public function test_daily_grouping_buckets_by_local_date(): void
+    {
+        $this->seedOrders();
+
+        $res = $this->actingAs($this->admin)
+            ->getJson('/api/dashboard/reports/products-by-time?group=day')->assertOk();
+
+        $this->assertSame('day', $res->json('data.group'));
+
+        // Every non-cancelled order shares the same local calendar day.
+        $day = collect($res->json('data.periods'))->firstWhere('key', '2026-07-15');
+        $this->assertNotNull($day);
+        $this->assertSame(3, $day['total_orders']);
+
+        // Latte's most-active bucket is now that date, not a day-part.
+        $latte = collect($res->json('data.products'))->firstWhere('name', 'Latte');
+        $this->assertSame('2026-07-15', $latte['most_active_period']);
+    }
+
     public function test_time_window_filters_products_by_local_time(): void
     {
         $this->seedOrders();

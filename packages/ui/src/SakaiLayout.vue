@@ -172,7 +172,8 @@ const targetLocaleName = computed(() => t(locale.value === 'ar' ? 'languages.en'
 
 /* Sidebar variant: full-width row pinned at the bottom, name always shown. */
 .sakai-profile-side { width: 100%; border-radius: 9px; padding: 9px 12px;
-    margin-top: 8px; cursor: default; }
+    margin-top: 8px; padding-top: 16px; border-top: 1px solid var(--p-content-border-color);
+    cursor: default; }
 .sakai-profile-side:hover { background: transparent; }
 .sakai-profile-side .sakai-profile-name { flex: 1; text-align: start; }
 .sakai-logout-btn { display: grid; place-items: center; width: 32px; height: 32px; flex: none;

@@ -44,7 +44,10 @@ class NotificationService
         $notification->restaurant_id = $restaurantId;
         $notification->save();
 
-        $this->push->toRestaurant($restaurantId, $title, $body, $data, $link);
+        // Carry the event type into the push payload so the client can tell an
+        // order apart from a review or subscription notice — only the former
+        // should trigger the loud new-order alarm.
+        $this->push->toRestaurant($restaurantId, $title, $body, ['type' => $type] + $data, $link);
 
         return $notification;
     }

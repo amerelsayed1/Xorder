@@ -73,10 +73,16 @@ export function useReportFilters() {
         return (locale.value === 'ar' ? (ar || en) : (en || ar)) || '—'
     }
 
-    // Day-part keys get a friendly label; hourly keys ("08:00") pass through.
+    // Hourly keys ("08:00") pass through; day keys ("2026-07-01") become a
+    // localized date; everything else is a day-part key with a friendly label.
     const periodLabel = (key) => {
         if (!key) return t('rep.na')
         if (/^\d{2}:\d{2}$/.test(key)) return key
+        if (/^\d{4}-\d{2}-\d{2}$/.test(key)) {
+            return new Date(`${key}T00:00:00`).toLocaleDateString(locale.value, {
+                weekday: 'short', day: 'numeric', month: 'short',
+            })
+        }
         return t(`rep.period.${key}`)
     }
 

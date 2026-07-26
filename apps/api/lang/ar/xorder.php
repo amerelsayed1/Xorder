@@ -74,6 +74,7 @@ return [
         'item_created' => 'تم إنشاء الصنف.',
         'item_updated' => 'تم تحديث الصنف.',
         'item_deleted' => 'تم حذف الصنف.',
+        'items_deleted' => '{0} لم يتم حذف أي صنف.|{1} تم حذف صنف واحد.|[2,*] تم حذف :count أصناف.',
         'availability_updated' => 'تم تحديث الإتاحة.',
         'items_not_found' => 'لم يتم العثور على صنف واحد أو أكثر.',
         'items_reordered' => 'تمت إعادة ترتيب الأصناف.',

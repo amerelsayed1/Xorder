@@ -197,6 +197,7 @@ Route::prefix('dashboard')
             Route::post('items/import', [MenuImportController::class, 'import']);
             Route::post('items', [MenuItemController::class, 'store']);
             Route::patch('items/reorder', [MenuItemController::class, 'reorder']);
+            Route::delete('items/bulk', [MenuItemController::class, 'bulkDestroy']);
             Route::put('items/{item}', [MenuItemController::class, 'update']);
             Route::patch('items/{item}/availability', [MenuItemController::class, 'toggleAvailability']);
             Route::delete('items/{item}', [MenuItemController::class, 'destroy']);

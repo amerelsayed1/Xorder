@@ -8,6 +8,7 @@ import StatusBadge from '@xorder/ui/StatusBadge.vue'
 import Icon from '@xorder/ui/Icon.vue'
 import TableSkeleton from '@xorder/ui/TableSkeleton.vue'
 import { confirm } from '@xorder/ui/confirm.js'
+import { alert } from '@xorder/ui/alert.js'
 
 const router = useRouter()
 const { t, locale } = useI18n()

@@ -96,7 +96,7 @@ class ReportController extends Controller
             'time_from' => ['sometimes', 'nullable', 'date_format:H:i'],
             'time_to' => ['sometimes', 'nullable', 'date_format:H:i'],
             'include_cancelled' => ['sometimes', 'boolean'],
-            'group' => ['sometimes', Rule::in(['period', 'hour'])],
+            'group' => ['sometimes', Rule::in(['period', 'hour', 'day'])],
         ]);
 
         // Bound the queried span so a single request can't pull an unbounded

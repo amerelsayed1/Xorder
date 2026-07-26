@@ -9,6 +9,7 @@ import { withMinDuration } from '../../lib/minLoading.js'
 import Icon from '@xorder/ui/Icon.vue'
 import Skeleton from '@xorder/ui/Skeleton.vue'
 import { confirm } from '@xorder/ui/confirm.js'
+import { alert } from '@xorder/ui/alert.js'
 import { useRealtime } from '../../stores/realtime.js'
 
 const { t, locale } = useI18n()
@@ -26,8 +27,8 @@ function openCustomer(order) {
 const STATUSES = ['NEW', 'CONFIRMED', 'COMPLETED', 'CANCELLED']
 const badgeClass = { NEW: 'badge-amber', CONFIRMED: 'badge-indigo', COMPLETED: 'badge-green', CANCELLED: 'badge-red' }
 // Which statuses each status can move to, rendered as per-row action buttons.
-const nextActions = { NEW: ['CONFIRMED', 'CANCELLED'] }
-const actionLabel = { CONFIRMED: 'orders.confirm', COMPLETED: 'orders.complete', CANCELLED: 'orders.cancel_order' }
+const nextActions = { NEW: ['COMPLETED', 'CANCELLED'], CONFIRMED: ['COMPLETED', 'CANCELLED'] }
+const actionLabel = { COMPLETED: 'orders.complete', CANCELLED: 'orders.cancel_order' }
 
 const rows = ref([])
 const meta = ref(null)

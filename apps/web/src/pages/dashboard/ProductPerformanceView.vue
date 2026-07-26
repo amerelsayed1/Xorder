@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { alert } from '@xorder/ui/alert.js'
 import api from '@xorder/api-client/api.js'
 import { withMinDuration } from '../../lib/minLoading.js'
 import Skeleton from '@xorder/ui/Skeleton.vue'
@@ -64,9 +65,12 @@ async function doExport(format) {
 
 onMounted(() => { loadFilters(); load() })
 
-// Max quantity for the inline bar in the product table.
-const maxQty = computed(() => Math.max(1, ...((report.value?.products || []).map((p) => p.quantity))))
 const hasProducts = computed(() => (report.value?.products || []).length > 0)
+
+// Section heading for the breakdown reflects the grouping the report ran with.
+const breakdownTitle = computed(() =>
+    report.value?.group === 'day' ? t('rep.by_day_title') : t('rep.by_period_title'),
+)
 
 // Sales-by-period — smooth area chart tracing sales across the day's buckets.
 function periodSalesOptions(c) {
@@ -141,6 +145,7 @@ function periodSalesOptions(c) {
                     <select v-model="groupBy" class="input">
                         <option value="period">{{ t('rep.by_period') }}</option>
                         <option value="hour">{{ t('rep.by_hour') }}</option>
+                        <option value="day">{{ t('rep.by_day') }}</option>
                     </select>
                 </label>
             </div>
@@ -211,12 +216,7 @@ function periodSalesOptions(c) {
                             <tbody>
                                 <tr v-for="(p, idx) in report.products" :key="p.name">
                                     <td class="num">{{ idx + 1 }}</td>
-                                    <td>
-                                        <div class="rep-prod">
-                                            <span>{{ p.name }}</span>
-                                            <span class="rep-bar"><span class="rep-bar-fill" :style="{ width: (p.quantity / maxQty * 100) + '%' }"></span></span>
-                                        </div>
-                                    </td>
+                                    <td>{{ p.name }}</td>
                                     <td class="num">{{ p.quantity }}</td>
                                     <td class="num">{{ p.orders_containing }}</td>
                                     <td class="num">{{ money(p.total_sales) }}</td>
@@ -230,13 +230,13 @@ function periodSalesOptions(c) {
 
                     <!-- Sales by period (chart) -->
                     <div v-if="(report.periods || []).length">
-                        <div class="label mb-2">{{ t('rep.sales') }} · {{ t('rep.by_period_title') }}</div>
+                        <div class="label mb-2">{{ t('rep.sales') }} · {{ breakdownTitle }}</div>
                         <ApexChart :build="periodSalesOptions" :redraw="[report, locale]" />
                     </div>
 
                     <!-- Per-period breakdown -->
                     <div>
-                        <div class="label mb-2">{{ t('rep.by_period_title') }}</div>
+                        <div class="label mb-2">{{ breakdownTitle }}</div>
                         <div class="rep-periods">
                             <div v-for="per in report.periods" :key="per.key" class="rep-period">
                                 <div class="rep-period-top">
@@ -276,9 +276,6 @@ function periodSalesOptions(c) {
 .rep-table th { color: var(--muted); font-weight: 600; font-size: 12px; }
 .rep-table td { color: var(--body); }
 .rep-table .num { text-align: end; font-variant-numeric: tabular-nums; }
-.rep-prod { display: flex; flex-direction: column; gap: 3px; min-width: 140px; }
-.rep-bar { display: block; height: 4px; border-radius: 3px; background: var(--accent-soft); overflow: hidden; }
-.rep-bar-fill { display: block; height: 100%; background: var(--accent); }
 
 .rep-periods { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
 .rep-period { border: 1px solid var(--line); border-radius: 12px; padding: 12px; }

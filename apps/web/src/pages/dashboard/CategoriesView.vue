@@ -12,6 +12,7 @@ import ImageUploader from '@xorder/ui/ImageUploader.vue'
 import FormError from '@xorder/ui/FormError.vue'
 import Icon from '@xorder/ui/Icon.vue'
 import { confirm } from '@xorder/ui/confirm.js'
+import { alert } from '@xorder/ui/alert.js'
 import { useMenuLang } from '../../lib/menuLang.js'
 
 const { t, locale } = useI18n()
@@ -66,7 +67,7 @@ async function toggle(c) {
 async function remove(c) {
     const ok = await confirm({
         title: t('common.delete'),
-        message: t('common.confirm_delete'),
+        message: c.items_count ? t('category.delete_warning', { count: c.items_count }) : t('common.confirm_delete'),
         confirmText: t('common.delete'),
         cancelText: t('common.cancel'),
         danger: true,
@@ -76,7 +77,7 @@ async function remove(c) {
         await ensureCsrf()
         await api.delete(`api/dashboard/categories/${c.id}`)
         await load()
-    } catch (err) { alert(t('common.delete_failed')) }
+    } catch (err) { alert(err.response?.data?.message || t('common.delete_failed')) }
 }
 async function move(index, dir) {
     const target = index + dir

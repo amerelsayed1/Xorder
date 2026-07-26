@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Dashboard;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Dashboard\BulkDeleteItemsRequest;
 use App\Http\Requests\Dashboard\ReorderRequest;
 use App\Http\Requests\Dashboard\StoreMenuItemRequest;
 use App\Http\Requests\Dashboard\UpdateMenuItemRequest;
@@ -136,6 +137,27 @@ class MenuItemController extends Controller
         $item->delete(); // soft delete
 
         return response()->json(['message' => __('xorder.messages.item_deleted')]);
+    }
+
+    /**
+     * Soft-delete several items at once. Every id is verified against the
+     * tenant scope first (same guard as reorder()), so a client cannot delete
+     * items outside its restaurant by injecting foreign ids into the list.
+     */
+    public function bulkDestroy(BulkDeleteItemsRequest $request): JsonResponse
+    {
+        $ids = collect($request->validated('ids'))->unique();
+
+        $ownedIds = MenuItem::whereIn('id', $ids)->pluck('id');
+        if ($ownedIds->count() !== $ids->count()) {
+            return response()->json(['message' => __('xorder.messages.items_not_found')], 422);
+        }
+
+        MenuItem::whereIn('id', $ownedIds)->delete(); // soft delete
+
+        return response()->json([
+            'message' => trans_choice('xorder.messages.items_deleted', $ownedIds->count(), ['count' => $ownedIds->count()]),
+        ]);
     }
 
     public function toggleAvailability(Request $request, MenuItem $item): JsonResponse

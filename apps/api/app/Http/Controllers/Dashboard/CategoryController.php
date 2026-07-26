@@ -53,18 +53,17 @@ class CategoryController extends Controller
     }
 
     /**
-     * Hard-delete only when empty; a category with items must be emptied (or
-     * deactivated instead) to avoid orphaning menu items. MVP rule.
+     * Soft-delete the category and cascade the soft-delete to its items so both
+     * drop off the dashboard and the public menu together. Everything is
+     * recoverable at the DB level via deleted_at (no restore UI yet, matching
+     * how MenuItem uses SoftDeletes).
      */
     public function destroy(Category $category): JsonResponse
     {
-        if ($category->menuItems()->exists()) {
-            return response()->json([
-                'message' => __('xorder.messages.category_has_items'),
-            ], 422);
-        }
-
-        $category->delete();
+        DB::transaction(function () use ($category) {
+            $category->menuItems()->delete(); // soft-delete children (MenuItem uses SoftDeletes)
+            $category->delete();              // soft-delete the category
+        });
 
         return response()->json(['message' => __('xorder.messages.category_deleted')]);
     }

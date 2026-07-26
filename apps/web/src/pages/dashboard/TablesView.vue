@@ -10,6 +10,7 @@ import StatusBadge from '@xorder/ui/StatusBadge.vue'
 import FormError from '@xorder/ui/FormError.vue'
 import Icon from '@xorder/ui/Icon.vue'
 import { confirm } from '@xorder/ui/confirm.js'
+import { alert } from '@xorder/ui/alert.js'
 import { useAuth } from '@xorder/api-client/auth.js'
 
 const { t, locale } = useI18n()

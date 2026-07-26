@@ -11,6 +11,7 @@ import Modal from '@xorder/ui/Modal.vue'
 import ListSkeleton from '@xorder/ui/ListSkeleton.vue'
 import Icon from '@xorder/ui/Icon.vue'
 import { confirm } from '@xorder/ui/confirm.js'
+import { alert } from '@xorder/ui/alert.js'
 
 const { t, locale } = useI18n()
 const router = useRouter()
@@ -46,6 +47,7 @@ async function load() {
         ]))
         items.value = it.data.data
         categories.value = cats.data.data
+        clearSelection()
     } catch (e) {
         console.error('Failed to load menu items', e)
     } finally {
@@ -53,6 +55,49 @@ async function load() {
     }
 }
 onMounted(load)
+
+// --- Multi-select / bulk delete ---
+// Selection is keyed by item id and persists across search/category filtering
+// so a user can narrow the list, tick a few, change the filter, tick more,
+// then delete the whole set at once.
+const selected = ref(new Set())
+function toggleSelect(id) {
+    if (selected.value.has(id)) selected.value.delete(id)
+    else selected.value.add(id)
+}
+function clearSelection() { selected.value.clear() }
+// Select-all reflects only the rows currently visible under the active filter.
+const allFilteredSelected = computed(() =>
+    filtered.value.length > 0 && filtered.value.every(i => selected.value.has(i.id)))
+const someFilteredSelected = computed(() =>
+    filtered.value.some(i => selected.value.has(i.id)) && !allFilteredSelected.value)
+function toggleAll() {
+    if (allFilteredSelected.value) filtered.value.forEach(i => selected.value.delete(i.id))
+    else filtered.value.forEach(i => selected.value.add(i.id))
+}
+const bulkDeleting = ref(false)
+async function bulkRemove() {
+    const ids = [...selected.value]
+    if (!ids.length || bulkDeleting.value) return
+    const ok = await confirm({
+        title: t('common.delete'),
+        message: t('item.confirm_delete_selected', { n: ids.length }),
+        confirmText: t('common.delete'),
+        cancelText: t('common.cancel'),
+        danger: true,
+    })
+    if (!ok) return
+    bulkDeleting.value = true
+    try {
+        await ensureCsrf()
+        await api.delete('api/dashboard/items/bulk', { data: { ids } })
+        await load()
+    } catch (err) {
+        alert(t('common.delete_failed'))
+    } finally {
+        bulkDeleting.value = false
+    }
+}
 
 function catName(id) {
     const c = categories.value.find(c => c.id === id)
@@ -212,6 +257,17 @@ async function submitImport() {
             </div>
         </div>
 
+        <!-- Bulk action bar — appears once one or more rows are ticked. -->
+        <div v-if="!auth.isReadOnly && selected.size" class="bulk-bar">
+            <span class="bulk-count">{{ t('item.selected_count', { n: selected.size }) }}</span>
+            <button class="btn btn-ghost btn-sm" @click="clearSelection">{{ t('item.clear_selection') }}</button>
+            <button class="btn btn-danger btn-sm" :disabled="bulkDeleting" @click="bulkRemove">
+                <Icon v-if="bulkDeleting" name="loading" :size="15" class="animate-spin" />
+                <Icon v-else name="trash" :size="15" />
+                {{ t('item.delete_selected') }}
+            </button>
+        </div>
+
         <!-- Table -->
         <div class="card overflow-hidden">
             <ListSkeleton v-if="loading" />
@@ -225,8 +281,13 @@ async function submitImport() {
               no separate flex layouts, no absolute positioning.
               Visual (RTL) order: Product | Category | Price | Featured | Available | Actions
             -->
-            <div v-else class="items-table" role="table">
+            <div v-else class="items-table" :class="{ 'select-mode': !auth.isReadOnly }" role="table">
                 <div class="items-row items-head" role="row">
+                    <div v-if="!auth.isReadOnly" role="columnheader" class="col-center col-select">
+                        <input type="checkbox" class="row-check" :checked="allFilteredSelected"
+                            :indeterminate.prop="someFilteredSelected" :aria-label="t('item.select_all')"
+                            @change="toggleAll" />
+                    </div>
                     <div role="columnheader" class="col-center">#</div>
                     <div role="columnheader">{{ t('item.item') }}</div>
                     <div role="columnheader" class="col-cat">{{ t('item.category') }}</div>
@@ -235,7 +296,11 @@ async function submitImport() {
                     <div role="columnheader" class="col-center">{{ t('common.available') }}</div>
                     <div role="columnheader" class="col-actions">{{ t('common.actions') }}</div>
                 </div>
-                <div v-for="(it, idx) in filtered" :key="it.id" class="items-row items-body-row" role="row">
+                <div v-for="(it, idx) in filtered" :key="it.id" class="items-row items-body-row" :class="{ 'row-selected': selected.has(it.id) }" role="row">
+                    <div v-if="!auth.isReadOnly" role="cell" class="col-center col-select">
+                        <input type="checkbox" class="row-check" :checked="selected.has(it.id)"
+                            :aria-label="itemName(it)" @change="toggleSelect(it.id)" />
+                    </div>
                     <div role="cell" class="col-center" style="color:var(--muted)">{{ idx + 1 }}</div>
                     <div role="cell">
                         <div class="flex items-center gap-3 min-w-0">
@@ -332,6 +397,18 @@ async function submitImport() {
     width: 100%;
     overflow-x: auto;        /* keeps columns aligned; scrolls instead of breaking on narrow desktops */
 }
+/* When selection is enabled, prepend a fixed checkbox column ahead of "#". */
+.items-table.select-mode {
+    --items-cols:
+        44px                 /* Select */
+        48px                 /* No. */
+        minmax(320px, 2fr)   /* Product (image + name) */
+        minmax(180px, 1fr)   /* Category */
+        minmax(140px, 0.8fr) /* Price */
+        100px                /* Featured */
+        120px                /* Available */
+        110px;               /* Actions */
+}
 .items-row {
     display: grid;
     grid-template-columns: var(--items-cols);
@@ -368,8 +445,48 @@ async function submitImport() {
             100px                /* Available */
             100px;               /* Actions */
     }
+    .items-table.select-mode {
+        --items-cols:
+            36px                 /* Select */
+            40px                 /* No. */
+            minmax(0, 2fr)       /* Product */
+            minmax(120px, 1fr)   /* Price */
+            100px                /* Available */
+            100px;               /* Actions */
+    }
     .col-cat, .col-feat { display: none; }
 }
+
+/* ── Multi-select ──────────────────────────────────────────────── */
+.col-select { padding-inline: 8px; }
+.row-check {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--accent);
+    cursor: pointer;
+    vertical-align: middle;
+}
+.items-body-row.row-selected { background: var(--accent-soft); }
+
+/* Sticky bar that surfaces bulk actions for the current selection. */
+.bulk-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    border-radius: 12px;
+    background: var(--accent-soft);
+    border: 1px solid var(--accent);
+}
+.bulk-count {
+    font-weight: 600;
+    font-size: 13.5px;
+    color: var(--accent);
+    margin-inline-end: auto;
+}
+.btn-danger { background: var(--red); color: #fff; border-color: var(--red); }
+.btn-danger:hover:not(:disabled) { filter: brightness(.94); }
+.btn-danger:disabled { opacity: .6; cursor: default; }
 
 /* Horizontal chip filter — handles many categories (with long bilingual
    names) without wrapping into tall cramped tabs like the segmented control. */

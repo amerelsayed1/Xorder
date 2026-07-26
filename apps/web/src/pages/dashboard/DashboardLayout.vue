@@ -88,10 +88,16 @@ function announce(arrived, kind = 'order') {
     }
 }
 
-// A foreground FCM push (tab focused) → same in-app treatment: sound + toast.
-function onForegroundPush() {
+// A foreground FCM push (tab focused). Only new orders / bill requests warrant
+// the loud alarm + toast; reviews and subscription notices also arrive as
+// pushes, but they must NOT ring the new-order sound — they surface silently
+// through the notification bell instead (the pulse keeps its unread count).
+function onForegroundPush(payload) {
+    const type = payload?.data?.type || ''
+    if (type !== 'order.created' && type !== 'bill_request.created') return
+    const kind = type === 'bill_request.created' ? 'request' : 'order'
     playSound().catch(() => {})
-    toast.value = { arrived: newOrders.value || 1 }
+    toast.value = { arrived: 1, kind }
     clearTimeout(toastTimer)
     toastTimer = setTimeout(() => (toast.value = null), 7000)
 }

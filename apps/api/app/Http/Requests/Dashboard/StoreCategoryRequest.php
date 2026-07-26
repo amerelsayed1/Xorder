@@ -19,11 +19,11 @@ class StoreCategoryRequest extends FormRequest
         return [
             'name_ar' => [
                 'nullable', 'string', 'max:150',
-                Rule::unique('categories', 'name_ar')->where('restaurant_id', $restaurantId),
+                Rule::unique('categories', 'name_ar')->where('restaurant_id', $restaurantId)->whereNull('deleted_at'),
             ],
             'name_en' => [
                 'nullable', 'string', 'max:150',
-                Rule::unique('categories', 'name_en')->where('restaurant_id', $restaurantId),
+                Rule::unique('categories', 'name_en')->where('restaurant_id', $restaurantId)->whereNull('deleted_at'),
             ],
             'description_ar' => ['nullable', 'string', 'max:2000'],
             'description_en' => ['nullable', 'string', 'max:2000'],

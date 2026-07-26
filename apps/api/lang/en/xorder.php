@@ -74,6 +74,7 @@ return [
         'item_created' => 'Item created.',
         'item_updated' => 'Item updated.',
         'item_deleted' => 'Item deleted.',
+        'items_deleted' => '{0} No items deleted.|{1} 1 item deleted.|[2,*] :count items deleted.',
         'availability_updated' => 'Availability updated.',
         'items_not_found' => 'One or more items were not found.',
         'items_reordered' => 'Items reordered.',

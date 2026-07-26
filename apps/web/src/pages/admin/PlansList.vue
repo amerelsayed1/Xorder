@@ -6,6 +6,7 @@ import api, { ensureCsrf } from '@xorder/api-client/api.js'
 import Icon from '@xorder/ui/Icon.vue'
 import TableSkeleton from '@xorder/ui/TableSkeleton.vue'
 import { confirm } from '@xorder/ui/confirm.js'
+import { alert } from '@xorder/ui/alert.js'
 
 const router = useRouter()
 const { t } = useI18n()

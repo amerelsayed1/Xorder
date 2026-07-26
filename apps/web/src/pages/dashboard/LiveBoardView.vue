@@ -6,6 +6,7 @@ import api, { ensureCsrf } from '@xorder/api-client/api.js'
 import { currencyLabel } from '../../lib/currency.js'
 import Skeleton from '@xorder/ui/Skeleton.vue'
 import { confirm } from '@xorder/ui/confirm.js'
+import { alert } from '@xorder/ui/alert.js'
 import { useRealtime } from '../../stores/realtime.js'
 
 const { t, locale } = useI18n()
@@ -69,8 +70,10 @@ async function setRequestStatus(bill, status) {
 // ---------- Orders (active = NEW + CONFIRMED, oldest first) ----------
 const orders = ref([])
 const orderNewIds = ref(new Set())
-const ORDER_NEXT = { NEW: ['CONFIRMED', 'CANCELLED'], CONFIRMED: ['COMPLETED', 'CANCELLED'] }
-const orderActionLabel = { CONFIRMED: 'orders.confirm', COMPLETED: 'orders.complete', CANCELLED: 'orders.cancel_order' }
+// NEW orders complete in one step. CONFIRMED kept only so any pre-existing
+// confirmed orders can still be cleared; new orders never enter that state.
+const ORDER_NEXT = { NEW: ['COMPLETED', 'CANCELLED'], CONFIRMED: ['COMPLETED', 'CANCELLED'] }
+const orderActionLabel = { COMPLETED: 'orders.complete', CANCELLED: 'orders.cancel_order' }
 const orderBadge = { NEW: 'badge-amber', CONFIRMED: 'badge-indigo' }
 
 async function loadOrders(highlight) {
