@@ -2,9 +2,9 @@
 
 namespace App\Http\Controllers\Dashboard;
 
-use App\Http\Controllers\Controller;
 use App\Enums\BillRequestStatus;
 use App\Enums\OrderStatus;
+use App\Http\Controllers\Controller;
 use App\Http\Requests\Dashboard\StoreTableRequest;
 use App\Http\Requests\Dashboard\UpdateTableRequest;
 use App\Http\Resources\DiningTableResource;
