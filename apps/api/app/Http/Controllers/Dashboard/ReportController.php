@@ -91,6 +91,10 @@ class ReportController extends Controller
             'dining_area_id' => ['sometimes', 'nullable', 'integer'],
             'area_type' => ['sometimes', 'nullable', 'string', 'max:40'],
             'order_type' => ['sometimes', 'nullable', Rule::in(['pickup', 'delivery', 'dine_in'])],
+            // Time-of-day window (local restaurant time). from > to is allowed —
+            // it spans midnight (e.g. 23:00–02:00), matching the day-part logic.
+            'time_from' => ['sometimes', 'nullable', 'date_format:H:i'],
+            'time_to' => ['sometimes', 'nullable', 'date_format:H:i'],
             'include_cancelled' => ['sometimes', 'boolean'],
             'group' => ['sometimes', Rule::in(['period', 'hour'])],
         ]);

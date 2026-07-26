@@ -165,6 +165,61 @@ class ReportTest extends TestCase
         $this->assertSame(1, $nineAm['total_orders']);
     }
 
+    public function test_time_window_filters_products_by_local_time(): void
+    {
+        $this->seedOrders();
+
+        // 09:00–11:00 catches both breakfast orders (Latte) but not dinner.
+        $morning = $this->actingAs($this->admin)
+            ->getJson('/api/dashboard/reports/products-by-time?time_from=09:00&time_to=11:00')->assertOk();
+        $products = collect($morning->json('data.products'))->keyBy('name');
+        $this->assertSame(3, $products['Latte']['quantity']);
+        $this->assertFalse($products->has('Burger'));
+
+        // 18:00–20:00 catches only the dinner order.
+        $evening = $this->actingAs($this->admin)
+            ->getJson('/api/dashboard/reports/products-by-time?time_from=18:00&time_to=20:00')->assertOk();
+        $eveningProducts = collect($evening->json('data.products'))->keyBy('name');
+        $this->assertSame(3, $eveningProducts['Burger']['quantity']);
+        $this->assertFalse($eveningProducts->has('Latte'));
+    }
+
+    public function test_time_window_wraps_past_midnight(): void
+    {
+        $this->seedOrders();
+        // A 2 AM order — inside a 23:00→03:00 window that crosses midnight.
+        $this->makeOrder($this->indoor, '2026-07-16 02:00', [
+            ['name' => 'NightSnack', 'qty' => 1, 'line_total' => 40],
+        ], 40);
+
+        $res = $this->actingAs($this->admin)
+            ->getJson('/api/dashboard/reports/products-by-time?time_from=23:00&time_to=03:00')->assertOk();
+
+        $products = collect($res->json('data.products'))->keyBy('name');
+        $this->assertSame(1, $products['NightSnack']['quantity']);
+        $this->assertFalse($products->has('Latte'));   // 09:00 order excluded
+    }
+
+    public function test_time_window_filters_dining_area_orders(): void
+    {
+        $this->seedOrders();
+
+        $res = $this->actingAs($this->admin)
+            ->getJson('/api/dashboard/reports/dining-areas?time_from=09:00&time_to=11:00')->assertOk();
+
+        $areas = collect($res->json('data.areas'))->keyBy('id');
+        $this->assertSame(2, $areas[$this->indoor->id]['total_orders']);   // both breakfast
+        $this->assertSame(0, $areas[$this->outdoor->id]['total_orders']);  // dinner excluded
+    }
+
+    public function test_time_filter_rejects_bad_format(): void
+    {
+        $this->actingAs($this->admin)
+            ->getJson('/api/dashboard/reports/products-by-time?time_from=25:99')
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('time_from');
+    }
+
     public function test_dining_area_report_returns_per_area_totals_and_rolls_up(): void
     {
         $this->seedOrders();

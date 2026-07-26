@@ -39,8 +39,12 @@ class ReportService
         $group = ($filters['group'] ?? 'period') === 'hour' ? 'hour' : 'period';
         $tz = $this->timezone($restaurant);
 
-        $orders = $this->matchingOrders($restaurant, $filters)
-            ->get(['id', 'items', 'created_at']);
+        $orders = $this->withinTimeWindow(
+            $this->matchingOrders($restaurant, $filters)->get(['id', 'items', 'created_at']),
+            $this->timeWindow($filters),
+            $tz,
+            'created_at',
+        );
 
         $totalOrders = $orders->count();
 
@@ -140,10 +144,17 @@ class ReportService
 
         $branches = Branch::query()->get()->keyBy('id');
 
+        $tz = $this->timezone($restaurant);
+
         // One pass over the matching orders, grouped by dining area.
-        $orders = $this->matchingOrders($restaurant, $filters)
-            ->whereNotNull('dining_area_id')
-            ->get(['id', 'dining_area_id', 'items', 'total']);
+        $orders = $this->withinTimeWindow(
+            $this->matchingOrders($restaurant, $filters)
+                ->whereNotNull('dining_area_id')
+                ->get(['id', 'dining_area_id', 'items', 'total', 'created_at']),
+            $this->timeWindow($filters),
+            $tz,
+            'created_at',
+        );
 
         $orderAgg = [];   // area_id => ['orders','sales','products'=>[name=>qty]]
         foreach ($orders as $order) {
@@ -279,6 +290,63 @@ class ReportService
         [$h, $m] = array_map('intval', explode(':', $hhmm));
 
         return $h * 60 + $m;
+    }
+
+    /**
+     * The optional time-of-day window as [fromMinutes, toMinutes] in the
+     * restaurant's local time, or null when neither bound is set. A window whose
+     * `from` exceeds `to` wraps past midnight (e.g. 23:00–02:00). Filtering runs
+     * in PHP (not SQL) so it honours the restaurant timezone across both the
+     * Postgres runtime and the SQLite test DB.
+     *
+     * @param  array<string,mixed>  $filters
+     * @return array{0:int,1:int}|null
+     */
+    private function timeWindow(array $filters): ?array
+    {
+        $from = empty($filters['time_from']) ? null : $this->toMinutes($filters['time_from']);
+        $to = empty($filters['time_to']) ? null : $this->toMinutes($filters['time_to']);
+
+        if ($from === null && $to === null) {
+            return null;
+        }
+
+        // An open bound falls back to the full day so a single-sided filter
+        // ("from 22:00", "until 06:00") still works.
+        return [$from ?? 0, $to ?? 1440];
+    }
+
+    /**
+     * Keep only rows whose local time-of-day on `$column` lands in `$window`.
+     * No-op when `$window` is null.
+     *
+     * @template TModel of \Illuminate\Database\Eloquent\Model
+     *
+     * @param  Collection<int,TModel>  $rows
+     * @param  array{0:int,1:int}|null  $window
+     * @return Collection<int,TModel>
+     */
+    private function withinTimeWindow(Collection $rows, ?array $window, string $tz, string $column): Collection
+    {
+        if ($window === null) {
+            return $rows;
+        }
+
+        [$from, $to] = $window;
+
+        return $rows->filter(function ($row) use ($from, $to, $tz, $column) {
+            $ts = $row->{$column};
+            if (! $ts instanceof Carbon) {
+                return false;
+            }
+
+            $local = $ts->copy()->setTimezone($tz);
+            $mins = $local->hour * 60 + $local->minute;
+
+            return $from <= $to
+                ? ($mins >= $from && $mins <= $to)   // same-day window (inclusive)
+                : ($mins >= $from || $mins <= $to);  // wraps past midnight
+        })->values();
     }
 
     // ---------------------------------------------------------------------

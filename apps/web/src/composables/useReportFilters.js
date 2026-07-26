@@ -15,6 +15,8 @@ export function useReportFilters() {
 
     const dateFrom = ref('')
     const dateTo = ref('')
+    const timeFrom = ref('')
+    const timeTo = ref('')
     const branchId = ref('')
     const areaId = ref('')
     const areaType = ref('')
@@ -31,6 +33,8 @@ export function useReportFilters() {
         return {
             date_from: dateFrom.value || undefined,
             date_to: dateTo.value || undefined,
+            time_from: timeFrom.value || undefined,
+            time_to: timeTo.value || undefined,
             branch_id: branchId.value || undefined,
             dining_area_id: areaId.value || undefined,
             area_type: areaType.value || undefined,
@@ -54,6 +58,8 @@ export function useReportFilters() {
     function resetFilters() {
         dateFrom.value = ''
         dateTo.value = ''
+        timeFrom.value = ''
+        timeTo.value = ''
         branchId.value = ''
         areaId.value = ''
         areaType.value = ''
@@ -89,7 +95,7 @@ export function useReportFilters() {
 
     return {
         branches, areas,
-        dateFrom, dateTo, branchId, areaId, areaType, orderType, includeCancelled, groupBy,
+        dateFrom, dateTo, timeFrom, timeTo, branchId, areaId, areaType, orderType, includeCancelled, groupBy,
         AREA_TYPES, ORDER_TYPES,
         params, loadFilters, resetFilters,
         localName, periodLabel, typeLabel, fmtSecs, money,

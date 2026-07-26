@@ -12,7 +12,7 @@ const { t, locale } = useI18n()
 
 const {
     branches, areas,
-    dateFrom, dateTo, branchId, areaId, areaType, orderType, includeCancelled,
+    dateFrom, dateTo, timeFrom, timeTo, branchId, areaId, areaType, orderType, includeCancelled,
     AREA_TYPES, ORDER_TYPES,
     params, loadFilters, resetFilters,
     localName, typeLabel, fmtSecs, money,
@@ -74,6 +74,14 @@ function areaOrdersOptions(c) {
                 <label class="rep-field">
                     <span class="label">{{ t('rep.date_to') }}</span>
                     <input v-model="dateTo" type="date" class="input" />
+                </label>
+                <label class="rep-field">
+                    <span class="label">{{ t('rep.time_from') }}</span>
+                    <input v-model="timeFrom" type="time" class="input" />
+                </label>
+                <label class="rep-field">
+                    <span class="label">{{ t('rep.time_to') }}</span>
+                    <input v-model="timeTo" type="time" class="input" />
                 </label>
                 <label class="rep-field">
                     <span class="label">{{ t('rep.branch') }}</span>
