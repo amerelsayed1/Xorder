@@ -5,7 +5,7 @@ import api from '@xorder/api-client/api.js'
 import { withMinDuration } from '../../lib/minLoading.js'
 import Skeleton from '@xorder/ui/Skeleton.vue'
 import ApexChart from '../../components/ApexChart.vue'
-import { columnChart } from '../../lib/charts.js'
+import { areaChart } from '../../lib/charts.js'
 import { useReportFilters } from '../../composables/useReportFilters.js'
 
 const { t, locale } = useI18n()
@@ -68,14 +68,14 @@ onMounted(() => { loadFilters(); load() })
 const maxQty = computed(() => Math.max(1, ...((report.value?.products || []).map((p) => p.quantity))))
 const hasProducts = computed(() => (report.value?.products || []).length > 0)
 
-// Sales-by-period — Flowbite column chart over the report's period buckets.
+// Sales-by-period — smooth area chart tracing sales across the day's buckets.
 function periodSalesOptions(c) {
     const periods = report.value?.periods || []
-    return columnChart({
+    return areaChart({
         colors: c,
         categories: periods.map((p) => periodLabel(p.key)),
         series: [{ name: t('rep.sales'), data: periods.map((p) => Number(p.total_sales) || 0) }],
-        palette: [c.accent],
+        color: c.accent,
         money: true,
         height: 300,
     })

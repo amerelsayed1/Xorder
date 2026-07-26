@@ -85,7 +85,7 @@ export function barChart({ colors, categories, series, height = 260, color, mone
 }
 
 // Smooth gradient area chart (Flowbite "Area chart") — for compact trends.
-export function areaChart({ colors, categories, series, height = 220, color }) {
+export function areaChart({ colors, categories, series, height = 220, color, money = false }) {
     const stroke = color || colors.accent
     return {
         series,
@@ -97,11 +97,12 @@ export function areaChart({ colors, categories, series, height = 220, color }) {
         },
         dataLabels: { enabled: false },
         stroke: { width: 3, curve: 'smooth' },
+        markers: { size: 4, strokeWidth: 0, hover: { size: 6 } },
         legend: { show: false },
         grid: { show: true, borderColor: colors.line, strokeDashArray: 4, padding: { left: 4, right: 4, top: -12 } },
-        tooltip: { style: { fontFamily: FONT }, x: { show: true } },
+        tooltip: tooltipCfg(money, { x: { show: true } }),
         xaxis: { categories, labels: axisLabelStyle(colors), axisBorder: { show: false }, axisTicks: { show: false }, tooltip: { enabled: false } },
-        yaxis: { show: true, labels: { ...axisLabelStyle(colors), formatter: (val) => fmtCompact(val) } },
+        yaxis: { show: true, labels: { ...axisLabelStyle(colors), formatter: money ? (val) => fmtMoney(val) : (val) => fmtCompact(val) } },
     }
 }
 
