@@ -128,7 +128,7 @@ class Restaurant extends Model
         $sys = $this->hasFeature('system_ordering');
 
         return match (true) {
-            $wa && $sys => [OrderingMode::WHATSAPP, OrderingMode::SYSTEM, OrderingMode::BOTH],
+            $wa && $sys => [OrderingMode::WHATSAPP, OrderingMode::SYSTEM],
             $wa => [OrderingMode::WHATSAPP],
             $sys => [OrderingMode::SYSTEM],
             default => [],

@@ -1,6 +1,7 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
 import { isValidMobile } from '../lib/phone.js'
+import { isValidEmail } from '../lib/email.js'
 
 const props = defineProps({
     isOpen: Boolean,
@@ -19,11 +20,13 @@ const emit = defineEmits(['close', 'enterEdit', 'cancelEdit', 'save', 'clear', '
 // Only scold the customer once they try to save, not while they're still typing.
 const attempted = ref(false)
 const phoneInvalid = computed(() => !isValidMobile(props.editForm?.phone))
+// Email is optional; only flag it when something was typed and it's malformed.
+const emailInvalid = computed(() => !isValidEmail(props.editForm?.email))
 watch(() => props.isEditing, () => { attempted.value = false })
 
 function attemptSave() {
     attempted.value = true
-    if (phoneInvalid.value) return
+    if (phoneInvalid.value || emailInvalid.value) return
     emit('save')
 }
 </script>
@@ -81,7 +84,8 @@ function attemptSave() {
                             </div>
                             <div>
                                 <label class="block text-sm font-semibold mb-1.5">{{ t('f_email') }}</label>
-                                <input :value="editForm.email" type="email" class="w-full px-3.5 py-2.5 rounded-xl border border-stone-200 focus:outline-none ltr" dir="ltr" @input="$emit('updateField', 'email', $event.target.value)" />
+                                <input :value="editForm.email" type="email" class="w-full px-3.5 py-2.5 rounded-xl border focus:outline-none ltr" :class="attempted && emailInvalid ? 'border-red-400' : 'border-stone-200'" dir="ltr" :aria-invalid="attempted && emailInvalid" @input="$emit('updateField', 'email', $event.target.value)" />
+                                <p v-if="attempted && emailInvalid" class="text-xs text-red-500 mt-1">{{ t('f_email_invalid') }}</p>
                             </div>
                             <div>
                                 <label class="block text-sm font-semibold mb-1.5">{{ t('f_address') }} <span class="text-red-500">*</span></label>

@@ -45,22 +45,23 @@ class OrderingModeReconciliationTest extends TestCase
         $both = Restaurant::factory()->create();
         $this->grant($both, ['whatsapp_ordering', 'system_ordering']);
         $this->assertSame(
-            [OrderingMode::WHATSAPP, OrderingMode::SYSTEM, OrderingMode::BOTH],
+            [OrderingMode::WHATSAPP, OrderingMode::SYSTEM],
             $both->fresh()->availableOrderingModes(),
         );
     }
 
     public function test_applying_features_coerces_ordering_mode(): void
     {
-        // Prefers 'both' but the plan only grants WhatsApp → coerced to whatsapp.
-        $r = Restaurant::factory()->create(['ordering_mode' => OrderingMode::BOTH]);
+        // Prefers system but the plan only grants WhatsApp → coerced to whatsapp.
+        $r = Restaurant::factory()->create(['ordering_mode' => OrderingMode::SYSTEM]);
         $this->grant($r, ['whatsapp_ordering']);
         $this->assertSame(OrderingMode::WHATSAPP, $r->fresh()->ordering_mode);
 
-        // Plan grants both → a 'both' preference is preserved.
-        $r2 = Restaurant::factory()->create(['ordering_mode' => OrderingMode::BOTH]);
+        // Plan grants both channels → a system preference is preserved (both are
+        // available, so the stored choice stands).
+        $r2 = Restaurant::factory()->create(['ordering_mode' => OrderingMode::SYSTEM]);
         $this->grant($r2, ['whatsapp_ordering', 'system_ordering']);
-        $this->assertSame(OrderingMode::BOTH, $r2->fresh()->ordering_mode);
+        $this->assertSame(OrderingMode::SYSTEM, $r2->fresh()->ordering_mode);
 
         // Downgrade: a system-only preference under a WhatsApp-only plan → whatsapp.
         $r3 = Restaurant::factory()->create(['ordering_mode' => OrderingMode::SYSTEM]);
@@ -71,7 +72,7 @@ class OrderingModeReconciliationTest extends TestCase
     public function test_order_pipeline_honours_the_coerced_mode(): void
     {
         // WhatsApp-only plan → mode coerced to whatsapp → no order record created.
-        $wa = Restaurant::factory()->create(['slug' => 'nosys', 'ordering_mode' => OrderingMode::BOTH]);
+        $wa = Restaurant::factory()->create(['slug' => 'nosys', 'ordering_mode' => OrderingMode::SYSTEM]);
         $this->grant($wa, ['whatsapp_ordering']);
         $cat = Category::factory()->for($wa)->create(['is_active' => true]);
         MenuItem::factory()->for($wa)->for($cat)->create();

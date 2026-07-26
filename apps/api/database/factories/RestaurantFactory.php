@@ -32,7 +32,7 @@ class RestaurantFactory extends Factory
             'address' => fake()->address(),
             'brand_color' => fake()->hexColor(),
             'default_language' => LanguageEnum::AR,
-            'ordering_mode' => OrderingMode::BOTH,
+            'ordering_mode' => OrderingMode::WHATSAPP,
             'status' => RestaurantStatus::ACTIVE,
             'subscription_status' => SubscriptionStatus::TRIAL,
         ];

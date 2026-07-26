@@ -5,9 +5,11 @@ namespace App\Http\Controllers\Dashboard;
 use App\Enums\OrderStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\OrderResource;
+use App\Models\Notification;
 use App\Models\Order;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Validation\Rule;
 
 class OrderController extends Controller
@@ -40,7 +42,20 @@ class OrderController extends Controller
             'status' => ['required', Rule::in(OrderStatus::values())],
         ]);
 
-        $order->update(['status' => $request->input('status')]);
+        $status = $request->input('status');
+        $order->update(['status' => $status]);
+
+        // Once an order is acted on (moved out of NEW), its "new order" alert is
+        // no longer new — clear the unread dot so the bell stays trustworthy.
+        // The order_id linkage is stored (as a string) on the notification's
+        // data payload by PublicOrderController when the order is placed.
+        if ($status !== OrderStatus::NEW->value) {
+            Notification::query()
+                ->where('type', 'order.created')
+                ->where('data->order_id', (string) $order->id)
+                ->whereNull('read_at')
+                ->update(['read_at' => Carbon::now()]);
+        }
 
         return response()->json([
             'data' => OrderResource::make($order->fresh()),

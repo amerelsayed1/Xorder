@@ -202,6 +202,29 @@ function addToCartHandler(note) {
     closeModal()
 }
 
+// Total quantity of an item across all its cart lines (variants + notes).
+function cartQtyOf(kind, item) {
+    return cart.value
+        .filter(l => l.kind === kind && l.ref?.id === item?.id)
+        .reduce((n, l) => n + l.qty, 0)
+}
+
+// Quick-add from the menu card. Items with options can't be added blindly —
+// open the modal so the diner picks them; simple items add one directly.
+function quickAdd(kind, item) {
+    const groups = kind === 'combo' ? (item.groups || []) : (item.option_groups || [])
+    if (groups.length) { openModal(kind, item); return }
+    track('menu_add_to_cart', { slug, kind })
+    addToCart(kind, item, {}, 1, '')
+}
+
+// Quick-remove: drop one from the most recently added line of this item.
+function quickRemove(kind, item) {
+    const lines = cart.value.filter(l => l.kind === kind && l.ref?.id === item?.id)
+    const last = lines[lines.length - 1]
+    if (last) bumpLine(last.uid, -1)
+}
+
 function submitOrder(details) {
     // Guard against double-clicks racing the disabled state.
     if (submittingOrder.value || !canOrder.value) return
@@ -324,7 +347,10 @@ function updateUserField(field, value) {
                         :t="t"
                         :money="money"
                         :localize="localize"
+                        :cartQty="cartQtyOf"
                         @openModal="openModal"
+                        @quickAdd="quickAdd"
+                        @quickRemove="quickRemove"
                         @activeSection="activeCat = $event"
                     />
                 </template>

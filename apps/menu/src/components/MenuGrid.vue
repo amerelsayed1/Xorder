@@ -14,9 +14,11 @@ const props = defineProps({
     t: Function,
     money: Function,
     localize: Function,
+    // Returns how many of an item are currently in the cart (0 = show add button).
+    cartQty: { type: Function, default: () => 0 },
 })
 
-const emit = defineEmits(['openModal', 'activeSection'])
+const emit = defineEmits(['openModal', 'activeSection', 'quickAdd', 'quickRemove'])
 
 const menuRoot = ref(null)
 let scrollFrame = null
@@ -168,15 +170,35 @@ const priceOf = (section, item) => {
                                 </strong>
                             </div>
                             <p>{{ localize(item, 'description') }}</p>
-                            <button
-                                v-if="item.is_available !== false && orderingEnabled"
-                                class="add-button"
-                                :aria-label="`${t('add')} ${localize(item)}`"
-                                @click.stop="$emit('openModal', section.kind, item)"
-                            >
-                                <span class="add-button__icon" aria-hidden="true">+</span>
-                                <span class="add-button__label">{{ t('add') }}</span>
-                            </button>
+                            <div v-if="item.is_available !== false && orderingEnabled" class="card-action" @click.stop>
+                                <!-- Once the item is in the cart, the add button becomes a
+                                     quantity stepper so diners can adjust it without opening
+                                     the modal. Items with options still open the modal on +. -->
+                                <div v-if="cartQty(section.kind, item) > 0" class="card-qty">
+                                    <button
+                                        type="button"
+                                        class="card-qty__btn card-qty__btn--add"
+                                        :aria-label="`${t('add')} ${localize(item)}`"
+                                        @click="$emit('quickAdd', section.kind, item)"
+                                    >+</button>
+                                    <span class="card-qty__num">{{ cartQty(section.kind, item) }}</span>
+                                    <button
+                                        type="button"
+                                        class="card-qty__btn card-qty__btn--sub"
+                                        :aria-label="`${t('remove')} ${localize(item)}`"
+                                        @click="$emit('quickRemove', section.kind, item)"
+                                    >−</button>
+                                </div>
+                                <button
+                                    v-else
+                                    class="add-button"
+                                    :aria-label="`${t('add')} ${localize(item)}`"
+                                    @click="$emit('quickAdd', section.kind, item)"
+                                >
+                                    <span class="add-button__icon" aria-hidden="true">+</span>
+                                    <span class="add-button__label">{{ t('add') }}</span>
+                                </button>
+                            </div>
                         </div>
                     </article>
                 </div>

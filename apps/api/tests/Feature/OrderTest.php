@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\Notification;
 use App\Models\Order;
 use App\Models\Restaurant;
 use App\Models\User;
@@ -112,6 +113,29 @@ class OrderTest extends TestCase
         // Cross-tenant access is a 404, never a 403 (information hiding).
         $this->actingAs($admin)->patchJson("/api/dashboard/orders/{$foreignOrder->id}/status", ['status' => 'CONFIRMED'])
             ->assertNotFound();
+    }
+
+    public function test_acting_on_an_order_marks_its_new_order_notification_read(): void
+    {
+        $r = Restaurant::factory()->create();
+        $admin = User::factory()->restaurantAdmin($r->id)->create();
+        $this->enableSystemOrdering($r);
+
+        // Placing the order records an unread 'order.created' notification whose
+        // data.order_id links back to the order (via terminating callbacks).
+        $this->postJson("/api/public/restaurants/{$r->slug}/orders", $this->payload())->assertCreated();
+        $order = Order::withoutGlobalScopes()->where('restaurant_id', $r->id)->first();
+
+        $notification = Notification::withoutGlobalScopes()
+            ->where('restaurant_id', $r->id)
+            ->where('type', 'order.created')
+            ->first();
+        $this->assertNull($notification->read_at);
+
+        $this->actingAs($admin)->patchJson("/api/dashboard/orders/{$order->id}/status", ['status' => 'CONFIRMED'])
+            ->assertOk();
+
+        $this->assertNotNull($notification->fresh()->read_at);
     }
 
     public function test_order_status_rejects_unknown_value(): void

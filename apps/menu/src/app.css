@@ -975,6 +975,59 @@ html[dir='ltr'] .hero-overlay {
     flex: none;
 }
 
+/* In-cart quantity stepper shown in place of the add button. Forced LTR so
+   the + always sits on the left and − on the right, regardless of locale. */
+.card-qty {
+    direction: ltr;
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    align-self: flex-start;
+    margin-top: auto;
+    min-height: 44px;
+    padding-inline: 6px;
+    border-radius: 999px;
+    background: var(--accent-soft);
+    border: 1px solid var(--accent-border);
+}
+
+.card-qty__btn {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    font-size: 20px;
+    line-height: 1;
+    cursor: pointer;
+    flex: none;
+    padding: 0;
+    transition: filter .18s, background .18s;
+}
+
+.card-qty__btn--add {
+    background: var(--accent);
+    color: #fff;
+    border: 0;
+}
+
+.card-qty__btn--sub {
+    background: #fff;
+    color: var(--accent-dark);
+    border: 1px solid var(--accent-border);
+}
+
+.card-qty__btn:hover { filter: brightness(.95); }
+
+.card-qty__num {
+    min-width: 18px;
+    text-align: center;
+    font-weight: 800;
+    font-size: 15px;
+    color: var(--accent-dark);
+    font-variant-numeric: tabular-nums;
+}
+
 .product-card.unavailable {
     filter: grayscale(.35);
     cursor: default;

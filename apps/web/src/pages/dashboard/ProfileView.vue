@@ -72,9 +72,7 @@ onMounted(async () => {
         // so the inputs stay controlled.
         social_links: { instagram: '', facebook: '', tiktok: '', ...(data.data.social_links || {}) },
     })
-    orderingModeOptions.value = data.data.available_ordering_modes?.length === 3
-        ? ['both', 'whatsapp', 'system']
-        : (data.data.available_ordering_modes || [])
+    orderingModeOptions.value = data.data.available_ordering_modes || []
     if (orderingModeOptions.value.length && !orderingModeOptions.value.includes(form.ordering_mode)) {
         form.ordering_mode = orderingModeOptions.value[0]
     }

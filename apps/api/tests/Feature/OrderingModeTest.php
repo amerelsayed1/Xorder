@@ -32,11 +32,11 @@ class OrderingModeTest extends TestCase
         return $r;
     }
 
-    public function test_restaurants_default_to_both_mode(): void
+    public function test_restaurants_default_to_whatsapp_mode(): void
     {
         $r = Restaurant::factory()->create();
 
-        $this->assertSame(OrderingMode::BOTH, $r->fresh()->ordering_mode);
+        $this->assertSame(OrderingMode::WHATSAPP, $r->fresh()->ordering_mode);
     }
 
     public function test_public_menu_exposes_ordering_mode(): void
@@ -64,17 +64,9 @@ class OrderingModeTest extends TestCase
         $this->assertDatabaseHas('orders', ['restaurant_id' => $r->id, 'source' => 'system']);
     }
 
-    public function test_both_mode_records_order_tagged_whatsapp(): void
-    {
-        $r = $this->withMenu(Restaurant::factory()->withOrdering()->create(['slug' => 'both', 'ordering_mode' => OrderingMode::BOTH]));
-
-        $this->postJson('/api/public/restaurants/both/orders', $this->payload())->assertCreated();
-        $this->assertDatabaseHas('orders', ['restaurant_id' => $r->id, 'source' => 'whatsapp']);
-    }
-
     public function test_restaurant_admin_can_change_ordering_mode_via_profile(): void
     {
-        $r = Restaurant::factory()->create(['ordering_mode' => OrderingMode::BOTH]);
+        $r = Restaurant::factory()->create(['ordering_mode' => OrderingMode::WHATSAPP]);
         $admin = User::factory()->restaurantAdmin($r->id)->create();
 
         $this->actingAs($admin)->putJson('/api/dashboard/restaurant', ['ordering_mode' => 'system'])

@@ -6,6 +6,7 @@ import api, { ensureCsrf } from '@xorder/api-client/api.js'
 import ImageUploader from '@xorder/ui/ImageUploader.vue'
 import FormError from '@xorder/ui/FormError.vue'
 import { collectPhoneErrors } from '../../lib/phone.js'
+import { collectEmailErrors } from '../../lib/email.js'
 import { menuHostSuffix } from '../../lib/host.js'
 
 const route = useRoute()
@@ -28,7 +29,7 @@ const form = reactive({
     default_language: 'ar',
     bilingual: true,
     currency: 'EGP',
-    ordering_mode: 'both',
+    ordering_mode: 'whatsapp',
     status: 'ACTIVE', subscription_status: 'TRIAL',
     subscription_plan: '',
     admin: { name: '', username: '', email: '', password: '' },
@@ -148,11 +149,12 @@ const branchAllowed = computed(() => {
 })
 watch(branchAllowed, (ok) => { if (!ok) branchEnabled.value = false })
 
-// The ordering-mode choice is capped to the channels the selected plan grants:
-// both WhatsApp + system → all three; only one entitled → that one.
+// The ordering-mode choice is capped to the channels the selected plan grants.
+// The two channels are mutually exclusive: even when both are entitled the owner
+// picks one — WhatsApp or system, never both.
 const orderingModeOptions = computed(() => {
     const has = (k) => derivedFeatureKeys.value.includes(k)
-    if (has('whatsapp_ordering') && has('system_ordering')) return ['both', 'whatsapp', 'system']
+    if (has('whatsapp_ordering') && has('system_ordering')) return ['whatsapp', 'system']
     if (has('whatsapp_ordering')) return ['whatsapp']
     if (has('system_ordering')) return ['system']
     return []
@@ -244,10 +246,13 @@ async function submitCreate() {
         phoneFields['branch.phone'] = branch.phone
         phoneFields['branch.whatsapp_number'] = branch.whatsapp_number
     }
-    const phoneErrors = collectPhoneErrors(phoneFields, t('restaurant.phone_invalid'))
-    if (Object.keys(phoneErrors).length) {
-        errors.value = phoneErrors
-        currentStep.value = stepForError(Object.keys(phoneErrors)[0])
+    const clientErrors = {
+        ...collectPhoneErrors(phoneFields, t('restaurant.phone_invalid')),
+        ...collectEmailErrors({ 'admin.email': form.admin.email }, t('restaurant.email_invalid')),
+    }
+    if (Object.keys(clientErrors).length) {
+        errors.value = clientErrors
+        currentStep.value = stepForError(Object.keys(clientErrors)[0])
         return
     }
     saving.value = true

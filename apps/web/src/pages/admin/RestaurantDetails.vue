@@ -8,6 +8,7 @@ import Icon from '@xorder/ui/Icon.vue'
 import { confirm } from '@xorder/ui/confirm.js'
 import Skeleton from '@xorder/ui/Skeleton.vue'
 import AuditLogList from '../../components/AuditLogList.vue'
+import { isValidEmail } from '../../lib/email.js'
 
 const route = useRoute()
 const router = useRouter()
@@ -159,9 +160,13 @@ function cancelEditAdmin() {
     adminErrors.value = {}
 }
 async function saveAdmin() {
-    savingAdmin.value = true
     adminErrors.value = {}
     errMsg.value = ''
+    if (!isValidEmail(adminForm.email)) {
+        adminErrors.value = { email: [t('restaurant.email_invalid')] }
+        return
+    }
+    savingAdmin.value = true
     try {
         await ensureCsrf()
         await api.patch(`api/admin/restaurants/${id}/admin`, {
