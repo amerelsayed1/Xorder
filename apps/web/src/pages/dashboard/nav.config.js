@@ -50,7 +50,8 @@ export const DASHBOARD_NAV = [
         key: 'analytics', labelKey: 'nav.group_analytics', icon: 'pi pi-chart-bar',
         children: [
             { key: 'insights', labelKey: 'nav.insights', icon: 'pi pi-chart-bar', to: { name: 'dashboard.insights' } },
-            { key: 'reports', labelKey: 'nav.reports', icon: 'pi pi-chart-line', to: { name: 'dashboard.reports' }, permission: 'product_analytics' },
+            { key: 'reports.products', labelKey: 'rep.products_title', icon: 'pi pi-chart-line', to: { name: 'dashboard.reports.products' }, permission: 'product_analytics' },
+            { key: 'reports.areas', labelKey: 'rep.areas_title', icon: 'pi pi-table', to: { name: 'dashboard.reports.areas' }, permission: 'product_analytics' },
         ],
     },
     {
