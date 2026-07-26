@@ -401,6 +401,8 @@ function updateUserField(field, value) {
                 :orderId="lastOrderId"
                 :publicReviewUrl="restaurant?.review_public_url || ''"
                 :thankYou="restaurant?.review_thank_you || ''"
+                :customerName="userInfo.name || ''"
+                :customerPhone="userInfo.phone || ''"
                 :t="t"
                 @submitted="reviewSubmitted = true"
                 @close="reviewPrompt = false"

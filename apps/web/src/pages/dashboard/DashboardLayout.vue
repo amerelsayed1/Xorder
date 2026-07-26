@@ -113,7 +113,7 @@ function goOrders() {
 
 function goRequests() {
     toast.value = null
-    router.push({ name: 'dashboard.requests' })
+    router.push({ name: 'dashboard.live' })
 }
 
 // Tab-title badge, e.g. "(3) Mahsoub" — cleared when the count is zero.

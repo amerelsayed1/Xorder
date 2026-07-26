@@ -147,6 +147,7 @@ const countFor = (k) => k === '' ? counts.value.ALL : counts.value[k]
             <table class="w-full text-sm" style="min-width:720px">
                 <thead>
                     <tr class="text-left" style="color:var(--muted)">
+                        <th class="px-5 py-3 font-medium" style="font-size:11px;letter-spacing:.06em;text-transform:uppercase">#</th>
                         <th class="px-5 py-3 font-medium" style="font-size:11px;letter-spacing:.06em;text-transform:uppercase">{{ t('admin.restaurant') }}</th>
                         <th class="px-3 py-3 font-medium" style="font-size:11px;text-transform:uppercase">{{ t('common.status') }}</th>
                         <th class="px-3 py-3 font-medium" style="font-size:11px;text-transform:uppercase">{{ t('restaurant.subscription') }}</th>
@@ -156,11 +157,12 @@ const countFor = (k) => k === '' ? counts.value.ALL : counts.value[k]
                     </tr>
                 </thead>
                 <tbody>
-                    <TableSkeleton v-if="loading" :cols="6" />
-                    <tr v-else-if="!rows.length"><td colspan="6" class="px-5 py-8 text-center" style="color:var(--muted)">{{ t('admin.no_restaurants') }}</td></tr>
-                    <tr v-for="r in loading ? [] : rows" :key="r.id" class="border-t cursor-pointer hover:bg-black/[.015]"
+                    <TableSkeleton v-if="loading" :cols="7" />
+                    <tr v-else-if="!rows.length"><td colspan="7" class="px-5 py-8 text-center" style="color:var(--muted)">{{ t('admin.no_restaurants') }}</td></tr>
+                    <tr v-for="(r, idx) in loading ? [] : rows" :key="r.id" class="border-t cursor-pointer hover:bg-black/[.015]"
                         :style="{ borderColor: 'var(--line)', opacity: r.status === 'ARCHIVED' ? 0.6 : 1 }"
                         @click="router.push({ name: 'admin.restaurants.show', params: { id: r.id } })">
+                        <td class="px-5 py-3" style="color:var(--muted)">{{ (meta?.from || 1) + idx }}</td>
                         <td class="px-5 py-3">
                             <div class="flex items-center gap-3">
                                 <span class="grid place-items-center text-white font-semibold flex-shrink-0"

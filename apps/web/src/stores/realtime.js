@@ -1,7 +1,7 @@
 // One shared heartbeat + notification store for the dashboard.
 //
 // Replaces the several independent polling loops that used to live in
-// DashboardLayout / LiveBoardView / OrdersView / LiveRequestsView. A single
+// DashboardLayout / LiveBoardView / OrdersView. A single
 // visibility-aware timer hits the consolidated /dashboard/pulse endpoint with
 // an If-None-Match header, so an idle tab's poll is a bare 304 with no body,
 // and a backgrounded tab doesn't poll at all. Views subscribe to `tick` to

@@ -11,6 +11,8 @@ const props = defineProps({
     orderId: { type: [Number, String], default: null },
     publicReviewUrl: { type: String, default: '' },
     thankYou: { type: String, default: '' },
+    customerName: { type: String, default: '' },
+    customerPhone: { type: String, default: '' },
     t: { type: Function, required: true },
 })
 
@@ -19,8 +21,11 @@ const emit = defineEmits(['close', 'submitted'])
 const rating = ref(0)
 const hover = ref(0)
 const comment = ref('')
-const name = ref('')
-const phone = ref('')
+// The customer already gave their name/phone when ordering — reuse it and
+// hide those fields instead of asking again.
+const name = ref(props.customerName || '')
+const phone = ref(props.customerPhone || '')
+const isRtl = computed(() => props.locale === 'ar')
 const contactOk = ref(false)
 const submitting = ref(false)
 const done = ref(false)
@@ -75,7 +80,7 @@ async function submit() {
 <template>
     <Teleport to="body">
         <div v-if="isOpen" class="modal-backdrop cart-dialog-backdrop" @click.self="emit('close')">
-            <div class="simple-dialog" role="dialog" aria-modal="true">
+            <div class="simple-dialog" role="dialog" aria-modal="true" :dir="isRtl ? 'rtl' : 'ltr'">
                 <button class="modal-close" type="button" @click="emit('close')">×</button>
 
                 <template v-if="!done">
@@ -101,8 +106,8 @@ async function submit() {
                         rows="2"
                         :placeholder="t('review_comment_ph')"
                     />
-                    <input v-model="name" class="rev-input" type="text" :placeholder="t('review_name_ph')" />
-                    <input v-model="phone" class="rev-input" type="tel" dir="ltr" :placeholder="t('review_phone_ph')" />
+                    <input v-if="!customerName" v-model="name" class="rev-input" type="text" :placeholder="t('review_name_ph')" />
+                    <input v-if="!customerPhone" v-model="phone" class="rev-input" type="tel" dir="ltr" :style="{ textAlign: isRtl ? 'right' : 'left' }" :placeholder="t('review_phone_ph')" />
 
                     <label class="rev-check">
                         <input v-model="contactOk" type="checkbox" />

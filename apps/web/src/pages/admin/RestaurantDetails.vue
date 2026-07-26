@@ -449,13 +449,13 @@ const initial = (x) => localizedInitial(x, 'name', locale.value)
                         <h2 class="h-card mb-1">{{ t('restaurant.subscription') }}</h2>
                         <p class="page-sub mb-3">{{ t('admin.subscription_dates_hint') }}</p>
                         <div class="space-y-4">
-                            <label class="block"><span class="label">{{ t('restaurant.plan') }}</span>
+                            <label class="block"><span class="block label">{{ t('restaurant.plan') }}</span>
                                 <select v-model="sub.subscription_plan" class="input max-w-xs">
                                     <option value="">{{ t('plan.none_option') }}</option>
                                     <option v-for="opt in planOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
                                 </select></label>
                             <div class="block">
-                                <span class="label">{{ t('common.status') }}</span>
+                                <span class="block label">{{ t('common.status') }}</span>
                                 <div class="segmented mt-1.5 flex-wrap">
                                     <button v-for="s in subStatuses" :key="s" :class="{ active: sub.subscription_status === s }" @click="sub.subscription_status = s">{{ t('subscription_status.' + s) }}</button>
                                 </div>

@@ -268,6 +268,7 @@ function areaOrdersOptions(c) {
                         <table class="rep-table">
                             <thead>
                                 <tr>
+                                    <th class="num">#</th>
                                     <th>{{ t('rep.product') }}</th>
                                     <th class="num">{{ t('rep.quantity') }}</th>
                                     <th class="num">{{ t('rep.orders') }}</th>
@@ -278,7 +279,8 @@ function areaOrdersOptions(c) {
                                 </tr>
                             </thead>
                             <tbody>
-                                <tr v-for="p in report.products" :key="p.name">
+                                <tr v-for="(p, idx) in report.products" :key="p.name">
+                                    <td class="num">{{ idx + 1 }}</td>
                                     <td>
                                         <div class="rep-prod">
                                             <span>{{ p.name }}</span>

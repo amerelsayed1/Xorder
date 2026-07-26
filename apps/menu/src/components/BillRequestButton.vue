@@ -14,7 +14,27 @@ const storageKey = computed(() => `xorder_bill_${props.sessionToken}`)
 
 const view = ref('idle') // idle | confirm | status
 const note = ref('')
+const chips = ref([])
 const token = ref('')
+
+const suggestions = computed(() => {
+    const list = props.t('request_bill_suggestions')
+    return Array.isArray(list) ? list : []
+})
+
+function toggleChip(label) {
+    const i = chips.value.indexOf(label)
+    if (i >= 0) chips.value.splice(i, 1)
+    else chips.value.push(label)
+}
+
+// Combine the picked chips with any free-text note into one message for staff.
+const composedNote = computed(() => {
+    const parts = [...chips.value]
+    const extra = note.value.trim()
+    if (extra) parts.push(extra)
+    return parts.join(' · ')
+})
 const status = ref('')
 const submitting = ref(false)
 const errorMsg = ref('')
@@ -75,6 +95,7 @@ function forget() {
 function openConfirm() {
     errorMsg.value = ''
     note.value = ''
+    chips.value = []
     view.value = 'confirm'
 }
 
@@ -88,7 +109,7 @@ async function send() {
     submitting.value = true
     errorMsg.value = ''
     try {
-        const res = await createBillRequest(props.sessionToken, note.value)
+        const res = await createBillRequest(props.sessionToken, composedNote.value)
         token.value = res?.data?.token || ''
         status.value = res?.data?.status || 'REQUESTED'
         if (token.value) localStorage.setItem(storageKey.value, token.value)
@@ -154,6 +175,18 @@ onUnmounted(stopPolling)
                         <p style="color:var(--muted);font-size:14px;line-height:1.7;margin:0 0 14px">
                             {{ confirmText }}
                         </p>
+                        <div v-if="suggestions.length" class="chip-row">
+                            <button
+                                v-for="s in suggestions"
+                                :key="s"
+                                type="button"
+                                class="chip"
+                                :class="{ 'chip--on': chips.includes(s) }"
+                                @click="toggleChip(s)"
+                            >
+                                {{ s }}
+                            </button>
+                        </div>
                         <textarea
                             v-model="note"
                             class="bill-note"
@@ -164,7 +197,7 @@ onUnmounted(stopPolling)
                         <button
                             class="dialog-button bill-primary"
                             type="button"
-                            :disabled="submitting"
+                            :disabled="submitting || !composedNote"
                             @click="send"
                         >
                             {{ submitting ? t('sending') : t('request_bill_send') }}
@@ -229,6 +262,29 @@ onUnmounted(stopPolling)
     background: #38d16a;
     box-shadow: 0 0 0 3px #ffffff55;
 }
+.chip-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 0 0 14px;
+}
+.chip {
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: var(--surface, #fff);
+    color: var(--text, inherit);
+    padding: 7px 14px;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background .15s, border-color .15s, color .15s;
+}
+.chip--on {
+    background: var(--accent-dark);
+    border-color: var(--accent-dark);
+    color: #fff;
+}
 .bill-note {
     width: 100%;
     border: 1px solid var(--line);
@@ -236,6 +292,10 @@ onUnmounted(stopPolling)
     padding: 10px 12px;
     font: inherit;
     resize: none;
+}
+.dialog-button:disabled {
+    opacity: .5;
+    cursor: not-allowed;
 }
 .bill-primary {
     background: var(--accent-dark);

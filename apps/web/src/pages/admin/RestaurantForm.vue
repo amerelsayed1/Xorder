@@ -6,7 +6,7 @@ import api, { ensureCsrf } from '@xorder/api-client/api.js'
 import ImageUploader from '@xorder/ui/ImageUploader.vue'
 import FormError from '@xorder/ui/FormError.vue'
 import { collectPhoneErrors } from '../../lib/phone.js'
-import { publicOrigin } from '../../lib/host.js'
+import { menuHostSuffix } from '../../lib/host.js'
 
 const route = useRoute()
 const router = useRouter()
@@ -15,7 +15,9 @@ const { t, locale } = useI18n()
 const isEdit = computed(() => !!route.params.id)
 const backArrow = computed(() => locale.value === 'ar' ? '→' : '←')
 const forwardArrow = computed(() => locale.value === 'ar' ? '←' : '→')
-const slugPrefix = `${publicOrigin()}/r/`
+// The menu lives at {slug}.xorder.io, so show a trailing ".xorder.io" suffix
+// after the slug input (".localhost:8080" in local dev).
+const slugSuffix = menuHostSuffix
 
 const form = reactive({
     name_en: '', name_ar: '', slug: '',
@@ -294,9 +296,9 @@ async function submitCreate() {
                         <input v-model="form.name_ar" class="input" /></label>
                 </div>
                 <label class="block"><span class="label">{{ t('restaurant.slug') }}</span>
-                    <div class="flex items-center mt-1.5 rounded-lg border overflow-hidden" style="border-color:var(--line)">
-                        <span class="mono text-sm px-3 py-2.5" style="background:var(--page);color:var(--muted)">{{ slugPrefix }}</span>
+                    <div dir="ltr" class="flex items-center mt-1.5 rounded-lg border overflow-hidden" style="border-color:var(--line)">
                         <input v-model="form.slug" class="flex-1 px-3 py-2.5 text-sm mono" style="border:0;outline:0;background:var(--card);color:var(--ink)" />
+                        <span class="mono text-sm px-3 py-2.5" style="background:var(--page);color:var(--muted)">{{ slugSuffix }}</span>
                     </div>
                     <p class="text-xs mt-1" style="color:var(--amber)">{{ t('restaurant.slug_warning') }}</p>
                     <FormError :errors="errors" field="slug" /></label>
@@ -414,9 +416,9 @@ async function submitCreate() {
                         <FormError :errors="errors" field="name_ar" /></label>
                 </div>
                 <label class="block"><span class="label">{{ t('restaurant.slug') }}</span>
-                    <div class="flex items-center mt-1.5 rounded-lg border overflow-hidden" style="border-color:var(--line)">
-                        <span class="mono text-sm px-3 py-2.5" style="background:var(--page);color:var(--muted)">{{ slugPrefix }}</span>
+                    <div dir="ltr" class="flex items-center mt-1.5 rounded-lg border overflow-hidden" style="border-color:var(--line)">
                         <input v-model="form.slug" @input="slugTouched = true" class="flex-1 px-3 py-2.5 text-sm mono" style="border:0;outline:0;background:var(--card);color:var(--ink)" />
+                        <span class="mono text-sm px-3 py-2.5" style="background:var(--page);color:var(--muted)">{{ slugSuffix }}</span>
                     </div>
                     <FormError :errors="errors" field="slug" /></label>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -433,15 +435,13 @@ async function submitCreate() {
                 </div>
                 <div class="pt-2" style="border-top:1px solid var(--line)">
                     <h3 class="label" style="margin-bottom:.5rem">{{ t('admin.first_restaurant_admin') }}</h3>
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <label class="block"><span class="label">{{ t('restaurant.admin_name') }}</span>
-                            <input v-model="form.admin.name" class="input" />
-                            <FormError :errors="errors" field="admin.name" /></label>
-                        <label class="block" dir="ltr"><span class="label">{{ t('restaurant.admin_username') }}</span>
-                            <input v-model="form.admin.username" type="text" autocapitalize="none" spellcheck="false" class="input" />
-                            <span class="block text-xs mt-1" style="color:var(--muted)">{{ t('restaurant.admin_username_hint') }}</span>
-                            <FormError :errors="errors" field="admin.username" /></label>
-                    </div>
+                    <label class="block"><span class="label">{{ t('restaurant.admin_name') }}</span>
+                        <input v-model="form.admin.name" class="input" />
+                        <FormError :errors="errors" field="admin.name" /></label>
+                    <label class="block mt-3" dir="ltr"><span class="label">{{ t('restaurant.admin_username') }}</span>
+                        <input v-model="form.admin.username" type="text" autocapitalize="none" spellcheck="false" class="input" />
+                        <span class="block text-xs mt-1" style="color:var(--muted)">{{ t('restaurant.admin_username_hint') }}</span>
+                        <FormError :errors="errors" field="admin.username" /></label>
                     <label class="block mt-3"><span class="label">{{ t('restaurant.admin_email') }}</span>
                         <input v-model="form.admin.email" type="email" class="input" />
                         <FormError :errors="errors" field="admin.email" /></label>

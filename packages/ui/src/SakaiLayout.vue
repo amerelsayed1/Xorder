@@ -7,7 +7,6 @@ import { setLocale } from './i18n'
 import XorderLogo from './XorderLogo.vue'
 import Button from 'primevue/button'
 import Avatar from 'primevue/avatar'
-import Menu from 'primevue/menu'
 
 const props = defineProps({
     title: { type: String, required: true },
@@ -27,7 +26,6 @@ const router = useRouter()
 const route = useRoute()
 const { t, locale } = useI18n()
 const mobileOpen = ref(false)
-const profileMenu = ref()
 
 // --- Collapsible nav groups (accordion) -------------------------------------
 // Only one group is open at a time. The group holding the active route opens
@@ -70,10 +68,6 @@ async function logout() {
 }
 function toggleLang() { setLocale(locale.value === 'ar' ? 'en' : 'ar') }
 const targetLocaleName = computed(() => t(locale.value === 'ar' ? 'languages.en' : 'languages.ar'))
-
-const profileItems = computed(() => [
-    { label: auth.user?.name || '', items: [{ label: t('nav.logout'), icon: 'pi pi-sign-out', command: logout }] },
-])
 </script>
 
 <template>
@@ -93,12 +87,6 @@ const profileItems = computed(() => [
             <div class="flex items-center gap-2">
                 <slot name="topbar-actions" />
                 <Button v-if="!hideLangToggle" :label="targetLocaleName" icon="pi pi-globe" text severity="secondary" size="small" @click="toggleLang" />
-                <button class="sakai-profile" @click="profileMenu.toggle($event)">
-                    <Avatar :label="userInitial" shape="circle" style="background:var(--p-primary-color);color:#fff;font-weight:700" />
-                    <span class="hidden sm:block sakai-profile-name">{{ auth.user?.name }}</span>
-                    <i class="pi pi-angle-down text-xs hidden sm:block" />
-                </button>
-                <Menu ref="profileMenu" :model="profileItems" popup />
             </div>
         </header>
 
@@ -145,8 +133,12 @@ const profileItems = computed(() => [
                     </RouterLink>
                 </li>
             </ul>
-            <div class="sakai-powered">
-                <span>{{ t('app.powered_by') }}</span><strong>Xorder</strong>
+            <div class="sakai-profile sakai-profile-side">
+                <Avatar :label="userInitial" shape="circle" style="background:var(--p-primary-color);color:#fff;font-weight:700" />
+                <span class="sakai-profile-name">{{ auth.user?.name }}</span>
+                <button class="sakai-logout-btn" :aria-label="t('nav.logout')" :title="t('nav.logout')" @click="logout">
+                    <i class="pi pi-sign-out" />
+                </button>
             </div>
         </aside>
 
@@ -177,6 +169,16 @@ const profileItems = computed(() => [
     background: transparent; border: 1px solid transparent; cursor: pointer; }
 .sakai-profile:hover { background: var(--p-surface-100); }
 .sakai-profile-name { font-size: 14px; font-weight: 500; color: var(--p-text-color); }
+
+/* Sidebar variant: full-width row pinned at the bottom, name always shown. */
+.sakai-profile-side { width: 100%; border-radius: 9px; padding: 9px 12px;
+    margin-top: 8px; cursor: default; }
+.sakai-profile-side:hover { background: transparent; }
+.sakai-profile-side .sakai-profile-name { flex: 1; text-align: start; }
+.sakai-logout-btn { display: grid; place-items: center; width: 32px; height: 32px; flex: none;
+    border-radius: 8px; background: transparent; border: none; cursor: pointer; color: var(--p-text-muted-color); }
+.sakai-logout-btn:hover { background: var(--p-surface-100); color: var(--p-primary-color); }
+.sakai-logout-btn i { font-size: 16px; }
 
 /* Sidebar */
 .sakai-sidebar { position: fixed; inset-inline-start: 0; top: 64px; bottom: 0; width: 268px; z-index: 25;
@@ -217,9 +219,6 @@ const profileItems = computed(() => [
 .sakai-menu-badge { margin-inline-start: auto; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px;
     display: inline-flex; align-items: center; justify-content: center;
     font-size: 11px; font-weight: 700; background: var(--p-primary-color); color: #fff; }
-.sakai-powered { display: flex; align-items: center; gap: 7px; padding: 14px 8px 4px; font-size: 12px; color: var(--p-text-muted-color); }
-.sakai-powered :where(svg, img) { height: 14px; width: auto; color: var(--p-text-color); opacity: .8; }
-
 .sakai-scrim { position: fixed; inset: 0; z-index: 24; background: rgba(0,0,0,.4); }
 
 /* Content */

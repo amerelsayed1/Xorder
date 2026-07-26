@@ -62,6 +62,7 @@ async function removePlan(p) {
             <table class="w-full text-sm" style="min-width:640px">
                 <thead>
                     <tr style="color:var(--muted)">
+                        <th class="px-5 py-3 font-medium text-start" style="font-size:11px;letter-spacing:.06em;text-transform:uppercase">#</th>
                         <th class="px-5 py-3 font-medium text-start" style="font-size:11px;letter-spacing:.06em;text-transform:uppercase">{{ t('plan.name') }}</th>
                         <th class="px-3 py-3 font-medium text-center" style="font-size:11px;text-transform:uppercase">{{ t('plan.price') }}</th>
                         <th class="px-3 py-3 font-medium text-center" style="font-size:11px;text-transform:uppercase">{{ t('plan.entitlements') }}</th>
@@ -70,11 +71,12 @@ async function removePlan(p) {
                     </tr>
                 </thead>
                 <tbody>
-                    <TableSkeleton v-if="loading" :cols="5" />
-                    <tr v-else-if="!rows.length"><td colspan="5" class="px-5 py-8 text-center" style="color:var(--muted)">{{ t('plan.none') }}</td></tr>
-                    <tr v-for="p in rows" :key="p.id" class="border-t cursor-pointer hover:bg-black/[.015]"
+                    <TableSkeleton v-if="loading" :cols="6" />
+                    <tr v-else-if="!rows.length"><td colspan="6" class="px-5 py-8 text-center" style="color:var(--muted)">{{ t('plan.none') }}</td></tr>
+                    <tr v-for="(p, idx) in rows" :key="p.id" class="border-t cursor-pointer hover:bg-black/[.015]"
                         :style="{ borderColor: 'var(--line)', opacity: p.is_active ? 1 : 0.6 }"
                         @click="router.push({ name: 'admin.plans.edit', params: { id: p.id } })">
+                        <td class="px-5 py-3 text-start" style="color:var(--muted)">{{ idx + 1 }}</td>
                         <td class="px-5 py-3 font-medium text-start" style="color:var(--ink)">{{ p.name }}</td>
                         <td class="px-3 py-3 text-center" style="color:var(--body)">{{ price(p) }}</td>
                         <td class="px-3 py-3">

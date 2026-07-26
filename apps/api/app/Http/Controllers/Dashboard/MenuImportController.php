@@ -28,12 +28,15 @@ use PhpOffice\PhpSpreadsheet\Reader\Xlsx as XlsxReader;
  *   discounted_price | sale_price
  *   available | is_available   (yes/no/true/false/1/0/نعم/لا)
  *   featured  | is_featured
+ *   image_url | image | photo | photo_url   (a plain http(s) link)
  */
 class MenuImportController extends Controller
 {
     private const MAX_NAME = 150;
 
     private const MAX_DESC = 2000;
+
+    private const MAX_URL = 2048;
 
     public function import(Request $request, PlanLimitService $limits): JsonResponse
     {
@@ -92,7 +95,14 @@ class MenuImportController extends Controller
                 // Upsert the item by name within its category.
                 $existing = $this->findItem($category, $row);
                 if ($existing) {
-                    $existing->fill($this->itemAttributes($row))->save();
+                    $attrs = $this->itemAttributes($row);
+                    // A blank image cell must never wipe an item's existing photo —
+                    // images aren't retypable data, and most imports won't carry the
+                    // column at all. Only overwrite when a URL is actually supplied.
+                    if ($attrs['image_url'] === null) {
+                        unset($attrs['image_url']);
+                    }
+                    $existing->fill($attrs)->save();
                     $summary['items_updated']++;
                 } else {
                     if ($limits->itemLimitReached($restaurant) !== null) {
@@ -154,6 +164,7 @@ class MenuImportController extends Controller
             'discount', 'discount_price', 'sale_price', 'offer_price' => 'discounted_price',
             'is_available', 'availability' => 'available',
             'is_featured', 'popular' => 'featured',
+            'image', 'photo', 'photo_url', 'image_link', 'picture' => 'image_url',
             'name_english', 'title_en' => 'name_en',
             'name_arabic', 'title_ar' => 'name_ar',
             'category_english' => 'category_en',
@@ -212,6 +223,7 @@ class MenuImportController extends Controller
             'discounted_price' => $discount,
             'is_available' => $this->parseBool($get(['available']), true),
             'is_featured' => $this->parseBool($get(['featured']), false),
+            'image_url' => $this->parseUrl($get(['image_url'])),
         ];
     }
 
@@ -226,6 +238,7 @@ class MenuImportController extends Controller
             'discounted_price' => $row['discounted_price'],
             'is_available' => $row['is_available'],
             'is_featured' => $row['is_featured'],
+            'image_url' => $row['image_url'],
         ];
     }
 
@@ -301,6 +314,25 @@ class MenuImportController extends Controller
         $n = round((float) $v, 2);
 
         return ($n < 0 || $n > 9999999.99) ? null : $n;
+    }
+
+    /**
+     * Accept a plausible image link only. http(s) absolute, protocol-relative
+     * (//host/…) or root-relative (/storage/…) URLs pass; anything else (bare
+     * text, javascript:, data:, spreadsheet formulas) is dropped rather than
+     * stored and later rendered as an <img src> on the public menu.
+     */
+    private function parseUrl(?string $v): ?string
+    {
+        if ($v === null) {
+            return null;
+        }
+        $v = $this->clip($v, self::MAX_URL);
+        if (! preg_match('#^(https?://|//|/)#i', $v)) {
+            return null;
+        }
+
+        return $v;
     }
 
     private function parseBool(?string $v, bool $default): bool

@@ -105,6 +105,7 @@ return [
         'review_not_found' => 'Review not found.',
     ],
     'validation' => [
+        'map_link_unresolved' => "We couldn't find a location in that link. Open it in Google Maps and copy the full URL from the address bar, or paste the coordinates as \"lat, lng\".",
         'restaurant_name_required' => 'Provide the restaurant name in at least one language.',
         'area_name_required' => 'Provide the area name in at least one language.',
         'table_label_taken' => 'A table with this name already exists in this area.',

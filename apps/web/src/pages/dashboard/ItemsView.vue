@@ -22,6 +22,11 @@ const loading = ref(true)
 const filterCat = ref('')
 const search = ref('')
 
+// Item ids whose image_url failed to load (dead/broken link) — they fall back
+// to the meal-icon placeholder instead of the browser's broken-image glyph.
+const failedImg = ref(new Set())
+function onImgError(id) { failedImg.value.add(id) }
+
 const filtered = computed(() => {
     let list = filterCat.value
         ? items.value.filter(i => i.category_id === Number(filterCat.value))
@@ -55,6 +60,7 @@ function catName(id) {
 }
 const itemName = (it) => pickLocalized(it, 'name', locale.value)
 const itemAltName = (it) => locale.value === 'ar' ? (it.name_en || '') : (it.name_ar || '')
+const itemDescription = (it) => pickLocalized(it, 'description', locale.value)
 function goCreate() {
     if (!categories.value.length) return
     router.push({ name: 'dashboard.items.create' })
@@ -110,15 +116,39 @@ function onImportFile(e) {
 // A ready-to-fill template in the restaurant's own default language.
 function downloadTemplate() {
     const ar = auth.restaurant?.default_language !== 'en'
-    const headers = ['category', 'name', 'description', 'price', 'discounted_price', 'available', 'featured']
+    const headers = ['category', 'name', 'description', 'price', 'discounted_price', 'available', 'featured', 'image_url']
     const sample = ar
-        ? ['مشروبات', 'قهوة سادة', 'قهوة عربية طازجة', '30', '', 'نعم', 'لا']
-        : ['Drinks', 'Espresso', 'Freshly brewed', '30', '', 'yes', 'no']
+        ? ['مشروبات', 'قهوة سادة', 'قهوة عربية طازجة', '30', '', 'نعم', 'لا', 'https://example.com/coffee.jpg']
+        : ['Drinks', 'Espresso', 'Freshly brewed', '30', '', 'yes', 'no', 'https://example.com/coffee.jpg']
     const csv = '﻿' + [headers.join(','), sample.map(v => /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v).join(',')].join('\n')
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }))
     const a = document.createElement('a')
     a.href = url; a.download = 'menu-template.csv'; a.click()
     URL.revokeObjectURL(url)
+}
+
+// --- CSV / Excel export ---
+// A read (works even in read-only mode). Streams the menu in the same column
+// layout the importer accepts, so export → edit → import round-trips cleanly.
+const exporting = ref('')
+const showExportMenu = ref(false)
+async function doExport(format) {
+    showExportMenu.value = false
+    if (exporting.value) return
+    exporting.value = format
+    try {
+        const res = await api.get('api/dashboard/items/export', { params: { format }, responseType: 'blob' })
+        const blobUrl = URL.createObjectURL(res.data)
+        const a = document.createElement('a')
+        a.href = blobUrl
+        a.download = `menu.${format === 'xlsx' ? 'xlsx' : 'csv'}`
+        a.click()
+        URL.revokeObjectURL(blobUrl)
+    } catch (err) {
+        alert(t('import.export_failed'))
+    } finally {
+        exporting.value = ''
+    }
 }
 
 async function submitImport() {
@@ -149,6 +179,19 @@ async function submitImport() {
                 <p class="page-sub">{{ t('item.subtitle', { items: items.length, categories: categories.length }) }}</p>
             </div>
             <div class="flex items-center gap-2">
+                <!-- Export is a read: available even in read-only mode. -->
+                <div class="relative">
+                    <button @click="showExportMenu = !showExportMenu" :disabled="!!exporting || !items.length" class="btn btn-ghost">
+                        <Icon name="download" :size="16" />{{ exporting ? t('import.exporting') : t('import.export') }}
+                    </button>
+                    <template v-if="showExportMenu">
+                        <div class="fixed inset-0 z-10" @click="showExportMenu = false"></div>
+                        <div class="absolute z-20 mt-1 min-w-[9rem] rounded-xl py-1 inset-inline-end-0" style="background:var(--card, #fff);border:1px solid var(--line);box-shadow:0 8px 24px rgba(0,0,0,.12)">
+                            <button @click="doExport('csv')" class="flex w-full items-center gap-2 px-3 py-2 text-sm text-start hover:opacity-80"><Icon name="download" :size="15" />{{ t('import.export_csv') }}</button>
+                            <button @click="doExport('xlsx')" class="flex w-full items-center gap-2 px-3 py-2 text-sm text-start hover:opacity-80"><Icon name="download" :size="15" />{{ t('import.export_xlsx') }}</button>
+                        </div>
+                    </template>
+                </div>
                 <button v-if="!auth.isReadOnly" @click="openImport" class="btn btn-ghost"><Icon name="upload" :size="16" />{{ t('import.button') }}</button>
                 <button v-if="!auth.isReadOnly" @click="goCreate" :disabled="!categories.length" class="btn btn-accent"><Icon name="plus" :size="16" />{{ t('common.create') }}</button>
             </div>
@@ -173,49 +216,57 @@ async function submitImport() {
         <div class="card overflow-hidden">
             <ListSkeleton v-if="loading" />
             <div v-else-if="!filtered.length" class="p-8 text-center" style="color:var(--muted)">{{ t('common.none') }}</div>
-            <table v-else class="w-full text-sm">
-                <thead>
-                    <tr class="text-left" style="color:var(--muted)">
-                        <th class="font-medium px-5 py-3" style="font-size:11px;letter-spacing:.06em;text-transform:uppercase">{{ t('item.item') }}</th>
-                        <th class="font-medium px-3 py-3 hidden sm:table-cell" style="font-size:11px;text-transform:uppercase">{{ t('item.category') }}</th>
-                        <th class="font-medium px-3 py-3" style="font-size:11px;text-transform:uppercase">{{ t('item.price') }}</th>
-                        <th class="font-medium px-3 py-3 hidden sm:table-cell" style="font-size:11px;text-transform:uppercase">★</th>
-                        <th class="font-medium px-3 py-3" style="font-size:11px;text-transform:uppercase">{{ t('common.available') }}</th>
-                        <th class="px-5 py-3"></th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr v-for="it in filtered" :key="it.id" class="border-t" style="border-color:var(--line)">
-                        <td class="px-5 py-3">
-                            <div class="flex items-center gap-3">
-                                <img v-if="it.image_url" :src="it.image_url" class="h-11 w-11 rounded-lg object-cover flex-shrink-0" />
-                                <div v-else class="h-11 w-11 rounded-lg flex-shrink-0" style="background:var(--accent-soft)"></div>
-                                <div class="min-w-0">
-                                    <div class="font-medium" style="color:var(--ink)">{{ itemName(it) }}</div>
-                                    <div v-if="itemAltName(it)" class="text-xs" style="color:var(--muted)" :dir="locale === 'ar' ? 'ltr' : 'rtl'">{{ itemAltName(it) }}</div>
-                                </div>
+            <!--
+              Single shared column structure for header + every row.
+              Both the header and each body row use `.items-row`, whose
+              `grid-template-columns` comes from the one `--items-cols` token
+              defined on `.items-table`. Change a width there once and the
+              header and all rows update together — no per-row adjustments,
+              no separate flex layouts, no absolute positioning.
+              Visual (RTL) order: Product | Category | Price | Featured | Available | Actions
+            -->
+            <div v-else class="items-table" role="table">
+                <div class="items-row items-head" role="row">
+                    <div role="columnheader" class="col-center">#</div>
+                    <div role="columnheader">{{ t('item.item') }}</div>
+                    <div role="columnheader" class="col-cat">{{ t('item.category') }}</div>
+                    <div role="columnheader">{{ t('item.price') }}</div>
+                    <div role="columnheader" class="col-feat col-center">★</div>
+                    <div role="columnheader" class="col-center">{{ t('common.available') }}</div>
+                    <div role="columnheader" class="col-actions">{{ t('common.actions') }}</div>
+                </div>
+                <div v-for="(it, idx) in filtered" :key="it.id" class="items-row items-body-row" role="row">
+                    <div role="cell" class="col-center" style="color:var(--muted)">{{ idx + 1 }}</div>
+                    <div role="cell">
+                        <div class="flex items-center gap-3 min-w-0">
+                            <img v-if="it.image_url && !failedImg.has(it.id)" :src="it.image_url" @error="onImgError(it.id)" class="h-11 w-11 rounded-lg object-cover flex-shrink-0" />
+                            <div v-else class="h-11 w-11 rounded-lg flex-shrink-0 flex items-center justify-center" style="background:var(--accent-soft);color:var(--accent)"><Icon name="utensils" :size="20" /></div>
+                            <div class="min-w-0">
+                                <div class="font-medium truncate" style="color:var(--ink)">{{ itemName(it) }}</div>
+                                <div v-if="itemAltName(it)" class="text-xs truncate" style="color:var(--muted)" :dir="locale === 'ar' ? 'ltr' : 'rtl'">{{ itemAltName(it) }}</div>
+                                <div v-if="itemDescription(it)" class="text-xs truncate" style="color:var(--body)">{{ itemDescription(it) }}</div>
                             </div>
-                        </td>
-                        <td class="px-3 py-3 hidden sm:table-cell" style="color:var(--body)">{{ catName(it.category_id) }}</td>
-                        <td class="px-3 py-3 whitespace-nowrap">
-                            <span class="price">{{ it.discounted_price || it.price }} {{ cur }}</span>
-                            <span v-if="it.discounted_price" class="text-xs line-through ms-1" style="color:var(--muted)">{{ it.price }} {{ cur }}</span>
-                        </td>
-                        <td class="px-3 py-3 hidden sm:table-cell">
-                            <button v-if="!auth.isReadOnly" class="star" :class="{ on: it.is_featured }" @click="toggleFeatured(it)">★</button>
-                        </td>
-                        <td class="px-3 py-3">
-                            <button v-if="!auth.isReadOnly" class="switch" :class="{ on: it.is_available }" @click="toggleAvail(it)"></button>
-                        </td>
-                        <td class="px-5 py-3 text-end whitespace-nowrap">
-                            <div class="inline-flex items-center gap-1">
-                                <button v-if="!auth.isReadOnly" @click="goEdit(it)" class="icon-btn" :title="t('common.edit')"><Icon name="edit" :size="17" /></button>
-                                <button v-if="!auth.isReadOnly" @click="remove(it)" class="icon-btn icon-btn-danger" :title="t('common.delete')"><Icon name="trash" :size="17" /></button>
-                            </div>
-                        </td>
-                    </tr>
-                </tbody>
-            </table>
+                        </div>
+                    </div>
+                    <div role="cell" class="col-cat truncate" style="color:var(--body)">{{ catName(it.category_id) }}</div>
+                    <div role="cell" class="whitespace-nowrap">
+                        <span class="price">{{ it.discounted_price || it.price }} {{ cur }}</span>
+                        <span v-if="it.discounted_price" class="text-xs line-through ms-1" style="color:var(--muted)">{{ it.price }} {{ cur }}</span>
+                    </div>
+                    <div role="cell" class="col-feat col-center">
+                        <button v-if="!auth.isReadOnly" class="star" :class="{ on: it.is_featured }" @click="toggleFeatured(it)">★</button>
+                    </div>
+                    <div role="cell" class="col-center">
+                        <button v-if="!auth.isReadOnly" class="switch" :class="{ on: it.is_available }" @click="toggleAvail(it)"></button>
+                    </div>
+                    <div role="cell" class="col-actions whitespace-nowrap">
+                        <div class="inline-flex items-center gap-1">
+                            <button v-if="!auth.isReadOnly" @click="goEdit(it)" class="icon-btn" :title="t('common.edit')"><Icon name="edit" :size="17" /></button>
+                            <button v-if="!auth.isReadOnly" @click="remove(it)" class="icon-btn icon-btn-danger" :title="t('common.delete')"><Icon name="trash" :size="17" /></button>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- Import from CSV / Excel -->
@@ -264,6 +315,62 @@ async function submitImport() {
 </template>
 
 <style scoped>
+/* ── Shared table column structure ───────────────────────────────
+   ONE source of truth for the column widths. `.items-row` is used by
+   the header and every body row, so they can never drift apart. Order
+   matches the RTL visual order: Product | Category | Price | Featured
+   | Available | Actions. Adjust widths here once → header + rows follow. */
+.items-table {
+    --items-cols:
+        48px                 /* No. */
+        minmax(320px, 2fr)   /* Product (image + name) */
+        minmax(180px, 1fr)   /* Category */
+        minmax(140px, 0.8fr) /* Price */
+        100px                /* Featured */
+        120px                /* Available */
+        110px;               /* Actions */
+    width: 100%;
+    overflow-x: auto;        /* keeps columns aligned; scrolls instead of breaking on narrow desktops */
+}
+.items-row {
+    display: grid;
+    grid-template-columns: var(--items-cols);
+    align-items: center;
+    column-gap: 8px;
+}
+.items-row > * {
+    padding: 12px;
+    min-width: 0;            /* let cells shrink + truncate instead of forcing overflow */
+    text-align: start;       /* logical alignment → correct in both LTR and RTL */
+}
+.items-row > *:first-child { padding-inline-start: 20px; }
+.items-row > *:last-child  { padding-inline-end: 20px; }
+.items-head {
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+}
+.items-body-row { border-top: 1px solid var(--line); }
+.items-body-row:hover { background: var(--accent-soft); }
+/* Same alignment applied to header AND body cell of a column (req. 6). */
+.col-center  { text-align: center; }
+.col-actions { text-align: end; }
+
+@media (max-width: 639px) {
+    /* Category + Featured collapse; the remaining 4 columns stay aligned. */
+    .items-table {
+        --items-cols:
+            40px                 /* No. */
+            minmax(0, 2fr)       /* Product */
+            minmax(120px, 1fr)   /* Price */
+            100px                /* Available */
+            100px;               /* Actions */
+    }
+    .col-cat, .col-feat { display: none; }
+}
+
 /* Horizontal chip filter — handles many categories (with long bilingual
    names) without wrapping into tall cramped tabs like the segmented control. */
 .cat-filter {

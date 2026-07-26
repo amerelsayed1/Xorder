@@ -34,3 +34,15 @@ export function restaurantUrl(slug, path = '/') {
 export function publicOrigin() {
     return origin(rootDomain)
 }
+
+// Each menu is served on its own subdomain ({slug}.xorder.io/menu), matching
+// the backend Restaurant::publicUrl(). This holds in local dev too — *.localhost
+// resolves and the backend runs with MENU_DOMAIN set (e.g. demo.localhost:8080).
+// The host suffix shown after the slug in the identifier field, e.g.
+// ".xorder.io" in production or ".localhost:8080" in local dev.
+export const menuHostSuffix = `.${rootDomain}${window.location.port ? ':' + window.location.port : ''}`
+
+// The public menu URL for a slug, matching the backend's canonical public_url.
+export function menuUrl(slug) {
+    return `${restaurantUrl(slug)}menu`
+}

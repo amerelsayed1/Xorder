@@ -20,6 +20,8 @@ use App\Http\Controllers\Dashboard\CustomerController;
 use App\Http\Controllers\Dashboard\DashboardQrController;
 use App\Http\Controllers\Dashboard\DiningAreaController;
 use App\Http\Controllers\Dashboard\InsightsController as DashboardInsightsController;
+use App\Http\Controllers\Dashboard\MenuExportController;
+use App\Http\Controllers\Dashboard\MapLinkController;
 use App\Http\Controllers\Dashboard\MenuImportController;
 use App\Http\Controllers\Dashboard\MenuItemController;
 use App\Http\Controllers\Dashboard\NotificationController;
@@ -122,6 +124,10 @@ Route::prefix('dashboard')
         Route::get('categories', [CategoryController::class, 'index']);
         Route::get('categories/{category}', [CategoryController::class, 'show']);
         Route::get('items', [MenuItemController::class, 'index']);
+        // Export the menu to CSV/XLSX. A read — deliberately NOT behind
+        // subscription.writable, so a read-only tenant can still get their data
+        // out. Registered before items/{item} so "export" isn't matched as an id.
+        Route::get('items/export', [MenuExportController::class, 'export']);
         Route::get('items/{item}', [MenuItemController::class, 'show']);
         // Customer database — gated on the customer_tracking feature (Restaurant
         // Pro). WhatsApp-only plans never build a customer list.
@@ -148,6 +154,11 @@ Route::prefix('dashboard')
         Route::patch('notifications/{notification}/read', [NotificationController::class, 'markRead']);
         Route::get('qr', [DashboardQrController::class, 'show']);
         Route::get('qr/download', [DashboardQrController::class, 'download']);
+
+        // Turn a pasted Google Maps link (or share short link) into lat/lng for
+        // the profile form. A stateless helper — not subscription-gated, since it
+        // writes nothing; the resolved coordinates are saved via PUT restaurant.
+        Route::post('geo/resolve-map-link', [MapLinkController::class, 'resolve']);
 
         // Order management — gated on the system_ordering feature (Restaurant
         // Pro). WhatsApp-only plans hand orders off to WhatsApp and have no

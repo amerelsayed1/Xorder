@@ -1,5 +1,5 @@
 <script setup>
-import { reactive, ref, onMounted } from 'vue'
+import { reactive, ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import api, { ensureCsrf } from '@xorder/api-client/api.js'
 import ImageUploader from '@xorder/ui/ImageUploader.vue'
@@ -7,6 +7,7 @@ import FormError from '@xorder/ui/FormError.vue'
 import BusinessHoursEditor from '../../components/BusinessHoursEditor.vue'
 import { useMenuLang } from '../../lib/menuLang.js'
 import { collectPhoneErrors } from '../../lib/phone.js'
+import { resolveMapLink, mapsUrl } from '../../lib/mapLink.js'
 import { useAuth } from '@xorder/api-client/auth.js'
 
 const { t } = useI18n()
@@ -24,6 +25,42 @@ const form = reactive({
 const errors = ref({})
 const saved = ref(false)
 const saving = ref(false)
+
+// --- Map location, entered as a Google Maps link ---
+// The owner pastes a link; we resolve it to latitude/longitude (still what the
+// menu's map + directions button consume). The link itself isn't stored.
+const mapUrl = ref('')
+const mapStatus = ref('idle') // 'idle' | 'resolving' | 'error'
+const coordsSet = computed(() => {
+    const lat = Number(form.latitude), lng = Number(form.longitude)
+    return form.latitude !== '' && form.latitude != null
+        && form.longitude !== '' && form.longitude != null
+        && Number.isFinite(lat) && Number.isFinite(lng)
+})
+const coordsPreviewUrl = computed(() => coordsSet.value ? mapsUrl(form.latitude, form.longitude) : '')
+
+async function resolveMap() {
+    const text = mapUrl.value.trim()
+    if (!text) { mapStatus.value = coordsSet.value ? 'idle' : 'idle'; return }
+    mapStatus.value = 'resolving'
+    const coords = await resolveMapLink(text)
+    if (coords) {
+        form.latitude = coords.latitude
+        form.longitude = coords.longitude
+        mapUrl.value = ''          // tidy the field; the resolved pin shows below
+        mapStatus.value = 'idle'
+        delete errors.value.latitude; delete errors.value.longitude
+    } else {
+        mapStatus.value = 'error'
+    }
+}
+
+function clearCoords() {
+    form.latitude = ''
+    form.longitude = ''
+    mapUrl.value = ''
+    mapStatus.value = 'idle'
+}
 // Ordering channels the restaurant's plan grants; the selector is capped to these.
 const orderingModeOptions = ref([])
 
@@ -103,8 +140,6 @@ async function submit() {
             </div>
             <label class="block"><span class="label">{{ t('restaurant.address') }}</span>
                 <input v-model="form.address" class="input" /></label>
-            <label class="block"><span class="label">{{ t('restaurant.opening_hours') }}</span>
-                <input v-model="form.opening_hours" class="input" /></label>
 
             <div class="block">
                 <span class="label">{{ t('restaurant.business_hours') }}</span>
@@ -130,15 +165,32 @@ async function submit() {
 
             <div class="block">
                 <span class="label">{{ t('restaurant.map_location') }}</span>
-                <p class="page-sub" style="margin:2px 0 8px">{{ t('restaurant.map_hint') }}</p>
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <label class="block"><span class="label">{{ t('restaurant.latitude') }}</span>
-                        <input v-model="form.latitude" type="number" step="any" class="input" dir="ltr" placeholder="30.0444" />
-                        <FormError :errors="errors" field="latitude" /></label>
-                    <label class="block"><span class="label">{{ t('restaurant.longitude') }}</span>
-                        <input v-model="form.longitude" type="number" step="any" class="input" dir="ltr" placeholder="31.2357" />
-                        <FormError :errors="errors" field="longitude" /></label>
-                </div>
+                <p class="page-sub" style="margin:2px 0 8px">{{ t('restaurant.map_link_hint') }}</p>
+                <label class="block">
+                    <span class="label">{{ t('restaurant.map_link') }}</span>
+                    <input v-model="mapUrl" @change="resolveMap" @blur="resolveMap"
+                        @keydown.enter.prevent="resolveMap" type="url" class="input" dir="ltr"
+                        :placeholder="t('restaurant.map_link_placeholder')" :disabled="mapStatus === 'resolving'" />
+                </label>
+
+                <!-- Resolving spinner -->
+                <p v-if="mapStatus === 'resolving'" class="text-sm" style="margin-top:6px;color:var(--muted)">
+                    {{ t('restaurant.map_resolving') }}
+                </p>
+                <!-- Resolved / current location -->
+                <p v-else-if="coordsSet" class="text-sm" style="margin-top:6px;color:var(--accent, #1f7a3d);display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                    <span>📍 {{ t('restaurant.map_location_set') }}</span>
+                    <span dir="ltr" style="color:var(--muted)">{{ Number(form.latitude).toFixed(6) }}, {{ Number(form.longitude).toFixed(6) }}</span>
+                    <a :href="coordsPreviewUrl" target="_blank" rel="noopener" style="color:var(--accent, #1f7a3d);text-decoration:underline">{{ t('restaurant.map_preview') }}</a>
+                    <button type="button" @click="clearCoords" style="color:var(--muted);text-decoration:underline;background:none;border:none;cursor:pointer;padding:0">{{ t('restaurant.map_clear') }}</button>
+                </p>
+                <!-- Could not resolve -->
+                <p v-else-if="mapStatus === 'error'" class="text-sm" style="margin-top:6px;color:var(--red, #dc2626)">
+                    {{ t('restaurant.map_link_invalid') }}
+                </p>
+
+                <FormError :errors="errors" field="latitude" />
+                <FormError :errors="errors" field="longitude" />
             </div>
 
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">

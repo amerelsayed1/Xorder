@@ -4,14 +4,14 @@ import { useI18n } from 'vue-i18n'
 import BiField from '../../../components/BiField.vue'
 import AdminSection from '../../../components/AdminSection.vue'
 import { useLandingContent } from '../../../composables/useLandingContent.js'
-import { publicOrigin } from '../../../lib/host.js'
+import { menuUrl } from '../../../lib/host.js'
 
 const { t } = useI18n()
 const { content, move, removeAt, addStep } = useLandingContent()
 
 const demoPreviewUrl = computed(() => {
     const slug = content.value?.demo?.restaurant_slug?.trim()
-    return slug ? `${publicOrigin()}/r/${slug}` : ''
+    return slug ? menuUrl(slug) : ''
 })
 </script>
 

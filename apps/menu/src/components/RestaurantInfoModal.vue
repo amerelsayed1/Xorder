@@ -25,9 +25,13 @@ const hours = computed(() => r.value.business_hours || {})
 const hasStructuredHours = computed(() =>
     DAY_KEYS.some((k) => {
         const d = hours.value[k]
-        return d && (d.closed || (d.open && d.close))
+        return d && (d.closed || d.always || (d.open && d.close))
     }),
 )
+
+// Restaurant is open around the clock — every day flagged always-open. Shown as
+// a single "Open 24 hours" line instead of seven identical rows.
+const is24_7 = computed(() => DAY_KEYS.every((k) => hours.value[k]?.always))
 
 function toMin(hhmm) {
     if (!hhmm) return null
@@ -71,15 +75,17 @@ const status = computed(() => {
     const windowFor = (dayIdx) => {
         const d = hours.value[DAY_KEYS[dayIdx]]
         if (!d || d.closed) return null
+        if (d.always) return { always: true }
         const open = toMin(d.open)
         const close = toMin(d.close)
         if (open === null || close === null) return null
         return { open, close, crossesMidnight: close <= open }
     }
 
-    // Today's window (handles same-day and past-midnight closing).
+    // Today's window (handles 24h, same-day and past-midnight closing).
     const today = windowFor(now.dayIdx)
     if (today) {
+        if (today.always) return { open: true, until: null }
         if (!today.crossesMidnight && now.min >= today.open && now.min < today.close) {
             return { open: true, until: hours.value[DAY_KEYS[now.dayIdx]].close }
         }
@@ -124,9 +130,6 @@ const hasCoords = computed(() =>
     r.value.latitude != null && r.value.longitude != null
     && !Number.isNaN(Number(r.value.latitude)) && !Number.isNaN(Number(r.value.longitude)),
 )
-const mapEmbedSrc = computed(() =>
-    hasCoords.value ? `https://maps.google.com/maps?q=${r.value.latitude},${r.value.longitude}&z=15&output=embed` : '',
-)
 const directionsUrl = computed(() => {
     if (hasCoords.value) return `https://www.google.com/maps/dir/?api=1&destination=${r.value.latitude},${r.value.longitude}`
     if (r.value.address) return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(r.value.address)}`
@@ -141,7 +144,7 @@ const description = computed(() => props.localize(r.value, 'description'))
 const dayRows = computed(() =>
     DISPLAY_ORDER
         .map((key) => ({ key, data: hours.value[key] }))
-        .filter((row) => row.data && (row.data.closed || (row.data.open && row.data.close))),
+        .filter((row) => row.data && (row.data.closed || row.data.always || (row.data.open && row.data.close))),
 )
 </script>
 
@@ -184,27 +187,25 @@ const dayRows = computed(() =>
 
                 <section v-if="dayRows.length" class="info-block">
                     <h3>{{ t('working_hours') }}</h3>
-                    <ul class="hours-list">
+                    <ul v-if="is24_7" class="hours-list">
+                        <li class="hours-row is-today">
+                            <span class="hours-day">{{ t('everyday') }}</span>
+                            <span class="hours-time">{{ t('open_24h') }}</span>
+                        </li>
+                    </ul>
+                    <ul v-else class="hours-list">
                         <li v-for="row in dayRows" :key="row.key" class="hours-row" :class="{ 'is-today': row.key === todayKey }">
                             <span class="hours-day">{{ t('d_' + row.key) }}</span>
                             <span v-if="row.data.closed" class="hours-time is-closed">{{ t('closed') }}</span>
+                            <span v-else-if="row.data.always" class="hours-time">{{ t('open_24h') }}</span>
                             <span v-else class="hours-time" dir="ltr">{{ formatTime(row.data.open) }} – {{ formatTime(row.data.close) }}</span>
                         </li>
                     </ul>
                 </section>
 
-                <section v-if="r.address || hasCoords" class="info-block">
+                <section v-if="r.address" class="info-block">
                     <h3>{{ t('address_contact') }}</h3>
-                    <div v-if="hasCoords" class="info-map">
-                        <iframe
-                            :src="mapEmbedSrc"
-                            :title="t('map_location')"
-                            loading="lazy"
-                            referrerpolicy="no-referrer-when-downgrade"
-                            allowfullscreen
-                        ></iframe>
-                    </div>
-                    <p v-if="r.address" class="info-address">{{ r.address }}</p>
+                    <p class="info-address">{{ r.address }}</p>
                 </section>
 
                 <div v-if="directionsUrl || r.phone" class="info-actions">
@@ -356,21 +357,6 @@ const dayRows = computed(() =>
 .hours-time { color: var(--muted); }
 .hours-row.is-today .hours-time { color: var(--ink); }
 .hours-time.is-closed { color: #b91c1c; }
-
-.info-map {
-    border-radius: 14px;
-    overflow: hidden;
-    border: 1px solid var(--line);
-    aspect-ratio: 16 / 9;
-    background: var(--cream-deep);
-}
-
-.info-map iframe {
-    width: 100%;
-    height: 100%;
-    border: 0;
-    display: block;
-}
 
 .info-address {
     color: var(--muted);

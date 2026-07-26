@@ -1,6 +1,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRouter } from 'vue-router'
 import { useAuth } from '@xorder/api-client/auth.js'
 import api, { ensureCsrf } from '@xorder/api-client/api.js'
 import { currencyLabel } from '../../lib/currency.js'
@@ -12,12 +13,20 @@ import { useRealtime } from '../../stores/realtime.js'
 
 const { t, locale } = useI18n()
 const auth = useAuth()
+const router = useRouter()
 const rt = useRealtime()
+
+// The customer name links to the directory record — but only when the customer
+// directory feature is on and the order was matched to a directory row.
+const canOpenCustomer = (order) => auth.hasFeature('customer_tracking') && !!order.customer_id
+function openCustomer(order) {
+    if (canOpenCustomer(order)) router.push({ name: 'dashboard.customer', params: { id: order.customer_id } })
+}
 
 const STATUSES = ['NEW', 'CONFIRMED', 'COMPLETED', 'CANCELLED']
 const badgeClass = { NEW: 'badge-amber', CONFIRMED: 'badge-indigo', COMPLETED: 'badge-green', CANCELLED: 'badge-red' }
 // Which statuses each status can move to, rendered as per-row action buttons.
-const nextActions = { NEW: ['CONFIRMED', 'CANCELLED'], CONFIRMED: ['COMPLETED', 'CANCELLED'] }
+const nextActions = { NEW: ['CONFIRMED', 'CANCELLED'] }
 const actionLabel = { CONFIRMED: 'orders.confirm', COMPLETED: 'orders.complete', CANCELLED: 'orders.cancel_order' }
 
 const rows = ref([])
@@ -147,6 +156,7 @@ function fmtTime(iso) {
             <table class="w-full text-sm" style="min-width:860px">
                 <thead>
                     <tr class="text-start" style="color:var(--muted)">
+                        <th class="px-5 py-3 font-medium text-start" style="font-size:11px;text-transform:uppercase">#</th>
                         <th class="px-5 py-3 font-medium text-start" style="font-size:11px;text-transform:uppercase">{{ t('orders.order') }}</th>
                         <th class="px-3 py-3 font-medium text-start" style="font-size:11px;text-transform:uppercase">{{ t('orders.time') }}</th>
                         <th class="px-3 py-3 font-medium text-start" style="font-size:11px;text-transform:uppercase">{{ t('orders.customer') }}</th>
@@ -159,16 +169,17 @@ function fmtTime(iso) {
                 <tbody>
                     <template v-if="loading">
                         <tr v-for="n in 6" :key="'sk' + n" class="border-t" :style="{ borderColor: 'var(--line)' }">
-                            <td v-for="c in 7" :key="c" class="px-5 py-4"><Skeleton :h="'14px'" :w="c === 7 ? '60%' : '80%'" /></td>
+                            <td v-for="c in 8" :key="c" class="px-5 py-4"><Skeleton :h="'14px'" :w="c === 8 ? '60%' : '80%'" /></td>
                         </tr>
                     </template>
-                    <tr v-else-if="!rows.length"><td colspan="7" class="px-5 py-8 text-center" style="color:var(--muted)">{{ t('orders.none') }}</td></tr>
-                    <tr v-for="order in rows" :key="order.id" class="border-t align-top" :class="{ 'order-row-new': newIds.has(order.id) }" :style="{ borderColor: 'var(--line)' }">
+                    <tr v-else-if="!rows.length"><td colspan="8" class="px-5 py-8 text-center" style="color:var(--muted)">{{ t('orders.none') }}</td></tr>
+                    <tr v-for="(order, idx) in rows" :key="order.id" class="border-t align-top" :class="{ 'order-row-new': newIds.has(order.id) }" :style="{ borderColor: 'var(--line)' }">
+                        <td class="px-5 py-3 whitespace-nowrap" style="color:var(--muted)">{{ (meta?.from || 1) + idx }}</td>
                         <td class="px-5 py-3 font-medium whitespace-nowrap" style="color:var(--ink)">{{ order.code }}</td>
                         <td class="px-3 py-3 whitespace-nowrap" style="color:var(--muted)">{{ fmtTime(order.created_at) }}</td>
                         <td class="px-3 py-3">
-                            <div style="color:var(--ink)">{{ order.customer_name || '—' }}</div>
-                            <div v-if="order.customer_phone" class="text-xs" style="color:var(--muted)" dir="ltr">{{ order.customer_phone }}</div>
+                            <button v-if="canOpenCustomer(order)" type="button" class="cust-link" @click="openCustomer(order)">{{ order.customer_name || '—' }}</button>
+                            <div v-else style="color:var(--ink)">{{ order.customer_name || '—' }}</div>
                         </td>
                         <td class="px-3 py-3">
                             <div v-for="(it, i) in order.items" :key="i" class="order-item" style="color:var(--body)">
@@ -218,6 +229,9 @@ function fmtTime(iso) {
     border: 1px solid var(--line); background: var(--card); color: var(--body); font-size: 13.5px; font-weight: 600; cursor: pointer; }
 .chip-on { background: var(--accent); color: #fff; border-color: var(--accent); }
 .btn-cancel { color: #c0392b; }
+/* Customer name → directory record. Looks like text until hovered. */
+.cust-link { padding: 0; border: 0; background: none; font: inherit; color: var(--ink); cursor: pointer; text-align: start; }
+.cust-link:hover { color: var(--accent); text-decoration: underline; }
 /* Order line: quantity leads (inline-start), name follows — isolated so the
    Latin "3×" never gets reordered next to an Arabic name. */
 .order-item { display: flex; align-items: baseline; gap: 6px; }

@@ -110,6 +110,7 @@ const fmtDate = (iso) => iso ? new Date(iso).toLocaleDateString() : ''
                 <table class="w-full text-sm" style="min-width:720px">
                     <thead>
                         <tr class="text-left" style="color:var(--muted)">
+                            <th class="px-5 py-3 font-medium" style="font-size:11px;text-transform:uppercase">#</th>
                             <th class="px-5 py-3 font-medium" style="font-size:11px;text-transform:uppercase">{{ t('leads.restaurant') }}</th>
                             <th class="px-3 py-3 font-medium" style="font-size:11px;text-transform:uppercase">{{ t('leads.contact') }}</th>
                             <th class="px-3 py-3 font-medium" style="font-size:11px;text-transform:uppercase">{{ t('leads.whatsapp') }}</th>
@@ -119,10 +120,11 @@ const fmtDate = (iso) => iso ? new Date(iso).toLocaleDateString() : ''
                         </tr>
                     </thead>
                     <tbody>
-                        <TableSkeleton v-if="loading" :cols="6" />
-                        <tr v-else-if="!rows.length"><td colspan="6" class="px-5 py-8 text-center" style="color:var(--muted)">{{ t('leads.none') }}</td></tr>
-                        <tr v-for="lead in rows" :key="lead.id" class="border-t cursor-pointer hover:bg-black/[.015]"
+                        <TableSkeleton v-if="loading" :cols="7" />
+                        <tr v-else-if="!rows.length"><td colspan="7" class="px-5 py-8 text-center" style="color:var(--muted)">{{ t('leads.none') }}</td></tr>
+                        <tr v-for="(lead, idx) in rows" :key="lead.id" class="border-t cursor-pointer hover:bg-black/[.015]"
                             :style="{ borderColor: 'var(--line)' }" @click="openLead(lead)">
+                            <td class="px-5 py-3" style="color:var(--muted)">{{ idx + 1 }}</td>
                             <td class="px-5 py-3 font-medium" style="color:var(--ink)">{{ lead.restaurant_name }}</td>
                             <td class="px-3 py-3" style="color:var(--body)">{{ lead.contact_name || '—' }}</td>
                             <td class="px-3 py-3" style="color:var(--body)" dir="ltr">{{ lead.whatsapp }}</td>

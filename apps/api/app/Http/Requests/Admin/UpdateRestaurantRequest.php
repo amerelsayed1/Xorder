@@ -40,6 +40,7 @@ class UpdateRestaurantRequest extends FormRequest
             'opening_hours' => ['nullable', 'string', 'max:2000'],
             'business_hours' => ['nullable', 'array'],
             'business_hours.*.closed' => ['sometimes', 'boolean'],
+            'business_hours.*.always' => ['sometimes', 'boolean'],
             'business_hours.*.open' => ['nullable', 'date_format:H:i'],
             'business_hours.*.close' => ['nullable', 'date_format:H:i'],
             'delivery_time_min' => ['nullable', 'integer', 'min:0', 'max:1440'],
