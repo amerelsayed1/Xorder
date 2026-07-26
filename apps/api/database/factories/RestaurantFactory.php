@@ -40,19 +40,20 @@ class RestaurantFactory extends Factory
 
     /**
      * Grant the ordering entitlements a normally-provisioned client has, so the
-     * public menu accepts orders. Both channels are enabled, leaving the chosen
-     * ordering_mode (WhatsApp / system / both) fully honoured — since ordering
-     * availability is now decided by the plan, tests that place orders opt in
-     * with this state.
+     * public menu accepts system orders. Both channels are enabled, and the
+     * ordering_mode is pinned to SYSTEM so the order pipeline actually persists
+     * records — since ordering availability is decided by the plan, tests that
+     * place orders opt in with this state.
      */
     public function withOrdering(): static
     {
-        return $this->afterCreating(function (Restaurant $restaurant) {
-            app(RestaurantFeatureService::class)->apply(
-                $restaurant,
-                array_merge(Feature::defaultSet(), ['system_ordering' => true]),
-            );
-        });
+        return $this->state(fn () => ['ordering_mode' => OrderingMode::SYSTEM])
+            ->afterCreating(function (Restaurant $restaurant) {
+                app(RestaurantFeatureService::class)->apply(
+                    $restaurant,
+                    array_merge(Feature::defaultSet(), ['system_ordering' => true]),
+                );
+            });
     }
 
     public function suspended(): static

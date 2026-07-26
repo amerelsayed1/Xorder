@@ -44,7 +44,7 @@ class OrderTest extends TestCase
             'restaurant_id' => $r->id,
             'status' => 'NEW',
             'customer_name' => 'Amer',
-            'source' => 'whatsapp',
+            'source' => 'system',
         ]);
     }
 
