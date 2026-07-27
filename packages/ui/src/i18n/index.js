@@ -3,6 +3,7 @@ import { createI18n } from 'vue-i18n'
 const messages = {
     en: {
         app: { title: 'Xorder', powered_by: 'Powered by' },
+        pwa: { install: 'Install app', dismiss: 'Dismiss' },
         languages: { en: 'English', ar: 'العربية' },
         wizard: {
             step_of: 'Step {n} of {total}',
@@ -62,6 +63,7 @@ const messages = {
             scan_to_order: 'Scan to order', demo_order: 'Add to order',
             demo_stand: 'Place it on every table',
             price_contact: 'Contact us', price_contact_note: 'Custom pricing',
+            price_free: 'Free', price_custom: 'Custom pricing', price_per_month: '/ mo',
             lead_restaurant: 'Restaurant name', lead_contact: 'Contact person',
             lead_whatsapp: 'WhatsApp number', lead_city: 'City',
             lead_business: 'Business type', lead_message: 'Message / notes',
@@ -124,7 +126,7 @@ const messages = {
             areas: 'Dining Areas', tables: 'Tables', requests: 'Live Requests', live: 'Live board',
             reviews: 'Reviews', reports: 'Reports',
             group_orders: 'Order Management',
-            group_menu: 'Menu Management', group_place: 'Place Management',
+            group_menu: 'Menu Management', group_place: 'Tables Management',
             group_engagement: 'Customers & Engagement', group_analytics: 'Analytics',
             group_settings: 'Settings',
         },
@@ -267,8 +269,9 @@ const messages = {
         },
         live: {
             title: 'Live board', subtitle: 'Everything happening right now — table requests and active orders.',
-            requests_col: 'Table requests', orders_col: 'Active orders',
+            requests_col: 'Orders & requests', orders_col: 'Active orders',
             no_requests: 'No open requests.', no_orders: 'No active orders.',
+            feed_empty: 'No new orders or requests.',
             none: 'No live activity to show for this plan.',
             tables_col: 'Tables', no_tables: 'No tables yet.',
             available: 'Available', occupied: 'Occupied',
@@ -368,6 +371,7 @@ const messages = {
             features: 'Features', features_hint: 'One line per feature — shown on the plan.', add_feature: 'Add feature',
             entitlements: 'Included capabilities', entitlements_hint: 'What restaurants on this plan can use. Prerequisites are enabled automatically.',
             active: 'Active', active_hint: 'Inactive plans can’t be assigned to restaurants.', inactive: 'Inactive',
+            recommended: 'Recommended', recommended_hint: 'Highlights this plan on the public pricing page.',
             sort_order: 'Sort order', restaurants_on: 'On this plan',
             delete_title: 'Delete plan?', delete_message: 'This removes the plan from the catalog. Restaurants already assigned keep their current plan name.',
             none_option: 'No plan',
@@ -651,6 +655,7 @@ const messages = {
     },
     ar: {
         app: { title: 'Xorder', powered_by: 'بدعم من' },
+        pwa: { install: 'تثبيت التطبيق', dismiss: 'إخفاء' },
         languages: { en: 'English', ar: 'العربية' },
         wizard: {
             step_of: 'الخطوة {n} من {total}',
@@ -710,6 +715,7 @@ const messages = {
             scan_to_order: 'امسح للطلب', demo_order: 'أضف إلى الطلب',
             demo_stand: 'ضعه على كل طاولة',
             price_contact: 'تواصل معنا', price_contact_note: 'سعر مخصّص',
+            price_free: 'مجاني', price_custom: 'تسعير مخصص', price_per_month: '/ شهر',
             lead_restaurant: 'اسم المطعم', lead_contact: 'الشخص المسؤول',
             lead_whatsapp: 'رقم واتساب', lead_city: 'المدينة',
             lead_business: 'نوع النشاط', lead_message: 'رسالة / ملاحظات',
@@ -772,7 +778,7 @@ const messages = {
             areas: 'مناطق الجلوس', tables: 'الطاولات', requests: 'الطلبات المباشرة', live: 'اللوحة المباشرة',
             reviews: 'التقييمات', reports: 'التقارير',
             group_orders: 'إدارة الطلبات',
-            group_menu: 'إدارة المنيو', group_place: 'إدارة المكان',
+            group_menu: 'إدارة المنيو', group_place: 'إدارة الطاولات',
             group_engagement: 'العملاء والتفاعل', group_analytics: 'التحليلات',
             group_settings: 'الإعدادات',
         },
@@ -915,8 +921,9 @@ const messages = {
         },
         live: {
             title: 'اللوحة المباشرة', subtitle: 'كل ما يحدث الآن — طلبات الطاولات والطلبات النشطة.',
-            requests_col: 'طلبات الطاولات', orders_col: 'الطلبات النشطة',
+            requests_col: 'الطلبات والفواتير', orders_col: 'الطلبات النشطة',
             no_requests: 'لا توجد طلبات مفتوحة.', no_orders: 'لا توجد طلبات نشطة.',
+            feed_empty: 'لا توجد طلبات أو فواتير جديدة.',
             none: 'لا يوجد نشاط مباشر لعرضه في هذه الباقة.',
             tables_col: 'الطاولات', no_tables: 'لا توجد طاولات.',
             available: 'متاحة', occupied: 'مشغولة',
@@ -1013,6 +1020,7 @@ const messages = {
             features: 'المزايا', features_hint: 'سطر لكل ميزة — تظهر ضمن الخطة.', add_feature: 'إضافة ميزة',
             entitlements: 'القدرات المتضمَّنة', entitlements_hint: 'ما يمكن للمطاعم على هذه الخطة استخدامه. تُفعَّل المتطلبات تلقائيًا.',
             active: 'مفعّلة', active_hint: 'الخطط غير المفعّلة لا يمكن إسنادها للمطاعم.', inactive: 'غير مفعّلة',
+            recommended: 'موصى به', recommended_hint: 'يميّز هذه الخطة في صفحة الأسعار العامة.',
             sort_order: 'الترتيب', restaurants_on: 'على هذه الخطة',
             delete_title: 'حذف الخطة؟', delete_message: 'سيؤدي هذا إلى إزالة الخطة من الكتالوج. المطاعم المُسندة إليها تحتفظ باسم خطتها الحالي.',
             none_option: 'بدون خطة',

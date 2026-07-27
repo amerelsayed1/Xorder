@@ -245,7 +245,7 @@ function fmtTime(iso) {
                     <div v-for="(it, i) in receiptOrder.items" :key="i" class="receipt-line">
                         <span class="order-item-qty">{{ it.qty }}×</span>
                         <span class="receipt-line-name">{{ it.name }}<template v-if="it.options?.length"> ({{ it.options.join(', ') }})</template></span>
-                        <span v-if="it.line_total != null" class="receipt-line-total">{{ it.line_total }}</span>
+                        <span v-if="it.line_total != null" class="receipt-line-total">{{ it.line_total }} {{ currencyLabel(receiptOrder.currency, locale) }}</span>
                     </div>
                 </div>
 

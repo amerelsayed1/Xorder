@@ -44,11 +44,7 @@ function applyList(listRef, next, newIdsRef, highlight) {
 // ---------- Bill requests (open only, oldest first) ----------
 const requests = ref([])
 const requestNewIds = ref(new Set())
-const REQ_PRIMARY = { REQUESTED: 'SEEN', SEEN: 'IN_PROGRESS', IN_PROGRESS: 'COMPLETED' }
-const reqActionLabel = { SEEN: 'req.act_seen', IN_PROGRESS: 'req.act_progress', COMPLETED: 'req.act_complete', CANCELLED: 'req.act_cancel' }
 const reqBadge = { REQUESTED: 'badge-amber', SEEN: 'badge-indigo', IN_PROGRESS: 'badge-indigo' }
-const reqPrimary = (b) => REQ_PRIMARY[b.status] || null
-const reqCanComplete = (b) => ['REQUESTED', 'SEEN'].includes(b.status)
 // Table ids that currently have an open request → they pulse on the floor grid.
 const requestByTable = computed(() => {
     const m = new Map()
@@ -90,6 +86,53 @@ async function loadTables(highlight) {
     void highlight
 }
 
+// ---------- New table orders (shares the left feed with bill requests) ----------
+const orders = ref([])
+const orderNewIds = ref(new Set())
+
+async function loadOrders(highlight) {
+    if (!showOrders.value) return
+    // New (unacknowledged) orders placed from a table. They sit in the left feed
+    // next to bill requests and drive the floor-grid flash.
+    const { data } = await api.get('api/dashboard/orders', { params: { status: 'NEW' } })
+    const list = (data.data || []).filter((o) => o.table_id != null)
+    applyList(orders, list, orderNewIds, highlight)
+}
+
+// Table id → its live-grid row, so a feed order can show its table label/area.
+const tableById = computed(() => {
+    const m = new Map()
+    for (const tbl of tables.value) m.set(tbl.id, tbl)
+    return m
+})
+
+// Unified left feed: open bill requests + new table orders, grouped by table so
+// everything happening on one table sits together. Groups (and the items within
+// them) are ordered oldest-first, keeping the longest-waiting table on top.
+const hasFeed = computed(() => showRequests.value || showOrders.value)
+const feedGroups = computed(() => {
+    const groups = new Map()
+    const ensure = (id, label, area) => {
+        if (!groups.has(id)) groups.set(id, { id, label, area, items: [] })
+        return groups.get(id)
+    }
+    if (showRequests.value) for (const b of requests.value) {
+        const tbl = tableById.value.get(b.table_id)
+        const g = ensure(b.table_id ?? 'r' + b.id, tbl?.label || b.table_label || '—', tbl ? areaName(tbl) : areaName(b))
+        g.items.push({ type: 'request', key: 'r' + b.id, ts: b.requested_at, req: b })
+    }
+    if (showOrders.value) for (const o of orders.value) {
+        const tbl = tableById.value.get(o.table_id)
+        const g = ensure(o.table_id, tbl?.label || '#' + o.table_id, tbl ? areaName(tbl) : '')
+        g.items.push({ type: 'order', key: 'o' + o.id, ts: o.created_at, order: o })
+    }
+    const arr = [...groups.values()]
+    for (const g of arr) g.items.sort((a, b) => new Date(a.ts) - new Date(b.ts))
+    return arr.sort((a, b) => new Date(a.items[0]?.ts || 0) - new Date(b.items[0]?.ts || 0))
+})
+const feedCount = computed(() => feedGroups.value.reduce((n, g) => n + g.items.length, 0))
+const feedIsNew = (it) => (it.type === 'request' ? requestNewIds.value.has(it.req.id) : orderNewIds.value.has(it.order.id))
+
 // ---------- Table modal: that table's active orders ----------
 const openTable = ref(null)
 const modalOrders = ref([])
@@ -122,9 +165,10 @@ async function setOrderStatus(order, status) {
     try {
         await ensureCsrf()
         await api.patch(`api/dashboard/orders/${order.id}/status`, { status })
-        // Drops off the modal once it leaves the active set.
+        // Drops off both the modal and the left feed once it leaves the NEW set.
         modalOrders.value = modalOrders.value.filter((o) => o.id !== order.id)
-        loadTables(false) // refresh the card's active-order count / occupancy
+        orders.value = orders.value.filter((o) => o.id !== order.id)
+        loadTables(false) // refresh the card's active-order count / flash
     } catch { alert(t('orders.update_failed')) }
     finally { updating.value = null }
 }
@@ -140,7 +184,7 @@ function confirmCancel(ns) {
 }
 
 async function refresh(highlight) {
-    try { await Promise.all([loadRequests(highlight), loadTables(highlight)]) } catch { /* keep view */ }
+    try { await Promise.all([loadRequests(highlight), loadTables(highlight), loadOrders(highlight)]) } catch { /* keep view */ }
 }
 
 onMounted(async () => {
@@ -179,39 +223,65 @@ const panelDir = computed(() => (locale.value === 'ar' ? 'rtl' : 'ltr'))
             </div>
         </div>
 
-        <div v-else-if="!showRequests && !showTables" class="card px-5 py-12 text-center" style="color:var(--muted)">
+        <div v-else-if="!hasFeed && !showTables" class="card px-5 py-12 text-center" style="color:var(--muted)">
             {{ t('live.none') }}
         </div>
 
-        <!-- Two joined panels: requests on the left, tables floor on the right.
-             dir=ltr on the wrapper fixes that order; each panel restores locale dir. -->
-        <div v-else class="live-grid" :class="{ 'live-grid-one': !showRequests || !showTables }" dir="ltr">
-            <!-- Table requests column -->
-            <section v-if="showRequests" class="live-col card" :dir="panelDir">
+        <!-- Two joined panels: the incoming feed (orders + bill requests) on the
+             left, tables floor on the right. dir=ltr on the wrapper fixes that
+             order; each panel restores locale dir. -->
+        <div v-else class="live-grid" :class="{ 'live-grid-one': !hasFeed || !showTables }" dir="ltr">
+            <!-- Incoming feed: new table orders + open bill requests -->
+            <section v-if="hasFeed" class="live-col card" :dir="panelDir">
                 <header class="live-col-head">
                     <h2 class="live-col-title">{{ t('live.requests_col') }}</h2>
-                    <span class="live-count" :class="{ 'live-count-hot': requests.length }">{{ requests.length }}</span>
+                    <span class="live-count" :class="{ 'live-count-hot': feedCount }">{{ feedCount }}</span>
                 </header>
-                <div v-if="!requests.length" class="live-empty">{{ t('live.no_requests') }}</div>
+                <div v-if="!feedCount" class="live-empty">{{ t('live.feed_empty') }}</div>
                 <div v-else class="live-list">
-                    <article v-for="b in requests" :key="b.id" class="req-card" :class="{ 'req-card-new': requestNewIds.has(b.id) }">
-                        <div class="req-top">
-                            <div class="req-meta">
-                                <strong>{{ t('req.table') }} {{ b.table_label || '—' }}</strong>
-                                <span v-if="areaName(b)" class="live-sub">{{ areaName(b) }}</span>
-                                <span class="live-sub">{{ t('req.waiting', { time: fmtTime(b.requested_at) }) }}</span>
-                            </div>
-                            <span class="badge" :class="reqBadge[b.status]">{{ t('req.status.' + b.status) }}</span>
-                        </div>
-                        <div class="req-line">{{ b.customer_note || t('req.bill') }}</div>
-                        <div v-if="!auth.isReadOnly" class="live-actions">
-                            <button class="live-primary" :disabled="updating === 'r' + b.id" @click="setRequestStatus(b, reqPrimary(b))">
-                                {{ t(reqActionLabel[reqPrimary(b)]) }}
-                            </button>
-                            <button v-if="reqCanComplete(b)" class="live-sec" :disabled="updating === 'r' + b.id" @click="setRequestStatus(b, 'COMPLETED')">{{ t('req.act_complete') }}</button>
-                            <button class="live-cancel" :disabled="updating === 'r' + b.id" @click="setRequestStatus(b, 'CANCELLED')">{{ t('req.act_cancel') }}</button>
-                        </div>
-                    </article>
+                    <!-- One block per table: its new orders + open bill requests -->
+                    <section v-for="g in feedGroups" :key="g.id" class="feed-group">
+                        <header class="feed-group-head">
+                            <strong>{{ t('req.table') }} {{ g.label }}</strong>
+                            <span v-if="g.area" class="live-sub">{{ g.area }}</span>
+                            <span class="feed-group-count">{{ g.items.length }}</span>
+                        </header>
+                        <template v-for="it in g.items" :key="it.key">
+                            <!-- Bill request -->
+                            <article v-if="it.type === 'request'" class="req-card" :class="{ 'req-card-new': feedIsNew(it) }">
+                                <div class="req-top">
+                                    <span class="live-sub">{{ t('req.waiting', { time: fmtTime(it.req.requested_at) }) }}</span>
+                                    <span class="badge" :class="reqBadge[it.req.status]">{{ t('req.status.' + it.req.status) }}</span>
+                                </div>
+                                <div class="req-line">{{ it.req.customer_note || t('req.bill') }}</div>
+                                <div v-if="!auth.isReadOnly" class="live-actions">
+                                    <button class="live-primary" :disabled="updating === 'r' + it.req.id" @click="setRequestStatus(it.req, 'COMPLETED')">
+                                        {{ t('orders.complete') }}
+                                    </button>
+                                    <button class="live-cancel" :disabled="updating === 'r' + it.req.id" @click="setRequestStatus(it.req, 'CANCELLED')">{{ t('req.act_cancel') }}</button>
+                                </div>
+                            </article>
+                            <!-- New table order -->
+                            <article v-else class="req-card" :class="{ 'req-card-new': feedIsNew(it) }">
+                                <div class="req-top">
+                                    <div class="req-meta">
+                                        <strong>{{ it.order.code }}</strong>
+                                        <span class="live-sub">{{ fmtTime(it.order.created_at) }}<template v-if="it.order.customer_name"> · {{ it.order.customer_name }}</template></span>
+                                    </div>
+                                    <span class="badge" :class="orderBadge[it.order.status]">{{ t('orders.status.' + it.order.status) }}</span>
+                                </div>
+                                <ul class="live-order-items">
+                                    <li v-for="(itm, i) in it.order.items" :key="i"><span class="live-qty">{{ itm.qty }}×</span> {{ itm.name }}</li>
+                                </ul>
+                                <div class="live-time"><b style="color:var(--ink)">{{ it.order.total }} {{ currencyLabel(it.order.currency, locale) }}</b></div>
+                                <div v-if="!auth.isReadOnly" class="live-actions">
+                                    <button v-for="next in ORDER_NEXT[it.order.status] || []" :key="next"
+                                        :class="next === 'CANCELLED' ? 'live-cancel' : 'live-primary'"
+                                        :disabled="updating === 'o' + it.order.id" @click="setOrderStatus(it.order, next)">{{ t(orderActionLabel[next]) }}</button>
+                                </div>
+                            </article>
+                        </template>
+                    </section>
                 </div>
             </section>
 
@@ -219,24 +289,19 @@ const panelDir = computed(() => (locale.value === 'ar' ? 'rtl' : 'ltr'))
             <section v-if="showTables" class="live-col card" :dir="panelDir">
                 <header class="live-col-head">
                     <h2 class="live-col-title">{{ t('live.tables_col') }}</h2>
-                    <div class="live-legend">
-                        <span><i class="dot" style="background:var(--ok)"></i>{{ t('live.available') }}</span>
-                        <span><i class="dot" style="background:var(--busy)"></i>{{ t('live.occupied') }}</span>
-                    </div>
                     <span class="live-count live-count-neutral">{{ tables.length }}</span>
                 </header>
                 <div v-if="!tables.length" class="live-empty">{{ t('live.no_tables') }}</div>
                 <div v-else class="tables-grid">
-                    <button v-for="tbl in tables" :key="tbl.id" type="button" class="tcard" :class="{ 'tcard-flash': tbl.has_request }"
+                    <button v-for="tbl in tables" :key="tbl.id" type="button" class="tcard"
+                        :class="{ 'tcard-flash': tbl.has_request, 'tcard-flash-order': !tbl.has_request && tbl.has_new_order }"
                         @click="openTableModal(tbl)">
-                        <span class="tcard-stripe" :style="{ background: tbl.occupied ? 'var(--busy)' : 'var(--ok)' }"></span>
                         <span class="tcard-body">
-                            <span class="tcard-area">{{ areaName(tbl) }}</span>
+                            <span class="tcard-toprow">
+                                <span class="tcard-area">{{ areaName(tbl) }}</span>
+                            </span>
                             <span class="tcard-bottom">
                                 <span class="tcard-name">{{ t('req.table') }} {{ tbl.label }}</span>
-                                <span class="tcard-status" :style="{ color: tbl.occupied ? 'var(--busy)' : 'var(--ok)' }">
-                                    {{ tbl.occupied ? t('live.occupied') : t('live.available') }}
-                                </span>
                                 <span class="tcard-sub">
                                     <span v-if="tbl.has_request" class="tcard-req">{{ t('req.bill') }}</span>
                                     <span v-else-if="tbl.active_orders">{{ t('live.active_orders_n', { n: tbl.active_orders }) }}</span>
@@ -256,8 +321,8 @@ const panelDir = computed(() => (locale.value === 'ar' ? 'rtl' : 'ltr'))
                     <div class="tm-req-line">{{ modalRequest.customer_note || t('req.bill') }}</div>
                     <div class="live-sub">{{ t('req.waiting', { time: fmtTime(modalRequest.requested_at) }) }}</div>
                     <div v-if="!auth.isReadOnly" class="live-actions">
-                        <button class="live-primary" :disabled="updating === 'r' + modalRequest.id" @click="setRequestStatus(modalRequest, reqPrimary(modalRequest))">
-                            {{ t(reqActionLabel[reqPrimary(modalRequest)]) }}
+                        <button class="live-primary" :disabled="updating === 'r' + modalRequest.id" @click="setRequestStatus(modalRequest, 'COMPLETED')">
+                            {{ t('orders.complete') }}
                         </button>
                         <button class="live-cancel" :disabled="updating === 'r' + modalRequest.id" @click="setRequestStatus(modalRequest, 'CANCELLED')">{{ t('req.act_cancel') }}</button>
                     </div>
@@ -292,9 +357,6 @@ const panelDir = computed(() => (locale.value === 'ar' ? 'rtl' : 'ltr'))
 </template>
 
 <style scoped>
-/* Occupancy status colours (semantic — outside the brand token set). */
-.live-grid { --ok: #22c55e; --busy: #14b8a6; }
-
 /* Fill the content area: the view is a flex column the height of the viewport
    minus the sakai-content chrome (88px top + 40px bottom padding); the grid
    grows to take whatever the header leaves. */
@@ -313,16 +375,18 @@ const panelDir = computed(() => (locale.value === 'ar' ? 'rtl' : 'ltr'))
 
 .live-col-head { display: flex; align-items: center; gap: 12px; padding: 16px 20px; border-bottom: 1px solid var(--line); }
 .live-col-title { flex: 1; font-size: 16.5px; font-weight: 700; color: var(--ink); font-family: var(--font-display); }
-.live-legend { display: flex; align-items: center; gap: 14px; font-size: 12px; color: var(--muted); }
-.live-legend span { display: flex; align-items: center; gap: 5px; }
-.live-legend .dot { width: 8px; height: 8px; display: inline-block; }
 .live-count { min-width: 26px; text-align: center; padding: 2px 9px; font-size: 13px; font-weight: 700; background: var(--page); color: var(--muted); }
 .live-count-hot { background: var(--accent); color: #fff; }
 .live-count-neutral { background: var(--accent-soft); color: var(--accent); }
 .live-empty { padding: 40px 16px; text-align: center; color: var(--muted); font-size: 13.5px; }
 
 /* Requests column */
-.live-list { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 14px; padding: 16px; overflow-y: auto; }
+.live-list { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 22px; padding: 16px; overflow-y: auto; }
+/* One block per table: a header, then that table's order / request cards. */
+.feed-group { display: flex; flex-direction: column; }
+.feed-group-head { display: flex; align-items: center; gap: 8px; padding-bottom: 8px; margin-bottom: 12px; border-bottom: 1px solid var(--line); }
+.feed-group-head strong { color: var(--ink); font-size: 14.5px; font-weight: 800; }
+.feed-group-count { margin-inline-start: auto; min-width: 20px; text-align: center; padding: 1px 8px; font-size: 12px; font-weight: 700; background: var(--accent-soft); color: var(--accent); border-radius: 10px; }
 .req-card { display: flex; flex-direction: column; gap: 8px; padding: 4px 0; }
 .req-card + .req-card { border-top: 1px solid var(--line); padding-top: 14px; }
 .req-card-new { animation: live-pop .35s ease; }
@@ -339,18 +403,24 @@ const panelDir = computed(() => (locale.value === 'ar' ? 'rtl' : 'ltr'))
 .tcard { display: flex; align-items: stretch; text-align: start; padding: 0; border: 1px solid var(--line);
     overflow: hidden; background: var(--page); cursor: pointer; font-family: inherit; }
 .tcard:hover { border-color: var(--accent); box-shadow: 0 2px 8px rgba(0,0,0,.06); }
-.tcard-stripe { width: 7px; flex: none; }
 .tcard-body { flex: 1; min-width: 0; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; height: 92px; box-sizing: border-box; }
-.tcard-area { font-size: 11.5px; font-weight: 600; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tcard-toprow { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.tcard-area { flex: 1; min-width: 0; font-size: 11.5px; font-weight: 600; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tcard-bottom { margin-top: auto; display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .tcard-name { font-size: 12.5px; font-weight: 700; color: var(--ink); line-height: 1.3; overflow-wrap: anywhere; }
-.tcard-status { font-size: 11.5px; font-weight: 600; line-height: 1.3; }
 .tcard-sub { font-size: 11.5px; color: var(--muted); min-height: 15px; }
 .tcard-req { color: #dc2626; font-weight: 700; }
 .tcard-flash { animation: reqflash 1.1s ease-in-out infinite; }
 @keyframes reqflash {
     0%, 100% { background: #fff1f1; border-color: #fecaca; }
     50% { background: #fecaca; border-color: #f87171; }
+}
+/* New (unacknowledged) order — flashes in the accent/amber tone to read as
+   "incoming order", distinct from the red bill-request pulse above. */
+.tcard-flash-order { animation: orderflash 1.1s ease-in-out infinite; }
+@keyframes orderflash {
+    0%, 100% { background: #fffbeb; border-color: #fde68a; }
+    50% { background: #fef3c7; border-color: #fbbf24; }
 }
 
 /* Modal body */

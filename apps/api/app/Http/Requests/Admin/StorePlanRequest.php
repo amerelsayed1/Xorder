@@ -26,6 +26,7 @@ class StorePlanRequest extends FormRequest
             'max_items' => ['nullable', 'integer', 'min:1', 'max:100000'],
             'max_branches' => ['nullable', 'integer', 'min:1', 'max:1000'],
             'is_active' => ['nullable', 'boolean'],
+            'is_recommended' => ['nullable', 'boolean'],
             'sort_order' => ['nullable', 'integer', 'min:0'],
         ];
     }

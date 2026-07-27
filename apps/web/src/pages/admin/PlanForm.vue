@@ -12,7 +12,7 @@ const { t, locale } = useI18n()
 const isEdit = computed(() => !!route.params.id)
 const backArrow = computed(() => locale.value === 'ar' ? '→' : '←')
 const form = reactive({
-    name: '', price: '', currency: 'EGP', feature_keys: [], is_active: true, sort_order: 0,
+    name: '', price: '', currency: 'EGP', feature_keys: [], is_active: true, is_recommended: false, sort_order: 0,
 })
 const currencies = ['EGP', 'SAR', 'AED', 'USD', 'KWD', 'QAR', 'BHD', 'OMR', 'JOD', 'EUR', 'GBP']
 
@@ -42,6 +42,7 @@ onMounted(async () => {
             currency: p.currency,
             feature_keys: Array.isArray(p.feature_keys) ? [...p.feature_keys] : [],
             is_active: p.is_active,
+            is_recommended: p.is_recommended ?? false,
             sort_order: p.sort_order,
         })
     }
@@ -57,6 +58,7 @@ async function submit() {
             currency: form.currency,
             feature_keys: [...form.feature_keys],
             is_active: form.is_active,
+            is_recommended: form.is_recommended,
             sort_order: Number(form.sort_order) || 0,
         }
         if (isEdit.value) {
@@ -114,6 +116,13 @@ async function submit() {
                         <span>
                             <span class="label" style="margin:0">{{ t('plan.active') }}</span>
                             <span class="block text-xs mt-0.5" style="color:var(--muted)">{{ t('plan.active_hint') }}</span>
+                        </span>
+                    </label>
+                    <label class="flex items-start gap-3 rounded-lg border p-3 cursor-pointer" style="border-color:var(--line)">
+                        <input v-model="form.is_recommended" type="checkbox" class="mt-0.5 h-4 w-4" />
+                        <span>
+                            <span class="label" style="margin:0">{{ t('plan.recommended') }}</span>
+                            <span class="block text-xs mt-0.5" style="color:var(--muted)">{{ t('plan.recommended_hint') }}</span>
                         </span>
                     </label>
                 </div>

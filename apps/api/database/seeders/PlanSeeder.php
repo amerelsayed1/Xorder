@@ -8,11 +8,19 @@ use Illuminate\Database\Seeder;
 class PlanSeeder extends Seeder
 {
     /**
-     * Subscription plans catalog (managed at /plans). Mirrors the landing tiers
-     * so the two stay consistent. Idempotent: safe to re-run.
+     * Subscription plans catalog (managed at /plans) — it also drives the public
+     * landing pricing grid. This seeder is a FIRST-BOOT bootstrap only: it seeds
+     * a starter catalog when none exists and then stays out of the way. On an
+     * existing install the plans belong to the Super Admin, so re-running (every
+     * container start, deploy.sh, DemoSeeder) must not re-inject defaults or
+     * overwrite the admin's plans — otherwise the landing shows stale tiers.
      */
     public function run(): void
     {
+        if (Plan::query()->exists()) {
+            return;
+        }
+
         $plans = [
             [
                 'name' => 'Menu Starter',
@@ -49,7 +57,7 @@ class PlanSeeder extends Seeder
         ];
 
         foreach ($plans as $data) {
-            Plan::updateOrCreate(['name' => $data['name']], $data);
+            Plan::create($data);
         }
 
         $this->command?->info('Seeded '.count($plans).' subscription plans.');

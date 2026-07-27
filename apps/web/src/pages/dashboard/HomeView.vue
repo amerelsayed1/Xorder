@@ -53,6 +53,10 @@ const featured = computed(() => {
     const f = items.value.filter(i => i.is_featured)
     return (f.length ? f : items.value).slice(0, 5)
 })
+// Item ids whose image_url failed to load (dead/broken link) — they fall back
+// to the meal-icon placeholder instead of the browser's broken-image glyph.
+const failedImg = ref(new Set())
+function onImgError(id) { failedImg.value.add(id) }
 // Setup guide: steps we can detect from stats/auth data, plus a final
 // non-trackable "print your QR" step. The card hides once every detectable
 // step is done.
@@ -181,8 +185,8 @@ function copyUrl() {
                     </div>
                     <ul v-if="featured.length">
                         <li v-for="it in featured" :key="it.id" class="flex items-center gap-3 py-2.5 border-t first:border-t-0" style="border-color:var(--line)">
-                            <img v-if="it.image_url" :src="it.image_url" class="h-11 w-11 rounded-lg object-cover flex-shrink-0" />
-                            <div v-else class="h-11 w-11 rounded-lg grid place-items-center flex-shrink-0" style="background:var(--accent-soft);color:var(--accent)"><Icon name="items" :size="18" /></div>
+                            <img v-if="it.image_url && !failedImg.has(it.id)" :src="it.image_url" @error="onImgError(it.id)" class="h-11 w-11 rounded-lg object-cover flex-shrink-0" />
+                            <div v-else class="h-11 w-11 rounded-lg flex-shrink-0 flex items-center justify-center" style="background:var(--accent-soft);color:var(--accent)"><Icon name="utensils" :size="20" /></div>
                             <div class="min-w-0 flex-1">
                                 <div class="font-medium truncate" style="color:var(--ink)">{{ itemName(it) }}</div>
                                 <div v-if="itemAltName(it)" class="text-xs truncate" style="color:var(--muted)" :dir="locale === 'ar' ? 'ltr' : 'rtl'">{{ itemAltName(it) }}</div>

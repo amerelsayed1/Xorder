@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\LandingContent;
+use App\Models\Plan;
 use App\Models\Restaurant;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -61,18 +62,41 @@ class LandingContentTest extends TestCase
         $content = LandingContent::defaultContent();
         // SEO title is bilingual ({en, ar}) — edit both languages.
         $content['seo']['title'] = ['en' => 'Edited title', 'ar' => 'عنوان معدّل'];
-        $content['pricing']['plans'][2]['enabled'] = false;
 
         $this->actingAs($sa)->putJson('/api/admin/landing-content', ['content' => $content])
             ->assertOk()
             ->assertJsonPath('data.seo.title.en', 'Edited title')
-            ->assertJsonPath('data.seo.title.ar', 'عنوان معدّل')
-            ->assertJsonPath('data.pricing.plans.2.enabled', false);
+            ->assertJsonPath('data.seo.title.ar', 'عنوان معدّل');
 
         // Persisted and visible publicly.
         $this->getJson('/api/public/landing-content')
-            ->assertJsonPath('data.seo.title.en', 'Edited title')
-            ->assertJsonPath('data.pricing.plans.2.enabled', false);
+            ->assertJsonPath('data.seo.title.en', 'Edited title');
+    }
+
+    public function test_public_pricing_is_generated_from_active_plans(): void
+    {
+        Plan::create(['name' => 'Starter', 'price' => 0, 'currency' => 'EGP', 'feature_keys' => ['qr_menu'], 'is_active' => true, 'sort_order' => 1]);
+        Plan::create(['name' => 'Growth', 'price' => 749, 'currency' => 'EGP', 'feature_keys' => ['qr_menu', 'whatsapp_ordering'], 'is_active' => true, 'is_recommended' => true, 'sort_order' => 2]);
+        Plan::create(['name' => 'Pro', 'price' => null, 'currency' => 'EGP', 'feature_keys' => ['system_ordering'], 'is_active' => true, 'sort_order' => 3]);
+        // Inactive plans never reach the marketing site.
+        Plan::create(['name' => 'Hidden', 'currency' => 'EGP', 'is_active' => false, 'sort_order' => 4]);
+
+        $this->getJson('/api/public/landing-content')
+            ->assertOk()
+            ->assertJsonCount(3, 'data.pricing.plans')
+            ->assertJsonPath('data.pricing.plans.0.name', 'Starter')
+            ->assertJsonPath('data.pricing.plans.0.price', 0)
+            ->assertJsonPath('data.pricing.plans.0.currency', 'EGP')
+            ->assertJsonPath('data.pricing.plans.1.name', 'Growth')
+            ->assertJsonPath('data.pricing.plans.1.price', 749)
+            ->assertJsonPath('data.pricing.plans.1.recommended', true)
+            ->assertJsonPath('data.pricing.plans.1.feature_keys', ['qr_menu', 'whatsapp_ordering'])
+            ->assertJsonPath('data.pricing.plans.2.name', 'Pro')
+            // Null price signals custom pricing to the landing app.
+            ->assertJsonPath('data.pricing.plans.2.price', null)
+            ->assertJsonPath('data.pricing.plans.2.recommended', false)
+            // Plans carry a single price — the monthly/yearly toggle is dropped.
+            ->assertJsonMissingPath('data.pricing.billing');
     }
 
     public function test_public_landing_content_includes_faq_section(): void

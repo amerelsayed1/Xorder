@@ -9,6 +9,7 @@ import './app.css'
 import router from './router'
 import { i18n, setLocale } from '@xorder/ui/i18n'
 import { initAnalytics } from '@xorder/analytics'
+import { isSuperAdminHost } from './lib/host.js'
 import App from './App.vue'
 
 // Firebase Analytics (GA4). No-op until /firebase-config.js carries a
@@ -33,6 +34,20 @@ const XorderAura = definePreset(Aura, {
         },
     },
 })
+
+// Register the service worker early so the dashboard is installable as a PWA
+// (Add to Home Screen). Same URL push.js registers later — register() is
+// idempotent, so opting into push just reuses this registration.
+// Tenant-only: the super-admin portal isn't an installable app, so skip the SW
+// (no SW => not installable) and drop the manifest link it inherits from the
+// shared index.html. SW registrations are per-origin, so this is per-subdomain.
+if (isSuperAdminHost) {
+    document.querySelector('link[rel="manifest"]')?.remove()
+} else if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/firebase-messaging-sw.js').catch(() => {})
+    })
+}
 
 setLocale(localStorage.getItem('locale') || 'ar')
 

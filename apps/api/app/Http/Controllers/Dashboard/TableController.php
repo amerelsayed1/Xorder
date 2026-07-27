@@ -64,6 +64,11 @@ class TableController extends Controller
             ->selectRaw('table_id, count(*) as c')->groupBy('table_id')
             ->pluck('c', 'table_id');
 
+        // Tables with a freshly-placed (NEW) order → they flash for attention.
+        $newOrders = Order::whereIn('table_id', $tableIds)
+            ->where('status', OrderStatus::NEW->value)
+            ->pluck('table_id')->flip();
+
         // Tables with an open bill request → they pulse.
         $openRequests = BillRequest::whereIn('table_id', $tableIds)
             ->whereIn('status', [
@@ -72,7 +77,7 @@ class TableController extends Controller
                 BillRequestStatus::IN_PROGRESS->value,
             ])->pluck('table_id')->flip();
 
-        $data = $tables->map(function ($t) use ($occupied, $activeOrders, $openRequests) {
+        $data = $tables->map(function ($t) use ($occupied, $activeOrders, $openRequests, $newOrders) {
             $orders = (int) ($activeOrders[$t->id] ?? 0);
 
             return [
@@ -83,6 +88,8 @@ class TableController extends Controller
                 'area_name_ar' => $t->diningArea?->name_ar,
                 'active_orders' => $orders,
                 'has_request' => $openRequests->has($t->id),
+                // A new order that staff hasn't acknowledged yet → flash the card.
+                'has_new_order' => $newOrders->has($t->id),
                 // Occupied if a guest session is live or there are active orders.
                 'occupied' => $occupied->has($t->id) || $orders > 0,
             ];

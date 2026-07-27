@@ -133,6 +133,33 @@ class TableTest extends TestCase
             ->assertStatus(409);
     }
 
+    public function test_live_board_reflects_occupancy_and_flags_new_orders(): void
+    {
+        $table = $this->makeTable('L1');
+        // No session, no active orders → available, not flashing.
+        $this->actingAs($this->admin)->getJson('/api/dashboard/tables/live')
+            ->assertOk()
+            ->assertJsonPath('data.0.occupied', false)
+            ->assertJsonPath('data.0.has_new_order', false);
+
+        // A new order makes it occupied and flags it for the flashing card.
+        $order = new Order(['status' => 'NEW', 'items' => [], 'total' => 0, 'currency' => 'EGP', 'table_id' => $table->id]);
+        $order->restaurant_id = $this->restaurant->id;
+        $order->save();
+
+        $this->actingAs($this->admin)->getJson('/api/dashboard/tables/live')
+            ->assertOk()
+            ->assertJsonPath('data.0.occupied', true)
+            ->assertJsonPath('data.0.has_new_order', true);
+
+        // Once acknowledged (CONFIRMED) it stays occupied but stops flashing.
+        $order->update(['status' => 'CONFIRMED']);
+        $this->actingAs($this->admin)->getJson('/api/dashboard/tables/live')
+            ->assertOk()
+            ->assertJsonPath('data.0.occupied', true)
+            ->assertJsonPath('data.0.has_new_order', false);
+    }
+
     private function makeTable(string $label, ?DiningArea $area = null): DiningTable
     {
         $area ??= $this->area;

@@ -25,6 +25,11 @@ if (cfg.apiKey) {
     })
 }
 
+// A no-op fetch handler makes the app installable as a PWA (Chrome requires a
+// service worker with a fetch listener). We don't cache — just pass through to
+// the network — so the dashboard always serves fresh assets from the API.
+self.addEventListener('fetch', () => {})
+
 self.addEventListener('notificationclick', (event) => {
     event.notification.close()
     const url = (event.notification.data && event.notification.data.url) || '/admin/orders'

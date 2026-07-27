@@ -15,6 +15,7 @@ class Plan extends Model
         'max_items',
         'max_branches',
         'is_active',
+        'is_recommended',
         'sort_order',
     ];
 
@@ -25,6 +26,7 @@ class Plan extends Model
             'currency' => CurrencyEnum::class,
             'feature_keys' => 'array',
             'is_active' => 'boolean',
+            'is_recommended' => 'boolean',
         ];
     }
 
