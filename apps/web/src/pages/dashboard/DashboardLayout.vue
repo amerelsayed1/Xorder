@@ -10,6 +10,7 @@ import { localizedInitial, pickLocalized } from '@xorder/ui/localize.js'
 import { registerPush } from '../../lib/push.js'
 import { useRealtime } from '../../stores/realtime.js'
 import NotificationBell from '../../components/NotificationBell.vue'
+import FullscreenToggle from '../../components/FullscreenToggle.vue'
 import { buildDashboardNav } from './nav.config.js'
 
 const auth = useAuth()
@@ -191,6 +192,7 @@ const nav = computed(() => buildDashboardNav({
 <template>
     <SakaiLayout :title="title" :role="role" :mark="mark" :logo="logo" :nav="nav" :hide-lang-toggle="true">
         <template #topbar-actions>
+            <FullscreenToggle />
             <NotificationBell />
         </template>
         <template #banner>

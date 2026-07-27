@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Dashboard;
 use App\Enums\BillRequestStatus;
 use App\Enums\OrderStatus;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Dashboard\BulkDeleteTablesRequest;
 use App\Http\Requests\Dashboard\StoreTableRequest;
 use App\Http\Requests\Dashboard\UpdateTableRequest;
 use App\Http\Resources\DiningTableResource;
@@ -145,6 +146,39 @@ class TableController extends Controller
         $table->delete();
 
         return response()->json(['message' => __('xorder.messages.table_deleted')]);
+    }
+
+    /**
+     * Delete several tables at once. Tables with order history are kept (same
+     * rule as the single delete) and reported back as skipped. The tenant
+     * scope limits the query to the caller's own tables.
+     */
+    public function bulkDestroy(BulkDeleteTablesRequest $request): JsonResponse
+    {
+        $ids = collect($request->validated('ids'))->unique();
+        $tables = DiningTable::whereIn('id', $ids)->get();
+
+        $deleted = 0;
+        $skipped = 0;
+        foreach ($tables as $table) {
+            if ($table->orders()->exists()) {
+                $skipped++;
+
+                continue;
+            }
+            $table->delete();
+            $deleted++;
+        }
+
+        $message = $skipped === 0
+            ? trans_choice('xorder.messages.tables_deleted', $deleted, ['count' => $deleted])
+            : __('xorder.messages.tables_deleted_partial', ['deleted' => $deleted, 'skipped' => $skipped]);
+
+        return response()->json([
+            'deleted' => $deleted,
+            'skipped' => $skipped,
+            'message' => $message,
+        ]);
     }
 
     /** SVG preview + the URL the QR encodes. */

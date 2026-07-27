@@ -92,6 +92,41 @@ async function remove(tbl) {
     } catch (err) { alert(err.response?.data?.message || t('common.delete_failed')) }
 }
 
+// ---- Multi-select / bulk delete ----
+const selected = ref(new Set())
+function toggleSelect(id) {
+    if (selected.value.has(id)) selected.value.delete(id)
+    else selected.value.add(id)
+}
+function clearSelection() { selected.value.clear() }
+const allSelected = computed(() =>
+    rows.value.length > 0 && rows.value.every(r => selected.value.has(r.id)))
+const someSelected = computed(() =>
+    rows.value.some(r => selected.value.has(r.id)) && !allSelected.value)
+function toggleAll() {
+    if (allSelected.value) rows.value.forEach(r => selected.value.delete(r.id))
+    else rows.value.forEach(r => selected.value.add(r.id))
+}
+const bulkDeleting = ref(false)
+async function bulkRemove() {
+    const ids = [...selected.value]
+    if (!ids.length || bulkDeleting.value) return
+    const ok = await confirm({
+        title: t('common.delete'), message: t('tbl.confirm_delete_selected', { n: ids.length }),
+        confirmText: t('common.delete'), cancelText: t('common.cancel'), danger: true,
+    })
+    if (!ok) return
+    bulkDeleting.value = true
+    try {
+        await ensureCsrf()
+        const { data } = await api.delete('api/dashboard/tables/bulk', { data: { ids } })
+        clearSelection()
+        await loadTables()
+        if (data?.message) alert(data.message)
+    } catch (err) { alert(err.response?.data?.message || t('common.delete_failed')) }
+    finally { bulkDeleting.value = false }
+}
+
 // ---- QR modal ----
 const qrModal = ref(null) // { table, svg, url }
 const qrLoading = ref(false)
@@ -153,23 +188,47 @@ const areaLabel = (id) => { const a = areas.value.find(x => x.id === id); return
             <input v-model="filters.search" class="input" style="max-width:14rem" :placeholder="t('tbl.search_tables')" />
         </div>
 
+        <!-- Bulk action bar — appears once one or more rows are ticked. -->
+        <div v-if="!auth.isReadOnly && selected.size" class="bulk-bar">
+            <span class="bulk-count">{{ t('tbl.selected_count', { n: selected.size }) }}</span>
+            <button class="btn btn-ghost btn-sm" @click="clearSelection">{{ t('tbl.clear_selection') }}</button>
+            <button class="btn btn-danger btn-sm" :disabled="bulkDeleting" @click="bulkRemove">
+                <Icon v-if="bulkDeleting" name="loading" :size="15" class="animate-spin" />
+                <Icon v-else name="trash" :size="15" />
+                {{ t('tbl.delete_selected') }}
+            </button>
+        </div>
+
         <div class="card overflow-hidden">
             <ListSkeleton v-if="loading" />
             <div v-else-if="!rows.length" class="p-8 text-center" style="color:var(--muted)">{{ t('tbl.none_tables') }}</div>
-            <ul v-else>
-                <li v-for="tbl in rows" :key="tbl.id" class="flex items-center gap-3 px-5 py-3 border-t first:border-t-0" style="border-color:var(--line)">
-                    <div class="h-11 w-11 rounded-lg grid place-items-center flex-shrink-0" style="background:var(--accent-soft);color:var(--accent)"><Icon name="table" :size="22" /></div>
-                    <div class="flex-1 min-w-0">
-                        <div class="font-medium" style="color:var(--ink)">{{ tbl.label }}</div>
-                        <div class="text-xs truncate" style="color:var(--muted)">{{ areaLabel(tbl.dining_area_id) }}</div>
-                    </div>
-                    <StatusBadge :value="tbl.is_active" :label="tbl.is_active ? t('common.active') : t('common.inactive')" />
-                    <button v-if="!auth.isReadOnly" class="switch" :class="{ on: tbl.is_active }" @click="toggleActive(tbl)"></button>
-                    <button @click="openQr(tbl)" class="icon-btn" :title="t('tbl.qr')"><Icon name="qr" :size="17" /></button>
-                    <button v-if="!auth.isReadOnly" @click="openEdit(tbl)" class="icon-btn" :title="t('common.edit')"><Icon name="edit" :size="17" /></button>
-                    <button v-if="!auth.isReadOnly" @click="remove(tbl)" class="icon-btn icon-btn-danger" :title="t('common.delete')"><Icon name="trash" :size="17" /></button>
-                </li>
-            </ul>
+            <template v-else>
+                <!-- Select-all header (only when the user can delete). -->
+                <div v-if="!auth.isReadOnly" class="flex items-center gap-3 px-5 py-2.5 tbl-head" style="border-color:var(--line)">
+                    <input type="checkbox" class="row-check" :checked="allSelected"
+                        :indeterminate.prop="someSelected" :aria-label="t('tbl.select_all')" @change="toggleAll" />
+                    <span class="tbl-num" style="color:var(--muted)">#</span>
+                    <span class="text-xs" style="color:var(--muted)">{{ t('tbl.select_all') }}</span>
+                </div>
+                <ul>
+                    <li v-for="(tbl, i) in rows" :key="tbl.id" class="flex items-center gap-3 px-5 py-3 border-t first:border-t-0"
+                        :class="{ 'row-selected': selected.has(tbl.id) }" style="border-color:var(--line)">
+                        <input v-if="!auth.isReadOnly" type="checkbox" class="row-check" :checked="selected.has(tbl.id)"
+                            :aria-label="tbl.label" @change="toggleSelect(tbl.id)" />
+                        <span class="tbl-num" style="color:var(--muted)">{{ i + 1 }}</span>
+                        <div class="h-11 w-11 rounded-lg grid place-items-center flex-shrink-0" style="background:var(--accent-soft);color:var(--accent)"><Icon name="table" :size="22" /></div>
+                        <div class="flex-1 min-w-0">
+                            <div class="font-medium" style="color:var(--ink)">{{ tbl.label }}</div>
+                            <div class="text-xs truncate" style="color:var(--muted)">{{ areaLabel(tbl.dining_area_id) }}</div>
+                        </div>
+                        <StatusBadge :value="tbl.is_active" :label="tbl.is_active ? t('common.active') : t('common.inactive')" />
+                        <button v-if="!auth.isReadOnly" class="switch" :class="{ on: tbl.is_active }" @click="toggleActive(tbl)"></button>
+                        <button @click="openQr(tbl)" class="icon-btn" :title="t('tbl.qr')"><Icon name="qr" :size="17" /></button>
+                        <button v-if="!auth.isReadOnly" @click="openEdit(tbl)" class="icon-btn" :title="t('common.edit')"><Icon name="edit" :size="17" /></button>
+                        <button v-if="!auth.isReadOnly" @click="remove(tbl)" class="icon-btn icon-btn-danger" :title="t('common.delete')"><Icon name="trash" :size="17" /></button>
+                    </li>
+                </ul>
+            </template>
         </div>
 
         <!-- Create / edit modal -->
@@ -220,4 +279,21 @@ const areaLabel = (id) => { const a = areas.value.find(x => x.id === id); return
    never overflows onto the URL/hint text below. */
 .qr-box { width: 15rem; height: 15rem; }
 .qr-box :deep(svg) { width: 100%; height: 100%; display: block; }
+
+/* Row number + multi-select */
+.tbl-num { flex: none; width: 1.75rem; text-align: center; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.tbl-head { border-bottom: 1px solid var(--line); background: var(--page); }
+.row-check { flex: none; width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; }
+.row-selected { background: var(--accent-soft); }
+
+/* Bulk action bar surfaced above the list for the current selection. */
+.bulk-bar {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 14px; border-radius: 12px;
+    background: var(--accent-soft); border: 1px solid var(--accent);
+}
+.bulk-count { font-weight: 600; font-size: 13.5px; color: var(--accent); margin-inline-end: auto; }
+.btn-danger { background: var(--red); color: #fff; border-color: var(--red); }
+.btn-danger:hover:not(:disabled) { filter: brightness(.94); }
+.btn-danger:disabled { opacity: .6; cursor: default; }
 </style>

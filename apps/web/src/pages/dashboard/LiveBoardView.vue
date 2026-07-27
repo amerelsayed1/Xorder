@@ -167,7 +167,7 @@ const panelDir = computed(() => (locale.value === 'ar' ? 'rtl' : 'ltr'))
 </script>
 
 <template>
-    <div class="space-y-5">
+    <div class="space-y-5 live-page">
         <div>
             <h1 class="page-title">{{ t('live.title') }}</h1>
             <p class="page-sub">{{ t('live.subtitle') }}</p>
@@ -295,21 +295,28 @@ const panelDir = computed(() => (locale.value === 'ar' ? 'rtl' : 'ltr'))
 /* Occupancy status colours (semantic — outside the brand token set). */
 .live-grid { --ok: #22c55e; --busy: #14b8a6; }
 
-.live-grid { display: grid; grid-template-columns: 300px 1fr; gap: 0; align-items: stretch; min-height: 60vh; }
+/* Fill the content area: the view is a flex column the height of the viewport
+   minus the sakai-content chrome (88px top + 40px bottom padding); the grid
+   grows to take whatever the header leaves. */
+.live-page { display: flex; flex-direction: column; height: calc(100vh - 128px); }
+.live-grid { flex: 1; min-height: 0; display: grid; grid-template-columns: 300px 1fr; gap: 0; align-items: stretch; }
 .live-grid-one { grid-template-columns: 1fr; }
+/* Square corners across the whole view (overrides the global .card radius). */
+.card { border-radius: 0; }
 .live-col { padding: 0; overflow: hidden; display: flex; flex-direction: column; border-radius: 0; }
-/* Flush, joined block: the requests panel loses its inner (right, in ltr) border. */
-.live-grid:not(.live-grid-one) > .live-col:first-child { border-inline-end: none; }
-.live-grid > .live-col:first-child { border-start-start-radius: 15px; border-end-start-radius: 15px; }
-.live-grid > .live-col:last-child { border-start-end-radius: 15px; border-end-end-radius: 15px; }
-.live-grid-one > .live-col { border-radius: 15px; }
+/* Flush, joined block: the requests panel loses its inner (right) border so the
+   two panels join. Physical `border-right` — not `border-inline-end` — because
+   each panel restores dir=rtl for its content, which would otherwise flip the
+   logical end to the outer-left edge and drop the board's outer border. The
+   wrapper is dir=ltr, so requests is always the left panel in every locale. */
+.live-grid:not(.live-grid-one) > .live-col:first-child { border-right: none; }
 
 .live-col-head { display: flex; align-items: center; gap: 12px; padding: 16px 20px; border-bottom: 1px solid var(--line); }
 .live-col-title { flex: 1; font-size: 16.5px; font-weight: 700; color: var(--ink); font-family: var(--font-display); }
 .live-legend { display: flex; align-items: center; gap: 14px; font-size: 12px; color: var(--muted); }
 .live-legend span { display: flex; align-items: center; gap: 5px; }
-.live-legend .dot { width: 8px; height: 8px; border-radius: 3px; display: inline-block; }
-.live-count { min-width: 26px; text-align: center; padding: 2px 9px; border-radius: 999px; font-size: 13px; font-weight: 700; background: var(--page); color: var(--muted); }
+.live-legend .dot { width: 8px; height: 8px; display: inline-block; }
+.live-count { min-width: 26px; text-align: center; padding: 2px 9px; font-size: 13px; font-weight: 700; background: var(--page); color: var(--muted); }
 .live-count-hot { background: var(--accent); color: #fff; }
 .live-count-neutral { background: var(--accent-soft); color: var(--accent); }
 .live-empty { padding: 40px 16px; text-align: center; color: var(--muted); font-size: 13.5px; }
@@ -328,9 +335,9 @@ const panelDir = computed(() => (locale.value === 'ar' ? 'rtl' : 'ltr'))
 
 /* Tables floor grid */
 .tables-grid { flex: 1; min-height: 0; overflow-y: auto; padding: 18px; display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); grid-auto-rows: 1fr; gap: 10px; align-items: stretch; }
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); grid-auto-rows: min-content; gap: 10px; align-content: start; }
 .tcard { display: flex; align-items: stretch; text-align: start; padding: 0; border: 1px solid var(--line);
-    border-radius: 12px; overflow: hidden; background: var(--page); cursor: pointer; font-family: inherit; }
+    overflow: hidden; background: var(--page); cursor: pointer; font-family: inherit; }
 .tcard:hover { border-color: var(--accent); box-shadow: 0 2px 8px rgba(0,0,0,.06); }
 .tcard-stripe { width: 7px; flex: none; }
 .tcard-body { flex: 1; min-width: 0; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; height: 92px; box-sizing: border-box; }
@@ -348,28 +355,30 @@ const panelDir = computed(() => (locale.value === 'ar' ? 'rtl' : 'ltr'))
 
 /* Modal body */
 .tm-body { display: flex; flex-direction: column; gap: 14px; }
-.tm-req { background: #fef2f2; border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
+.tm-req { background: #fef2f2; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
 .tm-req-line { font-size: 14px; font-weight: 700; color: #dc2626; }
-.tm-order { border: 1px solid var(--line); border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 7px; }
+.tm-order { border: 1px solid var(--line); padding: 12px; display: flex; flex-direction: column; gap: 7px; }
 .live-time { font-size: 12.5px; color: var(--muted); }
-.live-note { font-size: 12.5px; color: var(--body); background: var(--accent-soft); border-radius: 8px; padding: 6px 9px; }
+.live-note { font-size: 12.5px; color: var(--body); background: var(--accent-soft); padding: 6px 9px; }
 .live-order-items { list-style: none; margin: 0; padding: 0; font-size: 13px; color: var(--body); }
 .live-order-items li { padding: 1px 0; }
 .live-qty { font-weight: 700; color: var(--accent-dark, var(--accent)); unicode-bidi: isolate; }
 
 /* Shared action buttons */
 .live-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 2px; }
-.live-primary { flex: 1 1 auto; min-width: 96px; padding: 9px 14px; border: 0; border-radius: 10px; cursor: pointer; background: var(--accent); color: #fff; font-size: 13px; font-weight: 700; font-family: inherit; }
+.live-primary { flex: 1 1 auto; min-width: 96px; padding: 9px 14px; border: 0; cursor: pointer; background: var(--accent); color: #fff; font-size: 13px; font-weight: 700; font-family: inherit; }
 .live-primary:hover { background: var(--accent-dark); }
-.live-sec { padding: 8px 12px; border-radius: 10px; cursor: pointer; font-size: 12.5px; font-weight: 600; border: 1px solid var(--line); background: var(--card); color: var(--body); font-family: inherit; }
+.live-sec { padding: 8px 12px; cursor: pointer; font-size: 12.5px; font-weight: 600; border: 1px solid var(--line); background: var(--card); color: var(--body); font-family: inherit; }
 .live-sec:hover { border-color: var(--accent); color: var(--accent); }
-.live-cancel { padding: 8px 10px; border: 0; background: none; cursor: pointer; font-size: 12.5px; font-weight: 600; color: var(--muted); border-radius: 10px; font-family: inherit; }
+.live-cancel { padding: 8px 10px; border: 0; background: none; cursor: pointer; font-size: 12.5px; font-weight: 600; color: var(--muted); font-family: inherit; }
 .live-cancel:hover { color: #c0392b; }
 .live-primary:disabled, .live-sec:disabled, .live-cancel:disabled { opacity: .6; cursor: default; }
 
 @media (max-width: 720px) {
+    /* Stacked panels flow naturally instead of sharing a fixed viewport height. */
+    .live-page { height: auto; }
     .live-grid, .live-grid:not(.live-grid-one) { grid-template-columns: 1fr; }
-    .live-grid > .live-col { border-radius: 15px !important; border-inline-end: 1px solid var(--line) !important; }
+    .live-grid > .live-col { border-right: 1px solid var(--line) !important; }
     .live-grid > .live-col:first-child { margin-bottom: 16px; }
 }
 </style>

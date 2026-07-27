@@ -48,6 +48,8 @@ return [
         'table_created' => 'Table created.',
         'table_updated' => 'Table updated.',
         'table_deleted' => 'Table deleted.',
+        'tables_deleted' => '{0} No tables deleted.|{1} 1 table deleted.|[2,*] :count tables deleted.',
+        'tables_deleted_partial' => ':deleted table(s) deleted; :skipped kept (they have activity — disable those instead).',
         'table_status_updated' => 'Table status updated.',
         'table_has_history' => 'This table has historical activity. Disable it instead of deleting.',
         'qr_regenerated' => 'QR code regenerated. The previous QR is no longer valid.',

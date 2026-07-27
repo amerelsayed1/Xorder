@@ -222,6 +222,7 @@ Route::prefix('dashboard')
                 Route::put('tables/{table}', [TableController::class, 'update']);
                 Route::patch('tables/{table}/status', [TableController::class, 'toggleStatus']);
                 Route::post('tables/{table}/qr/regenerate', [TableController::class, 'regenerateQr']);
+                Route::delete('tables/bulk', [TableController::class, 'bulkDestroy']);
                 Route::delete('tables/{table}', [TableController::class, 'destroy']);
             });
         });

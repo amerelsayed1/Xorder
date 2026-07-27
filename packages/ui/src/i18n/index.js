@@ -144,6 +144,9 @@ const messages = {
             qr_url: 'Menu URL', scan_hint: 'Scan to view the menu for this table.',
             tables_count: '{count} tables', no_area_first: 'Create a dining area first.',
             no_branch_first: 'Add a branch first — dining areas belong to a branch.',
+            select_all: 'Select all', selected_count: '{n} selected',
+            delete_selected: 'Delete selected', clear_selection: 'Clear',
+            confirm_delete_selected: 'Delete {n} selected table(s)? Tables with activity are kept.',
         },
         leads: {
             title: 'Leads', subtitle: '{n} demo requests from the landing page.',
@@ -789,6 +792,9 @@ const messages = {
             qr_url: 'رابط القائمة', scan_hint: 'امسح لعرض قائمة هذه الطاولة.',
             tables_count: '{count} طاولة', no_area_first: 'أنشئ منطقة جلوس أولاً.',
             no_branch_first: 'أضف فرعًا أولاً — مناطق الجلوس تتبع فرعًا.',
+            select_all: 'تحديد الكل', selected_count: 'تم تحديد {n}',
+            delete_selected: 'حذف المحدد', clear_selection: 'إلغاء التحديد',
+            confirm_delete_selected: 'حذف {n} طاولة محددة؟ سيتم الإبقاء على الطاولات التي لديها نشاط.',
         },
         leads: {
             title: 'العملاء المحتملون', subtitle: '{n} طلب عرض من الصفحة الرئيسية.',
