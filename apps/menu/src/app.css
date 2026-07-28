@@ -1120,6 +1120,11 @@ html[dir='ltr'] .hero-overlay {
     font-size: 11px;
 }
 
+.cart-heading .clear-cart {
+    padding: 8px 12px;
+    border-radius: 9px;
+}
+
 .cart-heading .back-step {
     width: 31px;
     height: 31px;

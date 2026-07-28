@@ -108,7 +108,7 @@ function submit() {
                             <button class="back-step" :aria-label="t('back_to_cart')" @click="step = 1">→</button>
                             <h2>{{ t('checkout_title') }}</h2>
                         </div>
-                        <button v-if="step === 1 && cart.length" @click="$emit('clearCart')">{{ t('clear_cart') }}</button>
+                        <button v-if="step === 1 && cart.length" class="clear-cart" @click="$emit('clearCart')">{{ t('clear_cart') }}</button>
                     </div>
 
                     <!-- Progress -->

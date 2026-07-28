@@ -109,10 +109,18 @@ onUnmounted(() => {
 })
 
 const accent = computed(() => restaurant.value?.brand_color || '#f59e0b')
+// Modals (ItemModal, CartDrawer, …) render via <Teleport to="body">, outside
+// .site-shell where --accent is set — so they'd fall back to the default colour.
+// Mirror the tenant accent onto the document root so every teleported overlay
+// inherits the client's brand colour too.
+watch(accent, (c) => {
+    document.documentElement.style.setProperty('--accent', c)
+    document.documentElement.style.setProperty('--acc', c)
+}, { immediate: true })
 const sym = computed(() => {
     const r = restaurant.value
-    // Egypt: EGP in English, ج٫م in Arabic; other currencies keep the API symbol.
-    if (r?.currency === 'EGP') return isAr.value ? 'ج٫م' : 'EGP'
+    // Egypt: EGP in English, ج.م in Arabic; other currencies keep the API symbol.
+    if (r?.currency === 'EGP') return isAr.value ? 'ج.م' : 'EGP'
     return r?.currency_symbol || r?.currency || ''
 })
 const waDigits = computed(() => (restaurant.value?.whatsapp_number || '').replace(/[^0-9]/g, ''))
