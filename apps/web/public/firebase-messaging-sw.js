@@ -15,8 +15,8 @@ if (cfg.apiKey) {
         const n = payload.notification || {}
         self.registration.showNotification(n.title || 'New order', {
             body: n.body || '',
-            icon: '/favicon.ico',
-            badge: '/favicon.ico',
+            icon: '/pwa-192.png',
+            badge: '/favicon-32.png',
             tag: 'xorder-order',
             renotify: true,
             requireInteraction: true,
