@@ -117,6 +117,31 @@ const heroWa = computed(() => content.value?.whatsapp?.hero_enabled !== false &&
 const enabledPlans = computed(() => (content.value?.pricing?.plans || []).filter((p) => p.enabled !== false))
 const planRecommended = (p) => p.recommended ?? p.popular ?? false
 
+// Union of every feature offered by any plan, in first-seen order (base plan's
+// features first, richer plans append theirs). Rendering the SAME rows on every
+// card — checked when included, dimmed when not — keeps the cards equal height
+// and turns them into a real side-by-side comparison instead of ragged lists.
+// `multi_branch` is intentionally omitted — branch allowance is already shown
+// in the dedicated branches row, so listing it again as a bullet is redundant.
+const HIDDEN_FEATURE_KEYS = new Set(['multi_branch'])
+const allFeatureKeys = computed(() => {
+    const seen = new Set()
+    const keys = []
+    for (const p of enabledPlans.value) {
+        for (const k of p.feature_keys || []) {
+            if (!seen.has(k) && !HIDDEN_FEATURE_KEYS.has(k)) { seen.add(k); keys.push(k) }
+        }
+    }
+    return keys
+})
+const planHasFeature = (p, key) => (p.feature_keys || []).includes(key)
+// The last feature (in display order) the plan actually includes — the branch
+// allowance row is rendered right after it, grouping it with what's active.
+const lastActiveKey = (p) => {
+    const active = allFeatureKeys.value.filter((k) => planHasFeature(p, k))
+    return active.length ? active[active.length - 1] : null
+}
+
 // Localized currency glyphs: the API sends the ISO code; Arabic gets the native
 // symbol, other locales fall back to the code.
 const AR_CURRENCY = { EGP: 'ج.م', SAR: 'ر.س', AED: 'د.إ', USD: '$', KWD: 'د.ك', QAR: 'ر.ق', BHD: 'د.ب', OMR: 'ر.ع', JOD: 'د.أ', EUR: '€', GBP: '£' }
@@ -129,6 +154,14 @@ function planPrice(p) {
     if (amount === 0) return t('landing.price_free')
     const num = new Intl.NumberFormat(locale.value === 'ar' ? 'ar-EG' : 'en-US').format(amount)
     return `${num} ${currencySymbol(p.currency)} ${t('landing.price_per_month')}`
+}
+
+// Branch allowance shown on a card: a single branch unless the plan grants
+// multi-branch, then either a numeric cap or unlimited.
+function planBranches(p) {
+    if (!(p.feature_keys || []).includes('multi_branch')) return t('landing.branches_one')
+    if (p.max_branches === null || p.max_branches === undefined) return t('landing.branches_unlimited')
+    return t('landing.branches_upto', { n: p.max_branches })
 }
 
 // A missing demo restaurant makes the server-rendered QR 404; hide it cleanly
@@ -362,7 +395,8 @@ const year = new Date().getFullYear()
                     </div>
                     <div class="lp-feature-grid">
                         <div class="lp-feature" v-for="(f, i) in content.features.items" :key="i">
-                            <span class="lp-feature-ico">{{ f.icon }}</span>
+                            <img v-if="f.image" :src="f.image" :alt="L(f.title)" class="lp-feature-img" />
+                            <span v-else class="lp-feature-ico">{{ f.icon }}</span>
                             <h3 class="lp-feature-title">{{ L(f.title) }}</h3>
                             <p class="lp-feature-text">{{ L(f.text) }}</p>
                         </div>
@@ -417,7 +451,16 @@ const year = new Date().getFullYear()
                                 <span class="lp-plan-amount">{{ planPrice(plan) }}</span>
                             </div>
                             <ul class="lp-plan-feats">
-                                <li v-for="key in plan.feature_keys" :key="key"><span class="lp-check"><Icon name="check" :size="12" /></span>{{ t(`feature.${key}`) }}</li>
+                                <template v-for="key in allFeatureKeys" :key="key">
+                                    <li :class="{ 'is-off': !planHasFeature(plan, key) }">
+                                        <span class="lp-check" v-if="planHasFeature(plan, key)"><Icon name="check" :size="12" /></span>
+                                        <span class="lp-check lp-check-off" v-else><Icon name="close" :size="12" /></span>
+                                        {{ t(`feature.${key}`) }}
+                                    </li>
+                                    <li v-if="key === lastActiveKey(plan)" class="lp-plan-branches">
+                                        <span class="lp-check"><Icon name="store" :size="12" /></span>{{ planBranches(plan) }}
+                                    </li>
+                                </template>
                             </ul>
                             <a href="#lead" class="btn lp-btn-lg lp-plan-cta" :class="planRecommended(plan) ? 'btn-accent' : 'btn-ghost'"
                                 @click="onPackageCta(plan.name); onRequestDemo()">
@@ -689,6 +732,7 @@ const year = new Date().getFullYear()
 .lp-feature:hover { transform: translateY(-3px); box-shadow: 0 24px 50px -34px rgba(42,30,20,.5); border-color: var(--accent-soft); }
 .lp-feature-ico { display: grid; place-items: center; width: 50px; height: 50px; border-radius: 14px;
     background: var(--accent-soft); font-size: 24px; }
+.lp-feature-img { width: 50px; height: 50px; border-radius: 14px; object-fit: cover; display: block; }
 .lp-feature-title { font-family: var(--font-display); font-weight: 700; font-size: 18px; color: var(--ink); margin: 16px 0 7px; }
 .lp-feature-text { font-size: 15px; line-height: 1.58; color: var(--muted); }
 
@@ -704,6 +748,7 @@ const year = new Date().getFullYear()
 .lp-compare-us .lp-compare-title, .lp-compare-us li { color: #fff; }
 .lp-check { display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; flex-shrink: 0;
     background: var(--green); color: #fff; margin-top: 1px; }
+.lp-check-off { background: transparent; color: var(--muted); border: 1px solid var(--line); }
 
 /* How it works */
 .lp-steps { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
@@ -741,8 +786,10 @@ const year = new Date().getFullYear()
 .lp-plan-note { font-size: 14px; color: var(--muted); margin-top: 6px; line-height: 1.5; }
 .lp-plan-price { margin: 18px 0; }
 .lp-plan-amount { font-family: var(--font-display); font-weight: 800; font-size: 30px; color: var(--ink); }
+.lp-plan-branches { display: flex; align-items: center; gap: 10px; font-size: 15px; font-weight: 400; color: var(--body); }
 .lp-plan-feats { list-style: none; padding: 0; margin: 6px 0 22px; display: flex; flex-direction: column; gap: 11px; flex: 1; }
 .lp-plan-feats li { display: flex; align-items: flex-start; gap: 10px; font-size: 15px; color: var(--body); }
+.lp-plan-feats li.is-off { color: var(--muted); opacity: .65; }
 .lp-plan-cta { width: 100%; justify-content: center; }
 
 /* Industries */

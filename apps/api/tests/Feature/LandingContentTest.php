@@ -76,7 +76,7 @@ class LandingContentTest extends TestCase
     public function test_public_pricing_is_generated_from_active_plans(): void
     {
         Plan::create(['name' => 'Starter', 'price' => 0, 'currency' => 'EGP', 'feature_keys' => ['qr_menu'], 'is_active' => true, 'sort_order' => 1]);
-        Plan::create(['name' => 'Growth', 'price' => 749, 'currency' => 'EGP', 'feature_keys' => ['qr_menu', 'whatsapp_ordering'], 'is_active' => true, 'is_recommended' => true, 'sort_order' => 2]);
+        Plan::create(['name' => 'Growth', 'price' => 749, 'currency' => 'EGP', 'feature_keys' => ['qr_menu', 'whatsapp_ordering', 'multi_branch'], 'max_branches' => 3, 'is_active' => true, 'is_recommended' => true, 'sort_order' => 2]);
         Plan::create(['name' => 'Pro', 'price' => null, 'currency' => 'EGP', 'feature_keys' => ['system_ordering'], 'is_active' => true, 'sort_order' => 3]);
         // Inactive plans never reach the marketing site.
         Plan::create(['name' => 'Hidden', 'currency' => 'EGP', 'is_active' => false, 'sort_order' => 4]);
@@ -90,7 +90,8 @@ class LandingContentTest extends TestCase
             ->assertJsonPath('data.pricing.plans.1.name', 'Growth')
             ->assertJsonPath('data.pricing.plans.1.price', 749)
             ->assertJsonPath('data.pricing.plans.1.recommended', true)
-            ->assertJsonPath('data.pricing.plans.1.feature_keys', ['qr_menu', 'whatsapp_ordering'])
+            ->assertJsonPath('data.pricing.plans.1.max_branches', 3)
+            ->assertJsonPath('data.pricing.plans.1.feature_keys', ['qr_menu', 'whatsapp_ordering', 'multi_branch'])
             ->assertJsonPath('data.pricing.plans.2.name', 'Pro')
             // Null price signals custom pricing to the landing app.
             ->assertJsonPath('data.pricing.plans.2.price', null)

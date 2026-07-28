@@ -1,11 +1,39 @@
 <script setup>
+import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import api, { ensureCsrf } from '@xorder/api-client/api.js'
 import BiField from '../../../components/BiField.vue'
 import AdminSection from '../../../components/AdminSection.vue'
 import { useLandingContent } from '../../../composables/useLandingContent.js'
 
 const { t } = useI18n()
 const { content, move, removeAt, addFeature } = useLandingContent()
+
+// Per-row upload state so each card shows its own spinner/error.
+const uploadingIndex = ref(-1)
+const uploadError = ref('')
+
+async function uploadImage(item, i, event) {
+    const file = event.target.files?.[0]
+    event.target.value = '' // allow re-selecting the same file later
+    if (!file) return
+    uploadingIndex.value = i
+    uploadError.value = ''
+    try {
+        await ensureCsrf()
+        const fd = new FormData()
+        fd.append('image', file)
+        fd.append('folder', 'uploads')
+        // Let axios set multipart/form-data WITH its boundary; forcing the header
+        // manually strips the boundary and the file won't parse.
+        const { data } = await api.post('api/uploads/image', fd)
+        item.image = data.data.url
+    } catch (e) {
+        uploadError.value = e?.response?.data?.message || t('landing_admin.image_upload_failed')
+    } finally {
+        uploadingIndex.value = -1
+    }
+}
 </script>
 
 <template>
@@ -19,21 +47,39 @@ const { content, move, removeAt, addFeature } = useLandingContent()
             <span class="label">{{ t('landing_admin.feature_cards') }}</span>
             <button class="btn btn-ghost btn-sm" @click="addFeature">{{ t('landing_admin.add_card') }}</button>
         </div>
+        <p v-if="uploadError" class="lp-err text-sm mb-2" style="color: var(--red);">{{ uploadError }}</p>
         <div class="space-y-3">
-            <div v-for="(f, i) in content.features.items" :key="i" class="rounded-xl p-3" style="background: var(--page); border: 1px solid var(--line);">
-                <div class="flex items-center justify-between mb-2 gap-2">
-                    <div class="flex items-center gap-2">
-                        <span class="label">{{ t('landing_admin.icon') }}</span>
-                        <input v-model="f.icon" class="input" style="width: 64px; text-align: center;" maxlength="4" />
+            <div v-for="(f, i) in content.features.items" :key="i"
+                class="rounded-xl p-3 flex items-start gap-3" style="background: var(--page); border: 1px solid var(--line);">
+                <!-- Image thumbnail / uploader. Falls back to the emoji icon when no image. -->
+                <label class="shrink-0 cursor-pointer relative block" style="width:72px;height:72px;" :title="t('landing_admin.feature_image')">
+                    <span v-if="f.image" class="block w-full h-full rounded-lg bg-center bg-cover"
+                        :style="{ backgroundImage: `url(${f.image})`, border: '1px solid var(--line)' }"></span>
+                    <span v-else class="grid place-items-center w-full h-full rounded-lg text-2xl"
+                        style="background: var(--card); border: 1px dashed var(--line);">{{ f.icon || '🖼️' }}</span>
+                    <span v-if="uploadingIndex === i" class="absolute inset-0 grid place-items-center rounded-lg text-xs"
+                        style="background: rgba(0,0,0,.5); color:#fff;">{{ t('common.saving') }}</span>
+                    <input type="file" accept="image/*" class="hidden" @change="(e) => uploadImage(f, i, e)" />
+                </label>
+
+                <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-2 mb-2">
+                        <!-- Icon only matters as the fallback when there's no image. -->
+                        <template v-if="!f.image">
+                            <span class="label">{{ t('landing_admin.icon') }}</span>
+                            <input v-model="f.icon" class="input" style="width: 60px; text-align: center;" maxlength="4" />
+                        </template>
+                        <button v-else type="button" class="btn btn-ghost btn-sm" @click="f.image = ''">{{ t('landing_admin.remove_image') }}</button>
                     </div>
-                    <div class="flex gap-1">
-                        <button class="icon-btn" :disabled="i === 0" @click="move(content.features.items, i, -1)">↑</button>
-                        <button class="icon-btn" :disabled="i === content.features.items.length - 1" @click="move(content.features.items, i, 1)">↓</button>
-                        <button class="icon-btn icon-btn-danger" @click="removeAt(content.features.items, i)">✕</button>
-                    </div>
+                    <BiField :label="t('landing_admin.l_title')" v-model:en="f.title.en" v-model:ar="f.title.ar" />
+                    <BiField :label="t('landing_admin.l_text')" class="mt-2" textarea v-model:en="f.text.en" v-model:ar="f.text.ar" />
                 </div>
-                <BiField :label="t('landing_admin.l_title')" v-model:en="f.title.en" v-model:ar="f.title.ar" />
-                <BiField :label="t('landing_admin.l_text')" class="mt-2" textarea v-model:en="f.text.en" v-model:ar="f.text.ar" />
+
+                <div class="flex flex-col gap-1 shrink-0">
+                    <button class="icon-btn" :disabled="i === 0" @click="move(content.features.items, i, -1)">↑</button>
+                    <button class="icon-btn" :disabled="i === content.features.items.length - 1" @click="move(content.features.items, i, 1)">↓</button>
+                    <button class="icon-btn icon-btn-danger" @click="removeAt(content.features.items, i)">✕</button>
+                </div>
             </div>
         </div>
     </AdminSection>

@@ -49,6 +49,9 @@ class LandingContentController extends Controller
                 'price' => $plan->price !== null ? (float) $plan->price : null,
                 'currency' => $plan->currency->value,
                 'feature_keys' => $plan->feature_keys ?? [],
+                // Branch allowance for the marketing card: null = unlimited (only
+                // meaningful when the plan also grants multi_branch).
+                'max_branches' => $plan->max_branches,
             ])
             ->all();
 

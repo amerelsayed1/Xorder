@@ -34,14 +34,33 @@ class PlanTest extends TestCase
             'price' => 500,
             'currency' => 'EGP',
             'feature_keys' => ['qr_menu', 'whatsapp_ordering'],
+            'max_branches' => 3,
+            'max_items' => 200,
             'is_active' => true,
             'sort_order' => 2,
         ])->assertCreated()
             ->assertJsonPath('data.name', 'Pro')
             ->assertJsonPath('data.feature_keys.0', 'qr_menu')
+            ->assertJsonPath('data.max_branches', 3)
+            ->assertJsonPath('data.max_items', 200)
             ->assertJsonPath('data.is_active', true);
 
-        $this->assertDatabaseHas('plans', ['name' => 'Pro', 'price' => 500]);
+        $this->assertDatabaseHas('plans', ['name' => 'Pro', 'price' => 500, 'max_branches' => 3, 'max_items' => 200]);
+    }
+
+    public function test_plan_limits_default_to_unlimited_when_omitted(): void
+    {
+        $sa = User::factory()->superAdmin()->create();
+
+        $this->actingAs($sa)->postJson('/api/admin/plans', [
+            'name' => 'Starter',
+            'currency' => 'EGP',
+            'feature_keys' => ['qr_menu'],
+            'max_branches' => null,
+            'max_items' => null,
+        ])->assertCreated()
+            ->assertJsonPath('data.max_branches', null)
+            ->assertJsonPath('data.max_items', null);
     }
 
     public function test_plan_name_is_required_and_unique(): void

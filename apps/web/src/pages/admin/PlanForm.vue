@@ -12,7 +12,12 @@ const { t, locale } = useI18n()
 const isEdit = computed(() => !!route.params.id)
 const backArrow = computed(() => locale.value === 'ar' ? '→' : '←')
 const form = reactive({
-    name: '', price: '', currency: 'EGP', feature_keys: [], is_active: true, is_recommended: false, sort_order: 0,
+    name: '', price: '', currency: 'EGP', feature_keys: [],
+    // Resource caps. Blank = unlimited (stored as null). max_branches only bites
+    // when the plan also grants multi_branch; a single-branch plan is capped at
+    // its one primary branch by the multi_branch feature gate regardless.
+    max_branches: '', max_items: '',
+    is_active: true, is_recommended: false, sort_order: 0,
 })
 const currencies = ['EGP', 'SAR', 'AED', 'USD', 'KWD', 'QAR', 'BHD', 'OMR', 'JOD', 'EUR', 'GBP']
 
@@ -41,6 +46,8 @@ onMounted(async () => {
             price: p.price ?? '',
             currency: p.currency,
             feature_keys: Array.isArray(p.feature_keys) ? [...p.feature_keys] : [],
+            max_branches: p.max_branches ?? '',
+            max_items: p.max_items ?? '',
             is_active: p.is_active,
             is_recommended: p.is_recommended ?? false,
             sort_order: p.sort_order,
@@ -57,6 +64,8 @@ async function submit() {
             price: form.price === '' ? null : Number(form.price),
             currency: form.currency,
             feature_keys: [...form.feature_keys],
+            max_branches: form.max_branches === '' ? null : Number(form.max_branches),
+            max_items: form.max_items === '' ? null : Number(form.max_items),
             is_active: form.is_active,
             is_recommended: form.is_recommended,
             sort_order: Number(form.sort_order) || 0,
@@ -106,6 +115,21 @@ async function submit() {
                         </label>
                     </div>
                     <FormError :errors="errors" field="feature_keys" />
+                </div>
+
+                <div class="block">
+                    <span class="label">{{ t('plan.limits') }}</span>
+                    <p class="text-xs mb-2" style="color:var(--muted)">{{ t('plan.limits_hint') }}</p>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
+                        <label class="block"><span class="label">{{ t('plan.max_branches') }}</span>
+                            <input v-model="form.max_branches" type="number" min="1" step="1" class="input" :placeholder="t('plan.unlimited')" />
+                            <span class="block text-xs mt-0.5" style="color:var(--muted)">{{ t('plan.max_branches_hint') }}</span>
+                            <FormError :errors="errors" field="max_branches" /></label>
+                        <label class="block"><span class="label">{{ t('plan.max_items') }}</span>
+                            <input v-model="form.max_items" type="number" min="1" step="1" class="input" :placeholder="t('plan.unlimited')" />
+                            <span class="block text-xs mt-0.5" style="color:var(--muted)">{{ t('plan.max_items_hint') }}</span>
+                            <FormError :errors="errors" field="max_items" /></label>
+                    </div>
                 </div>
 
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">

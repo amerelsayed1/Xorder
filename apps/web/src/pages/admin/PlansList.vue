@@ -27,6 +27,14 @@ onMounted(load)
 
 const price = (p) => p.price == null ? t('plan.free') : `${p.price.toLocaleString()} ${p.currency_symbol}`
 
+// Effective branch allowance: without the multi_branch feature a plan is capped
+// at its single primary branch; with it, max_branches bounds the count (null =
+// unlimited).
+const branchLimit = (p) => {
+    if (!(p.feature_keys || []).includes('multi_branch')) return '1'
+    return p.max_branches == null ? '∞' : String(p.max_branches)
+}
+
 async function removePlan(p) {
     const ok = await confirm({
         title: t('plan.delete_title'),
@@ -66,20 +74,22 @@ async function removePlan(p) {
                         <th class="px-5 py-3 font-medium text-start" style="font-size:11px;letter-spacing:.06em;text-transform:uppercase">#</th>
                         <th class="px-5 py-3 font-medium text-start" style="font-size:11px;letter-spacing:.06em;text-transform:uppercase">{{ t('plan.name') }}</th>
                         <th class="px-3 py-3 font-medium text-center" style="font-size:11px;text-transform:uppercase">{{ t('plan.price') }}</th>
+                        <th class="px-3 py-3 font-medium text-center" style="font-size:11px;text-transform:uppercase">{{ t('plan.branches') }}</th>
                         <th class="px-3 py-3 font-medium text-center" style="font-size:11px;text-transform:uppercase">{{ t('plan.entitlements') }}</th>
                         <th class="px-3 py-3 font-medium text-center" style="font-size:11px;text-transform:uppercase">{{ t('common.status') }}</th>
                         <th class="px-5 py-3 font-medium text-end" style="font-size:11px;text-transform:uppercase">{{ t('common.actions') }}</th>
                     </tr>
                 </thead>
                 <tbody>
-                    <TableSkeleton v-if="loading" :cols="6" />
-                    <tr v-else-if="!rows.length"><td colspan="6" class="px-5 py-8 text-center" style="color:var(--muted)">{{ t('plan.none') }}</td></tr>
+                    <TableSkeleton v-if="loading" :cols="7" />
+                    <tr v-else-if="!rows.length"><td colspan="7" class="px-5 py-8 text-center" style="color:var(--muted)">{{ t('plan.none') }}</td></tr>
                     <tr v-for="(p, idx) in rows" :key="p.id" class="border-t cursor-pointer hover:bg-black/[.015]"
                         :style="{ borderColor: 'var(--line)', opacity: p.is_active ? 1 : 0.6 }"
                         @click="router.push({ name: 'admin.plans.edit', params: { id: p.id } })">
                         <td class="px-5 py-3 text-start" style="color:var(--muted)">{{ idx + 1 }}</td>
                         <td class="px-5 py-3 font-medium text-start" style="color:var(--ink)">{{ p.name }}</td>
                         <td class="px-3 py-3 text-center" style="color:var(--body)">{{ price(p) }}</td>
+                        <td class="px-3 py-3 text-center" style="color:var(--body)"><span class="badge badge-gray">{{ branchLimit(p) }}</span></td>
                         <td class="px-3 py-3">
                             <div class="flex flex-wrap justify-center gap-1" style="max-width:340px;margin-inline:auto">
                                 <span v-for="k in (p.feature_keys || [])" :key="k" class="plan-cap">{{ t('feature.' + k) }}</span>

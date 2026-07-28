@@ -77,6 +77,7 @@ class UpdateLandingContentRequest extends FormRequest
             $bi('content.features.sub'),
             ['content.features.items' => ['present', 'array', 'max:24']],
             ['content.features.items.*.icon' => ['nullable', 'string', 'max:8']],
+            ['content.features.items.*.image' => ['nullable', 'string', 'max:500']],
             $bi('content.features.items.*.title'),
             $bi('content.features.items.*.text'),
 

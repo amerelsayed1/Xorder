@@ -89,7 +89,7 @@ const branch = reactive({
     name_en: '', name_ar: '', code: '', city: '', country: '',
     phone: '', whatsapp_number: '', supported_order_types: ['dine_in'],
 })
-const orderTypes = ['dine_in', 'pickup', 'delivery']
+const ALL_ORDER_TYPES = ['dine_in', 'pickup', 'delivery']
 function toggleOrderType(tp) {
     const i = branch.supported_order_types.indexOf(tp)
     if (i >= 0) branch.supported_order_types.splice(i, 1)
@@ -135,6 +135,19 @@ const derivedFeatureKeys = computed(() => {
 })
 const enabledFeatureLabels = computed(() => derivedFeatureKeys.value.map(k => t(`feature.${k}`)))
 
+// Supported order types are limited to the channels the plan grants: dine_in /
+// pickup / delivery are themselves plan features, so a branch can't offer an
+// order type the restaurant isn't entitled to. A QR-only plan grants none.
+const orderTypes = computed(() => ALL_ORDER_TYPES.filter(tp => derivedFeatureKeys.value.includes(tp)))
+// When the plan changes, drop any now-ungranted selection; default to every
+// granted type when the selection would otherwise be empty.
+watch(orderTypes, (avail) => {
+    branch.supported_order_types = branch.supported_order_types.filter(tp => avail.includes(tp))
+    if (avail.length && branch.supported_order_types.length === 0) {
+        branch.supported_order_types = [...avail]
+    }
+}, { immediate: true })
+
 // The branch step depends on the chosen plan: a plan must be selected first,
 // and its max_branches (null = unlimited) must permit at least the one branch
 // the wizard creates. If the plan changes to one that disallows branches,
@@ -173,7 +186,10 @@ const stepValid = computed(() => {
                 && !!form.admin.name.trim() && !!form.admin.username.trim()
         case 5:
             if (!branchEnabled.value) return true
-            return (((showEn.value && branch.name_en.trim()) || (showAr.value && branch.name_ar.trim())) && branch.supported_order_types.length > 0)
+            // A QR-only plan grants no order types, so don't require one; when the
+            // plan does grant channels, at least one must be selected.
+            return ((showEn.value && branch.name_en.trim()) || (showAr.value && branch.name_ar.trim()))
+                && (orderTypes.value.length === 0 || branch.supported_order_types.length > 0)
         default:
             return true
     }
@@ -521,10 +537,11 @@ async function submitCreate() {
                     </div>
                     <div>
                         <span class="label">{{ t('wizard.order_types') }}</span>
-                        <div class="flex flex-wrap gap-2 mt-1.5">
+                        <div v-if="orderTypes.length" class="flex flex-wrap gap-2 mt-1.5">
                             <button v-for="tp in orderTypes" :key="tp" type="button" @click="toggleOrderType(tp)"
                                 class="btn" :class="branch.supported_order_types.includes(tp) ? 'btn-dark' : 'btn-ghost'">{{ t(`order_type.${tp}`) }}</button>
                         </div>
+                        <p v-else class="text-sm rounded-lg p-3 mt-1.5" style="background:var(--page);color:var(--muted)">{{ t('wizard.order_types_none') }}</p>
                     </div>
                 </template>
             </div>

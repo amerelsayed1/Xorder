@@ -251,7 +251,7 @@ img {
 
 /* ---------- Shell ---------- */
 .site-shell {
-    background: radial-gradient(circle at 88% 7%, color-mix(in srgb, var(--accent) 8%, transparent), transparent 24%), var(--cream);
+    background: var(--cream);
     min-height: 100vh;
     /* Clears the fixed topbar. Measured into --topbar-h (useStickyLayout); the
        fallback matches the topbar's default height for the first paint. */
@@ -653,16 +653,15 @@ html[dir='ltr'] .hero-overlay {
     cursor: pointer;
     background: 0 0;
     border: 0;
-    /* Underline tab: transparent track that becomes accent when active. */
-    border-bottom: 2px solid transparent;
-    border-radius: 0;
+    /* Pill tab: the whole tab fills with the accent when active. */
+    border-radius: 12px;
     flex: none;
     align-items: center;
     gap: 8px;
-    min-height: 46px;
-    padding: 0 14px;
+    min-height: 38px;
+    padding: 0 16px;
     font-weight: 700;
-    transition: color .2s, border-color .2s;
+    transition: color .2s, background-color .2s;
     display: inline-flex;
     white-space: nowrap;
 }
@@ -673,12 +672,12 @@ html[dir='ltr'] .hero-overlay {
 
 .category:hover {
     color: var(--accent-dark);
-    border-bottom-color: var(--accent-softer);
+    background: var(--accent-softer);
 }
 
 .category.active {
-    color: var(--accent-dark);
-    border-bottom-color: var(--accent);
+    color: #fff;
+    background: var(--accent);
 }
 
 .search-box {
@@ -705,7 +704,7 @@ html[dir='ltr'] .hero-overlay {
 
 /* ---------- Menu content ---------- */
 .content-layout {
-    margin-top: 6px;
+    margin-top: 0;
     display: block;
 }
 
@@ -718,6 +717,11 @@ html[dir='ltr'] .hero-overlay {
     /* Land a jumped-to section fully below the sticky stack (topbar + toolbar),
        measured into --stack-h. The small extra keeps a hair of gap. */
     scroll-margin-block-start: calc(var(--stack-h, 150px) + 12px);
+}
+
+.category-section:first-of-type {
+    /* No top gap under the tabs toolbar for the first category. */
+    padding-top: 0;
 }
 
 .category-section + .category-section {
@@ -744,7 +748,6 @@ html[dir='ltr'] .hero-overlay {
     margin-bottom: 16px;
     padding: 10px 4px;
     display: flex;
-    box-shadow: 0 14px 12px -14px #4b371833;
 }
 
 .section-heading > div {
@@ -2198,7 +2201,7 @@ html[dir='ltr'] .side-panel {
     }
 
     .content-layout {
-        margin-top: 6px;
+        margin-top: 0;
     }
 
     /* scroll-margin, last-section runway, and the section-heading sticky top are
