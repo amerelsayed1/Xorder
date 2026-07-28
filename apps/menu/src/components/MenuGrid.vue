@@ -194,10 +194,7 @@ const priceOf = (section, item) => {
                                     class="add-button"
                                     :aria-label="`${t('add')} ${localize(item)}`"
                                     @click="$emit('quickAdd', section.kind, item)"
-                                >
-                                    <span class="add-button__icon" aria-hidden="true">+</span>
-                                    <span class="add-button__label">{{ t('add') }}</span>
-                                </button>
+                                >+</button>
                             </div>
                         </div>
                     </article>

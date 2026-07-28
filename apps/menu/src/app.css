@@ -61,6 +61,9 @@ html, body, #app {
 }
 
 body {
+    /* clip (not hidden) contains the full-bleed hero's 100vw without creating a
+       scroll container that would break the sticky category tabs. */
+    overflow-x: clip;
     background: var(--cream);
     color: var(--ink);
     font-family: var(--font-sans);
@@ -508,7 +511,14 @@ img {
 .restaurant-hero {
     min-height: 310px;
     isolation: isolate;
-    border-radius: 28px;
+    border-radius: 0;
+    /* Full-bleed: break out of .page-wrap (max-width + side padding) to span the
+       whole viewport width at any screen size. body has overflow-x: clip so the
+       100vw never introduces a horizontal scrollbar. */
+    width: 100vw;
+    margin-inline: calc(50% - 50vw);
+    /* Sit flush under the fixed topbar — cancel .page-wrap's top padding. */
+    margin-block-start: -10px;
     position: relative;
     overflow: hidden;
     background: linear-gradient(120deg, var(--accent-dark), #2c2115);
@@ -942,46 +952,34 @@ html[dir='ltr'] .hero-overlay {
 
 /* One cohesive, tappable pill (≥44px tall) rather than a loose label + circle. */
 .add-button {
-    color: var(--accent-dark);
+    color: #fff;
     cursor: pointer;
-    background: var(--accent-soft);
-    border: 1px solid var(--accent-border);
+    background: var(--accent);
+    border: 0;
     align-items: center;
-    gap: 8px;
-    min-height: 44px;
-    padding-inline: 6px 16px;
-    border-radius: 999px;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    border-radius: 50%;
     font-weight: 800;
-    font-size: 14px;
+    font-size: 26px;
+    line-height: 1;
     display: inline-flex;
     align-self: flex-start;
     margin-top: auto;
-    transition: background .18s, border-color .18s;
+    transition: filter .18s, background .18s;
 }
 
 .add-button:hover,
 .add-button:focus-visible {
-    background: color-mix(in srgb, var(--accent) 24%, white);
-    border-color: var(--accent);
+    filter: brightness(.95);
 }
 
-.add-button__icon {
-    background: var(--accent);
-    color: #fff;
-    border-radius: 50%;
-    place-items: center;
-    width: 32px;
-    height: 32px;
-    font-size: 20px;
-    line-height: 1;
-    display: grid;
-    flex: none;
-}
-
-/* In-cart quantity stepper shown in place of the add button. Forced LTR so
-   the + always sits on the left and − on the right, regardless of locale. */
+/* In-cart quantity stepper shown in place of the add button. Follows page
+   direction so the add (+) sits at the reading start — right in RTL, left in
+   LTR — and the − at the end. */
 .card-qty {
-    direction: ltr;
     display: inline-flex;
     align-items: center;
     gap: 12px;
@@ -2261,13 +2259,9 @@ html[dir='ltr'] .side-panel {
     }
 
     .add-button {
-        font-size: 13px;
-        padding-inline: 5px 14px;
-    }
-
-    .add-button__icon {
-        width: 30px;
-        height: 30px;
+        width: 40px;
+        height: 40px;
+        font-size: 24px;
     }
 
     .fixed-footer {
