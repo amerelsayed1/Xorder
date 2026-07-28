@@ -9,6 +9,7 @@ use App\Models\Branch;
 use App\Models\DiningArea;
 use App\Models\DiningTable;
 use App\Models\MenuSession;
+use App\Models\Notification;
 use App\Models\Restaurant;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -193,6 +194,29 @@ class BillRequestTest extends TestCase
         $bill->refresh();
         $this->assertNotNull($bill->completed_at);
         $this->assertSame($this->admin->id, $bill->completed_by);
+    }
+
+    public function test_acting_on_a_request_marks_its_new_bill_request_notification_read(): void
+    {
+        $bill = $this->makeBill(BillRequestStatus::REQUESTED);
+
+        // Mirror what PublicBillRequestController records when the request is raised:
+        // an unread 'bill_request.created' alert linked back via data.bill_request_id.
+        $notification = new Notification([
+            'type' => 'bill_request.created',
+            'title' => 'Bill request',
+            'body' => 'Table wants the bill',
+            'data' => ['bill_request_id' => (string) $bill->id, 'url' => '/admin/requests'],
+        ]);
+        $notification->restaurant_id = $this->restaurant->id;
+        $notification->save();
+        $this->assertNull($notification->read_at);
+
+        $this->actingAs($this->admin)->patchJson("/api/dashboard/bill-requests/{$bill->id}/status", [
+            'status' => BillRequestStatus::SEEN->value,
+        ])->assertOk();
+
+        $this->assertNotNull($notification->fresh()->read_at);
     }
 
     public function test_dashboard_new_count_returns_requested_total(): void

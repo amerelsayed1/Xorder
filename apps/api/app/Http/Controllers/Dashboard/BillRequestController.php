@@ -6,8 +6,10 @@ use App\Enums\BillRequestStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\BillRequestResource;
 use App\Models\BillRequest;
+use App\Models\Notification;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Validation\Rule;
 
 class BillRequestController extends Controller
@@ -89,6 +91,18 @@ class BillRequestController extends Controller
 
         $bill->status = $status;
         $bill->save();
+
+        // Acting on a request (seen / in progress / completed / cancelled) means
+        // it's no longer waiting — clear its unread "new bill request" alert so the
+        // bell mirrors the board. The validation above never lets status fall back
+        // to REQUESTED, so any update here is an acknowledgement. The bill_request_id
+        // linkage is stored (as a string) on the notification's data payload by
+        // PublicBillRequestController when the request is raised.
+        Notification::query()
+            ->where('type', 'bill_request.created')
+            ->where('data->bill_request_id', (string) $bill->id)
+            ->whereNull('read_at')
+            ->update(['read_at' => Carbon::now()]);
 
         return response()->json([
             'data' => BillRequestResource::make($bill->fresh()->load(['table', 'diningArea'])),
