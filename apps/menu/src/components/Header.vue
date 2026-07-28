@@ -38,7 +38,8 @@ async function share() {
     <header class="topbar">
         <div class="topbar-inner">
             <div class="brand">
-                <button class="menu-button" :aria-label="t('home')" @click="$emit('openMenu')">☰</button>
+                <!-- Side nav drawer hidden for now — restore this button to bring it back. -->
+                <!-- <button class="menu-button" :aria-label="t('home')" @click="$emit('openMenu')">☰</button> -->
                 <img v-if="restaurant.logo_url" :src="restaurant.logo_url" :alt="name" />
                 <div v-else class="brand-fallback">{{ initial }}</div>
                 <div class="brand-copy">
