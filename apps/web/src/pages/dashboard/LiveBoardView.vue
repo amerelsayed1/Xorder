@@ -137,10 +137,10 @@ const feedIsNew = (it) => (it.type === 'request' ? requestNewIds.value.has(it.re
 const openTable = ref(null)
 const modalOrders = ref([])
 const modalLoading = ref(false)
-const ORDER_NEXT = { NEW: ['COMPLETED', 'CANCELLED'], CONFIRMED: ['COMPLETED', 'CANCELLED'] }
+const ORDER_NEXT = { NEW: ['COMPLETED', 'CANCELLED'] }
 const orderActionLabel = { COMPLETED: 'orders.complete', CANCELLED: 'orders.cancel_order' }
-const orderBadge = { NEW: 'badge-amber', CONFIRMED: 'badge-indigo' }
-const ACTIVE = ['NEW', 'CONFIRMED']
+const orderBadge = { NEW: 'badge-amber' }
+const ACTIVE = ['NEW']
 // The open bill request (if any) for the table whose modal is showing.
 const modalRequest = computed(() => (openTable.value ? requestByTable.value.get(openTable.value.id) || null : null))
 

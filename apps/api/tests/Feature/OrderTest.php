@@ -106,12 +106,12 @@ class OrderTest extends TestCase
         $myOrder = Order::withoutGlobalScopes()->where('restaurant_id', $mine->id)->first();
         $foreignOrder = Order::withoutGlobalScopes()->where('restaurant_id', $other->id)->first();
 
-        $this->actingAs($admin)->patchJson("/api/dashboard/orders/{$myOrder->id}/status", ['status' => 'CONFIRMED'])
+        $this->actingAs($admin)->patchJson("/api/dashboard/orders/{$myOrder->id}/status", ['status' => 'COMPLETED'])
             ->assertOk()
-            ->assertJsonPath('data.status', 'CONFIRMED');
+            ->assertJsonPath('data.status', 'COMPLETED');
 
         // Cross-tenant access is a 404, never a 403 (information hiding).
-        $this->actingAs($admin)->patchJson("/api/dashboard/orders/{$foreignOrder->id}/status", ['status' => 'CONFIRMED'])
+        $this->actingAs($admin)->patchJson("/api/dashboard/orders/{$foreignOrder->id}/status", ['status' => 'COMPLETED'])
             ->assertNotFound();
     }
 
@@ -132,7 +132,7 @@ class OrderTest extends TestCase
             ->first();
         $this->assertNull($notification->read_at);
 
-        $this->actingAs($admin)->patchJson("/api/dashboard/orders/{$order->id}/status", ['status' => 'CONFIRMED'])
+        $this->actingAs($admin)->patchJson("/api/dashboard/orders/{$order->id}/status", ['status' => 'COMPLETED'])
             ->assertOk();
 
         $this->assertNotNull($notification->fresh()->read_at);

@@ -58,9 +58,9 @@ class TableController extends Controller
             ->where(fn ($q) => $q->whereNull('expires_at')->orWhere('expires_at', '>', now()))
             ->pluck('table_id')->flip();
 
-        // Active orders per table (NEW / CONFIRMED) — one grouped query.
+        // Active orders per table (still NEW — completed/cancelled ones drop out).
         $activeOrders = Order::whereIn('table_id', $tableIds)
-            ->whereIn('status', [OrderStatus::NEW->value, OrderStatus::CONFIRMED->value])
+            ->where('status', OrderStatus::NEW->value)
             ->selectRaw('table_id, count(*) as c')->groupBy('table_id')
             ->pluck('c', 'table_id');
 

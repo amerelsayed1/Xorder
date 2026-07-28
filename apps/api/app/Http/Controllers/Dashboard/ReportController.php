@@ -95,6 +95,10 @@ class ReportController extends Controller
             // it spans midnight (e.g. 23:00–02:00), matching the day-part logic.
             'time_from' => ['sometimes', 'nullable', 'date_format:H:i'],
             'time_to' => ['sometimes', 'nullable', 'date_format:H:i'],
+            // Day-of-week filter (0=Sunday … 6=Saturday, matching JS getDay()).
+            // Empty/absent means every weekday.
+            'days_of_week' => ['sometimes', 'nullable', 'array'],
+            'days_of_week.*' => ['integer', 'between:0,6'],
             'include_cancelled' => ['sometimes', 'boolean'],
             'group' => ['sometimes', Rule::in(['period', 'hour', 'day'])],
         ]);

@@ -8,16 +8,12 @@ import Skeleton from '@xorder/ui/Skeleton.vue'
 import ApexChart from '../../components/ApexChart.vue'
 import { areaChart } from '../../lib/charts.js'
 import { useReportFilters } from '../../composables/useReportFilters.js'
+import ReportFilters from '../../components/ReportFilters.vue'
 
 const { t, locale } = useI18n()
 
-const {
-    branches, areas,
-    dateFrom, dateTo, timeFrom, timeTo, branchId, areaId, areaType, orderType, includeCancelled, groupBy,
-    AREA_TYPES, ORDER_TYPES,
-    params, loadFilters, resetFilters,
-    localName, periodLabel, money,
-} = useReportFilters()
+const rf = useReportFilters()
+const { params, loadFilters, periodLabel, money } = rf
 
 const report = ref(null)
 const loading = ref(true)
@@ -35,11 +31,6 @@ async function load() {
     } finally {
         loading.value = false
     }
-}
-
-function reset() {
-    resetFilters()
-    load()
 }
 
 async function doExport(format) {
@@ -94,77 +85,10 @@ function periodSalesOptions(c) {
         </div>
 
         <!-- Filters -->
-        <div class="card p-4 space-y-3">
-            <div class="rep-filters">
-                <label class="rep-field">
-                    <span class="label">{{ t('rep.date_from') }}</span>
-                    <input v-model="dateFrom" type="date" class="input" />
-                </label>
-                <label class="rep-field">
-                    <span class="label">{{ t('rep.date_to') }}</span>
-                    <input v-model="dateTo" type="date" class="input" />
-                </label>
-                <label class="rep-field">
-                    <span class="label">{{ t('rep.time_from') }}</span>
-                    <input v-model="timeFrom" type="time" class="input" />
-                </label>
-                <label class="rep-field">
-                    <span class="label">{{ t('rep.time_to') }}</span>
-                    <input v-model="timeTo" type="time" class="input" />
-                </label>
-                <label class="rep-field">
-                    <span class="label">{{ t('rep.branch') }}</span>
-                    <select v-model="branchId" class="input">
-                        <option value="">{{ t('rep.all_branches') }}</option>
-                        <option v-for="b in branches" :key="b.id" :value="b.id">{{ localName(b, 'name') }}</option>
-                    </select>
-                </label>
-                <label class="rep-field">
-                    <span class="label">{{ t('rep.area') }}</span>
-                    <select v-model="areaId" class="input">
-                        <option value="">{{ t('rep.all_areas') }}</option>
-                        <option v-for="a in areas" :key="a.id" :value="a.id">{{ localName(a, 'name') }}</option>
-                    </select>
-                </label>
-                <label class="rep-field">
-                    <span class="label">{{ t('rep.type') }}</span>
-                    <select v-model="areaType" class="input">
-                        <option value="">{{ t('rep.all_types') }}</option>
-                        <option v-for="ty in AREA_TYPES" :key="ty" :value="ty">{{ t('rep.type_' + ty) }}</option>
-                    </select>
-                </label>
-                <label class="rep-field">
-                    <span class="label">{{ t('nav.orders') }}</span>
-                    <select v-model="orderType" class="input">
-                        <option value="">{{ t('rep.all_order_types') }}</option>
-                        <option v-for="ot in ORDER_TYPES" :key="ot" :value="ot">{{ t('order_type.' + ot) }}</option>
-                    </select>
-                </label>
-                <label class="rep-field">
-                    <span class="label">{{ t('rep.group_by') }}</span>
-                    <select v-model="groupBy" class="input">
-                        <option value="period">{{ t('rep.by_period') }}</option>
-                        <option value="hour">{{ t('rep.by_hour') }}</option>
-                        <option value="day">{{ t('rep.by_day') }}</option>
-                    </select>
-                </label>
-            </div>
-            <div class="flex items-center gap-3 flex-wrap">
-                <label class="rep-check">
-                    <input v-model="includeCancelled" type="checkbox" />
-                    <span>{{ t('rep.include_cancelled') }}</span>
-                </label>
-                <div class="flex-1"></div>
-                <button class="btn btn-ghost btn-sm" @click="reset">{{ t('rep.reset') }}</button>
-                <button class="btn btn-accent btn-sm" @click="load">{{ t('rep.apply') }}</button>
-                <button class="btn btn-ghost btn-sm" :disabled="!!exporting" @click="doExport('csv')">
-                    {{ exporting === 'csv' ? t('rep.exporting') : t('rep.export_csv') }}
-                </button>
-                <button class="btn btn-ghost btn-sm" :disabled="!!exporting" @click="doExport('xlsx')">
-                    {{ exporting === 'xlsx' ? t('rep.exporting') : t('rep.export_xlsx') }}
-                </button>
-            </div>
-        </div>
+        <ReportFilters
+            :ctx="rf" :show-group="true" :show-export="true" :exporting="exporting"
+            @apply="load" @export="doExport"
+        />
 
         <template v-if="loading">
             <div class="card p-4 space-y-3">
@@ -259,13 +183,6 @@ function periodSalesOptions(c) {
 </template>
 
 <style scoped>
-.rep-filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
-.rep-field { display: flex; flex-direction: column; gap: 4px; }
-.rep-field .label { font-size: 12px; color: var(--muted); }
-.rep-check { display: inline-flex; align-items: center; gap: 7px; font-size: 13.5px; color: var(--body); cursor: pointer; }
-.rep-check input { width: 15px; height: 15px; }
-.btn-sm { padding: 6px 13px; font-size: 12.5px; }
-
 .rep-perf { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .rep-perf-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 5px 0; border-bottom: 1px solid var(--line); font-size: 13.5px; color: var(--body); }
 .rep-perf-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

@@ -219,6 +219,60 @@ class ReportTest extends TestCase
         $this->assertFalse($products->has('Latte'));   // 09:00 order excluded
     }
 
+    public function test_day_of_week_filter_keeps_only_selected_weekdays(): void
+    {
+        // Seeded orders all fall on 2026-07-15 (a Wednesday, dayOfWeek=3).
+        $this->seedOrders();
+        // Add a Friday (2026-07-17, dayOfWeek=5) order with a distinct product.
+        $this->makeOrder($this->indoor, '2026-07-17 13:00', [
+            ['name' => 'FridayShawarma', 'qty' => 4, 'line_total' => 200],
+        ], 200);
+
+        // Friday only → just the Friday order.
+        $friday = $this->actingAs($this->admin)
+            ->getJson('/api/dashboard/reports/products-by-time?days_of_week[]=5')->assertOk();
+        $fridayProducts = collect($friday->json('data.products'))->keyBy('name');
+        $this->assertSame(4, $fridayProducts['FridayShawarma']['quantity']);
+        $this->assertFalse($fridayProducts->has('Latte'));   // Wednesday excluded
+
+        // Wednesday only → the breakfast/dinner orders, not Friday's.
+        $wednesday = $this->actingAs($this->admin)
+            ->getJson('/api/dashboard/reports/products-by-time?days_of_week[]=3')->assertOk();
+        $wednesdayProducts = collect($wednesday->json('data.products'))->keyBy('name');
+        $this->assertSame(3, $wednesdayProducts['Latte']['quantity']);
+        $this->assertFalse($wednesdayProducts->has('FridayShawarma'));
+
+        // Both days selected → both products present.
+        $both = $this->actingAs($this->admin)
+            ->getJson('/api/dashboard/reports/products-by-time?days_of_week[]=3&days_of_week[]=5')->assertOk();
+        $bothProducts = collect($both->json('data.products'))->keyBy('name');
+        $this->assertTrue($bothProducts->has('Latte'));
+        $this->assertTrue($bothProducts->has('FridayShawarma'));
+    }
+
+    public function test_day_of_week_filter_applies_to_dining_area_report(): void
+    {
+        $this->seedOrders();   // Wednesday orders in indoor + outdoor
+        $this->makeOrder($this->outdoor, '2026-07-17 20:00', [
+            ['name' => 'FridayGrill', 'qty' => 1, 'line_total' => 120],
+        ], 120);
+
+        // Wednesday only: outdoor keeps its 1 Wednesday dinner order, not Friday's.
+        $res = $this->actingAs($this->admin)
+            ->getJson('/api/dashboard/reports/dining-areas?days_of_week[]=3')->assertOk();
+        $areas = collect($res->json('data.areas'))->keyBy('id');
+        $this->assertSame(2, $areas[$this->indoor->id]['total_orders']);
+        $this->assertSame(1, $areas[$this->outdoor->id]['total_orders']);
+    }
+
+    public function test_day_of_week_rejects_out_of_range_value(): void
+    {
+        $this->actingAs($this->admin)
+            ->getJson('/api/dashboard/reports/products-by-time?days_of_week[]=9')
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('days_of_week.0');
+    }
+
     public function test_time_window_filters_dining_area_orders(): void
     {
         $this->seedOrders();

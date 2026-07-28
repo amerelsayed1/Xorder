@@ -25,10 +25,10 @@ function openCustomer(order) {
     if (canOpenCustomer(order)) router.push({ name: 'dashboard.customer', params: { id: order.customer_id } })
 }
 
-const STATUSES = ['NEW', 'CONFIRMED', 'COMPLETED', 'CANCELLED']
-const badgeClass = { NEW: 'badge-amber', CONFIRMED: 'badge-indigo', COMPLETED: 'badge-green', CANCELLED: 'badge-red' }
+const STATUSES = ['NEW', 'COMPLETED', 'CANCELLED']
+const badgeClass = { NEW: 'badge-amber', COMPLETED: 'badge-green', CANCELLED: 'badge-red' }
 // Which statuses each status can move to, rendered as per-row action buttons.
-const nextActions = { NEW: ['COMPLETED', 'CANCELLED'], CONFIRMED: ['COMPLETED', 'CANCELLED'] }
+const nextActions = { NEW: ['COMPLETED', 'CANCELLED'] }
 const actionLabel = { COMPLETED: 'orders.complete', CANCELLED: 'orders.cancel_order' }
 
 const rows = ref([])

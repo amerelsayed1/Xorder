@@ -1,28 +1,34 @@
-import { ref } from 'vue'
+import { ref, reactive, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import api from '@xorder/api-client/api.js'
 
 // Shared filter state + formatters for the analytics report pages (Product
-// performance, Dining-area comparison). Each page renders its own filter bar
-// markup — the products page adds group-by + export, the areas page doesn't —
-// but the underlying state, query params and formatters live here so the two
-// pages can't drift apart.
+// performance, Dining-area comparison). The two pages render the same
+// <ReportFilters> component and only differ in which extras they turn on
+// (the products page adds group-by + export), so the underlying state, query
+// params, presets and formatters live here and the pages can't drift apart.
 export function useReportFilters() {
     const { t, locale } = useI18n()
 
     const branches = ref([])
     const areas = ref([])
 
-    const dateFrom = ref('')
-    const dateTo = ref('')
-    const timeFrom = ref('')
-    const timeTo = ref('')
-    const branchId = ref('')
-    const areaId = ref('')
-    const areaType = ref('')
-    const orderType = ref('')
-    const includeCancelled = ref(false)
-    const groupBy = ref('period')
+    // One reactive object (instead of a dozen refs) so the whole filter bar can
+    // be handed to <ReportFilters> as a single prop and stay two-way bound.
+    const defaults = () => ({
+        dateFrom: '',
+        dateTo: '',
+        timeFrom: '',
+        timeTo: '',
+        daysOfWeek: [],       // 0=Sunday … 6=Saturday (matches Date.getDay())
+        branchId: '',
+        areaId: '',
+        areaType: '',
+        orderType: '',
+        includeCancelled: false,
+        groupBy: 'period',
+    })
+    const state = reactive(defaults())
 
     const AREA_TYPES = ['indoor', 'outdoor', 'custom']
     const ORDER_TYPES = ['dine_in', 'pickup', 'delivery']
@@ -31,16 +37,17 @@ export function useReportFilters() {
     // products-by-time report, but it's harmless on the dining-areas endpoint.
     function params() {
         return {
-            date_from: dateFrom.value || undefined,
-            date_to: dateTo.value || undefined,
-            time_from: timeFrom.value || undefined,
-            time_to: timeTo.value || undefined,
-            branch_id: branchId.value || undefined,
-            dining_area_id: areaId.value || undefined,
-            area_type: areaType.value || undefined,
-            order_type: orderType.value || undefined,
-            include_cancelled: includeCancelled.value ? 1 : undefined,
-            group: groupBy.value,
+            date_from: state.dateFrom || undefined,
+            date_to: state.dateTo || undefined,
+            time_from: state.timeFrom || undefined,
+            time_to: state.timeTo || undefined,
+            days_of_week: state.daysOfWeek.length ? [...state.daysOfWeek] : undefined,
+            branch_id: state.branchId || undefined,
+            dining_area_id: state.areaId || undefined,
+            area_type: state.areaType || undefined,
+            order_type: state.orderType || undefined,
+            include_cancelled: state.includeCancelled ? 1 : undefined,
+            group: state.groupBy,
         }
     }
 
@@ -56,18 +63,64 @@ export function useReportFilters() {
     }
 
     function resetFilters() {
-        dateFrom.value = ''
-        dateTo.value = ''
-        timeFrom.value = ''
-        timeTo.value = ''
-        branchId.value = ''
-        areaId.value = ''
-        areaType.value = ''
-        orderType.value = ''
-        includeCancelled.value = false
-        groupBy.value = 'period'
+        Object.assign(state, defaults())
     }
 
+    // --- Quick date presets -------------------------------------------------
+    // Local calendar dates ("YYYY-MM-DD") so they line up with the <input
+    // type="date"> values and the restaurant-local day boundaries the API uses.
+    const pad = (n) => String(n).padStart(2, '0')
+    const iso = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+    const shiftDays = (n) => {
+        const d = new Date()
+        d.setDate(d.getDate() + n)
+        return iso(d)
+    }
+    const startOfMonth = () => {
+        const d = new Date()
+        return iso(new Date(d.getFullYear(), d.getMonth(), 1))
+    }
+
+    // Each preset resolves to a [from, to] pair; `active` compares against the
+    // current range so the matching chip highlights even after a manual edit.
+    const PRESETS = [
+        { key: 'today', label: () => t('rep.preset_today'), range: () => [shiftDays(0), shiftDays(0)] },
+        { key: 'yesterday', label: () => t('rep.preset_yesterday'), range: () => [shiftDays(-1), shiftDays(-1)] },
+        { key: 'last7', label: () => t('rep.preset_7d'), range: () => [shiftDays(-6), shiftDays(0)] },
+        { key: 'last30', label: () => t('rep.preset_30d'), range: () => [shiftDays(-29), shiftDays(0)] },
+        { key: 'month', label: () => t('rep.preset_month'), range: () => [startOfMonth(), shiftDays(0)] },
+    ]
+
+    function applyPreset(key) {
+        const preset = PRESETS.find((p) => p.key === key)
+        if (!preset) return
+        const [from, to] = preset.range()
+        state.dateFrom = from
+        state.dateTo = to
+    }
+
+    const activePreset = computed(() => {
+        for (const p of PRESETS) {
+            const [from, to] = p.range()
+            if (state.dateFrom === from && state.dateTo === to) return p.key
+        }
+        return ''
+    })
+
+    // --- Day-of-week --------------------------------------------------------
+    // 2023-01-01 was a Sunday, so offsetting it by d gives a reference date whose
+    // localized short weekday name we can show (Sun … Sat, 0 … 6).
+    const WEEKDAYS = [0, 1, 2, 3, 4, 5, 6]
+    const weekdayLabel = (d) =>
+        new Date(2023, 0, 1 + d).toLocaleDateString(locale.value, { weekday: 'short' })
+
+    function toggleDay(d) {
+        state.daysOfWeek = state.daysOfWeek.includes(d)
+            ? state.daysOfWeek.filter((x) => x !== d)
+            : [...state.daysOfWeek, d].sort((a, b) => a - b)
+    }
+
+    // --- Formatters ---------------------------------------------------------
     const localName = (row, base) => {
         const en = row[`${base}_en`], ar = row[`${base}_ar`]
         return (locale.value === 'ar' ? (ar || en) : (en || ar)) || '—'
@@ -100,9 +153,10 @@ export function useReportFilters() {
     const money = (n) => Number(n || 0).toLocaleString(locale.value, { maximumFractionDigits: 2 })
 
     return {
-        branches, areas,
-        dateFrom, dateTo, timeFrom, timeTo, branchId, areaId, areaType, orderType, includeCancelled, groupBy,
+        state, branches, areas,
         AREA_TYPES, ORDER_TYPES,
+        PRESETS, activePreset, applyPreset,
+        WEEKDAYS, weekdayLabel, toggleDay,
         params, loadFilters, resetFilters,
         localName, periodLabel, typeLabel, fmtSecs, money,
     }

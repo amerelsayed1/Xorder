@@ -40,9 +40,14 @@ class ReportService
         $group = in_array($requested, ['hour', 'day'], true) ? $requested : 'period';
         $tz = $this->timezone($restaurant);
 
-        $orders = $this->withinTimeWindow(
-            $this->matchingOrders($restaurant, $filters)->get(['id', 'items', 'created_at']),
-            $this->timeWindow($filters),
+        $orders = $this->withinDaysOfWeek(
+            $this->withinTimeWindow(
+                $this->matchingOrders($restaurant, $filters)->get(['id', 'items', 'created_at']),
+                $this->timeWindow($filters),
+                $tz,
+                'created_at',
+            ),
+            $this->daysOfWeek($filters),
             $tz,
             'created_at',
         );
@@ -150,11 +155,16 @@ class ReportService
         $tz = $this->timezone($restaurant);
 
         // One pass over the matching orders, grouped by dining area.
-        $orders = $this->withinTimeWindow(
-            $this->matchingOrders($restaurant, $filters)
-                ->whereNotNull('dining_area_id')
-                ->get(['id', 'dining_area_id', 'items', 'total', 'created_at']),
-            $this->timeWindow($filters),
+        $orders = $this->withinDaysOfWeek(
+            $this->withinTimeWindow(
+                $this->matchingOrders($restaurant, $filters)
+                    ->whereNotNull('dining_area_id')
+                    ->get(['id', 'dining_area_id', 'items', 'total', 'created_at']),
+                $this->timeWindow($filters),
+                $tz,
+                'created_at',
+            ),
+            $this->daysOfWeek($filters),
             $tz,
             'created_at',
         );
@@ -323,6 +333,59 @@ class ReportService
         // An open bound falls back to the full day so a single-sided filter
         // ("from 22:00", "until 06:00") still works.
         return [$from ?? 0, $to ?? 1440];
+    }
+
+    /**
+     * The optional day-of-week filter as a set of ints (0=Sunday … 6=Saturday,
+     * matching Carbon's `dayOfWeek` and JavaScript's `Date.getDay()`), or null
+     * when the filter is absent/empty. Out-of-range values are dropped so a
+     * stray day never silently excludes every order.
+     *
+     * @param  array<string,mixed>  $filters
+     * @return array<int,int>|null
+     */
+    private function daysOfWeek(array $filters): ?array
+    {
+        $raw = $filters['days_of_week'] ?? null;
+        if (empty($raw)) {
+            return null;
+        }
+
+        $days = array_values(array_unique(array_filter(
+            array_map('intval', (array) $raw),
+            fn ($d) => $d >= 0 && $d <= 6,
+        )));
+
+        return $days === [] ? null : $days;
+    }
+
+    /**
+     * Keep only rows whose local weekday on `$column` is in `$days`. No-op when
+     * `$days` is null. Weekday is resolved in the restaurant timezone (in PHP,
+     * for the same cross-DB reasons as {@see withinTimeWindow()}).
+     *
+     * @template TModel of \Illuminate\Database\Eloquent\Model
+     *
+     * @param  Collection<int,TModel>  $rows
+     * @param  array<int,int>|null  $days
+     * @return Collection<int,TModel>
+     */
+    private function withinDaysOfWeek(Collection $rows, ?array $days, string $tz, string $column): Collection
+    {
+        if ($days === null) {
+            return $rows;
+        }
+
+        $set = array_flip($days);
+
+        return $rows->filter(function ($row) use ($set, $tz, $column) {
+            $ts = $row->{$column};
+            if (! $ts instanceof Carbon) {
+                return false;
+            }
+
+            return isset($set[$ts->copy()->setTimezone($tz)->dayOfWeek]);
+        })->values();
     }
 
     /**

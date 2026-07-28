@@ -152,11 +152,12 @@ class TableTest extends TestCase
             ->assertJsonPath('data.0.occupied', true)
             ->assertJsonPath('data.0.has_new_order', true);
 
-        // Once acknowledged (CONFIRMED) it stays occupied but stops flashing.
-        $order->update(['status' => 'CONFIRMED']);
+        // Completing the order drops it from the active set → the card stops
+        // flashing, and with no live guest session the table frees up.
+        $order->update(['status' => 'COMPLETED']);
         $this->actingAs($this->admin)->getJson('/api/dashboard/tables/live')
             ->assertOk()
-            ->assertJsonPath('data.0.occupied', true)
+            ->assertJsonPath('data.0.occupied', false)
             ->assertJsonPath('data.0.has_new_order', false);
     }
 
