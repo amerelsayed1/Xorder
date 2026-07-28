@@ -194,7 +194,11 @@ const priceOf = (section, item) => {
                                     class="add-button"
                                     :aria-label="`${t('add')} ${localize(item)}`"
                                     @click="$emit('quickAdd', section.kind, item)"
-                                >+</button>
+                                >
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true">
+                                        <path d="M12 5v14M5 12h14" />
+                                    </svg>
+                                </button>
                             </div>
                         </div>
                     </article>
