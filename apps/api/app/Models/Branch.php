@@ -24,6 +24,7 @@ class Branch extends Model
         'phone',
         'whatsapp_number',
         'opening_hours',
+        'business_hours',
         'map_url',
         'latitude',
         'longitude',
@@ -38,6 +39,7 @@ class Branch extends Model
         return [
             'is_open' => 'boolean',
             'is_active' => 'boolean',
+            'business_hours' => 'array',
             'latitude' => 'float',
             'longitude' => 'float',
             'supported_order_types' => 'array',

@@ -163,7 +163,7 @@ const modalGroups = computed(() => {
 
 const modalValid = computed(() => {
     return modalGroups.value.every((g, gi) => {
-        const need = modal.value.kind === 'combo' ? true : !!g.is_required
+        const need = modal.value.kind === 'combo' ? true : (!!g.is_required || !!g.is_variant)
         const selected = Array.isArray(sel.groups[gi]) ? sel.groups[gi] : (sel.groups[gi] == null ? [] : [sel.groups[gi]])
         return need ? selected.length >= 1 : true
     })
@@ -192,9 +192,25 @@ function toggleOption(gi, oi, group) {
     sel.groups[gi] = arr
 }
 
+// Pre-select the first option of every single-choice group that must be
+// answered (a size/portion variant, a required group, or any combo group), so
+// size/type opens with a sensible default instead of an empty required field.
+// Multi-select and optional groups start empty.
+function defaultSelection(kind, ref_) {
+    const groups = kind === 'item' ? (ref_.option_groups || []) : (ref_.groups || [])
+    const out = {}
+    groups.forEach((g, gi) => {
+        const single = (g.max_select || 1) === 1
+        const mustAnswer = kind === 'combo' || !!g.is_required || !!g.is_variant
+        const opts = kind === 'item' ? (g.options || []) : (g.items || [])
+        if (single && mustAnswer && opts.length) out[gi] = 0
+    })
+    return out
+}
+
 function openModal(kind, ref_) {
     modal.value = { kind, ref: ref_ }
-    sel.groups = {}
+    sel.groups = defaultSelection(kind, ref_)
     qty.value = 1
 }
 

@@ -7,6 +7,7 @@ import { useAuth } from '@xorder/api-client/auth.js'
 import Skeleton from '@xorder/ui/Skeleton.vue'
 import ApexChart from '../../components/ApexChart.vue'
 import { columnChart, barChart, donutChart } from '../../lib/charts.js'
+import { asPreview } from '../../lib/host.js'
 
 const { t, locale } = useI18n()
 const auth = useAuth()
@@ -194,7 +195,7 @@ function money(v) {
                             <div class="stat-num">{{ money(data.pricing.max_price) }}</div>
                         </div>
                     </div>
-                    <a :href="data.public_url" target="_blank" class="inline-block text-sm underline mt-4" style="color:var(--accent)">
+                    <a :href="asPreview(data.public_url)" target="_blank" class="inline-block text-sm underline mt-4" style="color:var(--accent)">
                         ↗ {{ t('restaurant.public_url') }}
                     </a>
                 </div>

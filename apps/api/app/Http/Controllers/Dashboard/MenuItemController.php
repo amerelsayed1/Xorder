@@ -112,11 +112,17 @@ class MenuItemController extends Controller
         OptionGroup::where('menu_item_id', $item->id)->delete();
 
         foreach (array_values($groups) as $gi => $g) {
+            // A variant (size/portion) group is always single-select and must be
+            // chosen — the chosen option sets the item price, so "no size" makes
+            // no sense. Force those invariants regardless of what the client sent.
+            $isVariant = (bool) ($g['is_variant'] ?? false);
+
             $group = $item->optionGroups()->create([
                 'name_en' => $g['name_en'] ?? null,
                 'name_ar' => $g['name_ar'] ?? null,
-                'is_required' => $g['is_required'] ?? false,
-                'max_select' => $g['max_select'] ?? 1,
+                'is_required' => $isVariant ? true : ($g['is_required'] ?? false),
+                'is_variant' => $isVariant,
+                'max_select' => $isVariant ? 1 : ($g['max_select'] ?? 1),
                 'sort_order' => $gi,
             ]);
 

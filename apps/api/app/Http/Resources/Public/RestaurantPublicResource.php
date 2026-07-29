@@ -21,6 +21,17 @@ class RestaurantPublicResource extends JsonResource
         // what the plan grants.
         $mode = $this->effectiveOrderingMode();
 
+        // Working hours now live on the branch. For the menu header/info sheet
+        // (a single-restaurant view) source them from the primary active branch
+        // when available, falling back to the legacy restaurant-level values.
+        $primaryBranch = $this->relationLoaded('branches') ? $this->branches->first() : null;
+        $openingHours = $primaryBranch && $primaryBranch->opening_hours !== null
+            ? $primaryBranch->opening_hours
+            : $this->opening_hours;
+        $businessHours = $primaryBranch && ! empty($primaryBranch->business_hours)
+            ? $primaryBranch->business_hours
+            : $this->business_hours;
+
         return [
             'name_ar' => $this->name_ar,
             'name_en' => $this->name_en,
@@ -32,8 +43,8 @@ class RestaurantPublicResource extends JsonResource
             'phone' => $this->phone,
             'whatsapp_number' => $this->whatsapp_number,
             'address' => $this->address,
-            'opening_hours' => $this->opening_hours,
-            'business_hours' => (object) ($this->business_hours ?? []),
+            'opening_hours' => $openingHours,
+            'business_hours' => (object) ($businessHours ?? []),
             'delivery_time_min' => $this->delivery_time_min,
             'delivery_time_max' => $this->delivery_time_max,
             'minimum_order' => $this->minimum_order,

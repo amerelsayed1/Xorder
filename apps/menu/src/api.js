@@ -3,8 +3,12 @@ import axios from 'axios'
 const BASE = import.meta.env.VITE_API_URL || ''
 
 export async function fetchMenu(slug) {
+    // Owner previews open the live menu with ?preview=1; forward it so the API
+    // excludes the owner's own visit from the restaurant's view analytics.
+    const isPreview = new URLSearchParams(window.location.search).has('preview')
     const { data } = await axios.get(`${BASE}/api/public/restaurants/${slug}/menu`, {
         headers: { Accept: 'application/json' },
+        params: isPreview ? { preview: 1 } : undefined,
     })
     return data
 }

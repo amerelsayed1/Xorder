@@ -161,6 +161,51 @@ class TableTest extends TestCase
             ->assertJsonPath('data.0.has_new_order', false);
     }
 
+    public function test_bulk_create_stores_each_typed_name_with_a_token(): void
+    {
+        $this->actingAs($this->admin)->postJson('/api/dashboard/tables/bulk', [
+            'dining_area_id' => $this->area->id,
+            'labels' => ['Patio 1', 'Patio 2', 'Window', 'Bar'],
+        ])->assertCreated()->assertJsonCount(4, 'data');
+
+        $labels = DiningTable::where('dining_area_id', $this->area->id)->pluck('label')->all();
+        $this->assertSame(['Patio 1', 'Patio 2', 'Window', 'Bar'], $labels);
+        // Every table in the batch is independently QR-ready.
+        $this->assertCount(4, DiningTable::whereNotNull('public_token')->whereNotNull('qr_generated_at')->get());
+    }
+
+    public function test_bulk_create_trims_and_drops_blank_and_duplicate_names(): void
+    {
+        $this->actingAs($this->admin)->postJson('/api/dashboard/tables/bulk', [
+            'dining_area_id' => $this->area->id,
+            'labels' => ['  A  ', '', 'B', 'A', '   '],
+        ])->assertCreated()->assertJsonCount(2, 'data');
+
+        $this->assertSame(['A', 'B'], DiningTable::orderBy('id')->pluck('label')->all());
+    }
+
+    public function test_bulk_create_rejects_when_every_name_is_blank(): void
+    {
+        $this->actingAs($this->admin)->postJson('/api/dashboard/tables/bulk', [
+            'dining_area_id' => $this->area->id, 'labels' => ['', '   '],
+        ])->assertStatus(422)->assertJsonValidationErrors('labels');
+
+        $this->assertSame(0, DiningTable::count());
+    }
+
+    public function test_bulk_create_rejects_the_whole_batch_when_a_label_already_exists(): void
+    {
+        $this->makeTable('Table 2');
+
+        $this->actingAs($this->admin)->postJson('/api/dashboard/tables/bulk', [
+            'dining_area_id' => $this->area->id,
+            'labels' => ['Table 1', 'Table 2', 'Table 3'],
+        ])->assertStatus(422)->assertJsonValidationErrors('labels');
+
+        // No partial insert: only the pre-existing table remains.
+        $this->assertSame(1, DiningTable::count());
+    }
+
     private function makeTable(string $label, ?DiningArea $area = null): DiningTable
     {
         $area ??= $this->area;

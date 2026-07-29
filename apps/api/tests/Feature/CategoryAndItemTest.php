@@ -148,4 +148,89 @@ class CategoryAndItemTest extends TestCase
         $this->actingAs($admin)->deleteJson('/api/dashboard/items/bulk', ['ids' => []])
             ->assertStatus(422)->assertJsonValidationErrors('ids');
     }
+
+    public function test_bulk_delete_categories_soft_deletes_them_and_cascades_to_items(): void
+    {
+        $admin = $this->admin();
+        $cats = Category::factory()->count(2)->for($admin->restaurant)->create();
+        $item = MenuItem::factory()->for($admin->restaurant)->for($cats->first())->create();
+
+        $this->actingAs($admin)
+            ->deleteJson('/api/dashboard/categories/bulk', ['ids' => $cats->pluck('id')->all()])
+            ->assertOk();
+
+        foreach ($cats as $cat) {
+            $this->assertSoftDeleted('categories', ['id' => $cat->id]);
+        }
+        // Items under a deleted category cascade too, matching single delete.
+        $this->assertSoftDeleted('menu_items', ['id' => $item->id]);
+    }
+
+    public function test_bulk_delete_categories_rejects_ids_from_another_restaurant(): void
+    {
+        $admin = $this->admin();
+        $mine = Category::factory()->for($admin->restaurant)->create();
+
+        $otherRestaurant = Restaurant::factory()->create();
+        $foreign = Category::factory()->for($otherRestaurant)->create();
+
+        $this->actingAs($admin)
+            ->deleteJson('/api/dashboard/categories/bulk', ['ids' => [$mine->id, $foreign->id]])
+            ->assertStatus(422);
+
+        // Whole request is rejected: neither category is deleted.
+        $this->assertDatabaseHas('categories', ['id' => $mine->id, 'deleted_at' => null]);
+        $this->assertDatabaseHas('categories', ['id' => $foreign->id, 'deleted_at' => null]);
+    }
+
+    public function test_bulk_delete_categories_requires_ids(): void
+    {
+        $admin = $this->admin();
+
+        $this->actingAs($admin)->deleteJson('/api/dashboard/categories/bulk', ['ids' => []])
+            ->assertStatus(422)->assertJsonValidationErrors('ids');
+    }
+
+    public function test_variant_option_group_is_forced_single_select_and_required(): void
+    {
+        $admin = $this->admin();
+        $cat = Category::factory()->for($admin->restaurant)->create();
+
+        // Client sends a variant group but also (wrongly) marks it optional and
+        // multi-select — the server must clamp it to required + single-select.
+        $this->actingAs($admin)->postJson('/api/dashboard/items', [
+            'category_id' => $cat->id, 'name_en' => 'Mini Pancake', 'price' => 80,
+            'option_groups' => [[
+                'name_en' => 'Pieces', 'is_variant' => true,
+                'is_required' => false, 'max_select' => 5,
+                'options' => [
+                    ['name_en' => '12 pieces', 'price' => 80],
+                    ['name_en' => '18 pieces', 'price' => 150],
+                ],
+            ]],
+        ])->assertCreated();
+
+        $this->assertDatabaseHas('option_groups', [
+            'name_en' => 'Pieces', 'is_variant' => true, 'is_required' => true, 'max_select' => 1,
+        ]);
+    }
+
+    public function test_public_menu_exposes_is_variant_flag(): void
+    {
+        $admin = $this->admin();
+        $cat = Category::factory()->for($admin->restaurant)->create();
+
+        $this->actingAs($admin)->postJson('/api/dashboard/items', [
+            'category_id' => $cat->id, 'name_en' => 'Mini Pancake', 'price' => 80,
+            'option_groups' => [[
+                'name_en' => 'Pieces', 'is_variant' => true,
+                'options' => [['name_en' => '12 pieces', 'price' => 80]],
+            ]],
+        ])->assertCreated();
+
+        $slug = $admin->restaurant->slug;
+        $this->getJson("/api/public/restaurants/{$slug}/menu")
+            ->assertOk()
+            ->assertJsonPath('data.categories.0.items.0.option_groups.0.is_variant', true);
+    }
 }

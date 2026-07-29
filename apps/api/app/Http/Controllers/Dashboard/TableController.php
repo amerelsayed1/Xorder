@@ -6,6 +6,7 @@ use App\Enums\BillRequestStatus;
 use App\Enums\OrderStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Dashboard\BulkDeleteTablesRequest;
+use App\Http\Requests\Dashboard\BulkStoreTablesRequest;
 use App\Http\Requests\Dashboard\StoreTableRequest;
 use App\Http\Requests\Dashboard\UpdateTableRequest;
 use App\Http\Resources\DiningTableResource;
@@ -18,6 +19,7 @@ use App\Services\QrCodeService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\DB;
 
 class TableController extends Controller
 {
@@ -112,6 +114,76 @@ class TableController extends Controller
         return response()->json([
             'data' => DiningTableResource::make($table->load('diningArea')),
             'message' => __('xorder.messages.table_created'),
+        ], 201);
+    }
+
+    /**
+     * Create a batch of tables in one request from an explicit list of names the
+     * owner typed in the dialog, so setting up a floor doesn't mean reopening the
+     * dialog per table. Names are trimmed, blanks dropped, and duplicates within
+     * the batch collapsed; the surviving names are checked against the area's
+     * existing tables before any insert (all-or-nothing).
+     */
+    public function bulkStore(BulkStoreTablesRequest $request): JsonResponse
+    {
+        $area = DiningArea::findOrFail($request->integer('dining_area_id'));
+        $seats = $request->input('seats_count');
+        $isActive = $request->boolean('is_active', true);
+
+        // Trim, drop blanks, and de-duplicate within the batch, preserving order.
+        $labels = [];
+        foreach ((array) $request->input('labels', []) as $raw) {
+            $label = trim((string) $raw);
+            if ($label === '' || in_array($label, $labels, true)) {
+                continue;
+            }
+            $labels[] = $label;
+        }
+
+        if ($labels === []) {
+            return response()->json([
+                'message' => __('validation.required', ['attribute' => 'label']),
+                'errors' => ['labels' => [__('validation.required', ['attribute' => 'label'])]],
+            ], 422);
+        }
+
+        // Reject the whole batch if any name already exists in the area.
+        $taken = DiningTable::query()
+            ->where('dining_area_id', $area->id)
+            ->whereIn('label', $labels)
+            ->pluck('label')
+            ->all();
+        if ($taken !== []) {
+            return response()->json([
+                'message' => __('xorder.validation.table_labels_taken', ['labels' => implode(', ', $taken)]),
+                'errors' => ['labels' => [__('xorder.validation.table_labels_taken', ['labels' => implode(', ', array_slice($taken, 0, 10))])]],
+            ], 422);
+        }
+
+        $ids = DB::transaction(function () use ($labels, $area, $seats, $isActive) {
+            $created = [];
+            foreach ($labels as $label) {
+                $table = new DiningTable([
+                    'dining_area_id' => $area->id,
+                    'label' => $label,
+                    'seats_count' => $seats,
+                    'is_active' => $isActive,
+                ]);
+                $table->branch_id = $area->branch_id;
+                $table->public_token = DiningTable::generateToken();
+                $table->qr_generated_at = now();
+                $table->save();
+                $created[] = $table->id;
+            }
+
+            return $created;
+        });
+
+        $tables = DiningTable::query()->whereIn('id', $ids)->with('diningArea')->orderBy('id')->get();
+
+        return response()->json([
+            'data' => DiningTableResource::collection($tables),
+            'message' => trans_choice('xorder.messages.tables_created', $tables->count(), ['count' => $tables->count()]),
         ], 201);
     }
 

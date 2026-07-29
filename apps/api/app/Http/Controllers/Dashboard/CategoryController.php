@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Dashboard;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Dashboard\BulkDeleteCategoriesRequest;
 use App\Http\Requests\Dashboard\ReorderRequest;
 use App\Http\Requests\Dashboard\StoreCategoryRequest;
 use App\Http\Requests\Dashboard\UpdateCategoryRequest;
@@ -66,6 +67,33 @@ class CategoryController extends Controller
         });
 
         return response()->json(['message' => __('xorder.messages.category_deleted')]);
+    }
+
+    /**
+     * Soft-delete several categories at once. Every id is verified against the
+     * tenant scope first (same guard as reorder()), so a client cannot delete
+     * categories outside its restaurant by injecting foreign ids. Each
+     * category cascades the soft-delete to its items, matching destroy().
+     */
+    public function bulkDestroy(BulkDeleteCategoriesRequest $request): JsonResponse
+    {
+        $ids = collect($request->validated('ids'))->unique();
+
+        $ownedIds = Category::whereIn('id', $ids)->pluck('id');
+        if ($ownedIds->count() !== $ids->count()) {
+            return response()->json(['message' => __('xorder.messages.categories_not_found')], 422);
+        }
+
+        DB::transaction(function () use ($ownedIds) {
+            Category::whereIn('id', $ownedIds)->each(function (Category $category) {
+                $category->menuItems()->delete(); // soft-delete children
+                $category->delete();              // soft-delete the category
+            });
+        });
+
+        return response()->json([
+            'message' => trans_choice('xorder.messages.categories_deleted', $ownedIds->count(), ['count' => $ownedIds->count()]),
+        ]);
     }
 
     /** PATCH status: set is_active explicitly, or toggle when omitted. */

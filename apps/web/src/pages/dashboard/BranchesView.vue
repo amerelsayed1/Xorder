@@ -13,16 +13,21 @@ import Icon from '@xorder/ui/Icon.vue'
 import { confirm } from '@xorder/ui/confirm.js'
 import { alert } from '@xorder/ui/alert.js'
 import { useAuth } from '@xorder/api-client/auth.js'
+import { useMenuLang } from '../../lib/menuLang.js'
+import BusinessHoursEditor from '../../components/BusinessHoursEditor.vue'
 
 const { t, locale } = useI18n()
 const auth = useAuth()
+// Render only the language name fields the client is configured for (single
+// default-language field when not bilingual), matching the item/category forms.
+const { langs, bilingual } = useMenuLang()
 const rows = ref([])
 const loading = ref(true)
 const saving = ref(false)
 const showModal = ref(false)
 const editing = ref(null)
 const errors = ref({})
-const blank = () => ({ name_en: '', name_ar: '', address: '', phone: '', whatsapp_number: '', opening_hours: '', map_url: '', is_open: true, is_active: true })
+const blank = () => ({ name_en: '', name_ar: '', address: '', phone: '', whatsapp_number: '', opening_hours: '', business_hours: {}, map_url: '', is_open: true, is_active: true })
 const form = reactive(blank())
 
 async function load() {
@@ -43,7 +48,7 @@ function openEdit(b) {
     Object.assign(form, blank(), {
         name_en: b.name_en || '', name_ar: b.name_ar || '', address: b.address || '',
         phone: b.phone || '', whatsapp_number: b.whatsapp_number || '',
-        opening_hours: b.opening_hours || '', map_url: b.map_url || '',
+        opening_hours: b.opening_hours || '', business_hours: b.business_hours || {}, map_url: b.map_url || '',
         is_open: b.is_open, is_active: b.is_active,
     })
     showModal.value = true
@@ -120,13 +125,11 @@ const branchName = (b) => pickLocalized(b, 'name', locale.value)
 
         <Modal v-if="showModal" :title="editing ? t('common.edit') : t('nav.branches')" @close="showModal = false">
             <div class="space-y-4">
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <label class="block"><span class="label">{{ t('common.name_en') }}</span>
-                        <input v-model="form.name_en" class="input" />
-                        <FormError :errors="errors" field="name_en" /></label>
-                    <label class="block" dir="rtl"><span class="label">{{ t('common.name_ar') }}</span>
-                        <input v-model="form.name_ar" class="input" />
-                        <FormError :errors="errors" field="name_ar" /></label>
+                <div class="grid grid-cols-1 gap-3" :class="{ 'sm:grid-cols-2': bilingual }">
+                    <label v-for="lng in langs" :key="'n' + lng" class="block" :dir="lng === 'ar' ? 'rtl' : 'ltr'">
+                        <span class="label">{{ bilingual ? t('common.name_' + lng) : t('common.name') }}</span>
+                        <input v-model="form['name_' + lng]" class="input" />
+                        <FormError :errors="errors" :field="'name_' + lng" /></label>
                 </div>
                 <label class="block"><span class="label">{{ t('restaurant.address') }}</span>
                     <textarea v-model="form.address" rows="2" class="input"></textarea>
@@ -139,8 +142,11 @@ const branchName = (b) => pickLocalized(b, 'name', locale.value)
                         <input v-model="form.whatsapp_number" class="input" dir="ltr" />
                         <FormError :errors="errors" field="whatsapp_number" /></label>
                 </div>
-                <label class="block"><span class="label">{{ t('restaurant.opening_hours') }}</span>
-                    <input v-model="form.opening_hours" class="input" :placeholder="t('branch.hours_placeholder')" /></label>
+                <div class="block">
+                    <span class="label">{{ t('restaurant.business_hours') }}</span>
+                    <p class="page-sub" style="margin:2px 0 8px">{{ t('restaurant.business_hours_hint') }}</p>
+                    <BusinessHoursEditor v-model="form.business_hours" :disabled="auth.isReadOnly" />
+                </div>
                 <label class="block"><span class="label">{{ t('branch.map_url') }}</span>
                     <input v-model="form.map_url" class="input" dir="ltr" placeholder="https://maps.google.com/…" />
                     <FormError :errors="errors" field="map_url" /></label>

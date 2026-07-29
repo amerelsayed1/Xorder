@@ -16,6 +16,7 @@ class OptionGroup extends Model
         'name_ar',
         'name_en',
         'is_required',
+        'is_variant',
         'max_select',
         'sort_order',
     ];
@@ -24,6 +25,7 @@ class OptionGroup extends Model
     {
         return [
             'is_required' => 'boolean',
+            'is_variant' => 'boolean',
             'max_select' => 'integer',
             'sort_order' => 'integer',
         ];

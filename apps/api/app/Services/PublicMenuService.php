@@ -67,7 +67,16 @@ class PublicMenuService
                 ->orderBy('id')
                 ->get();
 
-            $branches = $restaurant->branches()->where('is_active', true)->get();
+            $branches = $restaurant->branches()
+                ->where('is_active', true)
+                ->orderBy('sort_order')
+                ->orderBy('id')
+                ->get();
+
+            // Expose the loaded branches to the restaurant resource so the menu
+            // header/info sheet can source hours (and other per-branch details)
+            // from the primary branch, which is where they now live.
+            $restaurant->setRelation('branches', $branches);
 
             $combos = $restaurant->combos()
                 ->where('is_active', true)

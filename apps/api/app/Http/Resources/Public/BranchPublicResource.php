@@ -23,6 +23,7 @@ class BranchPublicResource extends JsonResource
             'phone' => $this->phone,
             'whatsapp_number' => $this->whatsapp_number,
             'opening_hours' => $this->opening_hours,
+            'business_hours' => (object) ($this->business_hours ?? []),
             'map_url' => $this->map_url,
             'is_open' => $this->is_open,
         ];

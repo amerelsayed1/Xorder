@@ -1,5 +1,5 @@
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import api, { ensureCsrf } from '@xorder/api-client/api.js'
 import { withMinDuration } from '../../lib/minLoading.js'
@@ -30,9 +30,46 @@ async function load() {
     loading.value = true
     const { data } = await withMinDuration(api.get('api/dashboard/categories'))
     rows.value = data.data
+    clearSelection() // dropped ids (e.g. after a delete) shouldn't linger selected
     loading.value = false
 }
 onMounted(load)
+
+// --- Multi-select / bulk delete ---
+const selected = ref(new Set())
+function toggleSelect(id) {
+    if (selected.value.has(id)) selected.value.delete(id)
+    else selected.value.add(id)
+}
+function clearSelection() { selected.value.clear() }
+const allSelected = computed(() => rows.value.length > 0 && rows.value.every(c => selected.value.has(c.id)))
+function toggleAll() {
+    if (allSelected.value) clearSelection()
+    else rows.value.forEach(c => selected.value.add(c.id))
+}
+const bulkDeleting = ref(false)
+async function bulkRemove() {
+    const ids = [...selected.value]
+    if (!ids.length || bulkDeleting.value) return
+    const ok = await confirm({
+        title: t('common.delete'),
+        message: t('category.confirm_delete_selected', { n: ids.length }),
+        confirmText: t('common.delete'),
+        cancelText: t('common.cancel'),
+        danger: true,
+    })
+    if (!ok) return
+    bulkDeleting.value = true
+    try {
+        await ensureCsrf()
+        await api.delete('api/dashboard/categories/bulk', { data: { ids } })
+        await load()
+    } catch (err) {
+        alert(err.response?.data?.message || t('common.delete_failed'))
+    } finally {
+        bulkDeleting.value = false
+    }
+}
 
 function openCreate() {
     editing.value = null; errors.value = {}
@@ -104,11 +141,29 @@ const categoryAltName = (c) => locale.value === 'ar' ? (c.name_en || '') : (c.na
             <button v-if="!auth.isReadOnly" @click="openCreate" class="btn btn-accent"><Icon name="plus" :size="16" />{{ t('common.create') }}</button>
         </div>
 
+        <!-- Bulk-action bar for the current selection -->
+        <div v-if="!auth.isReadOnly && selected.size" class="bulk-bar">
+            <span class="bulk-count">{{ t('category.selected_count', { n: selected.size }) }}</span>
+            <button class="btn btn-ghost btn-sm" @click="clearSelection">{{ t('category.clear_selection') }}</button>
+            <button class="btn btn-danger btn-sm" :disabled="bulkDeleting" @click="bulkRemove">
+                <Icon v-if="bulkDeleting" name="loading" :size="15" class="animate-spin" />
+                <Icon v-else name="trash" :size="15" />
+                {{ t('category.delete_selected') }}
+            </button>
+        </div>
+
         <div class="card overflow-hidden">
             <ListSkeleton v-if="loading" />
             <div v-else-if="!rows.length" class="p-8 text-center" style="color:var(--muted)">{{ t('common.none') }}</div>
-            <ul v-else>
-                <li v-for="(c, i) in rows" :key="c.id" class="flex items-center gap-3 px-5 py-3 border-t first:border-t-0" style="border-color:var(--line)">
+            <template v-else>
+                <label v-if="!auth.isReadOnly" class="flex items-center gap-3 px-5 py-2.5 text-xs" style="color:var(--muted);border-bottom:1px solid var(--line)">
+                    <input type="checkbox" class="row-check" :checked="allSelected" @change="toggleAll" />
+                    <span>{{ t('common.select_all') }}</span>
+                </label>
+            <ul>
+                <li v-for="(c, i) in rows" :key="c.id" class="flex items-center gap-3 px-5 py-3 border-t first:border-t-0" :class="{ 'row-selected': selected.has(c.id) }" style="border-color:var(--line)">
+                    <input v-if="!auth.isReadOnly" type="checkbox" class="row-check" :checked="selected.has(c.id)" :aria-label="categoryName(c)" @change="toggleSelect(c.id)" />
+                    <span class="row-num">{{ i + 1 }}</span>
                     <div v-if="!auth.isReadOnly" class="flex flex-col">
                         <button @click="move(i, -1)" :disabled="i === 0" class="icon-btn" style="width:24px;height:18px"><Icon name="chevronUp" :size="15" /></button>
                         <button @click="move(i, 1)" :disabled="i === rows.length - 1" class="icon-btn" style="width:24px;height:18px"><Icon name="chevronDown" :size="15" /></button>
@@ -127,6 +182,7 @@ const categoryAltName = (c) => locale.value === 'ar' ? (c.name_en || '') : (c.na
                     <button v-if="!auth.isReadOnly" @click="remove(c)" class="icon-btn icon-btn-danger" :title="t('common.delete')"><Icon name="trash" :size="17" /></button>
                 </li>
             </ul>
+            </template>
         </div>
 
         <Modal v-if="showModal" :title="editing ? t('common.edit') : t('common.create')" @close="showModal = false">
@@ -154,3 +210,44 @@ const categoryAltName = (c) => locale.value === 'ar' ? (c.name_en || '') : (c.na
         </Modal>
     </div>
 </template>
+
+<style scoped>
+.row-check {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--accent);
+    cursor: pointer;
+    flex: none;
+}
+/* Serial number reflecting each category's display order. */
+.row-num {
+    flex: none;
+    min-width: 22px;
+    text-align: center;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+}
+li.row-selected { background: var(--accent-soft); }
+
+/* Sticky bar that surfaces bulk actions for the current selection. */
+.bulk-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    border-radius: 12px;
+    background: var(--accent-soft);
+    border: 1px solid var(--accent);
+}
+.bulk-count {
+    font-weight: 600;
+    font-size: 13.5px;
+    color: var(--accent);
+    margin-inline-end: auto;
+}
+.btn-danger { background: var(--red); color: #fff; border-color: var(--red); }
+.btn-danger:hover:not(:disabled) { filter: brightness(.94); }
+.btn-danger:disabled { opacity: .6; cursor: default; }
+</style>

@@ -10,6 +10,7 @@ import { alert } from '@xorder/ui/alert.js'
 import Skeleton from '@xorder/ui/Skeleton.vue'
 import AuditLogList from '../../components/AuditLogList.vue'
 import { isValidEmail } from '../../lib/email.js'
+import { asPreview } from '../../lib/host.js'
 
 const route = useRoute()
 const router = useRouter()
@@ -321,7 +322,7 @@ const initial = (x) => localizedInitial(x, 'name', locale.value)
                 <img v-else :src="r.logo_url" class="h-14 w-14 rounded-xl object-cover flex-shrink-0" />
                 <div class="min-w-0">
                     <h1 class="page-title truncate">{{ restaurantName(r) }}</h1>
-                    <a :href="r.public_url" target="_blank" class="mono text-sm underline" style="color:var(--accent)">{{ r.public_url }}</a>
+                    <a :href="asPreview(r.public_url)" target="_blank" class="mono text-sm underline" style="color:var(--accent)">{{ r.public_url }}</a>
                 </div>
             </div>
             <div class="flex flex-wrap items-center gap-2 pt-1">
@@ -485,7 +486,7 @@ const initial = (x) => localizedInitial(x, 'name', locale.value)
                             <div v-if="qr" v-html="qr.svg" class="qrbox h-40 w-40 p-2 rounded-xl" style="background:#fff;border:1px solid var(--line)"></div>
                             <div class="flex flex-col gap-2">
                                 <button @click="downloadQr" class="btn btn-ghost">{{ t('admin.download_png') }}</button>
-                                <a :href="r.public_url" target="_blank" class="btn btn-dark">{{ t('dashboard.view_menu') }}</a>
+                                <a :href="asPreview(r.public_url)" target="_blank" class="btn btn-dark">{{ t('dashboard.view_menu') }}</a>
                             </div>
                         </div>
                     </section>

@@ -80,16 +80,29 @@ export function useCart(slug = '') {
     }
 
     function calculateLinePrice(kind, item, groups) {
-        let price = amount(kind === 'combo' ? item.base_price : item.price)
+        // Base and add-ons are tracked apart so a variant (size) group can
+        // REPLACE the base while regular groups add on top — independent of the
+        // order the groups happen to appear in.
+        let base = amount(kind === 'combo' ? item.base_price : item.price)
+        let addons = 0
 
         if (kind === 'item' && item.option_groups) {
             item.option_groups.forEach((g, gi) => {
-                selectedIndexes(groups[gi]).forEach((oi) => {
+                const picked = selectedIndexes(groups[gi])
+                if (g.is_variant) {
+                    // Size/portion selector: the chosen option's price is the price.
+                    const opt = (g.options || [])[picked[0]]
+                    if (opt) base = amount(opt.price)
+                    return
+                }
+                picked.forEach((oi) => {
                     const opt = (g.options || [])[oi]
-                    price += amount(opt?.price)
+                    addons += amount(opt?.price)
                 })
             })
         }
+
+        let price = base + addons
 
         if (kind === 'combo' && item.groups) {
             item.groups.forEach((g, gi) => {

@@ -46,3 +46,11 @@ export const menuHostSuffix = `.${rootDomain}${window.location.port ? ':' + wind
 export function menuUrl(slug) {
     return `${restaurantUrl(slug)}menu`
 }
+
+// Tag a menu URL as an owner preview so the API excludes the owner's own visit
+// from view analytics. Use ONLY on admin "view my live menu" links — never on
+// the customer QR / share URL, which real diners must be counted through.
+export function asPreview(url) {
+    if (!url) return url
+    return url + (url.includes('?') ? '&' : '?') + 'preview=1'
+}

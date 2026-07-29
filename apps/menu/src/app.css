@@ -911,6 +911,7 @@ html[dir='ltr'] .hero-overlay {
 .product-title-row h3 {
     margin: 0;
     font-size: 17px;
+    font-weight: 700;
     overflow-wrap: anywhere;
 }
 
@@ -2447,19 +2448,95 @@ html[dir='ltr'] .side-panel {
         font-size: 14px;
     }
 
-    /* Keeps the shorter 3/2 crop from the ≤900 block — no square towering media. */
+    /* ---- Compact list rows on phones ----
+       A full-width image block per card leaves cards tall and mostly empty at
+       phone widths (and hollow when an item has no photo). Lay each item out as
+       a single row instead: a small square thumbnail on the start, name + price
+       and a one-line description filling the middle, and the add control pinned
+       to the end. Far more items per screen, and it reads well with or without
+       a photo. */
+    .product-grid,
+    .product-grid:has(> .product-card:only-child) {
+        grid-template-columns: 1fr;
+        gap: 10px;
+    }
 
-    .product-body p {
-        display: none;
+    .product-card {
+        flex-direction: row;
+        align-items: stretch;
+        position: relative;
+        border-radius: 14px;
+    }
+
+    /* Small fixed square thumbnail — overrides the ≤900 crop (incl. the lone-card
+       16/9). Inset and rounded so it reads as a thumbnail, not a banner. */
+    .product-image-wrap,
+    .product-grid:has(> .product-card:only-child) .product-image-wrap {
+        flex: none;
+        align-self: center;
+        width: 88px;
+        aspect-ratio: 1;
+        margin: 10px;
+        margin-inline-end: 0;
+        border-radius: 12px;
     }
 
     .product-body {
-        min-height: 100px;
+        flex: 1;
+        min-width: 0;
+        min-height: 0;
+        justify-content: center;
+        gap: 3px;
+        padding: 12px;
     }
 
+    /* Name and price share the first line again (the ≤900 block stacks them). */
+    .product-title-row {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 8px;
+        margin: 0;
+    }
+
+    .product-title-row h3 {
+        flex: 1;
+        min-width: 0;
+        margin: 0;
+        font-size: 15px;
+    }
+
+    /* Description returns as a single muted line under the name. */
+    .product-body p {
+        display: -webkit-box;
+        -webkit-line-clamp: 1;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        min-height: 0;
+        margin: 0;
+    }
+
+    /* Add button / quantity stepper sits below the description, tucked to the
+       end (bottom-inline-end) corner of the card body. */
+    .card-action {
+        display: flex;
+        justify-content: flex-end;
+        margin-top: 8px;
+    }
+
+    /* The corner text badge is too wide for an 88px thumbnail — sit it as a small
+       centred pill along the bottom of the thumbnail instead, where it stays
+       inside the clipped media. */
     .popular-badge {
-        padding: 5px 7px;
-        font-size: 9px;
+        top: auto;
+        bottom: 6px;
+        inset-inline: 0;
+        width: max-content;
+        max-width: calc(100% - 10px);
+        margin-inline: auto;
+        padding: 3px 7px;
+        font-size: 8px;
+        white-space: nowrap;
     }
 
     .item-modal, .item-modal.no-image {

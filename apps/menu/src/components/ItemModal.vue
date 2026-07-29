@@ -1,5 +1,5 @@
 <script setup>
-import { nextTick, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 
 const props = defineProps({
     isOpen: Boolean,
@@ -53,6 +53,16 @@ function isSelected(gi, oi) {
     const s = props.selectedGroups[gi]
     return Array.isArray(s) ? s.includes(oi) : s === oi
 }
+
+// When the item has a size/portion group, its price isn't a fixed base — the
+// chosen variant sets it. Show the live unit price in the header so it tracks
+// the selection (before a pick it reads as the "starting from" price).
+const hasVariant = computed(() => getGroups().some((g) => g.is_variant))
+const headerPrice = computed(() => {
+    if (hasVariant.value) return props.unitPrice
+    if (props.kind === 'combo') return props.item?.base_price
+    return props.item?.discounted_price ?? props.item?.price
+})
 </script>
 
 <template>
@@ -72,7 +82,7 @@ function isSelected(gi, oi) {
                             <h2 id="item-modal-title">{{ localize(item) }}</h2>
                             <p v-if="localize(item, 'description')">{{ localize(item, 'description') }}</p>
                         </div>
-                        <strong>{{ money(kind === 'combo' ? item.base_price : (item.discounted_price ?? item.price)) }}</strong>
+                        <strong>{{ money(headerPrice) }}</strong>
                     </div>
 
                     <!-- Options + prices are shown on a display-only menu too, so a
@@ -85,22 +95,32 @@ function isSelected(gi, oi) {
                                 {{ (kind === 'combo' || group.is_required) ? t('required') : t('optional') }}
                             </span>
                         </div>
+                        <!-- The click handler lives on the label (not the input) so a
+                             tap anywhere on the row fires exactly one toggle. A native
+                             radio/checkbox inside a <label> otherwise receives both its
+                             own click and the label's forwarded click, which toggled the
+                             selection on then straight back off. The input is now purely
+                             a visual indicator driven by :checked. -->
                         <label
                             v-for="(opt, oi) in getOptions(group)"
                             :key="oi"
                             class="option-row"
                             :class="{ 'option-row--readonly': !orderingEnabled }"
+                            @click.prevent="orderingEnabled && $emit('toggleOption', gi, oi, group)"
                         >
                             <span>
                                 <input
                                     v-if="orderingEnabled"
                                     :type="(group.max_select || 1) > 1 ? 'checkbox' : 'radio'"
                                     :checked="isSelected(gi, oi)"
-                                    @click.prevent="$emit('toggleOption', gi, oi, group)"
+                                    tabindex="-1"
+                                    style="pointer-events:none"
+                                    @click.prevent
                                 />
                                 {{ localize(opt) }}
                             </span>
-                            <strong>{{ optionPrice(opt) ? `+ ${money(optionPrice(opt))}` : t('free') }}</strong>
+                            <strong v-if="group.is_variant">{{ money(optionPrice(opt)) }}</strong>
+                            <strong v-else>{{ optionPrice(opt) ? `+ ${money(optionPrice(opt))}` : t('free') }}</strong>
                         </label>
                     </div>
 

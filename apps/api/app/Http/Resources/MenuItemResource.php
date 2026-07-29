@@ -31,6 +31,7 @@ class MenuItemResource extends JsonResource
                 'name_en' => $g->name_en,
                 'name_ar' => $g->name_ar,
                 'is_required' => $g->is_required,
+                'is_variant' => $g->is_variant,
                 'max_select' => $g->max_select,
                 'options' => $g->options->map(fn ($o) => [
                     'id' => $o->id,

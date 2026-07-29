@@ -132,10 +132,6 @@ const priceOf = (section, item) => {
             >
                 <div class="section-heading">
                     <div>
-                        <span class="section-icon">
-                            <img v-if="section.image" :src="section.image" :alt="section.title" />
-                            <template v-else>{{ section.glyph }}</template>
-                        </span>
                         <h2>{{ section.title }}</h2>
                     </div>
                     <span>{{ countText(section.items.length) }}</span>

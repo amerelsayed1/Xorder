@@ -4,7 +4,6 @@ import { useI18n } from 'vue-i18n'
 import api, { ensureCsrf } from '@xorder/api-client/api.js'
 import ImageUploader from '@xorder/ui/ImageUploader.vue'
 import FormError from '@xorder/ui/FormError.vue'
-import BusinessHoursEditor from '../../components/BusinessHoursEditor.vue'
 import { useMenuLang } from '../../lib/menuLang.js'
 import { collectPhoneErrors } from '../../lib/phone.js'
 import { resolveMapLink, mapsUrl } from '../../lib/mapLink.js'
@@ -80,8 +79,9 @@ onMounted(async () => {
 
 async function submit() {
     errors.value = {}; saved.value = false
+    // Phone moved to the branch; only the WhatsApp ordering number lives here now.
     const phoneErrors = collectPhoneErrors(
-        { phone: form.phone, whatsapp_number: form.whatsapp_number },
+        { whatsapp_number: form.whatsapp_number },
         t('restaurant.phone_invalid'),
     )
     if (Object.keys(phoneErrors).length) { errors.value = phoneErrors; return }
@@ -128,22 +128,12 @@ async function submit() {
                     <span class="label">{{ bilingual ? t('common.description_' + lng) : t('common.description') }}</span>
                     <textarea v-model="form['description_' + lng]" rows="2" class="input"></textarea></label>
             </div>
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <label class="block"><span class="label">{{ t('restaurant.phone') }}</span>
-                    <input v-model="form.phone" class="input" dir="ltr" />
-                    <FormError :errors="errors" field="phone" /></label>
-                <label class="block"><span class="label">{{ t('restaurant.whatsapp') }}</span>
-                    <input v-model="form.whatsapp_number" class="input" dir="ltr" />
-                    <FormError :errors="errors" field="whatsapp_number" /></label>
-            </div>
-            <label class="block"><span class="label">{{ t('restaurant.address') }}</span>
-                <input v-model="form.address" class="input" /></label>
-
-            <div class="block">
-                <span class="label">{{ t('restaurant.business_hours') }}</span>
-                <p class="page-sub" style="margin:2px 0 8px">{{ t('restaurant.business_hours_hint') }}</p>
-                <BusinessHoursEditor v-model="form.business_hours" :disabled="auth.isReadOnly" />
-            </div>
+            <!-- Phone, address, and working hours are configured per-branch
+                 (every client has at least one branch). Only the WhatsApp
+                 ordering number — one per menu — stays at restaurant level. -->
+            <label class="block"><span class="label">{{ t('restaurant.whatsapp') }}</span>
+                <input v-model="form.whatsapp_number" class="input" dir="ltr" />
+                <FormError :errors="errors" field="whatsapp_number" /></label>
 
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div class="block">

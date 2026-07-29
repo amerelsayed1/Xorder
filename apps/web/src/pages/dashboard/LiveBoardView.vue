@@ -303,7 +303,7 @@ const panelDir = computed(() => (locale.value === 'ar' ? 'rtl' : 'ltr'))
                             <span class="tcard-bottom">
                                 <span class="tcard-name">{{ t('req.table') }} {{ tbl.label }}</span>
                                 <span class="tcard-sub">
-                                    <span v-if="tbl.has_request" class="tcard-req">{{ t('req.bill') }}</span>
+                                    <span v-if="tbl.has_request" class="tcard-req">{{ requestByTable.get(tbl.id)?.customer_note || t('req.bill') }}</span>
                                     <span v-else-if="tbl.active_orders">{{ t('live.active_orders_n', { n: tbl.active_orders }) }}</span>
                                 </span>
                             </span>

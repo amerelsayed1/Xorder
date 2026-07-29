@@ -218,6 +218,9 @@ async function submitImport() {
 
 <template>
     <div class="space-y-5">
+      <!-- Sticky header: title, actions, search + category filter, and the
+           bulk-action bar stay pinned under the topbar while the table scrolls. -->
+      <div class="items-header">
         <div class="flex flex-wrap items-start justify-between gap-3">
             <div>
                 <h1 class="page-title">{{ t('nav.items') }}</h1>
@@ -267,6 +270,7 @@ async function submitImport() {
                 {{ t('item.delete_selected') }}
             </button>
         </div>
+      </div>
 
         <!-- Table -->
         <div class="card overflow-hidden">
@@ -380,6 +384,28 @@ async function submitImport() {
 </template>
 
 <style scoped>
+/* ── Sticky header ────────────────────────────────────────────────
+   Pins the title, actions, search + category filter, and the bulk bar
+   just under the fixed 64px topbar so the item table scrolls beneath
+   them. The negative inline margins + matching padding let the page
+   background bleed edge-to-edge, hiding rows that slide under it, while
+   the content stays aligned with the container below. */
+.items-header {
+    position: sticky;
+    top: 64px;
+    z-index: 20;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;                 /* keep the space-y-5 rhythm inside the wrapper */
+    background: var(--page);
+    margin-inline: -28px;
+    padding: 16px 28px 14px;
+    border-bottom: 1px solid var(--line);
+}
+@media (max-width: 640px) {
+    .items-header { margin-inline: 0; padding-inline: 0; }
+}
+
 /* ── Shared table column structure ───────────────────────────────
    ONE source of truth for the column widths. `.items-row` is used by
    the header and every body row, so they can never drift apart. Order

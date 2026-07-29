@@ -9,9 +9,13 @@ import { pickLocalized } from '@xorder/ui/localize.js'
 import Icon from '@xorder/ui/Icon.vue'
 import ApexChart from '../../components/ApexChart.vue'
 import { areaChart } from '../../lib/charts.js'
+import { asPreview } from '../../lib/host.js'
 
 const { t, locale } = useI18n()
 const auth = useAuth()
+// Greet the owner by their restaurant (client) name; fall back to the generic
+// "Dashboard" label until the restaurant context is loaded.
+const clientName = computed(() => pickLocalized(auth.restaurant, 'name', locale.value) || t('nav.dashboard'))
 const cur = computed(() => currencyLabel(auth.restaurant?.currency, locale.value, auth.restaurant?.currency_symbol))
 const stats = ref(null)
 const qr = ref(null)
@@ -83,11 +87,11 @@ function copyUrl() {
         <!-- Header -->
         <div class="flex flex-wrap items-start justify-between gap-3">
             <div>
-                <h1 class="page-title">{{ t('nav.dashboard') }}</h1>
+                <h1 class="page-title">{{ clientName }}</h1>
                 <p class="page-sub">{{ t('dashboard.subtitle') }}</p>
             </div>
             <div class="flex items-center gap-2">
-                <a :href="stats.public_url" target="_blank" class="btn btn-ghost"><Icon name="external" :size="16" />{{ t('dashboard.view_menu') }}</a>
+                <a :href="asPreview(stats.public_url)" target="_blank" class="btn btn-ghost"><Icon name="external" :size="16" />{{ t('dashboard.view_menu') }}</a>
                 <RouterLink v-if="!auth.isReadOnly" :to="{ name: 'dashboard.items' }" class="btn btn-accent"><Icon name="plus" :size="16" />{{ t('dashboard.add_item') }}</RouterLink>
             </div>
         </div>

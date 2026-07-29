@@ -1,5 +1,5 @@
 <script setup>
-import { ref, reactive, computed, onMounted, watch } from 'vue'
+import { ref, reactive, computed, onMounted, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import api, { ensureCsrf } from '@xorder/api-client/api.js'
 import { withMinDuration } from '../../lib/minLoading.js'
@@ -21,13 +21,36 @@ const loading = ref(true)
 const saving = ref(false)
 const showModal = ref(false)
 const editing = ref(null)
+// Create-only: add many sequentially-numbered tables at once instead of
+// reopening the dialog per table.
+const bulkMode = ref(false)
 const errors = ref({})
 const filters = reactive({ dining_area_id: '', status: '', search: '' })
 
-const blank = () => ({ dining_area_id: '', label: '', seats_count: null, notes: '', is_active: true })
+const blank = () => ({
+    dining_area_id: '', label: '', seats_count: null, notes: '', is_active: true,
+    // Bulk create: one entry per name field. Enter appends a field, Save creates
+    // all the non-blank names at once.
+    labels: [''],
+})
 const form = reactive(blank())
 
 const activeAreas = computed(() => areas.value.filter(a => a.is_active))
+
+// The list of name fields in bulk mode. `labelList` is the wrapping element so a
+// freshly-added field can be focused by its DOM position after render.
+const labelList = ref(null)
+const bulkCount = computed(() =>
+    form.labels.map(l => (l || '').trim()).filter(Boolean).length)
+
+async function addLabelField(afterIndex) {
+    form.labels.splice(afterIndex + 1, 0, '')
+    await nextTick()
+    labelList.value?.querySelectorAll('input.tbl-label-input')?.[afterIndex + 1]?.focus()
+}
+function removeLabelField(index) {
+    if (form.labels.length > 1) form.labels.splice(index, 1)
+}
 
 async function loadAreas() {
     const { data } = await api.get('api/dashboard/dining-areas')
@@ -50,8 +73,10 @@ let searchTimer
 watch(() => filters.search, () => { clearTimeout(searchTimer); searchTimer = setTimeout(loadTables, 300) })
 
 function openCreate() {
-    editing.value = null; errors.value = {}
-    Object.assign(form, blank(), { dining_area_id: activeAreas.value[0]?.id || '' })
+    editing.value = null; bulkMode.value = false; errors.value = {}
+    Object.assign(form, blank(), {
+        dining_area_id: activeAreas.value[0]?.id || '',
+    })
     showModal.value = true
 }
 function openEdit(tbl) {
@@ -67,8 +92,17 @@ async function save() {
     saving.value = true; errors.value = {}
     try {
         await ensureCsrf()
-        if (editing.value) await api.put(`api/dashboard/tables/${editing.value.id}`, form)
-        else await api.post('api/dashboard/tables', form)
+        if (editing.value) {
+            await api.put(`api/dashboard/tables/${editing.value.id}`, form)
+        } else if (bulkMode.value) {
+            await api.post('api/dashboard/tables/bulk', {
+                dining_area_id: form.dining_area_id,
+                labels: form.labels.map(l => (l || '').trim()).filter(Boolean),
+                is_active: form.is_active,
+            })
+        } else {
+            await api.post('api/dashboard/tables', form)
+        }
         showModal.value = false
         await loadTables()
     } catch (err) { errors.value = err.response?.data?.errors || {} }
@@ -234,25 +268,55 @@ const areaLabel = (id) => { const a = areas.value.find(x => x.id === id); return
         <!-- Create / edit modal -->
         <Dialog v-if="showModal" :title="editing ? t('common.edit') : t('tbl.tables_title')" @close="showModal = false">
             <div class="space-y-4">
+                <!-- Create only: toggle to add a numbered batch in one save. -->
+                <label v-if="!editing" class="flex items-center gap-2 text-sm" style="color:var(--body)">
+                    <button type="button" class="switch" :class="{ on: bulkMode }" @click="bulkMode = !bulkMode"></button>
+                    {{ t('tbl.add_multiple') }}
+                </label>
                 <label class="block"><span class="label">{{ t('tbl.area') }}</span>
                     <select v-model="form.dining_area_id" class="input">
                         <option v-for="a in activeAreas" :key="a.id" :value="a.id">{{ areaName(a) }}</option>
                     </select>
                     <FormError :errors="errors" field="dining_area_id" /></label>
-                <label class="block"><span class="label">{{ t('tbl.label') }}</span>
-                    <input v-model="form.label" class="input" />
-                    <FormError :errors="errors" field="label" /></label>
-                <label class="block"><span class="label">{{ t('tbl.notes') }}</span>
-                    <textarea v-model="form.notes" rows="2" class="input"></textarea></label>
+
+                <!-- Bulk create: one field per table name; Enter adds another. -->
+                <template v-if="bulkMode && !editing">
+                    <div class="block">
+                        <span class="label">{{ t('tbl.table_names') }}</span>
+                        <div ref="labelList" class="space-y-2">
+                            <div v-for="(lbl, i) in form.labels" :key="i" class="flex items-center gap-2">
+                                <span class="tbl-num" style="color:var(--muted)">{{ i + 1 }}</span>
+                                <input v-model="form.labels[i]" class="input tbl-label-input flex-1"
+                                    :placeholder="t('tbl.label')" @keydown.enter.prevent="addLabelField(i)" />
+                                <button v-if="form.labels.length > 1" type="button" class="icon-btn icon-btn-danger"
+                                    :title="t('common.delete')" @click="removeLabelField(i)"><Icon name="trash" :size="16" /></button>
+                            </div>
+                        </div>
+                        <button type="button" class="btn btn-ghost btn-sm mt-2" @click="addLabelField(form.labels.length - 1)">
+                            <Icon name="plus" :size="15" />{{ t('tbl.add_name') }}
+                        </button>
+                        <FormError :errors="errors" field="labels" />
+                        <p class="text-xs mt-1" style="color:var(--muted)">{{ t('tbl.enter_hint') }}</p>
+                    </div>
+                </template>
+
+                <!-- Single create / edit. -->
+                <template v-else>
+                    <label class="block"><span class="label">{{ t('tbl.label') }}</span>
+                        <input v-model="form.label" class="input" />
+                        <FormError :errors="errors" field="label" /></label>
+                    <label class="block"><span class="label">{{ t('tbl.notes') }}</span>
+                        <textarea v-model="form.notes" rows="2" class="input"></textarea></label>
+                </template>
                 <label class="flex items-center gap-2 text-sm" style="color:var(--body)">
                     <button type="button" class="switch" :class="{ on: form.is_active }" @click="form.is_active = !form.is_active"></button>
                     {{ t('common.active') }}
                 </label>
                 <div class="flex justify-end gap-2 pt-2">
                     <button @click="showModal = false" :disabled="saving" class="btn btn-ghost">{{ t('common.cancel') }}</button>
-                    <button @click="save" :disabled="saving" class="btn btn-accent">
+                    <button @click="save" :disabled="saving || (bulkMode && !editing && !bulkCount)" class="btn btn-accent">
                         <Icon v-if="saving" name="loading" :size="16" class="animate-spin" />
-                        {{ saving ? t('common.saving') : t('common.save') }}
+                        {{ saving ? t('common.saving') : (bulkMode && !editing && bulkCount ? t('tbl.save_count', { n: bulkCount }) : t('common.save')) }}
                     </button>
                 </div>
             </div>

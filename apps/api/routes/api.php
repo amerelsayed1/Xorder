@@ -190,6 +190,7 @@ Route::prefix('dashboard')
 
             Route::post('categories', [CategoryController::class, 'store']);
             Route::patch('categories/reorder', [CategoryController::class, 'reorder']);
+            Route::delete('categories/bulk', [CategoryController::class, 'bulkDestroy']);
             Route::put('categories/{category}', [CategoryController::class, 'update']);
             Route::patch('categories/{category}/status', [CategoryController::class, 'toggleStatus']);
             Route::delete('categories/{category}', [CategoryController::class, 'destroy']);
@@ -219,6 +220,7 @@ Route::prefix('dashboard')
                 Route::delete('dining-areas/{area}', [DiningAreaController::class, 'destroy']);
 
                 Route::post('tables', [TableController::class, 'store']);
+                Route::post('tables/bulk', [TableController::class, 'bulkStore']);
                 Route::put('tables/{table}', [TableController::class, 'update']);
                 Route::patch('tables/{table}/status', [TableController::class, 'toggleStatus']);
                 Route::post('tables/{table}/qr/regenerate', [TableController::class, 'regenerateQr']);

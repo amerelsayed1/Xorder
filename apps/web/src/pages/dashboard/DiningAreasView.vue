@@ -54,15 +54,24 @@ function openEdit(a) {
     syncTypeMode()
     showModal.value = true
 }
-async function save() {
+async function save(addAnother = false) {
     if (saving.value) return
     saving.value = true; errors.value = {}
     try {
         await ensureCsrf()
         if (editing.value) await api.put(`api/dashboard/dining-areas/${editing.value.id}`, form)
         else await api.post('api/dashboard/dining-areas', form)
-        showModal.value = false
         await load()
+        if (addAnother && !editing.value) {
+            // Keep the dialog open for the next area — clear the names but keep
+            // the branch, type and status so consecutive areas are quick to add.
+            Object.assign(form, blank(), {
+                branch_id: form.branch_id, type: form.type, is_active: form.is_active,
+            })
+            errors.value = {}
+        } else {
+            showModal.value = false
+        }
     } catch (err) { errors.value = err.response?.data?.errors || {} }
     finally { saving.value = false }
 }
@@ -161,7 +170,8 @@ function onTypeModeChange() {
                 </label>
                 <div class="flex justify-end gap-2 pt-2">
                     <button @click="showModal = false" :disabled="saving" class="btn btn-ghost">{{ t('common.cancel') }}</button>
-                    <button @click="save" :disabled="saving" class="btn btn-accent">
+                    <button v-if="!editing" @click="save(true)" :disabled="saving" class="btn btn-ghost">{{ t('tbl.save_add_another') }}</button>
+                    <button @click="save()" :disabled="saving" class="btn btn-accent">
                         <Icon v-if="saving" name="loading" :size="16" class="animate-spin" />
                         {{ saving ? t('common.saving') : t('common.save') }}
                     </button>

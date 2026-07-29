@@ -38,6 +38,7 @@ class StoreMenuItemRequest extends FormRequest
             'option_groups.*.name_en' => ['nullable', 'string', 'max:150'],
             'option_groups.*.name_ar' => ['nullable', 'string', 'max:150'],
             'option_groups.*.is_required' => ['sometimes', 'boolean'],
+            'option_groups.*.is_variant' => ['sometimes', 'boolean'],
             'option_groups.*.max_select' => ['sometimes', 'integer', 'min:1', 'max:50'],
             'option_groups.*.options' => ['sometimes', 'array', 'max:50'],
             'option_groups.*.options.*.name_en' => ['nullable', 'string', 'max:150'],

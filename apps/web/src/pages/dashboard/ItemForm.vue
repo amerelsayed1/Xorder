@@ -33,7 +33,7 @@ const form = reactive({
 })
 
 // --- option-group builder helpers ---
-function addGroup() { form.option_groups.push({ name_en: '', name_ar: '', is_required: false, max_select: 1, options: [] }) }
+function addGroup() { form.option_groups.push({ name_en: '', name_ar: '', is_required: false, is_variant: false, max_select: 1, options: [] }) }
 function removeGroup(i) { form.option_groups.splice(i, 1) }
 function addOption(g) { g.options.push({ name_en: '', name_ar: '', price: '' }) }
 function removeOption(g, i) { g.options.splice(i, 1) }
@@ -59,7 +59,7 @@ onMounted(async () => {
                 is_available: it.is_available, is_featured: it.is_featured,
                 option_groups: (it.option_groups || []).map(g => ({
                     name_en: g.name_en || '', name_ar: g.name_ar || '',
-                    is_required: !!g.is_required, max_select: g.max_select || 1,
+                    is_required: !!g.is_required, is_variant: !!g.is_variant, max_select: g.max_select || 1,
                     options: (g.options || []).map(o => ({ name_en: o.name_en || '', name_ar: o.name_ar || '', price: o.price ?? '' })),
                 })),
             })
@@ -84,7 +84,9 @@ async function save() {
         discounted_price: form.discounted_price === '' ? null : form.discounted_price,
         option_groups: form.option_groups.map(g => ({
             name_en: g.name_en, name_ar: g.name_ar,
-            is_required: g.is_required, max_select: Number(g.max_select) || 1,
+            is_required: g.is_variant ? true : g.is_required,
+            is_variant: g.is_variant,
+            max_select: g.is_variant ? 1 : (Number(g.max_select) || 1),
             options: g.options.map(o => ({ name_en: o.name_en, name_ar: o.name_ar, price: o.price === '' ? 0 : Number(o.price) })),
         })),
     }
@@ -159,20 +161,25 @@ async function save() {
                     </div>
                     <div class="flex items-center gap-4 flex-wrap mt-2">
                         <label class="flex items-center gap-2 text-xs" style="color:var(--body)">
+                            <button type="button" class="switch" :class="{ on: g.is_variant }" @click="g.is_variant = !g.is_variant"></button>
+                            {{ t('item.variant') }}
+                        </label>
+                        <label v-if="!g.is_variant" class="flex items-center gap-2 text-xs" style="color:var(--body)">
                             <button type="button" class="switch" :class="{ on: g.is_required }" @click="g.is_required = !g.is_required"></button>
                             {{ t('item.required') }}
                         </label>
-                        <label class="flex items-center gap-2 text-xs" style="color:var(--body)">
+                        <label v-if="!g.is_variant" class="flex items-center gap-2 text-xs" style="color:var(--body)">
                             {{ t('item.max_select') }}
                             <input v-model.number="g.max_select" type="number" min="1" class="input" style="width:64px;padding:5px 8px" />
                         </label>
                         <button type="button" class="icon-btn icon-btn-danger ms-auto" :title="t('common.delete')" @click="removeGroup(gi)"><Icon name="trash" :size="16" /></button>
                     </div>
+                    <p v-if="g.is_variant" class="text-xs mt-1" style="color:var(--muted)">{{ t('item.variant_hint') }}</p>
                     <div class="mt-2 space-y-2">
                         <div v-for="(o, oi) in g.options" :key="oi" class="flex items-center gap-2">
                             <input v-for="lng in langs" :key="'o' + lng" v-model="o['name_' + lng]" class="input flex-1"
                                 :dir="lng === 'ar' ? 'rtl' : 'ltr'" :placeholder="t('item.option_' + lng)" />
-                            <input v-model="o.price" type="number" step="0.01" min="0" class="input" style="width:90px" :placeholder="cur || '+0'" />
+                            <input v-model="o.price" type="number" step="0.01" min="0" class="input" style="width:90px" :placeholder="g.is_variant ? (cur || '0') : (cur || '+0')" />
                             <button type="button" class="icon-btn icon-btn-danger" :title="t('common.delete')" @click="removeOption(g, oi)"><Icon name="close" :size="16" /></button>
                         </div>
                         <button type="button" class="btn btn-ghost btn-sm" @click="addOption(g)">+ {{ t('item.add_option') }}</button>
