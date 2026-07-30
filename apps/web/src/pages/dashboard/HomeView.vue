@@ -74,14 +74,13 @@ const featured = computed(() => {
 // to the meal-icon placeholder instead of the browser's broken-image glyph.
 const failedImg = ref(new Set())
 function onImgError(id) { failedImg.value.add(id) }
-// Setup guide: steps we can detect from stats/auth data, plus a final
-// non-trackable "print your QR" step. The card hides once every detectable
-// step is done.
+// Setup guide: steps we can detect from stats/auth data. The card hides once
+// every detectable step is done. (The QR lives on the card to the right, so
+// there's no separate "print your QR" step.)
 const setupSteps = computed(() => stats.value ? [
     { key: 'category', labelKey: 'dashboard.step_category', to: { name: 'dashboard.categories' }, done: stats.value.total_categories > 0 },
     { key: 'item', labelKey: 'dashboard.step_item', to: { name: 'dashboard.items' }, done: stats.value.total_items > 0 },
     { key: 'logo', labelKey: 'dashboard.step_logo', to: { name: 'dashboard.profile' }, done: !!auth.restaurant?.logo_url },
-    { key: 'qr', labelKey: 'dashboard.step_qr', to: { name: 'dashboard.qr' }, done: null },
 ] : [])
 const setupComplete = computed(() => setupSteps.value.filter(s => s.done !== null).every(s => s.done))
 const itemName = (it) => pickLocalized(it, 'name', locale.value)
@@ -226,7 +225,6 @@ function copyUrl() {
                     </div>
                     <div class="flex gap-2 mt-4">
                         <button @click="downloadQr" class="btn btn-ghost btn-sm"><Icon name="download" :size="15" />PNG</button>
-                        <RouterLink :to="{ name: 'dashboard.qr' }" class="btn btn-dark btn-sm">{{ t('common.open') }}</RouterLink>
                     </div>
                 </div>
 

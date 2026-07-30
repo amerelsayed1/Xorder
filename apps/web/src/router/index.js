@@ -91,7 +91,6 @@ const restaurantRoutes = [
             { path: 'extras', name: 'dashboard.extras', component: () => import('../pages/dashboard/ExtrasView.vue') },
             { path: 'items/create', name: 'dashboard.items.create', component: () => import('../pages/dashboard/ItemForm.vue') },
             { path: 'items/:id/edit', name: 'dashboard.items.edit', component: () => import('../pages/dashboard/ItemForm.vue') },
-            { path: 'qr', name: 'dashboard.qr', component: () => import('../pages/dashboard/QrView.vue') },
         ],
     },
     { path: '/:pathMatch(.*)*', redirect: '/admin' },
