@@ -23,7 +23,10 @@ class MenuExportController extends Controller
 {
     /** @var array<int,string> */
     private const HEADERS = [
-        'category_en', 'category_ar', 'name_en', 'name_ar',
+        // Stable ids come first so an exported file re-imports as UPDATES even
+        // when names are translated/edited — the importer matches on these
+        // before falling back to name matching. Leave them intact on re-import.
+        'id', 'category_id', 'category_en', 'category_ar', 'name_en', 'name_ar',
         'description_en', 'description_ar', 'price', 'discounted_price',
         'available', 'featured', 'image_url',
     ];
@@ -42,6 +45,8 @@ class MenuExportController extends Controller
             ->get();
 
         $rows = $items->map(fn (MenuItem $it) => [
+            $it->id,
+            $it->category_id,
             $it->category?->name_en,
             $it->category?->name_ar,
             $it->name_en,

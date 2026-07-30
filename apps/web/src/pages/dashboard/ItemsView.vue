@@ -325,10 +325,10 @@ async function submitImport() {
                     </div>
                     <div role="cell" class="col-center" style="color:var(--muted)">{{ idx + 1 }}</div>
                     <div role="cell">
-                        <div class="flex items-center gap-3 min-w-0">
+                        <div class="flex items-center gap-3 min-w-0 product-cell">
                             <img v-if="it.image_url && !failedImg.has(it.id)" :src="it.image_url" @error="onImgError(it.id)" class="h-11 w-11 rounded-lg object-cover flex-shrink-0" />
                             <div v-else class="h-11 w-11 rounded-lg flex-shrink-0 flex items-center justify-center" style="background:var(--accent-soft);color:var(--accent)"><Icon name="utensils" :size="20" /></div>
-                            <div class="min-w-0">
+                            <div class="min-w-0 product-info">
                                 <div class="font-medium truncate" style="color:var(--ink)">{{ itemName(it) }}</div>
                                 <div v-if="itemAltName(it)" class="text-xs truncate" style="color:var(--muted)" :dir="locale === 'ar' ? 'ltr' : 'rtl'">{{ itemAltName(it) }}</div>
                                 <div v-if="itemDescription(it)" class="text-xs truncate" style="color:var(--body)">{{ itemDescription(it) }}</div>
@@ -478,6 +478,36 @@ async function submitImport() {
 /* Same alignment applied to header AND body cell of a column (req. 6). */
 .col-center  { text-align: center; }
 .col-actions { text-align: end; }
+
+/* Product info column follows the active language / page direction: the
+   name(s) + description align to the reading edge, never centered. Applied
+   to the parent container so all three lines inherit the alignment. */
+.product-info {
+    display: flex;
+    flex-direction: column;
+}
+/* Keep the text block flush against the reading edge of the column: in RTL
+   the icon/image moves to the LEFT so the text starts at the right edge; in
+   LTR it stays on the left with the text to its right. */
+/* Plain `row` + the inherited direction mirrors correctly: in RTL the image
+   (first DOM child) lands at the right reading edge with the text to its left;
+   in LTR it stays on the left. The group packs to the reading edge on its own. */
+[dir="rtl"] .product-cell { flex-direction: row; direction: rtl; justify-content: flex-start; }
+[dir="ltr"] .product-cell { flex-direction: row; direction: ltr; justify-content: flex-start; }
+/* Every line takes the full column width so its own text-align is what
+   decides the edge — not the flex item's content-sized cross position. This
+   makes all three lines share one edge regardless of each line's language. */
+.product-info > * { width: 100%; max-width: 100%; }
+[dir="rtl"] .product-info {
+    direction: rtl;
+    align-items: flex-end;
+}
+[dir="rtl"] .product-info > * { text-align: right !important; }
+[dir="ltr"] .product-info {
+    direction: ltr;
+    align-items: flex-start;
+}
+[dir="ltr"] .product-info > * { text-align: left !important; }
 
 @media (max-width: 639px) {
     /* Category + Featured collapse; the remaining 4 columns stay aligned. */

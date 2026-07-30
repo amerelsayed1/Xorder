@@ -21,6 +21,9 @@ use PhpOffice\PhpSpreadsheet\Reader\Xlsx as XlsxReader;
  * same file is safe (upsert), not duplicating.
  *
  * Recognised headers (case-insensitive, spaces or underscores):
+ *   id | item_id                            (stable ids from an export; matched
+ *   category_id                              first so renamed rows update in
+ *                                            place instead of duplicating)
  *   category | category_en | category_ar   (a plain "category" maps to the
  *   name | name_en | name_ar                 restaurant's default language)
  *   description | description_en | description_ar
@@ -79,7 +82,7 @@ class MenuImportController extends Controller
 
                     continue;
                 }
-                if ($row['cat_en'] === null && $row['cat_ar'] === null) {
+                if ($row['category_id'] === null && $row['cat_en'] === null && $row['cat_ar'] === null) {
                     $summary['errors'][] = ['row' => $line, 'message' => __('xorder.messages.import_row_no_category')];
 
                     continue;
@@ -90,10 +93,23 @@ class MenuImportController extends Controller
                     continue;
                 }
 
-                $category = $this->resolveCategory($catByName, $row, $nextCatOrder, $summary);
+                // Resolve the category by stable id first (an exported file carries
+                // it) so a renamed category updates in place instead of spawning a
+                // duplicate; otherwise match/create by name.
+                $category = $row['category_id'] !== null ? Category::find($row['category_id']) : null;
+                if ($category !== null) {
+                    $this->syncCategoryNames($category, $row);
+                    $this->indexCategory($catByName, $category);
+                } else {
+                    $category = $this->resolveCategory($catByName, $row, $nextCatOrder, $summary);
+                }
 
-                // Upsert the item by name within its category.
-                $existing = $this->findItem($category, $row);
+                // Match the item by stable id first (same reason), else by name
+                // within the category.
+                $existing = $row['id'] !== null ? MenuItem::find($row['id']) : null;
+                if ($existing === null) {
+                    $existing = $this->findItem($category, $row);
+                }
                 if ($existing) {
                     $attrs = $this->itemAttributes($row);
                     // A blank image cell must never wipe an item's existing photo —
@@ -102,7 +118,10 @@ class MenuImportController extends Controller
                     if ($attrs['image_url'] === null) {
                         unset($attrs['image_url']);
                     }
-                    $existing->fill($attrs)->save();
+                    $existing->fill($attrs);
+                    // Re-home the item if its category changed since the export.
+                    $existing->category_id = $category->id;
+                    $existing->save();
                     $summary['items_updated']++;
                 } else {
                     if ($limits->itemLimitReached($restaurant) !== null) {
@@ -161,6 +180,7 @@ class MenuImportController extends Controller
     private function aliasHeader(string $key): string
     {
         return match ($key) {
+            'item_id', 'menu_item_id' => 'id',
             'discount', 'discount_price', 'sale_price', 'offer_price' => 'discounted_price',
             'is_available', 'availability' => 'available',
             'is_featured', 'popular' => 'featured',
@@ -213,6 +233,8 @@ class MenuImportController extends Controller
         }
 
         return [
+            'id' => $this->parseId($get(['id'])),
+            'category_id' => $this->parseId($get(['category_id'])),
             'name_en' => $this->clip($nameEn, self::MAX_NAME),
             'name_ar' => $this->clip($nameAr, self::MAX_NAME),
             'cat_en' => $this->clip($catEn, self::MAX_NAME),
@@ -277,6 +299,20 @@ class MenuImportController extends Controller
             ->first();
     }
 
+    /** Keep an id-matched category's names in step with the (translated) row. */
+    private function syncCategoryNames(Category $category, array $row): void
+    {
+        if ($row['cat_en'] !== null) {
+            $category->name_en = $row['cat_en'];
+        }
+        if ($row['cat_ar'] !== null) {
+            $category->name_ar = $row['cat_ar'];
+        }
+        if ($category->isDirty()) {
+            $category->save();
+        }
+    }
+
     private function indexCategory(array &$catByName, Category $c): void
     {
         foreach ([$c->name_en, $c->name_ar] as $name) {
@@ -298,6 +334,17 @@ class MenuImportController extends Controller
         }
 
         return mb_substr($v, 0, $max);
+    }
+
+    /** A positive integer id, or null for blank / non-numeric cells. */
+    private function parseId(?string $v): ?int
+    {
+        if ($v === null) {
+            return null;
+        }
+        $v = trim($v);
+
+        return ctype_digit($v) && $v !== '0' ? (int) $v : null;
     }
 
     private function parsePrice(?string $v): ?float

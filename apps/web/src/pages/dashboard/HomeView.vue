@@ -191,7 +191,7 @@ function copyUrl() {
                         <li v-for="it in featured" :key="it.id" class="flex items-center gap-3 py-2.5 border-t first:border-t-0" style="border-color:var(--line)">
                             <img v-if="it.image_url && !failedImg.has(it.id)" :src="it.image_url" @error="onImgError(it.id)" class="h-11 w-11 rounded-lg object-cover flex-shrink-0" />
                             <div v-else class="h-11 w-11 rounded-lg flex-shrink-0 flex items-center justify-center" style="background:var(--accent-soft);color:var(--accent)"><Icon name="utensils" :size="20" /></div>
-                            <div class="min-w-0 flex-1">
+                            <div class="min-w-0 flex-1 feat-name">
                                 <div class="font-medium truncate" style="color:var(--ink)">{{ itemName(it) }}</div>
                                 <div v-if="itemAltName(it)" class="text-xs truncate" style="color:var(--muted)" :dir="locale === 'ar' ? 'ltr' : 'rtl'">{{ itemAltName(it) }}</div>
                             </div>
@@ -241,3 +241,13 @@ function copyUrl() {
         </div>
     </div>
 </template>
+
+<style scoped>
+/* Featured-item name block: the Arabic name, English alt-name and price sit in
+   one flex row with the image at the reading edge. The alt-name carries a
+   dir="ltr" for correct English shaping, which would otherwise start-align it
+   to the left — force every line in the block to the reading edge so the two
+   names stack together next to the image instead of splitting across the row. */
+[dir="rtl"] .feat-name > * { text-align: right !important; }
+[dir="ltr"] .feat-name > * { text-align: left !important; }
+</style>

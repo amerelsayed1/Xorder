@@ -82,7 +82,7 @@ const headerPrice = computed(() => {
                             <h2 id="item-modal-title">{{ localize(item) }}</h2>
                             <p v-if="localize(item, 'description')">{{ localize(item, 'description') }}</p>
                         </div>
-                        <strong>{{ money(headerPrice) }}</strong>
+                        <strong class="money">{{ money(headerPrice) }}</strong>
                     </div>
 
                     <!-- Options + prices are shown on a display-only menu too, so a
@@ -119,8 +119,8 @@ const headerPrice = computed(() => {
                                 />
                                 {{ localize(opt) }}
                             </span>
-                            <strong v-if="group.is_variant">{{ money(optionPrice(opt)) }}</strong>
-                            <strong v-else>{{ optionPrice(opt) ? `+ ${money(optionPrice(opt))}` : t('free') }}</strong>
+                            <strong v-if="group.is_variant" class="money">{{ money(optionPrice(opt)) }}</strong>
+                            <strong v-else :class="{ money: optionPrice(opt) }">{{ optionPrice(opt) ? `+ ${money(optionPrice(opt))}` : t('free') }}</strong>
                         </label>
                     </div>
 
@@ -137,7 +137,7 @@ const headerPrice = computed(() => {
                         </div>
                         <button class="modal-add" :disabled="!isValid" @click="$emit('addToCart', note)">
                             {{ t('add_to_cart') }}
-                            <strong>{{ money(unitPrice * quantity) }}</strong>
+                            <strong class="money">{{ money(unitPrice * quantity) }}</strong>
                         </button>
                     </div>
                 </div>

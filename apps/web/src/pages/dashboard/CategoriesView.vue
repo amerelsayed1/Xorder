@@ -222,11 +222,10 @@ const categoryAltName = (c) => locale.value === 'ar' ? (c.name_en || '') : (c.na
                     </div>
                     <img v-if="c.image_url" :src="c.image_url" class="h-11 w-11 rounded-lg object-cover" />
                     <div v-else class="h-11 w-11 rounded-lg grid place-items-center flex-shrink-0" style="background:var(--accent-soft);color:var(--accent)"><Icon name="categories" :size="18" /></div>
-                    <div class="flex-1 min-w-0">
+                    <div class="flex-1 min-w-0 cat-info">
                         <div class="font-medium" style="color:var(--ink)">{{ categoryName(c) }}</div>
-                        <div class="text-xs" style="color:var(--muted)">
-                            <span v-if="categoryAltName(c)" :dir="locale === 'ar' ? 'ltr' : 'rtl'">{{ categoryAltName(c) }} · </span>{{ t('admin.item_count', { count: c.items_count }) }}
-                        </div>
+                        <div v-if="categoryAltName(c)" class="text-xs cat-alt" style="color:var(--muted)" :dir="locale === 'ar' ? 'ltr' : 'rtl'">{{ categoryAltName(c) }}</div>
+                        <div class="text-xs" style="color:var(--muted)">{{ t('admin.item_count', { count: c.items_count }) }}</div>
                     </div>
                     <StatusBadge :value="c.is_active" :label="c.is_active ? t('common.active') : t('common.inactive')" />
                     <button v-if="!auth.isReadOnly" class="switch" :class="{ on: c.is_active }" @click="toggle(c)"></button>
@@ -282,6 +281,12 @@ const categoryAltName = (c) => locale.value === 'ar' ? (c.name_en || '') : (c.na
     font-variant-numeric: tabular-nums;
 }
 li.row-selected { background: var(--accent-soft); }
+
+/* Category name / English name / item count each on their own line, all
+   aligned to the active reading edge. The count sits on a separate row from
+   the (opposite-direction) English name so RTL no longer jams them together. */
+[dir="rtl"] .cat-info, [dir="rtl"] .cat-alt { text-align: right; }
+[dir="ltr"] .cat-info, [dir="ltr"] .cat-alt { text-align: left; }
 
 /* Drag-and-drop reordering */
 .drag-handle {

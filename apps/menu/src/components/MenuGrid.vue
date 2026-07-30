@@ -77,6 +77,13 @@ function matches(item) {
     return hay.includes(q)
 }
 
+// Unavailable items are hidden from the menu entirely (not shown greyed-out),
+// so a diner only ever sees things they can actually order. Combos have no
+// availability flag, so `!== false` keeps them visible.
+function visible(item) {
+    return item.is_available !== false && matches(item)
+}
+
 const sections = computed(() => {
     const list = []
 
@@ -87,7 +94,7 @@ const sections = computed(() => {
             title: props.t('offers'),
             glyph: OFFERS_CATEGORY_GLYPH,
             image: null,
-            items: props.combos.filter(matches),
+            items: props.combos.filter(visible),
         })
     }
 
@@ -98,7 +105,7 @@ const sections = computed(() => {
             title: props.localize(c),
             glyph: menuCategoryGlyph(i),
             image: c.image_url,
-            items: (c.items || []).filter(matches),
+            items: (c.items || []).filter(visible),
         })
     })
 
@@ -161,8 +168,8 @@ const priceOf = (section, item) => {
                             <div class="product-title-row">
                                 <h3>{{ localize(item) }}</h3>
                                 <strong class="product-price">
-                                    <span v-if="section.kind === 'item' && item.discounted_price" class="old-price">{{ money(item.price) }}</span>
-                                    <span class="new-price">{{ priceOf(section, item) }}</span>
+                                    <span v-if="section.kind === 'item' && item.discounted_price" class="old-price money">{{ money(item.price) }}</span>
+                                    <span class="new-price money">{{ priceOf(section, item) }}</span>
                                 </strong>
                             </div>
                             <p>{{ localize(item, 'description') }}</p>

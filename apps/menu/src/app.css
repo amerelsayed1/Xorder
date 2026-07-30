@@ -942,6 +942,15 @@ html[dir='ltr'] .hero-overlay {
     white-space: nowrap;
 }
 
+/* A price always reads as amount-then-currency, even inside the RTL menu.
+   `direction: ltr` alone isn't enough: without an isolate, the surrounding
+   RTL context reorders the run and floats the currency symbol in front of
+   the number (e.g. "ج.م 55.00"). Isolating the run keeps it "55.00 ج.م". */
+.money {
+    direction: ltr;
+    unicode-bidi: isolate;
+}
+
 .product-body p {
     min-height: 40px;
     color: var(--muted);

@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Restaurant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 class MenuShellTest extends TestCase
@@ -42,6 +43,40 @@ class MenuShellTest extends TestCase
         $res->assertSee('rel="apple-touch-icon"', false);
         // The SPA markup itself is intact.
         $res->assertSee('<div id="app"></div>', false);
+    }
+
+    public function test_menu_shell_serves_whatsapp_friendly_derivatives(): void
+    {
+        Storage::fake('public');
+        $png = $this->fakePng(600, 400);
+        Storage::disk('public')->put('covers/demo.webp', $png);
+        Storage::disk('public')->put('logos/demo.webp', $png);
+
+        Restaurant::factory()->create([
+            'slug' => 'demo',
+            'name_en' => 'Demo Restaurant',
+            'logo_url' => '/storage/logos/demo.webp',
+            'cover_image_url' => '/storage/covers/demo.webp',
+        ]);
+
+        $res = $this->get('http://demo.xorder.io/menu');
+
+        $res->assertOk();
+        // OG image is a generated JPEG (WhatsApp/iMessage can't render WebP).
+        $res->assertSee('brand-cache/demo-og.jpg', false);
+        $res->assertSee('og:image:type" content="image/jpeg', false);
+        $res->assertSee('og:image:width" content="600', false);
+        $res->assertSee('twitter:card" content="summary_large_image', false);
+        // Favicon is the PNG derivative; the generic Xorder icons are removed.
+        $res->assertSee('brand-cache/demo-icon.png', false);
+        $res->assertDontSee('favicon.svg', false);
+        $res->assertDontSee('favicon-32.png', false);
+        // No raw .webp survives in any icon/OG tag.
+        $res->assertDontSee('/storage/covers/demo.webp', false);
+        $res->assertDontSee('/storage/logos/demo.webp', false);
+
+        Storage::disk('public')->assertExists('brand-cache/demo-og.jpg');
+        Storage::disk('public')->assertExists('brand-cache/demo-icon.png');
     }
 
     public function test_unknown_slug_serves_noindex_shell_with_404(): void
@@ -86,5 +121,18 @@ class MenuShellTest extends TestCase
     public function test_legacy_path_unknown_slug_is_404(): void
     {
         $this->get('/r/ghost')->assertNotFound();
+    }
+
+    /** Raw PNG bytes for a solid image of the given size (decodable by GD/Imagick). */
+    private function fakePng(int $width, int $height): string
+    {
+        $image = imagecreatetruecolor($width, $height);
+        imagefill($image, 0, 0, imagecolorallocate($image, 200, 120, 40));
+        ob_start();
+        imagepng($image);
+        $bytes = ob_get_clean();
+        imagedestroy($image);
+
+        return $bytes;
     }
 }

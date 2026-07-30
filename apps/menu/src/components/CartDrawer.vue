@@ -143,7 +143,7 @@ function submit() {
                                     <strong>{{ localize(line.ref) }}</strong>
                                     <span v-if="getLineOptions(line, localize).length">{{ getLineOptions(line, localize).join(' + ') }}</span>
                                     <span v-if="line.note">✎ {{ line.note }}</span>
-                                    <b>{{ money(line.qty * line.price) }}</b>
+                                    <b class="money">{{ money(line.qty * line.price) }}</b>
                                 </div>
                                 <div class="cart-item-actions">
                                     <button class="remove-item" :aria-label="t('remove')" @click="$emit('removeLine', line.uid)">×</button>
@@ -157,7 +157,7 @@ function submit() {
                         </div>
                         <div class="cart-total">
                             <span>{{ t('total') }}</span>
-                            <strong>{{ money(cartTotal) }}</strong>
+                            <strong class="money">{{ money(cartTotal) }}</strong>
                         </div>
                         <div class="cart-step-action">
                             <button class="continue-button" @click="step = 2">
@@ -175,7 +175,7 @@ function submit() {
                                 <span>{{ itemsText }}</span>
                                 <button @click="step = 1">{{ t('edit_cart') }}</button>
                             </div>
-                            <strong>{{ money(cartTotal) }}</strong>
+                            <strong class="money">{{ money(cartTotal) }}</strong>
                         </div>
                         <div class="checkout-form">
                             <div class="form-title">
