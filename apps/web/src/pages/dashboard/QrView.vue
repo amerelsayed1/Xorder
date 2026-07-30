@@ -3,6 +3,7 @@ import { ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import api from '@xorder/api-client/api.js'
 import Icon from '@xorder/ui/Icon.vue'
+import { alert } from '@xorder/ui/alert.js'
 
 const { t } = useI18n()
 const qr = ref(null)
@@ -12,7 +13,17 @@ onMounted(async () => {
     const { data } = await api.get('api/dashboard/qr')
     qr.value = data.data
 })
-function download() { window.open('/api/dashboard/qr/download', '_blank') }
+// JWT-Bearer API: fetch the PNG through the authed client (a bare window.open
+// carries no Authorization header and 401s), then save the blob.
+async function download() {
+    try {
+        const res = await api.get('api/dashboard/qr/download', { responseType: 'blob' })
+        const blobUrl = URL.createObjectURL(res.data)
+        const a = document.createElement('a')
+        a.href = blobUrl; a.download = 'qr-menu.png'; a.click()
+        URL.revokeObjectURL(blobUrl)
+    } catch (err) { alert(err.response?.data?.message || t('admin.download_failed')) }
+}
 function copyUrl() {
     if (!qr.value) return
     navigator.clipboard?.writeText(qr.value.public_url)

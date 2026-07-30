@@ -187,7 +187,17 @@ async function saveAdmin() {
         savingAdmin.value = false
     }
 }
-function downloadQr() { window.open(`/api/admin/restaurants/${id}/qr/download`, '_blank') }
+// Fetch through the authed api client (the API is JWT-Bearer, so a bare
+// window.open sends no Authorization header and 401s), then save the blob.
+async function downloadQr() {
+    try {
+        const res = await api.get(`api/admin/restaurants/${id}/qr/download`, { responseType: 'blob' })
+        const blobUrl = URL.createObjectURL(res.data)
+        const a = document.createElement('a')
+        a.href = blobUrl; a.download = `qr-${r.value?.slug || id}.png`; a.click()
+        URL.revokeObjectURL(blobUrl)
+    } catch (err) { alert(err.response?.data?.message || t('admin.download_failed')) }
+}
 async function resetAdminPassword() {
     const ok = await confirm({
         title: t('admin.reset_password_title'),

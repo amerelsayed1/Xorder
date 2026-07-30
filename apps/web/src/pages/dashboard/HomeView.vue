@@ -7,6 +7,7 @@ import { useAuth } from '@xorder/api-client/auth.js'
 import { currencyLabel } from '../../lib/currency.js'
 import { pickLocalized } from '@xorder/ui/localize.js'
 import Icon from '@xorder/ui/Icon.vue'
+import { alert } from '@xorder/ui/alert.js'
 import ApexChart from '../../components/ApexChart.vue'
 import { areaChart } from '../../lib/charts.js'
 import { asPreview } from '../../lib/host.js'
@@ -38,6 +39,18 @@ onMounted(async () => {
         engagement.value = ins.data.data?.engagement || null
     } catch (err) { /* insights optional */ }
 })
+
+// JWT-Bearer API: fetch the PNG through the authed client (a bare link carries
+// no Authorization header and 401s), then save the blob.
+async function downloadQr() {
+    try {
+        const res = await api.get('api/dashboard/qr/download', { responseType: 'blob' })
+        const blobUrl = URL.createObjectURL(res.data)
+        const a = document.createElement('a')
+        a.href = blobUrl; a.download = 'qr-menu.png'; a.click()
+        URL.revokeObjectURL(blobUrl)
+    } catch (err) { alert(err.response?.data?.message || t('admin.download_failed')) }
+}
 
 // 14-day views trend — Flowbite area chart.
 const dailyViews = computed(() => engagement.value?.daily || [])
@@ -212,7 +225,7 @@ function copyUrl() {
                         <div v-html="qr.svg" class="qrbox h-32 w-32"></div>
                     </div>
                     <div class="flex gap-2 mt-4">
-                        <a href="/api/dashboard/qr/download" target="_blank" class="btn btn-ghost btn-sm"><Icon name="download" :size="15" />PNG</a>
+                        <button @click="downloadQr" class="btn btn-ghost btn-sm"><Icon name="download" :size="15" />PNG</button>
                         <RouterLink :to="{ name: 'dashboard.qr' }" class="btn btn-dark btn-sm">{{ t('common.open') }}</RouterLink>
                     </div>
                 </div>
