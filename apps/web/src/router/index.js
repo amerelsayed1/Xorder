@@ -88,6 +88,7 @@ const restaurantRoutes = [
             { path: 'profile', name: 'dashboard.profile', component: () => import('../pages/dashboard/ProfileView.vue') },
             { path: 'categories', name: 'dashboard.categories', component: () => import('../pages/dashboard/CategoriesView.vue') },
             { path: 'items', name: 'dashboard.items', component: () => import('../pages/dashboard/ItemsView.vue') },
+            { path: 'extras', name: 'dashboard.extras', component: () => import('../pages/dashboard/ExtrasView.vue') },
             { path: 'items/create', name: 'dashboard.items.create', component: () => import('../pages/dashboard/ItemForm.vue') },
             { path: 'items/:id/edit', name: 'dashboard.items.edit', component: () => import('../pages/dashboard/ItemForm.vue') },
             { path: 'qr', name: 'dashboard.qr', component: () => import('../pages/dashboard/QrView.vue') },

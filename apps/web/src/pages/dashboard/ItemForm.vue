@@ -33,10 +33,34 @@ const form = reactive({
 })
 
 // --- option-group builder helpers ---
-function addGroup() { form.option_groups.push({ name_en: '', name_ar: '', is_required: false, is_variant: false, max_select: 1, options: [] }) }
+// Each entry carries a `ref`: 'inline' groups are typed for this item; 'shared'
+// entries reference a reusable group from the extras library (edited elsewhere).
+function addGroup() { form.option_groups.push({ ref: 'inline', name_en: '', name_ar: '', is_required: false, is_variant: false, max_select: 1, options: [] }) }
 function removeGroup(i) { form.option_groups.splice(i, 1) }
 function addOption(g) { g.options.push({ name_en: '', name_ar: '', price: '' }) }
 function removeOption(g, i) { g.options.splice(i, 1) }
+
+// --- shared extras library ---
+const library = ref([])
+const pickId = ref('')
+// Library groups not already attached to this item.
+const availableLibrary = computed(() => {
+    const used = new Set(form.option_groups.filter(g => g.ref === 'shared').map(g => g.option_group_id))
+    return library.value.filter(g => !used.has(g.id))
+})
+function libLabel(g) { return pickLocalized(g, 'name', locale.value) || (locale.value === 'ar' ? g.name_en : g.name_ar) || '' }
+function addFromLibrary() {
+    const g = library.value.find(x => x.id === Number(pickId.value))
+    if (!g) return
+    // Snapshot name + options for read-only display; only the id is sent on save.
+    form.option_groups.push({
+        ref: 'shared', option_group_id: g.id,
+        name_en: g.name_en || '', name_ar: g.name_ar || '',
+        is_required: !!g.is_required, is_variant: !!g.is_variant, max_select: g.max_select || 1,
+        options: (g.options || []).map(o => ({ name_en: o.name_en || '', name_ar: o.name_ar || '', price: o.price ?? '' })),
+    })
+    pickId.value = ''
+}
 
 function catName(id) {
     const c = categories.value.find(c => c.id === id)
@@ -45,11 +69,13 @@ function catName(id) {
 
 onMounted(async () => {
     try {
-        const [cats, item] = await Promise.all([
+        const [cats, lib, item] = await Promise.all([
             api.get('api/dashboard/categories'),
+            api.get('api/dashboard/option-groups'),
             isEdit.value ? api.get(`api/dashboard/items/${route.params.id}`) : Promise.resolve(null),
         ])
         categories.value = cats.data.data
+        library.value = lib.data.data
         if (item) {
             const it = item.data.data
             Object.assign(form, {
@@ -57,11 +83,20 @@ onMounted(async () => {
                 description_en: it.description_en || '', description_ar: it.description_ar || '',
                 price: it.price, discounted_price: it.discounted_price || '', image_url: it.image_url || '',
                 is_available: it.is_available, is_featured: it.is_featured,
-                option_groups: (it.option_groups || []).map(g => ({
-                    name_en: g.name_en || '', name_ar: g.name_ar || '',
-                    is_required: !!g.is_required, is_variant: !!g.is_variant, max_select: g.max_select || 1,
-                    options: (g.options || []).map(o => ({ name_en: o.name_en || '', name_ar: o.name_ar || '', price: o.price ?? '' })),
-                })),
+                // A global group comes back with is_global=true → a library reference;
+                // everything else is an inline group typed on this item.
+                option_groups: (it.option_groups || []).map(g => g.is_global
+                    ? {
+                        ref: 'shared', option_group_id: g.id,
+                        name_en: g.name_en || '', name_ar: g.name_ar || '',
+                        is_required: !!g.is_required, is_variant: !!g.is_variant, max_select: g.max_select || 1,
+                        options: (g.options || []).map(o => ({ name_en: o.name_en || '', name_ar: o.name_ar || '', price: o.price ?? '' })),
+                    }
+                    : {
+                        ref: 'inline', name_en: g.name_en || '', name_ar: g.name_ar || '',
+                        is_required: !!g.is_required, is_variant: !!g.is_variant, max_select: g.max_select || 1,
+                        options: (g.options || []).map(o => ({ name_en: o.name_en || '', name_ar: o.name_ar || '', price: o.price ?? '' })),
+                    }),
             })
         } else {
             form.category_id = categories.value[0]?.id || ''
@@ -82,13 +117,17 @@ async function save() {
     const payload = {
         ...form,
         discounted_price: form.discounted_price === '' ? null : form.discounted_price,
-        option_groups: form.option_groups.map(g => ({
-            name_en: g.name_en, name_ar: g.name_ar,
-            is_required: g.is_variant ? true : g.is_required,
-            is_variant: g.is_variant,
-            max_select: g.is_variant ? 1 : (Number(g.max_select) || 1),
-            options: g.options.map(o => ({ name_en: o.name_en, name_ar: o.name_ar, price: o.price === '' ? 0 : Number(o.price) })),
-        })),
+        // Shared entries send only a reference; inline entries send their full
+        // definition. Array order is the display order for both (see backend).
+        option_groups: form.option_groups.map(g => g.ref === 'shared'
+            ? { ref: 'shared', option_group_id: g.option_group_id }
+            : {
+                ref: 'inline', name_en: g.name_en, name_ar: g.name_ar,
+                is_required: g.is_variant ? true : g.is_required,
+                is_variant: g.is_variant,
+                max_select: g.is_variant ? 1 : (Number(g.max_select) || 1),
+                options: g.options.map(o => ({ name_en: o.name_en, name_ar: o.name_ar, price: o.price === '' ? 0 : Number(o.price) })),
+            }),
     }
     try {
         await ensureCsrf()
@@ -149,42 +188,71 @@ async function save() {
 
             <!-- Option groups builder -->
             <div class="card p-6">
-                <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center justify-between gap-2 mb-2 flex-wrap">
                     <span class="label" style="margin:0">{{ t('item.options') }}</span>
-                    <button type="button" class="btn btn-ghost btn-sm" @click="addGroup">+ {{ t('item.add_group') }}</button>
+                    <div class="flex items-center gap-2">
+                        <!-- Attach a reusable group from the shared library -->
+                        <select v-model="pickId" @change="addFromLibrary" class="input" style="width:auto;min-width:150px;padding:6px 10px">
+                            <option value="">+ {{ t('item.add_from_library') }}</option>
+                            <option v-for="g in availableLibrary" :key="g.id" :value="g.id">{{ libLabel(g) }}</option>
+                        </select>
+                        <button type="button" class="btn btn-ghost btn-sm" @click="addGroup">+ {{ t('item.add_group') }}</button>
+                    </div>
                 </div>
                 <p v-if="!form.option_groups.length" class="text-xs" style="color:var(--muted)">{{ t('item.no_options') }}</p>
-                <div v-for="(g, gi) in form.option_groups" :key="gi" class="rounded-xl p-3 mb-3" style="background:var(--page);border:1px solid var(--line)">
-                    <div class="grid grid-cols-1 gap-2" :class="{ 'sm:grid-cols-2': bilingual }">
-                        <input v-for="lng in langs" :key="'g' + lng" v-model="g['name_' + lng]" class="input"
-                            :dir="lng === 'ar' ? 'rtl' : 'ltr'" :placeholder="t('item.group_name_' + lng)" />
-                    </div>
-                    <div class="flex items-center gap-4 flex-wrap mt-2">
-                        <label class="flex items-center gap-2 text-xs" style="color:var(--body)">
-                            <button type="button" class="switch" :class="{ on: g.is_variant }" @click="g.is_variant = !g.is_variant"></button>
-                            {{ t('item.variant') }}
-                        </label>
-                        <label v-if="!g.is_variant" class="flex items-center gap-2 text-xs" style="color:var(--body)">
-                            <button type="button" class="switch" :class="{ on: g.is_required }" @click="g.is_required = !g.is_required"></button>
-                            {{ t('item.required') }}
-                        </label>
-                        <label v-if="!g.is_variant" class="flex items-center gap-2 text-xs" style="color:var(--body)">
-                            {{ t('item.max_select') }}
-                            <input v-model.number="g.max_select" type="number" min="1" class="input" style="width:64px;padding:5px 8px" />
-                        </label>
-                        <button type="button" class="icon-btn icon-btn-danger ms-auto" :title="t('common.delete')" @click="removeGroup(gi)"><Icon name="trash" :size="16" /></button>
-                    </div>
-                    <p v-if="g.is_variant" class="text-xs mt-1" style="color:var(--muted)">{{ t('item.variant_hint') }}</p>
-                    <div class="mt-2 space-y-2">
-                        <div v-for="(o, oi) in g.options" :key="oi" class="flex items-center gap-2">
-                            <input v-for="lng in langs" :key="'o' + lng" v-model="o['name_' + lng]" class="input flex-1"
-                                :dir="lng === 'ar' ? 'rtl' : 'ltr'" :placeholder="t('item.option_' + lng)" />
-                            <input v-model="o.price" type="number" step="0.01" min="0" class="input" style="width:90px" :placeholder="g.is_variant ? (cur || '0') : (cur || '+0')" />
-                            <button type="button" class="icon-btn icon-btn-danger" :title="t('common.delete')" @click="removeOption(g, oi)"><Icon name="close" :size="16" /></button>
+
+                <template v-for="(g, gi) in form.option_groups" :key="gi">
+                    <!-- Shared library reference: read-only, edited under Extras -->
+                    <div v-if="g.ref === 'shared'" class="rounded-xl p-3 mb-3" style="background:var(--accent-soft);border:1px solid var(--accent)">
+                        <div class="flex items-center gap-2">
+                            <Icon name="link" :size="15" style="color:var(--accent);flex:none" />
+                            <div class="flex-1 min-w-0">
+                                <div class="font-medium truncate" style="color:var(--ink)" :dir="locale === 'ar' ? 'rtl' : 'ltr'">{{ libLabel(g) }}</div>
+                                <div class="text-xs" style="color:var(--muted)">
+                                    <span class="me-2" style="color:var(--accent)">{{ t('item.from_library') }}</span>
+                                    <span>{{ (g.options || []).map(o => pickLocalized(o, 'name', locale) || o.name_en || o.name_ar).filter(Boolean).join('، ') }}</span>
+                                </div>
+                            </div>
+                            <span v-if="g.is_variant" class="text-xs px-2 py-0.5 rounded-full" style="background:var(--card);color:var(--accent)">{{ t('item.variant') }}</span>
+                            <button type="button" class="icon-btn icon-btn-danger" :title="t('common.delete')" @click="removeGroup(gi)"><Icon name="close" :size="16" /></button>
                         </div>
-                        <button type="button" class="btn btn-ghost btn-sm" @click="addOption(g)">+ {{ t('item.add_option') }}</button>
                     </div>
-                </div>
+
+                    <!-- Inline group: typed for this item only -->
+                    <div v-else class="rounded-xl p-3 mb-3" style="background:var(--page);border:1px solid var(--line)">
+                        <div class="grid grid-cols-1 gap-2" :class="{ 'sm:grid-cols-2': bilingual }">
+                            <input v-for="lng in langs" :key="'g' + lng" v-model="g['name_' + lng]" class="input"
+                                :dir="lng === 'ar' ? 'rtl' : 'ltr'" :placeholder="t('item.group_name_' + lng)" />
+                        </div>
+                        <div class="flex items-center gap-4 flex-wrap mt-2">
+                            <label class="flex items-center gap-2 text-xs" style="color:var(--body)">
+                                <button type="button" class="switch" :class="{ on: g.is_variant }" @click="g.is_variant = !g.is_variant"></button>
+                                {{ t('item.variant') }}
+                            </label>
+                            <label v-if="!g.is_variant" class="flex items-center gap-2 text-xs" style="color:var(--body)">
+                                <button type="button" class="switch" :class="{ on: g.is_required }" @click="g.is_required = !g.is_required"></button>
+                                {{ t('item.required') }}
+                            </label>
+                            <label v-if="!g.is_variant" class="flex items-center gap-2 text-xs" style="color:var(--body)">
+                                {{ t('item.max_select') }}
+                                <input v-model.number="g.max_select" type="number" min="1" class="input" style="width:64px;padding:5px 8px" />
+                            </label>
+                            <button type="button" class="icon-btn icon-btn-danger ms-auto" :title="t('common.delete')" @click="removeGroup(gi)"><Icon name="trash" :size="16" /></button>
+                        </div>
+                        <p v-if="g.is_variant" class="text-xs mt-1" style="color:var(--muted)">{{ t('item.variant_hint') }}</p>
+                        <div class="mt-2 space-y-2">
+                            <div v-for="(o, oi) in g.options" :key="oi" class="flex items-center gap-2">
+                                <input v-for="lng in langs" :key="'o' + lng" v-model="o['name_' + lng]" class="input flex-1"
+                                    :dir="lng === 'ar' ? 'rtl' : 'ltr'" :placeholder="t('item.option_' + lng)" />
+                                <input v-model="o.price" type="number" step="0.01" min="0" class="input" style="width:90px" :placeholder="g.is_variant ? (cur || '0') : (cur || '+0')" />
+                                <button type="button" class="icon-btn icon-btn-danger" :title="t('common.delete')" @click="removeOption(g, oi)"><Icon name="close" :size="16" /></button>
+                            </div>
+                            <button type="button" class="btn btn-ghost btn-sm" @click="addOption(g)">+ {{ t('item.add_option') }}</button>
+                        </div>
+                    </div>
+                </template>
+
+                <RouterLink :to="{ name: 'dashboard.extras' }" class="text-xs" style="color:var(--muted)">{{ t('item.manage_library') }} →</RouterLink>
             </div>
 
             <div class="flex justify-end gap-2">

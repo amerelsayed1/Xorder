@@ -161,6 +161,22 @@ async function bulkRemove() {
     finally { bulkDeleting.value = false }
 }
 
+// Download the QR PNGs for every ticked table as one ZIP.
+const bulkDownloading = ref(false)
+async function bulkDownloadQr() {
+    const ids = [...selected.value]
+    if (!ids.length || bulkDownloading.value) return
+    bulkDownloading.value = true
+    try {
+        const res = await api.post('api/dashboard/tables/qr/download-bulk', { ids }, { responseType: 'blob' })
+        const blobUrl = URL.createObjectURL(res.data)
+        const a = document.createElement('a')
+        a.href = blobUrl; a.download = 'qr-tables.zip'; a.click()
+        URL.revokeObjectURL(blobUrl)
+    } catch (err) { alert(err.response?.data?.message || t('tbl.download_failed')) }
+    finally { bulkDownloading.value = false }
+}
+
 // ---- QR modal ----
 const qrModal = ref(null) // { table, svg, url }
 const qrLoading = ref(false)
@@ -226,6 +242,11 @@ const areaLabel = (id) => { const a = areas.value.find(x => x.id === id); return
         <div v-if="!auth.isReadOnly && selected.size" class="bulk-bar">
             <span class="bulk-count">{{ t('tbl.selected_count', { n: selected.size }) }}</span>
             <button class="btn btn-ghost btn-sm" @click="clearSelection">{{ t('tbl.clear_selection') }}</button>
+            <button class="btn btn-accent btn-sm" :disabled="bulkDownloading" @click="bulkDownloadQr">
+                <Icon v-if="bulkDownloading" name="loading" :size="15" class="animate-spin" />
+                <Icon v-else name="download" :size="15" />
+                {{ t('tbl.download_selected') }}
+            </button>
             <button class="btn btn-danger btn-sm" :disabled="bulkDeleting" @click="bulkRemove">
                 <Icon v-if="bulkDeleting" name="loading" :size="15" class="animate-spin" />
                 <Icon v-else name="trash" :size="15" />

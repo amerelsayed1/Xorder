@@ -73,7 +73,7 @@ class MenuItemController extends Controller
         $item = $result['item'];
 
         return response()->json([
-            'data' => MenuItemResource::make($item->load('category', 'optionGroups.options')),
+            'data' => MenuItemResource::make($item->load('category', 'optionGroups.options', 'sharedOptionGroups.options')),
             'message' => __('xorder.messages.item_created'),
         ], 201);
     }
@@ -81,7 +81,7 @@ class MenuItemController extends Controller
     public function show(MenuItem $item): JsonResponse
     {
         return response()->json([
-            'data' => MenuItemResource::make($item->load('category', 'optionGroups.options')),
+            'data' => MenuItemResource::make($item->load('category', 'optionGroups.options', 'sharedOptionGroups.options')),
         ]);
     }
 
@@ -100,33 +100,71 @@ class MenuItemController extends Controller
         });
 
         return response()->json([
-            'data' => MenuItemResource::make($item->fresh()->load('category', 'optionGroups.options')),
+            'data' => MenuItemResource::make($item->fresh()->load('category', 'optionGroups.options', 'sharedOptionGroups.options')),
             'message' => __('xorder.messages.item_updated'),
         ]);
     }
 
     /**
-     * Replace an item's option groups + options with the supplied structure.
-     * Simplest correct sync for a small per-item set: wipe and recreate.
+     * Replace an item's option groups with the supplied ordered list. Each entry
+     * is either an inline group (typed for this item) or a reference to a global
+     * group from the shared library (`ref: 'shared'` + `option_group_id`). The
+     * array index is the unified display position for both flavours.
+     *
+     * Inline groups are wiped and recreated (simplest correct sync for a small
+     * per-item set). Global groups are never touched here — they live in the
+     * library and are only attached/detached via the pivot, so edits to a shared
+     * group stay live across every item that uses it.
      */
-    private function syncOptionGroups(MenuItem $item, array $groups): void
+    private function syncOptionGroups(MenuItem $item, array $entries): void
     {
-        // Clean delete (no orderBy → valid on Postgres); FK cascade removes options.
+        $entries = array_values($entries);
+
+        // Resolve which referenced ids are real global groups in this tenant, in
+        // one query — a client cannot attach a foreign or inline group's id.
+        $referencedIds = collect($entries)
+            ->filter(fn ($g) => ($g['ref'] ?? 'inline') === 'shared')
+            ->pluck('option_group_id')
+            ->filter()
+            ->map(fn ($id) => (int) $id);
+
+        $validGlobalIds = $referencedIds->isEmpty()
+            ? collect()
+            : OptionGroup::global()->whereIn('id', $referencedIds)->pluck('id')->flip();
+
+        // Clean delete of inline groups (no orderBy → valid on Postgres); FK
+        // cascade removes their options. Global groups (menu_item_id null) are
+        // outside this filter and untouched.
         OptionGroup::where('menu_item_id', $item->id)->delete();
 
-        foreach (array_values($groups) as $gi => $g) {
+        $pivot = [];
+
+        foreach ($entries as $i => $g) {
+            if (($g['ref'] ?? 'inline') === 'shared') {
+                $groupId = (int) ($g['option_group_id'] ?? 0);
+                if ($validGlobalIds->has($groupId)) {
+                    $pivot[$groupId] = [
+                        'sort_order' => $i,
+                        'restaurant_id' => $item->restaurant_id,
+                    ];
+                }
+
+                continue;
+            }
+
             // A variant (size/portion) group is always single-select and must be
             // chosen — the chosen option sets the item price, so "no size" makes
             // no sense. Force those invariants regardless of what the client sent.
             $isVariant = (bool) ($g['is_variant'] ?? false);
 
             $group = $item->optionGroups()->create([
+                'is_global' => false,
                 'name_en' => $g['name_en'] ?? null,
                 'name_ar' => $g['name_ar'] ?? null,
                 'is_required' => $isVariant ? true : ($g['is_required'] ?? false),
                 'is_variant' => $isVariant,
                 'max_select' => $isVariant ? 1 : ($g['max_select'] ?? 1),
-                'sort_order' => $gi,
+                'sort_order' => $i,
             ]);
 
             foreach (array_values($g['options'] ?? []) as $oi => $o) {
@@ -139,6 +177,10 @@ class MenuItemController extends Controller
                 ]);
             }
         }
+
+        // Attach/detach global groups to match the payload (pivot sort_order
+        // shares the same index sequence as inline groups above).
+        $item->sharedOptionGroups()->sync($pivot);
     }
 
     public function destroy(MenuItem $item): JsonResponse

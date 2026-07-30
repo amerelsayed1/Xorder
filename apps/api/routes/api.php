@@ -26,6 +26,7 @@ use App\Http\Controllers\Dashboard\MenuExportController;
 use App\Http\Controllers\Dashboard\MenuImportController;
 use App\Http\Controllers\Dashboard\MenuItemController;
 use App\Http\Controllers\Dashboard\NotificationController;
+use App\Http\Controllers\Dashboard\OptionGroupController;
 use App\Http\Controllers\Dashboard\OrderController as DashboardOrderController;
 use App\Http\Controllers\Dashboard\PulseController;
 use App\Http\Controllers\Dashboard\PushTokenController;
@@ -160,6 +161,10 @@ Route::prefix('dashboard')
         Route::get('categories', [CategoryController::class, 'index']);
         Route::get('categories/{category}', [CategoryController::class, 'show']);
         Route::get('items', [MenuItemController::class, 'index']);
+        // Shared "extras" library — reusable option groups (reads open to
+        // read-only tenants; writes are subscription-gated below).
+        Route::get('option-groups', [OptionGroupController::class, 'index']);
+        Route::get('option-groups/{optionGroup}', [OptionGroupController::class, 'show']);
         // Export the menu to CSV/XLSX. A read — deliberately NOT behind
         // subscription.writable, so a read-only tenant can still get their data
         // out. Registered before items/{item} so "export" isn't matched as an id.
@@ -232,6 +237,10 @@ Route::prefix('dashboard')
             Route::delete('categories/{category}', [CategoryController::class, 'destroy']);
 
             Route::post('items/import', [MenuImportController::class, 'import']);
+            Route::post('option-groups', [OptionGroupController::class, 'store']);
+            Route::put('option-groups/{optionGroup}', [OptionGroupController::class, 'update']);
+            Route::delete('option-groups/{optionGroup}', [OptionGroupController::class, 'destroy']);
+
             Route::post('items', [MenuItemController::class, 'store']);
             Route::patch('items/reorder', [MenuItemController::class, 'reorder']);
             Route::delete('items/bulk', [MenuItemController::class, 'bulkDestroy']);
@@ -248,6 +257,8 @@ Route::prefix('dashboard')
             Route::get('tables/live', [TableController::class, 'live']);
             Route::get('tables/{table}/qr', [TableController::class, 'qr']);
             Route::get('tables/{table}/qr/download', [TableController::class, 'qrDownload']);
+            // Bundle several tables' QR PNGs into one ZIP (read-only, no writable gate).
+            Route::post('tables/qr/download-bulk', [TableController::class, 'qrDownloadBulk']);
 
             Route::middleware('subscription.writable')->group(function () {
                 Route::post('dining-areas', [DiningAreaController::class, 'store']);

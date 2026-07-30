@@ -27,18 +27,22 @@ class MenuItemPublicResource extends JsonResource
             'image_url' => $this->image_url,
             'is_available' => $this->is_available,
             'is_featured' => $this->is_featured,
-            'option_groups' => $this->whenLoaded('optionGroups', fn () => $this->optionGroups->map(fn ($g) => [
-                'name_en' => $g->name_en,
-                'name_ar' => $g->name_ar,
-                'is_required' => $g->is_required,
-                'is_variant' => $g->is_variant,
-                'max_select' => $g->max_select,
-                'options' => $g->options->where('is_available', true)->map(fn ($o) => [
-                    'name_en' => $o->name_en,
-                    'name_ar' => $o->name_ar,
-                    'price' => $o->price,
-                ])->values(),
-            ])->values()),
+            // Inline + shared (library) groups merged in the item's display order.
+            'option_groups' => $this->when(
+                $this->relationLoaded('optionGroups') || $this->relationLoaded('sharedOptionGroups'),
+                fn () => $this->orderedOptionGroups()->map(fn ($g) => [
+                    'name_en' => $g->name_en,
+                    'name_ar' => $g->name_ar,
+                    'is_required' => $g->is_required,
+                    'is_variant' => $g->is_variant,
+                    'max_select' => $g->max_select,
+                    'options' => $g->options->where('is_available', true)->map(fn ($o) => [
+                        'name_en' => $o->name_en,
+                        'name_ar' => $o->name_ar,
+                        'price' => $o->price,
+                    ])->values(),
+                ])->values()
+            ),
         ];
     }
 }

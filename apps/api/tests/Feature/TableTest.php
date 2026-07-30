@@ -122,6 +122,74 @@ class TableTest extends TestCase
             ->assertJsonStructure(['data' => ['svg', 'url']]);
     }
 
+    public function test_bulk_qr_download_returns_a_zip_of_selected_tables(): void
+    {
+        $a = $this->makeTable('1');
+        $b = $this->makeTable('2');
+        $this->makeTable('3'); // not selected — must be excluded
+
+        $res = $this->actingAs($this->admin)
+            ->post('/api/dashboard/tables/qr/download-bulk', ['ids' => [$a->id, $b->id]]);
+
+        $res->assertOk();
+        $res->assertHeader('content-type', 'application/zip');
+
+        $tmp = tempnam(sys_get_temp_dir(), 'qrtest-').'.zip';
+        file_put_contents($tmp, $res->streamedContent());
+        $zip = new \ZipArchive;
+        $zip->open($tmp);
+        $this->assertSame(2, $zip->numFiles);
+        $names = [];
+        for ($i = 0; $i < $zip->numFiles; $i++) {
+            $names[] = $zip->getNameIndex($i);
+        }
+        $zip->close();
+        unlink($tmp);
+
+        $this->assertContains("qr-1-{$a->public_token}.png", $names);
+        $this->assertContains("qr-2-{$b->public_token}.png", $names);
+    }
+
+    public function test_bulk_qr_download_ignores_tables_from_other_restaurants(): void
+    {
+        $mine = $this->makeTable('1');
+
+        $other = Restaurant::factory()->create();
+        $otherBranch = new Branch(['name_en' => 'Other']);
+        $otherBranch->restaurant_id = $other->id;
+        $otherBranch->save();
+        $otherArea = new DiningArea(['branch_id' => $otherBranch->id, 'name_en' => 'X', 'is_active' => true]);
+        $otherArea->restaurant_id = $other->id;
+        $otherArea->save();
+        $theirs = new DiningTable([
+            'dining_area_id' => $otherArea->id, 'label' => '9',
+            'public_token' => DiningTable::generateToken(), 'qr_generated_at' => now(),
+        ]);
+        $theirs->restaurant_id = $other->id;
+        $theirs->branch_id = $otherBranch->id;
+        $theirs->save();
+
+        $res = $this->actingAs($this->admin)
+            ->post('/api/dashboard/tables/qr/download-bulk', ['ids' => [$mine->id, $theirs->id]]);
+
+        $res->assertOk();
+        $tmp = tempnam(sys_get_temp_dir(), 'qrtest-').'.zip';
+        file_put_contents($tmp, $res->streamedContent());
+        $zip = new \ZipArchive;
+        $zip->open($tmp);
+        // Only the caller's own table survives the tenant scope.
+        $this->assertSame(1, $zip->numFiles);
+        $zip->close();
+        unlink($tmp);
+    }
+
+    public function test_bulk_qr_download_requires_at_least_one_id(): void
+    {
+        $this->actingAs($this->admin)
+            ->postJson('/api/dashboard/tables/qr/download-bulk', ['ids' => []])
+            ->assertStatus(422);
+    }
+
     public function test_table_with_orders_cannot_be_deleted(): void
     {
         $table = $this->makeTable('3');

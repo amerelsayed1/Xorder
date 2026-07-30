@@ -33,6 +33,8 @@ class UpdateMenuItemRequest extends FormRequest
             'display_order' => ['nullable', 'integer', 'min:0'],
 
             'option_groups' => ['sometimes', 'array', 'max:20'],
+            'option_groups.*.ref' => ['sometimes', 'in:inline,shared'],
+            'option_groups.*.option_group_id' => ['required_if:option_groups.*.ref,shared', 'integer'],
             'option_groups.*.name_en' => ['nullable', 'string', 'max:150'],
             'option_groups.*.name_ar' => ['nullable', 'string', 'max:150'],
             'option_groups.*.is_required' => ['sometimes', 'boolean'],

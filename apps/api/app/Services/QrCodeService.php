@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\DiningTable;
 use App\Models\Restaurant;
+use Illuminate\Support\Str;
 use SimpleSoftwareIO\QrCode\Facades\QrCode;
 
 class QrCodeService
@@ -46,5 +47,17 @@ class QrCodeService
     public function tableDownloadFilename(DiningTable $table): string
     {
         return "qr-table-{$table->public_token}.png";
+    }
+
+    /**
+     * File name for a single table's QR inside a multi-table ZIP. Includes the
+     * (slugged) label so the printed sheets are identifiable, and the token to
+     * keep entries unique when two tables share a label.
+     */
+    public function tableZipEntryName(DiningTable $table): string
+    {
+        $label = Str::slug($table->label) ?: 'table';
+
+        return "qr-{$label}-{$table->public_token}.png";
     }
 }

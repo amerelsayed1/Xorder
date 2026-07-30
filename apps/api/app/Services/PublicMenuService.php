@@ -54,7 +54,7 @@ class PublicMenuService
             $categories = $restaurant->categories()
                 ->where('is_active', true)
                 ->whereHas('menuItems')
-                ->with(['menuItems' => fn ($q) => $q->orderBy('display_order')->orderBy('id')->with('optionGroups.options')])
+                ->with(['menuItems' => fn ($q) => $q->orderBy('display_order')->orderBy('id')->with(['optionGroups.options', 'sharedOptionGroups.options'])])
                 ->orderBy('display_order')
                 ->orderBy('id')
                 ->get();
@@ -62,7 +62,7 @@ class PublicMenuService
             $featured = $restaurant->menuItems()
                 ->where('is_featured', true)
                 ->where('is_available', true)
-                ->with('optionGroups.options')
+                ->with(['optionGroups.options', 'sharedOptionGroups.options'])
                 ->orderBy('display_order')
                 ->orderBy('id')
                 ->get();

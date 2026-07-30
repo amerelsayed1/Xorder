@@ -20,6 +20,8 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
+use ZipArchive;
 
 class TableController extends Controller
 {
@@ -280,6 +282,41 @@ class TableController extends Controller
         return response($qr->pngForUrl($table->publicUrl()))
             ->header('Content-Type', 'image/png')
             ->header('Content-Disposition', 'attachment; filename="'.$qr->tableDownloadFilename($table).'"');
+    }
+
+    /**
+     * Bundle the QR PNGs for several tables into one ZIP so a floor's codes can
+     * be printed in a single download instead of clicking through each table.
+     * The tenant scope limits the query to the caller's own tables; unknown ids
+     * are silently ignored, and an empty selection is a 422.
+     */
+    public function qrDownloadBulk(Request $request, QrCodeService $qr): BinaryFileResponse|JsonResponse
+    {
+        $validated = $request->validate([
+            'ids' => ['required', 'array', 'min:1'],
+            'ids.*' => ['integer'],
+        ]);
+
+        $tables = DiningTable::query()
+            ->whereIn('id', collect($validated['ids'])->unique())
+            ->orderBy('dining_area_id')->orderBy('label')
+            ->get();
+
+        if ($tables->isEmpty()) {
+            return response()->json(['message' => __('xorder.messages.no_tables_selected')], 422);
+        }
+
+        $path = tempnam(sys_get_temp_dir(), 'qr-tables-').'.zip';
+        $zip = new ZipArchive;
+        $zip->open($path, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+        foreach ($tables as $table) {
+            $zip->addFromString($qr->tableZipEntryName($table), $qr->pngForUrl($table->publicUrl()));
+        }
+        $zip->close();
+
+        return response()->download($path, 'qr-tables.zip', [
+            'Content-Type' => 'application/zip',
+        ])->deleteFileAfterSend(true);
     }
 
     /** Issue a fresh token; the previous QR stops resolving (FR-QR-007/008). */

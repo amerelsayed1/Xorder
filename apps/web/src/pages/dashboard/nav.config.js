@@ -28,6 +28,7 @@ export const DASHBOARD_NAV = [
         children: [
             { key: 'items', labelKey: 'nav.items', icon: 'pi pi-list', to: { name: 'dashboard.items' } },
             { key: 'categories', labelKey: 'nav.categories', icon: 'pi pi-tags', to: { name: 'dashboard.categories' } },
+            { key: 'extras', labelKey: 'nav.extras', icon: 'pi pi-plus-circle', to: { name: 'dashboard.extras' } },
             { key: 'qr', labelKey: 'nav.qr', icon: 'pi pi-qrcode', to: { name: 'dashboard.qr' } },
         ],
     },

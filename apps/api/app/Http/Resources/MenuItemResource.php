@@ -26,21 +26,27 @@ class MenuItemResource extends JsonResource
             'is_featured' => $this->is_featured,
             'display_order' => $this->display_order,
             'category' => CategoryResource::make($this->whenLoaded('category')),
-            'option_groups' => $this->whenLoaded('optionGroups', fn () => $this->optionGroups->map(fn ($g) => [
-                'id' => $g->id,
-                'name_en' => $g->name_en,
-                'name_ar' => $g->name_ar,
-                'is_required' => $g->is_required,
-                'is_variant' => $g->is_variant,
-                'max_select' => $g->max_select,
-                'options' => $g->options->map(fn ($o) => [
-                    'id' => $o->id,
-                    'name_en' => $o->name_en,
-                    'name_ar' => $o->name_ar,
-                    'price' => $o->price,
-                    'is_available' => $o->is_available,
-                ])->values(),
-            ])->values()),
+            // Inline + shared (library) groups merged in the admin's chosen order.
+            // `is_global` tells the form which entries are library references.
+            'option_groups' => $this->when(
+                $this->relationLoaded('optionGroups') || $this->relationLoaded('sharedOptionGroups'),
+                fn () => $this->orderedOptionGroups()->map(fn ($g) => [
+                    'id' => $g->id,
+                    'is_global' => $g->is_global,
+                    'name_en' => $g->name_en,
+                    'name_ar' => $g->name_ar,
+                    'is_required' => $g->is_required,
+                    'is_variant' => $g->is_variant,
+                    'max_select' => $g->max_select,
+                    'options' => $g->options->map(fn ($o) => [
+                        'id' => $o->id,
+                        'name_en' => $o->name_en,
+                        'name_ar' => $o->name_ar,
+                        'price' => $o->price,
+                        'is_available' => $o->is_available,
+                    ])->values(),
+                ])->values()
+            ),
             'created_at' => $this->created_at?->toIso8601String(),
             'updated_at' => $this->updated_at?->toIso8601String(),
         ];
