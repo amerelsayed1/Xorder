@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Enums\MenuLayout;
 use App\Models\Restaurant;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -78,14 +79,14 @@ class RestaurantAdminUpdateTest extends TestCase
     public function test_super_admin_can_set_the_menu_layout(): void
     {
         $sa = User::factory()->superAdmin()->create();
-        $r = Restaurant::factory()->create(['menu_layout' => \App\Enums\MenuLayout::PHOTO]);
+        $r = Restaurant::factory()->create(['menu_layout' => MenuLayout::PHOTO]);
 
         $this->actingAs($sa)->putJson("/api/admin/restaurants/{$r->id}", [
             'menu_layout' => 'text-list',
         ])->assertOk()
             ->assertJsonPath('data.menu_layout', 'text-list');
 
-        $this->assertSame(\App\Enums\MenuLayout::TEXT_LIST, $r->fresh()->menu_layout);
+        $this->assertSame(MenuLayout::TEXT_LIST, $r->fresh()->menu_layout);
     }
 
     public function test_menu_layout_rejects_an_unknown_value(): void
