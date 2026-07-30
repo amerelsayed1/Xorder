@@ -49,7 +49,7 @@ const itemName = (id) => {
 }
 const comboName = (c) => pickLocalized(c, 'name', locale.value)
 
-function addGroup() { form.groups.push({ name_en: '', name_ar: '', max_select: 1, items: [] }) }
+function addGroup() { form.groups.push({ name_en: '', name_ar: '', max_select: 1, is_variant: false, items: [] }) }
 function removeGroup(i) { form.groups.splice(i, 1) }
 function addItem(g) { g.items.push({ menu_item_id: menuItems.value[0]?.id || '', extra_price: '' }) }
 function removeItem(g, i) { g.items.splice(i, 1) }
@@ -66,7 +66,7 @@ function openEdit(c) {
         description_en: c.description_en || '', description_ar: c.description_ar || '',
         image_url: c.image_url || '', base_price: c.base_price, is_active: c.is_active,
         groups: (c.groups || []).map(g => ({
-            name_en: g.name_en || '', name_ar: g.name_ar || '', max_select: g.max_select || 1,
+            name_en: g.name_en || '', name_ar: g.name_ar || '', max_select: g.max_select || 1, is_variant: !!g.is_variant,
             items: (g.items || []).map(it => ({ menu_item_id: it.menu_item_id, extra_price: it.extra_price ?? '' })),
         })),
     })
@@ -80,7 +80,9 @@ async function save() {
         ...form,
         base_price: form.base_price === '' ? 0 : Number(form.base_price),
         groups: form.groups.map(g => ({
-            name_en: g.name_en, name_ar: g.name_ar, max_select: Number(g.max_select) || 1,
+            name_en: g.name_en, name_ar: g.name_ar,
+            max_select: g.is_variant ? 1 : (Number(g.max_select) || 1),
+            is_variant: g.is_variant,
             items: g.items.filter(it => it.menu_item_id).map(it => ({
                 menu_item_id: Number(it.menu_item_id),
                 extra_price: it.extra_price === '' ? 0 : Number(it.extra_price),
@@ -168,17 +170,22 @@ async function remove(c) {
                         </div>
                         <div class="flex items-center gap-4 flex-wrap mt-2">
                             <label class="flex items-center gap-2 text-xs" style="color:var(--body)">
+                                <button type="button" class="switch" :class="{ on: g.is_variant }" @click="g.is_variant = !g.is_variant"></button>
+                                {{ t('item.variant') }}
+                            </label>
+                            <label v-if="!g.is_variant" class="flex items-center gap-2 text-xs" style="color:var(--body)">
                                 {{ t('item.max_select') }}
                                 <input v-model.number="g.max_select" type="number" min="1" class="input" style="width:64px;padding:5px 8px" />
                             </label>
                             <button type="button" class="icon-btn icon-btn-danger ms-auto" :title="t('common.delete')" @click="removeGroup(gi)"><Icon name="trash" :size="16" /></button>
                         </div>
+                        <p v-if="g.is_variant" class="text-xs mt-1" style="color:var(--muted)">{{ t('item.variant_hint') }}</p>
                         <div class="mt-2 space-y-2">
                             <div v-for="(it, ii) in g.items" :key="ii" class="flex items-center gap-2">
                                 <select v-model="it.menu_item_id" class="input flex-1">
                                     <option v-for="mi in menuItems" :key="mi.id" :value="mi.id">{{ itemName(mi.id) }}</option>
                                 </select>
-                                <input v-model="it.extra_price" type="number" step="0.01" min="0" class="input" style="width:90px" :placeholder="'+0'" />
+                                <input v-model="it.extra_price" type="number" step="0.01" min="0" class="input" style="width:90px" :placeholder="g.is_variant ? '0' : '+0'" />
                                 <button type="button" class="icon-btn icon-btn-danger" :title="t('common.delete')" @click="removeItem(g, ii)"><Icon name="close" :size="16" /></button>
                             </div>
                             <button type="button" class="btn btn-ghost btn-sm" :disabled="!menuItems.length" @click="addItem(g)">+ {{ t('combo.add_item') }}</button>

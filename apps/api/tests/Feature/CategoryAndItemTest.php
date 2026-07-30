@@ -95,6 +95,21 @@ class CategoryAndItemTest extends TestCase
         $this->assertFalse($item->fresh()->is_available);
     }
 
+    public function test_items_index_hides_items_of_inactive_categories(): void
+    {
+        $admin = $this->admin();
+        $active = Category::factory()->for($admin->restaurant)->create(['is_active' => true]);
+        $inactive = Category::factory()->for($admin->restaurant)->create(['is_active' => false]);
+        $visible = MenuItem::factory()->for($admin->restaurant)->for($active)->create();
+        $hidden = MenuItem::factory()->for($admin->restaurant)->for($inactive)->create();
+
+        $this->actingAs($admin)->getJson('/api/dashboard/items')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $visible->id)
+            ->assertJsonMissing(['id' => $hidden->id]);
+    }
+
     public function test_deleted_item_is_soft_deleted(): void
     {
         $admin = $this->admin();

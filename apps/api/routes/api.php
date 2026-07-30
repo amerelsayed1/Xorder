@@ -5,6 +5,7 @@ use App\Http\Controllers\Admin\InsightsController as AdminInsightsController;
 use App\Http\Controllers\Admin\LandingContentController as AdminLandingContentController;
 use App\Http\Controllers\Admin\LeadController as AdminLeadController;
 use App\Http\Controllers\Admin\PlanController as AdminPlanController;
+use App\Http\Controllers\Admin\PlatformUserController as AdminPlatformUserController;
 use App\Http\Controllers\Admin\RestaurantAdminController as AdminRestaurantAdminController;
 use App\Http\Controllers\Admin\RestaurantController as AdminRestaurantController;
 use App\Http\Controllers\Admin\RestaurantQrController as AdminQrController;
@@ -59,51 +60,86 @@ Route::prefix('auth')->group(function () {
     Route::middleware('auth:jwt')->group(function () {
         Route::post('logout', [AuthController::class, 'logout']);
         Route::get('me', [AuthController::class, 'me']);
+        // Self-service password change for any signed-in user (dashboard profile).
+        Route::post('change-password', [AuthController::class, 'changePassword'])
+            ->middleware('throttle:6,1');
     });
 });
 
 /*
 |--------------------------------------------------------------------------
-| Super Admin  (requires SUPER_ADMIN)
+| Super Admin panel  (requires an active platform role)
 |--------------------------------------------------------------------------
+| The outer gate admits any platform staff role; each section is then gated by
+| a fine-grained `can:<capability>` ability (see App\Enums\Capability and
+| RoleEnum::capabilities()). SUPER_ADMIN bypasses every ability via Gate::before.
 */
 Route::prefix('admin')
-    ->middleware(['auth:jwt', 'role:SUPER_ADMIN'])
+    ->middleware(['auth:jwt', 'role:SUPER_ADMIN,ADMIN,MODERATOR,SALES,SUPPORT'])
     ->group(function () {
-        Route::get('insights', [AdminInsightsController::class, 'index']);
-        Route::get('restaurants', [AdminRestaurantController::class, 'index']);
-        Route::get('restaurants/stats', [AdminRestaurantController::class, 'stats']);
-        Route::post('restaurants', [AdminRestaurantController::class, 'store']);
-        Route::get('restaurants/{restaurant}', [AdminRestaurantController::class, 'show']);
-        Route::put('restaurants/{restaurant}', [AdminRestaurantController::class, 'update']);
-        Route::delete('restaurants/{restaurant}', [AdminRestaurantController::class, 'destroy']);
-        Route::patch('restaurants/{restaurant}/status', [RestaurantStatusController::class, 'update']);
-        Route::patch('restaurants/{restaurant}/subscription', [SubscriptionController::class, 'update']);
-        Route::patch('restaurants/{restaurant}/admin', [AdminRestaurantAdminController::class, 'update']);
-        Route::post('restaurants/{restaurant}/admin/reset-password', [AdminRestaurantAdminController::class, 'resetPassword'])
-            ->middleware('throttle:10,1');
-        Route::get('restaurants/{restaurant}/qr', [AdminQrController::class, 'show']);
-        Route::get('restaurants/{restaurant}/qr/download', [AdminQrController::class, 'download']);
+        Route::middleware('can:insights.view')->group(function () {
+            Route::get('insights', [AdminInsightsController::class, 'index']);
+        });
+
+        // Restaurants — reads vs writes split by capability.
+        Route::middleware('can:restaurants.view')->group(function () {
+            Route::get('restaurants', [AdminRestaurantController::class, 'index']);
+            Route::get('restaurants/stats', [AdminRestaurantController::class, 'stats']);
+            Route::get('restaurants/{restaurant}', [AdminRestaurantController::class, 'show']);
+            Route::get('restaurants/{restaurant}/qr', [AdminQrController::class, 'show']);
+            Route::get('restaurants/{restaurant}/qr/download', [AdminQrController::class, 'download']);
+        });
+        Route::middleware('can:restaurants.manage')->group(function () {
+            Route::post('restaurants', [AdminRestaurantController::class, 'store']);
+            Route::put('restaurants/{restaurant}', [AdminRestaurantController::class, 'update']);
+            Route::delete('restaurants/{restaurant}', [AdminRestaurantController::class, 'destroy']);
+            Route::patch('restaurants/{restaurant}/status', [RestaurantStatusController::class, 'update']);
+            Route::patch('restaurants/{restaurant}/admin', [AdminRestaurantAdminController::class, 'update']);
+            Route::post('restaurants/{restaurant}/admin/reset-password', [AdminRestaurantAdminController::class, 'resetPassword'])
+                ->middleware('throttle:10,1');
+        });
+        Route::middleware('can:subscriptions.manage')->group(function () {
+            Route::patch('restaurants/{restaurant}/subscription', [SubscriptionController::class, 'update']);
+        });
+
+        // Platform staff users + role assignment (SUPER_ADMIN only).
+        Route::middleware('can:platform_users.manage')->group(function () {
+            Route::get('users', [AdminPlatformUserController::class, 'index']);
+            Route::post('users', [AdminPlatformUserController::class, 'store']);
+            Route::get('users/{user}', [AdminPlatformUserController::class, 'show']);
+            Route::put('users/{user}', [AdminPlatformUserController::class, 'update']);
+            Route::delete('users/{user}', [AdminPlatformUserController::class, 'destroy']);
+            Route::post('users/{user}/reset-password', [AdminPlatformUserController::class, 'resetPassword'])
+                ->middleware('throttle:10,1');
+        });
 
         // Subscription plans catalog
-        Route::get('plans', [AdminPlanController::class, 'index']);
-        Route::post('plans', [AdminPlanController::class, 'store']);
-        Route::get('plans/{plan}', [AdminPlanController::class, 'show']);
-        Route::put('plans/{plan}', [AdminPlanController::class, 'update']);
-        Route::delete('plans/{plan}', [AdminPlanController::class, 'destroy']);
+        Route::middleware('can:plans.manage')->group(function () {
+            Route::get('plans', [AdminPlanController::class, 'index']);
+            Route::post('plans', [AdminPlanController::class, 'store']);
+            Route::get('plans/{plan}', [AdminPlanController::class, 'show']);
+            Route::put('plans/{plan}', [AdminPlanController::class, 'update']);
+            Route::delete('plans/{plan}', [AdminPlanController::class, 'destroy']);
+        });
 
         // Landing page content (CMS)
-        Route::get('landing-content', [AdminLandingContentController::class, 'show']);
-        Route::put('landing-content', [AdminLandingContentController::class, 'update']);
+        Route::middleware('can:landing.manage')->group(function () {
+            Route::get('landing-content', [AdminLandingContentController::class, 'show']);
+            Route::put('landing-content', [AdminLandingContentController::class, 'update']);
+        });
 
         // Landing page leads (sales inbox)
-        Route::get('leads', [AdminLeadController::class, 'index']);
-        Route::get('leads/export', [AdminLeadController::class, 'export']);
-        Route::patch('leads/{lead}', [AdminLeadController::class, 'update']);
+        Route::middleware('can:leads.manage')->group(function () {
+            Route::get('leads', [AdminLeadController::class, 'index']);
+            Route::get('leads/export', [AdminLeadController::class, 'export']);
+            Route::patch('leads/{lead}', [AdminLeadController::class, 'update']);
+        });
 
         // Audit trail — read-only activity log across all tenants.
-        Route::get('audit-logs', [AdminAuditLogController::class, 'index']);
-        Route::get('audit-logs/filters', [AdminAuditLogController::class, 'filters']);
+        Route::middleware('can:audit.view')->group(function () {
+            Route::get('audit-logs', [AdminAuditLogController::class, 'index']);
+            Route::get('audit-logs/filters', [AdminAuditLogController::class, 'filters']);
+        });
     });
 
 /*

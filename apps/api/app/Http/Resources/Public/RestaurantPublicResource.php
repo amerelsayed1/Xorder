@@ -56,6 +56,7 @@ class RestaurantPublicResource extends JsonResource
             'social_links' => (object) $this->publicSocialLinks(),
             'brand_color' => $this->brand_color,
             'secondary_color' => $this->secondary_color,
+            'menu_layout' => $this->menu_layout?->value ?? 'photo',
             'default_language' => $this->default_language->value,
             'bilingual' => $this->bilingual,
             'currency' => $this->currency->value,

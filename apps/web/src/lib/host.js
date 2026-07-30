@@ -29,12 +29,6 @@ export function restaurantUrl(slug, path = '/') {
     return `${origin(`${slug}.${rootDomain}`)}${path}`
 }
 
-// The public menu lives on the ROOT domain (e.g. xorder.io/r/{slug}), never on
-// the admin or a restaurant subdomain. Used for slug previews and public links.
-export function publicOrigin() {
-    return origin(rootDomain)
-}
-
 // Each menu is served on its own subdomain ({slug}.xorder.io/menu), matching
 // the backend Restaurant::publicUrl(). This holds in local dev too — *.localhost
 // resolves and the backend runs with MENU_DOMAIN set (e.g. demo.localhost:8080).

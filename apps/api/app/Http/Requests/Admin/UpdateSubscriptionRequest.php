@@ -10,7 +10,7 @@ class UpdateSubscriptionRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return $this->user()?->isSuperAdmin() ?? false;
+        return $this->user()?->can('subscriptions.manage') ?? false;
     }
 
     public function rules(): array

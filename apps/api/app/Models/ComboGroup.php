@@ -16,6 +16,7 @@ class ComboGroup extends Model
         'name_ar',
         'name_en',
         'max_select',
+        'is_variant',
         'sort_order',
     ];
 
@@ -23,6 +24,7 @@ class ComboGroup extends Model
     {
         return [
             'max_select' => 'integer',
+            'is_variant' => 'boolean',
             'sort_order' => 'integer',
         ];
     }

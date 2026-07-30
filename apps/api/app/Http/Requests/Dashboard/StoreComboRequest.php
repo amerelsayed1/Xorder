@@ -30,6 +30,7 @@ class StoreComboRequest extends FormRequest
             'groups.*.name_en' => ['nullable', 'string', 'max:150'],
             'groups.*.name_ar' => ['nullable', 'string', 'max:150'],
             'groups.*.max_select' => ['sometimes', 'integer', 'min:1', 'max:50'],
+            'groups.*.is_variant' => ['sometimes', 'boolean'],
             'groups.*.items' => ['sometimes', 'array', 'max:50'],
             // each chosen item must belong to THIS restaurant.
             'groups.*.items.*.menu_item_id' => [

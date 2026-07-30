@@ -166,6 +166,9 @@ const priceOf = (section, item) => {
                                 </strong>
                             </div>
                             <p>{{ localize(item, 'description') }}</p>
+                            <!-- Image-less themes hide the image-wrap where the availability
+                                 badge normally lives, so surface it as inline text there. -->
+                            <span v-if="item.is_available === false" class="text-only-badge">{{ t('item_unavailable') }}</span>
                             <div v-if="item.is_available !== false && orderingEnabled" class="card-action" @click.stop>
                                 <!-- Once the item is in the cart, the add button becomes a
                                      quantity stepper so diners can adjust it without opening
@@ -194,6 +197,9 @@ const priceOf = (section, item) => {
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true">
                                         <path d="M12 5v14M5 12h14" />
                                     </svg>
+                                    <!-- Label shown only in the text-list (printed-menu) theme; the
+                                         icon-only round button keeps its shape in the other layouts. -->
+                                    <span class="add-label">{{ t('add') }}</span>
                                 </button>
                             </div>
                         </div>

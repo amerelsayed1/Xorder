@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Auth;
 
 use App\Enums\UserStatus;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Auth\ChangePasswordRequest;
 use App\Http\Requests\Auth\LoginRequest;
 use App\Http\Resources\UserResource;
 use App\Models\Restaurant;
@@ -133,5 +134,37 @@ class AuthController extends Controller
         $user = $request->user()->loadMissing('restaurant.features');
 
         return response()->json(['data' => UserResource::make($user)]);
+    }
+
+    /**
+     * Self-service password change for the signed-in user. Stamping
+     * password_changed_at invalidates every token issued before now — including
+     * this session's — so a fresh token is minted and returned to keep the
+     * current device signed in while any other device is logged out.
+     */
+    public function changePassword(ChangePasswordRequest $request): JsonResponse
+    {
+        $user = $request->user();
+
+        $user->forceFill([
+            'password' => $request->input('password'), // hashed by the 'hashed' cast
+            'password_changed_at' => now(),
+        ])->save();
+
+        // The password change is redacted from audit diffs, so record it plainly.
+        AuditLogger::record('auth.password_changed', [
+            'actor' => $user,
+            'auditable' => $user,
+            'description' => 'Changed their password',
+        ]);
+
+        $token = Jwt::issue($user);
+
+        return response()->json([
+            'token' => $token,
+            'token_type' => 'Bearer',
+            'expires_in' => (int) config('jwt.ttl') * 60,
+            'message' => __('xorder.messages.password_changed'),
+        ]);
     }
 }

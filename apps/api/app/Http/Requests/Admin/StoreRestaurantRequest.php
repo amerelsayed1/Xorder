@@ -4,6 +4,7 @@ namespace App\Http\Requests\Admin;
 
 use App\Enums\CurrencyEnum;
 use App\Enums\LanguageEnum;
+use App\Enums\MenuLayout;
 use App\Enums\OrderingMode;
 use App\Enums\RestaurantStatus;
 use App\Enums\SubscriptionStatus;
@@ -16,7 +17,7 @@ class StoreRestaurantRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return $this->user()?->isSuperAdmin() ?? false;
+        return $this->user()?->can('restaurants.manage') ?? false;
     }
 
     public function rules(): array
@@ -41,6 +42,7 @@ class StoreRestaurantRequest extends FormRequest
             'opening_hours' => ['nullable', 'string', 'max:2000'],
             'brand_color' => ['nullable', 'regex:/^#[0-9a-fA-F]{6}$/'],
             'secondary_color' => ['nullable', 'regex:/^#[0-9a-fA-F]{6}$/'],
+            'menu_layout' => ['nullable', Rule::enum(MenuLayout::class)],
             'default_language' => ['required', Rule::enum(LanguageEnum::class)],
             'bilingual' => ['nullable', 'boolean'],
             'currency' => ['required', Rule::enum(CurrencyEnum::class)],

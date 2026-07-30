@@ -2,12 +2,15 @@
 
 namespace App\Providers;
 
+use App\Enums\Capability;
+use App\Enums\RoleEnum;
 use App\Enums\UserStatus;
 use App\Models\User;
 use App\Support\Jwt;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Str;
@@ -29,6 +32,26 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->registerJwtGuard();
         $this->registerRateLimiters();
+        $this->registerGates();
+    }
+
+    /**
+     * Capability gates backing the `can:<capability>` route middleware on the
+     * admin panel. SUPER_ADMIN short-circuits to "allow everything"; every other
+     * platform role is granted exactly the capabilities its RoleEnum lists. The
+     * matrix lives in RoleEnum::capabilities() (mirrored, UX-only, on the front
+     * end in packages/api-client/src/auth.js).
+     */
+    private function registerGates(): void
+    {
+        Gate::before(fn (User $user) => $user->role === RoleEnum::SUPER_ADMIN ? true : null);
+
+        foreach (Capability::cases() as $capability) {
+            Gate::define(
+                $capability->value,
+                fn (User $user) => in_array($capability->value, $user->role->capabilities(), true),
+            );
+        }
     }
 
     /**

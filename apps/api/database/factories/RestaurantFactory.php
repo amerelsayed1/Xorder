@@ -4,6 +4,7 @@ namespace Database\Factories;
 
 use App\Enums\Feature;
 use App\Enums\LanguageEnum;
+use App\Enums\MenuLayout;
 use App\Enums\OrderingMode;
 use App\Enums\RestaurantStatus;
 use App\Enums\SubscriptionStatus;
@@ -31,6 +32,7 @@ class RestaurantFactory extends Factory
             'whatsapp_number' => '+2010'.fake()->numerify('########'),
             'address' => fake()->address(),
             'brand_color' => fake()->hexColor(),
+            'menu_layout' => MenuLayout::PHOTO,
             'default_language' => LanguageEnum::AR,
             'ordering_mode' => OrderingMode::WHATSAPP,
             'status' => RestaurantStatus::ACTIVE,

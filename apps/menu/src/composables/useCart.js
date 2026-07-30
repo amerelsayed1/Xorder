@@ -102,18 +102,23 @@ export function useCart(slug = '') {
             })
         }
 
-        let price = base + addons
-
         if (kind === 'combo' && item.groups) {
             item.groups.forEach((g, gi) => {
-                selectedIndexes(groups[gi]).forEach((oi) => {
+                const picked = selectedIndexes(groups[gi])
+                if (g.is_variant) {
+                    // Size/portion selector: the chosen item's price is the price.
+                    const opt = (g.items || [])[picked[0]]
+                    if (opt) base = amount(opt.extra_price)
+                    return
+                }
+                picked.forEach((oi) => {
                     const opt = (g.items || [])[oi]
-                    price += amount(opt?.extra_price)
+                    addons += amount(opt?.extra_price)
                 })
             })
         }
 
-        return price
+        return base + addons
     }
 
     return {

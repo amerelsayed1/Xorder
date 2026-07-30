@@ -87,10 +87,15 @@ class ComboController extends Controller
         ComboGroup::where('combo_id', $combo->id)->delete();
 
         foreach (array_values($groups) as $gi => $g) {
+            // A variant (size/portion) group is single-select — the chosen item
+            // sets the combo price, so picking two makes no sense.
+            $isVariant = (bool) ($g['is_variant'] ?? false);
+
             $group = $combo->groups()->create([
                 'name_en' => $g['name_en'] ?? null,
                 'name_ar' => $g['name_ar'] ?? null,
-                'max_select' => $g['max_select'] ?? 1,
+                'max_select' => $isVariant ? 1 : ($g['max_select'] ?? 1),
+                'is_variant' => $isVariant,
                 'sort_order' => $gi,
             ]);
 

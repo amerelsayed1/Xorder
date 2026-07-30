@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Enums\CurrencyEnum;
 use App\Enums\Feature;
 use App\Enums\LanguageEnum;
+use App\Enums\MenuLayout;
 use App\Enums\OrderingMode;
 use App\Enums\RestaurantStatus;
 use App\Enums\SubscriptionStatus;
@@ -56,6 +57,7 @@ class Restaurant extends Model
         'social_links',
         'brand_color',
         'secondary_color',
+        'menu_layout',
         'default_language',
         'bilingual',
         'currency',
@@ -84,6 +86,7 @@ class Restaurant extends Model
             'longitude' => 'decimal:7',
             'bilingual' => 'boolean',
             'currency' => CurrencyEnum::class,
+            'menu_layout' => MenuLayout::class,
             'ordering_mode' => OrderingMode::class,
             'status' => RestaurantStatus::class,
             'subscription_status' => SubscriptionStatus::class,

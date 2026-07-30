@@ -116,15 +116,57 @@ async function remove(c) {
         await load()
     } catch (err) { alert(err.response?.data?.message || t('common.delete_failed')) }
 }
+// Persist the current row order (display_order = array position) to the API.
+// The local array is already in the desired order, so this is optimistic:
+// on failure we reload to snap back to the server's truth.
+async function persistOrder() {
+    const order = rows.value.map((c, idx) => ({ id: c.id, display_order: idx }))
+    try {
+        await ensureCsrf()
+        await api.patch('api/dashboard/categories/reorder', { order })
+    } catch (err) {
+        alert(err.response?.data?.message || t('category.reorder_failed'))
+        await load()
+    }
+}
 async function move(index, dir) {
     const target = index + dir
     if (target < 0 || target >= rows.value.length) return
-    const a = rows.value[index], b = rows.value[target]
-    await ensureCsrf()
-    await api.patch('api/dashboard/categories/reorder', {
-        order: [{ id: a.id, display_order: target }, { id: b.id, display_order: index }],
-    })
-    await load()
+    const arr = rows.value.slice()
+    ;[arr[index], arr[target]] = [arr[target], arr[index]]
+    rows.value = arr
+    await persistOrder()
+}
+
+// --- Drag-and-drop reordering (grab the handle) ---
+const dragIndex = ref(null)   // row being dragged
+const overIndex = ref(null)   // row currently hovered as drop target
+const dragReady = ref(false)  // only allow drag when initiated from the handle
+function onDragStart(i, ev) {
+    if (auth.isReadOnly) return
+    dragIndex.value = i
+    ev.dataTransfer.effectAllowed = 'move'
+    // Firefox requires data to be set for the drag to fire.
+    ev.dataTransfer.setData('text/plain', String(i))
+}
+function onDragOver(i) {
+    if (dragIndex.value === null) return
+    overIndex.value = i
+}
+function onDrop(i) {
+    const from = dragIndex.value
+    resetDrag()
+    if (from === null || from === i) return
+    const arr = rows.value.slice()
+    const [moved] = arr.splice(from, 1)
+    arr.splice(i, 0, moved)
+    rows.value = arr
+    persistOrder()
+}
+function resetDrag() {
+    dragIndex.value = null
+    overIndex.value = null
+    dragReady.value = false
 }
 
 const categoryName = (c) => pickLocalized(c, 'name', locale.value)
@@ -161,8 +203,18 @@ const categoryAltName = (c) => locale.value === 'ar' ? (c.name_en || '') : (c.na
                     <span>{{ t('common.select_all') }}</span>
                 </label>
             <ul>
-                <li v-for="(c, i) in rows" :key="c.id" class="flex items-center gap-3 px-5 py-3 border-t first:border-t-0" :class="{ 'row-selected': selected.has(c.id) }" style="border-color:var(--line)">
+                <li v-for="(c, i) in rows" :key="c.id"
+                    class="flex items-center gap-3 px-5 py-3 border-t first:border-t-0"
+                    :class="{ 'row-selected': selected.has(c.id), 'row-dragging': dragIndex === i, 'row-drop': overIndex === i && dragIndex !== null && dragIndex !== i }"
+                    style="border-color:var(--line)"
+                    :draggable="!auth.isReadOnly && dragReady"
+                    @dragstart="onDragStart(i, $event)"
+                    @dragover.prevent="onDragOver(i)"
+                    @drop.prevent="onDrop(i)"
+                    @dragend="resetDrag">
                     <input v-if="!auth.isReadOnly" type="checkbox" class="row-check" :checked="selected.has(c.id)" :aria-label="categoryName(c)" @change="toggleSelect(c.id)" />
+                    <button v-if="!auth.isReadOnly" class="drag-handle" :title="t('category.drag_to_reorder')" :aria-label="t('category.drag_to_reorder')"
+                        @mousedown="dragReady = true" @touchstart.passive="dragReady = true" @mouseup="dragReady = false"><Icon name="grip" :size="16" fill /></button>
                     <span class="row-num">{{ i + 1 }}</span>
                     <div v-if="!auth.isReadOnly" class="flex flex-col">
                         <button @click="move(i, -1)" :disabled="i === 0" class="icon-btn" style="width:24px;height:18px"><Icon name="chevronUp" :size="15" /></button>
@@ -230,6 +282,23 @@ const categoryAltName = (c) => locale.value === 'ar' ? (c.name_en || '') : (c.na
     font-variant-numeric: tabular-nums;
 }
 li.row-selected { background: var(--accent-soft); }
+
+/* Drag-and-drop reordering */
+.drag-handle {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 24px;
+    height: 28px;
+    border-radius: 7px;
+    color: var(--muted);
+    cursor: grab;
+    touch-action: none;
+}
+.drag-handle:hover { color: var(--ink); background: var(--accent-soft); }
+.drag-handle:active { cursor: grabbing; }
+li.row-dragging { opacity: .5; }
+li.row-drop { box-shadow: inset 0 2px 0 0 var(--accent); }
 
 /* Sticky bar that surfaces bulk actions for the current selection. */
 .bulk-bar {

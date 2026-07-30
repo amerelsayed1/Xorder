@@ -108,6 +108,18 @@ onUnmounted(() => {
     document.body.style.overflow = ''
 })
 
+// Menu presentation theme: 'photo' (default image cards), 'text-grid'
+// (image-less cards, same grid), or 'text-list' (compact rows). Driven
+// per-restaurant by the API's menu_layout; a ?layout= query param overrides it
+// for previewing the themes before the dashboard control ships.
+const LAYOUTS = ['photo', 'text-grid', 'text-list']
+const layoutOverride = new URLSearchParams(window.location.search).get('layout')
+const menuLayout = computed(() => {
+    if (LAYOUTS.includes(layoutOverride)) return layoutOverride
+    const l = restaurant.value?.menu_layout
+    return LAYOUTS.includes(l) ? l : 'photo'
+})
+
 const accent = computed(() => restaurant.value?.brand_color || '#f59e0b')
 // Modals (ItemModal, CartDrawer, …) render via <Teleport to="body">, outside
 // .site-shell where --accent is set — so they'd fall back to the default colour.
@@ -314,7 +326,7 @@ function updateUserField(field, value) {
 </script>
 
 <template>
-    <div :style="{ '--accent': accent, '--acc': accent }" class="site-shell">
+    <div :style="{ '--accent': accent, '--acc': accent }" :data-layout="menuLayout" class="site-shell">
         <MenuSkeleton v-if="loading" />
 
         <div v-else-if="error || unavailable" class="min-h-screen grid place-items-center text-center px-6">

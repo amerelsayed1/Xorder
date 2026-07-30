@@ -21,6 +21,9 @@ class MenuItemController extends Controller
     public function index(Request $request): JsonResponse
     {
         $items = MenuItem::query()
+            // Items of an inactive category are hidden from the management view,
+            // mirroring the public menu (see PublicMenuService).
+            ->whereHas('category', fn ($q) => $q->where('is_active', true))
             ->when($request->filled('category_id'), fn ($q) => $q->where('category_id', $request->integer('category_id')))
             ->when($request->filled('availability'), function ($q) use ($request) {
                 $q->where('is_available', $request->string('availability') === 'available');

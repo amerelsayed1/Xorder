@@ -10,7 +10,7 @@ class UpdateLeadRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        // Route is already gated by auth:sanctum + role:SUPER_ADMIN.
+        // Route is already gated by auth:jwt + can:leads.manage.
         return true;
     }
 

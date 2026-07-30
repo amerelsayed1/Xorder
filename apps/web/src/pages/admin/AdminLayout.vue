@@ -1,22 +1,32 @@
 <script setup>
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useAuth } from '@xorder/api-client/auth.js'
 import SakaiLayout from '@xorder/ui/SakaiLayout.vue'
 
 const { t } = useI18n()
-const role = computed(() => t('roles.super_admin'))
+const auth = useAuth()
 
-const nav = [
-    { to: { name: 'admin.dashboard' }, labelKey: 'nav.dashboard', icon: 'pi pi-th-large', end: true },
-    { to: { name: 'admin.insights' }, labelKey: 'nav.insights', icon: 'pi pi-chart-bar' },
-    { to: { name: 'admin.restaurants' }, labelKey: 'nav.restaurants', icon: 'pi pi-building' },
-    { to: { name: 'admin.plans' }, labelKey: 'nav.plans', icon: 'pi pi-tags' },
-    { to: { name: 'admin.leads' }, labelKey: 'nav.leads', icon: 'pi pi-inbox' },
-    { to: { name: 'admin.audit' }, labelKey: 'nav.audit', icon: 'pi pi-history' },
+// Show the signed-in user's actual platform role (Super Admin / Admin /
+// Moderator / Sales / Support).
+const role = computed(() => t(`roles.${(auth.platformRole || 'super_admin').toLowerCase()}`))
+
+// Each entry carries the capability its destination needs; the nav is filtered
+// so a role only sees the sections it can open (mirrors the router + API gates).
+// A `null` cap means "always visible" (e.g. the dashboard home).
+const allNav = [
+    { to: { name: 'admin.dashboard' }, labelKey: 'nav.dashboard', icon: 'pi pi-th-large', end: true, cap: null },
+    { to: { name: 'admin.insights' }, labelKey: 'nav.insights', icon: 'pi pi-chart-bar', cap: 'insights.view' },
+    { to: { name: 'admin.restaurants' }, labelKey: 'nav.restaurants', icon: 'pi pi-building', cap: 'restaurants.view' },
+    { to: { name: 'admin.users' }, labelKey: 'nav.users', icon: 'pi pi-users', cap: 'platform_users.manage' },
+    { to: { name: 'admin.plans' }, labelKey: 'nav.plans', icon: 'pi pi-tags', cap: 'plans.manage' },
+    { to: { name: 'admin.leads' }, labelKey: 'nav.leads', icon: 'pi pi-inbox', cap: 'leads.manage' },
+    { to: { name: 'admin.audit' }, labelKey: 'nav.audit', icon: 'pi pi-history', cap: 'audit.view' },
     {
         key: 'settings',
         labelKey: 'nav.settings',
         icon: 'pi pi-cog',
+        cap: 'landing.manage',
         children: [
             { to: { name: 'admin.settings.seo' }, labelKey: 'nav.settings_seo', icon: 'pi pi-search' },
             { to: { name: 'admin.settings.hero' }, labelKey: 'nav.settings_hero', icon: 'pi pi-star' },
@@ -30,6 +40,8 @@ const nav = [
         ],
     },
 ]
+
+const nav = computed(() => allNav.filter((item) => item.cap == null || auth.can(item.cap)))
 </script>
 
 <template>

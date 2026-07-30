@@ -27,6 +27,7 @@ class ComboPublicResource extends JsonResource
                 'name_en' => $g->name_en,
                 'name_ar' => $g->name_ar,
                 'max_select' => $g->max_select,
+                'is_variant' => $g->is_variant,
                 'items' => $g->items->map(fn ($it) => [
                     'name_en' => $it->menuItem?->name_en,
                     'name_ar' => $it->menuItem?->name_ar,

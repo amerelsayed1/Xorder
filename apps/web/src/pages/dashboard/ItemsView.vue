@@ -46,7 +46,13 @@ async function load() {
             api.get('api/dashboard/categories'),
         ]))
         items.value = it.data.data
-        categories.value = cats.data.data
+        // Only active categories are manageable here — items of inactive
+        // categories are hidden (backend filters them too), so an inactive
+        // category has nothing to show and is dropped from the chips/count.
+        categories.value = cats.data.data.filter(c => c.is_active)
+        // No "All" chip — default to (and keep) a real category selection.
+        if (!categories.value.some(c => c.id === filterCat.value))
+            filterCat.value = categories.value[0]?.id ?? ''
         clearSelection()
     } catch (e) {
         console.error('Failed to load menu items', e)
@@ -253,7 +259,6 @@ async function submitImport() {
                 <input v-model="search" :placeholder="t('common.search')" class="input" style="padding-inline-start:38px" />
             </div>
             <div class="cat-filter">
-                <button class="cat-chip" :class="{ active: filterCat === '' }" @click="filterCat = ''">{{ t('common.all') }}</button>
                 <button v-for="c in categories" :key="c.id" class="cat-chip" :class="{ active: filterCat === c.id }" @click="filterCat = c.id">
                     {{ catName(c.id) }}
                 </button>

@@ -17,11 +17,6 @@ function readConfig() {
     return (typeof window !== 'undefined' && window.__FIREBASE_CONFIG__) || {}
 }
 
-/** True once a GA4 measurement id is present in the injected config. */
-export function analyticsConfigured() {
-    return Boolean(readConfig().measurementId)
-}
-
 // Resolves to the Firebase Analytics instance, or null if it can't be used
 // (no config, unsupported browser, or the SDK failed to load). Memoised.
 function ensureAnalytics() {

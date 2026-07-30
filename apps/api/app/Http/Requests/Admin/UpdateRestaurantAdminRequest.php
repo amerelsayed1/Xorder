@@ -10,7 +10,7 @@ class UpdateRestaurantAdminRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return $this->user()?->isSuperAdmin() ?? false;
+        return $this->user()?->can('restaurants.manage') ?? false;
     }
 
     public function rules(): array

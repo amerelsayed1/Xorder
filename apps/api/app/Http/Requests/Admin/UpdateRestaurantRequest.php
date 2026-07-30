@@ -4,6 +4,7 @@ namespace App\Http\Requests\Admin;
 
 use App\Enums\CurrencyEnum;
 use App\Enums\LanguageEnum;
+use App\Enums\MenuLayout;
 use App\Enums\OrderingMode;
 use App\Rules\MobileNumber;
 use Illuminate\Foundation\Http\FormRequest;
@@ -13,7 +14,7 @@ class UpdateRestaurantRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return $this->user()?->isSuperAdmin() ?? false;
+        return $this->user()?->can('restaurants.manage') ?? false;
     }
 
     public function rules(): array
@@ -50,6 +51,7 @@ class UpdateRestaurantRequest extends FormRequest
             'longitude' => ['nullable', 'numeric', 'between:-180,180', 'required_with:latitude'],
             'brand_color' => ['nullable', 'regex:/^#[0-9a-fA-F]{6}$/'],
             'secondary_color' => ['nullable', 'regex:/^#[0-9a-fA-F]{6}$/'],
+            'menu_layout' => ['sometimes', 'required', Rule::enum(MenuLayout::class)],
             'default_language' => ['sometimes', 'required', Rule::enum(LanguageEnum::class)],
             'bilingual' => ['sometimes', 'boolean'],
             'currency' => ['sometimes', 'required', Rule::enum(CurrencyEnum::class)],

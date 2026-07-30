@@ -2621,3 +2621,195 @@ html[dir='ltr'] .side-panel {
     border-bottom-color: color-mix(in srgb, #b42318 30%, white);
     font-weight: 500;
 }
+
+/* ============================================================
+   Menu layout themes  ·  [data-layout] on .site-shell (App.vue)
+   ------------------------------------------------------------
+   The default 'photo' layout is everything above. These two
+   image-less themes are driven per-restaurant by the API's
+   menu_layout and overridable with ?layout= for previewing.
+   Placed last so they win over the default + mobile rules.
+   ============================================================ */
+
+/* Both text themes drop the photo area entirely. */
+[data-layout='text-grid'] .product-image-wrap,
+[data-layout='text-list'] .product-image-wrap {
+    display: none;
+}
+
+/* The add-button label and the inline availability note only exist for the
+   text themes; hidden everywhere by default. */
+.add-label { display: none; }
+.text-only-badge { display: none; }
+
+/* --- text-grid: the same card grid, minus the photos --- */
+[data-layout='text-grid'] .product-body {
+    padding: 16px 18px 18px;
+}
+/* No photo above, so the description no longer needs a reserved
+   two-line gap holding the card height uniform. */
+[data-layout='text-grid'] .product-body p {
+    min-height: 0;
+}
+[data-layout='text-grid'] .text-only-badge {
+    display: inline-block;
+    margin-top: 4px;
+    font-size: 12px;
+    font-weight: 700;
+    color: #b42318;
+}
+
+/* ============================================================
+   text-list: classic printed-menu look — dot leaders, centred
+   category headers, a rectangular add button, and a short rule
+   between items. Every accent derives from the tenant brand
+   colour (--accent), so a maroon brand renders maroon, amber
+   renders amber, etc.
+   ============================================================ */
+
+/* Single column, centred and width-capped so it reads like a menu
+   card instead of stretching across a wide desktop. */
+[data-layout='text-list'] .product-grid,
+[data-layout='text-list'] .product-grid:has(> .product-card:only-child) {
+    grid-template-columns: 1fr;
+    gap: 0;
+    max-width: 820px;
+    margin-inline: auto;
+}
+
+/* Centred category headers; the item count is dropped (printed menus
+   don't show it). */
+[data-layout='text-list'] .section-heading {
+    justify-content: center;
+    text-align: center;
+    margin-bottom: 8px;
+}
+[data-layout='text-list'] .section-heading > span { display: none; }
+[data-layout='text-list'] .section-heading h2 { font-size: 26px; }
+
+/* Flat rows — no card chrome. */
+[data-layout='text-list'] .product-card {
+    position: relative;
+    flex-direction: row;
+    align-items: stretch;
+    gap: 0;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    background: transparent;
+    padding: 22px 4px;
+    overflow: visible;
+}
+/* Short centred rule between items (not after the last). */
+[data-layout='text-list'] .category-section .product-card:not(:last-child)::after {
+    content: "";
+    position: absolute;
+    inset-inline-start: 50%;
+    bottom: 0;
+    width: 46px;
+    height: 2px;
+    transform: translateX(-50%);
+    border-radius: 2px;
+    background: color-mix(in srgb, var(--accent) 55%, transparent);
+}
+[data-layout='text-list'] .product-card:hover,
+[data-layout='text-list'] .product-card:focus-visible {
+    transform: none;
+    box-shadow: none;
+    border: 0;
+    background: color-mix(in srgb, var(--accent) 5%, transparent);
+}
+
+/* Body is a 2-col grid: the text stack on the reading side, the add
+   control parked in its own column, vertically centred over the item. */
+[data-layout='text-list'] .product-body {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: 28px;
+    align-items: center;
+    padding: 0;
+}
+[data-layout='text-list'] .product-title-row {
+    grid-column: 1;
+    grid-row: 1;
+    align-items: baseline;
+    gap: 0;
+}
+[data-layout='text-list'] .product-title-row h3 {
+    grid-column: 1;
+    min-width: 0;
+    order: 1;
+    font-size: 20px;
+    font-weight: 800;
+}
+/* The dot leader: a dotted line grows to fill the gap between name and
+   price and sits on the text baseline — the signature menu detail. */
+[data-layout='text-list'] .product-title-row::before {
+    content: "";
+    order: 2;
+    flex: 1 1 auto;
+    align-self: flex-end;
+    position: relative;
+    bottom: 6px;
+    margin: 0 10px;
+    border-bottom: 2px dotted color-mix(in srgb, var(--ink) 30%, transparent);
+}
+[data-layout='text-list'] .product-title-row .product-price {
+    order: 3;
+    flex: none;
+}
+[data-layout='text-list'] .product-price .new-price {
+    font-size: 19px;
+    font-weight: 800;
+    color: var(--ink);
+}
+[data-layout='text-list'] .product-body p {
+    grid-column: 1;
+    grid-row: 2;
+    min-height: 0;
+    margin: 10px 0 0;
+    font-size: 13px;
+    -webkit-line-clamp: 3;
+}
+[data-layout='text-list'] .text-only-badge {
+    grid-column: 1;
+    grid-row: 3;
+    display: inline-block;
+    margin-top: 8px;
+    font-size: 12px;
+    font-weight: 700;
+    color: #b42318;
+}
+
+/* Add control lives in its own column, centred over the whole row. */
+[data-layout='text-list'] .card-action {
+    grid-column: 2;
+    grid-row: 1 / 4;
+    align-self: center;
+    margin: 0;
+}
+/* Round + becomes a rectangular icon+label button. */
+[data-layout='text-list'] .add-button {
+    width: auto;
+    height: 46px;
+    padding: 0 20px;
+    gap: 8px;
+    border-radius: 10px;
+    align-self: center;
+    font-size: 15px;
+    font-weight: 700;
+}
+[data-layout='text-list'] .add-button .add-label { display: inline; }
+[data-layout='text-list'] .card-qty {
+    margin-top: 0;
+}
+
+@media (width <= 900px) {
+    [data-layout='text-list'] .product-grid { max-width: none; }
+    [data-layout='text-list'] .product-card { padding: 18px 2px; }
+    [data-layout='text-list'] .section-heading h2 { font-size: 22px; }
+    [data-layout='text-list'] .product-body { column-gap: 14px; }
+    [data-layout='text-list'] .product-title-row h3 { font-size: 17px; }
+    [data-layout='text-list'] .product-price .new-price { font-size: 16px; }
+    [data-layout='text-list'] .add-button { height: 42px; padding: 0 15px; font-size: 14px; }
+}

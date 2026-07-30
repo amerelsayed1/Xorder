@@ -74,4 +74,28 @@ class RestaurantAdminUpdateTest extends TestCase
             'username' => 'hacker',
         ])->assertForbidden();
     }
+
+    public function test_super_admin_can_set_the_menu_layout(): void
+    {
+        $sa = User::factory()->superAdmin()->create();
+        $r = Restaurant::factory()->create(['menu_layout' => \App\Enums\MenuLayout::PHOTO]);
+
+        $this->actingAs($sa)->putJson("/api/admin/restaurants/{$r->id}", [
+            'menu_layout' => 'text-list',
+        ])->assertOk()
+            ->assertJsonPath('data.menu_layout', 'text-list');
+
+        $this->assertSame(\App\Enums\MenuLayout::TEXT_LIST, $r->fresh()->menu_layout);
+    }
+
+    public function test_menu_layout_rejects_an_unknown_value(): void
+    {
+        $sa = User::factory()->superAdmin()->create();
+        $r = Restaurant::factory()->create();
+
+        $this->actingAs($sa)->putJson("/api/admin/restaurants/{$r->id}", [
+            'menu_layout' => 'hologram',
+        ])->assertStatus(422)
+            ->assertJsonValidationErrors('menu_layout');
+    }
 }

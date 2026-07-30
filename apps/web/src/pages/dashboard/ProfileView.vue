@@ -1,12 +1,11 @@
 <script setup>
-import { reactive, ref, computed, onMounted } from 'vue'
+import { reactive, ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import api, { ensureCsrf } from '@xorder/api-client/api.js'
 import ImageUploader from '@xorder/ui/ImageUploader.vue'
 import FormError from '@xorder/ui/FormError.vue'
 import { useMenuLang } from '../../lib/menuLang.js'
 import { collectPhoneErrors } from '../../lib/phone.js'
-import { resolveMapLink, mapsUrl } from '../../lib/mapLink.js'
 import { useAuth } from '@xorder/api-client/auth.js'
 
 const { t } = useI18n()
@@ -25,41 +24,6 @@ const errors = ref({})
 const saved = ref(false)
 const saving = ref(false)
 
-// --- Map location, entered as a Google Maps link ---
-// The owner pastes a link; we resolve it to latitude/longitude (still what the
-// menu's map + directions button consume). The link itself isn't stored.
-const mapUrl = ref('')
-const mapStatus = ref('idle') // 'idle' | 'resolving' | 'error'
-const coordsSet = computed(() => {
-    const lat = Number(form.latitude), lng = Number(form.longitude)
-    return form.latitude !== '' && form.latitude != null
-        && form.longitude !== '' && form.longitude != null
-        && Number.isFinite(lat) && Number.isFinite(lng)
-})
-const coordsPreviewUrl = computed(() => coordsSet.value ? mapsUrl(form.latitude, form.longitude) : '')
-
-async function resolveMap() {
-    const text = mapUrl.value.trim()
-    if (!text) { mapStatus.value = coordsSet.value ? 'idle' : 'idle'; return }
-    mapStatus.value = 'resolving'
-    const coords = await resolveMapLink(text)
-    if (coords) {
-        form.latitude = coords.latitude
-        form.longitude = coords.longitude
-        mapUrl.value = ''          // tidy the field; the resolved pin shows below
-        mapStatus.value = 'idle'
-        delete errors.value.latitude; delete errors.value.longitude
-    } else {
-        mapStatus.value = 'error'
-    }
-}
-
-function clearCoords() {
-    form.latitude = ''
-    form.longitude = ''
-    mapUrl.value = ''
-    mapStatus.value = 'idle'
-}
 // Ordering channels the restaurant's plan grants; the selector is capped to these.
 const orderingModeOptions = ref([])
 
@@ -102,6 +66,38 @@ async function submit() {
         errors.value = err.response?.data?.errors || {}
     } finally {
         saving.value = false
+    }
+}
+
+// --- Change password ---
+// A self-service change (separate from the profile save): verifies the current
+// password server-side and, on success, swaps in the fresh token the API
+// returns so the session keeps working. Stays enabled even for a read-only /
+// expired restaurant — locking a user out of their own password would be wrong.
+const pw = reactive({ current_password: '', password: '', password_confirmation: '' })
+const pwErrors = ref({})
+const pwSaved = ref(false)
+const pwSaving = ref(false)
+
+async function changePassword() {
+    pwErrors.value = {}
+    pwSaved.value = false
+    if (pw.password !== pw.password_confirmation) {
+        pwErrors.value = { password_confirmation: [t('profile.password_mismatch')] }
+        return
+    }
+    pwSaving.value = true
+    try {
+        await ensureCsrf()
+        await auth.changePassword({ ...pw })
+        pwSaved.value = true
+        pw.current_password = ''
+        pw.password = ''
+        pw.password_confirmation = ''
+    } catch (err) {
+        pwErrors.value = err.response?.data?.errors || {}
+    } finally {
+        pwSaving.value = false
     }
 }
 </script>
@@ -151,36 +147,6 @@ async function submit() {
                     <FormError :errors="errors" field="minimum_order" /></label>
             </div>
 
-            <div class="block">
-                <span class="label">{{ t('restaurant.map_location') }}</span>
-                <p class="page-sub" style="margin:2px 0 8px">{{ t('restaurant.map_link_hint') }}</p>
-                <label class="block">
-                    <span class="label">{{ t('restaurant.map_link') }}</span>
-                    <input v-model="mapUrl" @change="resolveMap" @blur="resolveMap"
-                        @keydown.enter.prevent="resolveMap" type="url" class="input" dir="ltr"
-                        :placeholder="t('restaurant.map_link_placeholder')" :disabled="mapStatus === 'resolving'" />
-                </label>
-
-                <!-- Resolving spinner -->
-                <p v-if="mapStatus === 'resolving'" class="text-sm" style="margin-top:6px;color:var(--muted)">
-                    {{ t('restaurant.map_resolving') }}
-                </p>
-                <!-- Resolved / current location -->
-                <p v-else-if="coordsSet" class="text-sm" style="margin-top:6px;color:var(--accent, #1f7a3d);display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-                    <span>📍 {{ t('restaurant.map_location_set') }}</span>
-                    <span dir="ltr" style="color:var(--muted)">{{ Number(form.latitude).toFixed(6) }}, {{ Number(form.longitude).toFixed(6) }}</span>
-                    <a :href="coordsPreviewUrl" target="_blank" rel="noopener" style="color:var(--accent, #1f7a3d);text-decoration:underline">{{ t('restaurant.map_preview') }}</a>
-                    <button type="button" @click="clearCoords" style="color:var(--muted);text-decoration:underline;background:none;border:none;cursor:pointer;padding:0">{{ t('restaurant.map_clear') }}</button>
-                </p>
-                <!-- Could not resolve -->
-                <p v-else-if="mapStatus === 'error'" class="text-sm" style="margin-top:6px;color:var(--red, #dc2626)">
-                    {{ t('restaurant.map_link_invalid') }}
-                </p>
-
-                <FormError :errors="errors" field="latitude" />
-                <FormError :errors="errors" field="longitude" />
-            </div>
-
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <ImageUploader v-model="form.logo_url" folder="logos" :label="t('restaurant.logo')" :disabled="auth.isReadOnly" />
                 <ImageUploader v-model="form.cover_image_url" folder="covers" :label="t('restaurant.cover_image')" :disabled="auth.isReadOnly" />
@@ -226,6 +192,42 @@ async function submit() {
         </div>
 
         <button type="submit" :disabled="saving || auth.isReadOnly" class="btn btn-accent">{{ saving ? t('common.saving') : t('common.save') }}</button>
+    </form>
+
+    <!-- Change password — deliberately its own form (own endpoint), and not
+         disabled when the restaurant is read-only. -->
+    <form @submit.prevent="changePassword" class="space-y-5 max-w-3xl mt-8">
+        <div class="flex items-center justify-between">
+            <div>
+                <h2 class="page-title" style="font-size:1.25rem">{{ t('profile.change_password') }}</h2>
+                <p class="page-sub">{{ t('profile.change_password_sub') }}</p>
+            </div>
+            <span v-if="pwSaved" class="badge badge-green"><span class="dot"></span>{{ t('profile.password_changed') }}</span>
+        </div>
+
+        <div class="card p-6 space-y-4">
+            <label class="block">
+                <span class="label">{{ t('profile.current_password') }}</span>
+                <input v-model="pw.current_password" type="password" dir="ltr" autocomplete="current-password" class="input" />
+                <FormError :errors="pwErrors" field="current_password" />
+            </label>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <label class="block">
+                    <span class="label">{{ t('profile.new_password') }}</span>
+                    <input v-model="pw.password" type="password" dir="ltr" autocomplete="new-password" class="input" />
+                    <span class="block text-xs mt-1" style="color:var(--muted)">{{ t('profile.password_rule') }}</span>
+                    <FormError :errors="pwErrors" field="password" />
+                </label>
+                <label class="block">
+                    <span class="label">{{ t('profile.confirm_password') }}</span>
+                    <input v-model="pw.password_confirmation" type="password" dir="ltr" autocomplete="new-password" class="input" />
+                    <FormError :errors="pwErrors" field="password_confirmation" />
+                </label>
+            </div>
+        </div>
+
+        <button type="submit" :disabled="pwSaving" class="btn btn-accent">{{ pwSaving ? t('common.saving') : t('profile.change_password') }}</button>
     </form>
 </template>
 

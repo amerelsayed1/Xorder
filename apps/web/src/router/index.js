@@ -19,22 +19,26 @@ const superAdminRoutes = [
     {
         path: '/',
         component: () => import('../pages/admin/AdminLayout.vue'),
-        meta: { role: 'SUPER_ADMIN' },
+        meta: { portal: 'admin' },
         children: [
             { path: '', name: 'admin.dashboard', component: () => import('../pages/admin/DashboardView.vue') },
-            { path: 'insights', name: 'admin.insights', component: () => import('../pages/admin/InsightsView.vue') },
-            { path: 'restaurants', name: 'admin.restaurants', component: () => import('../pages/admin/RestaurantsList.vue') },
-            { path: 'restaurants/create', name: 'admin.restaurants.create', component: () => import('../pages/admin/RestaurantForm.vue') },
-            { path: 'restaurants/:id', name: 'admin.restaurants.show', component: () => import('../pages/admin/RestaurantDetails.vue') },
-            { path: 'restaurants/:id/edit', name: 'admin.restaurants.edit', component: () => import('../pages/admin/RestaurantForm.vue') },
-            { path: 'plans', name: 'admin.plans', component: () => import('../pages/admin/PlansList.vue') },
-            { path: 'plans/create', name: 'admin.plans.create', component: () => import('../pages/admin/PlanForm.vue') },
-            { path: 'plans/:id/edit', name: 'admin.plans.edit', component: () => import('../pages/admin/PlanForm.vue') },
-            { path: 'leads', name: 'admin.leads', component: () => import('../pages/admin/LeadsView.vue') },
-            { path: 'audit-logs', name: 'admin.audit', component: () => import('../pages/admin/AuditLogsView.vue') },
+            { path: 'insights', name: 'admin.insights', component: () => import('../pages/admin/InsightsView.vue'), meta: { capability: 'insights.view' } },
+            { path: 'restaurants', name: 'admin.restaurants', component: () => import('../pages/admin/RestaurantsList.vue'), meta: { capability: 'restaurants.view' } },
+            { path: 'restaurants/create', name: 'admin.restaurants.create', component: () => import('../pages/admin/RestaurantForm.vue'), meta: { capability: 'restaurants.manage' } },
+            { path: 'restaurants/:id', name: 'admin.restaurants.show', component: () => import('../pages/admin/RestaurantDetails.vue'), meta: { capability: 'restaurants.view' } },
+            { path: 'restaurants/:id/edit', name: 'admin.restaurants.edit', component: () => import('../pages/admin/RestaurantForm.vue'), meta: { capability: 'restaurants.manage' } },
+            { path: 'users', name: 'admin.users', component: () => import('../pages/admin/UsersList.vue'), meta: { capability: 'platform_users.manage' } },
+            { path: 'users/create', name: 'admin.users.create', component: () => import('../pages/admin/UserForm.vue'), meta: { capability: 'platform_users.manage' } },
+            { path: 'users/:id/edit', name: 'admin.users.edit', component: () => import('../pages/admin/UserForm.vue'), meta: { capability: 'platform_users.manage' } },
+            { path: 'plans', name: 'admin.plans', component: () => import('../pages/admin/PlansList.vue'), meta: { capability: 'plans.manage' } },
+            { path: 'plans/create', name: 'admin.plans.create', component: () => import('../pages/admin/PlanForm.vue'), meta: { capability: 'plans.manage' } },
+            { path: 'plans/:id/edit', name: 'admin.plans.edit', component: () => import('../pages/admin/PlanForm.vue'), meta: { capability: 'plans.manage' } },
+            { path: 'leads', name: 'admin.leads', component: () => import('../pages/admin/LeadsView.vue'), meta: { capability: 'leads.manage' } },
+            { path: 'audit-logs', name: 'admin.audit', component: () => import('../pages/admin/AuditLogsView.vue'), meta: { capability: 'audit.view' } },
             {
                 path: 'settings',
                 component: () => import('../pages/admin/settings/SettingsView.vue'),
+                meta: { capability: 'landing.manage' },
                 children: [
                     { path: '', redirect: { name: 'admin.settings.seo' } },
                     { path: 'seo', name: 'admin.settings.seo', component: () => import('../pages/admin/settings/SeoSettings.vue') },
@@ -66,7 +70,7 @@ const restaurantRoutes = [
     {
         path: '/admin',
         component: () => import('../pages/dashboard/DashboardLayout.vue'),
-        meta: { role: 'RESTAURANT_ADMIN' },
+        meta: { portal: 'restaurant' },
         children: [
             { path: '', name: 'dashboard.home', component: () => import('../pages/dashboard/HomeView.vue') },
             { path: 'live', name: 'dashboard.live', component: () => import('../pages/dashboard/LiveBoardView.vue') },
@@ -101,7 +105,7 @@ const router = createRouter({
 // Restaurant subdomains serve the public menu at their root ("/"), so the
 // restaurant dashboard lives at /admin.
 export function redirectToCorrectHost(auth) {
-    if (auth.isSuperAdmin) {
+    if (auth.isPlatformUser) {
         window.location.href = superAdminUrl('/')
     } else if (auth.restaurant?.slug) {
         window.location.href = restaurantUrl(auth.restaurant.slug, '/admin')
@@ -114,7 +118,7 @@ export function redirectToCorrectHost(auth) {
 // route, or null if they belong on a different subdomain.
 export function inPortalHome(auth) {
     if (isSuperAdminHost) {
-        return auth.isSuperAdmin ? { name: 'admin.dashboard' } : null
+        return auth.isPlatformUser ? { name: 'admin.dashboard' } : null
     }
     if (auth.isRestaurantAdmin && auth.restaurant?.slug === restaurantSlug) {
         return { name: 'dashboard.home' }
@@ -133,14 +137,22 @@ router.beforeEach(async (to) => {
         return false
     }
 
-    if (to.meta.role) {
+    if (to.meta.portal) {
         if (!auth.isAuthenticated) return { name: 'login', query: { redirect: to.fullPath } }
 
         // Wrong portal kind for this host, or right kind but wrong restaurant
         // subdomain → send the browser to the correct subdomain.
-        if (auth.user.role !== to.meta.role || inPortalHome(auth) === null) {
+        const home = inPortalHome(auth)
+        if (home === null) {
             redirectToCorrectHost(auth)
             return false
+        }
+
+        // In the right portal but lacking the capability this section needs →
+        // bounce to the portal home (mirrors the server's 403). The API is still
+        // the authority; this just keeps the UI from rendering a dead page.
+        if (to.meta.capability && !auth.can(to.meta.capability)) {
+            return home
         }
     }
 

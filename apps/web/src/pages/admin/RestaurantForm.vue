@@ -26,6 +26,7 @@ const form = reactive({
     phone: '', whatsapp_number: '', address: '', opening_hours: '',
     logo_url: '', cover_image_url: '',
     brand_color: '#f89a06', secondary_color: '',
+    menu_layout: 'photo',
     default_language: 'ar',
     bilingual: true,
     currency: 'EGP',
@@ -47,6 +48,8 @@ const currencies = [
     { code: 'EUR', label: 'EUR — Euro' },
     { code: 'GBP', label: 'GBP — British Pound' },
 ]
+// Public-menu presentation themes; labels resolve via t('restaurant.menu_layout_*').
+const menuLayouts = ['photo', 'text-grid', 'text-list']
 const errors = ref({})
 const saving = ref(false)
 const generatedPassword = ref('')
@@ -82,6 +85,22 @@ function chooseLang(cfg) {
 }
 function langOptionLabel(opt) {
     return t(`wizard.lang_${opt === 'ar_only' ? 'arabic_only' : opt === 'en_only' ? 'english_only' : 'bilingual'}`)
+}
+
+// Edit form binds language straight to form.bilingual + form.default_language
+// (the create wizard's langConfig ref isn't hydrated on edit). One 3-way toggle
+// drives both: single-language modes pin the default_language and turn bilingual
+// off; bilingual keeps both languages with the AR/EN switcher.
+const editLangValue = computed(() =>
+    form.bilingual ? 'bilingual' : (form.default_language === 'en' ? 'en_only' : 'ar_only'))
+function setEditLang(opt) {
+    if (opt === 'bilingual') {
+        form.bilingual = true
+        if (!form.default_language) form.default_language = 'ar'
+    } else {
+        form.bilingual = false
+        form.default_language = opt === 'en_only' ? 'en' : 'ar'
+    }
 }
 
 const branchEnabled = ref(true)
@@ -245,7 +264,9 @@ async function submitEdit() {
     try {
         await ensureCsrf()
         // Features are derived from the plan server-side — send the plan, not flags.
-        const payload = { ...form }; delete payload.admin
+        // (The edit load populates form.features with the plan's enabled keys; the
+        // update request rejects them as non-boolean, so drop them before sending.)
+        const payload = { ...form }; delete payload.admin; delete payload.features
         await api.put(`api/admin/restaurants/${route.params.id}`, payload)
         router.push({ name: 'admin.restaurants.show', params: { id: route.params.id } })
     } catch (err) {
@@ -344,6 +365,23 @@ async function submitCreate() {
                             <option v-for="c in currencies" :key="c.code" :value="c.code">{{ c.label }}</option>
                         </select>
                         <FormError :errors="errors" field="currency" /></label>
+                </div>
+                <div>
+                    <span class="label">{{ t('restaurant.menu_layout') }}</span>
+                    <select v-model="form.menu_layout" class="input mt-1.5">
+                        <option v-for="m in menuLayouts" :key="m" :value="m">{{ t('restaurant.menu_layout_' + m.replace('-', '_')) }}</option>
+                    </select>
+                    <span class="block text-xs mt-1.5" style="color:var(--muted)">{{ t('restaurant.menu_layout_hint') }}</span>
+                    <FormError :errors="errors" field="menu_layout" />
+                </div>
+                <div>
+                    <span class="label">{{ t('restaurant.language') }}</span>
+                    <div class="flex gap-2 mt-1.5 flex-wrap">
+                        <button v-for="opt in ['ar_only', 'en_only', 'bilingual']" :key="opt" type="button" @click="setEditLang(opt)"
+                            class="btn" :class="editLangValue === opt ? 'btn-dark' : 'btn-ghost'">{{ langOptionLabel(opt) }}</button>
+                    </div>
+                    <span class="block text-xs mt-1.5" style="color:var(--muted)">{{ t('restaurant.bilingual_hint') }}</span>
+                    <FormError :errors="errors" field="default_language" />
                 </div>
                 <div v-if="orderingModeOptions.length > 1">
                     <span class="label">{{ t('restaurant.ordering_mode') }}</span>
