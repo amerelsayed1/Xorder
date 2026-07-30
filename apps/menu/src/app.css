@@ -2660,11 +2660,11 @@ html[dir='ltr'] .side-panel {
 }
 
 /* ============================================================
-   text-list: classic printed-menu look — dot leaders, centred
-   category headers, a rectangular add button, and a short rule
-   between items. Every accent derives from the tenant brand
-   colour (--accent), so a maroon brand renders maroon, amber
-   renders amber, etc.
+   text-list: clean printed-menu list — centred category headers,
+   name+price row, description, then a rectangular add button, with
+   a thin hairline between items. Every accent derives from the
+   tenant brand colour (--accent), so a maroon brand renders maroon,
+   amber renders amber, etc.
    ============================================================ */
 
 /* Single column, centred and width-capped so it reads like a menu
@@ -2700,17 +2700,14 @@ html[dir='ltr'] .side-panel {
     padding: 22px 4px;
     overflow: visible;
 }
-/* Short centred rule between items (not after the last). */
+/* Thin full-width hairline between items (not after the last). */
 [data-layout='text-list'] .category-section .product-card:not(:last-child)::after {
     content: "";
     position: absolute;
-    inset-inline-start: 50%;
+    inset-inline: 0;
     bottom: 0;
-    width: 46px;
-    height: 2px;
-    transform: translateX(-50%);
-    border-radius: 2px;
-    background: color-mix(in srgb, var(--accent) 55%, transparent);
+    height: 1px;
+    background: color-mix(in srgb, var(--accent) 30%, transparent);
 }
 [data-layout='text-list'] .product-card:hover,
 [data-layout='text-list'] .product-card:focus-visible {
@@ -2720,42 +2717,23 @@ html[dir='ltr'] .side-panel {
     background: color-mix(in srgb, var(--accent) 5%, transparent);
 }
 
-/* Body is a 2-col grid: the text stack on the reading side, the add
-   control parked in its own column, vertically centred over the item. */
+/* Body is a simple vertical stack: the name+price row, the description,
+   then the add button beneath it. */
 [data-layout='text-list'] .product-body {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    column-gap: 28px;
-    align-items: center;
+    display: flex;
+    flex-direction: column;
     padding: 0;
 }
 [data-layout='text-list'] .product-title-row {
-    grid-column: 1;
-    grid-row: 1;
     align-items: baseline;
-    gap: 0;
+    gap: 12px;
 }
 [data-layout='text-list'] .product-title-row h3 {
-    grid-column: 1;
     min-width: 0;
-    order: 1;
     font-size: 20px;
     font-weight: 800;
 }
-/* The dot leader: a dotted line grows to fill the gap between name and
-   price and sits on the text baseline — the signature menu detail. */
-[data-layout='text-list'] .product-title-row::before {
-    content: "";
-    order: 2;
-    flex: 1 1 auto;
-    align-self: flex-end;
-    position: relative;
-    bottom: 6px;
-    margin: 0 10px;
-    border-bottom: 2px dotted color-mix(in srgb, var(--ink) 30%, transparent);
-}
 [data-layout='text-list'] .product-title-row .product-price {
-    order: 3;
     flex: none;
 }
 [data-layout='text-list'] .product-price .new-price {
@@ -2764,16 +2742,12 @@ html[dir='ltr'] .side-panel {
     color: var(--ink);
 }
 [data-layout='text-list'] .product-body p {
-    grid-column: 1;
-    grid-row: 2;
     min-height: 0;
     margin: 10px 0 0;
     font-size: 13px;
     -webkit-line-clamp: 3;
 }
 [data-layout='text-list'] .text-only-badge {
-    grid-column: 1;
-    grid-row: 3;
     display: inline-block;
     margin-top: 8px;
     font-size: 12px;
@@ -2781,35 +2755,36 @@ html[dir='ltr'] .side-panel {
     color: #b42318;
 }
 
-/* Add control lives in its own column, centred over the whole row. */
+/* Add control sits below the description, at the reading start. */
 [data-layout='text-list'] .card-action {
-    grid-column: 2;
-    grid-row: 1 / 4;
-    align-self: center;
+    align-self: flex-start;
+    margin-top: 12px;
+}
+/* Small circular icon-only + button, sitting below the description. */
+[data-layout='text-list'] .add-button {
+    width: 38px;
+    height: 38px;
+    padding: 0;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+[data-layout='text-list'] .add-button svg {
+    width: 17px;
+    height: 17px;
     margin: 0;
 }
-/* Round + becomes a rectangular icon+label button. */
-[data-layout='text-list'] .add-button {
-    width: auto;
-    height: 46px;
-    padding: 0 20px;
-    gap: 8px;
-    border-radius: 10px;
-    align-self: center;
-    font-size: 15px;
-    font-weight: 700;
-}
-[data-layout='text-list'] .add-button .add-label { display: inline; }
+[data-layout='text-list'] .add-button .add-label { display: none; }
 [data-layout='text-list'] .card-qty {
-    margin-top: 0;
+    margin-top: 12px;
 }
 
 @media (width <= 900px) {
     [data-layout='text-list'] .product-grid { max-width: none; }
     [data-layout='text-list'] .product-card { padding: 18px 2px; }
     [data-layout='text-list'] .section-heading h2 { font-size: 22px; }
-    [data-layout='text-list'] .product-body { column-gap: 14px; }
     [data-layout='text-list'] .product-title-row h3 { font-size: 17px; }
     [data-layout='text-list'] .product-price .new-price { font-size: 16px; }
-    [data-layout='text-list'] .add-button { height: 42px; padding: 0 15px; font-size: 14px; }
+    [data-layout='text-list'] .add-button { width: 36px; height: 36px; padding: 0; }
 }

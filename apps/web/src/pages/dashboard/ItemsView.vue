@@ -164,14 +164,27 @@ function onImportFile(e) {
     importError.value = ''
 }
 
-// A ready-to-fill template in the restaurant's own default language.
+// A ready-to-fill import template. A bilingual menu gets both-language columns
+// (the same layout the export emits and the importer accepts) so AR + EN can
+// both be captured; a single-language menu gets a simpler one-language sheet in
+// its default language.
 function downloadTemplate() {
+    // Bilingual unless explicitly turned off — matches how the menu app decides
+    // (bilingual !== false), so legacy rows with a null flag still get both columns.
+    const bilingual = auth.restaurant?.bilingual !== false
     const ar = auth.restaurant?.default_language !== 'en'
-    const headers = ['category', 'name', 'description', 'price', 'discounted_price', 'available', 'featured', 'image_url']
-    const sample = ar
-        ? ['مشروبات', 'قهوة سادة', 'قهوة عربية طازجة', '30', '', 'نعم', 'لا', 'https://example.com/coffee.jpg']
-        : ['Drinks', 'Espresso', 'Freshly brewed', '30', '', 'yes', 'no', 'https://example.com/coffee.jpg']
-    const csv = '﻿' + [headers.join(','), sample.map(v => /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v).join(',')].join('\n')
+    let headers, sample
+    if (bilingual) {
+        headers = ['category_en', 'category_ar', 'name_en', 'name_ar', 'description_en', 'description_ar', 'price', 'discounted_price', 'available', 'featured', 'image_url']
+        sample = ['Drinks', 'مشروبات', 'Espresso', 'قهوة سادة', 'Freshly brewed', 'قهوة عربية طازجة', '30', '', 'yes', 'no', 'https://example.com/coffee.jpg']
+    } else {
+        headers = ['category', 'name', 'description', 'price', 'discounted_price', 'available', 'featured', 'image_url']
+        sample = ar
+            ? ['مشروبات', 'قهوة سادة', 'قهوة عربية طازجة', '30', '', 'نعم', 'لا', 'https://example.com/coffee.jpg']
+            : ['Drinks', 'Espresso', 'Freshly brewed', '30', '', 'yes', 'no', 'https://example.com/coffee.jpg']
+    }
+    const esc = v => /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v
+    const csv = '﻿' + [headers.map(esc).join(','), sample.map(esc).join(',')].join('\n')
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }))
     const a = document.createElement('a')
     a.href = url; a.download = 'menu-template.csv'; a.click()
