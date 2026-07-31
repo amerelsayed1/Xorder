@@ -35,8 +35,10 @@ class StoreOrderRequest extends FormRequest
 
     /**
      * Totals are informational — no payment is taken through this endpoint
-     * (the order is fulfilled over WhatsApp), so the snapshot only needs to
-     * be well-formed, not re-priced server-side.
+     * (the order is fulfilled over WhatsApp). The client `total` is only
+     * validated for well-formedness here and is then IGNORED: the controller
+     * recomputes the stored total from the line totals so it can never
+     * contradict its own line items. Line prices remain a customer snapshot.
      */
     public function rules(): array
     {

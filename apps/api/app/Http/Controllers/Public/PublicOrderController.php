@@ -56,9 +56,21 @@ class PublicOrderController extends Controller
         TenantContext::overrideId($restaurant->id);
 
         try {
-            [$customer, $address] = $this->resolveCustomer($request->validated());
+            $data = $request->validated();
 
-            $order = new Order($request->validated() + [
+            // Recompute the order total from the submitted line totals rather than
+            // trusting the client's `total`. Line prices are still a customer
+            // snapshot (the menu is fulfilled over WhatsApp, no payment taken and
+            // the payload carries no item ids to re-price against), but the stored
+            // total can no longer contradict its own line items — a forged
+            // `total` of 0 or 999999 is normalized before it reaches history,
+            // stats and reports.
+            $data['total'] = collect($data['items'] ?? [])
+                ->sum(fn ($item) => (float) ($item['line_total'] ?? 0));
+
+            [$customer, $address] = $this->resolveCustomer($data);
+
+            $order = new Order($data + [
                 'status' => OrderStatus::NEW->value,
                 'currency' => $restaurant->currency->value,
                 'source' => $mode->usesWhatsapp() ? 'whatsapp' : 'system',

@@ -48,6 +48,25 @@ class OrderTest extends TestCase
         ]);
     }
 
+    public function test_order_total_is_recomputed_from_line_totals_not_trusted(): void
+    {
+        $r = Restaurant::factory()->withOrdering()->create(['slug' => 'demo']);
+
+        // Client sends a forged total that doesn't match its line items.
+        $this->postJson('/api/public/restaurants/demo/orders', [
+            'items' => [
+                ['name' => 'Burger', 'qty' => 2, 'line_total' => 150],
+                ['name' => 'Pizza', 'qty' => 1, 'line_total' => 80],
+            ],
+            'total' => 0.01,
+            'customer_phone' => '+201234567890',
+        ])->assertCreated();
+
+        // Stored total is the sum of the line totals (230), not the forged 0.01.
+        $order = Order::withoutGlobalScopes()->where('restaurant_id', $r->id)->firstOrFail();
+        $this->assertEquals(230.0, (float) $order->total);
+    }
+
     public function test_order_requires_items(): void
     {
         Restaurant::factory()->withOrdering()->create(['slug' => 'demo']);

@@ -8,6 +8,7 @@ import Skeleton from '@xorder/ui/Skeleton.vue'
 import Dialog from '@xorder/ui/Dialog.vue'
 import { confirm } from '@xorder/ui/confirm.js'
 import { alert } from '@xorder/ui/alert.js'
+import { toast } from '@xorder/ui/toast.js'
 import { useRealtime } from '../../stores/realtime.js'
 
 const { t, locale } = useI18n()
@@ -72,6 +73,7 @@ async function setRequestStatus(bill, status) {
             if (i !== -1) requests.value[i] = { ...requests.value[i], status }
         }
         loadTables(false) // a cleared request stops the table pulsing
+        toast(t('common.saved'))
     } catch { alert(t('req.update_failed')) }
     finally { updating.value = null }
 }
@@ -169,6 +171,7 @@ async function setOrderStatus(order, status) {
         modalOrders.value = modalOrders.value.filter((o) => o.id !== order.id)
         orders.value = orders.value.filter((o) => o.id !== order.id)
         loadTables(false) // refresh the card's active-order count / flash
+        toast(t('common.saved'))
     } catch { alert(t('orders.update_failed')) }
     finally { updating.value = null }
 }

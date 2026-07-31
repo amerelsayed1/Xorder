@@ -11,6 +11,7 @@ import Skeleton from '@xorder/ui/Skeleton.vue'
 import Dialog from '@xorder/ui/Dialog.vue'
 import { confirm } from '@xorder/ui/confirm.js'
 import { alert } from '@xorder/ui/alert.js'
+import { toast } from '@xorder/ui/toast.js'
 import { useRealtime } from '../../stores/realtime.js'
 
 const { t, locale } = useI18n()
@@ -118,6 +119,7 @@ async function setStatus(order, status) {
         const { data } = await api.patch(`api/dashboard/orders/${order.id}/status`, { status })
         const i = rows.value.findIndex((r) => r.id === order.id)
         if (i !== -1) rows.value[i] = data.data
+        toast(data.message || t('common.saved'))
     } catch (err) {
         alert(t('orders.update_failed'))
     } finally {
