@@ -23,22 +23,33 @@ const qr = ref(null)
 const items = ref([])
 const engagement = ref(null)
 const copied = ref(false)
+// Without this, a failed core fetch left `stats` null forever and the page
+// showed a permanent loading skeleton — a blank first screen after login.
+const error = ref(false)
 
-onMounted(async () => {
-    const [s, q, it] = await Promise.all([
-        api.get('api/dashboard/stats'),
-        api.get('api/dashboard/qr'),
-        api.get('api/dashboard/items'),
-    ])
-    stats.value = s.data.data
-    qr.value = q.data.data
-    items.value = it.data.data
+async function load() {
+    error.value = false
+    try {
+        const [s, q, it] = await Promise.all([
+            api.get('api/dashboard/stats'),
+            api.get('api/dashboard/qr'),
+            api.get('api/dashboard/items'),
+        ])
+        stats.value = s.data.data
+        qr.value = q.data.data
+        items.value = it.data.data
+    } catch (err) {
+        error.value = true
+        return
+    }
     // Views trend is a nicety — never let it block or break the home page.
     try {
         const ins = await api.get('api/dashboard/insights')
         engagement.value = ins.data.data?.engagement || null
     } catch (err) { /* insights optional */ }
-})
+}
+
+onMounted(load)
 
 // JWT-Bearer API: fetch the PNG through the authed client (a bare link carries
 // no Authorization header and 401s), then save the blob.
@@ -241,6 +252,12 @@ function copyUrl() {
     </div>
 
     <!-- Loading skeleton -->
+    <div v-else-if="error" class="card p-8 text-center space-y-3">
+        <Icon name="alert" :size="28" style="color:var(--amber);margin-inline:auto" />
+        <p class="text-sm" style="color:var(--muted)">{{ t('common.error') }}</p>
+        <button @click="load" class="btn btn-ghost btn-sm mx-auto"><Icon name="loading" :size="15" />{{ t('common.retry') }}</button>
+    </div>
+
     <div v-else class="space-y-6">
         <div class="h-8 w-48 rounded-lg" style="background:var(--line)"></div>
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">

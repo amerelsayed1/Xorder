@@ -109,7 +109,7 @@ const fmtDate = (iso) => iso ? new Date(iso).toLocaleDateString() : ''
             <div class="card overflow-x-auto">
                 <table class="w-full text-sm" style="min-width:720px">
                     <thead>
-                        <tr class="text-left" style="color:var(--muted)">
+                        <tr class="text-start" style="color:var(--muted)">
                             <th class="px-5 py-3 font-medium" style="font-size:11px;text-transform:uppercase">#</th>
                             <th class="px-5 py-3 font-medium" style="font-size:11px;text-transform:uppercase">{{ t('leads.restaurant') }}</th>
                             <th class="px-3 py-3 font-medium" style="font-size:11px;text-transform:uppercase">{{ t('leads.contact') }}</th>

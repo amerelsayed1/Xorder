@@ -20,6 +20,7 @@ return [
         'plan_limit_branches' => 'باقتك تسمح بحد أقصى :limit فرعاً. قم بالترقية لإضافة المزيد.',
         'order_received' => 'تم استلام الطلب.',
         'order_updated' => 'تم تحديث الطلب.',
+        'order_transition_invalid' => 'تغيير حالة الطلب هذا غير مسموح به.',
         'ordering_disabled' => 'الطلب غير متاح حالياً لهذا المطعم.',
         'logged_in' => 'تم تسجيل الدخول بنجاح.',
         'logged_out' => 'تم تسجيل الخروج بنجاح.',

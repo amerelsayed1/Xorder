@@ -147,7 +147,7 @@ const countFor = (k) => k === '' ? counts.value.ALL : counts.value[k]
         <div class="card overflow-x-auto">
             <table class="w-full text-sm" style="min-width:720px">
                 <thead>
-                    <tr class="text-left" style="color:var(--muted)">
+                    <tr class="text-start" style="color:var(--muted)">
                         <th class="px-5 py-3 font-medium" style="font-size:11px;letter-spacing:.06em;text-transform:uppercase">#</th>
                         <th class="px-5 py-3 font-medium" style="font-size:11px;letter-spacing:.06em;text-transform:uppercase">{{ t('admin.restaurant') }}</th>
                         <th class="px-3 py-3 font-medium" style="font-size:11px;text-transform:uppercase">{{ t('common.status') }}</th>

@@ -99,15 +99,15 @@ function attemptSave() {
                     </template>
                 </div>
                 <div class="sticky bottom-0 bg-white border-t border-stone-200/70 p-5 space-y-2">
-                    <div v-if="saveSuccess" class="text-sm text-green-600 text-center font-semibold mb-2">✓ Saved</div>
+                    <div v-if="saveSuccess" class="text-sm text-green-600 text-center font-semibold mb-2">✓ {{ t('saved') }}</div>
                     <template v-if="!isEditing">
-                        <button class="w-full h-12 rounded-xl text-white font-bold" :style="{ background: accent }" @click="$emit('enterEdit')">✏️ Edit</button>
-                        <button v-if="hasUserInfo" class="w-full h-11 rounded-xl border border-red-200 bg-red-50 text-red-600 font-semibold" @click="$emit('clear')">🗑️ Clear</button>
-                        <button class="w-full h-11 rounded-xl border border-stone-200 bg-white text-stone-700 font-semibold" @click="$emit('close')">Close</button>
+                        <button class="w-full h-12 rounded-xl text-white font-bold" :style="{ background: accent }" @click="$emit('enterEdit')">✏️ {{ t('edit') }}</button>
+                        <button v-if="hasUserInfo" class="w-full h-11 rounded-xl border border-red-200 bg-red-50 text-red-600 font-semibold" @click="$emit('clear')">🗑️ {{ t('clear') }}</button>
+                        <button class="w-full h-11 rounded-xl border border-stone-200 bg-white text-stone-700 font-semibold" @click="$emit('close')">{{ t('close') }}</button>
                     </template>
                     <template v-else>
-                        <button class="w-full h-12 rounded-xl text-white font-bold" :style="{ background: accent }" @click="attemptSave">💾 Save</button>
-                        <button class="w-full h-11 rounded-xl border border-stone-200 bg-white text-stone-700 font-semibold" @click="$emit('cancelEdit')">Cancel</button>
+                        <button class="w-full h-12 rounded-xl text-white font-bold" :style="{ background: accent }" @click="attemptSave">💾 {{ t('save') }}</button>
+                        <button class="w-full h-11 rounded-xl border border-stone-200 bg-white text-stone-700 font-semibold" @click="$emit('cancelEdit')">{{ t('cancel') }}</button>
                     </template>
                 </div>
             </div>

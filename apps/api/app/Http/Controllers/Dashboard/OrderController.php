@@ -45,6 +45,15 @@ class OrderController extends Controller
         ]);
 
         $status = $request->input('status');
+
+        // Reject illegal jumps (e.g. reopening a completed/cancelled order back
+        // to NEW), which would corrupt the new-orders badge and reporting.
+        if (! $order->status->canTransitionTo(OrderStatus::from($status))) {
+            return response()->json([
+                'message' => __('xorder.messages.order_transition_invalid'),
+            ], 422);
+        }
+
         $order->update(['status' => $status]);
 
         // Once an order is acted on (moved out of NEW), its "new order" alert is

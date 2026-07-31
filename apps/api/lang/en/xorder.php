@@ -20,6 +20,7 @@ return [
         'plan_limit_branches' => 'Your plan allows up to :limit branches. Upgrade to add more.',
         'order_received' => 'Order received.',
         'order_updated' => 'Order updated.',
+        'order_transition_invalid' => 'That order status change is not allowed.',
         'ordering_disabled' => 'Ordering is currently disabled for this restaurant.',
         'lead_received' => 'Thanks! We received your request and will be in touch shortly.',
         'lead_updated' => 'Lead updated.',

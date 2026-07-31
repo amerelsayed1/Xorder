@@ -151,6 +151,41 @@ class OrderTest extends TestCase
             ->assertJsonValidationErrors(['status']);
     }
 
+    public function test_a_completed_order_cannot_be_reopened_to_new(): void
+    {
+        $r = Restaurant::factory()->create();
+        $admin = User::factory()->restaurantAdmin($r->id)->create();
+        $this->enableSystemOrdering($r);
+        $this->postJson("/api/public/restaurants/{$r->slug}/orders", $this->payload());
+        $order = Order::withoutGlobalScopes()->where('restaurant_id', $r->id)->first();
+
+        $this->actingAs($admin)->patchJson("/api/dashboard/orders/{$order->id}/status", ['status' => 'COMPLETED'])
+            ->assertOk();
+
+        // Reopening a terminal order back to NEW would corrupt the new-orders
+        // badge and reporting — reject it and leave the status untouched.
+        $this->actingAs($admin)->patchJson("/api/dashboard/orders/{$order->id}/status", ['status' => 'NEW'])
+            ->assertStatus(422);
+        $this->assertSame('COMPLETED', $order->fresh()->status->value);
+    }
+
+    public function test_a_completed_order_can_be_corrected_to_cancelled(): void
+    {
+        $r = Restaurant::factory()->create();
+        $admin = User::factory()->restaurantAdmin($r->id)->create();
+        $this->enableSystemOrdering($r);
+        $this->postJson("/api/public/restaurants/{$r->slug}/orders", $this->payload());
+        $order = Order::withoutGlobalScopes()->where('restaurant_id', $r->id)->first();
+
+        $this->actingAs($admin)->patchJson("/api/dashboard/orders/{$order->id}/status", ['status' => 'COMPLETED'])
+            ->assertOk();
+
+        // Staff may still correct a mistake between the two terminal states.
+        $this->actingAs($admin)->patchJson("/api/dashboard/orders/{$order->id}/status", ['status' => 'CANCELLED'])
+            ->assertOk()
+            ->assertJsonPath('data.status', 'CANCELLED');
+    }
+
     public function test_orders_filter_by_status(): void
     {
         $r = Restaurant::factory()->create();

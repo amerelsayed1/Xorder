@@ -13,4 +13,23 @@ enum OrderStatus: string
     {
         return array_map(fn (self $c) => $c->value, self::cases());
     }
+
+    /**
+     * Whether a status change is allowed. Staff may correct a mistake between
+     * the two terminal states (COMPLETED ↔ CANCELLED), and re-applying the same
+     * status is a harmless no-op — but an order can never be reopened back to
+     * NEW once it has been acted on, which would corrupt the "new orders" badge
+     * and order-history reporting.
+     */
+    public function canTransitionTo(self $to): bool
+    {
+        if ($this === $to) {
+            return true;
+        }
+
+        return match ($this) {
+            self::NEW => in_array($to, [self::COMPLETED, self::CANCELLED], true),
+            self::COMPLETED, self::CANCELLED => $to !== self::NEW,
+        };
+    }
 }

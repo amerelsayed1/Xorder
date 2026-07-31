@@ -56,8 +56,8 @@ const dayRows = (bh) => DAY_KEYS.map((k) => ({ key: k, data: bh?.[k] || {} }))
                         <p v-else-if="branch.opening_hours">⏰ {{ branch.opening_hours }}</p>
                     </div>
                     <div class="flex gap-2">
-                        <a v-if="safeUrl(branch.map_url)" :href="safeUrl(branch.map_url)" target="_blank" rel="noopener" class="flex-1 px-4 py-2 rounded-lg text-sm font-semibold text-center transition" :style="{ background: accent + '22', color: accent }">Map</a>
-                        <a v-if="branch.phone" :href="`tel:${branch.phone}`" class="flex-1 px-4 py-2 rounded-lg text-sm font-semibold text-center transition" :style="{ background: accent + '22', color: accent }">Call</a>
+                        <a v-if="safeUrl(branch.map_url)" :href="safeUrl(branch.map_url)" target="_blank" rel="noopener" class="flex-1 px-4 py-2 rounded-lg text-sm font-semibold text-center transition" :style="{ background: accent + '22', color: accent }">{{ t('directions') }}</a>
+                        <a v-if="branch.phone" :href="`tel:${branch.phone}`" class="flex-1 px-4 py-2 rounded-lg text-sm font-semibold text-center transition" :style="{ background: accent + '22', color: accent }">{{ t('call') }}</a>
                     </div>
                 </div>
             </div>
