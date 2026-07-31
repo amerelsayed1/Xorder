@@ -67,4 +67,28 @@ class CombosTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.combos.0.groups.0.is_variant', true);
     }
+
+    public function test_cannot_update_or_delete_another_restaurants_combo(): void
+    {
+        $owner = $this->admin();
+        $item = $this->itemFor($owner);
+        $comboId = $this->actingAs($owner)->postJson('/api/dashboard/combos', [
+            'name_en' => 'Meal', 'base_price' => 0,
+            'groups' => [[
+                'name_en' => 'Size',
+                'items' => [['menu_item_id' => $item->id, 'extra_price' => 10]],
+            ]],
+        ])->assertCreated()->json('data.id');
+
+        $intruder = $this->admin(); // a different restaurant
+
+        // Cross-tenant access is a 404 (information hiding), never a 403.
+        $this->actingAs($intruder)->putJson("/api/dashboard/combos/{$comboId}", [
+            'name_en' => 'Hacked', 'base_price' => 0, 'groups' => [],
+        ])->assertNotFound();
+        $this->actingAs($intruder)->deleteJson("/api/dashboard/combos/{$comboId}")
+            ->assertNotFound();
+
+        $this->assertDatabaseHas('combos', ['id' => $comboId, 'name_en' => 'Meal']);
+    }
 }

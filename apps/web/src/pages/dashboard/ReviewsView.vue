@@ -6,6 +6,7 @@ import { useAuth } from '@xorder/api-client/auth.js'
 import api, { ensureCsrf } from '@xorder/api-client/api.js'
 import { withMinDuration } from '../../lib/minLoading.js'
 import Skeleton from '@xorder/ui/Skeleton.vue'
+import ErrorState from '@xorder/ui/ErrorState.vue'
 import Dialog from '@xorder/ui/Dialog.vue'
 
 const { t, locale } = useI18n()
@@ -21,6 +22,9 @@ const rows = ref([])
 const summary = ref({ average: 0, count: 0, low_count: 0, by_rating: {} })
 const areas = ref([])
 const loading = ref(true)
+const error = ref(false)
+const meta = ref(null)
+const page = ref(1)
 
 const ratingFilter = ref('')
 const statusFilter = ref('')
@@ -57,17 +61,34 @@ function params() {
         contact_permission: contactOnly.value ? 1 : undefined,
         date_from: dateFrom.value || undefined,
         date_to: dateTo.value || undefined,
+        page: page.value,
     }
 }
 
 async function load() {
     loading.value = true
+    error.value = false
     try {
         const { data } = await withMinDuration(api.get('api/dashboard/reviews', { params: params() }))
         rows.value = data.data
+        meta.value = data.meta || null
+    } catch (err) {
+        error.value = true
     } finally {
         loading.value = false
     }
+}
+
+// Any filter change resets to the first page before reloading.
+function applyFilters() {
+    page.value = 1
+    load()
+}
+
+function goToPage(nextPage) {
+    if (!meta.value || nextPage < 1 || nextPage > meta.value.last_page) return
+    page.value = nextPage
+    load()
 }
 
 onMounted(() => {
@@ -160,22 +181,22 @@ async function addNote() {
         <!-- Filters -->
         <div class="space-y-2">
             <div class="flex items-center gap-2 flex-wrap">
-                <select v-model="ratingFilter" class="chip chip-select" @change="load">
+                <select v-model="ratingFilter" class="chip chip-select" @change="applyFilters">
                     <option value="">{{ t('rev.all_ratings') }}</option>
                     <option v-for="r in [5, 4, 3, 2, 1]" :key="r" :value="r">{{ r }} ★</option>
                 </select>
-                <select v-model="statusFilter" class="chip chip-select" @change="load">
+                <select v-model="statusFilter" class="chip chip-select" @change="applyFilters">
                     <option value="">{{ t('common.all') }}</option>
                     <option v-for="s in STATUSES" :key="s" :value="s">{{ t('rev.status.' + s) }}</option>
                 </select>
-                <select v-model="areaFilter" class="chip chip-select" @change="load">
+                <select v-model="areaFilter" class="chip chip-select" @change="applyFilters">
                     <option value="">{{ t('rev.all_areas') }}</option>
                     <option v-for="a in areas" :key="a.id" :value="a.id">{{ locale === 'ar' ? (a.name_ar || a.name_en) : (a.name_en || a.name_ar) }}</option>
                 </select>
-                <input v-model="dateFrom" type="date" class="chip chip-select" @change="load" />
-                <input v-model="dateTo" type="date" class="chip chip-select" @change="load" />
+                <input v-model="dateFrom" type="date" class="chip chip-select" @change="applyFilters" />
+                <input v-model="dateTo" type="date" class="chip chip-select" @change="applyFilters" />
                 <label class="chip rev-check">
-                    <input v-model="contactOnly" type="checkbox" @change="load" />
+                    <input v-model="contactOnly" type="checkbox" @change="applyFilters" />
                     <span>{{ t('rev.contact_only') }}</span>
                 </label>
             </div>
@@ -190,6 +211,7 @@ async function addNote() {
                 </div>
             </div>
         </template>
+        <ErrorState v-else-if="error" @retry="load" />
         <div v-else-if="!rows.length" class="card px-5 py-10 text-center" style="color:var(--muted)">
             {{ t('rev.none') }}
         </div>
@@ -210,6 +232,22 @@ async function addNote() {
                     </div>
                 </div>
             </button>
+        </div>
+
+        <!-- Pagination -->
+        <div v-if="meta && meta.last_page > 1" class="flex flex-wrap items-center justify-between gap-3">
+            <span class="text-sm" style="color:var(--muted)">
+                {{ t('common.showing_range', { from: meta.from, to: meta.to, total: meta.total }) }}
+            </span>
+            <div class="flex items-center gap-2">
+                <button class="btn btn-ghost btn-sm" :disabled="meta.current_page <= 1" @click="goToPage(meta.current_page - 1)">
+                    {{ t('common.previous') }}
+                </button>
+                <span class="text-sm" style="color:var(--muted)">{{ meta.current_page }} / {{ meta.last_page }}</span>
+                <button class="btn btn-ghost btn-sm" :disabled="meta.current_page >= meta.last_page" @click="goToPage(meta.current_page + 1)">
+                    {{ t('common.next') }}
+                </button>
+            </div>
         </div>
 
         <!-- Detail dialog -->

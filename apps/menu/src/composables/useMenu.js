@@ -112,5 +112,6 @@ export function useMenu(slug) {
         scrollTo,
         goHome,
         goBranches,
+        loadMenu,
     }
 }

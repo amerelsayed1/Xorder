@@ -23,6 +23,20 @@ const props = defineProps({
 const emit = defineEmits(['close', 'removeLine', 'bumpLine', 'clearCart', 'changeOrderType', 'submit'])
 
 const step = ref(1)
+// Two-tap clear so a single mis-tap on mobile can't wipe the whole cart:
+// first tap arms, second (within 3s) clears.
+const confirmingClear = ref(false)
+let clearTimer
+function onClearClick() {
+    if (confirmingClear.value) {
+        clearTimeout(clearTimer)
+        confirmingClear.value = false
+        emit('clearCart')
+        return
+    }
+    confirmingClear.value = true
+    clearTimer = setTimeout(() => { confirmingClear.value = false }, 3000)
+}
 const name = ref('')
 const phone = ref('')
 const note = ref('')
@@ -108,7 +122,7 @@ function submit() {
                             <button class="back-step" :aria-label="t('back_to_cart')" @click="step = 1">→</button>
                             <h2>{{ t('checkout_title') }}</h2>
                         </div>
-                        <button v-if="step === 1 && cart.length" class="clear-cart" @click="$emit('clearCart')">{{ t('clear_cart') }}</button>
+                        <button v-if="step === 1 && cart.length" class="clear-cart" :class="{ 'clear-cart--armed': confirmingClear }" @click="onClearClick">{{ confirmingClear ? t('clear_cart_confirm') : t('clear_cart') }}</button>
                     </div>
 
                     <!-- Progress -->

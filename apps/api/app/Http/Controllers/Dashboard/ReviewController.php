@@ -37,7 +37,7 @@ class ReviewController extends Controller
             ->when($request->filled('date_from'), fn ($q) => $q->whereDate('created_at', '>=', $request->date('date_from')))
             ->when($request->filled('date_to'), fn ($q) => $q->whereDate('created_at', '<=', $request->date('date_to')))
             ->latest('id')
-            ->get();
+            ->paginate(20);
 
         return ReviewResource::collection($reviews)->response();
     }

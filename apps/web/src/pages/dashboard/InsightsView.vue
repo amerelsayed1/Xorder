@@ -5,6 +5,7 @@ import { useI18n } from 'vue-i18n'
 import api from '@xorder/api-client/api.js'
 import { useAuth } from '@xorder/api-client/auth.js'
 import Skeleton from '@xorder/ui/Skeleton.vue'
+import ErrorState from '@xorder/ui/ErrorState.vue'
 import ApexChart from '../../components/ApexChart.vue'
 import { columnChart, barChart, donutChart } from '../../lib/charts.js'
 import { asPreview } from '../../lib/host.js'
@@ -13,6 +14,7 @@ const { t, locale } = useI18n()
 const auth = useAuth()
 const data = ref(null)
 const loading = ref(true)
+const error = ref(false)
 
 // Order analytics (totals, "most ordered", the orders series) only mean
 // anything when the restaurant takes system orders — WhatsApp orders aren't
@@ -61,14 +63,19 @@ function categoryDonutOptions(c) {
     })
 }
 
-onMounted(async () => {
+async function load() {
+    loading.value = true
+    error.value = false
     try {
         const res = await api.get('api/dashboard/insights')
         data.value = res.data.data
+    } catch (err) {
+        error.value = true
     } finally {
         loading.value = false
     }
-})
+}
+onMounted(load)
 
 function money(v) {
     if (v === null || v === undefined) return '—'
@@ -93,6 +100,8 @@ function money(v) {
                 <Skeleton w="100%" h="200px" rounded="14px" />
             </div>
         </div>
+
+        <ErrorState v-else-if="error" @retry="load" />
 
         <template v-else-if="data">
             <!-- Menu overview -->

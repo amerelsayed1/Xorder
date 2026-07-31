@@ -1143,6 +1143,13 @@ html[dir='rtl'] .money {
     border-radius: 9px;
 }
 
+/* Armed (awaiting the confirming second tap) — turn red to signal intent. */
+.cart-heading .clear-cart--armed {
+    background: #fee2e2;
+    color: #dc2626;
+    font-weight: 700;
+}
+
 .cart-heading .back-step {
     width: 31px;
     height: 31px;

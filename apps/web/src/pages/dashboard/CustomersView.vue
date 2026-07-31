@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import api from '@xorder/api-client/api.js'
 import ListSkeleton from '@xorder/ui/ListSkeleton.vue'
+import ErrorState from '@xorder/ui/ErrorState.vue'
 import Icon from '@xorder/ui/Icon.vue'
 import { withMinDuration } from '../../lib/minLoading.js'
 
@@ -12,14 +13,18 @@ const router = useRouter()
 
 const rows = ref([])
 const loading = ref(true)
+const error = ref(false)
 const search = ref('')
 let searchTimer
 
 async function load() {
     loading.value = true
+    error.value = false
     try {
         const { data } = await withMinDuration(api.get('api/dashboard/customers', { params: { search: search.value || undefined } }))
         rows.value = data.data
+    } catch (err) {
+        error.value = true
     } finally { loading.value = false }
 }
 onMounted(load)
@@ -46,6 +51,7 @@ function openCustomer(c) {
 
         <div class="card overflow-hidden">
             <ListSkeleton v-if="loading" />
+            <ErrorState v-else-if="error" @retry="load" />
             <div v-else-if="!rows.length" class="p-8 text-center" style="color:var(--muted)">{{ t('customer.none') }}</div>
             <ul v-else>
                 <li v-for="c in rows" :key="c.id" class="flex items-center gap-3 px-5 py-3 border-t first:border-t-0 cursor-pointer hover:bg-black/[.02]" style="border-color:var(--line)" @click="openCustomer(c)">

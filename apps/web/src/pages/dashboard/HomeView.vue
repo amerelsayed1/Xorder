@@ -7,6 +7,7 @@ import { useAuth } from '@xorder/api-client/auth.js'
 import { currencyLabel } from '../../lib/currency.js'
 import { pickLocalized } from '@xorder/ui/localize.js'
 import Icon from '@xorder/ui/Icon.vue'
+import ErrorState from '@xorder/ui/ErrorState.vue'
 import { alert } from '@xorder/ui/alert.js'
 import ApexChart from '../../components/ApexChart.vue'
 import { areaChart } from '../../lib/charts.js'
@@ -252,11 +253,7 @@ function copyUrl() {
     </div>
 
     <!-- Loading skeleton -->
-    <div v-else-if="error" class="card p-8 text-center space-y-3">
-        <Icon name="alert" :size="28" style="color:var(--amber);margin-inline:auto" />
-        <p class="text-sm" style="color:var(--muted)">{{ t('common.error') }}</p>
-        <button @click="load" class="btn btn-ghost btn-sm mx-auto"><Icon name="loading" :size="15" />{{ t('common.retry') }}</button>
-    </div>
+    <ErrorState v-else-if="error" @retry="load" />
 
     <div v-else class="space-y-6">
         <div class="h-8 w-48 rounded-lg" style="background:var(--line)"></div>

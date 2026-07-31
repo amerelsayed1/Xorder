@@ -6,6 +6,7 @@ import api from '@xorder/api-client/api.js'
 import { useAuth } from '@xorder/api-client/auth.js'
 import { currencyLabel } from '../../lib/currency.js'
 import Skeleton from '@xorder/ui/Skeleton.vue'
+import ErrorState from '@xorder/ui/ErrorState.vue'
 import Icon from '@xorder/ui/Icon.vue'
 import { withMinDuration } from '../../lib/minLoading.js'
 
@@ -16,15 +17,19 @@ const auth = useAuth()
 const cur = () => currencyLabel(auth.restaurant?.currency, locale.value, auth.restaurant?.currency_symbol)
 
 const loading = ref(true)
+const error = ref(false)
 const customer = ref(null)
 const orders = ref([])
 
 async function load() {
     loading.value = true
+    error.value = false
     try {
         const { data } = await withMinDuration(api.get(`api/dashboard/customers/${route.params.id}`))
         customer.value = data.data
         orders.value = data.recent_orders || []
+    } catch (err) {
+        error.value = true
     } finally {
         loading.value = false
     }
@@ -54,6 +59,8 @@ const statusLabel = (s) => t('orders.status.' + s)
             <div class="card" style="padding:1.25rem"><Skeleton w="140px" h="16px" /><div class="mt-3 space-y-2"><Skeleton w="100%" h="44px" rounded="12px" /><Skeleton w="100%" h="44px" rounded="12px" /></div></div>
             <div class="card" style="padding:1.25rem"><Skeleton w="140px" h="16px" /><div class="mt-3 space-y-2"><Skeleton w="100%" h="40px" /><Skeleton w="100%" h="40px" /></div></div>
         </div>
+
+        <ErrorState v-else-if="error" @retry="load" />
 
         <template v-else-if="customer">
             <!-- Header + stats -->

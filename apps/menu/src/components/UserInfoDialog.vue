@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
 import { isValidMobile } from '../lib/phone.js'
 import { isValidEmail } from '../lib/email.js'
 
@@ -16,6 +16,20 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['close', 'enterEdit', 'cancelEdit', 'save', 'clear', 'updateField'])
+
+// Accessibility: close on Escape and move focus into the dialog when it opens,
+// matching the other menu modals (ItemModal etc.).
+const panel = ref(null)
+function onKeydown(e) { if (e.key === 'Escape') emit('close') }
+watch(() => props.isOpen, (open) => {
+    if (open) {
+        window.addEventListener('keydown', onKeydown)
+        nextTick(() => panel.value?.focus())
+    } else {
+        window.removeEventListener('keydown', onKeydown)
+    }
+})
+onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 
 // Only scold the customer once they try to save, not while they're still typing.
 const attempted = ref(false)
@@ -35,10 +49,10 @@ function attemptSave() {
     <Teleport to="body">
         <div v-if="isOpen" class="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
             <div class="absolute inset-0 bg-black/50" @click="$emit('close')"></div>
-            <div class="relative bg-white w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl max-h-[92vh] overflow-y-auto shadow-2xl">
+            <div ref="panel" tabindex="-1" role="dialog" aria-modal="true" aria-labelledby="userinfo-title" class="relative bg-white w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl max-h-[92vh] overflow-y-auto shadow-2xl focus:outline-none">
                 <div class="sticky top-0 bg-white border-b border-stone-200/70 px-5 py-4 flex items-center justify-between">
-                    <h2 class="font-bold text-lg">{{ t('your_details') }}</h2>
-                    <button class="text-2xl text-stone-400" @click="$emit('close')">×</button>
+                    <h2 id="userinfo-title" class="font-bold text-lg">{{ t('your_details') }}</h2>
+                    <button class="text-2xl text-stone-400" :aria-label="t('close')" @click="$emit('close')">×</button>
                 </div>
                 <div class="p-5">
                     <template v-if="!isEditing">

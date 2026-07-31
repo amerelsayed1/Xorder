@@ -47,7 +47,7 @@ const { userInfoDialog, isEditing, userInfo, editForm, saveSuccess, hasUserInfo,
 // Hydrate any saved diner info up front so the checkout form can prefill.
 loadUserInfo()
 
-const { payload, loading, error, unavailable, activeCat, spyLocked, view, restaurant, categories, combos, branches, navCats, scrollTo, goHome, goBranches } = useMenu(slug)
+const { payload, loading, error, unavailable, activeCat, spyLocked, view, restaurant, categories, combos, branches, navCats, scrollTo, goHome, goBranches, loadMenu } = useMenu(slug)
 
 // Keep the measured sticky/footer heights (--topbar-h / --stack-h / --footer-h)
 // in sync as the payload loads, the view switches, and the table banner shows.
@@ -330,7 +330,10 @@ function updateUserField(field, value) {
         <MenuSkeleton v-if="loading" />
 
         <div v-else-if="error || unavailable" class="min-h-screen grid place-items-center text-center px-6">
-            <p class="text-lg text-stone-500">{{ unavailable ? t('unavailable') : t('error_generic') }}</p>
+            <div class="space-y-4">
+                <p class="text-lg text-stone-500">{{ unavailable ? t('unavailable') : t('error_generic') }}</p>
+                <button v-if="error && !unavailable" @click="loadMenu" class="px-5 py-2.5 rounded-xl font-semibold text-white" :style="{ background: accent }">{{ t('try_again') }}</button>
+            </div>
         </div>
 
         <template v-else>

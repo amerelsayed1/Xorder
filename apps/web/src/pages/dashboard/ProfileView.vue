@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import api, { ensureCsrf } from '@xorder/api-client/api.js'
 import ImageUploader from '@xorder/ui/ImageUploader.vue'
 import FormError from '@xorder/ui/FormError.vue'
+import ErrorState from '@xorder/ui/ErrorState.vue'
 import { useMenuLang } from '../../lib/menuLang.js'
 import { collectPhoneErrors } from '../../lib/phone.js'
 import { useAuth } from '@xorder/api-client/auth.js'
@@ -23,23 +24,34 @@ const form = reactive({
 const errors = ref({})
 const saved = ref(false)
 const saving = ref(false)
+const loading = ref(true)
+const loadError = ref(false)
 
 // Ordering channels the restaurant's plan grants; the selector is capped to these.
 const orderingModeOptions = ref([])
 
-onMounted(async () => {
-    const { data } = await api.get('api/dashboard/restaurant')
-    Object.assign(form, {
-        ...data.data,
-        // The API sends {} when nothing is set — keep every known field present
-        // so the inputs stay controlled.
-        social_links: { instagram: '', facebook: '', tiktok: '', ...(data.data.social_links || {}) },
-    })
-    orderingModeOptions.value = data.data.available_ordering_modes || []
-    if (orderingModeOptions.value.length && !orderingModeOptions.value.includes(form.ordering_mode)) {
-        form.ordering_mode = orderingModeOptions.value[0]
+async function load() {
+    loading.value = true
+    loadError.value = false
+    try {
+        const { data } = await api.get('api/dashboard/restaurant')
+        Object.assign(form, {
+            ...data.data,
+            // The API sends {} when nothing is set — keep every known field present
+            // so the inputs stay controlled.
+            social_links: { instagram: '', facebook: '', tiktok: '', ...(data.data.social_links || {}) },
+        })
+        orderingModeOptions.value = data.data.available_ordering_modes || []
+        if (orderingModeOptions.value.length && !orderingModeOptions.value.includes(form.ordering_mode)) {
+            form.ordering_mode = orderingModeOptions.value[0]
+        }
+    } catch (err) {
+        loadError.value = true
+    } finally {
+        loading.value = false
     }
-})
+}
+onMounted(load)
 
 async function submit() {
     errors.value = {}; saved.value = false
@@ -103,6 +115,15 @@ async function changePassword() {
 </script>
 
 <template>
+    <div v-if="loading" class="space-y-5 max-w-3xl">
+        <div class="h-8 w-48 rounded-lg" style="background:var(--line)"></div>
+        <div class="card" style="height:280px"></div>
+        <div class="card" style="height:200px"></div>
+    </div>
+
+    <ErrorState v-else-if="loadError" @retry="load" />
+
+    <template v-else>
     <form @submit.prevent="submit" class="space-y-5 max-w-3xl">
         <div class="flex items-center justify-between">
             <div>
@@ -229,6 +250,7 @@ async function changePassword() {
 
         <button type="submit" :disabled="pwSaving" class="btn btn-accent">{{ pwSaving ? t('common.saving') : t('profile.change_password') }}</button>
     </form>
+    </template>
 </template>
 
 <style scoped>

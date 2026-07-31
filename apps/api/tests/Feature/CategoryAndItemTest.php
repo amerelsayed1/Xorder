@@ -248,4 +248,27 @@ class CategoryAndItemTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.categories.0.items.0.option_groups.0.is_variant', true);
     }
+
+    public function test_item_reorder_rejects_a_foreign_id_and_changes_nothing(): void
+    {
+        $admin = $this->admin();
+        $cat = Category::factory()->for($admin->restaurant)->create();
+        $mine = MenuItem::factory()->for($admin->restaurant)->for($cat)->create(['display_order' => 1]);
+
+        $other = $this->admin();
+        $otherCat = Category::factory()->for($other->restaurant)->create();
+        $foreign = MenuItem::factory()->for($other->restaurant)->for($otherCat)->create(['display_order' => 5]);
+
+        // A payload mixing an owned id with a foreign one must be rejected wholesale
+        // (422), not silently drop the foreign row and reorder the rest.
+        $this->actingAs($admin)->patchJson('/api/dashboard/items/reorder', [
+            'order' => [
+                ['id' => $mine->id, 'display_order' => 2],
+                ['id' => $foreign->id, 'display_order' => 3],
+            ],
+        ])->assertStatus(422);
+
+        $this->assertSame(1, $mine->fresh()->display_order);
+        $this->assertSame(5, $foreign->fresh()->display_order);
+    }
 }
