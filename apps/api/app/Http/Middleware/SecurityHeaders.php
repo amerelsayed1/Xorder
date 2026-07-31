@@ -10,7 +10,13 @@ use Symfony\Component\HttpFoundation\Response;
  * Baseline hardening headers on every API response, and drop the runtime
  * version banner (X-Powered-By) so we don't advertise the PHP build. The API
  * returns JSON (not rendered HTML), so these are defense-in-depth: nosniff and
- * DENY-framing still matter for the rare error/redirect that a browser renders.
+ * frame-denial still matter for the rare error/redirect a browser renders, and
+ * they cover envs with no ingress nginx in front (local dev, Docker direct).
+ *
+ * Values deliberately MATCH the production ingress nginx (SAMEORIGIN,
+ * strict-origin-when-cross-origin, nosniff): nginx re-adds these via add_header,
+ * so keeping the same values means the doubled header carries one consistent
+ * value instead of two conflicting ones.
  *
  * Transport hardening (HSTS) belongs at the TLS-terminating ingress nginx, not
  * here — the app is reached over http:// behind the proxy. The canonical place
@@ -24,8 +30,8 @@ class SecurityHeaders
         $response = $next($request);
 
         $response->headers->set('X-Content-Type-Options', 'nosniff');
-        $response->headers->set('X-Frame-Options', 'DENY');
-        $response->headers->set('Referrer-Policy', 'no-referrer');
+        $response->headers->set('X-Frame-Options', 'SAMEORIGIN');
+        $response->headers->set('Referrer-Policy', 'strict-origin-when-cross-origin');
 
         $response->headers->remove('X-Powered-By');
         if (! headers_sent()) {
