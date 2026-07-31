@@ -235,7 +235,7 @@ async function addNote() {
         </div>
 
         <!-- Pagination -->
-        <div v-if="meta && meta.last_page > 1" class="flex flex-wrap items-center justify-between gap-3">
+        <div v-if="!error && meta && meta.last_page > 1" class="flex flex-wrap items-center justify-between gap-3">
             <span class="text-sm" style="color:var(--muted)">
                 {{ t('common.showing_range', { from: meta.from, to: meta.to, total: meta.total }) }}
             </span>

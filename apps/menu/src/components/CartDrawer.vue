@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onUnmounted } from 'vue'
 import { isValidMobile, toLatinDigits } from '../lib/phone.js'
 
 const props = defineProps({
@@ -37,6 +37,7 @@ function onClearClick() {
     confirmingClear.value = true
     clearTimer = setTimeout(() => { confirmingClear.value = false }, 3000)
 }
+onUnmounted(() => clearTimeout(clearTimer))
 const name = ref('')
 const phone = ref('')
 const note = ref('')

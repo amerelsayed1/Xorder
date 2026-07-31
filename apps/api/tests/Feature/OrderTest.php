@@ -67,6 +67,23 @@ class OrderTest extends TestCase
         $this->assertEquals(230.0, (float) $order->total);
     }
 
+    public function test_order_total_is_clamped_to_the_column_capacity(): void
+    {
+        $r = Restaurant::factory()->withOrdering()->create(['slug' => 'demo']);
+
+        // 100 lines × 1,000,000 = 100,000,000 would overflow decimal(10,2) on
+        // Postgres; the recompute must clamp to the column max, never 500.
+        $items = array_fill(0, 100, ['name' => 'X', 'qty' => 1, 'line_total' => 1000000]);
+        $this->postJson('/api/public/restaurants/demo/orders', [
+            'items' => $items,
+            'total' => 100,
+            'customer_phone' => '+201234567890',
+        ])->assertCreated();
+
+        $order = Order::withoutGlobalScopes()->where('restaurant_id', $r->id)->firstOrFail();
+        $this->assertEquals(99999999.99, (float) $order->total);
+    }
+
     public function test_order_requires_items(): void
     {
         Restaurant::factory()->withOrdering()->create(['slug' => 'demo']);

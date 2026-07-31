@@ -65,8 +65,13 @@ class PublicOrderController extends Controller
             // total can no longer contradict its own line items — a forged
             // `total` of 0 or 999999 is normalized before it reaches history,
             // stats and reports.
-            $data['total'] = collect($data['items'] ?? [])
+            //
+            // Clamp to the total column's capacity (decimal(10,2)): each of up to
+            // 100 line_totals is capped at 1,000,000, so the raw sum can reach
+            // 100,000,000 and overflow the column (a 500 on this public endpoint).
+            $sum = collect($data['items'] ?? [])
                 ->sum(fn ($item) => (float) ($item['line_total'] ?? 0));
+            $data['total'] = min($sum, 99999999.99);
 
             [$customer, $address] = $this->resolveCustomer($data);
 
