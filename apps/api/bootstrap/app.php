@@ -4,6 +4,7 @@ use App\Http\Middleware\EnsureFeatureEnabled;
 use App\Http\Middleware\EnsureRole;
 use App\Http\Middleware\EnsureSubscriptionAllowsWrites;
 use App\Http\Middleware\ForceJsonResponse;
+use App\Http\Middleware\SecurityHeaders;
 use App\Http\Middleware\SetLocale;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -30,6 +31,9 @@ return Application::configure(basePath: dirname(__DIR__))
 
         // API is JSON-only → framework errors (401/422/404) always render JSON.
         $middleware->prependToGroup('api', ForceJsonResponse::class);
+
+        // Baseline hardening headers + drop the X-Powered-By version banner.
+        $middleware->appendToGroup('api', SecurityHeaders::class);
 
         $middleware->alias([
             'role' => EnsureRole::class,

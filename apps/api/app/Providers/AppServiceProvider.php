@@ -7,6 +7,7 @@ use App\Enums\RoleEnum;
 use App\Enums\UserStatus;
 use App\Models\User;
 use App\Support\Jwt;
+use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -33,6 +34,42 @@ class AppServiceProvider extends ServiceProvider
         $this->registerJwtGuard();
         $this->registerRateLimiters();
         $this->registerGates();
+        $this->registerPasswordResetUrl();
+    }
+
+    /**
+     * Point the framework's password-reset notification at the SPA reset page.
+     *
+     * Laravel's default ResetPassword notification builds its link from a
+     * `password.reset` named route, which this API does not define — without
+     * this callback sendResetLink() throws RouteNotFoundException for every
+     * real account, which both breaks reset entirely and leaks user existence
+     * (a registered email 500s while an unknown one returns the generic 200).
+     *
+     * Restaurant admins reset on their own dashboard subdomain; platform staff
+     * (no tenant) reset on the super-admin portal host.
+     */
+    private function registerPasswordResetUrl(): void
+    {
+        ResetPassword::createUrlUsing(function (User $user, string $token): string {
+            $query = 'token='.$token.'&email='.urlencode($user->email);
+
+            if ($user->restaurant) {
+                return $user->restaurant->dashboardUrl('reset-password').'?'.$query;
+            }
+
+            $domain = config('platform.menu_domain');
+            if ($domain) {
+                $scheme = config('platform.menu_secure', true) ? 'https' : 'http';
+                $port = config('platform.menu_port');
+                $portPart = $port ? ":{$port}" : '';
+                $base = "{$scheme}://{$domain}{$portPart}";
+            } else {
+                $base = rtrim((string) config('app.url'), '/');
+            }
+
+            return $base.'/reset-password?'.$query;
+        });
     }
 
     /**

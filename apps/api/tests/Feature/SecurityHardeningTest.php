@@ -8,7 +8,9 @@ use App\Models\User;
 use App\Support\CsvSafe;
 use App\Support\Jwt;
 use Database\Seeders\DatabaseSeeder;
+use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Password;
 use Tests\TestCase;
 
@@ -91,6 +93,45 @@ class SecurityHardeningTest extends TestCase
 
         // Same message for both → no user-enumeration oracle.
         $this->assertSame($unknown, $existing);
+    }
+
+    public function test_forgot_password_for_existing_user_does_not_error_or_enumerate(): void
+    {
+        // Regression: sendResetLink() used to throw RouteNotFoundException for a
+        // real account (no reset-URL callback was registered), which both broke
+        // reset and leaked user existence — a registered email 500'd while an
+        // unknown one returned the generic 200. Both must now be a plain 200.
+        $r = Restaurant::factory()->create(['slug' => 'forgot-co']);
+        User::factory()->restaurantAdmin($r->id)->create(['email' => 'owner@forgot-co.test']);
+
+        $this->postJson('/api/auth/forgot-password', ['email' => 'owner@forgot-co.test'])
+            ->assertOk();
+
+        $this->postJson('/api/auth/forgot-password', ['email' => 'ghost@nope.test'])
+            ->assertOk();
+
+        // A real reset link was actually issued (proves the notification rendered
+        // without throwing, not just that validation passed).
+        $this->assertDatabaseHas('password_reset_tokens', ['email' => 'owner@forgot-co.test']);
+    }
+
+    public function test_reset_link_points_at_the_tenant_dashboard(): void
+    {
+        Notification::fake();
+
+        $r = Restaurant::factory()->create(['slug' => 'linkco']);
+        $user = User::factory()->restaurantAdmin($r->id)->create(['email' => 'owner@linkco.test']);
+
+        $this->postJson('/api/auth/forgot-password', ['email' => 'owner@linkco.test'])
+            ->assertOk();
+
+        Notification::assertSentTo($user, ResetPassword::class, function ($notification) use ($user) {
+            $url = $notification->toMail($user)->actionUrl;
+
+            return str_contains($url, '/reset-password')
+                && str_contains($url, 'token='.$notification->token)
+                && str_contains($url, 'email='.urlencode($user->email));
+        });
     }
 
     public function test_reset_rejects_weak_password(): void

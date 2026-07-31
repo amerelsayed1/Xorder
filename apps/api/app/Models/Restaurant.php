@@ -268,6 +268,28 @@ class Restaurant extends Model
         return rtrim(config('app.url'), '/').'/r/'.$this->slug.'/t/'.$token;
     }
 
+    /**
+     * A URL on this restaurant's dashboard SPA. With a menu domain configured
+     * the dashboard lives at the subdomain root (https://{slug}.<domain>/…);
+     * otherwise it falls back to a path-based URL for local/dev. Used to build
+     * links back into the admin app — e.g. the password-reset link.
+     */
+    public function dashboardUrl(string $path = ''): string
+    {
+        $path = ltrim($path, '/');
+        $domain = config('platform.menu_domain');
+
+        if ($domain) {
+            $scheme = config('platform.menu_secure', true) ? 'https' : 'http';
+            $port = config('platform.menu_port');
+            $portPart = $port ? ":{$port}" : '';
+
+            return "{$scheme}://{$this->slug}.{$domain}{$portPart}/{$path}";
+        }
+
+        return rtrim(config('app.url'), '/').'/'.$path;
+    }
+
     public function diningAreas(): HasMany
     {
         return $this->hasMany(DiningArea::class);
