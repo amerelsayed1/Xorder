@@ -23,6 +23,8 @@ class BranchResource extends JsonResource
             'map_url' => $this->map_url,
             'latitude' => $this->latitude,
             'longitude' => $this->longitude,
+            'geofence' => $this->geofence,
+            'geofence_enabled' => (bool) $this->geofence_enabled,
             'is_open' => $this->is_open,
             'is_active' => $this->is_active,
             'sort_order' => $this->sort_order,

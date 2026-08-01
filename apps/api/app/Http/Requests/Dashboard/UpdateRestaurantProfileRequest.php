@@ -2,10 +2,8 @@
 
 namespace App\Http\Requests\Dashboard;
 
-use App\Enums\OrderingMode;
 use App\Rules\MobileNumber;
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Validation\Rule;
 
 /**
  * Restaurant Admin profile edit. Deliberately excludes slug, status and
@@ -45,10 +43,10 @@ class UpdateRestaurantProfileRequest extends FormRequest
             'social_links.instagram' => ['nullable', 'string', 'url', 'max:2048'],
             'social_links.facebook' => ['nullable', 'string', 'url', 'max:2048'],
             'social_links.tiktok' => ['nullable', 'string', 'url', 'max:2048'],
-            // Branding (brand_color, secondary_color) and default_language are
-            // NOT editable here — they are set by the Super Admin. Any such keys
-            // in the payload are ignored (never reach ->update(validated())).
-            'ordering_mode' => ['sometimes', Rule::enum(OrderingMode::class)],
+            // Branding (brand_color, secondary_color), default_language and the
+            // ordering channel (ordering_mode) are NOT editable here — they are
+            // set by the Super Admin per the restaurant's plan. Any such keys in
+            // the payload are ignored (never reach ->update(validated())).
         ];
     }
 

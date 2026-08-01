@@ -122,7 +122,8 @@ const plans = ref([])
 const featureRequires = {
     bill_requests: ['table_management'],
     table_management: ['dine_in'],
-    customer_tracking: ['system_ordering'],
+    // customer_tracking has no prerequisite: customers are captured on every
+    // ordering type (system orders and WhatsApp checkout alike).
 }
 // Display order for the derived-capabilities preview.
 const featureDisplayOrder = [
@@ -153,6 +154,24 @@ const derivedFeatureKeys = computed(() => {
     return featureDisplayOrder.filter(k => resolved.has(k))
 })
 const enabledFeatureLabels = computed(() => derivedFeatureKeys.value.map(k => t(`feature.${k}`)))
+
+// Preview chips: present the ordering flags as the three ordering types (to
+// match the plan editor), and the rest as their own capability labels.
+const ORDERING_FLAGS = ['whatsapp_ordering', 'system_ordering', 'dine_in', 'pickup', 'delivery', 'table_management', 'customer_tracking']
+const previewChips = computed(() => {
+    const has = (k) => derivedFeatureKeys.value.includes(k)
+    const fulfill = [has('pickup') && t('feature.pickup'), has('delivery') && t('feature.delivery')].filter(Boolean).join(', ')
+    const chips = []
+    if (has('whatsapp_ordering')) chips.push(fulfill ? `${t('plan.ordering_whatsapp')} (${fulfill})` : t('plan.ordering_whatsapp'))
+    if (has('system_ordering')) {
+        if (has('dine_in') || has('table_management')) chips.push(t('plan.ordering_table'))
+        if (has('pickup') || has('delivery')) chips.push(fulfill ? `${t('plan.ordering_online')} (${fulfill})` : t('plan.ordering_online'))
+    }
+    for (const k of derivedFeatureKeys.value) {
+        if (!ORDERING_FLAGS.includes(k)) chips.push(t(`feature.${k}`))
+    }
+    return chips
+})
 
 // Supported order types are limited to the channels the plan grants: dine_in /
 // pickup / delivery are themselves plan features, so a branch can't offer an
@@ -406,7 +425,7 @@ async function submitCreate() {
                 <div class="pt-2" style="border-top:1px solid var(--line)">
                     <h3 class="label" style="margin:0">{{ t('wizard.features_derived') }}</h3>
                     <div v-if="derivedFeatureKeys.length" class="flex flex-wrap gap-2 mt-2">
-                        <span v-for="key in derivedFeatureKeys" :key="key" class="rounded-full px-3 py-1 text-xs" style="background:var(--page);border:1px solid var(--line);color:var(--ink)">{{ t(`feature.${key}`) }}</span>
+                        <span v-for="(chip, i) in previewChips" :key="i" class="rounded-full px-3 py-1 text-xs" style="background:var(--page);border:1px solid var(--line);color:var(--ink)">{{ chip }}</span>
                     </div>
                     <p v-else class="text-sm mt-2" style="color:var(--muted)">{{ t('wizard.features_derived_none') }}</p>
                 </div>
@@ -611,7 +630,7 @@ async function submitCreate() {
                 <div class="pt-2" style="border-top:1px solid var(--line)">
                     <h3 class="label" style="margin:0">{{ t('wizard.features_derived') }}</h3>
                     <div v-if="derivedFeatureKeys.length" class="flex flex-wrap gap-2 mt-2">
-                        <span v-for="key in derivedFeatureKeys" :key="key" class="rounded-full px-3 py-1 text-xs" style="background:var(--page);border:1px solid var(--line);color:var(--ink)">{{ t(`feature.${key}`) }}</span>
+                        <span v-for="(chip, i) in previewChips" :key="i" class="rounded-full px-3 py-1 text-xs" style="background:var(--page);border:1px solid var(--line);color:var(--ink)">{{ chip }}</span>
                     </div>
                     <p v-else class="text-sm mt-2" style="color:var(--muted)">{{ t('wizard.features_derived_none') }}</p>
                 </div>

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Public;
 use App\Http\Controllers\Controller;
 use App\Models\DiningTable;
 use App\Models\MenuSession;
+use App\Support\GeoFence;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -25,9 +26,20 @@ class PublicTableController extends Controller
     /** POST /public/tables/{token}/sessions — start a table menu session. */
     public function createSession(Request $request, string $token): JsonResponse
     {
-        $request->validate(['language' => ['nullable', 'in:ar,en']]);
+        $validated = $request->validate([
+            'language' => ['nullable', 'in:ar,en'],
+            // Diner's device GPS, sent when the branch fence is enabled.
+            'latitude' => ['nullable', 'numeric', 'between:-90,90'],
+            'longitude' => ['nullable', 'numeric', 'between:-180,180'],
+        ]);
 
         $table = $this->resolve($token);
+
+        // Presence check: if the branch fences its premises, the scanner must be
+        // physically inside it. GPS is the only trustworthy signal, so a missing
+        // location fails closed (no spoofable manual fallback).
+        $this->enforceGeofence($table, $validated['latitude'] ?? null, $validated['longitude'] ?? null);
+
         $ttl = (int) config('platform.table_session_ttl_minutes', 240);
 
         $session = new MenuSession([
@@ -77,6 +89,36 @@ class PublicTableController extends Controller
         return $table;
     }
 
+    /** Does this table's branch enforce an on-premises presence fence? */
+    private function fenceRequired(DiningTable $table): bool
+    {
+        $branch = $table->branch;
+
+        return $branch !== null
+            && $branch->geofence_enabled
+            && GeoFence::isEnforceable($branch->geofence);
+    }
+
+    /**
+     * Refuse the session unless the scanner's GPS falls inside the branch fence.
+     * Fails closed: fence on but no coordinates → 422 (location required);
+     * coordinates outside the polygon → 422 (out of area). No fence → no-op.
+     */
+    private function enforceGeofence(DiningTable $table, ?float $lat, ?float $lng): void
+    {
+        if (! $this->fenceRequired($table)) {
+            return;
+        }
+
+        if ($lat === null || $lng === null) {
+            abort(422, __('xorder.messages.table_location_required'));
+        }
+
+        if (! GeoFence::contains($lat, $lng, $table->branch->geofence)) {
+            abort(422, __('xorder.messages.table_outside_area'));
+        }
+    }
+
     /** @return array<string,mixed> */
     private function context(DiningTable $table): array
     {
@@ -94,6 +136,9 @@ class PublicTableController extends Controller
             'area' => $table->diningArea ? ['name_ar' => $table->diningArea->name_ar, 'name_en' => $table->diningArea->name_en] : null,
             'table' => ['label' => $table->label],
             'order_type' => 'dine_in',
+            // Signals the menu to obtain the diner's GPS before it tries to open
+            // a session — createSession refuses without an in-fence location.
+            'geofence_required' => $this->fenceRequired($table),
             'bill_requests' => (bool) $table->restaurant->hasFeature('bill_requests'),
             'internal_reviews' => (bool) $table->restaurant->hasFeature('internal_reviews'),
         ];

@@ -15,6 +15,7 @@ import { alert } from '@xorder/ui/alert.js'
 import { useAuth } from '@xorder/api-client/auth.js'
 import { useMenuLang } from '../../lib/menuLang.js'
 import BusinessHoursEditor from '../../components/BusinessHoursEditor.vue'
+import GeofenceMap from '../../components/GeofenceMap.vue'
 
 const { t, locale } = useI18n()
 const auth = useAuth()
@@ -27,7 +28,7 @@ const saving = ref(false)
 const showModal = ref(false)
 const editing = ref(null)
 const errors = ref({})
-const blank = () => ({ name_en: '', name_ar: '', address: '', phone: '', whatsapp_number: '', opening_hours: '', business_hours: {}, map_url: '', is_open: true, is_active: true })
+const blank = () => ({ name_en: '', name_ar: '', address: '', phone: '', whatsapp_number: '', opening_hours: '', business_hours: {}, map_url: '', latitude: null, longitude: null, geofence: null, geofence_enabled: false, is_open: true, is_active: true })
 const form = reactive(blank())
 
 async function load() {
@@ -49,6 +50,8 @@ function openEdit(b) {
         name_en: b.name_en || '', name_ar: b.name_ar || '', address: b.address || '',
         phone: b.phone || '', whatsapp_number: b.whatsapp_number || '',
         opening_hours: b.opening_hours || '', business_hours: b.business_hours || {}, map_url: b.map_url || '',
+        latitude: b.latitude ?? null, longitude: b.longitude ?? null,
+        geofence: b.geofence || null, geofence_enabled: !!b.geofence_enabled,
         is_open: b.is_open, is_active: b.is_active,
     })
     showModal.value = true
@@ -150,6 +153,19 @@ const branchName = (b) => pickLocalized(b, 'name', locale.value)
                 <label class="block"><span class="label">{{ t('branch.map_url') }}</span>
                     <input v-model="form.map_url" class="input" dir="ltr" placeholder="https://maps.google.com/…" />
                     <FormError :errors="errors" field="map_url" /></label>
+
+                <!-- Presence geofence: draw the branch area; the toggle turns on
+                     the on-site check for table-QR ordering. -->
+                <div class="block">
+                    <label class="flex items-center gap-2 text-sm" style="color:var(--body)">
+                        <button type="button" class="switch" :class="{ on: form.geofence_enabled }" :disabled="auth.isReadOnly" @click="form.geofence_enabled = !form.geofence_enabled"></button>
+                        {{ t('branch.geofence_enable') }}
+                    </label>
+                    <p class="page-sub" style="margin:4px 0 8px">{{ t('branch.geofence_enable_hint') }}</p>
+                    <GeofenceMap v-model="form.geofence" :center="{ lat: form.latitude, lng: form.longitude }" :disabled="auth.isReadOnly" />
+                    <FormError :errors="errors" field="geofence" />
+                </div>
+
                 <div class="flex items-center gap-6">
                     <label class="flex items-center gap-2 text-sm" style="color:var(--body)">
                         <button type="button" class="switch" :class="{ on: form.is_open }" @click="form.is_open = !form.is_open"></button>

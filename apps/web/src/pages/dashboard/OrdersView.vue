@@ -19,9 +19,9 @@ const auth = useAuth()
 const router = useRouter()
 const rt = useRealtime()
 
-// The customer name links to the directory record — but only when the customer
-// directory feature is on and the order was matched to a directory row.
-const canOpenCustomer = (order) => auth.hasFeature('customer_tracking') && !!order.customer_id
+// The customer name links to the directory record when the order was matched
+// to a directory row. The directory is available on every plan.
+const canOpenCustomer = (order) => !!order.customer_id
 function openCustomer(order) {
     if (canOpenCustomer(order)) router.push({ name: 'dashboard.customer', params: { id: order.customer_id } })
 }

@@ -18,7 +18,6 @@ const form = reactive({
     business_hours: {}, delivery_time_min: null, delivery_time_max: null,
     minimum_order: '', latitude: '', longitude: '',
     logo_url: '', cover_image_url: '',
-    ordering_mode: 'both',
     social_links: { instagram: '', facebook: '', tiktok: '' },
 })
 const errors = ref({})
@@ -26,9 +25,6 @@ const saved = ref(false)
 const saving = ref(false)
 const loading = ref(true)
 const loadError = ref(false)
-
-// Ordering channels the restaurant's plan grants; the selector is capped to these.
-const orderingModeOptions = ref([])
 
 async function load() {
     loading.value = true
@@ -41,10 +37,6 @@ async function load() {
             // so the inputs stay controlled.
             social_links: { instagram: '', facebook: '', tiktok: '', ...(data.data.social_links || {}) },
         })
-        orderingModeOptions.value = data.data.available_ordering_modes || []
-        if (orderingModeOptions.value.length && !orderingModeOptions.value.includes(form.ordering_mode)) {
-            form.ordering_mode = orderingModeOptions.value[0]
-        }
     } catch (err) {
         loadError.value = true
     } finally {
@@ -199,15 +191,6 @@ async function changePassword() {
                         </span>
                     </label>
                 </div>
-            </div>
-
-            <div v-if="orderingModeOptions.length > 1" class="block">
-                <span class="label">{{ t('restaurant.ordering_mode') }}</span>
-                <div class="flex gap-2 mt-1.5 flex-wrap">
-                    <button v-for="m in orderingModeOptions" :key="m" type="button" @click="form.ordering_mode = m"
-                        class="btn" :class="form.ordering_mode === m ? 'btn-dark' : 'btn-ghost'">{{ t('restaurant.ordering_mode_' + m) }}</button>
-                </div>
-                <span class="block text-xs mt-1.5" style="color:var(--muted)">{{ t('restaurant.ordering_mode_hint') }}</span>
             </div>
 
         </div>

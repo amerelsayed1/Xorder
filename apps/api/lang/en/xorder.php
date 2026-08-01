@@ -61,6 +61,8 @@ return [
         'table_qr_invalid' => 'This QR code is invalid or no longer active. Please ask a staff member for assistance.',
         'table_disabled' => 'This table is currently unavailable. Please contact a staff member.',
         'branch_disabled' => 'This branch is currently unavailable.',
+        'table_location_required' => 'Please enable location so we can confirm you are at the restaurant before ordering.',
+        'table_outside_area' => 'You appear to be outside the restaurant. Please scan the QR code at your table to order.',
         'session_expired' => 'Your session has expired. Please scan the table QR code again.',
         'combo_created' => 'Offer created.',
         'combo_updated' => 'Offer updated.',
@@ -126,6 +128,7 @@ return [
     'validation' => [
         'map_link_unresolved' => "We couldn't find a location in that link. Open it in Google Maps and copy the full URL from the address bar, or paste the coordinates as \"lat, lng\".",
         'restaurant_name_required' => 'Provide the restaurant name in at least one language.',
+        'geofence_required' => 'Draw the branch area on the map before enabling the location check.',
         'area_name_required' => 'Provide the area name in at least one language.',
         'table_label_taken' => 'A table with this name already exists in this area.',
         'table_labels_taken' => 'These names already exist in this area: :labels',

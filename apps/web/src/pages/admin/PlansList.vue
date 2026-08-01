@@ -35,6 +35,22 @@ const branchLimit = (p) => {
     return p.max_branches == null ? '∞' : String(p.max_branches)
 }
 
+// Capability chips: collapse pickup+delivery into one, and surface the customer
+// directory (implied by having any ordering — it's captured from orders).
+const planCaps = (p) => {
+    const fk = p.feature_keys || []
+    const caps = []
+    const seen = new Set()
+    const add = (k) => { if (!seen.has(k)) { seen.add(k); caps.push(k) } }
+    for (const k of fk) {
+        if (k === 'customer_tracking') continue // derived from ordering below
+        if (k === 'pickup' || k === 'delivery') add('pickup_delivery')
+        else add(k)
+    }
+    if (fk.includes('whatsapp_ordering') || fk.includes('system_ordering')) add('customer_tracking')
+    return caps
+}
+
 async function removePlan(p) {
     const ok = await confirm({
         title: t('plan.delete_title'),
@@ -92,8 +108,8 @@ async function removePlan(p) {
                         <td class="px-3 py-3 text-center" style="color:var(--body)"><span class="badge badge-gray">{{ branchLimit(p) }}</span></td>
                         <td class="px-3 py-3">
                             <div class="flex flex-wrap justify-center gap-1" style="max-width:340px;margin-inline:auto">
-                                <span v-for="k in (p.feature_keys || [])" :key="k" class="plan-cap">{{ t('feature.' + k) }}</span>
-                                <span v-if="!(p.feature_keys && p.feature_keys.length)" style="color:var(--muted)">—</span>
+                                <span v-for="k in planCaps(p)" :key="k" class="plan-cap">{{ t('feature.' + k) }}</span>
+                                <span v-if="!planCaps(p).length" style="color:var(--muted)">—</span>
                             </div>
                         </td>
                         <td class="px-3 py-3 text-center">

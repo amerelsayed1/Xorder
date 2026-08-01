@@ -28,6 +28,8 @@ class Branch extends Model
         'map_url',
         'latitude',
         'longitude',
+        'geofence',
+        'geofence_enabled',
         'is_open',
         'is_active',
         'supported_order_types',
@@ -42,6 +44,8 @@ class Branch extends Model
             'business_hours' => 'array',
             'latitude' => 'float',
             'longitude' => 'float',
+            'geofence' => 'array',
+            'geofence_enabled' => 'boolean',
             'supported_order_types' => 'array',
         ];
     }

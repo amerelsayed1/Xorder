@@ -94,4 +94,102 @@ class PublicTableTest extends TestCase
             'language' => 'en',
         ]);
     }
+
+    // ── Presence geofence ──────────────────────────────────────────────────
+
+    /** A small square polygon fence around (30.00, 31.00). */
+    private function enableFence(): void
+    {
+        $this->branch->update([
+            'geofence_enabled' => true,
+            'geofence' => ['type' => 'polygon', 'points' => [
+                ['lat' => 29.99, 'lng' => 30.99],
+                ['lat' => 29.99, 'lng' => 31.01],
+                ['lat' => 30.01, 'lng' => 31.01],
+                ['lat' => 30.01, 'lng' => 30.99],
+            ]],
+        ]);
+    }
+
+    /** A radius fence: 200 m around (30.00, 31.00). */
+    private function enableRadiusFence(): void
+    {
+        $this->branch->update([
+            'geofence_enabled' => true,
+            'geofence' => ['type' => 'radius', 'center' => ['lat' => 30.0, 'lng' => 31.0], 'radius' => 200],
+        ]);
+    }
+
+    public function test_context_advertises_when_a_fence_is_required(): void
+    {
+        $table = $this->makeTable('3');
+        $this->getJson("/api/public/tables/{$table->public_token}")
+            ->assertOk()->assertJsonPath('data.geofence_required', false);
+
+        $this->enableFence();
+        $this->getJson("/api/public/tables/{$table->public_token}")
+            ->assertOk()->assertJsonPath('data.geofence_required', true);
+    }
+
+    public function test_session_allowed_when_gps_is_inside_the_fence(): void
+    {
+        $this->enableFence();
+        $table = $this->makeTable('5');
+
+        $this->postJson("/api/public/tables/{$table->public_token}/sessions", [
+            'language' => 'en', 'latitude' => 30.0, 'longitude' => 31.0,
+        ])->assertCreated()->assertJsonStructure(['data' => ['session_token']]);
+    }
+
+    public function test_session_blocked_when_gps_is_outside_the_fence(): void
+    {
+        $this->enableFence();
+        $table = $this->makeTable('6');
+
+        $this->postJson("/api/public/tables/{$table->public_token}/sessions", [
+            'latitude' => 40.0, 'longitude' => 41.0,
+        ])->assertStatus(422);
+
+        $this->assertDatabaseCount('menu_sessions', 0);
+    }
+
+    public function test_session_blocked_when_gps_missing_and_fence_required(): void
+    {
+        $this->enableFence();
+        $table = $this->makeTable('8');
+
+        // Fails closed: no coordinates → refused, no spoofable fallback.
+        $this->postJson("/api/public/tables/{$table->public_token}/sessions", ['language' => 'en'])
+            ->assertStatus(422);
+
+        $this->assertDatabaseCount('menu_sessions', 0);
+    }
+
+    public function test_radius_fence_allows_inside_and_blocks_outside(): void
+    {
+        $this->enableRadiusFence();
+        $table = $this->makeTable('11');
+
+        // ~30 m from centre → inside the 200 m radius.
+        $this->postJson("/api/public/tables/{$table->public_token}/sessions", [
+            'latitude' => 30.0002, 'longitude' => 31.0002,
+        ])->assertCreated();
+
+        // Several km away → outside.
+        $this->postJson("/api/public/tables/{$table->public_token}/sessions", [
+            'latitude' => 30.1, 'longitude' => 31.1,
+        ])->assertStatus(422);
+    }
+
+    public function test_gps_ignored_when_fence_disabled(): void
+    {
+        // Polygon drawn but the toggle is off → ordinary behaviour, no check.
+        $this->branch->update(['geofence_enabled' => false, 'geofence' => [
+            ['lat' => 29.99, 'lng' => 30.99], ['lat' => 29.99, 'lng' => 31.01], ['lat' => 30.01, 'lng' => 31.0],
+        ]]);
+        $table = $this->makeTable('10');
+
+        $this->postJson("/api/public/tables/{$table->public_token}/sessions", ['language' => 'en'])
+            ->assertCreated();
+    }
 }

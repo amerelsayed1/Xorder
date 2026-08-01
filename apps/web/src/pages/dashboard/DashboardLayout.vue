@@ -19,10 +19,19 @@ const { t, locale } = useI18n()
 const r = computed(() => auth.restaurant)
 const rt = useRealtime()
 
-// The restaurant dashboard follows the language the Super Admin configured for
-// the restaurant — staff can't switch it (the toggle is hidden below). Apply it
-// as soon as the restaurant context is known.
-watch(() => r.value?.default_language, (lang) => { if (lang) setLocale(lang) }, { immediate: true })
+// Bilingual restaurants get a language toggle so staff can switch AR/EN
+// themselves. Single-language restaurants are locked to the language the Super
+// Admin configured. For bilingual ones we only seed the default on first visit
+// (nothing saved yet) and otherwise respect the staff's saved choice.
+const bilingual = computed(() => r.value?.bilingual !== false)
+watch(() => r.value, (rest) => {
+    if (!rest) return
+    if (rest.bilingual === false) {
+        setLocale(rest.default_language)
+    } else if (!localStorage.getItem('locale')) {
+        setLocale(rest.default_language || 'ar')
+    }
+}, { immediate: true })
 
 const title = computed(() => pickLocalized(r.value, 'name', locale.value) || t('admin.restaurant'))
 const mark = computed(() => localizedInitial(r.value, 'name', locale.value, 'R'))
@@ -190,7 +199,7 @@ const nav = computed(() => buildDashboardNav({
 </script>
 
 <template>
-    <SakaiLayout :title="title" :role="role" :mark="mark" :logo="logo" :nav="nav" :hide-lang-toggle="true">
+    <SakaiLayout :title="title" :role="role" :mark="mark" :logo="logo" :nav="nav" :hide-lang-toggle="!bilingual">
         <template #topbar-actions>
             <FullscreenToggle />
             <NotificationBell />

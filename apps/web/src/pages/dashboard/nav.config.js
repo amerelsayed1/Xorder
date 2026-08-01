@@ -42,7 +42,7 @@ export const DASHBOARD_NAV = [
     {
         key: 'engagement', labelKey: 'nav.group_engagement', icon: 'pi pi-users',
         children: [
-            { key: 'customers', labelKey: 'nav.customers', icon: 'pi pi-user', to: { name: 'dashboard.customers' }, permission: 'customer_tracking' },
+            { key: 'customers', labelKey: 'nav.customers', icon: 'pi pi-user', to: { name: 'dashboard.customers' } },
             { key: 'reviews', labelKey: 'nav.reviews', icon: 'pi pi-star', to: { name: 'dashboard.reviews' }, permission: 'internal_reviews' },
         ],
     },

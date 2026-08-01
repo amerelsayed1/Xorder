@@ -124,17 +124,29 @@ const planRecommended = (p) => p.recommended ?? p.popular ?? false
 // `multi_branch` is intentionally omitted — branch allowance is already shown
 // in the dedicated branches row, so listing it again as a bullet is redundant.
 const HIDDEN_FEATURE_KEYS = new Set(['multi_branch'])
+// pickup + delivery are collapsed into a single "استلام وتوصيل" row.
+const MERGE_FEATURE_KEYS = { pickup: 'pickup_delivery', delivery: 'pickup_delivery' }
+// The customer directory isn't a standalone flag: it's available whenever the
+// plan takes orders (WhatsApp or System), because customers are captured from
+// orders. A menu-only plan (QR, no ordering) can't build a customer list.
+const hasOrdering = (p) => (p.feature_keys || []).some((k) => k === 'whatsapp_ordering' || k === 'system_ordering')
 const allFeatureKeys = computed(() => {
     const seen = new Set()
     const keys = []
+    const add = (k) => { if (!seen.has(k) && !HIDDEN_FEATURE_KEYS.has(k)) { seen.add(k); keys.push(k) } }
     for (const p of enabledPlans.value) {
-        for (const k of p.feature_keys || []) {
-            if (!seen.has(k) && !HIDDEN_FEATURE_KEYS.has(k)) { seen.add(k); keys.push(k) }
-        }
+        for (const k of p.feature_keys || []) add(MERGE_FEATURE_KEYS[k] || k)
     }
+    // Always a comparison row — ticked only on plans that take orders.
+    add('customer_tracking')
     return keys
 })
-const planHasFeature = (p, key) => (p.feature_keys || []).includes(key)
+const planHasFeature = (p, key) => {
+    const fk = p.feature_keys || []
+    if (key === 'customer_tracking') return hasOrdering(p)
+    if (key === 'pickup_delivery') return fk.includes('pickup') || fk.includes('delivery')
+    return fk.includes(key)
+}
 // The last feature (in display order) the plan actually includes — the branch
 // allowance row is rendered right after it, grouping it with what's active.
 const lastActiveKey = (p) => {

@@ -12,7 +12,7 @@ const { t, locale } = useI18n()
 const isEdit = computed(() => !!route.params.id)
 const backArrow = computed(() => locale.value === 'ar' ? '→' : '←')
 const form = reactive({
-    name: '', price: '', currency: 'EGP', feature_keys: [],
+    name: '', price: '', currency: 'EGP',
     // Resource caps. Blank = unlimited (stored as null). max_branches only bites
     // when the plan also grants multi_branch; a single-branch plan is capped at
     // its one primary branch by the multi_branch feature gate regardless.
@@ -21,19 +21,70 @@ const form = reactive({
 })
 const currencies = ['EGP', 'SAR', 'AED', 'USD', 'KWD', 'QAR', 'BHD', 'OMR', 'JOD', 'EUR', 'GBP']
 
-// Capability flags a plan can grant. Prerequisites (e.g. table_management→dine_in,
-// customer_tracking→system_ordering) are auto-expanded server-side, so the admin
-// only checks the headline capabilities.
-const entitlementKeys = [
-    'qr_menu', 'whatsapp_ordering', 'system_ordering', 'customer_tracking',
-    'table_management', 'bill_requests', 'internal_reviews', 'product_analytics',
-    'dine_in', 'pickup', 'delivery', 'multi_branch',
-]
-function toggleEntitlement(key, on) {
-    const i = form.feature_keys.indexOf(key)
-    if (on && i < 0) form.feature_keys.push(key)
-    else if (!on && i >= 0) form.feature_keys.splice(i, 1)
+// Ordering is modelled as one exclusive channel (WhatsApp XOR System), each
+// with its own fulfillment. It expands to the underlying feature flags on save
+// and collapses back from them on load — the flags stay the source of truth,
+// but the Super Admin thinks in the three ordering types we present.
+const ordering = reactive({
+    channel: '',          // '' | 'whatsapp' | 'system'
+    waPickup: false, waDelivery: false,
+    tableOrdering: false,
+    onlineOrdering: false,
+    onPickup: false, onDelivery: false,
+})
+function setChannel(ch) {
+    ordering.channel = ch
+    // Clear the other channel's sub-selection so no stale flags leak on save.
+    if (ch === 'whatsapp') {
+        ordering.tableOrdering = ordering.onlineOrdering = ordering.onPickup = ordering.onDelivery = false
+    } else {
+        ordering.waPickup = ordering.waDelivery = false
+    }
 }
+/** Expand the ordering selection to feature flags. */
+function orderingKeys() {
+    const keys = new Set()
+    if (ordering.channel === 'whatsapp') {
+        keys.add('whatsapp_ordering')
+        if (ordering.waPickup) keys.add('pickup')
+        if (ordering.waDelivery) keys.add('delivery')
+    } else if (ordering.channel === 'system') {
+        if (ordering.tableOrdering) { keys.add('system_ordering'); keys.add('dine_in'); keys.add('table_management') }
+        if (ordering.onlineOrdering) {
+            keys.add('system_ordering')
+            if (ordering.onPickup) keys.add('pickup')
+            if (ordering.onDelivery) keys.add('delivery')
+        }
+    }
+    return [...keys]
+}
+/** Collapse stored feature flags back into the ordering selection. */
+function loadOrdering(keys) {
+    const has = (k) => keys.includes(k)
+    if (has('system_ordering') || has('dine_in') || has('table_management')) {
+        ordering.channel = 'system' // if a legacy plan had both channels, System wins
+        ordering.tableOrdering = has('dine_in') || has('table_management')
+        ordering.onlineOrdering = has('system_ordering') && (has('pickup') || has('delivery'))
+        ordering.onPickup = has('pickup')
+        ordering.onDelivery = has('delivery')
+    } else if (has('whatsapp_ordering')) {
+        ordering.channel = 'whatsapp'
+        ordering.waPickup = has('pickup')
+        ordering.waDelivery = has('delivery')
+    }
+}
+
+// Non-ordering capabilities the admin toggles directly. customer_tracking is
+// gone — customers are captured on every plan now.
+const capabilityKeys = ['qr_menu', 'bill_requests', 'internal_reviews', 'product_analytics', 'multi_branch']
+const capabilities = ref([])
+function toggleCapability(key, on) {
+    const i = capabilities.value.indexOf(key)
+    if (on && i < 0) capabilities.value.push(key)
+    else if (!on && i >= 0) capabilities.value.splice(i, 1)
+}
+// The full flag set the plan will persist.
+const featureKeys = computed(() => [...new Set([...capabilities.value, ...orderingKeys()])])
 const errors = ref({})
 const saving = ref(false)
 
@@ -45,13 +96,15 @@ onMounted(async () => {
             name: p.name,
             price: p.price ?? '',
             currency: p.currency,
-            feature_keys: Array.isArray(p.feature_keys) ? [...p.feature_keys] : [],
             max_branches: p.max_branches ?? '',
             max_items: p.max_items ?? '',
             is_active: p.is_active,
             is_recommended: p.is_recommended ?? false,
             sort_order: p.sort_order,
         })
+        const keys = Array.isArray(p.feature_keys) ? p.feature_keys : []
+        loadOrdering(keys)
+        capabilities.value = capabilityKeys.filter((k) => keys.includes(k))
     }
 })
 
@@ -63,7 +116,7 @@ async function submit() {
             name: form.name,
             price: form.price === '' ? null : Number(form.price),
             currency: form.currency,
-            feature_keys: [...form.feature_keys],
+            feature_keys: featureKeys.value,
             max_branches: form.max_branches === '' ? null : Number(form.max_branches),
             max_items: form.max_items === '' ? null : Number(form.max_items),
             is_active: form.is_active,
@@ -106,15 +159,53 @@ async function submit() {
                 </div>
 
                 <div class="block">
-                    <span class="label">{{ t('plan.entitlements') }}</span>
-                    <p class="text-xs mb-2" style="color:var(--muted)">{{ t('plan.entitlements_hint') }}</p>
+                    <span class="label">{{ t('plan.ordering') }}</span>
+                    <p class="text-xs mb-2" style="color:var(--muted)">{{ t('plan.ordering_hint') }}</p>
+
+                    <!-- Channel: WhatsApp XOR System -->
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        <label v-for="key in entitlementKeys" :key="key" class="flex items-center gap-2 rounded-lg border p-2.5 cursor-pointer" style="border-color:var(--line)">
-                            <input type="checkbox" :checked="form.feature_keys.includes(key)" @change="toggleEntitlement(key, $event.target.checked)" class="h-4 w-4" />
+                        <label class="flex items-center gap-2 rounded-lg border p-2.5 cursor-pointer" :style="{ borderColor: ordering.channel === 'whatsapp' ? 'var(--accent)' : 'var(--line)' }">
+                            <input type="radio" name="channel" :checked="ordering.channel === 'whatsapp'" @change="setChannel('whatsapp')" class="h-4 w-4" />
+                            <span class="text-sm" style="color:var(--ink)">{{ t('plan.ordering_whatsapp') }}</span>
+                        </label>
+                        <label class="flex items-center gap-2 rounded-lg border p-2.5 cursor-pointer" :style="{ borderColor: ordering.channel === 'system' ? 'var(--accent)' : 'var(--line)' }">
+                            <input type="radio" name="channel" :checked="ordering.channel === 'system'" @change="setChannel('system')" class="h-4 w-4" />
+                            <span class="text-sm" style="color:var(--ink)">{{ t('plan.ordering_system') }}</span>
+                        </label>
+                    </div>
+
+                    <!-- WhatsApp fulfillment -->
+                    <div v-if="ordering.channel === 'whatsapp'" class="mt-2 ps-3 border-s-2" style="border-color:var(--line)">
+                        <span class="text-xs" style="color:var(--muted)">{{ t('plan.ordering_fulfillment') }}</span>
+                        <div class="flex gap-4 mt-1">
+                            <label class="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" v-model="ordering.waPickup" class="h-4 w-4" />{{ t('feature.pickup') }}</label>
+                            <label class="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" v-model="ordering.waDelivery" class="h-4 w-4" />{{ t('feature.delivery') }}</label>
+                        </div>
+                    </div>
+
+                    <!-- System sub-types -->
+                    <div v-else-if="ordering.channel === 'system'" class="mt-2 ps-3 border-s-2 space-y-2" style="border-color:var(--line)">
+                        <label class="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" v-model="ordering.tableOrdering" class="h-4 w-4" />{{ t('plan.ordering_table') }}</label>
+                        <label class="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" v-model="ordering.onlineOrdering" class="h-4 w-4" />{{ t('plan.ordering_online') }}</label>
+                        <div v-if="ordering.onlineOrdering" class="ps-6">
+                            <span class="text-xs" style="color:var(--muted)">{{ t('plan.ordering_fulfillment') }}</span>
+                            <div class="flex gap-4 mt-1">
+                                <label class="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" v-model="ordering.onPickup" class="h-4 w-4" />{{ t('feature.pickup') }}</label>
+                                <label class="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" v-model="ordering.onDelivery" class="h-4 w-4" />{{ t('feature.delivery') }}</label>
+                            </div>
+                        </div>
+                    </div>
+                    <FormError :errors="errors" field="feature_keys" />
+                </div>
+
+                <div class="block">
+                    <span class="label">{{ t('plan.capabilities') }}</span>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-1">
+                        <label v-for="key in capabilityKeys" :key="key" class="flex items-center gap-2 rounded-lg border p-2.5 cursor-pointer" style="border-color:var(--line)">
+                            <input type="checkbox" :checked="capabilities.includes(key)" @change="toggleCapability(key, $event.target.checked)" class="h-4 w-4" />
                             <span class="text-sm" style="color:var(--ink)">{{ t(`feature.${key}`) }}</span>
                         </label>
                     </div>
-                    <FormError :errors="errors" field="feature_keys" />
                 </div>
 
                 <div class="block">

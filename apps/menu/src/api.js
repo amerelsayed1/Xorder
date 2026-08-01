@@ -24,10 +24,39 @@ export async function postOrder(slug, payload) {
     return data
 }
 
-/** Open a table menu session from a scanned table QR token. */
-export async function createTableSession(token, language) {
-    const { data } = await axios.post(`${BASE}/api/public/tables/${token}/sessions`, { language }, {
+/**
+ * Save just the diner's contact details to the restaurant's customer directory.
+ * Used at WhatsApp checkout, which records no order but still captures the
+ * customer. Fire-and-forget; never blocks the WhatsApp handoff.
+ */
+export async function saveCustomer(slug, payload) {
+    const { data } = await axios.post(`${BASE}/api/public/restaurants/${slug}/customers`, payload, {
         headers: { Accept: 'application/json' },
+    })
+    return data
+}
+
+/** Table context for a scanned QR (tells us whether a presence fence applies). */
+export async function getTableContext(token) {
+    const { data } = await axios.get(`${BASE}/api/public/tables/${token}`, {
+        headers: { Accept: 'application/json' },
+    })
+    return data
+}
+
+/**
+ * Open a table menu session from a scanned table QR token. When the branch
+ * fences its premises, `coords` ({ latitude, longitude }) must be inside it or
+ * the backend refuses the session (presence check).
+ */
+export async function createTableSession(token, language, coords = null) {
+    const payload = { language }
+    if (coords) {
+        payload.latitude = coords.latitude
+        payload.longitude = coords.longitude
+    }
+    const { data } = await axios.post(`${BASE}/api/public/tables/${token}/sessions`, payload, {
+        headers: { Accept: 'application/json', 'X-Locale': language || 'ar' },
     })
     return data
 }

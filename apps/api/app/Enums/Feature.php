@@ -47,9 +47,8 @@ enum Feature: string
             self::BILL_REQUESTS => [self::TABLE_MANAGEMENT],
             // Seating diners at tables implies dine-in ordering (FR-FEATURES-005).
             self::TABLE_MANAGEMENT => [self::DINE_IN],
-            // The customer database is populated from durable system orders, so
-            // tracking customers is meaningless without system ordering.
-            self::CUSTOMER_TRACKING => [self::SYSTEM_ORDERING],
+            // Customers are captured on every ordering type (system orders and
+            // WhatsApp checkout alike), so the directory has no prerequisite.
             default => [],
         };
     }

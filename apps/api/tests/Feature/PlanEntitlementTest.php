@@ -77,12 +77,14 @@ class PlanEntitlementTest extends TestCase
         $this->assertFalse($r->hasFeature(Feature::CUSTOMER_TRACKING));
     }
 
-    public function test_customer_tracking_entitlement_pulls_in_system_ordering(): void
+    public function test_customer_tracking_no_longer_requires_system_ordering(): void
     {
+        // Customers are captured on every ordering type (system orders and
+        // WhatsApp checkout alike), so the directory has no prerequisite.
         $resolved = Feature::resolve(['customer_tracking' => true]);
 
         $this->assertTrue($resolved['customer_tracking']);
-        $this->assertTrue($resolved['system_ordering']);
+        $this->assertFalse($resolved['system_ordering']);
     }
 
     public function test_orders_route_requires_system_ordering(): void
@@ -100,16 +102,15 @@ class PlanEntitlementTest extends TestCase
         $this->actingAs($admin->fresh())->getJson('/api/dashboard/orders')->assertOk();
     }
 
-    public function test_customers_route_requires_customer_tracking(): void
+    public function test_customers_route_available_on_every_plan(): void
     {
         $r = Restaurant::factory()->create();
         $admin = User::factory()->restaurantAdmin($r->id)->create();
 
-        app(RestaurantFeatureService::class)->apply($r, ['qr_menu' => true, 'system_ordering' => true]);
-        $this->actingAs($admin)->getJson('/api/dashboard/customers')->assertStatus(403);
-
-        app(RestaurantFeatureService::class)->apply($r, ['qr_menu' => true, 'customer_tracking' => true]);
-        $this->actingAs($admin->fresh())->getJson('/api/dashboard/customers')->assertOk();
+        // Even a WhatsApp-only plan (no system_ordering, no customer_tracking)
+        // can reach the customer directory now.
+        app(RestaurantFeatureService::class)->apply($r, ['qr_menu' => true, 'whatsapp_ordering' => true]);
+        $this->actingAs($admin)->getJson('/api/dashboard/customers')->assertOk();
     }
 
     public function test_changing_the_plan_via_subscription_endpoint_re_derives_features(): void

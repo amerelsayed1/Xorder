@@ -38,6 +38,7 @@ use App\Http\Controllers\Dashboard\TableController;
 use App\Http\Controllers\Public\LandingContentController as PublicLandingContentController;
 use App\Http\Controllers\Public\LeadController as PublicLeadController;
 use App\Http\Controllers\Public\PublicBillRequestController;
+use App\Http\Controllers\Public\PublicCustomerController;
 use App\Http\Controllers\Public\PublicMenuApiController;
 use App\Http\Controllers\Public\PublicOrderController;
 use App\Http\Controllers\Public\PublicReviewController;
@@ -170,12 +171,11 @@ Route::prefix('dashboard')
         // out. Registered before items/{item} so "export" isn't matched as an id.
         Route::get('items/export', [MenuExportController::class, 'export']);
         Route::get('items/{item}', [MenuItemController::class, 'show']);
-        // Customer database — gated on the customer_tracking feature (Restaurant
-        // Pro). WhatsApp-only plans never build a customer list.
-        Route::middleware('feature:customer_tracking')->group(function () {
-            Route::get('customers', [CustomerController::class, 'index']);
-            Route::get('customers/{customer}', [CustomerController::class, 'show']);
-        });
+        // Customer directory — available on every plan. Customers are captured
+        // for all ordering types (system orders and WhatsApp checkout alike), so
+        // the restaurant always keeps its customer list.
+        Route::get('customers', [CustomerController::class, 'index']);
+        Route::get('customers/{customer}', [CustomerController::class, 'show']);
 
         // Push-notification device tokens (not subscription-gated).
         Route::post('push/token', [PushTokenController::class, 'store']);
@@ -341,6 +341,11 @@ Route::post('public/leads', [PublicLeadController::class, 'store'])
 // Guest order recording (pre-WhatsApp handoff). Kept loose enough for many
 // diners behind one restaurant-WiFi IP.
 Route::post('public/restaurants/{slug}/orders', [PublicOrderController::class, 'store'])
+    ->middleware('throttle:20,1');
+
+// WhatsApp checkout captures just the customer (no order record) so the
+// restaurant still builds its directory. Same throttle as guest orders.
+Route::post('public/restaurants/{slug}/customers', [PublicCustomerController::class, 'store'])
     ->middleware('throttle:20,1');
 
 Route::get('public/restaurants/{slug}/branding', [RestaurantBrandingController::class, 'show'])

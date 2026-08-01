@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, reactive, watch, onMounted, onUnmounted } from 'vue'
-import { postOrder } from './api.js'
+import { postOrder, saveCustomer } from './api.js'
 import { track } from './lib/analytics.js'
 import { useLocale } from './composables/useLocale'
 import { useCart } from './composables/useCart'
@@ -34,7 +34,7 @@ const slug = (bareHost && new URLSearchParams(window.location.search).get('r')) 
 
 const { locale, isAr, t, localize } = useLocale('ar')
 // A table QR scan (…/t/{token}) binds this visit to a physical table.
-const { hasTable, sessionToken, tableLabel, area: tableArea, billRequests, internalReviews, tableError } = useTableSession(locale.value)
+const { hasTable, sessionToken, tableLabel, area: tableArea, billRequests, internalReviews, tableError, locating, orderingBlocked } = useTableSession(locale.value, t)
 const tableAreaName = computed(() => {
     const a = tableArea.value
     if (!a) return ''
@@ -136,7 +136,10 @@ const sym = computed(() => {
     return r?.currency_symbol || r?.currency || ''
 })
 const waDigits = computed(() => (restaurant.value?.whatsapp_number || '').replace(/[^0-9]/g, ''))
-const orderingEnabled = computed(() => restaurant.value?.ordering_enabled !== false)
+// Ordering is off for display-only menus, and also whenever a table QR was
+// scanned from outside the branch's geofence (or before presence is confirmed):
+// the diner can still browse, but can't add to cart or check out.
+const orderingEnabled = computed(() => restaurant.value?.ordering_enabled !== false && !orderingBlocked.value)
 const bilingual = computed(() => restaurant.value?.bilingual !== false)
 // How checkout completes: 'whatsapp' (WhatsApp only, no record), 'system'
 // (order record only, no WhatsApp), or 'both' (record + WhatsApp).
@@ -231,7 +234,7 @@ function closeModal() {
 }
 
 function addToCartHandler(note) {
-    if (!modalValid.value) return
+    if (!orderingEnabled.value || !modalValid.value) return
     track('menu_add_to_cart', { slug, kind: modal.value.kind })
     addToCart(modal.value.kind, modal.value.ref, sel.groups, qty.value, note)
     // Just add and bump the header count — don't pop the cart dialog open.
@@ -248,6 +251,7 @@ function cartQtyOf(kind, item) {
 // Quick-add from the menu card. Items with options can't be added blindly —
 // open the modal so the diner picks them; simple items add one directly.
 function quickAdd(kind, item) {
+    if (!orderingEnabled.value) return
     const groups = kind === 'combo' ? (item.groups || []) : (item.option_groups || [])
     if (groups.length) { openModal(kind, item); return }
     track('menu_add_to_cart', { slug, kind })
@@ -305,6 +309,15 @@ function submitOrder(details) {
         postOrder(slug, snapshot)
             .then(res => { lastOrderCode.value = res?.data?.code || ''; lastOrderId.value = res?.data?.id || null })
             .catch(() => { /* WhatsApp handoff still carries the order in 'both' mode */ })
+    } else if (usesWhatsapp.value) {
+        // WhatsApp-only: no order is recorded, but still save the customer so the
+        // restaurant keeps its directory across every ordering type.
+        saveCustomer(slug, {
+            customer_name: details.name || null,
+            customer_phone: details.phone || null,
+            customer_email: details.email || null,
+            customer_address: details.address || null,
+        }).catch(() => { /* best-effort; must never block the WhatsApp handoff */ })
     }
 
     if (usesWhatsapp.value) {
@@ -356,6 +369,7 @@ function updateUserField(field, value) {
                 <span class="table-banner__pin">◈</span>
                 <span>{{ isAr ? 'طاولة' : 'Table' }} {{ tableLabel }}<span v-if="tableAreaName"> — {{ tableAreaName }}</span></span>
             </div>
+            <div v-else-if="locating" class="table-banner">{{ t('loc_checking') }}</div>
             <div v-else-if="tableError" class="table-banner table-banner--error">{{ tableError }}</div>
 
             <div class="page-wrap">
