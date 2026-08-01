@@ -1,5 +1,5 @@
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import api, { ensureCsrf } from '@xorder/api-client/api.js'
 import { withMinDuration } from '../../lib/minLoading.js'
@@ -31,6 +31,39 @@ const errors = ref({})
 const blank = () => ({ name_en: '', name_ar: '', address: '', phone: '', whatsapp_number: '', opening_hours: '', business_hours: {}, map_url: '', latitude: null, longitude: null, geofence: null, geofence_enabled: false, is_open: true, is_active: true })
 const form = reactive(blank())
 
+// A fence the backend would enforce: a radius with a real centre + positive
+// radius, or a polygon of >= 3 vertices (mirrors App\Support\GeoFence::isEnforceable).
+function fenceEnforceable(f) {
+    if (!f || typeof f !== 'object') return false
+    if (f.type === 'radius') return !!f.center && f.center.lat != null && f.center.lng != null && Number(f.radius) > 0
+    const pts = Array.isArray(f.points) ? f.points : (Array.isArray(f) ? f : [])
+    return pts.length >= 3
+}
+
+// While a branch is loaded into the form we assign the fence programmatically;
+// suppress the auto-enable during that so we never override the saved state.
+let hydrating = false
+// True when the branch already had an enforceable fence on open — its saved
+// enabled/disabled choice is authoritative, so we don't auto-flip it.
+let fenceExistedOnOpen = false
+// True once the admin clicks the toggle this session — an explicit choice we honour.
+let geofenceToggledManually = false
+
+// Table-ordering venues are on-premise, so the first time an admin draws a fence
+// we default presence-enforcement ON (opt-out). Gated to clients that actually
+// run table ordering, and never applied to an existing fence or after the admin
+// has made an explicit toggle choice.
+watch(() => form.geofence, () => {
+    if (hydrating || fenceExistedOnOpen || geofenceToggledManually) return
+    if (!auth.hasFeature('table_management')) return
+    if (fenceEnforceable(form.geofence)) form.geofence_enabled = true
+}, { deep: true })
+
+function toggleGeofence() {
+    geofenceToggledManually = true
+    form.geofence_enabled = !form.geofence_enabled
+}
+
 async function load() {
     loading.value = true
     const { data } = await withMinDuration(api.get('api/dashboard/branches'))
@@ -41,11 +74,15 @@ onMounted(load)
 
 function openCreate() {
     editing.value = null; errors.value = {}
+    hydrating = true; geofenceToggledManually = false
     Object.assign(form, blank())
+    fenceExistedOnOpen = false
     showModal.value = true
+    nextTick(() => { hydrating = false })
 }
 function openEdit(b) {
     editing.value = b; errors.value = {}
+    hydrating = true; geofenceToggledManually = false
     Object.assign(form, blank(), {
         name_en: b.name_en || '', name_ar: b.name_ar || '', address: b.address || '',
         phone: b.phone || '', whatsapp_number: b.whatsapp_number || '',
@@ -54,7 +91,9 @@ function openEdit(b) {
         geofence: b.geofence || null, geofence_enabled: !!b.geofence_enabled,
         is_open: b.is_open, is_active: b.is_active,
     })
+    fenceExistedOnOpen = fenceEnforceable(form.geofence)
     showModal.value = true
+    nextTick(() => { hydrating = false })
 }
 async function save() {
     if (saving.value) return // guard against double-submit (double-click)
@@ -158,7 +197,7 @@ const branchName = (b) => pickLocalized(b, 'name', locale.value)
                      the on-site check for table-QR ordering. -->
                 <div class="block">
                     <label class="flex items-center gap-2 text-sm" style="color:var(--body)">
-                        <button type="button" class="switch" :class="{ on: form.geofence_enabled }" :disabled="auth.isReadOnly" @click="form.geofence_enabled = !form.geofence_enabled"></button>
+                        <button type="button" class="switch" :class="{ on: form.geofence_enabled }" :disabled="auth.isReadOnly" @click="toggleGeofence"></button>
                         {{ t('branch.geofence_enable') }}
                     </label>
                     <p class="page-sub" style="margin:4px 0 8px">{{ t('branch.geofence_enable_hint') }}</p>
