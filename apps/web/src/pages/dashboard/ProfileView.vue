@@ -141,7 +141,7 @@ async function changePassword() {
                  (every client has at least one branch). Only the WhatsApp
                  ordering number — one per menu — stays at restaurant level. -->
             <label class="block"><span class="label">{{ t('restaurant.whatsapp') }}</span>
-                <input v-model="form.whatsapp_number" class="input" dir="ltr" />
+                <input v-model="form.whatsapp_number" class="input" dir="ltr" data-en-digits />
                 <FormError :errors="errors" field="whatsapp_number" /></label>
 
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">

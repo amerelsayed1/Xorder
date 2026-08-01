@@ -561,7 +561,7 @@ const year = new Date().getFullYear()
                                 </label>
                                 <label class="lp-field">
                                     <span>{{ t('landing.lead_whatsapp') }} *</span>
-                                    <input v-model="form.whatsapp" required maxlength="40" dir="ltr" placeholder="+20…" />
+                                    <input v-model="form.whatsapp" required maxlength="40" dir="ltr" placeholder="+20…" data-en-digits />
                                     <small v-if="formErrors.whatsapp" class="lp-err">{{ formErrors.whatsapp[0] }}</small>
                                 </label>
                             </div>

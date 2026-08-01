@@ -16,6 +16,7 @@ class OptionGroup extends Model
     protected $fillable = [
         'menu_item_id',
         'is_global',
+        'apply_scope',
         'name_ar',
         'name_en',
         'is_required',
@@ -23,6 +24,13 @@ class OptionGroup extends Model
         'max_select',
         'sort_order',
     ];
+
+    /** How broadly a global group applies to items. */
+    public const SCOPE_ITEMS = 'items';       // attached per item (default)
+
+    public const SCOPE_CATEGORIES = 'categories'; // every item in linked categories
+
+    public const SCOPE_ALL = 'all';           // every item in the restaurant (general)
 
     protected function casts(): array
     {
@@ -49,6 +57,13 @@ class OptionGroup extends Model
             ->withTimestamps();
     }
 
+    /** Categories a category-scoped group auto-applies to (via the pivot). */
+    public function categories(): BelongsToMany
+    {
+        return $this->belongsToMany(Category::class, 'option_group_category')
+            ->withTimestamps();
+    }
+
     public function options(): HasMany
     {
         return $this->hasMany(Option::class)->orderBy('sort_order')->orderBy('id');
@@ -58,5 +73,12 @@ class OptionGroup extends Model
     public function scopeGlobal(Builder $query): Builder
     {
         return $query->where('is_global', true);
+    }
+
+    /** Global groups that auto-apply to items by category or restaurant-wide. */
+    public function scopeAutoApplied(Builder $query): Builder
+    {
+        return $query->where('is_global', true)
+            ->whereIn('apply_scope', [self::SCOPE_ALL, self::SCOPE_CATEGORIES]);
     }
 }

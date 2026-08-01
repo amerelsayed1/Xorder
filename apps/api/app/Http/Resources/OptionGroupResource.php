@@ -18,6 +18,14 @@ class OptionGroupResource extends JsonResource
             'is_required' => $this->is_required,
             'is_variant' => $this->is_variant,
             'max_select' => $this->max_select,
+            // How broadly the group applies: 'items' (per-item) | 'categories' | 'all'.
+            'apply_scope' => $this->apply_scope,
+            'category_ids' => $this->whenLoaded('categories', fn () => $this->categories->pluck('id')->values()),
+            'categories' => $this->whenLoaded('categories', fn () => $this->categories->map(fn ($c) => [
+                'id' => $c->id,
+                'name_en' => $c->name_en,
+                'name_ar' => $c->name_ar,
+            ])->values()),
             // How many items currently use this shared group (present when counted).
             'items_count' => $this->whenCounted('menuItems'),
             'options' => $this->whenLoaded('options', fn () => $this->options->map(fn ($o) => [

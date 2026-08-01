@@ -28,6 +28,8 @@ function openCustomer(order) {
 
 const STATUSES = ['NEW', 'COMPLETED', 'CANCELLED']
 const badgeClass = { NEW: 'badge-amber', COMPLETED: 'badge-green', CANCELLED: 'badge-red' }
+// Order type is nullable (older orders / QR-menu-only branches have none).
+const orderTypeLabel = (order) => order.order_type ? t('order_type.' + order.order_type) : '—'
 // Which statuses each status can move to, rendered as per-row action buttons.
 const nextActions = { NEW: ['COMPLETED', 'CANCELLED'] }
 const actionLabel = { COMPLETED: 'orders.complete', CANCELLED: 'orders.cancel_order' }
@@ -163,6 +165,7 @@ function fmtTime(iso) {
                     <tr class="text-start" style="color:var(--muted)">
                         <th class="px-5 py-3 font-medium text-start" style="font-size:11px;text-transform:uppercase">#</th>
                         <th class="px-5 py-3 font-medium text-start" style="font-size:11px;text-transform:uppercase">{{ t('orders.order') }}</th>
+                        <th class="px-3 py-3 font-medium text-start" style="font-size:11px;text-transform:uppercase">{{ t('orders.type') }}</th>
                         <th class="px-3 py-3 font-medium text-start" style="font-size:11px;text-transform:uppercase">{{ t('orders.time') }}</th>
                         <th class="px-3 py-3 font-medium text-start" style="font-size:11px;text-transform:uppercase">{{ t('orders.customer') }}</th>
                         <th class="px-3 py-3 font-medium text-start" style="font-size:11px;text-transform:uppercase">{{ t('common.status') }}</th>
@@ -172,13 +175,17 @@ function fmtTime(iso) {
                 <tbody>
                     <template v-if="loading">
                         <tr v-for="n in 6" :key="'sk' + n" class="border-t" :style="{ borderColor: 'var(--line)' }">
-                            <td v-for="c in 6" :key="c" class="px-5 py-4"><Skeleton :h="'14px'" :w="c === 6 ? '60%' : '80%'" /></td>
+                            <td v-for="c in 7" :key="c" class="px-5 py-4"><Skeleton :h="'14px'" :w="c === 7 ? '60%' : '80%'" /></td>
                         </tr>
                     </template>
-                    <tr v-else-if="!rows.length"><td colspan="6" class="px-5 py-8 text-center" style="color:var(--muted)">{{ t('orders.none') }}</td></tr>
+                    <tr v-else-if="!rows.length"><td colspan="7" class="px-5 py-8 text-center" style="color:var(--muted)">{{ t('orders.none') }}</td></tr>
                     <tr v-for="(order, idx) in rows" :key="order.id" class="border-t align-top" :class="{ 'order-row-new': newIds.has(order.id) }" :style="{ borderColor: 'var(--line)' }">
                         <td class="px-5 py-3 whitespace-nowrap" style="color:var(--muted)">{{ (meta?.from || 1) + idx }}</td>
                         <td class="px-5 py-3 font-medium whitespace-nowrap" style="color:var(--ink)">{{ order.code }}</td>
+                        <td class="px-3 py-3 whitespace-nowrap">
+                            <span v-if="order.order_type" class="badge badge-type">{{ orderTypeLabel(order) }}</span>
+                            <span v-else style="color:var(--muted)">—</span>
+                        </td>
                         <td class="px-3 py-3 whitespace-nowrap" style="color:var(--muted)">{{ fmtTime(order.created_at) }}</td>
                         <td class="px-3 py-3">
                             <button v-if="canOpenCustomer(order)" type="button" class="cust-link" @click="openCustomer(order)">{{ order.customer_name || '—' }}</button>
@@ -231,6 +238,10 @@ function fmtTime(iso) {
                         <span style="color:var(--muted)">{{ t('orders.time') }}</span>
                         <span style="color:var(--ink)">{{ fmtTime(receiptOrder.created_at) }}</span>
                     </div>
+                    <div v-if="receiptOrder.order_type" class="receipt-meta-row">
+                        <span style="color:var(--muted)">{{ t('orders.type') }}</span>
+                        <span class="badge badge-type">{{ orderTypeLabel(receiptOrder) }}</span>
+                    </div>
                     <div class="receipt-meta-row">
                         <span style="color:var(--muted)">{{ t('orders.customer') }}</span>
                         <span style="color:var(--ink)">{{ receiptOrder.customer_name || '—' }}</span>
@@ -271,6 +282,8 @@ function fmtTime(iso) {
     border: 1px solid var(--line); background: var(--card); color: var(--body); font-size: 13.5px; font-weight: 600; cursor: pointer; }
 .chip-on { background: var(--accent); color: #fff; border-color: var(--accent); }
 .btn-cancel { color: #c0392b; }
+/* Neutral badge for the order type (dine-in / pickup / delivery). */
+.badge-type { background: var(--card); border: 1px solid var(--line); color: var(--body); }
 /* Customer name → directory record. Looks like text until hovered. */
 .cust-link { padding: 0; border: 0; background: none; font: inherit; color: var(--ink); cursor: pointer; text-align: start; }
 .cust-link:hover { color: var(--accent); text-decoration: underline; }

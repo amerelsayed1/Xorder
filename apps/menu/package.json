@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@xorder/analytics": "workspace:*",
+    "@xorder/ui": "workspace:*",
     "axios": "^1.6.0",
     "libphonenumber-js": "^1.13.9",
     "vue": "^3.4.0"

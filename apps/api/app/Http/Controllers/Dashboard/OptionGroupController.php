@@ -24,7 +24,7 @@ class OptionGroupController extends Controller
     {
         $groups = OptionGroup::global()
             ->withCount('menuItems')
-            ->with('options')
+            ->with(['options', 'categories:id,name_ar,name_en'])
             ->orderBy('name_en')
             ->orderBy('name_ar')
             ->orderBy('id')
@@ -38,12 +38,13 @@ class OptionGroupController extends Controller
         $group = DB::transaction(function () use ($request) {
             $group = $this->makeGroup($request->validated());
             $this->syncOptions($group, $request->validated('options') ?? []);
+            $this->syncScope($group, $request->validated());
 
             return $group;
         });
 
         return response()->json([
-            'data' => OptionGroupResource::make($group->load('options')->loadCount('menuItems')),
+            'data' => OptionGroupResource::make($group->load('options', 'categories:id,name_ar,name_en')->loadCount('menuItems')),
             'message' => __('xorder.messages.option_group_created'),
         ], 201);
     }
@@ -53,7 +54,7 @@ class OptionGroupController extends Controller
         $this->assertGlobal($optionGroup);
 
         return response()->json([
-            'data' => OptionGroupResource::make($optionGroup->load('options')->loadCount('menuItems')),
+            'data' => OptionGroupResource::make($optionGroup->load('options', 'categories:id,name_ar,name_en')->loadCount('menuItems')),
         ]);
     }
 
@@ -77,10 +78,15 @@ class OptionGroupController extends Controller
             if (array_key_exists('options', $data)) {
                 $this->syncOptions($optionGroup, $data['options'] ?? []);
             }
+
+            // Only reshape scope when the client actually sent it (partial update).
+            if (array_key_exists('apply_scope', $data)) {
+                $this->syncScope($optionGroup, $data);
+            }
         });
 
         return response()->json([
-            'data' => OptionGroupResource::make($optionGroup->fresh()->load('options')->loadCount('menuItems')),
+            'data' => OptionGroupResource::make($optionGroup->fresh()->load('options', 'categories:id,name_ar,name_en')->loadCount('menuItems')),
             'message' => __('xorder.messages.option_group_updated'),
         ]);
     }
@@ -108,6 +114,7 @@ class OptionGroupController extends Controller
         return OptionGroup::create([
             'menu_item_id' => null,
             'is_global' => true,
+            'apply_scope' => $data['apply_scope'] ?? OptionGroup::SCOPE_ITEMS,
             'name_en' => $data['name_en'] ?? null,
             'name_ar' => $data['name_ar'] ?? null,
             'is_required' => $isVariant ? true : ($data['is_required'] ?? false),
@@ -115,6 +122,30 @@ class OptionGroupController extends Controller
             'max_select' => $isVariant ? 1 : ($data['max_select'] ?? 1),
             'sort_order' => 0,
         ]);
+    }
+
+    /**
+     * Apply the group's scope. Category links are kept only for the "categories"
+     * scope; switching to "all"/"items" clears them. Leaving the per-item
+     * "items" scope also detaches any item pivots, so a group only ever applies
+     * through one path at a time.
+     */
+    private function syncScope(OptionGroup $group, array $data): void
+    {
+        $scope = $data['apply_scope'] ?? $group->apply_scope ?? OptionGroup::SCOPE_ITEMS;
+        $group->update(['apply_scope' => $scope]);
+
+        if ($scope === OptionGroup::SCOPE_CATEGORIES) {
+            // Category ids are already validated as tenant-owned by the request.
+            $group->categories()->sync($data['category_ids'] ?? []);
+        } else {
+            $group->categories()->detach();
+        }
+
+        if ($scope !== OptionGroup::SCOPE_ITEMS) {
+            // Auto-applied groups don't use the per-item pivot; drop stale links.
+            $group->menuItems()->detach();
+        }
     }
 
     /** Wipe and recreate a group's options (small set, simplest correct sync). */

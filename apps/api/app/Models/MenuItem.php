@@ -78,6 +78,40 @@ class MenuItem extends Model
             ->map(fn ($g) => tap($g)->setAttribute('is_shared', true)
                 ->setAttribute('_sort', $g->pivot->sort_order));
 
-        return $inline->concat($shared)->sortBy('_sort')->values();
+        // Category-/restaurant-wide groups injected by the menu builder. They
+        // carry no per-item sort_order, so they trail the explicit ones.
+        $auto = ($this->autoOptionGroups ?? collect())
+            ->map(fn ($g) => tap($g)->setAttribute('is_shared', true)
+                ->setAttribute('_sort', 1_000_000 + $g->sort_order));
+
+        return $inline->concat($shared)->concat($auto)
+            ->unique('id') // guard against a group applying via more than one path
+            ->sortBy('_sort')->values();
+    }
+
+    /**
+     * Groups that auto-apply to this item by category or restaurant-wide.
+     * Populated by the menu builder from a single restaurant-level query, so
+     * per-item resolution stays N+1-free. Declared as a real property so it
+     * bypasses Eloquent's attribute magic.
+     */
+    public ?Collection $autoOptionGroups = null;
+
+    /**
+     * Pick, from the restaurant's auto-applied groups, the ones that target
+     * this item (restaurant-wide, or a category this item belongs to).
+     */
+    public function withAutoOptionGroups(Collection $groups): static
+    {
+        $this->autoOptionGroups = $groups->filter(function ($g) {
+            if ($g->apply_scope === OptionGroup::SCOPE_ALL) {
+                return true;
+            }
+
+            return $g->apply_scope === OptionGroup::SCOPE_CATEGORIES
+                && $g->categories->contains('id', $this->category_id);
+        })->values();
+
+        return $this;
     }
 }

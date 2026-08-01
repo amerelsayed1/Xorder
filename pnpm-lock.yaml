@@ -48,6 +48,9 @@ importers:
       '@xorder/analytics':
         specifier: workspace:*
         version: link:../../packages/analytics
+      '@xorder/ui':
+        specifier: workspace:*
+        version: link:../../packages/ui
       axios:
         specifier: ^1.6.0
         version: 1.18.1

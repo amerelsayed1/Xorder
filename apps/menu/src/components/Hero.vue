@@ -32,7 +32,6 @@ const tagline = computed(() => {
                 <p v-if="tagline">{{ tagline }}</p>
                 <div class="restaurant-meta">
                     <span v-if="restaurant.address">⌖ {{ restaurant.address }}</span>
-                    <span v-if="restaurant.opening_hours">◷ {{ restaurant.opening_hours }}</span>
                 </div>
             </div>
         </div>

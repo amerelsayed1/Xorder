@@ -1,4 +1,5 @@
 import { createApp } from 'vue'
+import { installEnDigits } from '@xorder/ui/enDigits.js'
 import { initAnalytics } from '@xorder/analytics'
 import App from './App.vue'
 import './app.css'
@@ -7,6 +8,9 @@ import './app.css'
 // measurementId. The firebase SDK is lazy-loaded so it stays out of the
 // menu's initial bundle.
 initAnalytics('menu')
+
+// Normalize Arabic-Indic / Persian digits to ASCII in phone & money inputs.
+installEnDigits()
 
 const app = createApp(App)
 

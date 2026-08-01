@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Enums\SubscriptionStatus;
+use App\Models\OptionGroup;
 use App\Models\Restaurant;
 use App\Support\TenantContext;
 use Illuminate\Database\Eloquent\Collection;
@@ -82,6 +83,25 @@ class PublicMenuService
                 ->where('is_active', true)
                 ->with('groups.items.menuItem')
                 ->get();
+
+            // Library groups that auto-apply by category or restaurant-wide.
+            // Loaded once, then merged into each item by its category — so the
+            // per-item resolution in orderedOptionGroups() stays N+1-free.
+            $autoGroups = OptionGroup::autoApplied()
+                ->with(['options', 'categories:id'])
+                ->orderBy('name_en')
+                ->orderBy('name_ar')
+                ->orderBy('id')
+                ->get();
+
+            foreach ($categories as $category) {
+                foreach ($category->menuItems as $item) {
+                    $item->withAutoOptionGroups($autoGroups);
+                }
+            }
+            foreach ($featured as $item) {
+                $item->withAutoOptionGroups($autoGroups);
+            }
 
             return [
                 'categories' => $categories,

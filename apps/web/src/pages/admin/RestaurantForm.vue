@@ -364,9 +364,9 @@ async function submitCreate() {
                     <p class="text-xs mt-1" style="color:var(--amber)">{{ t('restaurant.slug_warning') }}</p>
                     <FormError :errors="errors" field="slug" /></label>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <label class="block"><span class="label">{{ t('restaurant.phone') }}</span><input v-model="form.phone" class="input" dir="ltr" />
+                    <label class="block"><span class="label">{{ t('restaurant.phone') }}</span><input v-model="form.phone" class="input" dir="ltr" data-en-digits />
                         <FormError :errors="errors" field="phone" /></label>
-                    <label class="block"><span class="label">{{ t('restaurant.whatsapp') }}</span><input v-model="form.whatsapp_number" class="input" dir="ltr" />
+                    <label class="block"><span class="label">{{ t('restaurant.whatsapp') }}</span><input v-model="form.whatsapp_number" class="input" dir="ltr" data-en-digits />
                         <FormError :errors="errors" field="whatsapp_number" /></label>
                 </div>
                 <label class="block"><span class="label">{{ t('restaurant.address') }}</span><input v-model="form.address" class="input" /></label>
@@ -536,9 +536,9 @@ async function submitCreate() {
             <div v-show="currentStep === 3" class="card p-6 space-y-4">
                 <h2 class="h-card">{{ t('wizard.contact_title') }}</h2>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <label class="block"><span class="label">{{ t('restaurant.phone') }}</span><input v-model="form.phone" class="input" dir="ltr" />
+                    <label class="block"><span class="label">{{ t('restaurant.phone') }}</span><input v-model="form.phone" class="input" dir="ltr" data-en-digits />
                         <FormError :errors="errors" field="phone" /></label>
-                    <label class="block"><span class="label">{{ t('restaurant.whatsapp') }}</span><input v-model="form.whatsapp_number" class="input" dir="ltr" />
+                    <label class="block"><span class="label">{{ t('restaurant.whatsapp') }}</span><input v-model="form.whatsapp_number" class="input" dir="ltr" data-en-digits />
                         <FormError :errors="errors" field="whatsapp_number" /></label>
                 </div>
                 <label class="block"><span class="label">{{ t('restaurant.address') }}</span><input v-model="form.address" class="input" /></label>
@@ -587,9 +587,9 @@ async function submitCreate() {
                         <label class="block"><span class="label">{{ t('wizard.branch_country') }}</span><input v-model="branch.country" maxlength="2" class="input" /></label>
                     </div>
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <label class="block"><span class="label">{{ t('restaurant.phone') }}</span><input v-model="branch.phone" class="input" dir="ltr" />
+                        <label class="block"><span class="label">{{ t('restaurant.phone') }}</span><input v-model="branch.phone" class="input" dir="ltr" data-en-digits />
                             <FormError :errors="errors" field="branch.phone" /></label>
-                        <label class="block"><span class="label">{{ t('restaurant.whatsapp') }}</span><input v-model="branch.whatsapp_number" class="input" dir="ltr" />
+                        <label class="block"><span class="label">{{ t('restaurant.whatsapp') }}</span><input v-model="branch.whatsapp_number" class="input" dir="ltr" data-en-digits />
                             <FormError :errors="errors" field="branch.whatsapp_number" /></label>
                     </div>
                     <div>

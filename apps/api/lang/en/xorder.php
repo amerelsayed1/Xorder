@@ -139,6 +139,7 @@ return [
         'item_name_required' => 'Provide the item name in at least one language.',
         'item_name_still_required' => 'The item must have a name in at least one language.',
         'option_group_name_required' => 'Provide the extra name in at least one language.',
+        'option_group_categories_required' => 'Choose at least one category for a category-scoped extra.',
         'slug_regex' => 'Slug may contain only lowercase letters, numbers and hyphens, with no leading, trailing or repeated hyphens.',
         'delete_confirmation' => 'Type the restaurant slug to confirm deletion.',
         'discounted_price_lt' => 'The discounted price must be lower than the original price.',

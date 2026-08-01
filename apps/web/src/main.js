@@ -8,6 +8,7 @@ import 'flowbite'
 import './app.css'
 import router from './router'
 import { i18n, setLocale } from '@xorder/ui/i18n'
+import { installEnDigits } from '@xorder/ui/enDigits.js'
 import { initAnalytics } from '@xorder/analytics'
 import { isSuperAdminHost } from './lib/host.js'
 import App from './App.vue'
@@ -50,6 +51,9 @@ if (isSuperAdminHost) {
 }
 
 setLocale(localStorage.getItem('locale') || 'ar')
+
+// Normalize Arabic-Indic / Persian digits to ASCII in phone & money inputs.
+installEnDigits()
 
 createApp(App)
     .use(createPinia())

@@ -214,6 +214,96 @@ class GlobalExtrasTest extends TestCase
         $this->actingAs($admin)->deleteJson("/api/dashboard/option-groups/{$foreignGroupId}")->assertNotFound();
     }
 
+    public function test_general_scope_group_applies_to_every_item_on_the_public_menu(): void
+    {
+        $admin = $this->admin();
+        $cat = Category::factory()->for($admin->restaurant)->create();
+        MenuItem::factory()->for($admin->restaurant)->for($cat)->create(['is_available' => true]);
+        MenuItem::factory()->for($admin->restaurant)->for($cat)->create(['is_available' => true]);
+
+        // A general group — never attached to any item explicitly.
+        $this->createGlobalGroup($admin, [
+            'name_en' => 'Utensils', 'name_ar' => 'أدوات',
+            'apply_scope' => 'all', 'options' => [['name_en' => 'Fork', 'price' => 0]],
+        ]);
+
+        $slug = $admin->restaurant->slug;
+        $res = $this->getJson("/api/public/restaurants/{$slug}/menu")->assertOk();
+
+        // Both items carry the general group, with no pivot rows written.
+        $this->assertSame('Utensils', $res->json('data.categories.0.items.0.option_groups.0.name_en'));
+        $this->assertSame('Utensils', $res->json('data.categories.0.items.1.option_groups.0.name_en'));
+        $this->assertDatabaseCount('menu_item_option_group', 0);
+    }
+
+    public function test_category_scope_group_applies_only_to_items_in_that_category(): void
+    {
+        $admin = $this->admin();
+        $pizzas = Category::factory()->for($admin->restaurant)->create();
+        $drinks = Category::factory()->for($admin->restaurant)->create();
+        MenuItem::factory()->for($admin->restaurant)->for($pizzas)->create(['is_available' => true]);
+        MenuItem::factory()->for($admin->restaurant)->for($drinks)->create(['is_available' => true]);
+
+        $this->createGlobalGroup($admin, [
+            'name_en' => 'Crust', 'name_ar' => 'العجينة',
+            'apply_scope' => 'categories', 'category_ids' => [$pizzas->id],
+            'options' => [['name_en' => 'Thin', 'price' => 0]],
+        ]);
+
+        $slug = $admin->restaurant->slug;
+        $res = $this->getJson("/api/public/restaurants/{$slug}/menu")->assertOk();
+
+        // Categories come back ordered; find each by id to stay order-agnostic.
+        $cats = collect($res->json('data.categories'));
+        $pizzaItem = $cats->firstWhere('id', $pizzas->id)['items'][0];
+        $drinkItem = $cats->firstWhere('id', $drinks->id)['items'][0];
+
+        $this->assertCount(1, $pizzaItem['option_groups']);
+        $this->assertSame('Crust', $pizzaItem['option_groups'][0]['name_en']);
+        $this->assertCount(0, $drinkItem['option_groups']);
+    }
+
+    public function test_category_scope_requires_at_least_one_category(): void
+    {
+        $admin = $this->admin();
+
+        $this->actingAs($admin)->postJson('/api/dashboard/option-groups', [
+            'name_en' => 'Crust', 'apply_scope' => 'categories', 'category_ids' => [],
+        ])->assertStatus(422)->assertJsonValidationErrors('category_ids');
+    }
+
+    public function test_switching_to_auto_scope_detaches_existing_item_pivots(): void
+    {
+        $admin = $this->admin();
+        $cat = Category::factory()->for($admin->restaurant)->create();
+        $groupId = $this->createGlobalGroup($admin);
+        $item = MenuItem::factory()->for($admin->restaurant)->for($cat)->create();
+
+        // Attach per-item first…
+        $this->actingAs($admin)->putJson("/api/dashboard/items/{$item->id}", [
+            'option_groups' => [['ref' => 'shared', 'option_group_id' => $groupId]],
+        ])->assertOk();
+        $this->assertDatabaseHas('menu_item_option_group', ['option_group_id' => $groupId]);
+
+        // …then flip the group to general: the stale pivot is cleared.
+        $this->actingAs($admin)->putJson("/api/dashboard/option-groups/{$groupId}", [
+            'apply_scope' => 'all',
+        ])->assertOk();
+
+        $this->assertDatabaseHas('option_groups', ['id' => $groupId, 'apply_scope' => 'all']);
+        $this->assertDatabaseMissing('menu_item_option_group', ['option_group_id' => $groupId]);
+    }
+
+    public function test_category_ids_from_another_restaurant_are_rejected(): void
+    {
+        $admin = $this->admin();
+        $foreignCat = Category::factory()->for($this->admin()->restaurant)->create();
+
+        $this->actingAs($admin)->postJson('/api/dashboard/option-groups', [
+            'name_en' => 'Crust', 'apply_scope' => 'categories', 'category_ids' => [$foreignCat->id],
+        ])->assertStatus(422)->assertJsonValidationErrors('category_ids.0');
+    }
+
     public function test_library_endpoint_rejects_an_inline_group_id(): void
     {
         $admin = $this->admin();

@@ -20,20 +20,38 @@ const auth = useAuth()
 const cur = () => currencyLabel(auth.restaurant?.currency, locale.value, auth.restaurant?.currency_symbol)
 
 const rows = ref([])
+const categories = ref([])
 const loading = ref(true)
 const saving = ref(false)
 const showModal = ref(false)
 const editing = ref(null)
 const errors = ref({})
-const form = reactive({ name_en: '', name_ar: '', is_required: false, is_variant: false, max_select: 1, options: [] })
+const form = reactive({ name_en: '', name_ar: '', is_required: false, is_variant: false, max_select: 1, apply_scope: 'items', category_ids: [], options: [] })
 
 async function load() {
     loading.value = true
-    const { data } = await withMinDuration(api.get('api/dashboard/option-groups'))
-    rows.value = data.data
+    const [groups, cats] = await withMinDuration(Promise.all([
+        api.get('api/dashboard/option-groups'),
+        api.get('api/dashboard/categories'),
+    ]))
+    rows.value = groups.data.data
+    categories.value = cats.data.data
     loading.value = false
 }
 onMounted(load)
+
+function catName(c) { return pickLocalized(c, 'name', locale.value) || c.name_en || c.name_ar || '' }
+function toggleCategory(id) {
+    const i = form.category_ids.indexOf(id)
+    if (i === -1) form.category_ids.push(id)
+    else form.category_ids.splice(i, 1)
+}
+// Human summary of where a saved group applies, for the list row.
+function scopeSummary(g) {
+    if (g.apply_scope === 'all') return t('extras.applies_all')
+    if (g.apply_scope === 'categories') return t('extras.applies_categories', { n: g.category_ids?.length || 0 })
+    return g.items_count ? t('extras.used_by', { n: g.items_count }) : t('extras.not_used')
+}
 
 // --- option builder helpers ---
 function addOption() { form.options.push({ name_en: '', name_ar: '', price: '' }) }
@@ -43,7 +61,7 @@ function groupName(g) { return pickLocalized(g, 'name', locale.value) }
 
 function openCreate() {
     editing.value = null; errors.value = {}
-    Object.assign(form, { name_en: '', name_ar: '', is_required: false, is_variant: false, max_select: 1, options: [] })
+    Object.assign(form, { name_en: '', name_ar: '', is_required: false, is_variant: false, max_select: 1, apply_scope: 'items', category_ids: [], options: [] })
     showModal.value = true
 }
 function openEdit(g) {
@@ -51,6 +69,7 @@ function openEdit(g) {
     Object.assign(form, {
         name_en: g.name_en || '', name_ar: g.name_ar || '',
         is_required: !!g.is_required, is_variant: !!g.is_variant, max_select: g.max_select || 1,
+        apply_scope: g.apply_scope || 'items', category_ids: [...(g.category_ids || [])],
         options: (g.options || []).map(o => ({ name_en: o.name_en || '', name_ar: o.name_ar || '', price: o.price ?? '' })),
     })
     showModal.value = true
@@ -64,6 +83,8 @@ async function save() {
         is_required: form.is_variant ? true : form.is_required,
         is_variant: form.is_variant,
         max_select: form.is_variant ? 1 : (Number(form.max_select) || 1),
+        apply_scope: form.apply_scope,
+        category_ids: form.apply_scope === 'categories' ? form.category_ids : [],
         options: form.options.map(o => ({ name_en: o.name_en, name_ar: o.name_ar, price: o.price === '' ? 0 : Number(o.price) })),
     }
     try {
@@ -114,7 +135,7 @@ async function remove(g) {
                         <div class="font-medium truncate" style="color:var(--ink)" :dir="locale === 'ar' ? 'rtl' : 'ltr'">{{ groupName(g) }}</div>
                         <div class="text-xs" style="color:var(--muted)">
                             {{ t('extras.options_summary', { n: g.options?.length || 0 }) }}
-                            · <span :style="g.items_count ? 'color:var(--accent)' : ''">{{ g.items_count ? t('extras.used_by', { n: g.items_count }) : t('extras.not_used') }}</span>
+                            · <span :style="g.apply_scope !== 'items' || g.items_count ? 'color:var(--accent)' : ''">{{ scopeSummary(g) }}</span>
                         </div>
                     </div>
                     <span v-if="g.is_variant" class="text-xs px-2 py-0.5 rounded-full" style="background:var(--accent-soft);color:var(--accent)">{{ t('item.variant') }}</span>
@@ -148,6 +169,29 @@ async function remove(g) {
                     </label>
                 </div>
                 <p v-if="form.is_variant" class="text-xs" style="color:var(--muted)">{{ t('item.variant_hint') }}</p>
+
+                <!-- Where this extra applies: general (all items), per-category, or hand-picked items. -->
+                <div class="space-y-2 pt-1">
+                    <span class="label">{{ t('extras.apply_to') }}</span>
+                    <div class="flex flex-wrap gap-2">
+                        <button v-for="opt in ['all', 'categories', 'items']" :key="opt" type="button"
+                            class="btn btn-sm" :class="form.apply_scope === opt ? 'btn-accent' : 'btn-ghost'"
+                            @click="form.apply_scope = opt">{{ t('extras.scope_' + opt) }}</button>
+                    </div>
+                    <p v-if="form.apply_scope === 'items'" class="text-xs" style="color:var(--muted)">{{ t('extras.scope_items_hint') }}</p>
+                    <div v-else-if="form.apply_scope === 'categories'" class="space-y-1">
+                        <p class="text-xs" style="color:var(--muted)">{{ t('extras.pick_categories') }}</p>
+                        <div class="flex flex-wrap gap-2">
+                            <label v-for="c in categories" :key="c.id"
+                                class="flex items-center gap-1.5 text-sm px-2.5 py-1 rounded-lg cursor-pointer border"
+                                :style="form.category_ids.includes(c.id) ? 'border-color:var(--accent);background:var(--accent-soft);color:var(--accent)' : 'border-color:var(--line);color:var(--body)'">
+                                <input type="checkbox" class="sr-only" :checked="form.category_ids.includes(c.id)" @change="toggleCategory(c.id)" />
+                                {{ catName(c) }}
+                            </label>
+                        </div>
+                        <FormError :errors="errors" field="category_ids" />
+                    </div>
+                </div>
 
                 <div class="space-y-2">
                     <div v-for="(o, oi) in form.options" :key="oi" class="flex items-center gap-2">

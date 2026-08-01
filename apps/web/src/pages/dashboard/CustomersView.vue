@@ -46,7 +46,7 @@ function openCustomer(c) {
 
         <div class="relative" style="max-width:320px">
             <span class="absolute top-1/2 -translate-y-1/2" style="inset-inline-start:12px;color:var(--muted)"><Icon name="search" :size="17" /></span>
-            <input v-model="search" :placeholder="t('customer.search_ph')" class="input" style="padding-inline-start:38px" />
+            <input v-model="search" :placeholder="t('customer.search_ph')" class="input" style="padding-inline-start:38px" data-en-digits />
         </div>
 
         <div class="card overflow-hidden">

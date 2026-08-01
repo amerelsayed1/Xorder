@@ -43,10 +43,11 @@ function removeOption(g, i) { g.options.splice(i, 1) }
 // --- shared extras library ---
 const library = ref([])
 const pickId = ref('')
-// Library groups not already attached to this item.
+// Library groups a diner would pick per item — excludes ones already attached
+// and ones that auto-apply by category / to all items (managed under Extras).
 const availableLibrary = computed(() => {
     const used = new Set(form.option_groups.filter(g => g.ref === 'shared').map(g => g.option_group_id))
-    return library.value.filter(g => !used.has(g.id))
+    return library.value.filter(g => !used.has(g.id) && (g.apply_scope || 'items') === 'items')
 })
 function libLabel(g) { return pickLocalized(g, 'name', locale.value) || (locale.value === 'ar' ? g.name_en : g.name_ar) || '' }
 function addFromLibrary() {
