@@ -27,6 +27,7 @@ function openCustomer(order) {
 }
 
 const STATUSES = ['NEW', 'COMPLETED', 'CANCELLED']
+const ORDER_TYPES = ['dine_in', 'pickup', 'delivery']
 const badgeClass = { NEW: 'badge-amber', COMPLETED: 'badge-green', CANCELLED: 'badge-red' }
 // Order type is nullable (older orders / QR-menu-only branches have none).
 const orderTypeLabel = (order) => order.order_type ? t('order_type.' + order.order_type) : '—'
@@ -38,6 +39,7 @@ const rows = ref([])
 const meta = ref(null)
 const loading = ref(true)
 const statusFilter = ref('')
+const typeFilter = ref('')
 const page = ref(1)
 const updating = ref(null)
 const newIds = ref(new Set())
@@ -48,7 +50,7 @@ async function load() {
     loading.value = true
     try {
         const { data } = await withMinDuration(api.get('api/dashboard/orders', {
-            params: { status: statusFilter.value || undefined, page: page.value },
+            params: { status: statusFilter.value || undefined, order_type: typeFilter.value || undefined, page: page.value },
         }))
         rows.value = data.data
         meta.value = data.meta || null
@@ -64,7 +66,7 @@ async function pollNew() {
     if (loading.value || page.value !== 1 || document.hidden) return
     try {
         const { data } = await api.get('api/dashboard/orders', {
-            params: { status: statusFilter.value || undefined, page: 1 },
+            params: { status: statusFilter.value || undefined, order_type: typeFilter.value || undefined, page: 1 },
         })
         const known = new Set(rows.value.map((r) => r.id))
         const fresh = (data.data || []).filter((o) => !known.has(o.id))
@@ -94,6 +96,12 @@ onUnmounted(() => { clearInterval(pollTimer); offTick?.() })
 
 function setFilter(s) {
     statusFilter.value = s
+    page.value = 1
+    load()
+}
+
+function setTypeFilter(type) {
+    typeFilter.value = type
     page.value = 1
     load()
 }
@@ -155,6 +163,14 @@ function fmtTime(iso) {
             <button class="chip" :class="{ 'chip-on': statusFilter === '' }" @click="setFilter('')">{{ t('common.all') }}</button>
             <button v-for="s in STATUSES" :key="s" class="chip" :class="{ 'chip-on': statusFilter === s }" @click="setFilter(s)">
                 {{ t('orders.status.' + s) }}
+            </button>
+        </div>
+
+        <!-- Type filter -->
+        <div class="flex items-center gap-2 flex-wrap">
+            <button class="chip" :class="{ 'chip-on': typeFilter === '' }" @click="setTypeFilter('')">{{ t('orders.type') }}: {{ t('common.all') }}</button>
+            <button v-for="ty in ORDER_TYPES" :key="ty" class="chip" :class="{ 'chip-on': typeFilter === ty }" @click="setTypeFilter(ty)">
+                {{ t('order_type.' + ty) }}
             </button>
         </div>
 

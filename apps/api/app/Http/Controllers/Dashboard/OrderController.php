@@ -18,11 +18,13 @@ class OrderController extends Controller
     {
         $request->validate([
             'status' => ['sometimes', Rule::in(OrderStatus::values())],
+            'order_type' => ['sometimes', Rule::in(['dine_in', 'pickup', 'delivery'])],
             'table_id' => ['sometimes', 'integer'],
         ]);
 
         $orders = Order::query()
             ->when($request->filled('status'), fn ($q) => $q->where('status', $request->input('status')))
+            ->when($request->filled('order_type'), fn ($q) => $q->where('order_type', $request->input('order_type')))
             ->when($request->filled('table_id'), fn ($q) => $q->where('table_id', $request->integer('table_id')))
             ->latest()
             ->paginate(20);
