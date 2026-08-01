@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch } from 'vue'
+import { ref, watch, onMounted, nextTick } from 'vue'
 
 const props = defineProps({
     navCats: Array,
@@ -18,16 +18,24 @@ const label = (cat) => {
     return props.localize(cat.category)
 }
 
-watch(
-    () => props.activeCat,
-    () => {
-        setTimeout(() => {
-            const activeBtn = scrollContainer.value?.querySelector(`[data-chip="${props.activeCat}"]`)
-            activeBtn?.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' })
-        }, 0)
-    },
-    { immediate: true }
-)
+function scrollActiveIntoView(behavior) {
+    const el = scrollContainer.value
+    if (!el || !props.activeCat) return
+    const activeBtn = el.querySelector(`[data-chip="${props.activeCat}"]`)
+    activeBtn?.scrollIntoView({ inline: 'center', block: 'nearest', behavior })
+}
+
+// First paint: RTL horizontal scrollers don't agree on an initial scroll offset
+// (Chromium starts at scroll-start, iOS Safari at the far end), so the active
+// tab — always the first category — can begin off-screen. Position it once the
+// container ref and chip widths are actually measured (onMounted + double rAF),
+// instantly, rather than racing a bare setTimeout(0) that can fire before mount.
+onMounted(() => {
+    requestAnimationFrame(() => requestAnimationFrame(() => scrollActiveIntoView('auto')))
+})
+
+// Later category changes (scroll-spy or a tap) glide the strip to the new tab.
+watch(() => props.activeCat, () => nextTick(() => scrollActiveIntoView('smooth')))
 </script>
 
 <template>
