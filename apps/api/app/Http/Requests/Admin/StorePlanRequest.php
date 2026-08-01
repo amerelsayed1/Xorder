@@ -24,6 +24,7 @@ class StorePlanRequest extends FormRequest
             'feature_keys' => ['nullable', 'array'],
             'feature_keys.*' => ['string', Rule::in(Feature::values())],
             'max_items' => ['nullable', 'integer', 'min:1', 'max:100000'],
+            'max_categories' => ['nullable', 'integer', 'min:1', 'max:10000'],
             'max_branches' => ['nullable', 'integer', 'min:1', 'max:1000'],
             'is_active' => ['nullable', 'boolean'],
             'is_recommended' => ['nullable', 'boolean'],

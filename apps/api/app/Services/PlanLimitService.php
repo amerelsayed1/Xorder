@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Branch;
+use App\Models\Category;
 use App\Models\MenuItem;
 use App\Models\Plan;
 use App\Models\Restaurant;
@@ -21,6 +22,15 @@ class PlanLimitService
 
         // Counts are tenant-scoped by the global RestaurantScope.
         return ($max !== null && MenuItem::count() >= $max) ? $max : null;
+    }
+
+    /** Returns the exceeded limit, or null when the create is allowed. */
+    public function categoryLimitReached(Restaurant $restaurant): ?int
+    {
+        $max = $this->plan($restaurant)?->max_categories;
+
+        // Counts are tenant-scoped by the global RestaurantScope.
+        return ($max !== null && Category::count() >= $max) ? $max : null;
     }
 
     /** Returns the exceeded limit, or null when the create is allowed. */

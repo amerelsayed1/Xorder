@@ -13,6 +13,7 @@ class Plan extends Model
         'currency',
         'feature_keys',
         'max_items',
+        'max_categories',
         'max_branches',
         'is_active',
         'is_recommended',

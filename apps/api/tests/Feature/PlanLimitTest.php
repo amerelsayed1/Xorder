@@ -59,6 +59,38 @@ class PlanLimitTest extends TestCase
             ->assertCreated();
     }
 
+    public function test_category_create_blocked_at_plan_limit(): void
+    {
+        Plan::create(['name' => 'Starter', 'max_categories' => 1]);
+        $r = Restaurant::factory()->create(['subscription_plan' => 'Starter']);
+        $admin = User::factory()->restaurantAdmin($r->id)->create();
+        Category::factory()->for($r)->create(); // already at the cap of 1
+
+        $this->actingAs($admin)
+            ->postJson('/api/dashboard/categories', ['name_en' => 'Drinks', 'name_ar' => 'مشروبات'])
+            ->assertStatus(422)
+            ->assertJsonFragment(['message' => __('xorder.messages.plan_limit_categories', ['limit' => 1])]);
+    }
+
+    public function test_category_create_allowed_below_limit_and_without_plan(): void
+    {
+        Plan::create(['name' => 'Pro', 'max_categories' => 100]);
+        $limited = Restaurant::factory()->create(['subscription_plan' => 'Pro']);
+        $limitedAdmin = User::factory()->restaurantAdmin($limited->id)->create();
+
+        $this->actingAs($limitedAdmin)
+            ->postJson('/api/dashboard/categories', ['name_en' => 'Drinks', 'name_ar' => 'مشروبات'])
+            ->assertCreated();
+
+        // No plan on file → unlimited.
+        $free = Restaurant::factory()->create(['subscription_plan' => null]);
+        $freeAdmin = User::factory()->restaurantAdmin($free->id)->create();
+
+        $this->actingAs($freeAdmin)
+            ->postJson('/api/dashboard/categories', ['name_en' => 'Sides', 'name_ar' => 'جانبية'])
+            ->assertCreated();
+    }
+
     public function test_branch_create_blocked_at_plan_limit(): void
     {
         Plan::create(['name' => 'Solo', 'max_branches' => 0]);

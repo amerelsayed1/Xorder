@@ -23,6 +23,7 @@ class PlanResource extends JsonResource
             'currency_symbol' => $this->currency->symbol(),
             'feature_keys' => $this->feature_keys ?? [],
             'max_items' => $this->max_items,
+            'max_categories' => $this->max_categories,
             'max_branches' => $this->max_branches,
             'is_active' => $this->is_active,
             'is_recommended' => $this->is_recommended,

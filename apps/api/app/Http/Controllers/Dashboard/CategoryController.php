@@ -9,6 +9,8 @@ use App\Http\Requests\Dashboard\StoreCategoryRequest;
 use App\Http\Requests\Dashboard\UpdateCategoryRequest;
 use App\Http\Resources\CategoryResource;
 use App\Models\Category;
+use App\Models\Restaurant;
+use App\Services\PlanLimitService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -25,13 +27,31 @@ class CategoryController extends Controller
         return CategoryResource::collection($categories)->response();
     }
 
-    public function store(StoreCategoryRequest $request): JsonResponse
+    public function store(StoreCategoryRequest $request, PlanLimitService $limits): JsonResponse
     {
-        // restaurant_id is stamped by the BelongsToRestaurant trait.
-        $category = Category::create($request->validated());
+        $restaurant = $request->user()->restaurant;
+
+        // Limit check + insert are serialized per tenant under a row lock so
+        // concurrent creates cannot all slip past the plan's category cap.
+        $result = DB::transaction(function () use ($restaurant, $limits, $request) {
+            Restaurant::whereKey($restaurant->getKey())->lockForUpdate()->first();
+
+            if (($limit = $limits->categoryLimitReached($restaurant)) !== null) {
+                return ['limit' => $limit];
+            }
+
+            // restaurant_id is stamped by the BelongsToRestaurant trait.
+            return ['category' => Category::create($request->validated())];
+        });
+
+        if (isset($result['limit'])) {
+            return response()->json([
+                'message' => __('xorder.messages.plan_limit_categories', ['limit' => $result['limit']]),
+            ], 422);
+        }
 
         return response()->json([
-            'data' => CategoryResource::make($category),
+            'data' => CategoryResource::make($result['category']),
             'message' => __('xorder.messages.category_created'),
         ], 201);
     }

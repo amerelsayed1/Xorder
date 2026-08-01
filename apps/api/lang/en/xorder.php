@@ -17,6 +17,7 @@ return [
     'messages' => [
         'signup_received' => 'Your restaurant is ready! Check your email for your dashboard login details.',
         'plan_limit_items' => 'Your plan allows up to :limit menu items. Upgrade to add more.',
+        'plan_limit_categories' => 'Your plan allows up to :limit categories. Upgrade to add more.',
         'plan_limit_branches' => 'Your plan allows up to :limit branches. Upgrade to add more.',
         'order_received' => 'Order received.',
         'order_updated' => 'Order updated.',
