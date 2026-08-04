@@ -16,17 +16,24 @@ class GeoFence
      * Is the point inside the fence? Returns false for an unset or malformed
      * fence so a half-configured fence never traps anyone.
      *
+     * $toleranceMetres widens the fence outward by that many metres to absorb
+     * GPS uncertainty — a diner whose fix is fuzzy but who could plausibly be
+     * inside is admitted rather than falsely rejected. Pass the device's
+     * reported accuracy (capped by the caller).
+     *
      * @param  mixed  $fence
      */
-    public static function contains(float $lat, float $lng, $fence): bool
+    public static function contains(float $lat, float $lng, $fence, float $toleranceMetres = 0.0): bool
     {
         if (! is_array($fence)) {
             return false;
         }
 
+        $tolerance = max(0.0, $toleranceMetres);
+
         return match (self::type($fence)) {
-            'radius' => self::withinRadius($lat, $lng, $fence),
-            'polygon' => self::pointInPolygon($lat, $lng, self::points($fence)),
+            'radius' => self::withinRadius($lat, $lng, $fence, $tolerance),
+            'polygon' => self::withinPolygon($lat, $lng, self::points($fence), $tolerance),
             default => false,
         };
     }
@@ -64,7 +71,7 @@ class GeoFence
         return is_array($points) ? array_values($points) : [];
     }
 
-    private static function withinRadius(float $lat, float $lng, array $fence): bool
+    private static function withinRadius(float $lat, float $lng, array $fence, float $tolerance = 0.0): bool
     {
         $center = $fence['center'] ?? null;
         $radius = (float) ($fence['radius'] ?? 0);
@@ -72,7 +79,75 @@ class GeoFence
             return false;
         }
 
-        return self::haversineMetres($lat, $lng, (float) $center['lat'], (float) $center['lng']) <= $radius;
+        return self::haversineMetres($lat, $lng, (float) $center['lat'], (float) $center['lng']) <= $radius + $tolerance;
+    }
+
+    /**
+     * Inside the polygon, or within $tolerance metres of its boundary. The
+     * tolerance test measures the shortest distance from the point to any edge,
+     * so GPS jitter near a wall doesn't lock out a diner who is really inside.
+     *
+     * @param  array<int, array{lat: float|int|string, lng: float|int|string}>  $polygon
+     */
+    private static function withinPolygon(float $lat, float $lng, array $polygon, float $tolerance = 0.0): bool
+    {
+        if (self::pointInPolygon($lat, $lng, $polygon)) {
+            return true;
+        }
+
+        return $tolerance > 0 && self::distanceToPolygonMetres($lat, $lng, $polygon) <= $tolerance;
+    }
+
+    /**
+     * Shortest distance in metres from a point to the polygon's boundary. Uses a
+     * local equirectangular projection (metres east/north of the point), exact
+     * enough over a branch-sized area.
+     *
+     * @param  array<int, array{lat: float|int|string, lng: float|int|string}>  $polygon
+     */
+    public static function distanceToPolygonMetres(float $lat, float $lng, array $polygon): float
+    {
+        $n = count($polygon);
+        if ($n < 2) {
+            return INF;
+        }
+
+        $mPerDegLat = deg2rad(1) * self::EARTH_RADIUS_M;
+        $mPerDegLng = $mPerDegLat * cos(deg2rad($lat));
+
+        // Point at the origin; project each vertex to local metres.
+        $project = static fn (array $p): array => [
+            ((float) $p['lng'] - $lng) * $mPerDegLng, // x, east
+            ((float) $p['lat'] - $lat) * $mPerDegLat, // y, north
+        ];
+
+        $min = INF;
+        for ($i = 0, $j = $n - 1; $i < $n; $j = $i++) {
+            [$ax, $ay] = $project($polygon[$j]);
+            [$bx, $by] = $project($polygon[$i]);
+            $min = min($min, self::pointToSegmentMetres($ax, $ay, $bx, $by));
+        }
+
+        return $min;
+    }
+
+    /** Distance from the origin (0,0) to the segment A→B, all in metres. */
+    private static function pointToSegmentMetres(float $ax, float $ay, float $bx, float $by): float
+    {
+        $dx = $bx - $ax;
+        $dy = $by - $ay;
+        $lenSq = $dx * $dx + $dy * $dy;
+        if ($lenSq <= 0.0) {
+            return sqrt($ax * $ax + $ay * $ay);
+        }
+
+        // Projection factor of the origin onto the segment, clamped to [0,1].
+        $tRaw = -($ax * $dx + $ay * $dy) / $lenSq;
+        $t = max(0.0, min(1.0, $tRaw));
+        $cx = $ax + $t * $dx;
+        $cy = $ay + $t * $dy;
+
+        return sqrt($cx * $cx + $cy * $cy);
     }
 
     /**

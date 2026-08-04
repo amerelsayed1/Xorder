@@ -17,6 +17,13 @@ use Illuminate\Support\Str;
  */
 class PublicTableController extends Controller
 {
+    /**
+     * Cap on how far the device's reported GPS accuracy may widen the fence.
+     * Absorbs normal mobile jitter (typically 20–65 m) without letting a wildly
+     * uncertain fix (e.g. IP-only, hundreds of metres) defeat the fence.
+     */
+    private const MAX_ACCURACY_TOLERANCE_M = 75.0;
+
     /** GET /public/tables/{token} — table context for the menu banner. */
     public function show(string $token): JsonResponse
     {
@@ -31,6 +38,8 @@ class PublicTableController extends Controller
             // Diner's device GPS, sent when the branch fence is enabled.
             'latitude' => ['nullable', 'numeric', 'between:-90,90'],
             'longitude' => ['nullable', 'numeric', 'between:-180,180'],
+            // Device-reported fix accuracy (metres); widens the fence to match.
+            'accuracy' => ['nullable', 'numeric', 'min:0'],
         ]);
 
         $table = $this->resolve($token);
@@ -38,7 +47,12 @@ class PublicTableController extends Controller
         // Presence check: if the branch fences its premises, the scanner must be
         // physically inside it. GPS is the only trustworthy signal, so a missing
         // location fails closed (no spoofable manual fallback).
-        $this->enforceGeofence($table, $validated['latitude'] ?? null, $validated['longitude'] ?? null);
+        $this->enforceGeofence(
+            $table,
+            $validated['latitude'] ?? null,
+            $validated['longitude'] ?? null,
+            $validated['accuracy'] ?? null,
+        );
 
         $ttl = (int) config('platform.table_session_ttl_minutes', 240);
 
@@ -104,7 +118,7 @@ class PublicTableController extends Controller
      * Fails closed: fence on but no coordinates → 422 (location required);
      * coordinates outside the polygon → 422 (out of area). No fence → no-op.
      */
-    private function enforceGeofence(DiningTable $table, ?float $lat, ?float $lng): void
+    private function enforceGeofence(DiningTable $table, ?float $lat, ?float $lng, ?float $accuracy = null): void
     {
         if (! $this->fenceRequired($table)) {
             return;
@@ -114,7 +128,12 @@ class PublicTableController extends Controller
             abort(422, __('xorder.messages.table_location_required'));
         }
 
-        if (! GeoFence::contains($lat, $lng, $table->branch->geofence)) {
+        // A GPS fix is only ever precise to within its accuracy radius, so widen
+        // the fence by that much (capped) before testing — otherwise a diner who
+        // is genuinely inside but whose phone reports a fuzzy fix is locked out.
+        $tolerance = $accuracy === null ? 0.0 : min(max(0.0, $accuracy), self::MAX_ACCURACY_TOLERANCE_M);
+
+        if (! GeoFence::contains($lat, $lng, $table->branch->geofence, $tolerance)) {
             abort(422, __('xorder.messages.table_outside_area'));
         }
     }

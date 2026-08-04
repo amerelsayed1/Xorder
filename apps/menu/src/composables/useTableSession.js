@@ -13,7 +13,13 @@ function currentPosition() {
             return
         }
         navigator.geolocation.getCurrentPosition(
-            (pos) => resolve({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }),
+            (pos) => resolve({
+                latitude: pos.coords.latitude,
+                longitude: pos.coords.longitude,
+                // Fix uncertainty (metres); the backend widens the fence by it so
+                // a fuzzy-but-inside mobile GPS reading isn't wrongly rejected.
+                accuracy: pos.coords.accuracy,
+            }),
             (err) => reject(err),
             { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
         )

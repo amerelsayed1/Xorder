@@ -69,6 +69,45 @@ class GeoFenceTest extends TestCase
         $this->assertTrue(GeoFence::isEnforceable(['type' => 'radius', 'center' => ['lat' => 30, 'lng' => 31], 'radius' => 50]));
     }
 
+    // ── Accuracy tolerance ─────────────────────────────────────────────────
+
+    public function test_radius_tolerance_admits_a_fuzzy_but_nearby_point(): void
+    {
+        // 30 m radius; a point ~55 m from centre is outside on its own...
+        $fence = ['type' => 'radius', 'center' => ['lat' => 30.0444, 'lng' => 31.2357], 'radius' => 30];
+        $this->assertFalse(GeoFence::contains(30.0448, 31.2360, $fence));
+        // ...but a 40 m GPS accuracy widens the fence enough to admit it.
+        $this->assertTrue(GeoFence::contains(30.0448, 31.2360, $fence, 40));
+    }
+
+    public function test_radius_tolerance_still_excludes_a_far_point(): void
+    {
+        $fence = ['type' => 'radius', 'center' => ['lat' => 30.0444, 'lng' => 31.2357], 'radius' => 30];
+        $this->assertFalse(GeoFence::contains(30.10, 31.30, $fence, 75)); // km away
+    }
+
+    public function test_polygon_tolerance_admits_a_point_just_outside_an_edge(): void
+    {
+        // ~0.0003° ≈ 33 m south of the square's bottom edge (lat 0).
+        $this->assertFalse(GeoFence::contains(-0.0003, 5, $this->polygon));
+        $this->assertTrue(GeoFence::contains(-0.0003, 5, $this->polygon, 75));
+    }
+
+    public function test_polygon_tolerance_still_excludes_a_far_point(): void
+    {
+        $this->assertFalse(GeoFence::contains(-0.01, 5, $this->polygon, 75)); // ~1.1 km out
+    }
+
+    public function test_zero_tolerance_is_the_strict_default(): void
+    {
+        $fence = ['type' => 'radius', 'center' => ['lat' => 30.0444, 'lng' => 31.2357], 'radius' => 30];
+        $this->assertFalse(GeoFence::contains(30.0448, 31.2360, $fence, 0));
+        $this->assertEquals(
+            GeoFence::contains(30.0448, 31.2360, $fence),
+            GeoFence::contains(30.0448, 31.2360, $fence, 0),
+        );
+    }
+
     // ── Guards ─────────────────────────────────────────────────────────────
 
     public function test_degenerate_or_missing_fence_contains_nobody(): void

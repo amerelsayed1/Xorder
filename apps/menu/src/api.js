@@ -54,6 +54,7 @@ export async function createTableSession(token, language, coords = null) {
     if (coords) {
         payload.latitude = coords.latitude
         payload.longitude = coords.longitude
+        if (coords.accuracy != null) payload.accuracy = coords.accuracy
     }
     const { data } = await axios.post(`${BASE}/api/public/tables/${token}/sessions`, payload, {
         headers: { Accept: 'application/json', 'X-Locale': language || 'ar' },

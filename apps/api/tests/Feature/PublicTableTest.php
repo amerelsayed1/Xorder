@@ -181,6 +181,36 @@ class PublicTableTest extends TestCase
         ])->assertStatus(422);
     }
 
+    public function test_accuracy_tolerance_admits_a_fuzzy_fix_just_outside_the_fence(): void
+    {
+        $this->enableRadiusFence();
+        $table = $this->makeTable('13');
+
+        // ~222 m from centre → outside the 200 m radius on its own...
+        $this->postJson("/api/public/tables/{$table->public_token}/sessions", [
+            'latitude' => 30.002, 'longitude' => 31.0,
+        ])->assertStatus(422);
+
+        // ...but a 60 m GPS accuracy widens the fence enough to admit it.
+        $this->postJson("/api/public/tables/{$table->public_token}/sessions", [
+            'latitude' => 30.002, 'longitude' => 31.0, 'accuracy' => 60,
+        ])->assertCreated();
+    }
+
+    public function test_accuracy_tolerance_is_capped_and_cannot_defeat_the_fence(): void
+    {
+        $this->enableRadiusFence();
+        $table = $this->makeTable('14');
+
+        // A wildly uncertain fix (e.g. IP-only) several km away stays blocked
+        // even with an enormous reported accuracy — the tolerance is capped.
+        $this->postJson("/api/public/tables/{$table->public_token}/sessions", [
+            'latitude' => 30.1, 'longitude' => 31.1, 'accuracy' => 100000,
+        ])->assertStatus(422);
+
+        $this->assertDatabaseCount('menu_sessions', 0);
+    }
+
     public function test_gps_ignored_when_fence_disabled(): void
     {
         // Polygon drawn but the toggle is off → ordinary behaviour, no check.
