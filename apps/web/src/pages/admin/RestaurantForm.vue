@@ -54,6 +54,9 @@ const errors = ref({})
 const saving = ref(false)
 const generatedPassword = ref('')
 const slugTouched = ref(false)
+// Name of the custom plan already created this session, so a re-submit after a
+// restaurant-validation error doesn't try to create a duplicate plan.
+const createdCustomPlan = ref('')
 
 // ---- Wizard state (create mode) ----
 const currentStep = ref(1)
@@ -109,6 +112,8 @@ const branch = reactive({
     phone: '', whatsapp_number: '', supported_order_types: ['dine_in'],
 })
 const ALL_ORDER_TYPES = ['dine_in', 'pickup', 'delivery']
+// Supported countries (ISO 3166-1 alpha-2). Short list for now.
+const branchCountries = ['EG', 'SA', 'AE']
 function toggleOrderType(tp) {
     const i = branch.supported_order_types.indexOf(tp)
     if (i >= 0) branch.supported_order_types.splice(i, 1)
@@ -148,9 +153,82 @@ function resolveKeys(keys) {
     return set
 }
 
-const selectedPlan = computed(() => plans.value.find(p => p.name === form.subscription_plan) || null)
+// ---- Plan selection: pick an existing plan, or build a custom one inline. ----
+// A custom plan is created as a real (inactive) Plan row just before the
+// restaurant, then attached by name. Entitlements resolve by plan name, so this
+// keeps the "features are strictly the plan's" rule intact — without adding a
+// row to the public pricing catalog (is_active stays false).
+const planMode = ref('existing') // 'existing' | 'custom'
+const custom = reactive({
+    name: '', price: '',
+    max_branches: '', max_items: '', max_categories: '',
+})
+const customOrdering = reactive({
+    channel: '', waPickup: false, waDelivery: false,
+    tableOrdering: false, tableBillRequests: false, onlineOrdering: false, onPickup: false, onDelivery: false,
+})
+function setCustomChannel(ch) {
+    customOrdering.channel = ch
+    // Clear the other channel's sub-selection so no stale flags leak on save.
+    if (ch === 'whatsapp') {
+        customOrdering.tableOrdering = customOrdering.tableBillRequests = customOrdering.onlineOrdering = customOrdering.onPickup = customOrdering.onDelivery = false
+    } else {
+        customOrdering.waPickup = customOrdering.waDelivery = false
+    }
+}
+// Bill requests are a dine-in feature — drop them if table ordering is turned off.
+watch(() => customOrdering.tableOrdering, (on) => { if (!on) customOrdering.tableBillRequests = false })
+/** Expand the custom ordering selection to feature flags (mirrors PlanForm). */
+function customOrderingKeys() {
+    const keys = new Set()
+    if (customOrdering.channel === 'whatsapp') {
+        keys.add('whatsapp_ordering')
+        if (customOrdering.waPickup) keys.add('pickup')
+        if (customOrdering.waDelivery) keys.add('delivery')
+    } else if (customOrdering.channel === 'system') {
+        if (customOrdering.tableOrdering) {
+            keys.add('system_ordering'); keys.add('dine_in'); keys.add('table_management')
+            if (customOrdering.tableBillRequests) keys.add('bill_requests')
+        }
+        if (customOrdering.onlineOrdering) {
+            keys.add('system_ordering')
+            if (customOrdering.onPickup) keys.add('pickup')
+            if (customOrdering.onDelivery) keys.add('delivery')
+        }
+    }
+    return [...keys]
+}
+// bill_requests is not here — it's a dine-in sub-option nested under table ordering.
+const customCapabilityKeys = ['qr_menu', 'internal_reviews', 'product_analytics', 'multi_branch']
+const customCapabilities = ref([])
+function toggleCustomCapability(key, on) {
+    const i = customCapabilities.value.indexOf(key)
+    if (on && i < 0) customCapabilities.value.push(key)
+    else if (!on && i >= 0) customCapabilities.value.splice(i, 1)
+}
+const customFeatureKeys = computed(() => [...new Set([...customCapabilities.value, ...customOrderingKeys()])])
+// Prefill a sensible name the first time custom mode is chosen.
+watch(planMode, (m) => {
+    if (m === 'custom' && !custom.name.trim()) {
+        const base = (form.name_en || form.name_ar || form.slug || '').trim()
+        if (base) custom.name = `${base} — Custom`
+    }
+})
+
+// The plan currently driving capabilities: the picked catalog plan, or a
+// synthetic view of the inline custom builder. Everything downstream (feature
+// preview, branch limit, ordering mode) keys off this.
+const effectivePlan = computed(() => {
+    if (planMode.value === 'custom') {
+        return {
+            feature_keys: customFeatureKeys.value,
+            max_branches: custom.max_branches === '' ? null : Number(custom.max_branches),
+        }
+    }
+    return plans.value.find(p => p.name === form.subscription_plan) || null
+})
 const derivedFeatureKeys = computed(() => {
-    const resolved = resolveKeys(selectedPlan.value?.feature_keys || [])
+    const resolved = resolveKeys(effectivePlan.value?.feature_keys || [])
     return featureDisplayOrder.filter(k => resolved.has(k))
 })
 const enabledFeatureLabels = computed(() => derivedFeatureKeys.value.map(k => t(`feature.${k}`)))
@@ -191,11 +269,11 @@ watch(orderTypes, (avail) => {
 // the wizard creates. If the plan changes to one that disallows branches,
 // disable the branch so the user can't submit an over-limit configuration.
 const planBranchLimit = computed(() => {
-    const mb = selectedPlan.value?.max_branches
+    const mb = effectivePlan.value?.max_branches
     return (mb === null || mb === undefined) ? null : Number(mb) // null = unlimited
 })
 const branchAllowed = computed(() => {
-    if (!selectedPlan.value) return false // must pick a plan before adding branches
+    if (!effectivePlan.value) return false // must pick a plan before adding branches
     return planBranchLimit.value === null || planBranchLimit.value >= 1
 })
 watch(branchAllowed, (ok) => { if (!ok) branchEnabled.value = false })
@@ -248,6 +326,23 @@ function generatePassword() {
     form.admin.password = Array.from(crypto.getRandomValues(new Uint8Array(14))).map(b => chars[b % chars.length]).join('')
 }
 
+// Live per-field validation: revalidate a single field as the user types, so
+// format errors surface immediately instead of only on submit. The collectors
+// treat empty as valid, so untouched/optional fields stay clean.
+function setFieldError(field, msgs) {
+    const next = { ...errors.value }
+    if (msgs) next[field] = msgs
+    else delete next[field]
+    errors.value = next
+}
+function validateEmailField() {
+    setFieldError('admin.email', collectEmailErrors({ 'admin.email': form.admin.email }, t('restaurant.email_invalid'))['admin.email'])
+}
+function validatePhoneField(field) {
+    const value = field.startsWith('branch.') ? branch[field.slice(7)] : form[field]
+    setFieldError(field, collectPhoneErrors({ [field]: value }, t('restaurant.phone_invalid'))[field])
+}
+
 onMounted(async () => {
     // Active plans populate the plan picker; the picked plan drives capabilities.
     try {
@@ -282,10 +377,14 @@ async function submitEdit() {
     saving.value = true
     try {
         await ensureCsrf()
-        // Features are derived from the plan server-side — send the plan, not flags.
-        // (The edit load populates form.features with the plan's enabled keys; the
-        // update request rejects them as non-boolean, so drop them before sending.)
-        const payload = { ...form }; delete payload.admin; delete payload.features
+        // Subscription (plan/status/dates) is managed on the Subscription section,
+        // not here — drop those fields so saving this form can't revert a change
+        // made there. Features are derived from the plan server-side; the edit load
+        // populates form.features, which the update request rejects — drop it too.
+        const payload = { ...form }
+        delete payload.admin; delete payload.features
+        delete payload.subscription_plan; delete payload.subscription_status
+        delete payload.subscription_start_date; delete payload.subscription_end_date
         await api.put(`api/admin/restaurants/${route.params.id}`, payload)
         router.push({ name: 'admin.restaurants.show', params: { id: route.params.id } })
     } catch (err) {
@@ -306,6 +405,9 @@ async function submitCreate() {
         ...collectPhoneErrors(phoneFields, t('restaurant.phone_invalid')),
         ...collectEmailErrors({ 'admin.email': form.admin.email }, t('restaurant.email_invalid')),
     }
+    if (planMode.value === 'custom' && !custom.name.trim()) {
+        clientErrors.subscription_plan = [t('wizard.custom_plan_name_required')]
+    }
     if (Object.keys(clientErrors).length) {
         errors.value = clientErrors
         currentStep.value = stepForError(Object.keys(clientErrors)[0])
@@ -314,6 +416,36 @@ async function submitCreate() {
     saving.value = true
     try {
         await ensureCsrf()
+        // Create the custom plan first (inactive, so it stays off the public
+        // pricing page), then attach the restaurant to it by name.
+        if (planMode.value === 'custom') {
+            const name = custom.name.trim()
+            if (createdCustomPlan.value !== name) {
+                try {
+                    const { data: planRes } = await api.post('api/admin/plans', {
+                        name,
+                        price: custom.price === '' ? null : Number(custom.price),
+                        currency: form.currency,
+                        feature_keys: customFeatureKeys.value,
+                        max_branches: custom.max_branches === '' ? null : Number(custom.max_branches),
+                        max_items: custom.max_items === '' ? null : Number(custom.max_items),
+                        max_categories: custom.max_categories === '' ? null : Number(custom.max_categories),
+                        is_active: false,
+                        is_recommended: false,
+                        sort_order: 0,
+                    })
+                    createdCustomPlan.value = planRes.data.name
+                } catch (err) {
+                    const pe = err.response?.data?.errors || {}
+                    // Surface the plan-name collision on the field shown in step 4.
+                    errors.value = pe.name ? { subscription_plan: pe.name, ...pe } : pe
+                    currentStep.value = 4
+                    saving.value = false
+                    return
+                }
+            }
+            form.subscription_plan = createdCustomPlan.value
+        }
         form.bilingual = langConfig.value === 'bilingual'
         form.default_language = primaryLanguage.value
         // Features are derived from the plan server-side — send the plan, not flags.
@@ -364,9 +496,9 @@ async function submitCreate() {
                     <p class="text-xs mt-1" style="color:var(--amber)">{{ t('restaurant.slug_warning') }}</p>
                     <FormError :errors="errors" field="slug" /></label>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <label class="block"><span class="label">{{ t('restaurant.phone') }}</span><input v-model="form.phone" class="input" dir="ltr" data-en-digits />
+                    <label class="block"><span class="label">{{ t('restaurant.phone') }}</span><input v-model="form.phone" @input="validatePhoneField('phone')" class="input" dir="ltr" data-en-digits />
                         <FormError :errors="errors" field="phone" /></label>
-                    <label class="block"><span class="label">{{ t('restaurant.whatsapp') }}</span><input v-model="form.whatsapp_number" class="input" dir="ltr" data-en-digits />
+                    <label class="block"><span class="label">{{ t('restaurant.whatsapp') }}</span><input v-model="form.whatsapp_number" @input="validatePhoneField('whatsapp_number')" class="input" dir="ltr" data-en-digits />
                         <FormError :errors="errors" field="whatsapp_number" /></label>
                 </div>
                 <label class="block"><span class="label">{{ t('restaurant.address') }}</span><input v-model="form.address" class="input" /></label>
@@ -400,6 +532,15 @@ async function submitCreate() {
                             class="btn" :class="editLangValue === opt ? 'btn-dark' : 'btn-ghost'">{{ langOptionLabel(opt) }}</button>
                     </div>
                     <span class="block text-xs mt-1.5" style="color:var(--muted)">{{ t('restaurant.bilingual_hint') }}</span>
+                    <!-- Bilingual clients choose which language the menu opens in by default. -->
+                    <div v-if="editLangValue === 'bilingual'" class="mt-3">
+                        <span class="label">{{ t('wizard.primary_language') }}</span>
+                        <div class="flex gap-2 mt-1.5">
+                            <button v-for="lng in ['ar', 'en']" :key="lng" type="button" @click="form.default_language = lng"
+                                class="btn" :class="form.default_language === lng ? 'btn-dark' : 'btn-ghost'">{{ t(`languages.${lng}`) }}</button>
+                        </div>
+                        <p class="text-xs mt-1.5" style="color:var(--muted)">{{ t('wizard.primary_help') }}</p>
+                    </div>
                     <FormError :errors="errors" field="default_language" />
                 </div>
                 <div v-if="orderingModeOptions.length > 1">
@@ -412,24 +553,9 @@ async function submitCreate() {
                 </div>
             </div>
 
-            <!-- Plan & capabilities — the plan strictly decides what this client gets. -->
-            <div class="card p-6 space-y-4">
-                <h2 class="h-card">{{ t('wizard.features_title') }}</h2>
-                <label class="block"><span class="label">{{ t('wizard.plan_group') }}</span>
-                    <select v-model="form.subscription_plan" class="input">
-                        <option value="">{{ t('wizard.select_plan') }}</option>
-                        <option v-for="p in plans" :key="p.id" :value="p.name">{{ p.name }}</option>
-                    </select>
-                    <span class="block text-xs mt-1" style="color:var(--muted)">{{ t('wizard.plan_help') }}</span>
-                    <FormError :errors="errors" field="subscription_plan" /></label>
-                <div class="pt-2" style="border-top:1px solid var(--line)">
-                    <h3 class="label" style="margin:0">{{ t('wizard.features_derived') }}</h3>
-                    <div v-if="derivedFeatureKeys.length" class="flex flex-wrap gap-2 mt-2">
-                        <span v-for="(chip, i) in previewChips" :key="i" class="rounded-full px-3 py-1 text-xs" style="background:var(--page);border:1px solid var(--line);color:var(--ink)">{{ chip }}</span>
-                    </div>
-                    <p v-else class="text-sm mt-2" style="color:var(--muted)">{{ t('wizard.features_derived_none') }}</p>
-                </div>
-            </div>
+            <!-- Plan & subscription are managed on the restaurant's Subscription
+                 section (RestaurantDetails), not here — keeping them in both places
+                 let this form silently revert a plan change made there. -->
 
             <div class="flex justify-end gap-2">
                 <RouterLink :to="{ name: 'admin.restaurants' }" class="btn btn-ghost">{{ t('common.cancel') }}</RouterLink>
@@ -516,12 +642,12 @@ async function submitCreate() {
                     <label class="block"><span class="label">{{ t('restaurant.admin_name') }}</span>
                         <input v-model="form.admin.name" class="input" />
                         <FormError :errors="errors" field="admin.name" /></label>
-                    <label class="block mt-3" dir="ltr"><span class="label">{{ t('restaurant.admin_username') }}</span>
-                        <input v-model="form.admin.username" type="text" autocapitalize="none" spellcheck="false" class="input" />
+                    <label class="block mt-3"><span class="label">{{ t('restaurant.admin_username') }}</span>
+                        <input v-model="form.admin.username" type="text" autocapitalize="none" spellcheck="false" class="input" dir="ltr" />
                         <span class="block text-xs mt-1" style="color:var(--muted)">{{ t('restaurant.admin_username_hint') }}</span>
                         <FormError :errors="errors" field="admin.username" /></label>
                     <label class="block mt-3"><span class="label">{{ t('restaurant.admin_email') }}</span>
-                        <input v-model="form.admin.email" type="email" class="input" />
+                        <input v-model="form.admin.email" @input="validateEmailField" type="email" class="input" />
                         <FormError :errors="errors" field="admin.email" /></label>
                     <label class="block mt-3"><span class="label">{{ t('restaurant.admin_password') }}</span>
                         <div class="flex gap-2 mt-1.5">
@@ -536,9 +662,9 @@ async function submitCreate() {
             <div v-show="currentStep === 3" class="card p-6 space-y-4">
                 <h2 class="h-card">{{ t('wizard.contact_title') }}</h2>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <label class="block"><span class="label">{{ t('restaurant.phone') }}</span><input v-model="form.phone" class="input" dir="ltr" data-en-digits />
+                    <label class="block"><span class="label">{{ t('restaurant.phone') }}</span><input v-model="form.phone" @input="validatePhoneField('phone')" class="input" dir="ltr" data-en-digits />
                         <FormError :errors="errors" field="phone" /></label>
-                    <label class="block"><span class="label">{{ t('restaurant.whatsapp') }}</span><input v-model="form.whatsapp_number" class="input" dir="ltr" data-en-digits />
+                    <label class="block"><span class="label">{{ t('restaurant.whatsapp') }}</span><input v-model="form.whatsapp_number" @input="validatePhoneField('whatsapp_number')" class="input" dir="ltr" data-en-digits />
                         <FormError :errors="errors" field="whatsapp_number" /></label>
                 </div>
                 <label class="block"><span class="label">{{ t('restaurant.address') }}</span><input v-model="form.address" class="input" /></label>
@@ -569,7 +695,7 @@ async function submitCreate() {
                     </label>
                 </div>
                 <!-- Branches require a plan, and the plan's limit gates the form. -->
-                <p v-if="!selectedPlan" class="text-sm rounded-lg p-3" style="background:var(--page);color:var(--muted)">{{ t('wizard.branch_needs_plan') }}</p>
+                <p v-if="!effectivePlan" class="text-sm rounded-lg p-3" style="background:var(--page);color:var(--muted)">{{ t('wizard.branch_needs_plan') }}</p>
                 <p v-else-if="!branchAllowed" class="text-sm rounded-lg p-3" style="background:var(--page);color:var(--muted)">{{ t('wizard.branch_not_in_plan') }}</p>
                 <p v-if="branchAllowed && planBranchLimit !== null" class="text-xs" style="color:var(--muted)">{{ t('wizard.branch_limit', { n: planBranchLimit }) }}</p>
                 <p v-if="branchAllowed && !branchEnabled" class="text-sm rounded-lg p-3" style="background:var(--page);color:var(--muted)">{{ t('wizard.branch_skip_note') }}</p>
@@ -584,12 +710,16 @@ async function submitCreate() {
                     <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
                         <label class="block"><span class="label">{{ t('wizard.branch_code') }}</span><input v-model="branch.code" class="input" /></label>
                         <label class="block"><span class="label">{{ t('wizard.branch_city') }}</span><input v-model="branch.city" class="input" /></label>
-                        <label class="block"><span class="label">{{ t('wizard.branch_country') }}</span><input v-model="branch.country" maxlength="2" class="input" /></label>
+                        <label class="block"><span class="label">{{ t('wizard.branch_country') }}</span>
+                            <select v-model="branch.country" class="input">
+                                <option value="">{{ t('wizard.branch_country_select') }}</option>
+                                <option v-for="c in branchCountries" :key="c" :value="c">{{ t(`country.${c}`) }}</option>
+                            </select></label>
                     </div>
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <label class="block"><span class="label">{{ t('restaurant.phone') }}</span><input v-model="branch.phone" class="input" dir="ltr" data-en-digits />
+                        <label class="block"><span class="label">{{ t('restaurant.phone') }}</span><input v-model="branch.phone" @input="validatePhoneField('branch.phone')" class="input" dir="ltr" data-en-digits />
                             <FormError :errors="errors" field="branch.phone" /></label>
-                        <label class="block"><span class="label">{{ t('restaurant.whatsapp') }}</span><input v-model="branch.whatsapp_number" class="input" dir="ltr" data-en-digits />
+                        <label class="block"><span class="label">{{ t('restaurant.whatsapp') }}</span><input v-model="branch.whatsapp_number" @input="validatePhoneField('branch.whatsapp_number')" class="input" dir="ltr" data-en-digits />
                             <FormError :errors="errors" field="branch.whatsapp_number" /></label>
                     </div>
                     <div>
@@ -619,13 +749,95 @@ async function submitCreate() {
                     <p class="text-xs" style="color:var(--muted)">{{ t('restaurant.ordering_mode_hint') }}</p>
                 </div>
 
-                <label class="block"><span class="label">{{ t('wizard.plan_group') }}</span>
+                <div>
+                    <span class="label">{{ t('wizard.plan_group') }}</span>
+                    <div class="flex gap-2 mt-1.5">
+                        <button type="button" @click="planMode = 'existing'" class="btn" :class="planMode === 'existing' ? 'btn-dark' : 'btn-ghost'">{{ t('wizard.plan_existing') }}</button>
+                        <button type="button" @click="planMode = 'custom'" class="btn" :class="planMode === 'custom' ? 'btn-dark' : 'btn-ghost'">{{ t('wizard.plan_custom') }}</button>
+                    </div>
+                </div>
+
+                <label v-if="planMode === 'existing'" class="block">
                     <select v-model="form.subscription_plan" class="input">
                         <option value="">{{ t('wizard.select_plan') }}</option>
                         <option v-for="p in plans" :key="p.id" :value="p.name">{{ p.name }}</option>
                     </select>
                     <span class="block text-xs mt-1" style="color:var(--muted)">{{ t('wizard.plan_help') }}</span>
                     <FormError :errors="errors" field="subscription_plan" /></label>
+
+                <!-- Custom plan builder — mirrors the plan editor; saved as an inactive plan. -->
+                <div v-else class="space-y-4 rounded-lg p-4" style="border:1px solid var(--line);background:var(--page)">
+                    <p class="text-xs" style="color:var(--muted)">{{ t('wizard.custom_plan_note') }}</p>
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <label class="block sm:col-span-2"><span class="label">{{ t('wizard.custom_plan_name') }}</span>
+                            <input v-model="custom.name" class="input" />
+                            <FormError :errors="errors" field="subscription_plan" /></label>
+                        <label class="block"><span class="label">{{ t('plan.price') }}</span>
+                            <input v-model="custom.price" type="number" min="0" step="0.01" class="input" data-en-digits :placeholder="t('plan.price_hint')" /></label>
+                    </div>
+
+                    <div class="block">
+                        <span class="label">{{ t('plan.ordering') }}</span>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-1">
+                            <label class="flex items-center gap-2 rounded-lg border p-2.5 cursor-pointer" :style="{ borderColor: customOrdering.channel === 'whatsapp' ? 'var(--accent)' : 'var(--line)' }">
+                                <input type="radio" name="custom-channel" :checked="customOrdering.channel === 'whatsapp'" @change="setCustomChannel('whatsapp')" class="h-4 w-4" />
+                                <span class="text-sm" style="color:var(--ink)">{{ t('plan.ordering_whatsapp') }}</span>
+                            </label>
+                            <label class="flex items-center gap-2 rounded-lg border p-2.5 cursor-pointer" :style="{ borderColor: customOrdering.channel === 'system' ? 'var(--accent)' : 'var(--line)' }">
+                                <input type="radio" name="custom-channel" :checked="customOrdering.channel === 'system'" @change="setCustomChannel('system')" class="h-4 w-4" />
+                                <span class="text-sm" style="color:var(--ink)">{{ t('plan.ordering_system') }}</span>
+                            </label>
+                        </div>
+                        <div v-if="customOrdering.channel === 'whatsapp'" class="mt-2 ps-3 border-s-2" style="border-color:var(--line)">
+                            <span class="text-xs" style="color:var(--muted)">{{ t('plan.ordering_fulfillment') }}</span>
+                            <div class="flex gap-4 mt-1">
+                                <label class="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" v-model="customOrdering.waPickup" class="h-4 w-4" />{{ t('feature.pickup') }}</label>
+                                <label class="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" v-model="customOrdering.waDelivery" class="h-4 w-4" />{{ t('feature.delivery') }}</label>
+                            </div>
+                        </div>
+                        <div v-else-if="customOrdering.channel === 'system'" class="mt-2 ps-3 border-s-2 space-y-2" style="border-color:var(--line)">
+                            <label class="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" v-model="customOrdering.tableOrdering" class="h-4 w-4" />{{ t('plan.ordering_table') }}</label>
+                            <div v-if="customOrdering.tableOrdering" class="ps-6">
+                                <label class="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" v-model="customOrdering.tableBillRequests" class="h-4 w-4" />{{ t('feature.bill_requests') }}</label>
+                            </div>
+                            <label class="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" v-model="customOrdering.onlineOrdering" class="h-4 w-4" />{{ t('plan.ordering_online') }}</label>
+                            <div v-if="customOrdering.onlineOrdering" class="ps-6">
+                                <span class="text-xs" style="color:var(--muted)">{{ t('plan.ordering_fulfillment') }}</span>
+                                <div class="flex gap-4 mt-1">
+                                    <label class="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" v-model="customOrdering.onPickup" class="h-4 w-4" />{{ t('feature.pickup') }}</label>
+                                    <label class="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" v-model="customOrdering.onDelivery" class="h-4 w-4" />{{ t('feature.delivery') }}</label>
+                                </div>
+                            </div>
+                        </div>
+                        <FormError :errors="errors" field="feature_keys" />
+                    </div>
+
+                    <div class="block">
+                        <span class="label">{{ t('plan.capabilities') }}</span>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-1">
+                            <label v-for="key in customCapabilityKeys" :key="key" class="flex items-center gap-2 rounded-lg border p-2.5 cursor-pointer" style="border-color:var(--line)">
+                                <input type="checkbox" :checked="customCapabilities.includes(key)" @change="toggleCustomCapability(key, $event.target.checked)" class="h-4 w-4" />
+                                <span class="text-sm" style="color:var(--ink)">{{ t(`feature.${key}`) }}</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="block">
+                        <span class="label">{{ t('plan.limits') }}</span>
+                        <p class="text-xs mb-2" style="color:var(--muted)">{{ t('plan.limits_hint') }}</p>
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 items-start">
+                            <label class="block"><span class="label">{{ t('plan.max_branches') }}</span>
+                                <input v-model="custom.max_branches" type="number" min="1" step="1" class="input" data-en-digits :placeholder="t('plan.unlimited')" />
+                                <FormError :errors="errors" field="max_branches" /></label>
+                            <label class="block"><span class="label">{{ t('plan.max_items') }}</span>
+                                <input v-model="custom.max_items" type="number" min="1" step="1" class="input" data-en-digits :placeholder="t('plan.unlimited')" />
+                                <FormError :errors="errors" field="max_items" /></label>
+                            <label class="block"><span class="label">{{ t('plan.max_categories') }}</span>
+                                <input v-model="custom.max_categories" type="number" min="1" step="1" class="input" data-en-digits :placeholder="t('plan.unlimited')" />
+                                <FormError :errors="errors" field="max_categories" /></label>
+                        </div>
+                    </div>
+                </div>
 
                 <div class="pt-2" style="border-top:1px solid var(--line)">
                     <h3 class="label" style="margin:0">{{ t('wizard.features_derived') }}</h3>

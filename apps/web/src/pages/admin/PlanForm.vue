@@ -1,5 +1,5 @@
 <script setup>
-import { reactive, ref, computed, onMounted } from 'vue'
+import { reactive, ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter, RouterLink } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import api, { ensureCsrf } from '@xorder/api-client/api.js'
@@ -28,7 +28,7 @@ const currencies = ['EGP', 'SAR', 'AED', 'USD', 'KWD', 'QAR', 'BHD', 'OMR', 'JOD
 const ordering = reactive({
     channel: '',          // '' | 'whatsapp' | 'system'
     waPickup: false, waDelivery: false,
-    tableOrdering: false,
+    tableOrdering: false, tableBillRequests: false,
     onlineOrdering: false,
     onPickup: false, onDelivery: false,
 })
@@ -36,11 +36,13 @@ function setChannel(ch) {
     ordering.channel = ch
     // Clear the other channel's sub-selection so no stale flags leak on save.
     if (ch === 'whatsapp') {
-        ordering.tableOrdering = ordering.onlineOrdering = ordering.onPickup = ordering.onDelivery = false
+        ordering.tableOrdering = ordering.tableBillRequests = ordering.onlineOrdering = ordering.onPickup = ordering.onDelivery = false
     } else {
         ordering.waPickup = ordering.waDelivery = false
     }
 }
+// Bill requests are a dine-in feature — drop them if table ordering is turned off.
+watch(() => ordering.tableOrdering, (on) => { if (!on) ordering.tableBillRequests = false })
 /** Expand the ordering selection to feature flags. */
 function orderingKeys() {
     const keys = new Set()
@@ -49,7 +51,10 @@ function orderingKeys() {
         if (ordering.waPickup) keys.add('pickup')
         if (ordering.waDelivery) keys.add('delivery')
     } else if (ordering.channel === 'system') {
-        if (ordering.tableOrdering) { keys.add('system_ordering'); keys.add('dine_in'); keys.add('table_management') }
+        if (ordering.tableOrdering) {
+            keys.add('system_ordering'); keys.add('dine_in'); keys.add('table_management')
+            if (ordering.tableBillRequests) keys.add('bill_requests')
+        }
         if (ordering.onlineOrdering) {
             keys.add('system_ordering')
             if (ordering.onPickup) keys.add('pickup')
@@ -64,6 +69,7 @@ function loadOrdering(keys) {
     if (has('system_ordering') || has('dine_in') || has('table_management')) {
         ordering.channel = 'system' // if a legacy plan had both channels, System wins
         ordering.tableOrdering = has('dine_in') || has('table_management')
+        ordering.tableBillRequests = has('bill_requests')
         ordering.onlineOrdering = has('system_ordering') && (has('pickup') || has('delivery'))
         ordering.onPickup = has('pickup')
         ordering.onDelivery = has('delivery')
@@ -76,7 +82,8 @@ function loadOrdering(keys) {
 
 // Non-ordering capabilities the admin toggles directly. customer_tracking is
 // gone — customers are captured on every plan now.
-const capabilityKeys = ['qr_menu', 'bill_requests', 'internal_reviews', 'product_analytics', 'multi_branch']
+// bill_requests is not here — it's a dine-in sub-option nested under table ordering.
+const capabilityKeys = ['qr_menu', 'internal_reviews', 'product_analytics', 'multi_branch']
 const capabilities = ref([])
 function toggleCapability(key, on) {
     const i = capabilities.value.indexOf(key)
@@ -188,6 +195,9 @@ async function submit() {
                     <!-- System sub-types -->
                     <div v-else-if="ordering.channel === 'system'" class="mt-2 ps-3 border-s-2 space-y-2" style="border-color:var(--line)">
                         <label class="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" v-model="ordering.tableOrdering" class="h-4 w-4" />{{ t('plan.ordering_table') }}</label>
+                        <div v-if="ordering.tableOrdering" class="ps-6">
+                            <label class="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" v-model="ordering.tableBillRequests" class="h-4 w-4" />{{ t('feature.bill_requests') }}</label>
+                        </div>
                         <label class="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" v-model="ordering.onlineOrdering" class="h-4 w-4" />{{ t('plan.ordering_online') }}</label>
                         <div v-if="ordering.onlineOrdering" class="ps-6">
                             <span class="text-xs" style="color:var(--muted)">{{ t('plan.ordering_fulfillment') }}</span>
