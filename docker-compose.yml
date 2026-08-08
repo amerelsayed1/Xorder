@@ -66,6 +66,9 @@ services:
       POSTGRES_DB: ${DB_DATABASE:-qrmenu}
       POSTGRES_USER: ${DB_USERNAME:-qrmenu}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-secret}
+    ports:
+      # Local-only publish so DBeaver/psql on the host can reach the container.
+      - "127.0.0.1:5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
