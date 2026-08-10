@@ -1900,13 +1900,15 @@ html[dir='ltr'] .back-step, html[dir='ltr'] .continue-button b {
     display: block;
 }
 
-/* Starts at one practical row and auto-grows (JS) up to a cap, then scrolls.
+/* Starts at one practical row and auto-grows (JS) up to a cap. overflow:hidden
+   keeps it scrollbar-free — past the cap the browser still shifts the content to
+   keep the caret line in view, just without a visible scrollbar.
    resize:none removes the corner drag-handle artifact. */
 .item-note textarea {
     resize: none;
     min-height: 46px;
     max-height: 132px;
-    overflow-y: auto;
+    overflow: hidden;
     padding: 11px 12px;
     line-height: 1.5;
 }

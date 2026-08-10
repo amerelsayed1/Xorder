@@ -9,6 +9,7 @@ import { useMenu } from './composables/useMenu'
 import { useStickyLayout } from './composables/useStickyLayout'
 import { useUserInfo } from './composables/useUserInfo'
 import { useTableSession } from './composables/useTableSession'
+import { useReviewPrompt } from './composables/useReviewPrompt'
 import Header from './components/Header.vue'
 import Hero from './components/Hero.vue'
 import RestaurantInfoModal from './components/RestaurantInfoModal.vue'
@@ -43,6 +44,7 @@ const tableAreaName = computed(() => {
 const { cart, cartCount, cartTotal, addToCart, removeLine, bumpLine, clearCart, getLineOptions, calculateLinePrice } = useCart(slug)
 const { submittingOrder, orderSuccess, lastOrderUrl, lastOrderCode, lastOrderId, customer, buildOrderData, sendToWhatsApp } = useOrder()
 const { userInfoDialog, isEditing, userInfo, editForm, saveSuccess, hasUserInfo, initials, loadUserInfo, saveUserInfo, enterEditMode, cancelEdit, clearUserInfo, openDialog, closeDialog } = useUserInfo()
+const { remember: rememberPendingReview, resolveClosedOrder } = useReviewPrompt(slug)
 
 // Hydrate any saved diner info up front so the checkout form can prefill.
 loadUserInfo()
@@ -66,12 +68,25 @@ const navDrawer = ref(false)
 const cartDrawer = ref(false)
 const infoOpen = ref(false)
 const reviewPrompt = ref(false)
-const reviewSubmitted = ref(false)
 const searchQuery = ref('')
 
 // Private post-order feedback is available when the feature is on — from the
 // table context at a scanned table, otherwise from the menu payload.
 const reviewsEnabled = computed(() => internalReviews.value || restaurant.value?.internal_reviews === true)
+
+// The feedback invite is deferred to the diner's next visit, not shown at
+// checkout: once feature state is known, check whether their last system order
+// has been closed and, if so, pop the prompt once. Guarded to run a single time.
+let reviewReturnChecked = false
+watch(reviewsEnabled, async (enabled) => {
+    if (!enabled || reviewReturnChecked) return
+    reviewReturnChecked = true
+    const orderId = await resolveClosedOrder()
+    if (orderId) {
+        lastOrderId.value = orderId
+        reviewPrompt.value = true
+    }
+}, { immediate: true })
 const modal = ref(null)
 const sel = reactive({ groups: {} })
 const qty = ref(1)
@@ -80,11 +95,11 @@ const hasOverlay = computed(() => Boolean(
     modal.value || cartDrawer.value || navDrawer.value || infoOpen.value || userInfoDialog.value || orderSuccess.value || reviewPrompt.value
 ))
 
-// Closing the order confirmation flows into the private feedback prompt, once
-// per checkout, when reviews are enabled.
+// Closing the order confirmation just dismisses it. The feedback prompt is no
+// longer offered here — it waits until the order is closed and the diner
+// returns (see the reviewsEnabled watcher above).
 function closeOrderSuccess() {
     orderSuccess.value = false
-    if (reviewsEnabled.value && !reviewSubmitted.value) reviewPrompt.value = true
 }
 
 watch(hasOverlay, (locked) => {
@@ -284,7 +299,6 @@ function submitOrder(details) {
     // fills into the success dialog when the response lands.
     lastOrderCode.value = ''
     lastOrderId.value = null
-    reviewSubmitted.value = false
     const snapshot = {
         items: cart.value.map(line => ({
             name: localize(line.ref),
@@ -307,7 +321,12 @@ function submitOrder(details) {
     // user gesture; the order code fills into the success dialog when it lands.
     if (usesSystem.value) {
         postOrder(slug, snapshot)
-            .then(res => { lastOrderCode.value = res?.data?.code || ''; lastOrderId.value = res?.data?.id || null })
+            .then(res => {
+                lastOrderCode.value = res?.data?.code || ''
+                lastOrderId.value = res?.data?.id || null
+                // Stash it so its close, on the diner's next visit, invites feedback.
+                if (lastOrderId.value) rememberPendingReview(lastOrderId.value)
+            })
             .catch(() => { /* WhatsApp handoff still carries the order in 'both' mode */ })
     } else if (usesWhatsapp.value) {
         // WhatsApp-only: no order is recorded, but still save the customer so the
@@ -483,7 +502,6 @@ function updateUserField(field, value) {
                 :customerName="userInfo.name || ''"
                 :customerPhone="userInfo.phone || ''"
                 :t="t"
-                @submitted="reviewSubmitted = true"
                 @close="reviewPrompt = false"
             />
 

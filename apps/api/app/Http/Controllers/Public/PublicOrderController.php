@@ -121,6 +121,34 @@ class PublicOrderController extends Controller
     }
 
     /**
+     * Expose only a guest order's lifecycle status so the menu SPA can decide,
+     * on the diner's return, whether the order is closed (COMPLETED) and it's
+     * time to invite private feedback. Deliberately minimal: no customer or
+     * order detail is returned — status alone is not sensitive, and the lookup
+     * is scoped to this restaurant so a foreign id resolves to 404, not a leak.
+     */
+    public function status(string $slug, int $id): JsonResponse
+    {
+        $restaurant = $this->menu->findBySlug($slug);
+
+        if ($restaurant === null || ! $this->menu->isVisible($restaurant)) {
+            return response()->json(['message' => __('xorder.messages.restaurant_not_found')], 404);
+        }
+
+        // Public request carries no auth context, so the tenant global scope
+        // can't apply — scope the lookup to this restaurant by hand.
+        $order = Order::withoutGlobalScopes()
+            ->where('restaurant_id', $restaurant->id)
+            ->find($id);
+
+        if ($order === null) {
+            return response()->json(['message' => __('xorder.messages.order_not_found')], 404);
+        }
+
+        return response()->json(['data' => ['status' => $order->status->value]]);
+    }
+
+    /**
      * Stamp the order with its table context from a menu session, if the token
      * resolves to one belonging to this restaurant.
      */

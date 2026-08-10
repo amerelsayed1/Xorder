@@ -106,6 +106,30 @@ export function areaChart({ colors, categories, series, height = 220, color, mon
     }
 }
 
+// Multi-series line chart (Flowbite "Line chart") — for trends over time,
+// including a couple of series side by side (e.g. views vs. orders).
+export function lineChart({ colors, categories, series, palette, height = 260, money = false }) {
+    return {
+        series,
+        colors: palette || [colors.accent],
+        chart: { type: 'line', height, fontFamily: FONT, toolbar: { show: false }, background: 'transparent', zoom: { enabled: false } },
+        dataLabels: { enabled: false },
+        stroke: { width: 3, curve: 'smooth' },
+        markers: { size: 4, strokeWidth: 0, hover: { size: 6 } },
+        legend: { show: series.length > 1, fontFamily: FONT, labels: { colors: colors.body }, markers: { radius: 12 } },
+        grid: { show: true, borderColor: colors.line, strokeDashArray: 4, padding: { left: 4, right: 4, top: -8 } },
+        tooltip: tooltipCfg(money, { shared: true, intersect: false }),
+        xaxis: {
+            categories,
+            labels: axisLabelStyle(colors),
+            axisBorder: { show: false },
+            axisTicks: { show: false },
+            tooltip: { enabled: false },
+        },
+        yaxis: { show: true, labels: { ...axisLabelStyle(colors), formatter: money ? (val) => fmtMoney(val) : (val) => fmtCompact(val) } },
+    }
+}
+
 // Donut chart (Flowbite "Donut chart") — for distributions.
 export function donutChart({ colors, labels, series, palette, height = 260 }) {
     return {

@@ -25,6 +25,18 @@ export async function postOrder(slug, payload) {
 }
 
 /**
+ * Read a system order's lifecycle status (NEW / COMPLETED / CANCELLED). Used on
+ * the diner's return to decide whether their order is closed and it's time to
+ * ask for feedback. Status-only — the endpoint exposes nothing else.
+ */
+export async function getOrderStatus(slug, id) {
+    const { data } = await axios.get(`${BASE}/api/public/restaurants/${slug}/orders/${id}/status`, {
+        headers: { Accept: 'application/json' },
+    })
+    return data
+}
+
+/**
  * Save just the diner's contact details to the restaurant's customer directory.
  * Used at WhatsApp checkout, which records no order but still captures the
  * customer. Fire-and-forget; never blocks the WhatsApp handoff.

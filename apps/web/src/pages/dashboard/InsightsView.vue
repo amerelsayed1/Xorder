@@ -7,7 +7,7 @@ import { useAuth } from '@xorder/api-client/auth.js'
 import Skeleton from '@xorder/ui/Skeleton.vue'
 import ErrorState from '@xorder/ui/ErrorState.vue'
 import ApexChart from '../../components/ApexChart.vue'
-import { columnChart, barChart, donutChart } from '../../lib/charts.js'
+import { lineChart, columnChart, donutChart } from '../../lib/charts.js'
 import { asPreview } from '../../lib/host.js'
 
 const { t, locale } = useI18n()
@@ -21,7 +21,7 @@ const error = ref(false)
 // recorded and QR-only plans have no Order rows at all. Menu views stay shown.
 const showOrders = computed(() => auth.hasFeature('system_ordering'))
 
-// 14-day engagement — Flowbite column chart (views, plus orders when tracked).
+// 14-day engagement — line chart (views, plus orders when tracked).
 const daily = computed(() => data.value?.engagement?.daily || [])
 const dayLabel = (iso) => new Date(iso + 'T00:00:00').toLocaleDateString(locale.value, { day: 'numeric' })
 
@@ -33,18 +33,18 @@ function engagementOptions(c) {
         series.push({ name: t('insights.orders'), data: daily.value.map(d => d.orders) })
         palette.push(c.green)
     }
-    return columnChart({ colors: c, categories, series, palette, height: 280 })
+    return lineChart({ colors: c, categories, series, palette, height: 280 })
 }
 
-// Most-ordered items — Flowbite horizontal bar chart, scaled to the top item.
+// Most-ordered items — vertical column chart (a ranking, one column per item).
 const topItems = computed(() => data.value?.top_items || [])
 
 function topItemsOptions(c) {
-    return barChart({
+    return columnChart({
         colors: c,
         categories: topItems.value.map(i => i.name),
         series: [{ name: t('insights.orders'), data: topItems.value.map(i => i.qty) }],
-        height: Math.max(180, topItems.value.length * 44),
+        height: 280,
     })
 }
 

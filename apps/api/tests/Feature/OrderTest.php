@@ -222,6 +222,44 @@ class OrderTest extends TestCase
             ->assertJsonPath('data.status', 'CANCELLED');
     }
 
+    public function test_public_can_read_own_order_status(): void
+    {
+        $r = Restaurant::factory()->withOrdering()->create(['slug' => 'demo']);
+        $admin = User::factory()->restaurantAdmin($r->id)->create();
+        $this->enableSystemOrdering($r);
+
+        $id = $this->postJson('/api/public/restaurants/demo/orders', $this->payload())
+            ->assertCreated()->json('data.id');
+
+        // Freshly placed → NEW; the endpoint returns only the status.
+        $this->getJson("/api/public/restaurants/demo/orders/{$id}/status")
+            ->assertOk()
+            ->assertExactJson(['data' => ['status' => 'NEW']]);
+
+        // Once the restaurant closes it, the same endpoint reports COMPLETED —
+        // this is what tells the menu SPA to invite feedback on the next visit.
+        $this->actingAs($admin)->patchJson("/api/dashboard/orders/{$id}/status", ['status' => 'COMPLETED'])
+            ->assertOk();
+
+        $this->getJson("/api/public/restaurants/demo/orders/{$id}/status")
+            ->assertOk()
+            ->assertJsonPath('data.status', 'COMPLETED');
+    }
+
+    public function test_public_order_status_is_scoped_to_the_restaurant(): void
+    {
+        $mine = Restaurant::factory()->withOrdering()->create(['slug' => 'mine']);
+        $other = Restaurant::factory()->withOrdering()->create(['slug' => 'other']);
+
+        $id = $this->postJson('/api/public/restaurants/other/orders', $this->payload())
+            ->json('data.id');
+
+        // Another restaurant's order id resolves to 404 through my slug — never a
+        // cross-tenant status leak, and unknown ids 404 too.
+        $this->getJson("/api/public/restaurants/mine/orders/{$id}/status")->assertNotFound();
+        $this->getJson('/api/public/restaurants/mine/orders/999999/status')->assertNotFound();
+    }
+
     public function test_orders_filter_by_status(): void
     {
         $r = Restaurant::factory()->create();

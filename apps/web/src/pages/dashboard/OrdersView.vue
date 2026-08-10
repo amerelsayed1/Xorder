@@ -195,6 +195,9 @@ function fmtTime(iso) {
                         </tr>
                     </template>
                     <tr v-else-if="!rows.length"><td colspan="7" class="px-5 py-8 text-center" style="color:var(--muted)">{{ t('orders.none') }}</td></tr>
+                    <!-- v-else so a pending filter switch shows only the shimmer,
+                         never the previous filter's rows underneath it. -->
+                    <template v-else>
                     <tr v-for="(order, idx) in rows" :key="order.id" class="border-t align-top" :class="{ 'order-row-new': newIds.has(order.id) }" :style="{ borderColor: 'var(--line)' }">
                         <td class="px-5 py-3 whitespace-nowrap" style="color:var(--muted)">{{ (meta?.from || 1) + idx }}</td>
                         <td class="px-5 py-3 font-medium whitespace-nowrap" style="color:var(--ink)">{{ order.code }}</td>
@@ -226,6 +229,7 @@ function fmtTime(iso) {
                             </div>
                         </td>
                     </tr>
+                    </template>
                 </tbody>
             </table>
         </div>

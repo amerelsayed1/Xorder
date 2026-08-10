@@ -343,6 +343,11 @@ Route::post('public/leads', [PublicLeadController::class, 'store'])
 Route::post('public/restaurants/{slug}/orders', [PublicOrderController::class, 'store'])
     ->middleware('throttle:20,1');
 
+// Status-only read of a guest order, so the menu SPA can tell on a diner's
+// return whether their order is closed and it's time to ask for feedback.
+Route::get('public/restaurants/{slug}/orders/{id}/status', [PublicOrderController::class, 'status'])
+    ->middleware('throttle:60,1');
+
 // WhatsApp checkout captures just the customer (no order record) so the
 // restaurant still builds its directory. Same throttle as guest orders.
 Route::post('public/restaurants/{slug}/customers', [PublicCustomerController::class, 'store'])

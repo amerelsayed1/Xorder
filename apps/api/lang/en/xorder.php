@@ -20,6 +20,7 @@ return [
         'plan_limit_categories' => 'Your plan allows up to :limit categories. Upgrade to add more.',
         'plan_limit_branches' => 'Your plan allows up to :limit branches. Upgrade to add more.',
         'order_received' => 'Order received.',
+        'order_not_found' => 'Order not found.',
         'order_updated' => 'Order updated.',
         'order_transition_invalid' => 'That order status change is not allowed.',
         'ordering_disabled' => 'Ordering is currently disabled for this restaurant.',
