@@ -485,8 +485,8 @@ async function submitCreate() {
                     <label class="block"><span class="label">{{ t('common.name_en') }}</span>
                         <input v-model="form.name_en" class="input" />
                         <FormError :errors="errors" field="name_en" /></label>
-                    <label class="block" dir="rtl"><span class="label">{{ t('common.name_ar') }}</span>
-                        <input v-model="form.name_ar" class="input" /></label>
+                    <label class="block"><span class="label">{{ t('common.name_ar') }}</span>
+                        <input v-model="form.name_ar" class="input" dir="rtl" /></label>
                 </div>
                 <label class="block"><span class="label">{{ t('restaurant.slug') }}</span>
                     <div dir="ltr" class="flex items-center mt-1.5 rounded-lg border overflow-hidden" style="border-color:var(--line)">
@@ -615,8 +615,8 @@ async function submitCreate() {
                     <label v-if="showEn" class="block"><span class="label">{{ nameLabelEn }}</span>
                         <input v-model="form.name_en" @input="autoSlug" class="input" />
                         <FormError :errors="errors" field="name_en" /></label>
-                    <label v-if="showAr" class="block" dir="rtl"><span class="label">{{ nameLabelAr }}</span>
-                        <input v-model="form.name_ar" class="input" />
+                    <label v-if="showAr" class="block"><span class="label">{{ nameLabelAr }}</span>
+                        <input v-model="form.name_ar" class="input" dir="rtl" />
                         <FormError :errors="errors" field="name_ar" /></label>
                 </div>
                 <label class="block"><span class="label">{{ t('restaurant.slug') }}</span>
@@ -704,8 +704,8 @@ async function submitCreate() {
                         <label v-if="showEn" class="block"><span class="label">{{ nameLabelEn }}</span>
                             <input v-model="branch.name_en" class="input" />
                             <FormError :errors="errors" field="branch.name_en" /></label>
-                        <label v-if="showAr" class="block" dir="rtl"><span class="label">{{ nameLabelAr }}</span>
-                            <input v-model="branch.name_ar" class="input" /></label>
+                        <label v-if="showAr" class="block"><span class="label">{{ nameLabelAr }}</span>
+                            <input v-model="branch.name_ar" class="input" dir="rtl" /></label>
                     </div>
                     <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
                         <label class="block"><span class="label">{{ t('wizard.branch_code') }}</span><input v-model="branch.code" class="input" /></label>

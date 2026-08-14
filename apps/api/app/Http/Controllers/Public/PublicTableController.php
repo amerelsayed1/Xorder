@@ -103,6 +103,30 @@ class PublicTableController extends Controller
         return $table;
     }
 
+    /**
+     * A fence-derived "good enough" GPS accuracy (metres) the menu aims for
+     * before it stops sampling location: about half the fence's characteristic
+     * size, so a tight fence demands a tighter fix and a large one settles for a
+     * looser one. Floored so we never ask for a precision phones can't reach,
+     * ceiled so a big fence still stops quickly, and rounded to 5 m so it only
+     * coarsely reflects the fence's scale. Null when no fence applies.
+     */
+    private function locationTargetAccuracy(DiningTable $table): ?int
+    {
+        if (! $this->fenceRequired($table)) {
+            return null;
+        }
+
+        $size = GeoFence::characteristicRadiusMetres($table->branch->geofence);
+        if ($size === null) {
+            return null;
+        }
+
+        $target = min(60.0, max(15.0, $size * 0.5));
+
+        return (int) (round($target / 5) * 5);
+    }
+
     /** Does this table's branch enforce an on-premises presence fence? */
     private function fenceRequired(DiningTable $table): bool
     {
@@ -158,6 +182,10 @@ class PublicTableController extends Controller
             // Signals the menu to obtain the diner's GPS before it tries to open
             // a session — createSession refuses without an in-fence location.
             'geofence_required' => $this->fenceRequired($table),
+            // How precise a fix the menu should hold out for, scaled to this
+            // fence's size (null when no fence). Lets the client stop sampling
+            // as soon as it's accurate enough for this specific premises.
+            'location_target_accuracy_m' => $this->locationTargetAccuracy($table),
             'bill_requests' => (bool) $table->restaurant->hasFeature('bill_requests'),
             'internal_reviews' => (bool) $table->restaurant->hasFeature('internal_reviews'),
         ];

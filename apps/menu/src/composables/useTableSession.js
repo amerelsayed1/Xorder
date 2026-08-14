@@ -1,28 +1,64 @@
 import { ref, computed } from 'vue'
 import { createTableSession, getTableContext } from '../api.js'
 
+// Longest we sample location before settling for the best fix so far, and the
+// accuracy target to fall back on if the fence context doesn't supply one.
+const MAX_WATCH_MS = 8000
+const DEFAULT_TARGET_ACCURACY_M = 25
+
 /**
- * Resolve the diner's current position. Rejects if the browser has no
- * geolocation, or the user denies / it times out — the caller treats any
- * failure as "no proof of presence" and blocks (no spoofable fallback).
+ * Resolve the diner's best available position. A single getCurrentPosition
+ * returns whatever fix the phone has ready — usually a coarse Wi-Fi/cell
+ * estimate before the GNSS settles. Instead we watch for a few seconds and keep
+ * the tightest (smallest-accuracy) reading, which makes the branch geofence test
+ * far more reliable. Sampling stops as soon as accuracy reaches `targetAccuracy`
+ * (derived per-fence from its size) or the window elapses — whichever is first —
+ * and the best fix seen is returned.
+ *
+ * Rejects if the browser has no geolocation, or the user denies / nothing
+ * arrives — the caller treats any failure as "no proof of presence" and blocks
+ * (no spoofable fallback).
  */
-function currentPosition() {
+function bestPosition(targetAccuracy = DEFAULT_TARGET_ACCURACY_M) {
     return new Promise((resolve, reject) => {
         if (!navigator.geolocation) {
             reject(new Error('unsupported'))
             return
         }
-        navigator.geolocation.getCurrentPosition(
-            (pos) => resolve({
-                latitude: pos.coords.latitude,
-                longitude: pos.coords.longitude,
-                // Fix uncertainty (metres); the backend widens the fence by it so
-                // a fuzzy-but-inside mobile GPS reading isn't wrongly rejected.
-                accuracy: pos.coords.accuracy,
-            }),
-            (err) => reject(err),
-            { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
+
+        let best = null
+        let watchId = null
+        let timer = null
+        let settled = false
+
+        const cleanup = () => {
+            if (watchId !== null) navigator.geolocation.clearWatch(watchId)
+            if (timer !== null) clearTimeout(timer)
+        }
+        // Settle with the best fix gathered so far (window elapsed or target met).
+        const done = () => { if (settled) return; settled = true; cleanup(); best ? resolve(best) : reject(new Error('timeout')) }
+        // Only surface an error if we never got a usable fix; a late error after
+        // a good reading must not discard it.
+        const fail = (err) => { if (settled) return; settled = true; cleanup(); reject(err) }
+
+        watchId = navigator.geolocation.watchPosition(
+            (pos) => {
+                const fix = {
+                    latitude: pos.coords.latitude,
+                    longitude: pos.coords.longitude,
+                    // Fix uncertainty (metres); the backend widens the fence by it
+                    // so a fuzzy-but-inside reading isn't wrongly rejected. A
+                    // tighter fix here means a tighter, more reliable check.
+                    accuracy: pos.coords.accuracy,
+                }
+                if (best === null || fix.accuracy < best.accuracy) best = fix
+                if (best.accuracy <= targetAccuracy) done()
+            },
+            (err) => { if (best === null) fail(err) },
+            { enableHighAccuracy: true, timeout: MAX_WATCH_MS, maximumAge: 0 },
         )
+
+        timer = setTimeout(done, MAX_WATCH_MS)
     })
 }
 
@@ -78,7 +114,9 @@ export function useTableSession(language = 'ar', t = (k) => k) {
             if (ctx.geofence_required) {
                 locating.value = true
                 try {
-                    coords = await currentPosition()
+                    // Hold out for a fix precise enough for THIS fence's size
+                    // (the backend sizes the target to the branch geometry).
+                    coords = await bestPosition(ctx.location_target_accuracy_m || DEFAULT_TARGET_ACCURACY_M)
                 } catch {
                     // No trustworthy location → fail closed, don't open a session.
                     tableError.value = t('loc_needed')

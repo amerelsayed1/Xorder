@@ -53,6 +53,53 @@ class GeoFence
         };
     }
 
+    /**
+     * A single "how tight is this fence" scale in metres, used to derive how
+     * precise a GPS fix must be before it can reliably resolve inside/outside.
+     * For a radius fence it's the radius; for a polygon it's the inradius
+     * (centroid to nearest edge — the fence's narrowest half-width). Returns
+     * null for a fence that isn't enforceable.
+     *
+     * @param  mixed  $fence
+     */
+    public static function characteristicRadiusMetres($fence): ?float
+    {
+        if (! is_array($fence)) {
+            return null;
+        }
+
+        return match (self::type($fence)) {
+            'radius' => ($r = (float) ($fence['radius'] ?? 0)) > 0 ? $r : null,
+            'polygon' => self::polygonInradiusMetres(self::points($fence)),
+            default => null,
+        };
+    }
+
+    /**
+     * Distance from the polygon's centroid to its nearest edge, in metres — a
+     * stable proxy for the fence's half-width. Null for a degenerate polygon.
+     *
+     * @param  array<int, array{lat: float|int|string, lng: float|int|string}>  $polygon
+     */
+    private static function polygonInradiusMetres(array $polygon): ?float
+    {
+        $n = count($polygon);
+        if ($n < 3) {
+            return null;
+        }
+
+        $lat = 0.0;
+        $lng = 0.0;
+        foreach ($polygon as $p) {
+            $lat += (float) $p['lat'];
+            $lng += (float) $p['lng'];
+        }
+
+        $d = self::distanceToPolygonMetres($lat / $n, $lng / $n, $polygon);
+
+        return is_finite($d) ? $d : null;
+    }
+
     /** Resolve the shape, tolerating a legacy bare list of vertices as polygon. */
     private static function type(array $fence): string
     {

@@ -159,13 +159,15 @@ async function save() {
                         <option v-for="c in categories" :key="c.id" :value="c.id">{{ catName(c.id) }}</option>
                     </select>
                     <FormError :errors="errors" field="category_id" /></label>
-                <label v-for="lng in langs" :key="'n' + lng" class="block" :dir="lng === 'ar' ? 'rtl' : 'ltr'">
+                <!-- dir goes on the field, not the label: the label text is in the UI
+                     language and must keep the page direction. -->
+                <label v-for="lng in langs" :key="'n' + lng" class="block">
                     <span class="label">{{ bilingual ? t('common.name_' + lng) : t('common.name') }}</span>
-                    <input v-model="form['name_' + lng]" class="input" />
+                    <input v-model="form['name_' + lng]" class="input" :dir="lng === 'ar' ? 'rtl' : 'ltr'" />
                     <FormError :errors="errors" :field="'name_' + lng" /></label>
-                <label v-for="lng in langs" :key="'d' + lng" class="block" :dir="lng === 'ar' ? 'rtl' : 'ltr'">
+                <label v-for="lng in langs" :key="'d' + lng" class="block">
                     <span class="label">{{ bilingual ? t('common.description_' + lng) : t('common.description') }}</span>
-                    <textarea v-model="form['description_' + lng]" rows="2" class="input"></textarea></label>
+                    <textarea v-model="form['description_' + lng]" rows="2" class="input" :dir="lng === 'ar' ? 'rtl' : 'ltr'"></textarea></label>
                 <div class="grid grid-cols-2 gap-3">
                     <label class="block"><span class="label">{{ t('item.price') }}<template v-if="cur"> ({{ cur }})</template></span>
                         <input v-model="form.price" type="number" step="0.01" min="0" class="input" />

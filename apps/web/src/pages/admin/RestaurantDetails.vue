@@ -438,8 +438,8 @@ const initial = (x) => localizedInitial(x, 'name', locale.value)
                                         <input v-model="adminForm.name" class="input" />
                                         <span v-if="adminErrors.name" class="block text-xs mt-1" style="color:var(--red)">{{ adminErrors.name[0] }}</span>
                                     </label>
-                                    <label class="block" dir="ltr"><span class="label">{{ t('restaurant.admin_username') }}</span>
-                                        <input v-model="adminForm.username" type="text" autocapitalize="none" spellcheck="false" class="input" />
+                                    <label class="block"><span class="label">{{ t('restaurant.admin_username') }}</span>
+                                        <input v-model="adminForm.username" type="text" autocapitalize="none" spellcheck="false" class="input" dir="ltr" />
                                         <span class="block text-xs mt-1" style="color:var(--muted)">{{ t('restaurant.admin_username_hint') }}</span>
                                         <span v-if="adminErrors.username" class="block text-xs mt-1" style="color:var(--red)">{{ adminErrors.username[0] }}</span>
                                     </label>

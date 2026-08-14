@@ -108,6 +108,28 @@ class GeoFenceTest extends TestCase
         );
     }
 
+    // ── Characteristic size (fence-derived accuracy target) ────────────────
+
+    public function test_characteristic_radius_of_a_radius_fence_is_its_radius(): void
+    {
+        $fence = ['type' => 'radius', 'center' => ['lat' => 30, 'lng' => 31], 'radius' => 120];
+        $this->assertSame(120.0, GeoFence::characteristicRadiusMetres($fence));
+    }
+
+    public function test_characteristic_radius_of_a_polygon_is_its_inradius(): void
+    {
+        // Centroid (5,5) sits ~5° from every edge of the 0..10 square; the
+        // longitude edges are marginally nearer (cos-lat projection), ~554 km.
+        $this->assertEqualsWithDelta(554000, GeoFence::characteristicRadiusMetres($this->polygon), 2000);
+    }
+
+    public function test_characteristic_radius_is_null_for_an_unenforceable_fence(): void
+    {
+        $this->assertNull(GeoFence::characteristicRadiusMetres(null));
+        $this->assertNull(GeoFence::characteristicRadiusMetres(['type' => 'radius', 'center' => ['lat' => 1, 'lng' => 1], 'radius' => 0]));
+        $this->assertNull(GeoFence::characteristicRadiusMetres(['type' => 'polygon', 'points' => [['lat' => 0, 'lng' => 0]]]));
+    }
+
     // ── Guards ─────────────────────────────────────────────────────────────
 
     public function test_degenerate_or_missing_fence_contains_nobody(): void

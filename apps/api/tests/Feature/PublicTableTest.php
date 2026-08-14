@@ -131,6 +131,40 @@ class PublicTableTest extends TestCase
             ->assertOk()->assertJsonPath('data.geofence_required', true);
     }
 
+    public function test_context_advertises_a_fence_sized_accuracy_target(): void
+    {
+        $table = $this->makeTable('20');
+
+        // No fence → no target for the client to aim at.
+        $this->getJson("/api/public/tables/{$table->public_token}")
+            ->assertOk()->assertJsonPath('data.location_target_accuracy_m', null);
+
+        // A 50 m radius fence → target ≈ half the radius (25 m), rounded to 5.
+        $this->branch->update([
+            'geofence_enabled' => true,
+            'geofence' => ['type' => 'radius', 'center' => ['lat' => 30.0, 'lng' => 31.0], 'radius' => 50],
+        ]);
+        $this->getJson("/api/public/tables/{$table->public_token}")
+            ->assertOk()->assertJsonPath('data.location_target_accuracy_m', 25);
+    }
+
+    public function test_accuracy_target_is_clamped_for_large_and_tiny_fences(): void
+    {
+        $table = $this->makeTable('21');
+
+        // Huge fence → capped at 60 m (don't wait forever for a big premises).
+        $this->branch->update(['geofence_enabled' => true,
+            'geofence' => ['type' => 'radius', 'center' => ['lat' => 30.0, 'lng' => 31.0], 'radius' => 500]]);
+        $this->getJson("/api/public/tables/{$table->public_token}")
+            ->assertJsonPath('data.location_target_accuracy_m', 60);
+
+        // Tiny fence → floored at 15 m (a precision phones can actually reach).
+        $this->branch->update(['geofence_enabled' => true,
+            'geofence' => ['type' => 'radius', 'center' => ['lat' => 30.0, 'lng' => 31.0], 'radius' => 10]]);
+        $this->getJson("/api/public/tables/{$table->public_token}")
+            ->assertJsonPath('data.location_target_accuracy_m', 15);
+    }
+
     public function test_session_allowed_when_gps_is_inside_the_fence(): void
     {
         $this->enableFence();
