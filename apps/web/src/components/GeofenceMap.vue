@@ -30,23 +30,39 @@ const pointCount = ref(0)
 const radiusM = ref(props.modelValue?.type === 'radius' ? Number(props.modelValue.radius) || 150 : 150)
 const locating = ref(false)
 const locateMsg = ref('')
+const locateMsgWarn = ref(false)
+// Accuracy of the newest fix from the live watch, in metres — shown while
+// walking or capturing so the owner can watch the fix tighten.
+const gpsAccuracy = ref(null)
 // "Walk the perimeter": record the branch outline by walking it. While active a
 // vertex is dropped automatically each time the owner moves MIN_STEP_M, fuzzy
 // fixes (worse than MAX_ACCURACY_M) are ignored so GPS jitter can't pollute it.
 const recording = ref(false)
-const recAccuracy = ref(null)
-// Corner capture: stand at each corner, tap once — a good GPS fix (best of a
-// short sample) is dropped as a vertex, and the vertices connect into the shape.
+// Corner capture: stand at each corner, tap once — the tightest fix of a short
+// sample is dropped as a vertex, and the vertices connect into the shape.
 const capturing = ref(false)
-const captureAccuracy = ref(null)
+
 const MIN_STEP_M = 5
 const MAX_ACCURACY_M = 30
-const CORNER_SAMPLE_MS = 3000
+// A phone whose GPS has been idle indoors routinely needs 10–20s to hand back
+// its first satellite fix, so a capture waits that long for one instead of
+// declaring failure after a couple of seconds. It settles as soon as the fix is
+// tight enough, so a warm GPS still feels instant.
+const CORNER_MIN_SAMPLE_MS = 2500
+const CORNER_MAX_SAMPLE_MS = 25000
 const CORNER_GOOD_ACCURACY_M = 8
+const CORNER_COARSE_ACCURACY_M = 35
+// Keep the watch alive between corners: the cold start is the expensive part, so
+// the walk to the next corner should not pay it again.
+const GPS_WARM_MS = 120000
+const FIX_FRESH_MS = 10000
 
 let map = null
 let watchId = null
-let lastFix = null
+let warmTimer = null
+let capture = null // in-flight corner capture: { best, minAt, timer }
+let latest = null // newest fix from the watch: { lat, lng, accuracy, at }
+let lastFix = null // last vertex dropped while walking
 let layers = []
 let points = props.modelValue?.type === 'polygon' && Array.isArray(props.modelValue.points)
     ? props.modelValue.points.map((p) => ({ lat: Number(p.lat), lng: Number(p.lng) }))
@@ -113,13 +129,16 @@ function onRadiusInput() {
     if (radiusCenter) commit(); else render()
 }
 
+function setMsg(text, warn = false) { locateMsg.value = text; locateMsgWarn.value = warn }
+function clearMsg() { locateMsg.value = ''; locateMsgWarn.value = false }
+
 // Jump the map to the admin's current GPS. In radius mode this also drops the
 // centre where they're standing (they're usually at the branch); in polygon
 // mode it just recentres so they can draw around themselves.
 function locateMe() {
-    if (props.disabled || !navigator.geolocation) { locateMsg.value = t('branch.geofence_locate_denied'); return }
+    if (props.disabled || !navigator.geolocation) { setMsg(t('branch.geofence_locate_denied')); return }
     locating.value = true
-    locateMsg.value = ''
+    clearMsg()
     navigator.geolocation.getCurrentPosition(
         (pos) => {
             locating.value = false
@@ -127,8 +146,11 @@ function locateMe() {
             if (map) map.setView([latitude, longitude], 17)
             if (mode.value === 'radius') { radiusCenter = { lat: latitude, lng: longitude }; commit() }
         },
-        () => { locating.value = false; locateMsg.value = t('branch.geofence_locate_denied') },
-        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
+        (err) => {
+            locating.value = false
+            setMsg(err?.code === 1 ? t('branch.geofence_locate_denied') : t('branch.geofence_locate_failed'))
+        },
+        { enableHighAccuracy: true, timeout: 25000, maximumAge: 0 },
     )
 }
 
@@ -147,85 +169,126 @@ function addFix(lat, lng) {
     commit()
 }
 
+/* ── GPS layer ────────────────────────────────────────────────────────────────
+ * One watch feeds both the walk recorder and corner capture. It is started on
+ * demand and left running for a while after each use, because what costs time is
+ * acquiring the first satellite fix, not keeping one. */
+
+function onFix(pos) {
+    const { latitude, longitude, accuracy } = pos.coords
+    latest = { lat: latitude, lng: longitude, accuracy, at: Date.now() }
+    gpsAccuracy.value = Math.round(accuracy)
+    if (map && (recording.value || capturing.value)) map.panTo([latitude, longitude])
+
+    if (capture) {
+        if (!capture.best || accuracy < capture.best.accuracy) capture.best = { lat: latitude, lng: longitude, accuracy }
+        // Settle early once the fix is tight — but never before the minimum
+        // sample, since the first reading a phone offers is often optimistic.
+        if (capture.best.accuracy <= CORNER_GOOD_ACCURACY_M && Date.now() >= capture.minAt) finishCapture()
+    }
+
+    if (recording.value) {
+        if (accuracy > MAX_ACCURACY_M) return // too fuzzy to trust — skip
+        const fix = { lat: latitude, lng: longitude }
+        if (!lastFix || metresBetween(lastFix, fix) >= MIN_STEP_M) addFix(latitude, longitude)
+    }
+}
+
+// Only a denied permission is terminal. POSITION_UNAVAILABLE / TIMEOUT are
+// routine indoors and usually transient, so they must not abort a capture that
+// would have succeeded a few seconds later — the sampling window decides.
+function onGpsError(err) {
+    if (err?.code !== 1) return
+    setMsg(t('branch.geofence_locate_denied'))
+    if (capturing.value) endCapture()
+    if (recording.value) recording.value = false
+    stopGps()
+}
+
+function ensureGps() {
+    if (!navigator.geolocation) { setMsg(t('branch.geofence_locate_denied')); return false }
+    if (warmTimer !== null) { clearTimeout(warmTimer); warmTimer = null }
+    if (watchId === null) {
+        watchId = navigator.geolocation.watchPosition(onFix, onGpsError, {
+            enableHighAccuracy: true, timeout: CORNER_MAX_SAMPLE_MS, maximumAge: 0,
+        })
+    }
+    return true
+}
+
+function stopGps() {
+    if (watchId !== null && navigator.geolocation) navigator.geolocation.clearWatch(watchId)
+    watchId = null
+    if (warmTimer !== null) { clearTimeout(warmTimer); warmTimer = null }
+    gpsAccuracy.value = null
+    latest = null
+}
+
+// Hold the fix for the walk to the next corner, then release the radio.
+function keepWarm() {
+    if (recording.value || capturing.value || watchId === null) return
+    if (warmTimer !== null) clearTimeout(warmTimer)
+    warmTimer = setTimeout(stopGps, GPS_WARM_MS)
+}
+
 // Start tracing: watch GPS and auto-drop a vertex every MIN_STEP_M of movement.
 function startWalk() {
-    if (props.disabled || !navigator.geolocation) { locateMsg.value = t('branch.geofence_locate_denied'); return }
+    if (props.disabled || !ensureGps()) return
     if (mode.value !== 'polygon') { mode.value = 'polygon'; commit() }
-    locateMsg.value = ''
-    recAccuracy.value = null
+    clearMsg()
     recording.value = true
     // Continue from wherever the current outline left off.
     lastFix = points.length ? points[points.length - 1] : null
-    watchId = navigator.geolocation.watchPosition(
-        (pos) => {
-            const { latitude, longitude, accuracy } = pos.coords
-            recAccuracy.value = Math.round(accuracy)
-            if (map) map.panTo([latitude, longitude])
-            if (accuracy > MAX_ACCURACY_M) return // too fuzzy to trust — skip
-            const fix = { lat: latitude, lng: longitude }
-            if (!lastFix || metresBetween(lastFix, fix) >= MIN_STEP_M) addFix(latitude, longitude)
-        },
-        () => { locateMsg.value = t('branch.geofence_locate_denied'); stopWalk() },
-        { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 },
-    )
 }
 
 // Force a vertex at the current spot — for a sharp corner between auto-drops.
 function dropPoint() {
-    if (!recording.value || !navigator.geolocation) return
-    navigator.geolocation.getCurrentPosition(
-        (pos) => addFix(pos.coords.latitude, pos.coords.longitude),
-        () => {},
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 },
-    )
+    if (!recording.value) return
+    if (latest && Date.now() - latest.at <= FIX_FRESH_MS) addFix(latest.lat, latest.lng)
 }
 
 function stopWalk() {
     recording.value = false
-    if (watchId !== null && navigator.geolocation) navigator.geolocation.clearWatch(watchId)
-    watchId = null
     lastFix = null
+    keepWarm()
     if (map && points.length >= 2) map.fitBounds(L.polygon(points.map((p) => [p.lat, p.lng])).getBounds(), { padding: [24, 24] })
 }
 
-// Capture ONE corner at the owner's current spot: sample GPS for a few seconds,
-// keep the tightest fix, and drop it as a vertex. Far more accurate than a
-// walked trace — the owner places each corner deliberately, and the polygon
-// connects them, so the outline hugs the real building instead of ballooning.
+// Capture ONE corner at the owner's current spot: sample GPS, keep the tightest
+// fix, and drop it as a vertex. Far more accurate than a walked trace — the
+// owner places each corner deliberately, and the polygon connects them, so the
+// outline hugs the real building instead of ballooning.
 function captureCorner() {
-    if (props.disabled || capturing.value || !navigator.geolocation) {
-        if (!navigator.geolocation) locateMsg.value = t('branch.geofence_locate_denied')
-        return
-    }
+    if (props.disabled || capturing.value || !ensureGps()) return
     if (mode.value !== 'polygon') { mode.value = 'polygon'; commit() }
-    locateMsg.value = ''
-    captureAccuracy.value = null
-    capturing.value = true
-
-    let best = null
-    let done = false
-    let id = null
-    const finish = () => {
-        if (done) return
-        done = true
-        if (id !== null) navigator.geolocation.clearWatch(id)
-        capturing.value = false
-        if (best) addFix(best.lat, best.lng)
-        else locateMsg.value = t('branch.geofence_locate_denied')
+    clearMsg()
+    capture = {
+        best: null,
+        minAt: Date.now() + CORNER_MIN_SAMPLE_MS,
+        timer: setTimeout(finishCapture, CORNER_MAX_SAMPLE_MS),
     }
-    id = navigator.geolocation.watchPosition(
-        (pos) => {
-            const { latitude, longitude, accuracy } = pos.coords
-            captureAccuracy.value = Math.round(accuracy)
-            if (map) map.panTo([latitude, longitude])
-            if (!best || accuracy < best.accuracy) best = { lat: latitude, lng: longitude, accuracy }
-            if (best.accuracy <= CORNER_GOOD_ACCURACY_M) finish() // already precise — stop early
-        },
-        () => finish(),
-        { enableHighAccuracy: true, timeout: CORNER_SAMPLE_MS + 3000, maximumAge: 0 },
-    )
-    setTimeout(finish, CORNER_SAMPLE_MS)
+    capturing.value = true
 }
+
+function endCapture() {
+    if (capture?.timer) clearTimeout(capture.timer)
+    capture = null
+    capturing.value = false
+    keepWarm()
+}
+
+function finishCapture() {
+    if (!capture) return
+    const best = capture.best
+    endCapture()
+    if (!best) { setMsg(t('branch.geofence_locate_failed')); return }
+    addFix(best.lat, best.lng)
+    // Still accept a coarse fix — but say so, so a corner that lands in the
+    // street can be undone rather than silently deforming the fence.
+    if (best.accuracy > CORNER_COARSE_ACCURACY_M) setMsg(t('branch.geofence_corner_coarse', { n: Math.round(best.accuracy) }), true)
+}
+
+function cancelCapture() { endCapture() }
 
 function undo() { points.pop(); commit() }
 function clearAll() { points = []; radiusCenter = null; commit() }
@@ -247,7 +310,9 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
-    if (watchId !== null && navigator.geolocation) navigator.geolocation.clearWatch(watchId)
+    if (capture?.timer) clearTimeout(capture.timer)
+    capture = null
+    stopGps()
     if (map) { map.remove(); map = null }
 })
 </script>
@@ -279,19 +344,24 @@ onBeforeUnmount(() => {
 
         <div v-if="mode === 'polygon'" class="geofence__bar">
             <template v-if="!recording">
-                <span class="geofence__count">{{ t('branch.geofence_points', { n: pointCount }) }}</span>
+                <span v-if="capturing" class="geofence__count geofence__rec">
+                    <span class="geofence__rec-dot"></span>{{ t('branch.geofence_capturing') }}<template v-if="gpsAccuracy != null"> · ±{{ gpsAccuracy }}m</template>
+                </span>
+                <span v-else class="geofence__count">{{ t('branch.geofence_points', { n: pointCount }) }}</span>
                 <span class="flex-1"></span>
-                <button v-if="!disabled" type="button" class="btn btn-accent btn-sm" :disabled="capturing" @click="captureCorner">
-                    <span v-if="capturing">{{ t('branch.geofence_capturing') }}<template v-if="captureAccuracy != null"> ±{{ captureAccuracy }}m</template></span>
-                    <span v-else>{{ t('branch.geofence_add_corner') }}</span>
-                </button>
-                <button v-if="!disabled" type="button" class="btn btn-ghost btn-sm" @click="startWalk">{{ t('branch.geofence_walk') }}</button>
-                <button v-if="!disabled" type="button" class="btn btn-ghost btn-sm" :disabled="!pointCount" @click="undo">{{ t('branch.geofence_undo') }}</button>
-                <button v-if="!disabled" type="button" class="btn btn-ghost btn-sm" :disabled="!pointCount" @click="clearAll">{{ t('branch.geofence_clear') }}</button>
+                <template v-if="!disabled && capturing">
+                    <button type="button" class="btn btn-ghost btn-sm" @click="cancelCapture">{{ t('branch.geofence_capture_cancel') }}</button>
+                </template>
+                <template v-else-if="!disabled">
+                    <button type="button" class="btn btn-accent btn-sm" @click="captureCorner">{{ t('branch.geofence_add_corner') }}</button>
+                    <button type="button" class="btn btn-ghost btn-sm" @click="startWalk">{{ t('branch.geofence_walk') }}</button>
+                    <button type="button" class="btn btn-ghost btn-sm" :disabled="!pointCount" @click="undo">{{ t('branch.geofence_undo') }}</button>
+                    <button type="button" class="btn btn-ghost btn-sm" :disabled="!pointCount" @click="clearAll">{{ t('branch.geofence_clear') }}</button>
+                </template>
             </template>
             <template v-else>
                 <span class="geofence__count geofence__rec">
-                    <span class="geofence__rec-dot"></span>{{ t('branch.geofence_walking', { n: pointCount }) }}<template v-if="recAccuracy != null"> · ±{{ recAccuracy }}m</template>
+                    <span class="geofence__rec-dot"></span>{{ t('branch.geofence_walking', { n: pointCount }) }}<template v-if="gpsAccuracy != null"> · ±{{ gpsAccuracy }}m</template>
                 </span>
                 <span class="flex-1"></span>
                 <button type="button" class="btn btn-ghost btn-sm" @click="dropPoint">{{ t('branch.geofence_drop') }}</button>
@@ -305,8 +375,8 @@ onBeforeUnmount(() => {
             <span class="geofence__count">{{ t('branch.geofence_meters') }}</span>
         </div>
 
-        <p class="page-sub" style="margin-top:6px">{{ recording ? t('branch.geofence_walk_hint') : (mode === 'polygon' ? t('branch.geofence_hint') : t('branch.geofence_radius_hint')) }}</p>
-        <p v-if="locateMsg" class="geofence__locate-msg">{{ locateMsg }}</p>
+        <p class="page-sub" style="margin-top:6px">{{ recording ? t('branch.geofence_walk_hint') : (capturing ? t('branch.geofence_capture_hint') : (mode === 'polygon' ? t('branch.geofence_hint') : t('branch.geofence_radius_hint'))) }}</p>
+        <p v-if="locateMsg" class="geofence__locate-msg" :class="{ 'geofence__locate-msg--warn': locateMsgWarn }">{{ locateMsg }}</p>
     </div>
 </template>
 
@@ -334,6 +404,7 @@ onBeforeUnmount(() => {
 .geofence__locate:disabled { cursor: default; }
 .geofence__locate.busy svg { animation: geofence-spin 0.8s linear infinite; }
 .geofence__locate-msg { font-size: 12px; color: var(--danger, #dc2626); margin-top: 4px; }
+.geofence__locate-msg--warn { color: var(--warn, #b45309); }
 @keyframes geofence-spin { to { transform: rotate(360deg); } }
 .geofence__bar { display: flex; align-items: center; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
 .geofence__count { font-size: 12px; color: var(--muted); white-space: nowrap; }

@@ -7,6 +7,7 @@ use App\Http\Requests\Dashboard\StoreOptionGroupRequest;
 use App\Http\Requests\Dashboard\UpdateOptionGroupRequest;
 use App\Http\Resources\OptionGroupResource;
 use App\Models\OptionGroup;
+use App\Services\VariantPricingService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 
@@ -20,6 +21,8 @@ use Illuminate\Support\Facades\DB;
  */
 class OptionGroupController extends Controller
 {
+    public function __construct(private readonly VariantPricingService $pricing) {}
+
     public function index(): JsonResponse
     {
         $groups = OptionGroup::global()
@@ -39,6 +42,9 @@ class OptionGroupController extends Controller
             $group = $this->makeGroup($request->validated());
             $this->syncOptions($group, $request->validated('options') ?? []);
             $this->syncScope($group, $request->validated());
+            // A category-/restaurant-wide size group starts pricing its items
+            // the moment it exists, so their price columns follow immediately.
+            $this->pricing->syncGroupItems($group);
 
             return $group;
         });
@@ -83,6 +89,10 @@ class OptionGroupController extends Controller
             if (array_key_exists('apply_scope', $data)) {
                 $this->syncScope($optionGroup, $data);
             }
+
+            // Library edits are live across every item using the group, so an
+            // item priced by these sizes must not keep advertising the old one.
+            $this->pricing->syncGroupItems($optionGroup->fresh()->load('options'));
         });
 
         return response()->json([
@@ -158,6 +168,10 @@ class OptionGroupController extends Controller
                 'name_en' => $o['name_en'] ?? null,
                 'name_ar' => $o['name_ar'] ?? null,
                 'price' => $o['price'] ?? 0,
+                // Only a variant group's option carries a sale price — there the
+                // option IS the item price. An add-on price is a delta, so a
+                // discount on it would be meaningless.
+                'discounted_price' => $group->is_variant ? ($o['discounted_price'] ?? null) : null,
                 'is_available' => $o['is_available'] ?? true,
                 'sort_order' => $oi,
             ]);

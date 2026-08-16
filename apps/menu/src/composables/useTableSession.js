@@ -1,9 +1,12 @@
 import { ref, computed } from 'vue'
 import { createTableSession, getTableContext } from '../api.js'
 
-// Longest we sample location before settling for the best fix so far, and the
-// accuracy target to fall back on if the fence context doesn't supply one.
-const MAX_WATCH_MS = 8000
+// Once a fix is in hand we sample this long to let it tighten, then settle for
+// the best one. A phone whose GPS was idle can take far longer to produce its
+// FIRST fix, so when nothing has arrived we keep waiting up to MAX_WATCH_MS
+// rather than declaring failure and locking the diner out of ordering.
+const SETTLE_MS = 8000
+const MAX_WATCH_MS = 25000
 const DEFAULT_TARGET_ACCURACY_M = 25
 
 /**
@@ -28,12 +31,14 @@ function bestPosition(targetAccuracy = DEFAULT_TARGET_ACCURACY_M) {
 
         let best = null
         let watchId = null
-        let timer = null
+        let hardTimer = null   // whole acquisition budget
+        let settleTimer = null // short window that starts at the first fix
         let settled = false
 
         const cleanup = () => {
             if (watchId !== null) navigator.geolocation.clearWatch(watchId)
-            if (timer !== null) clearTimeout(timer)
+            if (hardTimer !== null) clearTimeout(hardTimer)
+            if (settleTimer !== null) clearTimeout(settleTimer)
         }
         // Settle with the best fix gathered so far (window elapsed or target met).
         const done = () => { if (settled) return; settled = true; cleanup(); best ? resolve(best) : reject(new Error('timeout')) }
@@ -52,13 +57,19 @@ function bestPosition(targetAccuracy = DEFAULT_TARGET_ACCURACY_M) {
                     accuracy: pos.coords.accuracy,
                 }
                 if (best === null || fix.accuracy < best.accuracy) best = fix
-                if (best.accuracy <= targetAccuracy) done()
+                if (best.accuracy <= targetAccuracy) { done(); return }
+                // First fix in hand: give the GNSS a short window to tighten it,
+                // rather than holding the diner for the full acquisition budget.
+                if (settleTimer === null) settleTimer = setTimeout(done, SETTLE_MS)
             },
-            (err) => { if (best === null) fail(err) },
+            // A denied permission is terminal — nothing will ever arrive. Other
+            // errors (position unavailable / timeout) are routine indoors and
+            // often transient, so keep listening and let the window decide.
+            (err) => { if (err?.code === 1) fail(err) },
             { enableHighAccuracy: true, timeout: MAX_WATCH_MS, maximumAge: 0 },
         )
 
-        timer = setTimeout(done, MAX_WATCH_MS)
+        hardTimer = setTimeout(done, MAX_WATCH_MS)
     })
 }
 
@@ -87,6 +98,9 @@ export function useTableSession(language = 'ar', t = (k) => k) {
     const internalReviews = ref(false)
     const tableError = ref('')
     const locating = ref(false)
+    // The failure was about *where* the diner is, not the table itself — worth
+    // offering another attempt (walk inside, step near a window, retry).
+    const canRetryLocation = ref(false)
 
     // A table QR was scanned but no valid on-site session was established
     // (still resolving location, denied GPS, or outside the branch fence) —
@@ -105,6 +119,8 @@ export function useTableSession(language = 'ar', t = (k) => k) {
 
     async function init() {
         if (!token) return
+        tableError.value = ''
+        canRetryLocation.value = false
         try {
             // Learn whether this branch fences its premises before deciding
             // whether to prompt the diner for location at all.
@@ -117,9 +133,12 @@ export function useTableSession(language = 'ar', t = (k) => k) {
                     // Hold out for a fix precise enough for THIS fence's size
                     // (the backend sizes the target to the branch geometry).
                     coords = await bestPosition(ctx.location_target_accuracy_m || DEFAULT_TARGET_ACCURACY_M)
-                } catch {
+                } catch (err) {
                     // No trustworthy location → fail closed, don't open a session.
-                    tableError.value = t('loc_needed')
+                    // A denied permission needs a settings change; no fix at all
+                    // usually just needs another try nearer a window.
+                    tableError.value = err?.code === 1 ? t('loc_needed') : t('loc_failed')
+                    canRetryLocation.value = true
                     return
                 } finally {
                     locating.value = false
@@ -131,10 +150,17 @@ export function useTableSession(language = 'ar', t = (k) => k) {
         } catch (e) {
             // Invalid / disabled table / disabled branch, or out-of-area (422).
             tableError.value = e.response?.data?.message || t('error_generic')
+            // Out-of-area is retryable — the diner may just be walking in.
+            canRetryLocation.value = e.response?.status === 422
         }
+    }
+
+    // Re-run the whole handshake — used by the "Try again" affordance.
+    function retry() {
+        if (!locating.value) init()
     }
 
     init()
 
-    return { hasTable, sessionToken, tableLabel, area, branch, billRequests, internalReviews, tableError, locating, orderingBlocked }
+    return { hasTable, sessionToken, tableLabel, area, branch, billRequests, internalReviews, tableError, locating, orderingBlocked, canRetryLocation, retry }
 }

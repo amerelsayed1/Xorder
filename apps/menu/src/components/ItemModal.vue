@@ -46,7 +46,13 @@ function getOptions(g) {
 }
 
 function optionPrice(opt) {
-    return Number(opt.price ?? opt.extra_price ?? 0)
+    return Number(opt.discounted_price ?? opt.price ?? opt.extra_price ?? 0)
+}
+
+// The struck-through "was" figure for a discounted size — null when this option
+// carries no sale price, so undiscounted sizes render exactly as before.
+function optionWasPrice(opt) {
+    return opt.discounted_price == null ? null : Number(opt.price ?? 0)
 }
 
 function isSelected(gi, oi) {
@@ -119,7 +125,10 @@ const headerPrice = computed(() => {
                                 />
                                 {{ localize(opt) }}
                             </span>
-                            <strong v-if="group.is_variant" class="money">{{ money(optionPrice(opt)) }}</strong>
+                            <strong v-if="group.is_variant" class="money">
+                                <span v-if="optionWasPrice(opt)" class="old-price money">{{ money(optionWasPrice(opt)) }}</span>
+                                {{ money(optionPrice(opt)) }}
+                            </strong>
                             <strong v-else :class="{ money: optionPrice(opt) }">{{ optionPrice(opt) ? `+ ${money(optionPrice(opt))}` : t('free') }}</strong>
                         </label>
                     </div>

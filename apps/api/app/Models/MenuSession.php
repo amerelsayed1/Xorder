@@ -10,12 +10,21 @@ class MenuSession extends Model
 {
     use BelongsToRestaurant;
 
+    /** Presence was established by the branch geofence at scan time. */
+    public const PRESENCE_GEOFENCE = 'geofence';
+
     protected $fillable = [
         'branch_id',
         'dining_area_id',
         'table_id',
         'session_token',
         'language',
+        'client_ip',
+        'latitude',
+        'longitude',
+        'accuracy_m',
+        'presence_source',
+        'on_branch_network',
         'started_at',
         'last_activity_at',
         'expires_at',
@@ -24,6 +33,10 @@ class MenuSession extends Model
     protected function casts(): array
     {
         return [
+            'latitude' => 'float',
+            'longitude' => 'float',
+            'accuracy_m' => 'integer',
+            'on_branch_network' => 'boolean',
             'started_at' => 'datetime',
             'last_activity_at' => 'datetime',
             'expires_at' => 'datetime',

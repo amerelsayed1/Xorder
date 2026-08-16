@@ -12,12 +12,15 @@ use App\Models\MenuItem;
 use App\Models\OptionGroup;
 use App\Models\Restaurant;
 use App\Services\PlanLimitService;
+use App\Services\VariantPricingService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class MenuItemController extends Controller
 {
+    public function __construct(private readonly VariantPricingService $pricing) {}
+
     public function index(Request $request): JsonResponse
     {
         $items = MenuItem::query()
@@ -60,6 +63,9 @@ class MenuItemController extends Controller
 
             $item = MenuItem::create($data);
             $this->syncOptionGroups($item, $groups);
+            // A size group prices the item, so the submitted price is only a
+            // placeholder — replace it with the default size's own figures.
+            $this->pricing->syncItem($item);
 
             return ['item' => $item];
         });
@@ -96,7 +102,11 @@ class MenuItemController extends Controller
             // Only resync when the client actually sent the option_groups key.
             if ($groups !== null) {
                 $this->syncOptionGroups($item, $groups);
+                $item->unsetRelation('optionGroups')->unsetRelation('sharedOptionGroups');
             }
+            // Unconditional: a partial update that touches only `price` must
+            // still lose to the sizes on an item those sizes already price.
+            $this->pricing->syncItem($item);
         });
 
         return response()->json([
@@ -172,6 +182,10 @@ class MenuItemController extends Controller
                     'name_en' => $o['name_en'] ?? null,
                     'name_ar' => $o['name_ar'] ?? null,
                     'price' => $o['price'] ?? 0,
+                    // A sale price only means anything on a variant group, where
+                    // the option IS the item price. On an add-on group the price
+                    // is a delta, so drop any discount the client sent.
+                    'discounted_price' => $isVariant ? ($o['discounted_price'] ?? null) : null,
                     'is_available' => $o['is_available'] ?? true,
                     'sort_order' => $oi,
                 ]);

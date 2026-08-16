@@ -10,6 +10,7 @@ use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\IpUtils;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -19,11 +20,26 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        // Behind a reverse proxy (in production, Operix's nginx -> the app's own
+        // Behind a reverse proxy (in production, the edge nginx -> the app's own
         // internal nginx) the app must trust forwarded headers, otherwise it
-        // generates http:// URLs and drops the secure session cookie. Ingress is
-        // only ever through the trusted proxy chain, so trust all hops.
-        $middleware->trustProxies(at: '*');
+        // generates http:// URLs and drops the secure session cookie.
+        //
+        // Trust the private ranges the proxy chain actually runs on, NOT '*'.
+        // Every hop between the client and PHP is on a private address, while a
+        // real client is public — so Symfony walks X-Forwarded-For right to
+        // left, discards the private hops, and stops at the first public entry:
+        // the genuine client.
+        //
+        // '*' was wrong and actively exploitable. Trusting every hop makes
+        // Symfony return the *leftmost* entry, and the leftmost entry is
+        // whatever the caller put in the header — nginx appends to it rather
+        // than replacing it. Any diner could send
+        //   X-Forwarded-For: <the branch's Wi-Fi address>
+        // and be recorded as sitting in the restaurant. Binding the container to
+        // 127.0.0.1 does not help: the header still arrives through the proxy.
+        // request()->ip() also keys the login rate limiter, so a forged value
+        // let an attacker sidestep that too.
+        $middleware->trustProxies(at: IpUtils::PRIVATE_SUBNETS);
 
         // API auth is stateless JWT (Authorization: Bearer) — no SPA session
         // cookie, so statefulApi()/CSRF is intentionally not enabled.

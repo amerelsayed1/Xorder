@@ -114,4 +114,42 @@ class MenuItem extends Model
 
         return $this;
     }
+
+    /**
+     * The size the diner gets before touching anything: the first available
+     * option of the item's first variant group, in display order. The menu app
+     * pre-selects exactly this row (defaultSelection() in the menu SPA), and a
+     * variant option REPLACES the item price rather than adding to it — so this
+     * option, not the item's own price column, is what an untouched "add to
+     * cart" charges. Null when the item has no variant group, i.e. it really is
+     * priced by its own column.
+     *
+     * Reordering the sizes therefore changes the item's advertised price: the
+     * first row IS the default. That's intended, and the form says so.
+     *
+     * Relations must be eager-loaded — orderedOptionGroups() only sees what is.
+     */
+    public function defaultVariantOption(): ?Option
+    {
+        $group = $this->orderedOptionGroups()->first(fn ($g) => $g->is_variant);
+
+        // Options come back in sort_order; unavailable ones are stripped from
+        // the public menu, so the diner's default is the first AVAILABLE row.
+        return $group?->options->firstWhere('is_available', true);
+    }
+
+    /**
+     * The [price, discounted_price] pair the menu must advertise. Returned as a
+     * pair so both figures always come from one source — pairing a size's price
+     * with the item's own discount would render a strike-through that no
+     * selection ever charges.
+     */
+    public function displayPricing(): array
+    {
+        $default = $this->defaultVariantOption();
+
+        return $default
+            ? [$default->price, $default->discounted_price]
+            : [$this->price, $this->discounted_price];
+    }
 }

@@ -33,6 +33,7 @@ class OptionGroupResource extends JsonResource
                 'name_en' => $o->name_en,
                 'name_ar' => $o->name_ar,
                 'price' => $o->price,
+                'discounted_price' => $o->discounted_price,
                 'is_available' => $o->is_available,
             ])->values()),
             'created_at' => $this->created_at?->toIso8601String(),

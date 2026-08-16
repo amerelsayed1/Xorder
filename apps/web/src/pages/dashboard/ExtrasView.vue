@@ -54,7 +54,14 @@ function scopeSummary(g) {
 }
 
 // --- option builder helpers ---
-function addOption() { form.options.push({ name_en: '', name_ar: '', price: '' }) }
+function addOption() { form.options.push({ name_en: '', name_ar: '', price: '', discounted_price: '' }) }
+
+// Nested option errors come back keyed by path (options.1.discounted_price);
+// show the first one under the list so a rejected sale price is visible.
+function optionError() {
+    const key = Object.keys(errors.value).find(k => k.startsWith('options.'))
+    return key ? errors.value[key][0] : ''
+}
 function removeOption(i) { form.options.splice(i, 1) }
 
 function groupName(g) { return pickLocalized(g, 'name', locale.value) }
@@ -70,7 +77,7 @@ function openEdit(g) {
         name_en: g.name_en || '', name_ar: g.name_ar || '',
         is_required: !!g.is_required, is_variant: !!g.is_variant, max_select: g.max_select || 1,
         apply_scope: g.apply_scope || 'items', category_ids: [...(g.category_ids || [])],
-        options: (g.options || []).map(o => ({ name_en: o.name_en || '', name_ar: o.name_ar || '', price: o.price ?? '' })),
+        options: (g.options || []).map(o => ({ name_en: o.name_en || '', name_ar: o.name_ar || '', price: o.price ?? '', discounted_price: o.discounted_price ?? '' })),
     })
     showModal.value = true
 }
@@ -85,7 +92,14 @@ async function save() {
         max_select: form.is_variant ? 1 : (Number(form.max_select) || 1),
         apply_scope: form.apply_scope,
         category_ids: form.apply_scope === 'categories' ? form.category_ids : [],
-        options: form.options.map(o => ({ name_en: o.name_en, name_ar: o.name_ar, price: o.price === '' ? 0 : Number(o.price) })),
+        options: form.options.map(o => ({
+            name_en: o.name_en, name_ar: o.name_ar,
+            price: o.price === '' ? 0 : Number(o.price),
+            // Sale price only applies to a size/variant group (see ItemForm).
+            discounted_price: form.is_variant && o.discounted_price !== '' && o.discounted_price != null
+                ? Number(o.discounted_price)
+                : null,
+        })),
     }
     try {
         await ensureCsrf()
@@ -198,8 +212,11 @@ async function remove(g) {
                         <input v-for="lng in langs" :key="'o' + lng" v-model="o['name_' + lng]" class="input flex-1"
                             :dir="lng === 'ar' ? 'rtl' : 'ltr'" :placeholder="t('item.option_' + lng)" />
                         <input v-model="o.price" type="number" step="0.01" min="0" class="input" style="width:90px" :placeholder="form.is_variant ? (cur() || '0') : (cur() || '+0')" />
+                        <input v-if="form.is_variant" v-model="o.discounted_price" type="number" step="0.01" min="0"
+                            class="input" style="width:90px" :placeholder="t('item.option_discount')" :title="t('item.option_discount_hint')" />
                         <button type="button" class="icon-btn icon-btn-danger" :title="t('common.delete')" @click="removeOption(oi)"><Icon name="close" :size="16" /></button>
                     </div>
+                    <p v-if="optionError()" class="text-xs text-red-600">{{ optionError() }}</p>
                     <button type="button" class="btn btn-ghost btn-sm" @click="addOption">+ {{ t('item.add_option') }}</button>
                 </div>
 

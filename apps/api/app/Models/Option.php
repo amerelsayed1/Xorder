@@ -15,6 +15,7 @@ class Option extends Model
         'name_ar',
         'name_en',
         'price',
+        'discounted_price',
         'is_available',
         'sort_order',
     ];
@@ -23,6 +24,7 @@ class Option extends Model
     {
         return [
             'price' => 'decimal:2',
+            'discounted_price' => 'decimal:2',
             'is_available' => 'boolean',
             'sort_order' => 'integer',
         ];

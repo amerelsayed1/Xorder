@@ -4,10 +4,12 @@ namespace App\Http\Controllers\Dashboard;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Dashboard\StoreBranchRequest;
+use App\Http\Requests\Dashboard\UpdateBranchEgressIpsRequest;
 use App\Http\Requests\Dashboard\UpdateBranchRequest;
 use App\Http\Resources\BranchResource;
 use App\Models\Branch;
 use App\Models\Restaurant;
+use App\Services\BranchEgressIpService;
 use App\Services\PlanLimitService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -20,6 +22,42 @@ class BranchController extends Controller
         $branches = Branch::orderBy('sort_order')->orderBy('id')->get();
 
         return BranchResource::collection($branches)->response();
+    }
+
+    /**
+     * GET branches/{branch}/presence — whether diners reach us from this
+     * branch's own customer Wi-Fi, and how often.
+     *
+     * Read-only and observational: the signal never gates a session, so this is
+     * reporting, not configuration. Tenant-scoped by RestaurantScope via the
+     * route binding — another restaurant's branch id resolves to 404.
+     */
+    public function presence(Request $request, Branch $branch, BranchEgressIpService $egressIps): JsonResponse
+    {
+        return response()->json(['data' => $egressIps->stats($branch, $request->ip())]);
+    }
+
+    /**
+     * PUT branches/{branch}/presence/egress-ips — declare this branch's customer
+     * Wi-Fi address(es) by hand.
+     *
+     * The setup path for a branch with no history: learning needs several
+     * geofence-verified scans before it can recognise a connection, which is a
+     * poor first run when the owner is standing in the venue on that very
+     * connection. Stored separately from the learned list so the nightly job
+     * never overwrites what a person entered.
+     */
+    public function updateEgressIps(
+        UpdateBranchEgressIpsRequest $request,
+        Branch $branch,
+        BranchEgressIpService $egressIps
+    ): JsonResponse {
+        $egressIps->setManualAddresses($branch, $request->validated('egress_ips'));
+
+        return response()->json([
+            'data' => $egressIps->stats($branch->fresh(), $request->ip()),
+            'message' => __('xorder.messages.branch_updated'),
+        ]);
     }
 
     public function store(StoreBranchRequest $request, PlanLimitService $limits): JsonResponse

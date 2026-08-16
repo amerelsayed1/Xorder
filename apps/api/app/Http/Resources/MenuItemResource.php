@@ -11,6 +11,11 @@ class MenuItemResource extends JsonResource
 {
     public function toArray(Request $request): array
     {
+        // Same derivation the public menu uses: a size group prices the item,
+        // so the form and list show the default size rather than a column the
+        // diner never pays. Unloaded relations derive nothing and fall back.
+        [$price, $discountedPrice] = $this->resource->displayPricing();
+
         return [
             'id' => $this->id,
             'restaurant_id' => $this->restaurant_id,
@@ -19,8 +24,8 @@ class MenuItemResource extends JsonResource
             'name_en' => $this->name_en,
             'description_ar' => $this->description_ar,
             'description_en' => $this->description_en,
-            'price' => $this->price,
-            'discounted_price' => $this->discounted_price,
+            'price' => $price,
+            'discounted_price' => $discountedPrice,
             'image_url' => $this->image_url,
             'is_available' => $this->is_available,
             'is_featured' => $this->is_featured,
@@ -43,6 +48,7 @@ class MenuItemResource extends JsonResource
                         'name_en' => $o->name_en,
                         'name_ar' => $o->name_ar,
                         'price' => $o->price,
+                        'discounted_price' => $o->discounted_price,
                         'is_available' => $o->is_available,
                     ])->values(),
                 ])->values()

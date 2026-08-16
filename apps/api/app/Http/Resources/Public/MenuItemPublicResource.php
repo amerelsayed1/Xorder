@@ -16,14 +16,19 @@ class MenuItemPublicResource extends JsonResource
 {
     public function toArray(Request $request): array
     {
+        // An item priced by a size group advertises its DEFAULT size — the one
+        // the modal opens on — so the card can never quote a figure no
+        // selection charges. Falls back to the item's own columns otherwise.
+        [$price, $discountedPrice] = $this->resource->displayPricing();
+
         return [
             'id' => $this->id,
             'name_ar' => $this->name_ar,
             'name_en' => $this->name_en,
             'description_ar' => $this->description_ar,
             'description_en' => $this->description_en,
-            'price' => $this->price,
-            'discounted_price' => $this->discounted_price,
+            'price' => $price,
+            'discounted_price' => $discountedPrice,
             'image_url' => $this->image_url,
             'is_available' => $this->is_available,
             'is_featured' => $this->is_featured,
@@ -40,6 +45,7 @@ class MenuItemPublicResource extends JsonResource
                         'name_en' => $o->name_en,
                         'name_ar' => $o->name_ar,
                         'price' => $o->price,
+                        'discounted_price' => $o->discounted_price,
                     ])->values(),
                 ])->values()
             ),

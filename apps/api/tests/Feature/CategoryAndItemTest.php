@@ -83,6 +83,64 @@ class CategoryAndItemTest extends TestCase
         ])->assertStatus(422)->assertJsonValidationErrors('discounted_price');
     }
 
+    public function test_a_variant_option_can_carry_a_sale_price_and_it_reaches_the_public_menu(): void
+    {
+        $admin = $this->admin();
+        $cat = Category::factory()->for($admin->restaurant)->create();
+
+        $this->actingAs($admin)->postJson('/api/dashboard/items', [
+            'category_id' => $cat->id, 'name_en' => 'Pizza', 'price' => 100,
+            'option_groups' => [[
+                'name_en' => 'Size', 'is_variant' => true,
+                'options' => [
+                    ['name_en' => 'Large', 'price' => 120, 'discounted_price' => 100],
+                    ['name_en' => 'Small', 'price' => 80],
+                ],
+            ]],
+        ])->assertCreated();
+
+        $slug = $admin->restaurant->slug;
+        $this->getJson("/api/public/restaurants/{$slug}/menu")
+            ->assertOk()
+            ->assertJsonPath('data.categories.0.items.0.option_groups.0.options.0.discounted_price', '100.00')
+            // An undiscounted size stays null so the menu renders it unchanged.
+            ->assertJsonPath('data.categories.0.items.0.option_groups.0.options.1.discounted_price', null);
+    }
+
+    public function test_a_variant_option_sale_price_must_be_lower_than_its_own_price(): void
+    {
+        $admin = $this->admin();
+        $cat = Category::factory()->for($admin->restaurant)->create();
+
+        $this->actingAs($admin)->postJson('/api/dashboard/items', [
+            'category_id' => $cat->id, 'name_en' => 'Pizza', 'price' => 100,
+            'option_groups' => [[
+                'name_en' => 'Size', 'is_variant' => true,
+                'options' => [['name_en' => 'Large', 'price' => 120, 'discounted_price' => 150]],
+            ]],
+        ])->assertStatus(422)
+            ->assertJsonValidationErrors('option_groups.0.options.0.discounted_price');
+    }
+
+    public function test_a_sale_price_is_dropped_on_an_add_on_group(): void
+    {
+        $admin = $this->admin();
+        $cat = Category::factory()->for($admin->restaurant)->create();
+
+        // An add-on price is a delta on top of the item, so a "sale price" on it
+        // is meaningless — the server discards it rather than storing a figure
+        // the menu would never use.
+        $this->actingAs($admin)->postJson('/api/dashboard/items', [
+            'category_id' => $cat->id, 'name_en' => 'Pizza', 'price' => 100,
+            'option_groups' => [[
+                'name_en' => 'Extras', 'is_variant' => false,
+                'options' => [['name_en' => 'Cheese', 'price' => 20, 'discounted_price' => 10]],
+            ]],
+        ])->assertCreated();
+
+        $this->assertDatabaseHas('options', ['name_en' => 'Cheese', 'discounted_price' => null]);
+    }
+
     public function test_toggle_item_availability(): void
     {
         $admin = $this->admin();

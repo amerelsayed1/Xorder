@@ -20,6 +20,13 @@ const auth = useAuth()
 // default-language field when not bilingual), matching the item/category forms.
 const { langs, bilingual } = useMenuLang()
 
+// TEMPORARY — on-site presence enforcement is switched off platform-wide.
+// Mirrors platform.presence.geofence_enforcement on the API, which is the real
+// gate: the server ignores any saved fence while that is false, so showing the
+// editor here would let an owner draw an area that does nothing. Flip both back
+// together to restore.
+const GEOFENCE_ENABLED = false
+
 const isEdit = computed(() => !!route.params.id)
 const backArrow = computed(() => locale.value === 'ar' ? '→' : '←')
 
@@ -79,10 +86,88 @@ onMounted(async () => {
                 is_open: b.is_open, is_active: b.is_active,
             })
             fenceExistedOnOpen = fenceEnforceable(form.geofence)
+            await loadPresence()
         } catch (err) { /* fall through to blank form */ }
     }
     loading.value = false
     nextTick(() => { hydrating = false })
+})
+
+// Read-only Wi-Fi presence summary. Reporting, not configuration — the signal
+// never gates an order, so nothing here is editable and a failure to load just
+// hides the card rather than blocking the form.
+const presence = ref(null)
+
+async function loadPresence() {
+    if (!isEdit.value) return
+    try {
+        const { data } = await api.get(`api/dashboard/branches/${route.params.id}/presence`)
+        presence.value = data.data
+    } catch (err) { presence.value = null }
+}
+
+// Adding/removing a branch connection saves immediately rather than waiting for
+// the form's Save — it is its own endpoint, and folding it into the branch PUT
+// would make a half-filled form able to wipe the list.
+const savingWifi = ref(false)
+
+// The card reads the caller's address at load time, so after moving onto the
+// branch Wi-Fi it is stale until the page is reloaded. Re-fetching is enough to
+// pick up the new address (and any overnight learning) without losing whatever
+// is half-typed in the branch form above.
+const refreshingWifi = ref(false)
+
+async function refreshPresence() {
+    if (refreshingWifi.value) return
+    refreshingWifi.value = true
+    try { await loadPresence() } finally { refreshingWifi.value = false }
+}
+
+const currentIpAdded = computed(() => {
+    const ip = presence.value?.your_ip
+    return !!ip && (presence.value?.manual_ips || []).includes(ip)
+})
+
+async function saveConnections(list) {
+    if (savingWifi.value) return
+    savingWifi.value = true
+    try {
+        await ensureCsrf()
+        const { data } = await api.put(`api/dashboard/branches/${route.params.id}/presence/egress-ips`, { egress_ips: list })
+        presence.value = data.data
+    } catch (err) { errors.value = err.response?.data?.errors || {} }
+    finally { savingWifi.value = false }
+}
+
+// Accept the address the branch's own traffic says it moved to: add the new one
+// and drop the declared ones nothing is arriving from, so the list tracks
+// reality instead of accumulating dead entries that quietly widen what counts
+// as "on premises".
+function acceptSuggestedConnection() {
+    const s = presence.value?.drift?.suggested
+    if (!s) return
+    const stale = presence.value.drift.stale || []
+    const kept = (presence.value.manual_ips || []).filter((ip) => !stale.includes(ip))
+    saveConnections([...kept, s.ip])
+}
+
+function addCurrentConnection() {
+    const ip = presence.value?.your_ip
+    if (!ip || currentIpAdded.value) return
+    saveConnections([...(presence.value.manual_ips || []), ip])
+}
+
+function removeConnection(ip) {
+    saveConnections((presence.value.manual_ips || []).filter((x) => x !== ip))
+}
+
+// Relative "2h ago" style stamp for the last time the connection was confirmed.
+const lastConfirmed = computed(() => {
+    const iso = presence.value?.learned_at
+    if (!iso) return null
+    return new Date(iso).toLocaleDateString(locale.value === 'ar' ? 'ar-EG' : 'en-GB', {
+        day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
+    })
 })
 
 function backToList() { router.push({ name: 'dashboard.branches' }) }
@@ -146,8 +231,10 @@ async function save() {
                     <FormError :errors="errors" field="map_url" /></label>
 
                 <!-- Presence geofence: draw the branch area; the toggle turns on
-                     the on-site check for table-QR ordering. -->
-                <div class="block">
+                     the on-site check for table-QR ordering. Hidden while
+                     GEOFENCE_ENABLED is false — the API ignores the fence, so
+                     drawing one would be a control that does nothing. -->
+                <div v-if="GEOFENCE_ENABLED" class="block">
                     <label class="flex items-center gap-2 text-sm" style="color:var(--body)">
                         <button type="button" class="switch" :class="{ on: form.geofence_enabled }" :disabled="auth.isReadOnly" @click="toggleGeofence"></button>
                         {{ t('branch.geofence_enable') }}
@@ -155,6 +242,120 @@ async function save() {
                     <p class="page-sub" style="margin:4px 0 8px">{{ t('branch.geofence_enable_hint') }}</p>
                     <GeofenceMap v-model="form.geofence" :center="{ lat: form.latitude, lng: form.longitude }" :disabled="auth.isReadOnly" />
                     <FormError :errors="errors" field="geofence" />
+                </div>
+
+                <!-- Customer Wi-Fi recognition. Read-only reporting: the signal
+                     corroborates presence but never gates an order, so there is
+                     nothing here to configure. -->
+                <div v-if="presence" class="block">
+                    <div class="flex items-center justify-between gap-3">
+                        <span class="label">{{ t('branch.wifi_title') }}</span>
+                        <button type="button" class="text-sm flex items-center gap-1" style="color:var(--muted)"
+                            :disabled="refreshingWifi" :title="t('branch.wifi_refresh')" @click="refreshPresence">
+                            <Icon name="refresh" :size="14" :class="{ 'animate-spin': refreshingWifi }" />
+                            {{ t('branch.wifi_refresh') }}
+                        </button>
+                    </div>
+                    <p class="page-sub" style="margin:4px 0 8px">{{ t('branch.wifi_hint') }}</p>
+
+                    <div class="rounded-xl p-4 text-sm" style="border:1px solid var(--line)">
+                        <!-- The on-site check is the prerequisite: without it no
+                             scan is ever verified, so nothing can be learned.
+                             Only worth saying while that check is something the
+                             owner can actually switch on — when it is disabled
+                             platform-wide, pointing at it would be a dead end. -->
+                        <p v-if="presence.learning_active && !presence.geofence_enabled" style="color:var(--muted)">
+                            {{ t('branch.wifi_needs_geofence') }}
+                        </p>
+
+                        <template v-else>
+                            <div class="flex items-center justify-between gap-3">
+                                <span style="color:var(--body)">{{ t('branch.wifi_title') }}</span>
+                                <span class="badge" :class="presence.wifi_detected ? 'badge-green' : 'badge-gray'">
+                                    <span class="dot"></span>
+                                    {{ presence.wifi_detected ? t('branch.wifi_detected') : t('branch.wifi_pending') }}
+                                </span>
+                            </div>
+
+                            <p v-if="!presence.wifi_detected" style="color:var(--muted);margin-top:8px">
+                                {{ presence.learning_active ? t('branch.wifi_pending_hint') : t('branch.wifi_learning_paused') }}
+                            </p>
+
+                            <!-- Setup by hand. Deliberately not an "enter your IP
+                                 address" field: an owner cannot be expected to
+                                 know theirs, but they can open this page on the
+                                 branch Wi-Fi, which tells us the same thing. -->
+                            <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--line)">
+                                <div class="flex items-center justify-between gap-3 flex-wrap">
+                                    <span style="color:var(--body)">{{ t('branch.wifi_connections') }}</span>
+                                    <button type="button" class="pill-btn" :disabled="savingWifi || auth.isReadOnly || !presence.your_ip || currentIpAdded"
+                                        @click="addCurrentConnection">
+                                        {{ savingWifi ? t('branch.wifi_saving') : (currentIpAdded ? t('branch.wifi_already_added') : t('branch.wifi_add_current')) }}
+                                    </button>
+                                </div>
+
+                                <p v-if="presence.your_ip" style="color:var(--muted);margin-top:6px" >
+                                    <span dir="ltr">{{ t('branch.wifi_current_is', { ip: presence.your_ip }) }}</span>
+                                </p>
+
+                                <!-- The line appears to have moved. Surfaced for
+                                     confirmation, never applied automatically:
+                                     a table scan is not proof of presence, so
+                                     promoting whatever dominates would be a way
+                                     in for anyone patient enough. -->
+                                <div v-if="presence.drift.suggested" style="margin-top:12px;padding:10px 12px;border-radius:10px;background:var(--amber-soft)">
+                                    <p style="color:var(--amber)">
+                                        {{ t('branch.wifi_changed', { ip: presence.drift.suggested.ip, share: presence.drift.suggested.share, days: presence.drift.window_days }) }}
+                                    </p>
+                                    <button type="button" class="pill-btn" style="margin-top:8px"
+                                        :disabled="savingWifi || auth.isReadOnly" @click="acceptSuggestedConnection">
+                                        {{ savingWifi ? t('branch.wifi_saving') : t('branch.wifi_use_changed') }}
+                                    </button>
+                                </div>
+
+                                <ul v-if="presence.manual_ips.length" style="margin-top:10px">
+                                    <li v-for="ip in presence.manual_ips" :key="ip"
+                                        class="flex items-center justify-between gap-3" style="padding:6px 0">
+                                        <span class="flex items-center gap-2 flex-wrap">
+                                            <span style="color:var(--body)" dir="ltr">{{ ip }}</span>
+                                            <!-- Nothing has arrived from this address all window: almost
+                                                 certainly a rotated line, so say so rather than let it sit
+                                                 there looking healthy. -->
+                                            <span v-if="presence.drift.stale.includes(ip)" class="badge badge-amber">
+                                                {{ t('branch.wifi_not_seen') }}
+                                            </span>
+                                        </span>
+                                        <button type="button" class="text-sm" style="color:var(--red)"
+                                            :disabled="savingWifi || auth.isReadOnly" @click="removeConnection(ip)">
+                                            {{ t('branch.wifi_remove') }}
+                                        </button>
+                                    </li>
+                                </ul>
+                                <p v-else style="color:var(--muted);margin-top:10px">{{ t('branch.wifi_none_added') }}</p>
+
+                                <p style="color:var(--muted);margin-top:8px">{{ t('branch.wifi_add_hint') }}</p>
+                                <p v-if="presence.learned" style="color:var(--muted);margin-top:6px">{{ t('branch.wifi_learned_note') }}</p>
+                                <FormError :errors="errors" field="egress_ips.0" />
+                            </div>
+
+                            <template v-if="presence.wifi_detected">
+                                <div v-if="lastConfirmed" class="flex items-center justify-between gap-3" style="margin-top:10px">
+                                    <span style="color:var(--muted)">{{ t('branch.wifi_last_confirmed') }}</span>
+                                    <span style="color:var(--body)" dir="ltr">{{ lastConfirmed }}</span>
+                                </div>
+                                <div v-if="presence.on_wifi_rate !== null" class="flex items-center justify-between gap-3" style="margin-top:10px">
+                                    <span style="color:var(--muted)">{{ t('branch.wifi_rate') }}</span>
+                                    <span style="color:var(--body)">{{ presence.on_wifi_rate }}%</span>
+                                </div>
+                                <!-- Explains the percentage, so it only belongs
+                                     here when there is a percentage to explain —
+                                     otherwise it reads as a caption for nothing. -->
+                                <p v-if="presence.on_wifi_rate !== null" style="color:var(--muted);margin-top:8px">
+                                    {{ t('branch.wifi_rate_hint', { days: presence.window_days }) }}
+                                </p>
+                            </template>
+                        </template>
+                    </div>
                 </div>
 
                 <div class="flex items-center gap-6">

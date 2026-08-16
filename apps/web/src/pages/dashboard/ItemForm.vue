@@ -1,5 +1,5 @@
 <script setup>
-import { reactive, ref, computed, onMounted } from 'vue'
+import { reactive, ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter, RouterLink } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import api, { ensureCsrf } from '@xorder/api-client/api.js'
@@ -37,8 +37,55 @@ const form = reactive({
 // entries reference a reusable group from the extras library (edited elsewhere).
 function addGroup() { form.option_groups.push({ ref: 'inline', name_en: '', name_ar: '', is_required: false, is_variant: false, max_select: 1, options: [] }) }
 function removeGroup(i) { form.option_groups.splice(i, 1) }
-function addOption(g) { g.options.push({ name_en: '', name_ar: '', price: '' }) }
+function addOption(g) { g.options.push({ name_en: '', name_ar: '', price: '', discounted_price: '' }) }
 function removeOption(g, i) { g.options.splice(i, 1) }
+
+// --- variant (size) pricing ---
+// A size group takes pricing over from the item: the chosen option REPLACES the
+// item price, and the menu pre-selects the first option. So the first size of
+// the first size group is the item's real, advertised price — reordering the
+// sizes changes it, which is what the hint under the group warns about.
+const variantGroup = computed(() => form.option_groups.find(g => g.is_variant))
+const defaultSize = computed(() => (variantGroup.value?.options || []).find(o => o.is_available !== false) || null)
+
+// Read-only look for the two price fields once sizes own the pricing.
+const derivedInput = 'background:var(--page);color:var(--muted);cursor:not-allowed'
+
+// Mirror that default into the read-only price fields as the owner types, so
+// the form quotes what the diner pays without waiting for a round trip. The
+// backend re-derives the same figure on save (VariantPricingService), which is
+// what keeps it right when a shared library group changes later.
+watch(defaultSize, (o) => {
+    if (!o) return // no sizes → the item's own price stands, leave it alone
+    // Match how save() serialises an option: a blank price is stored as 0.
+    form.price = o.price === '' || o.price == null ? 0 : o.price
+    form.discounted_price = o.discounted_price ?? ''
+}, { deep: true, immediate: true })
+
+// Flipping a group to "sizes" hands pricing to its options, so carry the price
+// the owner already typed into the first size — otherwise it silently vanishes
+// the moment the field above turns read-only.
+function toggleVariant(g) {
+    const wasFirst = !variantGroup.value
+    g.is_variant = !g.is_variant
+    if (!g.is_variant || !wasFirst) return
+
+    if (!g.options.length) addOption(g)
+    const first = g.options[0]
+    if (first.price === '' || first.price == null) {
+        first.price = form.price
+        first.discounted_price = form.discounted_price
+    }
+}
+
+// Validation errors on a nested option come back keyed by path
+// (option_groups.0.options.1.discounted_price). Surface the first one under the
+// group it belongs to, so a rejected sale price isn't a silent failed save.
+function groupOptionError(gi) {
+    const prefix = `option_groups.${gi}.options.`
+    const key = Object.keys(errors.value).find(k => k.startsWith(prefix))
+    return key ? errors.value[key][0] : ''
+}
 
 // --- shared extras library ---
 const library = ref([])
@@ -58,7 +105,12 @@ function addFromLibrary() {
         ref: 'shared', option_group_id: g.id,
         name_en: g.name_en || '', name_ar: g.name_ar || '',
         is_required: !!g.is_required, is_variant: !!g.is_variant, max_select: g.max_select || 1,
-        options: (g.options || []).map(o => ({ name_en: o.name_en || '', name_ar: o.name_ar || '', price: o.price ?? '' })),
+        // Sale price + availability come along too: for a size group they decide
+        // which option is the default and what it costs (see defaultSize).
+        options: (g.options || []).map(o => ({
+            name_en: o.name_en || '', name_ar: o.name_ar || '',
+            price: o.price ?? '', discounted_price: o.discounted_price ?? '', is_available: o.is_available !== false,
+        })),
     })
     pickId.value = ''
 }
@@ -91,12 +143,15 @@ onMounted(async () => {
                         ref: 'shared', option_group_id: g.id,
                         name_en: g.name_en || '', name_ar: g.name_ar || '',
                         is_required: !!g.is_required, is_variant: !!g.is_variant, max_select: g.max_select || 1,
-                        options: (g.options || []).map(o => ({ name_en: o.name_en || '', name_ar: o.name_ar || '', price: o.price ?? '' })),
+                        options: (g.options || []).map(o => ({
+                            name_en: o.name_en || '', name_ar: o.name_ar || '',
+                            price: o.price ?? '', discounted_price: o.discounted_price ?? '', is_available: o.is_available !== false,
+                        })),
                     }
                     : {
                         ref: 'inline', name_en: g.name_en || '', name_ar: g.name_ar || '',
                         is_required: !!g.is_required, is_variant: !!g.is_variant, max_select: g.max_select || 1,
-                        options: (g.options || []).map(o => ({ name_en: o.name_en || '', name_ar: o.name_ar || '', price: o.price ?? '' })),
+                        options: (g.options || []).map(o => ({ name_en: o.name_en || '', name_ar: o.name_ar || '', price: o.price ?? '', discounted_price: o.discounted_price ?? '' })),
                     }),
             })
         } else {
@@ -127,7 +182,16 @@ async function save() {
                 is_required: g.is_variant ? true : g.is_required,
                 is_variant: g.is_variant,
                 max_select: g.is_variant ? 1 : (Number(g.max_select) || 1),
-                options: g.options.map(o => ({ name_en: o.name_en, name_ar: o.name_ar, price: o.price === '' ? 0 : Number(o.price) })),
+                options: g.options.map(o => ({
+                    name_en: o.name_en, name_ar: o.name_ar,
+                    price: o.price === '' ? 0 : Number(o.price),
+                    // Only a size/variant option can carry a sale price — the
+                    // backend drops it on add-on groups anyway, so don't send
+                    // a stale value left behind by toggling the group off.
+                    discounted_price: g.is_variant && o.discounted_price !== '' && o.discounted_price != null
+                        ? Number(o.discounted_price)
+                        : null,
+                })),
             }),
     }
     try {
@@ -168,14 +232,24 @@ async function save() {
                 <label v-for="lng in langs" :key="'d' + lng" class="block">
                     <span class="label">{{ bilingual ? t('common.description_' + lng) : t('common.description') }}</span>
                     <textarea v-model="form['description_' + lng]" rows="2" class="input" :dir="lng === 'ar' ? 'rtl' : 'ltr'"></textarea></label>
+                <!-- Once the item has a size group these two are no longer the
+                     owner's to set: they mirror the default (first) size, which
+                     is what the menu card quotes and what an untouched add to
+                     cart charges. Read-only rather than hidden so the figure
+                     stays visible where managers expect to find it. -->
                 <div class="grid grid-cols-2 gap-3">
                     <label class="block"><span class="label">{{ t('item.price') }}<template v-if="cur"> ({{ cur }})</template></span>
-                        <input v-model="form.price" type="number" step="0.01" min="0" class="input" />
+                        <input v-model="form.price" type="number" step="0.01" min="0" class="input"
+                            :readonly="!!variantGroup" :style="variantGroup ? derivedInput : null" />
                         <FormError :errors="errors" field="price" /></label>
                     <label class="block"><span class="label">{{ t('item.discounted_price') }}</span>
-                        <input v-model="form.discounted_price" type="number" step="0.01" min="0" class="input" />
+                        <input v-model="form.discounted_price" type="number" step="0.01" min="0" class="input"
+                            :readonly="!!variantGroup" :style="variantGroup ? derivedInput : null" />
                         <FormError :errors="errors" field="discounted_price" /></label>
                 </div>
+                <p v-if="variantGroup" class="text-xs" style="color:var(--muted)">
+                    {{ t('item.priced_by_size') }}
+                </p>
                 <ImageUploader v-model="form.image_url" folder="items" :label="t('item.image')" />
                 <div class="flex gap-5">
                     <label class="flex items-center gap-2 text-sm" style="color:var(--body)">
@@ -229,7 +303,7 @@ async function save() {
                         </div>
                         <div class="flex items-center gap-4 flex-wrap mt-2">
                             <label class="flex items-center gap-2 text-xs" style="color:var(--body)">
-                                <button type="button" class="switch" :class="{ on: g.is_variant }" @click="g.is_variant = !g.is_variant"></button>
+                                <button type="button" class="switch" :class="{ on: g.is_variant }" @click="toggleVariant(g)"></button>
                                 {{ t('item.variant') }}
                             </label>
                             <label v-if="!g.is_variant" class="flex items-center gap-2 text-xs" style="color:var(--body)">
@@ -248,8 +322,19 @@ async function save() {
                                 <input v-for="lng in langs" :key="'o' + lng" v-model="o['name_' + lng]" class="input flex-1"
                                     :dir="lng === 'ar' ? 'rtl' : 'ltr'" :placeholder="t('item.option_' + lng)" />
                                 <input v-model="o.price" type="number" step="0.01" min="0" class="input" style="width:90px" :placeholder="g.is_variant ? (cur || '0') : (cur || '+0')" />
+                                <!-- Sale price per size. Only a variant option gets
+                                     one: there the option IS the item price, so a
+                                     discount is meaningful. An add-on price is a
+                                     delta, so discounting it makes no sense. -->
+                                <input v-if="g.is_variant" v-model="o.discounted_price" type="number" step="0.01" min="0"
+                                    class="input" style="width:90px" :placeholder="t('item.option_discount')" :title="t('item.option_discount_hint')" />
+                                <!-- The size the menu pre-selects, and therefore
+                                     the one the item's price mirrors. -->
+                                <span v-if="o === defaultSize" class="text-xs px-2 py-0.5 rounded-full whitespace-nowrap"
+                                    style="background:var(--card);color:var(--accent)">{{ t('item.default_size') }}</span>
                                 <button type="button" class="icon-btn icon-btn-danger" :title="t('common.delete')" @click="removeOption(g, oi)"><Icon name="close" :size="16" /></button>
                             </div>
+                            <p v-if="groupOptionError(gi)" class="text-xs text-red-600 mt-1">{{ groupOptionError(gi) }}</p>
                             <button type="button" class="btn btn-ghost btn-sm" @click="addOption(g)">+ {{ t('item.add_option') }}</button>
                         </div>
                     </div>

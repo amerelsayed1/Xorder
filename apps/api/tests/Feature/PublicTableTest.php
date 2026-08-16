@@ -100,6 +100,10 @@ class PublicTableTest extends TestCase
     /** A small square polygon fence around (30.00, 31.00). */
     private function enableFence(): void
     {
+        // Enforcement ships switched off (see config/platform.php); turn it on
+        // here so these tests keep covering the real behaviour and the fence
+        // still works the moment the switch is flipped back.
+        config(['platform.presence.geofence_enforcement' => true]);
         $this->branch->update([
             'geofence_enabled' => true,
             'geofence' => ['type' => 'polygon', 'points' => [
@@ -114,10 +118,51 @@ class PublicTableTest extends TestCase
     /** A radius fence: 200 m around (30.00, 31.00). */
     private function enableRadiusFence(): void
     {
+        config(['platform.presence.geofence_enforcement' => true]);
         $this->branch->update([
             'geofence_enabled' => true,
             'geofence' => ['type' => 'radius', 'center' => ['lat' => 30.0, 'lng' => 31.0], 'radius' => 200],
         ]);
+    }
+
+    public function test_the_platform_switch_disables_the_fence_whatever_the_branch_has_saved(): void
+    {
+        // A branch with a real, enabled fence…
+        $this->enableFence();
+        $table = $this->makeTable('99');
+
+        // …but the platform switch off (how it currently ships).
+        config(['platform.presence.geofence_enforcement' => false]);
+
+        // The menu is told not to bother asking for a location…
+        $this->getJson("/api/public/tables/{$table->public_token}")
+            ->assertOk()
+            ->assertJsonPath('data.geofence_required', false)
+            ->assertJsonPath('data.location_target_accuracy_m', null);
+
+        // …and a scan with no coordinates at all is admitted, where it would
+        // otherwise be refused with table_location_required.
+        $res = $this->postJson("/api/public/tables/{$table->public_token}/sessions", ['language' => 'en'])
+            ->assertCreated();
+
+        // Nothing vouched for presence, so this session must not teach an
+        // egress address later.
+        $this->assertDatabaseHas('menu_sessions', [
+            'session_token' => $res->json('data.session_token'),
+            'presence_source' => null,
+        ]);
+    }
+
+    public function test_a_far_away_scan_is_admitted_while_the_switch_is_off(): void
+    {
+        $this->enableFence();
+        $table = $this->makeTable('98');
+        config(['platform.presence.geofence_enforcement' => false]);
+
+        // Coordinates nowhere near the fence — normally a 422 table_outside_area.
+        $this->postJson("/api/public/tables/{$table->public_token}/sessions", [
+            'language' => 'en', 'latitude' => 10.0, 'longitude' => 10.0, 'accuracy' => 5,
+        ])->assertCreated();
     }
 
     public function test_context_advertises_when_a_fence_is_required(): void
@@ -140,6 +185,7 @@ class PublicTableTest extends TestCase
             ->assertOk()->assertJsonPath('data.location_target_accuracy_m', null);
 
         // A 50 m radius fence → target ≈ half the radius (25 m), rounded to 5.
+        config(['platform.presence.geofence_enforcement' => true]);
         $this->branch->update([
             'geofence_enabled' => true,
             'geofence' => ['type' => 'radius', 'center' => ['lat' => 30.0, 'lng' => 31.0], 'radius' => 50],
@@ -151,6 +197,7 @@ class PublicTableTest extends TestCase
     public function test_accuracy_target_is_clamped_for_large_and_tiny_fences(): void
     {
         $table = $this->makeTable('21');
+        config(['platform.presence.geofence_enforcement' => true]);
 
         // Huge fence → capped at 60 m (don't wait forever for a big premises).
         $this->branch->update(['geofence_enabled' => true,

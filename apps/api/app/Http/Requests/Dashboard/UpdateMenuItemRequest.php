@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Dashboard;
 
+use App\Http\Requests\Concerns\OptionDiscountValidation;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -44,6 +45,9 @@ class UpdateMenuItemRequest extends FormRequest
             'option_groups.*.options.*.name_en' => ['nullable', 'string', 'max:150'],
             'option_groups.*.options.*.name_ar' => ['nullable', 'string', 'max:150'],
             'option_groups.*.options.*.price' => ['sometimes', 'numeric', 'min:0', 'max:9999999.99'],
+            // Sale price for a size option; must undercut its own price (checked
+            // in withValidator, see OptionDiscountValidation).
+            'option_groups.*.options.*.discounted_price' => ['nullable', 'numeric', 'min:0', 'max:9999999.99'],
             'option_groups.*.options.*.is_available' => ['sometimes', 'boolean'],
         ];
     }
@@ -58,6 +62,8 @@ class UpdateMenuItemRequest extends FormRequest
                 $lang = $this->user()->restaurant->default_language?->value ?? 'ar';
                 $validator->errors()->add("name_{$lang}", __('xorder.validation.item_name_still_required'));
             }
+
+            OptionDiscountValidation::checkItemGroups($this, $validator);
         });
     }
 

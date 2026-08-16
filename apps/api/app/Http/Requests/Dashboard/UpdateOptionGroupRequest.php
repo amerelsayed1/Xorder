@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Dashboard;
 
+use App\Http\Requests\Concerns\OptionDiscountValidation;
 use App\Models\OptionGroup;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -28,6 +29,7 @@ class UpdateOptionGroupRequest extends FormRequest
             'options.*.name_en' => ['nullable', 'string', 'max:150'],
             'options.*.name_ar' => ['nullable', 'string', 'max:150'],
             'options.*.price' => ['sometimes', 'numeric', 'min:0', 'max:9999999.99'],
+            'options.*.discounted_price' => ['nullable', 'numeric', 'min:0', 'max:9999999.99'],
             'options.*.is_available' => ['sometimes', 'boolean'],
         ];
     }
@@ -46,6 +48,8 @@ class UpdateOptionGroupRequest extends FormRequest
                 && count($this->input('category_ids') ?? []) === 0) {
                 $validator->errors()->add('category_ids', __('xorder.validation.option_group_categories_required'));
             }
+
+            OptionDiscountValidation::checkGroup($this, $validator);
         });
     }
 }

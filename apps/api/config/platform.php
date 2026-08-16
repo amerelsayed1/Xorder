@@ -59,6 +59,61 @@ return [
     // How long a table menu session stays valid without activity (FR-SESSION-009).
     'table_session_ttl_minutes' => env('TABLE_SESSION_TTL_MINUTES', 240),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Presence signals
+    |--------------------------------------------------------------------------
+    | Tuning for the learned "is this diner on the branch's Wi-Fi?" check
+    | (BranchEgressIpService). A browser cannot read the Wi-Fi network it is
+    | joined to, so the only available signal is the public address the request
+    | arrived from — learned from geofence-verified sessions rather than
+    | configured by the restaurant.
+    */
+    'presence' => [
+        /*
+        | TEMPORARY — on-site presence enforcement is switched OFF.
+        |
+        | Hardcoded rather than env-driven on purpose: this is a deliberate
+        | product decision that must behave identically everywhere, not
+        | something a machine's .env can silently differ on. Flip to true to
+        | restore the geofence; nothing else needs changing.
+        |
+        | While false: a table QR scan never asks for GPS and is never refused
+        | for being out of area, and the dashboard hides the branch geofence
+        | editor. Note that branch Wi-Fi addresses can then only be declared by
+        | hand — automatic learning needs geofence-verified sessions to trust.
+        */
+        'geofence_enforcement' => false,
+
+        // Rolling window of verified sessions the addresses are derived from.
+        // Short enough that a rotated dynamic IP ages out on its own.
+        'egress_learning_days' => env('PRESENCE_EGRESS_LEARNING_DAYS', 30),
+
+        // Verified sessions an address needs before it counts as the branch's.
+        // Keeps a single coincidental carrier IP from being learned.
+        'egress_min_sessions' => env('PRESENCE_EGRESS_MIN_SESSIONS', 5),
+
+        // Cap per branch, so a line that rotates often can hold its recent
+        // addresses without accumulating an unbounded tail.
+        'egress_max_ips' => env('PRESENCE_EGRESS_MAX_IPS', 5),
+
+        /*
+        | Drift detection — noticing that a branch's line has changed address.
+        |
+        | A declared address goes stale silently when a dynamic line rotates:
+        | the card keeps reporting "recognised" while matching nobody. So we
+        | watch where that branch's own table scans actually come from, and when
+        | one unfamiliar address dominates, surface it for the owner to confirm.
+        |
+        | Deliberately a suggestion, never an automatic switch. Table scans are
+        | not proof of presence on their own, so promoting whichever address
+        | happens to dominate would be a way in for anyone patient enough. A
+        | human confirms; the machine only points.
+        */
+        'egress_drift_min_sessions' => 5,
+        'egress_drift_min_share' => 60, // percent of the branch's scans
+    ],
+
     // Cooldown before the same session can raise another bill request (FR-BILL-009).
     'bill_request_cooldown_seconds' => env('BILL_REQUEST_COOLDOWN_SECONDS', 120),
 

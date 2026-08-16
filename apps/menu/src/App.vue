@@ -35,7 +35,7 @@ const slug = (bareHost && new URLSearchParams(window.location.search).get('r')) 
 
 const { locale, isAr, t, localize } = useLocale('ar')
 // A table QR scan (…/t/{token}) binds this visit to a physical table.
-const { hasTable, sessionToken, tableLabel, area: tableArea, billRequests, internalReviews, tableError, locating, orderingBlocked } = useTableSession(locale.value, t)
+const { hasTable, sessionToken, tableLabel, area: tableArea, billRequests, internalReviews, tableError, locating, orderingBlocked, canRetryLocation, retry: retryTable } = useTableSession(locale.value, t)
 const tableAreaName = computed(() => {
     const a = tableArea.value
     if (!a) return ''
@@ -389,7 +389,10 @@ function updateUserField(field, value) {
                 <span>{{ isAr ? 'طاولة' : 'Table' }} {{ tableLabel }}<span v-if="tableAreaName"> — {{ tableAreaName }}</span></span>
             </div>
             <div v-else-if="locating" class="table-banner">{{ t('loc_checking') }}</div>
-            <div v-else-if="tableError" class="table-banner table-banner--error">{{ tableError }}</div>
+            <div v-else-if="tableError" class="table-banner table-banner--error">
+                <span>{{ tableError }}</span>
+                <button v-if="canRetryLocation" type="button" class="table-banner__retry" @click="retryTable">{{ t('try_again') }}</button>
+            </div>
 
             <div class="page-wrap">
                 <template v-if="view === 'menu'">

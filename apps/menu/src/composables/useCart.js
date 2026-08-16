@@ -83,16 +83,23 @@ export function useCart(slug = '') {
         // Base and add-ons are tracked apart so a variant (size) group can
         // REPLACE the base while regular groups add on top — independent of the
         // order the groups happen to appear in.
-        let base = amount(kind === 'combo' ? item.base_price : item.price)
+        //
+        // The base is the DISCOUNTED price when one is set: that is the figure
+        // the card and the modal header advertise, so charging item.price here
+        // would quietly bill the diner more than the menu quoted. (A variant
+        // group still overrides it below — each size carries its own price.)
+        const listed = kind === 'combo' ? item.base_price : (item.discounted_price ?? item.price)
+        let base = amount(listed)
         let addons = 0
 
         if (kind === 'item' && item.option_groups) {
             item.option_groups.forEach((g, gi) => {
                 const picked = selectedIndexes(groups[gi])
                 if (g.is_variant) {
-                    // Size/portion selector: the chosen option's price is the price.
+                    // Size/portion selector: the chosen option's price is the
+                    // price — its sale price when that size is discounted.
                     const opt = (g.options || [])[picked[0]]
-                    if (opt) base = amount(opt.price)
+                    if (opt) base = amount(opt.discounted_price ?? opt.price)
                     return
                 }
                 picked.forEach((oi) => {

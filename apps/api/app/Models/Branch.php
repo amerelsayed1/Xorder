@@ -36,6 +36,14 @@ class Branch extends Model
         'sort_order',
     ];
 
+    /**
+     * Learned, machine-written columns — excluded so the nightly egress-IP
+     * refresh doesn't spam the audit log with a "branch updated" entry per run.
+     *
+     * @var list<string>
+     */
+    protected array $auditExclude = ['egress_ips', 'egress_ips_learned_at'];
+
     protected function casts(): array
     {
         return [
@@ -47,6 +55,15 @@ class Branch extends Model
             'geofence' => 'array',
             'geofence_enabled' => 'boolean',
             'supported_order_types' => 'array',
+            // Learned addresses — deliberately absent from $fillable: written
+            // only by BranchEgressIpService, never from request input.
+            'egress_ips' => 'array',
+            'egress_ips_learned_at' => 'datetime',
+            // Owner-declared addresses. Set through a dedicated endpoint rather
+            // than the branch form, so a normal branch update can never touch
+            // them by accident, and audited (unlike the learned list) because a
+            // person changed it.
+            'egress_ips_manual' => 'array',
         ];
     }
 

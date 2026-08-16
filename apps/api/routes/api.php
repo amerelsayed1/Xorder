@@ -158,6 +158,9 @@ Route::prefix('dashboard')
         Route::get('stats', [StatsController::class, 'index']);
         Route::get('insights', [DashboardInsightsController::class, 'index']);
         Route::get('branches', [BranchController::class, 'index']);
+        // Observational only — reports whether diners arrive on this branch's
+        // own customer Wi-Fi; nothing here changes how sessions are admitted.
+        Route::get('branches/{branch}/presence', [BranchController::class, 'presence']);
         Route::get('combos', [ComboController::class, 'index']);
         Route::get('categories', [CategoryController::class, 'index']);
         Route::get('categories/{category}', [CategoryController::class, 'show']);
@@ -221,6 +224,9 @@ Route::prefix('dashboard')
             // entitled plans may create new ones.
             Route::middleware('feature:multi_branch')->post('branches', [BranchController::class, 'store']);
             Route::put('branches/{branch}', [BranchController::class, 'update']);
+            // Declare the branch's customer Wi-Fi address by hand — the setup
+            // path before enough verified scans exist to learn it.
+            Route::put('branches/{branch}/presence/egress-ips', [BranchController::class, 'updateEgressIps']);
             Route::patch('branches/{branch}/status', [BranchController::class, 'toggleOpen']);
             Route::delete('branches/{branch}', [BranchController::class, 'destroy']);
 
