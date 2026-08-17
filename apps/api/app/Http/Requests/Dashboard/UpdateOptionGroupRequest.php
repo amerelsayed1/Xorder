@@ -19,6 +19,9 @@ class UpdateOptionGroupRequest extends FormRequest
         return [
             'name_en' => ['nullable', 'string', 'max:150'],
             'name_ar' => ['nullable', 'string', 'max:150'],
+            // Diner-facing heading; optional, falls back to the library name.
+            'display_name_en' => ['nullable', 'string', 'max:150'],
+            'display_name_ar' => ['nullable', 'string', 'max:150'],
             'is_required' => ['sometimes', 'boolean'],
             'is_variant' => ['sometimes', 'boolean'],
             'max_select' => ['sometimes', 'integer', 'min:1', 'max:50'],

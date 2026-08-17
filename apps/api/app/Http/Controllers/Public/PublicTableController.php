@@ -58,6 +58,11 @@ class PublicTableController extends Controller
         $ttl = (int) config('platform.table_session_ttl_minutes', 240);
         $clientIp = $request->ip();
 
+        // Wi-Fi gate, when the branch has opted in. Runs after the fence so a
+        // diner who fails both is told about location first — the one they can
+        // actually act on without changing networks.
+        $this->enforceBranchWifi($table, $egressIps, $clientIp);
+
         $session = new MenuSession([
             'branch_id' => $table->branch_id,
             'dining_area_id' => $table->dining_area_id,
@@ -161,6 +166,35 @@ class PublicTableController extends Controller
         return $branch !== null
             && $branch->geofence_enabled
             && GeoFence::isEnforceable($branch->geofence);
+    }
+
+    /**
+     * Refuse the session unless the scan arrives from the branch's own customer
+     * Wi-Fi, for a branch that has switched that requirement on.
+     *
+     * Fails closed on every answer that is not a definite match — including
+     * "we have no addresses on file", which `matches()` reports as null. That
+     * is the strict reading the requirement asks for, and the branch form will
+     * not let the switch be turned on without at least one address, so the
+     * unanswerable state cannot be reached by simply enabling it.
+     *
+     * Worth restating what this costs, because the enforcement contradicts the
+     * signal's own limits (see BranchEgressIpService): a diner on mobile data,
+     * on iOS Private Relay, or behind any VPN is refused while sitting at the
+     * table, and a dynamic line that rotates its address refuses everyone until
+     * the new one is declared. Off by default for exactly that reason.
+     */
+    private function enforceBranchWifi(DiningTable $table, BranchEgressIpService $egressIps, ?string $clientIp): void
+    {
+        $branch = $table->branch;
+
+        if ($branch === null || ! $branch->require_branch_wifi) {
+            return;
+        }
+
+        if ($egressIps->matches($branch, $clientIp) !== true) {
+            abort(422, __('xorder.messages.table_requires_branch_wifi'));
+        }
     }
 
     /**

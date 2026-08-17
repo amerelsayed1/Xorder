@@ -75,6 +75,13 @@ class OptionGroupController extends Controller
             $optionGroup->update([
                 'name_en' => $data['name_en'] ?? $optionGroup->name_en,
                 'name_ar' => $data['name_ar'] ?? $optionGroup->name_ar,
+                // array_key_exists, not ??: clearing the menu name is a real
+                // edit (it means "go back to using the library name"), and ??
+                // would silently keep the old heading instead.
+                'display_name_en' => array_key_exists('display_name_en', $data)
+                    ? $data['display_name_en'] : $optionGroup->display_name_en,
+                'display_name_ar' => array_key_exists('display_name_ar', $data)
+                    ? $data['display_name_ar'] : $optionGroup->display_name_ar,
                 'is_required' => $isVariant ? true : ($data['is_required'] ?? $optionGroup->is_required),
                 'is_variant' => $isVariant,
                 'max_select' => $isVariant ? 1 : ($data['max_select'] ?? $optionGroup->max_select),
@@ -127,6 +134,8 @@ class OptionGroupController extends Controller
             'apply_scope' => $data['apply_scope'] ?? OptionGroup::SCOPE_ITEMS,
             'name_en' => $data['name_en'] ?? null,
             'name_ar' => $data['name_ar'] ?? null,
+            'display_name_en' => $data['display_name_en'] ?? null,
+            'display_name_ar' => $data['display_name_ar'] ?? null,
             'is_required' => $isVariant ? true : ($data['is_required'] ?? false),
             'is_variant' => $isVariant,
             'max_select' => $isVariant ? 1 : ($data['max_select'] ?? 1),

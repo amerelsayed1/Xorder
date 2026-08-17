@@ -6,6 +6,7 @@ import { withMinDuration } from '../../lib/minLoading.js'
 import { useAuth } from '@xorder/api-client/auth.js'
 import { pickLocalized } from '@xorder/ui/localize.js'
 import Modal from '@xorder/ui/Modal.vue'
+import BusinessHoursEditor from '../../components/BusinessHoursEditor.vue'
 import ListSkeleton from '@xorder/ui/ListSkeleton.vue'
 import StatusBadge from '@xorder/ui/StatusBadge.vue'
 import ImageUploader from '@xorder/ui/ImageUploader.vue'
@@ -24,7 +25,16 @@ const saving = ref(false)
 const showModal = ref(false)
 const editing = ref(null)
 const errors = ref({})
-const form = reactive({ name_en: '', name_ar: '', description_en: '', description_ar: '', image_url: '', is_active: true })
+const form = reactive({ name_en: '', name_ar: '', description_en: '', description_ar: '', image_url: '', is_active: true, availability_hours: {} })
+
+// Whether this category is served on a schedule at all. Kept beside the hours
+// rather than inferred from them: the editor always holds seven populated rows
+// once opened, so "has hours" would read true the moment it was glanced at.
+const timed = ref(false)
+function toggleTimed() {
+    timed.value = !timed.value
+    if (!timed.value) form.availability_hours = {}
+}
 
 async function load() {
     loading.value = true
@@ -73,14 +83,17 @@ async function bulkRemove() {
 
 function openCreate() {
     editing.value = null; errors.value = {}
-    Object.assign(form, { name_en: '', name_ar: '', description_en: '', description_ar: '', image_url: '', is_active: true })
+    Object.assign(form, { name_en: '', name_ar: '', description_en: '', description_ar: '', image_url: '', is_active: true, availability_hours: {} })
+    timed.value = false
     showModal.value = true
 }
 function openEdit(c) {
     editing.value = c; errors.value = {}
     Object.assign(form, { name_en: c.name_en || '', name_ar: c.name_ar || '',
         description_en: c.description_en || '', description_ar: c.description_ar || '',
-        image_url: c.image_url || '', is_active: c.is_active })
+        image_url: c.image_url || '', is_active: c.is_active,
+        availability_hours: c.availability_hours || {} })
+    timed.value = !!c.availability_hours
     showModal.value = true
 }
 async function save() {
@@ -89,8 +102,12 @@ async function save() {
     errors.value = {}
     try {
         await ensureCsrf()
-        if (editing.value) await api.put(`api/dashboard/categories/${editing.value.id}`, form)
-        else await api.post('api/dashboard/categories', form)
+        // null, not {}: the API treats an absent schedule as "served whenever
+        // the menu is", and an empty object would be indistinguishable from a
+        // schedule the owner meant to fill in.
+        const payload = { ...form, availability_hours: timed.value ? form.availability_hours : null }
+        if (editing.value) await api.put(`api/dashboard/categories/${editing.value.id}`, payload)
+        else await api.post('api/dashboard/categories', payload)
         showModal.value = false
         await load()
     } catch (err) { errors.value = err.response?.data?.errors || {} }
@@ -227,6 +244,7 @@ const categoryAltName = (c) => locale.value === 'ar' ? (c.name_en || '') : (c.na
                         <div v-if="categoryAltName(c)" class="text-xs cat-alt" style="color:var(--muted)" :dir="locale === 'ar' ? 'ltr' : 'rtl'">{{ categoryAltName(c) }}</div>
                         <div class="text-xs" style="color:var(--muted)">{{ t('admin.item_count', { count: c.items_count }) }}</div>
                     </div>
+                    <span v-if="c.availability_hours" class="badge badge-gray">{{ t('category.timed_badge') }}</span>
                     <StatusBadge :value="c.is_active" :label="c.is_active ? t('common.active') : t('common.inactive')" />
                     <button v-if="!auth.isReadOnly" class="switch" :class="{ on: c.is_active }" @click="toggle(c)"></button>
                     <button v-if="!auth.isReadOnly" @click="openEdit(c)" class="icon-btn" :title="t('common.edit')"><Icon name="edit" :size="17" /></button>
@@ -250,6 +268,21 @@ const categoryAltName = (c) => locale.value === 'ar' ? (c.name_en || '') : (c.na
                     <button type="button" class="switch" :class="{ on: form.is_active }" @click="form.is_active = !form.is_active"></button>
                     {{ t('common.active') }}
                 </label>
+
+                <!-- Serving times. Off by default and hidden until asked for, so
+                     the common category (served all day) keeps a two-field form
+                     instead of paying for a seven-row editor it never needs. -->
+                <div>
+                    <label class="flex items-center gap-2 text-sm" style="color:var(--body)">
+                        <button type="button" class="switch" :class="{ on: timed }" @click="toggleTimed"></button>
+                        {{ t('category.timed') }}
+                    </label>
+                    <p class="text-xs" style="color:var(--muted);margin-top:4px">{{ t('category.timed_hint') }}</p>
+                    <div v-if="timed" style="margin-top:10px">
+                        <BusinessHoursEditor v-model="form.availability_hours" :disabled="auth.isReadOnly" />
+                        <FormError :errors="errors" field="availability_hours" />
+                    </div>
+                </div>
                 <div class="flex justify-end gap-2 pt-2">
                     <button @click="showModal = false" :disabled="saving" class="btn btn-ghost">{{ t('common.cancel') }}</button>
                     <button @click="save" :disabled="saving" class="btn btn-accent">

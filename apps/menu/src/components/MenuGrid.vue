@@ -105,6 +105,11 @@ const sections = computed(() => {
             title: props.localize(c),
             glyph: menuCategoryGlyph(i),
             image: c.image_url,
+            // A section outside its serving hours stays on the menu — a diner
+            // should be able to see that breakfast exists and when it returns —
+            // but nothing in it can be ordered.
+            availableNow: c.available_now !== false,
+            window: c.available_window || null,
             items: (c.items || []).filter(visible),
         })
     })
@@ -120,6 +125,11 @@ watch(sections, async () => {
 const totalCount = computed(() => sections.value.reduce((n, s) => n + s.items.length, 0))
 
 const countText = (n) => `${n} ${n === 1 ? props.t('item_count') : props.t('items_count')}`
+
+// An item is openable when its own stock flag allows it AND its section is
+// currently being served. Both refusals look the same to a tap; the section
+// heading is what explains an out-of-hours one.
+const orderable = (section, item) => section.availableNow !== false && item.is_available !== false
 
 const priceOf = (section, item) => {
     if (section.kind === 'combo') return `${props.t('from')} ${props.money(item.base_price)}`
@@ -140,6 +150,13 @@ const priceOf = (section, item) => {
                 <div class="section-heading">
                     <div>
                         <h2>{{ section.title }}</h2>
+                        <!-- Says when it comes back, not just that it is shut —
+                             the times are the only part a diner can act on. -->
+                        <p v-if="!section.availableNow" class="section-hours">
+                            {{ section.window
+                                ? t('served_between', { from: section.window.open, to: section.window.close })
+                                : t('not_served_now') }}
+                        </p>
                     </div>
                     <span>{{ countText(section.items.length) }}</span>
                 </div>
@@ -149,11 +166,11 @@ const priceOf = (section, item) => {
                         v-for="item in section.items"
                         :key="item.id"
                         class="product-card"
-                        :class="{ unavailable: item.is_available === false }"
+                        :class="{ unavailable: !orderable(section, item) }"
                         role="button"
-                        :tabindex="item.is_available === false ? -1 : 0"
-                        @click="item.is_available !== false && $emit('openModal', section.kind, item)"
-                        @keydown.enter="item.is_available !== false && $emit('openModal', section.kind, item)"
+                        :tabindex="orderable(section, item) ? 0 : -1"
+                        @click="orderable(section, item) && $emit('openModal', section.kind, item)"
+                        @keydown.enter="orderable(section, item) && $emit('openModal', section.kind, item)"
                     >
                         <div class="product-image-wrap">
                             <!-- Fallback glyph sits behind the image; a loaded photo

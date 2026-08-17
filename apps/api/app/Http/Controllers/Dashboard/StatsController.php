@@ -19,7 +19,15 @@ class StatsController extends Controller
         $restaurant = $request->user()->restaurant;
 
         $totalItems = MenuItem::count();
-        $availableItems = MenuItem::where('is_available', true)->count();
+
+        // "Available" means available to a diner, which an item in a switched-off
+        // category is not — the public menu only loads active categories, so
+        // counting those items here reported stock the menu never shows. The
+        // difference lands in unavailable_items below, where it belongs: they
+        // are items the owner still has, just not ones anyone can order.
+        $availableItems = MenuItem::where('is_available', true)
+            ->whereHas('category', fn ($q) => $q->where('is_active', true))
+            ->count();
 
         return response()->json([
             'data' => [

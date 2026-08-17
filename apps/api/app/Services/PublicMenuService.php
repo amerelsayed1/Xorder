@@ -60,9 +60,22 @@ class PublicMenuService
                 ->orderBy('id')
                 ->get();
 
+            // Categories answer "am I being served right now?" in the
+            // restaurant's timezone, so give each one the restaurant it already
+            // belongs to instead of letting the resource lazy-load it per row.
+            $categories->each(fn ($category) => $category->setRelation('restaurant', $restaurant));
+
+            $offHours = $categories->reject->isAvailableNow()->pluck('id')->all();
+
             $featured = $restaurant->menuItems()
                 ->where('is_featured', true)
                 ->where('is_available', true)
+                // The featured rail is a shortcut into the menu, so it must not
+                // offer what the menu itself is not serving yet — otherwise a
+                // breakfast item stays one tap from the cart all afternoon. The
+                // item keeps its place inside its own category, where the
+                // section says when it comes back.
+                ->when($offHours !== [], fn ($q) => $q->whereNotIn('category_id', $offHours))
                 ->with(['optionGroups.options', 'sharedOptionGroups.options'])
                 ->orderBy('display_order')
                 ->orderBy('id')

@@ -19,6 +19,8 @@ class OptionGroup extends Model
         'apply_scope',
         'name_ar',
         'name_en',
+        'display_name_ar',
+        'display_name_en',
         'is_required',
         'is_variant',
         'max_select',
@@ -41,6 +43,22 @@ class OptionGroup extends Model
             'max_select' => 'integer',
             'sort_order' => 'integer',
         ];
+    }
+
+    /**
+     * The heading a diner should see for this group in the given language.
+     *
+     * Falls back to the library name, so a group whose one name already reads
+     * well on the menu needs no second entry — which is every group that
+     * existed before the two were split.
+     */
+    public function publicName(string $lang): ?string
+    {
+        $column = $lang === 'ar' ? 'ar' : 'en';
+
+        return filled($this->{"display_name_{$column}"})
+            ? $this->{"display_name_{$column}"}
+            : $this->{"name_{$column}"};
     }
 
     /** The owning item for an inline (per-item) group; null for global groups. */

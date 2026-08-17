@@ -25,6 +25,7 @@ class BranchResource extends JsonResource
             'longitude' => $this->longitude,
             'geofence' => $this->geofence,
             'geofence_enabled' => (bool) $this->geofence_enabled,
+            'require_branch_wifi' => (bool) $this->require_branch_wifi,
             'is_open' => $this->is_open,
             'is_active' => $this->is_active,
             'sort_order' => $this->sort_order,

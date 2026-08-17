@@ -36,8 +36,13 @@ class MenuItemPublicResource extends JsonResource
             'option_groups' => $this->when(
                 $this->relationLoaded('optionGroups') || $this->relationLoaded('sharedOptionGroups'),
                 fn () => $this->orderedOptionGroups()->map(fn ($g) => [
-                    'name_en' => $g->name_en,
-                    'name_ar' => $g->name_ar,
+                    // The diner-facing heading, which is a separate field from
+                    // the name the group is filed under in the Extras library
+                    // (falling back to it when unset). Emitted under the same
+                    // keys the menu already reads — the public shape is "the
+                    // name you show", wherever it comes from.
+                    'name_en' => $g->publicName('en'),
+                    'name_ar' => $g->publicName('ar'),
                     'is_required' => $g->is_required,
                     'is_variant' => $g->is_variant,
                     'max_select' => $g->max_select,

@@ -4,6 +4,7 @@ namespace App\Http\Requests\Dashboard;
 
 use App\Http\Requests\Concerns\GeofenceValidation;
 use App\Rules\MobileNumber;
+use App\Services\BranchEgressIpService;
 use Illuminate\Foundation\Http\FormRequest;
 
 class UpdateBranchRequest extends FormRequest
@@ -41,6 +42,8 @@ class UpdateBranchRequest extends FormRequest
             'geofence.center.lng' => ['required_with:geofence.center', 'numeric', 'between:-180,180'],
             'geofence.radius' => ['required_if:geofence.type,radius', 'numeric', 'min:10', 'max:20000'],
             'geofence_enabled' => ['sometimes', 'boolean'],
+            // Hard Wi-Fi gate for table scans — see the guard in withValidator.
+            'require_branch_wifi' => ['sometimes', 'boolean'],
             'is_open' => ['sometimes', 'boolean'],
             'is_active' => ['sometimes', 'boolean'],
             'sort_order' => ['nullable', 'integer', 'min:0'],
@@ -51,6 +54,19 @@ class UpdateBranchRequest extends FormRequest
     {
         $validator->after(function ($validator) {
             GeofenceValidation::check($this, $validator);
+
+            // Turning the Wi-Fi requirement on with no address on file would
+            // refuse every table scan at this branch with nothing an owner
+            // could do from off-site — the enforcement fails closed on the
+            // "we have no idea" answer. Refuse the switch instead of letting
+            // it produce an outage that looks like a bug.
+            if ($this->boolean('require_branch_wifi')
+                && app(BranchEgressIpService::class)->knownAddresses($this->route('branch')) === []) {
+                $validator->errors()->add(
+                    'require_branch_wifi',
+                    __('xorder.validation.branch_wifi_requires_address')
+                );
+            }
         });
     }
 }

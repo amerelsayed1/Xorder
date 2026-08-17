@@ -26,7 +26,7 @@ const saving = ref(false)
 const showModal = ref(false)
 const editing = ref(null)
 const errors = ref({})
-const form = reactive({ name_en: '', name_ar: '', is_required: false, is_variant: false, max_select: 1, apply_scope: 'items', category_ids: [], options: [] })
+const form = reactive({ name_en: '', name_ar: '', display_name_en: '', display_name_ar: '', is_required: false, is_variant: false, max_select: 1, apply_scope: 'items', category_ids: [], options: [] })
 
 async function load() {
     loading.value = true
@@ -66,15 +66,24 @@ function removeOption(i) { form.options.splice(i, 1) }
 
 function groupName(g) { return pickLocalized(g, 'name', locale.value) }
 
+// What a diner actually sees above this group's choices. Shown under the row
+// only when it differs from the library name — repeating an identical string
+// would just be noise on every row that never needed the split.
+function menuName(g) {
+    const shown = pickLocalized(g, 'display_name', locale.value)
+    return shown && shown !== groupName(g) ? shown : ''
+}
+
 function openCreate() {
     editing.value = null; errors.value = {}
-    Object.assign(form, { name_en: '', name_ar: '', is_required: false, is_variant: false, max_select: 1, apply_scope: 'items', category_ids: [], options: [] })
+    Object.assign(form, { name_en: '', name_ar: '', display_name_en: '', display_name_ar: '', is_required: false, is_variant: false, max_select: 1, apply_scope: 'items', category_ids: [], options: [] })
     showModal.value = true
 }
 function openEdit(g) {
     editing.value = g; errors.value = {}
     Object.assign(form, {
         name_en: g.name_en || '', name_ar: g.name_ar || '',
+        display_name_en: g.display_name_en || '', display_name_ar: g.display_name_ar || '',
         is_required: !!g.is_required, is_variant: !!g.is_variant, max_select: g.max_select || 1,
         apply_scope: g.apply_scope || 'items', category_ids: [...(g.category_ids || [])],
         options: (g.options || []).map(o => ({ name_en: o.name_en || '', name_ar: o.name_ar || '', price: o.price ?? '', discounted_price: o.discounted_price ?? '' })),
@@ -87,6 +96,9 @@ async function save() {
     errors.value = {}
     const payload = {
         name_en: form.name_en, name_ar: form.name_ar,
+        // Sent even when blank: an empty value is the instruction to drop the
+        // separate heading and fall back to the library name.
+        display_name_en: form.display_name_en, display_name_ar: form.display_name_ar,
         is_required: form.is_variant ? true : form.is_required,
         is_variant: form.is_variant,
         max_select: form.is_variant ? 1 : (Number(form.max_select) || 1),
@@ -147,6 +159,9 @@ async function remove(g) {
                     </div>
                     <div class="flex-1 min-w-0">
                         <div class="font-medium truncate" style="color:var(--ink)" :dir="locale === 'ar' ? 'rtl' : 'ltr'">{{ groupName(g) }}</div>
+                        <div v-if="menuName(g)" class="text-xs truncate" style="color:var(--muted)" :dir="locale === 'ar' ? 'rtl' : 'ltr'">
+                            {{ t('extras.shown_as', { name: menuName(g) }) }}
+                        </div>
                         <div class="text-xs" style="color:var(--muted)">
                             {{ t('extras.options_summary', { n: g.options?.length || 0 }) }}
                             · <span :style="g.apply_scope !== 'items' || g.items_count ? 'color:var(--accent)' : ''">{{ scopeSummary(g) }}</span>
@@ -161,13 +176,27 @@ async function remove(g) {
 
         <Modal v-if="showModal" :title="editing ? t('extras.edit') : t('extras.new')" @close="showModal = false">
             <div class="space-y-4">
+                <!-- Two names, because one string cannot do both jobs: this list
+                     is browsed by an owner with dozens of groups, while the menu
+                     heading is read by a diner choosing. -->
                 <div class="grid grid-cols-1 gap-2" :class="{ 'sm:grid-cols-2': bilingual }">
                     <label v-for="lng in langs" :key="'g' + lng" class="block" :dir="lng === 'ar' ? 'rtl' : 'ltr'">
-                        <span class="label">{{ bilingual ? t('common.name_' + lng) : t('common.name') }}</span>
+                        <span class="label">{{ bilingual ? t('extras.library_name_' + lng) : t('extras.library_name') }}</span>
                         <input v-model="form['name_' + lng]" class="input" :placeholder="t('item.group_name_' + lng)" />
                         <FormError :errors="errors" :field="'name_' + lng" />
                     </label>
                 </div>
+                <p class="text-xs" style="color:var(--muted);margin-top:-8px">{{ t('extras.library_name_hint') }}</p>
+
+                <div class="grid grid-cols-1 gap-2" :class="{ 'sm:grid-cols-2': bilingual }">
+                    <label v-for="lng in langs" :key="'d' + lng" class="block" :dir="lng === 'ar' ? 'rtl' : 'ltr'">
+                        <span class="label">{{ bilingual ? t('extras.menu_name_' + lng) : t('extras.menu_name') }}</span>
+                        <input v-model="form['display_name_' + lng]" class="input"
+                            :placeholder="form['name_' + lng] || t('extras.menu_name_ph')" />
+                        <FormError :errors="errors" :field="'display_name_' + lng" />
+                    </label>
+                </div>
+                <p class="text-xs" style="color:var(--muted);margin-top:-8px">{{ t('extras.menu_name_hint') }}</p>
                 <div class="flex items-center gap-4 flex-wrap">
                     <label class="flex items-center gap-2 text-sm" style="color:var(--body)">
                         <button type="button" class="switch" :class="{ on: form.is_variant }" @click="form.is_variant = !form.is_variant"></button>

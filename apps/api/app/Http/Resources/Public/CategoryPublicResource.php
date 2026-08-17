@@ -18,6 +18,14 @@ class CategoryPublicResource extends JsonResource
             'description_ar' => $this->description_ar,
             'description_en' => $this->description_en,
             'image_url' => $this->image_url,
+            // Serving times. The menu is handed both the answer and the schedule
+            // it came from: the answer so the first paint is right without the
+            // client having to reason about timezones, the schedule so it can
+            // re-evaluate on its own and open the section the minute it is due,
+            // rather than looking shut until someone reloads.
+            'available_now' => $this->isAvailableNow(),
+            'availability_hours' => $this->availability_hours,
+            'available_window' => $this->todaysWindow(),
             'items' => MenuItemPublicResource::collection($this->whenLoaded('menuItems')),
         ];
     }

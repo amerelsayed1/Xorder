@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Public\StoreOrderRequest;
 use App\Models\MenuSession;
 use App\Models\Order;
+use App\Services\BranchEgressIpService;
 use App\Services\CustomerDirectory;
 use App\Services\NotificationService;
 use App\Services\PublicMenuService;
@@ -87,7 +88,7 @@ class PublicOrderController extends Controller
             // A table QR session binds the order to its physical table/area/branch
             // and pins it to Dine-in (FR-ORDER-001/009). A stale token simply
             // records an untagged order rather than losing it.
-            $this->bindTableSession($order, $restaurant->id, $request->input('session_token'));
+            $this->bindTableSession($order, $restaurant->id, $request->input('session_token'), $request->ip());
 
             $order->save();
         } finally {
@@ -152,19 +153,31 @@ class PublicOrderController extends Controller
      * Stamp the order with its table context from a menu session, if the token
      * resolves to one belonging to this restaurant.
      */
-    private function bindTableSession(Order $order, int $restaurantId, ?string $token): void
+    private function bindTableSession(Order $order, int $restaurantId, ?string $token, ?string $clientIp = null): void
     {
         if (empty($token)) {
             return;
         }
 
         $session = MenuSession::withoutGlobalScopes()
+            ->with('branch')
             ->where('restaurant_id', $restaurantId)
             ->where('session_token', $token)
             ->first();
 
         if ($session === null) {
             return;
+        }
+
+        // Re-check the Wi-Fi requirement at order time for a branch that
+        // enforces it. The scan-time check alone would be trivially sidestepped
+        // by joining the Wi-Fi to open the session and then switching back to
+        // mobile data to order, which is the same order the requirement means
+        // to refuse. Unlike a stale token this is not silently downgraded to an
+        // untagged order — the whole point is that it must not go through.
+        if ($session->branch?->require_branch_wifi
+            && app(BranchEgressIpService::class)->matches($session->branch, $clientIp) !== true) {
+            abort(422, __('xorder.messages.table_requires_branch_wifi'));
         }
 
         $order->menu_session_id = $session->id;

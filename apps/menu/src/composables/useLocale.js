@@ -30,6 +30,7 @@ const translations = {
         all: 'الكل', search_menu: 'ابحث في المنيو',
         todays_picks: 'مختاراتنا اليوم', menu_of: 'منيو', item_count: 'صنف', items_count: 'أصناف',
         popular: 'الأكثر طلبًا', item_unavailable: 'غير متاح حاليًا',
+        served_between: 'يُقدَّم من {from} إلى {to}', not_served_now: 'غير متاح في هذا الوقت',
         no_results_title: 'لا توجد نتائج', no_results_hint: 'جرّب كلمة بحث أخرى أو تصنيفًا مختلفًا',
         info: 'معلومات', share: 'مشاركة', link_copied: 'تم نسخ الرابط',
         open_now: 'مفتوح الآن', closed_now: 'مغلق الآن', closes: 'يغلق', opens: 'يفتح', open_24h: 'مفتوح ٢٤ ساعة', everyday: 'كل الأيام',
@@ -107,6 +108,7 @@ const translations = {
         all: 'All', search_menu: 'Search the menu',
         todays_picks: "Today's picks", menu_of: 'Menu of', item_count: 'item', items_count: 'items',
         popular: 'Most popular', item_unavailable: 'Currently unavailable',
+        served_between: 'Served {from} – {to}', not_served_now: 'Not served right now',
         no_results_title: 'No results', no_results_hint: 'Try another search term or category',
         info: 'Info', share: 'Share', link_copied: 'Link copied',
         open_now: 'Open now', closed_now: 'Closed now', closes: 'Closes', opens: 'Opens', open_24h: 'Open 24 hours', everyday: 'Every day',
@@ -161,7 +163,12 @@ export function useLocale(defaultLang = 'ar') {
     const locale = ref(defaultLang)
     const isAr = computed(() => locale.value === 'ar')
 
-    const t = (key) => translations[locale.value][key] || key
+    // `vars` fills {placeholders}; callers that pass none behave exactly as
+    // before, so every existing t('key') is untouched.
+    const t = (key, vars) => {
+        const text = translations[locale.value][key] || key
+        return vars ? text.replace(/\{(\w+)\}/g, (match, name) => vars[name] ?? match) : text
+    }
 
     function syncDir() {
         document.documentElement.lang = locale.value

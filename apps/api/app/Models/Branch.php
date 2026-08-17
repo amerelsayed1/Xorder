@@ -30,6 +30,7 @@ class Branch extends Model
         'longitude',
         'geofence',
         'geofence_enabled',
+        'require_branch_wifi',
         'is_open',
         'is_active',
         'supported_order_types',
@@ -54,6 +55,11 @@ class Branch extends Model
             'longitude' => 'float',
             'geofence' => 'array',
             'geofence_enabled' => 'boolean',
+            // Hard gate: while true a table scan is refused unless it arrives
+            // from one of this branch's known addresses. Audited (it is a
+            // person's decision) and fillable through the branch form, where
+            // enabling it is guarded by UpdateBranchRequest.
+            'require_branch_wifi' => 'boolean',
             'supported_order_types' => 'array',
             // Learned addresses — deliberately absent from $fillable: written
             // only by BranchEgressIpService, never from request input.

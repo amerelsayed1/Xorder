@@ -1,5 +1,6 @@
-import { ref, computed, onMounted, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { fetchMenu } from '../api.js'
+import { isServingNow, todaysWindow } from '../lib/servingHours.js'
 
 export function useMenu(slug) {
     const payload = ref(null)
@@ -13,7 +14,25 @@ export function useMenu(slug) {
     const spyLocked = ref(false)
 
     const restaurant = computed(() => payload.value?.restaurant || {})
-    const categories = computed(() => payload.value?.categories || [])
+
+    // Ticks so a timed section opens and closes on its own. A minute is fine —
+    // the windows are written to the minute, and this costs one comparison per
+    // category per tick.
+    const clock = ref(Date.now())
+    let clockTimer = null
+
+    // Serving times are re-answered here rather than trusted from the payload
+    // alone, so the state stays right on a page left open across the boundary.
+    // A category with no schedule short-circuits to available.
+    const categories = computed(() => (payload.value?.categories || []).map((c) => (
+        c.availability_hours
+            ? {
+                ...c,
+                available_now: isServingNow(c.availability_hours, restaurant.value.timezone, clock.value),
+                available_window: todaysWindow(c.availability_hours, restaurant.value.timezone, clock.value),
+            }
+            : c
+    )))
     const combos = computed(() => payload.value?.combos || [])
     const branches = computed(() => payload.value?.branches || [])
 
@@ -94,6 +113,13 @@ export function useMenu(slug) {
 
     onMounted(() => {
         loadMenu()
+        clockTimer = setInterval(() => { clock.value = Date.now() }, 60_000)
+    })
+
+    onUnmounted(() => {
+        clearInterval(clockTimer)
+        clearTimeout(unlockTimer)
+        if (onSettle) window.removeEventListener('scroll', onSettle)
     })
 
     return {

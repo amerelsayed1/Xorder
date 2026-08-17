@@ -15,6 +15,9 @@ class OptionGroupResource extends JsonResource
             'id' => $this->id,
             'name_en' => $this->name_en,
             'name_ar' => $this->name_ar,
+            // Diner-facing heading; blank means "use the library name".
+            'display_name_en' => $this->display_name_en,
+            'display_name_ar' => $this->display_name_ar,
             'is_required' => $this->is_required,
             'is_variant' => $this->is_variant,
             'max_select' => $this->max_select,

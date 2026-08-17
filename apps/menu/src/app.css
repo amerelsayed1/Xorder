@@ -784,6 +784,20 @@ html[dir='ltr'] .hero-overlay {
     object-fit: cover;
 }
 
+/* Serving-times note beside a section that is currently out of hours. Sits in
+   the heading's flex row, so it reads as a qualifier on the title rather than a
+   separate announcement. */
+.section-hours {
+    background: var(--accent-soft);
+    border-radius: 999px;
+    color: var(--accent);
+    margin: 4px 0 0;
+    padding: 3px 10px;
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
 .section-heading h2 {
     margin: 4px 0 0;
     font-size: 28px;

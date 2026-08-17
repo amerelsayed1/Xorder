@@ -33,7 +33,7 @@ const backArrow = computed(() => locale.value === 'ar' ? '→' : '←')
 const loading = ref(true)
 const saving = ref(false)
 const errors = ref({})
-const blank = () => ({ name_en: '', name_ar: '', address: '', phone: '', whatsapp_number: '', opening_hours: '', business_hours: {}, map_url: '', latitude: null, longitude: null, geofence: null, geofence_enabled: false, is_open: true, is_active: true })
+const blank = () => ({ name_en: '', name_ar: '', address: '', phone: '', whatsapp_number: '', opening_hours: '', business_hours: {}, map_url: '', latitude: null, longitude: null, geofence: null, geofence_enabled: false, require_branch_wifi: false, is_open: true, is_active: true })
 const form = reactive(blank())
 
 // A fence the backend would enforce: a radius with a real centre + positive
@@ -83,6 +83,7 @@ onMounted(async () => {
                 opening_hours: b.opening_hours || '', business_hours: b.business_hours || {}, map_url: b.map_url || '',
                 latitude: b.latitude ?? null, longitude: b.longitude ?? null,
                 geofence: b.geofence || null, geofence_enabled: !!b.geofence_enabled,
+                require_branch_wifi: !!b.require_branch_wifi,
                 is_open: b.is_open, is_active: b.is_active,
             })
             fenceExistedOnOpen = fenceEnforceable(form.geofence)
@@ -351,8 +352,33 @@ async function save() {
                                      here when there is a percentage to explain —
                                      otherwise it reads as a caption for nothing. -->
                                 <p v-if="presence.on_wifi_rate !== null" style="color:var(--muted);margin-top:8px">
-                                    {{ t('branch.wifi_rate_hint', { days: presence.window_days }) }}
+                                    {{ form.require_branch_wifi
+                                        ? t('branch.wifi_rate_hint_enforced', { days: presence.window_days })
+                                        : t('branch.wifi_rate_hint', { days: presence.window_days }) }}
                                 </p>
+
+                                <!-- Turns the signal into a hard gate. Only offered
+                                     once an address is on file, mirroring the server
+                                     guard, and it states the cost in the branch's own
+                                     measured numbers rather than in the abstract —
+                                     the rate here IS the share of diners it keeps. -->
+                                <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--line)">
+                                    <label class="flex items-center gap-2 text-sm" style="color:var(--body)">
+                                        <button type="button" class="switch" :class="{ on: form.require_branch_wifi }"
+                                            :disabled="auth.isReadOnly"
+                                            @click="form.require_branch_wifi = !form.require_branch_wifi"></button>
+                                        {{ t('branch.wifi_require') }}
+                                    </label>
+                                    <p style="color:var(--muted);margin-top:6px">{{ t('branch.wifi_require_hint') }}</p>
+                                    <div v-if="form.require_branch_wifi" style="margin-top:10px;padding:10px 12px;border-radius:10px;background:var(--amber-soft)">
+                                        <p style="color:var(--amber)">
+                                            {{ presence.on_wifi_rate !== null
+                                                ? t('branch.wifi_require_warn_rate', { rate: presence.on_wifi_rate, blocked: 100 - presence.on_wifi_rate, days: presence.window_days })
+                                                : t('branch.wifi_require_warn') }}
+                                        </p>
+                                    </div>
+                                    <FormError :errors="errors" field="require_branch_wifi" />
+                                </div>
                             </template>
                         </template>
                     </div>

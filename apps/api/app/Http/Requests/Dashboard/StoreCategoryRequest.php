@@ -30,6 +30,12 @@ class StoreCategoryRequest extends FormRequest
             'image_url' => ['nullable', 'string', 'max:2048'],
             'display_order' => ['nullable', 'integer', 'min:0'],
             'is_active' => ['nullable', 'boolean'],
+            // Per-weekday serving times; null/absent = served whenever the menu is.
+            'availability_hours' => ['nullable', 'array'],
+            'availability_hours.*.closed' => ['sometimes', 'boolean'],
+            'availability_hours.*.always' => ['sometimes', 'boolean'],
+            'availability_hours.*.open' => ['nullable', 'date_format:H:i'],
+            'availability_hours.*.close' => ['nullable', 'date_format:H:i'],
         ];
     }
 
