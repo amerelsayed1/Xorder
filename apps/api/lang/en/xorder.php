@@ -65,7 +65,13 @@ return [
         'branch_disabled' => 'This branch is currently unavailable.',
         'table_location_required' => 'Please enable location so we can confirm you are at the restaurant before ordering.',
         'table_outside_area' => 'You appear to be outside the restaurant. Please scan the QR code at your table to order.',
-        'table_requires_branch_wifi' => 'Ordering from your table requires our Wi-Fi. Please connect to the restaurant network, then scan the code again.',
+        // A diner sitting at the table who simply is not on our Wi-Fi. Nothing
+        // has gone wrong for them, so this states the one thing to do rather
+        // than reading as a refusal, and never blames their own connection,
+        // which may be perfectly fine. It also stops short of "scan again":
+        // the banner carries a Try again button, so rescanning is not the
+        // action being asked for.
+        'table_requires_branch_wifi' => 'You need to be on our Wi-Fi to order from your table.',
         'session_expired' => 'Your session has expired. Please scan the table QR code again.',
         'combo_created' => 'Offer created.',
         'combo_updated' => 'Offer updated.',
