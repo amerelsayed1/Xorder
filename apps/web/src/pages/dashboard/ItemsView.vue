@@ -28,15 +28,25 @@ const search = ref('')
 const failedImg = ref(new Set())
 function onImgError(id) { failedImg.value.add(id) }
 
+// Every item of the selected category, in menu order — the API returns them
+// sorted by display_order within each category. This is the list reordering
+// acts on, which is why it is kept separate from the search-narrowed view.
+const categoryItems = computed(() => filterCat.value
+    ? items.value.filter(i => i.category_id === Number(filterCat.value))
+    : items.value)
+
 const filtered = computed(() => {
-    let list = filterCat.value
-        ? items.value.filter(i => i.category_id === Number(filterCat.value))
-        : items.value
     const q = search.value.trim().toLowerCase()
-    if (q) list = list.filter(i =>
+    if (!q) return categoryItems.value
+    return categoryItems.value.filter(i =>
         (i.name_en || '').toLowerCase().includes(q) || (i.name_ar || '').toLowerCase().includes(q))
-    return list
 })
+
+// Reordering takes each row's new position from its index, so it only means
+// anything while the whole category is on screen. Under a search the hidden
+// rows would be silently renumbered from a subset, so the handles come off
+// rather than quietly doing the wrong thing.
+const reorderable = computed(() => !auth.isReadOnly && !search.value.trim() && !!filterCat.value)
 
 async function load() {
     loading.value = true
@@ -112,6 +122,67 @@ function catName(id) {
 const itemName = (it) => pickLocalized(it, 'name', locale.value)
 const itemAltName = (it) => locale.value === 'ar' ? (it.name_en || '') : (it.name_ar || '')
 const itemDescription = (it) => pickLocalized(it, 'description', locale.value)
+// --- Menu order (display_order within the selected category) ---------------
+
+// Write a new order for the current category back into the master list and
+// persist it. Optimistic: the rows have already moved on screen, so a failure
+// reloads to snap back to the server's truth rather than leaving the two
+// disagreeing. Only this category's ids are sent — the endpoint takes an
+// arbitrary set, and touching the others would be a lie about what changed.
+async function applyOrder(ordered) {
+    const moved = new Set(ordered.map(i => i.id))
+    ordered.forEach((it, idx) => { it.display_order = idx })
+    items.value = [...items.value.filter(i => !moved.has(i.id)), ...ordered]
+    try {
+        await ensureCsrf()
+        await api.patch('api/dashboard/items/reorder', {
+            order: ordered.map((it, idx) => ({ id: it.id, display_order: idx })),
+        })
+    } catch (err) {
+        alert(err.response?.data?.message || t('item.reorder_failed'))
+        await load()
+    }
+}
+
+// Arrow buttons: the keyboard- and touch-reachable path to the same result,
+// since a drag is neither.
+async function move(index, dir) {
+    const target = index + dir
+    const arr = categoryItems.value.slice()
+    if (target < 0 || target >= arr.length) return
+    ;[arr[index], arr[target]] = [arr[target], arr[index]]
+    await applyOrder(arr)
+}
+
+const dragIndex = ref(null)   // row being dragged
+const overIndex = ref(null)   // row currently hovered as drop target
+const dragReady = ref(false)  // only allow a drag that started on the handle
+function onDragStart(i, ev) {
+    if (!reorderable.value) return
+    dragIndex.value = i
+    ev.dataTransfer.effectAllowed = 'move'
+    // Firefox will not start a drag unless some data is set.
+    ev.dataTransfer.setData('text/plain', String(i))
+}
+function onDragOver(i) {
+    if (dragIndex.value === null) return
+    overIndex.value = i
+}
+function onDrop(i) {
+    const from = dragIndex.value
+    resetDrag()
+    if (from === null || from === i) return
+    const arr = categoryItems.value.slice()
+    const [row] = arr.splice(from, 1)
+    arr.splice(i, 0, row)
+    applyOrder(arr)
+}
+function resetDrag() {
+    dragIndex.value = null
+    overIndex.value = null
+    dragReady.value = false
+}
+
 function goCreate() {
     if (!categories.value.length) return
     router.push({ name: 'dashboard.items.create' })
@@ -278,6 +349,12 @@ async function submitImport() {
             </div>
         </div>
 
+        <!-- Says why the handles are there, and — more usefully — why they are
+             not, since a search silently removing them would read as a bug. -->
+        <p v-if="!auth.isReadOnly && filterCat && filtered.length > 1" class="text-xs" style="color:var(--muted);margin-top:-4px">
+            {{ reorderable ? t('item.reorder_hint') : t('item.reorder_search_hint') }}
+        </p>
+
         <!-- Bulk action bar — appears once one or more rows are ticked. -->
         <div v-if="!auth.isReadOnly && selected.size" class="bulk-bar">
             <span class="bulk-count">{{ t('item.selected_count', { n: selected.size }) }}</span>
@@ -310,7 +387,7 @@ async function submitImport() {
                             :indeterminate.prop="someFilteredSelected" :aria-label="t('item.select_all')"
                             @change="toggleAll" />
                     </div>
-                    <div role="columnheader" class="col-center">#</div>
+                    <div role="columnheader" class="col-order">#</div>
                     <div role="columnheader">{{ t('item.item') }}</div>
                     <div role="columnheader" class="col-cat">{{ t('item.category') }}</div>
                     <div role="columnheader">{{ t('item.price') }}</div>
@@ -318,12 +395,31 @@ async function submitImport() {
                     <div role="columnheader" class="col-center">{{ t('common.available') }}</div>
                     <div role="columnheader" class="col-actions">{{ t('common.actions') }}</div>
                 </div>
-                <div v-for="(it, idx) in filtered" :key="it.id" class="items-row items-body-row" :class="{ 'row-selected': selected.has(it.id) }" role="row">
+                <div v-for="(it, idx) in filtered" :key="it.id" class="items-row items-body-row"
+                    :class="{ 'row-selected': selected.has(it.id), 'row-dragging': dragIndex === idx, 'row-drop': overIndex === idx && dragIndex !== null && dragIndex !== idx }"
+                    :draggable="reorderable && dragReady"
+                    @dragstart="onDragStart(idx, $event)"
+                    @dragover.prevent="onDragOver(idx)"
+                    @drop.prevent="onDrop(idx)"
+                    @dragend="resetDrag"
+                    role="row">
                     <div v-if="!auth.isReadOnly" role="cell" class="col-center col-select">
                         <input type="checkbox" class="row-check" :checked="selected.has(it.id)"
                             :aria-label="itemName(it)" @change="toggleSelect(it.id)" />
                     </div>
-                    <div role="cell" class="col-center" style="color:var(--muted)">{{ idx + 1 }}</div>
+                    <div role="cell" class="col-order">
+                        <button v-if="reorderable" class="drag-handle" :title="t('item.drag_to_reorder')"
+                            :aria-label="t('item.drag_to_reorder')"
+                            @mousedown="dragReady = true" @touchstart.passive="dragReady = true"
+                            @mouseup="dragReady = false"><Icon name="grip" :size="16" fill /></button>
+                        <span class="row-num">{{ idx + 1 }}</span>
+                        <div v-if="reorderable" class="order-arrows">
+                            <button @click="move(idx, -1)" :disabled="idx === 0" class="icon-btn"
+                                :aria-label="t('item.move_up')"><Icon name="chevronUp" :size="14" /></button>
+                            <button @click="move(idx, 1)" :disabled="idx === filtered.length - 1" class="icon-btn"
+                                :aria-label="t('item.move_down')"><Icon name="chevronDown" :size="14" /></button>
+                        </div>
+                    </div>
                     <div role="cell">
                         <div class="flex items-center gap-3 min-w-0 product-cell">
                             <img v-if="it.image_url && !failedImg.has(it.id)" :src="it.image_url" @error="onImgError(it.id)" class="h-11 w-11 rounded-lg object-cover flex-shrink-0" />
@@ -431,7 +527,7 @@ async function submitImport() {
    | Available | Actions. Adjust widths here once → header + rows follow. */
 .items-table {
     --items-cols:
-        48px                 /* No. */
+        92px                 /* No. + reorder handle/arrows */
         minmax(320px, 2fr)   /* Product (image + name) */
         minmax(180px, 1fr)   /* Category */
         minmax(140px, 0.8fr) /* Price */
@@ -445,7 +541,7 @@ async function submitImport() {
 .items-table.select-mode {
     --items-cols:
         44px                 /* Select */
-        48px                 /* No. */
+        92px                 /* No. + reorder handle/arrows */
         minmax(320px, 2fr)   /* Product (image + name) */
         minmax(180px, 1fr)   /* Category */
         minmax(140px, 0.8fr) /* Price */
@@ -541,6 +637,43 @@ async function submitImport() {
     vertical-align: middle;
 }
 .items-body-row.row-selected { background: var(--accent-soft); }
+
+/* Menu-order cell: grip, position number, and the up/down pair that does the
+   same job for touch and keyboard, where dragging is not an option. */
+.col-order {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+.col-order .drag-handle {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 22px;
+    height: 26px;
+    border: 0;
+    background: transparent;
+    border-radius: 6px;
+    color: var(--muted);
+    cursor: grab;
+    touch-action: none;
+}
+.col-order .drag-handle:hover { color: var(--ink); background: var(--accent-soft); }
+.col-order .drag-handle:active { cursor: grabbing; }
+.col-order .row-num {
+    flex: none;
+    min-width: 18px;
+    text-align: center;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+}
+.order-arrows { display: flex; flex-direction: column; flex: none; }
+.order-arrows .icon-btn { width: 22px; height: 15px; }
+
+.items-body-row.row-dragging { opacity: .5; }
+.items-body-row.row-drop { box-shadow: inset 0 2px 0 0 var(--accent); }
 
 /* Sticky bar that surfaces bulk actions for the current selection. */
 .bulk-bar {
