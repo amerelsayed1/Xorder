@@ -68,7 +68,7 @@ function onPulse(d) {
 // The order sound — a real audio file. Autoplay needs one prior user gesture,
 // which the first interaction on the dashboard provides (see armAlerts).
 function ensureAlarm() {
-    if (!alarm) { alarm = new Audio('/new-order.mp3'); alarm.preload = 'auto' }
+    if (!alarm) { alarm = new Audio('/new-order-v2.mp3'); alarm.preload = 'auto' }
     return alarm
 }
 function playSound() {

@@ -17,7 +17,13 @@ class UpdateBranchEgressIpsRequest extends FormRequest
     {
         // Tenant isolation is structural: the {branch} route binding is scoped
         // by RestaurantScope, so another restaurant's id never resolves here.
-        return true;
+        //
+        // The role check is redundant with the route's own role:RESTAURANT_ADMIN
+        // middleware, and is here for the same reason every sibling branch
+        // request carries one — so the guarantee survives the route group being
+        // reorganised, and so no reader has to go and check the routes file to
+        // learn what may reach this.
+        return $this->user()?->isRestaurantAdmin() ?? false;
     }
 
     /** @return array<string, mixed> */

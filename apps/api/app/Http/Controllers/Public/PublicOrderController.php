@@ -76,6 +76,12 @@ class PublicOrderController extends Controller
 
             [$customer, $address] = $this->directory->upsert($data);
 
+            // session_token is a lookup key, not a column on the order — it is
+            // consumed by bindTableSession below. Dropping it explicitly rather
+            // than leaving mass assignment to discard it silently, so the
+            // constructor is only ever handed things the model actually stores.
+            unset($data['session_token']);
+
             $order = new Order($data + [
                 'status' => OrderStatus::NEW->value,
                 'currency' => $restaurant->currency->value,

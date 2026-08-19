@@ -122,6 +122,21 @@ class TableTest extends TestCase
             ->assertJsonStructure(['data' => ['svg', 'url']]);
     }
 
+    public function test_single_table_qr_downloads_as_a_png(): void
+    {
+        $table = $this->makeTable('7');
+
+        $res = $this->actingAs($this->admin)
+            ->get("/api/dashboard/tables/{$table->id}/qr/download")
+            ->assertOk();
+
+        $res->assertHeader('Content-Type', 'image/png');
+
+        ob_start();
+        $res->baseResponse->sendContent();
+        $this->assertStringStartsWith("\x89PNG", ob_get_clean());
+    }
+
     public function test_bulk_qr_download_returns_a_zip_of_selected_tables(): void
     {
         $a = $this->makeTable('1');

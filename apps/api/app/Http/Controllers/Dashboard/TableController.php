@@ -298,6 +298,10 @@ class TableController extends Controller
         ]);
 
         $tables = DiningTable::query()
+            // publicUrl() reaches through to the restaurant for every table, so
+            // without this a 50-table download issued 50 extra queries — one per
+            // QR, all for the same tenant.
+            ->with('restaurant')
             ->whereIn('id', collect($validated['ids'])->unique())
             ->orderBy('dining_area_id')->orderBy('label')
             ->get();

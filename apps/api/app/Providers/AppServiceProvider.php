@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Support\Jwt;
 use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Gate;
@@ -31,10 +32,37 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        $this->enforceStrictModels();
         $this->registerJwtGuard();
         $this->registerRateLimiters();
         $this->registerGates();
         $this->registerPasswordResetUrl();
+    }
+
+    /**
+     * Make Eloquent's three quiet failure modes loud everywhere except
+     * production: lazy loading, silently discarded attributes, and reads of
+     * attributes that were never selected.
+     *
+     * The one that earns its place is lazy loading. The public menu builds a
+     * whole restaurant — every category, item and option group — in ten
+     * queries, and stays that way only because the eager loads are deliberate
+     * (see PublicMenuService's auto-group merge). Nothing enforced that: one
+     * lazy relation added to a resource would turn ten queries into hundreds,
+     * and the only symptom would be a menu that got slower as tenants grew.
+     * Enabling this immediately surfaced exactly that in the bulk table-QR
+     * download, which was issuing one extra query per QR.
+     *
+     * Deliberately off in production: these throw, and a surprise exception in
+     * front of a diner is worse than a slow query. The point is to fail in CI
+     * before it ever reaches them. One consequence worth knowing — a mass
+     * assignment that production would silently drop now raises locally, which
+     * is why SecurityHardeningTest lifts the second flag where it asserts that
+     * production behaviour on purpose.
+     */
+    private function enforceStrictModels(): void
+    {
+        Model::shouldBeStrict(! $this->app->isProduction());
     }
 
     /**

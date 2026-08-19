@@ -9,6 +9,7 @@ use App\Support\CsvSafe;
 use App\Support\Jwt;
 use Database\Seeders\DatabaseSeeder;
 use Illuminate\Auth\Notifications\ResetPassword;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Password;
@@ -195,6 +196,15 @@ class SecurityHardeningTest extends TestCase
 
     public function test_role_and_restaurant_id_are_not_mass_assignable(): void
     {
+        // This asserts the PRODUCTION behaviour: a fill() carrying role or
+        // restaurant_id drops them and yields an ordinary user, rather than
+        // escalating. AppServiceProvider turns silent discarding into an
+        // exception outside production to catch developers assigning columns
+        // that will not persist — useful, but it would convert this test into a
+        // check on the dev-only path and stop it guarding the real one. So the
+        // guard is lifted here on purpose, for this assertion alone.
+        Model::preventSilentlyDiscardingAttributes(false);
+
         $r = Restaurant::factory()->create();
 
         $user = new User;
