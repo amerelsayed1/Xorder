@@ -6,9 +6,11 @@ use App\Http\Controllers\Controller;
 use App\Models\DiningTable;
 use App\Models\MenuSession;
 use App\Services\BranchEgressIpService;
+use App\Services\TableVisitService;
 use App\Support\GeoFence;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 /**
@@ -32,8 +34,12 @@ class PublicTableController extends Controller
     }
 
     /** POST /public/tables/{token}/sessions — start a table menu session. */
-    public function createSession(Request $request, string $token, BranchEgressIpService $egressIps): JsonResponse
-    {
+    public function createSession(
+        Request $request,
+        string $token,
+        BranchEgressIpService $egressIps,
+        TableVisitService $visits,
+    ): JsonResponse {
         $validated = $request->validate([
             'language' => ['nullable', 'in:ar,en'],
             // Diner's device GPS, sent when the branch fence is enabled.
@@ -63,35 +69,41 @@ class PublicTableController extends Controller
         // actually act on without changing networks.
         $this->enforceBranchWifi($table, $egressIps, $clientIp);
 
-        $session = new MenuSession([
-            'branch_id' => $table->branch_id,
-            'dining_area_id' => $table->dining_area_id,
-            'table_id' => $table->id,
-            'language' => $request->input('language') ?? $table->restaurant->default_language->value,
-            'session_token' => Str::random(40),
-            // Evidence that admitted this session, kept rather than discarded:
-            // it is the only record available if presence is later disputed, and
-            // it is what BranchEgressIpService learns the branch's customer
-            // Wi-Fi address from. Recorded, not enforced — see below.
-            'client_ip' => $clientIp,
-            'latitude' => $validated['latitude'] ?? null,
-            'longitude' => $validated['longitude'] ?? null,
-            'accuracy_m' => isset($validated['accuracy'])
-                ? (int) round(min((float) $validated['accuracy'], 65535))
-                : null,
-            'presence_source' => $this->fenceRequired($table) ? MenuSession::PRESENCE_GEOFENCE : null,
-            // Whether the diner reached us from the branch's own line. Observed
-            // only: a match is corroboration, and a miss means nothing (most
-            // diners are on mobile data), so it deliberately does not gate the
-            // session. Promote it to enforcement only once the recorded data
-            // shows how often it actually fires.
-            'on_branch_network' => $egressIps->matches($table->branch, $clientIp),
-            'started_at' => now(),
-            'last_activity_at' => now(),
-            'expires_at' => now()->addMinutes($ttl),
-        ]);
-        $session->restaurant_id = $table->restaurant_id;
-        $session->save();
+        $session = DB::transaction(function () use ($table, $request, $validated, $ttl, $clientIp, $egressIps, $visits) {
+            $visit = $visits->activeForTable($table);
+            $session = new MenuSession([
+                'branch_id' => $table->branch_id,
+                'dining_area_id' => $table->dining_area_id,
+                'table_id' => $table->id,
+                'language' => $request->input('language') ?? $table->restaurant->default_language->value,
+                'session_token' => Str::random(40),
+                // Evidence that admitted this session, kept rather than discarded:
+                // it is the only record available if presence is later disputed, and
+                // it is what BranchEgressIpService learns the branch's customer
+                // Wi-Fi address from. Recorded, not enforced — see below.
+                'client_ip' => $clientIp,
+                'latitude' => $validated['latitude'] ?? null,
+                'longitude' => $validated['longitude'] ?? null,
+                'accuracy_m' => isset($validated['accuracy'])
+                    ? (int) round(min((float) $validated['accuracy'], 65535))
+                    : null,
+                'presence_source' => $this->fenceRequired($table) ? MenuSession::PRESENCE_GEOFENCE : null,
+                // Whether the diner reached us from the branch's own line. Observed
+                // only: a match is corroboration, and a miss means nothing (most
+                // diners are on mobile data), so it deliberately does not gate the
+                // session. Promote it to enforcement only once the recorded data
+                // shows how often it actually fires.
+                'on_branch_network' => $egressIps->matches($table->branch, $clientIp),
+                'started_at' => now(),
+                'last_activity_at' => now(),
+                'expires_at' => now()->addMinutes($ttl),
+                'table_visit_id' => $visit->id,
+            ]);
+            $session->restaurant_id = $table->restaurant_id;
+            $session->save();
+
+            return $session;
+        });
 
         return response()->json([
             'data' => $this->context($table) + [

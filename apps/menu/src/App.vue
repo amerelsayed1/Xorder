@@ -385,8 +385,16 @@ function updateUserField(field, value) {
             />
 
             <div v-if="hasTable" class="table-banner">
-                <span class="table-banner__pin">◈</span>
-                <span>{{ isAr ? 'طاولة' : 'Table' }} {{ tableLabel }}<span v-if="tableAreaName"> — {{ tableAreaName }}</span></span>
+                <div class="table-banner__identity">
+                    <span class="table-banner__pin">◈</span>
+                    <span>{{ isAr ? 'طاولة' : 'Table' }} {{ tableLabel }}<span v-if="tableAreaName"> — {{ tableAreaName }}</span></span>
+                </div>
+                <BillRequestButton
+                    v-if="billRequests"
+                    :sessionToken="sessionToken"
+                    :tableLabel="tableLabel"
+                    :t="t"
+                />
             </div>
             <div v-else-if="locating" class="table-banner">{{ t('loc_checking') }}</div>
             <div v-else-if="tableError" class="table-banner table-banner--error">
@@ -466,6 +474,18 @@ function updateUserField(field, value) {
                 @submit="submitOrder"
             />
 
+            <button
+                v-if="orderingEnabled && cartCount > 0 && !hasOverlay"
+                type="button"
+                class="mobile-cart-bar"
+                @click="cartDrawer = true"
+            >
+                <span class="mobile-cart-bar__icon" aria-hidden="true">🛒</span>
+                <span class="mobile-cart-bar__label">{{ t('view_cart') }}</span>
+                <span class="mobile-cart-bar__count">{{ cartCount }}</span>
+                <strong>{{ money(cartTotal) }}</strong>
+            </button>
+
             <ItemModal
                 :isOpen="!!modal"
                 :item="modal?.ref"
@@ -527,13 +547,6 @@ function updateUserField(field, value) {
                 :t="t"
                 :localize="localize"
                 @close="infoOpen = false"
-            />
-
-            <BillRequestButton
-                v-if="hasTable && billRequests"
-                :sessionToken="sessionToken"
-                :tableLabel="tableLabel"
-                :t="t"
             />
 
             <UserInfoDialog

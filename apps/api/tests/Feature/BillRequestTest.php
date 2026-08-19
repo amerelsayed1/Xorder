@@ -106,6 +106,17 @@ class BillRequestTest extends TestCase
         $this->assertNotEmpty($res->json('data.token'));
     }
 
+    public function test_expired_session_cannot_create_bill_request(): void
+    {
+        $session = $this->makeSession();
+        $session->forceFill(['expires_at' => now()->subMinute()])->save();
+
+        $this->postJson("/api/public/sessions/{$session->session_token}/bill-requests", [])
+            ->assertStatus(422);
+
+        $this->assertDatabaseCount('bill_requests', 0);
+    }
+
     // AC-005 — re-requesting while one is open surfaces the existing one, no duplicate row.
     public function test_re_request_while_open_returns_duplicate(): void
     {
@@ -118,6 +129,41 @@ class BillRequestTest extends TestCase
             ->assertJsonPath('duplicate', true);
 
         $this->assertSame(1, BillRequest::withoutGlobalScopes()->where('menu_session_id', $session->id)->count());
+    }
+
+    public function test_visit_can_have_multiple_different_open_service_requests(): void
+    {
+        $firstDevice = $this->makeSession();
+        $secondDevice = $this->makeSession();
+
+        $this->postJson("/api/public/sessions/{$firstDevice->session_token}/bill-requests", [
+            'note' => 'Water',
+        ])->assertCreated();
+
+        $this->postJson("/api/public/sessions/{$secondDevice->session_token}/bill-requests", [
+            'note' => 'Cutlery',
+        ])->assertCreated();
+
+        $this->assertSame(2, BillRequest::withoutGlobalScopes()->whereIn(
+            'menu_session_id',
+            [$firstDevice->id, $secondDevice->id],
+        )->count());
+    }
+
+    public function test_same_service_is_deduplicated_across_devices_in_one_visit(): void
+    {
+        $firstDevice = $this->makeSession();
+        $secondDevice = $this->makeSession();
+
+        $this->postJson("/api/public/sessions/{$firstDevice->session_token}/bill-requests", [
+            'note' => 'Water',
+        ])->assertCreated();
+
+        $this->postJson("/api/public/sessions/{$secondDevice->session_token}/bill-requests", [
+            'note' => 'Water',
+        ])->assertOk()->assertJsonPath('duplicate', true);
+
+        $this->assertDatabaseCount('bill_requests', 1);
     }
 
     public function test_cancel_while_requested_then_blocked_after_seen(): void

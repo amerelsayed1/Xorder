@@ -7,12 +7,16 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Public\StoreOrderRequest;
 use App\Models\MenuSession;
 use App\Models\Order;
+use App\Models\OrderItem;
+use App\Models\OrderRound;
 use App\Services\BranchEgressIpService;
 use App\Services\CustomerDirectory;
 use App\Services\NotificationService;
 use App\Services\PublicMenuService;
+use App\Services\TableVisitService;
 use App\Support\TenantContext;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\DB;
 
 class PublicOrderController extends Controller
 {
@@ -82,21 +86,63 @@ class PublicOrderController extends Controller
             // constructor is only ever handed things the model actually stores.
             unset($data['session_token']);
 
-            $order = new Order($data + [
-                'status' => OrderStatus::NEW->value,
-                'currency' => $restaurant->currency->value,
-                'source' => $mode->usesWhatsapp() ? 'whatsapp' : 'system',
-            ]);
-            $order->restaurant_id = $restaurant->id;
-            $order->customer_id = $customer?->id;
-            $order->customer_address_id = $address?->id;
+            $order = DB::transaction(function () use ($data, $restaurant, $mode, $customer, $address, $request) {
+                $session = $this->resolveTableSession(
+                    $restaurant->id,
+                    $request->input('session_token'),
+                    $request->ip(),
+                );
 
-            // A table QR session binds the order to its physical table/area/branch
-            // and pins it to Dine-in (FR-ORDER-001/009). A stale token simply
-            // records an untagged order rather than losing it.
-            $this->bindTableSession($order, $restaurant->id, $request->input('session_token'), $request->ip());
+                $order = null;
+                if ($session?->table_visit_id) {
+                    // Lock the visit so simultaneous devices at the same table
+                    // cannot both create an OPEN order or choose the same round.
+                    $session->tableVisit()->lockForUpdate()->firstOrFail();
+                    $order = Order::withoutGlobalScopes()
+                        ->where('table_visit_id', $session->table_visit_id)
+                        ->where('status', OrderStatus::NEW->value)
+                        ->lockForUpdate()
+                        ->first();
+                }
 
-            $order->save();
+                if ($order === null) {
+                    $order = new Order($data + [
+                        'status' => OrderStatus::NEW->value,
+                        'currency' => $restaurant->currency->value,
+                        'source' => $mode->usesWhatsapp() ? 'whatsapp' : 'system',
+                    ]);
+                    $order->restaurant_id = $restaurant->id;
+                    $order->customer_id = $customer?->id;
+                    $order->customer_address_id = $address?->id;
+
+                    if ($session !== null) {
+                        $order->menu_session_id = $session->id;
+                        $order->table_visit_id = $session->table_visit_id;
+                        $order->table_id = $session->table_id;
+                        $order->dining_area_id = $session->dining_area_id;
+                        $order->branch_id = $session->branch_id;
+                        $order->order_type = 'dine_in';
+                    }
+                    $order->save();
+                } else {
+                    $existingItems = $order->items ?? [];
+                    $order->forceFill([
+                        'items' => array_merge($existingItems, $data['items']),
+                        'total' => min((float) $order->total + (float) $data['total'], 99999999.99),
+                        'customer_id' => $order->customer_id ?? $customer?->id,
+                        'customer_address_id' => $order->customer_address_id ?? $address?->id,
+                        'customer_name' => $order->customer_name ?: ($data['customer_name'] ?? null),
+                        'customer_phone' => $order->customer_phone ?: ($data['customer_phone'] ?? null),
+                    ])->save();
+                }
+
+                $this->recordRound($order, $session, $data);
+                if ($session !== null) {
+                    $session->forceFill(['last_activity_at' => now()])->save();
+                }
+
+                return $order;
+            });
         } finally {
             TenantContext::clearOverride();
         }
@@ -159,20 +205,29 @@ class PublicOrderController extends Controller
      * Stamp the order with its table context from a menu session, if the token
      * resolves to one belonging to this restaurant.
      */
-    private function bindTableSession(Order $order, int $restaurantId, ?string $token, ?string $clientIp = null): void
+    private function resolveTableSession(int $restaurantId, ?string $token, ?string $clientIp = null): ?MenuSession
     {
         if (empty($token)) {
-            return;
+            return null;
         }
 
         $session = MenuSession::withoutGlobalScopes()
-            ->with('branch')
+            ->with(['branch', 'table', 'tableVisit'])
             ->where('restaurant_id', $restaurantId)
             ->where('session_token', $token)
             ->first();
 
         if ($session === null) {
-            return;
+            return null;
+        }
+
+        if ($session->tableVisit === null) {
+            app(TableVisitService::class)->attachSession($session);
+        }
+
+        if (! $session->isUsable() || $session->tableVisit === null
+            || $session->tableVisit->status->value !== 'OPEN') {
+            abort(422, __('xorder.messages.session_expired'));
         }
 
         // Re-check the Wi-Fi requirement at order time for a branch that
@@ -186,12 +241,38 @@ class PublicOrderController extends Controller
             abort(422, __('xorder.messages.table_requires_branch_wifi'));
         }
 
-        $order->menu_session_id = $session->id;
-        $order->table_id = $session->table_id;
-        $order->dining_area_id = $session->dining_area_id;
-        $order->branch_id = $session->branch_id;
-        $order->order_type = 'dine_in';
+        return $session;
+    }
 
-        $session->forceFill(['last_activity_at' => now()])->save();
+    /** Persist a kitchen-visible submission round while retaining orders.items for compatibility. */
+    private function recordRound(Order $order, ?MenuSession $session, array $data): void
+    {
+        $sequence = OrderRound::withoutGlobalScopes()->where('order_id', $order->id)->max('sequence') + 1;
+        $round = new OrderRound([
+            'order_id' => $order->id,
+            'menu_session_id' => $session?->id,
+            'sequence' => $sequence,
+            'total' => $data['total'],
+            'note' => $data['note'] ?? null,
+            'submitted_at' => now(),
+        ]);
+        $round->restaurant_id = $order->restaurant_id;
+        $round->save();
+
+        foreach ($data['items'] as $line) {
+            $quantity = (int) $line['qty'];
+            $item = new OrderItem([
+                'order_id' => $order->id,
+                'order_round_id' => $round->id,
+                'name' => $line['name'],
+                'quantity' => $quantity,
+                'options' => $line['options'] ?? [],
+                'note' => $line['note'] ?? null,
+                'unit_price' => round((float) $line['line_total'] / $quantity, 2),
+                'line_total' => $line['line_total'],
+            ]);
+            $item->restaurant_id = $order->restaurant_id;
+            $item->save();
+        }
     }
 }

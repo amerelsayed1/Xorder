@@ -8,6 +8,7 @@ use App\Models\BillRequest;
 use App\Models\MenuSession;
 use App\Rules\MobileNumber;
 use App\Services\NotificationService;
+use App\Services\TableVisitService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -27,8 +28,15 @@ class PublicBillRequestController extends Controller
 
         $session = $this->resolveSession($sessionToken);
 
+        // A visit may need several services at once (water + cutlery + bill).
+        // De-duplicate only the exact same request across every device/session
+        // at the table, rather than blocking the entire visit after one request.
+        $visitSessionIds = MenuSession::withoutGlobalScopes()
+            ->where('table_visit_id', $session->table_visit_id)
+            ->select('id');
         $latest = BillRequest::withoutGlobalScopes()
-            ->where('menu_session_id', $session->id)
+            ->whereIn('menu_session_id', $visitSessionIds)
+            ->where('customer_note', $request->input('note'))
             ->latest('id')
             ->first();
 
@@ -118,12 +126,19 @@ class PublicBillRequestController extends Controller
     private function resolveSession(string $sessionToken): MenuSession
     {
         $session = MenuSession::withoutGlobalScopes()
-            ->with(['restaurant.features', 'table', 'branch'])
+            ->with(['restaurant.features', 'table', 'branch', 'tableVisit'])
             ->where('session_token', $sessionToken)
             ->first();
 
         if ($session === null) {
             abort(404, __('xorder.messages.session_expired'));
+        }
+        if ($session->tableVisit === null) {
+            app(TableVisitService::class)->attachSession($session);
+        }
+        if (! $session->isUsable() || $session->tableVisit === null
+            || $session->tableVisit->status->value !== 'OPEN') {
+            abort(422, __('xorder.messages.session_expired'));
         }
         if (! $session->restaurant->isPubliclyVisible() || ! $session->restaurant->hasFeature('bill_requests')) {
             abort(403, __('xorder.errors.feature_disabled'));

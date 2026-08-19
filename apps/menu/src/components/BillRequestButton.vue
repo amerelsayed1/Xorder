@@ -150,15 +150,15 @@ onUnmounted(stopPolling)
 
 <template>
     <div>
-        <!-- Floating service button; shows the live badge once a request is open. -->
+        <!-- Secondary table-service action; the sticky bottom action is reserved for the cart. -->
         <button
-            class="bill-fab"
+            class="table-service-button"
             type="button"
             @click="isOpen ? (view = 'status') : openConfirm()"
         >
-            <span class="bill-fab__icon">🧾</span>
-            <span>{{ t('request_bill') }}</span>
-            <span v-if="isOpen" class="bill-fab__dot" />
+            <span class="table-service-button__icon">🛎️</span>
+            <span>{{ t('call_staff') }}</span>
+            <span v-if="isOpen" class="table-service-button__dot" />
         </button>
 
         <Teleport to="body">
@@ -225,6 +225,14 @@ onUnmounted(stopPolling)
                         >
                             {{ t('request_bill_cancel') }}
                         </button>
+                        <button
+                            v-if="isOpen"
+                            class="dialog-button"
+                            type="button"
+                            @click="openConfirm"
+                        >
+                            {{ t('request_service_another') }}
+                        </button>
                         <button class="dialog-button bill-primary" type="button" @click="close">
                             {{ t('close') }}
                         </button>
@@ -236,26 +244,22 @@ onUnmounted(stopPolling)
 </template>
 
 <style scoped>
-.bill-fab {
-    position: fixed;
-    inset-inline-end: 16px;
-    bottom: 84px;
-    z-index: 55;
+.table-service-button {
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    padding: 12px 18px;
-    border: 0;
+    flex: 0 0 auto;
+    padding: 7px 12px;
+    border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
     border-radius: 999px;
-    background: var(--accent-dark);
-    color: #fff;
+    background: color-mix(in srgb, var(--accent) 10%, white);
+    color: var(--accent-dark);
     font-weight: 700;
-    font-size: 14px;
+    font-size: 12.5px;
     cursor: pointer;
-    box-shadow: 0 12px 30px #00000038;
 }
-.bill-fab__icon { font-size: 17px; }
-.bill-fab__dot {
+.table-service-button__icon { font-size: 15px; }
+.table-service-button__dot {
     width: 9px;
     height: 9px;
     border-radius: 50%;

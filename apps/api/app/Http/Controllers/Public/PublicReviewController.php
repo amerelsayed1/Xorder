@@ -10,6 +10,7 @@ use App\Models\Order;
 use App\Rules\MobileNumber;
 use App\Services\NotificationService;
 use App\Services\PublicMenuService;
+use App\Services\TableVisitService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -55,11 +56,17 @@ class PublicReviewController extends Controller
         // A table QR session links the review to its physical table/area/branch.
         if (! empty($data['session_token'])) {
             $session = MenuSession::withoutGlobalScopes()
+                ->with(['table', 'tableVisit'])
                 ->where('restaurant_id', $restaurant->id)
                 ->where('session_token', $data['session_token'])
                 ->first();
 
-            if ($session !== null) {
+            if ($session !== null && $session->tableVisit === null) {
+                app(TableVisitService::class)->attachSession($session);
+            }
+
+            if ($session !== null && $session->isUsable()
+                && $session->tableVisit?->status->value === 'OPEN') {
                 // One review per table session — surface the existing one rather
                 // than creating a duplicate (FR-REVIEW-017).
                 $existing = InternalReview::withoutGlobalScopes()

@@ -218,7 +218,7 @@ function fmtTime(iso) {
                                     {{ t('orders.view') }}
                                 </button>
                                 <template v-if="!auth.isReadOnly">
-                                    <button v-for="next in nextActions[order.status] || []" :key="next"
+                                    <button v-for="next in (order.table_visit_id ? [] : (nextActions[order.status] || []))" :key="next"
                                         class="btn btn-sm" :class="next === 'CANCELLED' ? 'btn-ghost btn-cancel' : 'btn-accent'"
                                         :disabled="updating === order.id" @click="setStatus(order, next)">
                                         <Icon v-if="next !== 'CANCELLED'" name="check" :size="14" />

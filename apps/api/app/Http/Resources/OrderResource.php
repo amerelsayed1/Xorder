@@ -24,6 +24,8 @@ class OrderResource extends JsonResource
             'customer_phone' => $this->customer_phone,
             'customer_id' => $this->customer_id,
             'table_id' => $this->table_id,
+            'table_visit_id' => $this->table_visit_id,
+            'rounds' => OrderRoundResource::collection($this->whenLoaded('rounds')),
             'order_type' => $this->order_type,
             'address' => $this->whenLoaded('customerAddress', fn () => $this->customerAddress?->address),
             'note' => $this->note,

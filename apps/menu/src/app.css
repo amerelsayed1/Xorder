@@ -2701,6 +2701,44 @@ html[dir='ltr'] .side-panel {
     background: var(--accent-soft);
     border-bottom: 1px solid var(--accent-border);
 }
+.table-banner__identity { display: inline-flex; align-items: center; gap: 7px; min-width: 0; }
+
+.mobile-cart-bar { display: none; }
+
+@media (max-width: 640px) {
+    .mobile-cart-bar {
+        position: fixed;
+        z-index: 60;
+        inset-inline: 12px;
+        bottom: max(12px, env(safe-area-inset-bottom));
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        min-height: 54px;
+        padding: 10px 16px;
+        border: 0;
+        border-radius: 16px;
+        background: var(--accent-dark);
+        color: #fff;
+        box-shadow: 0 12px 32px #00000038;
+        font: inherit;
+        cursor: pointer;
+    }
+    .mobile-cart-bar__icon { font-size: 19px; }
+    .mobile-cart-bar__label { font-weight: 800; }
+    .mobile-cart-bar__count {
+        min-width: 24px;
+        height: 24px;
+        display: inline-grid;
+        place-items: center;
+        border-radius: 999px;
+        background: #ffffff2b;
+        font-size: 12px;
+        font-weight: 800;
+    }
+    .mobile-cart-bar strong { margin-inline-start: auto; white-space: nowrap; }
+    .table-banner { gap: 10px; justify-content: space-between; }
+}
 .table-banner__pin { color: var(--accent); }
 .table-banner--error {
     color: #b42318;

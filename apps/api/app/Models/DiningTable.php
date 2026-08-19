@@ -67,6 +67,11 @@ class DiningTable extends Model
         return $this->hasMany(Order::class, 'table_id');
     }
 
+    public function visits(): HasMany
+    {
+        return $this->hasMany(TableVisit::class, 'table_id');
+    }
+
     /** The public menu URL the QR encodes for this table. */
     public function publicUrl(): string
     {

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Dashboard;
 
 use App\Enums\BillRequestStatus;
 use App\Enums\OrderStatus;
+use App\Enums\TableVisitStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Dashboard\BulkDeleteTablesRequest;
 use App\Http\Requests\Dashboard\BulkStoreTablesRequest;
@@ -13,9 +14,10 @@ use App\Http\Resources\DiningTableResource;
 use App\Models\BillRequest;
 use App\Models\DiningArea;
 use App\Models\DiningTable;
-use App\Models\MenuSession;
 use App\Models\Order;
+use App\Models\TableVisit;
 use App\Services\QrCodeService;
+use App\Services\TableVisitService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -57,9 +59,11 @@ class TableController extends Controller
 
         $tableIds = $tables->pluck('id');
 
-        // Occupancy signal: a live (non-expired) menu session on the table.
-        $occupied = MenuSession::whereIn('table_id', $tableIds)
-            ->where(fn ($q) => $q->whereNull('expires_at')->orWhere('expires_at', '>', now()))
+        // Occupancy is an explicit visit lifecycle, shared by every device at
+        // the table, instead of whichever browser session happens to be alive.
+        $occupied = TableVisit::whereIn('table_id', $tableIds)
+            ->where('status', TableVisitStatus::OPEN->value)
+            ->where('opened_at', '>', now()->subMinutes((int) config('platform.table_session_ttl_minutes', 240)))
             ->pluck('table_id')->flip();
 
         // Active orders per table (still NEW — completed/cancelled ones drop out).
@@ -100,6 +104,30 @@ class TableController extends Controller
         });
 
         return response()->json(['data' => $data]);
+    }
+
+    public function finishVisit(
+        Request $request,
+        DiningTable $table,
+        TableVisitService $visits,
+    ): JsonResponse {
+        $validated = $request->validate([
+            'status' => ['required', 'in:CLOSED,CANCELLED'],
+        ]);
+
+        $visit = $visits->finish(
+            $table,
+            $request->user(),
+            TableVisitStatus::from($validated['status']),
+        );
+        if ($visit === null) {
+            return response()->json(['message' => __('xorder.messages.table_visit_not_open')], 409);
+        }
+
+        return response()->json([
+            'data' => ['id' => $visit->id, 'status' => $visit->status->value],
+            'message' => __('xorder.messages.table_visit_finished'),
+        ]);
     }
 
     public function store(StoreTableRequest $request): JsonResponse

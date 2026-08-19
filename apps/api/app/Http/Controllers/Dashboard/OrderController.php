@@ -22,7 +22,7 @@ class OrderController extends Controller
             'table_id' => ['sometimes', 'integer'],
         ]);
 
-        $orders = Order::query()
+        $orders = Order::with('rounds.items')
             ->when($request->filled('status'), fn ($q) => $q->where('status', $request->input('status')))
             ->when($request->filled('order_type'), fn ($q) => $q->where('order_type', $request->input('order_type')))
             ->when($request->filled('table_id'), fn ($q) => $q->where('table_id', $request->integer('table_id')))
@@ -48,6 +48,15 @@ class OrderController extends Controller
 
         $status = $request->input('status');
 
+        // The visit owns the lifecycle of its single running dine-in bill. If
+        // this order were completed independently, the next round would create
+        // a second order for the same party. Staff finish the visit instead.
+        if ($order->table_visit_id !== null && $order->tableVisit?->status->value === 'OPEN') {
+            return response()->json([
+                'message' => __('xorder.messages.close_table_visit_instead'),
+            ], 422);
+        }
+
         // Reject illegal jumps (e.g. reopening a completed/cancelled order back
         // to NEW), which would corrupt the new-orders badge and reporting.
         if (! $order->status->canTransitionTo(OrderStatus::from($status))) {
@@ -71,7 +80,7 @@ class OrderController extends Controller
         }
 
         return response()->json([
-            'data' => OrderResource::make($order->fresh()),
+            'data' => OrderResource::make($order->fresh()->load('rounds.items')),
             'message' => __('xorder.messages.order_updated'),
         ]);
     }

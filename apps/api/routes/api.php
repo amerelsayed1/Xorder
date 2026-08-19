@@ -265,6 +265,7 @@ Route::prefix('dashboard')
             Route::get('tables/{table}/qr/download', [TableController::class, 'qrDownload']);
             // Bundle several tables' QR PNGs into one ZIP (read-only, no writable gate).
             Route::post('tables/qr/download-bulk', [TableController::class, 'qrDownloadBulk']);
+            Route::post('tables/{table}/visit/finish', [TableController::class, 'finishVisit']);
 
             Route::middleware('subscription.writable')->group(function () {
                 Route::post('dining-areas', [DiningAreaController::class, 'store']);

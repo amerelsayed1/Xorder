@@ -28,6 +28,8 @@ class MenuSession extends Model
         'started_at',
         'last_activity_at',
         'expires_at',
+        'table_visit_id',
+        'closed_at',
     ];
 
     protected function casts(): array
@@ -40,6 +42,7 @@ class MenuSession extends Model
             'started_at' => 'datetime',
             'last_activity_at' => 'datetime',
             'expires_at' => 'datetime',
+            'closed_at' => 'datetime',
         ];
     }
 
@@ -58,8 +61,18 @@ class MenuSession extends Model
         return $this->belongsTo(Branch::class);
     }
 
+    public function tableVisit(): BelongsTo
+    {
+        return $this->belongsTo(TableVisit::class);
+    }
+
     public function isExpired(): bool
     {
         return $this->expires_at !== null && $this->expires_at->isPast();
+    }
+
+    public function isUsable(): bool
+    {
+        return $this->closed_at === null && ! $this->isExpired();
     }
 }

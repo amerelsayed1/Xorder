@@ -176,6 +176,28 @@ async function setOrderStatus(order, status) {
     finally { updating.value = null }
 }
 
+async function finishTableVisit(status) {
+    if (!openTable.value) return
+    const closing = status === 'CLOSED'
+    const ok = await confirm({
+        title: t(closing ? 'live.close_visit_title' : 'live.cancel_visit_title'),
+        message: t(closing ? 'live.close_visit_message' : 'live.cancel_visit_message'),
+        confirmText: t(closing ? 'live.close_visit' : 'live.cancel_visit'),
+        cancelText: t('common.back'),
+        danger: !closing,
+    })
+    if (!ok) return
+
+    updating.value = 'visit-' + openTable.value.id
+    try {
+        await api.post(`api/dashboard/tables/${openTable.value.id}/visit/finish`, { status })
+        closeModal()
+        await refresh(false)
+        toast(t('live.visit_finished'))
+    } catch { alert(t('live.visit_finish_failed')) }
+    finally { updating.value = null }
+}
+
 function confirmCancel(ns) {
     return confirm({
         title: t(ns === 'req' ? 'req.act_cancel' : 'orders.cancel_title'),
@@ -277,7 +299,7 @@ const panelDir = computed(() => (locale.value === 'ar' ? 'rtl' : 'ltr'))
                                     <li v-for="(itm, i) in it.order.items" :key="i"><span class="live-qty">{{ itm.qty }}×</span> {{ itm.name }}</li>
                                 </ul>
                                 <div class="live-time"><b style="color:var(--ink)">{{ it.order.total }} {{ currencyLabel(it.order.currency, locale) }}</b></div>
-                                <div v-if="!auth.isReadOnly" class="live-actions">
+                                <div v-if="!auth.isReadOnly && !it.order.table_visit_id" class="live-actions">
                                     <button v-for="next in ORDER_NEXT[it.order.status] || []" :key="next"
                                         :class="next === 'CANCELLED' ? 'live-cancel' : 'live-primary'"
                                         :disabled="updating === 'o' + it.order.id" @click="setOrderStatus(it.order, next)">{{ t(orderActionLabel[next]) }}</button>
@@ -348,12 +370,20 @@ const panelDir = computed(() => (locale.value === 'ar' ? 'rtl' : 'ltr'))
                         <li v-for="(it, i) in o.items" :key="i"><span class="live-qty">{{ it.qty }}×</span> {{ it.name }}</li>
                     </ul>
                     <div v-if="o.note" class="live-note">{{ o.note }}</div>
-                    <div v-if="!auth.isReadOnly" class="live-actions">
+                    <div v-if="!auth.isReadOnly && !o.table_visit_id" class="live-actions">
                         <button v-for="next in ORDER_NEXT[o.status] || []" :key="next"
                             :class="next === 'CANCELLED' ? 'live-cancel' : 'live-primary'"
                             :disabled="updating === 'o' + o.id" @click="setOrderStatus(o, next)">{{ t(orderActionLabel[next]) }}</button>
                     </div>
                 </article>
+                <div v-if="openTable.occupied && !auth.isReadOnly" class="live-actions tm-finish-actions">
+                    <button class="live-primary" :disabled="updating === 'visit-' + openTable.id" @click="finishTableVisit('CLOSED')">
+                        {{ t('live.close_visit') }}
+                    </button>
+                    <button class="live-cancel" :disabled="updating === 'visit-' + openTable.id" @click="finishTableVisit('CANCELLED')">
+                        {{ t('live.cancel_visit') }}
+                    </button>
+                </div>
             </div>
         </Dialog>
     </div>

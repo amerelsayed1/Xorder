@@ -8,6 +8,7 @@ use App\Models\Concerns\BelongsToRestaurant;
 use App\Traits\NormalizesPhoneNumbers;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Order extends Model
 {
@@ -42,6 +43,7 @@ class Order extends Model
         'dining_area_id',
         'table_id',
         'menu_session_id',
+        'table_visit_id',
     ];
 
     protected function casts(): array
@@ -87,5 +89,20 @@ class Order extends Model
     public function menuSession(): BelongsTo
     {
         return $this->belongsTo(MenuSession::class);
+    }
+
+    public function tableVisit(): BelongsTo
+    {
+        return $this->belongsTo(TableVisit::class);
+    }
+
+    public function rounds(): HasMany
+    {
+        return $this->hasMany(OrderRound::class)->orderBy('sequence');
+    }
+
+    public function orderItems(): HasMany
+    {
+        return $this->hasMany(OrderItem::class);
     }
 }
