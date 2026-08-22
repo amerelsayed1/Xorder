@@ -26,6 +26,11 @@ RUN pnpm --filter @xorder/web build \
 # ---------------------------------------------------------------------------
 FROM composer:2.8 AS vendor
 WORKDIR /app
+# When a dist zip isn't available Composer falls back to `git clone --mirror`,
+# and laravel/framework's mirror routinely takes longer than Composer's default
+# 300s process timeout — which fails the whole build. No timeout here; BuildKit
+# is the thing that should bound this step.
+ENV COMPOSER_PROCESS_TIMEOUT=0
 COPY apps/api .
 RUN composer install \
         --no-dev \
