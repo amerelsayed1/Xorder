@@ -198,6 +198,24 @@ async function downloadQr() {
         URL.revokeObjectURL(blobUrl)
     } catch (err) { alert(err.response?.data?.message || t('admin.download_failed')) }
 }
+// Every table this restaurant has, as one JSON file: the table rows plus the
+// URL each QR encodes and the PNG inline, so support can hand a floor's codes
+// to a print shop without signing in as the restaurant.
+const exportingTables = ref(false)
+async function exportTablesJson() {
+    if (exportingTables.value) return
+    exportingTables.value = true
+    try {
+        const { data } = await api.get(`api/admin/restaurants/${id}/tables/export`)
+        if (!data.count) { alert(t('admin.export_tables_none')); return }
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+        const blobUrl = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = blobUrl; a.download = `tables-${r.value?.slug || id}.json`; a.click()
+        URL.revokeObjectURL(blobUrl)
+    } catch (err) { alert(err.response?.data?.message || t('admin.download_failed')) }
+    finally { exportingTables.value = false }
+}
 async function resetAdminPassword() {
     const ok = await confirm({
         title: t('admin.reset_password_title'),
@@ -496,6 +514,10 @@ const initial = (x) => localizedInitial(x, 'name', locale.value)
                             <div v-if="qr" v-html="qr.svg" class="qrbox h-40 w-40 p-2 rounded-xl" style="background:#fff;border:1px solid var(--line)"></div>
                             <div class="flex flex-col gap-2">
                                 <button @click="downloadQr" class="btn btn-ghost">{{ t('admin.download_png') }}</button>
+                                <button @click="exportTablesJson" :disabled="exportingTables" class="btn btn-ghost">
+                                    <Icon v-if="exportingTables" name="loading" :size="16" class="animate-spin" />
+                                    {{ t('admin.export_tables_json') }}
+                                </button>
                                 <a :href="asPreview(r.public_url)" target="_blank" class="btn btn-dark">{{ t('dashboard.view_menu') }}</a>
                             </div>
                         </div>

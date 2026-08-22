@@ -161,12 +161,15 @@ async function bulkRemove() {
     finally { bulkDeleting.value = false }
 }
 
-// Download the QR PNGs for every ticked table as one ZIP.
-const bulkDownloading = ref(false)
-async function bulkDownloadQr() {
-    const ids = [...selected.value]
-    if (!ids.length || bulkDownloading.value) return
-    bulkDownloading.value = true
+// Download the QR PNGs for a set of tables as one ZIP. `scope` is only there to
+// tell the two entry points apart so the spinner lands on the button that was
+// actually clicked.
+const downloading = ref('')
+const bulkDownloading = computed(() => downloading.value === 'selected')
+const allDownloading = computed(() => downloading.value === 'all')
+async function downloadQrZip(ids, scope) {
+    if (!ids.length || downloading.value) return
+    downloading.value = scope
     try {
         const res = await api.post('api/dashboard/tables/qr/download-bulk', { ids }, { responseType: 'blob' })
         const blobUrl = URL.createObjectURL(res.data)
@@ -174,8 +177,12 @@ async function bulkDownloadQr() {
         a.href = blobUrl; a.download = 'qr-tables.zip'; a.click()
         URL.revokeObjectURL(blobUrl)
     } catch (err) { alert(err.response?.data?.message || t('tbl.download_failed')) }
-    finally { bulkDownloading.value = false }
+    finally { downloading.value = '' }
 }
+const bulkDownloadQr = () => downloadQrZip([...selected.value], 'selected')
+// One click, no ticking required: everything currently listed (so the area /
+// status / search filters above decide what lands in the ZIP).
+const downloadAllQr = () => downloadQrZip(rows.value.map(r => r.id), 'all')
 
 // ---- QR modal ----
 const qrModal = ref(null) // { table, svg, url }
@@ -220,7 +227,14 @@ const areaLabel = (id) => { const a = areas.value.find(x => x.id === id); return
                 <h1 class="page-title">{{ t('tbl.tables_title') }}</h1>
                 <p class="page-sub">{{ t('tbl.tables_sub', { count: rows.length }) }}</p>
             </div>
-            <button v-if="!auth.isReadOnly" @click="openCreate" :disabled="!activeAreas.length" class="btn btn-accent"><Icon name="plus" :size="16" />{{ t('common.create') }}</button>
+            <div class="flex items-center gap-2">
+                <button v-if="rows.length" class="btn btn-ghost" :disabled="!!downloading" @click="downloadAllQr">
+                    <Icon v-if="allDownloading" name="loading" :size="16" class="animate-spin" />
+                    <Icon v-else name="download" :size="16" />
+                    {{ t('tbl.download_all', { n: rows.length }) }}
+                </button>
+                <button v-if="!auth.isReadOnly" @click="openCreate" :disabled="!activeAreas.length" class="btn btn-accent"><Icon name="plus" :size="16" />{{ t('common.create') }}</button>
+            </div>
         </div>
 
         <p v-if="!areas.length" class="card p-4 text-sm" style="color:var(--muted)">{{ t('tbl.no_area_first') }}</p>
@@ -242,7 +256,7 @@ const areaLabel = (id) => { const a = areas.value.find(x => x.id === id); return
         <div v-if="!auth.isReadOnly && selected.size" class="bulk-bar">
             <span class="bulk-count">{{ t('tbl.selected_count', { n: selected.size }) }}</span>
             <button class="btn btn-ghost btn-sm" @click="clearSelection">{{ t('tbl.clear_selection') }}</button>
-            <button class="btn btn-accent btn-sm" :disabled="bulkDownloading" @click="bulkDownloadQr">
+            <button class="btn btn-accent btn-sm" :disabled="!!downloading" @click="bulkDownloadQr">
                 <Icon v-if="bulkDownloading" name="loading" :size="15" class="animate-spin" />
                 <Icon v-else name="download" :size="15" />
                 {{ t('tbl.download_selected') }}

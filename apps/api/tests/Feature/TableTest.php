@@ -205,6 +205,71 @@ class TableTest extends TestCase
             ->assertStatus(422);
     }
 
+    public function test_bulk_qr_export_returns_table_data_as_json(): void
+    {
+        $a = $this->makeTable('1');
+        $b = $this->makeTable('2');
+        $this->makeTable('3'); // not selected — must be excluded
+
+        $res = $this->actingAs($this->admin)
+            ->postJson('/api/dashboard/tables/qr/download-bulk', [
+                'ids' => [$a->id, $b->id], 'format' => 'json',
+            ]);
+
+        $res->assertOk();
+        $res->assertJsonCount(2, 'data');
+        $res->assertJsonPath('count', 2);
+        $res->assertJsonPath('data.0.label', '1');
+        $res->assertJsonPath('data.0.public_token', $a->public_token);
+        $res->assertJsonPath('data.0.url', $a->publicUrl());
+        $res->assertJsonPath('data.1.label', '2');
+
+        // The PNG rides along inline so the export stands on its own.
+        $png = base64_decode($res->json('data.0.qr_png_base64'), true);
+        $this->assertStringStartsWith("\x89PNG", $png);
+        $this->assertSame("qr-1-{$a->public_token}.png", $res->json('data.0.qr_filename'));
+    }
+
+    public function test_bulk_qr_export_json_ignores_tables_from_other_restaurants(): void
+    {
+        $mine = $this->makeTable('1');
+
+        $other = Restaurant::factory()->create();
+        $otherBranch = new Branch(['name_en' => 'Other']);
+        $otherBranch->restaurant_id = $other->id;
+        $otherBranch->save();
+        $otherArea = new DiningArea(['branch_id' => $otherBranch->id, 'name_en' => 'X', 'is_active' => true]);
+        $otherArea->restaurant_id = $other->id;
+        $otherArea->save();
+        $theirs = new DiningTable([
+            'dining_area_id' => $otherArea->id, 'label' => '9',
+            'public_token' => DiningTable::generateToken(), 'qr_generated_at' => now(),
+        ]);
+        $theirs->restaurant_id = $other->id;
+        $theirs->branch_id = $otherBranch->id;
+        $theirs->save();
+
+        $res = $this->actingAs($this->admin)
+            ->postJson('/api/dashboard/tables/qr/download-bulk', [
+                'ids' => [$mine->id, $theirs->id], 'format' => 'json',
+            ]);
+
+        $res->assertOk();
+        $res->assertJsonCount(1, 'data');
+        $res->assertJsonPath('data.0.id', $mine->id);
+    }
+
+    public function test_bulk_qr_download_rejects_an_unknown_format(): void
+    {
+        $table = $this->makeTable('1');
+
+        $this->actingAs($this->admin)
+            ->postJson('/api/dashboard/tables/qr/download-bulk', [
+                'ids' => [$table->id], 'format' => 'pdf',
+            ])
+            ->assertStatus(422);
+    }
+
     public function test_table_with_orders_cannot_be_deleted(): void
     {
         $table = $this->makeTable('3');

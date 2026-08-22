@@ -90,6 +90,8 @@ Route::prefix('admin')
             Route::get('restaurants/{restaurant}', [AdminRestaurantController::class, 'show']);
             Route::get('restaurants/{restaurant}/qr', [AdminQrController::class, 'show']);
             Route::get('restaurants/{restaurant}/qr/download', [AdminQrController::class, 'download']);
+            // Every table of one restaurant as JSON (data + inline QR PNGs).
+            Route::get('restaurants/{restaurant}/tables/export', [AdminQrController::class, 'tablesExport']);
         });
         Route::middleware('can:restaurants.manage')->group(function () {
             Route::post('restaurants', [AdminRestaurantController::class, 'store']);

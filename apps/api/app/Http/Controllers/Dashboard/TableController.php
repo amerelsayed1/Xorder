@@ -17,6 +17,7 @@ use App\Models\DiningTable;
 use App\Models\Order;
 use App\Models\TableVisit;
 use App\Services\QrCodeService;
+use App\Services\TableQrExportService;
 use App\Services\TableVisitService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -317,25 +318,34 @@ class TableController extends Controller
      * be printed in a single download instead of clicking through each table.
      * The tenant scope limits the query to the caller's own tables; unknown ids
      * are silently ignored, and an empty selection is a 422.
+     *
+     * `format=json` returns the same selection as data instead of image files —
+     * see TableQrExportService.
      */
-    public function qrDownloadBulk(Request $request, QrCodeService $qr): BinaryFileResponse|JsonResponse
+    public function qrDownloadBulk(Request $request, QrCodeService $qr, TableQrExportService $export): BinaryFileResponse|JsonResponse
     {
         $validated = $request->validate([
             'ids' => ['required', 'array', 'min:1'],
             'ids.*' => ['integer'],
+            'format' => ['nullable', 'in:zip,json'],
         ]);
 
         $tables = DiningTable::query()
             // publicUrl() reaches through to the restaurant for every table, so
             // without this a 50-table download issued 50 extra queries — one per
-            // QR, all for the same tenant.
-            ->with('restaurant')
+            // QR, all for the same tenant. diningArea rides along for the area
+            // names the JSON export carries.
+            ->with(['restaurant', 'diningArea'])
             ->whereIn('id', collect($validated['ids'])->unique())
             ->orderBy('dining_area_id')->orderBy('label')
             ->get();
 
         if ($tables->isEmpty()) {
             return response()->json(['message' => __('xorder.messages.no_tables_selected')], 422);
+        }
+
+        if (($validated['format'] ?? 'zip') === 'json') {
+            return response()->json($export->payload($tables, $request));
         }
 
         $path = tempnam(sys_get_temp_dir(), 'qr-tables-').'.zip';
