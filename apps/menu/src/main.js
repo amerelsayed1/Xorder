@@ -1,13 +1,25 @@
 import { createApp } from 'vue'
 import { installEnDigits } from '@xorder/ui/enDigits.js'
-import { initAnalytics } from '@xorder/analytics'
+import { initAnalytics, initPerformance } from '@xorder/analytics'
 import App from './App.vue'
 import './app.css'
 
-// Firebase Analytics (GA4). No-op until /firebase-config.js carries a
-// measurementId. The firebase SDK is lazy-loaded so it stays out of the
-// menu's initial bundle.
-initAnalytics('menu')
+// Firebase Analytics (GA4) + Performance Monitoring. No-op until
+// /firebase-config.js carries a config. The firebase SDK is lazy-loaded so it
+// stays out of the menu's initial bundle. Performance matters most here: this
+// is the QR-scan entry point, and its page-load and API traces are the only
+// field data we get on what a diner's phone actually experiences.
+//
+// Deferred to an idle moment after mount: diners arrive on mobile data, and
+// starting the SDK at boot put its requests in front of the menu's own chunks.
+function startAnalytics() {
+    const go = () => {
+        initAnalytics('menu')
+        initPerformance()
+    }
+    if ('requestIdleCallback' in window) requestIdleCallback(go, { timeout: 3000 })
+    else setTimeout(go, 1000)
+}
 
 // Normalize Arabic-Indic / Persian digits to ASCII in phone & money inputs.
 installEnDigits()
@@ -49,3 +61,5 @@ app.directive('img-fade', {
 })
 
 app.mount('#app')
+
+startAnalytics()

@@ -45,6 +45,30 @@ class MenuShellTest extends TestCase
         $res->assertSee('<div id="app"></div>', false);
     }
 
+    public function test_arabic_restaurant_keeps_the_arabic_font_preloads(): void
+    {
+        Restaurant::factory()->create(['slug' => 'demo', 'name_ar' => 'مطعم', 'default_language' => 'ar']);
+
+        $res = $this->get('http://demo.xorder.io/menu');
+
+        $res->assertSee('/menu/fonts/tajawal-400-arabic.woff2', false);
+        $res->assertSee('/menu/fonts/tajawal-700-arabic.woff2', false);
+    }
+
+    public function test_english_restaurant_preloads_the_latin_font_subset(): void
+    {
+        Restaurant::factory()->create(['slug' => 'demo', 'name_en' => 'Demo', 'default_language' => 'en']);
+
+        $res = $this->get('http://demo.xorder.io/menu');
+
+        // The Arabic subset would never be used on this menu; preloading it
+        // would cost a diner ~9 KB and leave the subset they need undiscovered
+        // until the stylesheet parses.
+        $res->assertSee('/menu/fonts/tajawal-400-latin.woff2', false);
+        $res->assertSee('/menu/fonts/tajawal-700-latin.woff2', false);
+        $res->assertDontSee('tajawal-400-arabic.woff2', false);
+    }
+
     public function test_menu_shell_serves_whatsapp_friendly_derivatives(): void
     {
         Storage::fake('public');
@@ -104,7 +128,9 @@ class MenuShellTest extends TestCase
         Restaurant::factory()->create(['slug' => 'demo']);
 
         $this->get('/r/demo')
-            ->assertRedirect('https://demo.xorder.io/menu');
+            // Trailing slash is deliberate — it lands on the canonical path so the
+            // guest doesn't eat nginx's /menu -> /menu/ redirect on top of this one.
+            ->assertRedirect('https://demo.xorder.io/menu/');
     }
 
     public function test_legacy_path_serves_shell_without_menu_domain(): void

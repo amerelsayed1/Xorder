@@ -50,7 +50,9 @@ class PublicMenuTest extends TestCase
         // subdomain (302); without one it serves the SPA shell directly,
         // marked noindex because the restaurant is hidden.
         config(['platform.menu_domain' => 'xorder.io', 'platform.menu_secure' => true, 'platform.menu_port' => null]);
-        $this->get('/r/closed')->assertRedirect('https://closed.xorder.io/menu');
+        // Trailing slash is deliberate — the canonical menu path, so the guest
+        // doesn't eat nginx's /menu -> /menu/ redirect on top of this one.
+        $this->get('/r/closed')->assertRedirect('https://closed.xorder.io/menu/');
 
         config(['platform.menu_domain' => null, 'platform.menu_shell_path' => base_path('tests/Fixtures/menu-shell.html')]);
         $this->get('/r/closed')->assertOk()->assertSee('noindex', false);

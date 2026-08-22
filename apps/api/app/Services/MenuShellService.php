@@ -77,7 +77,32 @@ class MenuShellService
         $lang = $restaurant->default_language->value;
         $dir = $lang === 'ar' ? 'rtl' : 'ltr';
 
+        $html = $this->preloadFontSubset($html, $lang);
+
         return preg_replace('/<html[^>]*>/', "<html lang=\"{$lang}\" dir=\"{$dir}\">", $html, 1);
+    }
+
+    /**
+     * Point the shell's font preloads at the subset this restaurant will
+     * actually render.
+     *
+     * The built shell preloads the Arabic Tajawal subset (the SPA's default
+     * locale). On an English menu those bytes are never used and the Latin
+     * subset — which is — would only be discovered once the stylesheet is
+     * parsed. The @font-face rules themselves need no change: unicode-range
+     * already decides which file the browser fetches.
+     */
+    private function preloadFontSubset(string $html, string $lang): string
+    {
+        if ($lang === 'ar') {
+            return $html;
+        }
+
+        return preg_replace(
+            '#(<link[^>]+rel="preload"[^>]+href="[^"]*/fonts/tajawal-\d+)-arabic(\.woff2")#i',
+            '$1-latin$2',
+            $html,
+        ) ?? $html;
     }
 
     private function metaTags(Restaurant $restaurant, ?string $icon): string

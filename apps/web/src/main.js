@@ -9,13 +9,26 @@ import './app.css'
 import router from './router'
 import { i18n, setLocale } from '@xorder/ui/i18n'
 import { installEnDigits } from '@xorder/ui/enDigits.js'
-import { initAnalytics } from '@xorder/analytics'
+import { initAnalytics, initPerformance } from '@xorder/analytics'
 import { isSuperAdminHost } from './lib/host.js'
 import App from './App.vue'
 
-// Firebase Analytics (GA4). No-op until /firebase-config.js carries a
-// measurementId; page views are reported per-route from the router.
-initAnalytics('web')
+// Firebase Analytics (GA4) + Performance Monitoring. Both no-op until
+// /firebase-config.js carries a config; page views are reported per-route from
+// the router, and Performance auto-instruments the page load and every API call.
+//
+// Started after mount, not at module scope: kicking the firebase SDK off during
+// boot put a ~950ms `installations` request and the GA script on the critical
+// path, competing with the app's own chunks for bandwidth. Nothing user-facing
+// depends on telemetry being ready, so it waits for an idle moment.
+function startAnalytics() {
+    const go = () => {
+        initAnalytics('web')
+        initPerformance()
+    }
+    if ('requestIdleCallback' in window) requestIdleCallback(go, { timeout: 3000 })
+    else setTimeout(go, 1000)
+}
 
 // Xorder-branded Aura preset: primary = brand orange (#f89a06).
 const XorderAura = definePreset(Aura, {
@@ -69,3 +82,5 @@ createApp(App)
         },
     })
     .mount('#app')
+
+startAnalytics()

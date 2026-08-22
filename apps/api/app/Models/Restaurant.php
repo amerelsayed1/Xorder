@@ -242,7 +242,11 @@ class Restaurant extends Model
             $port = config('platform.menu_port');
             $portPart = $port ? ":{$port}" : '';
 
-            return "{$scheme}://{$this->slug}.{$domain}{$portPart}/menu";
+            // Trailing slash matters: nginx 301s /menu -> /menu/, so emitting the
+            // bare path made every scan of a restaurant QR pay an extra
+            // round-trip before the document even started. Already-printed codes
+            // still resolve — the redirect stays for them.
+            return "{$scheme}://{$this->slug}.{$domain}{$portPart}/menu/";
         }
 
         return rtrim(config('app.url'), '/').'/r/'.$this->slug;

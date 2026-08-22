@@ -1,6 +1,8 @@
-/* Tajawal is loaded via <link> in index.html (parallel, non-blocking) rather
-   than a render-blocking CSS @import. */
 @import 'tailwindcss';
+
+/* Self-hosted Tajawal. index.html preloads the two weights the first screen
+   needs, so the files are already in flight by the time this rule is read. */
+@import '../../../packages/ui/src/fonts.css';
 
 @source './**/*.{vue,js}';
 
