@@ -50,18 +50,23 @@ Xorder is **not a single-hostname app** like Rakeeza. Its internal nginx routes:
 Sanctum cookie auth depends on `*.xorder.io` being valid (see `.env.docker`
 `SANCTUM_STATEFUL_DOMAINS=*.localhost...`). So production needs:
 
-> **DNS for xorder.io is hosted at name.com** (not Namecheap — that's Rakeeza).
+> **DNS for xorder.io is hosted at Namecheap** (BasicDNS, nameservers
+> `*.registrar-servers.com`). It was at name.com until **Aug 2026**; the domain
+> transferred to Namecheap on 2026-08-17 but the registry delegation was left
+> pointing at name.com, whose nameservers then answered `REFUSED` — the whole
+> site went dark until the nameservers were repointed. If `xorder.io` ever stops
+> resolving, check `dig +short xorder.io NS` **before** touching the app.
 
 - **DNS:** an apex `A` record **and a wildcard** `A *  → 51.68.229.216` (plus `www`).
 - **TLS:** a certificate covering `xorder.io` **and** `*.xorder.io`. Certbot's
   **HTTP-01** challenge (what Rakeeza uses) **cannot issue wildcards** — wildcards
-  require a **DNS-01** challenge (a `_acme-challenge` TXT record at name.com).
+  require a **DNS-01** challenge (a `_acme-challenge` TXT record at Namecheap).
 
 **→ Claude must confirm with the user before writing the vhost/cert steps:**
 
 | Option | What it means |
 |--------|---------------|
-| **A. Wildcard (recommended, matches the app)** | Issue `xorder.io` + `*.xorder.io` via **DNS-01**. Best: **`acme.sh --dns dns_namecom`** (name.com API token → auto-renew). One-off fallback: `certbot --manual` with TXT records pasted into name.com. Outer nginx: one server block for `xorder.io *.xorder.io`. |
+| **A. Wildcard (recommended, matches the app)** | Issue `xorder.io` + `*.xorder.io` via **DNS-01**. Best: **`acme.sh --dns dns_namecheap`** (Namecheap API key + whitelisted VPS IP → auto-renew). One-off fallback: `certbot --manual` with TXT records pasted into Namecheap Advanced DNS. Outer nginx: one server block for `xorder.io *.xorder.io`. |
 | **B. Fixed subdomain list** | Only works if restaurants are a known, small set. Issue a SAN cert per subdomain via HTTP-01. New restaurant = new cert = not self-service. Usually **not acceptable** for this app. |
 | **C. Restructure to path-based** | Drop subdomains, route by path (`/r/{slug}`). Code change in this repo + nginx + Sanctum config. Bigger lift; only if the user wants to avoid wildcards entirely. |
 
@@ -101,15 +106,17 @@ already created** in this pass; `[ ]` are optional follow-ups.
       `apps/api/bootstrap/app.php` so the app sees `https` behind the two nginx hops
       (correct URLs + secure cookies).
 - [x] **`issue-cert.sh`** (repo root) — one-shot wildcard cert via `acme.sh`
-      `dns_namecom`: installs acme.sh, issues `xorder.io` + `*.xorder.io`, installs
+      `dns_namecheap`: installs acme.sh, issues `xorder.io` + `*.xorder.io`, installs
       the cert to `/etc/letsencrypt/live/xorder.io/`, and reloads Operix's nginx
       (auto-detected or `NGINX_CONTAINER=…`). Sets up auto-renew. Run on the VPS with
-      `NAMECOM_USERNAME` + `NAMECOM_TOKEN` exported.
+      `NAMECHEAP_USERNAME` + `NAMECHEAP_API_KEY` exported. Set `DNS_PROVIDER=cloudflare`
+      (+ `CF_Token`) to switch providers. Preflights that the zone is actually
+      delegated to that provider before burning a Let's Encrypt rate-limit slot.
 - [x] **`go-live.sh`** (repo root) — **one-command first bring-up.** Preflight →
       start xorder stack → wait for `127.0.0.1:8081/up` → issue cert
       (`issue-cert.sh`) → install the Operix vhost (`nginx -t`-gated, **auto-revert**
       on failure) → verify public endpoints. Toggles: `SKIP_CERT=1`, `SKIP_VHOST=1`,
-      `NGINX_CONTAINER=`, `NGINX_CONFD=`. Run on the VPS with name.com creds exported.
+      `NGINX_CONTAINER=`, `NGINX_CONFD=`. Run on the VPS with Namecheap creds exported.
 - [ ] **`bootstrap-cohost.sh`** (optional) — adapt Rakeeza's: detect Operix's nginx
       container + network, generate `APP_KEY`/`DB_PASSWORD`, bring the stack up, curl
       internal `/up`, then (gated by `nginx -t`) install the vhost. For wildcard TLS
@@ -156,19 +163,20 @@ already created** in this pass; `[ ]` are optional follow-ups.
    docker compose --env-file .env.production -f docker-compose.cohost.yml up -d --build
    curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8081/up   # 200
    ```
-4. **Issue the wildcard cert (DNS-01 at name.com).** Easiest — run the bundled
-   helper (token from name.com → Settings → API). It installs acme.sh, issues the
+4. **Issue the wildcard cert (DNS-01 at Namecheap).** Easiest — run the bundled
+   helper (key from Namecheap → Tools → API Access). It installs acme.sh, issues the
    cert, installs it where the vhost points, reloads nginx, and sets up auto-renew:
    ```bash
-   export NAMECOM_USERNAME="<namecom_username>" NAMECOM_TOKEN="<api_token>"
+   export NAMECHEAP_USERNAME="<namecheap_username>" NAMECHEAP_API_KEY="<api_key>"
    export ACME_EMAIL="you@xorder.io"
    ./issue-cert.sh                      # or: NGINX_CONTAINER=operix-nginx ./issue-cert.sh
    ```
    Equivalent manual commands (if you'd rather not use the script):
    ```bash
    curl https://get.acme.sh | sh -m you@xorder.io
-   export Namecom_Username="<namecom_username>"; export Namecom_Token="<api_token>"
-   ~/.acme.sh/acme.sh --issue --dns dns_namecom \
+   export NAMECHEAP_USERNAME="<namecheap_username>"; export NAMECHEAP_API_KEY="<api_key>"
+   export NAMECHEAP_SOURCEIP="51.68.229.216"   # must be whitelisted in Namecheap API Access
+   ~/.acme.sh/acme.sh --issue --dns dns_namecheap \
      -d xorder.io -d '*.xorder.io' --server letsencrypt
    ~/.acme.sh/acme.sh --install-cert -d xorder.io \
      --key-file       /etc/letsencrypt/live/xorder.io/privkey.pem \
@@ -179,24 +187,42 @@ already created** in this pass; `[ ]` are optional follow-ups.
    ```bash
    certbot certonly --manual --preferred-challenges dns -d xorder.io -d '*.xorder.io'
    ```
-   → add the printed `_acme-challenge` TXT record(s) at name.com, wait for
+   → add the printed `_acme-challenge` TXT record(s) at Namecheap, wait for
    propagation (`dig +short TXT _acme-challenge.xorder.io`), continue.
 5. **Add the vhost:** copy `docker/nginx/xorder.io.conf` into Operix's nginx
    `conf.d/`, then `nginx -t && nginx -s reload` (auto-revert if `nginx -t` fails).
 6. **Verify all three sites:** `xorder.io`, `admin.xorder.io`, a `{slug}.xorder.io`,
    **and** that `operixhq.com` + `rakeezasolutions.com` still respond.
 
-## 6. DNS at name.com (user does this; Claude can't)
+## 6. DNS at Namecheap (user does this; Claude can't — it needs an account login)
 
-My Domains → `xorder.io` → **DNS Records** (ensure name.com's own nameservers are
-active, not a parking/forwarding setup):
-- Add `A   @     51.68.229.216   TTL 300`
-- Add `A   www   51.68.229.216   TTL 300`
-- Add `A   *     51.68.229.216   TTL 300`   ← wildcard for restaurant subdomains
-- Cert issuance via `acme.sh --dns dns_namecom` writes/removes the
-  `_acme-challenge` TXT records automatically (manual fallback: add them by hand).
-- API token for automation: name.com → Account → Settings → **API**
-  (`https://www.name.com/account/settings/api`) → production token.
+Domain List → `xorder.io` → **Manage**:
+
+1. **Nameservers** → select **Namecheap BasicDNS** → save. (If it still says
+   "Custom DNS" with `*.name.com` entries, that IS the Aug-2026 outage — those
+   nameservers answer `REFUSED`.)
+2. **Advanced DNS** → delete any default parking / "URL Redirect" record on `@`
+   or `www` (Namecheap adds these automatically and they shadow real A records),
+   then add:
+
+| Type | Host | Value | TTL |
+|---|---|---|---|
+| A | `@` | `51.68.229.216` | 1 min |
+| A | `www` | `51.68.229.216` | 1 min |
+| A | `*` | `51.68.229.216` | 1 min |
+
+The `*` wildcard is load-bearing — every `{slug}.xorder.io` restaurant menu
+depends on it. Raise TTL to 30 min once verified.
+
+- Cert issuance via `acme.sh --dns dns_namecheap` writes/removes the
+  `_acme-challenge` TXT records automatically (manual fallback: add by hand).
+- API key for automation: Namecheap → Profile → **Tools** → Business & Dev Tools
+  → **API Access**. Requires account eligibility (20+ domains, or $50 balance, or
+  $50 spent in 2 years) **and** the VPS IP `51.68.229.216` added to the API
+  whitelist on that same page, or every call returns "Invalid request IP".
+- ⚠️ acme.sh's Namecheap hook rewrites the **full** host-record set on each
+  renewal (the API has no add-single-record call). Screenshot Advanced DNS before
+  the first automated run so the record set can be restored if it clobbers them.
 
 ## 7. Collision-avoidance map (vs Operix + Rakeeza on the same box)
 

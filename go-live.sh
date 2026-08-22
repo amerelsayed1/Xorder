@@ -9,7 +9,7 @@
 #   1. Preflight   — checks .env.production, docker, the Operix proxy network.
 #   2. Bring up    — starts xorder app + web + db (no 80/443) and waits until
 #                    http://127.0.0.1:8081/up returns 200.
-#   3. Cert        — issues the wildcard cert via ./issue-cert.sh (name.com DNS-01).
+#   3. Cert        — issues the wildcard cert via ./issue-cert.sh (Namecheap DNS-01).
 #   4. Vhost       — installs docker/nginx/xorder.io.conf into Operix's nginx,
 #                    `nginx -t`-gated with AUTO-REVERT on failure, then reloads.
 #   5. Verify      — curls the public endpoints + checks the cert SANs.
@@ -19,8 +19,11 @@
 # operixhq.com / rakeezasolutions.com are never put at risk).
 #
 # Required env (cert phase):
-#   NAMECOM_USERNAME  NAMECOM_TOKEN     name.com API creds (Settings → API)
+#   NAMECHEAP_USERNAME  NAMECHEAP_API_KEY   Namecheap API creds (Profile → Tools
+#                                           → API Access; VPS IP must be whitelisted)
 # Optional env:
+#   DNS_PROVIDER      namecheap (default) | cloudflare — passed to issue-cert.sh
+#   CF_Token          Cloudflare API token, when DNS_PROVIDER=cloudflare
 #   ACME_EMAIL        Let's Encrypt contact (default admin@xorder.io)
 #   NGINX_CONTAINER   Operix's nginx container (auto-detected if unset)
 #   NGINX_CONFD       host dir bind-mounted to the nginx container's conf.d.
@@ -104,13 +107,21 @@ if [ "${SEED_DEMO:-true}" = "true" ]; then
   log_ok "Demo data seeded. Deploys do NOT re-seed; refresh with: SEED_DEMO=true ./deploy.sh"
 fi
 
-# ── 3. Wildcard cert (name.com DNS-01) ──────────────────────────────────────
+# ── 3. Wildcard cert (DNS-01) ───────────────────────────────────────────────
 if [ "${SKIP_CERT:-0}" = "1" ]; then
   log_warn "SKIP_CERT=1 — skipping cert issuance."
 else
   log_step "Issuing wildcard cert for ${DOMAIN} + *.${DOMAIN}…"
-  [ -n "${NAMECOM_USERNAME:-}" ] && [ -n "${NAMECOM_TOKEN:-}" ] \
-    || die "NAMECOM_USERNAME / NAMECOM_TOKEN not set (needed for DNS-01). Export them, or re-run with SKIP_CERT=1 if the cert already exists."
+  case "${DNS_PROVIDER:-namecheap}" in
+    namecheap)
+      [ -n "${NAMECHEAP_USERNAME:-}" ] && [ -n "${NAMECHEAP_API_KEY:-}" ] \
+        || die "NAMECHEAP_USERNAME / NAMECHEAP_API_KEY not set (needed for DNS-01). Export them, or re-run with SKIP_CERT=1 if the cert already exists." ;;
+    cloudflare)
+      [ -n "${CF_Token:-}" ] \
+        || die "CF_Token not set (needed for DNS-01 via Cloudflare). Export it, or re-run with SKIP_CERT=1 if the cert already exists." ;;
+    *)
+      die "Unknown DNS_PROVIDER='${DNS_PROVIDER}' (expected: namecheap | cloudflare)." ;;
+  esac
   detect_nginx
   NGINX_CONTAINER="$NGINX_CONTAINER" "$DEPLOY_DIR/issue-cert.sh"
   log_ok "Cert issued + installed to ${CERT_LIVE}."
