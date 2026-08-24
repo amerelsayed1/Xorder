@@ -677,6 +677,6 @@ class ReportService
 
     private function timezone(Restaurant $restaurant): string
     {
-        return $restaurant->timezone ?: config('app.timezone', 'UTC');
+        return $restaurant->localTimezone();
     }
 }

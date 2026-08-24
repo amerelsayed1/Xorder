@@ -1,5 +1,5 @@
 <script setup>
-import { reactive, ref, onMounted } from 'vue'
+import { computed, reactive, ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import api, { ensureCsrf } from '@xorder/api-client/api.js'
 import ImageUploader from '@xorder/ui/ImageUploader.vue'
@@ -10,7 +10,7 @@ import { collectPhoneErrors } from '../../lib/phone.js'
 import { useAuth } from '@xorder/api-client/auth.js'
 import { useCaps } from '../../lib/useCaps.js'
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const auth = useAuth()
 // The page opens on settings.view; every field and the save button
 // additionally require settings.update.
@@ -20,7 +20,7 @@ const form = reactive({
     name_en: '', name_ar: '', description_en: '', description_ar: '',
     phone: '', whatsapp_number: '', address: '', opening_hours: '',
     business_hours: {}, delivery_time_min: null, delivery_time_max: null,
-    minimum_order: '', latitude: '', longitude: '',
+    minimum_order: '', latitude: '', longitude: '', timezone: '',
     logo_url: '', cover_image_url: '',
     social_links: { instagram: '', facebook: '', tiktok: '' },
     accepts_orders: true,
@@ -29,6 +29,29 @@ const form = reactive({
 // entitled channel on and off. With no entitled channel there is nothing to
 // switch, so the control is hidden rather than shown doing nothing.
 const orderingEntitled = ref(false)
+// Zones the dashboard offers by name. Any IANA identifier the server knows is
+// accepted, so a restaurant already on something outside this list keeps it —
+// the current value is appended below rather than silently swapped.
+const TIMEZONES = [
+    'Africa/Cairo', 'Asia/Riyadh', 'Asia/Dubai', 'Asia/Kuwait', 'Asia/Qatar',
+    'Asia/Bahrain', 'Asia/Muscat', 'Asia/Amman', 'Asia/Beirut', 'Asia/Baghdad',
+    'Africa/Casablanca', 'Africa/Tunis', 'Africa/Algiers', 'Africa/Tripoli',
+    'Africa/Khartoum', 'Europe/London', 'Europe/Paris', 'Europe/Istanbul', 'UTC',
+]
+const timezoneOptions = computed(() => (
+    form.timezone && !TIMEZONES.includes(form.timezone) ? [form.timezone, ...TIMEZONES] : TIMEZONES
+))
+// What the chosen zone means in practice, so the owner can sanity-check it
+// against the clock on their wall before saving.
+const timezoneNow = computed(() => {
+    try {
+        return new Intl.DateTimeFormat(locale.value === 'ar' ? 'ar-EG' : 'en-GB', {
+            timeZone: form.timezone || 'UTC', hour: '2-digit', minute: '2-digit', weekday: 'short',
+        }).format(new Date())
+    } catch {
+        return ''
+    }
+})
 const errors = ref({})
 const saved = ref(false)
 const saving = ref(false)
@@ -187,6 +210,16 @@ async function changePassword() {
                     <input v-model="form.minimum_order" type="number" min="0" step="0.01" class="input" dir="ltr" />
                     <FormError :errors="errors" field="minimum_order" /></label>
             </div>
+
+            <label class="block"><span class="label">{{ t('restaurant.timezone') }}</span>
+                <select v-model="form.timezone" class="input" dir="ltr">
+                    <option v-for="tz in timezoneOptions" :key="tz" :value="tz">{{ tz }}</option>
+                </select>
+                <p class="hint">
+                    {{ t('restaurant.timezone_hint') }}
+                    <template v-if="timezoneNow"> — {{ t('restaurant.timezone_now', { time: timezoneNow }) }}</template>
+                </p>
+                <FormError :errors="errors" field="timezone" /></label>
 
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <ImageUploader v-model="form.logo_url" folder="logos" :label="t('restaurant.logo')" :disabled="!canUpdate" />

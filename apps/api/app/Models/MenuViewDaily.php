@@ -33,10 +33,9 @@ class MenuViewDaily extends Model
      */
     public static function todayFor(int $restaurantId): string
     {
-        $tz = Restaurant::withoutGlobalScopes()->whereKey($restaurantId)->value('timezone')
-            ?: config('app.timezone', 'UTC');
+        $restaurant = Restaurant::withoutGlobalScopes()->find($restaurantId);
 
-        return now()->setTimezone($tz)->toDateString();
+        return $restaurant?->today() ?? now(config('app.timezone', 'UTC'))->toDateString();
     }
 
     /**

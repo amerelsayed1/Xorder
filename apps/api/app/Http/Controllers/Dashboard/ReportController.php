@@ -33,7 +33,7 @@ class ReportController extends Controller
         return response()->json([
             'data' => $this->reports->productsByTime($restaurant, $filters),
             'meta' => [
-                'timezone' => $restaurant->timezone ?: config('app.timezone', 'UTC'),
+                'timezone' => $restaurant->localTimezone(),
                 'periods' => array_column((array) config('platform.report_periods', []), 'key'),
             ],
         ]);

@@ -39,7 +39,12 @@ class StatsController extends Controller
                 'unavailable_items' => $totalItems - $availableItems,
                 'featured_items' => MenuItem::where('is_featured', true)->count(),
                 'new_orders' => Order::where('status', OrderStatus::NEW)->count(),
-                'views_today' => (int) MenuViewDaily::whereDate('date', now()->toDateString())->sum('views'),
+                // The restaurant's own midnight, not the server's. On a UTC box a
+                // Cairo owner (UTC+3) opening the dashboard at 1am still saw
+                // yesterday's total sitting there, because the server's day had
+                // not turned over yet. MenuViewDaily writes its rows against the
+                // same local day, so counter and storage agree.
+                'views_today' => (int) MenuViewDaily::whereDate('date', $restaurant->today())->sum('views'),
             ],
         ]);
     }

@@ -127,7 +127,7 @@ class InsightsController extends Controller
         // a UTC server a Cairo restaurant (UTC+3) would otherwise roll over at
         // 3am local and spill a busy Friday night into Saturday. MenuViewDaily
         // stores its rows against the same local day.
-        $tz = $restaurant->timezone ?: config('app.timezone', 'UTC');
+        $tz = $restaurant->localTimezone();
 
         $today = now($tz)->toDateString();
         $since = now($tz)->subDays(13)->toDateString();

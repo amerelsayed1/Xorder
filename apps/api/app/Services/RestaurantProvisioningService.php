@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\CurrencyEnum;
 use App\Enums\Feature;
 use App\Enums\RoleEnum;
 use App\Enums\UserStatus;
@@ -76,6 +77,17 @@ class RestaurantProvisioningService
         }
         if (empty($restaurantData['subscription_end_date'])) {
             $restaurantData['subscription_end_date'] = now()->addMonth()->toDateString();
+        }
+
+        // Seed a timezone from the billing currency so a new restaurant's
+        // "today" turns over at its own midnight from day one. Leaving it null
+        // would silently mean UTC, which for a Cairo owner rolls the dashboard
+        // over at 3am. The owner can change it in their profile.
+        if (empty($restaurantData['timezone'])) {
+            $currency = CurrencyEnum::tryFrom((string) ($restaurantData['currency'] ?? ''))
+                ?? CurrencyEnum::EGP;
+
+            $restaurantData['timezone'] = $currency->defaultTimezone() ?: config('app.timezone', 'UTC');
         }
 
         [$restaurant, $admin] = DB::transaction(function () use ($restaurantData, $adminData, $plainPassword, $branchData, $fallback) {

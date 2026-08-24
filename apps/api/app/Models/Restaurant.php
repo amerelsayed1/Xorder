@@ -101,6 +101,24 @@ class Restaurant extends Model
     public const SOCIAL_PLATFORMS = ['instagram', 'facebook', 'tiktok'];
 
     /**
+     * The timezone every "today" in this restaurant's dashboard is measured in.
+     *
+     * One definition, used by the views counter, the insights charts and the
+     * reports, so a day boundary means the same thing on every screen. Falls
+     * back to the app timezone only for rows that somehow still carry no zone.
+     */
+    public function localTimezone(): string
+    {
+        return $this->timezone ?: config('app.timezone', 'UTC');
+    }
+
+    /** The restaurant's own calendar day, right now — "2026-08-25". */
+    public function today(): string
+    {
+        return now($this->localTimezone())->toDateString();
+    }
+
+    /**
      * Configured social links restricted to known platforms with a non-empty
      * URL. Empty/unknown entries are dropped so the public menu only ever links
      * to profiles the restaurant actually set.

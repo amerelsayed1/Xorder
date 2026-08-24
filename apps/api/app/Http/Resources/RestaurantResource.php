@@ -29,6 +29,10 @@ class RestaurantResource extends JsonResource
             'phone' => $this->phone,
             'whatsapp_number' => $this->whatsapp_number,
             'address' => $this->address,
+            // Always resolved, never null: the settings form needs a concrete
+            // zone selected, and callers reading it get the same day boundary
+            // the server uses.
+            'timezone' => $this->localTimezone(),
             'opening_hours' => $this->opening_hours,
             'business_hours' => (object) ($this->business_hours ?? []),
             'delivery_time_min' => $this->delivery_time_min,

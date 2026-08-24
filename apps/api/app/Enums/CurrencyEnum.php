@@ -33,4 +33,31 @@ enum CurrencyEnum: string
             self::GBP => '£',
         };
     }
+
+    /**
+     * The IANA timezone a restaurant billing in this currency almost certainly
+     * keeps its day by, or null when the currency spans too many zones to guess
+     * (USD, EUR, GBP).
+     *
+     * Only ever a *starting* value: it seeds the timezone of a newly created
+     * restaurant and backfilled the ones that predate the setting. The owner can
+     * change it in their profile, and that choice is what everything reads. This
+     * exists because the alternative default — UTC — silently rolls "today" over
+     * at 2 or 3am local, so a Cairo owner watching the dashboard just after
+     * midnight still sees yesterday's numbers.
+     */
+    public function defaultTimezone(): ?string
+    {
+        return match ($this) {
+            self::EGP => 'Africa/Cairo',
+            self::SAR => 'Asia/Riyadh',
+            self::AED => 'Asia/Dubai',
+            self::KWD => 'Asia/Kuwait',
+            self::QAR => 'Asia/Qatar',
+            self::BHD => 'Asia/Bahrain',
+            self::OMR => 'Asia/Muscat',
+            self::JOD => 'Asia/Amman',
+            self::USD, self::EUR, self::GBP => null,
+        };
+    }
 }

@@ -28,6 +28,10 @@ class UpdateRestaurantProfileRequest extends FormRequest
             'phone' => ['nullable', 'string', 'max:32', (new MobileNumber)->allowLandline()],
             'whatsapp_number' => ['nullable', 'string', 'max:32', new MobileNumber],
             'address' => ['nullable', 'string', 'max:1000'],
+            // Decides when the restaurant's day turns over: every "today" on the
+            // dashboard (menu views, order counts, reports) is measured in this
+            // zone. `timezone:all` accepts any IANA identifier PHP knows.
+            'timezone' => ['nullable', 'string', 'max:64', 'timezone:all'],
             'opening_hours' => ['nullable', 'string', 'max:2000'],
             'business_hours' => ['nullable', 'array'],
             'business_hours.*.closed' => ['sometimes', 'boolean'],
