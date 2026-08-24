@@ -32,8 +32,11 @@ onMounted(load)
 
 // Roles are named per restaurant in both languages; fall back to the English
 // name when a tenant left the Arabic one blank.
-const roleLabel = (u) => pickLocalized({ name_en: u.role_name, name_ar: u.role_name_ar }, 'name', locale.value)
-    || u.role_name || '—'
+// The owner's access is implicit — no Role governs them — so the column says
+// what is true rather than borrowing a role name that would not apply.
+const roleLabel = (u) => u.is_owner
+    ? t('team.owner_full_access')
+    : (pickLocalized({ name_en: u.role_name, name_ar: u.role_name_ar }, 'name', locale.value) || u.role_name || '—')
 
 async function resetPassword(u) {
     const ok = await confirm({
@@ -109,12 +112,18 @@ async function remove(u) {
                         <td class="px-5 py-3 font-medium" style="color:var(--ink)">{{ u.name }}</td>
                         <td class="px-3 py-3 mono" style="color:var(--body)" dir="ltr">{{ u.username }}</td>
                         <td class="px-3 py-3" style="color:var(--body)" dir="ltr">{{ u.email || '—' }}</td>
-                        <td class="px-3 py-3"><span class="badge badge-indigo">{{ roleLabel(u) }}</span></td>
+                        <td class="px-3 py-3">
+                            <span class="badge" :class="u.is_owner ? 'badge-amber' : 'badge-indigo'">{{ roleLabel(u) }}</span>
+                        </td>
                         <td class="px-3 py-3">
                             <span class="badge" :class="u.status === 'ACTIVE' ? 'badge-green' : 'badge-gray'">{{ t(`status.${u.status}`) }}</span>
                         </td>
                         <td class="px-5 py-3 text-end whitespace-nowrap">
-                            <div class="inline-flex items-center gap-2">
+                            <!-- The owner is listed, never actioned: the API 404s on
+                                 every write against that account, so offering the
+                                 controls here would only produce dead buttons. -->
+                            <span v-if="u.is_owner" class="text-xs" style="color:var(--muted)">{{ t('team.owner_not_editable') }}</span>
+                            <div v-else class="inline-flex items-center gap-2">
                                 <RouterLink v-if="canUpdate" :to="{ name: 'dashboard.staff.edit', params: { id: u.id } }" class="btn btn-ghost" style="padding:5px 11px;font-size:12px">{{ t('common.edit') }}</RouterLink>
                                 <!-- Resetting a password edits the account rather than creating one. -->
                                 <button v-if="canUpdate" @click="resetPassword(u)" :disabled="busy === u.id" class="btn btn-ghost" style="padding:5px 11px;font-size:12px">{{ t('team.reset_password') }}</button>

@@ -30,11 +30,31 @@ class StaffController extends Controller
 {
     public function __construct(private readonly TenantUserService $service) {}
 
+    /**
+     * Everyone who can sign in to this restaurant — the owner included.
+     *
+     * The owner is listed but never actionable: they hold every capability
+     * implicitly and no Role governs them, so the row is informational. An
+     * Employees screen that hid the one person who is always there read as
+     * broken, especially for a restaurant that has not added staff yet.
+     *
+     * Only the listing widens. Every write path still runs through
+     * {@see guardTarget()}, which 404s on anything that is not a staff account
+     * of the caller's own tenant — so no request can edit, suspend or delete
+     * the account that owns the restaurant, whatever the UI offers.
+     */
     public function index(): JsonResponse
     {
-        $staff = $this->scoped()->with('tenantRole')->orderByDesc('id')->get();
+        $people = User::query()
+            ->where('restaurant_id', request()->user()?->restaurant_id)
+            ->whereIn('role', [RoleEnum::RESTAURANT_ADMIN, RoleEnum::RESTAURANT_STAFF])
+            ->with('tenantRole')
+            // Owner first, then newest staff.
+            ->orderByRaw('CASE WHEN role = ? THEN 0 ELSE 1 END', [RoleEnum::RESTAURANT_ADMIN->value])
+            ->orderByDesc('id')
+            ->get();
 
-        return response()->json(['data' => UserResource::collection($staff)]);
+        return response()->json(['data' => UserResource::collection($people)]);
     }
 
     public function show(User $staff): JsonResponse
@@ -104,7 +124,11 @@ class StaffController extends Controller
         return response()->json(['message' => __('xorder.messages.staff_deleted')]);
     }
 
-    /** Staff accounts of the caller's restaurant — never the owner, never another tenant. */
+    /**
+     * Staff accounts of the caller's restaurant — never the owner, never
+     * another tenant. Used by every path that acts on an account; the listing
+     * above deliberately casts wider.
+     */
     private function scoped()
     {
         return User::query()

@@ -235,7 +235,12 @@ class TenantRbacTest extends TestCase
         $this->assertSame(RoleEnum::RESTAURANT_STAFF, $created->role);
     }
 
-    public function test_staff_endpoint_never_exposes_another_tenant_or_the_owner(): void
+    /**
+     * The owner now appears in the listing (see the owner-row cases below), but
+     * the *actionable* surface is unchanged: another tenant is invisible, and
+     * the owner account remains untouchable through these endpoints.
+     */
+    public function test_staff_endpoint_never_exposes_another_tenant(): void
     {
         $mine = Restaurant::factory()->create();
         $theirs = Restaurant::factory()->create();
@@ -243,10 +248,16 @@ class TenantRbacTest extends TestCase
         $myStaff = $this->staff($mine, $this->role($mine, 'Waiter', [TenantCapability::ORDERS_VIEW]));
         $theirStaff = $this->staff($theirs, $this->role($theirs, 'Waiter', [TenantCapability::ORDERS_VIEW]));
 
-        $this->actingAs($owner)->getJson('/api/dashboard/staff')
+        $rows = $this->actingAs($owner)->getJson('/api/dashboard/staff')
             ->assertOk()
-            ->assertJsonCount(1, 'data')
-            ->assertJsonPath('data.0.id', $myStaff->id);
+            ->assertJsonCount(2, 'data')
+            ->json('data');
+
+        // My owner and my staff — and nobody else's.
+        $this->assertEqualsCanonicalizing(
+            [$owner->id, $myStaff->id],
+            array_column($rows, 'id'),
+        );
 
         // 404, not 403: cross-tenant ids and the owner account are invisible here.
         $this->actingAs($owner)->getJson("/api/dashboard/staff/{$theirStaff->id}")->assertNotFound();
@@ -485,5 +496,81 @@ class TenantRbacTest extends TestCase
         $this->actingAs($this->staff($restaurant, $role))
             ->getJson("/api/dashboard/branches/{$branch->id}/presence")
             ->assertForbidden();
+    }
+
+    // ------------------------------------------------ owners in the staff list
+
+    /**
+     * An Employees screen that hid the one person always present read as broken,
+     * so owners are listed — but listing is all it is. Every write against an
+     * owner still 404s, which is what stops a tenant locking itself out.
+     */
+    public function test_the_staff_list_includes_the_owner_marked_as_such(): void
+    {
+        $restaurant = Restaurant::factory()->create();
+        $owner = User::factory()->restaurantAdmin($restaurant->id)->create(['name' => 'The Owner']);
+        $role = $this->role($restaurant, 'Cashier', [TenantCapability::ORDERS_UPDATE]);
+        $staff = $this->staff($restaurant, $role, ['name' => 'A Cashier']);
+
+        $rows = $this->actingAs($owner)->getJson('/api/dashboard/staff')->assertOk()->json('data');
+
+        $this->assertCount(2, $rows);
+        // Owner first, so the list opens on the account that is always there.
+        $this->assertSame($owner->id, $rows[0]['id']);
+        $this->assertTrue($rows[0]['is_owner']);
+        $this->assertNull($rows[0]['role_id']);
+
+        $this->assertSame($staff->id, $rows[1]['id']);
+        $this->assertFalse($rows[1]['is_owner']);
+    }
+
+    public function test_an_owner_cannot_be_edited_suspended_or_deleted_through_the_staff_endpoints(): void
+    {
+        $restaurant = Restaurant::factory()->create();
+        $actingOwner = User::factory()->restaurantAdmin($restaurant->id)->create();
+        $otherOwner = User::factory()->restaurantAdmin($restaurant->id)->create();
+        $role = $this->role($restaurant, 'Cashier', [TenantCapability::ORDERS_UPDATE]);
+
+        // 404, not 403: the owner account is invisible to these endpoints.
+        $this->actingAs($actingOwner)->getJson("/api/dashboard/staff/{$otherOwner->id}")->assertNotFound();
+        $this->actingAs($actingOwner)
+            ->putJson("/api/dashboard/staff/{$otherOwner->id}", [
+                'name' => 'Hijacked', 'username' => 'hijacked', 'role_id' => $role->id,
+            ])
+            ->assertNotFound();
+        $this->actingAs($actingOwner)->deleteJson("/api/dashboard/staff/{$otherOwner->id}")->assertNotFound();
+        $this->actingAs($actingOwner)
+            ->postJson("/api/dashboard/staff/{$otherOwner->id}/reset-password")
+            ->assertNotFound();
+
+        $this->assertDatabaseHas('users', ['id' => $otherOwner->id, 'role' => 'RESTAURANT_ADMIN']);
+    }
+
+    /** Staff with staff.delete must not be able to remove the owner either. */
+    public function test_staff_holding_delete_still_cannot_remove_the_owner(): void
+    {
+        $restaurant = Restaurant::factory()->create();
+        $owner = User::factory()->restaurantAdmin($restaurant->id)->create();
+        $powerful = $this->role($restaurant, 'Manager', TenantCapability::cases());
+
+        $this->actingAs($this->staff($restaurant, $powerful))
+            ->deleteJson("/api/dashboard/staff/{$owner->id}")
+            ->assertNotFound();
+
+        $this->assertDatabaseHas('users', ['id' => $owner->id]);
+    }
+
+    /** Another tenant's owner never appears, listing or otherwise. */
+    public function test_the_list_never_crosses_tenants(): void
+    {
+        $mine = Restaurant::factory()->create();
+        $theirs = Restaurant::factory()->create();
+        $myOwner = User::factory()->restaurantAdmin($mine->id)->create();
+        User::factory()->restaurantAdmin($theirs->id)->create();
+
+        $rows = $this->actingAs($myOwner)->getJson('/api/dashboard/staff')->assertOk()->json('data');
+
+        $this->assertCount(1, $rows);
+        $this->assertSame($myOwner->id, $rows[0]['id']);
     }
 }
