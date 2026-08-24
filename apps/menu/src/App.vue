@@ -1,7 +1,8 @@
 <script setup>
-import { ref, computed, reactive, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, reactive, watch, onMounted, onUnmounted, defineAsyncComponent } from 'vue'
 import { postOrder, saveCustomer } from './api.js'
 import { track } from './lib/analytics.js'
+import { warm } from './lib/prefetch.js'
 import { useLocale } from './composables/useLocale'
 import { useCart } from './composables/useCart'
 import { useOrder } from './composables/useOrder'
@@ -12,19 +13,34 @@ import { useTableSession } from './composables/useTableSession'
 import { useReviewPrompt } from './composables/useReviewPrompt'
 import Header from './components/Header.vue'
 import Hero from './components/Hero.vue'
-import RestaurantInfoModal from './components/RestaurantInfoModal.vue'
 import CategoryTabs from './components/CategoryTabs.vue'
 import MenuGrid from './components/MenuGrid.vue'
 import MenuSkeleton from './components/MenuSkeleton.vue'
 import Footer from './components/Footer.vue'
-import BranchesPage from './components/BranchesPage.vue'
-import CartDrawer from './components/CartDrawer.vue'
-import ItemModal from './components/ItemModal.vue'
-import OrderSuccessModal from './components/OrderSuccessModal.vue'
-import UserInfoDialog from './components/UserInfoDialog.vue'
-import SideMenu from './components/SideMenu.vue'
-import BillRequestButton from './components/BillRequestButton.vue'
-import ReviewPromptModal from './components/ReviewPromptModal.vue'
+
+// The first screen is the topbar, the category toolbar and the menu grid —
+// everything above stays in the entry bundle. Everything below only exists
+// behind a tap (a modal, a drawer, the branches page) or behind a table QR
+// scan, so it is code-split: a QR scan is almost always a cold load on mobile
+// data, and shipping the checkout flow to a diner who is still reading the
+// menu costs them download and parse time before they see a single item.
+// The checkout components in particular drag in libphonenumber's metadata,
+// which is a third of the bundle on its own.
+//
+// Each loader is kept alongside its component so it can be warmed (see the
+// `warm` calls below) the moment a diner shows intent, rather than on the tap.
+const loadItemModal = () => import('./components/ItemModal.vue')
+const loadCartDrawer = () => import('./components/CartDrawer.vue')
+const loadOrderSuccess = () => import('./components/OrderSuccessModal.vue')
+const ItemModal = defineAsyncComponent(loadItemModal)
+const CartDrawer = defineAsyncComponent(loadCartDrawer)
+const OrderSuccessModal = defineAsyncComponent(loadOrderSuccess)
+const RestaurantInfoModal = defineAsyncComponent(() => import('./components/RestaurantInfoModal.vue'))
+const BranchesPage = defineAsyncComponent(() => import('./components/BranchesPage.vue'))
+const UserInfoDialog = defineAsyncComponent(() => import('./components/UserInfoDialog.vue'))
+const SideMenu = defineAsyncComponent(() => import('./components/SideMenu.vue'))
+const BillRequestButton = defineAsyncComponent(() => import('./components/BillRequestButton.vue'))
+const ReviewPromptModal = defineAsyncComponent(() => import('./components/ReviewPromptModal.vue'))
 
 // Slug normally comes from the subdomain (e.g. acme.xorder.io → "acme").
 // On a bare host (localhost / IP) there is no subdomain, so fall back to a
@@ -61,8 +77,24 @@ watch(payload, (loaded) => {
     if (loaded && !viewTracked) {
         viewTracked = true
         track('menu_viewed', { slug })
+        // The grid is on screen and the diner is reading it — the next tap is
+        // almost always an item card, so fetch that chunk now instead of on
+        // the tap. It is small; the checkout bundle waits for real intent.
+        warm(loadItemModal)
     }
 })
+
+// A line in the cart is the clearest signal a diner means to check out, so
+// that is when the (much heavier, phone-metadata-carrying) checkout chunk is
+// worth fetching — along with the confirmation that follows it, because the
+// moment right after "send order" is the worst one to leave blank. Immediate,
+// because a returning diner can arrive with a restored cart and go straight
+// for the cart button.
+watch(cartCount, (n) => {
+    if (n === 0) return
+    warm(loadCartDrawer)
+    warm(loadOrderSuccess)
+}, { immediate: true })
 
 const navDrawer = ref(false)
 const cartDrawer = ref(false)
@@ -359,14 +391,20 @@ function updateUserField(field, value) {
 
 <template>
     <div :style="{ '--accent': accent, '--acc': accent }" :data-layout="menuLayout" class="site-shell">
-        <MenuSkeleton v-if="loading" />
+        <!-- Exactly one <main> per state: the skeleton while the payload loads,
+             the message on failure, and .page-wrap once the menu renders. The
+             loading one is marked busy so a screen reader is told the region is
+             still filling rather than finding it empty. -->
+        <main v-if="loading" :aria-label="t('main_content')" aria-busy="true">
+            <MenuSkeleton />
+        </main>
 
-        <div v-else-if="error || unavailable" class="min-h-screen grid place-items-center text-center px-6">
+        <main v-else-if="error || unavailable" :aria-label="t('main_content')" class="min-h-screen grid place-items-center text-center px-6">
             <div class="space-y-4">
                 <p class="text-lg text-stone-500">{{ unavailable ? t('unavailable') : t('error_generic') }}</p>
                 <button v-if="error && !unavailable" @click="loadMenu" class="px-5 py-2.5 rounded-xl font-semibold text-white" :style="{ background: accent }">{{ t('try_again') }}</button>
             </div>
-        </div>
+        </main>
 
         <template v-else>
             <Header
@@ -402,7 +440,7 @@ function updateUserField(field, value) {
                 <button v-if="canRetryLocation" type="button" class="table-banner__retry" @click="retryTable">{{ t('try_again') }}</button>
             </div>
 
-            <div class="page-wrap">
+            <main class="page-wrap" :aria-label="t('main_content')">
                 <template v-if="view === 'menu'">
                     <Hero
                         :restaurant="restaurant"
@@ -445,12 +483,12 @@ function updateUserField(field, value) {
                     :accent="accent"
                     @goHome="goHome(); navDrawer = false"
                 />
-            </div>
+            </main>
 
             <Footer :t="t" :socials="restaurant?.social_links" />
 
             <CartDrawer
-                v-if="orderingEnabled"
+                v-if="orderingEnabled && cartDrawer"
                 :isOpen="cartDrawer"
                 :cart="cart"
                 :cartCount="cartCount"
@@ -487,6 +525,7 @@ function updateUserField(field, value) {
             </button>
 
             <ItemModal
+                v-if="modal"
                 :isOpen="!!modal"
                 :item="modal?.ref"
                 :kind="modal?.kind"
@@ -505,6 +544,7 @@ function updateUserField(field, value) {
             />
 
             <OrderSuccessModal
+                v-if="orderSuccess"
                 :isOpen="orderSuccess"
                 :reopenUrl="lastOrderUrl"
                 :orderCode="lastOrderCode"
@@ -514,7 +554,7 @@ function updateUserField(field, value) {
             />
 
             <ReviewPromptModal
-                v-if="reviewsEnabled"
+                v-if="reviewsEnabled && reviewPrompt"
                 :isOpen="reviewPrompt"
                 :slug="slug"
                 :locale="locale"
@@ -529,6 +569,7 @@ function updateUserField(field, value) {
             />
 
             <SideMenu
+                v-if="navDrawer"
                 :isOpen="navDrawer"
                 :hasBranches="branches.length > 0"
                 :waDigits="waDigits"
@@ -550,6 +591,7 @@ function updateUserField(field, value) {
             />
 
             <UserInfoDialog
+                v-if="userInfoDialog"
                 :isOpen="userInfoDialog"
                 :isEditing="isEditing"
                 :userInfo="userInfo"

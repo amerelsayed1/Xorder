@@ -167,11 +167,22 @@ const priceOf = (section, item) => {
                         :key="item.id"
                         class="product-card"
                         :class="{ unavailable: !orderable(section, item) }"
-                        role="button"
-                        :tabindex="orderable(section, item) ? 0 : -1"
-                        @click="orderable(section, item) && $emit('openModal', section.kind, item)"
-                        @keydown.enter="orderable(section, item) && $emit('openModal', section.kind, item)"
                     >
+                        <!-- The whole card opens the item, but the card itself must not
+                             be the button: an <article role="button"> is invalid ARIA,
+                             and it swallows the heading, price and (once the item is in
+                             the cart) the stepper's own buttons into one opaque control.
+                             An overlay button carries the click and the keyboard focus
+                             instead; .card-action sits above it so the stepper stays
+                             reachable. Unavailable items get no button at all — they
+                             were never openable. -->
+                        <button
+                            v-if="orderable(section, item)"
+                            type="button"
+                            class="card-open"
+                            :aria-label="localize(item)"
+                            @click="$emit('openModal', section.kind, item)"
+                        ></button>
                         <div class="product-image-wrap">
                             <!-- Fallback glyph sits behind the image; a loaded photo
                                  covers it, and a broken URL (img.is-error) reveals it

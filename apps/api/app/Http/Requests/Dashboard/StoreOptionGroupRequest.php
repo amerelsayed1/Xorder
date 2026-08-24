@@ -11,7 +11,7 @@ class StoreOptionGroupRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return $this->user()?->isRestaurantAdmin() ?? false;
+        return $this->user()?->can('menu.create') ?? false;
     }
 
     public function rules(): array

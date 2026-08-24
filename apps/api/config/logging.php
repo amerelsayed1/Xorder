@@ -1,5 +1,6 @@
 <?php
 
+use Monolog\Formatter\LineFormatter;
 use Monolog\Handler\NullHandler;
 use Monolog\Handler\StreamHandler;
 use Monolog\Handler\SyslogUdpHandler;
@@ -71,6 +72,30 @@ return [
             'level' => env('LOG_LEVEL', 'debug'),
             'days' => env('LOG_DAILY_DAYS', 14),
             'replace_placeholders' => true,
+        ],
+
+        // Activity trail — one file per day, e.g. logs/activity-2026-08-22.log,
+        // one JSON object per line. This is the system of record for the audit
+        // screens (App\Services\ActivityLogReader parses it) as well as the
+        // thing you grep on the box. Deliberately English-only and never
+        // localised: it is read by developers and operators.
+        'activity' => [
+            'driver' => 'daily',
+            'path' => storage_path('logs/activity.log'),
+            'level' => 'info',
+            'days' => env('ACTIVITY_LOG_DAYS', 90),
+            'formatter' => LineFormatter::class,
+            'formatter_with' => [
+                // Each line is one self-contained JSON object written by
+                // AuditLogger (timestamp included), because the activity screen
+                // parses these files back — a decorated prefix would have to be
+                // stripped before every decode. Monolog adds nothing.
+                'format' => "%message%\n",
+                'dateFormat' => 'Y-m-d H:i:s',
+                // One event per line, always — descriptions may contain newlines.
+                'allowInlineLineBreaks' => false,
+                'ignoreEmptyContextAndExtra' => true,
+            ],
         ],
 
         'slack' => [

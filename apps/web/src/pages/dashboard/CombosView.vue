@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import api, { ensureCsrf } from '@xorder/api-client/api.js'
 import { withMinDuration } from '../../lib/minLoading.js'
 import { useAuth } from '@xorder/api-client/auth.js'
+import { useCaps } from '../../lib/useCaps.js'
 import { currencyLabel } from '../../lib/currency.js'
 import { pickLocalized } from '@xorder/ui/localize.js'
 import Modal from '@xorder/ui/Modal.vue'
@@ -19,6 +20,8 @@ import { useMenuLang } from '../../lib/menuLang.js'
 const { t, locale } = useI18n()
 const { langs, bilingual } = useMenuLang()
 const auth = useAuth()
+// Per-action gates so the UI offers only what the API would accept.
+const { canCreate, canUpdate, canDelete } = useCaps('menu')
 const cur = () => currencyLabel(auth.restaurant?.currency, locale.value, auth.restaurant?.currency_symbol)
 const rows = ref([])
 const menuItems = ref([])
@@ -118,7 +121,7 @@ async function remove(c) {
                 <h1 class="page-title">{{ t('nav.combos') }}</h1>
                 <p class="page-sub">{{ t('combo.subtitle', { count: rows.length }) }}</p>
             </div>
-            <button v-if="!auth.isReadOnly" @click="openCreate" class="btn btn-accent"><Icon name="plus" :size="16" />{{ t('common.create') }}</button>
+            <button v-if="canCreate" @click="openCreate" class="btn btn-accent"><Icon name="plus" :size="16" />{{ t('common.create') }}</button>
         </div>
 
         <div class="card overflow-hidden">
@@ -133,9 +136,9 @@ async function remove(c) {
                         <div class="text-xs" style="color:var(--muted)">{{ t('combo.from') }} {{ c.base_price }} {{ cur() }} · {{ (c.groups || []).length }} {{ t('combo.groups') }}</div>
                     </div>
                     <StatusBadge :value="c.is_active" :label="c.is_active ? t('common.active') : t('common.inactive')" />
-                    <button v-if="!auth.isReadOnly" class="switch" :class="{ on: c.is_active }" @click="toggle(c)"></button>
-                    <button v-if="!auth.isReadOnly" @click="openEdit(c)" class="icon-btn" :title="t('common.edit')"><Icon name="edit" :size="17" /></button>
-                    <button v-if="!auth.isReadOnly" @click="remove(c)" class="icon-btn icon-btn-danger" :title="t('common.delete')"><Icon name="trash" :size="17" /></button>
+                    <button v-if="canUpdate" class="switch" :class="{ on: c.is_active }" @click="toggle(c)"></button>
+                    <button v-if="canUpdate" @click="openEdit(c)" class="icon-btn" :title="t('common.edit')"><Icon name="edit" :size="17" /></button>
+                    <button v-if="canDelete" @click="remove(c)" class="icon-btn icon-btn-danger" :title="t('common.delete')"><Icon name="trash" :size="17" /></button>
                 </li>
             </ul>
         </div>

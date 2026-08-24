@@ -77,4 +77,43 @@ class OrderingModeTest extends TestCase
 
         $this->assertSame(OrderingMode::WHATSAPP, $r->fresh()->ordering_mode);
     }
+
+    /**
+     * The owner controls the switch, not the channel. These are the two halves
+     * of the same boundary: they may pause what the plan gave them, and may not
+     * change what the plan gave them.
+     */
+    public function test_restaurant_admin_can_pause_and_resume_ordering_via_profile(): void
+    {
+        $r = Restaurant::factory()->withOrdering()->create();
+        $admin = User::factory()->restaurantAdmin($r->id)->create();
+
+        $this->actingAs($admin)->putJson('/api/dashboard/restaurant', ['accepts_orders' => false])
+            ->assertOk()
+            ->assertJsonPath('data.accepts_orders', false);
+
+        $this->assertFalse($r->fresh()->accepts_orders);
+
+        $this->actingAs($admin)->putJson('/api/dashboard/restaurant', ['accepts_orders' => true])
+            ->assertOk()
+            ->assertJsonPath('data.accepts_orders', true);
+
+        $this->assertTrue($r->fresh()->accepts_orders);
+    }
+
+    /** The dashboard needs to know whether the switch would control anything. */
+    public function test_profile_reports_whether_the_plan_entitles_ordering(): void
+    {
+        $entitled = Restaurant::factory()->withOrdering()->create();
+        $this->actingAs(User::factory()->restaurantAdmin($entitled->id)->create())
+            ->getJson('/api/dashboard/restaurant')
+            ->assertOk()
+            ->assertJsonPath('data.ordering_entitled', true);
+
+        $plain = Restaurant::factory()->create();
+        $this->actingAs(User::factory()->restaurantAdmin($plain->id)->create())
+            ->getJson('/api/dashboard/restaurant')
+            ->assertOk()
+            ->assertJsonPath('data.ordering_entitled', false);
+    }
 }

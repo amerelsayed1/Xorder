@@ -7,70 +7,85 @@
 //   icon       PrimeIcons class (e.g. 'pi pi-shopping-bag')
 //   to         named-route object for leaf items ({ name: 'dashboard.orders' })
 //   end        exact-match active state (only the dashboard home item)
-//   permission restaurant feature flag gating visibility (optional)
+//   feature    restaurant plan feature flag gating visibility (optional)
+//   featureAny visible when the restaurant holds ANY of these feature flags
+//   capability tenant capability the signed-in user must hold (optional)
 //   badgeKey   which live badge value to show ('orders' | 'requests')
 //   children   nested leaf items → the node renders as a collapsible group
+//
+// `feature` and `capability` answer different questions and both must pass:
+// the first is "did this restaurant buy it", the second is "may this person do
+// it". They were one field called `permission` before staff roles existed.
 //
 // Active state and highlighting are derived in the component from the router,
 // so nothing about routes, permissions, or badges is hardcoded in the markup.
 
 export const DASHBOARD_NAV = [
     { key: 'home', labelKey: 'nav.dashboard', icon: 'pi pi-th-large', to: { name: 'dashboard.home' }, end: true },
-    { key: 'live', labelKey: 'nav.live', icon: 'pi pi-bolt', to: { name: 'dashboard.live' }, badgeKey: 'live', permissionAny: ['bill_requests', 'system_ordering', 'table_management'] },
+    { key: 'live', labelKey: 'nav.live', icon: 'pi pi-bolt', to: { name: 'dashboard.live' }, badgeKey: 'live', featureAny: ['bill_requests', 'system_ordering', 'table_management'], capability: 'live.view' },
     {
         key: 'orders', labelKey: 'nav.group_orders', icon: 'pi pi-shopping-bag',
         children: [
-            { key: 'orders.list', labelKey: 'nav.orders', icon: 'pi pi-shopping-bag', to: { name: 'dashboard.orders' }, permission: 'system_ordering' },
+            { key: 'orders.list', labelKey: 'nav.orders', icon: 'pi pi-shopping-bag', to: { name: 'dashboard.orders' }, feature: 'system_ordering', capability: 'orders.view' },
         ],
     },
     {
         key: 'menu', labelKey: 'nav.group_menu', icon: 'pi pi-book',
         children: [
-            { key: 'items', labelKey: 'nav.items', icon: 'pi pi-list', to: { name: 'dashboard.items' } },
-            { key: 'categories', labelKey: 'nav.categories', icon: 'pi pi-tags', to: { name: 'dashboard.categories' } },
-            { key: 'extras', labelKey: 'nav.extras', icon: 'pi pi-plus-circle', to: { name: 'dashboard.extras' } },
+            { key: 'items', labelKey: 'nav.items', icon: 'pi pi-list', to: { name: 'dashboard.items' }, capability: 'menu.view' },
+            { key: 'categories', labelKey: 'nav.categories', icon: 'pi pi-tags', to: { name: 'dashboard.categories' }, capability: 'menu.view' },
+            { key: 'extras', labelKey: 'nav.extras', icon: 'pi pi-plus-circle', to: { name: 'dashboard.extras' }, capability: 'menu.view' },
         ],
     },
     {
         key: 'place', labelKey: 'nav.group_place', icon: 'pi pi-building',
         children: [
-            { key: 'branches', labelKey: 'nav.branches', icon: 'pi pi-map-marker', to: { name: 'dashboard.branches' }, permission: 'multi_branch' },
-            { key: 'areas', labelKey: 'nav.areas', icon: 'pi pi-th-large', to: { name: 'dashboard.areas' }, permission: 'table_management' },
-            { key: 'tables', labelKey: 'nav.tables', icon: 'pi pi-table', to: { name: 'dashboard.tables' }, permission: 'table_management' },
+            { key: 'branches', labelKey: 'nav.branches', icon: 'pi pi-map-marker', to: { name: 'dashboard.branches' }, feature: 'multi_branch', capability: 'branches.view' },
+            { key: 'areas', labelKey: 'nav.areas', icon: 'pi pi-th-large', to: { name: 'dashboard.areas' }, feature: 'table_management', capability: 'tables.view' },
+            { key: 'tables', labelKey: 'nav.tables', icon: 'pi pi-table', to: { name: 'dashboard.tables' }, feature: 'table_management', capability: 'tables.view' },
         ],
     },
     {
         key: 'engagement', labelKey: 'nav.group_engagement', icon: 'pi pi-users',
         children: [
-            { key: 'customers', labelKey: 'nav.customers', icon: 'pi pi-user', to: { name: 'dashboard.customers' } },
-            { key: 'reviews', labelKey: 'nav.reviews', icon: 'pi pi-star', to: { name: 'dashboard.reviews' }, permission: 'internal_reviews' },
+            { key: 'customers', labelKey: 'nav.customers', icon: 'pi pi-user', to: { name: 'dashboard.customers' }, capability: 'customers.view' },
+            { key: 'reviews', labelKey: 'nav.reviews', icon: 'pi pi-star', to: { name: 'dashboard.reviews' }, feature: 'internal_reviews', capability: 'reviews.view' },
         ],
     },
     {
         key: 'analytics', labelKey: 'nav.group_analytics', icon: 'pi pi-chart-bar',
         children: [
-            { key: 'insights', labelKey: 'nav.insights', icon: 'pi pi-chart-bar', to: { name: 'dashboard.insights' } },
-            { key: 'reports.products', labelKey: 'rep.products_title', icon: 'pi pi-chart-line', to: { name: 'dashboard.reports.products' }, permission: 'product_analytics' },
-            { key: 'reports.areas', labelKey: 'rep.areas_title', icon: 'pi pi-table', to: { name: 'dashboard.reports.areas' }, permission: 'product_analytics' },
+            { key: 'insights', labelKey: 'nav.insights', icon: 'pi pi-chart-bar', to: { name: 'dashboard.insights' }, capability: 'analytics.view' },
+            { key: 'reports.products', labelKey: 'rep.products_title', icon: 'pi pi-chart-line', to: { name: 'dashboard.reports.products' }, feature: 'product_analytics', capability: 'reports.view' },
+            { key: 'reports.areas', labelKey: 'rep.areas_title', icon: 'pi pi-table', to: { name: 'dashboard.reports.areas' }, feature: 'product_analytics', capability: 'reports.view' },
         ],
     },
     {
         key: 'settings', labelKey: 'nav.group_settings', icon: 'pi pi-cog',
         children: [
-            { key: 'profile', labelKey: 'nav.profile', icon: 'pi pi-cog', to: { name: 'dashboard.profile' } },
+            { key: 'profile', labelKey: 'nav.profile', icon: 'pi pi-cog', to: { name: 'dashboard.profile' }, capability: 'settings.view' },
+            { key: 'staff', labelKey: 'nav.staff', icon: 'pi pi-users', to: { name: 'dashboard.staff' }, capability: 'staff.view' },
+            { key: 'roles', labelKey: 'nav.roles', icon: 'pi pi-shield', to: { name: 'dashboard.roles' }, capability: 'staff.view' },
         ],
     },
 ]
 
-// Resolve the schema against the current feature set and live badge counts:
-//   - drops leaf items whose `permission` flag the restaurant doesn't have
+// Resolve the schema against the current feature set, the signed-in user's
+// capabilities and the live badge counts:
+//   - drops leaf items whose `feature` flag the restaurant doesn't have
+//   - drops leaf items whose `capability` the signed-in user doesn't hold
 //   - hides a group entirely when none of its children are visible
 //   - stamps each node's `badge` from `badges[badgeKey]`
-export function buildDashboardNav({ features = [], badges = {} } = {}) {
-    // A node is visible when it has no `permission` gate (or the flag is held)
-    // and, if it declares `permissionAny`, at least one of those flags is held.
-    const allowed = (node) => (!node.permission || features.includes(node.permission))
-        && (!node.permissionAny || node.permissionAny.some((p) => features.includes(p)))
+//
+// `can` defaults to "allowed" so callers that don't pass it (and the owner, who
+// holds everything) behave exactly as before staff roles existed.
+export function buildDashboardNav({ features = [], badges = {}, can = () => true } = {}) {
+    // A node is visible when it has no `feature` gate (or the flag is held),
+    // and, if it declares `featureAny`, at least one of those flags is held,
+    // and the signed-in user holds its `capability`.
+    const allowed = (node) => (!node.feature || features.includes(node.feature))
+        && (!node.featureAny || node.featureAny.some((f) => features.includes(f)))
+        && (!node.capability || can(node.capability))
     const withBadge = (node) => (node.badgeKey ? { ...node, badge: badges[node.badgeKey] ?? 0 } : node)
 
     const out = []

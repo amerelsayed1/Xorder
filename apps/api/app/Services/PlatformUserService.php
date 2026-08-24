@@ -40,6 +40,7 @@ class PlatformUserService
             'password' => Hash::make($plainPassword),
             'password_changed_at' => now(),
             'role' => RoleEnum::from($data['role']),
+            'role_id' => null,
             'restaurant_id' => null,
             'status' => UserStatus::from($data['status'] ?? UserStatus::ACTIVE->value),
             'email_verified_at' => now(),

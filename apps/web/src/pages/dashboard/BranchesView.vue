@@ -11,10 +11,13 @@ import Icon from '@xorder/ui/Icon.vue'
 import { confirm } from '@xorder/ui/confirm.js'
 import { alert } from '@xorder/ui/alert.js'
 import { useAuth } from '@xorder/api-client/auth.js'
+import { useCaps } from '../../lib/useCaps.js'
 
 const { t, locale } = useI18n()
 const router = useRouter()
 const auth = useAuth()
+// Per-action gates so the UI offers only what the API would accept.
+const { canCreate, canUpdate, canDelete } = useCaps('branches')
 const rows = ref([])
 const loading = ref(true)
 
@@ -60,7 +63,7 @@ const branchName = (b) => pickLocalized(b, 'name', locale.value)
                 <h1 class="page-title">{{ t('nav.branches') }}</h1>
                 <p class="page-sub">{{ t('branch.subtitle', { count: rows.length }) }}</p>
             </div>
-            <button v-if="!auth.isReadOnly && auth.hasFeature('multi_branch')" @click="openCreate" class="btn btn-accent"><Icon name="plus" :size="16" />{{ t('common.create') }}</button>
+            <button v-if="canCreate && auth.hasFeature('multi_branch')" @click="openCreate" class="btn btn-accent"><Icon name="plus" :size="16" />{{ t('common.create') }}</button>
         </div>
 
         <div class="card overflow-hidden">
@@ -74,9 +77,9 @@ const branchName = (b) => pickLocalized(b, 'name', locale.value)
                         <div class="text-xs truncate" style="color:var(--muted)">{{ b.address || '—' }}</div>
                     </div>
                     <StatusBadge :value="b.is_open" :label="b.is_open ? t('branch.open') : t('branch.closed')" />
-                    <button v-if="!auth.isReadOnly" class="switch" :class="{ on: b.is_open }" :title="t('branch.is_open')" @click="toggleOpen(b)"></button>
-                    <button v-if="!auth.isReadOnly" @click="openEdit(b)" class="icon-btn" :title="t('common.edit')"><Icon name="edit" :size="17" /></button>
-                    <button v-if="!auth.isReadOnly" @click="remove(b)" class="icon-btn icon-btn-danger" :title="t('common.delete')"><Icon name="trash" :size="17" /></button>
+                    <button v-if="canUpdate" class="switch" :class="{ on: b.is_open }" :title="t('branch.is_open')" @click="toggleOpen(b)"></button>
+                    <button v-if="canUpdate" @click="openEdit(b)" class="icon-btn" :title="t('common.edit')"><Icon name="edit" :size="17" /></button>
+                    <button v-if="canDelete" @click="remove(b)" class="icon-btn icon-btn-danger" :title="t('common.delete')"><Icon name="trash" :size="17" /></button>
                 </li>
             </ul>
         </div>

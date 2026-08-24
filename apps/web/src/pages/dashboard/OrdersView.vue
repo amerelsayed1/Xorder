@@ -3,6 +3,7 @@ import { ref, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { useAuth } from '@xorder/api-client/auth.js'
+import { useCaps } from '../../lib/useCaps.js'
 import api, { ensureCsrf } from '@xorder/api-client/api.js'
 import { currencyLabel } from '../../lib/currency.js'
 import { withMinDuration } from '../../lib/minLoading.js'
@@ -16,6 +17,8 @@ import { useRealtime } from '../../stores/realtime.js'
 
 const { t, locale } = useI18n()
 const auth = useAuth()
+// Advancing an order's status is an update.
+const { canUpdate } = useCaps('orders')
 const router = useRouter()
 const rt = useRealtime()
 
@@ -217,7 +220,7 @@ function fmtTime(iso) {
                                     <Icon name="receipt" :size="14" />
                                     {{ t('orders.view') }}
                                 </button>
-                                <template v-if="!auth.isReadOnly">
+                                <template v-if="canUpdate">
                                     <button v-for="next in (order.table_visit_id ? [] : (nextActions[order.status] || []))" :key="next"
                                         class="btn btn-sm" :class="next === 'CANCELLED' ? 'btn-ghost btn-cancel' : 'btn-accent'"
                                         :disabled="updating === order.id" @click="setStatus(order, next)">

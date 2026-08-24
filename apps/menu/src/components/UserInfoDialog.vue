@@ -21,6 +21,8 @@ const emit = defineEmits(['close', 'enterEdit', 'cancelEdit', 'save', 'clear', '
 // matching the other menu modals (ItemModal etc.).
 const panel = ref(null)
 function onKeydown(e) { if (e.key === 'Escape') emit('close') }
+// Immediate: the dialog is code-split and mounts already open, so the prop
+// never flips from false and a lazy watcher would miss the first open.
 watch(() => props.isOpen, (open) => {
     if (open) {
         window.addEventListener('keydown', onKeydown)
@@ -28,7 +30,7 @@ watch(() => props.isOpen, (open) => {
     } else {
         window.removeEventListener('keydown', onKeydown)
     }
-})
+}, { immediate: true })
 onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 
 // Only scold the customer once they try to save, not while they're still typing.

@@ -63,6 +63,7 @@ class Restaurant extends Model
         'currency',
         'timezone',
         'ordering_mode',
+        'accepts_orders',
         'status',
         'subscription_status',
         'subscription_plan',
@@ -88,6 +89,7 @@ class Restaurant extends Model
             'currency' => CurrencyEnum::class,
             'menu_layout' => MenuLayout::class,
             'ordering_mode' => OrderingMode::class,
+            'accepts_orders' => 'boolean',
             'status' => RestaurantStatus::class,
             'subscription_status' => SubscriptionStatus::class,
             'subscription_start_date' => 'date',
@@ -187,6 +189,12 @@ class Restaurant extends Model
     public function users(): HasMany
     {
         return $this->hasMany(User::class);
+    }
+
+    /** This restaurant's custom staff roles (four seeded at provisioning). */
+    public function roles(): HasMany
+    {
+        return $this->hasMany(Role::class);
     }
 
     public function categories(): HasMany
@@ -317,6 +325,18 @@ class Restaurant extends Model
      *
      * @return list<string>
      */
+    /**
+     * Whether a diner can place an order right now.
+     *
+     * Two independent gates, deliberately: the plan decides whether ordering
+     * exists for this restaurant at all (Super Admin territory), and the owner
+     * decides whether it is switched on today. Both must say yes.
+     */
+    public function acceptsOrdersNow(): bool
+    {
+        return $this->effectiveOrderingMode() !== null && $this->accepts_orders;
+    }
+
     public function availableOrderTypes(): array
     {
         if ($this->features->isEmpty()) {

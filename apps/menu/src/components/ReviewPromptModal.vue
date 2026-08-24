@@ -2,6 +2,7 @@
 import { ref, computed } from 'vue'
 import { createReview } from '../api.js'
 import { isValidMobile } from '../lib/phone.js'
+import { safeUrl } from '../lib/safeUrl'
 
 const props = defineProps({
     isOpen: Boolean,
@@ -35,7 +36,9 @@ const serverPublicUrl = ref('')
 
 const stars = [1, 2, 3, 4, 5]
 const thanksText = computed(() => serverThankYou.value || props.thankYou || props.t('review_thanks'))
-const publicUrl = computed(() => serverPublicUrl.value || props.publicReviewUrl || '')
+// Tenant-controlled value bound to an <a href> — scheme-checked like every
+// other tenant URL in the menu (see lib/safeUrl). The API guards it too.
+const publicUrl = computed(() => safeUrl(serverPublicUrl.value || props.publicReviewUrl) || '')
 
 function setRating(n) {
     rating.value = n

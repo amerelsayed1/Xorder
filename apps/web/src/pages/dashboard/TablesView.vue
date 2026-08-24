@@ -12,9 +12,12 @@ import Icon from '@xorder/ui/Icon.vue'
 import { confirm } from '@xorder/ui/confirm.js'
 import { alert } from '@xorder/ui/alert.js'
 import { useAuth } from '@xorder/api-client/auth.js'
+import { useCaps } from '../../lib/useCaps.js'
 
 const { t, locale } = useI18n()
 const auth = useAuth()
+// Per-action gates — a tables.view-only role sees the list and nothing else.
+const { canCreate, canUpdate, canDelete } = useCaps('tables')
 const rows = ref([])
 const areas = ref([])
 const loading = ref(true)
@@ -233,7 +236,7 @@ const areaLabel = (id) => { const a = areas.value.find(x => x.id === id); return
                     <Icon v-else name="download" :size="16" />
                     {{ t('tbl.download_all', { n: rows.length }) }}
                 </button>
-                <button v-if="!auth.isReadOnly" @click="openCreate" :disabled="!activeAreas.length" class="btn btn-accent"><Icon name="plus" :size="16" />{{ t('common.create') }}</button>
+                <button v-if="canCreate" @click="openCreate" :disabled="!activeAreas.length" class="btn btn-accent"><Icon name="plus" :size="16" />{{ t('common.create') }}</button>
             </div>
         </div>
 
@@ -253,7 +256,7 @@ const areaLabel = (id) => { const a = areas.value.find(x => x.id === id); return
         </div>
 
         <!-- Bulk action bar — appears once one or more rows are ticked. -->
-        <div v-if="!auth.isReadOnly && selected.size" class="bulk-bar">
+        <div v-if="canDelete && selected.size" class="bulk-bar">
             <span class="bulk-count">{{ t('tbl.selected_count', { n: selected.size }) }}</span>
             <button class="btn btn-ghost btn-sm" @click="clearSelection">{{ t('tbl.clear_selection') }}</button>
             <button class="btn btn-accent btn-sm" :disabled="!!downloading" @click="bulkDownloadQr">
@@ -273,7 +276,7 @@ const areaLabel = (id) => { const a = areas.value.find(x => x.id === id); return
             <div v-else-if="!rows.length" class="p-8 text-center" style="color:var(--muted)">{{ t('tbl.none_tables') }}</div>
             <template v-else>
                 <!-- Select-all header (only when the user can delete). -->
-                <div v-if="!auth.isReadOnly" class="flex items-center gap-3 px-5 py-2.5 tbl-head" style="border-color:var(--line)">
+                <div v-if="canDelete" class="flex items-center gap-3 px-5 py-2.5 tbl-head" style="border-color:var(--line)">
                     <input type="checkbox" class="row-check" :checked="allSelected"
                         :indeterminate.prop="someSelected" :aria-label="t('tbl.select_all')" @change="toggleAll" />
                     <span class="tbl-num" style="color:var(--muted)">#</span>
@@ -282,7 +285,7 @@ const areaLabel = (id) => { const a = areas.value.find(x => x.id === id); return
                 <ul>
                     <li v-for="(tbl, i) in rows" :key="tbl.id" class="flex items-center gap-3 px-5 py-3 border-t first:border-t-0"
                         :class="{ 'row-selected': selected.has(tbl.id) }" style="border-color:var(--line)">
-                        <input v-if="!auth.isReadOnly" type="checkbox" class="row-check" :checked="selected.has(tbl.id)"
+                        <input v-if="canDelete" type="checkbox" class="row-check" :checked="selected.has(tbl.id)"
                             :aria-label="tbl.label" @change="toggleSelect(tbl.id)" />
                         <span class="tbl-num" style="color:var(--muted)">{{ i + 1 }}</span>
                         <div class="h-11 w-11 rounded-lg grid place-items-center flex-shrink-0" style="background:var(--accent-soft);color:var(--accent)"><Icon name="table" :size="22" /></div>
@@ -291,10 +294,10 @@ const areaLabel = (id) => { const a = areas.value.find(x => x.id === id); return
                             <div class="text-xs truncate" style="color:var(--muted)">{{ areaLabel(tbl.dining_area_id) }}</div>
                         </div>
                         <StatusBadge :value="tbl.is_active" :label="tbl.is_active ? t('common.active') : t('common.inactive')" />
-                        <button v-if="!auth.isReadOnly" class="switch" :class="{ on: tbl.is_active }" @click="toggleActive(tbl)"></button>
+                        <button v-if="canUpdate" class="switch" :class="{ on: tbl.is_active }" @click="toggleActive(tbl)"></button>
                         <button @click="openQr(tbl)" class="icon-btn" :title="t('tbl.qr')"><Icon name="qr" :size="17" /></button>
-                        <button v-if="!auth.isReadOnly" @click="openEdit(tbl)" class="icon-btn" :title="t('common.edit')"><Icon name="edit" :size="17" /></button>
-                        <button v-if="!auth.isReadOnly" @click="remove(tbl)" class="icon-btn icon-btn-danger" :title="t('common.delete')"><Icon name="trash" :size="17" /></button>
+                        <button v-if="canUpdate" @click="openEdit(tbl)" class="icon-btn" :title="t('common.edit')"><Icon name="edit" :size="17" /></button>
+                        <button v-if="canDelete" @click="remove(tbl)" class="icon-btn icon-btn-danger" :title="t('common.delete')"><Icon name="trash" :size="17" /></button>
                     </li>
                 </ul>
             </template>
@@ -365,7 +368,7 @@ const areaLabel = (id) => { const a = areas.value.find(x => x.id === id); return
                 <p class="text-xs break-all" style="color:var(--muted)" dir="ltr">{{ qrModal.url }}</p>
                 <p class="text-sm" style="color:var(--body)">{{ t('tbl.scan_hint') }}</p>
                 <div class="flex justify-center gap-2 pt-1">
-                    <button v-if="!auth.isReadOnly" @click="regenerateQr" class="btn btn-ghost">{{ t('tbl.qr_regenerate') }}</button>
+                    <button v-if="canUpdate" @click="regenerateQr" class="btn btn-ghost">{{ t('tbl.qr_regenerate') }}</button>
                     <button @click="downloadQr" class="btn btn-accent"><Icon name="download" :size="16" />{{ t('tbl.qr_download') }}</button>
                 </div>
             </div>

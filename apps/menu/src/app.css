@@ -831,6 +831,7 @@ html[dir='ltr'] .hero-overlay {
 .product-card {
     border: 1px solid var(--line);
     cursor: pointer;
+    position: relative;
     background: #fff;
     border-radius: 20px;
     outline: none;
@@ -844,10 +845,33 @@ html[dir='ltr'] .hero-overlay {
     flex-direction: column;
 }
 
-.product-card:hover, .product-card:focus-visible {
+.product-card:hover, .product-card:has(.card-open:focus-visible) {
     border-color: #e5c992;
     transform: translateY(-4px);
     box-shadow: 0 16px 32px #4b37181f;
+}
+
+/* Invisible button covering the card — it is what a diner actually clicks and
+   what keyboard focus lands on, so the card can stay a plain <article> holding
+   real content.
+   The z-index has to clear everything decorative inside the card: the photo is
+   position:relative z-index:1 and the "popular" badge is z-index:2, and either
+   one would otherwise sit on top and swallow a tap on the part of the card a
+   diner is most likely to press. Being transparent, painting above them hides
+   nothing. Only the stepper goes higher, since it must stay clickable. */
+.card-open {
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    padding: 0;
+    border: 0;
+    background: none;
+    cursor: pointer;
+}
+
+.card-action, .card-qty {
+    position: relative;
+    z-index: 4;
 }
 
 .product-image-wrap {

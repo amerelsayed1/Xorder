@@ -23,15 +23,43 @@ export function useStickyLayout(ready) {
     let ro = null
     const observed = new WeakSet()
 
+    // Last values written to <html>, so a measurement that changed nothing
+    // writes nothing. This is the whole trick: setProperty on the root element
+    // invalidates layout for the entire document, and because `measure` is also
+    // the ResizeObserver callback, an unconditional write meant every observer
+    // tick dirtied the geometry the next tick then had to read back — the
+    // read-after-write cycle DevTools reports as a forced reflow (87 ms of one
+    // on a real scan). Heights only actually change on rotate, toolbar reflow,
+    // or the footer appearing, so nearly every write was a no-op that cost a
+    // layout anyway.
+    const written = { topbar: null, stack: null, footer: null }
+
+    function write(key, prop, value) {
+        if (written[key] === value) return
+        written[key] = value
+        root.style.setProperty(prop, `${value}px`)
+    }
+
     function measure() {
+        // All three reads happen before any write, so they resolve against one
+        // layout pass instead of forcing a fresh one each.
         const topbarH = document.querySelector('.topbar')?.offsetHeight || 0
         const toolbarH = document.querySelector('.menu-toolbar')?.offsetHeight || 0
         const footerH = document.querySelector('.fixed-footer')?.offsetHeight || 0
         // Guard against transient 0s (element not yet laid out) clobbering a
         // good value — keep the CSS fallback in that case.
-        if (topbarH) root.style.setProperty('--topbar-h', `${topbarH}px`)
-        if (topbarH) root.style.setProperty('--stack-h', `${topbarH + toolbarH}px`)
-        if (footerH) root.style.setProperty('--footer-h', `${footerH}px`)
+        if (topbarH) write('topbar', '--topbar-h', topbarH)
+        if (topbarH) write('stack', '--stack-h', topbarH + toolbarH)
+        if (footerH) write('footer', '--footer-h', footerH)
+    }
+
+    // Coalesce bursts — a ResizeObserver firing for all three elements, or a
+    // resize/orientation change, should produce one measurement at frame time,
+    // not one per notification.
+    let frame = null
+    function scheduleMeasure() {
+        if (frame !== null) return
+        frame = requestAnimationFrame(() => { frame = null; measure() })
     }
 
     function sync() {
@@ -45,19 +73,20 @@ export function useStickyLayout(ready) {
 
     let stopWatch = null
     onMounted(() => {
-        ro = new ResizeObserver(measure)
+        ro = new ResizeObserver(scheduleMeasure)
         // Re-find and re-observe after each relevant reactive change, on the
         // next frame so the new DOM is laid out before we measure it.
         stopWatch = watch(ready, () => requestAnimationFrame(sync), { immediate: true })
-        window.addEventListener('resize', measure, { passive: true })
-        window.addEventListener('orientationchange', measure)
+        window.addEventListener('resize', scheduleMeasure, { passive: true })
+        window.addEventListener('orientationchange', scheduleMeasure)
     })
 
     onUnmounted(() => {
         stopWatch?.()
         ro?.disconnect()
         ro = null
-        window.removeEventListener('resize', measure)
-        window.removeEventListener('orientationchange', measure)
+        if (frame !== null) cancelAnimationFrame(frame)
+        window.removeEventListener('resize', scheduleMeasure)
+        window.removeEventListener('orientationchange', scheduleMeasure)
     })
 }

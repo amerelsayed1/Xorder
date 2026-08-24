@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Exceptions\UnprocessableImage;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -29,10 +30,19 @@ class ImageUploadService
         $maxSourceDim = (int) config('platform.uploads.max_source_dimension', 10000);
         if ($dimensions !== false
             && (($dimensions[0] ?? 0) > $maxSourceDim || ($dimensions[1] ?? 0) > $maxSourceDim)) {
-            throw new \RuntimeException('Uploaded image dimensions exceed the allowed maximum.');
+            throw new UnprocessableImage('Uploaded image dimensions exceed the allowed maximum.');
         }
 
-        $image = $this->imageManager->decodePath($file->getRealPath());
+        // Re-encoding is the actual sanitiser: whatever rode along in the
+        // original bytes — an appended PHP/HTML tail on a valid JPEG, EXIF
+        // holding a <script>, a polyglot crafted to be read two ways — is not
+        // carried across, because only decoded pixels are. A file that will not
+        // decode never reaches storage at all.
+        try {
+            $image = $this->imageManager->decodePath($file->getRealPath());
+        } catch (\Throwable $e) {
+            throw new UnprocessableImage('The uploaded file could not be read as an image.', previous: $e);
+        }
 
         // Downscale only if larger than the cap; never upscale.
         $image->scaleDown(width: $maxDim, height: $maxDim);

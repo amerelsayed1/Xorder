@@ -43,6 +43,13 @@ pnpm build                                          # build all apps
 - **Tenant isolation is structural, never manual.** `RestaurantScope` (global scope) +
   `BelongsToRestaurant` trait auto-scope every tenant query to `auth()->user()->restaurant_id`.
   `restaurant_id` is **never** read from request input. Cross-tenant access → 404, not 403.
+- **Two permission systems, one Gate namespace.** Platform staff resolve `Capability` values
+  from the static `RoleEnum::capabilities()` matrix. Restaurant staff resolve `TenantCapability`
+  values from a per-restaurant `roles` row (`users.role_id`) — `RESTAURANT_ADMIN` is the owner and
+  bypasses every one of them, `RESTAURANT_STAFF` holds exactly what its role lists. Dashboard routes
+  stack `role:` + `feature:<key>` (did the tenant buy it) + `can:<tenant capability>` (may this
+  person do it) + `subscription.writable`. `User` has **no** `RestaurantScope` — scope staff queries
+  by hand (see `Dashboard\StaffController`).
 - **Deploy is push-to-main** (CI runs `apps/api` tests as a gate, then auto-deploys to the VPS).
   Prod is live and co-hosts a separate product (Operix) on the same box — see the deploy memories.
   The `*cohost*`/`deploy.sh`/`go-live.sh`/`issue-cert.sh`/`docker-compose.cohost.yml` files are

@@ -12,7 +12,7 @@ class BulkDeleteTablesRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return $this->user()?->isRestaurantAdmin() ?? false;
+        return $this->user()?->can('tables.delete') ?? false;
     }
 
     public function rules(): array

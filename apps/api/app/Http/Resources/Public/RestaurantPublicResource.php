@@ -3,6 +3,8 @@
 namespace App\Http\Resources\Public;
 
 use App\Models\Restaurant;
+use App\Support\PublicImageUrl;
+use App\Support\SafeUrl;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -38,8 +40,12 @@ class RestaurantPublicResource extends JsonResource
             'slug' => $this->slug,
             'description_ar' => $this->description_ar,
             'description_en' => $this->description_en,
-            'logo_url' => $this->logo_url,
-            'cover_image_url' => $this->cover_image_url,
+            // Paths, not absolute URLs: the diner's browser resolves them
+            // against {slug}.xorder.io and reuses the connection it already
+            // has, instead of opening a second one to the apex that APP_URL
+            // baked in at upload time. The cover is the menu's LCP element.
+            'logo_url' => PublicImageUrl::relative($this->logo_url),
+            'cover_image_url' => PublicImageUrl::relative($this->cover_image_url),
             'phone' => $this->phone,
             'whatsapp_number' => $this->whatsapp_number,
             'address' => $this->address,
@@ -61,11 +67,13 @@ class RestaurantPublicResource extends JsonResource
             'bilingual' => $this->bilingual,
             'currency' => $this->currency->value,
             'currency_symbol' => $this->currency->symbol(),
-            'ordering_enabled' => $mode !== null,
+            // Both gates collapse into the one flag the menu SPA already
+            // honours: entitled by the plan AND switched on by the owner.
+            'ordering_enabled' => $this->acceptsOrdersNow(),
             'ordering_mode' => $mode?->value,
             'order_types' => $this->availableOrderTypes(),
             'internal_reviews' => (bool) $this->hasFeature('internal_reviews'),
-            'review_public_url' => $this->review_public_url,
+            'review_public_url' => SafeUrl::forLink($this->review_public_url),
             'review_thank_you' => app()->getLocale() === 'ar'
                 ? ($this->review_thank_you_ar ?: $this->review_thank_you_en)
                 : ($this->review_thank_you_en ?: $this->review_thank_you_ar),

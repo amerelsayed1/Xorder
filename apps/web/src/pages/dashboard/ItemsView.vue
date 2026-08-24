@@ -5,6 +5,7 @@ import { useI18n } from 'vue-i18n'
 import api, { ensureCsrf } from '@xorder/api-client/api.js'
 import { withMinDuration } from '../../lib/minLoading.js'
 import { useAuth } from '@xorder/api-client/auth.js'
+import { useCaps } from '../../lib/useCaps.js'
 import { currencyLabel } from '../../lib/currency.js'
 import { pickLocalized } from '@xorder/ui/localize.js'
 import Modal from '@xorder/ui/Modal.vue'
@@ -16,6 +17,8 @@ import { alert } from '@xorder/ui/alert.js'
 const { t, locale } = useI18n()
 const router = useRouter()
 const auth = useAuth()
+// Per-action gates so the UI offers only what the API would accept.
+const { canCreate, canUpdate, canDelete } = useCaps('menu')
 const cur = computed(() => currencyLabel(auth.restaurant?.currency, locale.value, auth.restaurant?.currency_symbol))
 const items = ref([])
 const categories = ref([])
@@ -46,7 +49,7 @@ const filtered = computed(() => {
 // anything while the whole category is on screen. Under a search the hidden
 // rows would be silently renumbered from a subset, so the handles come off
 // rather than quietly doing the wrong thing.
-const reorderable = computed(() => !auth.isReadOnly && !search.value.trim() && !!filterCat.value)
+const reorderable = computed(() => canUpdate.value && !search.value.trim() && !!filterCat.value)
 
 async function load() {
     loading.value = true
@@ -330,8 +333,8 @@ async function submitImport() {
                         </div>
                     </template>
                 </div>
-                <button v-if="!auth.isReadOnly" @click="openImport" class="btn btn-ghost"><Icon name="upload" :size="16" />{{ t('import.button') }}</button>
-                <button v-if="!auth.isReadOnly" @click="goCreate" :disabled="!categories.length" class="btn btn-accent"><Icon name="plus" :size="16" />{{ t('common.create') }}</button>
+                <button v-if="canCreate" @click="openImport" class="btn btn-ghost"><Icon name="upload" :size="16" />{{ t('import.button') }}</button>
+                <button v-if="canCreate" @click="goCreate" :disabled="!categories.length" class="btn btn-accent"><Icon name="plus" :size="16" />{{ t('common.create') }}</button>
             </div>
         </div>
         <p v-if="!categories.length" class="text-sm" style="color:var(--amber)">{{ t('item.create_category_first') }}</p>
@@ -351,12 +354,12 @@ async function submitImport() {
 
         <!-- Says why the handles are there, and — more usefully — why they are
              not, since a search silently removing them would read as a bug. -->
-        <p v-if="!auth.isReadOnly && filterCat && filtered.length > 1" class="text-xs" style="color:var(--muted);margin-top:-4px">
+        <p v-if="canUpdate && filterCat && filtered.length > 1" class="text-xs" style="color:var(--muted);margin-top:-4px">
             {{ reorderable ? t('item.reorder_hint') : t('item.reorder_search_hint') }}
         </p>
 
         <!-- Bulk action bar — appears once one or more rows are ticked. -->
-        <div v-if="!auth.isReadOnly && selected.size" class="bulk-bar">
+        <div v-if="canDelete && selected.size" class="bulk-bar">
             <span class="bulk-count">{{ t('item.selected_count', { n: selected.size }) }}</span>
             <button class="btn btn-ghost btn-sm" @click="clearSelection">{{ t('item.clear_selection') }}</button>
             <button class="btn btn-danger btn-sm" :disabled="bulkDeleting" @click="bulkRemove">
@@ -380,9 +383,9 @@ async function submitImport() {
               no separate flex layouts, no absolute positioning.
               Visual (RTL) order: Product | Category | Price | Featured | Available | Actions
             -->
-            <div v-else class="items-table" :class="{ 'select-mode': !auth.isReadOnly }" role="table">
+            <div v-else class="items-table" :class="{ 'select-mode': canDelete }" role="table">
                 <div class="items-row items-head" role="row">
-                    <div v-if="!auth.isReadOnly" role="columnheader" class="col-center col-select">
+                    <div v-if="canDelete" role="columnheader" class="col-center col-select">
                         <input type="checkbox" class="row-check" :checked="allFilteredSelected"
                             :indeterminate.prop="someFilteredSelected" :aria-label="t('item.select_all')"
                             @change="toggleAll" />
@@ -403,7 +406,7 @@ async function submitImport() {
                     @drop.prevent="onDrop(idx)"
                     @dragend="resetDrag"
                     role="row">
-                    <div v-if="!auth.isReadOnly" role="cell" class="col-center col-select">
+                    <div v-if="canDelete" role="cell" class="col-center col-select">
                         <input type="checkbox" class="row-check" :checked="selected.has(it.id)"
                             :aria-label="itemName(it)" @change="toggleSelect(it.id)" />
                     </div>
@@ -437,15 +440,15 @@ async function submitImport() {
                         <span v-if="it.discounted_price" class="text-xs line-through ms-1" style="color:var(--muted)">{{ it.price }} {{ cur }}</span>
                     </div>
                     <div role="cell" class="col-feat col-center">
-                        <button v-if="!auth.isReadOnly" class="star" :class="{ on: it.is_featured }" @click="toggleFeatured(it)">★</button>
+                        <button v-if="canUpdate" class="star" :class="{ on: it.is_featured }" @click="toggleFeatured(it)">★</button>
                     </div>
                     <div role="cell" class="col-center">
-                        <button v-if="!auth.isReadOnly" class="switch" :class="{ on: it.is_available }" @click="toggleAvail(it)"></button>
+                        <button v-if="canUpdate" class="switch" :class="{ on: it.is_available }" @click="toggleAvail(it)"></button>
                     </div>
                     <div role="cell" class="col-actions whitespace-nowrap">
                         <div class="inline-flex items-center gap-1">
-                            <button v-if="!auth.isReadOnly" @click="goEdit(it)" class="icon-btn" :title="t('common.edit')"><Icon name="edit" :size="17" /></button>
-                            <button v-if="!auth.isReadOnly" @click="remove(it)" class="icon-btn icon-btn-danger" :title="t('common.delete')"><Icon name="trash" :size="17" /></button>
+                            <button v-if="canUpdate" @click="goEdit(it)" class="icon-btn" :title="t('common.edit')"><Icon name="edit" :size="17" /></button>
+                            <button v-if="canDelete" @click="remove(it)" class="icon-btn icon-btn-danger" :title="t('common.delete')"><Icon name="trash" :size="17" /></button>
                         </div>
                     </div>
                 </div>

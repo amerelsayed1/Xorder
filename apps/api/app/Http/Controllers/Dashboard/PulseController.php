@@ -19,7 +19,9 @@ use Illuminate\Http\Request;
  *
  * Counts respect the same feature gates as their dedicated endpoints: a plan
  * without system_ordering / bill_requests simply reports null for that count,
- * matching what the gated endpoints would (not) return.
+ * matching what the gated endpoints would (not) return — and so does a user
+ * whose role lacks the matching capability, so a cook never sees a badge for a
+ * queue they cannot open.
  */
 class PulseController extends Controller
 {
@@ -27,11 +29,13 @@ class PulseController extends Controller
     {
         $restaurant = $request->user()->restaurant;
 
-        $newOrders = $restaurant?->hasFeature('system_ordering')
+        $user = $request->user();
+
+        $newOrders = $restaurant?->hasFeature('system_ordering') && $user->can('orders.view')
             ? Order::where('status', OrderStatus::NEW)->count()
             : null;
 
-        $newRequests = $restaurant?->hasFeature('bill_requests')
+        $newRequests = $restaurant?->hasFeature('bill_requests') && $user->can('bills.view')
             ? BillRequest::where('status', BillRequestStatus::REQUESTED->value)->count()
             : null;
 

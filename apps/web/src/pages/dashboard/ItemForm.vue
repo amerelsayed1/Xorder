@@ -4,6 +4,7 @@ import { useRoute, useRouter, RouterLink } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import api, { ensureCsrf } from '@xorder/api-client/api.js'
 import { useAuth } from '@xorder/api-client/auth.js'
+import { useCaps } from '../../lib/useCaps.js'
 import { currencyLabel } from '../../lib/currency.js'
 import { pickLocalized } from '@xorder/ui/localize.js'
 import ImageUploader from '@xorder/ui/ImageUploader.vue'
@@ -17,6 +18,8 @@ const router = useRouter()
 const { t, locale } = useI18n()
 const { langs, bilingual } = useMenuLang()
 const auth = useAuth()
+// Saving is a create on a new item and an update on an existing one.
+const { canCreate, canUpdate } = useCaps('menu')
 
 const isEdit = computed(() => !!route.params.id)
 const backArrow = computed(() => locale.value === 'ar' ? '→' : '←')
@@ -345,7 +348,7 @@ async function save() {
 
             <div class="flex justify-end gap-2">
                 <RouterLink :to="{ name: 'dashboard.items' }" class="btn btn-ghost">{{ t('common.cancel') }}</RouterLink>
-                <button type="submit" :disabled="saving || auth.isReadOnly" class="btn btn-accent">
+                <button type="submit" :disabled="saving || (isEdit ? !canUpdate : !canCreate)" class="btn btn-accent">
                     <Icon v-if="saving" name="loading" :size="16" class="animate-spin" />
                     {{ saving ? t('common.saving') : t('common.save') }}
                 </button>

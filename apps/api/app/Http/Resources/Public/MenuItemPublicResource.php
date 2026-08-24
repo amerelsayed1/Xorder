@@ -3,6 +3,7 @@
 namespace App\Http\Resources\Public;
 
 use App\Models\MenuItem;
+use App\Support\PublicImageUrl;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -29,7 +30,7 @@ class MenuItemPublicResource extends JsonResource
             'description_en' => $this->description_en,
             'price' => $price,
             'discounted_price' => $discountedPrice,
-            'image_url' => $this->image_url,
+            'image_url' => PublicImageUrl::relative($this->image_url),
             'is_available' => $this->is_available,
             'is_featured' => $this->is_featured,
             // Inline + shared (library) groups merged in the item's display order.

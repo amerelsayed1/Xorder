@@ -12,6 +12,7 @@ import { alert } from '@xorder/ui/alert.js'
 import ApexChart from '../../components/ApexChart.vue'
 import { areaChart } from '../../lib/charts.js'
 import { asPreview } from '../../lib/host.js'
+import { buildDashboardNav } from './nav.config.js'
 
 const { t, locale } = useI18n()
 const auth = useAuth()
@@ -28,17 +29,36 @@ const copied = ref(false)
 // showed a permanent loading skeleton — a blank first screen after login.
 const error = ref(false)
 
+// This page is where every tenant account lands, owners and staff alike, so it
+// must not assume the full owner capability set. Each panel is fetched only if
+// the signed-in user may read it; a role without analytics.view gets the plain
+// shortcut landing below instead of a wall of stats it cannot see.
+const canAnalytics = computed(() => auth.can('analytics.view'))
+const canMenu = computed(() => auth.can('menu.view'))
+const canSettings = computed(() => auth.can('settings.view'))
+const canOrders = computed(() => auth.can('orders.view'))
+
+// The same nav schema the sidebar is built from, flattened to leaf links — so a
+// staff member's shortcuts can never drift from what they may actually open.
+const staffShortcuts = computed(() => buildDashboardNav({
+    features: auth.restaurant?.features || [],
+    can: auth.can,
+}).flatMap((n) => (n.children ? n.children : [n])).filter((n) => n.to && n.key !== 'home'))
+
 async function load() {
     error.value = false
+
+    if (!canAnalytics.value) return
+
     try {
         const [s, q, it] = await Promise.all([
             api.get('api/dashboard/stats'),
-            api.get('api/dashboard/qr'),
-            api.get('api/dashboard/items'),
+            canSettings.value ? api.get('api/dashboard/qr') : Promise.resolve(null),
+            canMenu.value ? api.get('api/dashboard/items') : Promise.resolve(null),
         ])
         stats.value = s.data.data
-        qr.value = q.data.data
-        items.value = it.data.data
+        qr.value = q.data?.data ?? null
+        items.value = it.data?.data ?? []
     } catch (err) {
         error.value = true
         return
@@ -107,7 +127,25 @@ function copyUrl() {
 </script>
 
 <template>
-    <div v-if="stats" class="space-y-6">
+    <!-- Staff landing: no stats capability, so show who they are and where they
+         may go rather than an error or an empty dashboard. -->
+    <div v-if="!canAnalytics" class="space-y-6">
+        <div>
+            <h1 class="page-title">{{ clientName }}</h1>
+            <p class="page-sub">{{ t('dashboard.staff_home_sub') }}</p>
+        </div>
+        <div class="card p-5">
+            <h2 class="h-card mb-3">{{ t('stats.quick_actions') }}</h2>
+            <div v-if="staffShortcuts.length" class="flex flex-col gap-2">
+                <RouterLink v-for="link in staffShortcuts" :key="link.key" :to="link.to" class="btn btn-ghost justify-start">
+                    <i :class="link.icon" style="font-size:15px" aria-hidden="true"></i>{{ t(link.labelKey) }}
+                </RouterLink>
+            </div>
+            <p v-else class="text-sm py-6 text-center" style="color:var(--muted)">{{ t('dashboard.staff_home_empty') }}</p>
+        </div>
+    </div>
+
+    <div v-else-if="stats" class="space-y-6">
         <!-- Header -->
         <div class="flex flex-wrap items-start justify-between gap-3">
             <div>
@@ -116,7 +154,7 @@ function copyUrl() {
             </div>
             <div class="flex items-center gap-2">
                 <a :href="asPreview(stats.public_url)" target="_blank" class="btn btn-ghost"><Icon name="external" :size="16" />{{ t('dashboard.view_menu') }}</a>
-                <RouterLink v-if="!auth.isReadOnly" :to="{ name: 'dashboard.items' }" class="btn btn-accent"><Icon name="plus" :size="16" />{{ t('dashboard.add_item') }}</RouterLink>
+                <RouterLink v-if="!auth.isReadOnly && auth.can('menu.create')" :to="{ name: 'dashboard.items' }" class="btn btn-accent"><Icon name="plus" :size="16" />{{ t('dashboard.add_item') }}</RouterLink>
             </div>
         </div>
 
@@ -168,7 +206,8 @@ function copyUrl() {
                     <div class="stat-label">{{ t('stats.unavailable_items') }}</div>
                 </div>
             </div>
-            <RouterLink :to="{ name: 'dashboard.orders' }" class="stat flex items-center gap-3.5">
+            <!-- Hidden outright without orders.view: a count nobody can open on isn't a stat, it's noise. -->
+            <RouterLink v-if="canOrders" :to="{ name: 'dashboard.orders' }" class="stat flex items-center gap-3.5">
                 <span class="stat-ico" style="background:var(--accent-soft);color:var(--accent)"><i class="pi pi-shopping-bag" style="font-size:19px" /></span>
                 <div>
                     <div class="stat-num" style="font-size:26px;color:var(--accent)">{{ stats.new_orders ?? 0 }}</div>
@@ -243,9 +282,9 @@ function copyUrl() {
                 <div class="card p-5">
                     <h2 class="h-card mb-3">{{ t('stats.quick_actions') }}</h2>
                     <div class="flex flex-col gap-2">
-                        <RouterLink :to="{ name: 'dashboard.categories' }" class="btn btn-ghost justify-start"><Icon name="categories" :size="16" />{{ t('nav.categories') }}</RouterLink>
-                        <RouterLink :to="{ name: 'dashboard.items' }" class="btn btn-ghost justify-start"><Icon name="items" :size="16" />{{ t('nav.items') }}</RouterLink>
-                        <RouterLink :to="{ name: 'dashboard.profile' }" class="btn btn-ghost justify-start"><Icon name="store" :size="16" />{{ t('nav.profile') }}</RouterLink>
+                        <RouterLink v-if="canMenu" :to="{ name: 'dashboard.categories' }" class="btn btn-ghost justify-start"><Icon name="categories" :size="16" />{{ t('nav.categories') }}</RouterLink>
+                        <RouterLink v-if="canMenu" :to="{ name: 'dashboard.items' }" class="btn btn-ghost justify-start"><Icon name="items" :size="16" />{{ t('nav.items') }}</RouterLink>
+                        <RouterLink v-if="canSettings" :to="{ name: 'dashboard.profile' }" class="btn btn-ghost justify-start"><Icon name="store" :size="16" />{{ t('nav.profile') }}</RouterLink>
                     </div>
                 </div>
             </div>

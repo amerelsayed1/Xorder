@@ -1,10 +1,11 @@
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import api from '@xorder/api-client/api.js'
 import Icon from '@xorder/ui/Icon.vue'
 import AuditLogList from '../../components/AuditLogList.vue'
+import ActivityFilesPanel from '../../components/ActivityFilesPanel.vue'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -21,8 +22,9 @@ const filters = reactive({
     actor_id: '',
     category: '',
     search: '',
-    from: '',
-    to: '',
+    // Arriving from a restaurant's Activity tab pins the range to one day.
+    from: route.query.from || '',
+    to: route.query.to || '',
 })
 
 async function loadOptions() {
@@ -31,6 +33,16 @@ async function loadOptions() {
     opts.actors = data.data.actors
     opts.categories = data.data.categories
 }
+
+const activeDay = computed(() => (filters.from && filters.from === filters.to ? filters.from : ''))
+
+// Clicking a day narrows the feed to it rather than navigating away.
+function showDay(date) {
+    filters.from = date
+    filters.to = date
+    load(1)
+}
+
 
 async function load(toPage = 1) {
     loading.value = true
@@ -111,6 +123,9 @@ const catLabel = (cat) => t(`audit.cat.${cat}`) === `audit.cat.${cat}` ? cat : t
                     <button class="btn btn-ghost btn-sm" @click="clearFilters"><Icon name="x" :size="14" />{{ t('audit.clear') }}</button>
                 </div>
             </div>
+
+            <!-- Daily log files — the trail is stored as one file per day -->
+            <ActivityFilesPanel :active-date="activeDay" @select="showDay" />
 
             <!-- Feed -->
             <div class="card p-4">

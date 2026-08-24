@@ -12,7 +12,7 @@ class BulkDeleteCategoriesRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return $this->user()?->isRestaurantAdmin() ?? false;
+        return $this->user()?->can('menu.delete') ?? false;
     }
 
     public function rules(): array

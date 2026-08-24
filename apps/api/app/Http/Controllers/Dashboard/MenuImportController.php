@@ -8,6 +8,8 @@ use App\Models\MenuItem;
 use App\Services\PlanLimitService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Validation\ValidationException;
 use PhpOffice\PhpSpreadsheet\Reader\Csv as CsvReader;
 use PhpOffice\PhpSpreadsheet\Reader\Xls as XlsReader;
 use PhpOffice\PhpSpreadsheet\Reader\Xlsx as XlsxReader;
@@ -147,16 +149,33 @@ class MenuImportController extends Controller
     }
 
     /** Read the sheet into a plain array of rows (first row = headers). */
-    private function readRows($file): array
+    private function readRows(UploadedFile $file): array
     {
-        $ext = strtolower($file->getClientOriginalExtension());
+        // Pick the parser from the SNIFFED type, not the client's filename: the
+        // `mimes` rule validates content, so trusting the name here would let a
+        // caller aim their bytes at a different parser than the one that was
+        // vetted (an OOXML zip delivered as "menu.csv", say).
+        $ext = strtolower((string) $file->guessExtension()) ?: strtolower($file->getClientOriginalExtension());
+
         $reader = match ($ext) {
-            'xlsx' => new XlsxReader,
+            'xlsx', 'zip' => new XlsxReader,   // OOXML sniffs as a zip container
             'xls' => new XlsReader,
             default => tap(new CsvReader, fn ($r) => $r->setInputEncoding('UTF-8')),
         };
+
+        // Values only — never evaluate formulas, and never follow whatever
+        // else a crafted workbook wants us to load.
         $reader->setReadDataOnly(true);
-        $sheet = $reader->load($file->getRealPath())->getActiveSheet();
+
+        try {
+            $sheet = $reader->load($file->getRealPath())->getActiveSheet();
+        } catch (\Throwable $e) {
+            // Includes PhpSpreadsheet's XXE scanner rejecting a workbook whose
+            // XML declares external entities.
+            throw ValidationException::withMessages([
+                'file' => __('xorder.messages.import_unreadable'),
+            ]);
+        }
 
         return $sheet->toArray(null, true, true, false); // 0-indexed columns
     }

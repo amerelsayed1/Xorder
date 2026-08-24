@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Enums\Capability;
 use App\Enums\RoleEnum;
+use App\Enums\TenantCapability;
 use App\Enums\UserStatus;
 use App\Models\User;
 use App\Support\Jwt;
@@ -117,6 +118,42 @@ class AppServiceProvider extends ServiceProvider
                 fn (User $user) => in_array($capability->value, $user->role->capabilities(), true),
             );
         }
+
+        // Tenant-side abilities backing `can:<tenant capability>` on the
+        // /api/dashboard routes. These are NOT resolved from a static role
+        // matrix: a restaurant builds its own roles, so each user's set comes
+        // from the Role assigned to them — with the restaurant owner
+        // (RESTAURANT_ADMIN) holding everything, mirroring the SUPER_ADMIN
+        // bypass one level down. Values never collide with Capability's.
+        foreach (TenantCapability::cases() as $capability) {
+            Gate::define(
+                $capability->value,
+                fn (User $user) => $user->holdsTenantCapability($capability),
+            );
+        }
+
+        // Derived ability — deliberately NOT a TenantCapability, so it never
+        // appears as a checkbox in the role editor. The branch *list* is
+        // reference data: every branch-scoped screen (dining areas, tables) has
+        // to resolve a branch name and pick a branch when creating. A role with
+        // tables.view therefore needs the list without being handed
+        // branches.view, which also opens the Wi-Fi presence endpoint.
+        Gate::define('branches.list', fn (User $user) => $user->holdsTenantCapability(TenantCapability::BRANCHES_VIEW)
+            || $user->holdsTenantCapability(TenantCapability::TABLES_VIEW));
+
+        // The live board reads three resources at once. Rather than granting
+        // live.view the three section capabilities — which would drag Orders,
+        // Bill requests and Tables back into the sidebar and defeat the point —
+        // each read surface accepts either its own view or live.view.
+        //
+        // Derived, so they never appear as checkboxes: the role editor offers
+        // "Live board" once, not three near-duplicates.
+        $orLive = fn (TenantCapability $own) => fn (User $user) => $user->holdsTenantCapability($own)
+            || $user->holdsTenantCapability(TenantCapability::LIVE_VIEW);
+
+        Gate::define('orders.read', $orLive(TenantCapability::ORDERS_VIEW));
+        Gate::define('bills.read', $orLive(TenantCapability::BILLS_VIEW));
+        Gate::define('tables.live', $orLive(TenantCapability::TABLES_VIEW));
     }
 
     /**

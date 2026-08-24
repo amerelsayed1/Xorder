@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import api, { ensureCsrf } from '@xorder/api-client/api.js'
 import { withMinDuration } from '../../lib/minLoading.js'
 import { useAuth } from '@xorder/api-client/auth.js'
+import { useCaps } from '../../lib/useCaps.js'
 import { pickLocalized } from '@xorder/ui/localize.js'
 import { currencyLabel } from '../../lib/currency.js'
 import Modal from '@xorder/ui/Modal.vue'
@@ -17,6 +18,8 @@ import { useMenuLang } from '../../lib/menuLang.js'
 const { t, locale } = useI18n()
 const { langs, bilingual } = useMenuLang()
 const auth = useAuth()
+// Per-action gates so the UI offers only what the API would accept.
+const { canCreate, canUpdate, canDelete } = useCaps('menu')
 const cur = () => currencyLabel(auth.restaurant?.currency, locale.value, auth.restaurant?.currency_symbol)
 
 const rows = ref([])
@@ -146,7 +149,7 @@ async function remove(g) {
                 <h1 class="page-title">{{ t('extras.title') }}</h1>
                 <p class="page-sub">{{ t('extras.subtitle') }}</p>
             </div>
-            <button v-if="!auth.isReadOnly" @click="openCreate" class="btn btn-accent"><Icon name="plus" :size="16" />{{ t('extras.new') }}</button>
+            <button v-if="canCreate" @click="openCreate" class="btn btn-accent"><Icon name="plus" :size="16" />{{ t('extras.new') }}</button>
         </div>
 
         <div class="card overflow-hidden">
@@ -168,8 +171,8 @@ async function remove(g) {
                         </div>
                     </div>
                     <span v-if="g.is_variant" class="text-xs px-2 py-0.5 rounded-full" style="background:var(--accent-soft);color:var(--accent)">{{ t('item.variant') }}</span>
-                    <button v-if="!auth.isReadOnly" @click="openEdit(g)" class="icon-btn" :title="t('common.edit')"><Icon name="edit" :size="17" /></button>
-                    <button v-if="!auth.isReadOnly" @click="remove(g)" class="icon-btn icon-btn-danger" :title="t('common.delete')"><Icon name="trash" :size="17" /></button>
+                    <button v-if="canUpdate" @click="openEdit(g)" class="icon-btn" :title="t('common.edit')"><Icon name="edit" :size="17" /></button>
+                    <button v-if="canDelete" @click="remove(g)" class="icon-btn icon-btn-danger" :title="t('common.delete')"><Icon name="trash" :size="17" /></button>
                 </li>
             </ul>
         </div>

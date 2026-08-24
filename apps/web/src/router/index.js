@@ -72,27 +72,38 @@ const restaurantRoutes = [
         component: () => import('../pages/dashboard/DashboardLayout.vue'),
         meta: { portal: 'restaurant' },
         children: [
+            // `meta.capability` mirrors the server's `can:<tenant capability>`
+            // route middleware: a staff member whose role lacks it is bounced to
+            // the dashboard home instead of rendering a page the API will 403.
+            // The home view itself is deliberately ungated — it is where everyone
+            // lands, and it degrades to whatever the user may actually see.
             { path: '', name: 'dashboard.home', component: () => import('../pages/dashboard/HomeView.vue') },
-            { path: 'live', name: 'dashboard.live', component: () => import('../pages/dashboard/LiveBoardView.vue') },
-            { path: 'insights', name: 'dashboard.insights', component: () => import('../pages/dashboard/InsightsView.vue') },
-            { path: 'orders', name: 'dashboard.orders', component: () => import('../pages/dashboard/OrdersView.vue') },
-            { path: 'reviews', name: 'dashboard.reviews', component: () => import('../pages/dashboard/ReviewsView.vue') },
+            { path: 'live', name: 'dashboard.live', component: () => import('../pages/dashboard/LiveBoardView.vue'), meta: { capability: 'live.view' } },
+            { path: 'insights', name: 'dashboard.insights', component: () => import('../pages/dashboard/InsightsView.vue'), meta: { capability: 'analytics.view' } },
+            { path: 'orders', name: 'dashboard.orders', component: () => import('../pages/dashboard/OrdersView.vue'), meta: { capability: 'orders.view' } },
+            { path: 'reviews', name: 'dashboard.reviews', component: () => import('../pages/dashboard/ReviewsView.vue'), meta: { capability: 'reviews.view' } },
             { path: 'reports', redirect: { name: 'dashboard.reports.products' } },
-            { path: 'reports/products', name: 'dashboard.reports.products', component: () => import('../pages/dashboard/ProductPerformanceView.vue') },
-            { path: 'reports/areas', name: 'dashboard.reports.areas', component: () => import('../pages/dashboard/AreasComparisonView.vue') },
-            { path: 'customers', name: 'dashboard.customers', component: () => import('../pages/dashboard/CustomersView.vue') },
-            { path: 'customers/:id', name: 'dashboard.customer', component: () => import('../pages/dashboard/CustomerDetailView.vue') },
-            { path: 'branches', name: 'dashboard.branches', component: () => import('../pages/dashboard/BranchesView.vue') },
-            { path: 'branches/create', name: 'dashboard.branches.create', component: () => import('../pages/dashboard/BranchForm.vue') },
-            { path: 'branches/:id/edit', name: 'dashboard.branches.edit', component: () => import('../pages/dashboard/BranchForm.vue') },
-            { path: 'dining-areas', name: 'dashboard.areas', component: () => import('../pages/dashboard/DiningAreasView.vue') },
-            { path: 'tables', name: 'dashboard.tables', component: () => import('../pages/dashboard/TablesView.vue') },
-            { path: 'profile', name: 'dashboard.profile', component: () => import('../pages/dashboard/ProfileView.vue') },
-            { path: 'categories', name: 'dashboard.categories', component: () => import('../pages/dashboard/CategoriesView.vue') },
-            { path: 'items', name: 'dashboard.items', component: () => import('../pages/dashboard/ItemsView.vue') },
-            { path: 'extras', name: 'dashboard.extras', component: () => import('../pages/dashboard/ExtrasView.vue') },
-            { path: 'items/create', name: 'dashboard.items.create', component: () => import('../pages/dashboard/ItemForm.vue') },
-            { path: 'items/:id/edit', name: 'dashboard.items.edit', component: () => import('../pages/dashboard/ItemForm.vue') },
+            { path: 'reports/products', name: 'dashboard.reports.products', component: () => import('../pages/dashboard/ProductPerformanceView.vue'), meta: { capability: 'reports.view' } },
+            { path: 'reports/areas', name: 'dashboard.reports.areas', component: () => import('../pages/dashboard/AreasComparisonView.vue'), meta: { capability: 'reports.view' } },
+            { path: 'customers', name: 'dashboard.customers', component: () => import('../pages/dashboard/CustomersView.vue'), meta: { capability: 'customers.view' } },
+            { path: 'customers/:id', name: 'dashboard.customer', component: () => import('../pages/dashboard/CustomerDetailView.vue'), meta: { capability: 'customers.view' } },
+            { path: 'branches', name: 'dashboard.branches', component: () => import('../pages/dashboard/BranchesView.vue'), meta: { capability: 'branches.view' } },
+            { path: 'branches/create', name: 'dashboard.branches.create', component: () => import('../pages/dashboard/BranchForm.vue'), meta: { capability: 'branches.create' } },
+            { path: 'branches/:id/edit', name: 'dashboard.branches.edit', component: () => import('../pages/dashboard/BranchForm.vue'), meta: { capability: 'branches.update' } },
+            { path: 'dining-areas', name: 'dashboard.areas', component: () => import('../pages/dashboard/DiningAreasView.vue'), meta: { capability: 'tables.view' } },
+            { path: 'tables', name: 'dashboard.tables', component: () => import('../pages/dashboard/TablesView.vue'), meta: { capability: 'tables.view' } },
+            { path: 'profile', name: 'dashboard.profile', component: () => import('../pages/dashboard/ProfileView.vue'), meta: { capability: 'settings.view' } },
+            { path: 'staff', name: 'dashboard.staff', component: () => import('../pages/dashboard/StaffView.vue'), meta: { capability: 'staff.view' } },
+            { path: 'staff/create', name: 'dashboard.staff.create', component: () => import('../pages/dashboard/StaffForm.vue'), meta: { capability: 'staff.create' } },
+            { path: 'staff/:id/edit', name: 'dashboard.staff.edit', component: () => import('../pages/dashboard/StaffForm.vue'), meta: { capability: 'staff.update' } },
+            { path: 'roles', name: 'dashboard.roles', component: () => import('../pages/dashboard/RolesView.vue'), meta: { capability: 'staff.view' } },
+            { path: 'roles/create', name: 'dashboard.roles.create', component: () => import('../pages/dashboard/RoleForm.vue'), meta: { capability: 'staff.create' } },
+            { path: 'roles/:id/edit', name: 'dashboard.roles.edit', component: () => import('../pages/dashboard/RoleForm.vue'), meta: { capability: 'staff.update' } },
+            { path: 'categories', name: 'dashboard.categories', component: () => import('../pages/dashboard/CategoriesView.vue'), meta: { capability: 'menu.view' } },
+            { path: 'items', name: 'dashboard.items', component: () => import('../pages/dashboard/ItemsView.vue'), meta: { capability: 'menu.view' } },
+            { path: 'extras', name: 'dashboard.extras', component: () => import('../pages/dashboard/ExtrasView.vue'), meta: { capability: 'menu.view' } },
+            { path: 'items/create', name: 'dashboard.items.create', component: () => import('../pages/dashboard/ItemForm.vue'), meta: { capability: 'menu.create' } },
+            { path: 'items/:id/edit', name: 'dashboard.items.edit', component: () => import('../pages/dashboard/ItemForm.vue'), meta: { capability: 'menu.update' } },
         ],
     },
     { path: '/:pathMatch(.*)*', redirect: '/admin' },
@@ -122,7 +133,7 @@ export function inPortalHome(auth) {
     if (isSuperAdminHost) {
         return auth.isPlatformUser ? { name: 'admin.dashboard' } : null
     }
-    if (auth.isRestaurantAdmin && auth.restaurant?.slug === restaurantSlug) {
+    if (auth.isTenantUser && auth.restaurant?.slug === restaurantSlug) {
         return { name: 'dashboard.home' }
     }
     return null

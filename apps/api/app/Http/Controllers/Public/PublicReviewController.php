@@ -11,6 +11,7 @@ use App\Rules\MobileNumber;
 use App\Services\NotificationService;
 use App\Services\PublicMenuService;
 use App\Services\TableVisitService;
+use App\Support\SafeUrl;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -136,7 +137,7 @@ class PublicReviewController extends Controller
 
         return [
             'thank_you' => $thankYou ?: __('xorder.messages.review_thanks'),
-            'public_review_url' => $restaurant->review_public_url,
+            'public_review_url' => SafeUrl::forLink($restaurant->review_public_url),
         ];
     }
 }

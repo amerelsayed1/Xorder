@@ -34,5 +34,7 @@
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>
+        <!-- Tests assert on audit_logs rows; keep them out of storage/logs/activity-*.log. -->
+        <env name="ACTIVITY_LOG_FILE" value="false"/>
     </php>
 </phpunit>

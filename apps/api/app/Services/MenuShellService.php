@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Restaurant;
+use App\Support\PublicImageUrl;
 
 /**
  * Serves the built guest-menu SPA (apps/menu) with per-restaurant SEO tags
@@ -72,7 +73,12 @@ class MenuShellService
     private function applyTitleAndLang(string $html, Restaurant $restaurant): string
     {
         $title = e($this->displayName($restaurant));
-        $html = preg_replace('/<title>.*?<\/title>/s', "<title>{$title}</title>", $html, 1);
+
+        // Callback, not a replacement string: preg_replace expands $0/\1 inside
+        // the replacement, and e() escapes HTML but leaves `$` and `\` alone —
+        // so a restaurant named "$0" would splice the matched <title> element
+        // back into its own replacement.
+        $html = preg_replace_callback('/<title>.*?<\/title>/s', fn () => "<title>{$title}</title>", $html, 1);
 
         $lang = $restaurant->default_language->value;
         $dir = $lang === 'ar' ? 'rtl' : 'ltr';
@@ -87,10 +93,11 @@ class MenuShellService
      * actually render.
      *
      * The built shell preloads the Arabic Tajawal subset (the SPA's default
-     * locale). On an English menu those bytes are never used and the Latin
-     * subset — which is — would only be discovered once the stylesheet is
-     * parsed. The @font-face rules themselves need no change: unicode-range
-     * already decides which file the browser fetches.
+     * locale) plus the Latin weight prices are set in. On an English menu the
+     * Arabic bytes are never used and the Latin subset — which is — would only
+     * be discovered once the stylesheet is parsed. The @font-face rules
+     * themselves need no change: unicode-range already decides which file the
+     * browser fetches.
      */
     private function preloadFontSubset(string $html, string $lang): string
     {
@@ -98,9 +105,38 @@ class MenuShellService
             return $html;
         }
 
-        return preg_replace(
+        $html = preg_replace(
             '#(<link[^>]+rel="preload"[^>]+href="[^"]*/fonts/tajawal-\d+)-arabic(\.woff2")#i',
             '$1-latin$2',
+            $html,
+        ) ?? $html;
+
+        return $this->dedupeFontPreloads($html);
+    }
+
+    /**
+     * Keep one preload per font file.
+     *
+     * The shell preloads a Latin weight of its own for digits. Once the swap
+     * above turns the Arabic weights Latin, that line can collide with one of
+     * them — and telling a browser to preload the same file twice is precisely
+     * the waste this mechanism exists to avoid.
+     */
+    private function dedupeFontPreloads(string $html): string
+    {
+        $seen = [];
+
+        return preg_replace_callback(
+            '#[ \t]*<link[^>]+rel="preload"[^>]+href="([^"]*/fonts/[^"]+)"[^>]*>\R?#i',
+            function (array $match) use (&$seen): string {
+                if (isset($seen[$match[1]])) {
+                    return '';
+                }
+
+                $seen[$match[1]] = true;
+
+                return $match[0];
+            },
             $html,
         ) ?? $html;
     }
@@ -116,7 +152,13 @@ class MenuShellService
         // Fall back to the raw upload URL if a derivative could not be built.
         $og = $this->brand->ogImage($restaurant);
         $image = $og['url'] ?? $this->absoluteImage($restaurant);
-        $icon = $icon ?? $this->toAbsolute($restaurant->logo_url, $restaurant);
+
+        // og:image must stay absolute — a crawler has no page to resolve it
+        // against. The favicon does: it is a request the diner's own browser
+        // makes, so it goes out as a path and rides the connection this page is
+        // already using rather than reopening one to the apex that
+        // Storage::url() baked into the derivative URL.
+        $icon = PublicImageUrl::relative($icon ?? $restaurant->logo_url);
 
         $tags = array_filter([
             $description ? '<meta name="description" content="'.e($description).'">' : null,

@@ -33,6 +33,10 @@ class UserFactory extends Factory
             'email_verified_at' => now(),
             'password' => static::$password ??= Hash::make('password'),
             'role' => RoleEnum::RESTAURANT_ADMIN,
+            // Owners and platform users carry no custom role; set explicitly so
+            // freshly-made models have the attribute (strict Eloquent mode
+            // throws on reading one that was never retrieved).
+            'role_id' => null,
             'restaurant_id' => null,
             'status' => UserStatus::ACTIVE,
             'remember_token' => Str::random(10),
@@ -51,6 +55,17 @@ class UserFactory extends Factory
     {
         return $this->state(fn (array $attributes) => [
             'role' => RoleEnum::RESTAURANT_ADMIN,
+            'role_id' => null,
+            'restaurant_id' => $restaurantId,
+        ]);
+    }
+
+    /** A staff account inside a restaurant, holding one custom Role. */
+    public function staff(int $restaurantId, int $roleId): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'role' => RoleEnum::RESTAURANT_STAFF,
+            'role_id' => $roleId,
             'restaurant_id' => $restaurantId,
         ]);
     }

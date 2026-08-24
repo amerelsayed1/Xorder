@@ -183,4 +183,26 @@ return [
         'max_dimension' => 2000,
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Activity log file
+    |--------------------------------------------------------------------------
+    | Every audit event is mirrored into a per-day file via the "activity" log
+    | channel (storage/logs/activity-Y-m-d.log) on top of the audit_logs table,
+    | so the trail can be tailed/grepped on the box. Set ACTIVITY_LOG_FILE=false
+    | to keep the DB trail only; ACTIVITY_LOG_DAYS controls retention.
+    */
+    'activity_log_file' => env('ACTIVITY_LOG_FILE', true),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Audit trail retention
+    |--------------------------------------------------------------------------
+    | Legacy only. Nothing writes to audit_logs any more — the daily activity
+    | files are the system of record — but `audit:prune` still trims whatever
+    | history predates the switch. Retention for what the audit screen actually
+    | reads is ACTIVITY_LOG_DAYS on the "activity" log channel.
+    */
+    'audit_log_days' => env('AUDIT_LOG_DAYS', 90),
+
 ];

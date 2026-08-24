@@ -48,6 +48,18 @@ class PublicOrderController extends Controller
             return response()->json(['message' => __('xorder.messages.ordering_disabled')], 422);
         }
 
+        // The owner's own switch, independent of the plan: they are entitled to
+        // take orders but have paused them (kitchen swamped, closing early).
+        // Enforced here and not only in the UI — the menu is a SPA and a stale
+        // tab would otherwise keep posting into a closed kitchen.
+        //
+        // Deliberately the same reply as an unentitled menu: a diner does not
+        // need to be told which of the two reasons applies, only that ordering
+        // is not available. The distinction stays internal.
+        if (! $restaurant->accepts_orders) {
+            return response()->json(['message' => __('xorder.messages.ordering_disabled')], 422);
+        }
+
         // WhatsApp-only restaurants take orders through WhatsApp, not the system,
         // so there is no order record to create here.
         if (! $mode->usesSystem()) {

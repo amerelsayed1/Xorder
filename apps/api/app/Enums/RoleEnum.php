@@ -13,8 +13,12 @@ enum RoleEnum: string
     case SALES = 'SALES';
     case SUPPORT = 'SUPPORT';
 
-    // Tenant-level role (restaurant_id set). Managed per-restaurant, not here.
+    // Tenant-level roles (restaurant_id set). Managed per-restaurant, not here.
+    // RESTAURANT_ADMIN is the restaurant *owner* — it implicitly holds every
+    // TenantCapability. RESTAURANT_STAFF is an employee account whose abilities
+    // come entirely from the custom Role it is assigned (`users.role_id`).
     case RESTAURANT_ADMIN = 'RESTAURANT_ADMIN';
+    case RESTAURANT_STAFF = 'RESTAURANT_STAFF';
 
     public function isSuperAdmin(): bool
     {
@@ -31,7 +35,13 @@ enum RoleEnum: string
      */
     public function isPlatformRole(): bool
     {
-        return $this !== self::RESTAURANT_ADMIN;
+        return ! $this->isTenantRole();
+    }
+
+    /** Any role that belongs to a restaurant (restaurant_id set). */
+    public function isTenantRole(): bool
+    {
+        return $this === self::RESTAURANT_ADMIN || $this === self::RESTAURANT_STAFF;
     }
 
     /**
@@ -76,7 +86,10 @@ enum RoleEnum: string
                 Capability::AUDIT_VIEW->value,
                 Capability::INSIGHTS_VIEW->value,
             ],
-            self::RESTAURANT_ADMIN => [],
+            // Tenant roles hold no *platform* capabilities. Their abilities are
+            // TenantCapability values, resolved per-user (owner bypass or the
+            // assigned Role's list) — see User::holdsTenantCapability().
+            self::RESTAURANT_ADMIN, self::RESTAURANT_STAFF => [],
         };
     }
 
@@ -94,6 +107,19 @@ enum RoleEnum: string
             self::MODERATOR->value,
             self::SALES->value,
             self::SUPPORT->value,
+        ];
+    }
+
+    /**
+     * Every tenant-level role value — used to gate the dashboard route group.
+     *
+     * @return list<string>
+     */
+    public static function tenantRoles(): array
+    {
+        return [
+            self::RESTAURANT_ADMIN->value,
+            self::RESTAURANT_STAFF->value,
         ];
     }
 

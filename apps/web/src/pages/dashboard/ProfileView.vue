@@ -8,9 +8,13 @@ import ErrorState from '@xorder/ui/ErrorState.vue'
 import { useMenuLang } from '../../lib/menuLang.js'
 import { collectPhoneErrors } from '../../lib/phone.js'
 import { useAuth } from '@xorder/api-client/auth.js'
+import { useCaps } from '../../lib/useCaps.js'
 
 const { t } = useI18n()
 const auth = useAuth()
+// The page opens on settings.view; every field and the save button
+// additionally require settings.update.
+const { canUpdate } = useCaps('settings')
 const { langs, bilingual } = useMenuLang()
 const form = reactive({
     name_en: '', name_ar: '', description_en: '', description_ar: '',
@@ -19,7 +23,12 @@ const form = reactive({
     minimum_order: '', latitude: '', longitude: '',
     logo_url: '', cover_image_url: '',
     social_links: { instagram: '', facebook: '', tiktok: '' },
+    accepts_orders: true,
 })
+// The plan decides whether ordering exists; the switch below only turns an
+// entitled channel on and off. With no entitled channel there is nothing to
+// switch, so the control is hidden rather than shown doing nothing.
+const orderingEntitled = ref(false)
 const errors = ref({})
 const saved = ref(false)
 const saving = ref(false)
@@ -37,6 +46,7 @@ async function load() {
             // so the inputs stay controlled.
             social_links: { instagram: '', facebook: '', tiktok: '', ...(data.data.social_links || {}) },
         })
+        orderingEntitled.value = !!data.data.ordering_entitled
     } catch (err) {
         loadError.value = true
     } finally {
@@ -140,6 +150,24 @@ async function changePassword() {
             <!-- Phone, address, and working hours are configured per-branch
                  (every client has at least one branch). Only the WhatsApp
                  ordering number — one per menu — stays at restaurant level. -->
+            <!-- Owner's "are we taking orders right now" switch. Hidden when
+                 the plan entitles no ordering channel. -->
+            <div v-if="orderingEntitled" class="ordering-switch">
+                <div>
+                    <span class="label">{{ t('restaurant.accepts_orders') }}</span>
+                    <p class="hint">{{ form.accepts_orders ? t('restaurant.accepts_orders_on') : t('restaurant.accepts_orders_off') }}</p>
+                </div>
+                <button
+                    type="button"
+                    class="switch"
+                    :class="{ on: form.accepts_orders }"
+                    :disabled="!canUpdate"
+                    :aria-pressed="form.accepts_orders"
+                    :aria-label="t('restaurant.accepts_orders')"
+                    @click="form.accepts_orders = !form.accepts_orders"
+                ></button>
+            </div>
+
             <label class="block"><span class="label">{{ t('restaurant.whatsapp') }}</span>
                 <input v-model="form.whatsapp_number" class="input" dir="ltr" data-en-digits />
                 <FormError :errors="errors" field="whatsapp_number" /></label>
@@ -161,8 +189,8 @@ async function changePassword() {
             </div>
 
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <ImageUploader v-model="form.logo_url" folder="logos" :label="t('restaurant.logo')" :disabled="auth.isReadOnly" />
-                <ImageUploader v-model="form.cover_image_url" folder="covers" :label="t('restaurant.cover_image')" :disabled="auth.isReadOnly" />
+                <ImageUploader v-model="form.logo_url" folder="logos" :label="t('restaurant.logo')" :disabled="!canUpdate" />
+                <ImageUploader v-model="form.cover_image_url" folder="covers" :label="t('restaurant.cover_image')" :disabled="!canUpdate" />
             </div>
 
             <div class="block">
@@ -195,7 +223,7 @@ async function changePassword() {
 
         </div>
 
-        <button type="submit" :disabled="saving || auth.isReadOnly" class="btn btn-accent">{{ saving ? t('common.saving') : t('common.save') }}</button>
+        <button type="submit" :disabled="saving || !canUpdate" class="btn btn-accent">{{ saving ? t('common.saving') : t('common.save') }}</button>
     </form>
 
     <!-- Change password — deliberately its own form (own endpoint), and not
@@ -237,6 +265,13 @@ async function changePassword() {
 </template>
 
 <style scoped>
+.ordering-switch {
+    display: flex; align-items: center; justify-content: space-between; gap: 16px;
+    padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px;
+    background: var(--gray-soft);
+}
+.ordering-switch .hint { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
 .social-ico {
     font-size: 20px;
     width: 24px;

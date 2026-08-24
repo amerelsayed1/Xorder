@@ -57,6 +57,11 @@ export default defineConfig({
         port: 5175,
         proxy: {
             '/api': { target: API_TARGET, changeOrigin: true },
+            // The public menu API returns image paths, not absolute URLs, so a
+            // diner's browser resolves them against whatever host the menu is
+            // served from. In development that host is this dev server, which
+            // does not hold the uploads — send them to the API too.
+            '/storage': { target: API_TARGET, changeOrigin: true },
         },
     },
 })

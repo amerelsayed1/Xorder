@@ -11,7 +11,7 @@ class UpdateBranchRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return $this->user()?->isRestaurantAdmin() ?? false;
+        return $this->user()?->can('branches.update') ?? false;
     }
 
     public function rules(): array

@@ -36,7 +36,7 @@ watch(() => r.value, (rest) => {
 const title = computed(() => pickLocalized(r.value, 'name', locale.value) || t('admin.restaurant'))
 const mark = computed(() => localizedInitial(r.value, 'name', locale.value, 'R'))
 const logo = computed(() => r.value?.logo_url || '')
-const role = computed(() => t('roles.restaurant_admin'))
+const role = computed(() => auth.isRestaurantAdmin ? t('roles.restaurant_admin') : t('roles.restaurant_staff'))
 
 // New-order / bill-request alerts. Counts now come from the shared realtime
 // store's single consolidated /pulse poll (one request, ETag-gated); this layout
@@ -189,11 +189,14 @@ function onReadOnlyBlocked() {
     readOnlyTimer = setTimeout(() => (readOnlyFlash.value = false), 6000)
 }
 
-// Build the grouped sidebar from the declarative schema. Feature flags gate
-// which children (and therefore which groups) appear; the live badge counts are
+// Build the grouped sidebar from the declarative schema. Two gates decide which
+// children (and therefore which groups) appear: the restaurant's plan feature
+// flags, and the signed-in user's own capabilities — so a cashier's sidebar
+// carries only what their role can actually open. The live badge counts are
 // stamped in from the shared realtime store, which owns the single pulse poll.
 const nav = computed(() => buildDashboardNav({
     features: r.value?.features || [],
+    can: auth.can,
     badges: { orders: newOrders.value, requests: newRequests.value, live: newOrders.value + newRequests.value },
 }))
 </script>

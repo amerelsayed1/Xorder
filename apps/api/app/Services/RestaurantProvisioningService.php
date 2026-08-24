@@ -18,6 +18,7 @@ class RestaurantProvisioningService
         private readonly SlugService $slugs,
         private readonly RestaurantFeatureService $features,
         private readonly PlanEntitlementService $entitlements,
+        private readonly TenantRoleService $roles,
     ) {}
 
     /**
@@ -89,10 +90,16 @@ class RestaurantProvisioningService
                 'password' => Hash::make($plainPassword),
                 'password_changed_at' => now(),
                 'role' => RoleEnum::RESTAURANT_ADMIN,
+                'role_id' => null,
                 'restaurant_id' => $restaurant->id,
                 'status' => UserStatus::ACTIVE,
                 'email_verified_at' => now(),
             ]);
+
+            // Seed the four system staff roles so the restaurant can start
+            // adding people the moment it is created, and can never end up with
+            // no role to assign.
+            $this->roles->seedSystemRoles($restaurant);
 
             if ($branchData !== null) {
                 // restaurant_id is stamped by the HasMany relation.

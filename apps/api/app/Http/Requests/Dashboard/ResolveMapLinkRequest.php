@@ -8,7 +8,7 @@ class ResolveMapLinkRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return $this->user()?->isRestaurantAdmin() ?? false;
+        return $this->user()?->isTenantUser() ?? false;
     }
 
     public function rules(): array

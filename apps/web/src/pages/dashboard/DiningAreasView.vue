@@ -13,9 +13,12 @@ import Icon from '@xorder/ui/Icon.vue'
 import { confirm } from '@xorder/ui/confirm.js'
 import { alert } from '@xorder/ui/alert.js'
 import { useAuth } from '@xorder/api-client/auth.js'
+import { useCaps } from '../../lib/useCaps.js'
 
 const { t, locale } = useI18n()
 const auth = useAuth()
+// Per-action gates so the UI offers only what the API would accept.
+const { canCreate, canUpdate, canDelete } = useCaps('tables')
 const { langs, bilingual } = useMenuLang()
 const rows = ref([])
 const branches = ref([])
@@ -117,7 +120,7 @@ function onTypeModeChange() {
                 <h1 class="page-title">{{ t('tbl.areas_title') }}</h1>
                 <p class="page-sub">{{ t('tbl.areas_sub', { count: rows.length }) }}</p>
             </div>
-            <button v-if="!auth.isReadOnly" @click="openCreate" :disabled="!branches.length" class="btn btn-accent"><Icon name="plus" :size="16" />{{ t('common.create') }}</button>
+            <button v-if="canCreate" @click="openCreate" :disabled="!branches.length" class="btn btn-accent"><Icon name="plus" :size="16" />{{ t('common.create') }}</button>
         </div>
 
         <p v-if="!loading && !branches.length" class="card p-4 text-sm" style="color:var(--muted)">{{ t('tbl.no_branch_first') }}</p>
@@ -133,9 +136,9 @@ function onTypeModeChange() {
                         <div class="text-xs truncate" style="color:var(--muted)">{{ branchLabel(a.branch_id) }} · {{ typeLabel(a.type) }} · {{ t('tbl.tables_count', { count: a.tables_count ?? 0 }) }}</div>
                     </div>
                     <StatusBadge :value="a.is_active" :label="a.is_active ? t('common.active') : t('common.inactive')" />
-                    <button v-if="!auth.isReadOnly" class="switch" :class="{ on: a.is_active }" @click="toggleActive(a)"></button>
-                    <button v-if="!auth.isReadOnly" @click="openEdit(a)" class="icon-btn" :title="t('common.edit')"><Icon name="edit" :size="17" /></button>
-                    <button v-if="!auth.isReadOnly" @click="remove(a)" class="icon-btn icon-btn-danger" :title="t('common.delete')"><Icon name="trash" :size="17" /></button>
+                    <button v-if="canUpdate" class="switch" :class="{ on: a.is_active }" @click="toggleActive(a)"></button>
+                    <button v-if="canUpdate" @click="openEdit(a)" class="icon-btn" :title="t('common.edit')"><Icon name="edit" :size="17" /></button>
+                    <button v-if="canDelete" @click="remove(a)" class="icon-btn icon-btn-danger" :title="t('common.delete')"><Icon name="trash" :size="17" /></button>
                 </li>
             </ul>
         </div>

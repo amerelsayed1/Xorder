@@ -29,12 +29,14 @@ function autoGrowNote() {
     el.style.height = `${Math.min(el.scrollHeight, 132)}px`
 }
 
+// Immediate: the modal is code-split and mounts already open, so the prop
+// never flips from false and a lazy watcher would miss the first open.
 watch(() => props.isOpen, (open) => {
     if (open) {
         note.value = ''
         nextTick(autoGrowNote)
     }
-})
+}, { immediate: true })
 
 function getGroups() {
     if (!props.item) return []

@@ -1,28 +1,45 @@
 import { createApp } from 'vue'
 import { installEnDigits } from '@xorder/ui/enDigits.js'
-import { initAnalytics, initPerformance } from '@xorder/analytics'
+import { initAnalytics } from '@xorder/analytics'
 import App from './App.vue'
 import './app.css'
 
-// Firebase Analytics (GA4) + Performance Monitoring. No-op until
-// /firebase-config.js carries a config. The firebase SDK is lazy-loaded so it
-// stays out of the menu's initial bundle. Performance matters most here: this
-// is the QR-scan entry point, and its page-load and API traces are the only
-// field data we get on what a diner's phone actually experiences.
+// Firebase Analytics (GA4) only. No-op until /firebase-config.js carries a
+// config. The firebase SDK is lazy-loaded so it stays out of the initial bundle.
 //
-// Deferred to an idle moment after mount: diners arrive on mobile data, and
-// starting the SDK at boot put its requests in front of the menu's own chunks.
-function startAnalytics() {
-    const go = () => {
-        initAnalytics('menu')
-        initPerformance()
-    }
-    if ('requestIdleCallback' in window) requestIdleCallback(go, { timeout: 3000 })
-    else setTimeout(go, 1000)
+// Firebase Performance Monitoring used to start here too, and no longer does.
+// It cannot be configured out of an installations call and a
+// firebaseremoteconfig `fireperf:fetch` before it will record anything (see the
+// note on initPerformance) — in a field trace those were the last and slowest
+// nodes of the load chain, ~2.5 s in. Monitoring the QR-scan page by making the
+// QR-scan page slower is a bad trade. Origin-level field data for xorder.io
+// still comes from CrUX, which costs the diner nothing.
+//
+// GA4 stays: menu_viewed -> menu_add_to_cart -> menu_order_submitted is the
+// conversion funnel, and add-to-cart in particular exists nowhere else (an
+// abandoned cart never reaches the API). It is expensive though — gtag.js is
+// ~146 KiB transferred — so it is gated behind the load event plus the first
+// idle slot, instead of a bare requestIdleCallback that can fire while the menu
+// is still fetching. The gate lives inside initAnalytics so that the first
+// track() call cannot pull the SDK in ahead of it; events raised meanwhile are
+// held and sent when it opens, so no event is dropped.
+function afterLoadAndIdle() {
+    return new Promise((resolve) => {
+        const idle = () =>
+            'requestIdleCallback' in window
+                ? requestIdleCallback(() => resolve(), { timeout: 1000 })
+                : setTimeout(resolve, 200)
+
+        if (document.readyState === 'complete') idle()
+        else window.addEventListener('load', idle, { once: true })
+    })
 }
 
 // Normalize Arabic-Indic / Persian digits to ASCII in phone & money inputs.
 installEnDigits()
+
+// Registered before mount so it is in place ahead of the first track() call.
+initAnalytics('menu', { until: afterLoadAndIdle() })
 
 const app = createApp(App)
 
@@ -61,5 +78,3 @@ app.directive('img-fade', {
 })
 
 app.mount('#app')
-
-startAnalytics()

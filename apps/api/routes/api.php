@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\RoleEnum;
 use App\Http\Controllers\Admin\AuditLogController as AdminAuditLogController;
 use App\Http\Controllers\Admin\InsightsController as AdminInsightsController;
 use App\Http\Controllers\Admin\LandingContentController as AdminLandingContentController;
@@ -33,6 +34,8 @@ use App\Http\Controllers\Dashboard\PushTokenController;
 use App\Http\Controllers\Dashboard\ReportController;
 use App\Http\Controllers\Dashboard\RestaurantProfileController;
 use App\Http\Controllers\Dashboard\ReviewController;
+use App\Http\Controllers\Dashboard\RoleController;
+use App\Http\Controllers\Dashboard\StaffController;
 use App\Http\Controllers\Dashboard\StatsController;
 use App\Http\Controllers\Dashboard\TableController;
 use App\Http\Controllers\Public\LandingContentController as PublicLandingContentController;
@@ -143,52 +146,41 @@ Route::prefix('admin')
         Route::middleware('can:audit.view')->group(function () {
             Route::get('audit-logs', [AdminAuditLogController::class, 'index']);
             Route::get('audit-logs/filters', [AdminAuditLogController::class, 'filters']);
+            // The trail is stored as one file per day; these expose that directly.
+            Route::get('audit-logs/files', [AdminAuditLogController::class, 'files']);
+            Route::get('audit-logs/files/{date}', [AdminAuditLogController::class, 'download'])
+                ->where('date', '\d{4}-\d{2}-\d{2}');
         });
     });
 
 /*
 |--------------------------------------------------------------------------
-| Restaurant Dashboard  (requires RESTAURANT_ADMIN)
+| Restaurant Dashboard  (requires an active tenant role)
 |--------------------------------------------------------------------------
-| Writes additionally pass through `subscription.writable`.
+| The outer gate admits the restaurant owner (RESTAURANT_ADMIN) and its staff
+| accounts (RESTAURANT_STAFF); each section is then gated by a fine-grained
+| `can:<tenant capability>` ability (see App\Enums\TenantCapability). The owner
+| holds every one of them implicitly; staff hold exactly what the Role assigned
+| to them lists.
+|
+| Three orthogonal gates stack here, and they answer different questions:
+|   role:…                 which portal this account belongs to
+|   feature:<key>          whether the *tenant* bought this capability (plan)
+|   can:<tenant capability> whether this *person* may do it
+|   subscription.writable  whether the tenant may write at all right now
 */
 Route::prefix('dashboard')
-    ->middleware(['auth:jwt', 'role:RESTAURANT_ADMIN'])
+    ->middleware(['auth:jwt', 'role:'.implode(',', RoleEnum::tenantRoles())])
     ->group(function () {
-        // Reads
-        Route::get('restaurant', [RestaurantProfileController::class, 'show']);
-        Route::get('stats', [StatsController::class, 'index']);
-        Route::get('insights', [DashboardInsightsController::class, 'index']);
-        Route::get('branches', [BranchController::class, 'index']);
-        // Observational only — reports whether diners arrive on this branch's
-        // own customer Wi-Fi; nothing here changes how sessions are admitted.
-        Route::get('branches/{branch}/presence', [BranchController::class, 'presence']);
-        Route::get('combos', [ComboController::class, 'index']);
-        Route::get('categories', [CategoryController::class, 'index']);
-        Route::get('categories/{category}', [CategoryController::class, 'show']);
-        Route::get('items', [MenuItemController::class, 'index']);
-        // Shared "extras" library — reusable option groups (reads open to
-        // read-only tenants; writes are subscription-gated below).
-        Route::get('option-groups', [OptionGroupController::class, 'index']);
-        Route::get('option-groups/{optionGroup}', [OptionGroupController::class, 'show']);
-        // Export the menu to CSV/XLSX. A read — deliberately NOT behind
-        // subscription.writable, so a read-only tenant can still get their data
-        // out. Registered before items/{item} so "export" isn't matched as an id.
-        Route::get('items/export', [MenuExportController::class, 'export']);
-        Route::get('items/{item}', [MenuItemController::class, 'show']);
-        // Customer directory — available on every plan. Customers are captured
-        // for all ordering types (system orders and WhatsApp checkout alike), so
-        // the restaurant always keeps its customer list.
-        Route::get('customers', [CustomerController::class, 'index']);
-        Route::get('customers/{customer}', [CustomerController::class, 'show']);
-
+        // Shell endpoints — open to every tenant account regardless of role.
         // Push-notification device tokens (not subscription-gated).
         Route::post('push/token', [PushTokenController::class, 'store']);
         Route::delete('push/token', [PushTokenController::class, 'destroy']);
 
         // Consolidated dashboard heartbeat: new-order + bill-request + unread
         // notification counts in one ETag'd request, so the shell polls once
-        // instead of three times. Counts respect each feature gate internally.
+        // instead of three times. Counts respect each feature gate internally,
+        // and are zeroed for a user without the matching capability.
         Route::get('pulse', [PulseController::class, 'index']);
 
         // In-app notification centre. Not subscription- or feature-gated: every
@@ -198,121 +190,256 @@ Route::prefix('dashboard')
         Route::get('notifications/unread-count', [NotificationController::class, 'unreadCount']);
         Route::post('notifications/read-all', [NotificationController::class, 'markAllRead']);
         Route::patch('notifications/{notification}/read', [NotificationController::class, 'markRead']);
-        Route::get('qr', [DashboardQrController::class, 'show']);
-        Route::get('qr/download', [DashboardQrController::class, 'download']);
 
         // Turn a pasted Google Maps link (or share short link) into lat/lng for
-        // the profile form. A stateless helper — not subscription-gated, since it
-        // writes nothing; the resolved coordinates are saved via PUT restaurant.
+        // the profile and branch forms. A stateless helper — neither capability-
+        // nor subscription-gated, since it writes nothing and touches no tenant
+        // data; the resolved coordinates are saved through a gated endpoint.
         Route::post('geo/resolve-map-link', [MapLinkController::class, 'resolve']);
 
-        // Order management — gated on the system_ordering feature (Restaurant
-        // Pro). WhatsApp-only plans hand orders off to WhatsApp and have no
-        // durable order queue to manage. Deliberately NOT behind
-        // subscription.writable: a restaurant whose subscription just expired
-        // must still be able to process the orders that already came in.
-        Route::middleware('feature:system_ordering')->group(function () {
-            Route::get('orders', [DashboardOrderController::class, 'index']);
-            Route::get('orders/new-count', [DashboardOrderController::class, 'newCount']);
-            Route::patch('orders/{order}/status', [DashboardOrderController::class, 'updateStatus']);
+        /*
+        | Staff accounts & custom roles.
+        */
+        Route::middleware('can:staff.view')->group(function () {
+            Route::get('roles', [RoleController::class, 'index']);
+            Route::get('roles/capabilities', [RoleController::class, 'capabilities']);
+            Route::get('roles/{role}', [RoleController::class, 'show']);
+            Route::get('staff', [StaffController::class, 'index']);
+            Route::get('staff/{staff}', [StaffController::class, 'show']);
+
+            Route::middleware('subscription.writable')->group(function () {
+                // Roles follow the staff verbs: defining who may do what is the
+                // same privilege as deciding who works here.
+                Route::middleware('can:staff.create')->post('roles', [RoleController::class, 'store']);
+                Route::middleware('can:staff.update')->put('roles/{role}', [RoleController::class, 'update']);
+                Route::middleware('can:staff.delete')->delete('roles/{role}', [RoleController::class, 'destroy']);
+
+                Route::middleware('can:staff.create')->post('staff', [StaffController::class, 'store']);
+                Route::middleware('can:staff.update')->put('staff/{staff}', [StaffController::class, 'update']);
+                Route::middleware('can:staff.delete')->delete('staff/{staff}', [StaffController::class, 'destroy']);
+                // Resetting a password is editing the account, not creating one.
+                Route::middleware('can:staff.update')
+                    ->post('staff/{staff}/reset-password', [StaffController::class, 'resetPassword'])
+                    ->middleware('throttle:10,1');
+            });
         });
 
-        // Writes (subscription-gated)
-        Route::middleware('subscription.writable')->group(function () {
-            Route::put('restaurant', [RestaurantProfileController::class, 'update']);
+        /*
+        | Restaurant profile, branding and the restaurant-level QR code.
+        */
+        Route::middleware('can:settings.view')->group(function () {
+            Route::get('restaurant', [RestaurantProfileController::class, 'show']);
+            Route::get('qr', [DashboardQrController::class, 'show']);
+            Route::get('qr/download', [DashboardQrController::class, 'download']);
 
+            Route::middleware(['can:settings.update', 'subscription.writable'])
+                ->put('restaurant', [RestaurantProfileController::class, 'update']);
+        });
+
+        /*
+        | Dashboard stats & insights.
+        */
+        Route::middleware('can:analytics.view')->group(function () {
+            Route::get('stats', [StatsController::class, 'index']);
+            Route::get('insights', [DashboardInsightsController::class, 'index']);
+        });
+
+        /*
+        | Branches.
+        */
+        // Reading the list is reference data for any branch-scoped screen (see
+        // the branches.list gate); the presence probe stays on branches.view.
+        Route::middleware('can:branches.list')->get('branches', [BranchController::class, 'index']);
+        Route::middleware('can:branches.view')->group(function () {
+            // Observational only — reports whether diners arrive on this branch's
+            // own customer Wi-Fi; nothing here changes how sessions are admitted.
+            Route::get('branches/{branch}/presence', [BranchController::class, 'presence']);
+        });
+        Route::middleware('subscription.writable')->group(function () {
             // Adding branches is a plan capability (multi_branch): single-branch
             // plans can still edit/toggle/delete their existing branch, but only
             // entitled plans may create new ones.
-            Route::middleware('feature:multi_branch')->post('branches', [BranchController::class, 'store']);
-            Route::put('branches/{branch}', [BranchController::class, 'update']);
-            // Declare the branch's customer Wi-Fi address by hand — the setup
-            // path before enough verified scans exist to learn it.
-            Route::put('branches/{branch}/presence/egress-ips', [BranchController::class, 'updateEgressIps']);
-            Route::patch('branches/{branch}/status', [BranchController::class, 'toggleOpen']);
-            Route::delete('branches/{branch}', [BranchController::class, 'destroy']);
+            Route::middleware(['can:branches.create', 'feature:multi_branch'])
+                ->post('branches', [BranchController::class, 'store']);
 
-            Route::post('combos', [ComboController::class, 'store']);
-            Route::put('combos/{combo}', [ComboController::class, 'update']);
-            Route::patch('combos/{combo}/status', [ComboController::class, 'toggleStatus']);
-            Route::delete('combos/{combo}', [ComboController::class, 'destroy']);
+            Route::middleware('can:branches.update')->group(function () {
+                Route::put('branches/{branch}', [BranchController::class, 'update']);
+                // Declare the branch's customer Wi-Fi address by hand — the setup
+                // path before enough verified scans exist to learn it.
+                Route::put('branches/{branch}/presence/egress-ips', [BranchController::class, 'updateEgressIps']);
+                Route::patch('branches/{branch}/status', [BranchController::class, 'toggleOpen']);
+            });
 
-            Route::post('categories', [CategoryController::class, 'store']);
-            Route::patch('categories/reorder', [CategoryController::class, 'reorder']);
-            Route::delete('categories/bulk', [CategoryController::class, 'bulkDestroy']);
-            Route::put('categories/{category}', [CategoryController::class, 'update']);
-            Route::patch('categories/{category}/status', [CategoryController::class, 'toggleStatus']);
-            Route::delete('categories/{category}', [CategoryController::class, 'destroy']);
-
-            Route::post('items/import', [MenuImportController::class, 'import']);
-            Route::post('option-groups', [OptionGroupController::class, 'store']);
-            Route::put('option-groups/{optionGroup}', [OptionGroupController::class, 'update']);
-            Route::delete('option-groups/{optionGroup}', [OptionGroupController::class, 'destroy']);
-
-            Route::post('items', [MenuItemController::class, 'store']);
-            Route::patch('items/reorder', [MenuItemController::class, 'reorder']);
-            Route::delete('items/bulk', [MenuItemController::class, 'bulkDestroy']);
-            Route::put('items/{item}', [MenuItemController::class, 'update']);
-            Route::patch('items/{item}/availability', [MenuItemController::class, 'toggleAvailability']);
-            Route::delete('items/{item}', [MenuItemController::class, 'destroy']);
+            Route::middleware('can:branches.delete')->delete('branches/{branch}', [BranchController::class, 'destroy']);
         });
 
-        // Table experience (Phase 1) — gated on the table_management feature.
+        /*
+        | Menu — items, categories, combos and the shared "extras" library.
+        */
+        Route::middleware('can:menu.view')->group(function () {
+            Route::get('combos', [ComboController::class, 'index']);
+            Route::get('categories', [CategoryController::class, 'index']);
+            Route::get('categories/{category}', [CategoryController::class, 'show']);
+            Route::get('items', [MenuItemController::class, 'index']);
+            Route::get('option-groups', [OptionGroupController::class, 'index']);
+            Route::get('option-groups/{optionGroup}', [OptionGroupController::class, 'show']);
+            // Export the menu to CSV/XLSX. A read — deliberately NOT behind
+            // subscription.writable, so a read-only tenant can still get their data
+            // out. Registered before items/{item} so "export" isn't matched as an id.
+            Route::get('items/export', [MenuExportController::class, 'export']);
+            Route::get('items/{item}', [MenuItemController::class, 'show']);
+        });
+        Route::middleware('subscription.writable')->group(function () {
+            Route::middleware('can:menu.create')->group(function () {
+                Route::post('combos', [ComboController::class, 'store']);
+                Route::post('categories', [CategoryController::class, 'store']);
+                Route::post('option-groups', [OptionGroupController::class, 'store']);
+                Route::post('items', [MenuItemController::class, 'store']);
+                // An import adds rows (and updates matched ones), so it needs
+                // both verbs rather than counting as a plain create.
+                Route::middleware('can:menu.update')->post('items/import', [MenuImportController::class, 'import']);
+            });
+
+            // Reordering, renaming and toggling availability are all edits.
+            Route::middleware('can:menu.update')->group(function () {
+                Route::put('combos/{combo}', [ComboController::class, 'update']);
+                Route::patch('combos/{combo}/status', [ComboController::class, 'toggleStatus']);
+
+                Route::patch('categories/reorder', [CategoryController::class, 'reorder']);
+                Route::put('categories/{category}', [CategoryController::class, 'update']);
+                Route::patch('categories/{category}/status', [CategoryController::class, 'toggleStatus']);
+
+                Route::put('option-groups/{optionGroup}', [OptionGroupController::class, 'update']);
+
+                Route::patch('items/reorder', [MenuItemController::class, 'reorder']);
+                Route::put('items/{item}', [MenuItemController::class, 'update']);
+                Route::patch('items/{item}/availability', [MenuItemController::class, 'toggleAvailability']);
+            });
+
+            Route::middleware('can:menu.delete')->group(function () {
+                Route::delete('combos/{combo}', [ComboController::class, 'destroy']);
+                Route::delete('categories/bulk', [CategoryController::class, 'bulkDestroy']);
+                Route::delete('categories/{category}', [CategoryController::class, 'destroy']);
+                Route::delete('option-groups/{optionGroup}', [OptionGroupController::class, 'destroy']);
+                Route::delete('items/bulk', [MenuItemController::class, 'bulkDestroy']);
+                Route::delete('items/{item}', [MenuItemController::class, 'destroy']);
+            });
+        });
+
+        /*
+        | Customer directory — available on every plan. Customers are captured
+        | for all ordering types (system orders and WhatsApp checkout alike), so
+        | the restaurant always keeps its customer list.
+        */
+        Route::middleware('can:customers.view')->group(function () {
+            Route::get('customers', [CustomerController::class, 'index']);
+            Route::get('customers/{customer}', [CustomerController::class, 'show']);
+        });
+
+        /*
+        | Order management — gated on the system_ordering feature (Restaurant
+        | Pro). WhatsApp-only plans hand orders off to WhatsApp and have no
+        | durable order queue to manage. Deliberately NOT behind
+        | subscription.writable: a restaurant whose subscription just expired
+        | must still be able to process the orders that already came in.
+        */
+        Route::middleware('feature:system_ordering')->group(function () {
+            // orders.read = orders.view OR live.view (see AppServiceProvider).
+            Route::middleware('can:orders.read')->group(function () {
+                Route::get('orders', [DashboardOrderController::class, 'index']);
+                Route::get('orders/new-count', [DashboardOrderController::class, 'newCount']);
+            });
+            Route::middleware('can:orders.update')
+                ->patch('orders/{order}/status', [DashboardOrderController::class, 'updateStatus']);
+        });
+
+        /*
+        | Table experience (Phase 1) — gated on the table_management feature.
+        */
         Route::middleware('feature:table_management')->group(function () {
-            Route::get('dining-areas', [DiningAreaController::class, 'index']);
-            Route::get('tables', [TableController::class, 'index']);
-            // Live floor grid: occupancy + active-order + open-request signals per table.
-            Route::get('tables/live', [TableController::class, 'live']);
-            Route::get('tables/{table}/qr', [TableController::class, 'qr']);
-            Route::get('tables/{table}/qr/download', [TableController::class, 'qrDownload']);
-            // Bundle several tables' QR PNGs into one ZIP (read-only, no writable gate).
-            Route::post('tables/qr/download-bulk', [TableController::class, 'qrDownloadBulk']);
-            Route::post('tables/{table}/visit/finish', [TableController::class, 'finishVisit']);
+            // Live floor grid: occupancy + active-order + open-request signals
+            // per table. Sits OUTSIDE the tables.view group on purpose — nested
+            // it would inherit that gate and live.view could never reach it.
+            Route::middleware('can:tables.live')->get('tables/live', [TableController::class, 'live']);
+
+            Route::middleware('can:tables.view')->group(function () {
+                Route::get('dining-areas', [DiningAreaController::class, 'index']);
+                Route::get('tables', [TableController::class, 'index']);
+                Route::get('tables/{table}/qr', [TableController::class, 'qr']);
+                Route::get('tables/{table}/qr/download', [TableController::class, 'qrDownload']);
+                // Bundle several tables' QR PNGs into one ZIP (read-only, no writable gate).
+                Route::post('tables/qr/download-bulk', [TableController::class, 'qrDownloadBulk']);
+            });
+
+            // Closing out a visit is floor work, not configuration — it stays
+            // available on a lapsed subscription like order handling does, and
+            // counts as an edit rather than a deletion.
+            Route::middleware('can:tables.update')
+                ->post('tables/{table}/visit/finish', [TableController::class, 'finishVisit']);
 
             Route::middleware('subscription.writable')->group(function () {
-                Route::post('dining-areas', [DiningAreaController::class, 'store']);
-                Route::put('dining-areas/{area}', [DiningAreaController::class, 'update']);
-                Route::patch('dining-areas/{area}/status', [DiningAreaController::class, 'toggleStatus']);
-                Route::delete('dining-areas/{area}', [DiningAreaController::class, 'destroy']);
+                Route::middleware('can:tables.create')->group(function () {
+                    Route::post('dining-areas', [DiningAreaController::class, 'store']);
+                    Route::post('tables', [TableController::class, 'store']);
+                    Route::post('tables/bulk', [TableController::class, 'bulkStore']);
+                });
 
-                Route::post('tables', [TableController::class, 'store']);
-                Route::post('tables/bulk', [TableController::class, 'bulkStore']);
-                Route::put('tables/{table}', [TableController::class, 'update']);
-                Route::patch('tables/{table}/status', [TableController::class, 'toggleStatus']);
-                Route::post('tables/{table}/qr/regenerate', [TableController::class, 'regenerateQr']);
-                Route::delete('tables/bulk', [TableController::class, 'bulkDestroy']);
-                Route::delete('tables/{table}', [TableController::class, 'destroy']);
+                Route::middleware('can:tables.update')->group(function () {
+                    Route::put('dining-areas/{area}', [DiningAreaController::class, 'update']);
+                    Route::patch('dining-areas/{area}/status', [DiningAreaController::class, 'toggleStatus']);
+                    Route::put('tables/{table}', [TableController::class, 'update']);
+                    Route::patch('tables/{table}/status', [TableController::class, 'toggleStatus']);
+                    // Rotating a QR invalidates the printed one — an edit to the
+                    // table, not a new table.
+                    Route::post('tables/{table}/qr/regenerate', [TableController::class, 'regenerateQr']);
+                });
+
+                Route::middleware('can:tables.delete')->group(function () {
+                    Route::delete('dining-areas/{area}', [DiningAreaController::class, 'destroy']);
+                    Route::delete('tables/bulk', [TableController::class, 'bulkDestroy']);
+                    Route::delete('tables/{table}', [TableController::class, 'destroy']);
+                });
             });
         });
 
-        // Bill requests (Phase 2) — gated on the bill_requests feature. Reads stay
-        // available even when the subscription lapsed; the status write is gated.
+        /*
+        | Bill requests (Phase 2) — gated on the bill_requests feature. Reads stay
+        | available even when the subscription lapsed; the status write is gated.
+        */
         Route::middleware('feature:bill_requests')->group(function () {
-            Route::get('bill-requests', [BillRequestController::class, 'index']);
-            Route::get('bill-requests/new-count', [BillRequestController::class, 'newCount']);
-
-            Route::middleware('subscription.writable')->group(function () {
-                Route::patch('bill-requests/{bill}/status', [BillRequestController::class, 'updateStatus']);
+            // bills.read = bills.view OR live.view.
+            Route::middleware('can:bills.read')->group(function () {
+                Route::get('bill-requests', [BillRequestController::class, 'index']);
+                Route::get('bill-requests/new-count', [BillRequestController::class, 'newCount']);
             });
+
+            Route::middleware(['can:bills.update', 'subscription.writable'])
+                ->patch('bill-requests/{bill}/status', [BillRequestController::class, 'updateStatus']);
         });
 
-        // Internal customer reviews (Phase 3) — gated on the internal_reviews
-        // feature. Reads stay available when the subscription lapsed; writes
-        // (status + notes) are subscription-gated.
+        /*
+        | Internal customer reviews (Phase 3) — gated on the internal_reviews
+        | feature. Reads stay available when the subscription lapsed; writes
+        | (status + notes) are subscription-gated.
+        */
         Route::middleware('feature:internal_reviews')->group(function () {
-            Route::get('reviews', [ReviewController::class, 'index']);
-            Route::get('reviews/summary', [ReviewController::class, 'summary']);
-            Route::get('reviews/{review}', [ReviewController::class, 'show']);
+            Route::middleware('can:reviews.view')->group(function () {
+                Route::get('reviews', [ReviewController::class, 'index']);
+                Route::get('reviews/summary', [ReviewController::class, 'summary']);
+                Route::get('reviews/{review}', [ReviewController::class, 'show']);
+            });
 
-            Route::middleware('subscription.writable')->group(function () {
+            Route::middleware(['can:reviews.update', 'subscription.writable'])->group(function () {
                 Route::patch('reviews/{review}/status', [ReviewController::class, 'updateStatus']);
                 Route::post('reviews/{review}/notes', [ReviewController::class, 'addNote']);
             });
         });
 
-        // Product analytics / reports (Phase 4) — gated on the product_analytics
-        // feature. All reads; the export streams a CSV/XLSX file.
-        Route::middleware('feature:product_analytics')->group(function () {
+        /*
+        | Product analytics / reports (Phase 4) — gated on the product_analytics
+        | feature. All reads; the export streams a CSV/XLSX file.
+        */
+        Route::middleware(['feature:product_analytics', 'can:reports.view'])->group(function () {
             Route::get('reports/products-by-time', [ReportController::class, 'productsByTime']);
             Route::get('reports/products-by-time/export', [ReportController::class, 'export']);
             Route::get('reports/dining-areas', [ReportController::class, 'diningAreas']);

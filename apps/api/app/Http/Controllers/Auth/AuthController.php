@@ -63,7 +63,7 @@ class AuthController extends Controller
             return response()->json(['message' => __('xorder.errors.account_suspended')], 403);
         }
 
-        $user->loadMissing('restaurant.features');
+        $user->loadMissing(['restaurant.features', 'tenantRole']);
         $token = Jwt::issue($user);
 
         AuditLogger::record('auth.login', [
@@ -131,7 +131,7 @@ class AuthController extends Controller
     /** Current authenticated user + restaurant context (for the SPA bootstrap). */
     public function me(Request $request): JsonResponse
     {
-        $user = $request->user()->loadMissing('restaurant.features');
+        $user = $request->user()->loadMissing(['restaurant.features', 'tenantRole']);
 
         return response()->json(['data' => UserResource::make($user)]);
     }

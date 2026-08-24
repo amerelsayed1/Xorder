@@ -13,7 +13,7 @@ class UpdateRestaurantProfileRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return $this->user()?->isRestaurantAdmin() ?? false;
+        return $this->user()?->can('settings.update') ?? false;
     }
 
     public function rules(): array
@@ -39,6 +39,10 @@ class UpdateRestaurantProfileRequest extends FormRequest
             'minimum_order' => ['nullable', 'numeric', 'min:0', 'max:1000000'],
             'latitude' => ['nullable', 'numeric', 'between:-90,90', 'required_with:longitude'],
             'longitude' => ['nullable', 'numeric', 'between:-180,180', 'required_with:latitude'],
+            // The owner's "are we taking orders right now" switch. The plan
+            // still decides whether ordering exists at all (ordering_mode,
+            // below) — this only turns an entitled channel on and off.
+            'accepts_orders' => ['sometimes', 'boolean'],
             'social_links' => ['nullable', 'array'],
             'social_links.instagram' => ['nullable', 'string', 'url', 'max:2048'],
             'social_links.facebook' => ['nullable', 'string', 'url', 'max:2048'],

@@ -90,8 +90,37 @@ On first boot the app container waits for Postgres, migrates, seeds the Super Ad
 
 ```bash
 docker compose logs -f app           # follow app logs (stderr)
+docker compose exec app tail -f storage/logs/activity-$(date +%F).log   # today's activity trail
 docker compose down                  # stop (add -v to wipe db + uploads)
 ```
+
+Every audited action (logins, menu/branch edits, order transitions, admin changes) is written to
+one file per day, `storage/logs/activity-YYYY-MM-DD.log`, as one JSON object per line. **These
+files are the system of record** — there is no audit table behind the Super Admin activity screens;
+`App\Services\ActivityLogReader` filters and paginates the files directly, and the API response
+shape is unchanged, so the SPA neither knows nor cares.
+
+The key order in each line is fixed and load-bearing: the reader answers filters by matching
+substrings (`"tenant_id":7,`) against raw lines, so paging through a month of history costs a scan
+rather than a million `json_decode()` calls — only the rows on the requested page are decoded.
+
+Retention is `ACTIVITY_LOG_DAYS` (default 90) and `activity:prune` runs nightly from the
+`scheduler` service, deleting by date rather than by file count so an idle day can't stretch the
+window. This is also the visible history in the UI. `ACTIVITY_LOG_FILE=false` disables logging.
+
+```bash
+docker compose exec app tail -f storage/logs/activity-$(date +%F).log        # follow today
+docker compose exec app sh -c 'grep auth.login_failed storage/logs/activity-*.log | wc -l'
+docker compose exec app php artisan activity:prune --dry-run                 # what would go
+```
+
+The legacy `audit_logs` table is frozen — nothing writes to it. `activity:backfill` exports its
+history into the daily files (skipping days already written live), and `audit:prune` trims what
+remains. Once you've backfilled and are happy, the table can be dropped.
+
+> `activity:backfill` runs as root under `docker exec` while the app writes as `www-data`, so it
+> hands each file it writes back to the log directory's owner. Without that the app cannot append
+> and the trail stops dead with "Permission denied".
 
 Files: [`Dockerfile`](Dockerfile) (stages `assets`/`vendor`/`app`/`web`),
 [`docker-compose.yml`](docker-compose.yml), `apps/api/.env.docker`,

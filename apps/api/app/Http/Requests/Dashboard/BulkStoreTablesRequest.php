@@ -16,7 +16,7 @@ class BulkStoreTablesRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return $this->user()?->isRestaurantAdmin() ?? false;
+        return $this->user()?->can('tables.create') ?? false;
     }
 
     public function rules(): array

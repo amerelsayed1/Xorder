@@ -15,9 +15,23 @@ const { t, locale } = useI18n()
 const auth = useAuth()
 const rt = useRealtime()
 const feats = computed(() => auth.restaurant?.features || [])
-const showRequests = computed(() => feats.value.includes('bill_requests'))
-const showTables = computed(() => feats.value.includes('table_management'))
-const showOrders = computed(() => feats.value.includes('system_ordering'))
+// Two gates per column, and both must pass: the plan flag says the restaurant
+// bought the capability, the tenant capability says this person may use it. A
+// waiter with tables.view but no bills.view gets a floor grid and no bill feed,
+// rather than a 403 that blanks the whole board.
+// live.view grants the whole board; the per-section views also reach it, so a
+// manager who already holds orders.view keeps the board without a second grant.
+// Mirrors the server's orders.read / bills.read / tables.live gates.
+const onLiveBoard = (own) => auth.can('live.view') || auth.can(own)
+const showRequests = computed(() => feats.value.includes('bill_requests') && onLiveBoard('bills.view'))
+const showTables = computed(() => feats.value.includes('table_management') && onLiveBoard('tables.view'))
+const showOrders = computed(() => feats.value.includes('system_ordering') && onLiveBoard('orders.view'))
+
+// Whether the action buttons on each column are offered at all. The API is the
+// authority; hiding them just avoids a button that can only ever 403.
+const canActRequests = computed(() => !auth.isReadOnly && auth.can('bills.update'))
+const canActOrders = computed(() => !auth.isReadOnly && auth.can('orders.update'))
+const canActTables = computed(() => !auth.isReadOnly && auth.can('tables.update'))
 
 const loading = ref(true)
 const updating = ref(null)
@@ -279,7 +293,7 @@ const panelDir = computed(() => (locale.value === 'ar' ? 'rtl' : 'ltr'))
                                     <span class="badge" :class="reqBadge[it.req.status]">{{ t('req.status.' + it.req.status) }}</span>
                                 </div>
                                 <div class="req-line">{{ it.req.customer_note || t('req.bill') }}</div>
-                                <div v-if="!auth.isReadOnly" class="live-actions">
+                                <div v-if="canActRequests" class="live-actions">
                                     <button class="live-primary" :disabled="updating === 'r' + it.req.id" @click="setRequestStatus(it.req, 'COMPLETED')">
                                         {{ t('orders.complete') }}
                                     </button>
@@ -299,7 +313,7 @@ const panelDir = computed(() => (locale.value === 'ar' ? 'rtl' : 'ltr'))
                                     <li v-for="(itm, i) in it.order.items" :key="i"><span class="live-qty">{{ itm.qty }}×</span> {{ itm.name }}</li>
                                 </ul>
                                 <div class="live-time"><b style="color:var(--ink)">{{ it.order.total }} {{ currencyLabel(it.order.currency, locale) }}</b></div>
-                                <div v-if="!auth.isReadOnly && !it.order.table_visit_id" class="live-actions">
+                                <div v-if="canActOrders && !it.order.table_visit_id" class="live-actions">
                                     <button v-for="next in ORDER_NEXT[it.order.status] || []" :key="next"
                                         :class="next === 'CANCELLED' ? 'live-cancel' : 'live-primary'"
                                         :disabled="updating === 'o' + it.order.id" @click="setOrderStatus(it.order, next)">{{ t(orderActionLabel[next]) }}</button>
@@ -345,7 +359,7 @@ const panelDir = computed(() => (locale.value === 'ar' ? 'rtl' : 'ltr'))
                 <div v-if="modalRequest" class="tm-req">
                     <div class="tm-req-line">{{ modalRequest.customer_note || t('req.bill') }}</div>
                     <div class="live-sub">{{ t('req.waiting', { time: fmtTime(modalRequest.requested_at) }) }}</div>
-                    <div v-if="!auth.isReadOnly" class="live-actions">
+                    <div v-if="canActRequests" class="live-actions">
                         <button class="live-primary" :disabled="updating === 'r' + modalRequest.id" @click="setRequestStatus(modalRequest, 'COMPLETED')">
                             {{ t('orders.complete') }}
                         </button>
@@ -370,13 +384,13 @@ const panelDir = computed(() => (locale.value === 'ar' ? 'rtl' : 'ltr'))
                         <li v-for="(it, i) in o.items" :key="i"><span class="live-qty">{{ it.qty }}×</span> {{ it.name }}</li>
                     </ul>
                     <div v-if="o.note" class="live-note">{{ o.note }}</div>
-                    <div v-if="!auth.isReadOnly && !o.table_visit_id" class="live-actions">
+                    <div v-if="canActOrders && !o.table_visit_id" class="live-actions">
                         <button v-for="next in ORDER_NEXT[o.status] || []" :key="next"
                             :class="next === 'CANCELLED' ? 'live-cancel' : 'live-primary'"
                             :disabled="updating === 'o' + o.id" @click="setOrderStatus(o, next)">{{ t(orderActionLabel[next]) }}</button>
                     </div>
                 </article>
-                <div v-if="openTable.occupied && !auth.isReadOnly" class="live-actions tm-finish-actions">
+                <div v-if="openTable.occupied && canActTables" class="live-actions tm-finish-actions">
                     <button class="live-primary" :disabled="updating === 'visit-' + openTable.id" @click="finishTableVisit('CLOSED')">
                         {{ t('live.close_visit') }}
                     </button>

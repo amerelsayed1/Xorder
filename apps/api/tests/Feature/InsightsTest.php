@@ -5,9 +5,12 @@ namespace Tests\Feature;
 use App\Enums\SubscriptionStatus;
 use App\Models\Category;
 use App\Models\MenuItem;
+use App\Models\MenuViewDaily;
+use App\Models\Order;
 use App\Models\Restaurant;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Tests\TestCase;
 
 class InsightsTest extends TestCase
@@ -152,5 +155,188 @@ class InsightsTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.subscription.days_remaining', 10)
             ->assertJsonPath('data.subscription.writable', true);
+    }
+
+    /*
+    |------------------------------------------------------------------
+    | Orders per day, compared against the preceding fortnight
+    |------------------------------------------------------------------
+    */
+
+    /** Place an order for $restaurant on a given day. */
+    private function orderOn(Restaurant $restaurant, string $at): void
+    {
+        $order = new Order([
+            'status' => 'NEW',
+            'items' => [['name' => 'Item', 'qty' => 1, 'line_total' => 10]],
+            'total' => 10,
+            'currency' => 'EGP',
+            'order_type' => 'pickup',
+            'source' => 'system',
+        ]);
+        $order->restaurant_id = $restaurant->id;
+        $order->save();
+        $order->forceFill(['created_at' => $at])->save();
+    }
+
+    public function test_dashboard_insights_compare_orders_against_the_previous_fortnight(): void
+    {
+        $r = Restaurant::factory()->create();
+
+        // Current window: 3 orders. Previous window: 2.
+        $this->orderOn($r, now()->subDays(1)->toDateTimeString());
+        $this->orderOn($r, now()->subDays(2)->toDateTimeString());
+        $this->orderOn($r, now()->subDays(13)->toDateTimeString());
+        $this->orderOn($r, now()->subDays(15)->toDateTimeString());
+        $this->orderOn($r, now()->subDays(27)->toDateTimeString());
+        // Older than both windows — must not be counted on either side.
+        $this->orderOn($r, now()->subDays(40)->toDateTimeString());
+
+        $data = $this->actingAs(User::factory()->restaurantAdmin($r->id)->create())
+            ->getJson('/api/dashboard/insights')
+            ->assertOk()
+            ->json('data.engagement');
+
+        $this->assertSame(3, $data['orders_14d']);
+        $this->assertSame(2, $data['orders_14d_previous']);
+        $this->assertEquals(50.0, $data['orders_change_pct']);
+
+        // Both windows are dense and the same length, so the chart can lay one
+        // over the other index-for-index.
+        $this->assertCount(14, $data['daily']);
+        $this->assertCount(14, $data['previous_daily']);
+    }
+
+    /** Growth from nothing is not a percentage — it is a first week. */
+    public function test_change_percentage_is_null_when_the_previous_fortnight_was_empty(): void
+    {
+        $r = Restaurant::factory()->create();
+        $this->orderOn($r, now()->subDays(1)->toDateTimeString());
+
+        $data = $this->actingAs(User::factory()->restaurantAdmin($r->id)->create())
+            ->getJson('/api/dashboard/insights')
+            ->assertOk()
+            ->json('data.engagement');
+
+        $this->assertSame(1, $data['orders_14d']);
+        $this->assertSame(0, $data['orders_14d_previous']);
+        $this->assertNull($data['orders_change_pct']);
+    }
+
+    public function test_a_decline_is_reported_as_a_negative_change(): void
+    {
+        $r = Restaurant::factory()->create();
+        $this->orderOn($r, now()->subDays(2)->toDateTimeString());
+        $this->orderOn($r, now()->subDays(16)->toDateTimeString());
+        $this->orderOn($r, now()->subDays(17)->toDateTimeString());
+        $this->orderOn($r, now()->subDays(18)->toDateTimeString());
+        $this->orderOn($r, now()->subDays(19)->toDateTimeString());
+
+        $data = $this->actingAs(User::factory()->restaurantAdmin($r->id)->create())
+            ->getJson('/api/dashboard/insights')
+            ->assertOk()
+            ->json('data.engagement');
+
+        $this->assertEquals(-75.0, $data['orders_change_pct']);
+    }
+
+    /** Another tenant's orders must not appear on either side of the comparison. */
+    public function test_the_comparison_is_tenant_scoped(): void
+    {
+        $mine = Restaurant::factory()->create();
+        $theirs = Restaurant::factory()->create();
+
+        $this->orderOn($mine, now()->subDays(1)->toDateTimeString());
+        $this->orderOn($theirs, now()->subDays(1)->toDateTimeString());
+        $this->orderOn($theirs, now()->subDays(20)->toDateTimeString());
+
+        $data = $this->actingAs(User::factory()->restaurantAdmin($mine->id)->create())
+            ->getJson('/api/dashboard/insights')
+            ->assertOk()
+            ->json('data.engagement');
+
+        $this->assertSame(1, $data['orders_14d']);
+        $this->assertSame(0, $data['orders_14d_previous']);
+    }
+
+    /*
+    |------------------------------------------------------------------
+    | Menu views bucket by the restaurant's day, not the server's
+    |------------------------------------------------------------------
+    */
+
+    public function test_a_view_lands_on_the_restaurants_local_day_not_the_servers(): void
+    {
+        // 00:30 on the 24th in Cairo is still 22:30 on the 23rd in UTC. The
+        // view belongs to the diner's day.
+        Carbon::setTestNow('2026-08-23 22:30:00');
+
+        $r = Restaurant::factory()->create(['slug' => 'cairo', 'timezone' => 'Africa/Cairo']);
+        $cat = Category::factory()->for($r)->create(['is_active' => true]);
+        MenuItem::factory()->for($r)->for($cat)->create();
+
+        $this->withHeaders(['User-Agent' => 'Mozilla/5.0 (iPhone) Safari/604.1'])
+            ->getJson('/api/public/restaurants/cairo/menu')
+            ->assertOk();
+
+        // Stored as a date column; compare the day, not the raw string.
+        $this->assertSame('2026-08-24', MenuViewDaily::withoutGlobalScopes()
+            ->where('restaurant_id', $r->id)->value('date')->toDateString());
+
+        Carbon::setTestNow();
+    }
+
+    public function test_a_restaurant_without_a_timezone_falls_back_to_the_app_clock(): void
+    {
+        Carbon::setTestNow('2026-08-23 22:30:00');
+
+        $r = Restaurant::factory()->create(['slug' => 'utcshop', 'timezone' => null]);
+        $cat = Category::factory()->for($r)->create(['is_active' => true]);
+        MenuItem::factory()->for($r)->for($cat)->create();
+
+        $this->withHeaders(['User-Agent' => 'Mozilla/5.0 (iPhone) Safari/604.1'])
+            ->getJson('/api/public/restaurants/utcshop/menu')
+            ->assertOk();
+
+        $this->assertSame('2026-08-23', MenuViewDaily::withoutGlobalScopes()
+            ->where('restaurant_id', $r->id)->value('date')->toDateString());
+
+        Carbon::setTestNow();
+    }
+
+    public function test_repeat_views_on_the_same_local_day_increment_one_row(): void
+    {
+        Carbon::setTestNow('2026-08-24 01:00:00');
+
+        $r = Restaurant::factory()->create(['slug' => 'busy', 'timezone' => 'Africa/Cairo']);
+        $cat = Category::factory()->for($r)->create(['is_active' => true]);
+        MenuItem::factory()->for($r)->for($cat)->create();
+
+        foreach (range(1, 3) as $i) {
+            $this->withHeaders(['User-Agent' => 'Mozilla/5.0 (iPhone) Safari/604.1'])
+                ->getJson('/api/public/restaurants/busy/menu')->assertOk();
+        }
+
+        $this->assertSame(1, MenuViewDaily::withoutGlobalScopes()->where('restaurant_id', $r->id)->count());
+        $this->assertSame(3, (int) MenuViewDaily::withoutGlobalScopes()->where('restaurant_id', $r->id)->value('views'));
+
+        Carbon::setTestNow();
+    }
+
+    /** Scripted clients and owner previews must never inflate the counter. */
+    public function test_bots_and_previews_are_not_counted(): void
+    {
+        $r = Restaurant::factory()->create(['slug' => 'clean']);
+        $cat = Category::factory()->for($r)->create(['is_active' => true]);
+        MenuItem::factory()->for($r)->for($cat)->create();
+
+        $this->withHeaders(['User-Agent' => 'curl/8.7.1'])
+            ->getJson('/api/public/restaurants/clean/menu')->assertOk();
+        $this->withHeaders(['User-Agent' => 'Mozilla/5.0 (compatible; Googlebot/2.1)'])
+            ->getJson('/api/public/restaurants/clean/menu')->assertOk();
+        $this->withHeaders(['User-Agent' => 'Mozilla/5.0 (iPhone) Safari/604.1'])
+            ->getJson('/api/public/restaurants/clean/menu?preview=1')->assertOk();
+
+        $this->assertDatabaseCount('menu_view_dailies', 0);
     }
 }

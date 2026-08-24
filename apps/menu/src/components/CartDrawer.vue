@@ -47,7 +47,9 @@ const address = ref('')
 // doesn't scold them before they've filled anything in.
 const attempted = ref(false)
 
-// Fresh dialog every open: back to step 1, prefill saved diner info.
+// Fresh dialog every open: back to step 1, prefill saved diner info. Immediate
+// because the drawer is code-split and only mounted once it is already open —
+// the prop never transitions, so the first open has to be caught here.
 watch(() => props.isOpen, (open) => {
     if (open) {
         step.value = 1
@@ -58,7 +60,7 @@ watch(() => props.isOpen, (open) => {
         note.value = ''
         attempted.value = false
     }
-})
+}, { immediate: true })
 
 // Cart emptied while the dialog is open (last line removed) → back to review.
 watch(() => props.cart.length, (len) => {

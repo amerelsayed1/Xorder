@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import api, { ensureCsrf } from '@xorder/api-client/api.js'
 import { withMinDuration } from '../../lib/minLoading.js'
 import { useAuth } from '@xorder/api-client/auth.js'
+import { useCaps } from '../../lib/useCaps.js'
 import { pickLocalized } from '@xorder/ui/localize.js'
 import Modal from '@xorder/ui/Modal.vue'
 import BusinessHoursEditor from '../../components/BusinessHoursEditor.vue'
@@ -19,6 +20,8 @@ import { useMenuLang } from '../../lib/menuLang.js'
 const { t, locale } = useI18n()
 const { langs, bilingual } = useMenuLang()
 const auth = useAuth()
+// Per-action gates so the UI offers only what the API would accept.
+const { canCreate, canUpdate, canDelete } = useCaps('menu')
 const rows = ref([])
 const loading = ref(true)
 const saving = ref(false)
@@ -160,7 +163,7 @@ const dragIndex = ref(null)   // row being dragged
 const overIndex = ref(null)   // row currently hovered as drop target
 const dragReady = ref(false)  // only allow drag when initiated from the handle
 function onDragStart(i, ev) {
-    if (auth.isReadOnly) return
+    if (!canUpdate.value) return
     dragIndex.value = i
     ev.dataTransfer.effectAllowed = 'move'
     // Firefox requires data to be set for the drag to fire.
@@ -197,11 +200,11 @@ const categoryAltName = (c) => locale.value === 'ar' ? (c.name_en || '') : (c.na
                 <h1 class="page-title">{{ t('nav.categories') }}</h1>
                 <p class="page-sub">{{ t('category.subtitle', { count: rows.length }) }}</p>
             </div>
-            <button v-if="!auth.isReadOnly" @click="openCreate" class="btn btn-accent"><Icon name="plus" :size="16" />{{ t('common.create') }}</button>
+            <button v-if="canCreate" @click="openCreate" class="btn btn-accent"><Icon name="plus" :size="16" />{{ t('common.create') }}</button>
         </div>
 
         <!-- Bulk-action bar for the current selection -->
-        <div v-if="!auth.isReadOnly && selected.size" class="bulk-bar">
+        <div v-if="canDelete && selected.size" class="bulk-bar">
             <span class="bulk-count">{{ t('category.selected_count', { n: selected.size }) }}</span>
             <button class="btn btn-ghost btn-sm" @click="clearSelection">{{ t('category.clear_selection') }}</button>
             <button class="btn btn-danger btn-sm" :disabled="bulkDeleting" @click="bulkRemove">
@@ -215,7 +218,7 @@ const categoryAltName = (c) => locale.value === 'ar' ? (c.name_en || '') : (c.na
             <ListSkeleton v-if="loading" />
             <div v-else-if="!rows.length" class="p-8 text-center" style="color:var(--muted)">{{ t('common.none') }}</div>
             <template v-else>
-                <label v-if="!auth.isReadOnly" class="flex items-center gap-3 px-5 py-2.5 text-xs" style="color:var(--muted);border-bottom:1px solid var(--line)">
+                <label v-if="canDelete" class="flex items-center gap-3 px-5 py-2.5 text-xs" style="color:var(--muted);border-bottom:1px solid var(--line)">
                     <input type="checkbox" class="row-check" :checked="allSelected" @change="toggleAll" />
                     <span>{{ t('common.select_all') }}</span>
                 </label>
@@ -224,16 +227,16 @@ const categoryAltName = (c) => locale.value === 'ar' ? (c.name_en || '') : (c.na
                     class="flex items-center gap-3 px-5 py-3 border-t first:border-t-0"
                     :class="{ 'row-selected': selected.has(c.id), 'row-dragging': dragIndex === i, 'row-drop': overIndex === i && dragIndex !== null && dragIndex !== i }"
                     style="border-color:var(--line)"
-                    :draggable="!auth.isReadOnly && dragReady"
+                    :draggable="canUpdate && dragReady"
                     @dragstart="onDragStart(i, $event)"
                     @dragover.prevent="onDragOver(i)"
                     @drop.prevent="onDrop(i)"
                     @dragend="resetDrag">
-                    <input v-if="!auth.isReadOnly" type="checkbox" class="row-check" :checked="selected.has(c.id)" :aria-label="categoryName(c)" @change="toggleSelect(c.id)" />
-                    <button v-if="!auth.isReadOnly" class="drag-handle" :title="t('category.drag_to_reorder')" :aria-label="t('category.drag_to_reorder')"
+                    <input v-if="canDelete" type="checkbox" class="row-check" :checked="selected.has(c.id)" :aria-label="categoryName(c)" @change="toggleSelect(c.id)" />
+                    <button v-if="canUpdate" class="drag-handle" :title="t('category.drag_to_reorder')" :aria-label="t('category.drag_to_reorder')"
                         @mousedown="dragReady = true" @touchstart.passive="dragReady = true" @mouseup="dragReady = false"><Icon name="grip" :size="16" fill /></button>
                     <span class="row-num">{{ i + 1 }}</span>
-                    <div v-if="!auth.isReadOnly" class="flex flex-col">
+                    <div v-if="canUpdate" class="flex flex-col">
                         <button @click="move(i, -1)" :disabled="i === 0" class="icon-btn" style="width:24px;height:18px"><Icon name="chevronUp" :size="15" /></button>
                         <button @click="move(i, 1)" :disabled="i === rows.length - 1" class="icon-btn" style="width:24px;height:18px"><Icon name="chevronDown" :size="15" /></button>
                     </div>
@@ -246,9 +249,9 @@ const categoryAltName = (c) => locale.value === 'ar' ? (c.name_en || '') : (c.na
                     </div>
                     <span v-if="c.availability_hours" class="badge badge-gray">{{ t('category.timed_badge') }}</span>
                     <StatusBadge :value="c.is_active" :label="c.is_active ? t('common.active') : t('common.inactive')" />
-                    <button v-if="!auth.isReadOnly" class="switch" :class="{ on: c.is_active }" @click="toggle(c)"></button>
-                    <button v-if="!auth.isReadOnly" @click="openEdit(c)" class="icon-btn" :title="t('common.edit')"><Icon name="edit" :size="17" /></button>
-                    <button v-if="!auth.isReadOnly" @click="remove(c)" class="icon-btn icon-btn-danger" :title="t('common.delete')"><Icon name="trash" :size="17" /></button>
+                    <button v-if="canUpdate" class="switch" :class="{ on: c.is_active }" @click="toggle(c)"></button>
+                    <button v-if="canUpdate" @click="openEdit(c)" class="icon-btn" :title="t('common.edit')"><Icon name="edit" :size="17" /></button>
+                    <button v-if="canDelete" @click="remove(c)" class="icon-btn icon-btn-danger" :title="t('common.delete')"><Icon name="trash" :size="17" /></button>
                 </li>
             </ul>
             </template>
@@ -279,7 +282,7 @@ const categoryAltName = (c) => locale.value === 'ar' ? (c.name_en || '') : (c.na
                     </label>
                     <p class="text-xs" style="color:var(--muted);margin-top:4px">{{ t('category.timed_hint') }}</p>
                     <div v-if="timed" style="margin-top:10px">
-                        <BusinessHoursEditor v-model="form.availability_hours" :disabled="auth.isReadOnly" />
+                        <BusinessHoursEditor v-model="form.availability_hours" :disabled="!canUpdate" />
                         <FormError :errors="errors" field="availability_hours" />
                     </div>
                 </div>

@@ -16,6 +16,11 @@ let performancePromise = null
 let appPromise = null
 let appLabel = 'app'
 
+// Optional "not yet" gate for the analytics SDK — see initAnalytics({ until }).
+// null means "load as soon as someone asks", which is what the dashboard and
+// landing page want.
+let startGate = null
+
 function readConfig() {
     return (typeof window !== 'undefined' && window.__FIREBASE_CONFIG__) || {}
 }
@@ -53,6 +58,14 @@ function ensureAnalytics() {
 
     analyticsPromise = (async () => {
         try {
+            // Hold everything — the dynamic import, gtag.js, the first event —
+            // behind the caller's gate. track() calls made while it is closed
+            // simply chain onto this promise and fire the moment it opens, so
+            // deferring costs coverage only for a visitor who leaves before the
+            // gate; gtag.js is ~146 KiB, so those events would not have been
+            // delivered by then anyway.
+            if (startGate) await Promise.resolve(startGate).catch(() => {})
+
             const [app, { getAnalytics, isSupported }] = await Promise.all([
                 ensureApp(),
                 import('firebase/analytics'),
@@ -72,9 +85,19 @@ function ensureAnalytics() {
  * Start analytics for the current app. `name` (e.g. 'web', 'landing', 'menu')
  * is attached to every event as an `app` param so a single GA4 property can
  * tell the three front-ends apart. Fire-and-forget; safe to call once at boot.
+ *
+ * `until` is an optional promise that holds the SDK back until it resolves.
+ * GA4 means gtag.js — ~146 KiB transferred — and on the menu app that lands on
+ * a diner's phone on mobile data mid-page-load. Pass a promise that resolves
+ * after the load event and the page is quiet, and the bytes stop competing with
+ * the menu's own images and API call.
+ *
+ * Call this BEFORE anything can call track(): the first track() starts the SDK
+ * on its own, and a gate registered after that has nothing left to hold back.
  */
-export function initAnalytics(name) {
+export function initAnalytics(name, { until } = {}) {
     if (name) appLabel = name
+    if (until) startGate = until
     ensureAnalytics()
 }
 
@@ -90,6 +113,23 @@ export function initAnalytics(name) {
  * the full page load. The one metric that does suffer from a late start is
  * first-input delay, which needs its listener attached before the user's first
  * tap — an acceptable trade for not competing with the app's own chunks.
+ *
+ * Cost — start it and the page pays for two extra third-party origins before it
+ * will record anything:
+ *   firebaseinstallations.googleapis.com  (installation id + auth token)
+ *   firebaseremoteconfig.googleapis.com/...fireperf:fetch  (sampling config)
+ * plus the SDK's own chunks. There is no setting that avoids them:
+ * PerformanceController._init() in @firebase/performance calls
+ * getInitializationPromise() -> getIidPromise() -> getConfig() unconditionally,
+ * and `dataCollectionEnabled` / `instrumentationEnabled` are only consulted
+ * later, when a finished trace is about to be dispatched. So those flags
+ * suppress the reporting, not the requests. The remote config is cached in
+ * localStorage for its TTL, which helps an app people return to and does
+ * nothing for a first-time visitor.
+ *
+ * That is why this is NOT started on the menu app (see apps/menu/src/main.js).
+ * It is worth it where a session is long and mostly warm — the dashboard — and
+ * not where every load is a cold first visit that we are trying to make fast.
  */
 export function initPerformance() {
     if (performancePromise) return performancePromise

@@ -25,6 +25,14 @@ const showOrders = computed(() => auth.hasFeature('system_ordering'))
 const daily = computed(() => data.value?.engagement?.daily || [])
 const dayLabel = (iso) => new Date(iso + 'T00:00:00').toLocaleDateString(locale.value, { day: 'numeric' })
 
+// Comparison against the preceding 14 days. Off by default: most visits are a
+// glance at "how are we doing today", and a second line on every load makes
+// that read slower.
+const compare = ref(false)
+const previousDaily = computed(() => data.value?.engagement?.previous_daily || [])
+const changePct = computed(() => data.value?.engagement?.orders_change_pct ?? null)
+const previousTotal = computed(() => data.value?.engagement?.orders_14d_previous ?? 0)
+
 function engagementOptions(c) {
     const categories = daily.value.map(d => dayLabel(d.date))
     const series = [{ name: t('insights.views'), data: daily.value.map(d => d.views) }]
@@ -33,7 +41,27 @@ function engagementOptions(c) {
         series.push({ name: t('insights.orders'), data: daily.value.map(d => d.orders) })
         palette.push(c.green)
     }
-    return lineChart({ colors: c, categories, series, palette, height: 280 })
+
+    // The comparison line is aligned by position, not by date: entry 3 of the
+    // previous fortnight sits under entry 3 of this one, which is what makes
+    // "same day, two weeks apart" readable on a shared x-axis.
+    if (showOrders.value && compare.value && previousDaily.value.length) {
+        series.push({
+            name: t('insights.orders_previous'),
+            data: previousDaily.value.map(d => d.orders),
+        })
+        palette.push(c.muted || '#9aa0a6')
+    }
+
+    const options = lineChart({ colors: c, categories, series, palette, height: 280 })
+
+    // Dashed + thinner, so the past never competes with the present.
+    if (series.length === 3) {
+        options.stroke = { ...options.stroke, width: [3, 3, 2], dashArray: [0, 0, 6] }
+        options.markers = { ...options.markers, size: [4, 4, 0] }
+    }
+
+    return options
 }
 
 // Most-ordered items — vertical column chart (a ranking, one column per item).
@@ -152,8 +180,26 @@ function money(v) {
                 </div>
 
                 <div v-if="daily.length" class="card p-5">
-                    <h2 class="h-card mb-1">{{ t('insights.engagement') }} — {{ t('insights.last_14_days') }}</h2>
-                    <ApexChart :build="engagementOptions" :redraw="[daily, showOrders, locale]" />
+                    <div class="flex items-start justify-between gap-3 mb-1 flex-wrap">
+                        <h2 class="h-card">{{ t('insights.engagement') }} — {{ t('insights.last_14_days') }}</h2>
+
+                        <label v-if="showOrders" class="compare-toggle">
+                            <input v-model="compare" type="checkbox" />
+                            <span>{{ t('insights.compare_previous') }}</span>
+                        </label>
+                    </div>
+
+                    <!-- The headline the comparison exists to give: up or down,
+                         and by how much, against the same length of time. -->
+                    <p v-if="showOrders && compare" class="page-sub mb-2">
+                        <span v-if="changePct !== null" class="delta" :class="changePct >= 0 ? 'up' : 'down'">
+                            {{ changePct >= 0 ? '▲' : '▼' }} {{ Math.abs(changePct) }}%
+                        </span>
+                        <span v-else class="delta flat">{{ t('insights.no_previous_data') }}</span>
+                        {{ t('insights.vs_previous_14', { n: previousTotal }) }}
+                    </p>
+
+                    <ApexChart :build="engagementOptions" :redraw="[daily, showOrders, compare, locale]" />
                 </div>
             </template>
 
@@ -213,3 +259,14 @@ function money(v) {
     </div>
 </template>
 
+<style scoped>
+.compare-toggle {
+    display: inline-flex; align-items: center; gap: 7px;
+    font-size: 13px; color: var(--muted); cursor: pointer; user-select: none;
+}
+.compare-toggle input { accent-color: var(--accent); cursor: pointer; }
+.delta { font-weight: 700; }
+.delta.up { color: var(--green); }
+.delta.down { color: #c0392b; }
+.delta.flat { color: var(--muted); font-weight: 600; }
+</style>

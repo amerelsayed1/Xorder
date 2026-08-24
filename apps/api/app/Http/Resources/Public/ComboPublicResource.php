@@ -3,6 +3,7 @@
 namespace App\Http\Resources\Public;
 
 use App\Models\Combo;
+use App\Support\PublicImageUrl;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -21,7 +22,7 @@ class ComboPublicResource extends JsonResource
             'name_en' => $this->name_en,
             'description_ar' => $this->description_ar,
             'description_en' => $this->description_en,
-            'image_url' => $this->image_url,
+            'image_url' => PublicImageUrl::relative($this->image_url),
             'base_price' => $this->base_price,
             'groups' => $this->whenLoaded('groups', fn () => $this->groups->map(fn ($g) => [
                 'name_en' => $g->name_en,

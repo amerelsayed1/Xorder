@@ -8,7 +8,7 @@ import Icon from '@xorder/ui/Icon.vue'
 import { confirm } from '@xorder/ui/confirm.js'
 import { alert } from '@xorder/ui/alert.js'
 import Skeleton from '@xorder/ui/Skeleton.vue'
-import AuditLogList from '../../components/AuditLogList.vue'
+import ActivityFilesPanel from '../../components/ActivityFilesPanel.vue'
 import { isValidEmail } from '../../lib/email.js'
 import { asPreview } from '../../lib/host.js'
 
@@ -35,8 +35,6 @@ const editingAdmin = ref(false)
 const savingAdmin = ref(false)
 const adminForm = reactive({ name: '', username: '', email: '' })
 const adminErrors = ref({})
-const auditRows = ref([])
-const auditLoading = ref(true)
 
 async function load() {
     const { data } = await api.get(`api/admin/restaurants/${id}`)
@@ -51,8 +49,9 @@ async function load() {
     qr.value = q.data.data
 }
 
-// Load the page. The restaurant fetch gates the loading/error state; plans and
-// audit are secondary and never blank the page if they fail.
+// Load the page. The restaurant fetch gates the loading/error state; the plan
+// list is secondary and never blanks the page if it fails. (The activity tab
+// loads its own files panel on demand.)
 async function loadAll() {
     loading.value = true
     loadError.value = null
@@ -65,20 +64,15 @@ async function loadAll() {
         loading.value = false
     }
     loadPlans().catch(() => { /* plan list is optional */ })
-    loadAudit()
 }
 async function loadPlans() {
     const { data } = await api.get('api/admin/plans', { params: { active_only: true } })
     plans.value = data.data
 }
-async function loadAudit() {
-    auditLoading.value = true
-    try {
-        const { data } = await api.get('api/admin/audit-logs', { params: { restaurant_id: id, per_page: 8 } })
-        auditRows.value = data.data
-    } catch { /* audit is secondary — never fail the page over it */ } finally {
-        auditLoading.value = false
-    }
+// Hand off to the full audit screen with this tenant and day pre-filtered,
+// rather than duplicating the filter UI on a summary tab.
+function openDay(date) {
+    router.push({ name: 'admin.audit', query: { restaurant_id: id, from: date, to: date } })
 }
 onMounted(loadAll)
 
@@ -526,16 +520,16 @@ const initial = (x) => localizedInitial(x, 'name', locale.value)
 
                 <!-- Activity / audit trail for this restaurant -->
                 <template v-else-if="activeSection === 'activity'">
-                    <section class="card p-5">
-                        <div class="flex items-center justify-between gap-3 mb-1">
-                            <h2 class="h-card">{{ t('audit.recent_title') }}</h2>
-                            <RouterLink :to="{ name: 'admin.audit', query: { restaurant_id: id } }" class="text-sm" style="color:var(--accent)">
-                                {{ t('audit.view_all') }} {{ backArrow === '←' ? '→' : '←' }}
-                            </RouterLink>
-                        </div>
-                        <p class="page-sub mb-2">{{ t('audit.recent_sub') }}</p>
-                        <AuditLogList :rows="auditRows" :loading="auditLoading" :show-tenant="false" />
-                    </section>
+                    <!-- Files first: the trail IS a file per day, so the tab
+                         leads with them. Counts and downloads are scoped to
+                         this restaurant. -->
+                    <ActivityFilesPanel :restaurant-id="id" start-open @select="openDay" />
+
+                    <div class="flex justify-end">
+                        <RouterLink :to="{ name: 'admin.audit', query: { restaurant_id: id } }" class="text-sm" style="color:var(--accent)">
+                            {{ t('audit.view_all') }} {{ backArrow === '←' ? '→' : '←' }}
+                        </RouterLink>
+                    </div>
                 </template>
 
                 <!-- Danger zone -->

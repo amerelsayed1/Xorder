@@ -131,6 +131,50 @@ class PublicMenuTest extends TestCase
         $this->assertSame(0, $this->menuViews($r->id));
     }
 
+    /**
+     * Uploads carry an absolute URL baked in at upload time, built from
+     * APP_URL — the apex. A diner is on {slug}.xorder.io, so those pointed the
+     * hero cover (the menu's LCP element) and every item photo at a second
+     * origin: an extra DNS + TCP + TLS handshake on any browser that does not
+     * coalesce connections, which includes the iOS Safari most QR scans use.
+     */
+    public function test_our_own_images_are_served_from_the_menu_s_own_origin(): void
+    {
+        config(['app.url' => 'https://xorder.io', 'platform.menu_domain' => 'xorder.io']);
+
+        $r = Restaurant::factory()->create([
+            'slug' => 'open',
+            'logo_url' => 'https://xorder.io/storage/logos/x.webp',
+            'cover_image_url' => 'https://xorder.io/storage/covers/x.webp',
+        ]);
+        $cat = Category::factory()->for($r)->create(['is_active' => true]);
+        MenuItem::factory()->for($r)->for($cat)->create([
+            'image_url' => 'https://xorder.io/storage/items/x.webp',
+        ]);
+
+        $this->getJson('http://open.xorder.io/api/public/restaurants/open/menu')
+            ->assertOk()
+            ->assertJsonPath('data.restaurant.logo_url', '/storage/logos/x.webp')
+            ->assertJsonPath('data.restaurant.cover_image_url', '/storage/covers/x.webp')
+            ->assertJsonPath('data.categories.0.items.0.image_url', '/storage/items/x.webp');
+    }
+
+    /** An image imported from someone else's CDN has to keep its own origin. */
+    public function test_external_image_urls_are_left_alone(): void
+    {
+        config(['app.url' => 'https://xorder.io', 'platform.menu_domain' => 'xorder.io']);
+
+        $r = Restaurant::factory()->create([
+            'slug' => 'open',
+            'logo_url' => 'https://cdn.example.com/storage/logo.png',
+        ]);
+        Category::factory()->for($r)->create(['is_active' => true]);
+
+        $this->getJson('http://open.xorder.io/api/public/restaurants/open/menu')
+            ->assertOk()
+            ->assertJsonPath('data.restaurant.logo_url', 'https://cdn.example.com/storage/logo.png');
+    }
+
     public function test_unknown_slug_returns_404(): void
     {
         $this->getJson('/api/public/restaurants/nope/menu')->assertNotFound();

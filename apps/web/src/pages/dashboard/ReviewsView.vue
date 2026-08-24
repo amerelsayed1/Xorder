@@ -3,6 +3,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { alert } from '@xorder/ui/alert.js'
 import { useAuth } from '@xorder/api-client/auth.js'
+import { useCaps } from '../../lib/useCaps.js'
 import api, { ensureCsrf } from '@xorder/api-client/api.js'
 import { withMinDuration } from '../../lib/minLoading.js'
 import Skeleton from '@xorder/ui/Skeleton.vue'
@@ -11,6 +12,8 @@ import Dialog from '@xorder/ui/Dialog.vue'
 
 const { t, locale } = useI18n()
 const auth = useAuth()
+// Moderating a review (status, notes) is an update.
+const { canUpdate } = useCaps('reviews')
 
 const STATUSES = ['NEW', 'IN_REVIEW', 'CONTACTED', 'RESOLVED', 'ARCHIVED']
 const badgeClass = {
@@ -267,7 +270,7 @@ async function addNote() {
                 <hr style="border-color:var(--line)" />
 
                 <!-- Status actions -->
-                <div v-if="!auth.isReadOnly">
+                <div v-if="canUpdate">
                     <div class="label mb-1.5">{{ t('common.status') }}</div>
                     <div class="flex flex-wrap gap-2">
                         <button v-for="s in STATUSES" :key="s"
@@ -291,8 +294,8 @@ async function addNote() {
                         </li>
                     </ul>
                     <p v-else class="text-sm mb-3" style="color:var(--muted)">{{ t('rev.no_notes') }}</p>
-                    <textarea v-if="!auth.isReadOnly" v-model="noteText" rows="2" class="input" :placeholder="t('rev.note_ph')"></textarea>
-                    <div v-if="!auth.isReadOnly" class="flex justify-end mt-2">
+                    <textarea v-if="canUpdate" v-model="noteText" rows="2" class="input" :placeholder="t('rev.note_ph')"></textarea>
+                    <div v-if="canUpdate" class="flex justify-end mt-2">
                         <button class="btn btn-accent btn-sm" :disabled="savingNote || !noteText.trim()" @click="addNote">
                             {{ savingNote ? t('common.saving') : t('rev.add_note') }}
                         </button>

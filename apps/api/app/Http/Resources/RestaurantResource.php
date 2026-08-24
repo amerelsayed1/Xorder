@@ -43,6 +43,11 @@ class RestaurantResource extends JsonResource
             'default_language' => $this->default_language->value,
             'bilingual' => $this->bilingual,
             'currency' => $this->currency->value,
+            // The owner's ordering switch, and whether the plan entitles any
+            // ordering channel — the dashboard hides the switch when it would
+            // control nothing.
+            'accepts_orders' => (bool) $this->accepts_orders,
+            'ordering_entitled' => $this->effectiveOrderingMode() !== null,
             'currency_symbol' => $this->currency->symbol(),
             'ordering_mode' => $this->ordering_mode->value,
             'available_ordering_modes' => array_map(fn ($m) => $m->value, $this->availableOrderingModes()),

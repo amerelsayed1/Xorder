@@ -3,74 +3,75 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Http\Resources\AuditLogResource;
-use App\Models\AuditLog;
 use App\Models\Restaurant;
+use App\Services\ActivityLogReader;
 use App\Services\AuditLogger;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 
 /**
- * Super-admin audit trail. Read-only: rows are written by
- * {@see AuditLogger}, never through the API.
+ * Super-admin activity trail. Read-only, and read from the daily activity
+ * files written by {@see AuditLogger} — there is no audit table behind this.
+ * The response shape is unchanged from when there was one, so the SPA is
+ * unaffected by where the rows come from.
  */
 class AuditLogController extends Controller
 {
-    /** Paginated, newest-first log — filterable by tenant, client (actor), category, action, and date. */
+    public function __construct(private readonly ActivityLogReader $reader) {}
+
+    /** Paginated, newest-first — filterable by tenant, actor, category, action, date and free text. */
     public function index(Request $request): JsonResponse
     {
         $perPage = min((int) $request->integer('per_page', 30) ?: 30, 100);
 
-        $logs = AuditLog::query()
-            ->with(['restaurant', 'actor'])
-            // Tenant filter.
-            ->when($request->filled('restaurant_id'), fn ($q) => $q->where('restaurant_id', $request->integer('restaurant_id')))
-            // Client / actor filter.
-            ->when($request->filled('actor_id'), fn ($q) => $q->where('actor_id', $request->integer('actor_id')))
-            ->when($request->filled('actor_role'), fn ($q) => $q->where('actor_role', $request->string('actor_role')))
-            // Category (action prefix, e.g. "auth") or exact action.
-            ->when($request->filled('category'), fn ($q) => $q->where('action', 'like', $request->string('category').'.%'))
-            ->when($request->filled('action'), fn ($q) => $q->where('action', $request->string('action')))
-            // Free-text over the human description.
-            ->when($request->filled('search'), fn ($q) => $q->where('description', 'like', '%'.$request->string('search').'%'))
-            // Date range (inclusive) on when it happened.
-            ->when($request->filled('from'), fn ($q) => $q->whereDate('created_at', '>=', $request->date('from')))
-            ->when($request->filled('to'), fn ($q) => $q->whereDate('created_at', '<=', $request->date('to')))
-            ->latest()
-            ->paginate($perPage)
-            ->withQueryString();
+        $page = $this->reader->paginate(
+            $request->only(['restaurant_id', 'actor_id', 'actor_role', 'category', 'action', 'search', 'from', 'to']),
+            (int) $request->integer('page', 1),
+            $perPage,
+        );
 
-        return AuditLogResource::collection($logs)->response();
+        return response()->json($page);
     }
 
-    /** Options for the filter controls: tenants, actors, and the action taxonomy actually present. */
+    /**
+     * The day files on disk — the trail is stored as one file per day, so the
+     * screens list them. `restaurant_id` scopes the per-file event counts, so a
+     * tenant's page reports that tenant's events rather than the platform's.
+     */
+    public function files(Request $request): JsonResponse
+    {
+        return response()->json([
+            'data' => $this->reader->inventory($request->only(['restaurant_id'])),
+        ]);
+    }
+
+    /**
+     * Download one day's file. Unfiltered it streams the file as stored; with
+     * `restaurant_id` it streams only that tenant's lines, so a download taken
+     * from a tenant's page does not carry every other tenant that shared the
+     * day. `$date` is matched against the known set of day files rather than
+     * interpolated into a path — it arrives from the URL.
+     */
+    public function download(Request $request, string $date): Response
+    {
+        $filters = $request->only(['restaurant_id']);
+        $body = $this->reader->rawLinesFor($date, $filters);
+
+        abort_if($body === null, 404);
+
+        $name = 'activity-'.$date.($filters === [] ? '' : '-filtered').'.log';
+
+        return response($body, 200, [
+            'Content-Type' => 'application/x-ndjson',
+            'Content-Disposition' => 'attachment; filename='.$name,
+        ]);
+    }
+
+    /** Options for the filter controls: tenants, plus the actors and actions actually present in the files. */
     public function filters(): JsonResponse
     {
-        $actions = AuditLog::query()
-            ->select('action')
-            ->distinct()
-            ->orderBy('action')
-            ->pluck('action');
-
-        $categories = $actions
-            ->map(fn ($a) => str_contains($a, '.') ? strtok($a, '.') : $a)
-            ->unique()
-            ->values();
-
-        // Distinct actors that appear in the log (so the dropdown only lists
-        // people who actually did something).
-        $actors = AuditLog::query()
-            ->whereNotNull('actor_id')
-            ->select('actor_id', 'actor_name', 'actor_role')
-            ->distinct()
-            ->orderBy('actor_name')
-            ->get()
-            ->map(fn ($r) => [
-                'id' => $r->actor_id,
-                'name' => $r->actor_name,
-                'role' => $r->actor_role,
-            ])
-            ->values();
+        $options = $this->reader->options();
 
         $tenants = Restaurant::query()
             ->orderBy('name_en')
@@ -83,9 +84,9 @@ class AuditLogController extends Controller
         return response()->json([
             'data' => [
                 'tenants' => $tenants,
-                'actors' => $actors,
-                'actions' => $actions,
-                'categories' => $categories,
+                'actors' => $options['actors'],
+                'actions' => $options['actions'],
+                'categories' => $options['categories'],
             ],
         ]);
     }

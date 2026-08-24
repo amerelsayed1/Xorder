@@ -16,6 +16,15 @@
          MenuShellService swaps these to the Latin subset for English restaurants. -->
     <link rel="preload" as="font" type="font/woff2" crossorigin href="/fonts/tajawal-400-arabic.woff2">
     <link rel="preload" as="font" type="font/woff2" crossorigin href="/fonts/tajawal-700-arabic.woff2">
+    <!-- Digits. Prices are ASCII on an Arabic menu too ("18.00 ج.م" renders the
+         number from the Latin subset and the currency from the Arabic one), and
+         they are bold — so every card needs 700-latin. Nothing references it
+         until the SPA has fetched and rendered the menu, which measured ~1.4 s
+         in the field: long enough for every price on screen to paint in the
+         fallback font and then reflow. On an English menu MenuShellService
+         swaps the two Arabic lines above to Latin, making this one a duplicate,
+         and drops it. -->
+    <link rel="preload" as="font" type="font/woff2" crossorigin href="/fonts/tajawal-700-latin.woff2">
     <!-- Public Firebase/GA4 config (editable static file; no-op until filled).
          Deferred: nothing reads it before mount, and blocking here cost every
          diner a slower first paint. -->

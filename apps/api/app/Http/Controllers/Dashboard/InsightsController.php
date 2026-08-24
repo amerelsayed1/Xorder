@@ -8,6 +8,7 @@ use App\Models\Category;
 use App\Models\MenuItem;
 use App\Models\MenuViewDaily;
 use App\Models\Order;
+use App\Models\Restaurant;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -99,7 +100,7 @@ class InsightsController extends Controller
                     'min_price' => $pricing?->min_price !== null ? (float) $pricing->min_price : null,
                     'max_price' => $pricing?->max_price !== null ? (float) $pricing->max_price : null,
                 ],
-                'engagement' => $this->engagement(),
+                'engagement' => $this->engagement($restaurant),
                 'top_items' => $this->topItems(),
                 'category_breakdown' => $categoryBreakdown,
                 'needs_attention' => $this->needsAttention(
@@ -120,24 +121,33 @@ class InsightsController extends Controller
      *
      * @return array<string, mixed>
      */
-    private function engagement(): array
+    private function engagement(Restaurant $restaurant): array
     {
-        $today = now()->toDateString();
-        $since = now()->subDays(13)->toDateString();
+        // Every day boundary here is the restaurant's own, not the server's. On
+        // a UTC server a Cairo restaurant (UTC+3) would otherwise roll over at
+        // 3am local and spill a busy Friday night into Saturday. MenuViewDaily
+        // stores its rows against the same local day.
+        $tz = $restaurant->timezone ?: config('app.timezone', 'UTC');
+
+        $today = now($tz)->toDateString();
+        $since = now($tz)->subDays(13)->toDateString();
 
         $viewRows = MenuViewDaily::whereDate('date', '>=', $since)
             ->orderBy('date')
             ->get(['date', 'views'])
             ->keyBy(fn (MenuViewDaily $row) => $row->date->toDateString());
 
-        $orderRows = Order::where('created_at', '>=', now()->subDays(13)->startOfDay())
-            ->selectRaw('date(created_at) as day, count(*) as total')
-            ->groupBy('day')
-            ->pluck('total', 'day');
+        // Bucketed in PHP rather than with date(created_at) in SQL, because the
+        // column is UTC and the bucket must be local — the same approach
+        // ReportService takes. Only the timestamp column is fetched.
+        $orderRows = Order::where('created_at', '>=', now($tz)->subDays(27)->startOfDay())
+            ->pluck('created_at')
+            ->groupBy(fn (Carbon $at) => $at->copy()->setTimezone($tz)->toDateString())
+            ->map->count();
 
         // Dense 14-day series so charts don't have holes on quiet days.
-        $series = collect(range(13, 0))->map(function (int $daysAgo) use ($viewRows, $orderRows) {
-            $day = now()->subDays($daysAgo)->toDateString();
+        $series = collect(range(13, 0))->map(function (int $daysAgo) use ($viewRows, $orderRows, $tz) {
+            $day = now($tz)->subDays($daysAgo)->toDateString();
 
             return [
                 'date' => $day,
@@ -146,13 +156,39 @@ class InsightsController extends Controller
             ];
         })->values();
 
+        // The 14 days before those, aligned index-for-index with $series so the
+        // chart can lay one over the other: entry 0 of each is the first day of
+        // its own window, so "day 3 of this fortnight" sits above "day 3 of the
+        // last one" regardless of month lengths.
+        $previous = collect(range(27, 14))->map(function (int $daysAgo) use ($orderRows, $tz) {
+            $day = now($tz)->subDays($daysAgo)->toDateString();
+
+            return [
+                'date' => $day,
+                'orders' => (int) ($orderRows[$day] ?? 0),
+            ];
+        })->values();
+
+        $current14 = (int) $series->sum('orders');
+        $previous14 = (int) $previous->sum('orders');
+
         return [
             'views_today' => (int) ($viewRows[$today]->views ?? 0),
             'views_14d' => (int) $viewRows->sum('views'),
             'orders_total' => Order::count(),
             'orders_new' => Order::where('status', OrderStatus::NEW)->count(),
-            'orders_14d' => (int) $orderRows->sum(),
+            'orders_14d' => $current14,
             'daily' => $series,
+
+            // Comparison against the preceding fortnight.
+            'previous_daily' => $previous,
+            'orders_14d_previous' => $previous14,
+            // Deliberately null rather than 100% when the previous window is
+            // empty: going 0 → 5 is not "+100% growth", it is a first week, and
+            // a percentage there reads as a milestone that did not happen.
+            'orders_change_pct' => $previous14 > 0
+                ? round((($current14 - $previous14) / $previous14) * 100, 1)
+                : null,
         ];
     }
 

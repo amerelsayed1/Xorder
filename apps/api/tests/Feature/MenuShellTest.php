@@ -37,10 +37,11 @@ class MenuShellTest extends TestCase
         $res->assertSee('application/ld+json', false);
         $res->assertSee('"@type":"Restaurant"', false);
         $res->assertSee('lang="ar" dir="rtl"', false);
-        // The restaurant's logo becomes the browser-tab favicon (resolved to an absolute URL).
-        $res->assertSee('rel="icon" href="http://', false);
-        $res->assertSee('/storage/logos/demo.webp">', false);
-        $res->assertSee('rel="apple-touch-icon"', false);
+        // The restaurant's logo becomes the browser-tab favicon, as a path so
+        // the browser fetches it from the host it is already on rather than
+        // opening a second connection to the apex APP_URL points at.
+        $res->assertSee('rel="icon" href="/storage/logos/demo.webp"', false);
+        $res->assertSee('rel="apple-touch-icon" href="/storage/logos/demo.webp"', false);
         // The SPA markup itself is intact.
         $res->assertSee('<div id="app"></div>', false);
     }
@@ -53,6 +54,9 @@ class MenuShellTest extends TestCase
 
         $res->assertSee('/menu/fonts/tajawal-400-arabic.woff2', false);
         $res->assertSee('/menu/fonts/tajawal-700-arabic.woff2', false);
+        // Prices are ASCII digits even here, and they are bold — the Latin
+        // subset the shell preloads for them survives untouched.
+        $res->assertSee('/menu/fonts/tajawal-700-latin.woff2', false);
     }
 
     public function test_english_restaurant_preloads_the_latin_font_subset(): void
@@ -67,6 +71,12 @@ class MenuShellTest extends TestCase
         $res->assertSee('/menu/fonts/tajawal-400-latin.woff2', false);
         $res->assertSee('/menu/fonts/tajawal-700-latin.woff2', false);
         $res->assertDontSee('tajawal-400-arabic.woff2', false);
+        $res->assertDontSee('tajawal-700-arabic.woff2', false);
+        // Three preloads collapse to two: the shell's digits preload is the
+        // same file the swapped 700 weight now points at, and asking the
+        // browser to preload one file twice is the waste we are avoiding.
+        $this->assertSame(2, substr_count($res->getContent(), 'rel="preload"'));
+        $this->assertSame(1, substr_count($res->getContent(), 'tajawal-700-latin.woff2'));
     }
 
     public function test_menu_shell_serves_whatsapp_friendly_derivatives(): void
@@ -91,8 +101,9 @@ class MenuShellTest extends TestCase
         $res->assertSee('og:image:type" content="image/jpeg', false);
         $res->assertSee('og:image:width" content="600', false);
         $res->assertSee('twitter:card" content="summary_large_image', false);
-        // Favicon is the PNG derivative; the generic Xorder icons are removed.
-        $res->assertSee('brand-cache/demo-icon.png', false);
+        // Favicon is the PNG derivative, served from this menu's own origin;
+        // the generic Xorder icons are removed.
+        $res->assertSee('rel="icon" href="/storage/brand-cache/demo-icon.png"', false);
         $res->assertDontSee('favicon.svg', false);
         $res->assertDontSee('favicon-32.png', false);
         // No raw .webp survives in any icon/OG tag.
@@ -160,5 +171,88 @@ class MenuShellTest extends TestCase
         imagedestroy($image);
 
         return $bytes;
+    }
+
+    // ------------------------------------------------------- injection safety
+
+    /**
+     * Tenant text is attacker-controlled as far as the shell is concerned (a
+     * restaurant admin types it). None of it may become markup.
+     */
+    public function test_tenant_text_cannot_inject_markup_into_the_shell(): void
+    {
+        Restaurant::factory()->create([
+            'slug' => 'demo',
+            'name_ar' => '"><img src=x onerror=alert(1)>',
+            'name_en' => '<script>alert(1)</script>',
+            'description_ar' => '"><svg onload=alert(2)>',
+        ]);
+
+        $html = $this->get('http://demo.xorder.io/menu')->assertOk()->getContent();
+
+        // Everything outside the ld+json block must be entity-escaped: no raw
+        // tag-opener from tenant input may survive there.
+        $outsideLd = preg_replace('#<script type="application/ld\+json">.*?</script>#s', '', $html);
+
+        $this->assertStringNotContainsString('<img src=x', $outsideLd);
+        $this->assertStringNotContainsString('<svg onload', $outsideLd);
+        $this->assertStringNotContainsString('<script>alert(1)</script>', $outsideLd);
+
+        // The AR name is what leads (default_language is AR), and it reaches
+        // the title and og:title entity-escaped rather than as markup.
+        $this->assertStringContainsString(
+            '<title>&quot;&gt;&lt;img src=x onerror=alert(1)&gt;</title>',
+            $html
+        );
+        $this->assertStringContainsString(
+            '<meta name="description" content="&quot;&gt;&lt;svg onload=alert(2)&gt;">',
+            $html
+        );
+    }
+
+    /**
+     * The JSON-LD block is only safe because json_encode escapes `/`, turning a
+     * `</script>` in tenant text into `<\/script>`. Adding JSON_UNESCAPED_SLASHES
+     * — a tempting edit for prettier URLs — would break out of the script
+     * element and hand the tenant stored XSS on every public menu.
+     */
+    public function test_tenant_text_cannot_break_out_of_the_json_ld_block(): void
+    {
+        Restaurant::factory()->create([
+            'slug' => 'demo',
+            'name_ar' => '</script><script>alert(1)</script>',
+            'description_ar' => '</SCRIPT ><script>alert(2)</script>',
+        ]);
+
+        $html = $this->get('http://demo.xorder.io/menu')->assertOk()->getContent();
+
+        preg_match('#<script type="application/ld\+json">(.*?)</script>#s', $html, $m);
+        $this->assertNotEmpty($m, 'the ld+json block should be present');
+
+        // Nothing inside the block may terminate it — that is the whole guard.
+        $this->assertSame(0, preg_match_all('#</script#i', $m[1]));
+
+        // …and it must still be valid JSON carrying the tenant text verbatim.
+        $decoded = json_decode($m[1], true);
+        $this->assertIsArray($decoded);
+        $this->assertSame('</script><script>alert(1)</script>', $decoded['name']);
+    }
+
+    /**
+     * e() escapes HTML but not `$`, and preg_replace expands `$0` inside a
+     * replacement string — which used to splice the matched <title> element
+     * into its own replacement.
+     */
+    public function test_a_dollar_backreference_in_the_name_is_not_expanded(): void
+    {
+        Restaurant::factory()->create([
+            'slug' => 'demo',
+            'name_ar' => '$0 $1 \\0 Cafe',
+        ]);
+
+        $html = $this->get('http://demo.xorder.io/menu')->assertOk()->getContent();
+
+        $this->assertStringContainsString('<title>$0 $1 \\0 Cafe</title>', $html);
+        $this->assertSame(1, substr_count($html, '<title>'));
     }
 }
