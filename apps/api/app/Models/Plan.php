@@ -15,6 +15,7 @@ class Plan extends Model
         'max_items',
         'max_categories',
         'max_branches',
+        'max_staff',
         'is_active',
         'is_recommended',
         'sort_order',

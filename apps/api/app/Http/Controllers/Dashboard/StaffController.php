@@ -9,6 +9,7 @@ use App\Http\Requests\Dashboard\UpdateStaffRequest;
 use App\Http\Resources\UserResource;
 use App\Models\User;
 use App\Services\AuditLogger;
+use App\Services\PlanLimitService;
 use App\Services\TenantUserService;
 use Illuminate\Http\JsonResponse;
 
@@ -66,8 +67,17 @@ class StaffController extends Controller
         return response()->json(['data' => UserResource::make($staff->load('tenantRole'))]);
     }
 
-    public function store(StoreStaffRequest $request): JsonResponse
+    public function store(StoreStaffRequest $request, PlanLimitService $limits): JsonResponse
     {
+        // Seat cap from the plan. Checked here rather than in the FormRequest so
+        // the tenant gets "your plan allows N" instead of a generic validation
+        // error, matching how the item and branch caps report.
+        if (($limit = $limits->staffLimitReached($request->user()->restaurant)) !== null) {
+            return response()->json([
+                'message' => __('xorder.messages.plan_limit_staff', ['limit' => $limit]),
+            ], 422);
+        }
+
         $result = $this->service->create($request->user(), $request->validated());
         $user = $result['user'];
 

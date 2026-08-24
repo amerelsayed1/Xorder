@@ -16,7 +16,7 @@ const form = reactive({
     // Resource caps. Blank = unlimited (stored as null). max_branches only bites
     // when the plan also grants multi_branch; a single-branch plan is capped at
     // its one primary branch by the multi_branch feature gate regardless.
-    max_branches: '', max_items: '', max_categories: '',
+    max_branches: '', max_items: '', max_categories: '', max_staff: '',
     is_active: true, is_recommended: false, sort_order: 0,
 })
 const currencies = ['EGP', 'SAR', 'AED', 'USD', 'KWD', 'QAR', 'BHD', 'OMR', 'JOD', 'EUR', 'GBP']
@@ -104,6 +104,7 @@ onMounted(async () => {
             price: p.price ?? '',
             currency: p.currency,
             max_branches: p.max_branches ?? '',
+            max_staff: p.max_staff ?? '',
             max_items: p.max_items ?? '',
             max_categories: p.max_categories ?? '',
             is_active: p.is_active,
@@ -126,6 +127,7 @@ async function submit() {
             currency: form.currency,
             feature_keys: featureKeys.value,
             max_branches: form.max_branches === '' ? null : Number(form.max_branches),
+            max_staff: form.max_staff === '' ? null : Number(form.max_staff),
             max_items: form.max_items === '' ? null : Number(form.max_items),
             max_categories: form.max_categories === '' ? null : Number(form.max_categories),
             is_active: form.is_active,
@@ -228,6 +230,11 @@ async function submit() {
                             <input v-model="form.max_branches" type="number" min="1" step="1" class="input" :placeholder="t('plan.unlimited')" />
                             <span class="block text-xs mt-0.5" style="color:var(--muted)">{{ t('plan.max_branches_hint') }}</span>
                             <FormError :errors="errors" field="max_branches" /></label>
+
+                        <label class="block"><span class="label">{{ t('plan.max_staff') }}</span>
+                            <input v-model="form.max_staff" type="number" min="1" step="1" class="input" :placeholder="t('plan.unlimited')" />
+                            <span class="block text-xs mt-0.5" style="color:var(--muted)">{{ t('plan.max_staff_hint') }}</span>
+                            <FormError :errors="errors" field="max_staff" /></label>
                         <label class="block"><span class="label">{{ t('plan.max_items') }}</span>
                             <input v-model="form.max_items" type="number" min="1" step="1" class="input" :placeholder="t('plan.unlimited')" />
                             <span class="block text-xs mt-0.5" style="color:var(--muted)">{{ t('plan.max_items_hint') }}</span>

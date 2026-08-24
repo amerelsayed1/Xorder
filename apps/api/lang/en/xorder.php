@@ -19,6 +19,7 @@ return [
         'plan_limit_items' => 'Your plan allows up to :limit menu items. Upgrade to add more.',
         'plan_limit_categories' => 'Your plan allows up to :limit categories. Upgrade to add more.',
         'plan_limit_branches' => 'Your plan allows up to :limit branches. Upgrade to add more.',
+        'plan_limit_staff' => 'Your plan allows up to :limit staff accounts. Upgrade to add more.',
         'order_received' => 'Order received.',
         'order_not_found' => 'Order not found.',
         'order_updated' => 'Order updated.',
