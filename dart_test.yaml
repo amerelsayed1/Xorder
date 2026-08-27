@@ -1,0 +1,6 @@
+# `integration` marks suites needing a real PostgreSQL. They self-skip when
+# POS_PG_HOST is unset, so `flutter test` stays green with no database; declare
+# the tag here so the runner does not warn about it.
+tags:
+  integration:
+    skip: false

@@ -1,0 +1,66 @@
+name: xorder_pos
+description: "XOrder POS — offline-first desktop point of sale for Windows and macOS."
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.13.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+
+  # State management + routing. Riverpod because the ticket engine is pure Dart
+  # and must be testable without a widget tree; go_router because the desktop
+  # shell swaps whole screens rather than pushing a mobile stack.
+  flutter_riverpod: ^2.6.1
+  go_router: ^18.0.0
+
+  # Network. Only ever reached through a repository interface — see
+  # docs/pos/04-flutter-pos-architecture.md.
+  dio: ^5.11.0
+  connectivity_plus: ^7.3.1
+
+  # Primary datastore. PostgreSQL on the branch server, shared by every till on
+  # the LAN — see docs/pos/08-postgres-lan.md. Pure Dart, no native plugin, and
+  # it is reached only through the repository contracts in
+  # lib/domain/repositories/, so swapping to HTTP later touches one provider
+  # file and nothing in domain/ or features/.
+  postgres: ^3.5.12
+
+  # Retained for the local outbound queue, which is still unbuilt. It is NOT the
+  # primary store — Postgres is.
+  sqflite_common_ffi: ^2.4.2+1
+  path_provider: ^2.1.6
+  path: ^1.9.1
+  flutter_secure_storage: ^11.0.0
+
+  # Offline licence verification. Ed25519 public-key signatures: the public key
+  # ships in the binary, the private key never leaves the licence server.
+  cryptography: ^2.7.0
+  # SHA-256 for the terminal fingerprint and cashier PIN salting.
+  crypto: ^3.0.6
+
+  # Desktop shell + misc.
+  window_manager: ^0.5.2
+  uuid: ^4.6.0
+  intl: ^0.20.3
+  collection: ^1.19.1
+  cupertino_icons: ^1.0.8
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  # Drives the assembled app on a real desktop device rather than in the
+  # headless widget harness. The end-to-end suite needs it because a real
+  # PostgreSQL round trip does not complete under fake async — see
+  # integration_test/README.md.
+  integration_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  mocktail: ^1.0.5
+
+flutter:
+  uses-material-design: true
