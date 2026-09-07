@@ -1,8 +1,7 @@
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
-import { useAuth } from '@xorder/api-client/auth.js'
 import { useCaps } from '../../lib/useCaps.js'
 import api, { ensureCsrf } from '@xorder/api-client/api.js'
 import { currencyLabel } from '../../lib/currency.js'
@@ -16,7 +15,6 @@ import { toast } from '@xorder/ui/toast.js'
 import { useRealtime } from '../../stores/realtime.js'
 
 const { t, locale } = useI18n()
-const auth = useAuth()
 // Advancing an order's status is an update.
 const { canUpdate } = useCaps('orders')
 const router = useRouter()
@@ -40,25 +38,55 @@ const actionLabel = { COMPLETED: 'orders.complete', CANCELLED: 'orders.cancel_or
 
 const rows = ref([])
 const meta = ref(null)
+const summary = ref(null)
 const loading = ref(true)
 const statusFilter = ref('')
 const typeFilter = ref('')
+const query = ref('')
 const page = ref(1)
 const updating = ref(null)
 const newIds = ref(new Set())
+const readAt = ref(null) // when the list was last read from the server
 const receiptOrder = ref(null) // order shown in the bill/receipt sheet, or null
-let pollTimer, offTick
+let pollTimer, offTick, searchTimer
 
-async function load() {
-    loading.value = true
+const filtersActive = computed(() => !!statusFilter.value || !!typeFilter.value || !!query.value.trim())
+const statusCount = (key) => summary.value?.counts?.[key] ?? null
+const metrics = computed(() => summary.value?.metrics || null)
+// Prices in the day figures carry the restaurant's currency, not an order's.
+const salesCurrency = computed(() => currencyLabel(metrics.value?.currency, locale.value))
+// Formatted lazily so switching language relabels the stamp instead of
+// leaving the previous locale's AM/PM marker sitting in the footer.
+const updatedAt = computed(() => (readAt.value
+    ? readAt.value.toLocaleTimeString(locale.value, { hour: '2-digit', minute: '2-digit' })
+    : ''))
+
+function params() {
+    return {
+        status: statusFilter.value || undefined,
+        order_type: typeFilter.value || undefined,
+        q: query.value.trim() || undefined,
+        page: page.value,
+    }
+}
+
+/**
+ * `silent` keeps the current rows on screen while the request is in flight.
+ * Used after a status change, where a skeleton would blank a table the user is
+ * reading — but a full reload is still what we want, so the tab counts, the day
+ * figures and (under a status filter) the row's own presence stay truthful.
+ */
+async function load({ silent = false } = {}) {
+    if (!silent) loading.value = true
     try {
-        const { data } = await withMinDuration(api.get('api/dashboard/orders', {
-            params: { status: statusFilter.value || undefined, order_type: typeFilter.value || undefined, page: page.value },
-        }))
+        const req = api.get('api/dashboard/orders', { params: params() })
+        const { data } = await (silent ? req : withMinDuration(req))
         rows.value = data.data
         meta.value = data.meta || null
+        summary.value = data.summary || null
+        readAt.value = new Date()
     } finally {
-        loading.value = false
+        if (!silent) loading.value = false
     }
 }
 
@@ -68,14 +96,16 @@ async function load() {
 async function pollNew() {
     if (loading.value || page.value !== 1 || document.hidden) return
     try {
-        const { data } = await api.get('api/dashboard/orders', {
-            params: { status: statusFilter.value || undefined, order_type: typeFilter.value || undefined, page: 1 },
-        })
+        const { data } = await api.get('api/dashboard/orders', { params: { ...params(), page: 1 } })
+        // The counts and the day figures move with every new order, so they are
+        // taken from the poll even when no unseen row came back with it.
+        summary.value = data.summary || summary.value
         const known = new Set(rows.value.map((r) => r.id))
         const fresh = (data.data || []).filter((o) => !known.has(o.id))
         if (fresh.length) {
             rows.value = [...fresh, ...rows.value]
             meta.value = data.meta || meta.value
+            readAt.value = new Date()
             const ids = new Set(newIds.value)
             fresh.forEach((o) => ids.add(o.id))
             newIds.value = ids
@@ -95,7 +125,14 @@ onMounted(() => {
     offTick = rt.onTick(() => { if (!document.hidden) pollNew() })
     pollTimer = setInterval(pollNew, 30_000)
 })
-onUnmounted(() => { clearInterval(pollTimer); offTick?.() })
+onUnmounted(() => { clearInterval(pollTimer); clearTimeout(searchTimer); offTick?.() })
+
+// Search runs on the server (it has to reach past the current page), so it waits
+// for a pause in typing rather than firing a request per keystroke.
+watch(query, () => {
+    clearTimeout(searchTimer)
+    searchTimer = setTimeout(() => { page.value = 1; load() }, 350)
+})
 
 function setFilter(s) {
     statusFilter.value = s
@@ -105,6 +142,15 @@ function setFilter(s) {
 
 function setTypeFilter(type) {
     typeFilter.value = type
+    page.value = 1
+    load()
+}
+
+function resetFilters() {
+    clearTimeout(searchTimer)
+    statusFilter.value = ''
+    typeFilter.value = ''
+    query.value = ''
     page.value = 1
     load()
 }
@@ -133,6 +179,7 @@ async function setStatus(order, status) {
         const i = rows.value.findIndex((r) => r.id === order.id)
         if (i !== -1) rows.value[i] = data.data
         toast(data.message || t('common.saved'))
+        await load({ silent: true })
     } catch (err) {
         alert(t('orders.update_failed'))
     } finally {
@@ -140,6 +187,26 @@ async function setStatus(order, status) {
     }
 }
 
+// The dine-in bill is owned by the table visit, so its rows carry no advance
+// buttons here — staff close the visit instead.
+const advanceActions = (order) => (order.table_visit_id ? [] : (nextActions[order.status] || []))
+
+// One line of what was ordered, so the board is readable without opening every
+// receipt. The full list stays in the receipt sheet.
+function itemSummary(order) {
+    const names = (order.items || []).map((i) => i.name).filter(Boolean)
+    return names.length ? names.join(' · ') : '—'
+}
+function itemCount(order) {
+    return (order.items || []).reduce((n, i) => n + (Number(i.qty) || 0), 0)
+}
+
+// Clock time is what staff read back to a customer; the relative line under it
+// answers "how long has this been sitting?" at a glance.
+function fmtClock(iso) {
+    if (!iso) return ''
+    return new Date(iso).toLocaleTimeString(locale.value, { hour: '2-digit', minute: '2-digit' })
+}
 function fmtTime(iso) {
     if (!iso) return ''
     const d = new Date(iso)
@@ -154,102 +221,181 @@ function fmtTime(iso) {
 <template>
     <div class="space-y-5">
         <!-- Header -->
-        <div class="flex items-start justify-between gap-3 flex-wrap">
+        <div class="flex flex-wrap items-end justify-between gap-4">
             <div>
-                <h1 class="page-title">{{ t('orders.title') }}</h1>
+                <div class="flex items-center gap-3">
+                    <h1 class="page-title">{{ t('orders.title') }}</h1>
+                    <span class="live-pill"><span class="live-dot"></span>{{ t('orders.live') }}</span>
+                </div>
                 <p class="page-sub">{{ t('orders.subtitle') }}</p>
+            </div>
+            <div class="flex items-center gap-2">
+                <div class="relative" style="width:270px;max-width:100%">
+                    <span class="search-ico"><Icon name="search" :size="17" /></span>
+                    <input v-model="query" :placeholder="t('orders.search_placeholder')" class="input" style="margin-top:0;padding-inline-start:38px" />
+                </div>
+                <button class="btn btn-ghost" :disabled="loading" @click="load()">
+                    <Icon name="refresh" :size="16" />{{ t('orders.refresh') }}
+                </button>
             </div>
         </div>
 
-        <!-- Status filter -->
-        <div class="flex items-center gap-2 flex-wrap">
-            <button class="chip" :class="{ 'chip-on': statusFilter === '' }" @click="setFilter('')">{{ t('common.all') }}</button>
-            <button v-for="s in STATUSES" :key="s" class="chip" :class="{ 'chip-on': statusFilter === s }" @click="setFilter(s)">
-                {{ t('orders.status.' + s) }}
-            </button>
+        <!-- The day at a glance. Unfiltered on purpose — these describe the
+             restaurant's day, not whatever the toolbar is currently showing. -->
+        <div class="metric-grid">
+            <div class="stat">
+                <div class="stat-label">{{ t('orders.m_new') }}</div>
+                <div class="stat-num"><Skeleton v-if="!metrics" h="30px" w="52px" /><template v-else>{{ metrics.new_orders }}</template></div>
+                <div class="stat-hint">{{ t('orders.m_new_hint') }}</div>
+            </div>
+            <div class="stat">
+                <div class="stat-label">{{ t('orders.m_today') }}</div>
+                <div class="stat-num"><Skeleton v-if="!metrics" h="30px" w="52px" /><template v-else>{{ metrics.orders_today }}</template></div>
+                <div class="stat-hint">{{ t('orders.m_since_midnight') }}</div>
+            </div>
+            <div class="stat">
+                <div class="stat-label">{{ t('orders.m_completed') }}</div>
+                <div class="stat-num"><Skeleton v-if="!metrics" h="30px" w="52px" /><template v-else>{{ metrics.completed_today }}</template></div>
+                <div class="stat-hint">{{ t('orders.status.COMPLETED') }}</div>
+            </div>
+            <div class="stat">
+                <div class="stat-label">{{ t('orders.m_sales') }}</div>
+                <div class="stat-num"><Skeleton v-if="!metrics" h="30px" w="90px" /><template v-else>{{ metrics.sales_today }}</template></div>
+                <div class="stat-hint">{{ salesCurrency }}</div>
+            </div>
         </div>
 
-        <!-- Type filter -->
-        <div class="flex items-center gap-2 flex-wrap">
-            <button class="chip" :class="{ 'chip-on': typeFilter === '' }" @click="setTypeFilter('')">{{ t('orders.type') }}: {{ t('common.all') }}</button>
-            <button v-for="ty in ORDER_TYPES" :key="ty" class="chip" :class="{ 'chip-on': typeFilter === ty }" @click="setTypeFilter(ty)">
-                {{ t('order_type.' + ty) }}
-            </button>
-        </div>
+        <div class="card overflow-hidden">
+            <!-- Toolbar: status tabs carry live counts, type tabs narrow further -->
+            <div class="orders-toolbar">
+                <div class="segmented tabs">
+                    <button :class="{ active: statusFilter === '' }" @click="setFilter('')">
+                        {{ t('common.all') }}
+                        <span v-if="statusCount('all') !== null" class="tab-count">{{ statusCount('all') }}</span>
+                    </button>
+                    <button v-for="s in STATUSES" :key="s" :class="{ active: statusFilter === s }" @click="setFilter(s)">
+                        {{ t('orders.status.' + s) }}
+                        <span v-if="statusCount(s) !== null" class="tab-count">{{ statusCount(s) }}</span>
+                    </button>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="text-sm" style="color:var(--muted)">{{ t('orders.type') }}</span>
+                    <div class="segmented tabs">
+                        <button :class="{ active: typeFilter === '' }" @click="setTypeFilter('')">{{ t('common.all') }}</button>
+                        <button v-for="ty in ORDER_TYPES" :key="ty" :class="{ active: typeFilter === ty }" @click="setTypeFilter(ty)">
+                            {{ t('order_type.' + ty) }}
+                        </button>
+                    </div>
+                </div>
+            </div>
 
-        <!-- Table -->
-        <div class="card overflow-x-auto">
-            <table class="w-full text-sm" style="min-width:720px">
-                <thead>
-                    <tr class="text-start" style="color:var(--muted)">
-                        <th class="px-5 py-3 font-medium text-start" style="font-size:11px;text-transform:uppercase">#</th>
-                        <th class="px-5 py-3 font-medium text-start" style="font-size:11px;text-transform:uppercase">{{ t('orders.order') }}</th>
-                        <th class="px-3 py-3 font-medium text-start" style="font-size:11px;text-transform:uppercase">{{ t('orders.type') }}</th>
-                        <th class="px-3 py-3 font-medium text-start" style="font-size:11px;text-transform:uppercase">{{ t('orders.time') }}</th>
-                        <th class="px-3 py-3 font-medium text-start" style="font-size:11px;text-transform:uppercase">{{ t('orders.customer') }}</th>
-                        <th class="px-3 py-3 font-medium text-start" style="font-size:11px;text-transform:uppercase">{{ t('common.status') }}</th>
-                        <th class="px-5 py-3 font-medium text-end" style="font-size:11px;text-transform:uppercase">{{ t('common.actions') }}</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <template v-if="loading">
-                        <tr v-for="n in 6" :key="'sk' + n" class="border-t" :style="{ borderColor: 'var(--line)' }">
-                            <td v-for="c in 7" :key="c" class="px-5 py-4"><Skeleton :h="'14px'" :w="c === 7 ? '60%' : '80%'" /></td>
+            <!-- Table -->
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm" style="min-width:900px">
+                    <thead>
+                        <tr class="orders-head">
+                            <th class="px-5 py-3 text-start">{{ t('orders.order') }}</th>
+                            <th class="px-3 py-3 text-start">{{ t('orders.items') }}</th>
+                            <th class="px-3 py-3 text-start">{{ t('orders.type') }}</th>
+                            <th class="px-3 py-3 text-start">{{ t('orders.customer') }}</th>
+                            <th class="px-3 py-3 text-start">{{ t('orders.time') }}</th>
+                            <th class="px-3 py-3 text-start">{{ t('orders.total') }}</th>
+                            <th class="px-3 py-3 text-start">{{ t('common.status') }}</th>
+                            <th class="px-5 py-3 text-end">{{ t('common.actions') }}</th>
                         </tr>
-                    </template>
-                    <tr v-else-if="!rows.length"><td colspan="7" class="px-5 py-8 text-center" style="color:var(--muted)">{{ t('orders.none') }}</td></tr>
-                    <!-- v-else so a pending filter switch shows only the shimmer,
-                         never the previous filter's rows underneath it. -->
-                    <template v-else>
-                    <tr v-for="(order, idx) in rows" :key="order.id" class="border-t align-top" :class="{ 'order-row-new': newIds.has(order.id) }" :style="{ borderColor: 'var(--line)' }">
-                        <td class="px-5 py-3 whitespace-nowrap" style="color:var(--muted)">{{ (meta?.from || 1) + idx }}</td>
-                        <td class="px-5 py-3 font-medium whitespace-nowrap" style="color:var(--ink)">{{ order.code }}</td>
-                        <td class="px-3 py-3 whitespace-nowrap">
-                            <span v-if="order.order_type" class="badge badge-type">{{ orderTypeLabel(order) }}</span>
-                            <span v-else style="color:var(--muted)">—</span>
-                        </td>
-                        <td class="px-3 py-3 whitespace-nowrap" style="color:var(--muted)">{{ fmtTime(order.created_at) }}</td>
-                        <td class="px-3 py-3">
-                            <button v-if="canOpenCustomer(order)" type="button" class="cust-link" @click="openCustomer(order)">{{ order.customer_name || '—' }}</button>
-                            <div v-else style="color:var(--ink)">{{ order.customer_name || '—' }}</div>
-                        </td>
-                        <td class="px-3 py-3"><span class="badge" :class="badgeClass[order.status]">{{ t('orders.status.' + order.status) }}</span></td>
-                        <td class="px-5 py-3 text-end whitespace-nowrap">
-                            <div class="inline-flex items-center gap-2">
-                                <button type="button" class="btn btn-ghost btn-sm" @click="receiptOrder = order">
-                                    <Icon name="receipt" :size="14" />
-                                    {{ t('orders.view') }}
-                                </button>
-                                <template v-if="canUpdate">
-                                    <button v-for="next in (order.table_visit_id ? [] : (nextActions[order.status] || []))" :key="next"
-                                        class="btn btn-sm" :class="next === 'CANCELLED' ? 'btn-ghost btn-cancel' : 'btn-accent'"
-                                        :disabled="updating === order.id" @click="setStatus(order, next)">
-                                        <Icon v-if="next !== 'CANCELLED'" name="check" :size="14" />
-                                        <Icon v-else name="close" :size="14" />
-                                        {{ t(actionLabel[next]) }}
-                                    </button>
-                                </template>
-                            </div>
-                        </td>
-                    </tr>
-                    </template>
-                </tbody>
-            </table>
-        </div>
+                    </thead>
+                    <tbody>
+                        <template v-if="loading">
+                            <tr v-for="n in 6" :key="'sk' + n" class="border-t" :style="{ borderColor: 'var(--line)' }">
+                                <td v-for="c in 8" :key="c" class="px-5 py-4"><Skeleton h="14px" :w="c === 8 ? '60%' : '80%'" /></td>
+                            </tr>
+                        </template>
+                        <!-- v-else so a pending filter switch shows only the shimmer,
+                             never the previous filter's rows underneath it. -->
+                        <template v-else-if="rows.length">
+                            <tr v-for="order in rows" :key="order.id" class="orders-row" :class="{ 'order-row-new': newIds.has(order.id) }">
+                                <td class="px-5 py-3 whitespace-nowrap cell-code">{{ order.code }}</td>
+                                <td class="px-3 py-3 cell-items">
+                                    <div class="cell-strong truncate">{{ itemSummary(order) }}</div>
+                                    <div class="cell-sub">{{ t('orders.items_n', { n: itemCount(order) }) }}</div>
+                                </td>
+                                <td class="px-3 py-3 whitespace-nowrap">
+                                    <span v-if="order.order_type" class="type-tag">
+                                        <span class="type-dot" :class="'type-' + order.order_type"></span>{{ orderTypeLabel(order) }}
+                                    </span>
+                                    <span v-else style="color:var(--muted)">—</span>
+                                </td>
+                                <td class="px-3 py-3">
+                                    <button v-if="canOpenCustomer(order)" type="button" class="cust-link cell-strong" @click="openCustomer(order)">{{ order.customer_name || '—' }}</button>
+                                    <div v-else class="cell-strong">{{ order.customer_name || '—' }}</div>
+                                    <div v-if="order.customer_phone" class="cell-sub cell-phone" dir="ltr">{{ order.customer_phone }}</div>
+                                </td>
+                                <td class="px-3 py-3 whitespace-nowrap">
+                                    <div class="cell-strong tabular">{{ fmtClock(order.created_at) }}</div>
+                                    <div class="cell-sub">{{ fmtTime(order.created_at) }}</div>
+                                </td>
+                                <td class="px-3 py-3 whitespace-nowrap cell-total">
+                                    {{ order.total }} <span class="cell-cur">{{ currencyLabel(order.currency, locale) }}</span>
+                                </td>
+                                <td class="px-3 py-3">
+                                    <span class="badge" :class="badgeClass[order.status]"><span class="dot"></span>{{ t('orders.status.' + order.status) }}</span>
+                                </td>
+                                <td class="px-5 py-3 text-end whitespace-nowrap">
+                                    <div class="inline-flex items-center gap-2">
+                                        <template v-if="canUpdate">
+                                            <!-- The move-forward action is the one staff reach for all day, so it
+                                                 keeps its label. Cancel is rare and destructive: it stays available
+                                                 but shrinks to an icon rather than crowding the row. -->
+                                            <button v-if="advanceActions(order).includes('COMPLETED')"
+                                                class="btn btn-accent btn-sm"
+                                                :disabled="updating === order.id" @click="setStatus(order, 'COMPLETED')">
+                                                <Icon name="check" :size="14" />{{ t(actionLabel.COMPLETED) }}
+                                            </button>
+                                            <button v-if="advanceActions(order).includes('CANCELLED')"
+                                                type="button" class="icon-btn icon-btn-danger"
+                                                :title="t('orders.cancel_order')" :aria-label="t('orders.cancel_order')"
+                                                :disabled="updating === order.id" @click="setStatus(order, 'CANCELLED')">
+                                                <Icon name="close" :size="15" />
+                                            </button>
+                                        </template>
+                                        <button type="button" class="btn btn-ghost btn-sm" @click="receiptOrder = order">
+                                            <Icon name="receipt" :size="14" />{{ t('orders.details') }}
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        </template>
+                        <tr v-else>
+                            <td colspan="8" class="px-6 py-14">
+                                <div class="empty">
+                                    <div class="empty-mark"></div>
+                                    <div class="empty-title">{{ filtersActive ? t('orders.no_match_title') : t('orders.none') }}</div>
+                                    <p v-if="filtersActive" class="empty-body">{{ t('orders.no_match_body') }}</p>
+                                    <button v-if="filtersActive" class="btn btn-accent" @click="resetFilters">{{ t('orders.reset') }}</button>
+                                </div>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
 
-        <!-- Pagination -->
-        <div v-if="meta && meta.last_page > 1" class="flex flex-wrap items-center justify-between gap-3">
-            <span class="text-sm" style="color:var(--muted)">
-                {{ t('common.showing_range', { from: meta.from, to: meta.to, total: meta.total }) }}
-            </span>
-            <div class="flex items-center gap-2">
-                <button class="btn btn-ghost btn-sm" :disabled="meta.current_page <= 1" @click="goToPage(meta.current_page - 1)">
-                    {{ t('common.previous') }}
-                </button>
-                <span class="text-sm" style="color:var(--muted)">{{ meta.current_page }} / {{ meta.last_page }}</span>
-                <button class="btn btn-ghost btn-sm" :disabled="meta.current_page >= meta.last_page" @click="goToPage(meta.current_page + 1)">
-                    {{ t('common.next') }}
-                </button>
+            <!-- Footer strip: what is on screen, when it was last read, and the
+                 pager when there is more than one page of it. -->
+            <div class="orders-foot">
+                <span v-if="meta">{{ t('orders.showing_count', { n: rows.length, total: meta.total }) }}</span>
+                <span v-else></span>
+                <div class="flex items-center gap-3">
+                    <template v-if="meta && meta.last_page > 1">
+                        <button class="btn btn-ghost btn-sm" :disabled="meta.current_page <= 1" @click="goToPage(meta.current_page - 1)">
+                            {{ t('common.previous') }}
+                        </button>
+                        <span class="tabular">{{ meta.current_page }} / {{ meta.last_page }}</span>
+                        <button class="btn btn-ghost btn-sm" :disabled="meta.current_page >= meta.last_page" @click="goToPage(meta.current_page + 1)">
+                            {{ t('common.next') }}
+                        </button>
+                    </template>
+                    <span v-if="updatedAt">{{ t('orders.updated_at', { time: updatedAt }) }}</span>
+                </div>
             </div>
         </div>
 
@@ -301,14 +447,65 @@ function fmtTime(iso) {
 </template>
 
 <style scoped>
-.chip { display: inline-flex; align-items: center; gap: 7px; padding: 7px 14px; border-radius: 20px;
-    border: 1px solid var(--line); background: var(--card); color: var(--body); font-size: 13.5px; font-weight: 600; cursor: pointer; }
-.chip-on { background: var(--accent); color: #fff; border-color: var(--accent); }
-.btn-cancel { color: #c0392b; }
-/* Neutral badge for the order type (dine-in / pickup / delivery). */
+/* Header */
+.live-pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 11px; border-radius: 20px;
+    background: var(--green-soft); color: var(--green); font-size: 12.5px; font-weight: 600; }
+.live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); }
+.search-ico { position: absolute; top: 50%; transform: translateY(-50%); inset-inline-start: 12px;
+    color: var(--muted); pointer-events: none; display: flex; }
+
+/* Day figures */
+.metric-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 14px; }
+.stat-hint { font-size: 12.5px; color: var(--muted); margin-top: 6px; }
+
+/* Toolbar */
+.orders-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px;
+    padding: 13px 16px; border-bottom: 1px solid var(--line); }
+.tabs button { display: inline-flex; align-items: center; gap: 7px; }
+.tab-count { font-size: 11.5px; font-weight: 600; line-height: 1.5; padding: 0 6px; border-radius: 20px;
+    background: var(--line); color: var(--muted); }
+.tabs button.active .tab-count { background: var(--accent); color: #fff; }
+
+/* Table */
+.orders-head th { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .3px;
+    color: var(--muted); background: var(--page); border-bottom: 1px solid var(--line); }
+.orders-row { border-top: 1px solid var(--line); vertical-align: top; }
+.orders-row:first-child { border-top: 0; }
+.orders-row:hover { background: var(--page); }
+.cell-strong { font-weight: 600; color: var(--ink); }
+.cell-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+/* A phone number broken across two lines stops looking like a phone number. */
+.cell-phone { white-space: nowrap; text-align: start; }
+.cell-code { font-weight: 600; color: var(--body); font-variant-numeric: tabular-nums; }
+.cell-items { max-width: 210px; }
+.cell-items .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cell-total { font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; unicode-bidi: isolate; }
+.cell-cur { font-weight: 500; color: var(--muted); font-size: 12.5px; }
+.tabular { font-variant-numeric: tabular-nums; }
+
+/* Order type: a coloured dot rather than a fourth badge competing with status */
+.type-tag { display: inline-flex; align-items: center; gap: 7px; color: var(--body); }
+.type-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); flex-shrink: 0; }
+.type-delivery { background: var(--accent); }
+.type-pickup { background: var(--gray); }
+.type-dine_in { background: var(--green); }
+
+/* Empty state */
+.empty { display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center; }
+.empty-mark { width: 52px; height: 52px; border-radius: 15px; border: 1px dashed var(--line); background: var(--page); }
+.empty-title { font-family: var(--font-display); font-weight: 600; font-size: 16.5px; color: var(--ink); }
+.empty-body { font-size: 14px; color: var(--muted); max-width: 340px; }
+
+/* Footer strip */
+.orders-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 12px 16px; background: var(--page); border-top: 1px solid var(--line);
+    font-size: 13px; color: var(--muted); }
+
+.btn-cancel { color: var(--red); }
+/* Neutral badge for the order type inside the receipt sheet. */
 .badge-type { background: var(--card); border: 1px solid var(--line); color: var(--body); }
 /* Customer name → directory record. Looks like text until hovered. */
-.cust-link { padding: 0; border: 0; background: none; font: inherit; color: var(--ink); cursor: pointer; text-align: start; }
+.cust-link { padding: 0; border: 0; background: none; font: inherit; cursor: pointer; text-align: start; }
 .cust-link:hover { color: var(--accent); text-decoration: underline; }
 /* Order line: quantity leads (inline-start), name follows — isolated so the
    Latin "3×" never gets reordered next to an Arabic name. */

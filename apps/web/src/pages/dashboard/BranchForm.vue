@@ -33,8 +33,35 @@ const backArrow = computed(() => locale.value === 'ar' ? '→' : '←')
 const loading = ref(true)
 const saving = ref(false)
 const errors = ref({})
-const blank = () => ({ name_en: '', name_ar: '', address: '', phone: '', whatsapp_number: '', opening_hours: '', business_hours: {}, map_url: '', latitude: null, longitude: null, geofence: null, geofence_enabled: false, require_branch_wifi: false, is_open: true, is_active: true })
+const blank = () => ({ name_en: '', name_ar: '', address: '', phone: '', whatsapp_number: '', opening_hours: '', business_hours: {}, map_url: '', latitude: null, longitude: null, geofence: null, geofence_enabled: false, require_branch_wifi: false, supported_order_types: [], is_open: true, is_active: true })
 const form = reactive(blank())
+
+// POS-BE-005: which order types this branch takes. The till renders one tab per
+// entry and PosOrderService refuses anything outside the list — but ONLY when
+// the list is non-empty (`$supported !== [] && ! in_array(...)`), so an empty
+// array means every type is allowed, not none. The copy below has to say that.
+const POS_ORDER_TYPES = ['dine_in', 'takeaway', 'delivery', 'drive_thru']
+
+// Anything already stored that isn't one of the four — in practice `pickup`,
+// written by the Super Admin onboarding wizard, where the value mirrors the
+// plan's ordering-channel feature keys rather than the till's tabs. Shown as a
+// real checkbox rather than preserved invisibly: a hidden entry would make an
+// "all types allowed" row silently restrictive.
+const legacyOrderTypes = computed(() =>
+    (form.supported_order_types || []).filter((tp) => !POS_ORDER_TYPES.includes(tp)))
+
+const orderTypeOptions = computed(() => [...POS_ORDER_TYPES, ...legacyOrderTypes.value])
+
+// Arabic separates a list with ، not a comma.
+const listSep = computed(() => (locale.value === 'ar' ? '، ' : ', '))
+const orderTypeNames = (list) => list.map((x) => t('order_type.' + x)).join(listSep.value)
+
+function toggleOrderType(tp) {
+    const list = form.supported_order_types
+    const i = list.indexOf(tp)
+    if (i === -1) list.push(tp)
+    else list.splice(i, 1)
+}
 
 // A fence the backend would enforce: a radius with a real centre + positive
 // radius, or a polygon of >= 3 vertices (mirrors App\Support\GeoFence::isEnforceable).
@@ -84,6 +111,7 @@ onMounted(async () => {
                 latitude: b.latitude ?? null, longitude: b.longitude ?? null,
                 geofence: b.geofence || null, geofence_enabled: !!b.geofence_enabled,
                 require_branch_wifi: !!b.require_branch_wifi,
+                supported_order_types: [...(b.supported_order_types || [])],
                 is_open: b.is_open, is_active: b.is_active,
             })
             fenceExistedOnOpen = fenceEnforceable(form.geofence)
@@ -382,6 +410,40 @@ async function save() {
                             </template>
                         </template>
                     </div>
+                </div>
+
+                <!-- POS-BE-005: the order types this branch's tills offer.
+                     Unticked-everything is the permissive state, not the empty
+                     one — the server only narrows when the list is non-empty —
+                     so the hint says "all allowed" rather than "none".
+
+                     Edit only: StoreBranchRequest does not (yet) validate the
+                     field, so a choice made on the create form would be dropped
+                     by `validated()` without a word. A new branch starts at []
+                     — every type allowed — and the picker appears the moment it
+                     exists. -->
+                <div v-if="isEdit" class="block">
+                    <span class="label">{{ t('branch.order_types') }}</span>
+                    <p class="page-sub" style="margin:2px 0 8px">{{ t('branch.order_types_hint') }}</p>
+                    <div class="flex flex-wrap gap-x-5 gap-y-2">
+                        <label v-for="tp in orderTypeOptions" :key="tp" class="flex items-center gap-2 text-sm cursor-pointer" style="color:var(--body)">
+                            <input type="checkbox" class="h-4 w-4" :disabled="auth.isReadOnly"
+                                :checked="form.supported_order_types.includes(tp)" @change="toggleOrderType(tp)" />
+                            {{ t('order_type.' + tp) }}
+                        </label>
+                    </div>
+                    <p class="text-sm" style="color:var(--muted);margin-top:8px">
+                        {{ form.supported_order_types.length
+                            ? t('branch.order_types_some', { types: orderTypeNames(form.supported_order_types) })
+                            : t('branch.order_types_all') }}
+                    </p>
+                    <p v-if="legacyOrderTypes.length" class="text-xs" style="color:var(--muted);margin-top:6px">
+                        {{ t('branch.order_types_legacy', { types: orderTypeNames(legacyOrderTypes) }) }}
+                    </p>
+                    <FormError :errors="errors" field="supported_order_types" />
+                    <!-- The `.*` rule reports per-entry, so a value the server
+                         does not accept lands on the indexed key, not the array. -->
+                    <FormError :errors="errors" field="supported_order_types.0" />
                 </div>
 
                 <div class="flex items-center gap-6">

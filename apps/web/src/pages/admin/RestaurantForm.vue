@@ -50,9 +50,39 @@ const currencies = [
 ]
 // Public-menu presentation themes; labels resolve via t('restaurant.menu_layout_*').
 const menuLayouts = ['photo', 'text-grid', 'text-list']
+
+// How this client's TILLS run, carried on the licence issued with the tenant.
+//
+// The POS reads `modes` off the licence and offers only what is in it — the
+// wizard asks for the licence before it asks for the mode, precisely so an
+// operator is never given a choice they did not buy. Until this existed the
+// server fell back to ['cloud'] for every tenant created here, so an offline
+// deployment could not be sold from this screen at all: it had to be issued
+// afterwards from the standalone licence form, and the till in the meantime
+// reported "not licensed for this mode".
+//
+// Never submitted empty. An empty modes[] parses to an empty set on the till,
+// every mode then fails, and that reads to a cashier as a bricked terminal.
+const POS_MODES = ['cloud', 'offline']
+const licenceModes = ref(['cloud'])
+function togglePosMode(mode, on) {
+    const i = licenceModes.value.indexOf(mode)
+    if (on && i < 0) licenceModes.value.push(mode)
+    else if (!on && i >= 0 && licenceModes.value.length > 1) licenceModes.value.splice(i, 1)
+}
 const errors = ref({})
 const saving = ref(false)
 const generatedPassword = ref('')
+// The licence issued alongside the tenant, and its activation key. The key
+// exists in that ONE response and nowhere else — the server keeps only an HMAC
+// — so it has to be shown before this screen is left. The tenant it belongs to
+// has zero terminals at this point, which is the intended outcome.
+const createdLicence = ref(null)
+const activationKey = ref('')
+const createdRestaurantId = ref(null)
+// True once creation succeeded, even when no password was generated — the
+// banner still has an activation key to hand over.
+const createdDone = ref(false)
 const slugTouched = ref(false)
 // Name of the custom plan already created this session, so a re-submit after a
 // restaurant-validation error doesn't try to create a duplicate plan.
@@ -359,7 +389,7 @@ onMounted(async () => {
 function stepForError(key) {
     if (/^branch\./.test(key)) return 5
     if (/^(name_en|name_ar|slug|admin\.)/.test(key)) return 2
-    if (/^(features|subscription_plan)/.test(key)) return 4
+    if (/^(features|subscription_plan|licence\.)/.test(key)) return 4
     return 3
 }
 
@@ -451,8 +481,16 @@ async function submitCreate() {
         // Features are derived from the plan server-side — send the plan, not flags.
         const payload = { ...form }
         if (branchEnabled.value) payload.branch = { ...branch }
+        // The licence is minted inside the same transaction as the tenant, so
+        // this is the only chance to say what it covers.
+        payload.licence = { ...(payload.licence || {}), modes: [...licenceModes.value] }
         const { data } = await api.post('api/admin/restaurants', payload)
+        createdLicence.value = data.licence || null
+        activationKey.value = data.activation_key || ''
+        createdRestaurantId.value = data.data.id
+        // Either secret keeps the operator on this screen: both are shown once.
         if (data.generated_password) generatedPassword.value = data.generated_password
+        else if (activationKey.value) createdDone.value = true
         else router.push({ name: 'admin.restaurants.show', params: { id: data.data.id } })
     } catch (err) {
         errors.value = err.response?.data?.errors || {}
@@ -469,16 +507,38 @@ async function submitCreate() {
         <RouterLink :to="{ name: 'admin.restaurants' }" class="text-sm" style="color:var(--muted)">{{ backArrow }} {{ t('common.back') }}</RouterLink>
         <h1 class="page-title my-3">{{ isEdit ? t('admin.edit_restaurant') : t('admin.create_restaurant') }}</h1>
 
-        <!-- Generated password banner -->
-        <div v-if="generatedPassword" class="card p-5 mb-4" style="border-color:var(--green);background:var(--green-soft)">
-            <p class="font-medium" style="color:var(--green)">{{ t('restaurant.generated_password') }}</p>
-            <p class="mono text-2xl mt-1" style="color:var(--ink)">{{ generatedPassword }}</p>
-            <p class="text-sm mt-1" style="color:var(--green)">{{ t('restaurant.generated_password_note') }}</p>
-            <RouterLink :to="{ name: 'admin.restaurants' }" class="btn btn-dark mt-3">{{ t('common.done') }} {{ forwardArrow }}</RouterLink>
+        <!-- Created: the two one-shot secrets, then where to go next. -->
+        <div v-if="generatedPassword || createdDone" class="card p-5 mb-4" style="border-color:var(--green);background:var(--green-soft)">
+            <div v-if="generatedPassword">
+                <p class="font-medium" style="color:var(--green)">{{ t('restaurant.generated_password') }}</p>
+                <p class="mono text-2xl mt-1" style="color:var(--ink)">{{ generatedPassword }}</p>
+                <p class="text-sm mt-1" style="color:var(--green)">{{ t('restaurant.generated_password_note') }}</p>
+            </div>
+
+            <!-- The licence is created WITH the client, in the same
+                 transaction — if this block is missing, so is the client. -->
+            <div v-if="activationKey" :class="generatedPassword ? 'mt-4 pt-4 border-t' : ''" style="border-color:var(--green)">
+                <p class="font-medium" style="color:var(--green)">{{ t('restaurant.created_licence_title') }}</p>
+                <p v-if="createdLicence" class="mono text-sm mt-1" style="color:var(--body)">{{ createdLicence.licence_ref }}</p>
+                <p class="label mt-2">{{ t('licence.activation_key') }}</p>
+                <p class="mono text-2xl" style="color:var(--ink)">{{ activationKey }}</p>
+                <p class="text-sm mt-1" style="color:var(--green)">{{ t('licence.key_once_warning') }}</p>
+            </div>
+
+            <!-- Terminals are not part of creating a client. Said out loud so
+                 an empty terminal list does not read as a failed setup. -->
+            <p class="text-sm mt-4" style="color:var(--green)">{{ t('restaurant.created_licence_note') }}</p>
+
+            <div class="flex flex-wrap gap-2 mt-3">
+                <RouterLink v-if="createdRestaurantId" :to="{ name: 'admin.restaurants.show', params: { id: createdRestaurantId } }" class="btn btn-dark">
+                    {{ t('common.done') }} {{ forwardArrow }}
+                </RouterLink>
+                <RouterLink :to="{ name: 'admin.restaurants' }" class="btn btn-ghost">{{ t('admin.manage_restaurants') }}</RouterLink>
+            </div>
         </div>
 
         <!-- ===================== EDIT MODE (single form) ===================== -->
-        <form v-if="!generatedPassword && isEdit" @submit.prevent="submitEdit" class="space-y-5">
+        <form v-if="!generatedPassword && !createdDone && isEdit" @submit.prevent="submitEdit" class="space-y-5">
             <div class="card p-6 space-y-4">
                 <h2 class="h-card">{{ t('admin.restaurant') }}</h2>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -564,7 +624,7 @@ async function submitCreate() {
         </form>
 
         <!-- ===================== CREATE MODE (wizard) ===================== -->
-        <div v-else-if="!generatedPassword">
+        <div v-else-if="!generatedPassword && !createdDone">
             <!-- Stepper header -->
             <div class="card p-4 mb-4">
                 <div class="flex items-center justify-between gap-1">
@@ -747,6 +807,22 @@ async function submitCreate() {
                             class="btn" :class="form.ordering_mode === m ? 'btn-dark' : 'btn-ghost'">{{ t('restaurant.ordering_mode_' + m) }}</button>
                     </div>
                     <p class="text-xs" style="color:var(--muted)">{{ t('restaurant.ordering_mode_hint') }}</p>
+                </div>
+
+                <!-- Creation only: the licence is minted with the tenant, and
+                     editing one afterwards is the standalone licence form's job. -->
+                <div v-if="!isEdit" class="space-y-2 pb-2" style="border-bottom:1px solid var(--line)">
+                    <span class="label">{{ t('licence.modes') }}</span>
+                    <p class="text-xs" style="color:var(--muted)">{{ t('licence.modes_hint') }}</p>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <label v-for="m in POS_MODES" :key="m" class="flex items-center gap-2 rounded-lg border p-2.5 cursor-pointer"
+                            :style="{ borderColor: licenceModes.includes(m) ? 'var(--accent)' : 'var(--line)' }">
+                            <input type="checkbox" :checked="licenceModes.includes(m)"
+                                @change="togglePosMode(m, $event.target.checked)" class="h-4 w-4" />
+                            <span class="text-sm" style="color:var(--ink)">{{ t('licence.mode.' + m) }}</span>
+                        </label>
+                    </div>
+                    <FormError :errors="errors" field="licence.modes" />
                 </div>
 
                 <div>

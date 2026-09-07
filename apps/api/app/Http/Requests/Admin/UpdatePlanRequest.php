@@ -29,6 +29,9 @@ class UpdatePlanRequest extends FormRequest
             'max_categories' => ['nullable', 'integer', 'min:1', 'max:10000'],
             'max_branches' => ['nullable', 'integer', 'min:1', 'max:1000'],
             'max_staff' => ['nullable', 'integer', 'min:1', 'max:1000'],
+            // POS seats this plan covers (POS-BE-001). Null = unlimited; the
+            // claim flow warns past the count, never refuses (POS-BE-016).
+            'max_terminals' => ['nullable', 'integer', 'min:1', 'max:1000'],
             'is_active' => ['sometimes', 'boolean'],
             'is_recommended' => ['sometimes', 'boolean'],
             'sort_order' => ['nullable', 'integer', 'min:0'],

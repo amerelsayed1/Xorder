@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import { trackPageView } from '@xorder/analytics'
 import { useAuth } from '@xorder/api-client/auth.js'
 import { isSuperAdminHost, restaurantSlug, superAdminUrl, restaurantUrl } from '../lib/host.js'
+import { visibleSettingsSections } from '../pages/dashboard/settings/settings.config.js'
 
 // One SPA bundle, served at the root of every admin subdomain. Which portal
 // it is depends on the host: admin.<root> => super admin, <slug>.<root> =>
@@ -33,6 +34,20 @@ const superAdminRoutes = [
             { path: 'plans', name: 'admin.plans', component: () => import('../pages/admin/PlansList.vue'), meta: { capability: 'plans.manage' } },
             { path: 'plans/create', name: 'admin.plans.create', component: () => import('../pages/admin/PlanForm.vue'), meta: { capability: 'plans.manage' } },
             { path: 'plans/:id/edit', name: 'admin.plans.edit', component: () => import('../pages/admin/PlanForm.vue'), meta: { capability: 'plans.manage' } },
+            // POS licences (POS-BE-015). licences.manage is SUPER_ADMIN-only, so
+            // this whole section is invisible to every other platform role — the
+            // route guard is the courtesy; the API gate is the boundary.
+            { path: 'pos/licences', name: 'admin.licences', component: () => import('../pages/admin/pos/LicencesList.vue'), meta: { capability: 'licences.manage' } },
+            // The fork every new client starts at: a cloud tenant we host, or an
+            // offline customer who gets a licence and nothing else. Sits BEFORE
+            // the two forms it leads to, because choosing wrong is expensive to
+            // undo — see ClientKindChoice.vue.
+            { path: 'pos/licences/new', name: 'admin.licences.new', component: () => import('../pages/admin/pos/ClientKindChoice.vue'), meta: { capability: 'licences.manage' } },
+            { path: 'pos/licences/offline', name: 'admin.licences.offline', component: () => import('../pages/admin/pos/OfflineLicenceForm.vue'), meta: { capability: 'licences.manage' } },
+            // Issuing to a tenant that already exists — reached from the fork,
+            // not from the list, because it creates no client.
+            { path: 'pos/licences/create', name: 'admin.licences.create', component: () => import('../pages/admin/pos/LicenceForm.vue'), meta: { capability: 'licences.manage' } },
+            { path: 'pos/licences/:id', name: 'admin.licences.show', component: () => import('../pages/admin/pos/LicenceDetails.vue'), meta: { capability: 'licences.manage' } },
             { path: 'leads', name: 'admin.leads', component: () => import('../pages/admin/LeadsView.vue'), meta: { capability: 'leads.manage' } },
             { path: 'audit-logs', name: 'admin.audit', component: () => import('../pages/admin/AuditLogsView.vue'), meta: { capability: 'audit.view' } },
             {
@@ -61,6 +76,33 @@ const superAdminRoutes = [
         ],
     },
 ]
+
+// /settings IS the settings screen: it renders Profile in place rather than
+// bouncing to a /settings/profile sub-path, so the address bar says what the
+// sidebar said. Only the other four sections carry a suffix.
+//
+// Not everyone can open Profile, though — a cashier holding only pos.provision
+// starts at POS devices — so the index route is guarded rather than gated with
+// `meta.capability`: the global check below would bounce that cashier to the
+// dashboard home before this ever ran. Returning `true` lets Profile render.
+//
+// It is also a `beforeEnter` and NOT a `redirect` for a second reason: a
+// redirect function runs while the URL is being MATCHED, before the global
+// `beforeEach` has had a chance to `await auth.fetchUser()`. On a cold load
+// that meant asking an empty auth store what the user may open, getting
+// "nothing", and falling through to home. `beforeEnter` runs after it.
+const settingsIndexGuard = () => {
+    const auth = useAuth()
+    if (auth.can('settings.view')) return true
+
+    const first = visibleSettingsSections({
+        features: auth.restaurant?.features || [],
+        can: auth.can,
+    })[0]
+    // Nothing visible means the sidebar should never have offered Settings;
+    // fall back to the dashboard home rather than rendering an empty shell.
+    return first ? first.to : { name: 'dashboard.home' }
+}
 
 const restaurantRoutes = [
     loginRoute,
@@ -92,13 +134,49 @@ const restaurantRoutes = [
             { path: 'branches/:id/edit', name: 'dashboard.branches.edit', component: () => import('../pages/dashboard/BranchForm.vue'), meta: { capability: 'branches.update' } },
             { path: 'dining-areas', name: 'dashboard.areas', component: () => import('../pages/dashboard/DiningAreasView.vue'), meta: { capability: 'tables.view' } },
             { path: 'tables', name: 'dashboard.tables', component: () => import('../pages/dashboard/TablesView.vue'), meta: { capability: 'tables.view' } },
-            { path: 'profile', name: 'dashboard.profile', component: () => import('../pages/dashboard/ProfileView.vue'), meta: { capability: 'settings.view' } },
-            { path: 'staff', name: 'dashboard.staff', component: () => import('../pages/dashboard/StaffView.vue'), meta: { capability: 'staff.view' } },
-            { path: 'staff/create', name: 'dashboard.staff.create', component: () => import('../pages/dashboard/StaffForm.vue'), meta: { capability: 'staff.create' } },
-            { path: 'staff/:id/edit', name: 'dashboard.staff.edit', component: () => import('../pages/dashboard/StaffForm.vue'), meta: { capability: 'staff.update' } },
-            { path: 'roles', name: 'dashboard.roles', component: () => import('../pages/dashboard/RolesView.vue'), meta: { capability: 'staff.view' } },
-            { path: 'roles/create', name: 'dashboard.roles.create', component: () => import('../pages/dashboard/RoleForm.vue'), meta: { capability: 'staff.create' } },
-            { path: 'roles/:id/edit', name: 'dashboard.roles.edit', component: () => import('../pages/dashboard/RoleForm.vue'), meta: { capability: 'staff.update' } },
+            // ------------------------------------------------------ settings
+            // Five sections, one shell. The route *names* are the ones these
+            // pages have always had, so every existing RouterLink keeps
+            // resolving; only the URLs moved under /settings, which is what
+            // makes each section linkable and the back button meaningful.
+            // `meta.capability` still mirrors the server on every child.
+            {
+                path: 'settings',
+                component: () => import('../pages/dashboard/settings/SettingsLayout.vue'),
+                children: [
+                    // Profile lives at the bare /settings — see settingsIndexGuard.
+                    { path: '', name: 'dashboard.profile', component: () => import('../pages/dashboard/ProfileView.vue'), beforeEnter: settingsIndexGuard },
+                    { path: 'users', name: 'dashboard.staff', component: () => import('../pages/dashboard/StaffView.vue'), meta: { capability: 'staff.view' } },
+                    { path: 'users/create', name: 'dashboard.staff.create', component: () => import('../pages/dashboard/StaffForm.vue'), meta: { capability: 'staff.create' } },
+                    { path: 'users/:id/edit', name: 'dashboard.staff.edit', component: () => import('../pages/dashboard/StaffForm.vue'), meta: { capability: 'staff.update' } },
+                    { path: 'roles', name: 'dashboard.roles', component: () => import('../pages/dashboard/RolesView.vue'), meta: { capability: 'staff.view' } },
+                    { path: 'roles/create', name: 'dashboard.roles.create', component: () => import('../pages/dashboard/RoleForm.vue'), meta: { capability: 'staff.create' } },
+                    { path: 'roles/:id/edit', name: 'dashboard.roles.edit', component: () => import('../pages/dashboard/RoleForm.vue'), meta: { capability: 'staff.update' } },
+                    // POS terminal provisioning (POS-BE-023). The server stacks
+                    // feature:pos on top of can:pos.provision; client-side the
+                    // feature gate lives on the settings sub-menu entry
+                    // (feature: 'pos'), same as Orders and Branches — the route
+                    // guard mirrors only the capability.
+                    { path: 'devices', name: 'dashboard.pos.terminals', component: () => import('../pages/dashboard/PosTerminalsView.vue'), meta: { capability: 'pos.provision' } },
+                    // Money configuration (POS-BE-013). The server gates it with
+                    // feature:pos + can:settings.view; the feature half lives on
+                    // the sub-menu entry, so the guard mirrors the capability.
+                    { path: 'taxes', name: 'dashboard.pos.money', component: () => import('../pages/dashboard/PosMoneyView.vue'), meta: { capability: 'settings.view' } },
+                ],
+            },
+            { path: 'settings/profile', redirect: { name: 'dashboard.profile' } },
+            // The paths these pages used before the settings shell existed.
+            // Kept as redirects so bookmarks and anything already printed or
+            // pasted still land in the right place.
+            { path: 'profile', redirect: { name: 'dashboard.profile' } },
+            { path: 'staff', redirect: { name: 'dashboard.staff' } },
+            { path: 'staff/create', redirect: { name: 'dashboard.staff.create' } },
+            { path: 'staff/:id/edit', redirect: (to) => ({ name: 'dashboard.staff.edit', params: to.params }) },
+            { path: 'roles', redirect: { name: 'dashboard.roles' } },
+            { path: 'roles/create', redirect: { name: 'dashboard.roles.create' } },
+            { path: 'roles/:id/edit', redirect: (to) => ({ name: 'dashboard.roles.edit', params: to.params }) },
+            { path: 'pos/terminals', redirect: { name: 'dashboard.pos.terminals' } },
+            { path: 'pos/money', redirect: { name: 'dashboard.pos.money' } },
             { path: 'categories', name: 'dashboard.categories', component: () => import('../pages/dashboard/CategoriesView.vue'), meta: { capability: 'menu.view' } },
             { path: 'items', name: 'dashboard.items', component: () => import('../pages/dashboard/ItemsView.vue'), meta: { capability: 'menu.view' } },
             { path: 'extras', name: 'dashboard.extras', component: () => import('../pages/dashboard/ExtrasView.vue'), meta: { capability: 'menu.view' } },

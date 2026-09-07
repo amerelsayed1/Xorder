@@ -60,4 +60,18 @@ enum CurrencyEnum: string
             self::USD, self::EUR, self::GBP => null,
         };
     }
+
+    /**
+     * Minor-unit exponent (ISO 4217). The reason POS money is integer minor
+     * units in the first place: KWD/BHD/OMR/JOD are three-decimal currencies
+     * that decimal(10,2) cannot represent (D1). Hardcoding 100 anywhere is a
+     * bug for a Kuwaiti tenant — divide/multiply by 10 ** exponent().
+     */
+    public function exponent(): int
+    {
+        return match ($this) {
+            self::KWD, self::BHD, self::OMR, self::JOD => 3,
+            default => 2,
+        };
+    }
 }

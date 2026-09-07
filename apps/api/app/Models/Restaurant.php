@@ -70,6 +70,11 @@ class Restaurant extends Model
         'subscription_start_date',
         'subscription_end_date',
         'review_public_url',
+        // POS-BE-013: the tax id printed on receipts. Plain descriptive data,
+        // authored through the profile form; pos_config_version and
+        // pos_invoice_config are deliberately NOT here — the version moves only
+        // through PosConfigVersion::bump().
+        'tax_registration_number',
         'review_thank_you_ar',
         'review_thank_you_en',
     ];
@@ -94,6 +99,8 @@ class Restaurant extends Model
             'subscription_status' => SubscriptionStatus::class,
             'subscription_start_date' => 'date',
             'subscription_end_date' => 'date',
+            'pos_config_version' => 'integer',
+            'pos_invoice_config' => 'array',
         ];
     }
 

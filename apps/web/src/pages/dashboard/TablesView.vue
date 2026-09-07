@@ -159,7 +159,7 @@ async function bulkRemove() {
         const { data } = await api.delete('api/dashboard/tables/bulk', { data: { ids } })
         clearSelection()
         await loadTables()
-        if (data?.message) alert(data.message)
+        if (data?.message) alert({ title: t('common.success'), message: data.message, variant: 'success' })
     } catch (err) { alert(err.response?.data?.message || t('common.delete_failed')) }
     finally { bulkDeleting.value = false }
 }

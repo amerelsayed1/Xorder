@@ -83,6 +83,31 @@ enum TenantCapability: string
     case STAFF_UPDATE = 'staff.update';
     case STAFF_DELETE = 'staff.delete';
 
+    /*
+    | POS verbs (POS-BE-002). Final strings agreed in BACKEND_TO_POS.md A1:
+    | single-dot only — resource() is strtok on '.', so a two-dot name would
+    | parse to the wrong resource and implies() would hunt a capability that
+    | does not exist. pos.operate is the view-equivalent for the pos resource:
+    | every other pos verb implies it (see implies()).
+    */
+    case POS_OPERATE = 'pos.operate';
+    case POS_DISCOUNT = 'pos.discount';
+    case POS_PRICE_OVERRIDE = 'pos.price_override';
+    case POS_VOID = 'pos.void';
+    case POS_REFUND = 'pos.refund';
+    case POS_SHIFT_OPEN = 'pos.shift_open';
+    case POS_SHIFT_CLOSE = 'pos.shift_close';
+    case POS_CASH_MOVEMENT = 'pos.cash_movement';
+    case POS_REPRINT = 'pos.reprint';
+
+    // Dashboard-side POS provisioning: create terminals, issue pairing codes,
+    // revoke (POS-BE-023). Path B registration accepts any staff holding this.
+    case POS_PROVISION = 'pos.provision';
+
+    // The first write verb on customers (POS-BE-014). customers.view stays the
+    // dashboard's read; the till creates through /api/pos/customers.
+    case CUSTOMERS_CREATE = 'customers.create';
+
     /** @return list<string> */
     public static function values(): array
     {
@@ -109,6 +134,7 @@ enum TenantCapability: string
     {
         return match ($this->resource()) {
             'live', 'orders', 'bills' => 'operations',
+            'pos' => 'pos',
             'menu' => 'menu',
             'tables', 'branches' => 'place',
             'customers', 'reviews' => 'engagement',
@@ -126,6 +152,12 @@ enum TenantCapability: string
     {
         if ($this->action() === 'view') {
             return null;
+        }
+
+        // The pos resource has no `.view`: pos.operate IS its view-equivalent
+        // (agreed as A1). Every other pos verb implies it; it implies nothing.
+        if ($this->resource() === 'pos') {
+            return $this === self::POS_OPERATE ? null : self::POS_OPERATE;
         }
 
         return self::tryFrom($this->resource().'.view');

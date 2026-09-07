@@ -52,6 +52,15 @@ class Order extends Model
             'status' => OrderStatus::class,
             'items' => 'array',
             'total' => 'decimal:2',
+            // POS columns (Cloud Wave 1) — integer minor units + the client's
+            // own event time. All nullable on the QR path.
+            'subtotal_minor' => 'integer',
+            'discount_minor' => 'integer',
+            'tax_minor' => 'integer',
+            'charges_minor' => 'integer',
+            'total_minor' => 'integer',
+            'received_at' => 'datetime',
+            'pos_meta' => 'array',
         ];
     }
 
@@ -104,5 +113,11 @@ class Order extends Model
     public function orderItems(): HasMany
     {
         return $this->hasMany(OrderItem::class);
+    }
+
+    /** BE-A01: tender rows. Empty for QR orders — no payment is taken there. */
+    public function payments(): HasMany
+    {
+        return $this->hasMany(OrderPayment::class);
     }
 }

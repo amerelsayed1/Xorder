@@ -5,6 +5,8 @@ namespace Tests\Feature;
 use App\Enums\RoleEnum;
 use App\Models\Category;
 use App\Models\MenuItem;
+use App\Models\PosLicence;
+use App\Models\PosTerminal;
 use App\Models\Restaurant;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -33,6 +35,13 @@ class RestaurantProvisioningTest extends TestCase
         $admin = User::where('username', 'owner')->first();
         $this->assertSame(RoleEnum::RESTAURANT_ADMIN, $admin->role);
         $this->assertNotNull($admin->restaurant_id);
+
+        // Tenant + licence, and nothing else (owner decision, 2026-09-05).
+        // Restated at the original creation site so a future change here has to
+        // break it on purpose; the full flow lives in
+        // Tests\Feature\Admin\TenantCreationTest.
+        $this->assertSame(1, PosLicence::where('restaurant_id', $admin->restaurant_id)->count());
+        $this->assertSame(0, PosTerminal::withoutGlobalScopes()->count());
     }
 
     public function test_new_client_gets_a_one_month_trial_by_default(): void

@@ -2,7 +2,17 @@
 
 return [
     'errors' => [
+        'pos_seat_limit' => 'This plan covers :max terminal(s) and :claimed are already in use. Revoke a terminal you no longer use, or raise the plan, then try again.',
+        'pos_terminal_still_active' => 'This terminal is still active. Revoke it first — deletion is cleanup for revoked, never-used terminals.',
+        'pos_terminal_has_history' => 'This terminal has taken sales or run shifts, so its record stays. Revoked terminals hold no seat and cannot trade.',
+        'licence_still_active' => 'This licence still permits trade. Revoke it first — deletion is for records that are already revoked, superseded or expired.',
         'unauthenticated' => 'Unauthenticated.',
+        // POS licence activation. 'not found' deliberately covers both a wrong
+        // key and a key that never existed — that difference is an enumeration
+        // oracle and is worth nothing to an honest installer.
+        'licence_not_found' => 'That licence key was not recognised.',
+        'licence_revoked' => 'This licence has been revoked. Contact your supplier.',
+        'licence_tenant_mismatch' => 'This licence was issued to a different restaurant.',
         'account_suspended' => 'Your account is suspended.',
         'no_access' => 'You do not have access to this resource.',
         'no_restaurant_context' => 'No restaurant context.',
@@ -14,12 +24,38 @@ return [
         'current_password_incorrect' => 'The current password is incorrect.',
         'report_range_too_large' => 'The selected date range is too large. Please choose a range of at most :days days.',
     ],
+    // POS-BE-019 error envelope messages, keyed by the SCREAMING_SNAKE code the
+    // till switches on. Operator-facing; the code, not the message, drives
+    // client behaviour, so a missing key degrades cosmetically only.
+    'pos' => [
+        'DEVICE_TOKEN_INVALID' => 'This terminal is not recognised. Pair it again from the dashboard.',
+        'TERMINAL_REVOKED' => 'This terminal has been revoked. Contact your manager.',
+        'POS_FEATURE_DISABLED' => 'The POS is not enabled for this restaurant.',
+        'POS_CAPABILITY_MISSING' => 'You do not have permission for this action.',
+        'PAIRING_CODE_INVALID' => 'That setup code was not recognised.',
+        'PAIRING_CODE_EXPIRED' => 'That setup code has expired. Generate a new one from the dashboard.',
+        'PAIRING_CODE_USED' => 'That setup code was already used.',
+        'IDEMPOTENCY_PAYLOAD_MISMATCH' => 'This transaction id was already used for a different payload.',
+        'BRANCH_NOT_IN_TENANT' => 'Branch not found.',
+        'SHIFT_ALREADY_OPEN' => 'A shift is already open on this terminal.',
+        'SHIFT_NOT_OPEN' => 'No open shift on this terminal.',
+        'VALIDATION_FAILED' => 'The request was invalid.',
+        'unknown_item' => 'Unknown item',
+    ],
     'messages' => [
         'signup_received' => 'Your restaurant is ready! Check your email for your dashboard login details.',
         'plan_limit_items' => 'Your plan allows up to :limit menu items. Upgrade to add more.',
         'plan_limit_categories' => 'Your plan allows up to :limit categories. Upgrade to add more.',
         'plan_limit_branches' => 'Your plan allows up to :limit branches. Upgrade to add more.',
         'plan_limit_staff' => 'Your plan allows up to :limit staff accounts. Upgrade to add more.',
+        'saved' => 'Saved.',
+        'deleted' => 'Deleted.',
+        'branch_not_found' => 'Branch not found.',
+        'pos_terminal_provisioned' => 'Terminal created. Generate a setup code to pair the device.',
+        'pos_terminal_deleted' => 'Terminal deleted.',
+        'pos_terminal_revoked' => 'Terminal revoked.',
+        'pos_pin_set' => 'POS PIN set.',
+        'pos_pin_cleared' => 'POS PIN cleared.',
         'order_received' => 'Order received.',
         'order_not_found' => 'Order not found.',
         'order_updated' => 'Order updated.',
@@ -83,6 +119,10 @@ return [
         'plan_created' => 'Plan created.',
         'plan_updated' => 'Plan updated.',
         'plan_deleted' => 'Plan deleted.',
+        'licence_issued' => 'Licence issued. Copy the activation key now — it is not shown again.',
+        'licence_renewed' => 'Licence renewed.',
+        'licence_deleted' => 'Licence deleted.',
+        'licence_revoked' => 'Licence revoked. Terminals already holding it keep working until they next reach the platform.',
         'admin_password_reset' => 'Admin password reset and emailed.',
         'admin_updated' => 'Admin account updated.',
         'restaurant_admin_not_found' => 'This restaurant has no admin account.',
@@ -170,6 +210,7 @@ return [
         'option_group_categories_required' => 'Choose at least one category for a category-scoped extra.',
         'slug_regex' => 'Slug may contain only lowercase letters, numbers and hyphens, with no leading, trailing or repeated hyphens.',
         'delete_confirmation' => 'Type the restaurant slug to confirm deletion.',
+        'slug_taken_by_tenant' => 'A hosted restaurant already uses this identifier. An offline customer needs one of their own.',
         'discounted_price_lt' => 'The discounted price must be lower than the original price.',
         'category_wrong_restaurant' => 'The selected category does not belong to your restaurant.',
         'subscription_start_date_required' => 'A start date is required for an active subscription.',

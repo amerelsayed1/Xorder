@@ -5,18 +5,22 @@ use App\Http\Controllers\Admin\AuditLogController as AdminAuditLogController;
 use App\Http\Controllers\Admin\InsightsController as AdminInsightsController;
 use App\Http\Controllers\Admin\LandingContentController as AdminLandingContentController;
 use App\Http\Controllers\Admin\LeadController as AdminLeadController;
+use App\Http\Controllers\Admin\LicenceController as AdminLicenceController;
 use App\Http\Controllers\Admin\PlanController as AdminPlanController;
 use App\Http\Controllers\Admin\PlatformUserController as AdminPlatformUserController;
+use App\Http\Controllers\Admin\PosFleetController as AdminPosFleetController;
 use App\Http\Controllers\Admin\RestaurantAdminController as AdminRestaurantAdminController;
 use App\Http\Controllers\Admin\RestaurantController as AdminRestaurantController;
 use App\Http\Controllers\Admin\RestaurantQrController as AdminQrController;
 use App\Http\Controllers\Admin\RestaurantStatusController;
+use App\Http\Controllers\Admin\RestaurantTerminalController as AdminRestaurantTerminalController;
 use App\Http\Controllers\Admin\SubscriptionController;
 use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\Auth\PasswordResetController;
 use App\Http\Controllers\Dashboard\BillRequestController;
 use App\Http\Controllers\Dashboard\BranchController;
 use App\Http\Controllers\Dashboard\CategoryController;
+use App\Http\Controllers\Dashboard\ChargeController;
 use App\Http\Controllers\Dashboard\ComboController;
 use App\Http\Controllers\Dashboard\CustomerController;
 use App\Http\Controllers\Dashboard\DashboardQrController;
@@ -29,6 +33,8 @@ use App\Http\Controllers\Dashboard\MenuItemController;
 use App\Http\Controllers\Dashboard\NotificationController;
 use App\Http\Controllers\Dashboard\OptionGroupController;
 use App\Http\Controllers\Dashboard\OrderController as DashboardOrderController;
+use App\Http\Controllers\Dashboard\PosPinController;
+use App\Http\Controllers\Dashboard\PosTerminalController as DashboardPosTerminalController;
 use App\Http\Controllers\Dashboard\PulseController;
 use App\Http\Controllers\Dashboard\PushTokenController;
 use App\Http\Controllers\Dashboard\ReportController;
@@ -38,6 +44,13 @@ use App\Http\Controllers\Dashboard\RoleController;
 use App\Http\Controllers\Dashboard\StaffController;
 use App\Http\Controllers\Dashboard\StatsController;
 use App\Http\Controllers\Dashboard\TableController;
+use App\Http\Controllers\Dashboard\TaxRuleController;
+use App\Http\Controllers\Dashboard\TenderTypeController;
+use App\Http\Controllers\Pos\BootstrapController as PosBootstrapController;
+use App\Http\Controllers\Pos\LicenceController as PosLicenceController;
+use App\Http\Controllers\Pos\OrderController as PosOrderController;
+use App\Http\Controllers\Pos\ShiftController as PosShiftController;
+use App\Http\Controllers\Pos\TerminalController as PosTerminalController;
 use App\Http\Controllers\Public\LandingContentController as PublicLandingContentController;
 use App\Http\Controllers\Public\LeadController as PublicLeadController;
 use App\Http\Controllers\Public\PublicBillRequestController;
@@ -127,6 +140,70 @@ Route::prefix('admin')
             Route::get('plans/{plan}', [AdminPlanController::class, 'show']);
             Route::put('plans/{plan}', [AdminPlanController::class, 'update']);
             Route::delete('plans/{plan}', [AdminPlanController::class, 'destroy']);
+        });
+
+        // POS licences (POS-BE-015). A licence is its own per-client record,
+        // not a projection of the plan — owner decision D6.
+        //
+        // These reads are deliberately CROSS-TENANT: PosLicence carries no
+        // RestaurantScope because licences are administered from the platform
+        // side, the same posture POS-BE-022's fleet views need. Every query in
+        // the controller names its restaurant explicitly.
+        //
+        // licences.manage is held by SUPER_ADMIN only (via the Gate::before
+        // bypass) and appears in no staff role's matrix: issuing commercial
+        // entitlement is not reversible, and widening it later is cheap.
+        Route::prefix('pos')->middleware('can:licences.manage')->group(function () {
+            Route::get('licences', [AdminLicenceController::class, 'index']);
+            Route::post('licences', [AdminLicenceController::class, 'store']);
+            // The on-premises customer: a licence with no tenant behind it.
+            // Declared before licences/{licence} would ever be consulted, so
+            // "offline" is never read as a licence id.
+            Route::post('licences/offline', [AdminLicenceController::class, 'storeOffline']);
+            Route::get('licences/{licence}', [AdminLicenceController::class, 'show']);
+            // Renew and revoke are POSTs, not a PUT: neither edits the licence
+            // in place. A renewal writes a NEW row and supersedes this one,
+            // because the signed artifact is the record of what the customer
+            // was sold and overwriting it erases that.
+            Route::post('licences/{licence}/renew', [AdminLicenceController::class, 'renew']);
+            // Cleanup only: refuses any licence still permitting trade
+            // (revoke first). Owner decision 2026-09-05.
+            Route::delete('licences/{licence}', [AdminLicenceController::class, 'destroy']);
+            Route::post('licences/{licence}/revoke', [AdminLicenceController::class, 'revoke']);
+            // The on-premises delivery path: a till that may never reach the
+            // internet still has to be licensable.
+            Route::get('licences/{licence}/download', [AdminLicenceController::class, 'download']);
+        });
+
+        // POS fleet (POS-BE-022). DELIBERATELY CROSS-TENANT — a platform view
+        // of every terminal, with heartbeat state; the one POS read that must
+        // escape RestaurantScope (no tenant context here, so the scope is a
+        // no-op and the controller says so out loud). pos_fleet.view is
+        // SUPER_ADMIN-only via Gate::before, like licences.manage.
+        Route::prefix('pos')->middleware('can:pos_fleet.view')->group(function () {
+            Route::get('terminals', [AdminPosFleetController::class, 'index']);
+            Route::get('terminals/{terminal}', [AdminPosFleetController::class, 'show']);
+        });
+
+        // Terminals of ONE tenant (owner decision, 2026-09-05). Creating a
+        // tenant creates the tenant and its licence and stops there — no
+        // terminal, not even a default one — so these are the routes that
+        // bring a till into existence, each call one deliberate act.
+        //
+        // The tenant is a path segment, matching restaurants/{restaurant}/admin
+        // and .../subscription: the operator is already on one tenant's page.
+        // Reads sit on pos_fleet.view; writes need pos_fleet.manage.
+        Route::middleware('can:pos_fleet.view')->group(function () {
+            Route::get('restaurants/{restaurant}/terminals', [AdminRestaurantTerminalController::class, 'index']);
+        });
+        Route::middleware('can:pos_fleet.manage')->group(function () {
+            Route::post('restaurants/{restaurant}/terminals', [AdminRestaurantTerminalController::class, 'store']);
+            // Plaintext code in this response only; the row keeps the HMAC.
+            Route::post('restaurants/{restaurant}/terminals/{terminal}/pairing-code', [AdminRestaurantTerminalController::class, 'pairingCode']);
+            Route::post('restaurants/{restaurant}/terminals/{terminal}/revoke', [AdminRestaurantTerminalController::class, 'revoke']);
+            // Cleanup only: refuses a terminal still active (revoke first) or
+            // holding sales/shift history. Same split as licences.
+            Route::delete('restaurants/{restaurant}/terminals/{terminal}', [AdminRestaurantTerminalController::class, 'destroy']);
         });
 
         // Landing page content (CMS)
@@ -444,7 +521,143 @@ Route::prefix('dashboard')
             Route::get('reports/products-by-time/export', [ReportController::class, 'export']);
             Route::get('reports/dining-areas', [ReportController::class, 'diningAreas']);
         });
+
+        /*
+        | POS (Cloud Wave 1). Everything below is feature:pos — the tenant
+        | bought the POS — and then:
+        |
+        |   terminals    can:pos.provision  (POS-BE-023: provision, pairing
+        |                codes, revoke — a dedicated verb, so an installer
+        |                account needn't hold settings.update)
+        |   money config can:settings.view / settings.update (POS-BE-013 —
+        |                authoring what money means is settings work)
+        |   PIN          its own controller guard (POS-BE-024): staff.update
+        |                for others, self always, owner's pin only by owner
+        |
+        | Writes stack subscription.writable like every other dashboard
+        | CONFIGURATION write. (D2 exempts the TILL's money path, not this.)
+        */
+        Route::middleware('feature:pos')->group(function () {
+            Route::middleware('can:pos.provision')->group(function () {
+                Route::get('pos/terminals', [DashboardPosTerminalController::class, 'index']);
+
+                Route::middleware('subscription.writable')->group(function () {
+                    Route::post('pos/terminals', [DashboardPosTerminalController::class, 'store']);
+                    Route::post('pos/terminals/{terminal}/pairing-code', [DashboardPosTerminalController::class, 'pairingCode'])
+                        ->middleware('throttle:10,1');
+                    Route::post('pos/terminals/{terminal}/revoke', [DashboardPosTerminalController::class, 'revoke']);
+                    // Cleanup only: refuses unless revoked AND never traded
+                    // (shifts cascade, orders lose attribution). Owner
+                    // decision 2026-09-05, mirroring the licence split.
+                    Route::delete('pos/terminals/{terminal}', [DashboardPosTerminalController::class, 'destroy']);
+                });
+            });
+
+            Route::middleware('can:settings.view')->group(function () {
+                Route::get('tax-rules', [TaxRuleController::class, 'index']);
+                Route::get('charges', [ChargeController::class, 'index']);
+                Route::get('tender-types', [TenderTypeController::class, 'index']);
+
+                Route::middleware(['can:settings.update', 'subscription.writable'])->group(function () {
+                    Route::post('tax-rules', [TaxRuleController::class, 'store']);
+                    Route::put('tax-rules/{taxRule}', [TaxRuleController::class, 'update']);
+                    Route::delete('tax-rules/{taxRule}', [TaxRuleController::class, 'destroy']);
+                    Route::post('charges', [ChargeController::class, 'store']);
+                    Route::put('charges/{charge}', [ChargeController::class, 'update']);
+                    Route::delete('charges/{charge}', [ChargeController::class, 'destroy']);
+                    Route::post('tender-types', [TenderTypeController::class, 'store']);
+                    Route::put('tender-types/{tenderType}', [TenderTypeController::class, 'update']);
+                    // DELETE deactivates — order_payments keep their FK.
+                    Route::delete('tender-types/{tenderType}', [TenderTypeController::class, 'destroy']);
+                });
+            });
+
+            // The PIN is write-only and never readable back; per-target
+            // authorization (self / staff.update / owner-only-by-owner) lives
+            // in the controller guard, which also 404s cross-tenant targets.
+            Route::middleware('subscription.writable')->group(function () {
+                Route::put('staff/{staff}/pin', [PosPinController::class, 'update'])->middleware('throttle:10,1');
+                Route::delete('staff/{staff}/pin', [PosPinController::class, 'destroy'])->middleware('throttle:10,1');
+            });
+        });
     });
+
+/*
+|--------------------------------------------------------------------------
+| POS terminals  (POS-BE-015)
+|--------------------------------------------------------------------------
+|
+| `activate` is UNAUTHENTICATED on purpose: the activation key is itself the
+| credential, and requiring a login would defeat the point — an installer
+| standing at a till on a fresh machine has a key and nothing else. It is
+| throttled per IP and per key (see the `licence-activate` limiter) and every
+| attempt, successful or not, is audited with the key TAIL only.
+|
+| Note what is deliberately NOT here: EnsureSubscriptionAllowsWrites. A lapsed
+| subscription must not stop a till installing a licence the customer already
+| paid for — that turns a collections problem into an outage, the same
+| reasoning as D2.
+|
+| `current` is now behind the DEVICE credential (the provisional jwt gating
+| was tightened when POS-BE-011/023 landed, exactly as the shipped contract
+| said it would be). It runs in no-feature mode: reading your licence must
+| work even when the feature flag is off — that is how a till learns WHY.
+|
+*/
+Route::post('pos/licence/activate', [PosLicenceController::class, 'activate'])
+    ->middleware('throttle:licence-activate');
+
+Route::get('pos/licence/current', [PosLicenceController::class, 'current'])
+    ->middleware(['pos.device:no-feature', 'throttle:60,1']);
+
+/*
+|--------------------------------------------------------------------------
+| POS terminals — Cloud Wave 1 (POS-BE-006/007/008/009/011/019/020/022/023)
+|--------------------------------------------------------------------------
+|
+| Three auth tiers, per the agreed contracts:
+|
+|   claim       UNAUTHENTICATED — the pairing code is the credential, hashed
+|               at rest, single-use, 24h TTL, throttled per IP + per slug.
+|   register    staff JWT holding pos.provision (Path B) — the JWT is used for
+|               this one call and never stored by the till.
+|   everything  the DEVICE token (pos.device middleware): the terminal is
+|   else        authenticated, the cashier is identified (acting_user_id,
+|               verified locally by PIN). No cashier JWT is ever at the till.
+|
+| The heartbeat runs in no-feature mode ON PURPOSE: a tenant whose pos flag
+| lapsed must keep appearing in the fleet view — POS_FEATURE_DISABLED on the
+| heartbeat would silence exactly the tills Super Admin most needs to see.
+|
+| subscription.writable is ABSENT from all of it (owner decision D2): a lapsed
+| plan never stops a till taking or reporting money. SUBSCRIPTION_LAPSED stays
+| reserved in the error vocabulary should the owner ever reverse that.
+*/
+Route::post('pos/terminals/claim', [PosTerminalController::class, 'claim'])
+    ->middleware('throttle:pos-claim');
+
+Route::post('pos/terminals/register', [PosTerminalController::class, 'register'])
+    ->middleware(['auth:jwt', 'role:'.implode(',', RoleEnum::tenantRoles()), 'feature:pos', 'can:pos.provision', 'throttle:10,1']);
+
+Route::post('pos/terminals/heartbeat', [PosTerminalController::class, 'heartbeat'])
+    ->middleware(['pos.device:no-feature', 'throttle:120,1']);
+
+Route::middleware(['pos.device', 'throttle:240,1'])->group(function () {
+    Route::get('pos/bootstrap', [PosBootstrapController::class, 'show']);
+    Route::post('pos/terminals/rotate-token', [PosTerminalController::class, 'rotateToken']);
+
+    // Order lookup is registered before the {order} payment route so
+    // "by-client-id" is never matched as an order reference.
+    Route::get('pos/orders/by-client-id/{uuid}', [PosOrderController::class, 'byClientId']);
+    Route::post('pos/orders', [PosOrderController::class, 'store']);
+    Route::post('pos/orders/{order}/payments', [PosOrderController::class, 'storePayment']);
+
+    Route::get('pos/shifts/current', [PosShiftController::class, 'current']);
+    Route::post('pos/shifts', [PosShiftController::class, 'open']);
+    Route::post('pos/shifts/{shift}/close', [PosShiftController::class, 'close']);
+    Route::get('pos/shifts/{shift}/report', [PosShiftController::class, 'report']);
+    Route::post('pos/cash-movements', [PosShiftController::class, 'cashMovement']);
+});
 
 /*
 |--------------------------------------------------------------------------

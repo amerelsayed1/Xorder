@@ -1,0 +1,213 @@
+/* ===================================================================
+   Settings area primitives
+   -------------------------------------------------------------------
+   The redesign trades the wide, mostly-empty data tables for card rows,
+   so these classes are shared by all five sections rather than repeated
+   in five scoped blocks. Loaded once by SettingsLayout.vue, which every
+   section renders inside.
+
+   Every colour here is a theme variable, never a literal: the same shell
+   has to survive the warm (amber) and indigo palettes, which is exactly
+   what the design handoff calls "theme-agnostic".
+   =================================================================== */
+
+/* ---------------------------------------------------------- shell */
+.set-shell {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 248px;
+    gap: 22px;
+    align-items: start;
+}
+.set-main { min-width: 0; display: flex; flex-direction: column; gap: 18px; }
+.set-aside {
+    position: sticky; top: 88px;
+    background: var(--card); border: 1px solid var(--line); border-radius: 16px;
+    padding: 8px; display: flex; flex-direction: column;
+    box-shadow: 0 1px 2px rgba(36, 31, 25, .04);
+}
+
+/* Sub-menu ------------------------------------------------------- */
+.set-nav-group { display: flex; flex-direction: column; gap: 2px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.set-nav-group:last-child { border-bottom-color: transparent; }
+.set-nav-title { padding: 0 10px 8px; font-size: 11.5px; font-weight: 600; color: var(--muted); }
+.set-nav-item {
+    display: flex; align-items: center; gap: 10px; width: 100%;
+    padding: 11px; border: none; border-radius: 11px; cursor: pointer;
+    background: transparent; color: var(--body); font: inherit;
+    font-size: 13.5px; font-weight: 500; text-align: start; text-decoration: none;
+    transition: background .15s, color .15s;
+}
+.set-nav-item:hover { background: var(--page); }
+.set-nav-item:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.set-nav-item.active { background: var(--accent-soft); color: var(--accent-dark); font-weight: 700; }
+.set-nav-dot { width: 6px; height: 6px; flex: none; border-radius: 999px; background: var(--accent); }
+.set-nav-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.set-nav-ico { flex: none; font-size: 17px; color: var(--muted); }
+.set-nav-item.active .set-nav-ico { color: var(--accent); }
+
+/* Page header ---------------------------------------------------- */
+.set-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 14px; }
+.set-head-text { display: flex; flex-direction: column; gap: 4px; }
+.set-crumb { font-size: 12.5px; color: var(--muted); }
+.set-title { margin: 0; font-size: 23px; font-weight: 700; letter-spacing: -.3px; color: var(--ink); }
+.set-desc { margin: 0; font-size: 13.5px; color: var(--muted); max-width: 620px; line-height: 1.6; }
+.set-head-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.set-head-actions > * { white-space: nowrap; }
+
+/* Buttons -------------------------------------------------------- */
+.set-btn {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 9px 14px; border: 1px solid var(--line); border-radius: 10px;
+    background: var(--card); font: inherit; font-size: 13px; font-weight: 600;
+    color: var(--body); cursor: pointer; text-decoration: none; white-space: nowrap;
+    transition: border-color .15s, color .15s;
+}
+.set-btn:hover { border-color: var(--accent); color: var(--accent-dark); }
+.set-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.set-btn:disabled { opacity: .5; cursor: not-allowed; border-color: var(--line); color: var(--body); }
+.set-btn-primary {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 10px 19px; border: 1px solid transparent; border-radius: 10px;
+    background: var(--accent); font: inherit; font-size: 13.5px; font-weight: 700;
+    color: #fff; cursor: pointer; text-decoration: none; white-space: nowrap;
+    transition: filter .15s;
+}
+.set-btn-primary:hover { filter: brightness(.95); color: #fff; }
+.set-btn-primary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.set-btn-primary:disabled { opacity: .5; cursor: not-allowed; filter: none; }
+.set-btn-sm { padding: 8px 13px; }
+/* Borderless brand text button (the "show all permissions" link) */
+.set-link {
+    align-self: flex-start; border: none; background: none; padding: 0;
+    font: inherit; font-size: 13px; font-weight: 600; color: var(--accent-dark); cursor: pointer;
+}
+.set-link:hover { text-decoration: underline; }
+/* Square destructive action */
+.set-icon-danger {
+    width: 34px; height: 34px; flex: none; display: inline-grid; place-items: center;
+    border: 1px solid var(--red-soft); border-radius: 10px; background: var(--card);
+    color: var(--red); cursor: pointer; transition: background .15s;
+}
+.set-icon-danger:hover { background: var(--red-soft); }
+.set-icon-danger:disabled { opacity: .45; cursor: not-allowed; background: var(--card); }
+
+/* Cards & rows --------------------------------------------------- */
+.set-stack { display: flex; flex-direction: column; gap: 10px; }
+.set-stack-lg { display: flex; flex-direction: column; gap: 14px; }
+.set-card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; overflow: hidden; }
+.set-card-head {
+    padding: 15px 18px; border-bottom: 1px solid var(--line);
+    display: flex; flex-wrap: wrap; align-items: center; gap: 12px;
+}
+.set-card-head-text { display: flex; flex-direction: column; gap: 3px; }
+.set-card-title { font-size: 15px; font-weight: 700; color: var(--ink); }
+.set-card-desc { font-size: 12.5px; color: var(--muted); max-width: 520px; line-height: 1.6; }
+.set-card-body { padding: 15px 18px; display: flex; flex-direction: column; gap: 14px; }
+.set-card-foot { padding: 14px 22px; border-top: 1px solid var(--line); background: var(--page); display: flex; gap: 12px; align-items: center; }
+.set-form { padding: 22px; display: flex; flex-direction: column; gap: 20px; }
+
+/* One item = one row. Wraps rather than scrolls sideways. */
+.set-row {
+    background: var(--card); border: 1px solid var(--line); border-radius: 16px;
+    padding: 16px 18px; display: flex; flex-wrap: wrap; align-items: center; gap: 16px;
+}
+/* align-items: flex-start, not stretch — a dir="ltr" username or UUID inside
+   an RTL row would otherwise stretch full width and hug the wrong edge. */
+.set-row-id { flex: 1; min-width: 170px; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.set-row-name { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+.set-row-name strong { font-size: 15px; font-weight: 700; color: var(--ink); }
+.set-row-sub { font-family: var(--font-mono); font-size: 12.5px; color: var(--muted); }
+.set-row-actions { display: flex; align-items: center; gap: 7px; margin-inline-start: auto; }
+
+/* A list of rows *inside* a card (taxes, fees, payment methods). Same anatomy
+   as a standalone .set-row, minus the border/radius each row would repeat. */
+.set-list { display: flex; flex-direction: column; }
+.set-list-row { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; padding: 14px 18px; }
+.set-list-row + .set-list-row { border-top: 1px solid var(--line); }
+
+/* The "facts" strip on a device row */
+.set-facts { display: flex; flex-wrap: wrap; gap: 22px; }
+.set-fact { display: flex; flex-direction: column; gap: 3px; min-width: 74px; }
+.set-fact-label { font-size: 11.5px; color: var(--muted); }
+.set-fact-value { font-size: 13px; font-weight: 600; color: var(--ink); }
+
+/* Avatar tile */
+.set-avatar {
+    width: 44px; height: 44px; flex: none; border-radius: 13px; display: grid; place-items: center;
+    font-size: 14.5px; font-weight: 700; background: var(--accent-soft); color: var(--accent-dark);
+}
+.set-avatar-owner { background: var(--ink); color: var(--card); }
+
+/* Secondary row actions, revealed by the ⋯ button. A row keeps ONE clear
+   primary action; reset-password and delete live here rather than crowding it. */
+.set-row-more {
+    width: 100%; display: flex; flex-wrap: wrap; gap: 8px;
+    padding-top: 14px; margin-top: 2px; border-top: 1px solid var(--line);
+}
+.set-btn-danger { border-color: var(--red-soft); color: var(--red); }
+.set-btn-danger:hover { border-color: var(--red); color: var(--red); background: var(--red-soft); }
+.set-btn-icon { width: 34px; height: 34px; padding: 0; justify-content: center; font-size: 15px; }
+.set-note { font-size: 11.5px; color: var(--muted); }
+
+/* Chips ---------------------------------------------------------- */
+.set-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600;
+    background: var(--gray-soft); color: var(--gray);
+}
+.set-chip-accent { background: var(--accent-soft); color: var(--accent-dark); }
+.set-chip-green { background: var(--green-soft); color: var(--green); }
+.set-chip-amber { background: var(--amber-soft); color: var(--amber); }
+.set-chip-red { background: var(--red-soft); color: var(--red); }
+.set-chip .dot { width: 6px; height: 6px; border-radius: 999px; background: currentColor; opacity: .75; }
+/* Permission chip — the wall of them reads better a shade softer than a badge */
+.set-perm { padding: 5px 11px; border-radius: 999px; background: var(--accent-soft); color: var(--accent-dark); font-size: 12.5px; font-weight: 500; }
+.set-perm-wrap { display: flex; flex-wrap: wrap; gap: 7px; }
+.set-perm-group { display: flex; flex-direction: column; gap: 8px; }
+.set-perm-title { font-size: 12px; font-weight: 600; color: var(--muted); }
+
+/* Panels, banners, empty states ---------------------------------- */
+.set-inset {
+    display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px;
+    padding: 14px 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--page);
+}
+.set-inset-title { font-size: 14px; font-weight: 600; color: var(--ink); }
+.set-inset-hint { font-size: 12.5px; color: var(--muted); }
+.set-banner {
+    display: flex; align-items: flex-start; gap: 10px;
+    padding: 13px 16px; border: 1px solid var(--amber); border-radius: 12px;
+    background: var(--amber-soft); color: var(--amber);
+    font-size: 12.5px; line-height: 1.65;
+}
+.set-banner .pi { font-size: 15px; flex: none; margin-top: 1px; }
+.set-empty { padding: 34px 18px; display: flex; flex-direction: column; align-items: center; gap: 7px; text-align: center; }
+.set-empty-title { font-size: 13.5px; font-weight: 600; color: var(--ink); }
+.set-empty-hint { font-size: 12.5px; color: var(--muted); max-width: 420px; line-height: 1.6; }
+
+/* Field grids ---------------------------------------------------- */
+.set-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+.set-grid-sm { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+.set-field { display: flex; flex-direction: column; }
+.set-req { color: var(--red); }
+
+/* Skeletons ------------------------------------------------------ */
+.set-skel { border-radius: 16px; background: var(--line); opacity: .55; animation: set-pulse 1.4s ease-in-out infinite; }
+@keyframes set-pulse { 0%, 100% { opacity: .55; } 50% { opacity: .28; } }
+
+/* Responsive ----------------------------------------------------- */
+@media (max-width: 900px) {
+    .set-shell { grid-template-columns: minmax(0, 1fr); }
+    /* The sub-menu moves above the content and becomes a horizontal
+       scroller — the section is still one tap away without a 248px
+       column eating half a phone screen. */
+    .set-aside {
+        position: static; order: -1;
+        flex-direction: row; gap: 8px; overflow-x: auto; padding: 8px;
+        scrollbar-width: none;
+    }
+    .set-aside::-webkit-scrollbar { display: none; }
+    .set-nav-group { flex-direction: row; gap: 6px; padding: 0; border-bottom: none; }
+    .set-nav-title { display: none; }
+    .set-nav-item { width: auto; white-space: nowrap; padding: 9px 12px; }
+    .set-nav-label { overflow: visible; }
+}

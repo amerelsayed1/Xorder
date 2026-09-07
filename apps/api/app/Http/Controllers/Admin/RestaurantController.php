@@ -6,6 +6,7 @@ use App\Enums\RestaurantStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\StoreRestaurantRequest;
 use App\Http\Requests\Admin\UpdateRestaurantRequest;
+use App\Http\Resources\PosLicenceResource;
 use App\Http\Resources\RestaurantResource;
 use App\Models\Restaurant;
 use App\Services\PlanEntitlementService;
@@ -61,30 +62,46 @@ class RestaurantController extends Controller
         ]);
     }
 
+    /**
+     * Create a tenant: the restaurant, its first admin, its configuration and
+     * its POS licence — one transaction, all or nothing.
+     *
+     * NO TERMINAL IS CREATED. A tenant that exists with a licence and zero
+     * terminals is the expected outcome; terminals are provisioned afterwards,
+     * one explicit action at a time, from the tenant's POS section.
+     */
     public function store(StoreRestaurantRequest $request, RestaurantProvisioningService $provisioner): JsonResponse
     {
         $branch = $request->validated('branch');
+        $licence = $request->validated('licence');
 
         // No `features` argument: capabilities are derived strictly from the
         // chosen plan inside provisioning, so admin creation can't grant more
         // than the plan entitles.
         $result = $provisioner->provision(
-            restaurantData: $request->safe()->except(['admin', 'branch', 'features']),
+            restaurantData: $request->safe()->except(['admin', 'branch', 'features', 'licence']),
             adminData: $request->validated('admin'),
             branchData: filled($branch) ? $branch : null,
+            licenceData: filled($licence) ? $licence : [],
+            actor: $request->user(),
         );
 
         return response()->json([
             'data' => RestaurantResource::make($result['restaurant']),
             // Returned once so the Super Admin can hand the password over.
             'generated_password' => $result['generated_password'],
+            'licence' => PosLicenceResource::make($result['licence']),
+            // Same one-shot discipline as the licence screen: the row keeps
+            // only the HMAC, so if this is not copied now it is gone.
+            'activation_key' => $result['licence_key'],
+            'licence_file' => $result['licence']->file(),
             'message' => __('xorder.messages.restaurant_admin_created'),
         ], 201);
     }
 
     public function show(Restaurant $restaurant): JsonResponse
     {
-        $restaurant->loadCount(['categories', 'menuItems'])->load(['users', 'features']);
+        $restaurant->loadCount(['categories', 'menuItems'])->load(['users', 'features', 'branches']);
 
         return response()->json(['data' => RestaurantResource::make($restaurant)]);
     }

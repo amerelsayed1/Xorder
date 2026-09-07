@@ -1,3 +1,5 @@
+import { visibleSettingsSections } from './settings/settings.config.js'
+
 // Dashboard sidebar navigation — a declarative, reusable schema.
 //
 // The UI component (SakaiLayout) knows nothing about which items exist; it just
@@ -11,6 +13,7 @@
 //   featureAny visible when the restaurant holds ANY of these feature flags
 //   capability tenant capability the signed-in user must hold (optional)
 //   badgeKey   which live badge value to show ('orders' | 'requests')
+//   settings   visible when any settings section is (see settings.config.js)
 //   children   nested leaf items → the node renders as a collapsible group
 //
 // `feature` and `capability` answer different questions and both must pass:
@@ -60,14 +63,14 @@ export const DASHBOARD_NAV = [
             { key: 'reports.areas', labelKey: 'rep.areas_title', icon: 'pi pi-table', to: { name: 'dashboard.reports.areas' }, feature: 'product_analytics', capability: 'reports.view' },
         ],
     },
-    {
-        key: 'settings', labelKey: 'nav.group_settings', icon: 'pi pi-cog',
-        children: [
-            { key: 'profile', labelKey: 'nav.profile', icon: 'pi pi-cog', to: { name: 'dashboard.profile' }, capability: 'settings.view' },
-            { key: 'staff', labelKey: 'nav.staff', icon: 'pi pi-users', to: { name: 'dashboard.staff' }, capability: 'staff.view' },
-            { key: 'roles', labelKey: 'nav.roles', icon: 'pi pi-shield', to: { name: 'dashboard.roles' }, capability: 'staff.view' },
-        ],
-    },
+    // Settings is one entry, not a group. The five sections it used to list
+    // live inside the settings shell now, behind their own sub-menu — see
+    // `settings/settings.config.js`, which is also what `settingsVisible()`
+    // below consults so this entry never opens an empty screen.
+    // Profile sits at the bare /settings, so this resolves to /admin/settings —
+    // the URL the sidebar promises. A user who cannot open Profile is moved on
+    // to the first section they can (see settingsIndexGuard in the router).
+    { key: 'settings', labelKey: 'nav.group_settings', icon: 'pi pi-cog', to: { name: 'dashboard.profile' }, settings: true },
 ]
 
 // Resolve the schema against the current feature set, the signed-in user's
@@ -80,12 +83,17 @@ export const DASHBOARD_NAV = [
 // `can` defaults to "allowed" so callers that don't pass it (and the owner, who
 // holds everything) behave exactly as before staff roles existed.
 export function buildDashboardNav({ features = [], badges = {}, can = () => true } = {}) {
+    // The Settings entry has no capability of its own: it is reachable when at
+    // least one of the sections behind it is. Asking the settings schema keeps
+    // that answer in one place instead of duplicating five gates here.
+    const settingsVisible = visibleSettingsSections({ features, can }).length > 0
     // A node is visible when it has no `feature` gate (or the flag is held),
     // and, if it declares `featureAny`, at least one of those flags is held,
     // and the signed-in user holds its `capability`.
     const allowed = (node) => (!node.feature || features.includes(node.feature))
         && (!node.featureAny || node.featureAny.some((f) => features.includes(f)))
         && (!node.capability || can(node.capability))
+        && (!node.settings || settingsVisible)
     const withBadge = (node) => (node.badgeKey ? { ...node, badge: badges[node.badgeKey] ?? 0 } : node)
 
     const out = []

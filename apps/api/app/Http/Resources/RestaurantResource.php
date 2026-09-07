@@ -60,6 +60,15 @@ class RestaurantResource extends JsonResource
             'subscription_plan' => $this->subscription_plan,
             'subscription_start_date' => $this->subscription_start_date?->toDateString(),
             'subscription_end_date' => $this->subscription_end_date?->toDateString(),
+            // Only when eager-loaded. The Super Admin's terminal form needs a
+            // branch picker and there is no other admin-side branch read; this
+            // avoids inventing one endpoint for one dropdown.
+            'branches' => $this->whenLoaded('branches', fn () => $this->branches->map(fn ($branch) => [
+                'id' => $branch->id,
+                'name_en' => $branch->name_en,
+                'name_ar' => $branch->name_ar,
+                'code' => $branch->code,
+            ])->all()),
             'admin' => $this->whenLoaded('users', function () {
                 $admin = $this->users->firstWhere('role', RoleEnum::RESTAURANT_ADMIN);
 

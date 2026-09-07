@@ -47,6 +47,17 @@ class UpdateBranchRequest extends FormRequest
             'is_open' => ['sometimes', 'boolean'],
             'is_active' => ['sometimes', 'boolean'],
             'sort_order' => ['nullable', 'integer', 'min:0'],
+            // POS-BE-005: which order types this branch takes. [] means "all"
+            // (PosOrderService only refuses when the list is non-empty), so an
+            // empty array is a valid, permissive value and never "none".
+            //
+            // `pickup` is accepted alongside the four POS types because the
+            // Super Admin onboarding wizard writes it (there the value mirrors
+            // the plan's ordering-channel feature keys: dine_in / pickup /
+            // delivery). Rejecting it would make every branch created through
+            // that wizard unsaveable from the branch form.
+            'supported_order_types' => ['nullable', 'array'],
+            'supported_order_types.*' => ['string', 'in:dine_in,takeaway,delivery,drive_thru,pickup'],
         ];
     }
 

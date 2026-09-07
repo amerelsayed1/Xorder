@@ -43,14 +43,44 @@ const rows = computed(() => {
     return [...byResource.values()]
 })
 
+// A resource whose verbs are not CRUD cannot be expressed as a row of four
+// checkboxes, and forcing it into one is not a cosmetic problem: `pos` has ten
+// verbs (operate, refund, shift_open, provision…), none of which is
+// view/create/update/delete, so its row rendered as four dashes and NO POS
+// capability could be granted to any custom role at all. Only the owner could
+// use a till, because RESTAURANT_ADMIN holds every capability implicitly
+// rather than through this grid.
+//
+// Split by shape rather than by naming `pos`: any resource the server adds
+// later with its own verbs gets a usable editor without a frontend change,
+// which is the same reason the catalogue is fetched instead of hardcoded.
+const fitsMatrix = (row) => Object.keys(row.cells).every((a) => ACTIONS.includes(a))
+
 // Rows stay grouped under the same headings as before.
 const rowGroups = computed(() => {
     const out = new Map()
     for (const row of rows.value) {
+        if (!fitsMatrix(row)) continue
         if (!out.has(row.group)) out.set(row.group, [])
         out.get(row.group).push(row)
     }
     return [...out.entries()].map(([key, list]) => ({ key, rows: list }))
+})
+
+/// Resources with off-matrix verbs, each as a labelled list of its own.
+const listGroups = computed(() => {
+    const out = new Map()
+    for (const row of rows.value) {
+        if (fitsMatrix(row)) continue
+        if (!out.has(row.group)) out.set(row.group, [])
+        // Catalogue order, which is the enum's order — the server decides how
+        // these read, and it lists `operate` first for a reason.
+        out.get(row.group).push({
+            resource: row.resource,
+            caps: catalogue.value.filter((c) => c.resource === row.resource),
+        })
+    }
+    return [...out.entries()].map(([key, list]) => ({ key, resources: list }))
 })
 
 const groups = computed(() => {
@@ -171,6 +201,27 @@ async function submit() {
                     </template>
                 </div>
 
+                <!-- Resources whose verbs are not CRUD. Rendered as their own
+                     labelled list rather than squeezed into the matrix above,
+                     because a checkbox under a "Delete" column that actually
+                     means "close a shift and count the drawer" is worse than
+                     no checkbox at all. -->
+                <div v-for="g in listGroups" :key="g.key" class="perm-list">
+                    <div class="perm-group">{{ groupLabel(g.key) }}</div>
+                    <div v-for="r in g.resources" :key="r.resource">
+                        <p class="perm-resource-head">{{ t('capres.' + r.resource) }}</p>
+                        <label v-for="cap in r.caps" :key="cap.value" class="perm-list-row">
+                            <input
+                                type="checkbox"
+                                :checked="form.capabilities.includes(cap.value)"
+                                :disabled="isLockedView(cap.value)"
+                                :title="isLockedView(cap.value) ? t('team.view_locked') : ''"
+                                @change="toggle(cap.value)" />
+                            <span>{{ t('capaction.' + cap.action) }}</span>
+                        </label>
+                    </div>
+                </div>
+
                 <FormError :errors="errors" field="capabilities" />
             </div>
 
@@ -183,6 +234,25 @@ async function submit() {
 </template>
 
 <style scoped>
+.perm-list { margin-top: 18px; }
+.perm-resource-head {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ink);
+    margin: 10px 0 4px;
+}
+.perm-list-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 0;
+    border-top: 1px solid var(--line);
+    font-size: 13.5px;
+    color: var(--body);
+    cursor: pointer;
+}
+.perm-list-row input[disabled] { cursor: default; }
+
 .perm-grid { width: 100%; overflow-x: auto; }
 .perm-head, .perm-row {
     display: grid; grid-template-columns: minmax(140px, 1fr) repeat(4, 68px);

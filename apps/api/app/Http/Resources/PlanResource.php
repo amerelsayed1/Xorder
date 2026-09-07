@@ -26,6 +26,7 @@ class PlanResource extends JsonResource
             'max_categories' => $this->max_categories,
             'max_branches' => $this->max_branches,
             'max_staff' => $this->max_staff,
+            'max_terminals' => $this->max_terminals,
             'is_active' => $this->is_active,
             'is_recommended' => $this->is_recommended,
             'sort_order' => $this->sort_order,

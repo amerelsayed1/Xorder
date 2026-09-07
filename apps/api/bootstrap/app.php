@@ -4,12 +4,14 @@ use App\Http\Middleware\EnsureFeatureEnabled;
 use App\Http\Middleware\EnsureRole;
 use App\Http\Middleware\EnsureSubscriptionAllowsWrites;
 use App\Http\Middleware\ForceJsonResponse;
+use App\Http\Middleware\PosDeviceAuth;
 use App\Http\Middleware\SecurityHeaders;
 use App\Http\Middleware\SetLocale;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\IpUtils;
 
 return Application::configure(basePath: dirname(__DIR__))
@@ -55,10 +57,29 @@ return Application::configure(basePath: dirname(__DIR__))
             'role' => EnsureRole::class,
             'subscription.writable' => EnsureSubscriptionAllowsWrites::class,
             'feature' => EnsureFeatureEnabled::class,
+            // The POS device credential (POS-BE-011 Option C). Not an auth
+            // guard — see the middleware's own comment for why.
+            'pos.device' => PosDeviceAuth::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->is('api/*'),
         );
+
+        // POS-BE-019: every 4xx from /api/pos/* carries {code, message,
+        // details?}. Validation failures map to VALIDATION_FAILED with the
+        // Laravel error bag in details — the client switches on `code`, never
+        // on the HTTP status alone.
+        $exceptions->render(function (ValidationException $e, Request $request) {
+            if (! $request->is('api/pos/*')) {
+                return null;
+            }
+
+            return response()->json([
+                'code' => 'VALIDATION_FAILED',
+                'message' => $e->getMessage(),
+                'details' => ['errors' => $e->errors()],
+            ], 422);
+        });
     })->create();

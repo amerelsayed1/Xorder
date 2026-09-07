@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Admin;
 
 use App\Enums\CurrencyEnum;
+use App\Enums\Feature;
 use App\Enums\LanguageEnum;
 use App\Enums\MenuLayout;
 use App\Enums\OrderingMode;
@@ -65,6 +66,33 @@ class StoreRestaurantRequest extends FormRequest
             // derived from its subscription_plan (PlanEntitlementService). Any
             // hand-passed feature map would conflict with the plan, so the wizard
             // sends only the plan and the server resolves the rest.
+
+            // Optional licence overrides. EVERY field is optional because the
+            // licence is always issued: omit the block and the term follows the
+            // subscription dates, the seats follow the plan, and the features
+            // follow the plan's entitlements. This is where a bespoke deal is
+            // expressed — never a terminal. There are deliberately NO terminal
+            // fields on this request: tenant creation creates no terminal.
+            'licence' => ['nullable', 'array'],
+            'licence.plan_id' => ['nullable', 'integer', Rule::exists('plans', 'id')],
+            'licence.issued_at' => ['nullable', 'date'],
+            'licence.expires_at' => ['nullable', 'date', 'after:licence.issued_at'],
+            'licence.grace_days' => ['nullable', 'integer', 'min:0', 'max:365'],
+            'licence.warn_days' => ['nullable', 'integer', 'min:0', 'max:365'],
+            // Seats the licence SELLS. Nothing here provisions a till.
+            'licence.max_terminals' => ['nullable', 'integer', 'min:1', 'max:1000'],
+            'licence.max_offline_days' => ['nullable', 'integer', 'min:1', 'max:365'],
+            'licence.features' => ['nullable', 'array'],
+            'licence.features.*' => ['string', Rule::in(Feature::values())],
+            // Optional here (unlike StoreLicenceRequest, where the operator is
+            // filling the form by hand) but never allowed to be EMPTY: an empty
+            // modes[] parses to an empty set on the till and every deployment
+            // mode then fails to license, which reads as a bricked terminal.
+            'licence.modes' => ['nullable', 'array', 'min:1'],
+            'licence.modes.*' => ['string', Rule::in(StoreLicenceRequest::MODES)],
+            'licence.fingerprints' => ['nullable', 'array'],
+            'licence.fingerprints.*' => ['string', 'max:128'],
+            'licence.notes' => ['nullable', 'string', 'max:2000'],
 
             // Optional first branch (Step 4). Omit the object entirely to skip.
             'branch' => ['nullable', 'array'],

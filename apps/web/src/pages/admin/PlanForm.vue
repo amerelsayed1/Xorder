@@ -16,7 +16,7 @@ const form = reactive({
     // Resource caps. Blank = unlimited (stored as null). max_branches only bites
     // when the plan also grants multi_branch; a single-branch plan is capped at
     // its one primary branch by the multi_branch feature gate regardless.
-    max_branches: '', max_items: '', max_categories: '', max_staff: '',
+    max_branches: '', max_items: '', max_categories: '', max_staff: '', max_terminals: '',
     is_active: true, is_recommended: false, sort_order: 0,
 })
 const currencies = ['EGP', 'SAR', 'AED', 'USD', 'KWD', 'QAR', 'BHD', 'OMR', 'JOD', 'EUR', 'GBP']
@@ -83,7 +83,7 @@ function loadOrdering(keys) {
 // Non-ordering capabilities the admin toggles directly. customer_tracking is
 // gone — customers are captured on every plan now.
 // bill_requests is not here — it's a dine-in sub-option nested under table ordering.
-const capabilityKeys = ['qr_menu', 'internal_reviews', 'product_analytics', 'multi_branch']
+const capabilityKeys = ['qr_menu', 'internal_reviews', 'product_analytics', 'multi_branch', 'pos']
 const capabilities = ref([])
 function toggleCapability(key, on) {
     const i = capabilities.value.indexOf(key)
@@ -105,6 +105,7 @@ onMounted(async () => {
             currency: p.currency,
             max_branches: p.max_branches ?? '',
             max_staff: p.max_staff ?? '',
+            max_terminals: p.max_terminals ?? '',
             max_items: p.max_items ?? '',
             max_categories: p.max_categories ?? '',
             is_active: p.is_active,
@@ -128,6 +129,7 @@ async function submit() {
             feature_keys: featureKeys.value,
             max_branches: form.max_branches === '' ? null : Number(form.max_branches),
             max_staff: form.max_staff === '' ? null : Number(form.max_staff),
+            max_terminals: form.max_terminals === '' ? null : Number(form.max_terminals),
             max_items: form.max_items === '' ? null : Number(form.max_items),
             max_categories: form.max_categories === '' ? null : Number(form.max_categories),
             is_active: form.is_active,
@@ -243,6 +245,10 @@ async function submit() {
                             <input v-model="form.max_categories" type="number" min="1" step="1" class="input" :placeholder="t('plan.unlimited')" />
                             <span class="block text-xs mt-0.5" style="color:var(--muted)">{{ t('plan.max_categories_hint') }}</span>
                             <FormError :errors="errors" field="max_categories" /></label>
+                        <label class="block"><span class="label">{{ t('plan.max_terminals') }}</span>
+                            <input v-model="form.max_terminals" type="number" min="1" step="1" class="input" :placeholder="t('plan.unlimited')" />
+                            <span class="block text-xs mt-0.5" style="color:var(--muted)">{{ t('plan.max_terminals_hint') }}</span>
+                            <FormError :errors="errors" field="max_terminals" /></label>
                     </div>
                 </div>
 

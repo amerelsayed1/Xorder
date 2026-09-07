@@ -196,6 +196,17 @@ main() {
   # Load DB_* (and OPERIX_PROXY_NETWORK) for the backup + compose steps.
   set -a; . "$ENV_FILE"; set +a
 
+  # Creating a tenant now issues its POS licence in the same transaction, so an
+  # unset signing key does not degrade — it breaks client creation outright, and
+  # only on the first attempt AFTER the deploy has finished. Catch it here,
+  # before the backup and the pull, where the cost is a one-line fix.
+  if [ -z "${LICENCE_SIGNING_KEY:-}" ]; then
+    log_fail "LICENCE_SIGNING_KEY is not set in $ENV_FILE."
+    log_fail "Without it every tenant creation fails. Generate one with:"
+    log_fail "  docker compose exec app php artisan licence:keygen"
+    exit 1
+  fi
+
   [ "$ROLLBACK_MODE" = true ] && do_rollback
 
   acquire_lock

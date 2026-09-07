@@ -44,7 +44,11 @@ async function resetPassword(u) {
     try {
         await ensureCsrf()
         const { data } = await api.post(`api/admin/users/${u.id}/reset-password`)
-        await alert(t('users.new_password', { password: data.generated_password }))
+        await alert({
+            title: t('common.success'),
+            message: t('users.new_password', { password: data.generated_password }),
+            variant: 'success',
+        })
     } catch (err) {
         alert(t('users.action_failed'))
     } finally {

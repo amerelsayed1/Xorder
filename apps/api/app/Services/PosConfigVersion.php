@@ -1,0 +1,67 @@
+<?php
+
+namespace App\Services;
+
+use App\Models\Branch;
+use App\Models\Charge;
+use App\Models\PosTerminal;
+use App\Models\Restaurant;
+use App\Models\TaxRule;
+use App\Models\TenderType;
+use Illuminate\Database\Eloquent\Model;
+
+/**
+ * The ONE place restaurants.pos_config_version moves (POS-BE-025).
+ *
+ * The version is the client's sole precedence signal: a till accepts a bundle
+ * iff incoming > cached, and treats a lower value as a rollback to refuse. So
+ * it is monotonic, never reused, never reset — an atomic SQL increment, not a
+ * read-modify-write.
+ *
+ * Coverage: rather than sprinkling bump() through every controller that can
+ * change the bundle, the bundle-shaped models are hooked once here (called
+ * from AppServiceProvider::boot). Branch, TaxRule, Charge, TenderType and
+ * PosTerminal writes bump automatically; the PIN endpoints bump explicitly
+ * (User writes are far too broad to hook — a password change is not a bundle
+ * change).
+ *
+ * KNOWN GAP (recorded in the wave journal): staff role changes and restaurant
+ * profile edits (branding, currency) do not bump yet. The heartbeat's
+ * config_version still refreshes tills periodically, so the effect is a
+ * delayed pickup, not a wrong bundle.
+ */
+class PosConfigVersion
+{
+    public static function bump(Restaurant|int|null $restaurant): void
+    {
+        $id = $restaurant instanceof Restaurant ? $restaurant->id : $restaurant;
+
+        if ($id === null) {
+            return;
+        }
+
+        Restaurant::whereKey($id)->increment('pos_config_version');
+    }
+
+    /** Wire the model events. Called once from AppServiceProvider::boot(). */
+    public static function registerHooks(): void
+    {
+        $bump = function (Model $model): void {
+            self::bump($model->restaurant_id ?? null);
+        };
+
+        foreach ([Branch::class, TaxRule::class, Charge::class, TenderType::class, PosTerminal::class] as $class) {
+            $class::saved($bump);
+            $class::deleted($bump);
+        }
+    }
+
+    public static function current(Restaurant|int $restaurant): int
+    {
+        if ($restaurant instanceof Restaurant) {
+            return (int) $restaurant->pos_config_version;
+        }
+
+        return (int) Restaurant::whereKey($restaurant)->value('pos_config_version');
+    }
+}

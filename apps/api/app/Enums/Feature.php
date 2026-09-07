@@ -27,6 +27,15 @@ enum Feature: string
     case DELIVERY = 'delivery';
     case MULTI_BRANCH = 'multi_branch';
 
+    /**
+     * The POS surface (POS-BE-001). Gates every /api/pos terminal route and
+     * the dashboard provisioning/money-config sections via `feature:pos`.
+     * Deliberately absent from defaultSet() and from every existing plan's
+     * feature_keys, so it resolves to FALSE for every existing tenant — it is
+     * sold, not inherited.
+     */
+    case POS = 'pos';
+
     /** @return list<string> */
     public static function values(): array
     {

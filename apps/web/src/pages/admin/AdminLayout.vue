@@ -20,6 +20,7 @@ const allNav = [
     { to: { name: 'admin.restaurants' }, labelKey: 'nav.restaurants', icon: 'pi pi-building', cap: 'restaurants.view' },
     { to: { name: 'admin.users' }, labelKey: 'nav.users', icon: 'pi pi-users', cap: 'platform_users.manage' },
     { to: { name: 'admin.plans' }, labelKey: 'nav.plans', icon: 'pi pi-tags', cap: 'plans.manage' },
+    { to: { name: 'admin.licences' }, labelKey: 'nav.licences', icon: 'pi pi-key', cap: 'licences.manage' },
     { to: { name: 'admin.leads' }, labelKey: 'nav.leads', icon: 'pi pi-inbox', cap: 'leads.manage' },
     { to: { name: 'admin.audit' }, labelKey: 'nav.audit', icon: 'pi pi-history', cap: 'audit.view' },
     {

@@ -9,6 +9,7 @@ import { useMenuLang } from '../../lib/menuLang.js'
 import { collectPhoneErrors } from '../../lib/phone.js'
 import { useAuth } from '@xorder/api-client/auth.js'
 import { useCaps } from '../../lib/useCaps.js'
+import SettingsHeader from './settings/SettingsHeader.vue'
 
 const { t, locale } = useI18n()
 const auth = useAuth()
@@ -140,45 +141,58 @@ async function changePassword() {
 </script>
 
 <template>
-    <div v-if="loading" class="space-y-5 max-w-3xl">
-        <div class="h-8 w-48 rounded-lg" style="background:var(--line)"></div>
-        <div class="card" style="height:280px"></div>
-        <div class="card" style="height:200px"></div>
+    <SettingsHeader :title="t('nav.profile')" :desc="t('profile.subtitle')">
+        <template #actions>
+            <span v-if="saved" class="set-chip set-chip-green"><span class="dot"></span>{{ t('common.saved') }}</span>
+            <!-- Outside the <form> on purpose: the header belongs to the shell,
+                 the form to the card. Calling submit() directly keeps one save
+                 path rather than a second one via form="" association. -->
+            <button v-if="!loading && !loadError" type="button" class="set-btn-primary"
+                :disabled="saving || !canUpdate" @click="submit">
+                {{ saving ? t('common.saving') : t('common.save') }}
+            </button>
+        </template>
+    </SettingsHeader>
+
+    <div v-if="loading" class="set-stack-lg">
+        <div class="set-skel" style="height: 420px"></div>
+        <div class="set-skel" style="height: 220px"></div>
     </div>
 
     <ErrorState v-else-if="loadError" @retry="load" />
 
     <template v-else>
-    <form @submit.prevent="submit" class="space-y-5 max-w-3xl">
-        <div class="flex items-center justify-between">
-            <div>
-                <h1 class="page-title">{{ t('nav.profile') }}</h1>
-                <p class="page-sub">{{ t('profile.subtitle') }}</p>
-            </div>
-            <span v-if="saved" class="badge badge-green"><span class="dot"></span>{{ t('common.saved') }}</span>
-        </div>
-
-        <div class="card p-6 space-y-5">
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <label v-for="lng in langs" :key="'n' + lng" class="block" :dir="lng === 'ar' ? 'rtl' : 'ltr'">
-                    <span class="label">{{ bilingual ? t('common.name_' + lng) : t('common.name') }}</span>
+        <form class="set-card set-form" @submit.prevent="submit">
+            <div class="set-grid">
+                <label v-for="lng in langs" :key="'n' + lng" class="set-field" :dir="lng === 'ar' ? 'rtl' : 'ltr'">
+                    <span class="label">{{ bilingual ? t('common.name_' + lng) : t('common.name') }} <span class="set-req">*</span></span>
                     <input v-model="form['name_' + lng]" class="input" />
-                    <FormError :errors="errors" :field="'name_' + lng" /></label>
+                    <FormError :errors="errors" :field="'name_' + lng" />
+                </label>
+                <label class="set-field">
+                    <span class="label">{{ t('restaurant.whatsapp') }}</span>
+                    <input v-model="form.whatsapp_number" class="input" dir="ltr" data-en-digits />
+                    <FormError :errors="errors" field="whatsapp_number" />
+                </label>
             </div>
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <label v-for="lng in langs" :key="'d' + lng" class="block" :dir="lng === 'ar' ? 'rtl' : 'ltr'">
+
+            <div class="set-grid">
+                <label v-for="lng in langs" :key="'d' + lng" class="set-field" :dir="lng === 'ar' ? 'rtl' : 'ltr'">
                     <span class="label">{{ bilingual ? t('common.description_' + lng) : t('common.description') }}</span>
-                    <textarea v-model="form['description_' + lng]" rows="2" class="input"></textarea></label>
+                    <textarea v-model="form['description_' + lng]" rows="3" class="input" style="resize: vertical"
+                        :placeholder="t('restaurant.description_placeholder')"></textarea>
+                </label>
             </div>
+
             <!-- Phone, address, and working hours are configured per-branch
                  (every client has at least one branch). Only the WhatsApp
                  ordering number — one per menu — stays at restaurant level. -->
             <!-- Owner's "are we taking orders right now" switch. Hidden when
                  the plan entitles no ordering channel. -->
-            <div v-if="orderingEntitled" class="ordering-switch">
+            <div v-if="orderingEntitled" class="set-inset">
                 <div>
-                    <span class="label">{{ t('restaurant.accepts_orders') }}</span>
-                    <p class="hint">{{ form.accepts_orders ? t('restaurant.accepts_orders_on') : t('restaurant.accepts_orders_off') }}</p>
+                    <span class="set-inset-title">{{ t('restaurant.accepts_orders') }}</span>
+                    <p class="set-inset-hint">{{ form.accepts_orders ? t('restaurant.accepts_orders_on') : t('restaurant.accepts_orders_off') }}</p>
                 </div>
                 <button
                     type="button"
@@ -191,14 +205,10 @@ async function changePassword() {
                 ></button>
             </div>
 
-            <label class="block"><span class="label">{{ t('restaurant.whatsapp') }}</span>
-                <input v-model="form.whatsapp_number" class="input" dir="ltr" data-en-digits />
-                <FormError :errors="errors" field="whatsapp_number" /></label>
-
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div class="block">
+            <div class="set-grid-sm">
+                <div class="set-field">
                     <span class="label">{{ t('restaurant.delivery_time') }}</span>
-                    <div class="flex items-center gap-2 mt-1.5">
+                    <div class="flex items-center gap-2">
                         <input v-model.number="form.delivery_time_min" type="number" min="0" max="1440" class="input" :placeholder="t('restaurant.delivery_from')" dir="ltr" />
                         <span style="color:var(--muted)">–</span>
                         <input v-model.number="form.delivery_time_max" type="number" min="0" max="1440" class="input" :placeholder="t('restaurant.delivery_to')" dir="ltr" />
@@ -206,105 +216,104 @@ async function changePassword() {
                     <FormError :errors="errors" field="delivery_time_min" />
                     <FormError :errors="errors" field="delivery_time_max" />
                 </div>
-                <label class="block"><span class="label">{{ t('restaurant.minimum_order') }}</span>
-                    <input v-model="form.minimum_order" type="number" min="0" step="0.01" class="input" dir="ltr" />
-                    <FormError :errors="errors" field="minimum_order" /></label>
+                <label class="set-field">
+                    <span class="label">{{ t('restaurant.minimum_order') }}</span>
+                    <input v-model="form.minimum_order" type="number" min="0" step="0.01" class="input" dir="ltr"
+                        :placeholder="t('restaurant.minimum_order_placeholder')" />
+                    <FormError :errors="errors" field="minimum_order" />
+                </label>
             </div>
 
-            <label class="block"><span class="label">{{ t('restaurant.timezone') }}</span>
+            <label class="set-field">
+                <span class="label">{{ t('restaurant.timezone') }}</span>
                 <select v-model="form.timezone" class="input" dir="ltr">
                     <option v-for="tz in timezoneOptions" :key="tz" :value="tz">{{ tz }}</option>
                 </select>
-                <p class="hint">
+                <p class="set-inset-hint" style="margin-top: 6px">
                     {{ t('restaurant.timezone_hint') }}
                     <template v-if="timezoneNow"> — {{ t('restaurant.timezone_now', { time: timezoneNow }) }}</template>
                 </p>
-                <FormError :errors="errors" field="timezone" /></label>
+                <FormError :errors="errors" field="timezone" />
+            </label>
 
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div class="set-grid-sm">
                 <ImageUploader v-model="form.logo_url" folder="logos" :label="t('restaurant.logo')" :disabled="!canUpdate" />
                 <ImageUploader v-model="form.cover_image_url" folder="covers" :label="t('restaurant.cover_image')" :disabled="!canUpdate" />
             </div>
 
-            <div class="block">
-                <span class="label">{{ t('restaurant.social_links') }}</span>
-                <p class="page-sub" style="margin:2px 0 8px">{{ t('restaurant.social_hint') }}</p>
+            <div class="set-field" style="gap: 10px">
+                <div>
+                    <span class="label">{{ t('restaurant.social_links') }}</span>
+                    <p class="set-inset-hint">{{ t('restaurant.social_hint') }}</p>
+                </div>
                 <div class="flex flex-col gap-3">
                     <label class="flex items-center gap-3">
                         <i class="pi pi-instagram social-ico" style="color:#e4405f" aria-hidden="true"></i>
                         <span class="flex-1 min-w-0">
-                            <input v-model="form.social_links.instagram" type="url" dir="ltr" aria-label="Instagram" placeholder="https://instagram.com/…" class="input" />
+                            <input v-model="form.social_links.instagram" type="url" dir="ltr" aria-label="Instagram" placeholder="https://instagram.com/…" class="input" style="margin-top:0" />
                             <FormError :errors="errors" field="social_links.instagram" />
                         </span>
                     </label>
                     <label class="flex items-center gap-3">
                         <i class="pi pi-facebook social-ico" style="color:#1877f2" aria-hidden="true"></i>
                         <span class="flex-1 min-w-0">
-                            <input v-model="form.social_links.facebook" type="url" dir="ltr" aria-label="Facebook" placeholder="https://facebook.com/…" class="input" />
+                            <input v-model="form.social_links.facebook" type="url" dir="ltr" aria-label="Facebook" placeholder="https://facebook.com/…" class="input" style="margin-top:0" />
                             <FormError :errors="errors" field="social_links.facebook" />
                         </span>
                     </label>
                     <label class="flex items-center gap-3">
                         <i class="pi pi-tiktok social-ico" style="color:var(--ink)" aria-hidden="true"></i>
                         <span class="flex-1 min-w-0">
-                            <input v-model="form.social_links.tiktok" type="url" dir="ltr" aria-label="TikTok" placeholder="https://tiktok.com/@…" class="input" />
+                            <input v-model="form.social_links.tiktok" type="url" dir="ltr" aria-label="TikTok" placeholder="https://tiktok.com/@…" class="input" style="margin-top:0" />
                             <FormError :errors="errors" field="social_links.tiktok" />
                         </span>
                     </label>
                 </div>
             </div>
+        </form>
 
-        </div>
-
-        <button type="submit" :disabled="saving || !canUpdate" class="btn btn-accent">{{ saving ? t('common.saving') : t('common.save') }}</button>
-    </form>
-
-    <!-- Change password — deliberately its own form (own endpoint), and not
-         disabled when the restaurant is read-only. -->
-    <form @submit.prevent="changePassword" class="space-y-5 max-w-3xl mt-8">
-        <div class="flex items-center justify-between">
-            <div>
-                <h2 class="page-title" style="font-size:1.25rem">{{ t('profile.change_password') }}</h2>
-                <p class="page-sub">{{ t('profile.change_password_sub') }}</p>
+        <!-- Change password — deliberately its own card and its own endpoint,
+             and not disabled when the restaurant is read-only: a lapsed
+             subscription must not lock someone out of their own password. -->
+        <form class="set-card" @submit.prevent="changePassword">
+            <div class="set-card-head">
+                <div class="set-card-head-text">
+                    <span class="set-card-title">{{ t('profile.change_password') }}</span>
+                    <span class="set-card-desc">{{ t('profile.change_password_sub') }}</span>
+                </div>
+                <span v-if="pwSaved" class="set-chip set-chip-green" style="margin-inline-start:auto"><span class="dot"></span>{{ t('profile.password_changed') }}</span>
             </div>
-            <span v-if="pwSaved" class="badge badge-green"><span class="dot"></span>{{ t('profile.password_changed') }}</span>
-        </div>
 
-        <div class="card p-6 space-y-4">
-            <label class="block">
-                <span class="label">{{ t('profile.current_password') }}</span>
-                <input v-model="pw.current_password" type="password" dir="ltr" autocomplete="current-password" class="input" />
-                <FormError :errors="pwErrors" field="current_password" />
-            </label>
+            <div class="set-form">
+                <label class="set-field" style="max-width: 340px">
+                    <span class="label">{{ t('profile.current_password') }}</span>
+                    <input v-model="pw.current_password" type="password" dir="ltr" autocomplete="current-password" class="input" />
+                    <FormError :errors="pwErrors" field="current_password" />
+                </label>
 
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <label class="block">
-                    <span class="label">{{ t('profile.new_password') }}</span>
-                    <input v-model="pw.password" type="password" dir="ltr" autocomplete="new-password" class="input" />
-                    <span class="block text-xs mt-1" style="color:var(--muted)">{{ t('profile.password_rule') }}</span>
-                    <FormError :errors="pwErrors" field="password" />
-                </label>
-                <label class="block">
-                    <span class="label">{{ t('profile.confirm_password') }}</span>
-                    <input v-model="pw.password_confirmation" type="password" dir="ltr" autocomplete="new-password" class="input" />
-                    <FormError :errors="pwErrors" field="password_confirmation" />
-                </label>
+                <div class="set-grid-sm">
+                    <label class="set-field">
+                        <span class="label">{{ t('profile.new_password') }}</span>
+                        <input v-model="pw.password" type="password" dir="ltr" autocomplete="new-password" class="input" />
+                        <span class="set-inset-hint" style="margin-top: 6px">{{ t('profile.password_rule') }}</span>
+                        <FormError :errors="pwErrors" field="password" />
+                    </label>
+                    <label class="set-field">
+                        <span class="label">{{ t('profile.confirm_password') }}</span>
+                        <input v-model="pw.password_confirmation" type="password" dir="ltr" autocomplete="new-password" class="input" />
+                        <FormError :errors="pwErrors" field="password_confirmation" />
+                    </label>
+                </div>
             </div>
-        </div>
 
-        <button type="submit" :disabled="pwSaving" class="btn btn-accent">{{ pwSaving ? t('common.saving') : t('profile.change_password') }}</button>
-    </form>
+            <div class="set-card-foot">
+                <button type="submit" class="set-btn-primary" :disabled="pwSaving">{{ pwSaving ? t('common.saving') : t('profile.change_password') }}</button>
+            </div>
+        </form>
     </template>
 </template>
 
 <style scoped>
-.ordering-switch {
-    display: flex; align-items: center; justify-content: space-between; gap: 16px;
-    padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px;
-    background: var(--gray-soft);
-}
-.ordering-switch .hint { font-size: 12px; color: var(--muted); margin-top: 2px; }
-
 .social-ico {
     font-size: 20px;
     width: 24px;

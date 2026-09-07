@@ -7,7 +7,9 @@ use App\Enums\RoleEnum;
 use App\Enums\TenantCapability;
 use App\Enums\UserStatus;
 use App\Models\User;
+use App\Services\PosConfigVersion;
 use App\Support\Jwt;
+use App\Support\LicenceKey;
 use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Database\Eloquent\Model;
@@ -38,6 +40,11 @@ class AppServiceProvider extends ServiceProvider
         $this->registerRateLimiters();
         $this->registerGates();
         $this->registerPasswordResetUrl();
+
+        // POS-BE-025: bundle-shaped model writes bump the tenant's
+        // pos_config_version so tills know to refresh. One service owns the
+        // increment; the hooks live there too.
+        PosConfigVersion::registerHooks();
     }
 
     /**
@@ -171,6 +178,34 @@ class AppServiceProvider extends ServiceProvider
             return [
                 Limit::perMinute(10)->by('login-ip:'.$request->ip()),
                 Limit::perMinute(5)->by('login-acct:'.$username.'|'.$request->ip()),
+            ];
+        });
+
+        // POS licence activation is unauthenticated — the key is the credential
+        // — so it gets the same two-axis treatment as login: a per-IP cap, plus
+        // a per-key cap so a distributed guess against one known key is slowed
+        // even when the source addresses vary. Keyed on the hash, never the key
+        // itself, so a rate-limit cache entry is not a credential store.
+        // Pairing-code claim (POS-BE-023) is unauthenticated — the code is
+        // the credential — so it gets the login treatment: per-IP plus
+        // per-slug, so hammering one tenant's slug is slowed even from many
+        // addresses. The code itself is never a limiter key (8 chars of
+        // keyspace would make the cache a partial credential store).
+        RateLimiter::for('pos-claim', function (Request $request) {
+            $slug = Str::lower(trim((string) $request->input('tenant_slug')));
+
+            return [
+                Limit::perMinute(10)->by('pos-claim-ip:'.$request->ip()),
+                Limit::perMinute(5)->by('pos-claim-slug:'.$slug.'|'.$request->ip()),
+            ];
+        });
+
+        RateLimiter::for('licence-activate', function (Request $request) {
+            $key = LicenceKey::hash((string) $request->input('key'));
+
+            return [
+                Limit::perMinute(10)->by('licence-ip:'.$request->ip()),
+                Limit::perMinute(5)->by('licence-key:'.$key),
             ];
         });
     }

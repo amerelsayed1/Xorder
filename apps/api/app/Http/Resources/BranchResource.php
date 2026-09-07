@@ -15,6 +15,12 @@ class BranchResource extends JsonResource
             'id' => $this->id,
             'name_ar' => $this->name_ar,
             'name_en' => $this->name_en,
+            // POS-BE-005: both columns predate this resource and were simply
+            // never serialised. `code` doubles as the invoice prefix
+            // (POS-BE-008); supported_order_types is [] — never null — so the
+            // client can iterate without a null guard.
+            'code' => $this->code,
+            'supported_order_types' => $this->supported_order_types ?? [],
             'address' => $this->address,
             'phone' => $this->phone,
             'whatsapp_number' => $this->whatsapp_number,

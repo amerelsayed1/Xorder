@@ -23,6 +23,14 @@ class MenuItemController extends Controller
 
     public function index(Request $request): JsonResponse
     {
+        // POS-BE-003: ?resolve=full returns the same COMPLETE option-group set
+        // the public menu resolves — inline + shared + the category-/
+        // restaurant-wide auto-applied groups. Opt-in so existing dashboard
+        // callers keep their payload size. Without it, a restaurant-wide
+        // "Extras" group is invisible here and a POS cache built from this
+        // endpoint offers a cart the diner's phone would price differently.
+        $resolveFull = $request->query('resolve') === 'full';
+
         $items = MenuItem::query()
             // Items of an inactive category are hidden from the management view,
             // mirroring the public menu (see PublicMenuService).
@@ -35,11 +43,24 @@ class MenuItemController extends Controller
                 $term = '%'.$request->string('search').'%';
                 $q->where(fn ($q) => $q->where('name_en', 'like', $term)->orWhere('name_ar', 'like', $term));
             })
-            ->with('category')
+            ->with($resolveFull
+                ? ['category', 'optionGroups.options', 'sharedOptionGroups.options']
+                : ['category'])
             ->orderBy('category_id')
             ->orderBy('display_order')
             ->orderBy('id')
             ->get();
+
+        if ($resolveFull) {
+            // One restaurant-level query, merged per item — the same N+1-free
+            // shape PublicMenuService uses.
+            $autoGroups = OptionGroup::autoApplied()
+                ->with(['options', 'categories:id'])
+                ->orderBy('name_en')->orderBy('name_ar')->orderBy('id')
+                ->get();
+
+            $items->each(fn (MenuItem $item) => $item->withAutoOptionGroups($autoGroups));
+        }
 
         return MenuItemResource::collection($items)->response();
     }

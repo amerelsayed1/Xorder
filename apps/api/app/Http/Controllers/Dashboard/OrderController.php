@@ -7,6 +7,9 @@ use App\Http\Controllers\Controller;
 use App\Http\Resources\OrderResource;
 use App\Models\Notification;
 use App\Models\Order;
+use App\Models\Restaurant;
+use Closure;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -20,16 +23,80 @@ class OrderController extends Controller
             'status' => ['sometimes', Rule::in(OrderStatus::values())],
             'order_type' => ['sometimes', Rule::in(['dine_in', 'pickup', 'delivery'])],
             'table_id' => ['sometimes', 'integer'],
+            'q' => ['sometimes', 'nullable', 'string', 'max:80'],
         ]);
 
-        $orders = Order::with('rounds.items')
-            ->when($request->filled('status'), fn ($q) => $q->where('status', $request->input('status')))
+        $term = trim((string) $request->input('q', ''));
+
+        // Everything the toolbar narrows by EXCEPT the status tabs. The counts
+        // are drawn on the tabs themselves, so they have to answer "what would
+        // I get if I clicked this?" — which means the search term and the type
+        // filter apply to them and the selected status does not.
+        $scoped = fn () => Order::query()
             ->when($request->filled('order_type'), fn ($q) => $q->where('order_type', $request->input('order_type')))
             ->when($request->filled('table_id'), fn ($q) => $q->where('table_id', $request->integer('table_id')))
+            ->when($term !== '', fn ($q) => $q->where(function ($w) use ($term) {
+                $w->where('customer_name', 'like', '%'.$term.'%')
+                    ->orWhere('customer_phone', 'like', '%'.$term.'%');
+
+                // Codes are shown as ORD-<id>, so both halves of what staff read
+                // off the screen ("ORD-1024" or just "1024") find the row.
+                if (preg_match('/(\\d+)$/', $term, $m)) {
+                    $w->orWhere('id', (int) $m[1]);
+                }
+            }));
+
+        $orders = $scoped()
+            ->with('rounds.items')
+            ->when($request->filled('status'), fn ($q) => $q->where('status', $request->input('status')))
             ->latest()
             ->paginate(20);
 
-        return OrderResource::collection($orders)->response();
+        return OrderResource::collection($orders)
+            ->additional(['summary' => $this->summary($request->user()->restaurant, $scoped)])
+            ->response();
+    }
+
+    /**
+     * Tab counts and the day's headline figures, in one trip with the list.
+     *
+     * Counts come from the same narrowed query the list does, so a tab never
+     * promises rows the search would hide. The day figures are deliberately
+     * unfiltered — they describe the restaurant's day, not the current view —
+     * and turn over at the restaurant's own midnight, the same boundary the
+     * views counter and the reports use.
+     *
+     * @param  Closure(): Builder<Order>  $scoped
+     * @return array<string, mixed>
+     */
+    private function summary(Restaurant $restaurant, Closure $scoped): array
+    {
+        // toBase() drops the enum cast on `status`, which would otherwise come
+        // back as an object and cannot key an array.
+        $byStatus = $scoped()->toBase()
+            ->selectRaw('status, count(*) as aggregate')
+            ->groupBy('status')
+            ->pluck('aggregate', 'status');
+
+        $counts = ['all' => (int) $byStatus->sum()];
+        foreach (OrderStatus::values() as $status) {
+            $counts[$status] = (int) ($byStatus[$status] ?? 0);
+        }
+
+        $dayStart = now($restaurant->localTimezone())->startOfDay()->utc();
+        $completedToday = Order::where('created_at', '>=', $dayStart)
+            ->where('status', OrderStatus::COMPLETED);
+
+        return [
+            'counts' => $counts,
+            'metrics' => [
+                'new_orders' => Order::where('status', OrderStatus::NEW)->count(),
+                'orders_today' => Order::where('created_at', '>=', $dayStart)->count(),
+                'completed_today' => (clone $completedToday)->count(),
+                'sales_today' => number_format((float) $completedToday->sum('total'), 2, '.', ''),
+                'currency' => $restaurant->currency?->value,
+            ],
+        ];
     }
 
     /** Lightweight badge for the dashboard nav: how many NEW orders wait. */
