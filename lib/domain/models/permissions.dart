@@ -55,6 +55,32 @@ abstract final class PosCapability {
   static const shiftClose = 'shift.close';
   static const cashMovement = 'cash.movement';
 
+  /// Open the drawer without ringing up a sale (§23).
+  ///
+  /// Its own key rather than part of [cashMovement], because it is the one
+  /// drawer act that moves no money and is therefore the one a dishonest
+  /// cashier wants most.
+  static const cashOpenWithoutSale = 'cash.open_without_sale';
+
+  /// See what the drawer *should* hold, before counting it (§24, §25).
+  ///
+  /// Withholding this is what makes a blind count blind.
+  static const shiftViewExpectedCash = 'shift.view_expected_cash';
+
+  /// See the variance *after* the count is committed.
+  ///
+  /// A separate question from the one above, and separating them is what makes
+  /// a blind close meaningful: a cashier can be trusted to learn whether they
+  /// were right without being told the answer in advance. The SRS names
+  /// `cash.view_expected` for the first question as well; that spelling is
+  /// folded into [shiftViewExpectedCash] by [canonical] rather than existing
+  /// as a third key nobody can tell apart from the other two.
+  static const cashVarianceView = 'cash.variance.view';
+
+  /// Close the trading day (§28), and close it over the top of blockers.
+  static const dayClose = 'day.close';
+  static const dayForceClose = 'day.force_close';
+
   static const reportsView = 'reports.view';
   static const backupManage = 'backup.manage';
 
@@ -80,6 +106,11 @@ abstract final class PosCapability {
     shiftOpen,
     shiftClose,
     cashMovement,
+    cashOpenWithoutSale,
+    shiftViewExpectedCash,
+    cashVarianceView,
+    dayClose,
+    dayForceClose,
     reportsView,
     backupManage,
   ];
@@ -103,6 +134,11 @@ abstract final class PosCapability {
     receiptReprint,
     shiftClose,
     cashMovement,
+    // A supervisor standing at the till can allow one drawer opening. They
+    // cannot lend the right to *see* the expected figure — that would make a
+    // blind count a formality, which is the whole thing it exists not to be.
+    cashOpenWithoutSale,
+    dayForceClose,
   };
 
   /// Capabilities no cashier role may hold.
@@ -127,6 +163,9 @@ abstract final class PosCapability {
   /// rewrites them with — kept here rather than inlined in the SQL so that a
   /// till reading a row an older migrator wrote still understands it.
   static const _renamed = <String, String>{
+    // §22 and §24 name the same question twice. One key, so a role editor does
+    // not offer two checkboxes that cannot disagree.
+    'cash.view_expected': shiftViewExpectedCash,
     'pos.discount': discountApply,
     'pos.shift_open': shiftOpen,
     'pos.shift_close': shiftClose,
@@ -173,6 +212,11 @@ enum CapabilityGroup {
     PosCapability.shiftOpen,
     PosCapability.shiftClose,
     PosCapability.cashMovement,
+    PosCapability.cashOpenWithoutSale,
+    PosCapability.shiftViewExpectedCash,
+    PosCapability.cashVarianceView,
+    PosCapability.dayClose,
+    PosCapability.dayForceClose,
   ]),
   backOffice([
     PosCapability.catalogManage,
@@ -273,6 +317,11 @@ abstract final class SystemRoles {
     PosCapability.shiftOpen,
     PosCapability.shiftClose,
     PosCapability.cashMovement,
+    PosCapability.cashOpenWithoutSale,
+    PosCapability.shiftViewExpectedCash,
+    PosCapability.cashVarianceView,
+    PosCapability.dayClose,
+    PosCapability.dayForceClose,
     PosCapability.reportsView,
   };
 
@@ -292,6 +341,11 @@ abstract final class SystemRoles {
     PosCapability.shiftOpen,
     PosCapability.shiftClose,
     PosCapability.cashMovement,
+    PosCapability.cashOpenWithoutSale,
+    PosCapability.shiftViewExpectedCash,
+    PosCapability.cashVarianceView,
+    // Closing the night is theirs; forcing it past open tables is not.
+    PosCapability.dayClose,
     PosCapability.reportsView,
   };
 
@@ -307,6 +361,10 @@ abstract final class SystemRoles {
     PosCapability.receiptReprint,
     PosCapability.shiftOpen,
     PosCapability.shiftClose,
+    // Deliberately absent: `shift.view_expected_cash` and `cash.variance.view`.
+    // A cashier counts the drawer without being told the answer first, which is
+    // the entire point of §25's blind close. They learn the variance from a
+    // supervisor, not from the screen.
   };
 
   static const seeded =

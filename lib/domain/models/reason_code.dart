@@ -189,16 +189,101 @@ abstract final class SystemReasons {
         ),
       ];
 
-  /// The scopes seeded on a new restaurant.
+  /// Why cash goes into a drawer outside a sale (§22).
   ///
-  /// Only the four Wave A uses. Seeding a list for pay-in, waste and adjustment
-  /// before anything can record one would put choices on screen that no screen
-  /// shows, and a restaurant editing them would be editing nothing.
+  /// Its own list, because [seeded] is written for the four acts that reduce a
+  /// bill — "Staff meal" and "Manager comp" are not reasons anybody puts money
+  /// *in* a till, and offering them would be offering nonsense.
+  static const cashIn =
+      <({String code, String nameEn, String nameAr, bool requiresNote})>[
+        (
+          code: 'float_top_up',
+          nameEn: 'Float top-up',
+          nameAr: 'تعزيز العهدة',
+          requiresNote: false,
+        ),
+        (
+          code: 'owner_deposit',
+          nameEn: 'Owner deposit',
+          nameAr: 'إيداع من المالك',
+          requiresNote: false,
+        ),
+        (
+          code: 'correction',
+          nameEn: 'Correcting a count',
+          nameAr: 'تصحيح جرد',
+          requiresNote: true,
+        ),
+        (
+          code: 'other',
+          nameEn: 'Other — note required',
+          nameAr: 'أخرى — يلزم كتابة ملاحظة',
+          requiresNote: true,
+        ),
+      ];
+
+  /// Why cash leaves a drawer outside a refund (§22).
+  static const cashOut =
+      <({String code, String nameEn, String nameAr, bool requiresNote})>[
+        (
+          code: 'supplier',
+          nameEn: 'Supplier payment',
+          nameAr: 'دفعة لمورّد',
+          requiresNote: true,
+        ),
+        (
+          code: 'petty_expense',
+          nameEn: 'Petty expense',
+          nameAr: 'مصروف نثري',
+          requiresNote: true,
+        ),
+        (
+          code: 'staff_advance',
+          nameEn: 'Staff advance',
+          nameAr: 'سلفة موظف',
+          requiresNote: true,
+        ),
+        (
+          code: 'bank_drop',
+          nameEn: 'Bank drop',
+          nameAr: 'توريد للبنك',
+          requiresNote: false,
+        ),
+        (
+          code: 'correction',
+          nameEn: 'Correcting a count',
+          nameAr: 'تصحيح جرد',
+          requiresNote: true,
+        ),
+        (
+          code: 'other',
+          nameEn: 'Other — note required',
+          nameAr: 'أخرى — يلزم كتابة ملاحظة',
+          requiresNote: true,
+        ),
+      ];
+
+  /// The list a scope is seeded from.
+  ///
+  /// Waste and adjustment still get nothing: Wave L is what records one, and
+  /// seeding a list before anything can use it would put choices on screen that
+  /// no screen shows.
+  static List<({String code, String nameEn, String nameAr, bool requiresNote})>
+  seededFor(ReasonScope scope) => switch (scope) {
+    ReasonScope.payIn => cashIn,
+    ReasonScope.payOut => cashOut,
+    _ => seeded,
+  };
+
+  /// The scopes seeded on a new restaurant.
   static const seededScopes = <ReasonScope>[
     ReasonScope.voidAct,
     ReasonScope.refund,
     ReasonScope.discount,
     ReasonScope.priceOverride,
+    // Wave B records both, so both now have somewhere to appear.
+    ReasonScope.payIn,
+    ReasonScope.payOut,
   ];
 
   /// Whether an act must carry a reason, before Settings can say otherwise.

@@ -257,10 +257,34 @@ void main() {
         db,
       ).seedReasonCodes(pg.config, restaurantId);
 
-      expect(
-        created,
-        SystemReasons.seeded.length * SystemReasons.seededScopes.length,
+      // Summed per scope, not multiplied: pay-in and pay-out have their own
+      // lists, because "Staff meal" is not a reason anybody puts money into a
+      // till. A flat multiplication was right only while every scope shared
+      // one list.
+      final expected = SystemReasons.seededScopes.fold<int>(
+        0,
+        (sum, scope) => sum + SystemReasons.seededFor(scope).length,
       );
+      expect(created, expected);
+    });
+
+    test('each scope gets the list that belongs to it', () async {
+      await LocalBootstrap(db).seedReasonCodes(pg.config, restaurantId);
+
+      Future<List<Object?>> codesFor(String scope) async {
+        final rows = await db.query(
+          pg.config,
+          'SELECT code FROM pos_reason_codes WHERE restaurant_id = @r '
+          'AND scope = @scope ORDER BY sort_order',
+          parameters: {'r': restaurantId, 'scope': scope},
+        );
+        return rows.map((row) => row[0]).toList();
+      }
+
+      expect(await codesFor('void'), contains('staff_meal'));
+      expect(await codesFor('pay_in'), contains('float_top_up'));
+      expect(await codesFor('pay_in'), isNot(contains('staff_meal')));
+      expect(await codesFor('pay_out'), contains('bank_drop'));
     });
 
     test('re-seeding never resets an edited list', () async {

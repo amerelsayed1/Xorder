@@ -133,12 +133,22 @@ void main() {
     await tester.tap(find.text('Cashier').first);
     await tester.pumpAndSettle();
 
-    // Scrolled to first. It is the last row of the last group, so it sits on
-    // the bottom edge of the pane — and a capability added to any earlier
-    // group pushes it out of reach, which is how this test started tapping
-    // nothing at all and asserting a refusal that was never requested.
-    await tester.ensureVisible(
+    // Scrolled to first, with `scrollUntilVisible` rather than
+    // `ensureVisible`. It is the last row of the last group, so a capability
+    // added to any earlier group pushes it down — and past the fold a
+    // `ListView` has not built it at all, which `ensureVisible` cannot fix
+    // because there is no element to scroll to. Twice now, adding capabilities
+    // has made this test tap nothing and then assert a refusal that was never
+    // requested.
+    await tester.scrollUntilVisible(
       find.text(AdminCapabilityLabels.catalogManage),
+      120,
+      scrollable: find
+          .descendant(
+            of: find.byType(ListView),
+            matching: find.byType(Scrollable),
+          )
+          .last,
     );
     await tester.pumpAndSettle();
     await tester.tap(

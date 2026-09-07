@@ -168,8 +168,11 @@ class LocalBootstrap {
     var created = 0;
 
     for (final scope in SystemReasons.seededScopes) {
-      for (var i = 0; i < SystemReasons.seeded.length; i++) {
-        final reason = SystemReasons.seeded[i];
+      // Per scope, not one list for all of them: "Staff meal" is not a reason
+      // anybody puts money into a till.
+      final reasons = SystemReasons.seededFor(scope);
+      for (var i = 0; i < reasons.length; i++) {
+        final reason = reasons[i];
         final rows = await database.query(
           admin,
           'INSERT INTO pos_reason_codes (restaurant_id, scope, code, name_en, '
@@ -302,6 +305,23 @@ class LocalBootstrap {
         'pos_refund_payments TO "$role"',
     'GRANT USAGE, SELECT ON SEQUENCE pos_refunds_id_seq, '
         'pos_refund_lines_id_seq, pos_refund_payments_id_seq TO "$role"',
+    // What the restaurant has configured. Read-only for the till: a cashier
+    // reads the blind-close switch, they do not flip it. Authoring belongs to
+    // [administrativeGrants].
+    'GRANT SELECT ON pos_settings TO "$role"',
+    // Money into and out of the drawer that is not a sale. INSERT and SELECT,
+    // never UPDATE or DELETE — a pay-out already recorded is a record of money
+    // that left, and correcting one is a second movement, not an edit.
+    'GRANT SELECT, INSERT ON pos_cash_movements TO "$role"',
+    'GRANT USAGE, SELECT ON SEQUENCE pos_cash_movements_id_seq TO "$role"',
+    'GRANT SELECT ON pos_cash_drawers TO "$role"',
+    // The trading day. A till opens one when it starts selling and closes one
+    // at the end of the night, so this needs UPDATE — but column-scoped, like
+    // an order's: the till may close a day and may not rewrite its takings.
+    'GRANT SELECT, INSERT ON pos_business_days TO "$role"',
+    'GRANT UPDATE (closed_at, closed_by, forced, force_reason, gross_minor, '
+        'net_minor) ON pos_business_days TO "$role"',
+    'GRANT USAGE, SELECT ON SEQUENCE pos_business_days_id_seq TO "$role"',
     'GRANT SELECT, INSERT, UPDATE ON pos_invoice_sequences TO "$role"',
     'GRANT USAGE, SELECT ON SEQUENCE pos_orders_id_seq, pos_order_lines_id_seq, '
         'pos_order_payments_id_seq TO "$role"',
@@ -410,6 +430,17 @@ class LocalBootstrap {
     'GRANT SELECT, INSERT, UPDATE ON pos_discounts TO "$role"',
     'GRANT USAGE, SELECT ON SEQUENCE pos_discounts_id_seq TO "$role"',
     'GRANT SELECT, INSERT, DELETE ON pos_discount_targets TO "$role"',
+    // Authoring what the restaurant has configured. The till reads these; the
+    // back office writes them — blind close, the business-day start time and
+    // the refund policy are all decisions somebody makes once.
+    'GRANT SELECT, INSERT, UPDATE, DELETE ON pos_settings TO "$role"',
+    'GRANT USAGE, SELECT ON SEQUENCE pos_settings_id_seq TO "$role"',
+    'GRANT SELECT, INSERT, UPDATE ON pos_cash_drawers TO "$role"',
+    'GRANT USAGE, SELECT ON SEQUENCE pos_cash_drawers_id_seq TO "$role"',
+    // Reading the drawer's history and the day's. SELECT only, even here: a
+    // pay-out is a record of money that left, and the back office corrects one
+    // by recording another.
+    'GRANT SELECT ON pos_cash_movements, pos_business_days TO "$role"',
     // Reading refunds back — the void and refund reports, and the Activity
     // pane. SELECT only, even here: a refund is a record of money that left
     // the drawer, and the back office corrects one by issuing another, not by

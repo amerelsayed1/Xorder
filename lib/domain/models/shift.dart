@@ -1,4 +1,5 @@
 import '../../core/money/money.dart';
+import 'tender_method.dart';
 import 'permissions.dart';
 
 /// A member of staff, as the till knows them.
@@ -95,11 +96,19 @@ class ShiftTenderTotal {
     required this.label,
     required this.count,
     required this.amount,
+    this.typeId,
   });
 
   final String label;
   final int count;
   final Money amount;
+
+  /// `pos_order_payments.tender_type_id`. Carried so the drawer's cash is found
+  /// by what the method *is* rather than by what it is called — see
+  /// [TenderMethod.countsAsCash].
+  final int? typeId;
+
+  bool get countsAsCash => TenderMethod.isCash(typeId);
 }
 
 /// What the shift did — the Z report, in the only form that matters at the
@@ -121,8 +130,13 @@ class ShiftSummary {
 
   /// Cash tenders only. Card and wallet do not end up in the drawer, so
   /// counting them against it would manufacture a variance every single shift.
+  ///
+  /// Selected by tender **type**, not by a substring of its label. The old
+  /// `label.contains('cash')` matched "Cashback voucher" and would have stopped
+  /// matching anything at all the day a restaurant renamed its methods into
+  /// Arabic. See [TenderMethod.countsAsCash].
   Money get cashTaken => tenders
-      .where((t) => t.label.toLowerCase().contains('cash'))
+      .where((t) => t.countsAsCash)
       .fold(Money.zero, (sum, t) => sum + t.amount);
 
   /// What the drawer should hold: what was in it at the start, plus the cash

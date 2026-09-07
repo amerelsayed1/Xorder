@@ -166,11 +166,12 @@ class PostgresShiftRepository implements ShiftRepository {
     // sharing a label would be one line on the report either way.
     final tenders = await tx.execute(
       Sql.named('''
-        SELECT p.label, count(*), coalesce(sum(p.amount_minor), 0)::bigint
+        SELECT p.label, count(*), coalesce(sum(p.amount_minor), 0)::bigint,
+               p.tender_type_id
         FROM pos_order_payments p
         JOIN pos_orders o ON o.id = p.order_id
         WHERE o.shift_id = @shift
-        GROUP BY p.label
+        GROUP BY p.label, p.tender_type_id
         ORDER BY p.label
       '''),
       parameters: {'shift': shift.id},
@@ -186,6 +187,9 @@ class PostgresShiftRepository implements ShiftRepository {
             label: row[0] as String,
             count: row[1] as int,
             amount: Money(row[2] as int),
+            // Grouped by type as well as label, so the drawer's cash is found
+            // by what the method is rather than by what it is called.
+            typeId: row[3] as int?,
           ),
       ],
     );

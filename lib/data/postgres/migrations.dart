@@ -1391,6 +1391,248 @@ const posMigrations = <PosMigration>[
        ]::text[])
     ''',
   ]),
+  // Wave B's foundation: what the restaurant has configured, what is in the
+  // drawer, and which trading day a sale belongs to.
+  //
+  // The settings table lands here rather than in Wave D on purpose. Blind
+  // close, the business-day start time and the refund policy are all settings,
+  // and hard-coding them now means moving them twice.
+  PosMigration(14, 'settings, cash movements and the business day', [
+    // Scoped key/value, read as a whole and parsed by typed accessors in Dart.
+    //
+    // `scope_id` is NOT NULL with an empty-string default rather than nullable,
+    // because PostgreSQL treats NULLs as distinct in a UNIQUE constraint — a
+    // nullable column here would happily accept the same restaurant-level key
+    // twice, and the second write would silently not be an update.
+    //
+    // `value` is text, not jsonb. Every reader is a typed accessor that knows
+    // what shape it wants ('06:00', 'true', '15000'), and a jsonb column would
+    // add a parse step on both sides to buy type checking nothing performs.
+    '''
+    CREATE TABLE IF NOT EXISTS pos_settings (
+      id            bigserial   PRIMARY KEY,
+      restaurant_id bigint      NOT NULL REFERENCES pos_restaurants(id) ON DELETE CASCADE,
+      scope         text        NOT NULL,
+      scope_id      text        NOT NULL DEFAULT '',
+      key           text        NOT NULL,
+      value         text        NOT NULL,
+      updated_at    timestamptz NOT NULL DEFAULT now(),
+      updated_by    bigint      REFERENCES pos_staff(id) ON DELETE SET NULL,
+      CONSTRAINT pos_settings_scope_known
+        CHECK (scope IN ('restaurant', 'branch', 'terminal')),
+      -- A restaurant-scoped row names no scope; a narrower one must.
+      CONSTRAINT pos_settings_scope_id_present CHECK (
+        (scope = 'restaurant' AND scope_id = '')
+        OR (scope <> 'restaurant' AND scope_id <> '')),
+      CONSTRAINT pos_settings_unique_key
+        UNIQUE (restaurant_id, scope, scope_id, key)
+    )
+    ''',
+    '''
+    CREATE INDEX IF NOT EXISTS pos_settings_lookup_idx
+      ON pos_settings (restaurant_id, key)
+    ''',
+
+    // A drawer is a physical thing. Most tills have one and it is theirs, which
+    // is why `terminal_id` is nullable — a shared drawer at a service counter
+    // belongs to the branch, not to a machine.
+    '''
+    CREATE TABLE IF NOT EXISTS pos_cash_drawers (
+      id            bigserial   PRIMARY KEY,
+      restaurant_id bigint      NOT NULL REFERENCES pos_restaurants(id) ON DELETE CASCADE,
+      branch_id     bigint      NOT NULL REFERENCES pos_branches(id) ON DELETE CASCADE,
+      terminal_id   uuid        REFERENCES pos_terminals(id) ON DELETE SET NULL,
+      name          text        NOT NULL,
+      is_active     boolean     NOT NULL DEFAULT true,
+      created_at    timestamptz NOT NULL DEFAULT now()
+    )
+    ''',
+
+    // The trading day, which is not the calendar day. A restaurant that closes
+    // at 2 a.m. takes money on Saturday that belongs to Friday's takings, and
+    // `day.start_time` is what decides. Resolved once when the order is
+    // written and stored — never derived at read time, because the offset is a
+    // setting somebody can change and a report that re-derived it would
+    // silently re-date history.
+    '''
+    CREATE TABLE IF NOT EXISTS pos_business_days (
+      id            bigserial   PRIMARY KEY,
+      restaurant_id bigint      NOT NULL REFERENCES pos_restaurants(id) ON DELETE CASCADE,
+      branch_id     bigint      NOT NULL REFERENCES pos_branches(id) ON DELETE CASCADE,
+      business_date date        NOT NULL,
+      opened_at     timestamptz NOT NULL DEFAULT now(),
+      opened_by     bigint      REFERENCES pos_staff(id) ON DELETE RESTRICT,
+      closed_at     timestamptz,
+      closed_by     bigint      REFERENCES pos_staff(id) ON DELETE RESTRICT,
+      -- Closed over the top of blockers. The reason is not optional when it is.
+      forced        boolean     NOT NULL DEFAULT false,
+      force_reason  text,
+      gross_minor   bigint,
+      net_minor     bigint,
+      CONSTRAINT pos_business_days_unique
+        UNIQUE (restaurant_id, branch_id, business_date),
+      CONSTRAINT pos_business_days_closed_is_complete CHECK (
+        (closed_at IS NULL AND closed_by IS NULL)
+        OR (closed_at IS NOT NULL AND closed_by IS NOT NULL)),
+      -- A forced close with no reason is the row somebody would want to leave.
+      CONSTRAINT pos_business_days_force_is_explained CHECK (
+        NOT forced OR (force_reason IS NOT NULL AND force_reason <> ''))
+    )
+    ''',
+    // One open day per branch, held by the database rather than by a query
+    // somebody remembers to run. Two open days is two sets of takings for one
+    // evening, and nothing downstream could tell which was which.
+    '''
+    CREATE UNIQUE INDEX IF NOT EXISTS pos_business_days_one_open
+      ON pos_business_days (restaurant_id, branch_id)
+      WHERE closed_at IS NULL
+    ''',
+
+    // Money into and out of the drawer that is not a sale.
+    //
+    // **Amounts are always positive and the `kind` carries the direction.** A
+    // pay-out stored as a negative amount under `kind = 'pay_out'` would be
+    // negated twice by anything that reads the kind, and the two conventions
+    // would coexist for exactly as long as it took somebody to write the second
+    // reader.
+    '''
+    CREATE TABLE IF NOT EXISTS pos_cash_movements (
+      id              bigserial   PRIMARY KEY,
+      restaurant_id   bigint      NOT NULL REFERENCES pos_restaurants(id) ON DELETE CASCADE,
+      branch_id       bigint      NOT NULL REFERENCES pos_branches(id) ON DELETE CASCADE,
+      terminal_id     uuid        NOT NULL,
+      drawer_id       bigint      REFERENCES pos_cash_drawers(id) ON DELETE SET NULL,
+      -- NOT NULL, unlike an order's. Cash cannot move without an open drawer,
+      -- and a movement nobody can attribute to a shift is one nothing can
+      -- reconcile.
+      shift_id        bigint      NOT NULL REFERENCES pos_shifts(id) ON DELETE RESTRICT,
+      business_day_id bigint,
+      kind            text        NOT NULL,
+      amount_minor    bigint      NOT NULL DEFAULT 0,
+      reason_id       bigint      REFERENCES pos_reason_codes(id) ON DELETE RESTRICT,
+      note            text,
+      staff_id        bigint      NOT NULL REFERENCES pos_staff(id) ON DELETE RESTRICT,
+      approved_by_id  bigint      REFERENCES pos_staff(id) ON DELETE RESTRICT,
+      occurred_at     timestamptz NOT NULL DEFAULT now(),
+      CONSTRAINT pos_cash_movements_kind_known CHECK (kind IN (
+        'pay_in', 'pay_out', 'drawer_open', 'float_adjust')),
+      -- Opening the drawer moves nothing. Everything else moves something.
+      --
+      -- Written as a CASE rather than as the plan's
+      -- `(kind = 'drawer_open' AND amount_minor = 0) OR amount_minor > 0`,
+      -- which does not say that: a `drawer_open` carrying 100 fails the first
+      -- clause, passes the second, and is accepted. The first test written
+      -- against this caught it.
+      CONSTRAINT pos_cash_movements_amount_matches_kind CHECK (
+        CASE WHEN kind = 'drawer_open'
+             THEN amount_minor = 0
+             ELSE amount_minor > 0 END)
+    )
+    ''',
+    '''
+    CREATE INDEX IF NOT EXISTS pos_cash_movements_shift_idx
+      ON pos_cash_movements (shift_id, occurred_at)
+    ''',
+    '''
+    CREATE INDEX IF NOT EXISTS pos_cash_movements_day_idx
+      ON pos_cash_movements (restaurant_id, branch_id, occurred_at DESC)
+    ''',
+
+    // The late foreign keys. `business_day_id` has been a bare bigint on orders
+    // since migration 9 and on refunds since migration 12, precisely so that
+    // those writes could stamp it from the day this table existed rather than
+    // needing a backfill of rows nobody can re-date.
+    '''
+    DO \$\$ BEGIN
+      ALTER TABLE pos_orders ADD CONSTRAINT pos_orders_business_day_fk
+        FOREIGN KEY (business_day_id) REFERENCES pos_business_days(id)
+        ON DELETE RESTRICT;
+    EXCEPTION WHEN duplicate_object THEN NULL; END \$\$
+    ''',
+    '''
+    DO \$\$ BEGIN
+      ALTER TABLE pos_refunds ADD CONSTRAINT pos_refunds_business_day_fk
+        FOREIGN KEY (business_day_id) REFERENCES pos_business_days(id)
+        ON DELETE RESTRICT;
+    EXCEPTION WHEN duplicate_object THEN NULL; END \$\$
+    ''',
+    '''
+    ALTER TABLE pos_shifts ADD COLUMN IF NOT EXISTS business_day_id bigint
+      REFERENCES pos_business_days(id) ON DELETE RESTRICT
+    ''',
+    // §26: a shift opened over a refusal — outside hours, or a second shift on
+    // one drawer — names who allowed it.
+    '''
+    ALTER TABLE pos_shifts ADD COLUMN IF NOT EXISTS opened_with_approval_by bigint
+      REFERENCES pos_staff(id) ON DELETE RESTRICT
+    ''',
+
+    // The reasons a pay-in and a pay-out pick from. Migration 9 provisioned
+    // both scopes and seeded neither; §22 needs them now. Only where the
+    // restaurant has none, for the same reason migration 12's refund reasons
+    // are: a restaurant that has edited its list must not have this build's
+    // opinion pushed back over it.
+    '''
+    INSERT INTO pos_reason_codes (restaurant_id, scope, code, name_en, name_ar, sort_order)
+    SELECT r.id, v.scope, v.code, v.name_en, v.name_ar, v.sort_order
+      FROM pos_restaurants r
+     CROSS JOIN (VALUES
+       ('pay_in',  'float_top_up',  'Float top-up',      'تعزيز العهدة',      1),
+       ('pay_in',  'owner_deposit', 'Owner deposit',     'إيداع من المالك',   2),
+       ('pay_in',  'correction',    'Correcting a count','تصحيح جرد',         3),
+       ('pay_out', 'supplier',      'Supplier payment',  'دفعة لمورّد',       1),
+       ('pay_out', 'petty_expense', 'Petty expense',     'مصروف نثري',        2),
+       ('pay_out', 'staff_advance', 'Staff advance',     'سلفة موظف',         3),
+       ('pay_out', 'bank_drop',     'Bank drop',         'توريد للبنك',       4),
+       ('pay_out', 'correction',    'Correcting a count','تصحيح جرد',         5)
+     ) AS v(scope, code, name_en, name_ar, sort_order)
+     WHERE NOT EXISTS (
+       SELECT 1 FROM pos_reason_codes existing
+        WHERE existing.restaurant_id = r.id AND existing.scope = v.scope)
+    ''',
+  ]),
+  // Wave B's five keys, on the owner role.
+  //
+  // Migration 13 said this would be needed again: *"a capability added after
+  // this needs its own migration — which is the point, because somebody has to
+  // think about it."* This is that migration, and the thinking is that a
+  // supervisor may see the expected drawer and the variance, an owner may force
+  // a day closed, and neither is a default anybody inherits by accident.
+  //
+  // Same shape as 13: additive union, idempotent, owner only, frozen literals.
+  PosMigration(15, 'the owner role holds the capabilities Wave B added', [
+    '''
+    UPDATE pos_roles
+       SET capabilities = ARRAY(
+             SELECT DISTINCT unnest(
+               capabilities || ARRAY[
+                 'cash.open_without_sale',
+                 'shift.view_expected_cash',
+                 'cash.variance.view',
+                 'day.close',
+                 'day.force_close'
+               ]::text[]))
+     WHERE code = 'owner'
+       AND NOT (capabilities @> ARRAY[
+         'cash.open_without_sale',
+         'shift.view_expected_cash',
+         'cash.variance.view',
+         'day.close',
+         'day.force_close'
+       ]::text[])
+    ''',
+    // §22 and §24 named the same question twice. `PosCapability.canonical`
+    // folds the duplicate on read; this folds it in storage, so a role editor
+    // does not show a checkbox for a key the code has stopped believing in.
+    '''
+    UPDATE pos_roles
+       SET capabilities = ARRAY(
+             SELECT DISTINCT unnest(
+               array_remove(capabilities, 'cash.view_expected')
+               || ARRAY['shift.view_expected_cash']::text[]))
+     WHERE 'cash.view_expected' = ANY(capabilities)
+    ''',
+  ]),
 ];
 
 /// Brings the branch database up to the current schema.

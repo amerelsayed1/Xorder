@@ -735,6 +735,11 @@ sealed class AppStrings {
   String get capOrderItemCancel;
   String get capOrderItemVoid;
   String get capOrderViewAll;
+  String get capCashOpenWithoutSale;
+  String get capShiftViewExpectedCash;
+  String get capCashVarianceView;
+  String get capDayClose;
+  String get capDayForceClose;
   String get capOrderRefund;
   String get capReceiptReprint;
   String get capShiftOpen;
@@ -2818,6 +2823,18 @@ final class EnStrings extends AppStrings {
   @override
   String get capOrderViewAll => 'See every order this branch has taken';
   @override
+  String get capCashOpenWithoutSale => 'Open the drawer without a sale';
+  @override
+  String get capShiftViewExpectedCash =>
+      'See what the drawer should hold, before counting it';
+  @override
+  String get capCashVarianceView => 'See the difference after counting';
+  @override
+  String get capDayClose => 'Close the trading day';
+  @override
+  String get capDayForceClose =>
+      'Close the day while tables or orders are still open';
+  @override
   String get capOrderRefund => 'Refund a sale';
   @override
   String get capReceiptReprint => 'Reprint a receipt';
@@ -4718,6 +4735,17 @@ final class ArStrings extends AppStrings {
   String get capOrderItemVoid => 'حذف صنف سبق أن أعدّه المطبخ';
   @override
   String get capOrderViewAll => 'الاطلاع على كل طلبات هذا الفرع';
+  @override
+  String get capCashOpenWithoutSale => 'فتح الدرج دون عملية بيع';
+  @override
+  String get capShiftViewExpectedCash =>
+      'الاطلاع على الرصيد المتوقع في الدرج قبل الجرد';
+  @override
+  String get capCashVarianceView => 'الاطلاع على الفرق بعد الجرد';
+  @override
+  String get capDayClose => 'إقفال يوم العمل';
+  @override
+  String get capDayForceClose => 'إقفال اليوم رغم وجود طاولات أو طلبات مفتوحة';
   @override
   String get capOrderRefund => 'استرجاع مبيعة';
   @override
