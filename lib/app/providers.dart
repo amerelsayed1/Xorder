@@ -28,7 +28,10 @@ import '../data/postgres/postgres_discounts_repository.dart';
 import '../data/postgres/postgres_reason_repository.dart';
 import '../data/postgres/postgres_floor_repository.dart';
 import '../data/postgres/postgres_order_history_repository.dart';
+import '../data/postgres/postgres_business_day_repository.dart';
+import '../data/postgres/postgres_cash_movements_repository.dart';
 import '../data/postgres/postgres_orders_repository.dart';
+import '../data/postgres/postgres_settings_repository.dart';
 import '../data/postgres/postgres_refunds_repository.dart';
 import '../data/postgres/money_config_codec.dart';
 import '../data/postgres/postgres_parked_tickets.dart';
@@ -47,6 +50,8 @@ import '../domain/models/dining_table.dart';
 import '../domain/models/ticket.dart';
 import '../domain/models/discount.dart';
 import '../domain/models/order_record.dart';
+import '../domain/models/business_day.dart';
+import '../domain/models/pos_settings.dart';
 import '../domain/models/refund.dart';
 import '../domain/models/reason_code.dart';
 import '../domain/models/permissions.dart';
@@ -287,14 +292,99 @@ final refundsForOrderProvider = FutureProvider.family<List<Refund>, int>(
   (ref, orderId) => ref.watch(refundsRepositoryProvider).forOrder(orderId),
 );
 
-/// The restaurant's refund rules.
+/// What the restaurant has configured.
 ///
-/// A provider today so that every screen already asks the right question. When
-/// scoped settings land (Wave D) this reads `pos_settings` and nothing that
-/// depends on it changes.
-final refundPolicyProvider = Provider<RefundPolicy>(
-  (ref) => RefundPolicy.defaults,
+/// Read once and resolved — restaurant, then branch, then terminal. Everything
+/// policy-shaped is derived from this rather than read out of it directly: see
+/// the note on [PosSettings] about the map never being the public surface.
+final settingsRepositoryProvider = Provider<SettingsRepository>((ref) {
+  final config = ref.watch(deploymentProvider);
+  final context = ref.watch(posWriteContextProvider);
+
+  if (context == null || PosDatabase.hostFor(config) == null) {
+    return const UnconfiguredSettingsRepository();
+  }
+  return PostgresSettingsRepository(
+    database: ref.watch(posDatabaseProvider),
+    config: config,
+    restaurantId: context.restaurantId,
+    branchId: context.branchId,
+    terminalId: context.terminalId,
+  );
+});
+
+final settingsProvider = FutureProvider<PosSettings>(
+  (ref) => ref.watch(settingsRepositoryProvider).load(),
 );
+
+/// The three value objects the settings resolve into.
+///
+/// Each falls back to its own defaults while the read is in flight or has
+/// failed. A screen blocked on a spinner because nobody has configured a
+/// refund window would be worse than one running on the SRS's own answer —
+/// which is what an unconfigured till is *supposed* to run on.
+final refundPolicyProvider = Provider<RefundPolicy>((ref) {
+  final settings = ref.watch(settingsProvider).valueOrNull;
+  return settings == null
+      ? RefundPolicy.defaults
+      : RefundPolicy.from(settings);
+});
+
+final dayPolicyProvider = Provider<DayPolicy>((ref) {
+  final settings = ref.watch(settingsProvider).valueOrNull;
+  return settings == null ? DayPolicy.defaults : DayPolicy.from(settings);
+});
+
+final cashPolicyProvider = Provider<CashPolicy>((ref) {
+  final settings = ref.watch(settingsProvider).valueOrNull;
+  return settings == null ? CashPolicy.defaults : CashPolicy.from(settings);
+});
+
+/// The trading day.
+final businessDayRepositoryProvider = Provider<BusinessDayRepository>((ref) {
+  final config = ref.watch(deploymentProvider);
+  final context = ref.watch(posWriteContextProvider);
+
+  if (context == null || PosDatabase.hostFor(config) == null) {
+    return const UnconfiguredBusinessDayRepository();
+  }
+  return PostgresBusinessDayRepository(
+    database: ref.watch(posDatabaseProvider),
+    config: config,
+    context: context,
+  );
+});
+
+/// The day this branch is currently trading in, if anybody has opened one.
+final businessDayProvider = FutureProvider<BusinessDay?>(
+  (ref) => ref.watch(businessDayRepositoryProvider).current(),
+);
+
+/// Money into and out of the drawer that is not a sale.
+final cashMovementsRepositoryProvider = Provider<CashMovementsRepository>((
+  ref,
+) {
+  final config = ref.watch(deploymentProvider);
+  final context = ref.watch(posWriteContextProvider);
+
+  if (context == null || PosDatabase.hostFor(config) == null) {
+    return const UnconfiguredCashMovementsRepository();
+  }
+  return PostgresCashMovementsRepository(
+    database: ref.watch(posDatabaseProvider),
+    config: config,
+    context: context,
+  );
+});
+
+/// One shift's non-sale movements, totalled.
+final cashMovementsProvider =
+    FutureProvider.family<CashMovementTotals, int>((ref, shiftId) async {
+      final movements = await ref
+          .watch(cashMovementsRepositoryProvider)
+          .forShift(shiftId);
+      return CashMovementTotals.of(movements);
+    });
 
 final branchRepositoryProvider = Provider<BranchRepository>((ref) {
   final config = ref.watch(deploymentProvider);

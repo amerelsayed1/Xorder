@@ -5,7 +5,9 @@ import '../models/discount.dart';
 import '../models/reason_code.dart';
 import '../models/permissions.dart';
 import '../models/dining_table.dart';
+import '../models/business_day.dart';
 import '../models/order_record.dart';
+import '../models/pos_settings.dart';
 import '../models/refund.dart';
 import '../services/refund_engine.dart' show RefundQuote;
 import '../models/shift.dart';
@@ -177,6 +179,71 @@ abstract interface class RefundsRepository {
   /// refund gave back part by part, which `pos_orders.refunded_minor` alone
   /// cannot answer.
   Future<List<Refund>> forOrder(int orderId);
+}
+
+/// What the restaurant has configured.
+///
+/// Read as a whole and resolved once — restaurant, then branch, then terminal,
+/// most specific winning. A per-key read would be a query per question, and the
+/// questions are asked on every screen.
+abstract interface class SettingsRepository {
+  Future<PosSettings> load();
+
+  /// Write one value at one scope.
+  ///
+  /// Upserts on (restaurant, scope, scope id, key), which is the database's own
+  /// uniqueness constraint — so saving the same key twice is a change, not a
+  /// second row.
+  Future<void> save({
+    required String key,
+    required String value,
+    required SettingScope scope,
+    required PosStaff by,
+    String scopeId = '',
+  });
+}
+
+/// The trading day.
+abstract interface class BusinessDayRepository {
+  /// The open day for this branch, or null when nobody has started one.
+  Future<BusinessDay?> current();
+
+  /// Open the day [date] belongs to, or return the one already open.
+  ///
+  /// Idempotent by necessity rather than by choice: the database allows one
+  /// open day per branch, so two tills starting the morning together must not
+  /// race into a refusal a cashier has to read.
+  Future<BusinessDay> open({required DateTime date, required PosStaff by});
+
+  /// What is standing in the way of closing.
+  Future<DayCloseCheck> check();
+
+  /// Close it. [force] is required when [DayCloseCheck.blockers] is not empty,
+  /// and carries the reason the database insists on.
+  Future<BusinessDay> close({
+    required BusinessDay day,
+    required PosStaff by,
+    bool force = false,
+    String? forceReason,
+  });
+}
+
+/// Money into and out of the drawer that is not a sale.
+abstract interface class CashMovementsRepository {
+  /// Record one. The amount is always positive — see [CashMovementKind].
+  Future<CashMovement> record({
+    required CashMovementKind kind,
+    required Money amount,
+    required PosStaff by,
+    required int shiftId,
+    int? reasonId,
+    String? note,
+    PosStaff? approvedBy,
+    int? businessDayId,
+  });
+
+  /// Everything that happened to one shift's drawer, oldest first.
+  Future<List<CashMovement>> forShift(int shiftId);
 }
 
 /// A signed-in cashier and the terminal they are working.

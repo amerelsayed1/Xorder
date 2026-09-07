@@ -8,6 +8,7 @@
 library;
 
 import '../../core/money/money.dart';
+import 'pos_settings.dart';
 
 /// Whether this refund clears the order or only part of it.
 ///
@@ -72,6 +73,29 @@ class RefundPolicy {
   /// A 7-day window rather than `unlimited`: the specification offers both, and
   /// the safe default for money leaving a drawer is the one that expires.
   static const defaults = RefundPolicy();
+
+  /// Read from what the restaurant configured, falling back to [defaults] key
+  /// by key.
+  ///
+  /// Partial configuration is the normal case — somebody sets a ceiling and
+  /// nothing else — so every key falls back on its own rather than the whole
+  /// object reverting when one is missing.
+  factory RefundPolicy.from(PosSettings settings) => RefundPolicy(
+    enabled: settings.boolean(SettingKey.refundEnabled, orElse: true),
+    window:
+        RefundWindow.fromWire(settings.text(SettingKey.refundWindow) ?? '') ??
+        RefundWindow.days7,
+    maxValue: settings.money(SettingKey.refundMaxValue),
+    approvalThreshold: settings.money(SettingKey.refundApprovalThreshold),
+    receiptRequired: settings.boolean(
+      SettingKey.refundReceiptRequired,
+      orElse: false,
+    ),
+    reasonRequired: settings.boolean(
+      SettingKey.refundReasonRequired,
+      orElse: true,
+    ),
+  );
 
   final bool enabled;
   final RefundWindow window;
