@@ -197,7 +197,6 @@ class _Approval extends StatelessWidget {
             color: Colors.transparent,
             child: InkWell(
               onTap: onApprovalNeeded,
-              hoverColor: context.pos.accentSoft,
               child: const SizedBox.expand(),
             ),
           ),

@@ -53,6 +53,14 @@ class WrongStageForAct extends TicketRefusal {
   final LineStage stage;
 }
 
+/// A one-off charge with nothing written on it.
+///
+/// The name is what the customer reads on the receipt and what a manager sees
+/// on the report; "Item" against 200.00 is a line nobody can account for later.
+class OpenItemNeedsName extends TicketRefusal {
+  const OpenItemNeedsName();
+}
+
 /// The price asked for is the price the line already carries.
 ///
 /// Refused rather than accepted quietly: an override that changes nothing still
@@ -505,6 +513,42 @@ abstract final class TicketEngine {
   // customer was shown.
 
   /// Take a configured discount off one line.
+  /// Charge for something that is not on the menu (§17).
+  ///
+  /// A delivery fee, a birthday cake somebody brought in, a corkage. It becomes
+  /// an ordinary line — it is discounted, voided, taxed and printed like any
+  /// other — because the only thing unusual about it is that no menu item is
+  /// behind it.
+  ///
+  /// **The id is allocated from the ticket, and is negative.** `TicketLine`
+  /// merges on the product id, so two one-off charges sharing an id would
+  /// become one line reading `2×` at whichever price was typed first. Negative
+  /// keeps them clear of every real menu item; per-ticket uniqueness is all
+  /// that is needed, because the key never leaves the ticket.
+  static TicketResult addOpenPriceLine(
+    Ticket ticket, {
+    required String name,
+    required Money price,
+    int quantity = 1,
+  }) {
+    final trimmed = name.trim();
+    if (trimmed.isEmpty) return TicketResult.refused(const OpenItemNeedsName());
+    if (price.minor < 0) return TicketResult.refused(const PriceBelowZero());
+    if (quantity <= 0) return TicketResult.refused(const NothingToTender());
+
+    // One below the lowest already here, so re-adding after a removal cannot
+    // reuse an id a discount or a void is still pointing at.
+    final lowest = ticket.lines
+        .map((l) => l.product.id)
+        .fold(0, (min, id) => id < min ? id : min);
+
+    return addLine(
+      ticket,
+      Product.openPrice(id: lowest - 1, name: trimmed, price: price),
+      quantity: quantity,
+    );
+  }
+
   /// Set or clear what the kitchen is told about one line.
   ///
   /// An empty note clears it — an empty string in the `note` column reads as

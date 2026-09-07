@@ -64,7 +64,6 @@ class _ChoiceTile extends StatelessWidget {
         : (selected ? context.pos.accentSoft : context.pos.surface),
     child: InkWell(
       onTap: enabled ? onTap : null,
-      hoverColor: enabled ? context.pos.accentSoft : Colors.transparent,
       child: Container(
         padding: const EdgeInsets.all(PosSpace.lg),
         decoration: BoxDecoration(

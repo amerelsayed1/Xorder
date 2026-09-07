@@ -39,6 +39,7 @@ abstract final class ParkedTicketCodec {
           'name_en': line.product.nameEn,
           'name_ar': line.product.nameAr,
           'price_minor': line.product.price.minor,
+          'is_open_price': line.product.isOpenPrice,
           'discounted_price_minor': line.product.discountedPrice?.minor,
           'quantity': line.quantity,
           'note': line.note,
@@ -297,10 +298,18 @@ abstract final class ParkedTicketCodec {
       exponent: exponent,
     );
 
+    // A one-off charge has no menu item to look up, and its synthetic id is
+    // negative — so a catalogue lookup would either miss or, worse, collide
+    // with something if ids ever went that way. It rebuilds from its snapshot,
+    // which is the only record of it there has ever been.
+    final openPrice = raw['is_open_price'] == true;
+
     // The live catalog first: a resumed line keeps its product's behaviour.
     // The snapshot second: a deleted product still reads, prices and settles
     // exactly as it did when it was rung up.
-    final live = catalog.products.where((p) => p.id == productId).firstOrNull;
+    final live = openPrice
+        ? null
+        : catalog.products.where((p) => p.id == productId).firstOrNull;
     final product =
         live ??
         Product(
@@ -314,6 +323,7 @@ abstract final class ParkedTicketCodec {
           discountedPrice: raw['discounted_price_minor'] is int
               ? minor(raw['discounted_price_minor'])
               : null,
+          isOpenPrice: openPrice,
         );
 
     final modifiers = <Modifier>[

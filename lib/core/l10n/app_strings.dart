@@ -75,11 +75,19 @@ sealed class AppStrings {
   String get ticketVoided;
   String get ticketStillOpen;
   String get roundSentToKitchen;
-  String get drawerOpenedToast;
-  String get openTicketsNotBuilt;
-  String get customAmountNotBuilt;
   String get searchHint;
   String get customAmount;
+
+  // ── A one-off charge (§17 open item) ──────────────────────────────────────
+  String get openItemTitle;
+  String get openItemName;
+  String get openItemNameHint;
+  String get openItemPrice;
+  String get openItemAdd;
+  String get openItemNeedsName;
+  String get openItemNeedsPrice;
+  String get openItemNotPermitted;
+  String openItemAdded(String name);
   String get shortcutStrip;
   String matchCount(int count);
   String catalogCached(int items);
@@ -104,6 +112,15 @@ sealed class AppStrings {
   String syncOfflineQueued(int? queued);
   String get syncChecking;
   String syncSyncedQueued(int queued);
+
+  /// An **offline** terminal's status pill.
+  ///
+  /// It never says "offline". That is this terminal's permanent and intended
+  /// state, and announcing it reads as a fault on a machine where nothing is
+  /// wrong. What can genuinely break is the branch server.
+  String get branchDatabaseReady;
+  String get branchDatabaseChecking;
+  String get branchDatabaseUnreachable;
   String get lock;
   String get closeShift;
   String get noShift;
@@ -713,6 +730,12 @@ sealed class AppStrings {
   String get syncNow;
   String get management;
 
+  /// The Settings menu's route to staff accounts.
+  ///
+  /// Named for what somebody is looking for rather than for the screen it
+  /// happens to live on. "Management" is a place; this is an answer.
+  String get staffAndAccounts;
+
   /// The macOS Window menu. The app's own name above it is a brand and is
   /// never translated; this one is an ordinary word.
   String get windowMenu;
@@ -1136,6 +1159,58 @@ sealed class AppStrings {
   // ── A line's note ─────────────────────────────────────────────────────────
   String lineNoteTitle(String item);
   String get lineNoteHint;
+
+  // ── §27's expanded cash-up ────────────────────────────────────────────────
+  String get zSubtotal;
+  String get zDiscounts;
+  String get zService;
+  String get zVat;
+  String get zRefunds;
+  String get zVoids;
+  String get zNet;
+  String get zCashIn;
+  String get zCashOut;
+  String get zDrawerOpens;
+  String get zVariance;
+
+  /// Shown in place of the expected figure while a blind count is in progress.
+  String get zHiddenUntilCounted;
+
+  // ── Money in and out of the drawer (§22) ──────────────────────────────────
+  String get payInTitle;
+  String get payOutTitle;
+  String get payInAction;
+  String get payOutAction;
+  String get cashAmountLabel;
+  String get cashNothingEntered;
+  String cashAboveCeiling(String ceiling);
+  String get cashRecorded;
+  String get cashCouldNotBeRecorded;
+  String get cashNoOpenShift;
+
+  // ── Opening the drawer with no sale (§23) ─────────────────────────────────
+  String get drawerOpenTitle;
+  String get drawerOpenExplain;
+  String get drawerOpenAction;
+  String get drawerOpened;
+
+  // ── The trading day (§28) ─────────────────────────────────────────────────
+  String get dayCloseTitle;
+  String dayCloseFor(String date);
+  String get dayCloseNothingOpen;
+  String get dayCloseClear;
+  String get dayCloseBlockersTitle;
+  String dayBlockerOpenShifts(int count);
+  String dayBlockerParkedTables(int count);
+  String dayBlockerUnpaidOrders(int count);
+  String get dayCloseAction;
+  String get dayForceCloseAction;
+  String get dayForceReasonLabel;
+  String get dayForceReasonNeeded;
+  String dayClosed(String gross);
+  String get dayCouldNotBeClosed;
+  String get dayGross;
+  String get dayNet;
 }
 
 /// English. The reference wording — the Arabic below is a translation of this,
@@ -1523,6 +1598,99 @@ final class EnStrings extends AppStrings {
   String get lineNoteHint => 'No onions, well done, on the side…';
 
   @override
+  String get zSubtotal => 'Subtotal';
+  @override
+  String get zDiscounts => 'Discounts given';
+  @override
+  String get zService => 'Service';
+  @override
+  String get zVat => 'VAT';
+  @override
+  String get zRefunds => 'Refunded';
+  @override
+  String get zVoids => 'Voided';
+  @override
+  String get zNet => 'Net takings';
+  @override
+  String get zCashIn => 'Cash in';
+  @override
+  String get zCashOut => 'Cash out';
+  @override
+  String get zDrawerOpens => 'Drawer opened without a sale';
+  @override
+  String get zVariance => 'Difference';
+  @override
+  String get zHiddenUntilCounted => 'Hidden until you have counted';
+  @override
+  String get payInTitle => 'Cash in';
+  @override
+  String get payOutTitle => 'Cash out';
+  @override
+  String get payInAction => 'Record cash in';
+  @override
+  String get payOutAction => 'Record cash out';
+  @override
+  String get cashAmountLabel => 'Amount';
+  @override
+  String get cashNothingEntered => 'Enter an amount above zero.';
+  @override
+  String cashAboveCeiling(String ceiling) =>
+      'That is above the $ceiling limit for one payment out.';
+  @override
+  String get cashRecorded => 'Recorded';
+  @override
+  String get cashCouldNotBeRecorded =>
+      'That could not be recorded, so nothing has moved. Try again.';
+  @override
+  String get cashNoOpenShift => 'Open a shift before moving cash.';
+  @override
+  String get drawerOpenTitle => 'Open the drawer?';
+  @override
+  String get drawerOpenExplain =>
+      'No sale is attached to this, so it is recorded with your name and the time.';
+  @override
+  String get drawerOpenAction => 'Open drawer';
+  @override
+  String get drawerOpened => 'Drawer opened, and recorded';
+  @override
+  String get dayCloseTitle => 'Close the day';
+  @override
+  String dayCloseFor(String date) => 'Trading day $date';
+  @override
+  String get dayCloseNothingOpen => 'No trading day is open at this branch.';
+  @override
+  String get dayCloseClear => 'Everything is settled. The day can close.';
+  @override
+  String get dayCloseBlockersTitle => 'These are still open';
+  @override
+  String dayBlockerOpenShifts(int count) =>
+      count == 1 ? '1 till still has a drawer open' : '$count tills still have drawers open';
+  @override
+  String dayBlockerParkedTables(int count) =>
+      count == 1 ? '1 table is still seated' : '$count tables are still seated';
+  @override
+  String dayBlockerUnpaidOrders(int count) =>
+      count == 1 ? '1 order has not been paid' : '$count orders have not been paid';
+  @override
+  String get dayCloseAction => 'Close the day';
+  @override
+  String get dayForceCloseAction => 'Close anyway';
+  @override
+  String get dayForceReasonLabel => 'Why are you closing over these?';
+  @override
+  String get dayForceReasonNeeded =>
+      'Closing over open work has to say why.';
+  @override
+  String dayClosed(String gross) => 'Day closed. Gross $gross';
+  @override
+  String get dayCouldNotBeClosed =>
+      'The day could not be closed, so it is still open. Try again.';
+  @override
+  String get dayGross => 'Gross';
+  @override
+  String get dayNet => 'Net';
+
+  @override
   String get cancel => 'Cancel';
   @override
   String get done => 'Done';
@@ -1562,15 +1730,31 @@ final class EnStrings extends AppStrings {
   @override
   String get roundSentToKitchen => 'Round sent to the kitchen.';
   @override
-  String get drawerOpenedToast => 'Cash drawer opened · F10';
   @override
-  String get openTicketsNotBuilt => 'Open tickets — not built yet.';
-  @override
-  String get customAmountNotBuilt => 'Custom amount — not built yet.';
   @override
   String get searchHint => 'Scan barcode or search item / PLU';
   @override
   String get customAmount => 'Custom amount';
+  @override
+  String get openItemTitle => 'Charge for something not on the menu';
+  @override
+  String get openItemName => 'What is it?';
+  @override
+  String get openItemNameHint => 'Delivery, corkage, birthday cake…';
+  @override
+  String get openItemPrice => 'Price, each';
+  @override
+  String get openItemAdd => 'Add to ticket';
+  @override
+  String get openItemNeedsName =>
+      'Give it a name. It is what the customer reads on the receipt.';
+  @override
+  String get openItemNeedsPrice => 'Enter a price of zero or more.';
+  @override
+  String get openItemNotPermitted =>
+      'You do not have permission to charge a price that is not on the menu.';
+  @override
+  String openItemAdded(String name) => '$name added';
   @override
   String get shortcutStrip => 'F2 SEARCH   F4 PARK   F9 PAY   ESC CLOSE';
   @override
@@ -1595,6 +1779,12 @@ final class EnStrings extends AppStrings {
   String get syncChecking => '● Checking sync…';
   @override
   String syncSyncedQueued(int queued) => '● Synced · $queued queued';
+  @override
+  String get branchDatabaseReady => '● Branch server';
+  @override
+  String get branchDatabaseChecking => '● Checking branch server…';
+  @override
+  String get branchDatabaseUnreachable => '● Branch server unreachable';
   @override
   String get lock => 'Lock';
   @override
@@ -2796,6 +2986,8 @@ final class EnStrings extends AppStrings {
   @override
   String get management => 'Management';
   @override
+  String get staffAndAccounts => 'Staff & accounts…';
+  @override
   String get windowMenu => 'Window';
 
   @override
@@ -3474,6 +3666,98 @@ final class ArStrings extends AppStrings {
   String get lineNoteHint => 'بدون بصل، جيد الاستواء، على جانب…';
 
   @override
+  String get zSubtotal => 'المجموع الفرعي';
+  @override
+  String get zDiscounts => 'الخصومات الممنوحة';
+  @override
+  String get zService => 'الخدمة';
+  @override
+  String get zVat => 'ضريبة القيمة المضافة';
+  @override
+  String get zRefunds => 'المسترجع';
+  @override
+  String get zVoids => 'الملغى';
+  @override
+  String get zNet => 'صافي المحصَّل';
+  @override
+  String get zCashIn => 'نقد داخل';
+  @override
+  String get zCashOut => 'نقد خارج';
+  @override
+  String get zDrawerOpens => 'فتح الدرج دون بيع';
+  @override
+  String get zVariance => 'الفرق';
+  @override
+  String get zHiddenUntilCounted => 'مخفي حتى تُتم الجرد';
+  @override
+  String get payInTitle => 'إدخال نقد';
+  @override
+  String get payOutTitle => 'إخراج نقد';
+  @override
+  String get payInAction => 'تسجيل إدخال نقد';
+  @override
+  String get payOutAction => 'تسجيل إخراج نقد';
+  @override
+  String get cashAmountLabel => 'المبلغ';
+  @override
+  String get cashNothingEntered => 'أدخل مبلغًا أكبر من صفر.';
+  @override
+  String cashAboveCeiling(String ceiling) =>
+      'هذا يتجاوز حد $ceiling للدفعة الواحدة.';
+  @override
+  String get cashRecorded => 'تم التسجيل';
+  @override
+  String get cashCouldNotBeRecorded =>
+      'تعذّر التسجيل، ولم يتحرك شيء. حاول مرة أخرى.';
+  @override
+  String get cashNoOpenShift => 'افتح وردية قبل تحريك النقد.';
+  @override
+  String get drawerOpenTitle => 'فتح الدرج؟';
+  @override
+  String get drawerOpenExplain =>
+      'لا ترتبط بهذا أي عملية بيع، لذا يُسجَّل باسمك وبوقته.';
+  @override
+  String get drawerOpenAction => 'فتح الدرج';
+  @override
+  String get drawerOpened => 'فُتح الدرج وسُجِّل';
+  @override
+  String get dayCloseTitle => 'إقفال اليوم';
+  @override
+  String dayCloseFor(String date) => 'يوم العمل $date';
+  @override
+  String get dayCloseNothingOpen => 'لا يوجد يوم عمل مفتوح في هذا الفرع.';
+  @override
+  String get dayCloseClear => 'كل شيء مُسوّى. يمكن إقفال اليوم.';
+  @override
+  String get dayCloseBlockersTitle => 'ما زال مفتوحًا';
+  @override
+  String dayBlockerOpenShifts(int count) =>
+      count == 1 ? 'كاشير واحد ما زال درجه مفتوحًا' : '$count كاشيرات ما زالت أدراجها مفتوحة';
+  @override
+  String dayBlockerParkedTables(int count) =>
+      count == 1 ? 'طاولة واحدة ما زالت مشغولة' : '$count طاولات ما زالت مشغولة';
+  @override
+  String dayBlockerUnpaidOrders(int count) =>
+      count == 1 ? 'طلب واحد لم يُدفع' : '$count طلبات لم تُدفع';
+  @override
+  String get dayCloseAction => 'إقفال اليوم';
+  @override
+  String get dayForceCloseAction => 'إقفال رغم ذلك';
+  @override
+  String get dayForceReasonLabel => 'لماذا تُقفل رغم ما هو مفتوح؟';
+  @override
+  String get dayForceReasonNeeded => 'الإقفال رغم العمل المفتوح يجب أن يُعلَّل.';
+  @override
+  String dayClosed(String gross) => 'أُقفل اليوم. الإجمالي $gross';
+  @override
+  String get dayCouldNotBeClosed =>
+      'تعذّر إقفال اليوم، وما زال مفتوحًا. حاول مرة أخرى.';
+  @override
+  String get dayGross => 'الإجمالي';
+  @override
+  String get dayNet => 'الصافي';
+
+  @override
   String get cancel => 'إلغاء';
   @override
   String get done => 'تم';
@@ -3514,15 +3798,29 @@ final class ArStrings extends AppStrings {
   @override
   String get roundSentToKitchen => 'تم إرسال الجولة إلى المطبخ.';
   @override
-  String get drawerOpenedToast => 'تم فتح درج النقدية · F10';
   @override
-  String get openTicketsNotBuilt => 'الطلبات المفتوحة — غير متاحة بعد.';
-  @override
-  String get customAmountNotBuilt => 'مبلغ مخصص — غير متاح بعد.';
   @override
   String get searchHint => 'امسح الباركود أو ابحث عن صنف / كود';
   @override
   String get customAmount => 'مبلغ مخصص';
+  @override
+  String get openItemTitle => 'تحصيل مبلغ لصنف خارج المنيو';
+  @override
+  String get openItemName => 'ما هو؟';
+  @override
+  String get openItemNameHint => 'توصيل، فتح زجاجة، تورتة…';
+  @override
+  String get openItemPrice => 'السعر للوحدة';
+  @override
+  String get openItemAdd => 'إضافة إلى الفاتورة';
+  @override
+  String get openItemNeedsName => 'اكتب اسمًا له. هذا ما يقرأه العميل في الفاتورة.';
+  @override
+  String get openItemNeedsPrice => 'أدخل سعرًا يساوي صفرًا أو أكثر.';
+  @override
+  String get openItemNotPermitted => 'ليس لديك صلاحية لتحصيل سعر خارج المنيو.';
+  @override
+  String openItemAdded(String name) => 'تمت إضافة $name';
   @override
   String get shortcutStrip => 'F2 بحث   F4 تعليق   F9 دفع   ESC إغلاق';
   @override
@@ -3548,6 +3846,12 @@ final class ArStrings extends AppStrings {
   @override
   String syncSyncedQueued(int queued) =>
       '● تمت المزامنة · $queued في الانتظار';
+  @override
+  String get branchDatabaseReady => '● خادم الفرع';
+  @override
+  String get branchDatabaseChecking => '● جارٍ التحقق من خادم الفرع…';
+  @override
+  String get branchDatabaseUnreachable => '● تعذّر الوصول إلى خادم الفرع';
   @override
   String get lock => 'قفل';
   @override
@@ -4708,6 +5012,8 @@ final class ArStrings extends AppStrings {
   String get syncNow => 'مزامنة الآن';
   @override
   String get management => 'الإدارة';
+  @override
+  String get staffAndAccounts => 'الموظفون والحسابات…';
   @override
   String get windowMenu => 'النافذة';
 

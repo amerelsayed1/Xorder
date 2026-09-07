@@ -7,6 +7,7 @@ import '../../../core/money/money.dart';
 import '../../../core/ui/theme.dart';
 import '../../../core/ui/tokens.dart';
 import '../../../core/ui/widgets/pos_widgets.dart';
+import '../../cash/presentation/cash_dialogs.dart';
 import '../../../domain/repositories/admin_repositories.dart';
 import '../../admin/presentation/supervisor_override.dart';
 import '../../../domain/models/permissions.dart';
@@ -236,6 +237,17 @@ class _CloseShiftDialogState extends ConsumerState<CloseShiftDialog> {
   bool _busy = true;
   String? _error;
 
+  /// Whether the expected figure is hidden while this person counts.
+  ///
+  /// Two conditions, and both have to hold: the restaurant asked for blind
+  /// counting, **and** this person does not hold `shift.view_expected_cash`.
+  /// A manager counting their own drawer under a blind policy still sees the
+  /// figure, because withholding it from the person who set the policy
+  /// protects nobody.
+  bool get _blind =>
+      ref.watch(cashPolicyProvider).blindClose &&
+      !ref.watch(canProvider(PosCapability.shiftViewExpectedCash)).isAllowed;
+
   @override
   void initState() {
     super.initState();
@@ -380,7 +392,11 @@ class _CloseShiftDialogState extends ConsumerState<CloseShiftDialog> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               mainAxisSize: MainAxisSize.min,
               children: [
-                _ZReport(summary: summary),
+                // Blind while counting (§25): the expected figure and the
+                // live difference are hidden from anybody who may not see
+                // them, so the count is a count rather than a reconciliation
+                // to a number already on screen.
+                _ZReport(summary: summary, blind: _blind),
                 const SizedBox(height: PosSpace.lg),
                 MicroLabel(strings.countedInDrawer),
                 const SizedBox(height: PosSpace.sm),
@@ -469,77 +485,165 @@ class _CloseShiftDialogState extends ConsumerState<CloseShiftDialog> {
         fontWeight: FontWeight.w800,
         onPressed: _finish,
       ),
-      child: _ZReport(summary: closed.summary, counted: closed.countedCash),
+      // Revealed after committing, to anybody holding `cash.variance.view`.
+      // A cashier who counted blind still learns whether they were right —
+      // from a supervisor, not from the screen — which is the whole reason
+      // these are two capabilities rather than one.
+      child: _ZReport(
+        summary: closed.summary,
+        counted: closed.countedCash,
+        blind: !ref.read(canProvider(PosCapability.cashVarianceView)).isAllowed,
+      ),
     );
   }
 }
 
 /// The Z report, in the order somebody standing at a drawer reads it.
 class _ZReport extends StatelessWidget {
-  const _ZReport({required this.summary, this.counted});
+  const _ZReport({
+    required this.summary,
+    this.counted,
+    this.blind = false,
+  });
 
   final ShiftSummary summary;
   final Money? counted;
 
+  /// Hide the expected figure and the live difference (§25).
+  ///
+  /// The count itself is never hidden — a cashier has to see what they typed.
+  /// What blind withholds is the *answer*, so that counting is counting rather
+  /// than reconciling to a number already on screen.
+  final bool blind;
+
   @override
   Widget build(BuildContext context) {
     final strings = context.strings;
+    final palette = context.pos;
+    final variance = counted == null
+        ? null
+        : summary.varianceAgainst(counted!);
 
     return Container(
       decoration: BoxDecoration(
-        color: context.pos.surface,
-        border: Border.fromBorderSide(context.pos.resting),
+        color: palette.surface,
+        border: Border.fromBorderSide(palette.resting),
       ),
       child: Column(
         children: [
-          _row(strings.zSales, '${summary.saleCount}', pos: context.pos),
-          _row(strings.zGrossTaken, summary.gross.format(), pos: context.pos),
-          // The tender label is whatever was WRITTEN with the payment, and
-          // it stays as written. It is the same text `cashTaken` matches on
-          // to work out what the drawer should hold, and a report that
-          // renamed it would no longer describe the sum beneath it.
-          for (final tender in summary.tenders)
-            _row(
-              strings.zTenderRow(tender.label, tender.count),
-              tender.amount.format(),
-            pos: context.pos),
-          _row(strings.zOpeningFloat, summary.shift.openingFloat.format(), pos: context.pos),
-          _row(
-            strings.zExpectedInDrawer,
-            summary.expectedCash.format(),
+          // ── What was sold ──────────────────────────────────────────────
+          _count(context, strings.zSales, summary.saleCount),
+          CashUpRow(label: strings.zSubtotal, value: summary.subtotal),
+          if (!summary.discounts.isZero)
+            CashUpRow(
+              label: strings.zDiscounts,
+              value: -summary.discounts,
+              tone: palette.warn,
+            ),
+          if (!summary.service.isZero)
+            CashUpRow(label: strings.zService, value: summary.service),
+          CashUpRow(label: strings.zVat, value: summary.vat),
+          CashUpRow(
+            label: strings.zGrossTaken,
+            value: summary.gross,
             emphasis: true,
-          pos: context.pos),
+          ),
+
+          // ── What went back, and what was thrown away ───────────────────
+          //
+          // Refunds are NOT netted off the gross above. A shift that sold
+          // 1,000 and refunded 200 did both things, and a report showing only
+          // 800 hides the 200 — which is the number a manager is looking for.
+          if (!summary.refunds.isZero)
+            CashUpRow(
+              label: strings.zRefunds,
+              value: -summary.refunds,
+              tone: palette.warn,
+            ),
+          if (!summary.voids.isZero)
+            CashUpRow(
+              label: strings.zVoids,
+              value: summary.voids,
+              tone: palette.danger,
+            ),
+          if (!summary.refunds.isZero)
+            CashUpRow(
+              label: strings.zNet,
+              value: summary.net,
+              emphasis: true,
+            ),
+
+          // ── How it was paid ────────────────────────────────────────────
+          //
+          // The tender label is whatever was WRITTEN with the payment, and it
+          // stays as written. What the drawer's cash is worked out from is the
+          // tender *type* beside it — see `TenderMethod.countsAsCash`.
+          for (final tender in summary.tenders)
+            CashUpRow(
+              label: strings.zTenderRow(tender.label, tender.count),
+              value: tender.amount,
+            ),
+
+          // ── The drawer ─────────────────────────────────────────────────
+          CashUpRow(
+            label: strings.zOpeningFloat,
+            value: summary.shift.openingFloat,
+          ),
+          if (!summary.cashIn.isZero)
+            CashUpRow(label: strings.zCashIn, value: summary.cashIn),
+          if (!summary.cashOut.isZero)
+            CashUpRow(
+              label: strings.zCashOut,
+              value: -summary.cashOut,
+              tone: palette.warn,
+            ),
+          if (summary.drawerOpens > 0)
+            _count(context, strings.zDrawerOpens, summary.drawerOpens),
+          CashUpRow(
+            label: blind
+                ? strings.zHiddenUntilCounted
+                : strings.zExpectedInDrawer,
+            value: summary.expectedCash,
+            emphasis: true,
+            masked: blind,
+          ),
           if (counted != null)
-            _row(strings.zCounted, counted!.format(), emphasis: true, pos: context.pos),
+            CashUpRow(
+              label: strings.zCounted,
+              value: counted!,
+              emphasis: true,
+            ),
+          if (variance != null && !blind)
+            CashUpRow(
+              label: strings.zVariance,
+              value: variance,
+              emphasis: true,
+              tone: variance.isZero ? null : palette.danger,
+            ),
         ],
       ),
     );
   }
 
-  Widget _row(String label, String value, {required PosPalette pos, bool emphasis = false}) => Container(
+  /// A count, not money. Rendered through the same row so the column of
+  /// figures still lines up.
+  Widget _count(BuildContext context, String label, int value) => Container(
     padding: const EdgeInsets.symmetric(
       horizontal: PosSpace.lg,
-      vertical: PosSpace.md,
+      vertical: PosSpace.sm,
     ),
-    decoration: BoxDecoration(
-      border: Border(bottom: pos.hairline),
-    ),
+    decoration: BoxDecoration(border: Border(bottom: context.pos.hairline)),
     child: Row(
       children: [
-        Text(
-          label,
-          style: PosText.ui(color: pos.inkWarm, 
-            size: 13,
-            weight: emphasis ? FontWeight.w700 : FontWeight.w400,
+        Expanded(
+          child: Text(
+            label,
+            style: PosText.ui(size: 13, color: context.pos.body),
           ),
         ),
-        const Spacer(),
         Text(
-          value,
-          style: PosText.mono(color: pos.inkWarm, 
-            size: emphasis ? 15 : 13,
-            weight: emphasis ? FontWeight.w600 : FontWeight.w400,
-          ),
+          '$value',
+          style: PosText.mono(size: 13, color: context.pos.ink),
         ),
       ],
     ),

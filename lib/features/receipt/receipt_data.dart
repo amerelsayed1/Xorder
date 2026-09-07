@@ -16,6 +16,23 @@ import '../../domain/models/order_record.dart';
 import '../../domain/models/refund.dart';
 import '../../domain/models/ticket.dart';
 
+/// What the slip says about where this sale has got to.
+///
+/// **An offline terminal says nothing.** It used to print `SYNCED TO XORDER`,
+/// because `queued` is false on a till that queues nothing — so the one
+/// deployment that has never contacted a platform, and never will, was the one
+/// claiming it had. That is a false statement on a document a customer keeps.
+enum ReceiptSyncNote {
+  /// Offline deployment. There is no platform, so there is nothing to report.
+  none,
+
+  /// Cloud, and this sale has not reached the platform yet.
+  queued,
+
+  /// Cloud, and it has.
+  synced,
+}
+
 /// One printed line.
 class ReceiptLine {
   const ReceiptLine({
@@ -56,13 +73,20 @@ class ReceiptData {
     this.serviceBp,
     this.vatBp,
     this.taxFromDeviceConfig = false,
-    this.queued = false,
+    this.syncNote = ReceiptSyncNote.none,
     this.refunded = Money.zero,
     this.isReprint = false,
   });
 
   /// Everything on the slip, taken from the ticket that was just settled.
-  factory ReceiptData.fromTicket(Ticket ticket, {String? invoiceNumber, bool queued = false}) {
+  /// [cloudBacked] is whether this terminal syncs with a platform at all. It
+  /// decides between saying nothing and saying something.
+  factory ReceiptData.fromTicket(
+    Ticket ticket, {
+    String? invoiceNumber,
+    bool queued = false,
+    bool cloudBacked = false,
+  }) {
     final totals = ticket.totals;
     return ReceiptData(
       invoiceNumber: invoiceNumber,
@@ -89,7 +113,11 @@ class ReceiptData {
       serviceBp: ticket.taxConfig.serviceBp,
       vatBp: ticket.taxConfig.vatBp,
       taxFromDeviceConfig: ticket.taxConfig.source == TaxSource.deviceConfig,
-      queued: queued,
+      syncNote: !cloudBacked
+          ? ReceiptSyncNote.none
+          : (queued || invoiceNumber == null
+                ? ReceiptSyncNote.queued
+                : ReceiptSyncNote.synced),
     );
   }
 
@@ -172,7 +200,7 @@ class ReceiptData {
   final int? vatBp;
 
   final bool taxFromDeviceConfig;
-  final bool queued;
+  final ReceiptSyncNote syncNote;
 
   /// What has since gone back. Printed on a reprint so the slip cannot be used
   /// to claim a refund that has already been given.

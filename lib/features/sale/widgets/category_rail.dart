@@ -13,7 +13,6 @@ class CategoryRail extends StatelessWidget {
     required this.catalog,
     required this.selectedId,
     required this.onSelect,
-    required this.onOpenTickets,
     required this.onTables,
     this.onOrders,
     this.openTicketCount = 0,
@@ -22,7 +21,6 @@ class CategoryRail extends StatelessWidget {
   final Catalog catalog;
   final int? selectedId;
   final ValueChanged<int?> onSelect;
-  final VoidCallback onOpenTickets;
   final VoidCallback onTables;
 
   /// Order history. Null when the person at the till may not see it — the
@@ -78,25 +76,24 @@ class CategoryRail extends StatelessWidget {
             padding: const EdgeInsets.all(PosSpace.sm),
             child: Column(
               children: [
-                PosButton(
-                  label: strings.openTickets,
-                  border: Border.fromBorderSide(
-                    BorderSide(color: context.pos.inkWarm),
-                  ),
-                  alignLeft: true,
-                  trailing: Text(
-                    '$openTicketCount',
-                    style: PosText.mono(
-                      size: 12,
-                      weight: FontWeight.w600,
-                      color: context.pos.danger,
-                    ),
-                  ),
-                  onPressed: onOpenTickets,
-                ),
-                const SizedBox(height: PosSpace.sm),
+                // "Open tickets" used to sit here, above Tables, toasting
+                // "not built yet". It was a second door to the same room: an
+                // open ticket in this product is a seated table, and Tables is
+                // where they are. The count it carried is not lost — it moved
+                // on to the Tables button, where it belongs.
                 PosButton(
                   label: strings.tables,
+                  trailing: openTicketCount == 0
+                      ? null
+                      : Text(
+                          '$openTicketCount',
+                          style: PosText.mono(
+                            size: 12,
+                            weight: FontWeight.w600,
+                            color: context.pos.danger,
+                          ),
+                        ),
+                  alignLeft: openTicketCount > 0,
                   foreground: context.pos.body,
                   border: Border.fromBorderSide(context.pos.hairline),
                   onPressed: onTables,
@@ -133,6 +130,9 @@ class CategoryRail extends StatelessWidget {
         // thing a category rail cannot afford. Selection is shown by the fill
         // itself, the same way elevation here is a border rather than a
         // shadow.
+        // Redundant now that the theme sets all three, and kept because a
+        // rail row is the densest list in the product — if the global ever
+        // moves, this one must not.
         hoverColor: Colors.transparent,
         splashColor: Colors.transparent,
         highlightColor: Colors.transparent,

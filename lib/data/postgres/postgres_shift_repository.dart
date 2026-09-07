@@ -2,6 +2,7 @@ import 'package:postgres/postgres.dart';
 
 import '../../core/config/deployment.dart';
 import '../../core/money/money.dart';
+import '../../domain/models/business_day.dart';
 import '../../domain/repositories/repositories.dart';
 import 'pos_database.dart';
 
@@ -155,8 +156,18 @@ class PostgresShiftRepository implements ShiftRepository {
         // `::bigint` matters: sum() over a bigint column returns *numeric* in
         // PostgreSQL, which arrives as a string and blows up the cast. The
         // totals are minor units and always fit, so narrowing is safe.
-        'SELECT count(*), coalesce(sum(total_minor), 0)::bigint '
-        'FROM pos_orders WHERE shift_id = @shift',
+        '''
+        SELECT
+          count(*) FILTER (WHERE status <> 'VOIDED'),
+          coalesce(sum(total_minor)    FILTER (WHERE status <> 'VOIDED'), 0)::bigint,
+          coalesce(sum(subtotal_minor) FILTER (WHERE status <> 'VOIDED'), 0)::bigint,
+          coalesce(sum(discount_minor) FILTER (WHERE status <> 'VOIDED'), 0)::bigint,
+          coalesce(sum(service_minor)  FILTER (WHERE status <> 'VOIDED'), 0)::bigint,
+          coalesce(sum(vat_minor)      FILTER (WHERE status <> 'VOIDED'), 0)::bigint,
+          coalesce(sum(total_minor)    FILTER (WHERE status =  'VOIDED'), 0)::bigint,
+          count(*) FILTER (WHERE status = 'VOIDED')
+        FROM pos_orders WHERE shift_id = @shift
+        ''',
       ),
       parameters: {'shift': shift.id},
     );
@@ -177,10 +188,73 @@ class PostgresShiftRepository implements ShiftRepository {
       parameters: {'shift': shift.id},
     );
 
+    // Refunds are their own table and their own shift stamp: a refund given on
+    // Tuesday against Monday's sale belongs to Tuesday's drawer, which is the
+    // shift that is short the money.
+    final refunds = await tx.execute(
+      Sql.named(
+        'SELECT count(*), coalesce(sum(total_minor), 0)::bigint '
+        'FROM pos_refunds WHERE shift_id = @shift',
+      ),
+      parameters: {'shift': shift.id},
+    );
+
+    // Read here rather than left to the screen. `expectedCash` is float plus
+    // cash taken plus paid in less paid out, so a summary without these would
+    // report a shortage every time somebody paid a supplier out of the till —
+    // silently, and only on the shifts where it mattered.
+    final movements = await tx.execute(
+      Sql.named(
+        'SELECT kind, coalesce(sum(amount_minor), 0)::bigint, count(*) '
+        'FROM pos_cash_movements WHERE shift_id = @shift GROUP BY kind',
+      ),
+      parameters: {'shift': shift.id},
+    );
+
+    var paidIn = Money.zero;
+    var paidOut = Money.zero;
+    var opens = 0;
+    for (final raw in movements) {
+      final amount = Money(raw[1]! as int);
+      switch (CashMovementKind.fromWire(raw[0]! as String)) {
+        case CashMovementKind.payIn:
+        case CashMovementKind.floatAdjust:
+          paidIn += amount;
+        case CashMovementKind.payOut:
+          paidOut += amount;
+        case CashMovementKind.drawerOpen:
+          opens += raw[2]! as int;
+        // A kind this build does not know moves nothing, so it cannot push the
+        // expected drawer in a direction that costs anybody money.
+        case null:
+          break;
+      }
+    }
+
+    final row = orders.first;
     return ShiftSummary(
+      movements: CashMovementTotals(
+        paidIn: paidIn,
+        paidOut: paidOut,
+        drawerOpens: opens,
+        // Totals only. The list itself is a separate read, because the cash-up
+        // needs the sums and only the movements screen needs the rows.
+        movements: const [],
+      ),
       shift: shift,
-      saleCount: orders.first[0] as int,
-      gross: Money(orders.first[1] as int),
+      // Voided orders are excluded from every sales figure and counted
+      // separately. They took no money; they are on the report because the
+      // food was made and somebody has to answer for it.
+      saleCount: row[0] as int,
+      gross: Money(row[1] as int),
+      subtotal: Money(row[2] as int),
+      discounts: Money(row[3] as int),
+      service: Money(row[4] as int),
+      vat: Money(row[5] as int),
+      voids: Money(row[6] as int),
+      voidCount: row[7] as int,
+      refunds: Money(refunds.first[1] as int),
+      refundCount: refunds.first[0] as int,
       tenders: [
         for (final row in tenders)
           ShiftTenderTotal(

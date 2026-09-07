@@ -18,7 +18,35 @@ class Product {
     this.isAvailable = true,
     this.sortOrder = 0,
     this.modifierGroupIds = const [],
+    this.isOpenPrice = false,
   });
+
+  /// A one-off item somebody typed a price for (§17 open item).
+  ///
+  /// It is a `Product` because everything downstream — the merge key, the line
+  /// total, discounts, voids, the receipt — already works in terms of one, and
+  /// giving `TicketLine` a second shape would mean touching all of it to gain
+  /// nothing. What it is *not* is a menu item, which is why [isOpenPrice] is a
+  /// flag rather than a convention about the id: `menu_item_id` must be written
+  /// NULL, and a rule like "negative ids are custom" is one every future reader
+  /// has to be told.
+  ///
+  /// [id] is negative and unique per line so two custom items on one ticket do
+  /// not merge into each other — `TicketLine.keyFor` keys on the product id,
+  /// and two different one-off charges are two different things.
+  factory Product.openPrice({
+    required int id,
+    required String name,
+    required Money price,
+  }) => Product(
+    id: id,
+    // No category: it belongs to no part of the menu, and putting it in one
+    // would make it appear on a grid nobody added it to.
+    categoryId: 0,
+    nameEn: name,
+    price: price,
+    isOpenPrice: true,
+  );
 
   final int id;
   final int categoryId;
@@ -38,6 +66,9 @@ class Product {
   final int sortOrder;
 
   final List<int> modifierGroupIds;
+
+  /// This line has no menu item behind it. See [Product.openPrice].
+  final bool isOpenPrice;
 
   /// What the customer actually pays before modifiers.
   Money get effectivePrice => discountedPrice ?? price;
@@ -79,6 +110,10 @@ class Product {
     isAvailable: isAvailable ?? this.isAvailable,
     sortOrder: sortOrder ?? this.sortOrder,
     modifierGroupIds: modifierGroupIds ?? this.modifierGroupIds,
+    // Carried, never edited: a copy of an open-price line is still not a menu
+    // item, and an edit that quietly made it one would write a `menu_item_id`
+    // pointing at nothing.
+    isOpenPrice: isOpenPrice,
   );
 }
 

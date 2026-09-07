@@ -292,6 +292,25 @@ final refundsForOrderProvider = FutureProvider.family<List<Refund>, int>(
   (ref, orderId) => ref.watch(refundsRepositoryProvider).forOrder(orderId),
 );
 
+/// Whether the branch database is answering.
+///
+/// **The question an offline till actually has.** A terminal in offline mode is
+/// not "offline" — that is its permanent and intended state, and a status pill
+/// announcing it reads as a fault on a machine where nothing is wrong. What can
+/// genuinely go wrong is the branch server: unplugged switch, wrong address,
+/// Postgres not running. That is what stops the till selling, and that is what
+/// the pill shows instead.
+///
+/// Null while the first probe is in flight. `PosDbFailure` when it failed,
+/// naming which of the four things went wrong; the absence of one means healthy.
+final branchDatabaseProvider = FutureProvider<PosDbFailure?>((ref) async {
+  final config = ref.watch(deploymentProvider);
+  // Not configured at all — the setup wizard has not run. `tcp` is the
+  // honest classification: there is nothing to reach.
+  if (PosDatabase.hostFor(config) == null) return PosDbFailure.tcp;
+  return ref.watch(posDatabaseProvider).probe(config);
+});
+
 /// What the restaurant has configured.
 ///
 /// Read once and resolved — restaurant, then branch, then terminal. Everything

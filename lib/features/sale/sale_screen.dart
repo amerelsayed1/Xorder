@@ -20,7 +20,10 @@ import '../shift/presentation/shift_dialogs.dart';
 import 'widgets/cart_panel.dart';
 import 'widgets/discount_sheet.dart';
 import 'widgets/line_void_dialog.dart';
+import '../../domain/models/business_day.dart';
+import '../cash/presentation/cash_dialogs.dart';
 import 'widgets/line_note_dialog.dart';
+import 'widgets/open_item_dialog.dart';
 import 'widgets/price_override_dialog.dart';
 import 'widgets/category_rail.dart';
 import 'widgets/modifier_sheet.dart';
@@ -215,6 +218,56 @@ class _SaleScreenState extends ConsumerState<SaleScreen> {
   /// all is `discount.apply`; how much they may take off without asking is a
   /// limit the engine enforces. Somebody who lacks the capability entirely is
   /// asked once here and then works inside the sheet with no ceiling — because
+  /// Open the drawer with no sale behind it (§23).
+  Future<void> _openDrawer() async {
+    final opened = await DrawerOpenFlow.run(context, ref);
+    if (!opened || !mounted) return;
+    posToast(context, context.strings.drawerOpened);
+  }
+
+  /// Money into or out of the drawer that is not a sale (§22).
+  Future<void> _moveCash(CashMovementKind kind) async {
+    final decision = await requestPermission(
+      context,
+      ref,
+      PosCapability.cashMovement,
+      action: kind == CashMovementKind.payOut
+          ? context.strings.payOutTitle
+          : context.strings.payInTitle,
+      auditAction: kind == CashMovementKind.payOut
+          ? 'cash.paid_out'
+          : 'cash.paid_in',
+      entityType: 'drawer',
+      approveLabel: kind == CashMovementKind.payOut
+          ? context.strings.payOutAction
+          : context.strings.payInAction,
+    );
+    if (!mounted || decision is! Allowed) return;
+
+    final amount = await CashMovementDialog.show(context, kind: kind);
+    if (amount == null || !mounted) return;
+    posToast(context, context.strings.cashRecorded);
+  }
+
+  /// Charge for something that is not on the menu (§17).
+  ///
+  /// No F-key: the map is full, and this is a control on the search row where
+  /// somebody is already looking when the thing they want is not on the grid.
+  Future<void> _addOpenItem() async {
+    final updated = await OpenItemFlow.run(
+      context,
+      ref,
+      ticket: ref.read(ticketProvider),
+    );
+    if (updated == null || !mounted) return;
+
+    ref.read(ticketProvider.notifier).applyEdit(updated);
+    posToast(
+      context,
+      context.strings.openItemAdded(updated.lines.last.product.nameEn),
+    );
+  }
+
   /// Add or change what the kitchen is being told about one line.
   ///
   /// No F-key and no permission gate. A note is an instruction, not a
@@ -461,8 +514,14 @@ class _SaleScreenState extends ConsumerState<SaleScreen> {
           const SingleActivator(LogicalKeyboardKey.delete): () =>
               _removeSelectedLine(ticket),
           const SingleActivator(LogicalKeyboardKey.f9): () => _charge(ticket),
-          const SingleActivator(LogicalKeyboardKey.f10): () =>
-              posToast(context, context.strings.drawerOpenedToast),
+          // F10 used to toast "drawer opened" and open nothing. §23 makes it
+          // a permission, a confirmation and an audit row — an unexplained
+          // drawer opening is the one thing a till can actually notice.
+          const SingleActivator(LogicalKeyboardKey.f10): _openDrawer,
+          const SingleActivator(LogicalKeyboardKey.f11): () =>
+              _moveCash(CashMovementKind.payIn),
+          const SingleActivator(LogicalKeyboardKey.f12): () =>
+              _moveCash(CashMovementKind.payOut),
           const SingleActivator(LogicalKeyboardKey.escape): () {
             if (_searchController.text.isNotEmpty) {
               _searchController.clear();
@@ -490,8 +549,6 @@ class _SaleScreenState extends ConsumerState<SaleScreen> {
             catalog: catalog,
             selectedId: ui.selectedCategoryId,
             onSelect: ref.read(posUiProvider.notifier).selectCategory,
-            onOpenTickets: () =>
-                posToast(context, context.strings.openTicketsNotBuilt),
             onTables: widget.onTables,
             // Hidden rather than disabled when the person may not look. See
             // `CategoryRail.onOrders`.
@@ -622,8 +679,7 @@ class _SaleScreenState extends ConsumerState<SaleScreen> {
           label: context.strings.customAmount,
           height: PosSize.searchRow,
           border: Border.fromBorderSide(BorderSide(color: context.pos.inkWarm)),
-          onPressed: () =>
-              posToast(context, context.strings.customAmountNotBuilt),
+          onPressed: _addOpenItem,
         ),
       ],
     ),

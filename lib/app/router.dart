@@ -88,8 +88,14 @@ final routerProvider = Provider<GoRouter>((ref) {
       // land on the start screen rather than half a dialog.
       GoRoute(
         path: PosRoutes.management,
-        builder: (context, state) =>
-            ManagementScreen(onClose: () => context.go(PosRoutes.start)),
+        builder: (context, state) => ManagementScreen(
+          onClose: () => context.go(PosRoutes.start),
+          // `extra` names which pane the caller meant. Absent means the
+          // default, so "Management" still opens where it always did.
+          initialPane: state.extra is ManagementPane
+              ? state.extra! as ManagementPane
+              : ManagementPane.staff,
+        ),
       ),
       GoRoute(
         path: PosRoutes.licence,

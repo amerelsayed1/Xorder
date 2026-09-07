@@ -146,13 +146,17 @@ class ReceiptPaper extends StatelessWidget {
           if (!data.change.isZero)
             _row(strings.receiptChange, data.change.format(), size: 12),
           _dashed(),
-          Text(
-            data.invoiceNumber == null || data.queued
-                ? strings.receiptQueuedOffline
-                : strings.receiptSynced,
-            textAlign: TextAlign.center,
-            style: PosText.mono(size: 10.5, color: receiptPalette.body),
-          ),
+          // Nothing at all on an offline till. It has no platform to be
+          // synced with, and printing either answer would be a claim about a
+          // relationship that does not exist.
+          if (data.syncNote != ReceiptSyncNote.none)
+            Text(
+              data.syncNote == ReceiptSyncNote.queued
+                  ? strings.receiptQueuedOffline
+                  : strings.receiptSynced,
+              textAlign: TextAlign.center,
+              style: PosText.mono(size: 10.5, color: receiptPalette.body),
+            ),
           Text(
             'xorder.io',
             textAlign: TextAlign.center,

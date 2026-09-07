@@ -17,7 +17,10 @@ import '../support/fakes.dart';
 /// screen that offers an action the data layer would reject, or worse, one that
 /// opens for somebody it should not.
 void main() {
-  Future<ProviderContainer> open(WidgetTester tester) async {
+  Future<ProviderContainer> open(
+    WidgetTester tester, {
+    ManagementPane pane = ManagementPane.staff,
+  }) async {
     tester.view
       ..physicalSize = const Size(1440, 900)
       ..devicePixelRatio = 1.0;
@@ -31,7 +34,7 @@ void main() {
         container: container,
         child: MaterialApp(
           theme: buildPosTheme(),
-          home: ManagementScreen(onClose: () {}),
+          home: ManagementScreen(onClose: () {}, initialPane: pane),
         ),
       ),
     );
@@ -120,6 +123,24 @@ void main() {
     await open(tester);
     await enter(tester, '0000');
     expect(find.text('That PIN cannot open Management.'), findsOneWidget);
+  });
+
+  testWidgets('opens on staff by default, as it always did', (tester) async {
+    await open(tester);
+    await enter(tester, '1234');
+    expect(find.text('Add somebody'), findsOneWidget);
+  });
+
+  testWidgets('can be pointed at another pane', (tester) async {
+    // The mechanism the Settings menu's "Staff & accounts" item uses. Adding a
+    // cashier has always been possible, behind a menu item called "Management"
+    // that does not mention accounts — and a path that exists but cannot be
+    // found is, to the person looking for it, the same as one that does not.
+    await open(tester, pane: ManagementPane.activity);
+    await enter(tester, '1234');
+
+    expect(find.text('Activity'), findsWidgets);
+    expect(find.text('Add somebody'), findsNothing);
   });
 
   testWidgets('the roles pane refuses to make a cashier an administrator',

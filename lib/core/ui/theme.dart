@@ -37,7 +37,20 @@ ThemeData buildPosTheme([PosPalette palette = PosPalette.light]) {
     // A POS is used at speed and often on a touch terminal; ripple animations
     // read as lag rather than feedback.
     highlightColor: Colors.transparent,
-    hoverColor: palette.accentSoft,
+    // **No hover state anywhere.** This is the one lever that turns it off for
+    // every Material control at once — `InkWell`, `ListTile`, `DropdownButton`
+    // and the rest all take their hover tint from here.
+    //
+    // A till is a touch surface first. On a touch screen there is no hover, so
+    // a design that leans on it is a design that is invisible on the machine it
+    // was built for; on the tills that do have a mouse, a tint that follows the
+    // pointer across a dense cart makes rows appear to change as the hand moves
+    // over them. Selection and focus carry the same information without moving
+    // when nothing has been chosen.
+    //
+    // Anything that re-introduces a hover colour locally is overriding this on
+    // purpose and should say why.
+    hoverColor: Colors.transparent,
     extensions: [PosPaletteExtension(palette)],
   );
 

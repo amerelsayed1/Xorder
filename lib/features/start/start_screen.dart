@@ -5,11 +5,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../app/providers.dart';
 import '../../app/labels.dart';
 import '../../core/l10n/app_strings.dart';
+import '../../core/money/money.dart';
 import '../../core/ui/theme.dart';
 import '../../core/ui/tokens.dart';
 import '../../core/ui/widgets/pos_widgets.dart';
 import '../../domain/repositories/repositories.dart';
 import '../licensing/domain/license.dart';
+import '../cash/presentation/day_close_dialog.dart';
 import '../shift/presentation/shift_dialogs.dart';
 
 /// Start screen — terminal identity and opening the shift.
@@ -271,6 +273,19 @@ class _StartScreenState extends ConsumerState<StartScreen> {
                 fontWeight: FontWeight.w600,
                 onPressed: widget.onManage,
               ),
+              // Ending the night. Here rather than on the sale screen because
+              // it is the last thing anybody does, and because a trading day
+              // is a property of the branch rather than of the till somebody
+              // happens to be standing at. Only shown while one is open.
+              if (ref.watch(businessDayProvider).valueOrNull != null)
+                PosButton(
+                  label: context.strings.dayCloseTitle,
+                  height: PosSize.minTouchTarget,
+                  foreground: context.pos.shellMuted,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  onPressed: _closeDay,
+                ),
               PosButton(
                 label: context.strings.resetTerminal,
                 height: PosSize.minTouchTarget,
@@ -283,6 +298,17 @@ class _StartScreenState extends ConsumerState<StartScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  Future<void> _closeDay() async {
+    final closed = await DayCloseDialog.show(context);
+    if (closed == null || !mounted) return;
+    posToast(
+      context,
+      context.strings.dayClosed(
+        (closed.gross ?? Money.zero).format(withCurrency: true),
+      ),
     );
   }
 

@@ -365,6 +365,44 @@ void main() {
           '${offenders.join('\n')}',
     );
   });
+  test('nothing tints a control on hover', () {
+    // A till is a touch surface first. On a touch screen there is no hover, so
+    // a design that leans on it is invisible on the machine it was built for;
+    // on the tills that do have a mouse, a tint following the pointer across a
+    // dense cart makes rows appear to change as the hand moves over them.
+    //
+    // `buildPosTheme` sets `hoverColor: Colors.transparent`, which turns it off
+    // for every Material control at once. This is the guard against a screen
+    // quietly turning it back on for itself.
+    final offenders = <String>[];
+
+    for (final file in _widgetLayerFiles()) {
+      // The theme IS the setting.
+      if (file.path.endsWith('core/ui/theme.dart')) continue;
+
+      final lines = file.readAsLinesSync();
+      for (var i = 0; i < lines.length; i++) {
+        final line = lines[i];
+        final trimmed = line.trimLeft();
+        if (trimmed.startsWith('//')) continue;
+        if (!trimmed.startsWith('hoverColor:')) continue;
+
+        // Restating the global is allowed — it is a belt-and-braces on the
+        // densest lists, and it cannot reintroduce anything.
+        if (trimmed.contains('Colors.transparent')) continue;
+
+        offenders.add('${file.path}:${i + 1}  $trimmed');
+      }
+    }
+
+    expect(
+      offenders,
+      isEmpty,
+      reason:
+          'Hover is off product-wide. A control that wants a state on pointer '
+          'entry wants selection or focus instead:\n${offenders.join("\n")}',
+    );
+  });
 }
 
 /// `Colors.white` and friends are not caught here — a literal `Color(0x…)` is

@@ -31,18 +31,31 @@ import '../../../core/security/pin_hash.dart';
 /// the person who signs in here could hand the machine to somebody else, and
 /// the repositories are what make that not matter.
 class ManagementScreen extends ConsumerStatefulWidget {
-  const ManagementScreen({required this.onClose, super.key});
+  const ManagementScreen({
+    required this.onClose,
+    this.initialPane = ManagementPane.staff,
+    super.key,
+  });
 
   final VoidCallback onClose;
+
+  /// Which pane to land on.
+  ///
+  /// Exists so a menu item can say what it opens. "Management" is a place;
+  /// "Staff & accounts" is an answer to the question somebody actually has, and
+  /// they should not have to learn that accounts live behind the first word to
+  /// find them.
+  final ManagementPane initialPane;
 
   @override
   ConsumerState<ManagementScreen> createState() => _ManagementScreenState();
 }
 
-enum _Pane { staff, menu, floor, money, roles, activity }
+/// The panes, public so a caller can name the one it means.
+enum ManagementPane { staff, menu, floor, money, roles, activity }
 
 class _ManagementScreenState extends ConsumerState<ManagementScreen> {
-  _Pane _pane = _Pane.staff;
+  late ManagementPane _pane = widget.initialPane;
 
   @override
   Widget build(BuildContext context) {
@@ -78,10 +91,10 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
     // invitation to lose work.
     // The three panes that exist only where this terminal authors its own
     // world. Named once, so adding a fourth cannot forget the gate.
-    const authoring = {_Pane.menu, _Pane.floor, _Pane.money};
+    const authoring = {ManagementPane.menu, ManagementPane.floor, ManagementPane.money};
 
     final panes = [
-      for (final pane in _Pane.values)
+      for (final pane in ManagementPane.values)
         // Both authoring panes exist only where this terminal is the author.
         if (!authoring.contains(pane) ||
             ref.watch(catalogAdminRepositoryProvider) != null)
@@ -105,12 +118,12 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
                   ),
                   Expanded(
                     child: switch (_pane) {
-                      _Pane.staff => ManagementStaffPane(admin: admin),
-                      _Pane.menu => ManagementMenuPane(admin: admin),
-                      _Pane.floor => ManagementFloorPane(admin: admin),
-                      _Pane.money => ManagementMoneyPane(admin: admin),
-                      _Pane.roles => ManagementRolesPane(admin: admin),
-                      _Pane.activity => const ManagementActivityPane(),
+                      ManagementPane.staff => ManagementStaffPane(admin: admin),
+                      ManagementPane.menu => ManagementMenuPane(admin: admin),
+                      ManagementPane.floor => ManagementFloorPane(admin: admin),
+                      ManagementPane.money => ManagementMoneyPane(admin: admin),
+                      ManagementPane.roles => ManagementRolesPane(admin: admin),
+                      ManagementPane.activity => const ManagementActivityPane(),
                     },
                   ),
                 ],
@@ -168,23 +181,23 @@ class _Rail extends StatelessWidget {
     required this.onPick,
   });
 
-  final _Pane current;
+  final ManagementPane current;
 
-  /// Which panes this terminal actually has. Not `_Pane.values`: the Menu pane
+  /// Which panes this terminal actually has. Not `ManagementPane.values`: the Menu pane
   /// is offline-only.
-  final List<_Pane> panes;
-  final ValueChanged<_Pane> onPick;
+  final List<ManagementPane> panes;
+  final ValueChanged<ManagementPane> onPick;
 
   /// A function of the language rather than a const map: the rail is the one
   /// place in Management that names every pane, so it is the one place a pane
   /// added without an Arabic label has to fail to compile.
-  static (String, String) _label(AppStrings s, _Pane pane) => switch (pane) {
-    _Pane.staff => (s.paneStaff, s.paneStaffBlurb),
-    _Pane.menu => (s.paneMenu, s.paneMenuBlurb),
-    _Pane.floor => (s.floorPlan, s.floorPlanHint),
-    _Pane.money => (s.moneyRules, s.moneyRulesHint),
-    _Pane.roles => (s.paneRoles, s.paneRolesBlurb),
-    _Pane.activity => (s.paneActivity, s.paneActivityBlurb),
+  static (String, String) _label(AppStrings s, ManagementPane pane) => switch (pane) {
+    ManagementPane.staff => (s.paneStaff, s.paneStaffBlurb),
+    ManagementPane.menu => (s.paneMenu, s.paneMenuBlurb),
+    ManagementPane.floor => (s.floorPlan, s.floorPlanHint),
+    ManagementPane.money => (s.moneyRules, s.moneyRulesHint),
+    ManagementPane.roles => (s.paneRoles, s.paneRolesBlurb),
+    ManagementPane.activity => (s.paneActivity, s.paneActivityBlurb),
   };
 
   @override

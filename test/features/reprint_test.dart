@@ -315,6 +315,52 @@ void main() {
       expect(data.total.currency, 'EGP');
     });
 
+    test('an offline sale says nothing about sync', () {
+      // It used to print SYNCED TO XORDER, because `queued` is false on a till
+      // that queues nothing — so the one deployment that has never contacted a
+      // platform was the one claiming it had. On a document a customer keeps.
+      final offline = ReceiptData.fromTicket(
+        Ticket(id: 'txn', orderType: OrderType.takeaway),
+        invoiceNumber: 'INV-1',
+        cloudBacked: false,
+      );
+      expect(offline.syncNote, ReceiptSyncNote.none);
+    });
+
+    test('a cloud sale that landed says so', () {
+      final synced = ReceiptData.fromTicket(
+        Ticket(id: 'txn', orderType: OrderType.takeaway),
+        invoiceNumber: 'INV-1',
+        queued: false,
+        cloudBacked: true,
+      );
+      expect(synced.syncNote, ReceiptSyncNote.synced);
+    });
+
+    test('a cloud sale still owed to the platform says that instead', () {
+      final queued = ReceiptData.fromTicket(
+        Ticket(id: 'txn', orderType: OrderType.takeaway),
+        invoiceNumber: 'INV-1',
+        queued: true,
+        cloudBacked: true,
+      );
+      expect(queued.syncNote, ReceiptSyncNote.queued);
+
+      // And a sale with no invoice number yet is owed whatever `queued` says:
+      // the platform assigns the number, so its absence means it has not been.
+      final unnumbered = ReceiptData.fromTicket(
+        Ticket(id: 'txn', orderType: OrderType.takeaway),
+        cloudBacked: true,
+      );
+      expect(unnumbered.syncNote, ReceiptSyncNote.queued);
+    });
+
+    test('a reprint from the ledger claims nothing either way', () {
+      // The order is in the branch database in front of us. Whether the
+      // platform has it is not a question this slip answers.
+      expect(ReceiptData.fromOrder(detail()).syncNote, ReceiptSyncNote.none);
+    });
+
     test('is a reprint by default, and a ticket receipt is not', () {
       expect(ReceiptData.fromOrder(detail()).isReprint, isTrue);
 

@@ -439,7 +439,10 @@ class PostgresOrdersRepository implements OrdersRepository {
         parameters: {
           'order': orderId,
           'key': line.key,
-          'itemId': line.product.id,
+          // NULL for a one-off charge somebody typed a price for: it names no
+          // menu item, and the synthetic id that keeps two custom lines apart
+          // on the ticket must not reach the database as though it were one.
+          'itemId': line.product.isOpenPrice ? null : line.product.id,
           // Snapshotted because an item renamed or deleted tomorrow must not
           // rewrite a receipt printed today.
           'name': line.product.nameEn,

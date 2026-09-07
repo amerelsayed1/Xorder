@@ -1,4 +1,5 @@
 import '../../core/money/money.dart';
+import 'business_day.dart';
 import 'tender_method.dart';
 import 'permissions.dart';
 
@@ -119,14 +120,72 @@ class ShiftSummary {
     required this.saleCount,
     required this.gross,
     required this.tenders,
+    this.subtotal = Money.zero,
+    this.discounts = Money.zero,
+    this.service = Money.zero,
+    this.vat = Money.zero,
+    this.refunds = Money.zero,
+    this.voids = Money.zero,
+    this.voidCount = 0,
+    this.refundCount = 0,
+    this.movements,
   });
 
   final PosShift shift;
   final int saleCount;
 
-  /// Everything charged, however it was paid.
+  /// Everything charged, however it was paid — the sum of the totals on every
+  /// settled order.
   final Money gross;
   final List<ShiftTenderTotal> tenders;
+
+  // ── §27's required totals ─────────────────────────────────────────────────
+
+  /// Food and drink at menu prices, before anything was taken off.
+  final Money subtotal;
+
+  /// What was given away — line and order discounts together.
+  final Money discounts;
+
+  final Money service;
+  final Money vat;
+
+  /// Money handed back during this shift.
+  ///
+  /// **Not netted off [gross].** A shift that sold 1,000 and refunded 200 did
+  /// both things, and a report showing only 800 hides the 200 — which is the
+  /// number a manager is actually looking for. [net] is where they meet.
+  final Money refunds;
+
+  /// What was thrown away after the kitchen had made it.
+  ///
+  /// Never in [gross]: a voided order took no money. It is here because it is
+  /// the cost of the evening even though it is not a sale.
+  final Money voids;
+
+  final int voidCount;
+  final int refundCount;
+
+  /// Money into and out of the drawer that was not a sale. Null until it has
+  /// been read — a summary built without it is not wrong, it is incomplete,
+  /// and the cash-up screen is the thing that needs it.
+  final CashMovementTotals? movements;
+
+  /// What the restaurant kept: everything charged, less everything given back.
+  Money get net => gross - refunds;
+
+  /// Tax and service together — the part of [gross] that was never the
+  /// restaurant's to keep.
+  Money get taxAndService => vat + service;
+
+  Money get cashIn => movements?.paidIn ?? Money.zero;
+  Money get cashOut => movements?.paidOut ?? Money.zero;
+  int get drawerOpens => movements?.drawerOpens ?? 0;
+
+  /// Everything that was not cash. The Z report's "card and other" line.
+  Money get nonCashTaken => tenders
+      .where((t) => !t.countsAsCash)
+      .fold(Money.zero, (sum, t) => sum + t.amount);
 
   /// Cash tenders only. Card and wallet do not end up in the drawer, so
   /// counting them against it would manufacture a variance every single shift.
@@ -139,9 +198,20 @@ class ShiftSummary {
       .where((t) => t.countsAsCash)
       .fold(Money.zero, (sum, t) => sum + t.amount);
 
-  /// What the drawer should hold: what was in it at the start, plus the cash
-  /// taken since.
-  Money get expectedCash => shift.openingFloat + cashTaken;
+  /// What the drawer should hold.
+  ///
+  /// The float it started with, plus the cash taken, plus what was paid in,
+  /// less what was paid out. A cash-up that ignored the pay-outs would report
+  /// a shortage every time somebody paid a supplier out of the till — which is
+  /// the whole reason §22 records them.
+  ///
+  /// Refunds do not appear here as a term of their own: a cash refund is a
+  /// tender going the other way and Wave B does not yet write one into
+  /// `pos_order_payments`. When it does, it belongs in [cashTaken], not here,
+  /// so that the drawer's arithmetic stays "float plus what came in, less what
+  /// went out".
+  Money get expectedCash =>
+      shift.openingFloat + cashTaken + cashIn - cashOut;
 
   /// Positive means more cash in the drawer than the sales explain.
   Money varianceAgainst(Money counted) => counted - expectedCash;

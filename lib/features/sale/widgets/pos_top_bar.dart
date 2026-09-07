@@ -7,6 +7,7 @@ import '../../../core/l10n/app_strings.dart';
 import '../../../core/ui/theme.dart';
 import '../../../core/ui/tokens.dart';
 import '../../../core/ui/widgets/pos_widgets.dart';
+import '../../cash/presentation/cash_dialogs.dart';
 import '../../../domain/models/ticket.dart';
 import '../../../domain/repositories/repositories.dart';
 
@@ -54,32 +55,56 @@ class PosTopBar extends ConsumerWidget {
             const SizedBox(width: PosSpace.s24),
             _modeSwitch(ref, ticket.orderType, strings, pos: context.pos),
             const SizedBox(width: PosSpace.s24),
-            SyncPill(
-              online: ui.online,
-              queued: sync.valueOrNull,
-              hasError: sync.hasError,
-              // On a cloud terminal the pill *is* the manual sync control —
-              // one tap runs a real pass (heartbeat, config check, drain).
-              // That is what makes SyncPolicy.manual honest: the operator
-              // chooses when money moves, from the thing that shows what is
-              // owed. Elsewhere it keeps the prototype online toggle.
-              onTap: () {
-                final cloud = ref.read(cloudSyncProvider);
-                if (cloud == null) {
-                  ref.read(posUiProvider.notifier).toggleOnline();
-                  return;
-                }
-                cloud.kick();
-                posToast(context, strings.syncingWithPlatform);
-              },
-            ),
+            // Which pill depends on which question this terminal has.
+            //
+            // A cloud till owes its sales to the platform, so it shows what is
+            // owed and the pill *is* the manual sync control — one tap runs a
+            // real pass. An offline till owes them to nobody: it showed
+            // "offline · 0 queued" permanently, which announces a correct and
+            // intended state as though it were a fault, beside a counter that
+            // can only ever read zero. What it shows instead is the branch
+            // server, because that is the thing that can actually stop it
+            // selling.
+            if (ref.watch(cloudSyncProvider) case final cloud?)
+              SyncPill(
+                online: ui.online,
+                queued: sync.valueOrNull,
+                hasError: sync.hasError,
+                onTap: () {
+                  cloud.kick();
+                  posToast(context, strings.syncingWithPlatform);
+                },
+              )
+            else
+              Builder(
+                builder: (context) {
+                  final branch = ref.watch(branchDatabaseProvider);
+                  return BranchServerPill(
+                    checking: branch.isLoading,
+                    // A failure to *probe* is itself unreachable — the probe
+                    // returning a failure and the probe throwing mean the same
+                    // thing to a cashier.
+                    reachable: branch.hasValue && branch.value == null,
+                    onTap: () => ref.invalidate(branchDatabaseProvider),
+                  );
+                },
+              ),
             const SizedBox(width: PosSpace.s14),
             PosButton(
               label: strings.openDrawer,
               height: 38,
               foreground: context.pos.shellText,
               border: Border.fromBorderSide(context.pos.shellBorder),
-              onPressed: () => posToast(context, strings.drawerOpenedToast),
+              // The real §23 act: permission, confirmation, audit row. This
+              // button toasted "drawer opened" and opened nothing — the F10
+              // binding was wired to the flow and this was left behind, which
+              // is the more visible of the two.
+              onPressed: () async {
+                final opened = await DrawerOpenFlow.run(context, ref);
+                if (opened && context.mounted) {
+                  posToast(context, context.strings.drawerOpened);
+                }
+              },
             ),
             const SizedBox(width: PosSpace.s14),
             Text(

@@ -9,6 +9,7 @@ import '../core/ui/theme.dart';
 import '../core/ui/tokens.dart';
 import '../features/setup/presentation/force_reset_dialog.dart';
 import 'providers.dart';
+import '../features/admin/presentation/management_screen.dart';
 import 'router.dart';
 
 class XorderPosApp extends ConsumerWidget {
@@ -181,10 +182,27 @@ class XorderPosApp extends ConsumerWidget {
                 text: Text(strings.settings),
                 submenu: SubMenu(
                   menuItems: [
+                    // Only where there is a platform to sync with. On an
+                    // offline terminal `cloudSyncProvider` is null and this
+                    // item did nothing at all when tapped — an entry that
+                    // silently no-ops teaches an operator that the menu is
+                    // unreliable, which is worse than not offering it.
+                    if (ref.watch(cloudSyncProvider) case final cloud?)
+                      MenuButton(
+                        text: Text(strings.syncNow),
+                        icon: const Icon(Icons.sync, size: 16),
+                        onTap: cloud.kick,
+                      ),
+                    // Named for the thing somebody is looking for. Adding a
+                    // cashier has always been possible; it was behind a word
+                    // that does not mention accounts, which is the same as not
+                    // being there.
                     MenuButton(
-                      text: Text(strings.syncNow),
-                      icon: const Icon(Icons.sync, size: 16),
-                      onTap: () => ref.read(cloudSyncProvider)?.kick(),
+                      text: Text(strings.staffAndAccounts),
+                      icon: const Icon(Icons.person_add_alt, size: 16),
+                      onTap: () => ref
+                          .read(routerProvider)
+                          .go(PosRoutes.management, extra: ManagementPane.staff),
                     ),
                     MenuButton(
                       text: Text(strings.management),

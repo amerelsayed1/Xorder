@@ -143,12 +143,6 @@ class PosButton extends StatelessWidget {
         child: InkWell(
           onTap: onPressed,
           autofocus: autofocus,
-          // The theme's global hover tint (accentSoft) is right on a light
-          // ground and wrong on a filled button — it washes an accent or green
-          // CTA out to cream. A filled button darkens instead.
-          hoverColor: background == Colors.transparent
-              ? context.pos.accentSoft
-              : Colors.black.withValues(alpha: 0.10),
           child: Container(
             height: height,
             padding: padding,
@@ -194,6 +188,12 @@ class PosButton extends StatelessWidget {
 }
 
 /// Status pill for the sync state in the top bar.
+///
+/// **Only a cloud terminal has a sync state.** An offline till owes its sales
+/// to nobody, so a pill telling its operator they are "offline · 0 queued"
+/// announces a permanent, intended condition as though it were a fault — and
+/// the counter beside it can only ever read zero. [BranchServerPill] is what an
+/// offline terminal shows instead.
 class SyncPill extends StatelessWidget {
   const SyncPill({
     super.key,
@@ -218,32 +218,87 @@ class SyncPill extends StatelessWidget {
       (true, final int count, false) => strings.syncSyncedQueued(count),
     };
 
-    return InkWell(
+    return _StatusPill(
+      label: label,
+      healthy: online && !hasError,
       onTap: onTap,
-      child: Container(
-        height: 38,
-        padding: const EdgeInsets.symmetric(horizontal: PosSpace.md),
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: online && !hasError
-              ? context.pos.onlinePillBg
-              : context.pos.offlinePillBg,
-          border: Border.all(
-            color: online ? context.pos.onlinePillBorder : context.pos.warn,
-          ),
-        ),
-        child: Text(
-          label,
-          style: PosText.mono(
-            size: 11.5,
-            color: online
-                ? context.pos.onlinePillText
-                : context.pos.offlinePillText,
-          ),
-        ),
-      ),
     );
   }
+}
+
+/// Status pill for an **offline** terminal.
+///
+/// It reports the one thing that can actually stop this till selling: whether
+/// the branch server is answering. Quiet when it is — a healthy till should not
+/// be wearing a status light — and a warning when it is not.
+class BranchServerPill extends StatelessWidget {
+  const BranchServerPill({
+    super.key,
+    required this.checking,
+    required this.reachable,
+    this.onTap,
+  });
+
+  /// The first probe has not come back yet.
+  final bool checking;
+
+  final bool reachable;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = context.strings;
+    return _StatusPill(
+      label: checking
+          ? strings.branchDatabaseChecking
+          : reachable
+          ? strings.branchDatabaseReady
+          : strings.branchDatabaseUnreachable,
+      healthy: checking || reachable,
+      onTap: onTap,
+    );
+  }
+}
+
+/// The chrome both pills share, so a status never changes shape by which
+/// deployment mode drew it.
+class _StatusPill extends StatelessWidget {
+  const _StatusPill({
+    required this.label,
+    required this.healthy,
+    this.onTap,
+  });
+
+  final String label;
+  final bool healthy;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) => InkWell(
+    onTap: onTap,
+    child: Container(
+      height: 38,
+      padding: const EdgeInsets.symmetric(horizontal: PosSpace.md),
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: healthy
+            ? context.pos.onlinePillBg
+            : context.pos.offlinePillBg,
+        border: Border.all(
+          color: healthy ? context.pos.onlinePillBorder : context.pos.warn,
+        ),
+      ),
+      child: Text(
+        label,
+        style: PosText.mono(
+          size: 11.5,
+          color: healthy
+              ? context.pos.onlinePillText
+              : context.pos.offlinePillText,
+        ),
+      ),
+    ),
+  );
 }
 
 /// Shows a toast in the design's language — flat, dark, no radius.

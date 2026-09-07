@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/providers.dart';
+import '../../core/config/deployment.dart';
 import '../../core/l10n/app_strings.dart';
 import '../../core/ui/tokens.dart';
 import '../../core/ui/widgets/pos_widgets.dart';
@@ -66,6 +67,12 @@ class ReceiptDialog extends ConsumerWidget {
                       ticket,
                       invoiceNumber: result.invoiceNumber,
                       queued: result.queued,
+                      // Whether there is a platform at all. An offline till
+                      // prints nothing about sync rather than claiming to have
+                      // reached something it has never contacted.
+                      cloudBacked:
+                          ref.watch(deploymentProvider).mode ==
+                          DeploymentMode.cloud,
                     ),
                     tenantName: session?.tenantName ?? '',
                     terminalCode: session?.terminalCode ?? '',
