@@ -64,28 +64,30 @@ void main() {
   });
 
   group('host resolution', () {
-    test('only a branch server has a database on the LAN', () {
-      const branch = DeploymentConfig(
-        mode: DeploymentMode.branchServer,
-        baseUrl: 'https://192.168.1.20:8100',
-        upstreamUrl: 'https://xorder.io',
+    test('every mode has a database, and the mode does not decide where', () {
+      // The shared-database shape: PostgreSQL on a box on the LAN.
+      const shared = DeploymentConfig(
+        mode: DeploymentMode.offline,
+        databaseHost: '192.168.1.20',
       );
-      expect(PosDatabase.hostFor(branch), '192.168.1.20');
+      expect(PosDatabase.hostFor(shared), '192.168.1.20');
 
-      // Cloud and islanded terminals reach their data another way; handing them
-      // a Postgres repository would point them at nothing.
+      // A cloud terminal keeps its own local PostgreSQL and syncs it upward, so
+      // it resolves to a host too — binding it to the unconfigured repositories
+      // would have left it with no data path at all.
       const cloud = DeploymentConfig(mode: DeploymentMode.cloud, baseUrl: 'https://xorder.io');
-      expect(PosDatabase.hostFor(cloud), isNull);
-      expect(PosDatabase.hostFor(const DeploymentConfig(mode: DeploymentMode.standalone)), isNull);
+      expect(PosDatabase.hostFor(cloud), 'localhost');
+
+      // Single-terminal offline: same mode as the shared shape, different host.
+      expect(
+        PosDatabase.hostFor(const DeploymentConfig(mode: DeploymentMode.offline)),
+        'localhost',
+      );
     });
 
-    test('an unparseable address resolves to nothing rather than throwing', () {
-      const nonsense = DeploymentConfig(
-        mode: DeploymentMode.branchServer,
-        baseUrl: 'not a url',
-        upstreamUrl: 'https://xorder.io',
-      );
-      expect(PosDatabase.hostFor(nonsense), isNull);
+    test('a terminal that has not been set up resolves to nothing', () {
+      const blank = DeploymentConfig(mode: DeploymentMode.offline, databaseHost: '   ');
+      expect(PosDatabase.hostFor(blank), isNull);
     });
   });
 
@@ -93,9 +95,8 @@ void main() {
     test('a missing credential is an auth failure, not a crash', () async {
       final db = PosDatabase(credentials: InMemoryPosDbCredentials(null));
       const config = DeploymentConfig(
-        mode: DeploymentMode.branchServer,
-        baseUrl: 'https://192.168.1.20:8100',
-        upstreamUrl: 'https://xorder.io',
+        mode: DeploymentMode.offline,
+        databaseHost: '192.168.1.20',
       );
 
       await expectLater(
@@ -109,7 +110,11 @@ void main() {
     test('no configured host reports dns rather than opening a pool', () async {
       final db = PosDatabase(credentials: InMemoryPosDbCredentials('secret'));
       await expectLater(
-        db.pool(const DeploymentConfig(mode: DeploymentMode.cloud, baseUrl: 'https://xorder.io')),
+        db.pool(const DeploymentConfig(
+          mode: DeploymentMode.cloud,
+          baseUrl: 'https://xorder.io',
+          databaseHost: '',
+        )),
         throwsA(
           isA<PosDbException>().having((e) => e.failure, 'failure', PosDbFailure.dns),
         ),

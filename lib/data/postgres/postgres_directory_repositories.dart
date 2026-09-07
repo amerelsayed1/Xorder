@@ -2,8 +2,10 @@ import 'package:uuid/uuid.dart';
 
 import '../../core/config/deployment.dart';
 import '../../core/security/pin_hash.dart';
+import '../../domain/models/permissions.dart';
 import '../../domain/repositories/repositories.dart';
 import 'pos_database.dart';
+import 'postgres_admin_repositories.dart';
 import 'postgres_tenant.dart';
 
 const _uuid = Uuid();
@@ -58,7 +60,10 @@ class PostgresProvisioningRepository implements ProvisioningRepository {
   final DeploymentConfig _config;
 
   @override
-  Future<ClaimResult> claimByCode({required String tenantSlug, required String code}) async {
+  Future<ClaimResult> claimByCode({
+    required String tenantSlug,
+    required String code,
+  }) async {
     final tenant = await _tenantFor(tenantSlug);
     if (tenant == null) return _unknownTenant(tenantSlug);
 
@@ -78,7 +83,8 @@ class PostgresProvisioningRepository implements ProvisioningRepository {
     if (rows.isEmpty) {
       return const ClaimResult(
         code: 'PAIRING_CODE_INVALID',
-        message: 'That setup code was not recognised. Check it with whoever '
+        message:
+            'That setup code was not recognised. Check it with whoever '
             'added this till in the dashboard.',
       );
     }
@@ -87,7 +93,8 @@ class PostgresProvisioningRepository implements ProvisioningRepository {
     if (row[3] != null) {
       return const ClaimResult(
         code: 'PAIRING_CODE_SPENT',
-        message: 'That setup code has already been used. Issue a new one from '
+        message:
+            'That setup code has already been used. Issue a new one from '
             'the dashboard.',
       );
     }
@@ -103,7 +110,8 @@ class PostgresProvisioningRepository implements ProvisioningRepository {
     if (claimed.isEmpty) {
       return const ClaimResult(
         code: 'PAIRING_CODE_SPENT',
-        message: 'That setup code was claimed by another terminal a moment ago. '
+        message:
+            'That setup code was claimed by another terminal a moment ago. '
             'Issue a new one from the dashboard.',
       );
     }
@@ -112,12 +120,77 @@ class PostgresProvisioningRepository implements ProvisioningRepository {
       claim: TerminalClaim(
         terminalId: row[0].toString(),
         terminalName: row[1] as String,
-        syncPolicy: SyncPolicy.fromWire(row[2] as String?) ?? SyncPolicy.automatic,
+        syncPolicy:
+            SyncPolicy.fromWire(row[2] as String?) ?? SyncPolicy.automatic,
         branchId: row[4] as int,
         branchName: row[5] as String,
         branchCode: row[6] as String?,
         restaurantId: tenant.id,
       ),
+    );
+  }
+
+  /// Verify credentials and pull the tenant's branches from the branch
+  /// database — the offline counterpart of the cloud pull, kept equivalent so
+  /// the wizard's account step behaves the same on both paths.
+  ///
+  /// `password` is the member of staff's **PIN**, for the same reason as
+  /// [registerManually] below.
+  @override
+  Future<TenantConnection> connect({
+    required String tenantSlug,
+    required String username,
+    required String password,
+  }) async {
+    final tenant = await _tenantFor(tenantSlug);
+    if (tenant == null) {
+      return TenantConnection(
+        code: 'TENANT_UNKNOWN',
+        message:
+            'No restaurant named "${tenantSlug.trim()}" exists on this '
+            'server. Check the short name on the previous step.',
+      );
+    }
+
+    final staff = await _db.query(
+      _config,
+      'SELECT pin_salt, pin_hash FROM pos_staff '
+      'WHERE restaurant_id = @restaurant AND username = @username AND is_active',
+      parameters: {'restaurant': tenant.id, 'username': username.trim()},
+    );
+    final authorised =
+        staff.isNotEmpty &&
+        await PinHash.verify(
+          password,
+          salt: staff.first[0] as String,
+          expected: staff.first[1] as String,
+        );
+    if (!authorised) {
+      return const TenantConnection(
+        code: 'CREDENTIALS_REJECTED',
+        message:
+            'That username and PIN were not accepted. Check them with a '
+            'manager, or use a setup code instead.',
+      );
+    }
+
+    final branches = await _db.query(
+      _config,
+      'SELECT id, name, code, supported_order_types FROM pos_branches '
+      'WHERE restaurant_id = @restaurant AND is_active ORDER BY name',
+      parameters: {'restaurant': tenant.id},
+    );
+    return TenantConnection(
+      tenantName: tenant.name,
+      branches: [
+        for (final row in branches)
+          PosBranch(
+            id: row[0] as int,
+            name: row[1] as String,
+            code: row[2] as String?,
+            supportedOrderTypes: _textArray(row[3]),
+          ),
+      ],
     );
   }
 
@@ -127,6 +200,26 @@ class PostgresProvisioningRepository implements ProvisioningRepository {
   /// column to check against and inventing one would be a second credential to
   /// keep in step with the first; the PIN is what this database actually knows
   /// about a person, so it is what this verifies.
+  @override
+  /// Not available on the LAN path, and saying so beats pretending.
+  ///
+  /// Adopting works by minting a pairing code and redeeming it, and both of
+  /// those are platform operations — there is no dashboard here to have
+  /// created the terminal in the first place. A till pointed at a branch
+  /// server registers itself; that is the whole shape of this deployment.
+  @override
+  Future<ClaimResult> adoptTerminal({
+    required String tenantSlug,
+    required String username,
+    required String password,
+    required int terminalId,
+  }) async => const ClaimResult(
+    code: 'ADOPT_UNSUPPORTED',
+    message:
+        'This server has no dashboard to have created a terminal in '
+        'advance. Name this till and register it instead.',
+  );
+
   @override
   Future<ClaimResult> registerManually({
     required String tenantSlug,
@@ -145,7 +238,8 @@ class PostgresProvisioningRepository implements ProvisioningRepository {
       parameters: {'restaurant': tenant.id, 'username': username.trim()},
     );
 
-    final authorised = staff.isNotEmpty &&
+    final authorised =
+        staff.isNotEmpty &&
         await PinHash.verify(
           password,
           salt: staff.first[0] as String,
@@ -157,7 +251,8 @@ class PostgresProvisioningRepository implements ProvisioningRepository {
     if (!authorised) {
       return const ClaimResult(
         code: 'CREDENTIALS_REJECTED',
-        message: 'That username and PIN were not accepted. Check them with a '
+        message:
+            'That username and PIN were not accepted. Check them with a '
             'manager, or use a setup code instead.',
       );
     }
@@ -213,10 +308,11 @@ class PostgresProvisioningRepository implements ProvisioningRepository {
   }
 
   ClaimResult _unknownTenant(String slug) => ClaimResult(
-        code: 'TENANT_UNKNOWN',
-        message: 'No restaurant named "${slug.trim()}" exists on this server. '
-            'Check the short name on the previous step.',
-      );
+    code: 'TENANT_UNKNOWN',
+    message:
+        'No restaurant named "${slug.trim()}" exists on this server. '
+        'Check the short name on the previous step.',
+  );
 }
 
 /// Who is working this till, read from the branch server.
@@ -252,10 +348,15 @@ class PostgresSessionRepository implements SessionRepository {
       // PostgreSQL will not compare uuid to text without being told to.
       'JOIN pos_terminals t ON t.id::text = @terminal '
       'LEFT JOIN LATERAL ('
-      '  SELECT name, capabilities FROM pos_staff '
-      '  WHERE restaurant_id = r.id AND is_active '
-      '    AND (branch_id IS NULL OR branch_id = @branch) '
-      '  ORDER BY id LIMIT 1'
+      // The role's capabilities unioned with the direct grants, which is what
+      // `PosStaff.effectiveCapabilities` means — computed here because the top
+      // bar reads a `PosSession`, which carries a flat set rather than a role.
+      "  SELECT st.name, st.capabilities || coalesce(ro.capabilities, '{}'::text[]) "
+      '    AS capabilities '
+      '  FROM pos_staff st LEFT JOIN pos_roles ro ON ro.id = st.role_id '
+      '  WHERE st.restaurant_id = r.id AND st.is_active '
+      '    AND (st.branch_id IS NULL OR st.branch_id = @branch) '
+      '  ORDER BY st.id LIMIT 1'
       ') s ON true '
       'WHERE r.id = @restaurant',
       parameters: {
@@ -280,7 +381,7 @@ class PostgresSessionRepository implements SessionRepository {
       // No staff row yet is a setup problem, not a crash: the till still shows
       // its identity and the operator can see what is missing.
       userName: (row[3] as String?) ?? 'No staff configured',
-      capabilities: _textArray(row[4]).toSet(),
+      capabilities: PosCapability.canonicalAll(_textArray(row[4])),
       // Shifts are not recorded yet (POS-BE-009). An invented reference on a
       // report would be worse than an empty one.
       shiftReference: '',
@@ -306,12 +407,17 @@ class PostgresSessionRepository implements SessionRepository {
   Future<PosStaff?> signIn(String pin) async {
     if (pin.trim().isEmpty) return null;
 
+    // The role comes back with the person. Signing in is the moment the till
+    // learns what this cashier may do, and a second round trip to find out
+    // would be one the lock screen has to make with a queue at the counter.
     final rows = await _db.query(
       _config,
-      'SELECT id, name, capabilities, pin_salt, pin_hash FROM pos_staff '
-      'WHERE restaurant_id = @restaurant AND is_active '
-      '  AND (branch_id IS NULL OR branch_id = @branch) '
-      'ORDER BY id',
+      'SELECT s.id, s.name, s.username, s.capabilities, s.is_active, $joinedRoleColumns, '
+      '       s.pin_salt, s.pin_hash '
+      'FROM pos_staff s LEFT JOIN pos_roles r ON r.id = s.role_id '
+      'WHERE s.restaurant_id = @restaurant AND s.is_active '
+      '  AND (s.branch_id IS NULL OR s.branch_id = @branch) '
+      'ORDER BY s.id',
       parameters: {'restaurant': _restaurantId, 'branch': _branchId},
     );
 
@@ -319,14 +425,17 @@ class PostgresSessionRepository implements SessionRepository {
     for (final row in rows) {
       final ok = await PinHash.verify(
         pin,
-        salt: row[3] as String,
-        expected: row[4] as String,
+        salt: row[11] as String,
+        expected: row[12] as String,
       );
       if (ok && matched == null) {
         matched = PosStaff(
           id: row[0] as int,
           name: row[1] as String,
-          capabilities: _textArray(row[2]).toSet(),
+          username: row[2] as String?,
+          capabilities: PosCapability.canonicalAll(_textArray(row[3])),
+          isActive: row[4] as bool,
+          role: optionalRoleFromRow(row, 5),
         );
       }
     }
@@ -336,10 +445,10 @@ class PostgresSessionRepository implements SessionRepository {
 
 /// PostgreSQL `text[]` arrives as a `List` of dynamics.
 List<String> _textArray(Object? value) => switch (value) {
-      null => const [],
-      final List<Object?> list => [
-          for (final item in list)
-            if (item != null) item.toString(),
-        ],
-      _ => const [],
-    };
+  null => const [],
+  final List<Object?> list => [
+    for (final item in list)
+      if (item != null) item.toString(),
+  ],
+  _ => const [],
+};

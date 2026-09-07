@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/l10n/app_strings.dart';
 import '../../../core/ui/theme.dart';
 import '../../../core/ui/tokens.dart';
 import '../../../domain/models/catalog.dart';
@@ -28,8 +29,8 @@ class ProductGrid extends StatelessWidget {
     if (products.isEmpty) {
       return Center(
         child: Text(
-          'No items match.',
-          style: PosText.ui(size: 14, color: PosColors.muted),
+          context.strings.noItemsMatch,
+          style: PosText.ui(size: 14, color: context.pos.muted),
         ),
       );
     }
@@ -50,7 +51,7 @@ class ProductGrid extends StatelessWidget {
         final product = products[index];
         return ProductTile(
           product: product,
-          barColor: PosColors.categoryBar(categorySlugs[product.categoryId]),
+          barColor: context.pos.categoryBar(categorySlugs[product.categoryId]),
           inCart: inCartProductIds.contains(product.id),
           onTap: () => onTap(product),
         );
@@ -75,8 +76,16 @@ class ProductTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // The menu is bilingual data, so the tile leads with the till's language
+    // and keeps the other name underneath. A cashier reading العربية and a
+    // supplier's English printout are looking at the same item, and the tile
+    // is where those two vocabularies have to meet.
+    final language = context.strings.languageCode;
+    final primary = product.displayName(language);
+    final alternate = language == 'ar' ? product.nameEn : product.nameAr;
+
     final tile = Material(
-      color: PosColors.surface,
+      color: context.pos.surface,
       child: InkWell(
         // An out-of-stock tile is still tappable so the cashier gets the
         // explanatory toast; the engine is what refuses the line.
@@ -85,8 +94,8 @@ class ProductTile extends StatelessWidget {
           padding: const EdgeInsets.all(PosSpace.md),
           decoration: BoxDecoration(
             border: inCart
-                ? const Border.fromBorderSide(PosBorders.emphasis)
-                : const Border.fromBorderSide(PosBorders.resting),
+                ? Border.fromBorderSide(context.pos.emphasis)
+                : Border.fromBorderSide(context.pos.resting),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -94,22 +103,26 @@ class ProductTile extends StatelessWidget {
               Container(width: 36, height: 4, color: barColor),
               const SizedBox(height: PosSpace.xs),
               Text(
-                product.nameEn,
+                primary,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: PosText.ui(
                   size: 15,
                   weight: FontWeight.w600,
-                  color: PosColors.ink,
+                  color: context.pos.ink,
                   height: 1.25,
                 ),
               ),
-              if (product.nameAr != null)
+              if (alternate != null && alternate != primary)
                 Text(
-                  product.nameAr!,
+                  alternate,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: PosText.arabic(),
+                  // The Arabic face only when the line is actually Arabic —
+                  // in an Arabic till this second line is the English name.
+                  style: language == 'ar'
+                      ? PosText.ui(size: 12.5, color: context.pos.muted)
+                      : PosText.arabic(color: context.pos.muted),
                 ),
               const Spacer(),
               Row(
@@ -117,19 +130,23 @@ class ProductTile extends StatelessWidget {
                 children: [
                   Expanded(
                     child: Text(
-                      product.isAvailable ? product.effectivePrice.format() : 'OUT',
+                      product.isAvailable
+                          ? product.effectivePrice.format()
+                          : context.strings.outOfStockBadge,
                       overflow: TextOverflow.ellipsis,
                       style: PosText.mono(
                         size: 17,
                         weight: FontWeight.w600,
-                        color: product.isAvailable ? PosColors.accentPressed : PosColors.warn,
+                        color: product.isAvailable
+                            ? context.pos.accentPressed
+                            : context.pos.warn,
                       ),
                     ),
                   ),
                   if (product.sku != null)
                     Text(
                       product.sku!,
-                      style: PosText.mono(size: 10.5, color: PosColors.muted),
+                      style: PosText.mono(size: 10.5, color: context.pos.muted),
                     ),
                 ],
               ),

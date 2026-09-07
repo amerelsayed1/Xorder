@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/providers.dart';
+import '../../app/labels.dart';
+import '../../core/l10n/app_strings.dart';
 import '../../core/ui/theme.dart';
 import '../../core/ui/tokens.dart';
 import '../../core/ui/widgets/pos_widgets.dart';
@@ -16,10 +18,25 @@ import '../shift/presentation/shift_dialogs.dart';
 /// starts the shift; the real implementation opens a `Shift` record with the
 /// counted float (POS-BE-009, still PROPOSED).
 class StartScreen extends ConsumerStatefulWidget {
-  const StartScreen({super.key, required this.onStart, required this.onManageLicence});
+  const StartScreen({
+    super.key,
+    required this.onStart,
+    required this.onManageLicence,
+    required this.onReconfigure,
+    required this.onManage,
+  });
 
   final VoidCallback onStart;
   final VoidCallback onManageLicence;
+
+  /// The back office. Quiet here and asks for a PIN on arrival: a cashier
+  /// finding it must get no further than the keypad.
+  final VoidCallback onManage;
+
+  /// Back to the setup wizard, after the terminal's configuration has been
+  /// cleared. The router will not redirect there on its own once setup is
+  /// complete, so the screen that clears it has to say where to go.
+  final VoidCallback onReconfigure;
 
   @override
   ConsumerState<StartScreen> createState() => _StartScreenState();
@@ -34,6 +51,43 @@ class _StartScreenState extends ConsumerState<StartScreen> {
     // gate for opening a shift, so a renewal applied five minutes ago has to be
     // visible here without restarting the till.
     Future.microtask(() => ref.invalidate(licenceEntitlementProvider));
+  }
+
+  /// Clear this terminal's configuration and run setup again.
+  ///
+  /// Refused outright while a shift is open. The drawer has not been counted,
+  /// and a till that dropped its database address mid-shift would leave that
+  /// count with nowhere to go.
+  Future<void> _reconfigure() async {
+    final strings = context.strings;
+
+    PosShift? openShift;
+    try {
+      openShift = await ref.read(shiftRepositoryProvider).current();
+    } on Exception {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(strings.resetTerminalShiftUnknown)),
+      );
+      return;
+    }
+    if (!mounted) return;
+
+    if (openShift != null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(strings.resetTerminalShiftOpen)));
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => _ResetTerminalDialog(strings: strings),
+    );
+    if (confirmed != true || !mounted) return;
+
+    await ref.read(terminalResetProvider).run();
+    if (mounted) widget.onReconfigure();
   }
 
   /// Open a shift, then go selling.
@@ -65,13 +119,13 @@ class _StartScreenState extends ConsumerState<StartScreen> {
     final terminal = ref.watch(terminalProfileProvider);
 
     return Scaffold(
-      backgroundColor: PosColors.shell,
+      backgroundColor: context.pos.shell,
       body: session.when(
-        loading: () => const Center(
-          child: CircularProgressIndicator(color: PosColors.accent),
+        loading: () => Center(
+          child: CircularProgressIndicator(color: context.pos.accent),
         ),
         error: (error, _) => Center(
-          child: Text('$error', style: PosText.ui(color: PosColors.shellText)),
+          child: Text('$error', style: PosText.ui(color: context.pos.shellText)),
         ),
         data: (data) => Shortcuts(
           shortcuts: const {
@@ -81,10 +135,6 @@ class _StartScreenState extends ConsumerState<StartScreen> {
             actions: {
               ActivateIntent: CallbackAction<ActivateIntent>(
                 onInvoke: (_) {
-                  // Enter runs exactly the action the CTA runs — licence gate,
-                  // shift dialog and all. When they were two code paths the
-                  // keyboard walked straight past the licence, because the
-                  // button was disabled and Enter was not.
                   _start();
                   return null;
                 },
@@ -120,6 +170,8 @@ class _StartScreenState extends ConsumerState<StartScreen> {
     TerminalProfile terminal,
     PosShift? openShift,
   ) {
+    final strings = context.strings;
+
     // No licence loaded yet is treated as permitted: a slow read must not look
     // like a lapsed licence.
     final blocked = licence != null && !licence.canOpenShift;
@@ -134,82 +186,176 @@ class _StartScreenState extends ConsumerState<StartScreen> {
         Text(
           session.tenantName.toUpperCase(),
           textAlign: TextAlign.center,
-          style: PosText.ui(size: 34, weight: FontWeight.w800, color: PosColors.shellText),
+          style: PosText.ui(
+            size: 34,
+            weight: FontWeight.w800,
+            color: context.pos.shellText,
+          ),
         ),
         const SizedBox(height: PosSpace.md),
         Text(
-          'POINT OF SALE',
+          strings.pointOfSale,
           textAlign: TextAlign.center,
           style: PosText.mono(
             size: 10.5,
             weight: FontWeight.w600,
-            color: PosColors.shellMuted,
+            color: context.pos.shellMuted,
             letterSpacing: 2.5,
           ),
         ),
-        const Padding(
+        Padding(
           padding: EdgeInsets.symmetric(vertical: PosSpace.s28),
-          child: ColoredBox(color: PosColors.accent, child: SizedBox(height: 2)),
+          child: ColoredBox(
+            color: context.pos.accent,
+            child: SizedBox(height: 2),
+          ),
         ),
-        _identityGrid(session, itemCount, terminal),
+        _identityGrid(strings, session, itemCount, terminal, pos: context.pos),
+        if (ref.watch(terminalRejectedProvider)) ...[
+          const SizedBox(height: PosSpace.lg),
+          _terminalRejectedBanner(pos: context.pos),
+        ],
         if (licence?.needsAttention ?? false) ...[
           const SizedBox(height: PosSpace.lg),
-          _licenceBanner(licence!),
+          _licenceBanner(licence!, pos: context.pos),
           const SizedBox(height: PosSpace.md),
           PosButton(
-            label: blocked ? 'Renew licence' : 'Manage licence',
-            background: blocked ? PosColors.accent : PosColors.shellCard,
-            foreground: blocked ? Colors.white : PosColors.shellText,
+            label: blocked ? strings.renewLicence : strings.manageLicence,
+            background: blocked ? context.pos.accent : context.pos.shellCard,
+            foreground: blocked ? Colors.white : context.pos.shellText,
             onPressed: widget.onManageLicence,
           ),
         ],
         const SizedBox(height: PosSpace.s28),
         PosButton(
           label: blocked
-              ? 'Licence required'
+              ? strings.licenceRequired
               : (openShift == null
-                  ? 'Start shift'
-                  : 'Resume ${openShift.reference}'),
+                    ? strings.startShift
+                    : strings.resumeShift(openShift.reference)),
           height: 72,
           alignLeft: true,
-          background: blocked ? PosColors.shellCard : PosColors.accent,
-          foreground: blocked ? PosColors.shellMuted : Colors.white,
+          background: blocked ? context.pos.shellCard : context.pos.accent,
+          foreground: blocked ? context.pos.shellMuted : Colors.white,
           fontSize: 17,
           fontWeight: FontWeight.w800,
           padding: const EdgeInsets.symmetric(horizontal: PosSpace.xl),
-          trailing: blocked ? null : const KeyChip('ENTER', onShell: true),
+          trailing: blocked
+              ? null
+              : KeyChip(strings.enterKeyCap, onShell: true),
           onPressed: blocked ? null : _start,
         ),
         const SizedBox(height: PosSpace.md),
         Text(
           blocked
-              ? 'Cash-up and reprint for the last shift are still available.'
+              ? strings.cashUpStillAvailable
               : (openShift == null
-                  ? 'You will be asked for your PIN and the cash already in the drawer.'
-                  : 'Opened by ${openShift.openedByName}. The drawer was never '
-                      'closed, so the shift is still yours.'),
+                    ? strings.startShiftHelp
+                    : strings.resumeShiftHelp(openShift.openedByName)),
           textAlign: TextAlign.center,
-          style: PosText.ui(size: 12, color: PosColors.shellMuted),
+          style: PosText.ui(size: 12, color: context.pos.shellMuted),
+        ),
+        const SizedBox(height: PosSpace.s28),
+        // Deliberately quiet, and deliberately present: an installer moving the
+        // till to another branch server needs it, and a cashier must never
+        // reach for it by accident.
+        Align(
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              PosButton(
+                label: context.strings.management,
+                height: PosSize.minTouchTarget,
+                foreground: context.pos.shellMuted,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                onPressed: widget.onManage,
+              ),
+              PosButton(
+                label: context.strings.resetTerminal,
+                height: PosSize.minTouchTarget,
+                foreground: context.pos.shellMuted,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                onPressed: _reconfigure,
+              ),
+            ],
+          ),
         ),
       ],
     );
   }
 
-  Widget _licenceBanner(LicenseEntitlement licence) {
+  /// The platform has stopped recognising this till.
+  ///
+  /// Ranked above the licence banner on purpose: a licence warning is about
+  /// permission to sell, this is about the till being orphaned from the
+  /// platform entirely, and the operator can act on it (re-pair) without
+  /// anyone's approval. The pending count is named explicitly — the whole
+  /// failure mode this fixes is a queue growing where nobody looks.
+  Widget _terminalRejectedBanner({required PosPalette pos}) {
+    final strings = context.strings;
+    final queued = ref.watch(pendingSyncCountProvider).valueOrNull ?? 0;
+
+    return Container(
+      padding: const EdgeInsets.all(PosSpace.md),
+      decoration: BoxDecoration(
+        color: pos.shellDangerBg,
+        border: Border.all(color: pos.danger),
+      ),
+      child: Column(
+        children: [
+          Text(
+            strings.terminalRejectedTitle,
+            textAlign: TextAlign.center,
+            style: PosText.ui(
+              size: 13,
+              weight: FontWeight.w700,
+              color: pos.shellDangerText,
+            ),
+          ),
+          const SizedBox(height: PosSpace.sm),
+          Text(
+            strings.terminalRejectedBody,
+            textAlign: TextAlign.center,
+            style: PosText.ui(
+              size: 12.5,
+              color: pos.shellDangerText,
+              height: 1.5,
+            ),
+          ),
+          if (queued > 0) ...[
+            const SizedBox(height: PosSpace.sm),
+            Text(
+              strings.terminalRejectedQueued.replaceFirst('{count}', '$queued'),
+              textAlign: TextAlign.center,
+              style: PosText.mono(
+                size: 12,
+                weight: FontWeight.w600,
+                color: pos.shellDangerText,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _licenceBanner(LicenseEntitlement licence, {required PosPalette pos}) {
     final severe = !licence.canOpenShift;
 
     return Container(
       padding: const EdgeInsets.all(PosSpace.md),
       decoration: BoxDecoration(
-        color: severe ? const Color(0xFF3A1512) : PosColors.offlinePillBg,
-        border: Border.all(color: severe ? PosColors.danger : PosColors.warn),
+        color: severe ? pos.shellDangerBg : pos.offlinePillBg,
+        border: Border.all(color: severe ? pos.danger : pos.warn),
       ),
       child: Text(
-        licence.message ?? '',
+        licence.notice?.text(context.strings) ?? '',
         textAlign: TextAlign.center,
         style: PosText.ui(
           size: 12.5,
-          color: severe ? const Color(0xFFF2A79E) : PosColors.offlinePillText,
+          color: severe ? pos.shellDangerText : pos.offlinePillText,
           height: 1.5,
         ),
       ),
@@ -218,54 +364,140 @@ class _StartScreenState extends ConsumerState<StartScreen> {
 
   /// 2×2 grid of shellRow cells on 1px shellLine gaps.
   Widget _identityGrid(
+    AppStrings strings,
     PosSession session,
     int? itemCount,
-    TerminalProfile terminal,
-  ) =>
-      Container(
-        color: PosColors.shellLine,
-        child: Column(
+    TerminalProfile terminal,{required PosPalette pos}
+  ) => Container(
+    color: pos.shellLine,
+    child: Column(
+      children: [
+        Row(
           children: [
-            Row(children: [
-              Expanded(child: _cell('TENANT', session.tenantName)),
-              const SizedBox(width: 1),
-              Expanded(child: _cell('BRANCH', terminal.branchName ?? session.branchName)),
-            ]),
-            const SizedBox(height: 1),
-            Row(children: [
-              Expanded(
-                child: _cell('TERMINAL', terminal.terminalName ?? session.terminalCode),
-              ),
-              const SizedBox(width: 1),
-              Expanded(child: _cell(
-                'CATALOG',
-                itemCount == null ? 'syncing…' : 'cached · $itemCount items',
-                valueColor: itemCount == null ? PosColors.shellMuted : PosColors.onlinePillText,
-              )),
-            ]),
-          ],
-        ),
-      );
-
-  Widget _cell(String label, String value, {Color valueColor = PosColors.shellText}) =>
-      Container(
-        color: PosColors.shellRow,
-        padding: const EdgeInsets.symmetric(
-          horizontal: PosSpace.lg,
-          vertical: PosSpace.s14,
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            MicroLabel(label, color: PosColors.shellMuted),
-            const SizedBox(height: PosSpace.xs),
-            Text(
-              value,
-              overflow: TextOverflow.ellipsis,
-              style: PosText.ui(size: 15, weight: FontWeight.w600, color: valueColor),
+            Expanded(child: _cell(strings.tenantCell, session.tenantName, pos: pos)),
+            const SizedBox(width: 1),
+            Expanded(
+              child: _cell(
+                strings.branchCell,
+                terminal.branchName ?? session.branchName,
+              pos: pos),
             ),
           ],
         ),
-      );
+        const SizedBox(height: 1),
+        Row(
+          children: [
+            Expanded(
+              child: _cell(
+                strings.terminalCell,
+                terminal.terminalName ?? session.terminalCode,
+              pos: pos),
+            ),
+            const SizedBox(width: 1),
+            Expanded(
+              child: _cell(
+                strings.catalogCell,
+                itemCount == null
+                    ? strings.catalogSyncing
+                    : strings.catalogCachedItems(itemCount),
+                valueColor: itemCount == null
+                    ? pos.shellMuted
+                    : pos.onlinePillText,
+              pos: pos),
+            ),
+          ],
+        ),
+      ],
+    ),
+  );
+
+  Widget _cell(
+    String label,
+    String value, {required PosPalette pos, 
+    Color? valueColor,
+  }) => Container(
+    color: pos.shellRow,
+    padding: const EdgeInsets.symmetric(
+      horizontal: PosSpace.lg,
+      vertical: PosSpace.s14,
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        MicroLabel(label, color: pos.shellMuted),
+        const SizedBox(height: PosSpace.xs),
+        Text(
+          value,
+          overflow: TextOverflow.ellipsis,
+          style: PosText.ui(
+            size: 15,
+            weight: FontWeight.w600,
+            color: valueColor ?? pos.shellText,
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+/// Confirms a terminal reset, and says plainly what it does and does not touch.
+///
+/// The fear this answers is "will I lose today's sales". The answer is no, and
+/// an operator standing at a till at nine in the morning should not have to
+/// take that on faith from a one-line dialog.
+class _ResetTerminalDialog extends StatelessWidget {
+  const _ResetTerminalDialog({required this.strings});
+
+  final AppStrings strings;
+
+  @override
+  Widget build(BuildContext context) => Dialog(
+    backgroundColor: context.pos.page,
+    insetPadding: const EdgeInsets.all(PosSpace.s24),
+    shape: RoundedRectangleBorder(
+      side: context.pos.emphasis,
+      borderRadius: PosBorders.radius,
+    ),
+    child: ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 460),
+      child: Padding(
+        padding: const EdgeInsets.all(PosSpace.xl),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(strings.resetTerminalTitle, style: PosText.panelTitle(color: context.pos.ink)),
+            const SizedBox(height: PosSpace.sm),
+            Text(
+              strings.resetTerminalBody,
+              style: PosText.ui(size: 13, color: context.pos.muted, height: 1.5),
+            ),
+            const SizedBox(height: PosSpace.lg),
+            Row(
+              children: [
+                Expanded(
+                  child: PosButton(
+                    label: strings.cancel,
+                    border: Border.all(color: context.pos.line),
+                    onPressed: () => Navigator.of(context).pop(false),
+                  ),
+                ),
+                const SizedBox(width: PosSpace.md),
+                Expanded(
+                  child: PosButton(
+                    label: strings.resetTerminalConfirm,
+                    background: context.pos.danger,
+                    foreground: Colors.white,
+                    fontWeight: FontWeight.w700,
+                    onPressed: () => Navigator.of(context).pop(true),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
 }

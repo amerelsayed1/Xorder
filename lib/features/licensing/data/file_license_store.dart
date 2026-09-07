@@ -21,7 +21,7 @@ import 'license_store.dart';
 /// that did not need to happen.
 class FileLicenseStore implements LicenseStore {
   FileLicenseStore({Future<Directory> Function()? directory})
-      : _directory = directory ?? getApplicationSupportDirectory;
+    : _directory = directory ?? getApplicationSupportDirectory;
 
   final Future<Directory> Function() _directory;
 

@@ -1,0 +1,210 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:xorder_pos/app/providers.dart';
+import 'package:xorder_pos/core/config/deployment.dart';
+import 'package:xorder_pos/core/l10n/app_strings.dart';
+import 'package:xorder_pos/core/ui/theme.dart';
+import 'package:xorder_pos/features/licensing/data/licence_service.dart';
+import 'package:xorder_pos/features/setup/presentation/setup_wizard.dart';
+import 'package:xorder_pos/features/start/start_screen.dart';
+
+import '../support/fakes.dart';
+
+/// The two screens that were still English on an Arabic till.
+///
+/// `test/core/localisation_test.dart` reads the catalogue and scans the source.
+/// Neither can tell whether a widget actually CALLS what it was given — the
+/// catalogue was complete and correctly translated the whole time these screens
+/// rendered English. So these tests build the real screens under the real
+/// delegate and read the words off them, which is the check that would have
+/// failed while the start screen spelled its captions out inline.
+const _cloud = DeploymentConfig(
+  mode: DeploymentMode.cloud,
+  baseUrl: 'https://xorder.io',
+  tenantSlug: 'mahsoub',
+);
+
+Future<ProviderContainer> _pump(
+  WidgetTester tester,
+  Widget Function() home, {
+  String? licenceKey,
+}) async {
+  tester.view
+    ..physicalSize = const Size(1440, 1000)
+    ..devicePixelRatio = 1.0;
+  addTearDown(tester.view.reset);
+
+  final container = ProviderContainer(overrides: fakeRepositoryOverrides());
+  addTearDown(container.dispose);
+  container.read(deploymentProvider.notifier).apply(_cloud);
+
+  if (licenceKey != null) {
+    // runAsync, because the fake service sleeps and `testWidgets` runs on a
+    // fake clock — awaiting it without pumping hangs rather than fails.
+    await tester.runAsync(() async {
+      await container
+          .read(licenceServiceProvider)
+          .activate(deployment: _cloud, key: licenceKey);
+    });
+    container.invalidate(licenceEntitlementProvider);
+  }
+
+  await tester.pumpWidget(
+    UncontrolledProviderScope(
+      container: container,
+      child: MaterialApp(
+        // Exactly what `XorderPosApp` installs, so the tree under test resolves
+        // its words the way the shipped app does.
+        locale: const Locale('ar'),
+        localizationsDelegates: const [
+          AppLocalizations(),
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        supportedLocales: AppLocalizations.supportedLocales,
+        theme: buildPosTheme(),
+        home: home(),
+      ),
+    ),
+  );
+  await tester.pump();
+  await tester.pump(const Duration(seconds: 1));
+  await tester.pumpAndSettle();
+  return container;
+}
+
+Widget _startScreen() => StartScreen(
+  onStart: () {},
+  onManageLicence: () {},
+  onReconfigure: () {},
+  onManage: () {},
+);
+
+/// Every caption the screen is currently showing.
+Set<String> _onScreen(WidgetTester tester) => tester
+    .widgetList<Text>(find.byType(Text))
+    .map((t) => t.data ?? '')
+    .where((t) => t.isNotEmpty)
+    .toSet();
+
+void main() {
+  testWidgets('the start screen identity grid is Arabic', (tester) async {
+    await _pump(tester, _startScreen, licenceKey: 'XORD-GOOD-1');
+
+    // The strap under the tenant name, and all four identity cells. The VALUES
+    // stay as the operator's own data — a branch is not translated.
+    for (final arabic in [
+      'نقطة بيع', // pointOfSale
+      'المطعم', // tenantCell
+      'الفرع', // branchCell
+      'الجهاز', // terminalCell
+      'المنيو', // catalogCell
+    ]) {
+      expect(find.text(arabic), findsOneWidget, reason: 'missing: $arabic');
+    }
+
+    // The exact literals that used to be hardcoded in their place.
+    for (final english in [
+      'POINT OF SALE',
+      'TENANT',
+      'BRANCH',
+      'TERMINAL',
+      'CATALOG',
+    ]) {
+      expect(
+        find.text(english),
+        findsNothing,
+        reason: 'still English: $english',
+      );
+    }
+
+    expect(
+      Directionality.of(tester.element(find.byType(StartScreen))),
+      TextDirection.rtl,
+    );
+  });
+
+  testWidgets('the start screen call to action is Arabic when a shift may open', (
+    tester,
+  ) async {
+    await _pump(tester, _startScreen, licenceKey: 'XORD-GOOD-1');
+
+    expect(find.text('بدء الوردية'), findsOneWidget); // startShift
+    expect(find.text('Start shift'), findsNothing);
+    // The help line under it, and the cached-catalogue cell, both of which
+    // carry a number: Arabic words, Western digits.
+    expect(
+      find.textContaining('سيُطلب منك رقمك السري'), // startShiftHelp
+      findsOneWidget,
+    );
+    expect(find.textContaining(RegExp(r'محفوظ · \d+ صنف')), findsOneWidget);
+  });
+
+  testWidgets('the start screen is Arabic when the licence blocks the shift', (
+    tester,
+  ) async {
+    // The other branch of every ternary on this screen. It was reachable with
+    // the English hardcoded just as it is now, so it has to be read too.
+    await _pump(tester, _startScreen);
+
+    expect(find.text('الترخيص مطلوب'), findsOneWidget); // licenceRequired
+    expect(find.text('تجديد الترخيص'), findsOneWidget); // renewLicence
+    expect(
+      find.textContaining('تقفيل الوردية السابقة'), // cashUpStillAvailable
+      findsOneWidget,
+    );
+
+    for (final english in [
+      'Licence required',
+      'Renew licence',
+      'Manage licence',
+    ]) {
+      expect(
+        find.text(english),
+        findsNothing,
+        reason: 'still English: $english',
+      );
+    }
+  });
+
+  testWidgets('nothing on the start screen is left in Latin script', (
+    tester,
+  ) async {
+    await _pump(tester, _startScreen, licenceKey: 'XORD-GOOD-1');
+
+    // A backstop for captions nobody thought to name above. Two things are
+    // exempt, both by design rather than by oversight:
+    //
+    // * the operator's own data — a tenant, a branch and a terminal code are
+    //   what they are in any language;
+    // * the ENTER keycap, which names a key the cashier is looking at. Taken
+    //   from the catalogue rather than written out here, so translating it
+    //   would relax this test instead of breaking it.
+    const operatorData = {'MAHSOUB GRILL', 'Mahsoub Grill', 'DOWNTOWN', 'T-02'};
+    final exempt = {...operatorData, const ArStrings().enterKeyCap};
+
+    final latin = _onScreen(tester)
+        .where((t) => !exempt.contains(t))
+        .where((t) => RegExp(r'[A-Za-z]{3,}').hasMatch(t))
+        .toList();
+
+    expect(latin, isEmpty, reason: 'English left on an Arabic start screen');
+  });
+
+  testWidgets('the setup wizard header is Arabic', (tester) async {
+    await _pump(tester, () => SetupWizard(onFinished: () {}));
+
+    expect(find.text('إعداد الجهاز'), findsOneWidget); // terminalSetup
+    expect(find.text('TERMINAL SETUP'), findsNothing);
+    // The product's own name is a brand, and stays.
+    expect(find.text('XORDER POS'), findsOneWidget);
+
+    expect(
+      Directionality.of(tester.element(find.byType(SetupWizard))),
+      TextDirection.rtl,
+    );
+  });
+}

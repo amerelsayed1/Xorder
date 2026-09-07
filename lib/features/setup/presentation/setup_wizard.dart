@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../app/providers.dart';
+import '../../../app/labels.dart';
+import '../../../core/l10n/app_strings.dart';
 import '../../../core/ui/theme.dart';
 import '../../../core/ui/tokens.dart';
 import '../../../core/ui/widgets/pos_widgets.dart';
@@ -24,16 +25,16 @@ class SetupWizard extends ConsumerWidget {
     final draft = ref.watch(setupProvider);
 
     return Scaffold(
-      backgroundColor: PosColors.page,
+      backgroundColor: context.pos.page,
       body: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _StepRail(current: draft.step),
+          _StepRail(draft: draft),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                _Header(step: draft.step),
+                _Header(draft: draft),
                 Expanded(
                   child: SingleChildScrollView(
                     padding: const EdgeInsets.symmetric(
@@ -43,6 +44,7 @@ class SetupWizard extends ConsumerWidget {
                     child: SetupPane(draft: draft),
                   ),
                 ),
+                if (draft.notice != null) _NoticeBar(message: draft.notice!),
                 if (draft.error != null) _ErrorBar(message: draft.error!),
                 _Footer(draft: draft, onFinished: onFinished),
               ],
@@ -55,89 +57,100 @@ class SetupWizard extends ConsumerWidget {
 }
 
 class _StepRail extends StatelessWidget {
-  const _StepRail({required this.current});
+  const _StepRail({required this.draft});
 
-  final SetupStep current;
+  final SetupDraft draft;
 
   @override
   Widget build(BuildContext context) => Container(
-        width: 280,
-        decoration: const BoxDecoration(
-          color: PosColors.shell,
-          border: Border(right: PosBorders.emphasis),
+    width: 280,
+    decoration: BoxDecoration(
+      color: context.pos.shell,
+      border: Border(right: context.pos.emphasis),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+            PosSpace.xl,
+            PosSpace.s28,
+            PosSpace.xl,
+            PosSpace.lg,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                context.strings.productWordmark,
+                style: PosText.ui(
+                  size: 20,
+                  weight: FontWeight.w800,
+                  color: context.pos.shellText,
+                ),
+              ),
+              const SizedBox(height: PosSpace.xs),
+              Text(
+                context.strings.terminalSetup,
+                style: PosText.mono(
+                  size: 10,
+                  weight: FontWeight.w600,
+                  color: context.pos.shellMuted,
+                  letterSpacing: 2,
+                ),
+              ),
+            ],
+          ),
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
-                PosSpace.xl,
-                PosSpace.s28,
-                PosSpace.xl,
-                PosSpace.lg,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'XORDER POS',
-                    style: PosText.ui(
-                      size: 20,
-                      weight: FontWeight.w800,
-                      color: PosColors.shellText,
-                    ),
-                  ),
-                  const SizedBox(height: PosSpace.xs),
-                  Text(
-                    'TERMINAL SETUP',
-                    style: PosText.mono(
-                      size: 10,
-                      weight: FontWeight.w600,
-                      color: PosColors.shellMuted,
-                      letterSpacing: 2,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: PosSpace.xl),
-              child: ColoredBox(color: PosColors.accent, child: SizedBox(height: 2)),
-            ),
-            const SizedBox(height: PosSpace.sm),
-            Expanded(
-              child: ListView(
-                children: [
-                  for (final step in SetupStep.values)
-                    _RailRow(
-                      step: step,
-                      current: current,
-                    ),
-                ],
-              ),
-            ),
-          ],
+        Padding(
+          padding: EdgeInsets.symmetric(horizontal: PosSpace.xl),
+          child: ColoredBox(
+            color: context.pos.accent,
+            child: SizedBox(height: 2),
+          ),
         ),
-      );
+        const SizedBox(height: PosSpace.sm),
+        Expanded(
+          child: ListView(
+            children: [
+              // The rail shows the path being walked. Every step is on
+              // that path today — `visibleSteps` used to drop the licence
+              // row for cloud terminals, which it can no longer do now that
+              // the licence is what decides the mode.
+              for (final (position, step) in draft.visibleSteps.indexed)
+                _RailRow(step: step, position: position, draft: draft),
+            ],
+          ),
+        ),
+      ],
+    ),
+  );
 }
 
 class _RailRow extends StatelessWidget {
-  const _RailRow({required this.step, required this.current});
+  const _RailRow({
+    required this.step,
+    required this.position,
+    required this.draft,
+  });
 
   final SetupStep step;
-  final SetupStep current;
+
+  /// Index within the visible path, which is what the numbering shows.
+  final int position;
+  final SetupDraft draft;
 
   @override
   Widget build(BuildContext context) {
-    final isCurrent = step == current;
-    final isDone = step.index < current.index;
+    final isCurrent = step == draft.step;
+    final isDone = position < draft.visibleSteps.indexOf(draft.step);
 
     return Container(
       padding: const EdgeInsets.symmetric(
         horizontal: PosSpace.xl,
         vertical: PosSpace.md,
       ),
-      color: isCurrent ? PosColors.shellRow : Colors.transparent,
+      color: isCurrent ? context.pos.shellRow : Colors.transparent,
       child: Row(
         children: [
           Container(
@@ -146,32 +159,36 @@ class _RailRow extends StatelessWidget {
             alignment: Alignment.center,
             decoration: BoxDecoration(
               color: isCurrent
-                  ? PosColors.accent
-                  : (isDone ? PosColors.onlinePillBg : Colors.transparent),
+                  ? context.pos.accent
+                  : (isDone ? context.pos.onlinePillBg : Colors.transparent),
               border: Border.all(
-                color: isDone ? PosColors.onlinePillBorder : PosColors.shellLine,
+                color: isDone
+                    ? context.pos.onlinePillBorder
+                    : context.pos.shellLine,
               ),
             ),
             child: Text(
-              isDone ? '✓' : '${step.index + 1}',
+              isDone ? '✓' : '${position + 1}',
               style: PosText.mono(
                 size: 11,
                 weight: FontWeight.w600,
                 color: isCurrent
                     ? Colors.white
-                    : (isDone ? PosColors.onlinePillText : PosColors.shellMuted),
+                    : (isDone
+                          ? context.pos.onlinePillText
+                          : context.pos.shellMuted),
               ),
             ),
           ),
           const SizedBox(width: PosSpace.md),
           Expanded(
             child: Text(
-              step.title,
+              step.title(context.strings, mode: draft.deployment.mode),
               overflow: TextOverflow.ellipsis,
               style: PosText.ui(
                 size: 14,
                 weight: isCurrent ? FontWeight.w600 : FontWeight.w400,
-                color: isCurrent ? PosColors.shellText : PosColors.shellMuted,
+                color: isCurrent ? context.pos.shellText : context.pos.shellMuted,
               ),
             ),
           ),
@@ -182,33 +199,69 @@ class _RailRow extends StatelessWidget {
 }
 
 class _Header extends StatelessWidget {
-  const _Header({required this.step});
+  const _Header({required this.draft});
 
-  final SetupStep step;
+  final SetupDraft draft;
 
   @override
   Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.fromLTRB(
-          PosSpace.s28,
-          PosSpace.s28,
-          PosSpace.s28,
-          PosSpace.xl,
+    padding: const EdgeInsets.fromLTRB(
+      PosSpace.s28,
+      PosSpace.s28,
+      PosSpace.s28,
+      PosSpace.xl,
+    ),
+    decoration: BoxDecoration(
+      color: context.pos.surface,
+      border: Border(bottom: context.pos.hairline),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        MicroLabel(context.strings.stepOf(draft.stepNumber, draft.stepCount)),
+        const SizedBox(height: PosSpace.sm),
+        Text(
+          draft.step.title(context.strings, mode: draft.deployment.mode),
+          style: PosText.screenTitle(color: context.pos.ink),
         ),
-        decoration: const BoxDecoration(
-          color: PosColors.surface,
-          border: Border(bottom: PosBorders.hairline),
+        const SizedBox(height: PosSpace.xs),
+        Text(
+          draft.step.blurb(context.strings, mode: draft.deployment.mode),
+          style: PosText.ui(size: 13.5, color: context.pos.muted),
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            MicroLabel('Step ${step.index + 1} of ${SetupStep.values.length}'),
-            const SizedBox(height: PosSpace.sm),
-            Text(step.title, style: PosText.screenTitle()),
-            const SizedBox(height: PosSpace.xs),
-            Text(step.blurb, style: PosText.ui(size: 13.5, color: PosColors.muted)),
-          ],
+      ],
+    ),
+  );
+}
+
+/// Information, not failure — amber, no alarm icon. Kept separate from
+/// [_ErrorBar] so red keeps meaning "act now" and nothing else.
+class _NoticeBar extends StatelessWidget {
+  const _NoticeBar({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: double.infinity,
+    color: context.pos.warnSoft,
+    padding: const EdgeInsets.symmetric(
+      horizontal: PosSpace.s28,
+      vertical: PosSpace.md,
+    ),
+    child: Row(
+      children: [
+        Icon(Icons.info_outline, size: 18, color: context.pos.warn),
+        const SizedBox(width: PosSpace.sm),
+        Expanded(
+          child: Text(
+            message,
+            style: PosText.ui(size: 13, color: context.pos.ink, height: 1.4),
+          ),
         ),
-      );
+      ],
+    ),
+  );
 }
 
 class _ErrorBar extends StatelessWidget {
@@ -218,25 +271,25 @@ class _ErrorBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        width: double.infinity,
-        color: PosColors.dangerSoft,
-        padding: const EdgeInsets.symmetric(
-          horizontal: PosSpace.s28,
-          vertical: PosSpace.md,
+    width: double.infinity,
+    color: context.pos.dangerSoft,
+    padding: const EdgeInsets.symmetric(
+      horizontal: PosSpace.s28,
+      vertical: PosSpace.md,
+    ),
+    child: Row(
+      children: [
+        Icon(Icons.error_outline, size: 18, color: context.pos.danger),
+        const SizedBox(width: PosSpace.sm),
+        Expanded(
+          child: Text(
+            message,
+            style: PosText.ui(size: 13, color: context.pos.danger, height: 1.4),
+          ),
         ),
-        child: Row(
-          children: [
-            const Icon(Icons.error_outline, size: 18, color: PosColors.danger),
-            const SizedBox(width: PosSpace.sm),
-            Expanded(
-              child: Text(
-                message,
-                style: PosText.ui(size: 13, color: PosColors.danger, height: 1.4),
-              ),
-            ),
-          ],
-        ),
-      );
+      ],
+    ),
+  );
 }
 
 class _Footer extends ConsumerWidget {
@@ -251,59 +304,55 @@ class _Footer extends ConsumerWidget {
 
     return Container(
       padding: const EdgeInsets.all(PosSpace.lg),
-      decoration: const BoxDecoration(
-        color: PosColors.surface,
-        border: Border(top: PosBorders.emphasis),
+      decoration: BoxDecoration(
+        color: context.pos.surface,
+        border: Border(top: context.pos.emphasis),
       ),
       child: Row(
         children: [
-          if (!draft.step.isFirst)
+          if (!draft.isFirstStep)
             PosButton(
-              label: 'Back',
-              border: const Border.fromBorderSide(BorderSide(color: PosColors.inkWarm)),
+              label: context.strings.back,
+              border: Border.fromBorderSide(
+                BorderSide(color: context.pos.inkWarm),
+              ),
               padding: const EdgeInsets.symmetric(horizontal: PosSpace.s24),
               onPressed: draft.busy ? null : controller.back,
             ),
           const Spacer(),
           if (draft.busy)
-            const Padding(
+            Padding(
               padding: EdgeInsets.only(right: PosSpace.lg),
               child: SizedBox(
                 width: 18,
                 height: 18,
-                child: CircularProgressIndicator(strokeWidth: 2, color: PosColors.accent),
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: context.pos.accent,
+                ),
               ),
             ),
           PosButton(
-            label: draft.step.isLast ? 'Open the till' : 'Continue',
+            label: draft.isLastStep
+                ? context.strings.openTheTill
+                : context.strings.continueLabel,
             height: PosSize.secondaryAction,
-            background: PosColors.accent,
+            background: context.pos.accent,
             foreground: Colors.white,
             fontSize: 15,
             fontWeight: FontWeight.w800,
             padding: const EdgeInsets.symmetric(horizontal: PosSpace.s28),
             onPressed: draft.busy || !draft.canAdvance
                 ? null
-                : () {
-                    if (draft.step.isLast) {
-                      // Publish what the wizard gathered before leaving it —
-                      // the rest of the app reads deployment config, not the draft.
-                      ref.read(localeProvider.notifier).apply(draft.locale);
-                      ref.read(deploymentProvider.notifier).apply(draft.deployment);
-                      ref.read(terminalProfileProvider.notifier).apply(TerminalProfile(
-                            branchId: draft.branchId,
-                            branchName: draft.branchLabel,
-                            terminalName: draft.terminalName,
-                            terminalId: draft.terminalId,
-                            provisioned: draft.claimed,
-                            restaurantId: draft.restaurantId,
-                            branchCode: draft.branchCode,
-                          ));
-                      // Move the database password out of the wizard draft and
-                      // into the credential store the pool reads from.
-                      controller.publishCredentials();
-                      ref.read(setupCompleteProvider.notifier).markComplete();
-                      onFinished();
+                : () async {
+                    if (draft.isLastStep) {
+                      // Publish what the wizard gathered and write it to disk
+                      // before leaving — the rest of the app reads deployment
+                      // config, not the draft, and the next launch reads the
+                      // file. A save that failed keeps the operator here, with
+                      // the reason on screen.
+                      final failure = await controller.complete();
+                      if (failure == null) onFinished();
                       return;
                     }
                     controller.next();

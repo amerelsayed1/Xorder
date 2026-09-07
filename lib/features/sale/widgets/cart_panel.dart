@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../app/labels.dart';
+import '../../../core/l10n/app_strings.dart';
 import '../../../core/ui/theme.dart';
 import '../../../core/ui/tokens.dart';
 import '../../../core/ui/widgets/pos_widgets.dart';
@@ -31,97 +33,96 @@ class CartPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final totals = ticket.totals;
+    final strings = context.strings;
 
     return Container(
       width: PosSize.cartPanel,
-      decoration: const BoxDecoration(
-        color: PosColors.shell,
-        border: Border(left: PosBorders.emphasis),
+      decoration: BoxDecoration(
+        color: context.pos.shell,
+        border: Border(left: context.pos.emphasis),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _header(),
-          Expanded(child: ticket.isEmpty ? _emptyState() : _lines()),
-          _totals(totals),
-          _actions(totals),
+          _header(strings, pos: context.pos),
+          Expanded(
+            child: ticket.isEmpty ? _emptyState(strings, pos: context.pos) : _lines(strings, pos: context.pos),
+          ),
+          _totals(strings, totals, pos: context.pos),
+          _actions(strings, totals, pos: context.pos),
         ],
       ),
     );
   }
 
-  String get _title {
+  String _title(AppStrings s) {
     if (ticket.isSeated) {
-      final guests = ticket.guestCount;
-      return '${ticket.tableLabel}${guests == null ? '' : ' · $guests guests'}';
+      return s.seatedTable(ticket.tableLabel!, ticket.guestCount);
     }
-    if (ticket.orderType == OrderType.dineIn) return 'No table yet';
-    return '${ticket.orderType.label} · walk-in';
+    if (ticket.orderType == OrderType.dineIn) return s.noTableYet;
+    return s.walkIn(ticket.orderType.label(s));
   }
 
-  Widget _header() => Container(
-        padding: const EdgeInsets.symmetric(
-          horizontal: PosSpace.lg,
-          vertical: PosSpace.s14,
-        ),
-        decoration: const BoxDecoration(
-          border: Border(bottom: PosBorders.shell),
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    _title,
-                    overflow: TextOverflow.ellipsis,
-                    style: PosText.panelTitle(color: PosColors.shellText),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    'OPEN · ${cashierName.toUpperCase()} · ${online ? 'LIVE' : 'OFFLINE'}',
-                    overflow: TextOverflow.ellipsis,
-                    style: PosText.mono(size: 11.5, color: PosColors.shellMuted),
-                  ),
-                ],
+  Widget _header(AppStrings s, {required PosPalette pos}) => Container(
+    padding: const EdgeInsets.symmetric(
+      horizontal: PosSpace.lg,
+      vertical: PosSpace.s14,
+    ),
+    decoration: BoxDecoration(border: Border(bottom: pos.shellBorder)),
+    child: Row(
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                _title(s),
+                overflow: TextOverflow.ellipsis,
+                style: PosText.panelTitle(color: pos.shellText),
               ),
-            ),
-            if (ticket.isSeated && onChangeTable != null)
-              PosButton(
-                label: 'Change table',
-                height: 38,
-                background: PosColors.shellCard,
-                foreground: PosColors.shellText,
-                fontSize: 12.5,
-                onPressed: onChangeTable,
+              const SizedBox(height: 2),
+              Text(
+                s.cartStatusLine(cashierName, online),
+                overflow: TextOverflow.ellipsis,
+                style: PosText.mono(size: 11.5, color: pos.shellMuted),
               ),
-          ],
+            ],
+          ),
         ),
-      );
+        if (ticket.isSeated && onChangeTable != null)
+          PosButton(
+            label: s.changeTable,
+            height: 38,
+            background: pos.shellCard,
+            foreground: pos.shellText,
+            fontSize: 12.5,
+            onPressed: onChangeTable,
+          ),
+      ],
+    ),
+  );
 
-  Widget _emptyState() => Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: PosSpace.lg,
-          vertical: PosSpace.xl,
-        ),
-        child: Text(
-          'Ticket is empty. Tap a product, or press F2 and type to search. '
-          'Items with modifiers open a sheet first.',
-          style: PosText.ui(size: 13, color: PosColors.shellMuted, height: 1.6),
-        ),
-      );
+  Widget _emptyState(AppStrings s, {required PosPalette pos}) => Padding(
+    padding: const EdgeInsets.symmetric(
+      horizontal: PosSpace.lg,
+      vertical: PosSpace.xl,
+    ),
+    child: Text(
+      s.cartEmptyHelp,
+      style: PosText.ui(size: 13, color: pos.shellMuted, height: 1.6),
+    ),
+  );
 
-  Widget _lines() {
+  Widget _lines(AppStrings s, {required PosPalette pos}) {
     final sent = ticket.sentLines;
     final draft = ticket.draftLines;
 
     return ListView(
       children: [
         if (sent.isNotEmpty) ...[
-          _sectionBar('Already sent · ${sent.length} lines', PosColors.shellMuted),
+          _sectionBar(s.alreadySent(sent.length), pos.shellMuted, pos: pos),
           for (final line in sent) _LineRow(line: line, dimmed: true),
-          _sectionBar('New round', PosColors.accent),
+          _sectionBar(s.newRound, pos.accent, pos: pos),
         ],
         for (final line in draft)
           _LineRow(
@@ -132,97 +133,106 @@ class CartPanel extends StatelessWidget {
     );
   }
 
-  Widget _sectionBar(String label, Color color) => Container(
-        width: double.infinity,
-        color: PosColors.shellRow,
-        padding: const EdgeInsets.symmetric(horizontal: PosSpace.lg, vertical: 9),
-        child: MicroLabel(label, color: color),
-      );
+  Widget _sectionBar(String label, Color color, {required PosPalette pos}) => Container(
+    width: double.infinity,
+    color: pos.shellRow,
+    padding: const EdgeInsets.symmetric(horizontal: PosSpace.lg, vertical: 9),
+    child: MicroLabel(label, color: color),
+  );
 
-  Widget _totals(TicketTotals totals) => Container(
-        padding: const EdgeInsets.symmetric(
-          horizontal: PosSpace.lg,
-          vertical: PosSpace.s14,
+  Widget _totals(AppStrings s, TicketTotals totals, {required PosPalette pos}) => Container(
+    padding: const EdgeInsets.symmetric(
+      horizontal: PosSpace.lg,
+      vertical: PosSpace.s14,
+    ),
+    decoration: BoxDecoration(border: Border(top: pos.accentBorder)),
+    child: Column(
+      children: [
+        _totalRow(s.subtotal, totals.subtotal.format(), pos: pos),
+        // Shown whenever service applies to this order type, even at zero:
+        // the design lists all three rows, and a row that appears only once
+        // the ticket is non-empty makes the totals block jump as items land.
+        if (ticket.taxConfig.appliesServiceTo(ticket.orderType))
+          _totalRow(
+            s.servicePercent(
+              (ticket.taxConfig.serviceBp / 100).toStringAsFixed(0),
+            ),
+            totals.service.format(),
+          pos: pos),
+        _totalRow(
+          s.vatPercent((ticket.taxConfig.vatBp / 100).toStringAsFixed(0)),
+          totals.vat.format(),
+        pos: pos),
+        Padding(
+          padding: EdgeInsets.symmetric(vertical: PosSpace.sm),
+          child: ColoredBox(
+            color: pos.shellLine,
+            child: SizedBox(height: 1, width: double.infinity),
+          ),
         ),
-        decoration: const BoxDecoration(border: Border(top: PosBorders.accent)),
-        child: Column(
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            _totalRow('Subtotal', totals.subtotal.format()),
-            // Shown whenever service applies to this order type, even at zero:
-            // the design lists all three rows, and a row that appears only once
-            // the ticket is non-empty makes the totals block jump as items land.
-            if (ticket.taxConfig.appliesServiceTo(ticket.orderType))
-              _totalRow(
-                'Service ${(ticket.taxConfig.serviceBp / 100).toStringAsFixed(0)}%',
-                totals.service.format(),
+            Text(
+              s.totalCaps,
+              style: PosText.ui(
+                size: 17,
+                weight: FontWeight.w800,
+                color: pos.shellText,
               ),
-            _totalRow(
-              'VAT ${(ticket.taxConfig.vatBp / 100).toStringAsFixed(0)}%',
-              totals.vat.format(),
             ),
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: PosSpace.sm),
-              child: ColoredBox(color: PosColors.shellLine, child: SizedBox(height: 1, width: double.infinity)),
-            ),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(
-                  'TOTAL',
-                  style: PosText.ui(size: 17, weight: FontWeight.w800, color: PosColors.shellText),
-                ),
-                const Spacer(),
-                Text(totals.total.format(), style: PosText.displayTotal()),
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 3, left: 4),
-                  child: Text(
-                    ticket.currency,
-                    style: PosText.ui(size: 14, color: PosColors.shellMuted),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      );
-
-  Widget _totalRow(String label, String value) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: PosSpace.xs),
-        child: Row(
-          children: [
-            Text(label, style: PosText.ui(size: 13, color: PosColors.shellText)),
             const Spacer(),
-            Text(value, style: PosText.mono(size: 13, color: PosColors.shellText)),
+            Text(totals.total.format(), style: PosText.displayTotal(color: pos.accent)),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 3, left: 4),
+              child: Text(
+                ticket.currency,
+                style: PosText.ui(size: 14, color: pos.shellMuted),
+              ),
+            ),
           ],
         ),
-      );
+      ],
+    ),
+  );
 
-  Widget _actions(TicketTotals totals) {
+  Widget _totalRow(String label, String value, {required PosPalette pos}) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: PosSpace.xs),
+    child: Row(
+      children: [
+        Text(label, style: PosText.ui(size: 13, color: pos.shellText)),
+        const Spacer(),
+        Text(value, style: PosText.mono(size: 13, color: pos.shellText)),
+      ],
+    ),
+  );
+
+  Widget _actions(AppStrings s, TicketTotals totals, {required PosPalette pos}) {
     final hasAnything = !ticket.isEmpty;
-    final ctaLabel = ticket.isSeated ? 'CLOSE TABLE' : 'CHARGE';
+    final ctaLabel = ticket.isSeated ? s.closeTableCta : s.chargeCta;
 
     return Column(
       children: [
         Container(
-          color: PosColors.shellLine,
+          color: pos.shellLine,
           child: Row(
             children: [
               Expanded(
                 child: PosButton(
-                  label: ticket.isSeated ? 'Send round  F4' : 'Park  F4',
+                  label: ticket.isSeated ? s.sendRoundKey : s.parkKey,
                   height: PosSize.secondaryAction,
-                  background: PosColors.shell,
-                  foreground: PosColors.shellText,
+                  background: pos.shell,
+                  foreground: pos.shellText,
                   onPressed: ticket.hasDraft ? onSendRound : null,
                 ),
               ),
               const SizedBox(width: 1),
               Expanded(
                 child: PosButton(
-                  label: 'Void ticket',
+                  label: s.voidTicket,
                   height: PosSize.secondaryAction,
-                  background: PosColors.shell,
-                  foreground: PosColors.offlinePillText,
+                  background: pos.shell,
+                  foreground: pos.offlinePillText,
                   onPressed: hasAnything ? onVoid : null,
                 ),
               ),
@@ -233,7 +243,7 @@ class CartPanel extends StatelessWidget {
           label: '$ctaLabel  ${totals.total.format()}',
           height: PosSize.primaryCta,
           alignLeft: true,
-          background: hasAnything ? PosColors.accent : const Color(0xFF4A3F31),
+          background: hasAnything ? pos.accent : pos.ctaDisabled,
           foreground: Colors.white,
           fontSize: 17,
           fontWeight: FontWeight.w800,
@@ -247,7 +257,11 @@ class CartPanel extends StatelessWidget {
 }
 
 class _LineRow extends StatelessWidget {
-  const _LineRow({required this.line, this.dimmed = false, this.onQuantityChanged});
+  const _LineRow({
+    required this.line,
+    this.dimmed = false,
+    this.onQuantityChanged,
+  });
 
   final TicketLine line;
   final bool dimmed;
@@ -255,12 +269,14 @@ class _LineRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final language = context.strings.languageCode;
+
     final row = Container(
       padding: const EdgeInsets.symmetric(
         horizontal: PosSpace.lg,
         vertical: PosSpace.md,
       ),
-      decoration: const BoxDecoration(border: Border(bottom: PosBorders.shell)),
+      decoration: BoxDecoration(border: Border(bottom: context.pos.shellBorder)),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -271,7 +287,7 @@ class _LineRow extends StatelessWidget {
               style: PosText.mono(
                 size: 15,
                 weight: FontWeight.w600,
-                color: dimmed ? PosColors.shellMuted : PosColors.accent,
+                color: dimmed ? context.pos.shellMuted : context.pos.accent,
               ),
             ),
           ),
@@ -281,19 +297,19 @@ class _LineRow extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  line.product.nameEn,
+                  line.product.displayName(language),
                   style: PosText.ui(
                     size: 14.5,
                     weight: FontWeight.w600,
-                    color: PosColors.shellText,
+                    color: context.pos.shellText,
                   ),
                 ),
                 if (line.modifiers.isNotEmpty)
                   Text(
-                    line.modifierSummary('en'),
+                    line.modifierSummary(language),
                     style: PosText.ui(
                       size: 12,
-                      color: PosColors.shellLineMeta,
+                      color: context.pos.shellLineMeta,
                       height: 1.4,
                     ),
                   ),
@@ -309,16 +325,18 @@ class _LineRow extends StatelessWidget {
                 style: PosText.mono(
                   size: 15,
                   weight: FontWeight.w600,
-                  color: PosColors.shellText,
+                  color: context.pos.shellText,
                 ),
               ),
               if (onQuantityChanged != null) ...[
                 const SizedBox(height: PosSpace.sm),
-                Row(children: [
-                  _stepper('−', () => onQuantityChanged!(-1)),
-                  const SizedBox(width: 2),
-                  _stepper('+', () => onQuantityChanged!(1)),
-                ]),
+                Row(
+                  children: [
+                    _stepper('−', () => onQuantityChanged!(-1), pos: context.pos),
+                    const SizedBox(width: 2),
+                    _stepper('+', () => onQuantityChanged!(1), pos: context.pos),
+                  ],
+                ),
               ],
             ],
           ),
@@ -329,20 +347,20 @@ class _LineRow extends StatelessWidget {
     return dimmed ? Opacity(opacity: 0.62, child: row) : row;
   }
 
-  Widget _stepper(String glyph, VoidCallback onTap) => Material(
-        color: PosColors.shellCard,
-        child: InkWell(
-          onTap: onTap,
-          child: SizedBox(
-            width: 30,
-            height: 30,
-            child: Center(
-              child: Text(
-                glyph,
-                style: PosText.ui(size: 16, color: PosColors.shellText),
-              ),
-            ),
+  Widget _stepper(String glyph, VoidCallback onTap, {required PosPalette pos}) => Material(
+    color: pos.shellCard,
+    child: InkWell(
+      onTap: onTap,
+      child: SizedBox(
+        width: 30,
+        height: 30,
+        child: Center(
+          child: Text(
+            glyph,
+            style: PosText.ui(size: 16, color: pos.shellText),
           ),
         ),
-      );
+      ),
+    ),
+  );
 }

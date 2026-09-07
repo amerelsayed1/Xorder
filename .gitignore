@@ -49,3 +49,8 @@ app.*.map.json
 
 # Packaged installers produced by scripts/package_macos.sh
 /dist/
+
+# Test licences and anything else signed locally. The private key never
+# belongs in the repository either — see bin/pos_licence.dart.
+/licences/
+*.xlic

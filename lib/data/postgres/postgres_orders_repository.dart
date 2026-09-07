@@ -48,8 +48,8 @@ class PostgresOrdersRepository implements OrdersRepository {
     required this._context,
     this.shiftId,
     DateTime Function()? clock,
-  })  : _db = database,
-        _now = clock ?? DateTime.now;
+  }) : _db = database,
+       _now = clock ?? DateTime.now;
 
   /// The shift this sale belongs to, so a Z report can total it.
   ///
@@ -152,15 +152,68 @@ class PostgresOrdersRepository implements OrdersRepository {
       final orderId = inserted.first[0] as int;
       await _insertLines(tx, orderId, ticket);
       await _insertPayments(tx, orderId, ticket, occurredAt);
+      final queued = await _enqueueForSync(tx, orderId, ticket);
 
       return SubmitOrderResult(
         clientTransactionId: ticket.id,
-        // Written and committed to the branch server, not queued anywhere.
-        queued: false,
+        // Committed to PostgreSQL either way. `queued` says whether it is still
+        // owed to the platform — true in cloud mode until the drain lands, and
+        // false in offline mode, where the sale is already everywhere it will
+        // ever go.
+        queued: queued,
         serverId: orderId,
         invoiceNumber: inserted.first[1] as String?,
       );
     });
+  }
+
+  /// Claim this sale for the platform, in the **same transaction** that wrote it.
+  ///
+  /// That is the whole invariant. An outbox row inserted afterwards can be lost
+  /// to a crash between the two commits, and the sale is then money the platform
+  /// will never hear about — invisible precisely because it committed
+  /// successfully. One transaction or neither.
+  ///
+  /// Returns whether anything was enqueued.
+  Future<bool> _enqueueForSync(TxSession tx, int orderId, Ticket ticket) async {
+    // An offline terminal never sends sales, so queueing them would build a
+    // backlog nothing can ever drain and report a debt that does not exist.
+    if (!_config.mode.syncsSalesToPlatform) return false;
+
+    await tx.execute(
+      Sql.named('''
+        INSERT INTO pos_outbox (
+          order_id, client_transaction_id, restaurant_id, branch_id
+        ) VALUES (@order, @txn, @restaurant, @branch)
+        ON CONFLICT (restaurant_id, client_transaction_id) DO NOTHING
+      '''),
+      parameters: {
+        'order': orderId,
+        'txn': ticket.id,
+        'restaurant': _context.restaurantId,
+        'branch': _context.branchId,
+      },
+    );
+
+    return true;
+  }
+
+  @override
+  Future<int> pendingSyncCount() async {
+    if (!_config.mode.syncsSalesToPlatform) return 0;
+
+    final rows = await _db.query(
+      _config,
+      'SELECT count(*) FROM pos_outbox '
+      'WHERE restaurant_id = @restaurant AND branch_id = @branch '
+      'AND delivered_at IS NULL',
+      parameters: {
+        'restaurant': _context.restaurantId,
+        'branch': _context.branchId,
+      },
+    );
+
+    return rows.first[0] as int;
   }
 
   /// Allocate the next number for this branch and period.
@@ -225,8 +278,7 @@ class PostgresOrdersRepository implements OrdersRepository {
     required String period,
     required int value,
     int padTo = 6,
-  }) =>
-      '$prefix-$period-${value.toString().padLeft(padTo, '0')}';
+  }) => '$prefix-$period-${value.toString().padLeft(padTo, '0')}';
 
   Future<void> _insertLines(TxSession tx, int orderId, Ticket ticket) async {
     for (final line in ticket.lines) {

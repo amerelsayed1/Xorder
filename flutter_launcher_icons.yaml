@@ -1,0 +1,13 @@
+flutter_launcher_icons:
+  android: "ic_launcher"
+  ios: true
+  image_path: "assets/icons/xorder_app_icon_1024.png"
+  adaptive_icon_background: "#111827"
+  adaptive_icon_foreground: "assets/icons/xorder_adaptive_foreground_432.png"
+  windows:
+    generate: true
+    image_path: "assets/icons/xorder_app_icon_desktop_1024.png"
+    icon_size: 256
+  macos:
+    generate: true
+    image_path: "assets/icons/xorder_app_icon_desktop_1024.png"

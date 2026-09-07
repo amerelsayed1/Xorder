@@ -41,10 +41,10 @@ class LicenseFile {
   }
 
   String serialize() => jsonEncode({
-        'payload': payloadB64,
-        'signature': signatureB64,
-        'key_id': keyId,
-      });
+    'payload': payloadB64,
+    'signature': signatureB64,
+    'key_id': keyId,
+  });
 }
 
 /// Verifies licence files and turns them into an entitlement.
@@ -63,10 +63,8 @@ class LicenseFile {
 ///   * terminal counting — only a server can see sibling terminals, so the
 ///     offline `maxTerminals` check is advisory (POS-BE-016).
 class LicenseVerifier {
-  LicenseVerifier({
-    required this.publicKeyBytes,
-    Ed25519? algorithm,
-  }) : _algorithm = algorithm ?? Ed25519();
+  LicenseVerifier({required this.publicKeyBytes, Ed25519? algorithm})
+    : _algorithm = algorithm ?? Ed25519();
 
   /// The licence-server public key. The private half never leaves the issuer.
   ///
@@ -98,7 +96,9 @@ class LicenseVerifier {
   /// Parse claims from a file whose signature has already been verified.
   static LicenseClaims? claimsOf(LicenseFile file) {
     try {
-      final json = jsonDecode(utf8.decode(base64Url.decode(_pad(file.payloadB64))));
+      final json = jsonDecode(
+        utf8.decode(base64Url.decode(_pad(file.payloadB64))),
+      );
       return LicenseClaims.fromJson(json as Map<String, Object?>);
     } on FormatException {
       return null;
@@ -114,7 +114,9 @@ class LicenseVerifier {
     required DateTime now,
     String? terminalFingerprint,
   }) async {
-    if (file == null) return _deny(LicenseState.missing, const LicenceMissing());
+    if (file == null) {
+      return _deny(LicenseState.missing, const LicenceMissing());
+    }
 
     if (!await verifySignature(file)) {
       return _deny(LicenseState.invalid, const LicenceUnverifiable());
@@ -146,8 +148,9 @@ class LicenseVerifier {
       return _deny(
         LicenseState.tenantMismatch,
         LicenceTenantMismatch(
-          licenceTenant:
-              claims.tenantName.isEmpty ? claims.tenantSlug : claims.tenantName,
+          licenceTenant: claims.tenantName.isEmpty
+              ? claims.tenantSlug
+              : claims.tenantName,
           terminalTenant: tenant,
         ),
       );
@@ -161,7 +164,8 @@ class LicenseVerifier {
     }
 
     if (claims.fingerprints.isNotEmpty &&
-        (terminalFingerprint == null || !claims.fingerprints.contains(terminalFingerprint))) {
+        (terminalFingerprint == null ||
+            !claims.fingerprints.contains(terminalFingerprint))) {
       return _deny(
         LicenseState.terminalNotLicensed,
         const LicenceOtherTerminal(),
@@ -171,7 +175,10 @@ class LicenseVerifier {
     if (now.isBefore(claims.issuedAt)) {
       // Almost always a wrong system clock, so say so — telling a cashier the
       // licence "is not yet valid" sends them to the wrong person.
-      return _deny(LicenseState.notYetValid, LicenceNotYetValid(claims.issuedAt));
+      return _deny(
+        LicenseState.notYetValid,
+        LicenceNotYetValid(claims.issuedAt),
+      );
     }
 
     final daysRemaining = claims.expiresAt.difference(now).inDays;
@@ -220,7 +227,8 @@ class LicenseVerifier {
     );
   }
 
-  static LicenseEntitlement _deny(LicenseState state, LicenceNotice notice) => LicenseEntitlement(
+  static LicenseEntitlement _deny(LicenseState state, LicenceNotice notice) =>
+      LicenseEntitlement(
         state: state,
         canOpenShift: false,
         // A licence that is missing, damaged or for the wrong tenant stops

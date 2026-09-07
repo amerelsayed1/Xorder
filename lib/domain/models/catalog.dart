@@ -16,6 +16,7 @@ class Product {
     this.sku,
     this.barcode,
     this.isAvailable = true,
+    this.sortOrder = 0,
     this.modifierGroupIds = const [],
   });
 
@@ -30,13 +31,55 @@ class Product {
 
   /// `false` renders the tile at 50% opacity showing `OUT`, and blocks adding.
   final bool isAvailable;
+
+  /// Where it sits on the grid. The column has always existed and the read
+  /// query has always ordered by it; the model simply never carried it, which
+  /// made "move this up" impossible to express.
+  final int sortOrder;
+
   final List<int> modifierGroupIds;
 
   /// What the customer actually pays before modifiers.
   Money get effectivePrice => discountedPrice ?? price;
 
   String displayName(String locale) =>
-      locale.startsWith('ar') && (nameAr?.isNotEmpty ?? false) ? nameAr! : nameEn;
+      locale.startsWith('ar') && (nameAr?.isNotEmpty ?? false)
+      ? nameAr!
+      : nameEn;
+
+  /// Editing needs to change one field and keep the rest.
+  ///
+  /// `discountedPrice` is deliberately awkward: it is nullable AND clearable,
+  /// so a plain `Money?` argument could not tell "leave it" from "remove it".
+  /// [clearDiscount] is how a form says the second one.
+  Product copyWith({
+    int? id,
+    int? categoryId,
+    String? nameEn,
+    String? nameAr,
+    Money? price,
+    Money? discountedPrice,
+    bool clearDiscount = false,
+    String? sku,
+    String? barcode,
+    bool? isAvailable,
+    int? sortOrder,
+    List<int>? modifierGroupIds,
+  }) => Product(
+    id: id ?? this.id,
+    categoryId: categoryId ?? this.categoryId,
+    nameEn: nameEn ?? this.nameEn,
+    nameAr: nameAr ?? this.nameAr,
+    price: price ?? this.price,
+    discountedPrice: clearDiscount
+        ? null
+        : (discountedPrice ?? this.discountedPrice),
+    sku: sku ?? this.sku,
+    barcode: barcode ?? this.barcode,
+    isAvailable: isAvailable ?? this.isAvailable,
+    sortOrder: sortOrder ?? this.sortOrder,
+    modifierGroupIds: modifierGroupIds ?? this.modifierGroupIds,
+  );
 }
 
 class Category {
@@ -46,6 +89,7 @@ class Category {
     this.nameAr,
     this.slug,
     this.sortOrder = 0,
+    this.isActive = true,
   });
 
   final int id;
@@ -56,8 +100,34 @@ class Category {
   final String? slug;
   final int sortOrder;
 
+  /// Archived categories keep their products and their history.
+  ///
+  /// `pos_products.category_id` is `ON DELETE RESTRICT`, so a category that
+  /// ever held anything cannot be deleted — which is the right answer, because
+  /// deleting one would orphan every sale that named it. The read query
+  /// already filters on this; the model never carried it.
+  final bool isActive;
+
   String displayName(String locale) =>
-      locale.startsWith('ar') && (nameAr?.isNotEmpty ?? false) ? nameAr! : nameEn;
+      locale.startsWith('ar') && (nameAr?.isNotEmpty ?? false)
+      ? nameAr!
+      : nameEn;
+
+  Category copyWith({
+    int? id,
+    String? nameEn,
+    String? nameAr,
+    String? slug,
+    int? sortOrder,
+    bool? isActive,
+  }) => Category(
+    id: id ?? this.id,
+    nameEn: nameEn ?? this.nameEn,
+    nameAr: nameAr ?? this.nameAr,
+    slug: slug ?? this.slug,
+    sortOrder: sortOrder ?? this.sortOrder,
+    isActive: isActive ?? this.isActive,
+  );
 }
 
 /// A modifier group — the server's `option_group`.
@@ -89,7 +159,9 @@ class ModifierGroup {
   bool get isSingleSelect => maxSelect <= 1;
 
   String displayName(String locale) =>
-      locale.startsWith('ar') && (nameAr?.isNotEmpty ?? false) ? nameAr! : nameEn;
+      locale.startsWith('ar') && (nameAr?.isNotEmpty ?? false)
+      ? nameAr!
+      : nameEn;
 }
 
 class Modifier {
@@ -112,7 +184,9 @@ class Modifier {
   final bool isAvailable;
 
   String displayName(String locale) =>
-      locale.startsWith('ar') && (nameAr?.isNotEmpty ?? false) ? nameAr! : nameEn;
+      locale.startsWith('ar') && (nameAr?.isNotEmpty ?? false)
+      ? nameAr!
+      : nameEn;
 }
 
 /// The catalog as one immutable snapshot, so the sale screen never reads a
@@ -144,10 +218,8 @@ class Catalog {
   ModifierGroup? group(int id) =>
       modifierGroups.where((g) => g.id == id).firstOrNull;
 
-  List<ModifierGroup> groupsFor(Product product) => product.modifierGroupIds
-      .map(group)
-      .whereType<ModifierGroup>()
-      .toList();
+  List<ModifierGroup> groupsFor(Product product) =>
+      product.modifierGroupIds.map(group).whereType<ModifierGroup>().toList();
 
   /// Search across name, SKU and barcode — the one lookup the F2 field and the
   /// scanner both go through, so a scan and a typed PLU behave identically.

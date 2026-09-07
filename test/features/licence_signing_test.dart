@@ -20,9 +20,8 @@ import 'package:xorder_pos/features/licensing/domain/license_verifier.dart';
 /// against a real signature rather than a mocked one.
 void main() {
   const deployment = DeploymentConfig(
-    mode: DeploymentMode.branchServer,
-    baseUrl: 'http://192.168.1.20:8100',
-    upstreamUrl: 'https://xorder.io',
+    mode: DeploymentMode.offline,
+    databaseHost: '192.168.1.20',
     tenantSlug: 'amer',
   );
 
@@ -31,7 +30,7 @@ void main() {
   LicenseClaims claimsFor({
     String tenant = 'amer',
     Duration term = const Duration(days: 365),
-    Set<DeploymentMode> modes = const {DeploymentMode.branchServer},
+    Set<DeploymentMode> modes = const {DeploymentMode.offline},
   }) =>
       LicenseClaims(
         licenseId: 'lic-1',
@@ -97,7 +96,7 @@ void main() {
 
     expect(result.succeeded, isFalse);
     expect(result.entitlement?.state, LicenseState.invalid);
-    expect(result.error, contains('could not be verified'));
+    expect(result.notice, isA<LicenceUnverifiable>());
   });
 
   test('editing the term of a signed licence invalidates it', () async {
@@ -153,7 +152,12 @@ void main() {
 
     expect(result.succeeded, isFalse);
     expect(result.entitlement?.state, LicenseState.tenantMismatch);
-    expect(result.error, contains("Amer's Kitchen"));
+    expect(
+      result.notice,
+      isA<LicenceTenantMismatch>()
+          .having((n) => n.licenceTenant, 'licence tenant', contains("Amer's Kitchen"))
+          .having((n) => n.terminalTenant, 'terminal tenant', 'amer'),
+    );
   });
 
   test('a licence that does not cover this deployment mode is refused', () async {
@@ -181,8 +185,7 @@ void main() {
     // "That key was not recognised" would send the operator hunting for a typo
     // in a key nothing was ever going to check.
     expect(result.succeeded, isFalse);
-    expect(result.error, contains('no licence server'));
-    expect(result.error, contains('.xlic'));
+    expect(result.notice, isA<NoLicenceServer>());
   });
 
   test('an expired licence still permits cash-up, and says so', () async {

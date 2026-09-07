@@ -33,9 +33,8 @@ class PgFixture {
     return PgFixture._(
       PosDatabase(credentials: InMemoryPosDbCredentials(password)),
       DeploymentConfig(
-        mode: DeploymentMode.branchServer,
-        baseUrl: 'http://$address:8100',
-        upstreamUrl: 'https://xorder.io',
+        mode: DeploymentMode.offline,
+        databaseHost: address,
         // The throwaway container has no certificate. Only a private host may
         // ever skip verification, and 127.0.0.1 qualifies.
         verifyTls: false,

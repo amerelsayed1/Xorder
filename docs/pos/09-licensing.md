@@ -85,9 +85,39 @@ and cannot be selected by the file.
 | `warn_days` | renewal banner appears this long before expiry (default 30) |
 | `max_terminals` | **advisory offline** |
 | `features` | feature keys, mirroring the server's `Feature` enum |
-| `modes` | which deployment modes it covers — a cloud licence need not cover a branch server |
+| `modes` | which deployment modes it covers — a cloud licence need not cover an offline terminal. The setup wizard reads this to decide which modes it offers at all. Legacy `branch_server` / `standalone` values still parse, to `offline`. |
 | `fingerprints` | machine pins; empty means unpinned |
 | `branch_ids` | empty means all branches |
+
+> ### Amendment — 2026-08-28: three claims proposed, and the "offline certificate" declined
+>
+> Three additive keys are requested as **POS-BE-027**, all tolerant, none
+> requiring any existing licence to be re-signed — the signature covers the
+> payload bytes and this change only reads more of them.
+>
+> | Claim | Absent → | Note |
+> |---|---|---|
+> | `max_offline_days` | `null` = unlimited | The server already emits it. §6 below lists it as not built; POS-BE-027 is what closes that |
+> | `license_version` | `1` | Claims-schema version. If it exceeds what the client understands, **evaluate what you understand and attach a notice — never deny** |
+> | `server_id` | `null` = not site-pinned | Pins a licence to a *site's database* rather than to a box. Same semantics as an empty `fingerprints[]` |
+>
+> This adds two `LicenseState` cases — `offlineWindowExpired` and `siteMismatch`
+> — and four `LicenceNotice` cases. The entitlement for `offlineWindowExpired` is
+> **byte-identical to `expired`**, so §2's cardinal rule needs no new shape: the
+> next shift is blocked, the open one is never cut off.
+>
+> **A separate signed "offline certificate" was requested by the owner and is
+> declined here.** Seven of its nine proposed fields are already claims above;
+> these three cover the rest. A second document would mean two expiry dates to
+> reconcile, two revocation paths, and POS-BE-022's own instruction says not to
+> build a second enforcement path. Recorded as a disagreement, not a silent
+> substitution — see POS-BE-027 and `docs/pos/10-setup-architecture.md` §13.
+>
+> `evaluateClaims` gains two optional parameters, `lastPlatformContactAt` and
+> `siteServerId`, both nullable and both meaning *cannot judge, do not deny*, so
+> it stays pure and testable without keys. "Last platform contact" is stored in
+> `bootstrap.json` — never in the signed file, which is not rewritten, and never
+> in `config.json`, which gates boot and must not be rewritten hourly.
 
 ## 4. Verification
 
@@ -104,6 +134,59 @@ The clock is injected rather than read from `DateTime.now()` at the point of use
 so a wrong system clock produces the honest message *"check the terminal's date
 and time"* rather than a baffling "not yet valid".
 
+## 4a. Test licences
+
+**There is one key pair, and it belongs to the platform.** `LicenceIssuer::mint`
+in `apps/api` signs every licence the dashboard hands out, so the POS embeds the
+public half of the API's `LICENCE_SIGNING_KEY` and nothing else. A POS-side pair
+would mean the till rejected every licence the dashboard issued.
+
+Derive the public half from the API's secret key — this prints only the public
+half, never the secret:
+
+```bash
+php -r '$e = file(".env"); foreach ($e as $l) if (str_starts_with($l, "LICENCE_SIGNING_KEY=")) $k = trim(substr($l, 20));
+  echo base64_encode(sodium_crypto_sign_publickey_from_secretkey(base64_decode($k))), PHP_EOL;'
+```
+
+To sign locally with the same pair, `bin/pos_licence.dart` wants the **seed** —
+the first 32 bytes of that 64-byte libsodium secret key — in `POS_LICENCE_KEY`:
+
+```bash
+export POS_LICENCE_KEY=<private-key-b64>
+dart run bin/pos_licence.dart issue --tenant mahsoub --name "Mahsoub Restaurant" \
+  --days 365 --out licences/valid.xlic
+```
+
+`--issued` and `--expires` take ISO-8601 dates and override `--days`. They exist
+so every state a till has to handle can be produced as a real signed file rather
+than only reasoned about in a unit test:
+
+| State | How to mint it |
+| --- | --- |
+| `valid` | the default |
+| `expiringSoon` | `--days 12` — anything inside `--warn-days`, default 30 |
+| `inGrace` | `--expires` a past date inside `--grace-days`, default 14 |
+| `expired` | `--expires` a past date beyond the grace window |
+| `notYetValid` | `--issued` a future date — what a wrong terminal clock looks like |
+| `tenantMismatch` | `--tenant` something other than the terminal's |
+| `modeNotLicensed` | `--modes cloud` installed on an offline till, or the reverse |
+| `invalid` | edit a byte of the payload in any file above |
+
+`licences/` and `*.xlic` are git-ignored, so a signed file cannot be committed
+by accident.
+
+Read one back — including whether it verifies against a given key — with:
+
+```bash
+dart run bin/pos_licence.dart inspect --file licences/valid.xlic \
+  --public-key "$(grep -o "currentB64 = '[^']*" lib/features/licensing/data/license_keys.dart | cut -d"'" -f2)"
+```
+
+**Before release**, run `keygen` again for the release channel, embed that public
+key, and keep its private half off shared drives. A build that ships the
+development key is a build anyone with this repository can license.
+
 ## 5. Renewal — how a licence is updated
 
 Renewal is the **common** case; first activation is the rare one. A till is set up
@@ -116,8 +199,8 @@ inside the setup wizard.
 |---|---|---|
 | **Automatic** | Cloud | **None.** Renew on the platform; the till re-reads at start-up and before each shift opens. |
 | **Key re-entry** | Any | Type the new key → *Activate key* |
-| **File import** | Branch server · standalone | Import the `.xlic` from your supplier → *Import licence file* |
-| **Forced check** | Cloud only | *Check for renewal*. On a branch server or standalone till this says plainly that there is nobody to ask, rather than spinning. |
+| **File import** | Any | Import the `.xlic` from your supplier → *Import licence file*. The only path that needs no internet at all. |
+| **Forced check** | Any | *Check for renewal*. **Offline terminals included** — the mode decides where *sales* go, not where the licence comes from, and this check-in is the mechanism behind the offline window. Only a build with no licence transport says there is nobody to ask. |
 
 **Renewal must never require the internet.** That is why the signed-file path is
 first class, not a fallback: an on-premises till may never see the internet in its
@@ -154,17 +237,30 @@ renewal, not six. This is part of POS-BE-017.
 - **Hardware fingerprinting.** `TerminalFingerprint` is an interface with a fake.
   The real implementation must hash before anything leaves the device — the
   licence server has no business knowing the operator's machine name.
-- **Server issuance and activation** — POS-BE-015 is now **`READY`**: Super Admin
+- **Server issuance and activation** — POS-BE-015 is **`READY`**: Super Admin
   issues, renews, revokes and downloads licences, and `POST /api/pos/licence/activate`
-  exchanges a typed key for the signed file. Two things remain on this side before
-  the swap: read `max_offline_days` (below), and compile the real Ed25519 public key
-  into the binary in place of the development issuer. Until both land,
-  `licenceServiceProvider` stays on `FakeLicenceService`.
-- **`max_offline_days`.** The server now emits it; `LicenseClaims` does not read
-  it. It is the single mechanism POS-BE-022 relies on for the islanded check-in
-  window, and must be added tolerantly (absent → null → unlimited) so a newly
-  minted licence stays readable by an older till. A till that ignores it simply
-  does not enforce the window, so this does not block integration.
+  exchanges a typed key for the signed file. `licenceServiceProvider` is bound to
+  `DefaultLicenceService`; `FakeLicenceService` is a test double only. **One thing
+  remains before a release build: the real Ed25519 public key** (below).
+- ~~**`max_offline_days`.**~~ **Read since 2026-08-28.** `LicenseClaims` parses it
+  tolerantly — absent, null or wrongly typed all mean unlimited, which is the
+  correct value for cloud and the only safe reading for a licence minted before
+  the claim existed. `license_version` landed alongside it, defaulting to 1, with
+  the rule that a version above `LicenseClaims.supportedVersion` is **evaluated,
+  never denied**. Covered by the *offline window and claims version* group in
+  `test/features/licensing_test.dart`, including a signed fixture proving no
+  existing licence needs re-signing.
+  **The window is parsed but not yet enforced** — enforcement needs a durable
+  "last reached the platform" timestamp, which arrives with the configuration
+  cache (`docs/pos/10-setup-architecture.md` §7, §13). A till that ignores the
+  window simply does not enforce it, so this does not block integration.
   *(The sibling risk — an empty `modes[]` parsing to an empty set and failing
   every mode, which reads to a cashier as a bricked till — is now rejected at
   validation by the issuer.)*
+
+> **Release blocker: the shipped public key is still the development one.**
+> `LicenseKeys.currentB64` holds the public half of the `apps/api` development
+> pair. A release build must not ship it. Run `php artisan licence:keygen` for
+> the release channel, embed that public half **before** anything is signed with
+> it, and keep the secret with the issuer. This cannot be done from the POS
+> repository — the issuer owns the pair.

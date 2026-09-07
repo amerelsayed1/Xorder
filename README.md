@@ -116,6 +116,16 @@ Chosen in the setup wizard. The honest reason to pick a branch server is
 provide — not "offline support", which it already does. Full reasoning and the
 costs in `docs/pos/08-deployment-modes.md`.
 
+**Phase 1 builds the cloud path only.** An unconfigured terminal boots to a
+logo-only welcome screen; **Ctrl+Shift+S** (or ⌘+Shift+S on macOS) opens the
+Setup Wizard — a chord rather than a button, because an unconfigured till
+stands in a public room. The wizard's first step chooses the setup type: Cloud
+is selectable, Offline is visible but dimmed *COMING SOON* until its phase
+lands. Cloud setup is slug + admin credentials: **Connect** pulls the tenant's
+configuration (name, branches) and the following steps display it; the licence
+is not a wizard step on this path — it arrives inside the bootstrap bundle at
+registration and installs itself.
+
 ## Licensing
 
 Ed25519-signed licence file, verified **entirely offline**. Renewal lives in
@@ -134,18 +144,69 @@ binary. Real enforcement stays server-side. See `docs/pos/09-licensing.md`.
 `F2` search · `F3` repeat line · `F4` park / send round · `F6` discount ·
 `F7` split · `F9` pay · `F10` drawer · `Esc` void or close · `Enter` confirm.
 
+## Roles, permissions and the audit trail
+
+A **role** carries a set of capabilities; a member of staff is on one, plus any
+direct grants of their own. Four roles are seeded per restaurant — owner,
+manager, supervisor, cashier — and a restaurant edits them freely, with two
+rules the code holds: the owner role keeps every capability (or a restaurant can
+reach a state where nobody is able to grant one back), and a cashier role holds
+nothing from the back office.
+
+Capability names live in `lib/domain/models/permissions.dart`, and
+`PosCapability.canonical` maps the names the first build shipped onto them, so a
+till on an older binary still reads a migrated database correctly.
+
+**Every check goes through `Authorization`** — the widgets that grey a control
+out and the repositories that refuse the write ask the same function, so a
+screen can only ever be more restrictive than the data layer, never less. Three
+outcomes, not a boolean: *allowed*, *denied*, and *needs a supervisor*, because
+a greyed-out button and a PIN prompt are different screens. Overrides are
+limited to things somebody can sensibly approve while standing at the till —
+discounting, voiding, refunding, cash-up — never to restoring a database.
+
+The **ledger** is `pos_audit_events`. It is append-only three times over: the
+interface has no update or delete, the till's database role is granted only
+`INSERT` and `SELECT`, and a trigger refuses `UPDATE`, `DELETE` and `TRUNCATE`
+even from an admin connection. It carries no foreign keys, deliberately — an
+audit row has to outlive the product or the person it describes — and every
+administrative write commits it in the same transaction as the change.
+
+`bin/pos_migrate.dart` grants **two** database roles: `--grant-to` for the till,
+`--grant-admin-to` for the Management section. Both credentials end up on the
+same disk, so this is not a wall; it is the difference between a password
+sitting on a machine in a public room being able to reprice the menu and reset
+PINs, and not.
+
+**Management** is at `/management`, reached from the start screen and gated on a
+PIN that holds `staff.manage`. Its strings are English-only for now, collected
+in `lib/features/admin/presentation/admin_messages.dart` so that moving them
+into `AppStrings` is one pass rather than forty.
+
 ## Not built yet
 
-Local outbound queue (the datastore itself now exists — see below) · printing and ESC/POS · cash drawer and scanner
-ports · refunds · open-tickets sheet ·
-discounts and price override · the tablet and handheld shells
+USB printer and scanner ports · refunds ·
+a parked-orders sheet for takeaway (dine-in tickets already park on their
+tables, survive a restart, and resume from the floor) ·
+discounts and price override · catalogue administration ·
+Arabic for the Management section · the tablet and handheld shells
 (the breakpoints exist; only the wide shell is finished).
 
-**Arabic is not wired.** The wizard offers العربية and the choice is recorded,
-but `MaterialApp` has no `locale:` and there is no `Directionality` in `lib/` —
-so the interface stays English and left-to-right whichever is picked. The menu
-carries `name_ar` throughout and the domain models already select on locale, so
-the data half is done; the shell is not.
+**The cloud path is built and verified end-to-end (2026-09-04).** A cloud
+terminal claims against the hosted platform with a pairing code (or staff
+credentials), holds an `xdt_` device token in the OS keystore, seeds its local
+PostgreSQL from the `/api/pos/bootstrap` bundle (catalog, staff + PIN
+verifiers, tables, money rules), and drains its durable outbox to
+`POST /api/pos/orders` — server-priced, idempotent, with the authoritative
+invoice number recorded back and rejections quarantined per error code, never
+discarded. The sync loop (heartbeat → config-version refresh → drain) runs
+automatically, after every settled sale, and from a tap on the sync pill.
+See `lib/data/cloud/` and `docs/coordination/BACKEND_TO_POS.md`.
+
+**Arabic is wired for the current shell.** The terminal locale is persisted,
+`MaterialApp` applies it, and Flutter supplies RTL directionality. Thermal
+receipt output remains Latin-only because ESC/POS Arabic code pages vary by
+printer model.
 
 **Sign-in happens at the drawer, not at the door.** Opening a shift asks for a
 PIN and records who gave it, so the person answerable for the cash is on the
@@ -208,11 +269,11 @@ itself and says which of DNS, TCP, auth, TLS or database-name failed, because
 sending an installer to open a firewall port when the password is wrong wastes a
 site visit.
 
-Two things this does **not** yet have: durable credential storage
-(`flutter_secure_storage` — Keychain / DPAPI — is the intended home) and a local
-write-ahead, so a till cannot sell while the branch server is down. That is the
-accepted cost recorded in `08-postgres-lan.md`, and the unbuilt outbound queue is
-what would fix it.
+Database credentials are stored with `flutter_secure_storage` (Keychain on
+macOS and the platform credential store on Windows). Cloud-mode sales are
+recorded in a transactional PostgreSQL outbox, but no drain exists until the
+platform order contract is finalized. A till still cannot sell while its own
+PostgreSQL source of truth is unreachable.
 
 ### Where the till's data comes from
 
@@ -239,9 +300,9 @@ Three things are still not real, and are still worth knowing about:
 
 | | Why | What it does now |
 |---|---|---|
-| Licence | Needs a licence server and an Ed25519 key pair | Any non-empty key activates for a year |
-| Hardware | Needs USB and network transports behind a platform channel | Discovers nothing, rather than inventing two printers |
-| Arabic | The RTL shell is unbuilt — `MaterialApp` has no `locale:` and there is no `Directionality` anywhere | Picking العربية changes a highlight and one summary row; the interface stays English |
+| Licence | Production issuer/key rotation still needs deployment coordination | Calls the hosted activation API and verifies Ed25519 signatures locally |
+| Hardware | USB transports still need platform channels | Discovers and tests network ESC/POS printers over TCP 9100 |
+| Arabic receipts | ESC/POS Arabic code pages differ by printer | The app shell is RTL/localized; unsupported receipt glyphs are not emitted as mojibake |
 
 ### Preparing a branch database
 
@@ -289,6 +350,20 @@ INSERT INTO pos_products (restaurant_id, category_id, name_en, name_ar, price_mi
 INSERT INTO pos_dining_tables (restaurant_id, branch_id, label, seats, sort_order)
   VALUES (1, 1, 'T1', 4, 1);
 ```
+
+For a **demo or a bring-up till** — where the point is to show the thing working,
+not to sell anyone's food — there is a flag that writes ten placeholder products,
+two option groups and eight tables:
+
+```bash
+POS_PG_PASSWORD=… dart run bin/pos_migrate.dart --host 192.168.1.20 \
+  --user postgres --seed-catalogue --slug amer
+```
+
+Deliberately **not** part of `--seed`, for the reason above: a real install must
+never quietly acquire fictional prices. It refuses to touch a restaurant that
+already has products, so it cannot overwrite a real menu, and every item is
+prefixed `DEMO-` so a stray one is obvious in a report.
 
 An option group is a row in `pos_modifier_groups`, its choices are rows in
 `pos_modifiers`, and `pos_product_modifier_groups` attaches a group to a product.

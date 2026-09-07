@@ -4,17 +4,20 @@
 **Absolute path:** `~/Projects/Mobile Application/xorder-pos/docs/coordination/POS_TO_BACKEND.md`
 **Backend repo under analysis:** `~/Projects/Web Application/xorder-new` (`apps/api`)
 **Reply channel:** `./BACKEND_TO_POS.md`
-**Last updated:** 2026-08-26
+**Last updated:** 2026-09-02
 
 ---
 
-> ## ⚠️ These are REQUESTS, not approvals.
-> Nothing in this file authorises Agent 2 to write backend code. Agent 2 remains
-> in **ANALYSIS-ONLY MODE** until the project owner explicitly approves specific
-> `POS-BE-xxx` items. Agent 1 continues building against repository interfaces
-> and fake implementations in the meantime.
+> ## ✅ Contracts are AGREED. Implementation is still gated.
+> **Owner instruction, 2026-09-02:** both agents were directed to agree the
+> contract for every item. Every request below is now `APPROVED` — the final
+> wire contracts live in `BACKEND_TO_POS.md`, including the resolutions of
+> DIS-1…DIS-5 — except POS-BE-015, which is `READY` (shipped).
 >
-> **Agent 1 has made no change of any kind inside `xorder-new/`.**
+> `APPROVED` authorises **no backend code**. Implementation of any item still
+> needs the owner's explicit go, item by item. Agent 1 keeps building against
+> repository interfaces and fake implementations, and integrates real transport
+> only when an item reaches `READY`.
 
 **Status vocabulary:** `PROPOSED` · `APPROVED` · `IN_PROGRESS` · `READY` · `BLOCKED`
 Only Agent 2 (after owner approval) moves an item past `PROPOSED`, and it does so
@@ -26,30 +29,39 @@ in `BACKEND_TO_POS.md` — this file records the *request*.
 
 | ID | Feature | Priority | Blocking | Status |
 |---|---|---|---|---|
-| POS-BE-001 | `Feature::POS` entitlement + plan wiring | MEDIUM | NO | PROPOSED |
-| POS-BE-002 | POS tenant capabilities (`pos.*`) | HIGH | NO | PROPOSED |
-| POS-BE-003 | Auto-applied option groups on `/dashboard/items` | HIGH | NO | PROPOSED |
-| POS-BE-004 | `sku` + `barcode` on menu items | MEDIUM | NO | PROPOSED |
-| POS-BE-005 | `supported_order_types` + `code` on `BranchResource` | HIGH | NO | PROPOSED |
-| **POS-BE-006** | **Authenticated, server-priced POS order creation** | **HIGH** | **YES** | PROPOSED |
-| POS-BE-007 | Idempotency + integer minor units on POS writes | HIGH | YES | PROPOSED |
-| POS-BE-008 | Per-branch invoice sequence | HIGH | YES | PROPOSED |
-| POS-BE-009 | Shifts, cash movements, terminal registry | HIGH | YES | PROPOSED |
-| POS-BE-010 | Refunds / voids as reversing records | MEDIUM | NO | PROPOSED |
-| POS-BE-011 | Token lifetime compatible with an offline till | HIGH | NO | PROPOSED |
-| POS-BE-012 | Incremental catalog sync (`updated_since` + tombstones) | LOW | NO | PROPOSED |
-| POS-BE-013 | Money configuration: tax, charges, tender types, tax id | HIGH | YES | PROPOSED |
-| POS-BE-014 | Authenticated customer creation from the till | LOW | NO | PROPOSED |
+| POS-BE-001 | `Feature::POS` entitlement + plan wiring | MEDIUM | NO | APPROVED |
+| POS-BE-002 | POS tenant capabilities (`pos.*`) | HIGH | NO | APPROVED |
+| POS-BE-003 | Auto-applied option groups on `/dashboard/items` | HIGH | NO | APPROVED |
+| POS-BE-004 | `sku` + `barcode` on menu items | MEDIUM | NO | APPROVED |
+| POS-BE-005 | `supported_order_types` + `code` on `BranchResource` | HIGH | NO | APPROVED |
+| **POS-BE-006** | **Authenticated, server-priced POS order creation** | **HIGH** | **YES** | APPROVED |
+| POS-BE-007 | Idempotency + integer minor units on POS writes | HIGH | YES | APPROVED |
+| POS-BE-008 | Per-branch invoice sequence | HIGH | YES | APPROVED |
+| POS-BE-009 | Shifts, cash movements, terminal registry | HIGH | YES | APPROVED |
+| POS-BE-010 | Refunds / voids as reversing records | MEDIUM | NO | APPROVED |
+| POS-BE-011 | Token lifetime compatible with an offline till | HIGH | NO | APPROVED |
+| POS-BE-012 | Incremental catalog sync (`updated_since` + tombstones) | LOW | NO | APPROVED |
+| POS-BE-013 | Money configuration: tax, charges, tender types, tax id | HIGH | YES | APPROVED |
+| POS-BE-014 | Authenticated customer creation from the till | LOW | NO | APPROVED |
 | POS-BE-015 | Licence issuance + activation endpoints | MEDIUM | NO | **READY** |
-| POS-BE-016 | Terminal registration against a licence (seat counting) | MEDIUM | NO | PROPOSED |
-| POS-BE-017 | Branch-server packaging (on-premises deployment) | MEDIUM | NO | PROPOSED |
-| POS-BE-018 | Upstream sync: branch server → platform | MEDIUM | NO | PROPOSED |
-| POS-BE-019 | Machine-readable error codes on POS writes | HIGH | NO | PROPOSED |
-| POS-BE-020 | Server time exposed for clock-skew detection | LOW | NO | PROPOSED |
-| POS-BE-021 | Bulk drain of a queued backlog after an outage | MEDIUM | NO | PROPOSED |
-| POS-BE-022 | Super Admin fleet registry + automatic heartbeat | HIGH | NO | PROPOSED |
-| POS-BE-023 | Terminal provisioning from the dashboard + `/api/pos/bootstrap` | HIGH | YES | PROPOSED |
-| POS-BE-024 | POS PIN credential for offline cashier sign-in | HIGH | YES | PROPOSED |
+| POS-BE-016 | Terminal registration against a licence (seat counting) | MEDIUM | NO | APPROVED |
+| POS-BE-017 | Branch-server packaging (on-premises deployment) | MEDIUM | NO | APPROVED |
+| POS-BE-018 | Upstream sync: branch server → platform | MEDIUM | NO | APPROVED |
+| POS-BE-019 | Machine-readable error codes on POS writes | HIGH | NO | APPROVED |
+| POS-BE-020 | Server time exposed for clock-skew detection | LOW | NO | APPROVED |
+| POS-BE-021 | Bulk drain of a queued backlog after an outage | MEDIUM | NO | APPROVED |
+| POS-BE-022 | Super Admin fleet registry + automatic heartbeat | HIGH | NO | APPROVED |
+| POS-BE-023 | Terminal provisioning from the dashboard + `/api/pos/bootstrap` | HIGH | YES | APPROVED |
+| POS-BE-024 | POS PIN credential for offline cashier sign-in | HIGH | YES | APPROVED |
+| POS-BE-025 | Pre-auth tenant setup config (`/setup/config/{slug}`) + versioning | HIGH | NO | APPROVED |
+| POS-BE-026 | Site registration and `ServerId` | MEDIUM | NO | APPROVED |
+| POS-BE-027 | Licence claims: `max_offline_days`, `server_id`, `license_version` | MEDIUM | NO | APPROVED |
+| POS-BE-028 | Terminal display-name update, decoupled from identity | LOW | NO | APPROVED |
+
+Three of the entries above are **amendments rather than new surface**:
+POS-BE-025 is a redacted projection of POS-BE-023's bundle, POS-BE-027 adds three
+claims to the already-`READY` POS-BE-015, and the POS-BE-022 amendment asks only
+that its heartbeat *response* be specified. See `docs/pos/10-setup-architecture.md`.
 
 **If the owner approves only one item, it should be POS-BE-006** — everything
 that takes money depends on it, and its prerequisite (`order_items.menu_item_id`)
@@ -59,7 +71,7 @@ independently fixes product reporting for the existing QR product.
 
 ## POS-BE-001
 
-**Status:** PROPOSED
+**Status:** APPROVED — contract agreed 2026-09-02, see `BACKEND_TO_POS.md`; implementation not started
 **Feature:** `Feature::POS` entitlement flag + plan wiring
 
 **Description:** Add a `pos` case to `App\Enums\Feature` so the POS surface can be
@@ -95,7 +107,7 @@ never mid-shift.
 
 ## POS-BE-002
 
-**Status:** PROPOSED
+**Status:** APPROVED — contract agreed 2026-09-02, see `BACKEND_TO_POS.md`; implementation not started
 **Feature:** POS tenant capabilities
 
 **Description:** Add POS verbs to `App\Enums\TenantCapability`:
@@ -147,7 +159,7 @@ the server re-gates on sync.
 
 ## POS-BE-003
 
-**Status:** PROPOSED
+**Status:** APPROVED — contract agreed 2026-09-02, see `BACKEND_TO_POS.md`; implementation not started
 **Feature:** Auto-applied option groups on the dashboard items endpoint
 
 **Description:** `GET /api/dashboard/items` should return the same *complete* set
@@ -186,7 +198,7 @@ merely incomplete.
 
 ## POS-BE-004
 
-**Status:** PROPOSED
+**Status:** APPROVED — contract agreed 2026-09-02, see `BACKEND_TO_POS.md`; implementation not started
 **Feature:** `sku` and `barcode` on menu items
 
 **Description:** Nullable `sku` and `barcode` columns on `menu_items`, exposed on
@@ -218,7 +230,7 @@ SKU, PLU, barcode or article-number column exists anywhere in `apps/api`.
 
 ## POS-BE-005
 
-**Status:** PROPOSED
+**Status:** APPROVED — contract agreed 2026-09-02, see `BACKEND_TO_POS.md`; implementation not started
 **Feature:** Expose `supported_order_types` and `code` on `BranchResource`
 
 **Description:** `branches.supported_order_types` (already a real column, already
@@ -250,7 +262,7 @@ prefix in POS-BE-008.
 
 ## POS-BE-006
 
-**Status:** PROPOSED
+**Status:** APPROVED — contract agreed 2026-09-02, see `BACKEND_TO_POS.md`; implementation not started
 **Feature:** Authenticated, server-priced POS order creation
 
 > **This is the blocking request. Everything that takes money depends on it.**
@@ -332,7 +344,7 @@ available on a lapsed subscription. Agent 1 has no view; it is a commercial call
 
 ## POS-BE-007
 
-**Status:** PROPOSED
+**Status:** APPROVED — contract agreed 2026-09-02, see `BACKEND_TO_POS.md`; implementation not started
 **Feature:** Idempotency and integer minor units on every POS write
 
 **Description:** Every POS write accepts a client-generated
@@ -387,7 +399,7 @@ not be the thing that discovers it).
 
 ## POS-BE-008
 
-**Status:** PROPOSED
+**Status:** APPROVED — contract agreed 2026-09-02, see `BACKEND_TO_POS.md`; implementation not started
 **Feature:** Per-branch invoice sequence
 
 **Description:** A human-readable invoice number assigned **server-side**, distinct
@@ -434,7 +446,7 @@ invoice number, not consume a new one.
 
 ## POS-BE-009
 
-**Status:** PROPOSED
+**Status:** APPROVED — contract agreed 2026-09-02, see `BACKEND_TO_POS.md`; implementation not started
 **Feature:** Shifts, cash movements, and a terminal registry
 
 **Description:** Three related concepts, none of which exist today (verified — no
@@ -488,7 +500,7 @@ closable offline and sync afterwards as a batch.
 
 ## POS-BE-010
 
-**Status:** PROPOSED
+**Status:** APPROVED — contract agreed 2026-09-02, see `BACKEND_TO_POS.md`; implementation not started
 **Feature:** Refunds and voids as reversing records
 
 **Description:** Partial and full refunds against a settled order, recorded as a
@@ -527,7 +539,7 @@ amount (POS-R164).
 
 ## POS-BE-011
 
-**Status:** PROPOSED
+**Status:** APPROVED — contract agreed 2026-09-02, see `BACKEND_TO_POS.md`; implementation not started
 **Feature:** A token lifetime story compatible with a till that goes offline
 
 **Description:** Not a request for a specific implementation — a request for a
@@ -564,7 +576,7 @@ a cashier being interrupted mid-rush and not.
 
 ## POS-BE-012
 
-**Status:** PROPOSED
+**Status:** APPROVED — contract agreed 2026-09-02, see `BACKEND_TO_POS.md`; implementation not started
 **Feature:** Incremental catalog sync
 
 **Description:** `?updated_since=<iso8601>` on the catalog reads, returning changed
@@ -592,7 +604,7 @@ fine at restaurant catalog sizes.
 
 ## POS-BE-013
 
-**Status:** PROPOSED
+**Status:** APPROVED — contract agreed 2026-09-02, see `BACKEND_TO_POS.md`; implementation not started
 **Feature:** Money configuration — tax rules, additional charges, tender types,
 tax registration number
 
@@ -646,7 +658,7 @@ diagnostics.
 
 ## POS-BE-014
 
-**Status:** PROPOSED
+**Status:** APPROVED — contract agreed 2026-09-02, see `BACKEND_TO_POS.md`; implementation not started
 **Feature:** Authenticated customer creation from the till
 
 **Description:** An authenticated endpoint to create a customer (and optionally an
@@ -738,7 +750,7 @@ This is the whole point.
 
 ## POS-BE-016
 
-**Status:** PROPOSED
+**Status:** APPROVED — contract agreed 2026-09-02, see `BACKEND_TO_POS.md`; implementation not started
 **Feature:** Terminal registration against a licence (seat counting)
 
 **Description:** Count terminals server-side, so `max_terminals` means something.
@@ -762,7 +774,7 @@ lever.
 
 ## POS-BE-017
 
-**Status:** PROPOSED
+**Status:** APPROVED — contract agreed 2026-09-02, see `BACKEND_TO_POS.md`; implementation not started
 **Feature:** Branch-server packaging (on-premises deployment)
 
 **Description:** A supported way to run `apps/api` on a box inside a restaurant,
@@ -796,7 +808,7 @@ than anything else in this document.
 
 ## POS-BE-018
 
-**Status:** PROPOSED
+**Status:** APPROVED — contract agreed 2026-09-02, see `BACKEND_TO_POS.md`; implementation not started
 **Feature:** Upstream sync — branch server → platform
 
 **Description:** A branch server forwards its orders, payments, shifts and cash
@@ -816,7 +828,7 @@ branch server is just another client holding a queue of
 
 ## POS-BE-019
 
-**Status:** PROPOSED
+**Status:** APPROVED — contract agreed 2026-09-02, see `BACKEND_TO_POS.md`; implementation not started
 **Feature:** Machine-readable error codes on every `/api/pos/*` write
 
 **Description:** Every 4xx from a POS write carries a stable
@@ -850,7 +862,7 @@ guesswork without it, and a wrong guess is either lost money or an infinite loop
 
 ## POS-BE-020
 
-**Status:** PROPOSED
+**Status:** APPROVED — contract agreed 2026-09-02, see `BACKEND_TO_POS.md`; implementation not started
 **Feature:** Server time exposed, so a till can detect its own clock skew
 
 **Description:** `GET /api/pos/config` returns `server_time` (ISO 8601, UTC), or
@@ -878,7 +890,7 @@ Store both (`occurred_at` as sent, `received_at` as observed — which
 
 ## POS-BE-021
 
-**Status:** PROPOSED
+**Status:** APPROVED — contract agreed 2026-09-02, see `BACKEND_TO_POS.md`; implementation not started
 **Feature:** Bulk drain of a queued backlog
 
 **Description:** A way to submit many queued POS records in one request after a
@@ -918,7 +930,7 @@ results keyed by `client_transaction_id`:
 
 ## POS-BE-022
 
-**Status:** PROPOSED
+**Status:** APPROVED — contract agreed 2026-09-02, see `BACKEND_TO_POS.md`; implementation not started
 **Feature:** Super Admin fleet registry + automatic terminal heartbeat
 
 > **Owner requirement, 2026-08-26: every client must be trackable from Super
@@ -1003,10 +1015,21 @@ licence status · shift open. Sortable by last seen and by pending count.
   backend is that **no tenant is exempt** from POS-BE-008's provisional
   references, POS-BE-011, POS-BE-019, POS-BE-020 or POS-BE-021; they are
   universal, not per-SKU.
-- **The catalog stays authored in the cloud dashboard.** Local catalog authoring
-  on the till is now explicitly *out* of scope: a Super Admin cannot meaningfully
-  track a fleet whose tills each invented their own menu and prices. Islanded
-  tills are *seeded* from the platform and refreshed at each check-in.
+- **The catalog stays authored in the cloud dashboard — on a CLOUD terminal.**
+  A Super Admin cannot meaningfully track a fleet whose tills each invented
+  their own menu and prices, so a cloud till remains a reader: seeded from the
+  platform and refreshed at each check-in, with `BootstrapSeeder` replacing its
+  catalogue wholesale.
+
+  **Narrowed 2026-09-06 (owner decision):** this rule binds the *cloud* product
+  only. `DeploymentMode.offline` now authors its own menu, floor and money
+  rules on the till, because an offline restaurant has no dashboard to author
+  them in and no fleet for a Super Admin to track. The two are kept apart by
+  construction rather than by convention — `catalogAdminRepositoryProvider`
+  returns null outside offline, and `PostgresCatalogAdminRepository` refuses
+  again on its own, so a cloud till cannot author even if something built one.
+  There is still **exactly one author per deployment**, which is what the
+  no-merge rule below actually depends on.
 
 **Permissions:** heartbeat — `pos.operate` (or the terminal's own credential, if
 POS-BE-011 lands as Option C). Fleet views — Super Admin `Capability`, not
@@ -1031,7 +1054,7 @@ branch server is withdrawn as an offered configuration).
 
 ## POS-BE-023
 
-**Status:** PROPOSED
+**Status:** APPROVED — contract agreed 2026-09-02, see `BACKEND_TO_POS.md`; implementation not started
 **Feature:** Terminal provisioning from the dashboard + `GET /api/pos/bootstrap`
 
 > **Owner requirement, 2026-08-26:** the terminal is created **in the dashboard**,
@@ -1147,7 +1170,7 @@ authenticate cashiers and close a shift having never spoken to the server again.
 
 ## POS-BE-024
 
-**Status:** PROPOSED
+**Status:** APPROVED — contract agreed 2026-09-02, see `BACKEND_TO_POS.md`; implementation not started
 **Feature:** A POS PIN credential, distinct from the dashboard password
 
 **Description:** A per-staff-member PIN, set in the dashboard, hashed, delivered
@@ -1186,6 +1209,289 @@ own.
 **Offline requirements:** this request exists entirely for offline.
 **Priority:** HIGH · **Blocking:** YES for offline operation with more than one
 cashier.
+
+---
+
+## POS-BE-025
+
+**Status:** APPROVED — contract agreed 2026-09-02, see `BACKEND_TO_POS.md`; implementation not started
+**Feature:** Pre-auth tenant setup configuration — versioning and conditional fetch
+
+> **Design document:** `docs/pos/10-setup-architecture.md` §6, §7.
+
+**Description:** A configuration bundle a terminal can fetch **holding nothing at
+all**, keyed on the tenant slug, plus a version endpoint cheap enough to poll.
+
+### First: this is not a rival to POS-BE-023 — it is a second projection of it
+
+`GET /api/pos/bootstrap` requires the device credential, which does not exist
+before a terminal has claimed. This endpoint has to answer a machine that has
+just been unboxed. **Same document, different auth, different moment in time.**
+So please build it as a redacted sibling of the bootstrap bundle sharing one
+`config_version` counter, not as a second source of truth that can disagree.
+
+**Redacted means, precisely:**
+
+- **no `staff` block at all** — therefore no `pos_pin_hash`, ever, on this path
+- no device credential
+- no `licence` object **unless** the licence is already bound to the
+  `terminal_fingerprint` presented on the request
+- rate-limited per IP **and** per slug, the way `login` and `licence/activate`
+  already are
+
+### Endpoints
+
+| Method | Endpoint | Auth | Purpose |
+|---|---|---|---|
+| `GET` | `/api/pos/setup/config/{slug}` | none (rate-limited) | the redacted bundle |
+| `GET` | `/api/pos/setup/config/{slug}/version` | none (rate-limited) | ~80 bytes, pollable |
+
+```jsonc
+// GET /api/pos/setup/config/{slug}/version
+{ "config_version": 7, "last_updated_at": "2026-08-28T09:00:00Z",
+  "server_time": "2026-08-28T09:00:01Z" }              // POS-BE-020, reused not reinvented
+```
+
+```jsonc
+// GET /api/pos/setup/config/{slug}
+{ "config_version": 7, "last_updated_at": "…", "server_time": "…",
+  "tenant":   { "id", "slug", "name", "tax_registration_number",
+                "currency": "EGP", "exponent": 2, "timezone", "default_language" },
+  "branches": [ { "id", "code", "name", "supported_order_types" } ],   // POS-BE-005
+  "endpoints":{ "base_url", "database_host", "database_name",
+                "database_user", "database_port", "verify_tls" },
+  "pos":      { "sync_policy", "service_charge_percent", "rounding",
+                "invoice_prefix_source" },
+  "modules":  ["pos", "kds"],
+  "features": { "pos.split_tender": true },
+  "printers": [ { "role", "transport", "host", "port", "copies" } ],
+  "app":      { "lock_after_seconds", "shift_required" },
+  "branding": { "display_name", "logo_url", "accent_hex" },
+  "licence":  { "payload", "signature", "key_id" }     // only if fingerprint-bound
+}
+```
+
+### Design asks
+
+- **`config_version` must be a monotonically increasing integer per tenant, and
+  must never be reused.** It is the client's *sole* precedence signal. The client
+  accepts a bundle if and only if `incoming > cached`, and treats a lower value
+  as a rollback to be refused rather than applied — see §16.7 of the design doc.
+- `last_updated_at` and the ETag are **advisory**. The client will not let either
+  decide precedence: an ETag dies the moment a bundle arrives by file or USB
+  stick, and a timestamp comparison against a till with a wrong clock is how a
+  stale configuration wins.
+- Honour `If-None-Match` on the full GET → `304`. Emit `ETag` and
+  `X-Config-Version` headers.
+- **`modules[]` must never be emitted empty** — same trap as `modes[]` on
+  POS-BE-015. The client reads an empty set as "everything", not "nothing",
+  because the alternative is a till that will not configure with no way to say
+  why.
+- `currency` and `exponent` are **mandatory**. Hardcoding 100 is a bug for a
+  Kuwaiti tenant and one the client cannot detect on its own (A7).
+- The `money` block of POS-BE-013 belongs in **this** bundle rather than a
+  separate `/api/pos/config`. One document, one version, one thing to invalidate.
+
+**Errors** (POS-BE-019 vocabulary): `SETUP_SLUG_UNKNOWN` (404),
+`SETUP_SLUG_SUSPENDED` (403), `SETUP_RATE_LIMITED` (429).
+
+**Why a 404 must be honest:** the client treats two consecutive 404s as "the slug
+was renamed", shows a banner and offers a field for the new one. It does
+**nothing destructive** — the slug is not the terminal's identity, `restaurant_id`
+is — so please do not return 404 for a transient outage.
+
+**Permissions:** none, by design. **Tenant behaviour:** resolved from the slug.
+**Offline requirements:** the client must survive this endpoint being
+unreachable for the whole of setup; the wizard falls back to manual entry and
+never blocks.
+**Priority:** HIGH · **Blocking:** NO.
+
+---
+
+## POS-BE-026
+
+**Status:** APPROVED — contract agreed 2026-09-02, see `BACKEND_TO_POS.md`; implementation not started
+**Feature:** Site registration and `ServerId`
+
+> **Design document:** `docs/pos/10-setup-architecture.md` §4, §9.
+
+**Description:** A **site** is the box that hosts a branch's PostgreSQL and runs
+the `apps/api` stack for it. It gets a `server_id` (uuid, minted locally by the
+main device at setup) so the fleet registry can group terminals under the box
+their data actually lives on.
+
+**Why this is not just another terminal.** A main device whose disk dies gets
+replaced. If the site's identity were the box's identity, every hardware failure
+would become a licence support ticket — `max_terminals` would be counting against
+a machine rather than against a restaurant. So `server_id` identifies the *site's
+database* and `server_installation_id` records *which box currently hosts it*.
+Replacing hardware then changes one column, not a licence.
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| `POST` | `/api/pos/sites/register` | claim a site |
+| `POST` | `/api/pos/sites/{server_id}/replace` | move a site to new hardware — audited |
+| `GET` | `/api/admin/pos/sites` | Super Admin fleet view (cross-tenant, per POS-BE-022) |
+
+```jsonc
+// POST /api/pos/sites/register
+{ "tenant_slug", "branch_id", "server_id", "server_installation_id",
+  "app_version", "platform": "macos" }
+→ { "site": { "server_id", "branch_id", "registered_at" },
+    "allowed_terminal_count": 4 }
+```
+
+**Design asks:**
+
+- **Idempotent on `(restaurant_id, branch_id, server_id)`.** A registration that
+  times out and retries returns the same site, not a second one.
+- A second call with a *different* `server_id` for the same branch returns
+  `SITE_ALREADY_REGISTERED` **carrying the existing id**, so the wizard can say
+  *"this branch already has a main device at …"* rather than *"conflict"*.
+  Replacing a main device is a deliberate, audited act via the `replace`
+  endpoint — never an accident of retyping.
+- **Registration is not required for a site to work.** An offline restaurant with
+  no uplink at install time must still finish setup; it registers at first
+  contact. Please do not make this a precondition for anything.
+- `AuditLogger::record()` on register and replace, same posture as POS-BE-023's
+  claim/revoke.
+
+**Relates to:** POS-BE-022 — the fleet registry gains a **site** tier above
+terminals, so a branch's tills are grouped under the box hosting their database.
+POS-BE-016 — a site is the natural unit to count seats against, since the
+terminals sharing one database are exactly the ones a `max_terminals` claim is
+about.
+
+**Permissions:** `register` — unauthenticated, resolved from slug + branch, rate
+limited (it is only useful to someone already inside the restaurant's LAN);
+`replace` — `settings.update`; admin reads — SUPER_ADMIN.
+**Priority:** MEDIUM · **Blocking:** NO — a site works unregistered, it is simply
+not visible to Super Admin as a site.
+
+---
+
+## POS-BE-027
+
+**Status:** APPROVED — contract agreed 2026-09-02, see `BACKEND_TO_POS.md`; implementation not started — **this amends POS-BE-015, which is `READY`**
+**Feature:** Three additive licence claims — offline window, site pin, claims version
+
+> **Design document:** `docs/pos/10-setup-architecture.md` §13.
+
+**Description:** Three keys added to the existing signed payload. Nothing else
+about POS-BE-015 changes.
+
+| Claim | Key | Type | Absent → | Note |
+|---|---|---|---|---|
+| Offline window | `max_offline_days` | int, nullable | `null` = unlimited | **The server already stores and emits this**; the client has simply never read it. Listed as an outstanding client gap in the POS-BE-015 contract |
+| Claims version | `license_version` | int | `1` | Schema version of the claims object — **not** a generation counter |
+| Site pin | `server_id` | string, nullable | `null` = not site-pinned | Same semantics as an empty `fingerprints[]` |
+
+**No licence needs re-signing, and none may be invalidated.** The signature
+covers the payload bytes; this change only *reads more of them*. Every default
+reproduces today's behaviour exactly — the same tolerance `fromJson` already
+applies to `grace_days`, `warn_days` and `max_terminals`.
+
+**Client behaviour, so the semantics are agreed before either side builds:**
+
+- `max_offline_days` elapsed since last platform contact →
+  `LicenseState.offlineWindowExpired`, whose entitlement is **byte-identical to
+  `expired`**: the next shift cannot open, the open one is never cut off, and
+  cash-up, reprint and export are never gated. This is the single mechanism
+  POS-BE-022 asked for, and it needs no second enforcement path.
+- `server_id` present and not this site's → `LicenseState.siteMismatch`.
+- `license_version` greater than the client understands → **evaluate what is
+  understood and attach a notice; never deny.** Refusing would brick a till
+  holding a licence issued for a newer build, which inverts the cardinal rule.
+
+**Explicitly declining a separate "offline certificate".** The requirement that
+prompted this work asked for a second signed document carrying LicenseId,
+TenantId, BranchId, ServerId, AllowedTerminalCount, EnabledModules, IssuedAt,
+ExpiresAt and LicenseVersion. Seven of those nine are already claims on the
+licence; these three additions cover the rest. Building a second document
+contradicts POS-BE-022's own instruction — *"please do not build a second
+enforcement path"* — and would mean two expiry dates to reconcile, two
+revocation paths, and a support call that opens with "which one is wrong".
+**Flagged as a documented disagreement, not a silent substitution.**
+
+**Priority:** MEDIUM · **Blocking:** NO — the client ships against self-signed
+fixtures until this lands.
+
+---
+
+## POS-BE-028
+
+**Status:** APPROVED — contract agreed 2026-09-02, see `BACKEND_TO_POS.md`; implementation not started
+**Feature:** Terminal display-name update, decoupled from identity
+
+**Description:** `PATCH /api/pos/terminals/{terminal_id}` `{"name": "Bar 2"}` →
+`200`.
+
+**Why it is worth an entry of its own.** "The display name is never a security
+identity" has to be true on *both* sides, not just in the client. Today a till's
+name is chosen at setup and there is no way to change it without re-registering —
+which pushes operators toward re-registering a terminal to rename it, and that
+is exactly the act that breaks `terminal_id` continuity and orphans the shift
+and order history hanging off it.
+
+**Design asks:** the name is free text, trimmed, non-empty, unique per branch
+only as a *warning* rather than a constraint (two tills called "Bar" is untidy,
+not an error). Renaming never touches `terminal_id`, `server_id` or any
+credential. `AuditLogger::record()`, because a till changing name in a restaurant
+is worth finding in the trail.
+
+**Errors:** `TERMINAL_NAME_INVALID`.
+**Permissions:** `settings.update`, or the device credential for its own row.
+**Priority:** LOW · **Blocking:** NO.
+
+---
+
+## Amendment to POS-BE-022 — please specify the heartbeat *response*
+
+**This is the highest-leverage single item in the whole request set, and it costs
+one response body.**
+
+POS-BE-022 specifies a heartbeat request and says nothing about what comes back.
+Specifying it collapses three client polling loops into one:
+
+```jsonc
+{ "server_time": "2026-08-28T09:00:01Z",   // → clock-skew probe   (POS-BE-020)
+  "site_last_contact_at": "…",             // → max_offline_days window
+  "licence_expires_at": "…",               // → renewal banner without a second call
+  "config_version": 7,                     // → replaces polling POS-BE-025's /version
+  "terminal_status": "active" }            // → active | stale | revoked (BE-A04)
+```
+
+With this, a till that heartbeats does not also need to poll the config version
+endpoint, does not need a separate time source, and learns it has been revoked
+without a dedicated call. Without it, the client runs three schedules where one
+would do.
+
+`terminal_status: "revoked"` is handled under the BE-A04 rule already agreed:
+refuse the next sign-in and the next shift, never cut off the open one, and keep
+accepting queued records for drain.
+
+---
+
+## Amendment to POS-BE-023 — add a pre-auth projection
+
+See **POS-BE-025**. In short: keep `GET /api/pos/bootstrap` exactly as
+specified, and add `GET /api/pos/setup/config/{slug}` as a redacted,
+unauthenticated sibling sharing the same `config_version`. The authenticated
+bundle stays the complete document; the pre-auth one exists because a machine
+that has not yet claimed has no credential to present.
+
+---
+
+## Additions to the POS-BE-019 error vocabulary
+
+```
+SETUP_SLUG_UNKNOWN        SETUP_SLUG_SUSPENDED      SETUP_RATE_LIMITED
+CONFIG_VERSION_STALE      SITE_ALREADY_REGISTERED   SITE_NOT_FOUND
+TERMINAL_NAME_INVALID     LICENCE_SITE_MISMATCH
+```
+
+Same rule as everywhere else in this channel: **an unrecognised code is retried,
+never discarded.** The client will not infer meaning from an HTTP status alone.
 
 ---
 
@@ -1339,6 +1645,51 @@ Agent 1 asks only that the eventual server schema keep the shapes already agreed
 `client_transaction_id` key — so a branch database and the platform do not
 diverge.
 
+## Replies to `BACKEND_TO_POS.md` — 2026-09-02: contracts closed
+
+The owner directed both agents to agree the contract for everything. Agent 2
+rewrote `BACKEND_TO_POS.md` as the full agreed-contract document (every item
+`APPROVED`, POS-BE-015 `READY`), answered every open question (a–l), and raised
+five disagreements/counter-proposals. Agent 1's responses, all recorded in that
+file too:
+
+- **DIS-1 (no `database_*` pre-auth) — accepted.** The database block moves to
+  the authenticated bootstrap; the wizard's manual-entry fallback covers the
+  branch-server edge. `docs/pos/10-setup-architecture.md` §6/§7 will be updated
+  to match (client-side doc task).
+- **DIS-2 (`licence_ref` required on `sites/register`) — accepted**, with one
+  fix Agent 1 requested and Agent 2 applied: the register ref check fails with
+  a new uppercase `LICENCE_TENANT_MISMATCH`, distinct from
+  `LICENCE_SITE_MISMATCH` (which is solely the `server_id` claim mismatch).
+  §019, §026 and DIS-2 now agree.
+- **DIS-3 (separate offline certificate) — jointly declined** by both agents;
+  it remains on the owner's desk.
+- **DIS-4 (grandfathered lowercase licence codes) — accepted.** The client's
+  code-switch tables carry both casings knowingly, including the deliberate
+  case-only collision between `licence_tenant_mismatch` (activation, shipped)
+  and `LICENCE_TENANT_MISMATCH` (site register, new).
+- **DIS-5 (`POST /api/pos/orders/{id}/payments`) — accepted and welcomed**;
+  it is the endpoint the settle-later flow needs.
+
+**Client-side commitments this agreement creates (Agent 1's backlog):**
+
+1. `Tender.clientId` — generated in `TicketEngine.addTender` at the moment the
+   tender is added, never at sync time (BE-A01 per-payment idempotency key).
+2. Update `docs/pos/10-setup-architecture.md` for DIS-1 (no `database_*` in the
+   pre-auth bundle) and the final claim/bootstrap shapes in §023.
+3. Carry both casings of the licence error codes in the sync-queue switch
+   tables; unrecognised codes stay retry-never-discard.
+4. Device token: persist `xdt_…` with the `TerminalProfile`, honour the 24 h
+   rotation overlap; PIN verify is bcrypt (`$2y$`, cost 10) locally.
+5. Chunk the drain at 100 elements per `POST /api/pos/sync` request.
+6. Full-pull exactly the catalog collections whose delta response carries
+   `complete: false`.
+
+Nothing here authorises backend implementation; each item still needs the
+owner's explicit go to move `APPROVED → IN_PROGRESS`.
+
+---
+
 ## Change log
 
 | Date | Change |
@@ -1347,8 +1698,13 @@ diverge.
 | 2026-08-26 | POS-BE-015 … POS-BE-018 raised for licensing and on-premises deployment. Client-side deployment modes, licensing and the setup wizard are built and tested against fakes; no backend code touched. |
 | 2026-08-26 | Replies to `BACKEND_TO_POS.md` (A1–A7, BE-A01–BE-A05) recorded. POS-BE-019 … POS-BE-021 raised: error taxonomy, server time, bulk drain. No backend code touched. |
 | 2026-08-26 | Owner requirement: every client trackable from Super Admin. POS-BE-022 raised; islanded deployments withdrawn; local catalog authoring ruled out. |
+| 2026-09-06 | Owner decision: **`DeploymentMode.offline` is buildable, and authors its own world.** The two phase-1 blocks are removed and the wizard offers whichever modes the licence covers. An offline till can create its own database from the wizard (admin credential used once, never stored), and its Management section gains Menu, Floor and Money panes writing `pos_categories` / `pos_products` / `pos_dining_tables` / `pos_money_config` with the same audited-write discipline as staff and roles. **The 2026-08-26 ruling above is narrowed, not reversed:** local authoring is refused on cloud terminals in both the provider and the repository, so every deployment still has exactly one author and no merge path is needed. Back-office writes also move onto a second database role, asked for when Management opens and held in memory only — `bin/pos_migrate.dart` always refused to grant both role sets to one role, and the app now honours that instead of running Management as `pos_till`. No backend contract changed. |
 | 2026-08-26 | Owner decision: no cloud-only mode — the POS is desktop-only and therefore offline-first everywhere. Sync policy reduces to `dynamic` / `manual`. |
 | 2026-08-26 | POS-BE-023 / 024 raised: dashboard-provisioned terminals with a pairing-code claim, a single bootstrap bundle, and a POS PIN separate from the dashboard password. |
 | 2026-08-26 | Owner directed direct PostgreSQL access on branch-server deployments; implemented behind the repository contracts. No request withdrawn — see the note above the change log. |
 | 2026-08-26 | Owner decision **D6**: a licence is its own per-client record, issued from the Super Admin dashboard — not derived from the subscription. POS-BE-015 contract frozen in `BACKEND_TO_POS.md` (table, endpoints, wire shape, claims mapping). Two client-side gaps recorded: `max_offline_days` is not yet read by `LicenseClaims`, and `modes[]` must never be emitted empty. No code written on either side. |
 | 2026-08-26 | POS-BE-015 **implemented**: `pos_licences`, Ed25519 issuance, key activation, renewal-supersedes-in-place, revocation, `.xlic` download, `licences.manage` (SUPER_ADMIN only), 14 feature tests green. Super Admin screens shipped at `/pos/licences`. POS client still on `FakeLicenceService` pending the `max_offline_days` claim and the real public key. |
+| 2026-08-28 | **Client gap closed:** `LicenseClaims` now reads `max_offline_days` and `license_version`, tolerantly — absent, null or wrongly typed all fall back to the safe default, because a throw here becomes `LicenceFileDamaged` and refuses trade. No existing licence needs re-signing; proven by a signed fixture in `test/features/licensing_test.dart`. The window is **parsed but not yet enforced**, pending a durable last-contact timestamp. `licenceServiceProvider` was already on `DefaultLicenceService` — the earlier note saying otherwise was stale. **Still outstanding: the real Ed25519 public key**, which only the issuer can produce. |
+| 2026-09-04 | **Cloud Wave 1 integrated and smoke-verified end-to-end.** Owner go: "make the POS work with cloud for now". Client side shipped in `lib/data/cloud/`: `PosCloudApi`, tolerant `BootstrapBundle` parser, `BootstrapSeeder` (bundle → local PostgreSQL, platform ids verbatim, staff deactivated never deleted), `OutboxDrain` (§006 requests, per-payment uuid-v5 keys, quarantine-vs-defer per §019, delivery bookkeeping in migration 6), `CloudSync` (heartbeat → config-version reseed → drain; automatic timer + kick-on-sale + sync-pill manual), `DeviceTokenVault` (keychain), cloud `ProvisioningRepository` (Path A claim + Path B login/register). Backend Wave 1 implemented in `apps/api` (see `BACKEND_TO_POS.md` and `docs/backend/CLOUD_WAVE1_PROGRESS.md`). **Live smoke against `php artisan serve`: claim → bootstrap (frozen key map, 0 products dropped by the real parser) → server-priced order `201` with invoice `MAIN-2026-000001` → replay `200` same id+invoice → recovery → heartbeat → error envelope. All passed.** Client suites green (247); backend green (721). |
+| 2026-09-02 | **Contracts closed.** Owner directed full contract agreement. Agent 2 assessed every item and rewrote `BACKEND_TO_POS.md` as the agreed-contract document: POS-BE-001…028 all `APPROVED` (015 `READY`), open questions a–l decided (dual idempotency keys, per-collection `complete` flag, heartbeat response as proposed, **POS-BE-011 resolved as Option C** device token, batch bound 100, PIN hash bcrypt cost 10, canonical §019 error list). Agent 1 accepted DIS-1…DIS-5; `LICENCE_TENANT_MISMATCH` split from `LICENCE_SITE_MISMATCH`. Statuses here flipped to `APPROVED`; client backlog recorded above. **No code written on either side.** |
+| 2026-08-28 | Setup architecture designed end to end — `docs/pos/10-setup-architecture.md`. POS-BE-025 … POS-BE-028 raised: pre-auth tenant config by slug with a monotonic `config_version`, site registration and `ServerId`, three additive licence claims, terminal rename. Amendments requested to POS-BE-023 (a redacted pre-auth projection of the bootstrap bundle) and POS-BE-022 (specify the heartbeat *response*, which collapses three client polling loops into one). A separate "offline certificate" was requested by the owner and **declined** in favour of three claims on the existing licence — recorded as a disagreement in POS-BE-027, not a silent substitution. Design only; no client or backend code written. |

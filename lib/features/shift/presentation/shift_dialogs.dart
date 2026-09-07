@@ -2,11 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/providers.dart';
+import '../../../core/l10n/app_strings.dart';
 import '../../../core/money/money.dart';
 import '../../../core/ui/theme.dart';
 import '../../../core/ui/tokens.dart';
 import '../../../core/ui/widgets/pos_widgets.dart';
+import '../../../domain/repositories/admin_repositories.dart';
+import '../../admin/presentation/supervisor_override.dart';
+import '../../../domain/models/permissions.dart';
 import '../../../domain/models/shift.dart';
+import '../../../domain/services/authorization.dart';
 
 /// Opening a shift: who is on the till, and what is in the drawer.
 ///
@@ -21,7 +26,7 @@ class OpenShiftDialog extends ConsumerStatefulWidget {
   static Future<bool> show(BuildContext context) async =>
       await showDialog<bool>(
         context: context,
-        barrierColor: PosColors.scrimHeavy,
+        barrierColor: context.pos.scrimHeavy,
         barrierDismissible: false,
         builder: (_) => const OpenShiftDialog(),
       ) ??
@@ -55,12 +60,25 @@ class _OpenShiftDialogState extends ConsumerState<OpenShiftDialog> {
     setState(() => _busy = true);
     final staff = await ref.read(sessionRepositoryProvider).signIn(_pin);
     if (!mounted) return;
+    final strings = context.strings;
+
+    // Recognising the PIN and being allowed to open a shift are two different
+    // questions, and they are asked separately so the second can be answered
+    // by name: "Rana cannot open a shift" is actionable, "PIN not recognised"
+    // sends somebody to retype a PIN that was right.
+    final permitted =
+        staff != null &&
+        Authorization.check(staff, PosCapability.shiftOpen).isAllowed;
 
     setState(() {
       _busy = false;
       _pin = '';
-      _staff = staff;
-      _error = staff == null ? 'That PIN was not recognised.' : null;
+      _staff = permitted ? staff : null;
+      _error = switch (staff) {
+        null => strings.pinNotRecognised,
+        _ when !permitted => strings.notPermittedToOpenShift(staff.name),
+        _ => null,
+      };
     });
   }
 
@@ -70,7 +88,7 @@ class _OpenShiftDialogState extends ConsumerState<OpenShiftDialog> {
 
     final float = Money.tryParse(_float.text.trim());
     if (float == null || float.minor < 0) {
-      setState(() => _error = 'Enter the opening float, or 0.00 if the drawer is empty.');
+      setState(() => _error = context.strings.enterOpeningFloat);
       return;
     }
 
@@ -80,8 +98,19 @@ class _OpenShiftDialogState extends ConsumerState<OpenShiftDialog> {
     });
 
     try {
-      await ref.read(shiftRepositoryProvider).open(by: staff, openingFloat: float);
+      final shift = await ref
+          .read(shiftRepositoryProvider)
+          .open(by: staff, openingFloat: float);
       ref.read(signedInStaffProvider.notifier).signIn(staff);
+      await ref
+          .read(auditRepositoryProvider)
+          .record(
+            by: staff,
+            action: AuditAction.shiftOpened,
+            entityType: AuditAction.entityShift,
+            entityId: '${shift.id}',
+            after: {'opening_float': float.minor, 'currency': float.currency},
+          );
       // Anything asking "is a shift open" must see this one immediately —
       // including the orders repository, which stamps it on every sale.
       ref.invalidate(shiftProvider);
@@ -97,80 +126,82 @@ class _OpenShiftDialogState extends ConsumerState<OpenShiftDialog> {
   }
 
   @override
-  Widget build(BuildContext context) => _ShiftDialogShell(
-        title: _staff == null ? 'Sign in' : 'Open the drawer',
-        subtitle: _staff == null
-            ? 'Enter your PIN. The shift is opened in your name.'
-            : '${_staff!.name} · count what is in the drawer before you start.',
-        error: _error,
-        busy: _busy,
-        onCancel: () => Navigator.of(context).pop(false),
-        action: _staff == null
-            ? null
-            : PosButton(
-                label: 'Open shift',
-                height: 56,
-                background: PosColors.accent,
-                foreground: Colors.white,
-                fontSize: 15,
-                fontWeight: FontWeight.w800,
-                onPressed: _busy ? null : _open,
-              ),
-        child: _staff == null ? _pinPane() : _floatPane(),
-      );
+  Widget build(BuildContext context) {
+    final strings = context.strings;
+
+    return _ShiftDialogShell(
+      title: _staff == null ? strings.signIn : strings.openTheDrawer,
+      subtitle: _staff == null
+          ? strings.signInHelp
+          : strings.countTheDrawerHelp(_staff!.name),
+      error: _error,
+      busy: _busy,
+      onCancel: () => Navigator.of(context).pop(false),
+      action: _staff == null
+          ? null
+          : PosButton(
+              label: strings.openShift,
+              height: 56,
+              background: context.pos.accent,
+              foreground: Colors.white,
+              fontSize: 15,
+              fontWeight: FontWeight.w800,
+              onPressed: _busy ? null : _open,
+            ),
+      child: _staff == null ? _pinPane() : _floatPane(strings, pos: context.pos),
+    );
+  }
 
   Widget _pinPane() => Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          PinDots(length: _pin.length),
-          const SizedBox(height: PosSpace.lg),
-          PinPad(
-            onDigit: _submitPin,
-            onBackspace: () => setState(() {
-              if (_pin.isNotEmpty) _pin = _pin.substring(0, _pin.length - 1);
-            }),
-          ),
-        ],
-      );
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      PinDots(length: _pin.length),
+      const SizedBox(height: PosSpace.lg),
+      PinPad(
+        onDigit: _submitPin,
+        onBackspace: () => setState(() {
+          if (_pin.isNotEmpty) _pin = _pin.substring(0, _pin.length - 1);
+        }),
+      ),
+    ],
+  );
 
-  Widget _floatPane() => Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        mainAxisSize: MainAxisSize.min,
+  Widget _floatPane(AppStrings strings, {required PosPalette pos}) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      MicroLabel(strings.openingFloat),
+      const SizedBox(height: PosSpace.sm),
+      TextField(
+        controller: _float,
+        autofocus: true,
+        style: PosText.mono(color: pos.inkWarm, size: 26),
+        keyboardType: TextInputType.number,
+        onSubmitted: (_) => _open(),
+      ),
+      const SizedBox(height: PosSpace.md),
+      Wrap(
+        spacing: PosSpace.sm,
+        runSpacing: PosSpace.sm,
         children: [
-          const MicroLabel('Opening float'),
-          const SizedBox(height: PosSpace.sm),
-          TextField(
-            controller: _float,
-            autofocus: true,
-            style: PosText.mono(size: 26),
-            keyboardType: TextInputType.number,
-            onSubmitted: (_) => _open(),
-          ),
-          const SizedBox(height: PosSpace.md),
-          Wrap(
-            spacing: PosSpace.sm,
-            runSpacing: PosSpace.sm,
-            children: [
-              for (final amount in [0, 200, 500, 1000])
-                PosButton(
-                  label: amount == 0 ? 'Empty' : '$amount',
-                  background: PosColors.page,
-                  border: const Border.fromBorderSide(PosBorders.resting),
-                  padding: const EdgeInsets.symmetric(horizontal: PosSpace.lg),
-                  onPressed: () => setState(
-                    () => _float.text = Money(amount * 100).format(),
-                  ),
-                ),
-            ],
-          ),
-          const SizedBox(height: PosSpace.md),
-          Text(
-            'This is the cash already in the drawer. Every variance at cash-up '
-            'is measured from it, so a guess here is a discrepancy later.',
-            style: PosText.ui(size: 12.5, color: PosColors.muted, height: 1.5),
-          ),
+          for (final amount in [0, 200, 500, 1000])
+            PosButton(
+              label: amount == 0 ? strings.emptyDrawer : '$amount',
+              background: pos.page,
+              border: Border.fromBorderSide(pos.resting),
+              padding: const EdgeInsets.symmetric(horizontal: PosSpace.lg),
+              onPressed: () =>
+                  setState(() => _float.text = Money(amount * 100).format()),
+            ),
         ],
-      );
+      ),
+      const SizedBox(height: PosSpace.md),
+      Text(
+        strings.openingFloatHelp,
+        style: PosText.ui(size: 12.5, color: pos.muted, height: 1.5),
+      ),
+    ],
+  );
 }
 
 /// Closing a shift: the Z report, and the count that has to agree with it.
@@ -181,10 +212,13 @@ class CloseShiftDialog extends ConsumerStatefulWidget {
 
   /// Returns true once the shift is closed and the till should return to the
   /// start screen.
-  static Future<bool> show(BuildContext context, {required PosShift shift}) async =>
+  static Future<bool> show(
+    BuildContext context, {
+    required PosShift shift,
+  }) async =>
       await showDialog<bool>(
         context: context,
-        barrierColor: PosColors.scrimHeavy,
+        barrierColor: context.pos.scrimHeavy,
         barrierDismissible: false,
         builder: (_) => CloseShiftDialog(shift: shift),
       ) ??
@@ -215,7 +249,9 @@ class _CloseShiftDialogState extends ConsumerState<CloseShiftDialog> {
 
   Future<void> _load() async {
     try {
-      final summary = await ref.read(shiftRepositoryProvider).summarise(widget.shift);
+      final summary = await ref
+          .read(shiftRepositoryProvider)
+          .summarise(widget.shift);
       if (!mounted) return;
       setState(() {
         _summary = summary;
@@ -236,8 +272,9 @@ class _CloseShiftDialogState extends ConsumerState<CloseShiftDialog> {
     final summary = _summary;
     final counted = _countedMoney;
     if (summary == null) return;
+    final strings = context.strings;
     if (counted == null || counted.minor < 0) {
-      setState(() => _error = 'Count the drawer and enter the total.');
+      setState(() => _error = strings.countTheDrawer);
       return;
     }
 
@@ -246,9 +283,25 @@ class _CloseShiftDialogState extends ConsumerState<CloseShiftDialog> {
     // case, not an exception.
     final by = ref.read(signedInStaffProvider);
     if (by == null) {
-      setState(() => _error = 'Sign in before closing a shift.');
+      setState(() => _error = strings.signInBeforeClosing);
       return;
     }
+
+    // Overridable, unlike opening: a cashier who may not cash up is standing at
+    // a drawer that has to be counted before anybody goes home, and a
+    // supervisor putting their PIN in is the workflow that actually happens.
+    // Both names then go on the audit row.
+    final decision = await requestPermission(
+      context,
+      ref,
+      PosCapability.shiftClose,
+      action: strings.closeShiftApproval(widget.shift.reference),
+      auditAction: 'Close ${widget.shift.reference} and count the drawer',
+      entityType: AuditAction.entityShift,
+      entityId: '${widget.shift.id}',
+    );
+    if (decision is! Allowed) return;
+    if (!mounted) return;
 
     setState(() {
       _busy = true;
@@ -256,10 +309,25 @@ class _CloseShiftDialogState extends ConsumerState<CloseShiftDialog> {
     });
 
     try {
-      final closed = await ref.read(shiftRepositoryProvider).close(
-            shift: widget.shift,
+      final closed = await ref
+          .read(shiftRepositoryProvider)
+          .close(shift: widget.shift, by: by, countedCash: counted);
+      // The variance is on the ledger as well as on the shift. It is the number
+      // a manager argues about, and the argument is easier when the row also
+      // says who counted and who approved them counting.
+      await ref
+          .read(auditRepositoryProvider)
+          .record(
             by: by,
-            countedCash: counted,
+            approvedBy: decision.approvedBy,
+            action: AuditAction.shiftClosed,
+            entityType: AuditAction.entityShift,
+            entityId: '${widget.shift.id}',
+            after: {
+              'counted_minor': closed.countedCash.minor,
+              'expected_minor': summary.expectedCash.minor,
+              'variance_minor': closed.variance.minor,
+            },
           );
       if (!mounted) return;
       setState(() {
@@ -284,21 +352,22 @@ class _CloseShiftDialogState extends ConsumerState<CloseShiftDialog> {
   @override
   Widget build(BuildContext context) {
     final closed = _closed;
-    if (closed != null) return _closedShell(closed);
+    if (closed != null) return _closedShell(closed, pos: context.pos);
 
+    final strings = context.strings;
     final summary = _summary;
     return _ShiftDialogShell(
-      title: 'Close ${widget.shift.reference}',
-      subtitle: 'Opened by ${widget.shift.openedByName}. Count the drawer, then confirm.',
+      title: strings.closeShiftTitle(widget.shift.reference),
+      subtitle: strings.closeShiftHelp(widget.shift.openedByName),
       error: _error,
       busy: _busy,
       onCancel: () => Navigator.of(context).pop(false),
       action: summary == null
           ? null
           : PosButton(
-              label: 'Close shift',
+              label: strings.closeShift,
               height: 56,
-              background: PosColors.accent,
+              background: context.pos.accent,
               foreground: Colors.white,
               fontSize: 15,
               fontWeight: FontWeight.w800,
@@ -312,18 +381,18 @@ class _CloseShiftDialogState extends ConsumerState<CloseShiftDialog> {
               children: [
                 _ZReport(summary: summary),
                 const SizedBox(height: PosSpace.lg),
-                const MicroLabel('Counted in the drawer'),
+                MicroLabel(strings.countedInDrawer),
                 const SizedBox(height: PosSpace.sm),
                 TextField(
                   controller: _counted,
                   autofocus: true,
-                  style: PosText.mono(size: 26),
+                  style: PosText.mono(color: context.pos.inkWarm, size: 26),
                   keyboardType: TextInputType.number,
                   onChanged: (_) => setState(() {}),
                   onSubmitted: (_) => _close(),
                 ),
                 const SizedBox(height: PosSpace.md),
-                _variance(summary),
+                _variance(strings, summary, pos: context.pos),
               ],
             ),
     );
@@ -331,13 +400,16 @@ class _CloseShiftDialogState extends ConsumerState<CloseShiftDialog> {
 
   /// Shown live, before anything is committed, so a miscount is caught while
   /// the notes are still in someone's hand.
-  Widget _variance(ShiftSummary summary) {
+  Widget _variance(AppStrings strings, ShiftSummary summary, {required PosPalette pos}) {
     final counted = _countedMoney;
     if (counted == null) {
       return Text(
-        'Expected ${summary.expectedCash.format()} — float '
-        '${summary.shift.openingFloat.format()} plus ${summary.cashTaken.format()} taken in cash.',
-        style: PosText.ui(size: 12.5, color: PosColors.muted, height: 1.5),
+        strings.expectedInDrawerHelp(
+          summary.expectedCash.format(),
+          summary.shift.openingFloat.format(),
+          summary.cashTaken.format(),
+        ),
+        style: PosText.ui(size: 12.5, color: pos.muted, height: 1.5),
       );
     }
 
@@ -348,49 +420,57 @@ class _CloseShiftDialogState extends ConsumerState<CloseShiftDialog> {
     return Container(
       padding: const EdgeInsets.all(PosSpace.md),
       decoration: BoxDecoration(
-        color: balances ? PosColors.okSoft : PosColors.warnSoft,
-        border: Border.all(color: balances ? PosColors.ok : PosColors.warn, width: 2),
+        color: balances ? pos.okSoft : pos.warnSoft,
+        border: Border.all(
+          color: balances ? pos.ok : pos.warn,
+          width: 2,
+        ),
       ),
       child: Row(
         children: [
           Text(
-            balances ? 'BALANCES' : (over ? 'OVER' : 'SHORT'),
+            balances
+                ? strings.varianceBalances
+                : (over ? strings.varianceOver : strings.varianceShort),
             style: PosText.mono(
               size: 11,
               weight: FontWeight.w600,
-              color: balances ? PosColors.ok : PosColors.warn,
+              color: balances ? pos.ok : pos.warn,
               letterSpacing: 1.2,
             ),
           ),
           const Spacer(),
           Text(
             balances ? summary.expectedCash.format() : variance.format(),
-            style: PosText.mono(size: 18, weight: FontWeight.w600),
+            style: PosText.mono(color: pos.inkWarm, size: 18, weight: FontWeight.w600),
           ),
         ],
       ),
     );
   }
 
-  Widget _closedShell(ShiftClose closed) => _ShiftDialogShell(
-        title: '${widget.shift.reference} closed',
-        subtitle: closed.balances
-            ? 'The drawer balances.'
-            : 'Recorded with a variance of ${closed.variance.format()}. It is on the '
-                'shift record, not lost.',
-        busy: false,
-        onCancel: null,
-        action: PosButton(
-          label: 'Done',
-          height: 56,
-          background: PosColors.ink,
-          foreground: Colors.white,
-          fontSize: 15,
-          fontWeight: FontWeight.w800,
-          onPressed: _finish,
-        ),
-        child: _ZReport(summary: closed.summary, counted: closed.countedCash),
-      );
+  Widget _closedShell(ShiftClose closed, {required PosPalette pos}) {
+    final strings = context.strings;
+
+    return _ShiftDialogShell(
+      title: strings.shiftClosedTitle(widget.shift.reference),
+      subtitle: closed.balances
+          ? strings.drawerBalances
+          : strings.closedWithVariance(closed.variance.format()),
+      busy: false,
+      onCancel: null,
+      action: PosButton(
+        label: strings.done,
+        height: 56,
+        background: pos.ink,
+        foreground: Colors.white,
+        fontSize: 15,
+        fontWeight: FontWeight.w800,
+        onPressed: _finish,
+      ),
+      child: _ZReport(summary: closed.summary, counted: closed.countedCash),
+    );
+  }
 }
 
 /// The Z report, in the order somebody standing at a drawer reads it.
@@ -401,50 +481,68 @@ class _ZReport extends StatelessWidget {
   final Money? counted;
 
   @override
-  Widget build(BuildContext context) => Container(
-        decoration: const BoxDecoration(
-          color: PosColors.surface,
-          border: Border.fromBorderSide(PosBorders.resting),
-        ),
-        child: Column(
-          children: [
-            _row('Sales', '${summary.saleCount}'),
-            _row('Gross taken', summary.gross.format()),
-            for (final tender in summary.tenders)
-              _row('  ${tender.label} × ${tender.count}', tender.amount.format()),
-            _row('Opening float', summary.shift.openingFloat.format()),
-            _row('Expected in drawer', summary.expectedCash.format(), emphasis: true),
-            if (counted != null) _row('Counted', counted!.format(), emphasis: true),
-          ],
-        ),
-      );
+  Widget build(BuildContext context) {
+    final strings = context.strings;
 
-  Widget _row(String label, String value, {bool emphasis = false}) => Container(
-        padding: const EdgeInsets.symmetric(
-          horizontal: PosSpace.lg,
-          vertical: PosSpace.md,
+    return Container(
+      decoration: BoxDecoration(
+        color: context.pos.surface,
+        border: Border.fromBorderSide(context.pos.resting),
+      ),
+      child: Column(
+        children: [
+          _row(strings.zSales, '${summary.saleCount}', pos: context.pos),
+          _row(strings.zGrossTaken, summary.gross.format(), pos: context.pos),
+          // The tender label is whatever was WRITTEN with the payment, and
+          // it stays as written. It is the same text `cashTaken` matches on
+          // to work out what the drawer should hold, and a report that
+          // renamed it would no longer describe the sum beneath it.
+          for (final tender in summary.tenders)
+            _row(
+              strings.zTenderRow(tender.label, tender.count),
+              tender.amount.format(),
+            pos: context.pos),
+          _row(strings.zOpeningFloat, summary.shift.openingFloat.format(), pos: context.pos),
+          _row(
+            strings.zExpectedInDrawer,
+            summary.expectedCash.format(),
+            emphasis: true,
+          pos: context.pos),
+          if (counted != null)
+            _row(strings.zCounted, counted!.format(), emphasis: true, pos: context.pos),
+        ],
+      ),
+    );
+  }
+
+  Widget _row(String label, String value, {required PosPalette pos, bool emphasis = false}) => Container(
+    padding: const EdgeInsets.symmetric(
+      horizontal: PosSpace.lg,
+      vertical: PosSpace.md,
+    ),
+    decoration: BoxDecoration(
+      border: Border(bottom: pos.hairline),
+    ),
+    child: Row(
+      children: [
+        Text(
+          label,
+          style: PosText.ui(color: pos.inkWarm, 
+            size: 13,
+            weight: emphasis ? FontWeight.w700 : FontWeight.w400,
+          ),
         ),
-        decoration: const BoxDecoration(border: Border(bottom: PosBorders.hairline)),
-        child: Row(
-          children: [
-            Text(
-              label,
-              style: PosText.ui(
-                size: 13,
-                weight: emphasis ? FontWeight.w700 : FontWeight.w400,
-              ),
-            ),
-            const Spacer(),
-            Text(
-              value,
-              style: PosText.mono(
-                size: emphasis ? 15 : 13,
-                weight: emphasis ? FontWeight.w600 : FontWeight.w400,
-              ),
-            ),
-          ],
+        const Spacer(),
+        Text(
+          value,
+          style: PosText.mono(color: pos.inkWarm, 
+            size: emphasis ? 15 : 13,
+            weight: emphasis ? FontWeight.w600 : FontWeight.w400,
+          ),
         ),
-      );
+      ],
+    ),
+  );
 }
 
 /// Shared chrome, so opening and closing a shift look like two halves of one
@@ -470,70 +568,74 @@ class _ShiftDialogShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Dialog(
-        backgroundColor: PosColors.page,
-        insetPadding: const EdgeInsets.all(PosSpace.s24),
-        shape: const RoundedRectangleBorder(
-          side: PosBorders.emphasis,
-          borderRadius: PosBorders.radius,
-        ),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 460, maxHeight: 720),
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(PosSpace.xl),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(title, style: PosText.panelTitle()),
-                const SizedBox(height: PosSpace.sm),
-                Text(
-                  subtitle,
-                  style: PosText.ui(size: 13, color: PosColors.muted, height: 1.5),
-                ),
-                const SizedBox(height: PosSpace.lg),
-                child,
-                if (error != null) ...[
-                  const SizedBox(height: PosSpace.md),
-                  Container(
-                    padding: const EdgeInsets.all(PosSpace.md),
-                    decoration: BoxDecoration(
-                      color: PosColors.dangerSoft,
-                      border: Border.all(color: PosColors.danger),
-                    ),
-                    child: Text(
-                      error!,
-                      style: PosText.ui(size: 12.5, color: PosColors.ink, height: 1.5),
-                    ),
-                  ),
-                ],
-                const SizedBox(height: PosSpace.lg),
-                if (busy)
-                  const Center(
-                    child: Padding(
-                      padding: EdgeInsets.all(PosSpace.sm),
-                      child: SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: PosColors.accent,
-                        ),
-                      ),
-                    ),
-                  ),
-                ?action,
-                if (onCancel != null) ...[
-                  const SizedBox(height: PosSpace.sm),
-                  PosButton(
-                    label: 'Cancel',
-                    height: 44,
-                    border: const Border.fromBorderSide(PosBorders.resting),
-                    onPressed: busy ? null : onCancel,
-                  ),
-                ],
-              ],
+    backgroundColor: context.pos.page,
+    insetPadding: const EdgeInsets.all(PosSpace.s24),
+    shape: RoundedRectangleBorder(
+      side: context.pos.emphasis,
+      borderRadius: PosBorders.radius,
+    ),
+    child: ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 460, maxHeight: 720),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(PosSpace.xl),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(title, style: PosText.panelTitle(color: context.pos.ink)),
+            const SizedBox(height: PosSpace.sm),
+            Text(
+              subtitle,
+              style: PosText.ui(size: 13, color: context.pos.muted, height: 1.5),
             ),
-          ),
+            const SizedBox(height: PosSpace.lg),
+            child,
+            if (error != null) ...[
+              const SizedBox(height: PosSpace.md),
+              Container(
+                padding: const EdgeInsets.all(PosSpace.md),
+                decoration: BoxDecoration(
+                  color: context.pos.dangerSoft,
+                  border: Border.all(color: context.pos.danger),
+                ),
+                child: Text(
+                  error!,
+                  style: PosText.ui(
+                    size: 12.5,
+                    color: context.pos.ink,
+                    height: 1.5,
+                  ),
+                ),
+              ),
+            ],
+            const SizedBox(height: PosSpace.lg),
+            if (busy)
+              Center(
+                child: Padding(
+                  padding: EdgeInsets.all(PosSpace.sm),
+                  child: SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: context.pos.accent,
+                    ),
+                  ),
+                ),
+              ),
+            ?action,
+            if (onCancel != null) ...[
+              const SizedBox(height: PosSpace.sm),
+              PosButton(
+                label: context.strings.cancel,
+                height: 44,
+                border: Border.fromBorderSide(context.pos.resting),
+                onPressed: busy ? null : onCancel,
+              ),
+            ],
+          ],
         ),
-      );
+      ),
+    ),
+  );
 }

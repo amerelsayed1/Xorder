@@ -35,7 +35,6 @@ dependencies:
   sqflite_common_ffi: ^2.4.2+1
   path_provider: ^2.1.6
   path: ^1.9.1
-  flutter_secure_storage: ^11.0.0
 
   # Offline licence verification. Ed25519 public-key signatures: the public key
   # ships in the binary, the private key never leaves the licence server.
@@ -49,7 +48,7 @@ dependencies:
   intl: ^0.20.3
   collection: ^1.19.1
   cupertino_icons: ^1.0.8
-
+  menu_bar: ^0.5.3
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -60,7 +59,19 @@ dev_dependencies:
   integration_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+  # Regenerates the launcher icons for every platform from the master PNGs in
+  # assets/icons/. Config lives in flutter_launcher_icons.yaml at the repo root:
+  #   dart run flutter_launcher_icons -f flutter_launcher_icons.yaml
+  flutter_launcher_icons: ^0.14.4
   mocktail: ^1.0.5
 
 flutter:
   uses-material-design: true
+
+  # The official mark. Bundled rather than redrawn in widgets: the welcome
+  # screen is the first thing anyone sees on a new till, and a wordmark
+  # rebuilt from Text + Border drifts from the brand the moment the brand
+  # moves. The PNG is 1348x376 — rendered at a fixed WIDTH so the aspect
+  # ratio is never the thing that decides the layout.
+  assets:
+    - assets/icons/xorder_logo_official.png

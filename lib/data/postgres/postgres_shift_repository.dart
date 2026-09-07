@@ -49,7 +49,10 @@ class PostgresShiftRepository implements ShiftRepository {
   }
 
   @override
-  Future<PosShift> open({required PosStaff by, required Money openingFloat}) async {
+  Future<PosShift> open({
+    required PosStaff by,
+    required Money openingFloat,
+  }) async {
     final existing = await current();
     if (existing != null) {
       // Reached when a till is restarted mid-shift, which is the common case
@@ -82,10 +85,8 @@ class PostgresShiftRepository implements ShiftRepository {
   }
 
   @override
-  Future<ShiftSummary> summarise(PosShift shift) => _db.runTx(
-        _config,
-        (tx) => _summarise(tx, shift),
-      );
+  Future<ShiftSummary> summarise(PosShift shift) =>
+      _db.runTx(_config, (tx) => _summarise(tx, shift));
 
   @override
   Future<ShiftClose> close({
@@ -99,14 +100,14 @@ class PostgresShiftRepository implements ShiftRepository {
     // which would turn "this shift is already closed" — a thing the person at
     // the till needs to read — into "the database did not answer as expected".
     final closed = await _db.runTx(_config, (tx) async {
-        // Summarised inside the same transaction as the update. Computing the
-        // expected total from one read and storing it after another would let a
-        // sale settled in between fall down the gap between them.
-        final summary = await _summarise(tx, shift);
-        final variance = summary.varianceAgainst(countedCash);
+      // Summarised inside the same transaction as the update. Computing the
+      // expected total from one read and storing it after another would let a
+      // sale settled in between fall down the gap between them.
+      final summary = await _summarise(tx, shift);
+      final variance = summary.varianceAgainst(countedCash);
 
-        final rows = await tx.execute(
-          Sql.named('''
+      final rows = await tx.execute(
+        Sql.named('''
             UPDATE pos_shifts SET
               closed_at           = now(),
               closed_by           = @staff,
@@ -117,27 +118,27 @@ class PostgresShiftRepository implements ShiftRepository {
             WHERE id = @id AND closed_at IS NULL
             RETURNING closed_at
           '''),
-          parameters: {
-            'id': shift.id,
-            'staff': by.id,
-            'counted': countedCash.minor,
-            'expected': summary.expectedCash.minor,
-            'variance': variance.minor,
-            'note': note,
-          },
-        );
+        parameters: {
+          'id': shift.id,
+          'staff': by.id,
+          'counted': countedCash.minor,
+          'expected': summary.expectedCash.minor,
+          'variance': variance.minor,
+          'note': note,
+        },
+      );
 
-        // Conditional on `closed_at IS NULL`, so a second cash-up cannot
-        // overwrite the first one's numbers.
-        if (rows.isEmpty) return null;
+      // Conditional on `closed_at IS NULL`, so a second cash-up cannot
+      // overwrite the first one's numbers.
+      if (rows.isEmpty) return null;
 
-        return ShiftClose(
-          summary: summary,
-          countedCash: countedCash,
-          variance: variance,
-          closedAt: rows.first[0] as DateTime,
-        );
-      });
+      return ShiftClose(
+        summary: summary,
+        countedCash: countedCash,
+        variance: variance,
+        closedAt: rows.first[0] as DateTime,
+      );
+    });
 
     if (closed == null) {
       throw StateError(
@@ -191,10 +192,10 @@ class PostgresShiftRepository implements ShiftRepository {
   }
 
   PosShift _shift(ResultRow row) => PosShift(
-        id: row[0] as int,
-        openedAt: row[1] as DateTime,
-        openingFloat: Money(row[2] as int),
-        openedByName: row[3] as String,
-        closedAt: row[4] as DateTime?,
-      );
+    id: row[0] as int,
+    openedAt: row[1] as DateTime,
+    openingFloat: Money(row[2] as int),
+    openedByName: row[3] as String,
+    closedAt: row[4] as DateTime?,
+  );
 }

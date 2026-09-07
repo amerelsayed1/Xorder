@@ -19,7 +19,19 @@ import 'dart:convert';
 /// it for anything that actually matters. Real enforcement stays server-side.
 abstract final class LicenseKeys {
   /// Ed25519 public key, base64.
-  static const currentB64 = '5WrCZOOjlg7FLGbeimoe/Fq2m6o9WUkEekqTDir6JGY=';
+  /// The **development** channel key — the platform's own pair.
+  ///
+  /// Deliberately the public half of `LICENCE_SIGNING_KEY` in `apps/api`, not a
+  /// key minted on this side. The platform is the issuer: `LicenceIssuer::mint`
+  /// signs every licence the dashboard hands out, and a till that verified
+  /// against anything else would reject them all. There is one pair, and the
+  /// POS holds the half that cannot sign.
+  ///
+  /// A release build must not ship this. Run `php artisan licence:keygen` for
+  /// the release channel, embed that public half **before** anything is signed
+  /// with it — see the rotation rule in `config/licence.php` — and keep the
+  /// secret with the issuer.
+  static const currentB64 = 'ZRdC6SonAA+7/63bGBT5z2JauylXU0iYZe79hU78vE0=';
 
   /// Which key signed a given file. Files carry `key_id` so a rotation can be
   /// rolled out before the old key stops being honoured.

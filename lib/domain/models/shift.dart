@@ -1,4 +1,5 @@
 import '../../core/money/money.dart';
+import 'permissions.dart';
 
 /// A member of staff, as the till knows them.
 ///
@@ -9,13 +10,58 @@ class PosStaff {
     required this.id,
     required this.name,
     this.capabilities = const {},
+    this.role,
+    this.username,
+    this.isActive = true,
   });
 
   final int id;
   final String name;
+
+  /// Granted to *this person*, on top of whatever [role] carries.
+  ///
+  /// Kept as well as the role rather than replaced by it because the exception
+  /// is the common case in a small restaurant: one cashier who is also trusted
+  /// to reprint. Making that person a whole new role, or promoting them to
+  /// supervisor, are both worse answers than one extra grant against their
+  /// name — and the audit trail records which of the two it was.
   final Set<String> capabilities;
 
-  bool can(String capability) => capabilities.contains(capability);
+  /// Null for a member of staff seeded before roles existed, or one whose role
+  /// was deleted. They keep [capabilities] and nothing else, which is the
+  /// conservative reading rather than the convenient one.
+  final PosRole? role;
+
+  final String? username;
+  final bool isActive;
+
+  /// The role's capabilities and the direct grants, under their current names.
+  ///
+  /// Canonicalised on the way out rather than on the way in, because rows
+  /// written by an older build are still on disk and a till that has not been
+  /// migrated yet must still read them correctly.
+  Set<String> get effectiveCapabilities =>
+      PosCapability.canonicalAll({...?role?.capabilities, ...capabilities});
+
+  /// Whether this person may do the thing, ignoring any supervisor standing
+  /// behind them. Override is a separate question — `Authorization.check`.
+  bool can(String capability) =>
+      effectiveCapabilities.contains(PosCapability.canonical(capability));
+
+  PosStaff copyWith({
+    String? name,
+    Set<String>? capabilities,
+    PosRole? role,
+    String? username,
+    bool? isActive,
+  }) => PosStaff(
+    id: id,
+    name: name ?? this.name,
+    capabilities: capabilities ?? this.capabilities,
+    role: role ?? this.role,
+    username: username ?? this.username,
+    isActive: isActive ?? this.isActive,
+  );
 }
 
 /// An open or closed till session.
@@ -45,7 +91,11 @@ class PosShift {
 
 /// One tender type's contribution to a shift.
 class ShiftTenderTotal {
-  const ShiftTenderTotal({required this.label, required this.count, required this.amount});
+  const ShiftTenderTotal({
+    required this.label,
+    required this.count,
+    required this.amount,
+  });
 
   final String label;
   final int count;

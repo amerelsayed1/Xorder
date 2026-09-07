@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/providers.dart';
+import '../../core/l10n/app_strings.dart';
 import '../../core/ui/theme.dart';
 import '../../core/ui/tokens.dart';
 import '../../core/ui/widgets/pos_widgets.dart';
@@ -54,9 +55,10 @@ class _LockScreenState extends ConsumerState<LockScreen> {
   @override
   Widget build(BuildContext context) {
     final name = ref.watch(sessionProvider).valueOrNull?.userName ?? '';
+    final strings = context.strings;
 
     return Scaffold(
-      backgroundColor: PosColors.shell,
+      backgroundColor: context.pos.shell,
       body: Center(
         child: SizedBox(
           width: 320,
@@ -65,26 +67,31 @@ class _LockScreenState extends ConsumerState<LockScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Text(
-                'TERMINAL LOCKED',
+                strings.terminalLocked,
                 textAlign: TextAlign.center,
                 style: PosText.mono(
                   size: 10.5,
                   weight: FontWeight.w600,
-                  color: PosColors.shellMuted,
+                  color: context.pos.shellMuted,
                   letterSpacing: 2.5,
                 ),
               ),
-              const Padding(
+              Padding(
                 padding: EdgeInsets.symmetric(vertical: PosSpace.xl),
-                child: ColoredBox(color: PosColors.accent, child: SizedBox(height: 2)),
+                child: ColoredBox(
+                  color: context.pos.accent,
+                  child: SizedBox(height: 2),
+                ),
               ),
               Text(
-                _error ? 'Wrong PIN — try again' : '$name · enter PIN',
+                _error ? strings.wrongPin : strings.enterPinFor(name),
                 textAlign: TextAlign.center,
                 style: PosText.ui(
                   size: 20,
                   weight: FontWeight.w800,
-                  color: _error ? PosColors.offlinePillText : PosColors.shellText,
+                  color: _error
+                      ? context.pos.offlinePillText
+                      : context.pos.shellText,
                 ),
               ),
               const SizedBox(height: PosSpace.s24),
@@ -97,5 +104,4 @@ class _LockScreenState extends ConsumerState<LockScreen> {
       ),
     );
   }
-
 }

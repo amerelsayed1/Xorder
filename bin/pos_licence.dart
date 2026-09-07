@@ -30,7 +30,9 @@ import 'package:xorder_pos/features/licensing/domain/license.dart';
 import 'package:xorder_pos/features/licensing/domain/license_verifier.dart';
 
 Future<void> main(List<String> arguments) async {
-  if (arguments.isEmpty || arguments.first == '--help' || arguments.first == 'help') {
+  if (arguments.isEmpty ||
+      arguments.first == '--help' ||
+      arguments.first == 'help') {
     stdout.writeln(usage);
     return;
   }
@@ -63,20 +65,27 @@ Future<void> _keygen() async {
   final privateBytes = await pair.extractPrivateKeyBytes();
 
   stdout
-    ..writeln('Public key — embed this in lib/features/licensing/data/license_keys.dart:')
+    ..writeln(
+      'Public key — embed this in lib/features/licensing/data/license_keys.dart:',
+    )
     ..writeln()
     ..writeln('  ${base64.encode(publicKey.bytes)}')
     ..writeln()
-    ..writeln('Private key — keep it out of the repository and off shared drives:')
+    ..writeln(
+      'Private key — keep it out of the repository and off shared drives:',
+    )
     ..writeln()
     ..writeln('  ${base64.encode(privateBytes)}')
     ..writeln()
-    ..writeln('Issue with it via POS_LICENCE_KEY, not --private-key, so it stays')
+    ..writeln(
+      'Issue with it via POS_LICENCE_KEY, not --private-key, so it stays',
+    )
     ..writeln('out of your shell history.');
 }
 
 Future<void> _issue(Map<String, String> options) async {
-  final privateB64 = options['private-key'] ?? Platform.environment['POS_LICENCE_KEY'] ?? '';
+  final privateB64 =
+      options['private-key'] ?? Platform.environment['POS_LICENCE_KEY'] ?? '';
   final tenant = options['tenant'];
   final name = options['name'];
 
@@ -99,12 +108,26 @@ Future<void> _issue(Map<String, String> options) async {
   // clock here produces a confusing failure at a restaurant rather than a
   // security problem.
   final now = DateTime.now().toUtc();
+
+  // Both dates can be stated outright. Needed to produce the states a till has
+  // to handle but a normal issuance never mints — a licence already in grace,
+  // one past grace, one dated into the future — so the licence screen can be
+  // seen in each of them rather than only reasoned about in a unit test.
+  final issuedAt =
+      _date(options['issued']) ?? now.subtract(const Duration(minutes: 5));
+  final expiresAt = _date(options['expires']) ?? now.add(Duration(days: days));
+
+  if (!expiresAt.isAfter(issuedAt)) {
+    stderr.writeln('--expires must be after --issued.');
+    exit(64);
+  }
+
   final claims = LicenseClaims(
     licenseId: options['id'] ?? 'lic-${now.millisecondsSinceEpoch}',
     tenantSlug: tenant.trim().toLowerCase(),
     tenantName: name,
-    issuedAt: now.subtract(const Duration(minutes: 5)),
-    expiresAt: now.add(Duration(days: days)),
+    issuedAt: issuedAt,
+    expiresAt: expiresAt,
     graceDays: int.tryParse(options['grace-days'] ?? '') ?? 14,
     warnDays: int.tryParse(options['warn-days'] ?? '') ?? 30,
     maxTerminals: int.tryParse(options['max-terminals'] ?? '') ?? 1,
@@ -136,8 +159,10 @@ Future<void> _issue(Map<String, String> options) async {
     stdout
       ..writeln('Wrote $out')
       ..writeln('  ${claims.tenantName} (${claims.tenantSlug})')
-      ..writeln('  expires ${claims.expiresAt.toIso8601String()}, '
-          'then ${claims.graceDays} days grace')
+      ..writeln(
+        '  expires ${claims.expiresAt.toIso8601String()}, '
+        'then ${claims.graceDays} days grace',
+      )
       ..writeln('  covers ${claims.modes.map((m) => m.wire).join(', ')}');
   }
 }
@@ -165,10 +190,12 @@ Future<void> _inspect(Map<String, String> options) async {
     exit(1);
   }
 
-  final publicB64 = options['public-key'] ?? Platform.environment['POS_LICENCE_PUBLIC_KEY'];
+  final publicB64 =
+      options['public-key'] ?? Platform.environment['POS_LICENCE_PUBLIC_KEY'];
   final signed = publicB64 == null
       ? null
-      : await LicenseVerifier(publicKeyBytes: base64.decode(publicB64)).verifySignature(file);
+      : await LicenseVerifier(publicKeyBytes: base64.decode(publicB64))
+            .verifySignature(file);
 
   stdout
     ..writeln(path)
@@ -178,11 +205,32 @@ Future<void> _inspect(Map<String, String> options) async {
     ..writeln('  grace      ${claims.graceDays} days')
     ..writeln('  modes      ${claims.modes.map((m) => m.wire).join(', ')}')
     ..writeln('  terminals  ${claims.maxTerminals}')
-    ..writeln('  signature  ${switch (signed) {
-      null => 'not checked — pass --public-key to verify',
-      true => 'valid',
-      false => 'DOES NOT VERIFY against that key',
-    }}');
+    ..writeln(
+      '  signature  ${switch (signed) {
+        null => 'not checked — pass --public-key to verify',
+        true => 'valid',
+        false => 'DOES NOT VERIFY against that key',
+      }}',
+    );
+}
+
+/// An ISO-8601 date or date-time, read as UTC.
+///
+/// Exits rather than falling back to the default: silently ignoring a date the
+/// issuer typed wrong would hand them a licence with a term they did not ask
+/// for, and they would not find out until a till refused it.
+DateTime? _date(String? value) {
+  if (value == null || value.trim().isEmpty) return null;
+
+  final parsed = DateTime.tryParse(value.trim());
+  if (parsed == null) {
+    stderr.writeln(
+      '"$value" is not an ISO-8601 date — try 2026-08-01 or '
+      '2026-08-01T09:00:00Z.',
+    );
+    exit(64);
+  }
+  return parsed.toUtc();
 }
 
 Set<String>? _set(String? value) =>
@@ -229,6 +277,9 @@ issue options:
   --tenant <slug>      Restaurant short name. Must match the terminal's. Required
   --name <name>        Shown when a licence is refused for the wrong tenant. Required
   --days <n>           Term length. Default 365
+  --issued <date>      ISO-8601 start. Default now. Future dates mint notYetValid
+  --expires <date>     ISO-8601 end, overriding --days. Past dates mint inGrace
+                       or expired, depending on --grace-days
   --grace-days <n>     Trading allowed after expiry. Default 14
   --warn-days <n>      When the renewal banner appears. Default 30
   --max-terminals <n>  Advisory offline — only a server can really count. Default 1

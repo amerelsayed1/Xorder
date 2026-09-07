@@ -24,7 +24,11 @@ class Money implements Comparable<Money> {
   /// Returns null on anything unparseable rather than throwing: this is fed by
   /// cashier keypad input and by JSON from a server that may send a decimal
   /// string, and neither should be able to crash a till.
-  static Money? tryParse(String input, {String currency = 'EGP', int exponent = 2}) {
+  static Money? tryParse(
+    String input, {
+    String currency = 'EGP',
+    int exponent = 2,
+  }) {
     final trimmed = input.trim().replaceAll(',', '');
     if (trimmed.isEmpty) return null;
 
@@ -48,7 +52,12 @@ class Money implements Comparable<Money> {
     );
   }
 
-  int get _scale => switch (exponent) { 0 => 1, 2 => 100, 3 => 1000, _ => _pow10(exponent) };
+  int get _scale => switch (exponent) {
+    0 => 1,
+    2 => 100,
+    3 => 1000,
+    _ => _pow10(exponent),
+  };
 
   static int _pow10(int e) {
     var result = 1;
@@ -103,9 +112,15 @@ class Money implements Comparable<Money> {
     if (negative) buffer.write('-');
     buffer.write(_group(whole));
     if (exponent > 0) {
-      buffer..write('.')..write(fraction.toString().padLeft(exponent, '0'));
+      buffer
+        ..write('.')
+        ..write(fraction.toString().padLeft(exponent, '0'));
     }
-    if (withCurrency) buffer..write(' ')..write(currency);
+    if (withCurrency) {
+      buffer
+        ..write(' ')
+        ..write(currency);
+    }
     return buffer.toString();
   }
 

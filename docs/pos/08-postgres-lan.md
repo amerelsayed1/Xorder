@@ -6,15 +6,15 @@ research it was built from and remains accurate.
 
 > ## Decision — **owner, 2026-08-26**
 >
-> **Topology A, behind repository contracts. PostgreSQL on the branch server is
-> the primary datastore, shared by every till on the LAN. SQLite is not the
-> primary store.**
+> **Topology A, behind repository contracts. PostgreSQL is the primary
+> datastore in every mode — on the till itself for a single-terminal plan, on a
+> shared box for a multi-terminal one. SQLite is not the primary store.**
 >
 > This reverses the recommendation this document originally carried. It is the
 > owner's call and it is implemented: `lib/data/postgres/`.
 >
 > **What goes over SQL, and what does not.** Only the money path talks to
-> Postgres directly. A branch server still runs the whole `apps/api` stack, so
+> Postgres directly. A shared box still runs the whole `apps/api` stack, so
 > the heartbeat that keeps a till visible to Super Admin (`POS-BE-022`),
 > licence refresh, provisioning and the QR menu all still travel over HTTP to
 > the same box, which forwards upstream. This is a hybrid, not an abandonment of
@@ -411,17 +411,49 @@ till writes to Postgres directly rather than draining a SQLite queue into it.
    joins, direct SQL from the client stops being defensible and you are writing
    the local service anyway. Better to write it while there is one caller.
 
+> ### Amendment — 2026-08-28: step 5 is deferred against a trigger, not taken
+>
+> **Owner decision:** Topology A stands for every client. No POS-specific local
+> API tier is to be built, and Android is *designed for* rather than shipped.
+>
+> Step 5 above therefore remains open, but it is no longer open-ended. The
+> trigger is recorded and named: **the first non-desktop client.** At that moment
+> an Android till would have to hold the `pos_till` credential on a device that
+> leaves the building, and A stops being defensible exactly as this step
+> predicted.
+>
+> What makes deferring safe rather than merely convenient is that the answer is
+> already a swap and not a rewrite. `ApiOrdersRepository` and its siblings are
+> written against POS-BE-006/007/009 and substituted at the repository providers;
+> nothing in `lib/domain/` or `lib/features/` changes. The main device serves them
+> from the `apps/api` stack the Decision box already has it running.
+>
+> **The constraint that keeps this true, and it binds every future change:** no
+> code outside `lib/data/postgres/` may import the PostgreSQL driver.
+>
+> Two consequences of §9 (*Finding the host*) are also promoted from
+> nice-to-have to committed work: a two-pass /24 sweep on port 5432 as a *Find
+> the main device* button, and the specific macOS 15+ local-network error message
+> §4 records as needed and not built. mDNS stays rejected, for the reasons §9
+> already gives.
+>
+> See `docs/pos/10-setup-architecture.md` §9–§11 and §21 Phase 6.
+
 ---
 
 ## 13. Open questions — resolved
 
-- ~~Which machine is the host?~~ A dedicated box. `DeploymentMode.branchServer`
-  runs the same `apps/api` stack; a manager's till as host is rejected for the
-  reason given — it sleeps, and sleep is a branch outage.
-- ~~Does the LAN Postgres replace the cloud backend, or sit in front of it?~~ **In
-  front, always.** `upstreamUrl` is now mandatory (`POS-BE-018`): a branch that
-  forwards nowhere is a restaurant Super Admin cannot see. The **host** owns the
-  cloud sync, not each till.
+- ~~Which machine is the host?~~ For a multi-terminal plan, a dedicated box
+  running the same `apps/api` stack — `DeploymentConfig.databaseHost` points at
+  it. A manager's till as host is rejected for the reason given: it sleeps, and
+  sleep is a branch outage. On a one-terminal plan the host is the till itself
+  and the wizard does not ask.
+- ~~Does the LAN Postgres replace the cloud backend, or sit in front of it?~~
+  **In cloud mode, in front** — `POS-BE-018` still owes the sync. In **offline**
+  mode it replaces it for sales, and the licence check-in is what keeps the
+  terminal visible to Super Admin instead (`POS-BE-022`). The separate
+  `upstreamUrl` field is gone: it existed only for the withdrawn branch-server
+  mode, and the mode now answers the same question on its own.
 - ~~Desktops only, or is a tablet coming?~~ Moot. The answer was topology B or C
   either way once direct SQL was ruled out.
 - ~~Ship Postgres inside the installer?~~ Not on the till — it never runs one. On

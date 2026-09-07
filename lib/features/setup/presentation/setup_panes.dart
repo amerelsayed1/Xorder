@@ -3,6 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/providers.dart';
 import '../../../core/config/deployment.dart';
+import '../../../core/config/platform_endpoint.dart';
+import '../../../app/labels.dart';
+import '../../../core/l10n/app_strings.dart';
 import '../../../core/ui/theme.dart';
 import '../../../core/ui/tokens.dart';
 import '../../../core/ui/widgets/pos_widgets.dart';
@@ -19,17 +22,18 @@ class SetupPane extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) => switch (draft.step) {
-        SetupStep.language => _LanguagePane(draft: draft),
-        SetupStep.deployment => _DeploymentPane(draft: draft),
-        SetupStep.licence => _LicencePane(draft: draft),
-        SetupStep.account => _AccountPane(draft: draft),
-        SetupStep.branch => _BranchPane(draft: draft),
-        SetupStep.terminal => _TerminalPane(draft: draft),
-        SetupStep.hardware => _HardwarePane(draft: draft),
-        SetupStep.money => _MoneyPane(draft: draft),
-        SetupStep.catalogue => _CataloguePane(draft: draft),
-        SetupStep.summary => _SummaryPane(draft: draft),
-      };
+    SetupStep.setupType => _SetupTypePane(draft: draft),
+    SetupStep.language => _LanguagePane(draft: draft),
+    SetupStep.deployment => _DeploymentPane(draft: draft),
+    SetupStep.licence => _LicencePane(draft: draft),
+    SetupStep.account => _AccountPane(draft: draft),
+    SetupStep.branch => _BranchPane(draft: draft),
+    SetupStep.terminal => _TerminalPane(draft: draft),
+    SetupStep.hardware => _HardwarePane(draft: draft),
+    SetupStep.money => _MoneyPane(draft: draft),
+    SetupStep.catalogue => _CataloguePane(draft: draft),
+    SetupStep.summary => _SummaryPane(draft: draft),
+  };
 }
 
 /// A selectable card. Emphasis is a 2px ink border, never a shadow.
@@ -39,6 +43,7 @@ class _ChoiceTile extends StatelessWidget {
     required this.blurb,
     required this.selected,
     required this.onTap,
+    this.enabled = true,
     this.trailing,
   });
 
@@ -46,48 +51,62 @@ class _ChoiceTile extends StatelessWidget {
   final String blurb;
   final bool selected;
   final VoidCallback onTap;
+
+  /// A choice that exists but is not this customer's. Rendered flat and inert
+  /// rather than removed — see the note where the deployment tiles are built.
+  final bool enabled;
   final Widget? trailing;
 
   @override
   Widget build(BuildContext context) => Material(
-        color: selected ? PosColors.accentSoft : PosColors.surface,
-        child: InkWell(
-          onTap: onTap,
-          hoverColor: PosColors.accentSoft,
-          child: Container(
-            padding: const EdgeInsets.all(PosSpace.lg),
-            decoration: BoxDecoration(
-              border: selected
-                  ? Border.all(color: PosColors.ink, width: 2)
-                  : const Border.fromBorderSide(PosBorders.resting),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        style: PosText.ui(size: 15, weight: FontWeight.w600, color: PosColors.ink),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        blurb,
-                        style: PosText.ui(size: 12.5, color: PosColors.muted, height: 1.4),
-                      ),
-                    ],
-                  ),
-                ),
-                ?trailing,
-              ],
-            ),
-          ),
+    color: !enabled
+        ? context.pos.page
+        : (selected ? context.pos.accentSoft : context.pos.surface),
+    child: InkWell(
+      onTap: enabled ? onTap : null,
+      hoverColor: enabled ? context.pos.accentSoft : Colors.transparent,
+      child: Container(
+        padding: const EdgeInsets.all(PosSpace.lg),
+        decoration: BoxDecoration(
+          border: selected
+              ? Border.all(color: context.pos.ink, width: 2)
+              : Border.fromBorderSide(context.pos.resting),
         ),
-      );
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: PosText.ui(
+                      size: 15,
+                      weight: FontWeight.w600,
+                      color: enabled ? context.pos.ink : context.pos.muted,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    blurb,
+                    style: PosText.ui(
+                      size: 12.5,
+                      color: context.pos.muted,
+                      height: 1.4,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            ?trailing,
+          ],
+        ),
+      ),
+    ),
+  );
 }
 
-class _Field extends StatelessWidget {
+class _Field extends StatefulWidget {
   const _Field({
     required this.label,
     required this.value,
@@ -95,6 +114,8 @@ class _Field extends StatelessWidget {
     this.hint,
     this.help,
     this.mono = false,
+    this.readOnly = false,
+    this.error,
   });
 
   final String label;
@@ -102,29 +123,112 @@ class _Field extends StatelessWidget {
   final ValueChanged<String> onChanged;
   final String? hint;
   final String? help;
+
+  /// Why this value cannot be used, shown in place of [help].
+  ///
+  /// Inline rather than in the error bar at the foot of the screen, because
+  /// this kind of refusal belongs to ONE field and usually disables Continue —
+  /// and a Continue that dims with no visible reason is indistinguishable from
+  /// a broken button.
+  final String? error;
   final bool mono;
+
+  /// A value that arrived from somewhere authoritative — a licence, or a
+  /// redeemed pairing code — and is shown for confirmation rather than input.
+  /// Editing it could only ever contradict its source.
+  final bool readOnly;
+
+  @override
+  State<_Field> createState() => _FieldState();
+}
+
+class _FieldState extends State<_Field> {
+  late final TextEditingController _controller;
+  final _focus = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.value);
+  }
+
+  /// Push a value in from outside — but NEVER while the operator is typing.
+  ///
+  /// This used to rewrite the controller whenever the parent's value differed,
+  /// which silently ate a keystroke. The setters transform what they are given
+  /// (a PIN keeps only digits, a slug is lowercased) and they also churn other
+  /// state, so a rebuild can land carrying the value from *before* the last
+  /// character — and this then wrote that stale value back over the field. The
+  /// operator saw four dots for five digits, and only found out their PIN was
+  /// not what they typed when it would not let them in.
+  ///
+  /// While the field has focus the person at the keyboard is the source of
+  /// truth. Values from elsewhere — a prefill, an adopted terminal, a slug the
+  /// licence supplied — only ever arrive when it does not.
+  @override
+  void didUpdateWidget(covariant _Field oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (_focus.hasFocus) return;
+    if (_controller.text != widget.value) {
+      _controller.value = TextEditingValue(
+        text: widget.value,
+        selection: TextSelection.collapsed(offset: widget.value.length),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _focus.dispose();
+    _controller.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          MicroLabel(label),
-          const SizedBox(height: PosSpace.sm),
-          TextFormField(
-            initialValue: value,
-            onChanged: onChanged,
-            style: mono ? PosText.mono(size: 14) : PosText.ui(size: 14),
-            decoration: InputDecoration(
-              hintText: hint,
-              hintStyle: PosText.ui(size: 14, color: PosColors.muted),
-            ),
-          ),
-          if (help != null) ...[
-            const SizedBox(height: PosSpace.sm),
-            Text(help!, style: PosText.ui(size: 12, color: PosColors.muted, height: 1.5)),
-          ],
-        ],
-      );
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      MicroLabel(widget.label),
+      const SizedBox(height: PosSpace.sm),
+      TextFormField(
+        // The field identity must not contain its value. Doing that
+        // destroys and recreates the TextFormField after every keystroke,
+        // which drops keyboard focus and makes an operator type only one
+        // character at a time. The label is stable within each pane.
+        key: ValueKey('${widget.label}:${widget.readOnly}'),
+        controller: _controller,
+        focusNode: _focus,
+        onChanged: widget.onChanged,
+        readOnly: widget.readOnly,
+        style: widget.mono
+            ? PosText.mono(
+                size: 14,
+                color: widget.readOnly ? context.pos.muted : context.pos.ink,
+              )
+            : PosText.ui(
+                size: 14,
+                color: widget.readOnly ? context.pos.muted : context.pos.ink,
+              ),
+        decoration: InputDecoration(
+          hintText: widget.hint,
+          hintStyle: PosText.ui(size: 14, color: context.pos.muted),
+        ),
+      ),
+      if (widget.error != null) ...[
+        const SizedBox(height: PosSpace.sm),
+        Text(
+          widget.error!,
+          style: PosText.ui(size: 12, color: context.pos.danger, height: 1.5),
+        ),
+      ] else if (widget.help != null) ...[
+        const SizedBox(height: PosSpace.sm),
+        Text(
+          widget.help!,
+          style: PosText.ui(size: 12, color: context.pos.muted, height: 1.5),
+        ),
+      ],
+    ],
+  );
 }
 
 class _LanguagePane extends ConsumerWidget {
@@ -134,28 +238,77 @@ class _LanguagePane extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final s = context.strings;
     final controller = ref.read(setupProvider.notifier);
 
     return Column(
       children: [
+        // Each language names ITSELF, in itself — the whole point of this
+        // step is that somebody who cannot read the current one can still
+        // find their own.
         _ChoiceTile(
-          title: 'English',
-          blurb: 'Left-to-right layout.',
+          title: const EnStrings().languageName,
+          blurb: s.englishBlurb,
           selected: draft.locale == 'en',
           onTap: () => controller.setLocale('en'),
         ),
         const SizedBox(height: PosSpace.md),
         _ChoiceTile(
-          title: 'العربية',
-          blurb: 'Right-to-left layout, Arabic-Indic digits on receipts.',
+          title: const ArStrings().languageName,
+          blurb: s.arabicBlurb,
           selected: draft.locale == 'ar',
           onTap: () => controller.setLocale('ar'),
         ),
         const SizedBox(height: PosSpace.lg),
         Text(
-          'This sets the till interface only. The menu is shown to diners in '
-          'whichever languages the restaurant publishes.',
-          style: PosText.ui(size: 12.5, color: PosColors.muted, height: 1.5),
+          s.languagePaneHelp,
+          style: PosText.ui(size: 12.5, color: context.pos.muted, height: 1.5),
+        ),
+      ],
+    );
+  }
+}
+
+/// The first question: which product is this terminal (owner's phase-1 notes).
+///
+/// Both modes are selectable, each dimmed only when the LICENCE does not cover
+/// it. Dimmed rather than hidden for the same reason the deployment pane greys
+/// unlicensed modes — a missing tile reads as a broken build, a dimmed one
+/// reads as something the customer did not buy.
+class _SetupTypePane extends ConsumerWidget {
+  const _SetupTypePane({required this.draft});
+
+  final SetupDraft draft;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final s = context.strings;
+    final controller = ref.read(setupProvider.notifier);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (final mode in DeploymentMode.values) ...[
+          _ChoiceTile(
+            title: mode.label(s),
+            blurb: mode.blurb(s),
+            selected: draft.deployment.mode == mode,
+            // The licence decides. A tile the customer did not buy stays
+            // visible so the operator can see what exists and ask for it.
+            enabled: draft.licensedModes.contains(mode),
+            onTap: () => controller.setMode(mode),
+            trailing: draft.licensedModes.contains(mode)
+                ? null
+                : MicroLabel(s.notLicensedBadge),
+          ),
+          const SizedBox(height: PosSpace.md),
+        ],
+        const SizedBox(height: PosSpace.sm),
+        Text(
+          draft.deployment.mode == DeploymentMode.offline
+              ? s.setupTypeOfflineHelp
+              : s.setupTypeCloudHelp,
+          style: PosText.ui(size: 12.5, color: context.pos.muted, height: 1.5),
         ),
       ],
     );
@@ -169,148 +322,193 @@ class _DeploymentPane extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final s = context.strings;
     final controller = ref.read(setupProvider.notifier);
     final config = draft.deployment;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        for (final mode in DeploymentMode.values) ...[
-          _ChoiceTile(
-            title: mode.label,
-            blurb: mode.blurb,
-            selected: config.mode == mode,
-            onTap: () => controller.setMode(mode),
-          ),
-          const SizedBox(height: PosSpace.md),
-        ],
+        // The mode was chosen on the first step; restating it here as a fact
+        // rather than a second question keeps the wizard linear.
+        Row(
+          children: [
+            MicroLabel(s.stepSetupType.toUpperCase()),
+            const SizedBox(width: PosSpace.md),
+            Text(
+              config.mode.label(s).toUpperCase(),
+              style: PosText.mono(
+                size: 12,
+                weight: FontWeight.w700,
+                color: context.pos.ink,
+              ),
+            ),
+          ],
+        ),
         if (config.mode.needsBaseUrl) ...[
-          const SizedBox(height: PosSpace.sm),
+          const SizedBox(height: PosSpace.xl),
           _Field(
-            label: 'Server address',
+            label: s.platformAddress,
             value: config.baseUrl ?? '',
             mono: true,
-            hint: config.mode == DeploymentMode.cloud
-                ? 'https://xorder.io'
-                : 'https://192.168.1.20:8100',
+            hint: 'https://xorder.io',
             onChanged: controller.setBaseUrl,
-            help: config.mode == DeploymentMode.branchServer
-                ? 'The box in this branch running XOrder. Every till on this '
-                    'network sends its sales here.'
-                : null,
+            help: s.platformAddressHelp,
           ),
-          if (config.mode == DeploymentMode.branchServer) ...[
-            const SizedBox(height: PosSpace.xl),
-            _Field(
-              label: 'Upstream',
-              value: config.upstreamUrl ?? '',
-              mono: true,
-              hint: 'https://xorder.io',
-              onChanged: controller.setUpstreamUrl,
-              help: 'Where the branch server forwards to when the internet is up. '
-                  'Required: a branch that forwards nowhere is a restaurant the '
-                  'platform cannot see, and every till has to be visible to '
-                  'Super Admin.',
-            ),
-            if (config.isPrivateHost) ...[
-              const SizedBox(height: PosSpace.lg),
-              _ChoiceTile(
-                title: 'Trust this server without a certificate',
-                blurb: 'Only for a box on this local network. Never for a public address.',
-                selected: !config.verifyTls,
-                onTap: () => controller.setVerifyTls(!config.verifyTls),
-              ),
-            ],
-            const SizedBox(height: PosSpace.s28),
-            const MicroLabel('Branch database'),
-            const SizedBox(height: PosSpace.md),
-            Text(
-              'This till writes its sales straight into the branch server’s '
-              'PostgreSQL, so it needs an account there.',
-              style: PosText.ui(size: 12.5, color: PosColors.muted, height: 1.5),
-            ),
+        ],
+        const SizedBox(height: PosSpace.s28),
+        MicroLabel(s.theDatabase),
+        const SizedBox(height: PosSpace.md),
+        Text(
+          // The plan decides the shape, so the wizard states which one this
+          // licence bought rather than asking a question the operator cannot
+          // answer correctly on their own.
+          draft.allowsSharedDatabase
+              ? s.sharedDatabaseHelp(draft.maxTerminals)
+              : s.singleMachineHelp,
+          style: PosText.ui(
+            size: 12.5,
+            color: draft.allowsSharedDatabase
+                ? context.pos.muted
+                : context.pos.warn,
+            height: 1.5,
+          ),
+        ),
+        const SizedBox(height: PosSpace.lg),
+        if (draft.allowsSharedDatabase) ...[
+          _Field(
+            label: s.databaseHost,
+            value: config.databaseHost,
+            mono: true,
+            hint: '192.168.1.20',
+            onChanged: controller.setDatabaseHost,
+            help: s.databaseHostHelp,
+          ),
+          if (config.isPrivateHost && !config.isSingleMachine) ...[
             const SizedBox(height: PosSpace.lg),
-            Row(
+            _ChoiceTile(
+              title: s.trustWithoutCertificate,
+              blurb: s.trustWithoutCertificateBlurb,
+              selected: !config.verifyTls,
+              onTap: () => controller.setVerifyTls(!config.verifyTls),
+            ),
+          ],
+          const SizedBox(height: PosSpace.xl),
+        ],
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              flex: 2,
+              child: _Field(
+                label: s.databaseName,
+                value: config.databaseName,
+                mono: true,
+                hint: 'xorder_pos',
+                // Said HERE and now, not five steps later out of the DDL. This
+                // rule also disables Continue, and a button that dims with no
+                // visible reason reads as a broken button.
+                error:
+                    config.databaseName.isEmpty || config.hasValidDatabaseName
+                    ? null
+                    : s.databaseNameInvalid(config.databaseName),
+                onChanged: controller.setDatabaseName,
+              ),
+            ),
+            const SizedBox(width: PosSpace.lg),
+            Expanded(
+              child: _Field(
+                label: s.databasePort,
+                value: config.databasePort.toString(),
+                mono: true,
+                hint: '5432',
+                onChanged: controller.setDatabasePort,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: PosSpace.xl),
+        _Field(
+          label: s.databaseUser,
+          value: config.databaseUser,
+          mono: true,
+          hint: 'pos_till',
+          onChanged: controller.setDatabaseUser,
+          help: s.databaseUserHelp,
+        ),
+        const SizedBox(height: PosSpace.xl),
+        // Shown only when the keystore itself refused at boot — not when it was
+        // simply empty. Typing a password here will be accepted either way, so
+        // the operator has to learn *now* that this one will not survive a
+        // restart, rather than tomorrow morning when the wizard reappears.
+        if (ref.watch(terminalBootProvider).credentialStoreUnavailable) ...[
+          Container(
+            padding: const EdgeInsets.all(PosSpace.lg),
+            decoration: BoxDecoration(
+              color: context.pos.warnSoft,
+              border: Border.all(color: context.pos.warn, width: 2),
+            ),
+            child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  flex: 2,
-                  child: _Field(
-                    label: 'Database',
-                    value: config.databaseName,
-                    mono: true,
-                    hint: 'xorder_pos',
-                    onChanged: controller.setDatabaseName,
-                  ),
-                ),
-                const SizedBox(width: PosSpace.lg),
-                Expanded(
-                  child: _Field(
-                    label: 'Port',
-                    value: config.databasePort.toString(),
-                    mono: true,
-                    hint: '5432',
-                    onChanged: controller.setDatabasePort,
+                MicroLabel(s.keystoreUnavailable, color: context.pos.warn),
+                const SizedBox(height: PosSpace.sm),
+                Text(
+                  s.keystoreUnavailableHelp,
+                  style: PosText.ui(
+                    size: 13,
+                    color: context.pos.ink,
+                    height: 1.5,
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: PosSpace.xl),
-            _Field(
-              label: 'Database user',
-              value: config.databaseUser,
-              mono: true,
-              hint: 'pos_till',
-              onChanged: controller.setDatabaseUser,
-              help: 'Use the restricted till account, not a superuser. It needs '
-                  'only to read the menu and write sales.',
-            ),
-            const SizedBox(height: PosSpace.xl),
-            _PasswordField(
-              label: 'Database password',
-              value: draft.databasePassword,
-              onChanged: controller.setDatabasePassword,
-              help: 'Kept on this machine only, and never written into the '
-                  'terminal’s configuration file. You will be asked for it again '
-                  'if this till is reinstalled.',
-            ),
-          ],
+          ),
           const SizedBox(height: PosSpace.xl),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: PosButton(
-              label: 'Test connection',
-              border: const Border.fromBorderSide(BorderSide(color: PosColors.inkWarm)),
-              padding: const EdgeInsets.symmetric(horizontal: PosSpace.xl),
-              onPressed: draft.busy ? null : controller.testConnection,
-            ),
-          ),
-        ] else
-          Text(
-            'No server to configure — this till keeps everything on this machine. '
-            'It still checks in with the platform from time to time, and its '
-            'licence sets how long it may go without doing so. Back it up: '
-            'there is no second copy.',
-            style: PosText.ui(size: 13, color: PosColors.warn, height: 1.5),
-          ),
-        const SizedBox(height: PosSpace.s28),
-        const MicroLabel('Sending sales'),
-        const SizedBox(height: PosSpace.md),
-        for (final policy in SyncPolicy.values) ...[
-          _ChoiceTile(
-            title: policy.label,
-            blurb: policy.blurb,
-            selected: config.syncPolicy == policy,
-            onTap: () => controller.setSyncPolicy(policy),
-          ),
-          const SizedBox(height: PosSpace.md),
         ],
-        Text(
-          'Every till sells offline either way — this only decides when the '
-          'queue drains. The terminal reports in to the dashboard on its own '
-          'schedule regardless.',
-          style: PosText.ui(size: 12.5, color: PosColors.muted, height: 1.5),
+        _PasswordField(
+          field: 'database',
+          label: s.databasePassword,
+          value: draft.databasePassword,
+          onChanged: controller.setDatabasePassword,
+          help: s.databasePasswordHelp,
         ),
+        const SizedBox(height: PosSpace.xl),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: PosButton(
+            label: s.testConnection,
+            border: Border.fromBorderSide(
+              BorderSide(color: context.pos.inkWarm),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: PosSpace.xl),
+            onPressed: draft.busy ? null : controller.testConnection,
+          ),
+        ),
+        // The first install itself — building the database and creating the
+        // person who will run it — is the NEXT step. This screen answers only
+        // "where does the database live"; who may open the till is a different
+        // question and was being asked under a heading about sales.
+        // Only cloud has a queue to drain. Offering the choice to an offline
+        // terminal asked it to decide when to send sales it never sends.
+        if (config.mode.syncsSalesToPlatform) ...[
+          const SizedBox(height: PosSpace.s28),
+          MicroLabel(s.sendingSales),
+          const SizedBox(height: PosSpace.md),
+          for (final policy in SyncPolicy.values) ...[
+            _ChoiceTile(
+              title: policy.label(s),
+              blurb: policy.blurb(s),
+              selected: config.syncPolicy == policy,
+              onTap: () => controller.setSyncPolicy(policy),
+            ),
+            const SizedBox(height: PosSpace.md),
+          ],
+          Text(
+            s.sendingSalesHelp,
+            style: PosText.ui(size: 12.5, color: context.pos.muted, height: 1.5),
+          ),
+        ],
       ],
     );
   }
@@ -323,77 +521,117 @@ class _LicencePane extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final s = context.strings;
     final controller = ref.read(setupProvider.notifier);
     final online = ref.watch(licenceServiceProvider).canActivateOnline;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (online) _Field(
-          label: 'Licence key',
-          value: draft.licenceKey,
-          mono: true,
-          hint: 'XORD-0000-0000-0000',
-          onChanged: controller.setLicenceKey,
-        ),
+        if (online) ...[
+          _Field(
+            label: s.licenceKey,
+            value: draft.licenceKey,
+            mono: true,
+            hint: s.licenceKeyHint,
+            onChanged: controller.setLicenceKey,
+          ),
+          const SizedBox(height: PosSpace.lg),
+          // The platform this key will be sent to, SHOWN rather than assumed.
+          //
+          // Its absence is what made the commonest activation failure
+          // unreadable: a key issued by one platform, typed into a till built
+          // to ask another, is refused perfectly correctly — and the message
+          // said only "not recognised", so the installer went hunting for a
+          // typo in a key that was fine. The address is the answer, and it
+          // belongs on the screen where the question is asked.
+          //
+          // Editable, and that costs nothing: every licence is Ed25519-signed
+          // and checked against a key compiled into this binary, so a hostile
+          // address cannot mint one that passes. The most it can hand over is
+          // bytes — which "Activate from file" already accepts from anybody.
+          _Field(
+            label: s.licenceServer,
+            value: draft.deployment.licenceServerUrl ?? PlatformEndpoint.base,
+            mono: true,
+            hint: PlatformEndpoint.base,
+            help: s.licenceServerHelp,
+            onChanged: controller.setLicenceServer,
+          ),
+        ],
         const SizedBox(height: PosSpace.lg),
         Row(
           children: [
-            // Only offered when something can answer. There is no licence
-            // server yet, so showing this button would be showing a button that
-            // always fails — and an installer taps it three times before
-            // reading the error.
+            // Only offered when something can answer. A build with no licence
+            // transport would be showing a button that always fails — and an
+            // installer taps it three times before reading the error.
             if (online) ...[
               PosButton(
-                label: 'Activate online',
-                background: PosColors.ink,
+                label: s.activateOnline,
+                background: context.pos.ink,
                 foreground: Colors.white,
                 padding: const EdgeInsets.symmetric(horizontal: PosSpace.xl),
-                onPressed: draft.busy ? null : () => controller.activateLicence(),
+                onPressed: draft.busy
+                    ? null
+                    : () => controller.activateLicence(),
               ),
               const SizedBox(width: PosSpace.md),
             ],
             PosButton(
-              label: 'Activate from file',
+              label: s.activateFromFile,
               // Promoted to the primary action when it is the only action.
-              background: online ? PosColors.surface : PosColors.ink,
-              foreground: online ? PosColors.ink : Colors.white,
+              background: online ? context.pos.surface : context.pos.ink,
+              foreground: online ? context.pos.ink : Colors.white,
               border: online
-                  ? const Border.fromBorderSide(BorderSide(color: PosColors.inkWarm))
+                  ? Border.fromBorderSide(
+                      BorderSide(color: context.pos.inkWarm),
+                    )
                   : null,
               padding: const EdgeInsets.symmetric(horizontal: PosSpace.xl),
               // Offline activation is a first-class path, not a fallback: an
               // on-premises till may never see the internet.
-              onPressed: draft.busy ? null : () => _pickFile(context, controller),
+              onPressed: draft.busy
+                  ? null
+                  : () => _pickFile(context, controller),
             ),
           ],
         ),
         const SizedBox(height: PosSpace.lg),
         Text(
-          online
-              ? 'No internet at this site? Ask your supplier for the .xlic file '
-                  'and activate from it. The licence is verified on this machine '
-                  '— it does not need to phone home.'
-              : 'Licences are issued as a .xlic file. The signature is checked on '
-                  'this machine against a key built into the app, so the till '
-                  'never has to phone home — and a file that was not signed by '
-                  'your supplier will not activate.',
-          style: PosText.ui(size: 12.5, color: PosColors.muted, height: 1.5),
+          online ? s.licenceOnlineHelp : s.licenceOfflineHelp,
+          style: PosText.ui(size: 12.5, color: context.pos.muted, height: 1.5),
         ),
         if (draft.entitlement != null) ...[
           const SizedBox(height: PosSpace.xl),
           _LicenceStatusCard(entitlement: draft.entitlement!),
         ],
+        // What the licence bought, stated here rather than discovered two steps
+        // later. `max_terminals` is what decides whether the connection step
+        // will let the database live on another machine.
+        if (draft.claims case final claims?) ...[
+          const SizedBox(height: PosSpace.lg),
+          Text(
+            s.licenceCoverage(
+              claims.tenantName.isEmpty ? claims.tenantSlug : claims.tenantName,
+              claims.plan,
+              claims.maxTerminals,
+            ),
+            style: PosText.ui(size: 12.5, color: context.pos.body, height: 1.5),
+          ),
+        ],
       ],
     );
   }
 
-  Future<void> _pickFile(BuildContext context, SetupController controller) async {
+  Future<void> _pickFile(
+    BuildContext context,
+    SetupController controller,
+  ) async {
     // A real file picker lands with the desktop packaging work; until then the
     // path is exercised with a paste dialog so the offline route is testable.
     final contents = await showDialog<String>(
       context: context,
-      barrierColor: PosColors.scrim,
+      barrierColor: context.pos.scrim,
       builder: (_) => const _PasteLicenceDialog(),
     );
     if (contents == null) return;
@@ -420,51 +658,53 @@ class _PasteLicenceDialogState extends State<_PasteLicenceDialog> {
 
   @override
   Widget build(BuildContext context) => Dialog(
-        backgroundColor: PosColors.surface,
-        shape: const RoundedRectangleBorder(
-          side: PosBorders.emphasis,
-          borderRadius: PosBorders.radius,
-        ),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 560),
-          child: Padding(
-            padding: const EdgeInsets.all(PosSpace.xl),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+    backgroundColor: context.pos.surface,
+    shape: RoundedRectangleBorder(
+      side: context.pos.emphasis,
+      borderRadius: PosBorders.radius,
+    ),
+    child: ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 560),
+      child: Padding(
+        padding: const EdgeInsets.all(PosSpace.xl),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(context.strings.pasteLicenceFile, style: PosText.panelTitle(color: context.pos.ink)),
+            const SizedBox(height: PosSpace.md),
+            TextField(
+              controller: _controller,
+              maxLines: 6,
+              style: PosText.mono(color: context.pos.inkWarm, size: 12),
+              decoration: InputDecoration(
+                hintText: context.strings.licenceFileHint,
+              ),
+            ),
+            const SizedBox(height: PosSpace.lg),
+            Row(
               children: [
-                Text('Paste licence file', style: PosText.panelTitle()),
-                const SizedBox(height: PosSpace.md),
-                TextField(
-                  controller: _controller,
-                  maxLines: 6,
-                  style: PosText.mono(size: 12),
-                  decoration: const InputDecoration(hintText: '{"payload": "...", "signature": "..."}'),
+                const Spacer(),
+                PosButton(
+                  label: context.strings.cancel,
+                  padding: const EdgeInsets.symmetric(horizontal: PosSpace.xl),
+                  onPressed: () => Navigator.of(context).pop(),
                 ),
-                const SizedBox(height: PosSpace.lg),
-                Row(
-                  children: [
-                    const Spacer(),
-                    PosButton(
-                      label: 'Cancel',
-                      padding: const EdgeInsets.symmetric(horizontal: PosSpace.xl),
-                      onPressed: () => Navigator.of(context).pop(),
-                    ),
-                    const SizedBox(width: PosSpace.sm),
-                    PosButton(
-                      label: 'Activate',
-                      background: PosColors.accent,
-                      foreground: Colors.white,
-                      padding: const EdgeInsets.symmetric(horizontal: PosSpace.xl),
-                      onPressed: () => Navigator.of(context).pop(_controller.text),
-                    ),
-                  ],
+                const SizedBox(width: PosSpace.sm),
+                PosButton(
+                  label: context.strings.activate,
+                  background: context.pos.accent,
+                  foreground: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: PosSpace.xl),
+                  onPressed: () => Navigator.of(context).pop(_controller.text),
                 ),
               ],
             ),
-          ),
+          ],
         ),
-      );
+      ),
+    ),
+  );
 }
 
 class _LicenceStatusCard extends StatelessWidget {
@@ -474,12 +714,13 @@ class _LicenceStatusCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final (background, accent, headline) = switch (entitlement.state) {
-      LicenseState.valid => (PosColors.okSoft, PosColors.ok, 'Licensed'),
-      LicenseState.expiringSoon => (PosColors.warnSoft, PosColors.warn, 'Renewal due'),
-      LicenseState.inGrace => (PosColors.warnSoft, PosColors.warn, 'Expired — in grace'),
-      LicenseState.expired => (PosColors.dangerSoft, PosColors.danger, 'Expired'),
-      _ => (PosColors.dangerSoft, PosColors.danger, 'Not licensed'),
+    final headline = entitlement.state.headline(context.strings);
+    final (background, accent) = switch (entitlement.state) {
+      LicenseState.valid => (context.pos.okSoft, context.pos.ok),
+      LicenseState.expiringSoon => (context.pos.warnSoft, context.pos.warn),
+      LicenseState.inGrace => (context.pos.warnSoft, context.pos.warn),
+      LicenseState.expired => (context.pos.dangerSoft, context.pos.danger),
+      _ => (context.pos.dangerSoft, context.pos.danger),
     };
 
     return Container(
@@ -500,19 +741,18 @@ class _LicenceStatusCard extends StatelessWidget {
               letterSpacing: 1.2,
             ),
           ),
-          if (entitlement.message != null) ...[
+          if (entitlement.notice != null) ...[
             const SizedBox(height: PosSpace.sm),
             Text(
-              entitlement.message!,
-              style: PosText.ui(size: 13.5, color: PosColors.ink, height: 1.5),
+              entitlement.notice!.text(context.strings),
+              style: PosText.ui(size: 13.5, color: context.pos.ink, height: 1.5),
             ),
           ],
           if (entitlement.state == LicenseState.expired) ...[
             const SizedBox(height: PosSpace.sm),
             Text(
-              'Cash-up, reprint and data export stay available whatever the '
-              'licence says.',
-              style: PosText.ui(size: 12, color: PosColors.body, height: 1.5),
+              context.strings.cashUpNeverGated,
+              style: PosText.ui(size: 12, color: context.pos.body, height: 1.5),
             ),
           ],
         ],
@@ -530,27 +770,54 @@ class _AccountPane extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final controller = ref.read(setupProvider.notifier);
 
+    // An offline till has no platform to sign in to and no account to sign in
+    // WITH — the first administrator does not exist anywhere yet. Asking for a
+    // dashboard username here offered credentials that cannot exist and a
+    // "connect & pull" that has nothing to pull, and `canAdvance` then required
+    // a connection an offline terminal can never make: the path was blocked at
+    // this step. So on this path the question is the honest one — who is the
+    // first person who may open this till — and answering it is what builds
+    // the database.
+    if (draft.deployment.mode == DeploymentMode.offline) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [_FirstInstallFields(draft: draft)],
+      );
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        // The licence names exactly one tenant, and it was installed two steps
+        // ago. Letting an operator retype it here could only ever produce a
+        // slug that contradicts their own licence — which the verifier would
+        // then reject as a tenant mismatch, on a licence that was fine.
         _Field(
-          label: 'Restaurant',
+          label: context.strings.restaurant,
           value: draft.deployment.tenantSlug ?? '',
           mono: true,
           hint: 'mahsoub',
+          readOnly: draft.claims != null,
           onChanged: controller.setTenantSlug,
           // Usernames are unique per tenant on the server, so the tenant has
           // to be known before a cashier can even be looked up.
-          help: 'The restaurant’s short name, as in mahsoub.xorder.io. '
-              'Staff usernames are unique within a restaurant, so this has to '
-              'be set before anyone can sign in.',
+          help: draft.claims != null
+              ? context.strings.restaurantFromLicenceHelp
+              : context.strings.restaurantHelp,
         ),
         const SizedBox(height: PosSpace.s28),
         for (final method in SetupMethod.values) ...[
           _ChoiceTile(
-            title: method.label,
-            blurb: method.blurb,
+            title: method.label(context.strings),
+            blurb: method.blurb(context.strings),
             selected: draft.method == method,
+            // A pairing code is minted by a dashboard. An offline till has no
+            // dashboard, so a code can only come from `bin/pos_migrate.dart`
+            // having written one — offering the tile as the default way in
+            // sends the operator hunting for something nobody issued.
+            enabled:
+                method != SetupMethod.pairingCode ||
+                draft.deployment.mode == DeploymentMode.cloud,
             onTap: () => controller.setMethod(method),
           ),
           const SizedBox(height: PosSpace.md),
@@ -579,22 +846,32 @@ class _PairingCodeFields extends ConsumerWidget {
     if (draft.claimed) {
       return Container(
         padding: const EdgeInsets.all(PosSpace.lg),
-        decoration: const BoxDecoration(
-          color: PosColors.okSoft,
-          border: Border.fromBorderSide(PosBorders.resting),
+        decoration: BoxDecoration(
+          color: context.pos.okSoft,
+          border: Border.fromBorderSide(context.pos.resting),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Claimed as ${draft.terminalName} · ${draft.branchLabel}',
-              style: PosText.ui(size: 14, weight: FontWeight.w600, color: PosColors.ink),
+              context.strings.claimedAs(
+                draft.terminalName,
+                draft.branchLabel ?? '',
+              ),
+              style: PosText.ui(
+                size: 14,
+                weight: FontWeight.w600,
+                color: context.pos.ink,
+              ),
             ),
             const SizedBox(height: PosSpace.sm),
             Text(
-              'The branch, the till name and the terminal id all came from the '
-              'dashboard. The next two steps just confirm them.',
-              style: PosText.ui(size: 12.5, color: PosColors.muted, height: 1.5),
+              context.strings.claimedFromDashboardHelp,
+              style: PosText.ui(
+                size: 12.5,
+                color: context.pos.muted,
+                height: 1.5,
+              ),
             ),
           ],
         ),
@@ -605,23 +882,25 @@ class _PairingCodeFields extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _Field(
-          label: 'Setup code',
+          label: context.strings.setupCode,
           value: draft.pairingCode,
           mono: true,
           hint: 'MAADI-7Q42',
           onChanged: controller.setPairingCode,
-          help: 'From the dashboard, under Settings → Terminals. Codes are '
-              'single-use and expire, so ask for a fresh one rather than '
-              'reusing an old note.',
+          help: context.strings.setupCodeHelp,
         ),
         const SizedBox(height: PosSpace.xl),
         Align(
           alignment: Alignment.centerLeft,
           child: PosButton(
-            label: 'Claim this terminal',
-            border: const Border.fromBorderSide(BorderSide(color: PosColors.inkWarm)),
+            label: context.strings.claimThisTerminal,
+            border: Border.fromBorderSide(
+              BorderSide(color: context.pos.inkWarm),
+            ),
             padding: const EdgeInsets.symmetric(horizontal: PosSpace.xl),
-            onPressed: draft.busy || draft.pairingCode.isEmpty ? null : controller.claimTerminal,
+            onPressed: draft.busy || draft.pairingCode.isEmpty
+                ? null
+                : controller.claimTerminal,
           ),
         ),
       ],
@@ -637,13 +916,14 @@ class _ManualCredentialFields extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final s = context.strings;
     final controller = ref.read(setupProvider.notifier);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _Field(
-          label: 'Username',
+          label: s.username,
           value: draft.operatorUsername,
           mono: true,
           hint: 'manager',
@@ -651,16 +931,66 @@ class _ManualCredentialFields extends ConsumerWidget {
         ),
         const SizedBox(height: PosSpace.xl),
         _PasswordField(
+          field: 'operator',
           value: draft.operatorPassword,
           onChanged: controller.setOperatorPassword,
         ),
         const SizedBox(height: PosSpace.lg),
         Text(
-          'Use the smallest account that may add a terminal, not the owner’s. '
-          'This till sits in a public room, and a password typed here is a '
-          'password that also opens the dashboard.',
-          style: PosText.ui(size: 12.5, color: PosColors.warn, height: 1.5),
+          s.manualCredentialsWarning,
+          style: PosText.ui(size: 12.5, color: context.pos.warn, height: 1.5),
         ),
+        const SizedBox(height: PosSpace.xl),
+        if (draft.connected)
+          Container(
+            padding: const EdgeInsets.all(PosSpace.lg),
+            decoration: BoxDecoration(
+              color: context.pos.okSoft,
+              border: Border.fromBorderSide(context.pos.resting),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  s.connectedTo(
+                    draft.tenantName ?? draft.deployment.tenantSlug ?? '',
+                  ),
+                  style: PosText.ui(
+                    size: 14,
+                    weight: FontWeight.w600,
+                    color: context.pos.ink,
+                  ),
+                ),
+                const SizedBox(height: PosSpace.sm),
+                Text(
+                  s.branchesRetrieved(draft.pulledBranches?.length ?? 0),
+                  style: PosText.ui(
+                    size: 12.5,
+                    color: context.pos.muted,
+                    height: 1.5,
+                  ),
+                ),
+              ],
+            ),
+          )
+        else
+          Align(
+            alignment: Alignment.centerLeft,
+            child: PosButton(
+              label: s.connectAndPullConfiguration,
+              border: Border.fromBorderSide(
+                BorderSide(color: context.pos.inkWarm),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: PosSpace.xl),
+              onPressed:
+                  draft.busy ||
+                      draft.operatorUsername.trim().isEmpty ||
+                      draft.operatorPassword.isEmpty ||
+                      (draft.deployment.tenantSlug?.isEmpty ?? true)
+                  ? null
+                  : controller.connectTenant,
+            ),
+          ),
       ],
     );
   }
@@ -668,37 +998,87 @@ class _ManualCredentialFields extends ConsumerWidget {
 
 /// Obscured, and deliberately not a [_Field]: nothing else in the wizard hides
 /// what it is showing.
-class _PasswordField extends StatelessWidget {
+class _PasswordField extends StatefulWidget {
   const _PasswordField({
     required this.value,
     required this.onChanged,
-    this.label = 'Password',
+    required this.field,
+    this.label,
     this.help,
   });
 
   final String value;
   final ValueChanged<String> onChanged;
-  final String label;
+
+  /// Which password this is, for the form key. Stable across languages, unlike
+  /// [label] — keying on the caption would remount the field when the wizard's
+  /// language changes and take whatever was half-typed with it.
+  final String field;
+
+  /// Defaults to the generic "Password" when the caller has nothing more
+  /// specific to say.
+  final String? label;
   final String? help;
 
   @override
-  Widget build(BuildContext context) => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          MicroLabel(label),
-          const SizedBox(height: PosSpace.sm),
-          TextFormField(
-            initialValue: value,
-            onChanged: onChanged,
-            obscureText: true,
-            style: PosText.ui(size: 14),
-          ),
-          if (help != null) ...[
-            const SizedBox(height: PosSpace.sm),
-            Text(help!, style: PosText.ui(size: 12, color: PosColors.muted, height: 1.5)),
-          ],
-        ],
+  State<_PasswordField> createState() => _PasswordFieldState();
+}
+
+class _PasswordFieldState extends State<_PasswordField> {
+  late final TextEditingController _controller;
+  final _focus = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.value);
+  }
+
+  /// Same rule as [_FieldState], and it matters more here: the swallowed
+  /// character is in a PIN or a database password, so nothing looks wrong until
+  /// a credential that was typed correctly is refused.
+  @override
+  void didUpdateWidget(covariant _PasswordField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (_focus.hasFocus) return;
+    if (_controller.text != widget.value) {
+      _controller.value = TextEditingValue(
+        text: widget.value,
+        selection: TextSelection.collapsed(offset: widget.value.length),
       );
+    }
+  }
+
+  @override
+  void dispose() {
+    _focus.dispose();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      MicroLabel(widget.label ?? context.strings.password),
+      const SizedBox(height: PosSpace.sm),
+      TextFormField(
+        key: ValueKey('${widget.field}:password'),
+        controller: _controller,
+        focusNode: _focus,
+        onChanged: widget.onChanged,
+        obscureText: true,
+        style: PosText.ui(color: context.pos.inkWarm, size: 14),
+      ),
+      if (widget.help != null) ...[
+        const SizedBox(height: PosSpace.sm),
+        Text(
+          widget.help!,
+          style: PosText.ui(size: 12, color: context.pos.muted, height: 1.5),
+        ),
+      ],
+    ],
+  );
 }
 
 class _BranchPane extends ConsumerWidget {
@@ -708,44 +1088,61 @@ class _BranchPane extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final branches = ref.watch(branchesProvider);
     final controller = ref.read(setupProvider.notifier);
 
+    // The credentials pull already brought the branch list from the platform;
+    // on a fresh cloud terminal the local database is empty until the
+    // bootstrap seeds it, so the pull is the only truthful source.
+    final pulled = draft.pulledBranches;
+    if (pulled != null) {
+      return _branchList(context, controller, pulled);
+    }
+
+    final branches = ref.watch(branchesProvider);
     return branches.when(
-      loading: () => const Center(
+      loading: () => Center(
         child: Padding(
           padding: EdgeInsets.all(PosSpace.s28),
-          child: CircularProgressIndicator(color: PosColors.accent),
+          child: CircularProgressIndicator(color: context.pos.accent),
         ),
       ),
-      error: (error, _) => Text('$error', style: PosText.ui(color: PosColors.danger)),
-      data: (list) => Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          for (final branch in list) ...[
-            _ChoiceTile(
-              title: branch.name,
-              blurb: branch.supportedOrderTypes.isEmpty
-                  ? 'No order types configured'
-                  : branch.supportedOrderTypes.join(' · ').replaceAll('_', '-'),
-              selected: draft.branchId == branch.id,
-              onTap: () => controller.setBranch(branch.id, branch.name),
-              trailing: branch.code == null
-                  ? null
-                  : Text(branch.code!, style: PosText.mono(size: 12, color: PosColors.muted)),
-            ),
-            const SizedBox(height: PosSpace.md),
-          ],
-          const SizedBox(height: PosSpace.sm),
-          Text(
-            'The branch decides which order types this till offers and supplies '
-            'the invoice-number prefix.',
-            style: PosText.ui(size: 12.5, color: PosColors.muted, height: 1.5),
-          ),
-        ],
-      ),
+      error: (error, _) =>
+          Text('$error', style: PosText.ui(color: context.pos.danger)),
+      data: (list) => _branchList(context, controller, list),
     );
   }
+
+  Widget _branchList(
+    BuildContext context,
+    SetupController controller,
+    List<PosBranch> list,
+  ) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      for (final branch in list) ...[
+        _ChoiceTile(
+          title: branch.name,
+          blurb: branch.supportedOrderTypes.isEmpty
+              ? context.strings.noOrderTypesConfigured
+              : branch.supportedOrderTypes.join(' · ').replaceAll('_', '-'),
+          selected: draft.branchId == branch.id,
+          onTap: () => controller.setBranch(branch.id, branch.name),
+          trailing: branch.code == null
+              ? null
+              : Text(
+                  branch.code!,
+                  style: PosText.mono(size: 12, color: context.pos.muted),
+                ),
+        ),
+        const SizedBox(height: PosSpace.md),
+      ],
+      const SizedBox(height: PosSpace.sm),
+      Text(
+        context.strings.branchPaneHelp,
+        style: PosText.ui(size: 12.5, color: context.pos.muted, height: 1.5),
+      ),
+    ],
+  );
 }
 
 class _TerminalPane extends ConsumerWidget {
@@ -754,59 +1151,132 @@ class _TerminalPane extends ConsumerWidget {
   final SetupDraft draft;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) => Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _Field(
-            label: 'Terminal name',
-            value: draft.terminalName,
-            hint: 'Counter 1',
-            onChanged: ref.read(setupProvider.notifier).setTerminalName,
-            help: draft.method == SetupMethod.pairingCode
-                ? 'Set in the dashboard when this till was added. Change it '
-                    'there rather than here, so reports keep matching.'
-                : 'Shown on receipts and in shift reports, so name it the way '
-                    'staff refer to it out loud.',
+  Widget build(BuildContext context, WidgetRef ref) {
+    final s = context.strings;
+    final controller = ref.read(setupProvider.notifier);
+    // Terminals the dashboard already made and nobody has paired yet. `active`
+    // ones are deliberately absent: adopting a till already in service would
+    // take the seat out from under a machine that is trading on it.
+    final adoptable = (draft.pulledTerminals ?? const <PosTerminalSummary>[])
+        .where((t) => t.isAdoptable)
+        .toList();
+    final creatingNew = draft.adoptTerminalId == null;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Since a tenant is created with its terminals provisioned in advance,
+        // the first question is WHICH till this is — not what to call a new one.
+        // Registering another beside them is how a two-seat restaurant ends up
+        // with four rows and a seat limit nobody can explain.
+        if (draft.method == SetupMethod.manual && adoptable.isNotEmpty) ...[
+          MicroLabel(s.whichTillIsThis),
+          const SizedBox(height: PosSpace.md),
+          for (final terminal in adoptable) ...[
+            _ChoiceTile(
+              title: terminal.name,
+              blurb: s.tillAwaitingDevice,
+              selected: draft.adoptTerminalId == terminal.id,
+              enabled: !draft.claimed,
+              onTap: () => controller.setAdoptedTerminal(terminal.id),
+            ),
+            const SizedBox(height: PosSpace.md),
+          ],
+          _ChoiceTile(
+            title: s.aNewTill,
+            blurb: s.aNewTillBlurb,
+            selected: creatingNew,
+            enabled: !draft.claimed,
+            onTap: () => controller.setAdoptedTerminal(null),
           ),
-          if (draft.method == SetupMethod.manual) ...[
-            const SizedBox(height: PosSpace.xl),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: PosButton(
-                label: draft.claimed ? 'Registered' : 'Register this terminal',
-                border: const Border.fromBorderSide(BorderSide(color: PosColors.inkWarm)),
-                padding: const EdgeInsets.symmetric(horizontal: PosSpace.xl),
-                onPressed: draft.busy || draft.claimed || draft.branchId == null
-                    ? null
-                    : ref.read(setupProvider.notifier).registerTerminal,
-              ),
-            ),
-            const SizedBox(height: PosSpace.sm),
-            Text(
-              'Registering is what puts this till on the dashboard. If it fails '
-              'you can still finish setup — the terminal registers at first '
-              'sync instead.',
-              style: PosText.ui(size: 12, color: PosColors.muted, height: 1.5),
-            ),
-          ],
-          if (draft.terminalId != null) ...[
-            const SizedBox(height: PosSpace.xl),
-            const MicroLabel('Terminal id'),
-            const SizedBox(height: PosSpace.sm),
-            SelectableText(
-              draft.terminalId!,
-              style: PosText.mono(size: 12.5, color: PosColors.body),
-            ),
-            const SizedBox(height: PosSpace.sm),
-            Text(
-              'Generated once on this machine and never reissued — shifts and '
-              'orders are tied to it. Reinstalling keeps it; a new machine gets '
-              'a new one.',
-              style: PosText.ui(size: 12, color: PosColors.muted, height: 1.5),
-            ),
-          ],
+          const SizedBox(height: PosSpace.xl),
         ],
-      );
+        // The name is the SERVER's when adopting — showing an editable field
+        // would invite an operator to change something this screen cannot save.
+        if (creatingNew || draft.method == SetupMethod.pairingCode)
+          _Field(
+            label: s.terminalName,
+            value: draft.terminalName,
+            hint: s.terminalNameHint,
+            onChanged: controller.setTerminalName,
+            help: draft.method == SetupMethod.pairingCode
+                ? s.terminalNameProvisionedHelp
+                : s.terminalNameManualHelp,
+          )
+        else
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              MicroLabel(s.terminalName.toUpperCase()),
+              const SizedBox(height: PosSpace.sm),
+              Text(
+                draft.terminalName,
+                style: PosText.ui(
+                  size: 15,
+                  weight: FontWeight.w600,
+                  color: context.pos.ink,
+                ),
+              ),
+              const SizedBox(height: PosSpace.sm),
+              Text(
+                s.terminalNameProvisionedHelp,
+                style: PosText.ui(
+                  size: 12.5,
+                  color: context.pos.muted,
+                  height: 1.5,
+                ),
+              ),
+            ],
+          ),
+        if (draft.method == SetupMethod.manual) ...[
+          const SizedBox(height: PosSpace.xl),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: PosButton(
+              label: draft.claimed
+                  ? (creatingNew ? s.registered : s.alreadySetUp)
+                  : (creatingNew ? s.registerThisTerminal : s.useThisTill),
+              border: Border.fromBorderSide(
+                BorderSide(color: context.pos.inkWarm),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: PosSpace.xl),
+              // Adopting needs no branch chosen here: the terminal already has
+              // one, and the server's answer overwrites whatever was picked.
+              onPressed:
+                  draft.busy ||
+                      draft.claimed ||
+                      (creatingNew && draft.branchId == null)
+                  ? null
+                  : controller.registerTerminal,
+            ),
+          ),
+          const SizedBox(height: PosSpace.sm),
+          Text(
+            !creatingNew
+                ? s.adoptTerminalHelp
+                : draft.deployment.mode == DeploymentMode.cloud
+                ? s.registerCloudHelp
+                : s.registerHelp,
+            style: PosText.ui(size: 12, color: context.pos.muted, height: 1.5),
+          ),
+        ],
+        if (draft.terminalId != null) ...[
+          const SizedBox(height: PosSpace.xl),
+          MicroLabel(s.terminalId),
+          const SizedBox(height: PosSpace.sm),
+          SelectableText(
+            draft.terminalId!,
+            style: PosText.mono(size: 12.5, color: context.pos.body),
+          ),
+          const SizedBox(height: PosSpace.sm),
+          Text(
+            s.terminalIdHelp,
+            style: PosText.ui(size: 12, color: context.pos.muted, height: 1.5),
+          ),
+        ],
+      ],
+    );
+  }
 }
 
 class _HardwarePane extends ConsumerStatefulWidget {
@@ -834,6 +1304,7 @@ class _HardwarePaneState extends ConsumerState<_HardwarePane> {
 
   @override
   Widget build(BuildContext context) {
+    final s = context.strings;
     final controller = ref.read(setupProvider.notifier);
     final draft = widget.draft;
 
@@ -843,26 +1314,25 @@ class _HardwarePaneState extends ConsumerState<_HardwarePane> {
         Row(
           children: [
             PosButton(
-              label: _scanning ? 'Looking…' : 'Find printers',
-              border: const Border.fromBorderSide(BorderSide(color: PosColors.inkWarm)),
+              label: _scanning ? s.lookingForPrinters : s.findPrinters,
+              border: Border.fromBorderSide(
+                BorderSide(color: context.pos.inkWarm),
+              ),
               padding: const EdgeInsets.symmetric(horizontal: PosSpace.xl),
               onPressed: _scanning ? null : _scan,
             ),
             if (draft.printerName != null) ...[
               const SizedBox(width: PosSpace.md),
               PosButton(
-                label: 'Test print',
-                border: const Border.fromBorderSide(PosBorders.resting),
+                label: s.testPrint,
+                border: Border.fromBorderSide(context.pos.resting),
                 padding: const EdgeInsets.symmetric(horizontal: PosSpace.xl),
                 onPressed: () async {
                   final ok = await ref
                       .read(hardwarePortsProvider)
                       .testPrint(draft.printerName!);
                   if (!context.mounted) return;
-                  posToast(
-                    context,
-                    ok ? 'Test receipt sent.' : 'Nothing printed — the sale would still complete.',
-                  );
+                  posToast(context, ok ? s.testReceiptSent : s.nothingPrinted);
                 },
               ),
             ],
@@ -880,24 +1350,22 @@ class _HardwarePaneState extends ConsumerState<_HardwarePane> {
         ],
         const SizedBox(height: PosSpace.sm),
         _ChoiceTile(
-          title: 'Cash drawer attached',
-          blurb: 'Opened by the printer kick port.',
+          title: s.cashDrawerAttached,
+          blurb: s.cashDrawerAttachedBlurb,
           selected: draft.drawerAttached,
           onTap: () => controller.setDrawer(!draft.drawerAttached),
         ),
         const SizedBox(height: PosSpace.md),
         _ChoiceTile(
-          title: 'Barcode scanner attached',
-          blurb: 'Keyboard-wedge scanners need no configuration.',
+          title: s.scannerAttached,
+          blurb: s.scannerAttachedBlurb,
           selected: draft.scannerAttached,
           onTap: () => controller.setScanner(!draft.scannerAttached),
         ),
         const SizedBox(height: PosSpace.lg),
         Text(
-          'All optional. A till with nothing attached still sells — the receipt '
-          'queues and the screen says so. Printing is never on the critical '
-          'path of taking money.',
-          style: PosText.ui(size: 12.5, color: PosColors.muted, height: 1.5),
+          s.hardwareHelp,
+          style: PosText.ui(size: 12.5, color: context.pos.muted, height: 1.5),
         ),
       ],
     );
@@ -910,61 +1378,65 @@ class _MoneyPane extends StatelessWidget {
   final SetupDraft draft;
 
   @override
-  Widget build(BuildContext context) => Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Container(
-            decoration: const BoxDecoration(
-              color: PosColors.surface,
-              border: Border.fromBorderSide(PosBorders.resting),
-            ),
-            child: Column(
-              children: [
-                _row('Currency', 'EGP · 2 decimals'),
-                _row('Service charge', '12% · dine-in only'),
-                _row('VAT', '14% · on subtotal + service'),
-                _row('Rounding', 'Half-up, once at the tax line'),
-              ],
-            ),
-          ),
-          const SizedBox(height: PosSpace.lg),
-          Container(
-            padding: const EdgeInsets.all(PosSpace.lg),
-            decoration: BoxDecoration(
-              color: PosColors.warnSoft,
-              border: Border.all(color: PosColors.warn, width: 2),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const MicroLabel('From device configuration', color: PosColors.warn),
-                const SizedBox(height: PosSpace.sm),
-                Text(
-                  'These rates are held on this terminal, not issued by the '
-                  'server. Every receipt printed from them says so on the slip. '
-                  'Once the server owns tax, this screen becomes read-only.',
-                  style: PosText.ui(size: 13, color: PosColors.ink, height: 1.5),
-                ),
-              ],
-            ),
-          ),
-        ],
-      );
+  Widget build(BuildContext context) {
+    final s = context.strings;
 
-  Widget _row(String label, String value) => Container(
-        padding: const EdgeInsets.symmetric(
-          horizontal: PosSpace.lg,
-          vertical: PosSpace.md,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Container(
+          decoration: BoxDecoration(
+            color: context.pos.surface,
+            border: Border.fromBorderSide(context.pos.resting),
+          ),
+          child: Column(
+            children: [
+              _row(s.currency, s.currencyValue('EGP', 2), pos: context.pos),
+              _row(s.serviceCharge, s.serviceChargeValue, pos: context.pos),
+              _row(s.vat, s.vatValue, pos: context.pos),
+              _row(s.rounding, s.roundingValue, pos: context.pos),
+            ],
+          ),
         ),
-        decoration: const BoxDecoration(border: Border(bottom: PosBorders.hairline)),
-        child: Row(
-          children: [
-            Text(label, style: PosText.ui(size: 13.5)),
-            const Spacer(),
-            Text(value, style: PosText.mono(size: 13, color: PosColors.body)),
-          ],
+        const SizedBox(height: PosSpace.lg),
+        Container(
+          padding: const EdgeInsets.all(PosSpace.lg),
+          decoration: BoxDecoration(
+            color: context.pos.warnSoft,
+            border: Border.all(color: context.pos.warn, width: 2),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              MicroLabel(s.fromDeviceConfiguration, color: context.pos.warn),
+              const SizedBox(height: PosSpace.sm),
+              Text(
+                s.deviceTaxHelp,
+                style: PosText.ui(size: 13, color: context.pos.ink, height: 1.5),
+              ),
+            ],
+          ),
         ),
-      );
+      ],
+    );
+  }
+
+  Widget _row(String label, String value, {required PosPalette pos}) => Container(
+    padding: const EdgeInsets.symmetric(
+      horizontal: PosSpace.lg,
+      vertical: PosSpace.md,
+    ),
+    decoration: BoxDecoration(
+      border: Border(bottom: pos.hairline),
+    ),
+    child: Row(
+      children: [
+        Text(label, style: PosText.ui(color: pos.inkWarm, size: 13.5)),
+        const Spacer(),
+        Text(value, style: PosText.mono(size: 13, color: pos.body)),
+      ],
+    ),
+  );
 }
 
 class _CataloguePane extends ConsumerWidget {
@@ -973,41 +1445,85 @@ class _CataloguePane extends ConsumerWidget {
   final SetupDraft draft;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) => Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Align(
-            alignment: Alignment.centerLeft,
-            child: PosButton(
-              label: draft.catalogueItems == null ? 'Download menu' : 'Download again',
-              background: PosColors.ink,
-              foreground: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: PosSpace.xl),
-              onPressed: draft.busy ? null : ref.read(setupProvider.notifier).syncCatalogue,
-            ),
+  Widget build(BuildContext context, WidgetRef ref) {
+    final s = context.strings;
+    final items = draft.catalogueItems;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Align(
+          alignment: Alignment.centerLeft,
+          child: PosButton(
+            // Offline this button downloads nothing — `syncCatalogue` early
+            // -returns out of the platform pull and reads local Postgres. A
+            // button that says "Download menu" on a machine with no platform
+            // teaches the operator to distrust the whole screen.
+            label: draft.deployment.mode == DeploymentMode.cloud
+                ? (items == null ? s.downloadMenu : s.downloadAgain)
+                : (items == null ? s.readMenu : s.readMenuAgain),
+            background: context.pos.ink,
+            foreground: Colors.white,
+            padding: const EdgeInsets.symmetric(horizontal: PosSpace.xl),
+            onPressed: draft.busy
+                ? null
+                : ref.read(setupProvider.notifier).syncCatalogue,
           ),
-          if (draft.catalogueItems != null) ...[
-            const SizedBox(height: PosSpace.lg),
-            Container(
-              padding: const EdgeInsets.all(PosSpace.lg),
-              decoration: BoxDecoration(
-                color: PosColors.okSoft,
-                border: Border.all(color: PosColors.ok, width: 2),
-              ),
-              child: Text(
-                '${draft.catalogueItems} items cached on this terminal.',
-                style: PosText.ui(size: 13.5, weight: FontWeight.w600, color: PosColors.ink),
+        ),
+        // A download that returned nothing is not a success, and painting it
+        // green is how a till reaches a restaurant with an empty menu and a
+        // tick beside it. The step still advances — an installer may genuinely
+        // be setting up before the menu is authored, and blocking would strand
+        // them — but the consequence is stated rather than implied.
+        if (items != null) ...[
+          const SizedBox(height: PosSpace.lg),
+          Container(
+            padding: const EdgeInsets.all(PosSpace.lg),
+            decoration: BoxDecoration(
+              color: items > 0 ? context.pos.okSoft : context.pos.warnSoft,
+              border: Border.all(
+                color: items > 0 ? context.pos.ok : context.pos.warn,
+                width: 2,
               ),
             ),
-          ],
-          const SizedBox(height: PosSpace.lg),
-          Text(
-            'The menu is cached so the till can sell before it has ever been '
-            'online again. It refreshes in the background while trading.',
-            style: PosText.ui(size: 12.5, color: PosColors.muted, height: 1.5),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  items > 0 ? s.itemsCached(items) : s.menuEmpty,
+                  style: PosText.ui(
+                    size: 13.5,
+                    weight: FontWeight.w600,
+                    color: context.pos.ink,
+                  ),
+                ),
+                if (items == 0) ...[
+                  const SizedBox(height: PosSpace.sm),
+                  Text(
+                    draft.deployment.mode == DeploymentMode.cloud
+                        ? s.menuEmptyHelp
+                        : s.menuEmptyHelpOffline,
+                    style: PosText.ui(
+                      size: 13,
+                      color: context.pos.ink,
+                      height: 1.5,
+                    ),
+                  ),
+                ],
+              ],
+            ),
           ),
         ],
-      );
+        const SizedBox(height: PosSpace.lg),
+        Text(
+          draft.deployment.mode == DeploymentMode.cloud
+              ? s.cataloguePaneHelp
+              : s.cataloguePaneHelpOffline,
+          style: PosText.ui(size: 12.5, color: context.pos.muted, height: 1.5),
+        ),
+      ],
+    );
+  }
 }
 
 class _SummaryPane extends StatelessWidget {
@@ -1017,29 +1533,46 @@ class _SummaryPane extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final s = context.strings;
+
+    // The chosen language names itself, not the language you are reading —
+    // this row is the record of a decision, and `العربية` is what was picked.
+    final language = draft.locale == 'ar'
+        ? const ArStrings().languageName
+        : const EnStrings().languageName;
+
     final rows = <(String, String)>[
-      ('Language', draft.locale == 'ar' ? 'العربية' : 'English'),
-      ('Connection', draft.deployment.mode.label),
-      if (draft.deployment.baseUrl != null) ('Server', draft.deployment.baseUrl!),
-      if (draft.deployment.upstreamUrl?.isNotEmpty ?? false)
-        ('Upstream', draft.deployment.upstreamUrl!),
-      ('Restaurant', draft.deployment.tenantSlug ?? '—'),
-      ('Branch', draft.branchLabel ?? '—'),
-      ('Terminal', draft.terminalName),
-      ('Printer', draft.printerName ?? 'None — receipts will queue'),
-      ('Cash drawer', draft.drawerAttached ? 'Attached' : 'None'),
-      ('Scanner', draft.scannerAttached ? 'Attached' : 'None'),
-      ('Menu', '${draft.catalogueItems ?? 0} items cached'),
-      ('Licence', draft.entitlement?.state.name ?? 'none'),
+      (s.summaryLanguage, language),
+      (s.summaryConnection, draft.deployment.mode.label(s)),
+      if (draft.deployment.baseUrl?.isNotEmpty ?? false)
+        (s.summaryUpstream, draft.deployment.baseUrl!),
+      (
+        s.theDatabase,
+        draft.deployment.isSingleMachine
+            ? s.summaryThisMachine
+            : draft.deployment.databaseHost,
+      ),
+      (s.summaryRestaurant, draft.deployment.tenantSlug ?? s.notSet),
+      (s.summaryBranch, draft.branchLabel ?? s.notSet),
+      (s.summaryTerminal, draft.terminalName),
+      (s.summaryPrinter, draft.printerName ?? s.summaryNoPrinter),
+      (s.summaryCashDrawer, draft.drawerAttached ? s.summaryAttached : s.none),
+      (s.summaryScanner, draft.scannerAttached ? s.summaryAttached : s.none),
+      (s.summaryMenu, s.itemsCached(draft.catalogueItems ?? 0)),
+      (
+        s.summaryLicence,
+        // The verdict in words, not the enum's Dart name.
+        draft.entitlement?.state.headline(s) ?? s.notLicensedHeadline,
+      ),
     ];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Container(
-          decoration: const BoxDecoration(
-            color: PosColors.surface,
-            border: Border.fromBorderSide(PosBorders.resting),
+          decoration: BoxDecoration(
+            color: context.pos.surface,
+            border: Border.fromBorderSide(context.pos.resting),
           ),
           child: Column(
             children: [
@@ -1049,20 +1582,26 @@ class _SummaryPane extends StatelessWidget {
                     horizontal: PosSpace.lg,
                     vertical: PosSpace.md,
                   ),
-                  decoration: const BoxDecoration(
-                    border: Border(bottom: PosBorders.hairline),
+                  decoration: BoxDecoration(
+                    border: Border(bottom: context.pos.hairline),
                   ),
                   child: Row(
                     children: [
                       SizedBox(
                         width: 160,
-                        child: Text(label, style: PosText.ui(size: 13, color: PosColors.muted)),
+                        child: Text(
+                          label,
+                          style: PosText.ui(size: 13, color: context.pos.muted),
+                        ),
                       ),
                       Expanded(
                         child: Text(
                           value,
                           overflow: TextOverflow.ellipsis,
-                          style: PosText.ui(size: 13.5, weight: FontWeight.w600),
+                          style: PosText.ui(color: context.pos.inkWarm, 
+                            size: 13.5,
+                            weight: FontWeight.w600,
+                          ),
                         ),
                       ),
                     ],
@@ -1071,10 +1610,162 @@ class _SummaryPane extends StatelessWidget {
             ],
           ),
         ),
+        // The last screen before "Open the till" must not show an all-clear
+        // over a terminal that has nothing to sell.
+        if ((draft.catalogueItems ?? 0) == 0) ...[
+          const SizedBox(height: PosSpace.lg),
+          Container(
+            padding: const EdgeInsets.all(PosSpace.lg),
+            decoration: BoxDecoration(
+              color: context.pos.warnSoft,
+              border: Border.all(color: context.pos.warn, width: 2),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  context.strings.menuEmpty,
+                  style: PosText.ui(
+                    size: 13.5,
+                    weight: FontWeight.w600,
+                    color: context.pos.ink,
+                  ),
+                ),
+                const SizedBox(height: PosSpace.sm),
+                Text(
+                  draft.deployment.mode == DeploymentMode.cloud
+                      ? context.strings.menuEmptyHelp
+                      : context.strings.menuEmptyHelpOffline,
+                  style: PosText.ui(
+                    size: 13,
+                    color: context.pos.ink,
+                    height: 1.5,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
         const SizedBox(height: PosSpace.lg),
         Text(
-          'You can change any of this later in Settings, except the terminal id.',
-          style: PosText.ui(size: 12.5, color: PosColors.muted),
+          s.summaryHelp,
+          style: PosText.ui(size: 12.5, color: context.pos.muted),
+        ),
+      ],
+    );
+  }
+}
+
+/// Build this machine's database from the wizard.
+///
+/// The offline path used to begin at a command line — `PosMigrator` ran only on
+/// the cloud claim path, so an offline restaurant needed somebody at a terminal
+/// with `bin/pos_migrate.dart` before the wizard could do anything at all. This
+/// is that command, on the screen the operator is already looking at.
+///
+/// Shown open, because this IS the step now.
+///
+/// It used to sit collapsed behind a "this machine has no database yet" button,
+/// at the foot of the connection screen, so that a till being re-installed
+/// against an existing database was not invited to re-run it. That reasoning
+/// belonged to the old position. As the whole content of the first-administrator
+/// step, a lone button — whose label reads as a status line rather than an
+/// action — is the step appearing to have nothing on it.
+class _FirstInstallFields extends ConsumerStatefulWidget {
+  const _FirstInstallFields({required this.draft});
+
+  final SetupDraft draft;
+
+  @override
+  ConsumerState<_FirstInstallFields> createState() =>
+      _FirstInstallFieldsState();
+}
+
+class _FirstInstallFieldsState extends ConsumerState<_FirstInstallFields> {
+  @override
+  Widget build(BuildContext context) {
+    final s = context.strings;
+    final draft = widget.draft;
+    final controller = ref.read(setupProvider.notifier);
+
+    if (draft.bootstrapped) {
+      return Container(
+        padding: const EdgeInsets.all(PosSpace.md),
+        decoration: BoxDecoration(
+          color: context.pos.accentSoft,
+          border: Border.all(color: context.pos.ok),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              s.machineNowHasDatabase,
+              style: PosText.ui(
+                size: 13,
+                weight: FontWeight.w700,
+                color: context.pos.ink,
+              ),
+            ),
+            const SizedBox(height: PosSpace.sm),
+            Text(
+              draft.bootstrapReport ?? '',
+              style: PosText.ui(size: 12.5, color: context.pos.body, height: 1.6),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        MicroLabel(s.firstInstallHeading),
+        const SizedBox(height: PosSpace.sm),
+        Text(
+          s.firstInstallHelp,
+          style: PosText.ui(size: 12.5, color: context.pos.muted, height: 1.5),
+        ),
+        const SizedBox(height: PosSpace.lg),
+        _PasswordField(
+          field: 'admin',
+          label: s.adminPasswordFor(draft.deployment.adminDatabaseUser),
+          value: draft.adminDatabasePassword,
+          onChanged: controller.setAdminDatabasePassword,
+          help: s.adminPasswordHelp,
+        ),
+        const SizedBox(height: PosSpace.lg),
+        _Field(
+          label: s.firstPerson,
+          value: draft.ownerName,
+          onChanged: controller.setOwnerName,
+          help: s.firstPersonHelp,
+        ),
+        const SizedBox(height: PosSpace.md),
+        _Field(
+          label: s.theirUsername,
+          value: draft.ownerUsername,
+          mono: true,
+          hint: 'owner',
+          onChanged: controller.setOwnerUsername,
+        ),
+        const SizedBox(height: PosSpace.md),
+        _PasswordField(
+          field: 'owner-pin',
+          label: s.theirPin,
+          value: draft.ownerPin,
+          onChanged: controller.setOwnerPin,
+          help: s.theirPinHelp,
+        ),
+        const SizedBox(height: PosSpace.xl),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: PosButton(
+            label: draft.busy ? s.buildingDatabase : s.buildTheDatabase,
+            background: context.pos.ink,
+            foreground: Colors.white,
+            padding: const EdgeInsets.symmetric(horizontal: PosSpace.xl),
+            onPressed: draft.busy ? null : controller.bootstrapDatabase,
+          ),
         ),
       ],
     );

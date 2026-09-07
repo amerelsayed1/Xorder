@@ -1,11 +1,13 @@
 import '../../core/config/deployment.dart';
 import '../../core/money/money.dart';
 import '../models/catalog.dart';
+import '../models/permissions.dart';
 import '../models/dining_table.dart';
 import '../models/shift.dart';
 import '../models/ticket.dart';
 
-export '../models/shift.dart' show PosStaff, PosShift, ShiftSummary, ShiftTenderTotal, ShiftClose;
+export '../models/shift.dart'
+    show PosStaff, PosShift, ShiftSummary, ShiftTenderTotal, ShiftClose;
 
 /// Repository contracts.
 ///
@@ -54,6 +56,15 @@ abstract interface class OrdersRepository {
   /// `ticket.id` — that is the `client_transaction_id` the server deduplicates
   /// on (POS-BE-007). **A submission is never silently discarded.**
   Future<SubmitOrderResult> submit(Ticket ticket);
+
+  /// How many settled sales this terminal still owes the platform.
+  ///
+  /// Zero in offline mode, always — sales are not owed to anyone there, and a
+  /// number that only ever went up would be reporting a debt that does not
+  /// exist. Read from the queue rather than counted in memory, so it survives a
+  /// restart: a till that forgot its backlog when someone rebooted it would
+  /// report "synced" while holding a day of unsent takings.
+  Future<int> pendingSyncCount();
 }
 
 /// A signed-in cashier and the terminal they are working.
@@ -77,7 +88,14 @@ class PosSession {
   /// server re-gates on every write, so this is convenience, not security.
   final Set<String> capabilities;
 
-  bool can(String capability) => capabilities.contains(capability);
+  /// Canonicalises the name being asked about, exactly as [PosStaff.can] does.
+  ///
+  /// A till running an older binary against a migrated database will ask about
+  /// `pos.reprint` while the row now says `receipt.reprint`, and the honest
+  /// answer to "may this person reprint" does not depend on which build is
+  /// asking.
+  bool can(String capability) =>
+      capabilities.contains(PosCapability.canonical(capability));
 
   String get initials {
     final parts = userName.trim().split(RegExp(r'\s+'));
@@ -134,7 +152,6 @@ abstract interface class ShiftRepository {
   });
 }
 
-
 /// What a terminal learns about itself when it takes its place in a restaurant.
 ///
 /// The dashboard creates the terminal first and the till claims it
@@ -187,16 +204,85 @@ class ClaimResult {
   bool get succeeded => claim != null;
 }
 
+/// The result of verifying credentials and pulling the tenant's configuration
+/// before anything is registered — the first half of the credentials path.
+///
+/// Refusals are data, same reasoning as [ClaimResult]: a mistyped password is
+/// normal operation on a shop floor, not an exception.
+class TenantConnection {
+  const TenantConnection({
+    this.tenantName,
+    this.branches = const [],
+    this.terminals = const [],
+    this.code,
+    this.message,
+  });
+
+  final String? tenantName;
+
+  /// The tenant's branches, straight from the platform — what the branch step
+  /// shows on a terminal whose local database has not been seeded yet.
+  final List<PosBranch> branches;
+
+  /// Terminals the platform ALREADY has for this tenant, unclaimed ones first.
+  ///
+  /// Empty is a normal answer, not a failure: a tenant is created with a
+  /// licence and no terminals at all, so the first till to arrive legitimately
+  /// finds nothing to adopt and creates one.
+  final List<PosTerminalSummary> terminals;
+
+  final String? code;
+  final String? message;
+
+  bool get succeeded => code == null;
+}
+
+/// A terminal the platform holds, as the setup wizard needs to show it.
+class PosTerminalSummary {
+  const PosTerminalSummary({
+    required this.id,
+    required this.name,
+    required this.branchId,
+    required this.state,
+  });
+
+  /// The platform's numeric row id — what the pairing-code call addresses.
+  /// Deliberately not the `terminal_id` UUID: that identifies the till to
+  /// itself, this identifies the row to the dashboard API.
+  final int id;
+  final String name;
+  final int? branchId;
+
+  /// `provisioned` | `active` | `revoked`.
+  final String state;
+
+  /// Waiting for a device. The only state a till may adopt: `active` already
+  /// belongs to another machine and adopting it would silently steal the seat
+  /// out from under a working till, and `revoked` is dead.
+  bool get isAdoptable => state == 'provisioned';
+}
+
 /// How this terminal gets provisioned (POS-BE-023).
 ///
 /// Two paths, both landing on the same `pos_terminals` row:
 /// * [claimByCode] — the dashboard created the terminal and issued a pairing
-///   code. This is the default, because the alternative puts a restaurant
-///   admin's password into every till an installer touches.
-/// * [registerManually] — no dashboard access at setup time, so the till
-///   authenticates and creates its own record.
+///   code.
+/// * [connect] then [registerManually] — the phase-1 cloud flow: slug + admin
+///   credentials pull the tenant's configuration first, and registration
+///   happens once the branch and till name have been chosen from it.
 abstract interface class ProvisioningRepository {
-  Future<ClaimResult> claimByCode({required String tenantSlug, required String code});
+  Future<ClaimResult> claimByCode({
+    required String tenantSlug,
+    required String code,
+  });
+
+  /// Verify the credentials and pull what the following setup steps display.
+  /// Registers nothing and changes nothing on the platform.
+  Future<TenantConnection> connect({
+    required String tenantSlug,
+    required String username,
+    required String password,
+  });
 
   Future<ClaimResult> registerManually({
     required String tenantSlug,
@@ -204,6 +290,17 @@ abstract interface class ProvisioningRepository {
     required String password,
     required String terminalName,
     required int branchId,
+  });
+
+  /// Adopt a terminal the dashboard already created, rather than making
+  /// another one beside it. The preferred path since tenant creation started
+  /// leaving terminals provisioned and waiting: [registerManually] is now the
+  /// fallback for a tenant that genuinely has none.
+  Future<ClaimResult> adoptTerminal({
+    required String tenantSlug,
+    required String username,
+    required String password,
+    required int terminalId,
   });
 }
 

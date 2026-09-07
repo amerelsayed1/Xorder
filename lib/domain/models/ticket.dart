@@ -2,6 +2,7 @@ import 'package:collection/collection.dart';
 
 import '../../core/money/money.dart';
 import 'catalog.dart';
+import 'discount.dart';
 
 /// The order types the till can sell. Which of these are *offered* comes from
 /// `branch.supported_order_types` (POS-BE-005) — never hardcoded on screen.
@@ -18,8 +19,25 @@ enum OrderType {
 
   final String wire;
 
+  /// Wire values that mean one of these by another name.
+  ///
+  /// The platform has two vocabularies for the same idea: the onboarding
+  /// wizard and the plan features say `pickup`, the POS says `takeaway`.
+  /// They are the same act — a customer collecting food — and a branch
+  /// onboarded through the wizard must not lose its takeaway tab because two
+  /// screens disagree about a word. Same tolerance `DeploymentMode.fromWire`
+  /// already applies to its own legacy names.
+  static const _synonyms = <String, OrderType>{
+    'pickup': OrderType.takeaway,
+    'take_away': OrderType.takeaway,
+    'dinein': OrderType.dineIn,
+    'drivethru': OrderType.driveThru,
+    'drive_through': OrderType.driveThru,
+  };
+
   static OrderType? fromWire(String value) =>
-      OrderType.values.firstWhereOrNull((t) => t.wire == value);
+      OrderType.values.firstWhereOrNull((t) => t.wire == value) ??
+      _synonyms[value];
 }
 
 /// Whether a line has been fired to the kitchen yet.
@@ -57,9 +75,9 @@ class TicketLine {
 
   /// Price of one unit including its modifiers. Exact integer arithmetic.
   Money get unitPrice => modifiers.fold(
-        product.effectivePrice,
-        (total, modifier) => total + modifier.priceDelta,
-      );
+    product.effectivePrice,
+    (total, modifier) => total + modifier.priceDelta,
+  );
 
   Money get lineTotal => unitPrice * quantity;
 
@@ -71,15 +89,14 @@ class TicketLine {
     LineStage? stage,
     int? roundNumber,
     String? note,
-  }) =>
-      TicketLine(
-        product: product,
-        quantity: quantity ?? this.quantity,
-        modifiers: modifiers,
-        note: note ?? this.note,
-        stage: stage ?? this.stage,
-        roundNumber: roundNumber ?? this.roundNumber,
-      );
+  }) => TicketLine(
+    product: product,
+    quantity: quantity ?? this.quantity,
+    modifiers: modifiers,
+    note: note ?? this.note,
+    stage: stage ?? this.stage,
+    roundNumber: roundNumber ?? this.roundNumber,
+  );
 }
 
 /// A tender taken against a ticket. Split payment is n of these.
@@ -123,6 +140,20 @@ class TaxConfig {
 
   bool appliesServiceTo(OrderType type) =>
       !serviceDineInOnly || type == OrderType.dineIn;
+
+  /// Value equality, because callers compare configurations to decide whether
+  /// anything actually changed — and an identity comparison there would
+  /// rewrite a live ticket on every sync pass.
+  @override
+  bool operator ==(Object other) =>
+      other is TaxConfig &&
+      other.serviceBp == serviceBp &&
+      other.vatBp == vatBp &&
+      other.serviceDineInOnly == serviceDineInOnly &&
+      other.source == source;
+
+  @override
+  int get hashCode => Object.hash(serviceBp, vatBp, serviceDineInOnly, source);
 }
 
 enum TaxSource {
@@ -143,9 +174,23 @@ class TicketTotals {
     required this.paid,
     required this.due,
     required this.change,
+    this.discount = const Money(0),
   });
 
   final Money subtotal;
+
+  /// Everything taken off, line discounts and order discounts together.
+  ///
+  /// Always positive, never a negative subtotal: a discount is its own line on
+  /// a receipt and folding it into the goods would make it unauditable.
+  final Money discount;
+
+  /// [subtotal] less [discount] — what the food actually came to.
+  ///
+  /// **This, not [subtotal], is what service and tax are charged on.** See
+  /// `Ticket.totals` for why.
+  Money get net => subtotal - discount;
+
   final Money service;
   final Money vat;
   final Money total;
@@ -169,6 +214,7 @@ class Ticket {
     this.guestCount,
     this.lines = const [],
     this.tenders = const [],
+    this.discounts = const [],
     this.taxConfig = const TaxConfig(),
     this.currency = 'EGP',
     this.exponent = 2,
@@ -185,6 +231,14 @@ class Ticket {
   final int? guestCount;
   final List<TicketLine> lines;
   final List<Tender> tenders;
+
+  /// What has been taken off, each one a snapshot of the discount as applied.
+  ///
+  /// One list rather than a field on [TicketLine], because an order-level
+  /// discount belongs to no line and putting it on one would be a lie about
+  /// what it came off. [AppliedDiscount.lineKey] carries the association.
+  final List<AppliedDiscount> discounts;
+
   final TaxConfig taxConfig;
   final String currency;
   final int exponent;
@@ -206,22 +260,38 @@ class Ticket {
 
   /// Totals over **every** line, sent and draft alike — the bill is the whole
   /// visit, not the current round.
+  ///
+  /// **Service and tax are charged on the discounted goods, not the gross.**
+  /// That is the one judgement in this method and it is worth stating: if
+  /// service were taken on `subtotal`, a fully comped meal would still charge
+  /// 12% service and VAT on top of it, and the customer would be handed a bill
+  /// for food the restaurant gave away. Discounting the food discounts what is
+  /// charged on the food.
+  ///
+  /// Rounding is still applied **once per charge line** — service and VAT —
+  /// which is what keeps the parts footing to the whole.
   TicketTotals get totals {
     final subtotal = lines.fold(_zero, (sum, line) => sum + line.lineTotal);
+    final discount = discounts.fold(_zero, (sum, d) => sum + d.amount);
+
+    // Clamped, not trusted. Nothing in the engine can build a ticket whose
+    // discounts exceed its goods, but a ticket rebuilt from a parked payload
+    // written by an older build could, and a negative net would propagate into
+    // a negative tax and a receipt nobody can read.
+    final net = (subtotal - discount).clampToZero();
 
     final service = taxConfig.appliesServiceTo(orderType)
-        ? subtotal.percentBp(taxConfig.serviceBp)
+        ? net.percentBp(taxConfig.serviceBp)
         : _zero;
 
-    // VAT is charged on subtotal + service, and this is the single rounding
-    // point in the whole calculation — matching the server's decimal:2 cast.
-    final vat = (subtotal + service).percentBp(taxConfig.vatBp);
-    final total = subtotal + service + vat;
+    final vat = (net + service).percentBp(taxConfig.vatBp);
+    final total = net + service + vat;
     final paid = tenders.fold(_zero, (sum, tender) => sum + tender.amount);
     final balance = total - paid;
 
     return TicketTotals(
       subtotal: subtotal,
+      discount: subtotal.minor < discount.minor ? subtotal : discount,
       service: service,
       vat: vat,
       total: total,
@@ -231,6 +301,17 @@ class Ticket {
     );
   }
 
+  /// Discounts already on this ticket, line-level and order-level together.
+  List<AppliedDiscount> get lineDiscounts =>
+      discounts.where((d) => !d.isOrderLevel).toList();
+
+  List<AppliedDiscount> get orderDiscounts =>
+      discounts.where((d) => d.isOrderLevel).toList();
+
+  /// The discount sitting on [lineKey], if any.
+  AppliedDiscount? discountOnLine(String lineKey) =>
+      discounts.firstWhereOrNull((d) => d.lineKey == lineKey);
+
   Ticket copyWith({
     OrderType? orderType,
     int? tableId,
@@ -238,21 +319,22 @@ class Ticket {
     int? guestCount,
     List<TicketLine>? lines,
     List<Tender>? tenders,
+    List<AppliedDiscount>? discounts,
     TaxConfig? taxConfig,
     int? roundsSent,
     bool clearTable = false,
-  }) =>
-      Ticket(
-        id: id,
-        orderType: orderType ?? this.orderType,
-        tableId: clearTable ? null : (tableId ?? this.tableId),
-        tableLabel: clearTable ? null : (tableLabel ?? this.tableLabel),
-        guestCount: clearTable ? null : (guestCount ?? this.guestCount),
-        lines: lines ?? this.lines,
-        tenders: tenders ?? this.tenders,
-        taxConfig: taxConfig ?? this.taxConfig,
-        currency: currency,
-        exponent: exponent,
-        roundsSent: roundsSent ?? this.roundsSent,
-      );
+  }) => Ticket(
+    id: id,
+    orderType: orderType ?? this.orderType,
+    tableId: clearTable ? null : (tableId ?? this.tableId),
+    tableLabel: clearTable ? null : (tableLabel ?? this.tableLabel),
+    guestCount: clearTable ? null : (guestCount ?? this.guestCount),
+    lines: lines ?? this.lines,
+    tenders: tenders ?? this.tenders,
+    discounts: discounts ?? this.discounts,
+    taxConfig: taxConfig ?? this.taxConfig,
+    currency: currency,
+    exponent: exponent,
+    roundsSent: roundsSent ?? this.roundsSent,
+  );
 }

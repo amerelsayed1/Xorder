@@ -41,7 +41,7 @@ abstract final class E2eLicence {
       tenantName: tenantName,
       issuedAt: now.subtract(const Duration(hours: 1)),
       expiresAt: now.add(term),
-      modes: const {DeploymentMode.branchServer},
+      modes: const {DeploymentMode.offline},
       plan: 'End To End',
     );
 

@@ -9,7 +9,12 @@ import 'pos_database.dart';
 /// which is also the only tenant identifier available *during* setup, before a
 /// terminal has been claimed and a numeric id is known.
 class PosTenant {
-  const PosTenant({required this.id, required this.name, this.nameAr, this.taxNumber});
+  const PosTenant({
+    required this.id,
+    required this.name,
+    this.nameAr,
+    this.taxNumber,
+  });
 
   final int id;
   final String name;
@@ -32,9 +37,9 @@ class PosTenantMissing implements Exception {
     final name = slug;
     return name == null || name.isEmpty
         ? 'No restaurant is configured for this terminal. Set the restaurant '
-            'short name in Settings.'
+              'short name in Settings.'
         : 'No restaurant named "$name" exists in this database. Check the short '
-            'name, or seed it with bin/pos_migrate.dart --seed.';
+              'name, or seed it with bin/pos_migrate.dart --seed.';
   }
 }
 

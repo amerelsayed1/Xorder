@@ -2,10 +2,15 @@
 
 ```bash
 POS_PG_HOST=127.0.0.1 POS_PG_USER=pos_till POS_PG_PASSWORD=… \
-  flutter test integration_test -d macos
+POS_LICENCE_KEY=… \
+  flutter test integration_test -d macos \
+  --dart-define=POS_E2E_REQUIRED=true
 ```
 
-Skips itself when `POS_PG_HOST` is unset.
+For local convenience the suite skips itself when either required service
+credential is absent. The documented command sets `POS_E2E_REQUIRED`, turning
+that situation into a failure so CI and release runs cannot pass without
+executing E2E coverage.
 
 ## What this is for
 
@@ -54,8 +59,7 @@ app migrate itself would be testing a deployment nobody runs.
   drive.
 * **Only the pairing-code path** through setup. Manual registration has widget
   coverage in `test/features/setup_wizard_test.dart`.
-* **Only plain products.** A product with modifier groups opens a sheet first,
-  which is a separate interaction with its own widget test.
-* **Nothing offline.** The local outbound queue is unbuilt, so there is no
-  queued-sale path to walk end to end yet. When it lands, the receipt's
-  `QUEUED OFFLINE — WILL SYNC` state is the first thing that belongs here.
+* **No hosted-platform round trip.** Offline setup and the local sale ledger are
+  assembled here; request construction and outbox behavior have lower-level
+  tests. A platform test service is still needed for the complete
+  queued-sale → reconnect → delivered journey.

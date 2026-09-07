@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/l10n/app_strings.dart';
 import '../../../core/ui/theme.dart';
 import '../../../core/ui/tokens.dart';
 import '../../../core/ui/widgets/pos_widgets.dart';
@@ -28,54 +29,70 @@ class CategoryRail extends StatelessWidget {
   Widget build(BuildContext context) {
     final categories = [...catalog.categories]
       ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+    final strings = context.strings;
 
     return Container(
       width: PosSize.categoryRail,
-      decoration: const BoxDecoration(
-        color: PosColors.surface,
-        border: Border(right: PosBorders.emphasis),
+      decoration: BoxDecoration(
+        color: context.pos.surface,
+        border: Border(right: context.pos.emphasis),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Padding(
-            padding: EdgeInsets.fromLTRB(PosSpace.s14, PosSpace.md, PosSpace.s14, PosSpace.sm),
-            child: MicroLabel('Categories'),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              PosSpace.s14,
+              PosSpace.md,
+              PosSpace.s14,
+              PosSpace.sm,
+            ),
+            child: MicroLabel(strings.categories),
           ),
           Expanded(
             child: ListView(
               children: [
-                _row(null, 'All items', catalog.products.length),
+                _row(null, strings.allItems, catalog.products.length, pos: context.pos),
                 for (final category in categories)
                   _row(
                     category.id,
-                    category.nameEn,
+                    // The category comes from the menu, not from this file —
+                    // its own Arabic name if the branch entered one.
+                    category.displayName(strings.languageCode),
                     catalog.inCategory(category.id).length,
-                  ),
+                  pos: context.pos),
               ],
             ),
           ),
           // Pinned section with a 2px ink top border.
           Container(
-            decoration: const BoxDecoration(border: Border(top: PosBorders.emphasis)),
+            decoration: BoxDecoration(
+              border: Border(top: context.pos.emphasis),
+            ),
             padding: const EdgeInsets.all(PosSpace.sm),
             child: Column(
               children: [
                 PosButton(
-                  label: 'Open tickets',
-                  border: const Border.fromBorderSide(BorderSide(color: PosColors.inkWarm)),
+                  label: strings.openTickets,
+                  border: Border.fromBorderSide(
+                    BorderSide(color: context.pos.inkWarm),
+                  ),
                   alignLeft: true,
                   trailing: Text(
                     '$openTicketCount',
-                    style: PosText.mono(size: 12, weight: FontWeight.w600, color: PosColors.danger),
+                    style: PosText.mono(
+                      size: 12,
+                      weight: FontWeight.w600,
+                      color: context.pos.danger,
+                    ),
                   ),
                   onPressed: onOpenTickets,
                 ),
                 const SizedBox(height: PosSpace.sm),
                 PosButton(
-                  label: 'Tables',
-                  foreground: PosColors.body,
-                  border: const Border.fromBorderSide(PosBorders.hairline),
+                  label: strings.tables,
+                  foreground: context.pos.body,
+                  border: Border.fromBorderSide(context.pos.hairline),
                   onPressed: onTables,
                 ),
               ],
@@ -86,17 +103,28 @@ class CategoryRail extends StatelessWidget {
     );
   }
 
-  Widget _row(int? id, String label, int count) {
+  Widget _row(int? id, String label, int count, {required PosPalette pos}) {
     final active = id == selectedId;
 
     return Material(
-      color: active ? PosColors.accent : Colors.transparent,
+      color: active ? pos.accent : Colors.transparent,
       child: InkWell(
         onTap: () => onSelect(id),
+        // No hover, splash or press overlay. Material's defaults paint a pale
+        // wash OVER the accent fill, which turns the selected row's white
+        // label into grey-on-peach — unreadable at a glance, which is the one
+        // thing a category rail cannot afford. Selection is shown by the fill
+        // itself, the same way elevation here is a border rather than a
+        // shadow.
+        hoverColor: Colors.transparent,
+        splashColor: Colors.transparent,
+        highlightColor: Colors.transparent,
         child: Container(
           height: PosSize.categoryRow,
           padding: const EdgeInsets.symmetric(horizontal: PosSpace.s14),
-          decoration: const BoxDecoration(border: Border(top: PosBorders.hairline)),
+          decoration: BoxDecoration(
+            border: Border(top: pos.hairline),
+          ),
           child: Row(
             children: [
               Expanded(
@@ -106,7 +134,7 @@ class CategoryRail extends StatelessWidget {
                   style: PosText.ui(
                     size: 14,
                     weight: active ? FontWeight.w600 : FontWeight.w500,
-                    color: active ? Colors.white : PosColors.inkWarm,
+                    color: active ? Colors.white : pos.inkWarm,
                   ),
                 ),
               ),
@@ -116,7 +144,7 @@ class CategoryRail extends StatelessWidget {
                   '$count',
                   style: PosText.mono(
                     size: 11.5,
-                    color: active ? Colors.white : PosColors.inkWarm,
+                    color: active ? Colors.white : pos.inkWarm,
                   ),
                 ),
               ),

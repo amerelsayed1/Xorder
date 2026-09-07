@@ -1,0 +1,383 @@
+import 'package:postgres/postgres.dart';
+
+import '../../core/config/deployment.dart';
+import '../../core/security/pin_hash.dart';
+import '../../domain/models/permissions.dart';
+import '../../domain/models/reason_code.dart';
+import 'migrations.dart';
+import 'pos_database.dart';
+
+/// Preparing an empty PostgreSQL for a till, in one place.
+///
+/// This used to live only in `bin/pos_migrate.dart`, which meant an offline
+/// install began at a command line — on a machine in a restaurant, run by
+/// whoever unboxed it. The setup wizard now offers the same thing, and both
+/// call *this*, because two implementations of "what grants does a till need"
+/// is two answers to a question that must only ever have one.
+///
+/// **The credential used here is not the credential the till keeps.** Creating
+/// a database and applying DDL needs an owner or superuser; selling needs
+/// `pos_till`, which is granted the least it can work with and no DDL at all.
+/// The admin credential passes through this class and is never persisted —
+/// `PosDbSecretStore` only ever holds the till's.
+class LocalBootstrap {
+  const LocalBootstrap(this.database);
+
+  final PosDatabase database;
+
+  /// `CREATE DATABASE` cannot run inside a transaction and has no
+  /// `IF NOT EXISTS`, so it needs its own connection to the maintenance
+  /// database and a look before it leaps.
+  ///
+  /// Returns true when it created one, false when it was already there —
+  /// which is not a failure, and is the normal case on a re-run.
+  static Future<bool> createDatabase(
+    DeploymentConfig admin,
+    String adminPassword,
+    String name,
+  ) async {
+    if (!_isPlainIdentifier(name)) {
+      throw ArgumentError.value(
+        name,
+        'name',
+        'A database name must be letters, digits and underscores — it is an '
+            'identifier, so it cannot be a bind parameter and will be quoted '
+            'into the statement.',
+      );
+    }
+
+    final connection = await Connection.open(
+      Endpoint(
+        host: admin.databaseHost,
+        port: admin.databasePort,
+        database: 'postgres',
+        username: admin.databaseUser,
+        password: adminPassword,
+      ),
+      settings: ConnectionSettings(
+        sslMode: admin.allowsInsecureTransport
+            ? SslMode.disable
+            : SslMode.require,
+      ),
+    );
+
+    try {
+      final existing = await connection.execute(
+        Sql.named('SELECT 1 FROM pg_database WHERE datname = @name'),
+        parameters: {'name': name},
+      );
+      if (existing.isNotEmpty) return false;
+
+      await connection.execute('CREATE DATABASE "$name"');
+      return true;
+    } finally {
+      await connection.close();
+    }
+  }
+
+  /// Apply every pending migration. Returns the versions this call applied.
+  Future<List<int>> migrate(DeploymentConfig admin) =>
+      PosMigrator(database).migrate(admin);
+
+  /// The restaurant row, matched on slug so a re-run adopts rather than
+  /// duplicates.
+  Future<int> seedRestaurant(
+    DeploymentConfig admin, {
+    required String slug,
+    required String name,
+  }) async {
+    final rows = await database.query(
+      admin,
+      'INSERT INTO pos_restaurants (slug, name) VALUES (@slug, @name) '
+      // Touch the conflicting column and nothing else: this is how the row's
+      // id comes back without any of its content being overwritten.
+      'ON CONFLICT (slug) DO UPDATE SET slug = EXCLUDED.slug RETURNING id',
+      parameters: {'slug': slug, 'name': name},
+    );
+
+    return rows.first[0]! as int;
+  }
+
+  /// One branch. Its code is the invoice prefix — `MAIN-2026-000042`.
+  Future<int> seedBranch(
+    DeploymentConfig admin, {
+    required int restaurantId,
+    required String name,
+    required String code,
+  }) async {
+    final rows = await database.query(
+      admin,
+      'INSERT INTO pos_branches (restaurant_id, code, name, supported_order_types) '
+      "VALUES (@restaurant, @code, @name, ARRAY['dine_in','takeaway','delivery']) "
+      'ON CONFLICT (restaurant_id, code) DO UPDATE SET code = EXCLUDED.code '
+      'RETURNING id',
+      parameters: {'restaurant': restaurantId, 'code': code, 'name': name},
+    );
+
+    return rows.first[0]! as int;
+  }
+
+  /// The four system roles, from [SystemRoles.seeded].
+  ///
+  /// Re-running never resets a restaurant's edited permissions: the upsert
+  /// touches `code` and leaves `capabilities` alone.
+  ///
+  /// @return role code → id, and how many were newly created.
+  Future<({Map<String, int> ids, int created})> seedSystemRoles(
+    DeploymentConfig admin,
+    int restaurantId,
+  ) async {
+    final ids = <String, int>{};
+    var created = 0;
+
+    for (final entry in SystemRoles.seeded.entries) {
+      final rows = await database.query(
+        admin,
+        'INSERT INTO pos_roles (restaurant_id, code, name_en, name_ar, capabilities, is_system) '
+        'VALUES (@restaurant, @code, @nameEn, @nameAr, @capabilities, true) '
+        'ON CONFLICT (restaurant_id, code) DO UPDATE SET code = EXCLUDED.code '
+        'RETURNING id, (xmax = 0) AS inserted',
+        parameters: {
+          'restaurant': restaurantId,
+          'code': entry.key,
+          'nameEn': entry.value.nameEn,
+          'nameAr': entry.value.nameAr,
+          'capabilities': entry.value.capabilities.toList(),
+        },
+      );
+      ids[entry.key] = rows.first[0]! as int;
+      if (rows.first[1] == true) created++;
+    }
+
+    return (ids: ids, created: created);
+  }
+
+  /// The reason lists, from [SystemReasons.seeded].
+  ///
+  /// Migration 9 seeds every restaurant that existed when it ran. This is for
+  /// the ones created afterwards — by `--seed`, or by the wizard building a
+  /// database on a machine in a restaurant — because a `CROSS JOIN` over
+  /// `pos_restaurants` inside a migration can only ever see the past.
+  ///
+  /// Re-running never resets an edited list: the upsert touches `code` and
+  /// leaves the names, the sort order and `is_active` alone. A restaurant that
+  /// renamed "Manager comp" or retired "Training" keeps its decision.
+  ///
+  /// @return how many rows were newly created.
+  Future<int> seedReasonCodes(DeploymentConfig admin, int restaurantId) async {
+    var created = 0;
+
+    for (final scope in SystemReasons.seededScopes) {
+      for (var i = 0; i < SystemReasons.seeded.length; i++) {
+        final reason = SystemReasons.seeded[i];
+        final rows = await database.query(
+          admin,
+          'INSERT INTO pos_reason_codes (restaurant_id, scope, code, name_en, '
+          '  name_ar, requires_note, sort_order) '
+          'VALUES (@restaurant, @scope, @code, @nameEn, @nameAr, @note, @sort) '
+          'ON CONFLICT (restaurant_id, scope, code) DO UPDATE SET code = EXCLUDED.code '
+          'RETURNING (xmax = 0) AS inserted',
+          parameters: {
+            'restaurant': restaurantId,
+            'scope': scope.wire,
+            'code': reason.code,
+            'nameEn': reason.nameEn,
+            'nameAr': reason.nameAr,
+            'note': reason.requiresNote,
+            'sort': i + 1,
+          },
+        );
+        if (rows.first[0] == true) created++;
+      }
+    }
+
+    return created;
+  }
+
+  /// The first person, on the owner role.
+  ///
+  /// The PIN is hashed here with the same PBKDF2 work factor the till verifies
+  /// with, which is why [PinHash] is pure Dart. `DO NOTHING` on conflict, so a
+  /// re-run never silently resets somebody's PIN.
+  ///
+  /// @return true when this call created the account.
+  Future<bool> seedOwner(
+    DeploymentConfig admin, {
+    required int restaurantId,
+    required int branchId,
+    required int roleId,
+    required String name,
+    required String username,
+    required String pin,
+  }) async {
+    final salt = PinHash.newSalt();
+    final hash = await PinHash.hash(pin, salt);
+
+    final rows = await database.query(
+      admin,
+      'INSERT INTO pos_staff (restaurant_id, branch_id, name, username, '
+      'pin_salt, pin_hash, role_id, capabilities) '
+      // No direct grants: the ROLE carries the permissions, so changing what
+      // an owner may do is one edit in one place.
+      "VALUES (@restaurant, @branch, @name, @username, @salt, @hash, @role, '{}') "
+      'ON CONFLICT (restaurant_id, username) DO NOTHING RETURNING id',
+      parameters: {
+        'restaurant': restaurantId,
+        'branch': branchId,
+        'name': name,
+        'username': username,
+        'salt': salt,
+        'hash': hash,
+        'role': roleId,
+      },
+    );
+
+    return rows.isNotEmpty;
+  }
+
+  /// Grant a database role exactly what its job needs.
+  ///
+  /// Pure — it returns statements rather than running them — so the CLI and
+  /// the wizard apply an identical list and a test can read it without a
+  /// database.
+  ///
+  /// **Two sets, not one.** [till] is what a machine standing in a public room
+  /// gets. [administrative] is what the Management section additionally needs,
+  /// and is the set that authoring the menu belongs to.
+  static List<String> tillGrants({
+    required String database,
+    required String role,
+  }) => <String>[
+    'GRANT CONNECT ON DATABASE "$database" TO "$role"',
+    'GRANT USAGE ON SCHEMA public TO "$role"',
+    // The sale itself.
+    'GRANT SELECT, INSERT ON pos_orders, pos_order_lines, pos_order_payments TO "$role"',
+    // Voiding is an UPDATE, and an order row that can be updated at all is a
+    // total that can be rewritten — which is the property the no-UPDATE grant
+    // above was protecting. So the grant is **column-scoped**: the till may set
+    // what an order's status is and who changed it, and may not touch a single
+    // money column. PostgreSQL enforces that per column, so a recovered till
+    // credential can void a sale in the open and still cannot reprice one.
+    'GRANT UPDATE (status, status_changed_at, voided_at, voided_by, '
+        'void_reason_id, void_note, business_day_id) ON pos_orders TO "$role"',
+    'GRANT UPDATE (voided_at, voided_by, void_reason_id, refunded_quantity) '
+        'ON pos_order_lines TO "$role"',
+    // Why somebody voided, refunded, discounted or overrode a price. The till
+    // reads the list; editing it is a settings act and belongs to the
+    // administrative role.
+    'GRANT SELECT ON pos_reason_codes TO "$role"',
+    // What happened to a line, in order. INSERT and SELECT only — the same
+    // discipline as the audit ledger, because "this line was voided after it
+    // was cooked" is a claim that must not be editable by the person it names.
+    'GRANT SELECT, INSERT ON pos_order_line_events TO "$role"',
+    'GRANT USAGE, SELECT ON SEQUENCE pos_order_line_events_id_seq TO "$role"',
+    // The discounts the restaurant offers. Read-only for the till, for the
+    // same reason the menu is: a cashier applies a discount, they do not
+    // invent one. Authoring belongs to [administrativeGrants].
+    'GRANT SELECT ON pos_discounts, pos_discount_targets TO "$role"',
+    // What was actually taken off a sale. INSERT and SELECT, never UPDATE —
+    // a discount already applied to a settled order is a record of what the
+    // customer was charged, not a working figure.
+    'GRANT SELECT, INSERT ON pos_order_discounts TO "$role"',
+    'GRANT USAGE, SELECT ON SEQUENCE pos_order_discounts_id_seq TO "$role"',
+    'GRANT SELECT, INSERT, UPDATE ON pos_invoice_sequences TO "$role"',
+    'GRANT USAGE, SELECT ON SEQUENCE pos_orders_id_seq, pos_order_lines_id_seq, '
+        'pos_order_payments_id_seq TO "$role"',
+    // The restaurant's own data. Read-only for the till: a till displays
+    // the menu, it does not edit it. Changing what the restaurant sells is
+    // a back-office act — see [administrativeGrants].
+    'GRANT SELECT ON pos_restaurants, pos_branches, pos_staff, pos_categories, '
+        'pos_products, pos_modifier_groups, pos_modifiers, '
+        'pos_product_modifier_groups, pos_dining_tables TO "$role"',
+    // Read by every till on every sign-in: the permission gate needs to
+    // know what the person who just entered a PIN may do.
+    'GRANT SELECT ON pos_roles TO "$role"',
+    // Claiming a pairing code stamps `claimed_at`, and an installer with
+    // no dashboard registers the terminal from the wizard.
+    'GRANT SELECT, INSERT, UPDATE ON pos_terminals TO "$role"',
+    // Shifts are opened and closed at the till by definition. No DELETE: a
+    // cash-up somebody wants to disappear is exactly the row that must not.
+    'GRANT SELECT, INSERT, UPDATE ON pos_shifts TO "$role"',
+    'GRANT USAGE, SELECT ON SEQUENCE pos_shifts_id_seq TO "$role"',
+    // The outbound queue. No DELETE: a delivered row is the record that
+    // this sale was already sent, and a till that can forget that is a
+    // till that sends it twice.
+    'GRANT SELECT, INSERT, UPDATE ON pos_outbox TO "$role"',
+    'GRANT USAGE, SELECT ON SEQUENCE pos_outbox_id_seq TO "$role"',
+    // The audit ledger. INSERT and SELECT, never UPDATE or DELETE. The
+    // table's triggers refuse the rest anyway; this makes it true at the
+    // grant as well, so the trigger is the second line of defence rather
+    // than the only one.
+    'GRANT SELECT, INSERT ON pos_audit_events TO "$role"',
+    'GRANT USAGE, SELECT ON SEQUENCE pos_audit_events_id_seq TO "$role"',
+    // Cloud seeding: the platform authors the menu, the staff and the
+    // floor, and the bootstrap seeder replicates them here as a local
+    // cache — wipe-and-rewrite for the catalog, `setval` to push the
+    // serials past the platform's ids (which is why the sequences need
+    // UPDATE). This softens the read-only-catalog rule above knowingly: a
+    // stolen till credential could rewrite the local *cache*, but on a
+    // cloud till the cache is not authoritative — every order is re-priced
+    // server-side (POS-BE-006), so repricing the display buys an attacker
+    // nothing at settlement.
+    'GRANT INSERT, UPDATE ON pos_restaurants, pos_branches, pos_staff TO "$role"',
+    'GRANT INSERT, UPDATE, DELETE ON pos_categories, pos_products, '
+        'pos_modifier_groups, pos_modifiers, pos_product_modifier_groups, '
+        'pos_dining_tables TO "$role"',
+    'GRANT USAGE, SELECT, UPDATE ON SEQUENCE pos_restaurants_id_seq, '
+        'pos_branches_id_seq, pos_staff_id_seq, pos_categories_id_seq, '
+        'pos_products_id_seq, pos_modifier_groups_id_seq, '
+        'pos_modifiers_id_seq, pos_dining_tables_id_seq TO "$role"',
+    'GRANT SELECT, INSERT, UPDATE ON pos_cloud_state TO "$role"',
+    // The open floor. The ONE table the till may DELETE from: settlement
+    // removes the parked row because the durable record of the money now
+    // lives in pos_orders.
+    'GRANT SELECT, INSERT, UPDATE, DELETE ON pos_parked_tickets TO "$role"',
+    // Tax rules and charges, cached where pricing can reach them.
+    'GRANT SELECT, INSERT, UPDATE ON pos_money_config TO "$role"',
+    // So the in-app migrator can see the schema is current and do nothing,
+    // rather than failing on the read.
+    'GRANT SELECT ON schema_migrations TO "$role"',
+  ];
+
+  /// What only the administrator role gets — acts the Management section
+  /// performs on behalf of somebody who signed in holding the capability.
+  ///
+  /// Still no DELETE, anywhere. Staff are disabled, roles are edited and the
+  /// catalogue is archived, because a deleted row takes its audit trail's
+  /// subject with it and "who removed this and when" is the question that gets
+  /// asked.
+  static List<String> administrativeGrants({required String role}) => <String>[
+    'GRANT SELECT, INSERT, UPDATE ON pos_staff TO "$role"',
+    'GRANT USAGE, SELECT ON SEQUENCE pos_staff_id_seq TO "$role"',
+    'GRANT SELECT, INSERT, UPDATE ON pos_roles TO "$role"',
+    'GRANT USAGE, SELECT ON SEQUENCE pos_roles_id_seq TO "$role"',
+    // A restaurant's own vocabulary for why things happen. Editable in
+    // Settings, which is why this is here and not in the till's set — a
+    // cashier who could add a void reason could add one that reads well.
+    'GRANT SELECT, INSERT, UPDATE ON pos_reason_codes TO "$role"',
+    'GRANT USAGE, SELECT ON SEQUENCE pos_reason_codes_id_seq TO "$role"',
+    // Authoring what the restaurant offers, and what a role may take off by
+    // hand. A DELETE on the targets, unlike almost everywhere else: they are
+    // not a record of anything that happened, only the current shape of a
+    // discount, and un-targeting a category has to be possible.
+    'GRANT SELECT, INSERT, UPDATE ON pos_discounts TO "$role"',
+    'GRANT USAGE, SELECT ON SEQUENCE pos_discounts_id_seq TO "$role"',
+    'GRANT SELECT, INSERT, DELETE ON pos_discount_targets TO "$role"',
+  ];
+
+  Future<void> applyGrants(
+    DeploymentConfig admin,
+    List<String> statements,
+  ) async {
+    for (final statement in statements) {
+      await database.query(admin, statement);
+    }
+  }
+
+  /// A plain identifier, because a database name is quoted into DDL rather
+  /// than bound.
+  /// The rule lives on [DeploymentConfig] so the wizard can apply it at the
+  /// point of typing. This is the last line of defence, not the first.
+  static bool _isPlainIdentifier(String value) =>
+      DeploymentConfig.isPlainIdentifier(value);
+}

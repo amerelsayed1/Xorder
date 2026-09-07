@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:xorder_pos/app/app.dart';
+import 'package:xorder_pos/main.dart' as app;
+
+import 'e2e_app_files.dart';
 
 /// Drives the assembled till the way the person standing at it does.
 ///
@@ -37,22 +39,64 @@ class TillDriver {
   /// connects with is supposed to arrive by way of the wizard's password field,
   /// and a test that injected it instead would pass on a till that could never
   /// be set up by hand.
-  Future<void> boot() async {
+  Future<void> boot({bool freshInstallation = false}) async {
+    if (freshInstallation) await E2eAppFiles.clearInstallation();
+
+    // Registered from INSIDE the test body so it runs in the test's own zone.
+    // The live binding asserts no frame is pending at teardown, and a till
+    // that just settled a sale has a receipt animating and a sync pass in
+    // flight; replacing the tree disposes the ProviderScope, which cancels
+    // both. Doing this from the suite's own `tearDown` instead trips the
+    // harness's guarded-function check, because that runs outside the zone.
+    addTearDown(() async {
+      try {
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump(const Duration(milliseconds: 50));
+      } on Object {
+        // Teardown must never fail a test whose assertions passed.
+      }
+    });
+
     tester.view
       ..physicalSize = window
       ..devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
 
-    // An empty frame first. Two `ProviderScope(child: XorderPosApp())` widgets
-    // are structurally identical, so pumping the second over the first updates
-    // the existing element in place and keeps the old container — a "second
-    // till" would boot already set up, which is the opposite of the point.
+    // Unmount the previous installation before main() creates the production
+    // ProviderScope and restores configuration and credentials from disk.
     await tester.pumpWidget(const SizedBox.shrink());
-    await tester.pumpWidget(const ProviderScope(child: XorderPosApp()));
+    await app.main();
+    await tester.pump();
     await settle();
   }
 
   // ------------------------------------------------------------------- wizard
+
+  /// Open the Setup Wizard the way an installer does: Ctrl+Shift+S on the
+  /// welcome screen. A no-op when the wizard is already showing, so the
+  /// driver works from either entry point.
+  Future<void> openSetupFromWelcome() async {
+    if (find.text('Continue').evaluate().isNotEmpty) return;
+    await waitForText('XORDER');
+
+    // Tap first, then chord. The screen takes focus on tap precisely so a
+    // mouse user cannot disarm the only way in — and a second app boot in one
+    // process does not always re-run autofocus, which is the test-harness
+    // version of the same problem an operator hits after clicking around.
+    for (var attempt = 0; attempt < 3; attempt++) {
+      await tester.tap(find.text('XORDER'));
+      await settle();
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.keyS);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.keyS);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+      await settle();
+      if (find.text('Continue').evaluate().isNotEmpty) return;
+    }
+    fail('Ctrl+Shift+S did not open the setup wizard from the welcome screen');
+  }
 
   /// Walk first-run setup for a till on a branch server, end to end.
   ///
@@ -60,33 +104,48 @@ class TillDriver {
   /// the path an installer actually takes: address, credential, *Test
   /// connection*, and only then a licence and a pairing code.
   Future<void> completeSetup({
-    required String serverAddress,
+    required String databaseHost,
     required String databaseName,
     required int databasePort,
     required String databaseUser,
     required String databasePassword,
-    String upstream = 'https://xorder.io',
-    String tenantSlug = 'mahsoub',
     String pairingCode = 'MAADI-7Q42',
     required String licenceFile,
+    /// The platform this till syncs to. Phase 1 builds the CLOUD path only —
+    /// the offline tile is dimmed until its phase lands — so the wizard is
+    /// walked as a cloud install talking to a local API.
+    required String platformUrl,
+    required String tenantSlug,
   }) async {
-    // 1 · Language.
+    // 0 · The welcome screen. An unconfigured till shows the mark and nothing
+    // else; the wizard opens on a chord an installer knows (phase-1 owner
+    // decision), so a driver that walked straight into "Continue" was
+    // testing a screen that no longer greets anybody.
+    await openSetupFromWelcome();
+
+    // 1 · Setup type. Cloud is preselected and Offline is dimmed until its
+    // phase lands, so this step is a confirmation on both paths today.
     await tapButton('Continue');
 
-    // 2 · Connection. Mode first: changing it deliberately discards the
-    // endpoint and the credential, so anything typed before would be lost.
-    await tapButton('Branch server');
-    await enterField('Server address', serverAddress);
+    // 2 · Language.
+    await tapButton('Continue');
 
-    // Only offered once the address is a private one, which is the reason it
-    // is entered before this is tapped rather than after.
-    await tapButton('Trust this server without a certificate');
+    // 3 · Connection. The mode was settled on step 1; this step asks where
+    // the platform is and where the till's own database lives. A cloud till
+    // keeps a local PostgreSQL of its own — the sale is written there first
+    // and drains afterwards — so the database fields matter on both paths.
+    await enterField('Platform address', platformUrl);
 
-    await enterField('Database', databaseName);
+    // Only offered when the licence covers more than one terminal — a one-till
+    // plan has no shared database to point at, and the wizard does not ask.
+    if (find.text('Database address').evaluate().isNotEmpty) {
+      await enterField('Database address', databaseHost);
+    }
+
+    await enterField('Database name', databaseName);
     await enterField('Port', databasePort.toString());
     await enterField('Database user', databaseUser);
     await enterField('Database password', databasePassword);
-    await enterField('Upstream', upstream);
 
     // The button an installer leans on. If it lies about a real database the
     // rest of this walk is worthless, so the suite spends a round trip on it.
@@ -94,30 +153,17 @@ class TillDriver {
     await waitForNoSpinner();
     await tapButton('Continue');
 
-    // 3 · Sign in, by pairing code — the provisioned path, where the branch and
-    // the till name come back from the dashboard instead of being typed. It
-    // comes before the licence because a licence is issued to a tenant, and
-    // this is the step that says which tenant this is.
+    // 4 · Sign in, by pairing code — the provisioned path, where the branch and
+    // the till name come back from the platform instead of being typed. On the
+    // cloud path the tenant is typed here (no licence step precedes it: a
+    // cloud licence rides the bootstrap bundle at registration).
     await enterField('Restaurant', tenantSlug);
+    await tapButton('Setup code');
     await enterField('Setup code', pairingCode);
     await tapButton('Claim this terminal');
     // The branch and the till name come back from the database, so the driver
     // must not assert what they are — only that the claim landed.
     await waitForTextContaining('Claimed as');
-    await tapButton('Continue');
-
-    // 4 · Licence. There is no licence server, so the wizard offers only the
-    // file — and the app checks its signature against the key in the binary,
-    // which is why the suite has to sign a real one rather than type a key.
-    await tapButton('Activate from file');
-    await waitForText('Paste licence file');
-    await tester.enterText(
-      find.descendant(of: find.byType(Dialog), matching: find.byType(TextField)).last,
-      licenceFile,
-    );
-    await settle();
-    await tapButton('Activate');
-    await waitForText('LICENSED');
     await tapButton('Continue');
 
     // 5 · Branch and 6 · Terminal are confirmations on this path: the claim
@@ -140,6 +186,27 @@ class TillDriver {
     // 10 · Ready.
     await tapButton('Open the till');
     await settle();
+  }
+
+  /// Bring the app to rest before the test body ends.
+  ///
+  /// The live binding asserts no frame is pending at teardown, and a till that
+  /// just settled a sale has a receipt dialog animating and a sync pass in
+  /// flight. Pumping to quiet here is the honest way to end a test that drove
+  /// real work — the alternative is a suite that passes its assertions and
+  /// then fails on the way out.
+  Future<void> quiesce() async {
+    // Replace the app with an empty tree. That disposes the ProviderScope —
+    // cancelling the sync loop's timers and every running animation — which
+    // is the only reliable way to reach the live binding's teardown with no
+    // frame pending. Pumping alone cannot win against a spinner: an
+    // indeterminate progress indicator schedules frames forever by design.
+    try {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(milliseconds: 50));
+    } on Object {
+      // Teardown must not fail a test whose assertions passed.
+    }
   }
 
   // --------------------------------------------------------------------- till
@@ -170,6 +237,18 @@ class TillDriver {
   /// [counted] is what the person at the drawer says is in it. Passing the
   /// expected total is the balanced case; anything else records a variance.
   Future<void> closeShift({required String counted}) async {
+    // Settling a seated ticket returns the cashier to the floor (that is the
+    // point — the next thing they do is seat another table), and the
+    // Close-shift control lives on the sale screen. Walk back the way a
+    // cashier would: pick any table, then cash up.
+    if (find.text('Close shift').evaluate().isEmpty) {
+      final anyTable = find.byType(InkWell);
+      if (anyTable.evaluate().isNotEmpty) {
+        await tester.tap(anyTable.first);
+        await settle();
+      }
+    }
+    await waitForText('Close shift');
     await tapButton('Close shift');
     await waitForTextContaining('Close SHIFT');
 
@@ -183,7 +262,11 @@ class TillDriver {
       of: find.byType(Dialog),
       matching: find.text('Close shift'),
     );
-    expect(confirm, findsOneWidget, reason: 'the cash-up dialog should be showing');
+    expect(
+      confirm,
+      findsOneWidget,
+      reason: 'the cash-up dialog should be showing',
+    );
     await tester.tap(confirm);
     await settle();
 
@@ -215,6 +298,17 @@ class TillDriver {
   /// Tap a product tile. Only for products with no modifier groups — anything
   /// with one opens the sheet first, which is a different interaction.
   Future<void> addProduct(String name) async {
+    // A real menu is hundreds of items across many categories, so the tile is
+    // usually not on screen. Search is how a cashier finds one — and using it
+    // here means the suite also proves the search index works against a real
+    // catalogue rather than a five-item fixture.
+    if (find.text(name).evaluate().isEmpty) {
+      final search = find.byType(TextField).first;
+      await tester.tap(search);
+      await tester.enterText(search, name);
+      await settle();
+      await waitForText(name);
+    }
     await tapButton(name);
   }
 
@@ -236,7 +330,11 @@ class TillDriver {
   /// which one it actually pressed.
   Future<void> charge() async {
     final cta = find.textContaining(RegExp('CLOSE TABLE|CHARGE'));
-    expect(cta, findsWidgets, reason: 'the cart should offer a way to take money');
+    expect(
+      cta,
+      findsWidgets,
+      reason: 'the cart should offer a way to take money',
+    );
     await tester.tap(cta.first);
     await settle();
     await waitForText('TAKE PAYMENT');
@@ -264,7 +362,9 @@ class TillDriver {
   /// asking is to compare the two.
   String receiptInvoiceNumber() {
     final printed = find.byWidgetPredicate(
-      (widget) => widget is Text && (widget.data?.contains(RegExp(r'^[A-Z]+-\d{4}-\d{6}$')) ?? false),
+      (widget) =>
+          widget is Text &&
+          (widget.data?.contains(RegExp(r'^[A-Z]+-\d{4}-\d{6}$')) ?? false),
     );
     expect(
       printed,
@@ -282,14 +382,14 @@ class TillDriver {
   /// uppercases — directly above their input, inside one `Column`. The nearest
   /// `Column` ancestor of that label is therefore the field itself.
   Finder fieldNamed(String label) => find.descendant(
-        of: find
-            .ancestor(
-              of: find.text(label.toUpperCase()),
-              matching: find.byType(Column),
-            )
-            .first,
-        matching: find.byType(TextFormField),
-      );
+    of: find
+        .ancestor(
+          of: find.text(label.toUpperCase()),
+          matching: find.byType(Column),
+        )
+        .first,
+    matching: find.byType(TextFormField),
+  );
 
   // ------------------------------------------------------------------ actions
 
@@ -310,7 +410,11 @@ class TillDriver {
 
   Future<void> tapTextContaining(String fragment) async {
     final target = find.textContaining(fragment);
-    expect(target, findsWidgets, reason: 'nothing on screen contains "$fragment"');
+    expect(
+      target,
+      findsWidgets,
+      reason: 'nothing on screen contains "$fragment"',
+    );
     await show(target.first);
     await tester.tap(target.first);
     await settle();
@@ -329,10 +433,10 @@ class TillDriver {
 
   /// Every piece of text currently rendered, for diagnosing a failed wait.
   List<String> visibleText() => [
-        for (final element in find.byType(Text).evaluate())
-          if ((element.widget as Text).data?.trim().isNotEmpty ?? false)
-            (element.widget as Text).data!.trim(),
-      ];
+    for (final element in find.byType(Text).evaluate())
+      if ((element.widget as Text).data?.trim().isNotEmpty ?? false)
+        (element.widget as Text).data!.trim(),
+  ];
 
   // ------------------------------------------------------------------ waiting
 
@@ -371,8 +475,10 @@ class TillDriver {
   Future<void> waitForText(String text) =>
       waitFor(find.text(text), describedAs: '"$text" on screen');
 
-  Future<void> waitForTextContaining(String fragment) =>
-      waitFor(find.textContaining(fragment), describedAs: 'text containing "$fragment"');
+  Future<void> waitForTextContaining(String fragment) => waitFor(
+    find.textContaining(fragment),
+    describedAs: 'text containing "$fragment"',
+  );
 
   /// Wait for the wizard to stop being busy.
   ///

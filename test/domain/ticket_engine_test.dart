@@ -51,6 +51,7 @@ Ticket _ticket({OrderType type = OrderType.dineIn, int? tableId = 12}) => Ticket
     );
 
 void main() {
+  _orderTypeSynonyms();
   group('adding lines', () {
     test('adds a plain product straight to the ticket', () {
       final result = TicketEngine.addLine(_ticket(), _drink);
@@ -334,6 +335,25 @@ void main() {
       expect(next.lines, isEmpty);
       expect(next.tenders, isEmpty);
       expect(next.orderType, ticket.orderType);
+    });
+  });
+}
+
+void _orderTypeSynonyms() {
+  group('order type vocabulary', () {
+    test('pickup is takeaway by another name', () {
+      // The onboarding wizard and the plan features say `pickup`; the POS
+      // says `takeaway`. A branch onboarded through the wizard must not lose
+      // its takeaway tab because two screens disagree about a word.
+      expect(OrderType.fromWire('pickup'), OrderType.takeaway);
+      expect(OrderType.fromWire('takeaway'), OrderType.takeaway);
+      expect(OrderType.fromWire('dine_in'), OrderType.dineIn);
+      expect(OrderType.fromWire('drive_thru'), OrderType.driveThru);
+    });
+
+    test('a word neither vocabulary knows is still null, never a throw', () {
+      expect(OrderType.fromWire('teleportation'), isNull);
+      expect(OrderType.fromWire(''), isNull);
     });
   });
 }

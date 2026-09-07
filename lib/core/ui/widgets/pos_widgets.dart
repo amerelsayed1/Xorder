@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../l10n/app_strings.dart';
 import '../tokens.dart';
 import '../theme.dart';
 
@@ -9,7 +10,7 @@ class PosSurface extends StatelessWidget {
   const PosSurface({
     super.key,
     required this.child,
-    this.color = PosColors.surface,
+    this.color,
     this.border,
     this.padding,
     this.width,
@@ -17,7 +18,10 @@ class PosSurface extends StatelessWidget {
   });
 
   final Widget child;
-  final Color color;
+
+  /// Null means "the palette's surface". Resolved in [build], where there is a
+  /// context to resolve it against — a const constructor has none.
+  final Color? color;
   final BoxBorder? border;
   final EdgeInsetsGeometry? padding;
   final double? width;
@@ -25,27 +29,31 @@ class PosSurface extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        width: width,
-        height: height,
-        padding: padding,
-        decoration: BoxDecoration(
-          color: color,
-          border: border ?? const Border.fromBorderSide(PosBorders.resting),
-        ),
-        child: child,
-      );
+    width: width,
+    height: height,
+    padding: padding,
+    decoration: BoxDecoration(
+      color: color ?? context.pos.surface,
+      border: border ?? Border.fromBorderSide(context.pos.resting),
+    ),
+    child: child,
+  );
 }
 
 /// The uppercase mono micro-label used above every section.
 class MicroLabel extends StatelessWidget {
-  const MicroLabel(this.text, {super.key, this.color = PosColors.muted});
+  const MicroLabel(this.text, {super.key, this.color});
 
   final String text;
-  final Color color;
+
+  /// Null means "the palette's muted". See [PosSurface.color].
+  final Color? color;
 
   @override
-  Widget build(BuildContext context) =>
-      Text(text.toUpperCase(), style: PosText.microLabel(color: color));
+  Widget build(BuildContext context) => Text(
+    text.toUpperCase(),
+    style: PosText.microLabel(color: color ?? context.pos.muted),
+  );
 }
 
 /// A keyboard-hint chip — the `F2` next to the search field, `ENTER` on a CTA.
@@ -59,19 +67,19 @@ class KeyChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-        decoration: BoxDecoration(
-          color: onShell ? const Color(0x38000000) : null,
-          border: onShell ? null : const Border.fromBorderSide(PosBorders.resting),
-        ),
-        child: Text(
-          label,
-          style: PosText.mono(
-            size: 11,
-            color: onShell ? Colors.white : PosColors.muted,
-          ),
-        ),
-      );
+    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+    decoration: BoxDecoration(
+      color: onShell ? const Color(0x38000000) : null,
+      border: onShell ? null : Border.fromBorderSide(context.pos.resting),
+    ),
+    child: Text(
+      label,
+      style: PosText.mono(
+        size: 11,
+        color: onShell ? Colors.white : context.pos.muted,
+      ),
+    ),
+  );
 }
 
 /// A flat, radius-free, shadow-free button. Used instead of the Material
@@ -83,20 +91,23 @@ class PosButton extends StatelessWidget {
     this.onPressed,
     this.height = PosSize.minTouchTarget,
     this.background = Colors.transparent,
-    this.foreground = PosColors.inkWarm,
+    this.foreground,
     this.border,
     this.trailing,
     this.fontSize = 13.5,
     this.fontWeight = FontWeight.w600,
     this.alignLeft = false,
     this.padding = const EdgeInsets.symmetric(horizontal: PosSpace.s14),
+    this.autofocus = false,
   });
 
   final String label;
   final VoidCallback? onPressed;
   final double height;
   final Color background;
-  final Color foreground;
+
+  /// Null means "the palette's inkWarm". See [PosSurface.color].
+  final Color? foreground;
   final BoxBorder? border;
   final Widget? trailing;
   final double fontSize;
@@ -104,15 +115,25 @@ class PosButton extends StatelessWidget {
   final bool alignLeft;
   final EdgeInsetsGeometry padding;
 
-  Widget _label() => Text(
-        label,
-        overflow: TextOverflow.ellipsis,
-        style: PosText.ui(size: fontSize, weight: fontWeight, color: foreground),
-      );
+  /// Take focus when this button first appears.
+  ///
+  /// Off by default, because a screen that grabs focus moves the keyboard out
+  /// from under whoever was typing. It exists for the one case that needs it:
+  /// a dialog about an irreversible act puts focus on the **safe** button, so
+  /// the choice already under the person's hands is the one that changes
+  /// nothing. See `DestructiveConfirmDialog`.
+  final bool autofocus;
+
+  Widget _label(Color foreground) => Text(
+    label,
+    overflow: TextOverflow.ellipsis,
+    style: PosText.ui(size: fontSize, weight: fontWeight, color: foreground),
+  );
 
   @override
   Widget build(BuildContext context) {
     final enabled = onPressed != null;
+    final ink = foreground ?? context.pos.inkWarm;
 
     return Opacity(
       opacity: enabled ? 1 : 0.55,
@@ -120,11 +141,12 @@ class PosButton extends StatelessWidget {
         color: background,
         child: InkWell(
           onTap: onPressed,
+          autofocus: autofocus,
           // The theme's global hover tint (accentSoft) is right on a light
           // ground and wrong on a filled button — it washes an accent or green
           // CTA out to cream. A filled button darkens instead.
           hoverColor: background == Colors.transparent
-              ? PosColors.accentSoft
+              ? context.pos.accentSoft
               : Colors.black.withValues(alpha: 0.10),
           child: Container(
             height: height,
@@ -138,7 +160,7 @@ class PosButton extends StatelessWidget {
                 ? Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Flexible(child: _label()),
+                      Flexible(child: _label(ink)),
                       if (trailing != null) ...[
                         const SizedBox(width: PosSpace.sm),
                         trailing!,
@@ -149,7 +171,14 @@ class PosButton extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      _label(),
+                      // Flexible, like the flush-left branch above. Without it
+                      // the label asks for its natural width inside a Row that
+                      // cannot give it, and `TextOverflow.ellipsis` above never
+                      // gets the chance to fire — a button whose label is a
+                      // little too long overflows instead of shortening. That
+                      // is not hypothetical: a confirm button states an amount,
+                      // and amounts get longer.
+                      Flexible(child: _label(ink)),
                       if (trailing != null) ...[
                         const SizedBox(width: PosSpace.sm),
                         trailing!,
@@ -165,15 +194,28 @@ class PosButton extends StatelessWidget {
 
 /// Status pill for the sync state in the top bar.
 class SyncPill extends StatelessWidget {
-  const SyncPill({super.key, required this.online, required this.queued, this.onTap});
+  const SyncPill({
+    super.key,
+    required this.online,
+    required this.queued,
+    this.hasError = false,
+    this.onTap,
+  });
 
   final bool online;
-  final int queued;
+  final int? queued;
+  final bool hasError;
   final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    final label = online ? '● Synced · $queued queued' : '● Offline · $queued queued';
+    final strings = context.strings;
+    final label = switch ((online, queued, hasError)) {
+      (_, _, true) => strings.syncStatusUnavailable,
+      (false, final int? count, false) => strings.syncOfflineQueued(count),
+      (true, null, false) => strings.syncChecking,
+      (true, final int count, false) => strings.syncSyncedQueued(count),
+    };
 
     return InkWell(
       onTap: onTap,
@@ -182,16 +224,20 @@ class SyncPill extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: PosSpace.md),
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: online ? PosColors.onlinePillBg : PosColors.offlinePillBg,
+          color: online && !hasError
+              ? context.pos.onlinePillBg
+              : context.pos.offlinePillBg,
           border: Border.all(
-            color: online ? PosColors.onlinePillBorder : PosColors.warn,
+            color: online ? context.pos.onlinePillBorder : context.pos.warn,
           ),
         ),
         child: Text(
           label,
           style: PosText.mono(
             size: 11.5,
-            color: online ? PosColors.onlinePillText : PosColors.offlinePillText,
+            color: online
+                ? context.pos.onlinePillText
+                : context.pos.offlinePillText,
           ),
         ),
       ),
@@ -203,11 +249,13 @@ class SyncPill extends StatelessWidget {
 void posToast(BuildContext context, String message) {
   ScaffoldMessenger.of(context)
     ..hideCurrentSnackBar()
-    ..showSnackBar(SnackBar(
-      content: Text(message),
-      duration: const Duration(seconds: 3),
-      width: 420,
-    ));
+    ..showSnackBar(
+      SnackBar(
+        content: Text(message),
+        duration: const Duration(seconds: 3),
+        width: 420,
+      ),
+    );
 }
 
 /// Four PIN slots, filled as digits arrive.
@@ -223,29 +271,32 @@ class PinDots extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: List.generate(of, (i) {
-          final filled = i < length;
-          return Container(
-            width: 52,
-            height: 56,
-            margin: const EdgeInsets.symmetric(horizontal: PosSpace.xs),
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: PosColors.shellCard,
-              border: Border(
-                bottom: BorderSide(
-                  color: filled ? PosColors.accent : PosColors.shellLine,
-                  width: 2,
-                ),
-              ),
+    mainAxisAlignment: MainAxisAlignment.center,
+    children: List.generate(of, (i) {
+      final filled = i < length;
+      return Container(
+        width: 52,
+        height: 56,
+        margin: const EdgeInsets.symmetric(horizontal: PosSpace.xs),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: context.pos.shellCard,
+          border: Border(
+            bottom: BorderSide(
+              color: filled ? context.pos.accent : context.pos.shellLine,
+              width: 2,
             ),
-            child: filled
-                ? Text('•', style: PosText.mono(size: 26, color: PosColors.shellText))
-                : null,
-          );
-        }),
+          ),
+        ),
+        child: filled
+            ? Text(
+                '•',
+                style: PosText.mono(size: 26, color: context.pos.shellText),
+              )
+            : null,
       );
+    }),
+  );
 }
 
 /// The numeric pad a PIN is entered on.
@@ -260,7 +311,7 @@ class PinPad extends StatelessWidget {
     const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', '⌫'];
 
     return Container(
-      color: PosColors.shellLine,
+      color: context.pos.shellLine,
       child: GridView.count(
         crossAxisCount: 3,
         shrinkWrap: true,
@@ -268,17 +319,17 @@ class PinPad extends StatelessWidget {
         crossAxisSpacing: 1,
         childAspectRatio: 320 / 3 / PosSize.pinKey,
         physics: const NeverScrollableScrollPhysics(),
-        children: keys.map(_key).toList(),
+        children: keys.map((key) => _key(context, key)).toList(),
       ),
     );
   }
 
-  Widget _key(String label) {
-    if (label.isEmpty) return const ColoredBox(color: PosColors.shellRow);
+  Widget _key(BuildContext context, String label) {
+    if (label.isEmpty) return ColoredBox(color: context.pos.shellRow);
 
     final isBackspace = label == '⌫';
     return Material(
-      color: isBackspace ? PosColors.shellRow : PosColors.shellCard,
+      color: isBackspace ? context.pos.shellRow : context.pos.shellCard,
       child: InkWell(
         onTap: () => isBackspace ? onBackspace() : onDigit(label),
         child: Center(
@@ -286,7 +337,7 @@ class PinPad extends StatelessWidget {
             label,
             style: PosText.mono(
               size: 21,
-              color: isBackspace ? PosColors.shellMuted : PosColors.shellText,
+              color: isBackspace ? context.pos.shellMuted : context.pos.shellText,
             ),
           ),
         ),

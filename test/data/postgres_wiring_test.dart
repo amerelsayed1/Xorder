@@ -41,6 +41,14 @@ void main() {
 
   tearDown(() => pg.close());
 
+  /// The fixture database, reached by a terminal that also syncs to a platform.
+  ///
+  /// Worth having in one line: the mode and the database address are now
+  /// independent, so a cloud terminal reading the very same PostgreSQL is a
+  /// `copyWith`, not a different fixture.
+  DeploymentConfig cloudConfig() =>
+      branchConfig.copyWith(mode: DeploymentMode.cloud, baseUrl: 'https://xorder.io');
+
   ProviderContainer containerFor({required bool provisioned}) {
     final container = ProviderContainer(
       overrides: [
@@ -81,20 +89,20 @@ void main() {
     expect(container.read(ordersRepositoryProvider), isA<UnconfiguredOrdersRepository>());
   });
 
-  test('a provisioned terminal on a branch server gets Postgres', () {
+  test('a provisioned terminal gets Postgres', () {
     final container = containerFor(provisioned: true);
     expect(container.read(ordersRepositoryProvider), isA<PostgresOrdersRepository>());
   });
 
-  test('a cloud terminal never gets Postgres, however complete its profile', () {
+  test('a cloud terminal gets Postgres too — it keeps a local one', () {
     final container = containerFor(provisioned: true);
-    container.read(deploymentProvider.notifier).apply(
-          const DeploymentConfig(mode: DeploymentMode.cloud, baseUrl: 'https://xorder.io'),
-        );
-    // Cloud has no branch box on the LAN. Handing it a Postgres repository would
-    // point it at a host that does not exist — and until an ApiOrdersRepository
-    // exists there is nothing else for it to write to, so it refuses.
-    expect(container.read(ordersRepositoryProvider), isA<UnconfiguredOrdersRepository>());
+    container.read(deploymentProvider.notifier).apply(cloudConfig());
+
+    // This used to assert the opposite, back when only a branch server had a
+    // database and cloud was expected to write over HTTP. Cloud is offline-first
+    // against its own PostgreSQL now, so refusing it a repository would leave it
+    // with no way to record a sale at all.
+    expect(container.read(ordersRepositoryProvider), isA<PostgresOrdersRepository>());
   });
 
   test('a ticket built by the engine lands in Postgres with the engine\'s own totals', () async {
@@ -163,9 +171,8 @@ void main() {
       // disposing the container is enough.
       addTearDown(container.dispose);
       final controller = container.read(setupProvider.notifier);
-      controller.setMode(DeploymentMode.branchServer);
-      controller.setBaseUrl(branchConfig.baseUrl!);
-      controller.setUpstreamUrl('https://xorder.io');
+      controller.setMode(DeploymentMode.offline);
+      controller.setDatabaseHost(branchConfig.databaseHost);
       controller.setVerifyTls(false);
       controller.setDatabaseName(branchConfig.databaseName);
       controller.setDatabaseUser(branchConfig.databaseUser);
@@ -226,6 +233,81 @@ void main() {
       // The second attempt must use what the operator just typed, not what the
       // store kept from the first.
       expect(await controller.testConnection(), isTrue);
+    });
+  });
+
+  group('the outbound queue', () {
+    Future<void> sell(ProviderContainer container) async {
+      final catalog = await container.read(catalogProvider.future);
+      final controller = container.read(ticketProvider.notifier);
+      controller.addProduct(catalog.products.first);
+      controller.addTender(typeId: 1, label: 'Cash');
+      await container.read(ordersRepositoryProvider).submit(container.read(ticketProvider));
+    }
+
+    test('a cloud sale is claimed for the platform in the same transaction', () async {
+      final container = containerFor(provisioned: true);
+      container.read(deploymentProvider.notifier).apply(cloudConfig());
+
+      await sell(container);
+
+      final queued = await database.query(
+        branchConfig,
+        'SELECT o.client_transaction_id, o.delivered_at, r.id '
+        'FROM pos_outbox o JOIN pos_orders r ON r.id = o.order_id',
+      );
+      expect(queued.length, 1);
+      expect(queued.first[1], isNull, reason: 'nothing has drained it — there is no drain yet');
+
+      expect(await container.read(ordersRepositoryProvider).pendingSyncCount(), 1);
+    });
+
+    test('an offline sale is owed to nobody and queues nothing', () async {
+      final container = containerFor(provisioned: true);
+
+      await sell(container);
+
+      // A queue nothing can ever drain would grow forever and report a debt that
+      // does not exist. The sale is already everywhere it is going.
+      final queued = await database.query(branchConfig, 'SELECT count(*) FROM pos_outbox');
+      expect(queued.first[0], 0);
+      expect(await container.read(ordersRepositoryProvider).pendingSyncCount(), 0);
+    });
+
+    test('a replayed submit does not claim the same money twice', () async {
+      final container = containerFor(provisioned: true);
+      container.read(deploymentProvider.notifier).apply(cloudConfig());
+
+      final catalog = await container.read(catalogProvider.future);
+      final controller = container.read(ticketProvider.notifier);
+      controller.addProduct(catalog.products.first);
+      controller.addTender(typeId: 1, label: 'Cash');
+
+      final repository = container.read(ordersRepositoryProvider);
+      final ticket = container.read(ticketProvider);
+      final first = await repository.submit(ticket);
+      // The same ticket id — a till retrying after a timeout, which is the case
+      // the whole idempotency contract exists for.
+      final second = await repository.submit(ticket);
+
+      expect(second.serverId, first.serverId);
+      expect(
+        await repository.pendingSyncCount(),
+        1,
+        reason: 'one sale is owed once, however many times it was submitted',
+      );
+    });
+
+    test('the queue survives a restart, because it is not held in memory', () async {
+      final first = containerFor(provisioned: true);
+      first.read(deploymentProvider.notifier).apply(cloudConfig());
+      await sell(first);
+
+      // A fresh container is this till relaunching. A count kept in a Notifier
+      // would come back zero here and tell a cashier everything had synced.
+      final restarted = containerFor(provisioned: true);
+      restarted.read(deploymentProvider.notifier).apply(cloudConfig());
+      expect(await restarted.read(ordersRepositoryProvider).pendingSyncCount(), 1);
     });
   });
 }

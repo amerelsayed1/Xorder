@@ -16,22 +16,32 @@ const _cloud = DeploymentConfig(
   tenantSlug: 'mahsoub',
 );
 
-const _branch = DeploymentConfig(
-  mode: DeploymentMode.branchServer,
-  baseUrl: 'https://192.168.1.20:8100',
+const _offline = DeploymentConfig(
+  mode: DeploymentMode.offline,
+  databaseHost: '192.168.1.20',
   tenantSlug: 'mahsoub',
 );
+
+/// A build with no licence transport at all — the only case that now falls back
+/// to file-only renewal. It is a property of the build, not of the mode.
+class _NoRemoteLicenceService extends FakeLicenceService {
+  @override
+  bool get canActivateOnline => false;
+}
 
 Future<ProviderContainer> _pump(
   WidgetTester tester, {
   DeploymentConfig deployment = _cloud,
+  List<Override> extraOverrides = const [],
 }) async {
   tester.view
     ..physicalSize = const Size(1440, 900)
     ..devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
 
-  final container = ProviderContainer(overrides: fakeRepositoryOverrides());
+  final container = ProviderContainer(
+    overrides: [...fakeRepositoryOverrides(), ...extraOverrides],
+  );
   addTearDown(container.dispose);
   container.read(deploymentProvider.notifier).apply(deployment);
 
@@ -67,7 +77,7 @@ void main() {
       final result = await service.activate(deployment: _cloud, key: '');
 
       expect(result.succeeded, isFalse);
-      expect(result.error, contains('not recognised'));
+      expect(result.notice, isA<LicenceKeyNotRecognised>());
       expect((await service.current(_cloud)).state, LicenseState.missing);
     });
 
@@ -103,7 +113,7 @@ void main() {
       // shift-opening, which is the thing renewal exists to fix.
       expect(result.installed, isTrue);
       expect(result.succeeded, isFalse);
-      expect(result.error, contains('expired'));
+      expect(result.notice, isA<LicenceExpired>());
       expect((await service.current(_cloud)).state, LicenseState.expired);
     });
 
@@ -115,7 +125,7 @@ void main() {
         fileContents: 'this is not a licence',
       );
 
-      expect(result.error, contains('.xlic'));
+      expect(result.notice, isA<NotALicenceFile>());
     });
   });
 
@@ -154,22 +164,34 @@ void main() {
       expect(find.textContaining('not recognised'), findsOneWidget);
     });
 
-    testWidgets('a branch server is told it cannot phone home', (tester) async {
-      await _pump(tester, deployment: _branch);
+    testWidgets('an offline terminal can still renew against the platform', (tester) async {
+      // The mode decides where *sales* go, not where the licence comes from.
+      // An offline till renews online — that check-in is the whole mechanism
+      // behind its offline window.
+      await _pump(tester, deployment: _offline);
 
       await tester.tap(find.text('Check for renewal'));
       await _settle(tester);
 
-      // Better than spinning forever against a platform it has no route to.
-      expect(find.textContaining('cannot'), findsOneWidget);
-      expect(find.textContaining('import the licence file'), findsWidgets);
+      expect(find.textContaining('cannot check for a renewal'), findsNothing);
+      expect(find.textContaining('Renewals bought on the platform'), findsOneWidget);
     });
 
-    testWidgets('an offline terminal is told renewals arrive as a file', (tester) async {
-      await _pump(tester, deployment: _branch);
+    testWidgets('a build with no licence transport falls back to a file', (tester) async {
+      await _pump(
+        tester,
+        deployment: _offline,
+        extraOverrides: [
+          licenceServiceProvider.overrideWithValue(_NoRemoteLicenceService()),
+        ],
+      );
 
       expect(find.textContaining('no route to the platform'), findsOneWidget);
       expect(find.textContaining('no internet is needed to verify it'), findsOneWidget);
+
+      await tester.tap(find.text('Check for renewal'));
+      await _settle(tester);
+      expect(find.textContaining('cannot check for a renewal'), findsOneWidget);
     });
   });
 }

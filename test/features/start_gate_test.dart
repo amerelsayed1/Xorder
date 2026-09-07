@@ -53,6 +53,8 @@ Future<({ProviderContainer container, List<String> events})> _boot(
         home: StartScreen(
           onStart: () => events.add('start'),
           onManageLicence: () => events.add('licence'),
+          onReconfigure: () => events.add('reconfigure'),
+          onManage: () => events.add('manage'),
         ),
       ),
     ),

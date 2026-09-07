@@ -20,8 +20,8 @@ class PostgresCatalogRepository implements CatalogRepository {
     required PosDatabase database,
     required this._config,
     DateTime Function()? clock,
-  })  : _db = database,
-        _now = clock ?? DateTime.now;
+  }) : _db = database,
+       _now = clock ?? DateTime.now;
 
   final PosDatabase _db;
   final DeploymentConfig _config;
@@ -85,7 +85,9 @@ class PostgresCatalogRepository implements CatalogRepository {
     final byGroup = <int, List<Modifier>>{};
     for (final row in modifiers) {
       final groupId = row[1] as int;
-      byGroup.putIfAbsent(groupId, () => []).add(
+      byGroup
+          .putIfAbsent(groupId, () => [])
+          .add(
             Modifier(
               id: row[0] as int,
               groupId: groupId,

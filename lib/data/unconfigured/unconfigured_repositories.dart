@@ -2,6 +2,8 @@ import '../../core/money/money.dart';
 import '../../domain/models/catalog.dart';
 import '../../domain/models/dining_table.dart';
 import '../../domain/models/ticket.dart';
+import '../../domain/models/permissions.dart';
+import '../../domain/repositories/admin_repositories.dart';
 import '../../domain/repositories/repositories.dart';
 
 /// What the till uses before it has a branch database to read.
@@ -46,9 +48,9 @@ class UnconfiguredSessionRepository implements SessionRepository {
   /// and a made-up cashier name would print on receipts.
   @override
   Future<PosSession> current() async => throw StateError(
-        'This terminal has no branch database configured, so it cannot say who '
-        'is working it. Finish setup, or check the connection in Settings.',
-      );
+    'This terminal has no branch database configured, so it cannot say who '
+    'is working it. Finish setup, or check the connection in Settings.',
+  );
 
   @override
   Future<bool> verifyPin(String pin) async => false;
@@ -66,16 +68,18 @@ class UnconfiguredShiftRepository implements ShiftRepository {
   const UnconfiguredShiftRepository();
 
   static StateError get _noDatabase => StateError(
-        'This terminal has no branch database, so it cannot record a shift or '
-        'account for a drawer. Finish setup first.',
-      );
+    'This terminal has no branch database, so it cannot record a shift or '
+    'account for a drawer. Finish setup first.',
+  );
 
   @override
   Future<PosShift?> current() async => null;
 
   @override
-  Future<PosShift> open({required PosStaff by, required Money openingFloat}) async =>
-      throw _noDatabase;
+  Future<PosShift> open({
+    required PosStaff by,
+    required Money openingFloat,
+  }) async => throw _noDatabase;
 
   @override
   Future<ShiftSummary> summarise(PosShift shift) async => throw _noDatabase;
@@ -86,8 +90,7 @@ class UnconfiguredShiftRepository implements ShiftRepository {
     required PosStaff by,
     required Money countedCash,
     String? note,
-  }) async =>
-      throw _noDatabase;
+  }) async => throw _noDatabase;
 }
 
 class UnconfiguredProvisioningRepository implements ProvisioningRepository {
@@ -95,13 +98,28 @@ class UnconfiguredProvisioningRepository implements ProvisioningRepository {
 
   static const _message = ClaimResult(
     code: 'NO_DATABASE',
-    message: 'This terminal cannot reach a branch database yet. Go back to the '
+    message:
+        'This terminal cannot reach a branch database yet. Go back to the '
         'connection step and test it.',
   );
 
   @override
-  Future<ClaimResult> claimByCode({required String tenantSlug, required String code}) async =>
-      _message;
+  Future<ClaimResult> claimByCode({
+    required String tenantSlug,
+    required String code,
+  }) async => _message;
+
+  @override
+  Future<TenantConnection> connect({
+    required String tenantSlug,
+    required String username,
+    required String password,
+  }) async => const TenantConnection(
+    code: 'NO_PLATFORM',
+    message:
+        'This terminal has no platform address yet. Go back to the '
+        'connection step and set one.',
+  );
 
   @override
   Future<ClaimResult> registerManually({
@@ -110,8 +128,15 @@ class UnconfiguredProvisioningRepository implements ProvisioningRepository {
     required String password,
     required String terminalName,
     required int branchId,
-  }) async =>
-      _message;
+  }) async => _message;
+
+  @override
+  Future<ClaimResult> adoptTerminal({
+    required String tenantSlug,
+    required String username,
+    required String password,
+    required int terminalId,
+  }) async => _message;
 }
 
 /// Refuses to take money, loudly.
@@ -126,10 +151,13 @@ class UnconfiguredOrdersRepository implements OrdersRepository {
 
   @override
   Future<SubmitOrderResult> submit(Ticket ticket) async => throw StateError(
-        'This terminal has nowhere to record a sale. It is not connected to a '
-        'branch database, and there is no local queue yet — so this sale cannot '
-        'be taken on this till.',
-      );
+    'This terminal has nowhere to record a sale. It is not connected to a '
+    'database, so this sale cannot be taken on this till.',
+  );
+
+  /// Nothing was ever taken here, so nothing is owed.
+  @override
+  Future<int> pendingSyncCount() async => 0;
 }
 
 /// Hardware discovery is not implemented on any platform yet.
@@ -145,4 +173,105 @@ class UndiscoverableHardwarePorts implements HardwarePorts {
 
   @override
   Future<bool> testPrint(String printerName) async => false;
+}
+
+/// Administration before there is a database to administer.
+///
+/// Reads come back empty and writes come back refused with
+/// [NoDatabaseConfigured], so the Management screen renders its "this terminal
+/// is not set up" state rather than either crashing or — worse — showing an
+/// empty staff list that reads as a restaurant with nobody working at it.
+class UnconfiguredRolesRepository implements RolesRepository {
+  const UnconfiguredRolesRepository();
+
+  @override
+  Future<List<PosRole>> all() async => const [];
+
+  @override
+  Future<AdminResult<PosRole>> save(
+    PosRole role, {
+    required PosStaff by,
+  }) async => const AdminResult.refused(NoDatabaseConfigured());
+
+  @override
+  Future<AdminResult<void>> delete(
+    PosRole role, {
+    required PosStaff by,
+  }) async => const AdminResult.refused(NoDatabaseConfigured());
+}
+
+class UnconfiguredStaffDirectoryRepository implements StaffDirectoryRepository {
+  const UnconfiguredStaffDirectoryRepository();
+
+  @override
+  Future<List<PosStaff>> all({bool includeInactive = true}) async => const [];
+
+  @override
+  Future<PosStaff?> byPin(String pin) async => null;
+
+  @override
+  Future<AdminResult<PosStaff>> create({
+    required PosStaff by,
+    required String name,
+    required String username,
+    required String pin,
+    required int roleId,
+    int? branchId,
+    Set<String> directGrants = const {},
+  }) async => const AdminResult.refused(NoDatabaseConfigured());
+
+  @override
+  Future<AdminResult<PosStaff>> update({
+    required PosStaff by,
+    required int staffId,
+    String? name,
+    String? username,
+    int? roleId,
+    Set<String>? directGrants,
+    int? branchId,
+  }) async => const AdminResult.refused(NoDatabaseConfigured());
+
+  @override
+  Future<AdminResult<PosStaff>> setActive({
+    required PosStaff by,
+    required int staffId,
+    required bool isActive,
+  }) async => const AdminResult.refused(NoDatabaseConfigured());
+
+  @override
+  Future<AdminResult<void>> resetPin({
+    required PosStaff by,
+    required int staffId,
+    required String pin,
+  }) async => const AdminResult.refused(NoDatabaseConfigured());
+}
+
+/// Silently drops what it is given.
+///
+/// The one place a no-op is right: an audit call must never be the reason a
+/// sale or a shift fails. On a configured till the ledger write shares the
+/// transaction with the change it describes, so it cannot be lost there; here
+/// there is no change to describe either.
+class UnconfiguredAuditRepository implements AuditRepository {
+  const UnconfiguredAuditRepository();
+
+  @override
+  Future<void> record({
+    required PosStaff by,
+    required String action,
+    required String entityType,
+    PosStaff? approvedBy,
+    String? entityId,
+    Map<String, Object?>? before,
+    Map<String, Object?>? after,
+    String? reason,
+  }) async {}
+
+  @override
+  Future<List<AuditEntry>> recent({
+    int limit = 100,
+    String? entityType,
+    String? entityId,
+    int? staffId,
+  }) async => const [];
 }

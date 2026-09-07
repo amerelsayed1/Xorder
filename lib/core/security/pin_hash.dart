@@ -21,11 +21,8 @@ abstract final class PinHash {
 
   static final _random = Random.secure();
 
-  static Pbkdf2 get _algorithm => Pbkdf2(
-        macAlgorithm: Hmac.sha256(),
-        iterations: iterations,
-        bits: 256,
-      );
+  static Pbkdf2 get _algorithm =>
+      Pbkdf2(macAlgorithm: Hmac.sha256(), iterations: iterations, bits: 256);
 
   /// A fresh 16-byte salt, base64 encoded for storage as text.
   static String newSalt() =>
@@ -43,7 +40,11 @@ abstract final class PinHash {
   ///
   /// A `==` on the encoded strings leaks how much of the hash matched through
   /// timing. It is a small leak against a PIN, but the fix is three lines.
-  static Future<bool> verify(String pin, {required String salt, required String expected}) async {
+  static Future<bool> verify(
+    String pin, {
+    required String salt,
+    required String expected,
+  }) async {
     final actual = await hash(pin, salt);
     if (actual.length != expected.length) return false;
 
