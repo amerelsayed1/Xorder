@@ -7,7 +7,6 @@ import 'package:xorder_pos/core/money/money.dart';
 import 'package:xorder_pos/core/ui/theme.dart';
 import 'package:xorder_pos/core/ui/tokens.dart';
 import 'package:xorder_pos/core/ui/widgets/destructive_confirm_dialog.dart';
-import 'package:xorder_pos/core/ui/widgets/reason_picker.dart';
 import 'package:xorder_pos/domain/models/reason_code.dart';
 
 /// Void, refund, restore, force-close.

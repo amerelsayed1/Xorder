@@ -401,6 +401,12 @@ abstract final class PosSize {
   static const dialogDestructive = 560.0;
   static const dialogCount = 640.0;
 
+  /// The refund sheet. Wider than the others because it carries a line list, a
+  /// totals block, the tender choice and a reason picker in one dialog — the
+  /// alternative being a four-step wizard for a task done with a customer
+  /// waiting.
+  static const dialogRefund = 720.0;
+
   /// A filter chip in the report frame, and the settings navigation row.
   static const filterChip = 40.0;
   static const settingsNavRow = 40.0;
@@ -420,6 +426,15 @@ abstract final class PosSize {
 
   /// A settings control, and the denomination field in a drawer count.
   static const formControl = 44.0;
+
+  /// The order-detail pane beside the history list.
+  ///
+  /// Wider than the 378 cart panel because it carries a totals block and a
+  /// payments block the cart never shows, and narrower than half the screen
+  /// because the list beside it is what somebody is scanning. At the 1366
+  /// breakpoint this leaves 946 for the list, which the seven columns fit
+  /// inside without the staff name having to truncate.
+  static const historyDetail = 420.0;
 }
 
 /// The one border token that does not depend on the theme.

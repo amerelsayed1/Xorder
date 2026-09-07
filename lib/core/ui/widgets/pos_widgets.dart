@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../l10n/app_strings.dart';
 import '../tokens.dart';
 import '../theme.dart';
+import '../../security/pin_hash.dart';
 
 /// A bordered surface. Elevation in this design is a border, never a shadow,
 /// so this replaces `Card` almost everywhere.
@@ -264,7 +265,7 @@ void posToast(BuildContext context, String message) {
 /// asks the same question in the same shape. Two keypads that drift apart is how
 /// a cashier learns that "the one on the other screen works differently".
 class PinDots extends StatelessWidget {
-  const PinDots({super.key, required this.length, this.of = 4});
+  const PinDots({super.key, required this.length, this.of = PinRules.length});
 
   final int length;
   final int of;

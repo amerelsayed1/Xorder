@@ -70,4 +70,35 @@ void main() {
     ])).stdout.toString().trim();
     expect(mode, '600');
   });
+
+  test('a rewrite leaves nothing readable behind it', () async {
+    // The write is empty-file -> chmod 600 -> fill -> rename, so the secret is
+    // never on disk at the umask default (0644 on stock macOS). Written first
+    // and chmodded after, it was — for the length of the write and the rename.
+    //
+    // The ordering itself is not observable from out here without a
+    // filesystem race, so what is asserted is the pair of things that ARE:
+    // the live file is owner-only after repeated writes, and no half-written
+    // temporary is left lying next to it.
+    if (Platform.isWindows) return;
+    final s = store('k');
+    await s.write('v');
+    await s.write('v2');
+    await s.write('v3');
+
+    expect(
+      File(p.join(temp.path, '${FileSecretStore.fileName}.tmp')).existsSync(),
+      isFalse,
+      reason: 'the temporary is renamed onto the target, never orphaned',
+    );
+
+    final mode = (await Process.run('stat', [
+      '-f',
+      '%Lp',
+      p.join(temp.path, FileSecretStore.fileName),
+    ])).stdout.toString().trim();
+    expect(mode, '600', reason: 'rename preserves the mode it was given');
+    expect(await s.read(), 'v3');
+  });
+
 }

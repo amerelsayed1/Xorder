@@ -10,6 +10,7 @@ import '../../../domain/models/permissions.dart';
 import '../../../domain/models/shift.dart';
 import '../../../domain/repositories/admin_repositories.dart';
 import 'admin_messages.dart';
+import '../../../core/security/pin_hash.dart';
 
 /// Who works here.
 ///
@@ -411,8 +412,8 @@ class _StaffEditorDialogState extends State<StaffEditorDialog> {
       setState(() => _error = context.strings.nameAndUsernameRequired);
       return;
     }
-    if (pin.length < 4 || int.tryParse(pin) == null) {
-      setState(() => _error = context.strings.pinIsFourOrMoreDigits);
+    if (!PinRules.isWellFormed(pin)) {
+      setState(() => _error = context.strings.pinIsExactlyDigits(PinRules.length));
       return;
     }
 
@@ -579,8 +580,10 @@ class _PinPromptDialogState extends State<PinPromptDialog> {
               fontWeight: FontWeight.w700,
               onPressed: () {
                 final pin = _pin.text.trim();
-                if (pin.length < 4 || int.tryParse(pin) == null) {
-                  setState(() => _error = context.strings.fourOrMoreDigits);
+                if (!PinRules.isWellFormed(pin)) {
+                  setState(
+                    () => _error = context.strings.exactlyDigits(PinRules.length),
+                  );
                   return;
                 }
                 Navigator.of(context).pop(pin);

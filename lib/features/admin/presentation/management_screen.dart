@@ -16,6 +16,7 @@ import 'management_menu_pane.dart';
 import 'management_money_pane.dart';
 import 'management_roles_pane.dart';
 import 'management_staff_pane.dart';
+import '../../../core/security/pin_hash.dart';
 
 /// The back office, inside the till.
 ///
@@ -293,12 +294,12 @@ class _LockedOutState extends ConsumerState<_LockedOut> {
   String? _error;
 
   Future<void> _digit(String digit) async {
-    if (_pin.length >= 4 || _busy) return;
+    if (_pin.length >= PinRules.length || _busy) return;
     setState(() {
       _pin += digit;
       _error = null;
     });
-    if (_pin.length < 4) return;
+    if (_pin.length < PinRules.length) return;
 
     setState(() => _busy = true);
     final staff = await ref.read(staffDirectoryRepositoryProvider).byPin(_pin);

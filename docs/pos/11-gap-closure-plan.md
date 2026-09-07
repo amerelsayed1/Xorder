@@ -77,8 +77,8 @@ house rule; it becomes load-bearing here.
 
 | Wave | Theme | Migrations | SRS sections closed | Size |
 |---|---|---|---|---|
-| **A** | Discount · Void · Refund | 9, 10, 11 | 14–21, 39, 42, 90, 91 | XL |
-| **B** | Cash drawer · Pay in/out · Business day | 12 | 22–28, 92 | L |
+| **A** | Discount · Void · Refund | 9, 10, 11, 12 | 14–21, 39, 42, 90, 91 | XL |
+| **B** | Cash drawer · Pay in/out · Business day | 13 | 22–28, 92 | L |
 | **C** | Permission model to spec | 13 | 10–17, 22, 24, 29, 32, 48, 50, 55, 60–61, 81, 105–108, 112 | L |
 | **D** | Settings & configuration surface | 14 | 4.5, 4.7, 31, 37, 38, 40, 51–54, 85 | XL |
 | **E** | Floors & tables | 15 | 29, 30, 42 | M |
@@ -217,8 +217,24 @@ Four distinct operations, four distinct permissions, four distinct records:
 |---|---|---|---|
 | Cancel line | before send | `ORDER.ITEM.DELETE_BEFORE_SEND` | `pos_order_line_events` |
 | Void line | after send | `ORDER.ITEM.DELETE_AFTER_SEND` | line event + `pos_order_lines.voided_*` + kitchen void ticket (Wave F) |
-| Cancel order | before send | `ORDER.CANCEL_BEFORE_SEND` | order status `CANCELLED` |
-| Void order | after send, before payment | `ORDER.VOID_AFTER_SEND` | order status `VOIDED` + audit |
+| Cancel order | before send | — | **nothing** — see below |
+| Void order | after send, before payment | `order.void` | a `VOIDED` order row + its lines + audit |
+
+**Built, with one decision worth recording.** The plan implied an order row
+existing from `DRAFT` onward, so a void could `UPDATE` its status. That would
+mean writing an order at send-round time and turning settlement from an INSERT
+into an UPDATE — a change to idempotency, invoice numbering and the outbox, all
+on the money path, for a status nothing yet reads.
+
+So a voided order is **written at void time**, complete, with `status =
+'VOIDED'`. The settlement path is untouched. The full `DRAFT → OPEN →
+SENT_TO_KITCHEN` progression becomes worth building when something observes it —
+the KDS in Wave F — and migration 9's `status` column already accepts it.
+
+**Clearing an unsent ticket records nothing at all.** Nothing was made and
+nothing was wasted; a row for every abandoned keystroke would fill the ledger
+with noise and make the void report useless. The boundary is whether the kitchen
+has seen any of it, which is the SRS's own distinction between Cancel and Void.
 | Refund | after payment | `PAYMENT.REFUND` | A.4 |
 
 `_void()` in [sale_screen.dart](../../lib/features/sale/sale_screen.dart) is replaced by
@@ -226,9 +242,50 @@ a dialog that picks the right one from ticket state, demands a reason where the
 reason code says `required`, routes through `Authorization` → `SupervisorOverride`
 when the decision is `NeedsOverride`, and writes the audit row with both parties.
 
-### A.4 Refunds (SRS §18)
+### A.4 Order history (SRS §90)
 
-**Migration 11 — refunds**
+**Migration 11 — `who sold it`** — **applied ✅**
+
+Not in the original plan. It was found while building the history list: an
+order could say who *voided* it and could not say who *sold* it. `shift_id` is
+not an answer — a drawer is worked by more than one person, and attributing
+every sale to whoever opened the till is not a smaller truth, it is a wrong one.
+
+```
+ALTER TABLE pos_orders ADD COLUMN served_by bigint REFERENCES pos_staff(id) ON DELETE RESTRICT
+CREATE INDEX pos_orders_history_idx     ON pos_orders (restaurant_id, branch_id, occurred_at DESC)
+CREATE INDEX pos_orders_served_by_idx   ON pos_orders (restaurant_id, served_by, occurred_at DESC)
+                                        WHERE served_by IS NOT NULL
+```
+
+Nullable, because every order written before this has no seller and there is
+nobody to backfill them with. `RESTRICT`, so deleting a member of staff cannot
+delete the record of what they sold.
+
+Three things needed it before they could be built: history lists the seller, a
+refund (§18) is issued against a sale somebody made, and sales-by-staff (§59) is
+a report with no subject without it. **This is why history comes before
+refunds** — A.5 and A.7 both start with "find the order", and building the
+lookup once means neither invents its own.
+
+**Built:** `OrderHistoryRepository` (`search` · `detail` · `byInvoiceNumber`),
+read-only and branch-scoped, kept apart from `OrdersRepository` so a screen that
+merely looks at history cannot be handed something that can settle a sale.
+`OrderRecord` is deliberately **not** a `Ticket`: it has no `totals` getter, and
+that absence is the point — every number on it was decided once and must not
+move because a menu price or a tax rate changed afterwards.
+
+The screen is a routed destination (`/orders`, `F7`), gated on the new
+`order.view_all` capability — seeded to owner, manager and supervisor, withheld
+from cashier. `order.view_own` is left to Wave C: scoping history to "mine" is
+only meaningful once `served_by` has data behind it.
+
+**Not built here:** reprint (A.7) and refund (A.6) actions. They attach to the
+detail pane, which is why it is its own file.
+
+### A.5 Refunds (SRS §18) — **built ✅**
+
+**Migration 12 — refunds** — **applied ✅**
 
 ```
 CREATE TABLE pos_refunds (
@@ -261,15 +318,66 @@ CREATE TABLE pos_refund_payments (           -- how the money went back
 `refund.max_value_minor`, `refund.approval_threshold_minor`,
 `refund.receipt_required`, `refund.reason_required` (default `true`).
 
-**Invariants held by the database, not by code:**
-* `SUM(pos_refund_lines.quantity)` per `order_line_id` may never exceed
-  `pos_order_lines.quantity` — enforce with a trigger and a
-  `refunded_quantity` counter updated in the same transaction.
-* `SUM(pos_refunds.total_minor)` per order may never exceed `pos_orders.total_minor`.
-* A refund is idempotent on `client_refund_id`, exactly as an order is on
-  `client_transaction_id`.
+**Invariants held by the database, not by code — all five in place:**
+1. `SUM(pos_refund_lines.quantity)` per `order_line_id` never exceeds
+   `pos_order_lines.quantity`. A trigger bumps the `refunded_quantity` counter;
+   migration 9's CHECK refuses the row.
+2. `SUM(pos_refunds.total_minor)` per order never exceeds `total_minor`. Same
+   shape, via a new `pos_orders.refunded_minor` counter and CHECK.
+3. **A refund line must belong to the order being refunded.** Not in the
+   original plan. Without the `order_id` clause in the trigger a mistyped line
+   id refunds somebody else's food and every total still adds up.
+4. **A refund says where the money went, and the tender adds up to it.** A
+   `DEFERRABLE INITIALLY DEFERRED` constraint trigger, checked at commit
+   because the payments are written after the refund they belong to.
+5. Idempotent on `client_refund_id`.
 
-### A.5 Capabilities added in Wave A
+**The status follows the money.** The trigger derives `REFUNDED` /
+`PARTIALLY_REFUNDED` from the counter, so no Dart path writes an order status
+during a refund and the two cannot drift.
+
+**The counters are the till's only lever.** Both triggers are `SECURITY
+DEFINER` with a pinned `search_path`, and the till role is granted **no** UPDATE
+on either counter — the `refunded_quantity` grant migration 9 added has been
+withdrawn. A refund row is the only way the numbers move.
+
+**Two deviations from the plan, both deliberate:**
+
+* `pos_refunds.reason_id` is **nullable**, not `NOT NULL`. §18 lists
+  `refund.reason_required` as a *setting* with a default of true; a `NOT NULL`
+  column would make its off position unimplementable. The policy is enforced in
+  `RefundPolicy`, where it can be configured.
+* `pos_refunds` gained `discount_minor`, which the plan's sketch omitted. A
+  partial refund gives back a share of the discount too, and a refund that
+  recorded subtotal, service and VAT but not discount would not foot.
+
+**The arithmetic — `RefundEngine`.** No tax is ever recomputed. Every part of a
+partial refund is a *share* of what the order actually charged, rounded half-up;
+the tax configuration is not consulted at all, because a rate that changed since
+the sale must not move a figure on a refund receipt.
+
+**And the last refund takes the remainder.** When a refund clears the order, its
+parts are the order's parts less everything already given back, rather than a
+fresh pro-rata. Without that rule a bill refunded in three pieces can strand a
+piastre, and `refunded_minor <= total_minor` eventually refuses a refund that is
+arithmetically correct. "Clears" additionally requires the *value* to reconcile,
+so a short read of the lines falls back to pro-rata rather than handing back the
+whole bill.
+
+**Refund policy (§18)** is `RefundPolicy` — a value object with the SRS's own
+defaults today, behind `refundPolicyProvider`, so every screen already asks the
+right question. It reads `pos_settings` when Wave D lands and nothing that
+depends on it changes.
+
+**UI.** One dialog, not a wizard: the specification's five steps are four single
+decisions, and four screens to hand back 62.70 with a customer waiting is three
+too many. Items or amount, the tender the money came in on, the reason, and the
+running total visible throughout — which is what §18 actually asks for. Reached
+from the order-history detail pane. The client refund id is generated **once
+when the dialog opens**, so a retry after a timeout replays instead of paying
+twice.
+
+### A.6 Capabilities added in Wave A
 
 ```
 order.create · order.view_own · order.view_all · order.edit_own · order.edit_others
@@ -291,21 +399,21 @@ per the §49 default matrix. `discount.apply` and `order.void`/`order.refund` st
 they are and become *umbrella* keys the finer ones sit under — no renames, so no
 `canonical` entries needed.
 
-### A.6 Audit actions added
+### A.7 Audit actions added
 
 `order.created` · `order.cancelled` · `order.voided` · `line.cancelled` ·
 `line.voided` · `line.quantity_changed` · `price.overridden` · `discount.applied` ·
 `discount.removed` · `refund.issued` · `payment.recorded` · `payment.removed` ·
 `receipt.reprinted` (constant exists, is never written — wire it).
 
-### A.7 UI
+### A.8 UI
 
 Discount sheet (F6) · void/cancel dialog with reason picker · refund flow (find
 order → pick lines or amount → reason → tender back → refund receipt) · price
 override on a cart line · reprint action on a settled order. All specified in the
 design brief.
 
-### A.8 Acceptance
+### A.9 Acceptance
 
 * Golden money tests: 30+ cases covering order/line discount × percentage/fixed ×
   dine-in/takeaway × VAT base, each asserting `subtotal + service − discount + vat`.

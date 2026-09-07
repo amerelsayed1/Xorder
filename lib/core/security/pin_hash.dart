@@ -13,6 +13,24 @@ import 'package:cryptography/cryptography.dart';
 ///
 /// Pure Dart, so `bin/pos_migrate.dart` can produce the same hashes the till
 /// verifies against without a Flutter engine.
+/// How long a cashier PIN is — one constant, because both ends have to agree.
+///
+/// Every keypad in the till submits the moment this many digits are in: there
+/// is no confirm key to press, by design, so a cashier unlocks in four taps.
+/// The consequence is that a PIN of any *other* length cannot be typed at all.
+/// A staff pane that accepted "four or more" therefore created accounts whose
+/// owner could never sign in — the keypad refused the fifth digit and sent the
+/// first four. Creation is held to exactly this length for that reason.
+abstract final class PinRules {
+  static const length = 4;
+
+  static final _digits = RegExp(r'^[0-9]+$');
+
+  /// Whether this is a PIN the till could actually accept at a keypad.
+  static bool isWellFormed(String pin) =>
+      pin.length == length && _digits.hasMatch(pin);
+}
+
 abstract final class PinHash {
   /// Deliberately slow. The till verifies a PIN once per unlock, so a hundred
   /// milliseconds is invisible to a cashier and expensive to an attacker doing

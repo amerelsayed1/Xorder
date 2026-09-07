@@ -74,6 +74,7 @@ void main() {
           '1:',
           percentage(1000),
           now: now,
+          appliedBy: 4,
         ),
       );
       final totals = after.totals;
@@ -98,6 +99,7 @@ void main() {
           base,
           percentage(10000, scope: DiscountScope.order),
           now: now,
+          appliedBy: 4,
         ),
       );
 
@@ -114,6 +116,7 @@ void main() {
           base,
           percentage(1750, scope: DiscountScope.order),
           now: now,
+          appliedBy: 4,
         ),
       );
       final t = after.totals;
@@ -136,6 +139,7 @@ void main() {
           base,
           percentage(1000, scope: DiscountScope.order),
           now: now,
+          appliedBy: 4,
         ),
       );
 
@@ -160,6 +164,7 @@ void main() {
           '1:',
           percentage(5000),
           now: now,
+          appliedBy: 4,
         ),
       );
       t = ok(
@@ -167,6 +172,7 @@ void main() {
           t,
           percentage(5000, scope: DiscountScope.order),
           now: now,
+          appliedBy: 4,
         ),
       );
 
@@ -178,29 +184,50 @@ void main() {
 
     test('two discounts can never exceed the goods', () {
       var t = ticket(lines: [line(product(10000), 1)]);
-      t = ok(TicketEngine.applyLineDiscount(t, '1:', percentage(10000), now: now));
+      t = ok(
+        TicketEngine.applyLineDiscount(
+          t,
+          '1:',
+          percentage(10000),
+          now: now,
+          appliedBy: 4,
+        ),
+      );
 
       // Nothing is left, so an order discount has nothing to come off.
       final second = TicketEngine.applyOrderDiscount(
         t,
         percentage(10000, scope: DiscountScope.order),
         now: now,
+        appliedBy: 4,
       );
       expect(second.refusal, isA<NothingToDiscount>());
-      expect(t.totals.discount.minor, lessThanOrEqualTo(t.totals.subtotal.minor));
+      expect(
+        t.totals.discount.minor,
+        lessThanOrEqualTo(t.totals.subtotal.minor),
+      );
     });
   });
 
   group('stacking', () {
     test('a second discount on the same line is refused', () {
       var t = ticket(lines: [line(product(10000), 1)]);
-      t = ok(TicketEngine.applyLineDiscount(t, '1:', percentage(1000), now: now));
+      t = ok(
+        TicketEngine.applyLineDiscount(
+          t,
+          '1:',
+          percentage(1000),
+          now: now,
+          appliedBy: 4,
+        ),
+      );
 
       final second = TicketEngine.applyLineDiscount(
         t,
         '1:',
         percentage(2000),
         now: now,
+        appliedBy: 4,
       );
 
       // Two discounts summed onto one line cannot afterwards be reported on
@@ -215,6 +242,7 @@ void main() {
           t,
           percentage(1000, scope: DiscountScope.order),
           now: now,
+          appliedBy: 4,
         ),
       );
 
@@ -222,6 +250,7 @@ void main() {
         t,
         percentage(1000, scope: DiscountScope.order),
         now: now,
+        appliedBy: 4,
       );
       expect(second.refusal, isA<AlreadyDiscounted>());
     });
@@ -230,8 +259,24 @@ void main() {
       var t = ticket(
         lines: [line(product(5000, id: 1), 1), line(product(5000, id: 2), 1)],
       );
-      t = ok(TicketEngine.applyLineDiscount(t, '1:', percentage(1000), now: now));
-      t = ok(TicketEngine.applyLineDiscount(t, '2:', percentage(2000), now: now));
+      t = ok(
+        TicketEngine.applyLineDiscount(
+          t,
+          '1:',
+          percentage(1000),
+          now: now,
+          appliedBy: 4,
+        ),
+      );
+      t = ok(
+        TicketEngine.applyLineDiscount(
+          t,
+          '2:',
+          percentage(2000),
+          now: now,
+          appliedBy: 4,
+        ),
+      );
 
       expect(t.discounts, hasLength(2));
       expect(t.totals.discount.minor, 500 + 1000);
@@ -248,6 +293,7 @@ void main() {
         '1:',
         percentage(1000),
         now: now,
+        appliedBy: 4,
         limit: cashier,
       );
       expect(result.isOk, isTrue);
@@ -260,6 +306,7 @@ void main() {
         '1:',
         percentage(3000),
         now: now,
+        appliedBy: 4,
         limit: cashier,
       );
 
@@ -281,6 +328,7 @@ void main() {
         t,
         name: 'Off',
         kind: DiscountKind.fixed,
+        appliedBy: 4,
         valueMinor: const Money(5000),
         lineKey: '1:',
         limit: cashier,
@@ -331,6 +379,7 @@ void main() {
         '1:',
         percentage(3000),
         now: now,
+        appliedBy: 4,
         limit: cashier,
       );
       expect(blocked.refusal, isA<DiscountAboveLimit>());
@@ -343,6 +392,7 @@ void main() {
           '1:',
           percentage(3000),
           now: now,
+          appliedBy: 4,
           approvedByName: 'Hana Mostafa',
         ),
       );
@@ -359,6 +409,7 @@ void main() {
         '1:',
         percentage(1000, active: false),
         now: now,
+        appliedBy: 4,
       );
       expect(result.refusal, isA<DiscountNotOffered>());
     });
@@ -371,6 +422,7 @@ void main() {
         '1:',
         percentage(1000, days: {6, 7}),
         now: now,
+        appliedBy: 4,
       );
       expect(result.refusal, isA<DiscountNotOffered>());
     });
@@ -388,6 +440,7 @@ void main() {
           targets: const DiscountTargets(orderTypes: {OrderType.dineIn}),
         ),
         now: now,
+        appliedBy: 4,
       );
       expect(result.refusal, isA<DiscountNotOffered>());
     });
@@ -399,6 +452,7 @@ void main() {
         '1:',
         percentage(1000, targets: const DiscountTargets(categoryIds: {9})),
         now: now,
+        appliedBy: 4,
       );
       expect(result.refusal, isA<DiscountNotOffered>());
     });
@@ -413,6 +467,7 @@ void main() {
           minOrder: const Money(10000),
         ),
         now: now,
+        appliedBy: 4,
       );
       expect(result.refusal, isA<DiscountNotOffered>());
     });
@@ -424,6 +479,7 @@ void main() {
         t,
         percentage(1000, scope: DiscountScope.order, requiresCustomer: true),
         now: now,
+        appliedBy: 4,
       );
       expect(without.refusal, isA<DiscountRequiresCustomer>());
 
@@ -431,6 +487,7 @@ void main() {
         t,
         percentage(1000, scope: DiscountScope.order, requiresCustomer: true),
         now: now,
+        appliedBy: 4,
         hasCustomer: true,
       );
       expect(with_.isOk, isTrue);
@@ -441,6 +498,7 @@ void main() {
         ticket(),
         percentage(1000, scope: DiscountScope.order),
         now: now,
+        appliedBy: 4,
       );
       expect(result.refusal, isA<NothingToDiscount>());
     });
@@ -452,6 +510,7 @@ void main() {
         '99:',
         percentage(1000),
         now: now,
+        appliedBy: 4,
       );
       expect(result.refusal, isA<LineNotOnTicket>());
     });
@@ -462,13 +521,20 @@ void main() {
       final t = ticket(lines: [line(product(3333), 1)]);
 
       final configured = ok(
-        TicketEngine.applyLineDiscount(t, '1:', percentage(1250), now: now),
+        TicketEngine.applyLineDiscount(
+          t,
+          '1:',
+          percentage(1250),
+          now: now,
+          appliedBy: 4,
+        ),
       );
       final typed = ok(
         TicketEngine.applyCustomDiscount(
           t,
           name: 'Manager discount',
           kind: DiscountKind.percentage,
+          appliedBy: 4,
           valueBp: 1250,
           lineKey: '1:',
         ),
@@ -481,22 +547,25 @@ void main() {
       );
     });
 
-    test('carries no discount id, because there is no configuration behind it',
-        () {
-      final t = ticket(lines: [line(product(10000), 1)]);
-      final after = ok(
-        TicketEngine.applyCustomDiscount(
-          t,
-          name: 'Manager discount',
-          kind: DiscountKind.fixed,
-          valueMinor: const Money(1500),
-        ),
-      );
+    test(
+      'carries no discount id, because there is no configuration behind it',
+      () {
+        final t = ticket(lines: [line(product(10000), 1)]);
+        final after = ok(
+          TicketEngine.applyCustomDiscount(
+            t,
+            name: 'Manager discount',
+            kind: DiscountKind.fixed,
+            appliedBy: 4,
+            valueMinor: const Money(1500),
+          ),
+        );
 
-      expect(after.discounts.single.discountId, isNull);
-      expect(after.discounts.single.nameSnapshot, 'Manager discount');
-      expect(after.discounts.single.isOrderLevel, isTrue);
-    });
+        expect(after.discounts.single.discountId, isNull);
+        expect(after.discounts.single.nameSnapshot, 'Manager discount');
+        expect(after.discounts.single.isOrderLevel, isTrue);
+      },
+    );
 
     test('never takes off more than there is', () {
       final t = ticket(lines: [line(product(10000), 1)]);
@@ -505,6 +574,7 @@ void main() {
           t,
           name: 'Too much',
           kind: DiscountKind.fixed,
+          appliedBy: 4,
           valueMinor: const Money(50000),
         ),
       );
@@ -517,12 +587,21 @@ void main() {
   group('removing', () {
     test('a line discount comes off, the order one stays', () {
       var t = ticket(lines: [line(product(10000), 1)]);
-      t = ok(TicketEngine.applyLineDiscount(t, '1:', percentage(1000), now: now));
+      t = ok(
+        TicketEngine.applyLineDiscount(
+          t,
+          '1:',
+          percentage(1000),
+          now: now,
+          appliedBy: 4,
+        ),
+      );
       t = ok(
         TicketEngine.applyOrderDiscount(
           t,
           percentage(1000, scope: DiscountScope.order),
           now: now,
+          appliedBy: 4,
         ),
       );
       expect(t.discounts, hasLength(2));
@@ -541,6 +620,7 @@ void main() {
           t,
           percentage(1000, scope: DiscountScope.order),
           now: now,
+          appliedBy: 4,
         ),
       );
       expect(t.totals.total.minor, lessThan(before));
@@ -556,7 +636,15 @@ void main() {
       var t = ticket(
         lines: [line(product(5000, id: 1), 1), line(product(5000, id: 2), 1)],
       );
-      t = ok(TicketEngine.applyLineDiscount(t, '2:', percentage(1000), now: now));
+      t = ok(
+        TicketEngine.applyLineDiscount(
+          t,
+          '2:',
+          percentage(1000),
+          now: now,
+          appliedBy: 4,
+        ),
+      );
 
       expect(t.discountOnLine('2:'), isNotNull);
       expect(t.discountOnLine('1:'), isNull);
@@ -566,7 +654,15 @@ void main() {
 
     test('the applied record snapshots the name and the rate', () {
       var t = ticket(lines: [line(product(10000), 1)]);
-      t = ok(TicketEngine.applyLineDiscount(t, '1:', percentage(1000), now: now));
+      t = ok(
+        TicketEngine.applyLineDiscount(
+          t,
+          '1:',
+          percentage(1000),
+          now: now,
+          appliedBy: 4,
+        ),
+      );
 
       final applied = t.discounts.single;
       expect(applied.nameSnapshot, 'Ten off');
@@ -583,6 +679,7 @@ void main() {
           '1:',
           percentage(1000),
           now: now,
+          appliedBy: 4,
           reasonId: 4,
           note: 'Regular customer',
         ),
@@ -601,6 +698,7 @@ void main() {
           t,
           percentage(1000, scope: DiscountScope.order),
           now: now,
+          appliedBy: 4,
         ),
       );
 

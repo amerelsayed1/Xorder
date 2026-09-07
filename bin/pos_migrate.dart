@@ -625,6 +625,7 @@ Future<void> _grant(
   final shared = LocalBootstrap.tillGrants(
     database: options.database,
     role: role,
+    cloudSeeding: options.cloudTill,
   );
   final administrative = LocalBootstrap.administrativeGrants(role: role);
 
@@ -653,6 +654,7 @@ class Options {
     required this.status,
     required this.seed,
     required this.seedCatalogue,
+    required this.cloudTill,
     required this.help,
     required this._values,
   });
@@ -674,6 +676,12 @@ class Options {
 
   /// A demo menu, kept apart from [seed] on purpose — see `_seedCatalogue`.
   final bool seedCatalogue;
+
+  /// Whether the till being granted syncs from the platform. Off by default:
+  /// the extra writes only exist for `BootstrapSeeder`, and on an offline
+  /// install they are the difference between a recovered till password and a
+  /// repriced menu. See [LocalBootstrap.tillGrants].
+  final bool cloudTill;
   final bool help;
 
   /// Everything `--seed` needs. Held as raw values rather than a dozen more
@@ -723,7 +731,7 @@ class Options {
 
       if (const {
         'create-database', 'no-verify-tls', 'status', 'seed', //
-        'seed-catalogue', 'help', //
+        'seed-catalogue', 'cloud-till', 'help', //
       }.contains(name)) {
         flags.add(name);
         continue;
@@ -821,6 +829,7 @@ class Options {
       status: flags.contains('status'),
       seed: flags.contains('seed'),
       seedCatalogue: flags.contains('seed-catalogue'),
+      cloudTill: flags.contains('cloud-till'),
       help: flags.contains('help'),
     );
   }
@@ -839,6 +848,12 @@ Prepare a branch server's database for the tills that write to it.
   --password <secret>  Prefer the POS_PG_PASSWORD environment variable
   --create-database    Create the database first if it is not there yet
   --grant-to <role>    Grant that role what a till needs, and nothing else
+  --cloud-till         The till granted above syncs from XOrder Cloud, so it
+                       also needs to write the seeded copy of the menu, staff
+                       and floor. Leave this OFF for an offline install: there
+                       the local database is the only copy, and a recovered
+                       till password could then reprice the menu or point a
+                       staff row at the owner role
   --grant-admin-to <r> Grant that role what the Management section needs on top
                        of the till's grants: staff, roles and the audit ledger
   --no-verify-tls      Skip certificate checks. Honoured for private addresses

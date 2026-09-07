@@ -183,6 +183,15 @@ sealed class AppStrings {
   // ── Floor ─────────────────────────────────────────────────────────────────
   String get pickATable;
   String get pickATableHelp;
+
+  /// Shown on the floor when the branch has no tables at all. The cashier
+  /// cannot add one — that is a manager's job in Management -> Floor — so the
+  /// line says where they are made, and the screen still offers a way to sell.
+  String get floorHasNoTables;
+
+  /// Escape hatch off the floor: a walk-in does not occupy a table, and a
+  /// branch that sells takeaway must not force one to be seated first.
+  String get sellWithoutTable;
   String legendFree(int count);
   String legendOccupied(int count);
   String legendBillAsked(int count);
@@ -433,7 +442,10 @@ sealed class AppStrings {
   /// The PIN is present but the till could not accept it. Separate from
   /// [firstPersonIncomplete] because "fill everything in" is the wrong
   /// instruction for somebody who did.
-  String pinLength(int min, int max);
+  /// Both of these say the same rule in two places: one inside a form that
+  /// has room for a sentence, one under a bare field that does not.
+  String pinIsExactlyDigits(int length);
+  String exactlyDigits(int length);
 
   /// The database name cannot be quoted into `CREATE DATABASE`. Named here
   /// rather than thrown, so the operator reads a sentence instead of an
@@ -720,6 +732,9 @@ sealed class AppStrings {
   String get capDiscountApply;
   String get capPriceOverride;
   String get capOrderVoid;
+  String get capOrderItemCancel;
+  String get capOrderItemVoid;
+  String get capOrderViewAll;
   String get capOrderRefund;
   String get capReceiptReprint;
   String get capShiftOpen;
@@ -800,8 +815,6 @@ sealed class AppStrings {
   String get add;
   String get setPin;
   String get nameAndUsernameRequired;
-  String get pinIsFourOrMoreDigits;
-  String get fourOrMoreDigits;
 
   // Roles pane.
   String get noRolesYet;
@@ -875,6 +888,224 @@ sealed class AppStrings {
   /// been told an act cannot be undone should not have to discover by pressing
   /// something which key does what.
   String get destructiveKeyHint;
+
+  // ── Manager approval ──────────────────────────────────────────────────────
+  String get approvalRequired;
+  String get approvalAction;
+  String get approvalRequestedBy;
+  String get approvalPin;
+  String get approvalAboveLimit;
+  String get approvalDone;
+
+  /// How many tries are left before the keypad stops accepting. Pluralised,
+  /// because "1 attempts left" is the kind of detail that makes a person
+  /// distrust everything else on the screen.
+  String wrongPinAttemptsLeft(int attempts);
+
+  /// Names **both** people. An approval that records only the manager cannot
+  /// answer "who asked for this", which is the question a month-end review
+  /// actually asks.
+  String approvalRecorded(String approver, String requester);
+
+  // ── Discounts ─────────────────────────────────────────────────────────────
+  String get discountTitle;
+  String get discountWholeOrder;
+  String get discountThisLine;
+  String get discountPresets;
+  String get discountCustom;
+  String get discountPercent;
+  String get discountAmount;
+  String get discountNoneOffered;
+  String get discountRemove;
+  String get discountApplyAction;
+  String get discountNewTotal;
+  String get discountNotApplicable;
+  String get discountNeedsCustomer;
+  String get discountAlreadyOn;
+  String get discountNothingToDiscount;
+
+  /// The manager-approval sentence, with both figures. A supervisor told only
+  /// "above the limit" has to ask two questions before deciding.
+  String discountAboveLimitNote(String limit, String requested);
+
+  /// What the supervisor is being asked to approve, in words.
+  String discountApprovalAct(String amount);
+
+  /// Short enough for a cart line: "approved by Hana M.".
+  String approvedByShort(String approver);
+
+  // ── Cancelling and voiding a line ─────────────────────────────────────────
+  String get cancelLineAction;
+  String get voidLineAction;
+  String get keepLineAction;
+  String get lineVoidedChip;
+  String get cancelLineNothingMade;
+
+  /// The question, naming the item. Two different questions on purpose: one is
+  /// routine, the other is waste.
+  String cancelLineTitle(String item);
+  String voidLineTitle(String item);
+
+  /// What voiding a cooked line actually does, in the order the handoff sets:
+  /// what happens · what it does to work already done · what cannot be undone.
+  String voidLineConsequenceRemoved(String amount);
+  String get voidLineConsequenceKitchen;
+  String get voidLineConsequenceIrreversible;
+
+  // ── Voiding a whole order ─────────────────────────────────────────────────
+  String get voidOrderAction;
+  String get keepOrderAction;
+  String get clearTicketTitle;
+  String get clearTicketNothingSent;
+  String voidOrderTitle(String reference);
+  String voidOrderConsequenceBill(String amount);
+  String get voidOrderConsequenceKitchen;
+  String get voidOrderConsequenceRecorded;
+
+  /// Shown after the void, naming what it was recorded as. A cashier who is
+  /// told "done" and nothing else has no way to find it again.
+  String voidOrderRecorded(String invoice);
+
+  /// The write failed and the ticket is deliberately still on screen.
+  String get voidCouldNotBeRecorded;
+
+  // ── Order history ─────────────────────────────────────────────────────────
+  String get orderHistoryTitle;
+
+  /// Says what slice is on screen. A list that shows "today" without saying so
+  /// looks like a list of everything, and somebody hunting last week's receipt
+  /// concludes it is gone.
+  String get orderHistoryToday;
+  String get orderHistoryLast7Days;
+  String get orderHistoryLast30Days;
+  String get orderHistorySearchHint;
+  String get orderHistoryAllStatuses;
+  String get orderHistoryAllTypes;
+  String get orderHistoryEveryone;
+  String orderHistoryCount(int count);
+
+  /// The cap was hit, so what is on screen is not all there is. Saying so is
+  /// the difference between a short list and a wrong one.
+  String orderHistoryTruncated(int limit);
+  String get orderHistoryEmpty;
+  String get orderHistoryEmptyFiltered;
+  String get orderHistoryClearFilters;
+  String get orderHistoryPickAnOrder;
+  String get orderHistoryUnavailable;
+
+  /// The person at the till may not browse the branch's orders.
+  String get orderHistoryNotPermitted;
+
+  // Column headings.
+  String get orderColumnInvoice;
+  String get orderColumnTime;
+  String get orderColumnType;
+  String get orderColumnWhere;
+  String get orderColumnStaff;
+  String get orderColumnTotal;
+  String get orderColumnStatus;
+
+  // Detail pane.
+  String get orderDetailLines;
+  String get orderDetailPayments;
+  String get orderDetailDiscounts;
+  String get orderDetailNoPayments;
+  String get orderDetailSubtotal;
+  String get orderDetailDiscount;
+  String get orderDetailService;
+  String get orderDetailVat;
+  String get orderDetailTotal;
+  String get orderDetailServedBy;
+
+  /// Every order written before the till recorded a seller.
+  String get orderDetailServedByUnknown;
+  String orderDetailVoidedBy(String name);
+  String get orderDetailVoidedLine;
+  String orderDetailGuests(int count);
+  String orderDetailApprovedBy(String name);
+
+  /// Named as coming, not merely missing. A greyed-out button with no
+  /// explanation reads as broken.
+  String get orderActionsComingWithRefunds;
+
+  // Status names, in the order they appear in `OrderStatus`.
+  String get orderStatusDraft;
+  String get orderStatusOpen;
+  String get orderStatusSentToKitchen;
+  String get orderStatusReady;
+  String get orderStatusPaid;
+  String get orderStatusClosed;
+  String get orderStatusVoided;
+  String get orderStatusCancelled;
+  String get orderStatusRefunded;
+  String get orderStatusPartiallyRefunded;
+
+  // ── Refunds ───────────────────────────────────────────────────────────────
+  String get refundAction;
+  String refundTitle(String invoice);
+
+  /// The number shown at every step. §18 is explicit that the remaining
+  /// refundable value must be visible throughout — a cashier who cannot see it
+  /// finds out they have over-refunded when the till refuses.
+  String get refundRemaining;
+  String get refundByItems;
+  String get refundByAmount;
+  String get refundAmountLabel;
+  String get refundReturnTo;
+  String get refundSubtotal;
+  String get refundDiscount;
+  String get refundService;
+  String get refundVat;
+  String get refundTotal;
+  String refundConfirm(String amount);
+  String get refundNothingSelected;
+  String get refundAlreadyRefunded;
+  String refundIssued(String amount);
+  String get refundCouldNotBeIssued;
+  String get refundNeedsApproval;
+  String get refundItemsRemaining;
+
+  /// Why the flow is not offered at all.
+  String get refundDisabled;
+  String refundOutsideWindow(String window);
+  String get refundNothingLeft;
+  String refundMoreThanRemains(int asked, int remaining);
+  String refundAboveLimit(String limit);
+  String refundAboveRemaining(String remaining);
+  String get refundReasonNeeded;
+  String get refundTenderNeeded;
+  String get refundReceiptRequiredNote;
+
+  /// The window names, for the sentence that says why a sale is too old.
+  String get refundWindowSameShift;
+  String get refundWindowSameDay;
+  String get refundWindow7Days;
+  String get refundWindow30Days;
+  String get refundWindowUnlimited;
+
+  /// Refunds already issued against an order, shown in its detail pane.
+  String get refundsAlreadyGiven;
+  String refundGivenBy(String name);
+
+  // ── Price override ────────────────────────────────────────────────────────
+  String get priceOverrideAction;
+
+  /// The chip on a repriced cart line. Mono, short, and not a sentence.
+  String get priceOverrideChip;
+  String priceOverrideTitle(String item);
+  String get priceOverrideMenuPrice;
+  String get priceOverrideNewPrice;
+  String get priceOverrideLineTotal;
+  String get priceOverrideRestore;
+  String get priceOverrideNothingSelected;
+  String get priceOverrideUnchanged;
+  String get priceOverrideBelowZero;
+
+  /// Why a supervisor is being asked. A price override past the ceiling is the
+  /// same act as a discount past it, and says so.
+  String priceOverrideAboveLimit(String reduction, String limit);
+  String get priceOverrideNotPermitted;
+  String priceOverrideApplied(String price);
 }
 
 /// English. The reference wording — the Arabic below is a translation of this,
@@ -914,6 +1145,326 @@ final class EnStrings extends AppStrings {
   @override
   String get destructiveKeyHint =>
       'Esc keeps it · the confirm button is never focused by default';
+  @override
+  String get approvalRequired => 'APPROVAL REQUIRED';
+  @override
+  String get approvalAction => 'ACTION';
+  @override
+  String get approvalRequestedBy => 'REQUESTED BY';
+  @override
+  String get approvalPin => 'MANAGER PIN';
+  @override
+  String get approvalAboveLimit => 'Above the limit';
+  @override
+  String get approvalDone => 'Done';
+  @override
+  String wrongPinAttemptsLeft(int attempts) => attempts == 1
+      ? 'Wrong PIN. One attempt left.'
+      : 'Wrong PIN. $attempts attempts left.';
+  @override
+  String approvalRecorded(String approver, String requester) =>
+      '$approver approved this, requested by $requester. Both names are on the record.';
+  @override
+  String get discountTitle => 'Discount';
+  @override
+  String get discountWholeOrder => 'Whole order';
+  @override
+  String get discountThisLine => 'This line';
+  @override
+  String get discountPresets => 'OFFERED HERE';
+  @override
+  String get discountCustom => 'OR TYPE ONE';
+  @override
+  String get discountPercent => 'Percent';
+  @override
+  String get discountAmount => 'Amount';
+  @override
+  String get discountNoneOffered =>
+      'No discounts are configured for this. You can still type one.';
+  @override
+  String get discountRemove => 'Remove discount';
+  @override
+  String get discountApplyAction => 'Apply discount';
+  @override
+  String get discountNewTotal => 'NEW TOTAL';
+  @override
+  String get discountNotApplicable =>
+      'That discount is not offered on this order right now.';
+  @override
+  String get discountNeedsCustomer =>
+      'That discount needs a customer on the order.';
+  @override
+  String get discountAlreadyOn =>
+      'There is already a discount here. Remove it first.';
+  @override
+  String get discountNothingToDiscount => 'There is nothing to discount.';
+  @override
+  String discountAboveLimitNote(String limit, String requested) =>
+      'The manual discount limit here is $limit. This discount is $requested.';
+  @override
+  String discountApprovalAct(String amount) => 'Discount $amount';
+  @override
+  String approvedByShort(String approver) => 'approved by $approver';
+  @override
+  String get cancelLineAction => 'Remove line';
+  @override
+  String get voidLineAction => 'Void line';
+  @override
+  String get keepLineAction => 'Keep it';
+  @override
+  String get lineVoidedChip => 'VOID';
+  @override
+  String get cancelLineNothingMade =>
+      'Nothing has been made yet, so this just comes off the ticket.';
+  @override
+  String cancelLineTitle(String item) => 'Remove $item?';
+  @override
+  String voidLineTitle(String item) => 'Void $item?';
+  @override
+  String voidLineConsequenceRemoved(String amount) =>
+      'The line comes off the bill and $amount is no longer charged.';
+  @override
+  String get voidLineConsequenceKitchen =>
+      'The kitchen has already made this. It is waste, and it is reported as waste.';
+  @override
+  String get voidLineConsequenceIrreversible =>
+      'This cannot be undone. The line stays on the ticket, marked, so the customer can be shown what happened.';
+  @override
+  String get voidOrderAction => 'Void order';
+  @override
+  String get keepOrderAction => 'Keep order';
+  @override
+  String get clearTicketTitle => 'Clear this ticket?';
+  @override
+  String get clearTicketNothingSent =>
+      'Nothing has been sent to the kitchen, so this is not recorded anywhere.';
+  @override
+  String voidOrderTitle(String reference) => 'Void $reference?';
+  @override
+  String voidOrderConsequenceBill(String amount) =>
+      'The whole bill of $amount is cancelled and nothing is charged.';
+  @override
+  String get voidOrderConsequenceKitchen =>
+      'Everything already sent to the kitchen is waste, and is reported as waste.';
+  @override
+  String get voidOrderConsequenceRecorded =>
+      'This cannot be undone. The order is recorded as voided, with your name and your reason on it.';
+  @override
+  String voidOrderRecorded(String invoice) => 'Voided and recorded as $invoice';
+  @override
+  String get voidCouldNotBeRecorded =>
+      'That could not be recorded, so the ticket is still here. Try again.';
+
+  @override
+  String get orderHistoryTitle => 'Orders';
+  @override
+  String get orderHistoryToday => 'Today';
+  @override
+  String get orderHistoryLast7Days => 'Last 7 days';
+  @override
+  String get orderHistoryLast30Days => 'Last 30 days';
+  @override
+  String get orderHistorySearchHint => 'Invoice or table';
+  @override
+  String get orderHistoryAllStatuses => 'All statuses';
+  @override
+  String get orderHistoryAllTypes => 'All types';
+  @override
+  String get orderHistoryEveryone => 'Everyone';
+  @override
+  String orderHistoryCount(int count) =>
+      count == 1 ? '1 order' : '$count orders';
+  @override
+  String orderHistoryTruncated(int limit) =>
+      'Showing the newest $limit. Narrow the dates to see further back.';
+  @override
+  String get orderHistoryEmpty => 'No orders yet in this period.';
+  @override
+  String get orderHistoryEmptyFiltered => 'No orders match these filters.';
+  @override
+  String get orderHistoryClearFilters => 'Clear filters';
+  @override
+  String get orderHistoryPickAnOrder => 'Pick an order to see it.';
+  @override
+  String get orderHistoryUnavailable =>
+      'History could not be read from the branch database.';
+  @override
+  String get orderHistoryNotPermitted =>
+      'You do not have permission to see the branch\'s orders.';
+  @override
+  String get orderColumnInvoice => 'Invoice';
+  @override
+  String get orderColumnTime => 'Time';
+  @override
+  String get orderColumnType => 'Type';
+  @override
+  String get orderColumnWhere => 'Table';
+  @override
+  String get orderColumnStaff => 'Staff';
+  @override
+  String get orderColumnTotal => 'Total';
+  @override
+  String get orderColumnStatus => 'Status';
+  @override
+  String get orderDetailLines => 'Items';
+  @override
+  String get orderDetailPayments => 'Paid with';
+  @override
+  String get orderDetailDiscounts => 'Discounts';
+  @override
+  String get orderDetailNoPayments => 'No payment was taken.';
+  @override
+  String get orderDetailSubtotal => 'Subtotal';
+  @override
+  String get orderDetailDiscount => 'Discount';
+  @override
+  String get orderDetailService => 'Service';
+  @override
+  String get orderDetailVat => 'VAT';
+  @override
+  String get orderDetailTotal => 'Total';
+  @override
+  String get orderDetailServedBy => 'Served by';
+  @override
+  String get orderDetailServedByUnknown => 'Not recorded';
+  @override
+  String orderDetailVoidedBy(String name) => 'Voided by $name';
+  @override
+  String get orderDetailVoidedLine => 'Voided';
+  @override
+  String orderDetailGuests(int count) => count == 1 ? '1 guest' : '$count guests';
+  @override
+  String orderDetailApprovedBy(String name) => 'Approved by $name';
+  @override
+  String get orderActionsComingWithRefunds =>
+      'Reprint and refund arrive with the refund flow.';
+  @override
+  String get orderStatusDraft => 'Draft';
+  @override
+  String get orderStatusOpen => 'Open';
+  @override
+  String get orderStatusSentToKitchen => 'In kitchen';
+  @override
+  String get orderStatusReady => 'Ready';
+  @override
+  String get orderStatusPaid => 'Paid';
+  @override
+  String get orderStatusClosed => 'Closed';
+  @override
+  String get orderStatusVoided => 'Voided';
+  @override
+  String get orderStatusCancelled => 'Cancelled';
+  @override
+  String get orderStatusRefunded => 'Refunded';
+  @override
+  String get orderStatusPartiallyRefunded => 'Part refunded';
+
+  @override
+  String get refundAction => 'Refund';
+  @override
+  String refundTitle(String invoice) => 'Refund $invoice';
+  @override
+  String get refundRemaining => 'Left to refund';
+  @override
+  String get refundByItems => 'By item';
+  @override
+  String get refundByAmount => 'By amount';
+  @override
+  String get refundAmountLabel => 'Amount to give back';
+  @override
+  String get refundReturnTo => 'Give back to';
+  @override
+  String get refundSubtotal => 'Subtotal';
+  @override
+  String get refundDiscount => 'Discount';
+  @override
+  String get refundService => 'Service';
+  @override
+  String get refundVat => 'VAT';
+  @override
+  String get refundTotal => 'Refund';
+  @override
+  String refundConfirm(String amount) => 'Refund $amount';
+  @override
+  String get refundNothingSelected => 'Choose what to give back first.';
+  @override
+  String get refundAlreadyRefunded => 'Already refunded';
+  @override
+  String refundIssued(String amount) => 'Refunded $amount';
+  @override
+  String get refundCouldNotBeIssued =>
+      'That could not be recorded, so no money has gone back. Try again.';
+  @override
+  String get refundNeedsApproval => 'A supervisor has to approve this amount.';
+  @override
+  String get refundItemsRemaining => 'left';
+  @override
+  String get refundDisabled => 'Refunds are switched off for this restaurant.';
+  @override
+  String refundOutsideWindow(String window) =>
+      'This sale is outside the refund window ($window).';
+  @override
+  String get refundNothingLeft => 'This order has nothing left to refund.';
+  @override
+  String refundMoreThanRemains(int asked, int remaining) =>
+      'You asked for $asked, and $remaining is left.';
+  @override
+  String refundAboveLimit(String limit) =>
+      'That is above the $limit refund limit. Nobody at the till can approve past it.';
+  @override
+  String refundAboveRemaining(String remaining) =>
+      'Only $remaining is left on this order.';
+  @override
+  String get refundReasonNeeded => 'Give a reason for the refund.';
+  @override
+  String get refundTenderNeeded => 'Say how the money goes back.';
+  @override
+  String get refundReceiptRequiredNote =>
+      'This restaurant asks for the original receipt.';
+  @override
+  String get refundWindowSameShift => 'same shift';
+  @override
+  String get refundWindowSameDay => 'same day';
+  @override
+  String get refundWindow7Days => '7 days';
+  @override
+  String get refundWindow30Days => '30 days';
+  @override
+  String get refundWindowUnlimited => 'no limit';
+  @override
+  String get refundsAlreadyGiven => 'Refunded';
+  @override
+  String refundGivenBy(String name) => 'by $name';
+
+  @override
+  String get priceOverrideAction => 'Change price';
+  @override
+  String get priceOverrideChip => 'PRICE';
+  @override
+  String priceOverrideTitle(String item) => 'Change the price of $item';
+  @override
+  String get priceOverrideMenuPrice => 'Menu price';
+  @override
+  String get priceOverrideNewPrice => 'New price, each';
+  @override
+  String get priceOverrideLineTotal => 'Line total';
+  @override
+  String get priceOverrideRestore => 'Back to menu price';
+  @override
+  String get priceOverrideNothingSelected =>
+      'Pick a line on the ticket first.';
+  @override
+  String get priceOverrideUnchanged => 'That is the price it already has.';
+  @override
+  String get priceOverrideBelowZero => 'A price cannot be less than nothing.';
+  @override
+  String priceOverrideAboveLimit(String reduction, String limit) =>
+      'That takes $reduction off, and you may take $limit. A supervisor can approve it.';
+  @override
+  String get priceOverrideNotPermitted =>
+      'You do not have permission to change a price.';
+  @override
+  String priceOverrideApplied(String price) => 'Price changed to $price';
 
   @override
   String get cancel => 'Cancel';
@@ -1130,6 +1681,12 @@ final class EnStrings extends AppStrings {
   @override
   String get pickATableHelp =>
       'Tap a table to open a new bill or add to an existing one.';
+  @override
+  String get floorHasNoTables =>
+      'No tables on this branch yet. A manager adds them in Management, '
+      'under Floor.';
+  @override
+  String get sellWithoutTable => 'Sell without a table';
   @override
   String legendFree(int count) => 'FREE $count';
   @override
@@ -1601,9 +2158,12 @@ final class EnStrings extends AppStrings {
       'digits. Without one, nobody can sign in to the till that is about to '
       'exist.';
   @override
-  String pinLength(int min, int max) =>
-      'A PIN is $min to $max digits. It is typed on a keypad at the counter, '
-      'so digits are all it can hold.';
+  String pinIsExactlyDigits(int length) =>
+      'A PIN is exactly $length digits. It is typed on a keypad at the '
+      'counter, which submits on the last one — a longer PIN could never be '
+      'entered.';
+  @override
+  String exactlyDigits(int length) => 'Exactly $length digits.';
   @override
   String databaseNameInvalid(String name) =>
       '"$name" cannot be a database name — letters, digits and underscores '
@@ -2201,6 +2761,12 @@ final class EnStrings extends AppStrings {
   @override
   String get capOrderVoid => 'Void an order or a sent line';
   @override
+  String get capOrderItemCancel => 'Remove an item before the kitchen sees it';
+  @override
+  String get capOrderItemVoid => 'Remove an item the kitchen has already made';
+  @override
+  String get capOrderViewAll => 'See every order this branch has taken';
+  @override
   String get capOrderRefund => 'Refund a sale';
   @override
   String get capReceiptReprint => 'Reprint a receipt';
@@ -2369,9 +2935,6 @@ final class EnStrings extends AppStrings {
       'A name and a username, both. The username is what makes the PIN resolve '
       'to one person.';
   @override
-  String get pinIsFourOrMoreDigits => 'The PIN is four or more digits.';
-  @override
-  String get fourOrMoreDigits => 'Four or more digits.';
 
   @override
   String get noRolesYet =>
@@ -2501,6 +3064,320 @@ final class ArStrings extends AppStrings {
   @override
   String get destructiveKeyHint =>
       'Esc يُبقيه · زر التأكيد غير محدَّد افتراضيًا';
+  @override
+  String get approvalRequired => 'يلزم اعتماد';
+  @override
+  String get approvalAction => 'الإجراء';
+  @override
+  String get approvalRequestedBy => 'بطلب من';
+  @override
+  String get approvalPin => 'رمز المدير';
+  @override
+  String get approvalAboveLimit => 'أعلى من الحد المسموح';
+  @override
+  String get approvalDone => 'تم';
+  @override
+  String wrongPinAttemptsLeft(int attempts) => attempts == 1
+      ? 'رمز غير صحيح. بقيت محاولة واحدة.'
+      : 'رمز غير صحيح. بقيت $attempts محاولات.';
+  @override
+  String approvalRecorded(String approver, String requester) =>
+      'اعتمد $approver هذا الإجراء بطلب من $requester. الاسمان مسجَّلان.';
+  @override
+  String get discountTitle => 'خصم';
+  @override
+  String get discountWholeOrder => 'الطلب كاملًا';
+  @override
+  String get discountThisLine => 'هذا السطر';
+  @override
+  String get discountPresets => 'المتاح هنا';
+  @override
+  String get discountCustom => 'أو اكتب خصمًا';
+  @override
+  String get discountPercent => 'نسبة';
+  @override
+  String get discountAmount => 'مبلغ';
+  @override
+  String get discountNoneOffered =>
+      'لا توجد خصومات مُعدّة لهذا. ما زال بإمكانك كتابة خصم.';
+  @override
+  String get discountRemove => 'إزالة الخصم';
+  @override
+  String get discountApplyAction => 'تطبيق الخصم';
+  @override
+  String get discountNewTotal => 'الإجمالي الجديد';
+  @override
+  String get discountNotApplicable => 'هذا الخصم غير متاح على هذا الطلب الآن.';
+  @override
+  String get discountNeedsCustomer => 'هذا الخصم يحتاج إلى عميل على الطلب.';
+  @override
+  String get discountAlreadyOn => 'يوجد خصم هنا بالفعل. أزِله أولًا.';
+  @override
+  String get discountNothingToDiscount => 'لا يوجد ما يمكن خصمه.';
+  @override
+  String discountAboveLimitNote(String limit, String requested) =>
+      'حد الخصم اليدوي هنا $limit. وهذا الخصم $requested.';
+  @override
+  String discountApprovalAct(String amount) => 'خصم $amount';
+  @override
+  String approvedByShort(String approver) => 'باعتماد $approver';
+  @override
+  String get cancelLineAction => 'حذف السطر';
+  @override
+  String get voidLineAction => 'إلغاء السطر';
+  @override
+  String get keepLineAction => 'الإبقاء عليه';
+  @override
+  String get lineVoidedChip => 'ملغى';
+  @override
+  String get cancelLineNothingMade =>
+      'لم يُحضَّر شيء بعد، لذا سيُحذف من الفاتورة فقط.';
+  @override
+  String cancelLineTitle(String item) => 'حذف $item؟';
+  @override
+  String voidLineTitle(String item) => 'إلغاء $item؟';
+  @override
+  String voidLineConsequenceRemoved(String amount) =>
+      'يخرج السطر من الفاتورة ولن يُحتسب $amount.';
+  @override
+  String get voidLineConsequenceKitchen =>
+      'المطبخ حضّر هذا بالفعل. هذا هدر، ويُسجَّل على أنه هدر.';
+  @override
+  String get voidLineConsequenceIrreversible =>
+      'لا يمكن التراجع عن هذا. يبقى السطر على الفاتورة مُعلَّمًا حتى يمكن أن يُعرض على العميل ما حدث.';
+  @override
+  String get voidOrderAction => 'إلغاء الطلب';
+  @override
+  String get keepOrderAction => 'الإبقاء على الطلب';
+  @override
+  String get clearTicketTitle => 'مسح هذه الفاتورة؟';
+  @override
+  String get clearTicketNothingSent =>
+      'لم يُرسَل شيء إلى المطبخ، لذا لن يُسجَّل هذا في أي مكان.';
+  @override
+  String voidOrderTitle(String reference) => 'إلغاء $reference؟';
+  @override
+  String voidOrderConsequenceBill(String amount) =>
+      'تُلغى الفاتورة بالكامل بمبلغ $amount ولا يُحتسب شيء.';
+  @override
+  String get voidOrderConsequenceKitchen =>
+      'كل ما أُرسل إلى المطبخ يُعد هدرًا، ويُسجَّل على أنه هدر.';
+  @override
+  String get voidOrderConsequenceRecorded =>
+      'لا يمكن التراجع عن هذا. يُسجَّل الطلب كملغى، باسمك وبالسبب الذي ذكرته.';
+  @override
+  String voidOrderRecorded(String invoice) => 'أُلغي وسُجِّل باسم $invoice';
+  @override
+  String get voidCouldNotBeRecorded =>
+      'تعذّر تسجيل ذلك، لذا ما زالت الفاتورة هنا. حاول مرة أخرى.';
+
+  @override
+  String get orderHistoryTitle => 'الطلبات';
+  @override
+  String get orderHistoryToday => 'اليوم';
+  @override
+  String get orderHistoryLast7Days => 'آخر ٧ أيام';
+  @override
+  String get orderHistoryLast30Days => 'آخر ٣٠ يومًا';
+  @override
+  String get orderHistorySearchHint => 'رقم الفاتورة أو الطاولة';
+  @override
+  String get orderHistoryAllStatuses => 'كل الحالات';
+  @override
+  String get orderHistoryAllTypes => 'كل الأنواع';
+  @override
+  String get orderHistoryEveryone => 'الجميع';
+  @override
+  String orderHistoryCount(int count) =>
+      count == 1 ? 'طلب واحد' : '$count طلبات';
+  @override
+  String orderHistoryTruncated(int limit) =>
+      'يُعرض أحدث $limit طلبًا. ضيّق نطاق التاريخ للرجوع أبعد.';
+  @override
+  String get orderHistoryEmpty => 'لا توجد طلبات في هذه الفترة.';
+  @override
+  String get orderHistoryEmptyFiltered => 'لا توجد طلبات تطابق هذه المرشحات.';
+  @override
+  String get orderHistoryClearFilters => 'مسح المرشحات';
+  @override
+  String get orderHistoryPickAnOrder => 'اختر طلبًا لعرضه.';
+  @override
+  String get orderHistoryUnavailable =>
+      'تعذّرت قراءة السجل من قاعدة بيانات الفرع.';
+  @override
+  String get orderHistoryNotPermitted => 'ليس لديك صلاحية للاطلاع على طلبات الفرع.';
+  @override
+  String get orderColumnInvoice => 'الفاتورة';
+  @override
+  String get orderColumnTime => 'الوقت';
+  @override
+  String get orderColumnType => 'النوع';
+  @override
+  String get orderColumnWhere => 'الطاولة';
+  @override
+  String get orderColumnStaff => 'الموظف';
+  @override
+  String get orderColumnTotal => 'الإجمالي';
+  @override
+  String get orderColumnStatus => 'الحالة';
+  @override
+  String get orderDetailLines => 'الأصناف';
+  @override
+  String get orderDetailPayments => 'طريقة الدفع';
+  @override
+  String get orderDetailDiscounts => 'الخصومات';
+  @override
+  String get orderDetailNoPayments => 'لم يُحصَّل أي مبلغ.';
+  @override
+  String get orderDetailSubtotal => 'المجموع الفرعي';
+  @override
+  String get orderDetailDiscount => 'الخصم';
+  @override
+  String get orderDetailService => 'الخدمة';
+  @override
+  String get orderDetailVat => 'ضريبة القيمة المضافة';
+  @override
+  String get orderDetailTotal => 'الإجمالي';
+  @override
+  String get orderDetailServedBy => 'قدّمه';
+  @override
+  String get orderDetailServedByUnknown => 'غير مسجَّل';
+  @override
+  String orderDetailVoidedBy(String name) => 'ألغاه $name';
+  @override
+  String get orderDetailVoidedLine => 'ملغى';
+  @override
+  String orderDetailGuests(int count) => count == 1 ? 'ضيف واحد' : '$count ضيوف';
+  @override
+  String orderDetailApprovedBy(String name) => 'اعتمده $name';
+  @override
+  String get orderActionsComingWithRefunds =>
+      'إعادة الطباعة والاسترجاع تأتيان مع مسار الاسترجاع.';
+  @override
+  String get orderStatusDraft => 'مسودة';
+  @override
+  String get orderStatusOpen => 'مفتوح';
+  @override
+  String get orderStatusSentToKitchen => 'في المطبخ';
+  @override
+  String get orderStatusReady => 'جاهز';
+  @override
+  String get orderStatusPaid => 'مدفوع';
+  @override
+  String get orderStatusClosed => 'مغلق';
+  @override
+  String get orderStatusVoided => 'ملغى';
+  @override
+  String get orderStatusCancelled => 'مُلغى قبل الإرسال';
+  @override
+  String get orderStatusRefunded => 'مسترجع';
+  @override
+  String get orderStatusPartiallyRefunded => 'مسترجع جزئيًا';
+
+  @override
+  String get refundAction => 'استرجاع';
+  @override
+  String refundTitle(String invoice) => 'استرجاع $invoice';
+  @override
+  String get refundRemaining => 'المتبقي للاسترجاع';
+  @override
+  String get refundByItems => 'حسب الصنف';
+  @override
+  String get refundByAmount => 'حسب المبلغ';
+  @override
+  String get refundAmountLabel => 'المبلغ المُعاد';
+  @override
+  String get refundReturnTo => 'يُعاد إلى';
+  @override
+  String get refundSubtotal => 'المجموع الفرعي';
+  @override
+  String get refundDiscount => 'الخصم';
+  @override
+  String get refundService => 'الخدمة';
+  @override
+  String get refundVat => 'ضريبة القيمة المضافة';
+  @override
+  String get refundTotal => 'الاسترجاع';
+  @override
+  String refundConfirm(String amount) => 'استرجاع $amount';
+  @override
+  String get refundNothingSelected => 'اختر ما سيُعاد أولًا.';
+  @override
+  String get refundAlreadyRefunded => 'مسترجع بالفعل';
+  @override
+  String refundIssued(String amount) => 'تم استرجاع $amount';
+  @override
+  String get refundCouldNotBeIssued =>
+      'تعذّر تسجيل ذلك، ولم يخرج أي مبلغ. حاول مرة أخرى.';
+  @override
+  String get refundNeedsApproval => 'يجب أن يعتمد مشرف هذا المبلغ.';
+  @override
+  String get refundItemsRemaining => 'متبقٍ';
+  @override
+  String get refundDisabled => 'الاسترجاع موقوف في هذا المطعم.';
+  @override
+  String refundOutsideWindow(String window) =>
+      'هذه الفاتورة خارج مدة الاسترجاع ($window).';
+  @override
+  String get refundNothingLeft => 'لا يوجد ما يُسترجع في هذا الطلب.';
+  @override
+  String refundMoreThanRemains(int asked, int remaining) =>
+      'طلبت $asked، والمتبقي $remaining.';
+  @override
+  String refundAboveLimit(String limit) =>
+      'هذا يتجاوز حد الاسترجاع البالغ $limit. لا يمكن لأحد على الكاشير تجاوزه.';
+  @override
+  String refundAboveRemaining(String remaining) =>
+      'المتبقي في هذا الطلب هو $remaining فقط.';
+  @override
+  String get refundReasonNeeded => 'اذكر سبب الاسترجاع.';
+  @override
+  String get refundTenderNeeded => 'حدّد كيف يُعاد المبلغ.';
+  @override
+  String get refundReceiptRequiredNote =>
+      'يطلب هذا المطعم الفاتورة الأصلية.';
+  @override
+  String get refundWindowSameShift => 'نفس الوردية';
+  @override
+  String get refundWindowSameDay => 'نفس اليوم';
+  @override
+  String get refundWindow7Days => '٧ أيام';
+  @override
+  String get refundWindow30Days => '٣٠ يومًا';
+  @override
+  String get refundWindowUnlimited => 'بلا حد';
+  @override
+  String get refundsAlreadyGiven => 'مسترجع';
+  @override
+  String refundGivenBy(String name) => 'بواسطة $name';
+
+  @override
+  String get priceOverrideAction => 'تغيير السعر';
+  @override
+  String get priceOverrideChip => 'سعر';
+  @override
+  String priceOverrideTitle(String item) => 'تغيير سعر $item';
+  @override
+  String get priceOverrideMenuPrice => 'سعر المنيو';
+  @override
+  String get priceOverrideNewPrice => 'السعر الجديد للوحدة';
+  @override
+  String get priceOverrideLineTotal => 'إجمالي البند';
+  @override
+  String get priceOverrideRestore => 'العودة إلى سعر المنيو';
+  @override
+  String get priceOverrideNothingSelected => 'اختر بندًا من الفاتورة أولًا.';
+  @override
+  String get priceOverrideUnchanged => 'هذا هو السعر الحالي بالفعل.';
+  @override
+  String get priceOverrideBelowZero => 'لا يمكن أن يقل السعر عن صفر.';
+  @override
+  String priceOverrideAboveLimit(String reduction, String limit) =>
+      'هذا يخصم $reduction، وحدّك $limit. يمكن لمشرف اعتماده.';
+  @override
+  String get priceOverrideNotPermitted => 'ليس لديك صلاحية لتغيير السعر.';
+  @override
+  String priceOverrideApplied(String price) => 'تم تغيير السعر إلى $price';
 
   @override
   String get cancel => 'إلغاء';
@@ -2720,6 +3597,11 @@ final class ArStrings extends AppStrings {
   @override
   String get pickATableHelp =>
       'اضغط على طاولة لفتح فاتورة جديدة أو للإضافة إلى فاتورة قائمة.';
+  @override
+  String get floorHasNoTables =>
+      'لا توجد طاولات في هذا الفرع بعد. يضيفها المدير من الإدارة، قسم الصالة.';
+  @override
+  String get sellWithoutTable => 'بيع بدون طاولة';
   @override
   String legendFree(int count) => 'فاضية $count';
   @override
@@ -3172,9 +4054,11 @@ final class ArStrings extends AppStrings {
       'أول شخص يحتاج اسماً واسم مستخدم وكوداً من أربعة أرقام على الأقل. بدونه '
       'لن يستطيع أحد تسجيل الدخول إلى الكاشير الذي على وشك أن يوجد.';
   @override
-  String pinLength(int min, int max) =>
-      'الكود من $min إلى $max أرقام. يُكتب على لوحة أرقام عند الكاونتر، فالأرقام '
-      'هي كل ما يقبله.';
+  String pinIsExactlyDigits(int length) =>
+      'الكود $length أرقام بالضبط. يُكتب على لوحة أرقام عند الكاونتر تُرسله عند '
+      'آخر رقم، فالكود الأطول لا يمكن إدخاله أصلًا.';
+  @override
+  String exactlyDigits(int length) => '$length أرقام بالضبط.';
   @override
   String databaseNameInvalid(String name) =>
       '«$name» لا يصلح اسماً لقاعدة بيانات — أحرف إنجليزية وأرقام وشرطات سفلية '
@@ -3752,6 +4636,12 @@ final class ArStrings extends AppStrings {
   @override
   String get capOrderVoid => 'إلغاء طلب أو بند مُرسل';
   @override
+  String get capOrderItemCancel => 'حذف صنف قبل أن يراه المطبخ';
+  @override
+  String get capOrderItemVoid => 'حذف صنف سبق أن أعدّه المطبخ';
+  @override
+  String get capOrderViewAll => 'الاطلاع على كل طلبات هذا الفرع';
+  @override
   String get capOrderRefund => 'استرجاع مبيعة';
   @override
   String get capReceiptReprint => 'إعادة طباعة الإيصال';
@@ -3916,9 +4806,6 @@ final class ArStrings extends AppStrings {
       'اسم واسم مستخدم، الاثنان معاً. اسم المستخدم هو ما يجعل الكود يدل على '
       'شخص واحد.';
   @override
-  String get pinIsFourOrMoreDigits => 'الكود أربعة أرقام أو أكثر.';
-  @override
-  String get fourOrMoreDigits => 'أربعة أرقام أو أكثر.';
 
   @override
   String get noRolesYet =>

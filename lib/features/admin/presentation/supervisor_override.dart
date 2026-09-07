@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/providers.dart';
@@ -6,10 +7,14 @@ import '../../../core/l10n/app_strings.dart';
 import '../../../core/ui/theme.dart';
 import '../../../core/ui/tokens.dart';
 import '../../../core/ui/widgets/pos_widgets.dart';
+import '../../../core/ui/widgets/mono_amount.dart';
+import '../../../core/ui/widgets/reason_picker.dart';
+import '../../../domain/models/reason_code.dart';
 import '../../../domain/models/shift.dart';
 import '../../../domain/repositories/admin_repositories.dart';
 import '../../../domain/services/authorization.dart';
 import 'admin_messages.dart';
+import '../../../core/security/pin_hash.dart';
 
 /// Ask whether the person at the till may do something, offering a supervisor
 /// the chance to lend the permission when one is possible.
@@ -40,6 +45,13 @@ Future<PermissionDecision> requestPermission(
   required String auditAction,
   String? entityType,
   String? entityId,
+  String? requestedBy,
+  String? subjectLabel,
+  String? subject,
+  String? limitNote,
+  String? approveLabel,
+  List<ReasonCode> reasons = const [],
+  ReasonRequirement reasonRequirement = ReasonRequirement.disabled,
 }) async {
   final decision = Authorization.check(
     ref.read(signedInStaffProvider),
@@ -55,16 +67,24 @@ Future<PermissionDecision> requestPermission(
   }
 
   if (!context.mounted) return decision;
-  final approver = await SupervisorOverrideDialog.show(
+  final outcome = await SupervisorOverrideDialog.show(
     context,
     capability: capability,
     action: action,
+    requestedBy: requestedBy,
+    subjectLabel: subjectLabel,
+    subject: subject,
+    limitNote: limitNote,
+    approveLabel: approveLabel,
+    reasons: reasons,
+    reasonRequirement: reasonRequirement,
   );
-  if (approver == null) return decision;
+  if (outcome == null) return decision;
 
   final approved = Authorization.approve(
-    approver: approver,
+    approver: outcome.approver,
     capability: capability,
+    reason: outcome.reason,
   );
   if (approved is! Allowed) return approved;
 
@@ -73,46 +93,116 @@ Future<PermissionDecision> requestPermission(
       .record(
         // The person who asked, not the person who approved. Both are on the
         // row; which is which is the entire point of recording it.
-        by: ref.read(signedInStaffProvider) ?? approver,
-        approvedBy: approver,
+        by: ref.read(signedInStaffProvider) ?? outcome.approver,
+        approvedBy: outcome.approver,
         action: AuditAction.permissionOverridden,
         entityType: entityType ?? AuditAction.entityOrder,
         entityId: entityId,
         // [auditAction], not [action]: the row is read back months later,
         // often by somebody who does not run the till in the language it was
         // written on. What was approved should not depend on that.
-        after: {'capability': capability, 'for': auditAction},
+        reason: outcome.reason?.note,
+        after: {
+          'capability': capability,
+          'for': auditAction,
+          if (outcome.reason?.reasonId != null)
+            'reason_id': outcome.reason!.reasonId,
+        },
       );
 
   return approved;
 }
 
-/// The PIN prompt a supervisor answers at the till.
+/// What the approval flow came back with.
+class ApprovalOutcome {
+  const ApprovalOutcome({required this.approver, this.reason});
+
+  final PosStaff approver;
+
+  /// Null when the restaurant switched reasons off for this act.
+  final ReasonSelection? reason;
+}
+
+/// The manager-approval dialog (patterns 5.1).
+///
+/// A cashier attempted something above their permission or above their limit,
+/// and a manager authorises it **at the till, without ending the sale**. That
+/// last part is the whole workflow: walking a customer's order over to a
+/// settings screen is not a thing anybody does during service.
+///
+/// Two rules shape the copy. The act is stated in **plain words** — "Discount
+/// this line by 30%", never `discount.apply` — because a supervisor approving a
+/// permission key is approving a string, not an act. And when a limit was
+/// exceeded, both numbers are shown: the limit and what was asked for.
 class SupervisorOverrideDialog extends ConsumerStatefulWidget {
   const SupervisorOverrideDialog({
     required this.capability,
     required this.action,
+    this.requestedBy,
+    this.subjectLabel,
+    this.subject,
+    this.limitNote,
+    this.approveLabel,
+    this.reasons = const [],
+    this.reasonRequirement = ReasonRequirement.disabled,
     super.key,
   });
 
   final String capability;
 
   /// What is about to happen, in the words the cashier would use — *"Discount
-  /// this line"*. A supervisor approving "discount.apply" is approving a string;
-  /// a supervisor approving "Discount this line" is approving an act.
+  /// this line by 30%"*. A supervisor approving "discount.apply" is approving a
+  /// string; a supervisor approving "Discount this line" is approving an act.
   final String action;
 
-  /// The member of staff who approved, or null if nobody did.
-  static Future<PosStaff?> show(
+  /// Who is asking — "Nour Adel · Cashier · Till 2". Composed by the caller,
+  /// which is the only place that knows the person, their role and the machine.
+  final String? requestedBy;
+
+  /// What the act is being done to, and what to call it: "THE LINE" and
+  /// "2 × Grilled Chicken · 268.00". Both or neither.
+  final String? subjectLabel;
+  final String? subject;
+
+  /// The ceiling that was exceeded, stated with the number that exceeded it —
+  /// *"Your manual discount limit is 10%. This discount is 30%."* Composed by
+  /// the caller because only it holds both figures.
+  final String? limitNote;
+
+  /// What the approve button says. Names the act, for the same reason the
+  /// destructive dialog's confirm button does.
+  final String? approveLabel;
+
+  final List<ReasonCode> reasons;
+  final ReasonRequirement reasonRequirement;
+
+  /// Null when nobody approved.
+  static Future<ApprovalOutcome?> show(
     BuildContext context, {
     required String capability,
     required String action,
-  }) => showDialog<PosStaff>(
+    String? requestedBy,
+    String? subjectLabel,
+    String? subject,
+    String? limitNote,
+    String? approveLabel,
+    List<ReasonCode> reasons = const [],
+    ReasonRequirement reasonRequirement = ReasonRequirement.disabled,
+  }) => showDialog<ApprovalOutcome>(
     context: context,
     barrierColor: context.pos.scrimHeavy,
     barrierDismissible: false,
-    builder: (_) =>
-        SupervisorOverrideDialog(capability: capability, action: action),
+    builder: (_) => SupervisorOverrideDialog(
+      capability: capability,
+      action: action,
+      requestedBy: requestedBy,
+      subjectLabel: subjectLabel,
+      subject: subject,
+      limitNote: limitNote,
+      approveLabel: approveLabel,
+      reasons: reasons,
+      reasonRequirement: reasonRequirement,
+    ),
   );
 
   @override
@@ -122,17 +212,60 @@ class SupervisorOverrideDialog extends ConsumerStatefulWidget {
 
 class _SupervisorOverrideDialogState
     extends ConsumerState<SupervisorOverrideDialog> {
+  /// Five, then the keypad stops. Enough that a manager mistyping under
+  /// pressure is not locked out, few enough that the pad is not a way to walk
+  /// a four-digit space.
+  static const _maxAttempts = 5;
+
   String _pin = '';
+  int _used = 0;
   bool _busy = false;
   String? _error;
 
-  Future<void> _digit(String digit) async {
-    if (_pin.length >= 4 || _busy) return;
+  ReasonCode? _reason;
+  String _note = '';
+
+  /// The approval, once it has happened. Non-null switches the dialog to its
+  /// confirmation state.
+  ApprovalOutcome? _approved;
+
+  bool get _reasonSatisfied => ReasonPicker.isSatisfied(
+    requirement: widget.reasonRequirement,
+    reason: _reason,
+    note: _note,
+  );
+
+  bool get _canApprove =>
+      _pin.length >= PinRules.length && _reasonSatisfied && !_busy;
+
+  int get _attemptsLeft => _maxAttempts - _used;
+
+  void _digit(String digit) {
+    if (_pin.length >= PinRules.length || _busy || _approved != null) return;
     setState(() {
       _pin += digit;
       _error = null;
     });
-    if (_pin.length < 4) return;
+  }
+
+  void _backspace() {
+    if (_busy || _pin.isEmpty) return;
+    setState(() => _pin = _pin.substring(0, _pin.length - 1));
+  }
+
+  /// Verify and approve.
+  ///
+  /// **Not fired by the fourth digit.** The old dialog checked the PIN the
+  /// moment four digits were in, which cannot work once a reason is also
+  /// required — it would approve before the manager had said why. Approving is
+  /// now its own act.
+  Future<void> _approve() async {
+    if (!_canApprove) {
+      if (!_reasonSatisfied) {
+        setState(() => _error = context.strings.reasonRequiredHelp);
+      }
+      return;
+    }
 
     setState(() => _busy = true);
     final staff = await ref.read(staffDirectoryRepositoryProvider).byPin(_pin);
@@ -142,86 +275,469 @@ class _SupervisorOverrideDialogState
       approver: staff,
       capability: widget.capability,
     );
-    if (decision is Allowed) {
-      Navigator.of(context).pop(decision.approvedBy);
+    if (decision is Allowed && decision.approvedBy != null) {
+      setState(() {
+        _busy = false;
+        _approved = ApprovalOutcome(
+          approver: decision.approvedBy!,
+          reason: widget.reasonRequirement == ReasonRequirement.disabled
+              ? null
+              : ReasonSelection(
+                  reason: _reason,
+                  note: _note.trim().isEmpty ? null : _note.trim(),
+                ),
+        );
+      });
       return;
     }
 
     setState(() {
       _busy = false;
       _pin = '';
+      _used++;
       // Deliberately one message for both "no such PIN" and "that person may
       // not approve this". Distinguishing them would turn the keypad into a
       // way of discovering who holds which permission.
-      _error = context.strings.pinCannotApprove;
+      _error = _attemptsLeft > 0
+          ? context.strings.wrongPinAttemptsLeft(_attemptsLeft)
+          : context.strings.pinCannotApprove;
     });
-  }
-
-  void _backspace() {
-    if (_busy || _pin.isEmpty) return;
-    setState(() => _pin = _pin.substring(0, _pin.length - 1));
   }
 
   @override
   Widget build(BuildContext context) {
     final strings = context.strings;
+    final palette = context.pos;
+    final isNarrow = MediaQuery.sizeOf(context).width < PosSize.wideShellMin;
 
     return Dialog(
-      backgroundColor: context.pos.page,
+      backgroundColor: palette.surface,
       insetPadding: const EdgeInsets.all(PosSpace.s24),
-      shape: RoundedRectangleBorder(
-        side: context.pos.emphasis,
-        borderRadius: PosBorders.radius,
-      ),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 420),
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(PosSpace.xl),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(strings.supervisorApproval, style: PosText.panelTitle(color: context.pos.ink)),
-              const SizedBox(height: PosSpace.sm),
-              Text(
-                strings.supervisorApprovalHelp(widget.action),
-                style: PosText.ui(
-                  size: 13,
-                  color: context.pos.muted,
-                  height: 1.5,
-                ),
-              ),
-              const SizedBox(height: PosSpace.lg),
-              PinDots(length: _pin.length),
-              const SizedBox(height: PosSpace.lg),
-              PinPad(onDigit: _digit, onBackspace: _backspace),
-              if (_error != null) ...[
-                const SizedBox(height: PosSpace.md),
-                Container(
-                  padding: const EdgeInsets.all(PosSpace.md),
-                  decoration: BoxDecoration(
-                    color: context.pos.dangerSoft,
-                    border: Border.all(color: context.pos.danger),
-                  ),
-                  child: Text(
-                    _error!,
-                    style: PosText.ui(
-                      size: 12.5,
-                      color: context.pos.ink,
-                      height: 1.5,
+      shape: Border.all(color: palette.lineStrong, width: 2),
+      child: CallbackShortcuts(
+        bindings: {
+          // Enter approves **only when the PIN and the reason are both in**.
+          // Unlike the destructive dialog, where Enter is inert, a PIN already
+          // typed is itself the deliberate act — pressing Enter after it is a
+          // manager finishing what they started, not a reflex.
+          const SingleActivator(LogicalKeyboardKey.enter): _approved != null
+              ? () => Navigator.of(context).pop(_approved)
+              : _approve,
+          const SingleActivator(LogicalKeyboardKey.escape): () =>
+              Navigator.of(context).pop(),
+          const SingleActivator(LogicalKeyboardKey.backspace): _backspace,
+          for (final digit in const [
+            (LogicalKeyboardKey.digit0, '0'),
+            (LogicalKeyboardKey.digit1, '1'),
+            (LogicalKeyboardKey.digit2, '2'),
+            (LogicalKeyboardKey.digit3, '3'),
+            (LogicalKeyboardKey.digit4, '4'),
+            (LogicalKeyboardKey.digit5, '5'),
+            (LogicalKeyboardKey.digit6, '6'),
+            (LogicalKeyboardKey.digit7, '7'),
+            (LogicalKeyboardKey.digit8, '8'),
+            (LogicalKeyboardKey.digit9, '9'),
+          ])
+            SingleActivator(digit.$1): () => _digit(digit.$2),
+        },
+        // Something in the subtree has to hold focus or the shortcuts above are
+        // never consulted. The reason list deliberately does not take it — the
+        // number keys belong to the PIN pad here — so the dialog itself does.
+        child: Focus(
+          autofocus: true,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: PosSize.dialogApproval),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _header(strings, palette),
+                Flexible(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(PosSpace.s18),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _act(strings, palette),
+                        if (widget.requestedBy != null ||
+                            widget.subject != null) ...[
+                          const SizedBox(height: PosSpace.lg),
+                          _facts(strings, palette, isNarrow: isNarrow),
+                        ],
+                        if (widget.limitNote != null) ...[
+                          const SizedBox(height: PosSpace.lg),
+                          _limitStrip(strings, palette),
+                        ],
+                        const SizedBox(height: PosSpace.lg),
+                        if (_approved != null)
+                          _approvedStrip(strings, palette)
+                        else
+                          _entry(strings, palette, isNarrow: isNarrow),
+                        if (_error != null && _approved == null) ...[
+                          const SizedBox(height: PosSpace.md),
+                          Text(
+                            _error!,
+                            style: PosText.ui(
+                              size: 12.5,
+                              weight: FontWeight.w600,
+                              color: palette.danger,
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                   ),
                 ),
+                _footer(strings, palette),
               ],
-              const SizedBox(height: PosSpace.lg),
-              PosButton(
-                label: strings.cancel,
-                height: 44,
-                border: Border.fromBorderSide(context.pos.resting),
-                onPressed: _busy ? null : () => Navigator.of(context).pop(),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _header(AppStrings strings, PosPalette palette) => Container(
+    padding: const EdgeInsets.symmetric(
+      vertical: PosSpace.s14,
+      horizontal: PosSpace.s18,
+    ),
+    decoration: BoxDecoration(
+      color: palette.warnSoft,
+      border: Border(bottom: BorderSide(color: palette.lineStrong)),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        MicroLabel(strings.approvalRequired, color: palette.warn),
+        const SizedBox(height: PosSpace.sm),
+        Text(
+          strings.supervisorApproval,
+          style: PosText.panelTitle(color: palette.inkWarm),
+        ),
+      ],
+    ),
+  );
+
+  /// The most important element in the dialog: what is actually being approved.
+  Widget _act(AppStrings strings, PosPalette palette) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      MicroLabel(strings.approvalAction),
+      const SizedBox(height: PosSpace.sm),
+      Text(
+        widget.action,
+        style: PosText.ui(
+          size: 20,
+          weight: FontWeight.w800,
+          color: palette.inkWarm,
+        ),
+      ),
+    ],
+  );
+
+  Widget _facts(
+    AppStrings strings,
+    PosPalette palette, {
+    required bool isNarrow,
+  }) {
+    final cells = <Widget>[
+      if (widget.requestedBy != null)
+        _factCell(palette, strings.approvalRequestedBy, widget.requestedBy!),
+      if (widget.subject != null)
+        _factCell(
+          palette,
+          widget.subjectLabel ?? strings.approvalAction,
+          widget.subject!,
+          mono: true,
+        ),
+    ];
+
+    if (isNarrow || cells.length == 1) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (var i = 0; i < cells.length; i++) ...[
+            if (i > 0) const SizedBox(height: 1),
+            cells[i],
+          ],
+        ],
+      );
+    }
+
+    // IntrinsicHeight so the two cells match, which is what makes them read as
+    // one grid rather than two boxes. `CrossAxisAlignment.stretch` alone cannot
+    // do it here — the Row sits in a scrollable column, where stretching means
+    // stretching to infinity.
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(child: cells.first),
+          const SizedBox(width: 1),
+          Expanded(child: cells.last),
+        ],
+      ),
+    );
+  }
+
+  Widget _factCell(
+    PosPalette palette,
+    String label,
+    String value, {
+    bool mono = false,
+  }) => Container(
+    padding: const EdgeInsets.symmetric(
+      vertical: PosSpace.md,
+      horizontal: PosSpace.s14,
+    ),
+    decoration: BoxDecoration(
+      color: palette.surface,
+      border: Border.fromBorderSide(BorderSide(color: palette.line)),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        MicroLabel(label),
+        const SizedBox(height: PosSpace.xs),
+        if (mono)
+          MonoCode(value, size: 13, color: palette.inkWarm)
+        else
+          Text(value, style: PosText.ui(size: 13.5, color: palette.inkWarm)),
+      ],
+    ),
+  );
+
+  /// The limit and the number that exceeded it, both stated.
+  ///
+  /// A supervisor told only "above the limit" has to ask two questions before
+  /// they can decide anything.
+  Widget _limitStrip(AppStrings strings, PosPalette palette) => Container(
+    padding: const EdgeInsets.all(PosSpace.md),
+    decoration: BoxDecoration(
+      color: palette.warnSoft,
+      border: Border.all(color: palette.warn),
+    ),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsetsDirectional.only(top: 5, end: PosSpace.s10),
+          child: Container(width: 8, height: 8, color: palette.warn),
+        ),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                strings.approvalAboveLimit,
+                style: PosText.ui(
+                  size: 13,
+                  weight: FontWeight.w800,
+                  color: palette.warn,
+                ),
+              ),
+              const SizedBox(height: PosSpace.xs),
+              Text(
+                widget.limitNote!,
+                style: PosText.ui(
+                  size: 13.5,
+                  color: palette.body,
+                  height: 1.55,
+                ),
               ),
             ],
           ),
+        ),
+      ],
+    ),
+  );
+
+  Widget _entry(
+    AppStrings strings,
+    PosPalette palette, {
+    required bool isNarrow,
+  }) {
+    final pin = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        MicroLabel(strings.approvalPin),
+        const SizedBox(height: PosSpace.sm),
+        _PinField(length: _pin.length),
+        const SizedBox(height: PosSpace.md),
+        PinPad(onDigit: _digit, onBackspace: _backspace),
+      ],
+    );
+
+    if (widget.reasonRequirement == ReasonRequirement.disabled) return pin;
+
+    final reason = ReasonPicker(
+      reasons: widget.reasons,
+      requirement: widget.reasonRequirement,
+      selected: _reason,
+      note: _note,
+      compact: true,
+      // The PIN pad owns the number keys here. A reason list that also claimed
+      // them would swallow a manager's PIN into a reason.
+      autofocus: false,
+      onChanged: (picked, note) => setState(() {
+        _reason = picked;
+        _note = note;
+        _error = null;
+      }),
+    );
+
+    if (isNarrow) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          pin,
+          const SizedBox(height: PosSpace.s18),
+          reason,
+        ],
+      );
+    }
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(width: 218, child: pin),
+        const SizedBox(width: PosSpace.s18),
+        Expanded(child: reason),
+      ],
+    );
+  }
+
+  /// Both names, on screen, before anybody walks away.
+  Widget _approvedStrip(AppStrings strings, PosPalette palette) {
+    final requester =
+        widget.requestedBy ?? ref.read(signedInStaffProvider)?.name ?? '—';
+
+    return Container(
+      padding: const EdgeInsets.all(PosSpace.s14),
+      decoration: BoxDecoration(
+        color: palette.okSoft,
+        border: Border.all(color: palette.ok),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            strings.approvalRequired,
+            style: PosText.ui(
+              size: 14,
+              weight: FontWeight.w800,
+              color: palette.ok,
+            ),
+          ),
+          const SizedBox(height: PosSpace.xs),
+          Text(
+            strings.approvalRecorded(_approved!.approver.name, requester),
+            style: PosText.ui(size: 13.5, color: palette.body, height: 1.55),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _footer(AppStrings strings, PosPalette palette) {
+    final approved = _approved;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        vertical: PosSpace.s14,
+        horizontal: PosSpace.s18,
+      ),
+      decoration: BoxDecoration(
+        color: palette.page,
+        border: Border(top: BorderSide(color: palette.lineStrong)),
+      ),
+      child: approved != null
+          ? PosButton(
+              label: strings.approvalDone,
+              height: PosSize.primaryCta,
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
+              background: palette.accent,
+              foreground: palette.ink,
+              border: Border.fromBorderSide(
+                BorderSide(color: palette.accentPressed),
+              ),
+              autofocus: true,
+              onPressed: () => Navigator.of(context).pop(approved),
+            )
+          : Row(
+              children: [
+                PosButton(
+                  label: strings.cancel,
+                  height: PosSize.secondaryAction,
+                  border: Border.fromBorderSide(palette.resting),
+                  onPressed: _busy ? null : () => Navigator.of(context).pop(),
+                ),
+                const SizedBox(width: PosSpace.md),
+                Expanded(
+                  child: PosButton(
+                    label: widget.approveLabel ?? strings.supervisorApproval,
+                    height: PosSize.primaryCta,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    // Muted until the PIN and the reason are both in. Never
+                    // hidden: a manager has to be able to see what completing
+                    // the form will let them do.
+                    background: _canApprove ? palette.accent : palette.page,
+                    foreground: _canApprove ? palette.ink : palette.muted,
+                    border: Border.fromBorderSide(
+                      _canApprove
+                          ? BorderSide(color: palette.accentPressed)
+                          : palette.resting,
+                    ),
+                    onPressed: _canApprove ? _approve : null,
+                  ),
+                ),
+              ],
+            ),
+    );
+  }
+}
+
+/// The masked PIN, as one field rather than four boxes.
+///
+/// Deliberately **not** `PinDots`. That widget is four 52px boxes built for the
+/// full-width lock screen, and it does not fit the 218px column this dialog
+/// gives the keypad — the design specifies a single masked field here, and a
+/// shared widget squeezed to fit would have changed the lock screen too.
+class _PinField extends StatelessWidget {
+  const _PinField({required this.length});
+
+  final int length;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.pos;
+
+    return Container(
+      height: PosSize.searchRow,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: palette.page,
+        border: Border.fromBorderSide(palette.resting),
+      ),
+      // Digits, and therefore left to right in both locales — a PIN typed on an
+      // Arabic till is entered in the order the keys were pressed.
+      child: Directionality(
+        textDirection: TextDirection.ltr,
+        child: Text(
+          '•' * length,
+          style: PosText.mono(size: 22, color: palette.ink, letterSpacing: 11),
         ),
       ),
     );
@@ -262,7 +778,10 @@ class _RefusalDialog extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(strings.notPermittedTitle, style: PosText.panelTitle(color: context.pos.ink)),
+              Text(
+                strings.notPermittedTitle,
+                style: PosText.panelTitle(color: context.pos.ink),
+              ),
               const SizedBox(height: PosSpace.sm),
               Text(
                 // Named in words, not as `receipt.reprint`: the person

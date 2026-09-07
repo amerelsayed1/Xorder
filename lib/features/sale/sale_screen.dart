@@ -1,3 +1,4 @@
+import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -11,9 +12,14 @@ import '../../domain/models/catalog.dart';
 import '../../domain/models/ticket.dart';
 import '../../domain/repositories/repositories.dart';
 import '../payment/payment_screen.dart';
+import '../../domain/models/permissions.dart';
+import '../../domain/services/authorization.dart';
+import '../admin/presentation/supervisor_override.dart';
 import '../receipt/receipt_dialog.dart';
 import '../shift/presentation/shift_dialogs.dart';
 import 'widgets/cart_panel.dart';
+import 'widgets/discount_sheet.dart';
+import 'widgets/line_void_dialog.dart';
 import 'widgets/category_rail.dart';
 import 'widgets/modifier_sheet.dart';
 import 'widgets/pos_top_bar.dart';
@@ -30,11 +36,16 @@ class SaleScreen extends ConsumerStatefulWidget {
     super.key,
     required this.onLock,
     required this.onTables,
+    required this.onOrders,
     required this.onCloseShift,
   });
 
   final VoidCallback onLock;
   final VoidCallback onTables;
+
+  /// Order history. A destination, so leaving the till does not disturb the
+  /// live ticket — it is parked in memory and still here on return.
+  final VoidCallback onOrders;
   final VoidCallback onCloseShift;
 
   @override
@@ -44,6 +55,13 @@ class SaleScreen extends ConsumerStatefulWidget {
 class _SaleScreenState extends ConsumerState<SaleScreen> {
   final _searchController = TextEditingController();
   final _searchFocus = FocusNode();
+
+  /// The line a line-level act aims at.
+  ///
+  /// Screen state, not ticket state: it is where a person's attention is, not
+  /// a property of the sale. A resumed table must not come back with somebody
+  /// else's cursor on it, and a settled sale must not carry one to the ledger.
+  String? _selectedLineKey;
 
   @override
   void dispose() {
@@ -104,9 +122,40 @@ class _SaleScreenState extends ConsumerState<SaleScreen> {
     if (settled.ticket.tableId != null) widget.onTables();
   }
 
-  void _void(Ticket ticket) {
+  /// Void or clear the whole ticket.
+  ///
+  /// Which of those it is depends on whether the kitchen has seen any of it —
+  /// [OrderVoidFlow] decides, because that boundary is a business rule and not
+  /// something a button should be guessing at.
+  Future<void> _void(Ticket ticket) async {
+    final outcome = await OrderVoidFlow.run(context, ref, ticket: ticket);
+    if (outcome == null || !mounted) return;
+
+    if (!outcome.shouldDiscard) {
+      // The write failed and the ticket is still here on purpose. Clearing it
+      // anyway would lose the food and the record of it together.
+      posToast(context, context.strings.voidCouldNotBeRecorded);
+      return;
+    }
+
+    // The table's money never moved, so nothing else will remove the parked
+    // row — a voided table that stayed parked would come back on the floor
+    // holding a bill nobody owes.
+    // `settle` rather than a separate "release": the table is free either way,
+    // and the disk row must go for the same reason it does after payment — a
+    // voided table that stayed parked would come back on the floor holding a
+    // bill nobody owes.
+    ref.read(openTicketsProvider.notifier).settle(ticket.tableId);
+
+    setState(() => _selectedLineKey = null);
     ref.read(ticketProvider.notifier).reset();
-    posToast(context, context.strings.ticketVoided);
+    posToast(
+      context,
+      outcome.invoiceNumber == null
+          ? context.strings.ticketVoided
+          : context.strings.voidOrderRecorded(outcome.invoiceNumber!),
+    );
+    if (ticket.tableId != null) widget.onTables();
   }
 
   /// Cash up and hand the till back.
@@ -132,6 +181,109 @@ class _SaleScreenState extends ConsumerState<SaleScreen> {
     if (closed && mounted) widget.onCloseShift();
   }
 
+  /// Take money off the bill.
+  ///
+  /// **Two gates, and only ever one prompt.** Whether a person may discount at
+  /// all is `discount.apply`; how much they may take off without asking is a
+  /// limit the engine enforces. Somebody who lacks the capability entirely is
+  /// asked once here and then works inside the sheet with no ceiling — because
+  /// Order history.
+  ///
+  /// Gated here as well as on the rail button. The rail hides the control for
+  /// somebody who may not look, but `F7` is a key on a keyboard and reaches
+  /// this method whether or not a button was drawn — a gate that lives only in
+  /// the widget tree is one a shortcut walks straight past.
+  ///
+  /// Not overridable: this is not an act somebody supervises for one moment,
+  /// it is a body of records they either may read or may not.
+  void _openOrders() {
+    if (ref.read(canProvider(PosCapability.orderViewAll)) is! Allowed) {
+      posToast(context, context.strings.orderHistoryNotPermitted);
+      return;
+    }
+    widget.onOrders();
+  }
+
+  /// a manager who has just approved the act should not be called back to
+  /// approve the amount as well, with a customer standing there.
+  ///
+  /// An empty ticket is refused before any of that, so a stray `F6` between
+  /// sales does not open a dialog about nothing.
+  Future<void> _discount(Ticket ticket) async {
+    if (ticket.isEmpty) {
+      posToast(context, context.strings.discountNothingToDiscount);
+      return;
+    }
+
+    // Aimed at the selected line, or at the whole bill when there is none.
+    // The line has to still be on the ticket: a cashier who selected something
+    // and then removed it must not discount a line that is gone.
+    final line = ticket.lines
+        .where((l) => l.key == _selectedLineKey)
+        .firstOrNull;
+
+    final decision = Authorization.check(
+      ref.read(signedInStaffProvider),
+      PosCapability.discountApply,
+    );
+
+    PosStaff? approver;
+    if (decision is! Allowed) {
+      final lent = await requestPermission(
+        context,
+        ref,
+        PosCapability.discountApply,
+        action: context.strings.discountTitle,
+        auditAction: 'discount.apply',
+        entityId: ticket.id,
+      );
+      if (lent is! Allowed || lent.approvedBy == null) return;
+      approver = lent.approvedBy;
+    }
+
+    if (!mounted) return;
+    final updated = await DiscountSheet.show(
+      context,
+      ticket: ticket,
+      lineKey: line?.key,
+      lineLabel: line == null
+          ? null
+          : '${line.quantity} × '
+                '${line.product.displayName(context.strings.languageCode)} · '
+                '${line.lineTotal.format()}',
+      preApprovedBy: approver,
+    );
+    if (updated == null || !mounted) return;
+    ref.read(ticketProvider.notifier).applyEdit(updated);
+  }
+
+  /// Take the selected line off — cancelling it or voiding it, whichever this
+  /// line actually is.
+  ///
+  /// The screen does not decide which: [LineVoidFlow] reads the line's stage,
+  /// because a control that guessed would eventually record waste as
+  /// housekeeping.
+  Future<void> _removeSelectedLine(Ticket ticket) async {
+    final key = _selectedLineKey;
+    if (key == null) return;
+
+    final updated = await LineVoidFlow.run(
+      context,
+      ref,
+      ticket: ticket,
+      lineKey: key,
+    );
+    if (updated == null || !mounted) return;
+
+    ref.read(ticketProvider.notifier).applyEdit(updated);
+    // A cancelled line is gone, so the selection has to go with it. A voided
+    // one is still there and stays selected — the cashier may want to show it
+    // to somebody.
+    if (updated.lines.every((l) => l.key != key)) {
+      setState(() => _selectedLineKey = null);
+    }
+  }
+
   void _sendRound() {
     ref.read(ticketProvider.notifier).sendRound();
     posToast(context, context.strings.roundSentToKitchen);
@@ -146,7 +298,9 @@ class _SaleScreenState extends ConsumerState<SaleScreen> {
 
     if (session.isLoading || catalog.isLoading) {
       return Scaffold(
-        body: Center(child: CircularProgressIndicator(color: context.pos.accent)),
+        body: Center(
+          child: CircularProgressIndicator(color: context.pos.accent),
+        ),
       );
     }
 
@@ -218,6 +372,10 @@ class _SaleScreenState extends ConsumerState<SaleScreen> {
           const SingleActivator(LogicalKeyboardKey.f4): () {
             if (ticket.hasDraft) _sendRound();
           },
+          const SingleActivator(LogicalKeyboardKey.f6): () => _discount(ticket),
+          const SingleActivator(LogicalKeyboardKey.f7): _openOrders,
+          const SingleActivator(LogicalKeyboardKey.delete): () =>
+              _removeSelectedLine(ticket),
           const SingleActivator(LogicalKeyboardKey.f9): () => _charge(ticket),
           const SingleActivator(LogicalKeyboardKey.f10): () =>
               posToast(context, context.strings.drawerOpenedToast),
@@ -251,6 +409,12 @@ class _SaleScreenState extends ConsumerState<SaleScreen> {
             onOpenTickets: () =>
                 posToast(context, context.strings.openTicketsNotBuilt),
             onTables: widget.onTables,
+            // Hidden rather than disabled when the person may not look. See
+            // `CategoryRail.onOrders`.
+            onOrders:
+                ref.watch(canProvider(PosCapability.orderViewAll)) is Allowed
+                ? _openOrders
+                : null,
           ),
           Expanded(child: productArea),
           _cart(session, ticket, ui),
@@ -275,6 +439,11 @@ class _SaleScreenState extends ConsumerState<SaleScreen> {
     ticket: ticket,
     cashierName: session.userName,
     online: ui.online,
+    selectedLineKey: _selectedLineKey,
+    // Tapping the selected line again clears it, so a cashier can get back to
+    // discounting the whole order without hunting for a "deselect" control.
+    onSelectLine: (key) =>
+        setState(() => _selectedLineKey = _selectedLineKey == key ? null : key),
     onQuantityChanged: (key, delta) =>
         ref.read(ticketProvider.notifier).changeQuantity(key, delta),
     onSendRound: _sendRound,
@@ -350,7 +519,10 @@ class _SaleScreenState extends ConsumerState<SaleScreen> {
                       focusedBorder: InputBorder.none,
                       contentPadding: EdgeInsets.zero,
                       hintText: context.strings.searchHint,
-                      hintStyle: PosText.ui(size: 14.5, color: context.pos.muted),
+                      hintStyle: PosText.ui(
+                        size: 14.5,
+                        color: context.pos.muted,
+                      ),
                     ),
                   ),
                 ),
@@ -363,9 +535,7 @@ class _SaleScreenState extends ConsumerState<SaleScreen> {
         PosButton(
           label: context.strings.customAmount,
           height: PosSize.searchRow,
-          border: Border.fromBorderSide(
-            BorderSide(color: context.pos.inkWarm),
-          ),
+          border: Border.fromBorderSide(BorderSide(color: context.pos.inkWarm)),
           onPressed: () =>
               posToast(context, context.strings.customAmountNotBuilt),
         ),

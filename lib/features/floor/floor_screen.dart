@@ -6,15 +6,31 @@ import '../../app/providers.dart';
 import '../../core/l10n/app_strings.dart';
 import '../../core/ui/theme.dart';
 import '../../core/ui/tokens.dart';
+import '../../core/ui/widgets/pos_widgets.dart';
 import '../../domain/models/dining_table.dart';
 
 /// Floor — the dine-in landing screen. Pick a table before selling.
 ///
 /// Non-dine-in modes skip this screen entirely.
 class FloorScreen extends ConsumerWidget {
-  const FloorScreen({super.key, required this.onTablePicked});
+  const FloorScreen({
+    super.key,
+    required this.onTablePicked,
+    required this.onSellWithoutTable,
+    required this.onClose,
+  });
 
   final void Function(DiningTable table) onTablePicked;
+
+  /// Go to the sale screen with nobody seated. The floor is a dine-in
+  /// convenience, not a gate: a branch with no tables yet, or a walk-in
+  /// buying a coffee, must still be able to sell.
+  final VoidCallback onSellWithoutTable;
+
+  /// Back to the start screen. Without it a floor with no tiles on it is a
+  /// screen with no way out — the shift is open and the only exit is killing
+  /// the app.
+  final VoidCallback onClose;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -31,15 +47,24 @@ class FloorScreen extends ConsumerWidget {
         data: (data) => Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _header(strings, data, pos: context.pos),
-            Expanded(child: _grid(context, data)),
+            _header(context, strings, data),
+            Expanded(
+              child: data.isEmpty
+                  ? _empty(context, strings)
+                  : _grid(context, data),
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _header(AppStrings strings, List<DiningTable> tables, {required PosPalette pos}) {
+  Widget _header(
+    BuildContext context,
+    AppStrings strings,
+    List<DiningTable> tables,
+  ) {
+    final pos = context.pos;
     final free = tables.where((t) => t.state == TableState.free).length;
     final open = tables.where((t) => t.state == TableState.open).length;
     final billed = tables.where((t) => t.state == TableState.billAsked).length;
@@ -54,11 +79,38 @@ class FloorScreen extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(strings.pickATable, style: PosText.screenTitle(color: pos.ink)),
-          const SizedBox(height: PosSpace.xs),
-          Text(
-            strings.pickATableHelp,
-            style: PosText.ui(size: 13.5, color: pos.muted),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      strings.pickATable,
+                      style: PosText.screenTitle(color: pos.ink),
+                    ),
+                    const SizedBox(height: PosSpace.xs),
+                    Text(
+                      strings.pickATableHelp,
+                      style: PosText.ui(size: 13.5, color: pos.muted),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: PosSpace.md),
+              PosButton(
+                label: strings.sellWithoutTable,
+                border: Border.fromBorderSide(pos.resting),
+                onPressed: onSellWithoutTable,
+              ),
+              const SizedBox(width: PosSpace.sm),
+              PosButton(
+                label: strings.backToTill,
+                border: Border.fromBorderSide(pos.resting),
+                onPressed: onClose,
+              ),
+            ],
           ),
           const SizedBox(height: PosSpace.md),
           // Legend strip — three cells on 1px borders and gaps, width:max-content.
@@ -79,6 +131,19 @@ class FloorScreen extends ConsumerWidget {
       ),
     );
   }
+
+  /// A branch with no tables. Says who makes them, and does not trap the
+  /// cashier on a screen with nothing to tap.
+  Widget _empty(BuildContext context, AppStrings strings) => Center(
+    child: Padding(
+      padding: const EdgeInsets.all(PosSpace.s18),
+      child: Text(
+        strings.floorHasNoTables,
+        textAlign: TextAlign.center,
+        style: PosText.ui(size: 14, color: context.pos.muted),
+      ),
+    ),
+  );
 
   Widget _legend(String text, Color color, {required PosPalette pos}) => Container(
     color: pos.surface,

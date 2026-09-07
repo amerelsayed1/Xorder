@@ -294,7 +294,7 @@ class SetupController extends Notifier<SetupDraft> {
     clearError: true,
   );
 
-  /// Digits only, and never longer than [SetupDraft.maxPinLength].
+  /// Digits only, and never longer than [SetupDraft.pinLength].
   ///
   /// Enforced as it is TYPED rather than checked on submit. A PIN is entered on
   /// a keypad at the counter — there are no letters to type there — so a
@@ -303,8 +303,8 @@ class SetupController extends Notifier<SetupDraft> {
   void setOwnerPin(String pin) {
     final digits = pin.replaceAll(RegExp(r'[^0-9]'), '');
     state = state.copyWith(
-      ownerPin: digits.length > SetupDraft.maxPinLength
-          ? digits.substring(0, SetupDraft.maxPinLength)
+      ownerPin: digits.length > SetupDraft.pinLength
+          ? digits.substring(0, SetupDraft.pinLength)
           : digits,
       clearError: true,
     );
@@ -337,7 +337,7 @@ class SetupController extends Notifier<SetupDraft> {
     // the PIN too short.
     if (state.ownerPin.isNotEmpty && !state.hasUsablePin) {
       state = state.copyWith(
-        error: s.pinLength(SetupDraft.minPinLength, SetupDraft.maxPinLength),
+        error: s.pinIsExactlyDigits(SetupDraft.pinLength),
       );
       return;
     }
@@ -433,6 +433,9 @@ class SetupController extends Notifier<SetupDraft> {
         ...LocalBootstrap.tillGrants(
           database: state.deployment.databaseName,
           role: state.deployment.databaseUser,
+          // Only a cloud till runs `BootstrapSeeder`; only a cloud till is
+          // therefore granted what it writes. See [LocalBootstrap.tillGrants].
+          cloudSeeding: state.deployment.mode == DeploymentMode.cloud,
         ),
         ...LocalBootstrap.administrativeGrants(
           role: state.deployment.adminDatabaseUser,

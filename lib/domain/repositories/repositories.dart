@@ -1,8 +1,13 @@
 import '../../core/config/deployment.dart';
 import '../../core/money/money.dart';
 import '../models/catalog.dart';
+import '../models/discount.dart';
+import '../models/reason_code.dart';
 import '../models/permissions.dart';
 import '../models/dining_table.dart';
+import '../models/order_record.dart';
+import '../models/refund.dart';
+import '../services/refund_engine.dart' show RefundQuote;
 import '../models/shift.dart';
 import '../models/ticket.dart';
 
@@ -55,7 +60,14 @@ abstract interface class OrdersRepository {
   /// Implementations must be safe to call repeatedly with the same
   /// `ticket.id` — that is the `client_transaction_id` the server deduplicates
   /// on (POS-BE-007). **A submission is never silently discarded.**
-  Future<SubmitOrderResult> submit(Ticket ticket);
+  ///
+  /// [servedBy] is who rang it up, taken at settlement rather than read from
+  /// whoever the repository was built for. On a seated table the person who
+  /// opened the ticket and the person who takes the payment are routinely two
+  /// different people, and the sale belongs to the one who closed it. Null is
+  /// permitted — a till selling before anybody has signed in still records the
+  /// order, unattributed, rather than refusing it.
+  Future<SubmitOrderResult> submit(Ticket ticket, {PosStaff? servedBy});
 
   /// How many settled sales this terminal still owes the platform.
   ///
@@ -65,6 +77,106 @@ abstract interface class OrdersRepository {
   /// restart: a till that forgot its backlog when someone rebooted it would
   /// report "synced" while holding a day of unsent takings.
   Future<int> pendingSyncCount();
+
+  /// Record an order that was made and then thrown away.
+  ///
+  /// **Only for a ticket the kitchen has already seen.** An unsent ticket that
+  /// somebody clears is not a business event — nothing was made, nothing was
+  /// wasted, and writing a row for it would fill the ledger with abandoned
+  /// keystrokes. Once food has been fired, the opposite is true: the cost is
+  /// real and a restaurant that cannot total it cannot manage it.
+  ///
+  /// The order is written with its **real totals** and `status = 'VOIDED'`, not
+  /// zeroed. What was thrown away is the number a waste report exists to show,
+  /// and a voided order recording nothing would erase it. It takes an invoice
+  /// number for the same reason: a gap in the sequence is a question nobody can
+  /// answer, and a voided entry is one anybody can.
+  ///
+  /// Idempotent on `ticket.id`, exactly as [submit] is.
+  Future<SubmitOrderResult> voidOrder(
+    Ticket ticket, {
+    required PosStaff by,
+    int? reasonId,
+    String? note,
+    PosStaff? approvedBy,
+    PosStaff? servedBy,
+  });
+}
+
+/// Reading back what was already sold.
+///
+/// Separate from [OrdersRepository] on purpose. That one writes, in a
+/// transaction, against a terminal's own write context; this one only reads,
+/// and it is the surface refunds, reprints and the void report will all be
+/// built on. Keeping them apart means a screen that merely *looks* at history
+/// cannot be handed something that can settle a sale.
+abstract interface class OrderHistoryRepository {
+  /// Newest first, capped at [OrderHistoryQuery.limit].
+  Future<List<OrderRecord>> search(OrderHistoryQuery query);
+
+  /// One order with its lines, payments and discounts.
+  ///
+  /// Null when the id names nothing — a row can be gone by the time somebody
+  /// clicks it, and that is a "no longer there", not an exception.
+  Future<OrderRecordDetail?> detail(int orderId);
+
+  /// The single order carrying this invoice number, or null.
+  ///
+  /// Exact match. A refund is issued against *the* order on the receipt in
+  /// somebody's hand, and "did you mean one of these four" is not a question to
+  /// ask while money is being given back.
+  Future<OrderRecord?> byInvoiceNumber(String invoiceNumber);
+}
+
+/// The outcome of issuing a refund.
+class RefundResult {
+  const RefundResult({
+    required this.clientRefundId,
+    required this.refundId,
+    required this.replayed,
+  });
+
+  final String clientRefundId;
+  final int refundId;
+
+  /// This id had already been written, so nothing new happened and the original
+  /// is what came back. A retry after a timeout must never hand money back
+  /// twice.
+  final bool replayed;
+}
+
+/// Money going back.
+///
+/// Deliberately not a method on [OrdersRepository]. A refund is its own record
+/// with its own provenance, and the screens that read history must be able to
+/// show refunds without holding anything that can issue one.
+abstract interface class RefundsRepository {
+  /// Write a refund, its lines and how the money went back — in one
+  /// transaction, or not at all.
+  ///
+  /// The caller supplies a [RefundQuote] rather than raw figures. Every number
+  /// written is one the operator was shown; nothing is recalculated between the
+  /// confirmation and the row.
+  ///
+  /// Idempotent on [clientRefundId], exactly as an order is on its transaction
+  /// id. Pass the same id to retry a call that timed out.
+  Future<RefundResult> issue({
+    required OrderRecord order,
+    required RefundQuote quote,
+    required PosStaff by,
+    required List<RefundTender> tenders,
+    required String clientRefundId,
+    PosStaff? approvedBy,
+    int? reasonId,
+    String? note,
+  });
+
+  /// Every refund already issued against one order, oldest first.
+  ///
+  /// The engine needs these: the remainder rule works off what each previous
+  /// refund gave back part by part, which `pos_orders.refunded_minor` alone
+  /// cannot answer.
+  Future<List<Refund>> forOrder(int orderId);
 }
 
 /// A signed-in cashier and the terminal they are working.
@@ -107,6 +219,32 @@ class PosSession {
 
 extension on String {
   String get characters => isEmpty ? '' : substring(0, 1).toUpperCase();
+}
+
+/// The discounts a restaurant offers, and the ceiling a person may give away.
+///
+/// Read-only at the till. Authoring belongs to Settings (Wave D) — a cashier
+/// applies a discount, they do not invent one.
+abstract interface class DiscountsRepository {
+  /// Everything configured, live or not. [Discount.isLiveAt] decides what is
+  /// actually on offer, and it takes the time as an argument so a till cannot
+  /// be tested only at the hour the test happens to run.
+  Future<List<Discount>> all();
+
+  /// What [staff] may take off by hand before a supervisor is needed.
+  ///
+  /// Comes from the role, until Wave C's `pos_permission_limits` can express it
+  /// per person too. A person with no role, or a role with no ceiling
+  /// configured, is [DiscountLimit.unlimited] — see that class for why the
+  /// absent case must not read as zero.
+  Future<DiscountLimit> limitFor(PosStaff? staff);
+}
+
+/// The reason lists a restaurant picks from.
+abstract interface class ReasonsRepository {
+  /// Active reasons for one act, in the restaurant's own order — which is the
+  /// order the picker's number keys follow.
+  Future<List<ReasonCode>> forScope(ReasonScope scope);
 }
 
 abstract interface class SessionRepository {

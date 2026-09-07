@@ -2,6 +2,7 @@ import '../../../core/config/deployment.dart';
 import '../../../domain/repositories/repositories.dart'
     show PosBranch, PosTerminalSummary;
 import '../../licensing/domain/license.dart';
+import '../../../core/security/pin_hash.dart';
 
 /// How this terminal is being set up (POS-BE-023).
 ///
@@ -63,11 +64,10 @@ enum SetupStep {
 /// Everything the wizard has gathered so far.
 class SetupDraft {
   /// A PIN is typed on a keypad at the counter, so it is digits and nothing
-  /// else. Four is the shortest that is not trivially watched over a shoulder;
-  /// twelve is longer than anybody will reliably retype during a lunch rush,
-  /// and is the point past which a longer one buys nothing real.
-  static const minPinLength = 4;
-  static const maxPinLength = 12;
+  /// else, and it is exactly [PinRules.length] of them — the till's keypads
+  /// submit on the last digit rather than on a confirm key, so a longer PIN
+  /// created here could never be typed by the person it belongs to.
+  static const pinLength = PinRules.length;
 
   const SetupDraft({
     // The wizard opens on the licence — see [SetupStep].
@@ -137,10 +137,7 @@ class SetupDraft {
   }
 
   /// Whether the first person's PIN is one the till could actually accept.
-  bool get hasUsablePin =>
-      ownerPin.length >= minPinLength &&
-      ownerPin.length <= maxPinLength &&
-      RegExp(r'^[0-9]+$').hasMatch(ownerPin);
+  bool get hasUsablePin => PinRules.isWellFormed(ownerPin);
 
   /// How many terminals the plan covers. One until a licence says otherwise.
   int get maxTerminals => claims?.maxTerminals ?? 1;

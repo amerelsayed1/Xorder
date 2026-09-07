@@ -150,7 +150,10 @@ class UnconfiguredOrdersRepository implements OrdersRepository {
   const UnconfiguredOrdersRepository();
 
   @override
-  Future<SubmitOrderResult> submit(Ticket ticket) async => throw StateError(
+  Future<SubmitOrderResult> submit(
+    Ticket ticket, {
+    PosStaff? servedBy,
+  }) async => throw StateError(
     'This terminal has nowhere to record a sale. It is not connected to a '
     'database, so this sale cannot be taken on this till.',
   );
@@ -158,6 +161,22 @@ class UnconfiguredOrdersRepository implements OrdersRepository {
   /// Nothing was ever taken here, so nothing is owed.
   @override
   Future<int> pendingSyncCount() async => 0;
+
+  /// Refuses out loud, for the same reason [submit] does. A void that reported
+  /// success while writing nowhere would tell a manager the waste was recorded
+  /// when it was not.
+  @override
+  Future<SubmitOrderResult> voidOrder(
+    Ticket ticket, {
+    required PosStaff by,
+    int? reasonId,
+    String? note,
+    PosStaff? approvedBy,
+    PosStaff? servedBy,
+  }) async => throw StateError(
+    'This terminal has nowhere to record a void. It is not connected to a '
+    'database, so this cannot be recorded on this till.',
+  );
 }
 
 /// Hardware discovery is not implemented on any platform yet.

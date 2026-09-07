@@ -74,8 +74,17 @@ class FileSecretStore implements PosDbSecretStore {
   Future<void> _writeAll(Map<String, Object?> secrets) async {
     final target = await _file();
     final temporary = File('${target.path}.tmp');
+    // Empty first, then restricted, then filled. Written-then-chmodded leaves
+    // the secret on disk at the umask default — 0644 on a stock macOS — for
+    // as long as the write and the rename take, and anything that reads the
+    // directory in that window gets the database password. The window is
+    // small; it is also unnecessary.
+    await temporary.writeAsString('', flush: true);
+    await _restrict(temporary);
     await temporary.writeAsString(jsonEncode(secrets), flush: true);
     await temporary.rename(target.path);
+    // Rename preserves the mode, so this is belt and braces — and it is what
+    // repairs a `secrets.json` that an earlier build left group-readable.
     await _restrict(target);
   }
 

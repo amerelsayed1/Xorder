@@ -206,6 +206,12 @@ letting `density` be read from a provider inside the widget: it is per-terminal
 settings state, and the panel should take it, so the sticky-per-order rule lives
 in the sale screen where the order does.
 
+**Status: the discount half and the voided-line treatment are built.** Line
+selection, the line discount child row (naming its approver), the order
+discount row in the totals block, and the struck-through voided line with its
+`VOID` chip and reason — 15 tests. **Not built: the two density modes** and the
+per-line note affordance. Neither is blocked on another feature.
+
 ---
 
 ## 4. Open items
@@ -304,7 +310,7 @@ Nothing here is blocked by §5 — all four are refinements, not gates.
 | 2 | `PermissionGate` | `Authorization` (exists) | **built** ✅ — [permission_gate.dart](../../lib/core/ui/widgets/permission_gate.dart) |
 | 3 | `ReasonPicker` · `ReasonSheet` | `pos_reason_codes` (migration 9) | **built** ✅ — [reason_picker.dart](../../lib/core/ui/widgets/reason_picker.dart) |
 | 4 | `DestructiveConfirmDialog` | 3 | **built** ✅ — [destructive_confirm_dialog.dart](../../lib/core/ui/widgets/destructive_confirm_dialog.dart) |
-| 5 | `ManagerApprovalDialog` (extend `SupervisorOverrideDialog`) | 3, limits from Wave C | A1, A2, B1, B2 |
+| 5 | `ManagerApprovalDialog` (extended `SupervisorOverrideDialog`) | 3 | **built** ✅ — [supervisor_override.dart](../../lib/features/admin/presentation/supervisor_override.dart) |
 | 6 | `FailureCard` | — | **built** ✅ — [failure_card.dart](../../lib/core/ui/widgets/failure_card.dart) |
 | 6a | `CartPanel` density + A8 line treatments | 4, 5 (for the actions the rows display) | A8 |
 | 7 | `BlindCountDialog` | `cash.variance.view` (§4.2) | B3, B4 |
@@ -313,10 +319,25 @@ Nothing here is blocked by §5 — all four are refinements, not gates.
 
 **1, 2, 3, 4 and 6 are built** (69 tests), and **migration 9 has landed** with
 the `pos_reason_codes` and `pos_order_line_events` tables the picker reads.
-Remaining: **5** (`ManagerApprovalDialog`, extending `SupervisorOverrideDialog`)
-whose limit strip wants Wave C's `pos_permission_limits`; **7**
-(`BlindCountDialog`) which wants the `cash.variance.view` capability of §4.2;
-and **8**/**9**, which are Waves D and G.
+**5 is built too** (18 tests). Its limit strip did not need Wave C after all:
+the caller composes the sentence from the figures it already holds, so the
+dialog stays generic and the interim `pos_roles.max_discount_bp` columns from
+migration 10 are enough to feed it.
+
+Remaining: **7** (`BlindCountDialog`), which wants the `cash.variance.view`
+capability of §4.2, and **8**/**9**, which are Waves D and G.
+
+Two deviations from the handoff, both deliberate:
+
+* **The PIN is one masked field, not `PinDots`.** The handoff specifies a
+  masked field 48 tall in a 218px column; `PinDots` is four 52px boxes built
+  for the full-width lock screen and overflows that column by 22px. Squeezing
+  the shared widget would have changed the lock screen too.
+* **The approved strip needs a `Done` press.** The handoff designs a state
+  naming both people; showing it and closing on a timer would be worse, and
+  closing instantly would skip it. `Done` is autofocused so Enter dismisses.
+  If that extra keypress proves slow during service it is a design
+  conversation, not something to quietly drop.
 
 Two things the built widgets deliberately do *not* do yet, both waiting on a
 wave rather than on a decision:

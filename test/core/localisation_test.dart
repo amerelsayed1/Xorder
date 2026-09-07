@@ -649,7 +649,11 @@ bool _allowed(String text) {
     'Counter 1',
     'MAADI-7Q42',
     'EGP',
+    // Key names. Not translated because they are what is printed on the
+    // keyboard: an Arabic till has the same F-keys as an English one, and a
+    // chip that said something else would be naming a key nobody has.
     'F2',
+    'F7',
     'F9',
     'CLR',
     'SKU',

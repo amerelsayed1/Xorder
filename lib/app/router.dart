@@ -4,12 +4,14 @@ import 'package:go_router/go_router.dart';
 
 import '../features/admin/presentation/management_screen.dart';
 import '../features/floor/floor_screen.dart';
+import '../features/history/presentation/order_history_screen.dart';
 import '../features/licensing/presentation/licence_screen.dart';
 import '../features/setup/presentation/setup_wizard.dart';
 import '../features/setup/presentation/welcome_screen.dart';
 import '../features/lock/lock_screen.dart';
 import '../features/sale/sale_screen.dart';
 import '../features/start/start_screen.dart';
+import '../domain/models/ticket.dart';
 import 'providers.dart';
 
 abstract final class PosRoutes {
@@ -20,6 +22,7 @@ abstract final class PosRoutes {
   static const lock = '/lock';
   static const floor = '/floor';
   static const sale = '/sale';
+  static const orders = '/orders';
   static const management = '/management';
 }
 
@@ -52,6 +55,12 @@ final routerProvider = Provider<GoRouter>((ref) {
       if (configured && (at == PosRoutes.setup || at == PosRoutes.welcome)) {
         return PosRoutes.start;
       }
+      // A branch that does not seat anybody has no floor. Sending a takeaway
+      // counter to a table picker asks a question it has no answer to.
+      if (at == PosRoutes.floor &&
+          !ref.read(branchOrderTypesProvider).contains(OrderType.dineIn)) {
+        return PosRoutes.sale;
+      }
       return null;
     },
     routes: [
@@ -64,6 +73,15 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: PosRoutes.setup,
         builder: (context, state) =>
             SetupWizard(onFinished: () => context.go(PosRoutes.start)),
+      ),
+      // A destination rather than a dialog over the sale screen: somebody
+      // arrives here with a receipt in their hand, and routing it means the
+      // live ticket is not put at risk by a back gesture. Leaving returns to
+      // the till with that ticket exactly as it was.
+      GoRoute(
+        path: PosRoutes.orders,
+        builder: (context, state) =>
+            OrderHistoryScreen(onClose: () => context.go(PosRoutes.sale)),
       ),
       // Not nested under the sale screen: Management is a place somebody goes,
       // not a step in ringing up a ticket, and a back gesture out of it must
@@ -98,6 +116,20 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: PosRoutes.floor,
         builder: (context, state) => FloorScreen(
+          onClose: () => context.go(PosRoutes.start),
+          onSellWithoutTable: () {
+            // Nobody is seated, so the ticket must not stay dine-in — it would
+            // price service charge for a table that does not exist. Take the
+            // first non-dine-in type the branch actually sells.
+            final counter = ref
+                .read(branchOrderTypesProvider)
+                .where((type) => type != OrderType.dineIn)
+                .firstOrNull;
+            if (counter != null) {
+              ref.read(ticketProvider.notifier).setOrderType(counter);
+            }
+            context.go(PosRoutes.sale);
+          },
           onTablePicked: (table) {
             // A busy table resumes its parked ticket — same transaction id,
             // same lines. A free one seats the live ticket.
@@ -126,6 +158,7 @@ final routerProvider = Provider<GoRouter>((ref) {
             }
             context.go(PosRoutes.floor);
           },
+          onOrders: () => context.go(PosRoutes.orders),
           onCloseShift: () => context.go(PosRoutes.start),
         ),
       ),

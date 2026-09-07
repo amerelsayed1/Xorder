@@ -6,10 +6,11 @@ import '../../core/l10n/app_strings.dart';
 import '../../core/ui/theme.dart';
 import '../../core/ui/tokens.dart';
 import '../../core/ui/widgets/pos_widgets.dart';
+import '../../core/security/pin_hash.dart';
 
 /// Lock screen — step away without closing the shift.
 ///
-/// Four digits unlock. The comparison runs against the **cached** staff PIN
+/// [PinRules.length] digits unlock. The comparison runs against the **cached**
 /// hash so it works offline; the shift stays open throughout, and every overlay
 /// is closed on lock.
 class LockScreen extends ConsumerStatefulWidget {
@@ -26,13 +27,13 @@ class _LockScreenState extends ConsumerState<LockScreen> {
   bool _error = false;
 
   Future<void> _push(String digit) async {
-    if (_pin.length >= 4) return;
+    if (_pin.length >= PinRules.length) return;
     setState(() {
       _pin += digit;
       _error = false;
     });
 
-    if (_pin.length == 4) {
+    if (_pin.length == PinRules.length) {
       final ok = await ref.read(sessionRepositoryProvider).verifyPin(_pin);
       if (!mounted) return;
 

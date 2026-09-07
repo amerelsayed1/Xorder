@@ -12,6 +12,7 @@ import '../../admin/presentation/supervisor_override.dart';
 import '../../../domain/models/permissions.dart';
 import '../../../domain/models/shift.dart';
 import '../../../domain/services/authorization.dart';
+import '../../../core/security/pin_hash.dart';
 
 /// Opening a shift: who is on the till, and what is in the drawer.
 ///
@@ -50,12 +51,12 @@ class _OpenShiftDialogState extends ConsumerState<OpenShiftDialog> {
   }
 
   Future<void> _submitPin(String digit) async {
-    if (_pin.length >= 4 || _busy) return;
+    if (_pin.length >= PinRules.length || _busy) return;
     setState(() {
       _pin += digit;
       _error = null;
     });
-    if (_pin.length < 4) return;
+    if (_pin.length < PinRules.length) return;
 
     setState(() => _busy = true);
     final staff = await ref.read(sessionRepositoryProvider).signIn(_pin);

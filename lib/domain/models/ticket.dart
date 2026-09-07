@@ -43,6 +43,129 @@ enum OrderType {
 /// Whether a line has been fired to the kitchen yet.
 enum LineStage { draft, sent }
 
+/// A line that was thrown away after the kitchen had already made it.
+///
+/// **Only ever set on a sent line.** Removing something before it is fired is
+/// housekeeping and leaves no trace on the bill; voiding one after it is cooked
+/// is waste with a cost attached, and the two must not be recorded as the same
+/// act — that distinction is the whole reason this type exists rather than a
+/// boolean.
+class LineVoid {
+  const LineVoid({
+    required this.byStaffId,
+    required this.at,
+    this.reasonId,
+    this.note,
+    this.approvedByStaffId,
+    this.approvedByName,
+  });
+
+  final int byStaffId;
+  final DateTime at;
+  final int? reasonId;
+  final String? note;
+
+  /// Set when the person doing it needed a supervisor to lend the permission.
+  final int? approvedByStaffId;
+  final String? approvedByName;
+}
+
+/// What happened to a line, for the record.
+///
+/// Accumulated on the ticket and written to `pos_order_line_events` at
+/// settlement. It has to ride the ticket rather than be written as it happens,
+/// because a line cancelled before the first round is sent belongs to an order
+/// row that does not exist yet — which is exactly why the table keys on
+/// `line_key` rather than a line id.
+/// A line sold at a price that is not the menu price.
+///
+/// A snapshot, like [LineVoid] — it carries the price that was replaced as well
+/// as the one that replaced it, because "was 50.00, now 40.00" is the sentence
+/// a receipt and an audit both need, and the menu price will have moved on by
+/// the time anybody asks.
+///
+/// It overrides the **whole unit price**, modifiers folded in. That is what a
+/// cashier means by "make it 40": the customer pays 40 for that item, not 40
+/// plus whatever the extras came to.
+class PriceOverride {
+  const PriceOverride({
+    required this.price,
+    required this.original,
+    required this.byStaffId,
+    required this.at,
+    this.reasonId,
+    this.note,
+    this.approvedByStaffId,
+    this.approvedByName,
+  });
+
+  /// What the customer pays per unit now.
+  final Money price;
+
+  /// What they would have paid. Kept so the cart can strike it through and the
+  /// ledger can say what the change was worth.
+  final Money original;
+
+  final int byStaffId;
+  final DateTime at;
+  final int? reasonId;
+  final String? note;
+
+  /// Set when the reduction was past the person's limit and a supervisor lent
+  /// the permission. Both names on the record, as everywhere else.
+  final int? approvedByStaffId;
+  final String? approvedByName;
+
+  /// What the restaurant gave up, per unit. Negative when the price went *up*,
+  /// which is legitimate and rare.
+  Money get reduction => original - price;
+}
+
+class TicketLineEvent {
+  const TicketLineEvent({
+    required this.lineKey,
+    required this.event,
+    required this.staffId,
+    required this.at,
+    this.quantityBefore,
+    this.quantityAfter,
+    this.unitPriceBefore,
+    this.unitPriceAfter,
+    this.reasonId,
+    this.note,
+    this.approvedByStaffId,
+  });
+
+  final String lineKey;
+
+  /// One of the values `pos_order_line_events.event` allows. A string this
+  /// build invents that the CHECK constraint does not know would fail the whole
+  /// settlement transaction, which is why it is only ever set from
+  /// [TicketLineEventKind].
+  final String event;
+
+  final int staffId;
+  final DateTime at;
+  final int? quantityBefore;
+  final int? quantityAfter;
+
+  /// Minor units, and only on a `price_overridden` event. Migration 9
+  /// provisioned both columns for exactly this.
+  final int? unitPriceBefore;
+  final int? unitPriceAfter;
+
+  final int? reasonId;
+  final String? note;
+  final int? approvedByStaffId;
+}
+
+/// The events this build writes. Mirrors migration 9's CHECK constraint.
+abstract final class TicketLineEventKind {
+  static const removedBeforeSend = 'removed_before_send';
+  static const voidedAfterSend = 'voided_after_send';
+  static const priceOverridden = 'price_overridden';
+}
+
 /// One line on a ticket.
 ///
 /// The line *key* — product id plus sorted modifier ids — is what merges
@@ -56,6 +179,8 @@ class TicketLine {
     this.note,
     this.stage = LineStage.draft,
     this.roundNumber,
+    this.voided,
+    this.priceOverride,
   });
 
   final Product product;
@@ -64,6 +189,16 @@ class TicketLine {
   final String? note;
   final LineStage stage;
   final int? roundNumber;
+
+  /// Non-null once this line has been voided. The line **stays on the ticket**
+  /// — see `Ticket.totals` for what that costs, and the cart panel for why.
+  final LineVoid? voided;
+
+  /// Non-null when this line is being sold at a price somebody set by hand.
+  final PriceOverride? priceOverride;
+
+  bool get isVoided => voided != null;
+  bool get isRepriced => priceOverride != null;
 
   /// Merge key. Sorted so selection order never splits a line.
   static String keyFor(Product product, List<Modifier> modifiers) {
@@ -74,7 +209,15 @@ class TicketLine {
   String get key => keyFor(product, modifiers);
 
   /// Price of one unit including its modifiers. Exact integer arithmetic.
-  Money get unitPrice => modifiers.fold(
+  ///
+  /// An override replaces the whole figure rather than adjusting it, so adding
+  /// a modifier to a repriced line does not quietly walk the price back up
+  /// past what was agreed.
+  Money get unitPrice => priceOverride?.price ?? menuUnitPrice;
+
+  /// What this line would cost at menu prices. Struck through in the cart when
+  /// [priceOverride] is set, and the base a limit is measured against.
+  Money get menuUnitPrice => modifiers.fold(
     product.effectivePrice,
     (total, modifier) => total + modifier.priceDelta,
   );
@@ -89,6 +232,12 @@ class TicketLine {
     LineStage? stage,
     int? roundNumber,
     String? note,
+    LineVoid? voided,
+    PriceOverride? priceOverride,
+    /// Put the line back on the menu price. Needed as a flag because null in
+    /// [priceOverride] already means "leave it alone", and every other
+    /// `copyWith` here reads the same way.
+    bool clearPriceOverride = false,
   }) => TicketLine(
     product: product,
     quantity: quantity ?? this.quantity,
@@ -96,6 +245,10 @@ class TicketLine {
     note: note ?? this.note,
     stage: stage ?? this.stage,
     roundNumber: roundNumber ?? this.roundNumber,
+    voided: voided ?? this.voided,
+    priceOverride: clearPriceOverride
+        ? null
+        : (priceOverride ?? this.priceOverride),
   );
 }
 
@@ -215,6 +368,7 @@ class Ticket {
     this.lines = const [],
     this.tenders = const [],
     this.discounts = const [],
+    this.lineEvents = const [],
     this.taxConfig = const TaxConfig(),
     this.currency = 'EGP',
     this.exponent = 2,
@@ -239,6 +393,12 @@ class Ticket {
   /// what it came off. [AppliedDiscount.lineKey] carries the association.
   final List<AppliedDiscount> discounts;
 
+  /// What has happened to the lines, in order, for `pos_order_line_events`.
+  ///
+  /// Append-only in practice: nothing removes an event, because the record of a
+  /// line being cancelled is not itself cancellable.
+  final List<TicketLineEvent> lineEvents;
+
   final TaxConfig taxConfig;
   final String currency;
   final int exponent;
@@ -252,8 +412,21 @@ class Ticket {
   List<TicketLine> get sentLines =>
       lines.where((l) => l.stage == LineStage.sent).toList();
 
+  /// The lines that are actually being charged for.
+  ///
+  /// A voided line stays on the ticket so the cashier can show a customer what
+  /// happened to it, and is excluded from every total — those two facts
+  /// together are the whole point of voiding rather than deleting.
+  List<TicketLine> get chargeableLines =>
+      lines.where((l) => !l.isVoided).toList();
+
   bool get isEmpty => lines.isEmpty;
-  bool get hasDraft => draftLines.isNotEmpty;
+
+  /// Nothing left that anybody owes for. A ticket of nothing but voided lines
+  /// is not an empty ticket — it is a record — but there is nothing to charge.
+  bool get hasNothingToCharge => chargeableLines.isEmpty;
+
+  bool get hasDraft => draftLines.any((l) => !l.isVoided);
 
   /// A seated table shows "Close table"; everything else shows "Charge".
   bool get isSeated => orderType == OrderType.dineIn && tableId != null;
@@ -271,8 +444,16 @@ class Ticket {
   /// Rounding is still applied **once per charge line** — service and VAT —
   /// which is what keeps the parts footing to the whole.
   TicketTotals get totals {
-    final subtotal = lines.fold(_zero, (sum, line) => sum + line.lineTotal);
-    final discount = discounts.fold(_zero, (sum, d) => sum + d.amount);
+    final chargeable = chargeableLines;
+    final subtotal = chargeable.fold(_zero, (sum, line) => sum + line.lineTotal);
+
+    // A discount on a line that was later voided comes off with it. Leaving it
+    // in would credit the customer for something they are no longer being
+    // charged for — money off nothing.
+    final live = {for (final line in chargeable) line.key};
+    final discount = discounts
+        .where((d) => d.lineKey == null || live.contains(d.lineKey))
+        .fold(_zero, (sum, d) => sum + d.amount);
 
     // Clamped, not trusted. Nothing in the engine can build a ticket whose
     // discounts exceed its goods, but a ticket rebuilt from a parked payload
@@ -320,6 +501,7 @@ class Ticket {
     List<TicketLine>? lines,
     List<Tender>? tenders,
     List<AppliedDiscount>? discounts,
+    List<TicketLineEvent>? lineEvents,
     TaxConfig? taxConfig,
     int? roundsSent,
     bool clearTable = false,
@@ -332,6 +514,7 @@ class Ticket {
     lines: lines ?? this.lines,
     tenders: tenders ?? this.tenders,
     discounts: discounts ?? this.discounts,
+    lineEvents: lineEvents ?? this.lineEvents,
     taxConfig: taxConfig ?? this.taxConfig,
     currency: currency,
     exponent: exponent,

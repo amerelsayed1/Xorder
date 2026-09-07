@@ -1,4 +1,5 @@
 import '../models/permissions.dart';
+import '../models/reason_code.dart';
 import '../models/shift.dart';
 
 /// The answer to "may this person do this?".
@@ -15,12 +16,17 @@ sealed class PermissionDecision {
 }
 
 class Allowed extends PermissionDecision {
-  const Allowed({this.approvedBy});
+  const Allowed({this.approvedBy, this.reason});
 
   /// Set when the permission was lent for this one action. The caller must put
   /// it on the audit row: an approved discount with no approver on the record
   /// is indistinguishable from one nobody approved.
   final PosStaff? approvedBy;
+
+  /// Why, when the approval flow asked. Travels on the decision rather than
+  /// being returned alongside it, so a caller cannot commit the act and forget
+  /// to record the reason — the two arrive together or not at all.
+  final ReasonSelection? reason;
 
   bool get wasOverridden => approvedBy != null;
 }
@@ -71,13 +77,14 @@ abstract final class Authorization {
   static PermissionDecision approve({
     required PosStaff? approver,
     required String capability,
+    ReasonSelection? reason,
   }) {
     final wanted = PosCapability.canonical(capability);
     if (!PosCapability.overridable.contains(wanted)) return Denied(wanted);
     if (approver == null || !approver.isActive || !approver.can(wanted)) {
       return NeedsOverride(wanted);
     }
-    return Allowed(approvedBy: approver);
+    return Allowed(approvedBy: approver, reason: reason);
   }
 
   /// Why a role cannot be saved as written, or null if it can.

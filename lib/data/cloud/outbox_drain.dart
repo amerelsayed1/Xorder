@@ -329,12 +329,36 @@ class SyncingOrdersRepository implements OrdersRepository {
   final void Function() _kick;
 
   @override
-  Future<SubmitOrderResult> submit(Ticket ticket) async {
-    final result = await _inner.submit(ticket);
+  Future<SubmitOrderResult> submit(Ticket ticket, {PosStaff? servedBy}) async {
+    final result = await _inner.submit(ticket, servedBy: servedBy);
     _kick();
     return result;
   }
 
   @override
   Future<int> pendingSyncCount() => _inner.pendingSyncCount();
+
+  /// Kicks the drain too. A voided order is a row the platform has to hear
+  /// about as much as a paid one — arguably more, since it is the one a
+  /// restaurant will be asked about.
+  @override
+  Future<SubmitOrderResult> voidOrder(
+    Ticket ticket, {
+    required PosStaff by,
+    int? reasonId,
+    String? note,
+    PosStaff? approvedBy,
+    PosStaff? servedBy,
+  }) async {
+    final result = await _inner.voidOrder(
+      ticket,
+      by: by,
+      reasonId: reasonId,
+      note: note,
+      approvedBy: approvedBy,
+      servedBy: servedBy,
+    );
+    _kick();
+    return result;
+  }
 }

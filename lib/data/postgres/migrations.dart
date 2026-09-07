@@ -1056,6 +1056,303 @@ const posMigrations = <PosMigration>[
     EXCEPTION WHEN duplicate_object THEN NULL; END \$\$
     ''',
   ]),
+  // An order that cannot say who sold it is one nobody can question. Until now
+  // the only person on a `pos_orders` row was whoever *voided* it — the record
+  // named the exception and not the sale.
+  //
+  // `shift_id` is not an answer to this. It names the drawer, and a drawer is
+  // worked by more than one person; on a two-cashier shift, attributing every
+  // sale to whoever opened the till is not a smaller truth, it is a wrong one.
+  //
+  // Three things need this before they can be built: order history (§90) lists
+  // the seller, a refund (§18) is issued against a sale somebody made, and
+  // sales-by-staff (§59) is a report with no subject without it.
+  PosMigration(11, 'who sold it', [
+    // Nullable, because every order already written was written without one and
+    // there is nobody to backfill them with. An honest blank beats a name
+    // chosen by a query.
+    //
+    // RESTRICT, like `voided_by` and `pos_shifts.opened_by`: deleting a member
+    // of staff must never delete the record of what they sold.
+    '''
+    ALTER TABLE pos_orders
+      ADD COLUMN IF NOT EXISTS served_by bigint REFERENCES pos_staff(id) ON DELETE RESTRICT
+    ''',
+    // History is read one branch at a time, newest first, which is neither of
+    // the indexes this table already has: the unique key on the invoice is
+    // useless without a number to look up, and `pos_orders_status_idx` only
+    // helps when a status filter is set.
+    '''
+    CREATE INDEX IF NOT EXISTS pos_orders_history_idx
+      ON pos_orders (restaurant_id, branch_id, occurred_at DESC)
+    ''',
+    // Partial, because most orders have no seller yet and an index over a
+    // column that is mostly NULL is mostly wasted pages.
+    '''
+    CREATE INDEX IF NOT EXISTS pos_orders_served_by_idx
+      ON pos_orders (restaurant_id, served_by, occurred_at DESC)
+      WHERE served_by IS NOT NULL
+    ''',
+  ]),
+  // Money going back out of the drawer.
+  //
+  // Three tables and four rules, and the rules live here rather than in Dart
+  // for the reason the whole schema does: a till is not the only thing that can
+  // write to this database, and "we always call the repository" is a promise
+  // nobody can keep across a psql prompt, a sync path and a build from next
+  // year.
+  //
+  // The rules:
+  //
+  //  1. A line cannot be refunded more times than it was sold. Held by the
+  //     `refunded_quantity` counter migration 9 already constrained to
+  //     `<= quantity` — this migration adds the trigger that maintains it.
+  //  2. An order cannot give back more than it took. Same shape: a
+  //     `refunded_minor` counter with a CHECK against `total_minor`.
+  //  3. A refund line must belong to the order being refunded. Not in the
+  //     original plan; it is the one that would otherwise let a mistyped id
+  //     refund somebody else's food.
+  //  4. A refund says where the money went, and the tender adds up to the
+  //     refund. Deferred to commit, because the payments are inserted after
+  //     the refund they belong to.
+  PosMigration(12, 'refunds — money going back, and the record of it', [
+    // The counter, not a SUM over `pos_refunds`. It is the number the *next*
+    // refund has to check, inside the same transaction, under the same row
+    // lock — recomputing it from another table is how an order gets refunded
+    // twice at two tills.
+    '''
+    ALTER TABLE pos_orders
+      ADD COLUMN IF NOT EXISTS refunded_minor bigint NOT NULL DEFAULT 0
+    ''',
+    '''
+    DO \$\$ BEGIN
+      ALTER TABLE pos_orders ADD CONSTRAINT pos_orders_refunded_within_taken CHECK (
+        refunded_minor >= 0 AND refunded_minor <= total_minor);
+    EXCEPTION WHEN duplicate_object THEN NULL; END \$\$
+    ''',
+
+    // RESTRICT on the order: deleting a sale must never orphan the record of
+    // money given back against it.
+    //
+    // `reason_id` is nullable, which is a deliberate departure from the plan's
+    // NOT NULL. §18 lists `refund.reason_required` as a *setting* with a
+    // default of true — a NOT NULL column would make the off position
+    // unimplementable, and a database that forbids a configuration the
+    // specification permits is a database that will be worked around. The
+    // policy is enforced in `RefundPolicy`, where it can be configured.
+    '''
+    CREATE TABLE IF NOT EXISTS pos_refunds (
+      id                bigserial    PRIMARY KEY,
+      client_refund_id  uuid         NOT NULL,
+      restaurant_id     bigint       NOT NULL REFERENCES pos_restaurants(id) ON DELETE CASCADE,
+      branch_id         bigint       NOT NULL REFERENCES pos_branches(id) ON DELETE CASCADE,
+      terminal_id       uuid         NOT NULL,
+      order_id          bigint       NOT NULL REFERENCES pos_orders(id) ON DELETE RESTRICT,
+      shift_id          bigint       REFERENCES pos_shifts(id) ON DELETE SET NULL,
+      business_day_id   bigint,
+      kind              text         NOT NULL,
+      subtotal_minor    bigint       NOT NULL,
+      discount_minor    bigint       NOT NULL DEFAULT 0,
+      service_minor     bigint       NOT NULL,
+      vat_minor         bigint       NOT NULL,
+      total_minor       bigint       NOT NULL,
+      reason_id         bigint       REFERENCES pos_reason_codes(id) ON DELETE RESTRICT,
+      note              text,
+      refunded_by       bigint       NOT NULL REFERENCES pos_staff(id) ON DELETE RESTRICT,
+      approved_by_id    bigint       REFERENCES pos_staff(id) ON DELETE RESTRICT,
+      occurred_at       timestamptz  NOT NULL DEFAULT now(),
+      -- Idempotency, exactly as an order has it. A till that retries after a
+      -- timeout gets the original refund back, never a second one.
+      CONSTRAINT pos_refunds_client_id_unique
+        UNIQUE (restaurant_id, client_refund_id),
+      CONSTRAINT pos_refunds_kind_known CHECK (kind IN ('full', 'partial')),
+      -- A refund of nothing is not a refund. It is a row somebody would write
+      -- to make a reason code appear against an order without giving anything
+      -- back.
+      CONSTRAINT pos_refunds_total_positive CHECK (total_minor > 0),
+      CONSTRAINT pos_refunds_parts_sane CHECK (
+        subtotal_minor >= 0 AND discount_minor >= 0
+        AND service_minor >= 0 AND vat_minor >= 0)
+    )
+    ''',
+    'CREATE INDEX IF NOT EXISTS pos_refunds_order_idx ON pos_refunds (order_id)',
+    '''
+    CREATE INDEX IF NOT EXISTS pos_refunds_history_idx
+      ON pos_refunds (restaurant_id, branch_id, occurred_at DESC)
+    ''',
+
+    // RESTRICT on the order line for the same reason as the order: the line is
+    // what the counter hangs off, and losing it would leave a quantity nothing
+    // can explain.
+    '''
+    CREATE TABLE IF NOT EXISTS pos_refund_lines (
+      id               bigserial  PRIMARY KEY,
+      refund_id        bigint     NOT NULL REFERENCES pos_refunds(id) ON DELETE CASCADE,
+      order_line_id    bigint     NOT NULL REFERENCES pos_order_lines(id) ON DELETE RESTRICT,
+      quantity         integer    NOT NULL,
+      unit_price_minor bigint     NOT NULL,
+      line_total_minor bigint     NOT NULL,
+      -- The name as it was sold, again. A dish renamed in March must not
+      -- rewrite what a refund receipt said in January.
+      name_snapshot    text       NOT NULL,
+      CONSTRAINT pos_refund_lines_quantity_positive CHECK (quantity > 0),
+      CONSTRAINT pos_refund_lines_prices_sane
+        CHECK (unit_price_minor >= 0 AND line_total_minor >= 0),
+      -- One row per line per refund. Two rows for the same line inside one
+      -- refund would still total correctly and would make the receipt
+      -- unreadable.
+      CONSTRAINT pos_refund_lines_once_per_refund UNIQUE (refund_id, order_line_id)
+    )
+    ''',
+    '''
+    CREATE INDEX IF NOT EXISTS pos_refund_lines_order_line_idx
+      ON pos_refund_lines (order_line_id)
+    ''',
+
+    '''
+    CREATE TABLE IF NOT EXISTS pos_refund_payments (
+      id             bigserial    PRIMARY KEY,
+      refund_id      bigint       NOT NULL REFERENCES pos_refunds(id) ON DELETE CASCADE,
+      tender_type_id bigint       NOT NULL,
+      label          text         NOT NULL,
+      amount_minor   bigint       NOT NULL,
+      reference      varchar(80),
+      occurred_at    timestamptz  NOT NULL DEFAULT now(),
+      CONSTRAINT pos_refund_payments_amount_positive CHECK (amount_minor > 0)
+    )
+    ''',
+    '''
+    CREATE INDEX IF NOT EXISTS pos_refund_payments_refund_idx
+      ON pos_refund_payments (refund_id)
+    ''',
+
+    // ── The triggers that hold the counters ──────────────────────────────
+    //
+    // SECURITY DEFINER, and the till is deliberately NOT granted UPDATE on
+    // either counter. The effect is that `refunded_quantity` and
+    // `refunded_minor` can only move by inserting a refund row: the counter
+    // and the record it summarises cannot disagree, because there is no way to
+    // write one without the other.
+    //
+    // `search_path` is pinned. A SECURITY DEFINER function that resolves its
+    // own table names through a caller-controlled search path is the textbook
+    // privilege-escalation hole.
+    '''
+    CREATE OR REPLACE FUNCTION pos_refund_applied() RETURNS trigger
+      LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS \$fn\$
+    DECLARE
+      sold pos_orders%ROWTYPE;
+    BEGIN
+      -- FOR UPDATE, so two tills refunding the same order queue rather than
+      -- both reading a stale `refunded_minor` and both being allowed.
+      SELECT * INTO sold FROM pos_orders WHERE id = NEW.order_id FOR UPDATE;
+
+      IF sold.restaurant_id <> NEW.restaurant_id
+         OR sold.branch_id <> NEW.branch_id THEN
+        RAISE EXCEPTION
+          'a refund must belong to the same branch as the order it refunds';
+      END IF;
+
+      -- Money that never arrived cannot go back. A voided order took nothing;
+      -- a fully refunded one has nothing left.
+      IF sold.status NOT IN ('PAID', 'CLOSED', 'PARTIALLY_REFUNDED') THEN
+        RAISE EXCEPTION 'order % is %, so there is nothing to refund',
+          sold.id, sold.status;
+      END IF;
+
+      UPDATE pos_orders
+         SET refunded_minor = refunded_minor + NEW.total_minor,
+             -- Derived from the counter rather than passed in, so the status
+             -- and the money can never drift apart.
+             status = CASE
+               WHEN refunded_minor + NEW.total_minor >= total_minor
+                 THEN 'REFUNDED' ELSE 'PARTIALLY_REFUNDED' END,
+             status_changed_at = NEW.occurred_at
+       WHERE id = NEW.order_id;
+
+      RETURN NEW;
+    END \$fn\$
+    ''',
+    'DROP TRIGGER IF EXISTS pos_refunds_apply ON pos_refunds',
+    '''
+    CREATE TRIGGER pos_refunds_apply AFTER INSERT ON pos_refunds
+      FOR EACH ROW EXECUTE FUNCTION pos_refund_applied()
+    ''',
+
+    '''
+    CREATE OR REPLACE FUNCTION pos_refund_line_applied() RETURNS trigger
+      LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS \$fn\$
+    BEGIN
+      -- The `order_id` clause is the point. Without it a mistyped line id
+      -- refunds a quantity off somebody else's order, and every total still
+      -- adds up.
+      UPDATE pos_order_lines
+         SET refunded_quantity = refunded_quantity + NEW.quantity
+       WHERE id = NEW.order_line_id
+         AND order_id = (SELECT order_id FROM pos_refunds WHERE id = NEW.refund_id);
+
+      IF NOT FOUND THEN
+        RAISE EXCEPTION
+          'refund line % does not belong to the order being refunded',
+          NEW.order_line_id;
+      END IF;
+
+      RETURN NEW;
+    END \$fn\$
+    ''',
+    'DROP TRIGGER IF EXISTS pos_refund_lines_apply ON pos_refund_lines',
+    '''
+    CREATE TRIGGER pos_refund_lines_apply AFTER INSERT ON pos_refund_lines
+      FOR EACH ROW EXECUTE FUNCTION pos_refund_line_applied()
+    ''',
+
+    // Deferred to commit: the payments are inserted after the refund they
+    // belong to, so an immediate check would refuse every refund ever written.
+    '''
+    CREATE OR REPLACE FUNCTION pos_refund_tender_balances() RETURNS trigger
+      LANGUAGE plpgsql AS \$fn\$
+    DECLARE
+      tendered bigint;
+    BEGIN
+      SELECT COALESCE(SUM(amount_minor), 0) INTO tendered
+        FROM pos_refund_payments WHERE refund_id = NEW.id;
+
+      IF tendered <> NEW.total_minor THEN
+        RAISE EXCEPTION
+          'refund % is %, but % was tendered back — a refund that does not foot is one nobody can reconcile against a drawer',
+          NEW.id, NEW.total_minor, tendered;
+      END IF;
+
+      RETURN NEW;
+    END \$fn\$
+    ''',
+    'DROP TRIGGER IF EXISTS pos_refunds_tendered_in_full ON pos_refunds',
+    '''
+    CREATE CONSTRAINT TRIGGER pos_refunds_tendered_in_full
+      AFTER INSERT ON pos_refunds
+      DEFERRABLE INITIALLY DEFERRED
+      FOR EACH ROW EXECUTE FUNCTION pos_refund_tender_balances()
+    ''',
+
+    // The refund reasons §18 asks for. Seeded like migration 9's, and only
+    // where the restaurant has none — a restaurant that has edited its list
+    // must not have this build's opinion pushed back over it.
+    '''
+    INSERT INTO pos_reason_codes (restaurant_id, scope, code, name_en, name_ar, sort_order)
+    SELECT r.id, v.scope, v.code, v.name_en, v.name_ar, v.sort_order
+      FROM pos_restaurants r
+     CROSS JOIN (VALUES
+       ('refund', 'customer_unhappy', 'Customer not happy', 'العميل غير راضٍ', 1),
+       ('refund', 'wrong_item',       'Wrong item served',  'صنف خاطئ',        2),
+       ('refund', 'quality',          'Quality problem',    'مشكلة في الجودة', 3),
+       ('refund', 'overcharged',      'Overcharged',        'حُوسب بالزيادة',  4),
+       ('refund', 'order_cancelled',  'Order cancelled',    'أُلغي الطلب',     5)
+     ) AS v(scope, code, name_en, name_ar, sort_order)
+     WHERE NOT EXISTS (
+       SELECT 1 FROM pos_reason_codes existing
+        WHERE existing.restaurant_id = r.id AND existing.scope = 'refund')
+    ''',
+  ]),
 ];
 
 /// Brings the branch database up to the current schema.

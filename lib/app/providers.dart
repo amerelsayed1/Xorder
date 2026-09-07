@@ -24,8 +24,12 @@ import '../data/postgres/postgres_admin_repositories.dart';
 import '../data/postgres/postgres_catalog_admin_repository.dart';
 import '../data/postgres/postgres_catalog_repository.dart';
 import '../data/postgres/postgres_directory_repositories.dart';
+import '../data/postgres/postgres_discounts_repository.dart';
+import '../data/postgres/postgres_reason_repository.dart';
 import '../data/postgres/postgres_floor_repository.dart';
+import '../data/postgres/postgres_order_history_repository.dart';
 import '../data/postgres/postgres_orders_repository.dart';
+import '../data/postgres/postgres_refunds_repository.dart';
 import '../data/postgres/money_config_codec.dart';
 import '../data/postgres/postgres_parked_tickets.dart';
 import '../data/postgres/postgres_shift_repository.dart';
@@ -41,6 +45,10 @@ import '../features/setup/application/setup_controller.dart';
 import '../domain/models/catalog.dart';
 import '../domain/models/dining_table.dart';
 import '../domain/models/ticket.dart';
+import '../domain/models/discount.dart';
+import '../domain/models/order_record.dart';
+import '../domain/models/refund.dart';
+import '../domain/models/reason_code.dart';
 import '../domain/models/permissions.dart';
 import '../domain/repositories/admin_repositories.dart';
 import '../domain/repositories/repositories.dart';
@@ -93,6 +101,58 @@ final catalogRepositoryProvider = Provider<CatalogRepository>((ref) {
     config: config,
   );
 });
+
+/// The discounts this restaurant offers, and the ceiling a role may give away.
+final discountsRepositoryProvider = Provider<DiscountsRepository>((ref) {
+  final config = ref.watch(deploymentProvider);
+  final context = ref.watch(posWriteContextProvider);
+
+  if (context == null || PosDatabase.hostFor(config) == null) {
+    return const UnconfiguredDiscountsRepository();
+  }
+  // Currency and exponent are left at their defaults, which are `Ticket`'s
+  // defaults too — a discount priced in a different currency from the ticket it
+  // comes off would not add up. When currency becomes configurable (SRS §93,
+  // Wave D) both read it from the same place.
+  return PostgresDiscountsRepository(
+    database: ref.watch(posDatabaseProvider),
+    config: config,
+    restaurantId: context.restaurantId,
+  );
+});
+
+/// Everything the restaurant currently offers. Refreshed when the till does.
+final discountsProvider = FutureProvider<List<Discount>>(
+  (ref) => ref.watch(discountsRepositoryProvider).all(),
+);
+
+/// What the person at the till may take off without a supervisor.
+final discountLimitProvider = FutureProvider<DiscountLimit>(
+  (ref) => ref
+      .watch(discountsRepositoryProvider)
+      .limitFor(ref.watch(signedInStaffProvider)),
+);
+
+/// The reason lists this restaurant picks from.
+final reasonsRepositoryProvider = Provider<ReasonsRepository>((ref) {
+  final config = ref.watch(deploymentProvider);
+  final context = ref.watch(posWriteContextProvider);
+
+  if (context == null || PosDatabase.hostFor(config) == null) {
+    return const UnconfiguredReasonsRepository();
+  }
+  return PostgresReasonsRepository(
+    database: ref.watch(posDatabaseProvider),
+    config: config,
+    restaurantId: context.restaurantId,
+  );
+});
+
+/// The reasons offered for one act.
+final reasonCodesProvider =
+    FutureProvider.family<List<ReasonCode>, ReasonScope>(
+      (ref, scope) => ref.watch(reasonsRepositoryProvider).forScope(scope),
+    );
 
 final tablesRepositoryProvider = Provider<TablesRepository>((ref) {
   final config = ref.watch(deploymentProvider);
@@ -161,6 +221,80 @@ ordersRepositoryProvider = Provider<OrdersRepository>((ref) {
   final sync = ref.watch(cloudSyncProvider);
   return sync == null ? inner : SyncingOrdersRepository(inner, sync.kick);
 });
+
+/// Reading settled orders back — history, and everything built on it.
+///
+/// A separate binding from [ordersRepositoryProvider] even though both talk to
+/// the same tables. That one writes and is wrapped in the sync kicker; this one
+/// only reads, so a screen that lists history cannot be handed something that
+/// can settle a sale.
+final orderHistoryRepositoryProvider = Provider<OrderHistoryRepository>((ref) {
+  final config = ref.watch(deploymentProvider);
+  final context = ref.watch(posWriteContextProvider);
+
+  if (context == null || PosDatabase.hostFor(config) == null) {
+    return const UnconfiguredOrderHistoryRepository();
+  }
+  return PostgresOrderHistoryRepository(
+    database: ref.watch(posDatabaseProvider),
+    config: config,
+    restaurantId: context.restaurantId,
+    // Branch-scoped, not merely restaurant-scoped. A till lists the orders
+    // taken at the counter it is standing on; showing another shop's takings
+    // would be a privacy problem before it was a usability one.
+    branchId: context.branchId,
+  );
+});
+
+/// One slice of history. Keyed by the query, so changing a filter is a new
+/// read rather than a mutation of a list somebody is looking at.
+final orderHistoryProvider =
+    FutureProvider.family<List<OrderRecord>, OrderHistoryQuery>(
+      (ref, query) => ref.watch(orderHistoryRepositoryProvider).search(query),
+    );
+
+/// One order, opened from the list.
+final orderDetailProvider = FutureProvider.family<OrderRecordDetail?, int>(
+  (ref, orderId) => ref.watch(orderHistoryRepositoryProvider).detail(orderId),
+);
+
+/// Money going back.
+///
+/// Takes the shift by `read`, not `watch`, for the same reason the orders
+/// repository does: a refund stamps the shift that was open when it was given,
+/// and rebuilding this mid-transaction because a shift closed at another till
+/// would be worse than an unattributed refund.
+final refundsRepositoryProvider = Provider<RefundsRepository>((ref) {
+  final config = ref.watch(deploymentProvider);
+  final context = ref.watch(posWriteContextProvider);
+
+  if (context == null || PosDatabase.hostFor(config) == null) {
+    return const UnconfiguredRefundsRepository();
+  }
+  return PostgresRefundsRepository(
+    database: ref.watch(posDatabaseProvider),
+    config: config,
+    context: context,
+    shiftId: ref.read(shiftProvider).valueOrNull?.id,
+  );
+});
+
+/// Every refund already issued against one order.
+///
+/// The refund engine needs these, not merely the total: the remainder rule
+/// works off what each previous refund gave back part by part.
+final refundsForOrderProvider = FutureProvider.family<List<Refund>, int>(
+  (ref, orderId) => ref.watch(refundsRepositoryProvider).forOrder(orderId),
+);
+
+/// The restaurant's refund rules.
+///
+/// A provider today so that every screen already asks the right question. When
+/// scoped settings land (Wave D) this reads `pos_settings` and nothing that
+/// depends on it changes.
+final refundPolicyProvider = Provider<RefundPolicy>(
+  (ref) => RefundPolicy.defaults,
+);
 
 final branchRepositoryProvider = Provider<BranchRepository>((ref) {
   final config = ref.watch(deploymentProvider);
@@ -640,6 +774,21 @@ class TicketController extends Notifier<Ticket> {
       state = TicketEngine.removeLine(state, lineKey);
 
   void sendRound() => state = TicketEngine.sendRound(state);
+
+  /// Take back a ticket a sheet has edited.
+  ///
+  /// Distinct from [adopt], which takes over a *different* ticket wholesale
+  /// when a table is resumed. This is the same sale, changed: the discount
+  /// sheet prices against a copy — it has to, because it shows the resulting
+  /// total before the cashier commits — so what comes back is a whole ticket
+  /// rather than an instruction.
+  ///
+  /// Guarded on the id, so a sheet still open when the sale was cleared cannot
+  /// resurrect the ticket it was editing.
+  void applyEdit(Ticket next) {
+    if (next.id != state.id) return;
+    state = next;
+  }
 
   void setOrderType(OrderType type) =>
       state = TicketEngine.setOrderType(state, type);

@@ -65,7 +65,7 @@ class PostgresOrdersRepository implements OrdersRepository {
   final DateTime Function() _now;
 
   @override
-  Future<SubmitOrderResult> submit(Ticket ticket) async {
+  Future<SubmitOrderResult> submit(Ticket ticket, {PosStaff? servedBy}) async {
     final totals = ticket.totals;
     final occurredAt = _now().toUtc();
 
@@ -97,13 +97,13 @@ class PostgresOrdersRepository implements OrdersRepository {
           INSERT INTO pos_orders (
             client_transaction_id, restaurant_id, branch_id, terminal_id,
             invoice_number, order_type, table_id, table_label, guest_count,
-            currency, exponent, subtotal_minor, service_minor, vat_minor,
-            total_minor, occurred_at, shift_id
+            currency, exponent, subtotal_minor, discount_minor, service_minor,
+            vat_minor, total_minor, occurred_at, shift_id, served_by
           ) VALUES (
             @txn, @restaurant, @branch, @terminal,
             @invoice, @orderType, @tableId, @tableLabel, @guests,
-            @currency, @exponent, @subtotal, @service, @vat,
-            @total, @occurredAt, @shift
+            @currency, @exponent, @subtotal, @discount, @service,
+            @vat, @total, @occurredAt, @shift, @servedBy
           )
           ON CONFLICT (restaurant_id, client_transaction_id) DO NOTHING
           RETURNING id, invoice_number
@@ -121,11 +121,21 @@ class PostgresOrdersRepository implements OrdersRepository {
           'currency': ticket.currency,
           'exponent': ticket.exponent,
           'subtotal': totals.subtotal.minor,
+          // Written with the rest of the totals, not derived afterwards. An
+          // order whose total is discounted while `discount_minor` says zero
+          // does not foot: subtotal + service + vat would not equal total, and
+          // anyone auditing it finds a sale that charged less than it can
+          // account for.
+          'discount': totals.discount.minor,
           'service': totals.service.minor,
           'vat': totals.vat.minor,
           'total': totals.total.minor,
           'occurredAt': occurredAt,
           'shift': shiftId,
+          // Who closed the sale, passed in at settlement. Null is a real
+          // answer — a till selling before anybody signed in still records
+          // the order, unattributed, rather than refusing it.
+          'servedBy': servedBy?.id,
         },
       );
 
@@ -150,7 +160,9 @@ class PostgresOrdersRepository implements OrdersRepository {
       }
 
       final orderId = inserted.first[0] as int;
-      await _insertLines(tx, orderId, ticket);
+      final lineIds = await _insertLines(tx, orderId, ticket);
+      await _insertLineEvents(tx, orderId, ticket, lineIds);
+      await _insertDiscounts(tx, orderId, ticket, lineIds);
       await _insertPayments(tx, orderId, ticket, occurredAt);
       final queued = await _enqueueForSync(tx, orderId, ticket);
 
@@ -161,6 +173,127 @@ class PostgresOrdersRepository implements OrdersRepository {
         // false in offline mode, where the sale is already everywhere it will
         // ever go.
         queued: queued,
+        serverId: orderId,
+        invoiceNumber: inserted.first[1] as String?,
+      );
+    });
+  }
+
+  @override
+  Future<SubmitOrderResult> voidOrder(
+    Ticket ticket, {
+    required PosStaff by,
+    int? reasonId,
+    String? note,
+    PosStaff? approvedBy,
+    PosStaff? servedBy,
+  }) async {
+    final totals = ticket.totals;
+    final occurredAt = _now().toUtc();
+
+    return _db.runTx(_config, (tx) async {
+      // Same replay guard as a settlement, and for the same reason: a till that
+      // retried after a timeout must not record the waste twice.
+      final replay = await tx.execute(
+        Sql.named(
+          'SELECT id, invoice_number FROM pos_orders '
+          'WHERE restaurant_id = @restaurant AND client_transaction_id = @txn',
+        ),
+        parameters: {'restaurant': _context.restaurantId, 'txn': ticket.id},
+      );
+      if (replay.isNotEmpty) {
+        return SubmitOrderResult(
+          clientTransactionId: ticket.id,
+          queued: false,
+          serverId: replay.first[0] as int,
+          invoiceNumber: replay.first[1] as String?,
+        );
+      }
+
+      final invoiceNumber = await _nextInvoiceNumber(tx, occurredAt);
+
+      final inserted = await tx.execute(
+        Sql.named('''
+          INSERT INTO pos_orders (
+            client_transaction_id, restaurant_id, branch_id, terminal_id,
+            invoice_number, order_type, table_id, table_label, guest_count,
+            currency, exponent, subtotal_minor, discount_minor, service_minor,
+            vat_minor, total_minor, occurred_at, shift_id,
+            status, status_changed_at, voided_at, voided_by, void_reason_id,
+            void_note, served_by
+          ) VALUES (
+            @txn, @restaurant, @branch, @terminal,
+            @invoice, @orderType, @tableId, @tableLabel, @guests,
+            @currency, @exponent, @subtotal, @discount, @service,
+            @vat, @total, @occurredAt, @shift,
+            'VOIDED', @occurredAt, @occurredAt, @voidedBy, @reason,
+            @note, @servedBy
+          )
+          ON CONFLICT (restaurant_id, client_transaction_id) DO NOTHING
+          RETURNING id, invoice_number
+        '''),
+        parameters: {
+          'txn': ticket.id,
+          'restaurant': _context.restaurantId,
+          'branch': _context.branchId,
+          'terminal': _context.terminalId,
+          'invoice': invoiceNumber,
+          'orderType': ticket.orderType.wire,
+          'tableId': ticket.tableId,
+          'tableLabel': ticket.tableLabel,
+          'guests': ticket.guestCount,
+          'currency': ticket.currency,
+          'exponent': ticket.exponent,
+          // The **real** totals, not zeroes. What was thrown away is the number
+          // a waste report exists to show, and an order recording nothing would
+          // erase it. Every report filters on `status`; that is what it is for.
+          'subtotal': totals.subtotal.minor,
+          'discount': totals.discount.minor,
+          'service': totals.service.minor,
+          'vat': totals.vat.minor,
+          'total': totals.total.minor,
+          'occurredAt': occurredAt,
+          'shift': shiftId,
+          'voidedBy': by.id,
+          // Falls back to the person voiding. On the live cart they are the
+          // one who rang it up; a manager voiding somebody else's ticket is
+          // named in `approved_by` on the audit row, not here. Passing the
+          // seller explicitly is always better and the sale screen does.
+          'servedBy': (servedBy ?? by).id,
+          'reason': reasonId,
+          'note': note,
+        },
+      );
+
+      if (inserted.isEmpty) {
+        final winner = await tx.execute(
+          Sql.named(
+            'SELECT id, invoice_number FROM pos_orders '
+            'WHERE restaurant_id = @restaurant AND client_transaction_id = @txn',
+          ),
+          parameters: {'restaurant': _context.restaurantId, 'txn': ticket.id},
+        );
+        return SubmitOrderResult(
+          clientTransactionId: ticket.id,
+          queued: false,
+          serverId: winner.first[0] as int,
+          invoiceNumber: winner.first[1] as String?,
+        );
+      }
+
+      final orderId = inserted.first[0] as int;
+      final lineIds = await _insertLines(tx, orderId, ticket);
+      await _insertLineEvents(tx, orderId, ticket, lineIds);
+      await _insertDiscounts(tx, orderId, ticket, lineIds);
+      // **No payments.** A voided order took no money, and a zero-amount tender
+      // row would be refused by `pos_order_payments_amount_positive` anyway.
+
+      // Not queued for the platform. `POS-BE-006` is the contract for a settled
+      // sale; what a voided one looks like on the wire is not decided, and
+      // sending a shape we invented would have to be unsent later.
+      return SubmitOrderResult(
+        clientTransactionId: ticket.id,
+        queued: false,
         serverId: orderId,
         invoiceNumber: inserted.first[1] as String?,
       );
@@ -280,19 +413,28 @@ class PostgresOrdersRepository implements OrdersRepository {
     int padTo = 6,
   }) => '$prefix-$period-${value.toString().padLeft(padTo, '0')}';
 
-  Future<void> _insertLines(TxSession tx, int orderId, Ticket ticket) async {
+  /// @return line key → the row id it was written as, so a line discount can
+  /// point at the line it came off.
+  Future<Map<String, int>> _insertLines(
+    TxSession tx,
+    int orderId,
+    Ticket ticket,
+  ) async {
+    final ids = <String, int>{};
+
     for (final line in ticket.lines) {
-      await tx.execute(
+      final inserted = await tx.execute(
         Sql.named('''
           INSERT INTO pos_order_lines (
             order_id, line_key, menu_item_id, name_snapshot, modifier_ids,
             modifier_summary, quantity, unit_price_minor, line_total_minor,
-            stage, note
+            stage, note, voided_at, voided_by, void_reason_id
           ) VALUES (
             @order, @key, @itemId, @name, @modifierIds,
             @summary, @quantity, @unitPrice, @lineTotal,
-            @stage, @note
+            @stage, @note, @voidedAt, @voidedBy, @voidReason
           )
+          RETURNING id
         '''),
         parameters: {
           'order': orderId,
@@ -308,6 +450,107 @@ class PostgresOrdersRepository implements OrdersRepository {
           'lineTotal': line.lineTotal.minor,
           'stage': line.stage.name,
           'note': line.note,
+          // A voided line is still written, with its price, and simply does not
+          // count toward the totals above it. The row is the evidence: deleting
+          // it would leave the kitchen's ticket and the bill describing
+          // different meals, with nothing to say why.
+          'voidedAt': line.voided?.at,
+          'voidedBy': line.voided?.byStaffId,
+          'voidReason': line.voided?.reasonId,
+        },
+      );
+      ids[line.key] = inserted.first[0]! as int;
+    }
+
+    return ids;
+  }
+
+  /// What happened to the lines, in order.
+  ///
+  /// `order_line_id` is filled in where the line still exists and left null
+  /// where it does not — a line cancelled before the first round was sent never
+  /// became a row, which is exactly why the table keys on `line_key` as well.
+  Future<void> _insertLineEvents(
+    TxSession tx,
+    int orderId,
+    Ticket ticket,
+    Map<String, int> lineIds,
+  ) async {
+    for (final event in ticket.lineEvents) {
+      await tx.execute(
+        Sql.named('''
+          INSERT INTO pos_order_line_events (
+            order_id, order_line_id, line_key, event, quantity_before,
+            quantity_after, unit_price_before_minor, unit_price_after_minor,
+            reason_id, note, staff_id, approved_by_id, occurred_at
+          ) VALUES (
+            @order, @line, @key, @event, @before,
+            @after, @priceBefore, @priceAfter,
+            @reason, @note, @staff, @approvedBy, @occurredAt
+          )
+        '''),
+        parameters: {
+          'order': orderId,
+          'line': lineIds[event.lineKey],
+          'key': event.lineKey,
+          'event': event.event,
+          'before': event.quantityBefore,
+          'after': event.quantityAfter,
+          // Only ever set on a `price_overridden` event. Migration 9
+          // provisioned both columns; this is what fills them.
+          'priceBefore': event.unitPriceBefore,
+          'priceAfter': event.unitPriceAfter,
+          'reason': event.reasonId,
+          'note': event.note,
+          'staff': event.staffId,
+          'approvedBy': event.approvedByStaffId,
+          'occurredAt': event.at.toUtc(),
+        },
+      );
+    }
+  }
+
+  /// What was taken off, and who took it off.
+  ///
+  /// In the same transaction as the order and its lines, for the reason the
+  /// outbox is: a total that says a discount was given, with no row saying
+  /// which discount or on whose authority, is a sale nobody can answer for.
+  Future<void> _insertDiscounts(
+    TxSession tx,
+    int orderId,
+    Ticket ticket,
+    Map<String, int> lineIds,
+  ) async {
+    for (final discount in ticket.discounts) {
+      await tx.execute(
+        Sql.named('''
+          INSERT INTO pos_order_discounts (
+            order_id, order_line_id, discount_id, name_snapshot, kind,
+            value_bp, value_minor, amount_minor, reason_id, note, applied_by,
+            approved_by_id
+          ) VALUES (
+            @order, @line, @discount, @name, @kind,
+            @valueBp, @valueMinor, @amount, @reason, @note, @appliedBy,
+            @approvedBy
+          )
+        '''),
+        parameters: {
+          'order': orderId,
+          // Null for an order-level discount, which is what the totals block
+          // renders rather than a line.
+          'line': discount.lineKey == null
+              ? null
+              : lineIds[discount.lineKey!],
+          'discount': discount.discountId,
+          'name': discount.nameSnapshot,
+          'kind': discount.kind.wire,
+          'valueBp': discount.valueBp,
+          'valueMinor': discount.valueMinor?.minor,
+          'amount': discount.amount.minor,
+          'reason': discount.reasonId,
+          'note': discount.note,
+          'appliedBy': discount.appliedByStaffId,
+          'approvedBy': discount.approvedByStaffId,
         },
       );
     }

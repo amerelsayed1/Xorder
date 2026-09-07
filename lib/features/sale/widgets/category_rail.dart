@@ -15,6 +15,7 @@ class CategoryRail extends StatelessWidget {
     required this.onSelect,
     required this.onOpenTickets,
     required this.onTables,
+    this.onOrders,
     this.openTicketCount = 0,
   });
 
@@ -23,6 +24,11 @@ class CategoryRail extends StatelessWidget {
   final ValueChanged<int?> onSelect;
   final VoidCallback onOpenTickets;
   final VoidCallback onTables;
+
+  /// Order history. Null when the person at the till may not see it — the
+  /// button is then absent rather than greyed, because a control that is dead
+  /// for a cashier's whole shift is clutter in a rail they use all day.
+  final VoidCallback? onOrders;
   final int openTicketCount;
 
   @override
@@ -95,6 +101,17 @@ class CategoryRail extends StatelessWidget {
                   border: Border.fromBorderSide(context.pos.hairline),
                   onPressed: onTables,
                 ),
+                if (onOrders != null) ...[
+                  const SizedBox(height: PosSpace.sm),
+                  PosButton(
+                    label: strings.orderHistoryTitle,
+                    foreground: context.pos.body,
+                    border: Border.fromBorderSide(context.pos.hairline),
+                    alignLeft: true,
+                    trailing: const KeyChip('F7'),
+                    onPressed: onOrders,
+                  ),
+                ],
               ],
             ),
           ),

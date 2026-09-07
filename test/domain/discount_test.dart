@@ -51,7 +51,10 @@ void main() {
       // 20% of 500.00 is 100.00, capped at 50.00. The cap is part of what the
       // discount IS — a caller that forgot it would undercharge.
       expect(
-        percentage(2000, cap: const Money(5000)).amountOn(const Money(50000)).minor,
+        percentage(
+          2000,
+          cap: const Money(5000),
+        ).amountOn(const Money(50000)).minor,
         5000,
       );
     });
@@ -60,7 +63,10 @@ void main() {
       // 20% of 100.00 is 20.00, under a 50.00 cap. The cap is a ceiling, never
       // a target.
       expect(
-        percentage(2000, cap: const Money(5000)).amountOn(const Money(10000)).minor,
+        percentage(
+          2000,
+          cap: const Money(5000),
+        ).amountOn(const Money(10000)).minor,
         2000,
       );
     });
@@ -163,7 +169,11 @@ void main() {
       final lunch = window(from: 11 * 60, to: 15 * 60);
       expect(lunch.isLiveAt(tuesdayNoon), isTrue);
       expect(lunch.isLiveAt(DateTime(2026, 9, 8, 10, 59)), isFalse);
-      expect(lunch.isLiveAt(DateTime(2026, 9, 8, 15)), isFalse, reason: 'end is exclusive');
+      expect(
+        lunch.isLiveAt(DateTime(2026, 9, 8, 15)),
+        isFalse,
+        reason: 'end is exclusive',
+      );
     });
 
     test('a window that crosses midnight is not a mistake', () {
@@ -219,6 +229,7 @@ void main() {
         nameSnapshot: 'Manager comp',
         kind: DiscountKind.fixed,
         amount: Money(5000),
+        appliedByStaffId: 4,
       );
       expect(order.isOrderLevel, isTrue);
 
@@ -226,6 +237,7 @@ void main() {
         nameSnapshot: 'Staff meal',
         kind: DiscountKind.percentage,
         amount: Money(1000),
+        appliedByStaffId: 4,
         lineKey: '7:12,14',
       );
       expect(line.isOrderLevel, isFalse);
@@ -236,6 +248,7 @@ void main() {
         nameSnapshot: 'Staff meal',
         kind: DiscountKind.fixed,
         amount: Money(1000),
+        appliedByStaffId: 4,
       );
       expect(unapproved.wasApproved, isFalse);
 
@@ -243,6 +256,7 @@ void main() {
         nameSnapshot: 'Staff meal',
         kind: DiscountKind.fixed,
         amount: Money(1000),
+        appliedByStaffId: 4,
         approvedByName: 'Hana Mostafa',
       );
       // An approved discount with no approver recorded is indistinguishable

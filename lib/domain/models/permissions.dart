@@ -28,9 +28,26 @@ abstract final class PosCapability {
   static const terminalManage = 'terminal.manage';
   static const settingsManage = 'settings.manage';
 
+  /// Look at every order this branch has taken, not only the live ticket.
+  ///
+  /// The counterpart `order.view_own` is a Wave C key: scoping history to "mine"
+  /// is only meaningful once `pos_orders.served_by` has data behind it, and
+  /// every order written before migration 11 has none. Until then this is the
+  /// whole of order visibility, and a cashier reaches a specific order through
+  /// the receipt they just printed rather than by browsing the day's takings.
+  static const orderViewAll = 'order.view_all';
+
   static const discountApply = 'discount.apply';
   static const priceOverride = 'price.override';
   static const orderVoid = 'order.void';
+
+  /// Taking a line off before the kitchen has seen it. Routine — a cashier
+  /// correcting a mis-tap, and the SRS is explicit that this is not the same
+  /// act as the one below.
+  static const orderItemCancel = 'order.item.delete_before_send';
+
+  /// Throwing away a line the kitchen has already made. Waste, with a cost.
+  static const orderItemVoid = 'order.item.delete_after_send';
   static const orderRefund = 'order.refund';
   static const receiptReprint = 'receipt.reprint';
 
@@ -48,6 +65,7 @@ abstract final class PosCapability {
   static const all = <String>[
     operate,
     catalogView,
+    orderViewAll,
     catalogManage,
     staffManage,
     terminalManage,
@@ -55,6 +73,8 @@ abstract final class PosCapability {
     discountApply,
     priceOverride,
     orderVoid,
+    orderItemCancel,
+    orderItemVoid,
     orderRefund,
     receiptReprint,
     shiftOpen,
@@ -75,6 +95,10 @@ abstract final class PosCapability {
     discountApply,
     priceOverride,
     orderVoid,
+    // Voiding a cooked item is on the SRS's own list of things a supervisor
+    // may approve at the till. Cancelling an unsent one is not on it — it needs
+    // no approval because it costs nothing.
+    orderItemVoid,
     orderRefund,
     receiptReprint,
     shiftClose,
@@ -131,11 +155,17 @@ abstract final class PosCapability {
 /// "Back office" for a cashier should be able to see that is what they are
 /// doing.
 enum CapabilityGroup {
-  selling([PosCapability.operate, PosCapability.catalogView]),
+  selling([
+    PosCapability.operate,
+    PosCapability.catalogView,
+    PosCapability.orderViewAll,
+  ]),
   money([
     PosCapability.discountApply,
     PosCapability.priceOverride,
     PosCapability.orderVoid,
+    PosCapability.orderItemCancel,
+    PosCapability.orderItemVoid,
     PosCapability.orderRefund,
     PosCapability.receiptReprint,
   ]),
@@ -232,9 +262,12 @@ abstract final class SystemRoles {
     PosCapability.catalogManage,
     PosCapability.staffManage,
     PosCapability.settingsManage,
+    PosCapability.orderViewAll,
     PosCapability.discountApply,
     PosCapability.priceOverride,
     PosCapability.orderVoid,
+    PosCapability.orderItemCancel,
+    PosCapability.orderItemVoid,
     PosCapability.orderRefund,
     PosCapability.receiptReprint,
     PosCapability.shiftOpen,
@@ -248,9 +281,12 @@ abstract final class SystemRoles {
   static const supervisor = <String>{
     PosCapability.operate,
     PosCapability.catalogView,
+    PosCapability.orderViewAll,
     PosCapability.discountApply,
     PosCapability.priceOverride,
     PosCapability.orderVoid,
+    PosCapability.orderItemCancel,
+    PosCapability.orderItemVoid,
     PosCapability.orderRefund,
     PosCapability.receiptReprint,
     PosCapability.shiftOpen,
@@ -264,6 +300,10 @@ abstract final class SystemRoles {
   static const cashier = <String>{
     PosCapability.operate,
     PosCapability.catalogView,
+    // Correcting a mis-tap before the kitchen sees it is part of ringing up a
+    // sale, not a privilege. Voiding something already cooked is not here: a
+    // cashier reaches it through a supervisor, which is the point.
+    PosCapability.orderItemCancel,
     PosCapability.receiptReprint,
     PosCapability.shiftOpen,
     PosCapability.shiftClose,

@@ -44,6 +44,33 @@ abstract final class ParkedTicketCodec {
           'note': line.note,
           'stage': line.stage.name,
           'round_number': line.roundNumber,
+          // A parked table whose voided line came back as live would put a
+          // thrown-away dish back on the guests' bill overnight.
+          'voided': line.voided == null
+              ? null
+              : {
+                  'by_staff_id': line.voided!.byStaffId,
+                  'at': line.voided!.at.toUtc().toIso8601String(),
+                  'reason_id': line.voided!.reasonId,
+                  'note': line.voided!.note,
+                  'approved_by_id': line.voided!.approvedByStaffId,
+                  'approved_by_name': line.voided!.approvedByName,
+                },
+          // A repriced line that came back at the menu price overnight would
+          // hand the guests a bill larger than the one they were quoted, with
+          // nothing on screen to say why.
+          'price_override': line.priceOverride == null
+              ? null
+              : {
+                  'price_minor': line.priceOverride!.price.minor,
+                  'original_minor': line.priceOverride!.original.minor,
+                  'by_staff_id': line.priceOverride!.byStaffId,
+                  'at': line.priceOverride!.at.toUtc().toIso8601String(),
+                  'reason_id': line.priceOverride!.reasonId,
+                  'note': line.priceOverride!.note,
+                  'approved_by_id': line.priceOverride!.approvedByStaffId,
+                  'approved_by_name': line.priceOverride!.approvedByName,
+                },
           'modifiers': [
             for (final modifier in line.modifiers)
               {
@@ -69,6 +96,22 @@ abstract final class ParkedTicketCodec {
     // a larger bill than the one they agreed to, with nothing on screen to say
     // why. Everything here is already a snapshot, so it round-trips as written
     // and never re-prices against a discount somebody has since edited.
+    'line_events': [
+      for (final event in ticket.lineEvents)
+        {
+          'line_key': event.lineKey,
+          'event': event.event,
+          'staff_id': event.staffId,
+          'at': event.at.toUtc().toIso8601String(),
+          'quantity_before': event.quantityBefore,
+          'quantity_after': event.quantityAfter,
+          'unit_price_before_minor': event.unitPriceBefore,
+          'unit_price_after_minor': event.unitPriceAfter,
+          'reason_id': event.reasonId,
+          'note': event.note,
+          'approved_by_id': event.approvedByStaffId,
+        },
+    ],
     'discounts': [
       for (final discount in ticket.discounts)
         {
@@ -79,9 +122,11 @@ abstract final class ParkedTicketCodec {
           'value_bp': discount.valueBp,
           'value_minor': discount.valueMinor?.minor,
           'amount_minor': discount.amount.minor,
+          'applied_by': discount.appliedByStaffId,
           'reason_id': discount.reasonId,
           'note': discount.note,
           'approved_by_name': discount.approvedByName,
+          'approved_by_id': discount.approvedByStaffId,
         },
     ],
   };
@@ -155,6 +200,40 @@ abstract final class ParkedTicketCodec {
                     : null,
               ),
       ],
+      lineEvents: [
+        if (json['line_events'] is List)
+          for (final raw in json['line_events'] as List)
+            if (raw is Map && raw['line_key'] is String && raw['event'] is String)
+              TicketLineEvent(
+                lineKey: raw['line_key'] as String,
+                event: raw['event'] as String,
+                staffId: raw['staff_id'] is int ? raw['staff_id'] as int : 0,
+                at:
+                    DateTime.tryParse(
+                      raw['at'] is String ? raw['at'] as String : '',
+                    ) ??
+                    DateTime.now().toUtc(),
+                quantityBefore: raw['quantity_before'] is int
+                    ? raw['quantity_before'] as int
+                    : null,
+                quantityAfter: raw['quantity_after'] is int
+                    ? raw['quantity_after'] as int
+                    : null,
+                unitPriceBefore: raw['unit_price_before_minor'] is int
+                    ? raw['unit_price_before_minor'] as int
+                    : null,
+                unitPriceAfter: raw['unit_price_after_minor'] is int
+                    ? raw['unit_price_after_minor'] as int
+                    : null,
+                reasonId: raw['reason_id'] is int
+                    ? raw['reason_id'] as int
+                    : null,
+                note: raw['note'] is String ? raw['note'] as String : null,
+                approvedByStaffId: raw['approved_by_id'] is int
+                    ? raw['approved_by_id'] as int
+                    : null,
+              ),
+      ],
       discounts: [
         if (json['discounts'] is List)
           for (final raw in json['discounts'] as List)
@@ -183,12 +262,18 @@ abstract final class ParkedTicketCodec {
                     ? minor(raw['value_minor'])
                     : null,
                 amount: minor(raw['amount_minor']),
+                appliedByStaffId: raw['applied_by'] is int
+                    ? raw['applied_by'] as int
+                    : 0,
                 reasonId: raw['reason_id'] is int
                     ? raw['reason_id'] as int
                     : null,
                 note: raw['note'] is String ? raw['note'] as String : null,
                 approvedByName: raw['approved_by_name'] is String
                     ? raw['approved_by_name'] as String
+                    : null,
+                approvedByStaffId: raw['approved_by_id'] is int
+                    ? raw['approved_by_id'] as int
                     : null,
               ),
       ],
@@ -262,6 +347,65 @@ abstract final class ParkedTicketCodec {
           : LineStage.draft,
       roundNumber: raw['round_number'] is int
           ? raw['round_number'] as int
+          : null,
+      voided: _voided(raw['voided']),
+      priceOverride: _priceOverride(raw['price_override'], minor),
+    );
+  }
+
+  /// A line's agreed price, if somebody set one.
+  ///
+  /// Missing or unreadable figures fall back to **zero**, never to the menu
+  /// price. A parked line that came back at list price would silently charge a
+  /// guest more than they were quoted; one that came back free is wrong in the
+  /// direction somebody notices and corrects at the counter.
+  static PriceOverride? _priceOverride(
+    Object? value,
+    Money Function(Object?) minor,
+  ) {
+    if (value is! Map) return null;
+    final raw = value.cast<String, Object?>();
+
+    return PriceOverride(
+      price: minor(raw['price_minor']),
+      original: minor(raw['original_minor']),
+      byStaffId: raw['by_staff_id'] is int ? raw['by_staff_id'] as int : 0,
+      at:
+          DateTime.tryParse(raw['at'] is String ? raw['at'] as String : '') ??
+          DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
+      reasonId: raw['reason_id'] is int ? raw['reason_id'] as int : null,
+      note: raw['note'] is String ? raw['note'] as String : null,
+      approvedByStaffId: raw['approved_by_id'] is int
+          ? raw['approved_by_id'] as int
+          : null,
+      approvedByName: raw['approved_by_name'] is String
+          ? raw['approved_by_name'] as String
+          : null,
+    );
+  }
+
+  /// A line's void, if it had one.
+  ///
+  /// An unparseable timestamp falls back to the epoch rather than to "not
+  /// voided": a line that came back live would put a thrown-away dish back on
+  /// the guests' bill, and a wrong time on the record is a far smaller problem
+  /// than a wrong bill.
+  static LineVoid? _voided(Object? value) {
+    if (value is! Map) return null;
+    final raw = value.cast<String, Object?>();
+
+    return LineVoid(
+      byStaffId: raw['by_staff_id'] is int ? raw['by_staff_id'] as int : 0,
+      at:
+          DateTime.tryParse(raw['at'] is String ? raw['at'] as String : '') ??
+          DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
+      reasonId: raw['reason_id'] is int ? raw['reason_id'] as int : null,
+      note: raw['note'] is String ? raw['note'] as String : null,
+      approvedByStaffId: raw['approved_by_id'] is int
+          ? raw['approved_by_id'] as int
+          : null,
+      approvedByName: raw['approved_by_name'] is String
+          ? raw['approved_by_name'] as String
           : null,
     );
   }

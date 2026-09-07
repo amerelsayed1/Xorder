@@ -244,9 +244,14 @@ class LocalBootstrap {
   /// **Two sets, not one.** [till] is what a machine standing in a public room
   /// gets. [administrative] is what the Management section additionally needs,
   /// and is the set that authoring the menu belongs to.
+  ///
+  /// [cloudSeeding] adds the writes `BootstrapSeeder` needs to replace the
+  /// local cache with the platform's copy. It defaults to **off**, because the
+  /// safe answer is the one an offline install gets by forgetting to ask.
   static List<String> tillGrants({
     required String database,
     required String role,
+    bool cloudSeeding = false,
   }) => <String>[
     'GRANT CONNECT ON DATABASE "$database" TO "$role"',
     'GRANT USAGE ON SCHEMA public TO "$role"',
@@ -260,7 +265,13 @@ class LocalBootstrap {
     // credential can void a sale in the open and still cannot reprice one.
     'GRANT UPDATE (status, status_changed_at, voided_at, voided_by, '
         'void_reason_id, void_note, business_day_id) ON pos_orders TO "$role"',
-    'GRANT UPDATE (voided_at, voided_by, void_reason_id, refunded_quantity) '
+    // `refunded_quantity` is deliberately NOT in this list, though it was
+    // when migration 9 introduced the column. Migration 12 maintains it from a
+    // SECURITY DEFINER trigger instead, which means the counter can only move
+    // by inserting a refund row — the number and the record it summarises
+    // cannot disagree, because there is no way to write one without the other.
+    // Granting UPDATE here would put that back under the till's own hand.
+    'GRANT UPDATE (voided_at, voided_by, void_reason_id) '
         'ON pos_order_lines TO "$role"',
     // Why somebody voided, refunded, discounted or overrode a price. The till
     // reads the list; editing it is a settings act and belongs to the
@@ -280,6 +291,17 @@ class LocalBootstrap {
     // customer was charged, not a working figure.
     'GRANT SELECT, INSERT ON pos_order_discounts TO "$role"',
     'GRANT USAGE, SELECT ON SEQUENCE pos_order_discounts_id_seq TO "$role"',
+    // Money going back. INSERT and SELECT, never UPDATE or DELETE: a refund
+    // already given is a record of money that left the drawer, and an
+    // adjustment to it is a second refund, not an edit of the first.
+    //
+    // Note what is missing — UPDATE on `pos_orders.refunded_minor`. The
+    // counter is maintained by migration 12's trigger, so a till can record a
+    // refund and cannot quietly change how much has already gone back.
+    'GRANT SELECT, INSERT ON pos_refunds, pos_refund_lines, '
+        'pos_refund_payments TO "$role"',
+    'GRANT USAGE, SELECT ON SEQUENCE pos_refunds_id_seq, '
+        'pos_refund_lines_id_seq, pos_refund_payments_id_seq TO "$role"',
     'GRANT SELECT, INSERT, UPDATE ON pos_invoice_sequences TO "$role"',
     'GRANT USAGE, SELECT ON SEQUENCE pos_orders_id_seq, pos_order_lines_id_seq, '
         'pos_order_payments_id_seq TO "$role"',
@@ -310,23 +332,48 @@ class LocalBootstrap {
     // than the only one.
     'GRANT SELECT, INSERT ON pos_audit_events TO "$role"',
     'GRANT USAGE, SELECT ON SEQUENCE pos_audit_events_id_seq TO "$role"',
-    // Cloud seeding: the platform authors the menu, the staff and the
-    // floor, and the bootstrap seeder replicates them here as a local
-    // cache — wipe-and-rewrite for the catalog, `setval` to push the
-    // serials past the platform's ids (which is why the sequences need
-    // UPDATE). This softens the read-only-catalog rule above knowingly: a
-    // stolen till credential could rewrite the local *cache*, but on a
-    // cloud till the cache is not authoritative — every order is re-priced
-    // server-side (POS-BE-006), so repricing the display buys an attacker
-    // nothing at settlement.
-    'GRANT INSERT, UPDATE ON pos_restaurants, pos_branches, pos_staff TO "$role"',
-    'GRANT INSERT, UPDATE, DELETE ON pos_categories, pos_products, '
-        'pos_modifier_groups, pos_modifiers, pos_product_modifier_groups, '
-        'pos_dining_tables TO "$role"',
-    'GRANT USAGE, SELECT, UPDATE ON SEQUENCE pos_restaurants_id_seq, '
-        'pos_branches_id_seq, pos_staff_id_seq, pos_categories_id_seq, '
-        'pos_products_id_seq, pos_modifier_groups_id_seq, '
-        'pos_modifiers_id_seq, pos_dining_tables_id_seq TO "$role"',
+    // Cloud seeding, and ONLY on a cloud till — see [cloudSeeding]. The
+    // platform authors the menu, the staff and the floor, and the bootstrap
+    // seeder replicates them here as a local cache: wipe-and-rewrite for the
+    // catalog, `setval` to push the serials past the platform's ids (which is
+    // why the sequences need UPDATE).
+    //
+    // This softens the read-only-catalog rule above knowingly, and the bargain
+    // is only sound in one direction. On a CLOUD till a stolen till credential
+    // rewrites the local *cache*, and the cache is not authoritative — every
+    // order is re-priced server-side (POS-BE-006), so repricing the display
+    // buys an attacker nothing at settlement. On an OFFLINE till there is no
+    // second opinion: this database IS the restaurant. Granted there, the same
+    // statements let a credential recovered from the till reprice the menu for
+    // real, and — through `pos_staff` — point somebody's row at the owner role
+    // or overwrite a PIN hash, reaching Management without ever knowing the
+    // administrator's password. So an offline install does not get them, and
+    // loses nothing: `BootstrapSeeder` never runs without a platform, and
+    // Management authors the menu and the staff over the ADMIN credential.
+    if (cloudSeeding) ...[
+      'GRANT INSERT, UPDATE ON pos_restaurants, pos_branches, pos_staff TO "$role"',
+      'GRANT INSERT, UPDATE, DELETE ON pos_categories, pos_products, '
+          'pos_modifier_groups, pos_modifiers, pos_product_modifier_groups, '
+          'pos_dining_tables TO "$role"',
+      'GRANT USAGE, SELECT, UPDATE ON SEQUENCE pos_restaurants_id_seq, '
+          'pos_branches_id_seq, pos_staff_id_seq, pos_categories_id_seq, '
+          'pos_products_id_seq, pos_modifier_groups_id_seq, '
+          'pos_modifiers_id_seq, pos_dining_tables_id_seq TO "$role"',
+    ] else ...[
+      // Taken away, not merely withheld. Every offline branch server built
+      // before this distinction existed was granted the block above, and a
+      // grant list that only ever adds would leave those installs — the ones
+      // already taking money — permissive forever. REVOKE of something never
+      // held is a no-op, so a fresh install pays nothing for this.
+      'REVOKE INSERT, UPDATE, DELETE ON pos_restaurants, pos_branches, '
+          'pos_staff, pos_categories, pos_products, pos_modifier_groups, '
+          'pos_modifiers, pos_product_modifier_groups, pos_dining_tables '
+          'FROM "$role"',
+      'REVOKE UPDATE ON SEQUENCE pos_restaurants_id_seq, '
+          'pos_branches_id_seq, pos_staff_id_seq, pos_categories_id_seq, '
+          'pos_products_id_seq, pos_modifier_groups_id_seq, '
+          'pos_modifiers_id_seq, pos_dining_tables_id_seq FROM "$role"',
+    ],
     'GRANT SELECT, INSERT, UPDATE ON pos_cloud_state TO "$role"',
     // The open floor. The ONE table the till may DELETE from: settlement
     // removes the parked row because the durable record of the money now
@@ -363,6 +410,12 @@ class LocalBootstrap {
     'GRANT SELECT, INSERT, UPDATE ON pos_discounts TO "$role"',
     'GRANT USAGE, SELECT ON SEQUENCE pos_discounts_id_seq TO "$role"',
     'GRANT SELECT, INSERT, DELETE ON pos_discount_targets TO "$role"',
+    // Reading refunds back — the void and refund reports, and the Activity
+    // pane. SELECT only, even here: a refund is a record of money that left
+    // the drawer, and the back office corrects one by issuing another, not by
+    // editing the first.
+    'GRANT SELECT ON pos_refunds, pos_refund_lines, pos_refund_payments '
+        'TO "$role"',
   ];
 
   Future<void> applyGrants(

@@ -8,6 +8,7 @@ import '../../core/l10n/app_strings.dart';
 import '../../core/ui/theme.dart';
 import '../../core/ui/tokens.dart';
 import '../../core/ui/widgets/pos_widgets.dart';
+import '../../domain/models/tender_method.dart';
 import '../../domain/models/ticket.dart';
 import '../../domain/repositories/repositories.dart' show SubmitOrderResult;
 
@@ -19,48 +20,13 @@ import '../../domain/repositories/repositories.dart' show SubmitOrderResult;
 /// The keypad's clear key, by identity rather than by caption.
 const _clearKey = 'CLR';
 
-class _Method {
-  const _Method(this.id, this.wireLabel, this.name);
-
-  final int id;
-
-  /// What is WRITTEN to the tender record, and it stays English on an Arabic
-  /// till on purpose. `ShiftSummary.cashTaken` finds the drawer's cash by
-  /// matching this text, so translating what gets stored would leave every
-  /// Arabic shift reporting an expected drawer of nothing but the float — a
-  /// false variance on every cash-up, in the one number the count exists to
-  /// check.
-  final String wireLabel;
-
-  /// What the cashier reads. Never persisted.
-  final String Function(AppStrings) name;
-}
-
-const _methods = [
-  _Method(1, 'Cash', _cashName),
-  _Method(2, 'Card', _cardName),
-  _Method(3, 'Wallet · InstaPay', _walletName),
-  _Method(4, 'On account', _onAccountName),
-];
-
-// Torn out as top-level functions because [_methods] is const, and a const
-// list cannot hold a closure.
-String _cashName(AppStrings s) => s.tenderCash;
-String _cardName(AppStrings s) => s.tenderCard;
-String _walletName(AppStrings s) => s.tenderWallet;
-String _onAccountName(AppStrings s) => s.tenderOnAccount;
-
-/// A stored tender's label, in the cashier's language.
+/// The tender types this till offers.
 ///
-/// Falls back to the stored text for anything not in [_methods] — a tender type
-/// the restaurant configured itself has no translation here, and showing what
-/// they named it is the honest answer.
-String _tenderName(Tender tender, AppStrings s) {
-  for (final method in _methods) {
-    if (method.id == tender.typeId) return method.name(s);
-  }
-  return tender.label;
-}
+/// Lifted out of this file when refunds arrived: money going back has to offer
+/// the same methods money came in on, and two lists of tender types is how a
+/// till ends up refunding to a method it cannot take payment on. See
+/// [TenderMethod].
+const _methods = TenderMethod.seeded;
 
 /// Take one or many tenders until the balance clears.
 /// What a completed settlement hands back to the sale screen.
@@ -125,7 +91,12 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
     // Settled — record it, free the table, and hand the outcome back to the
     // sale screen, which owns what happens next (the receipt, and for a
     // seated ticket the walk back to the floor).
-    final result = await ref.read(ordersRepositoryProvider).submit(updated);
+    final result = await ref
+        .read(ordersRepositoryProvider)
+        // Read here rather than baked into the repository: the sale belongs to
+        // whoever took the money, and on a seated table that is routinely not
+        // the person who opened the ticket.
+        .submit(updated, servedBy: ref.read(signedInStaffProvider));
     if (!mounted) return;
 
     // Re-read the backlog rather than adding one to a running total. The count
@@ -329,7 +300,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
         children: [
           Expanded(
             child: Text(
-              _tenderName(tender, strings),
+              tenderName(tender.typeId, tender.label, strings),
               style: PosText.ui(color: context.pos.inkWarm, size: 13, weight: FontWeight.w600),
             ),
           ),
@@ -411,7 +382,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                 child: Align(
                   alignment: Alignment.centerLeft,
                   child: Text(
-                    method.name(strings),
+                    method.label(strings),
                     style: PosText.ui(
                       size: 13.5,
                       weight: FontWeight.w600,

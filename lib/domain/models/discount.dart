@@ -258,6 +258,7 @@ class AppliedDiscount {
     required this.nameSnapshot,
     required this.kind,
     required this.amount,
+    required this.appliedByStaffId,
     this.discountId,
     this.lineKey,
     this.valueBp,
@@ -265,7 +266,20 @@ class AppliedDiscount {
     this.reasonId,
     this.note,
     this.approvedByName,
+    this.approvedByStaffId,
   });
+
+  /// Who took the money off.
+  ///
+  /// Carried on the record rather than looked up when it is written, because
+  /// the person applying a discount is known at the moment they apply it and
+  /// not afterwards — a repository asking "who is signed in?" at settlement
+  /// would name whoever is standing there when the bill is paid, which on a
+  /// dine-in table is often somebody else entirely.
+  ///
+  /// Zero means unattributed, and can only arise from a payload that was
+  /// hand-edited: nothing in this build writes a discount without a person.
+  final int appliedByStaffId;
 
   /// Kept for reporting. Null when the discount it came from has since been
   /// deleted — which is exactly why the name is snapshotted beside it.
@@ -293,6 +307,14 @@ class AppliedDiscount {
   /// The supervisor who lent the permission, when the discount was above the
   /// applier's limit. Snapshotted for the same reason the name is.
   final String? approvedByName;
+
+  /// The same person, by id, for the ledger.
+  ///
+  /// Both, and neither is redundant. The **name** survives that person being
+  /// renamed or deleted, which is what a receipt and a parked ticket need. The
+  /// **id** is what "every discount Hana approved last month" joins on, and a
+  /// report cannot join on a string somebody has since edited.
+  final int? approvedByStaffId;
 
   bool get isOrderLevel => lineKey == null;
   bool get wasApproved => approvedByName != null;

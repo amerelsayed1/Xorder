@@ -138,6 +138,7 @@ void main() {
           valueBp: 2500,
         ),
         now: DateTime(2026, 9, 8, 12),
+        appliedBy: 7,
         reasonId: 4,
         note: 'Kitchen team',
         approvedByName: 'Hana Mostafa',

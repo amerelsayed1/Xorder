@@ -34,6 +34,66 @@ class ZeroTender extends TicketRefusal {
   const ZeroTender();
 }
 
+/// The line is already voided. Voiding it twice is not a second act.
+class AlreadyVoided extends TicketRefusal {
+  const AlreadyVoided(this.lineKey);
+
+  final String lineKey;
+}
+
+/// A cancel was aimed at a line the kitchen has already made, or a void at one
+/// it has not.
+///
+/// The two acts are not interchangeable and the caller picked the wrong one —
+/// which, on a screen, means the button offered the wrong thing.
+class WrongStageForAct extends TicketRefusal {
+  const WrongStageForAct(this.lineKey, this.stage);
+
+  final String lineKey;
+  final LineStage stage;
+}
+
+/// The price asked for is the price the line already carries.
+///
+/// Refused rather than accepted quietly: an override that changes nothing still
+/// writes an audit row naming somebody, and a ledger full of no-ops is a ledger
+/// nobody reads.
+class PriceUnchanged extends TicketRefusal {
+  const PriceUnchanged(this.lineKey);
+
+  final String lineKey;
+}
+
+/// A negative unit price. Zero is legitimate — a comp — and below zero is a
+/// refund wearing a disguise, which has its own flow and its own permission.
+class PriceBelowZero extends TicketRefusal {
+  const PriceBelowZero();
+}
+
+/// The reduction is past what this person may give away.
+///
+/// **A price override is a discount by another name.** Without this, a cashier
+/// with `price.override` and a 10% discount ceiling could reprice a 50.00 dish
+/// to 5.00 and take 90% off a line the discount sheet would have refused. The
+/// same [DiscountLimit] therefore governs both, and the UI escalates to a
+/// supervisor in the same way.
+class PriceBelowLimit extends TicketRefusal {
+  const PriceBelowLimit({
+    required this.lineKey,
+    required this.reduction,
+    required this.base,
+  });
+
+  final String lineKey;
+
+  /// What the whole line's price would drop by.
+  final Money reduction;
+
+  /// What the line would have cost at menu prices — the figure the percentage
+  /// ceiling is measured against.
+  final Money base;
+}
+
 /// There is nothing for a discount to come off.
 class NothingToDiscount extends TicketRefusal {
   const NothingToDiscount();
@@ -233,6 +293,118 @@ abstract final class TicketEngine {
         .toList(),
   );
 
+  // ── Cancelling and voiding ────────────────────────────────────────────────
+  //
+  // **Two acts, and the schema, the permissions and the screens all keep them
+  // apart.** Taking a line off before the kitchen has seen it is housekeeping:
+  // nothing was made, nothing was wasted, and the line leaves the ticket. Once
+  // it has been fired, removing it is waste with a cost — so the line *stays*,
+  // struck through, with a reason and a name against it, and the customer can
+  // be shown exactly what happened.
+  //
+  // A system that recorded both as "line gone" could never afterwards be asked
+  // which occurred, and that question is the one a month-end review asks first.
+
+  /// Take an unsent line off the ticket.
+  ///
+  /// Refuses a sent line rather than quietly voiding it: a caller that reached
+  /// here with something already cooking has offered the wrong control, and
+  /// silently upgrading the act would record waste as housekeeping.
+  static TicketResult cancelLine(
+    Ticket ticket,
+    String lineKey, {
+    required int by,
+    required DateTime now,
+    int? reasonId,
+    String? note,
+  }) {
+    final line = ticket.lines.firstWhereOrNull((l) => l.key == lineKey);
+    if (line == null) return TicketResult.refused(LineNotOnTicket(lineKey));
+    if (line.stage != LineStage.draft) {
+      return TicketResult.refused(WrongStageForAct(lineKey, line.stage));
+    }
+
+    return TicketResult.ok(
+      ticket.copyWith(
+        lines: ticket.lines.where((l) => l.key != lineKey).toList(),
+        // Any discount on it goes with it. A discount on a line nobody is
+        // being charged for is money off nothing.
+        discounts: ticket.discounts
+            .where((d) => d.lineKey != lineKey)
+            .toList(),
+        lineEvents: [
+          ...ticket.lineEvents,
+          TicketLineEvent(
+            lineKey: lineKey,
+            event: TicketLineEventKind.removedBeforeSend,
+            staffId: by,
+            at: now,
+            quantityBefore: line.quantity,
+            quantityAfter: 0,
+            reasonId: reasonId,
+            note: note,
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Void a line the kitchen has already made.
+  ///
+  /// The line **stays on the ticket**, marked, and stops counting toward every
+  /// total. Removing it would leave the cashier unable to show a customer what
+  /// happened and what it cost, and would leave the kitchen's ticket and the
+  /// bill describing different meals.
+  static TicketResult voidLine(
+    Ticket ticket,
+    String lineKey, {
+    required int by,
+    required DateTime now,
+    int? reasonId,
+    String? note,
+    int? approvedByStaffId,
+    String? approvedByName,
+  }) {
+    final line = ticket.lines.firstWhereOrNull((l) => l.key == lineKey);
+    if (line == null) return TicketResult.refused(LineNotOnTicket(lineKey));
+    if (line.isVoided) return TicketResult.refused(AlreadyVoided(lineKey));
+    if (line.stage != LineStage.sent) {
+      return TicketResult.refused(WrongStageForAct(lineKey, line.stage));
+    }
+
+    final voided = LineVoid(
+      byStaffId: by,
+      at: now,
+      reasonId: reasonId,
+      note: note,
+      approvedByStaffId: approvedByStaffId,
+      approvedByName: approvedByName,
+    );
+
+    return TicketResult.ok(
+      ticket.copyWith(
+        lines: [
+          for (final l in ticket.lines)
+            if (l.key == lineKey) l.copyWith(voided: voided) else l,
+        ],
+        lineEvents: [
+          ...ticket.lineEvents,
+          TicketLineEvent(
+            lineKey: lineKey,
+            event: TicketLineEventKind.voidedAfterSend,
+            staffId: by,
+            at: now,
+            quantityBefore: line.quantity,
+            quantityAfter: 0,
+            reasonId: reasonId,
+            note: note,
+            approvedByStaffId: approvedByStaffId,
+          ),
+        ],
+      ),
+    );
+  }
+
   /// Fire the draft to the kitchen. Draft becomes sent; the table stays open.
   static Ticket sendRound(Ticket ticket) {
     if (!ticket.hasDraft) return ticket;
@@ -333,16 +505,145 @@ abstract final class TicketEngine {
   // customer was shown.
 
   /// Take a configured discount off one line.
+  /// Sell one line at a price somebody set by hand.
+  ///
+  /// [price] is the **whole unit price**, modifiers included — what the
+  /// customer pays for one of these. Anything else forces the cashier to do
+  /// arithmetic in their head about extras, at a counter, which is where
+  /// mistakes come from.
+  ///
+  /// Allowed at either stage. Repricing food the kitchen has already made is a
+  /// money decision, not a kitchen one, and it is exactly the case a manager
+  /// reaches for when a customer complains about a dish they have eaten half of.
+  ///
+  /// [limit] closes the discount bypass — see [PriceBelowLimit]. Pass null when
+  /// a supervisor has already approved this specific reduction, exactly as the
+  /// discount sheet does.
+  static TicketResult overridePrice(
+    Ticket ticket,
+    String lineKey,
+    Money price, {
+    required int by,
+    required DateTime now,
+    DiscountLimit? limit,
+    int? reasonId,
+    String? note,
+    String? approvedByName,
+    int? approvedByStaffId,
+  }) {
+    final line = ticket.lines.firstWhereOrNull((l) => l.key == lineKey);
+    if (line == null) return TicketResult.refused(LineNotOnTicket(lineKey));
+    if (line.isVoided) return TicketResult.refused(AlreadyVoided(lineKey));
+    if (price.minor < 0) return TicketResult.refused(const PriceBelowZero());
+    if (price.minor == line.unitPrice.minor) {
+      return TicketResult.refused(PriceUnchanged(lineKey));
+    }
+
+    // Measured against the **menu** price, not the current one. Otherwise two
+    // overrides in a row each look small while together they clear the ceiling.
+    final base = line.menuUnitPrice * line.quantity;
+    final reduction = base - (price * line.quantity);
+
+    // Only a reduction is limited. Charging *more* than the menu price gives
+    // nothing away, so there is no ceiling to breach — it is still recorded,
+    // still reasoned, and still shows on the receipt.
+    if (limit != null &&
+        reduction.minor > 0 &&
+        !limit.permits(base: base, amount: reduction)) {
+      return TicketResult.refused(
+        PriceBelowLimit(lineKey: lineKey, reduction: reduction, base: base),
+      );
+    }
+
+    final override = PriceOverride(
+      price: price,
+      // The menu price, not whatever a previous override left behind. "Was
+      // 50.00" has to mean the menu, or a second override quotes the first
+      // one's discount as if it were the list price.
+      original: line.menuUnitPrice,
+      byStaffId: by,
+      at: now,
+      reasonId: reasonId,
+      note: note,
+      approvedByStaffId: approvedByStaffId,
+      approvedByName: approvedByName,
+    );
+
+    return TicketResult.ok(
+      ticket.copyWith(
+        lines: [
+          for (final l in ticket.lines)
+            if (l.key == lineKey) l.copyWith(priceOverride: override) else l,
+        ],
+        lineEvents: [
+          ...ticket.lineEvents,
+          TicketLineEvent(
+            lineKey: lineKey,
+            event: TicketLineEventKind.priceOverridden,
+            staffId: by,
+            at: now,
+            unitPriceBefore: line.unitPrice.minor,
+            unitPriceAfter: price.minor,
+            reasonId: reasonId,
+            note: note,
+            approvedByStaffId: approvedByStaffId,
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Put a repriced line back on the menu price.
+  ///
+  /// Recorded as another `price_overridden` event rather than by deleting the
+  /// first. The ledger says what happened, in order; a correction that erased
+  /// its predecessor would let somebody reprice, sell, and tidy up after.
+  static TicketResult clearPriceOverride(
+    Ticket ticket,
+    String lineKey, {
+    required int by,
+    required DateTime now,
+  }) {
+    final line = ticket.lines.firstWhereOrNull((l) => l.key == lineKey);
+    if (line == null) return TicketResult.refused(LineNotOnTicket(lineKey));
+    if (!line.isRepriced) return TicketResult.refused(PriceUnchanged(lineKey));
+
+    return TicketResult.ok(
+      ticket.copyWith(
+        lines: [
+          for (final l in ticket.lines)
+            if (l.key == lineKey)
+              l.copyWith(clearPriceOverride: true)
+            else
+              l,
+        ],
+        lineEvents: [
+          ...ticket.lineEvents,
+          TicketLineEvent(
+            lineKey: lineKey,
+            event: TicketLineEventKind.priceOverridden,
+            staffId: by,
+            at: now,
+            unitPriceBefore: line.unitPrice.minor,
+            unitPriceAfter: line.menuUnitPrice.minor,
+          ),
+        ],
+      ),
+    );
+  }
+
   static TicketResult applyLineDiscount(
     Ticket ticket,
     String lineKey,
     Discount discount, {
     required DateTime now,
+    required int appliedBy,
     DiscountLimit? limit,
     bool hasCustomer = false,
     int? reasonId,
     String? note,
     String? approvedByName,
+    int? approvedByStaffId,
   }) {
     final line = ticket.lines.firstWhereOrNull((l) => l.key == lineKey);
     if (line == null) return TicketResult.refused(LineNotOnTicket(lineKey));
@@ -367,10 +668,12 @@ abstract final class TicketEngine {
       amount: discount.amountOn(line.lineTotal),
       lineKey: lineKey,
       discount: discount,
+      appliedBy: appliedBy,
       limit: limit,
       reasonId: reasonId,
       note: note,
       approvedByName: approvedByName,
+      approvedByStaffId: approvedByStaffId,
     );
   }
 
@@ -379,11 +682,13 @@ abstract final class TicketEngine {
     Ticket ticket,
     Discount discount, {
     required DateTime now,
+    required int appliedBy,
     DiscountLimit? limit,
     bool hasCustomer = false,
     int? reasonId,
     String? note,
     String? approvedByName,
+    int? approvedByStaffId,
   }) {
     final existing = ticket.orderDiscounts.firstOrNull;
     if (existing != null) return TicketResult.refused(AlreadyDiscounted(existing));
@@ -404,10 +709,12 @@ abstract final class TicketEngine {
       amount: discount.amountOn(base),
       lineKey: null,
       discount: discount,
+      appliedBy: appliedBy,
       limit: limit,
       reasonId: reasonId,
       note: note,
       approvedByName: approvedByName,
+      approvedByStaffId: approvedByStaffId,
     );
   }
 
@@ -420,6 +727,7 @@ abstract final class TicketEngine {
     Ticket ticket, {
     required String name,
     required DiscountKind kind,
+    required int appliedBy,
     int? valueBp,
     Money? valueMinor,
     String? lineKey,
@@ -427,6 +735,7 @@ abstract final class TicketEngine {
     int? reasonId,
     String? note,
     String? approvedByName,
+    int? approvedByStaffId,
   }) {
     final Money base;
     if (lineKey == null) {
@@ -464,10 +773,12 @@ abstract final class TicketEngine {
       kind: kind,
       valueBp: valueBp,
       valueMinor: valueMinor,
+      appliedBy: appliedBy,
       limit: limit,
       reasonId: reasonId,
       note: note,
       approvedByName: approvedByName,
+      approvedByStaffId: approvedByStaffId,
     );
   }
 
@@ -532,6 +843,7 @@ abstract final class TicketEngine {
     required Money base,
     required Money amount,
     required String? lineKey,
+    required int appliedBy,
     Discount? discount,
     String? nameSnapshot,
     DiscountKind? kind,
@@ -541,6 +853,7 @@ abstract final class TicketEngine {
     int? reasonId,
     String? note,
     String? approvedByName,
+    int? approvedByStaffId,
   }) {
     if (amount.isZero) return const TicketResult.refused(NothingToDiscount());
 
@@ -565,9 +878,11 @@ abstract final class TicketEngine {
             valueBp: valueBp ?? discount?.valueBp,
             valueMinor: valueMinor ?? discount?.valueMinor,
             amount: amount,
+            appliedByStaffId: appliedBy,
             reasonId: reasonId,
             note: note,
             approvedByName: approvedByName,
+            approvedByStaffId: approvedByStaffId,
           ),
         ],
       ),

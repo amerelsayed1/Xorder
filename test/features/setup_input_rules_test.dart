@@ -6,6 +6,7 @@ import 'package:xorder_pos/features/setup/application/setup_controller.dart';
 import 'package:xorder_pos/features/setup/domain/setup_state.dart';
 
 import '../support/fakes.dart';
+import 'package:xorder_pos/core/security/pin_hash.dart';
 
 /// Two rules that used to be enforced only where they were finally USED, which
 /// is several screens after the point they are typed.
@@ -50,17 +51,17 @@ void main() {
   });
 
   group('the first person\'s PIN', () {
-    test('is four to twelve digits', () {
+    test('is exactly as long as a keypad can enter', () {
       SetupDraft withPin(String pin) => SetupDraft(ownerPin: pin);
 
       expect(withPin('123').hasUsablePin, isFalse, reason: 'too short');
       expect(withPin('1234').hasUsablePin, isTrue);
-      expect(withPin('123456789012').hasUsablePin, isTrue);
       expect(
-        withPin('1234567890123').hasUsablePin,
+        withPin('12345').hasUsablePin,
         isFalse,
-        reason: 'longer than anybody retypes reliably during a lunch rush',
+        reason: 'the keypad submits on the fourth digit — a fifth is unusable',
       );
+      expect(SetupDraft.pinLength, PinRules.length);
     });
 
     test('is digits, because a keypad has nothing else on it', () {
@@ -92,8 +93,8 @@ void main() {
     });
 
     test('the setter refuses what the till could never accept', () {
-      // Enforced as it is TYPED. A thirteenth digit accepted here becomes a PIN
-      // the till cannot take, discovered later by somebody who cannot sign in.
+      // Enforced as it is TYPED. A fifth digit accepted here becomes a PIN the
+      // till cannot take, discovered later by somebody who cannot sign in.
       final container = ProviderContainer(overrides: fakeRepositoryOverrides());
       addTearDown(container.dispose);
       final controller = container.read(setupProvider.notifier);
@@ -104,8 +105,8 @@ void main() {
       controller.setOwnerPin('9999999999999999');
       expect(
         container.read(setupProvider).ownerPin,
-        '999999999999',
-        reason: 'truncated to the maximum rather than silently over it',
+        '9999',
+        reason: 'truncated to the length rather than silently over it',
       );
     });
   });

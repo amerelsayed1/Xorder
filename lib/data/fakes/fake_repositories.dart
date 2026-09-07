@@ -2,6 +2,9 @@ import '../../core/config/deployment.dart';
 import '../../core/money/money.dart';
 import '../../domain/models/catalog.dart';
 import '../../domain/models/dining_table.dart';
+import '../../domain/models/order_record.dart';
+import '../../domain/models/refund.dart';
+import '../../domain/services/refund_engine.dart' show RefundQuote;
 import '../../domain/models/ticket.dart';
 import '../../domain/models/permissions.dart';
 import '../../domain/repositories/admin_repositories.dart';
@@ -554,7 +557,7 @@ class FakeOrdersRepository implements OrdersRepository {
   var _sequence = 1041;
 
   @override
-  Future<SubmitOrderResult> submit(Ticket ticket) async {
+  Future<SubmitOrderResult> submit(Ticket ticket, {PosStaff? servedBy}) async {
     await Future<void>.delayed(const Duration(milliseconds: 150));
 
     // Idempotent on the ticket id, exactly as the server contract requires: a
@@ -580,6 +583,31 @@ class FakeOrdersRepository implements OrdersRepository {
   /// Every fake submission is queued, so the backlog is what was submitted.
   @override
   Future<int> pendingSyncCount() async => submitted.length;
+
+  /// Voided orders, kept apart from [submitted] so a test can assert that a
+  /// void was not counted as a sale.
+  final List<Ticket> voided = [];
+
+  @override
+  Future<SubmitOrderResult> voidOrder(
+    Ticket ticket, {
+    required PosStaff by,
+    int? reasonId,
+    String? note,
+    PosStaff? approvedBy,
+    PosStaff? servedBy,
+  }) async {
+    final existing = voided.indexWhere((t) => t.id == ticket.id);
+    if (existing < 0) {
+      voided.add(ticket);
+      _sequence++;
+    }
+    return SubmitOrderResult(
+      clientTransactionId: ticket.id,
+      queued: true,
+      invoiceNumber: 'POS-$_sequence',
+    );
+  }
 }
 
 class FakeBranchRepository implements BranchRepository {
@@ -1066,4 +1094,152 @@ class FakeAuditRepository implements AuditRepository {
       )
       .take(limit)
       .toList();
+}
+
+/// Order history held in a list.
+///
+/// A test double, like everything else in this file. It applies the same
+/// filters the SQL does — date window, status, type, staff, and a substring
+/// match on the invoice or the table — so a widget test that asserts "the
+/// voided filter hides the paid rows" is asserting something the real
+/// repository also does, rather than something only the fake happens to.
+class FakeOrderHistoryRepository implements OrderHistoryRepository {
+  FakeOrderHistoryRepository({
+    List<OrderRecord> orders = const [],
+    Map<int, OrderRecordDetail> details = const {},
+  }) : orders = [...orders],
+       details = {...details};
+
+  final List<OrderRecord> orders;
+  final Map<int, OrderRecordDetail> details;
+
+  /// Every query this repository has been asked, in order. Lets a test assert
+  /// that changing a filter actually reached the data layer rather than being
+  /// applied on top of a list the screen already had.
+  final List<OrderHistoryQuery> queries = [];
+
+  @override
+  Future<List<OrderRecord>> search(OrderHistoryQuery query) async {
+    queries.add(query);
+    final term = query.search?.trim().toLowerCase();
+
+    final matched = orders.where((order) {
+      if (query.from != null && order.occurredAt.isBefore(query.from!)) {
+        return false;
+      }
+      if (query.to != null && !order.occurredAt.isBefore(query.to!)) {
+        return false;
+      }
+      if (query.statuses.isNotEmpty && !query.statuses.contains(order.status)) {
+        return false;
+      }
+      if (query.orderTypes.isNotEmpty &&
+          !query.orderTypes.contains(order.orderType)) {
+        return false;
+      }
+      if (query.servedByStaffId != null &&
+          order.servedByStaffId != query.servedByStaffId) {
+        return false;
+      }
+      if (term != null && term.isNotEmpty) {
+        final invoice = order.invoiceNumber.toLowerCase();
+        final table = order.tableLabel?.toLowerCase() ?? '';
+        if (!invoice.contains(term) && !table.contains(term)) return false;
+      }
+      return true;
+    }).toList()..sort((a, b) => b.occurredAt.compareTo(a.occurredAt));
+
+    return matched.take(query.limit).toList();
+  }
+
+  @override
+  Future<OrderRecordDetail?> detail(int orderId) async => details[orderId];
+
+  @override
+  Future<OrderRecord?> byInvoiceNumber(String invoiceNumber) async {
+    for (final order in orders) {
+      if (order.invoiceNumber == invoiceNumber.trim()) return order;
+    }
+    return null;
+  }
+}
+
+/// Refunds held in a list.
+///
+/// It keeps the two counters the real schema keeps — per line and per order —
+/// so a test that drives the refund sheet twice sees the same "nothing left"
+/// the database would give it. A fake that let every refund through would make
+/// the second one look fine right up until it reached PostgreSQL.
+class FakeRefundsRepository implements RefundsRepository {
+  FakeRefundsRepository({List<Refund> existing = const []})
+    : issued = [...existing];
+
+  final List<Refund> issued;
+
+  /// Set to make [issue] throw, so a test can drive the failure path — the one
+  /// where no money has moved and the sheet must say so.
+  Object? failWith;
+
+  @override
+  Future<List<Refund>> forOrder(int orderId) async =>
+      issued.where((refund) => refund.orderId == orderId).toList();
+
+  @override
+  Future<RefundResult> issue({
+    required OrderRecord order,
+    required RefundQuote quote,
+    required PosStaff by,
+    required List<RefundTender> tenders,
+    required String clientRefundId,
+    PosStaff? approvedBy,
+    int? reasonId,
+    String? note,
+  }) async {
+    final failure = failWith;
+    if (failure != null) throw failure;
+
+    for (final refund in issued) {
+      if (refund.clientRefundId == clientRefundId) {
+        return RefundResult(
+          clientRefundId: clientRefundId,
+          refundId: refund.id,
+          replayed: true,
+        );
+      }
+    }
+
+    final tendered = tenders.fold<int>(0, (sum, t) => sum + t.amount.minor);
+    if (tendered != quote.total.minor) {
+      // The same refusal migration 12's deferred trigger makes, so a test
+      // cannot pass here and fail against the database.
+      throw StateError(
+        'refund is ${quote.total.minor} but $tendered was tendered back',
+      );
+    }
+
+    final refund = Refund(
+      id: issued.length + 1,
+      clientRefundId: clientRefundId,
+      orderId: order.id,
+      kind: quote.kind,
+      subtotal: quote.subtotal,
+      discount: quote.discount,
+      service: quote.service,
+      vat: quote.vat,
+      total: quote.total,
+      occurredAt: DateTime.utc(2026, 1, 1),
+      note: note,
+      refundedByName: by.name,
+      approvedByName: approvedBy?.name,
+      lines: quote.lines,
+      payments: tenders,
+    );
+    issued.add(refund);
+
+    return RefundResult(
+      clientRefundId: clientRefundId,
+      refundId: refund.id,
+      replayed: false,
+    );
+  }
 }

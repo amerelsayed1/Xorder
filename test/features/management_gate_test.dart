@@ -133,6 +133,14 @@ void main() {
     await tester.tap(find.text('Cashier').first);
     await tester.pumpAndSettle();
 
+    // Scrolled to first. It is the last row of the last group, so it sits on
+    // the bottom edge of the pane — and a capability added to any earlier
+    // group pushes it out of reach, which is how this test started tapping
+    // nothing at all and asserting a refusal that was never requested.
+    await tester.ensureVisible(
+      find.text(AdminCapabilityLabels.catalogManage),
+    );
+    await tester.pumpAndSettle();
     await tester.tap(
       find.text(AdminCapabilityLabels.catalogManage),
     );

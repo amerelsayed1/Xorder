@@ -1,6 +1,7 @@
 import '../core/config/deployment.dart';
 import '../core/l10n/app_strings.dart';
 import '../domain/models/dining_table.dart';
+import '../domain/models/tender_method.dart';
 import '../domain/models/ticket.dart';
 import '../features/licensing/domain/license.dart';
 import '../features/setup/domain/setup_state.dart';
@@ -211,3 +212,24 @@ String provisioningRefusal(
   'VALIDATION_FAILED' => s.refusalValidationFailed,
   _ => fallback,
 };
+
+/// What a tender is called, in the reader's language.
+///
+/// Falls back to the stored text for anything the build does not recognise — a
+/// tender type the restaurant configured itself has no translation here, and
+/// showing what they named it is the honest answer.
+///
+/// Takes the id and the stored label rather than a `Tender`, because the same
+/// question is asked about a settled order's payment, a refund's tender and a
+/// live ticket's, and only one of those three is a `Tender`.
+String tenderName(int? typeId, String stored, AppStrings s) => switch (typeId) {
+  1 => s.tenderCash,
+  2 => s.tenderCard,
+  3 => s.tenderWallet,
+  4 => s.tenderOnAccount,
+  _ => stored,
+};
+
+extension TenderMethodLabel on TenderMethod {
+  String label(AppStrings s) => tenderName(id, wireLabel, s);
+}
