@@ -2,13 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/providers.dart';
-import '../../app/labels.dart';
 import '../../core/l10n/app_strings.dart';
-import '../../core/ui/theme.dart';
 import '../../core/ui/tokens.dart';
 import '../../core/ui/widgets/pos_widgets.dart';
 import '../../domain/models/ticket.dart';
 import '../../domain/repositories/repositories.dart';
+import 'receipt_data.dart';
+import 'receipt_paper.dart';
 
 /// Receipt preview — confirms the sale and starts the next one.
 ///
@@ -16,16 +16,9 @@ import '../../domain/repositories/repositories.dart';
 /// and entirely mono. The footer is honest about sync state: a queued sale says
 /// so on the printed slip, because a customer holding a receipt for a sale the
 /// server has never seen should be able to tell.
-/// A receipt is paper, and paper is white in a dark room too.
-///
-/// This dialog renders a PRINTED artefact rather than a screen: white stock,
-/// grey platen behind it, black impact ink. Theming it would put the dark
-/// theme's near-white ink on that white stock and hand the operator a blank
-/// preview of a receipt that will print perfectly well.
-///
-/// The scrim behind the dialog is the exception and stays with the theme — it
-/// is the room, not the paper.
-const _receipt = PosPalette.light;
+/// The scrim behind the dialog stays with the theme — it is the room, not the
+/// paper. Everything on the slip itself is [ReceiptPaper]'s business.
+const _receipt = receiptPalette;
 
 class ReceiptDialog extends ConsumerWidget {
   const ReceiptDialog({super.key, required this.ticket, required this.result});
@@ -47,7 +40,6 @@ class ReceiptDialog extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final session = ref.watch(sessionProvider).valueOrNull;
-    final totals = ticket.totals;
     final strings = context.strings;
 
     return Dialog(
@@ -69,7 +61,16 @@ class ReceiptDialog extends ConsumerWidget {
             children: [
               Flexible(
                 child: SingleChildScrollView(
-                  child: _paper(session, totals, strings),
+                  child: ReceiptPaper(
+                    data: ReceiptData.fromTicket(
+                      ticket,
+                      invoiceNumber: result.invoiceNumber,
+                      queued: result.queued,
+                    ),
+                    tenantName: session?.tenantName ?? '',
+                    terminalCode: session?.terminalCode ?? '',
+                    cashierName: session?.userName ?? '',
+                  ),
                 ),
               ),
               const SizedBox(height: PosSpace.md),
@@ -80,178 +81,6 @@ class ReceiptDialog extends ConsumerWidget {
       ),
     );
   }
-
-  Widget _paper(
-    PosSession? session,
-    TicketTotals totals,
-    AppStrings strings,
-  ) => Container(
-    color: Colors.white,
-    padding: const EdgeInsets.symmetric(
-      horizontal: PosSpace.lg,
-      vertical: PosSpace.s18,
-    ),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Text(
-          (session?.tenantName ?? '').toUpperCase(),
-          textAlign: TextAlign.center,
-          style: PosText.ui(
-            size: 17,
-            weight: FontWeight.w800,
-            color: _receipt.ink,
-          ),
-        ),
-        const SizedBox(height: 2),
-        Text(
-          strings.taxRegistrationLine,
-          textAlign: TextAlign.center,
-          style: PosText.mono(size: 11, color: _receipt.body),
-        ),
-        _dashed(),
-        _row(
-          result.invoiceNumber ?? strings.provisionalInvoice,
-          '${session?.terminalCode ?? ''} / ${(session?.userName ?? '').toUpperCase()}',
-        ),
-        _row(
-          [
-            ticket.orderType.label(strings),
-            if (ticket.tableLabel != null) ticket.tableLabel!,
-          ].join(' · '),
-          _timestamp(),
-        ),
-        _dashed(),
-        for (final line in ticket.lines)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 2),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    '${line.quantity} '
-                    '${line.product.displayName(strings.languageCode)}',
-                    overflow: TextOverflow.ellipsis,
-                    style: PosText.mono(size: 12.5, color: _receipt.ink),
-                  ),
-                ),
-                Text(
-                  line.lineTotal.format(),
-                  style: PosText.mono(size: 12.5, color: _receipt.ink),
-                ),
-              ],
-            ),
-          ),
-        _dashed(),
-        _row(strings.receiptSubtotal, totals.subtotal.format(), size: 12),
-        // The rates come off the ticket, not off this file. They were
-        // printed as a fixed 12/14 here, which quietly contradicted both
-        // the cart's totals block and the arithmetic the customer is
-        // holding whenever a branch is configured differently.
-        if (!totals.service.isZero)
-          _row(
-            strings.receiptService(
-              (ticket.taxConfig.serviceBp / 100).toStringAsFixed(0),
-            ),
-            totals.service.format(),
-            size: 12,
-          ),
-        _row(
-          strings.receiptVat((ticket.taxConfig.vatBp / 100).toStringAsFixed(0)),
-          totals.vat.format(),
-          size: 12,
-        ),
-        Container(
-          margin: const EdgeInsets.only(top: PosSpace.sm),
-          padding: const EdgeInsets.only(top: PosSpace.sm),
-          decoration: BoxDecoration(
-            border: Border(top: _receipt.emphasis),
-          ),
-          child: Row(
-            children: [
-              Text(
-                strings.receiptTotal,
-                style: PosText.mono(color: _receipt.inkWarm, size: 17, weight: FontWeight.w600),
-              ),
-              const Spacer(),
-              Text(
-                totals.total.format(),
-                style: PosText.mono(color: _receipt.inkWarm, size: 17, weight: FontWeight.w600),
-              ),
-            ],
-          ),
-        ),
-        _row(strings.receiptPaid, totals.paid.format(), size: 12),
-        _row(strings.receiptChange, totals.change.format(), size: 12),
-        _dashed(),
-        Text(
-          result.invoiceNumber == null || result.queued
-              ? strings.receiptQueuedOffline
-              : strings.receiptSynced,
-          textAlign: TextAlign.center,
-          style: PosText.mono(size: 10.5, color: _receipt.body),
-        ),
-        Text(
-          'xorder.io',
-          textAlign: TextAlign.center,
-          style: PosText.mono(size: 10.5, color: _receipt.body),
-        ),
-        Text(
-          strings.receiptThanks,
-          textAlign: TextAlign.center,
-          style: strings.languageCode == 'ar'
-              ? PosText.arabic(size: 11, color: _receipt.body)
-              : PosText.mono(size: 10.5, color: _receipt.body),
-        ),
-        // Tax figures came from read-only device config, not the server.
-        // Disclosing that is deliberate — see POS-BE-013.
-        if (ticket.taxConfig.source == TaxSource.deviceConfig)
-          Padding(
-            padding: const EdgeInsets.only(top: PosSpace.sm),
-            child: Text(
-              strings.receiptTaxFromDevice,
-              textAlign: TextAlign.center,
-              style: PosText.mono(size: 9.5, color: _receipt.warn),
-            ),
-          ),
-      ],
-    ),
-  );
-
-  String _timestamp() {
-    final now = DateTime.now();
-    String two(int v) => v.toString().padLeft(2, '0');
-    return '${two(now.day)}/${two(now.month)} ${two(now.hour)}:${two(now.minute)}';
-  }
-
-  Widget _dashed() => Padding(
-    padding: const EdgeInsets.symmetric(vertical: PosSpace.sm),
-    child: Text(
-      '-' * 42,
-      maxLines: 1,
-      overflow: TextOverflow.clip,
-      style: PosText.mono(size: 11, color: _receipt.shellLineMeta),
-    ),
-  );
-
-  Widget _row(String left, String right, {double size = 12.5}) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 1),
-    child: Row(
-      children: [
-        Expanded(
-          child: Text(
-            left,
-            overflow: TextOverflow.ellipsis,
-            style: PosText.mono(size: size, color: _receipt.ink),
-          ),
-        ),
-        Text(
-          right,
-          style: PosText.mono(size: size, color: _receipt.ink),
-        ),
-      ],
-    ),
-  );
 
   Widget _actions(BuildContext context, WidgetRef ref, AppStrings strings) =>
       Row(

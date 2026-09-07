@@ -332,9 +332,14 @@ void main() {
       final path = file.path;
       if (path.endsWith('core/ui/tokens.dart')) continue; // IS the palettes
       if (path.endsWith('core/ui/theme.dart')) continue; // builds from them
-      // The receipt renders paper, and paper is white in a dark room too. It
-      // says so at the top of the file and pins one palette on purpose.
+      // The receipt renders paper, and paper is white in a dark room too. The
+      // three files that draw a printed slip pin one palette on purpose and
+      // say so at the top. Named individually rather than by directory, so a
+      // fourth file added to `features/receipt/` still has to argue its case
+      // here rather than inheriting an exemption.
       if (path.endsWith('receipt/receipt_dialog.dart')) continue;
+      if (path.endsWith('receipt/receipt_paper.dart')) continue;
+      if (path.endsWith('receipt/reprint_dialog.dart')) continue;
 
       final lines = file.readAsLinesSync();
       for (var i = 0; i < lines.length; i++) {

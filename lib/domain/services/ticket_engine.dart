@@ -505,6 +505,44 @@ abstract final class TicketEngine {
   // customer was shown.
 
   /// Take a configured discount off one line.
+  /// Set or clear what the kitchen is told about one line.
+  ///
+  /// An empty note clears it — an empty string in the `note` column reads as
+  /// "somebody typed something" when nobody did.
+  ///
+  /// No refusals beyond the line existing, and deliberately no event row. A
+  /// note changes nothing about what anybody is charged, and an audit ledger
+  /// that recorded every typo in "no onions" would bury the rows that matter.
+  static TicketResult setLineNote(Ticket ticket, String lineKey, String note) {
+    final line = ticket.lines.firstWhereOrNull((l) => l.key == lineKey);
+    if (line == null) return TicketResult.refused(LineNotOnTicket(lineKey));
+
+    final trimmed = note.trim();
+    return TicketResult.ok(
+      ticket.copyWith(
+        lines: [
+          for (final l in ticket.lines)
+            if (l.key == lineKey)
+              TicketLine(
+                product: l.product,
+                quantity: l.quantity,
+                modifiers: l.modifiers,
+                // Passed positionally through the constructor rather than
+                // `copyWith`, because `copyWith`'s null means "leave it alone"
+                // and clearing a note has to be possible.
+                note: trimmed.isEmpty ? null : trimmed,
+                stage: l.stage,
+                roundNumber: l.roundNumber,
+                voided: l.voided,
+                priceOverride: l.priceOverride,
+              )
+            else
+              l,
+        ],
+      ),
+    );
+  }
+
   /// Sell one line at a price somebody set by hand.
   ///
   /// [price] is the **whole unit price**, modifiers included — what the

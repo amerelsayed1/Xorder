@@ -10,6 +10,7 @@ import 'package:xorder_pos/data/unconfigured/unconfigured_repositories.dart';
 import 'package:xorder_pos/data/postgres/migrations.dart';
 import 'package:xorder_pos/data/postgres/pos_database.dart';
 import 'package:xorder_pos/data/postgres/postgres_orders_repository.dart';
+import 'package:xorder_pos/data/cloud/outbox_drain.dart';
 import 'package:xorder_pos/features/setup/application/setup_controller.dart';
 
 import 'pg_fixture.dart';
@@ -102,7 +103,17 @@ void main() {
     // database and cloud was expected to write over HTTP. Cloud is offline-first
     // against its own PostgreSQL now, so refusing it a repository would leave it
     // with no way to record a sale at all.
-    expect(container.read(ordersRepositoryProvider), isA<PostgresOrdersRepository>());
+    //
+    // Wrapped, not bare: a cloud till pokes the sync drain after every settled
+    // sale, so `SyncingOrdersRepository` sits over the Postgres one. Asserting
+    // the bare type here was asserting the absence of that wrapper, which is
+    // the behaviour a cloud terminal is supposed to have — the write itself is
+    // identical either way, PostgreSQL first and an outbox claim in the same
+    // transaction.
+    expect(
+      container.read(ordersRepositoryProvider),
+      isA<SyncingOrdersRepository>(),
+    );
   });
 
   test('a ticket built by the engine lands in Postgres with the engine\'s own totals', () async {

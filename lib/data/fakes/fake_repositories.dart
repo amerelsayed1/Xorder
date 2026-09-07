@@ -1050,6 +1050,10 @@ class FakeStaffDirectoryRepository implements StaffDirectoryRepository {
 class FakeAuditRepository implements AuditRepository {
   final entries = <AuditEntry>[];
 
+  /// Set to make [record] throw, so a test can drive the path where the ledger
+  /// is unreachable — which for a reprint means nothing prints at all.
+  Object? failWith;
+
   @override
   Future<void> record({
     required PosStaff by,
@@ -1060,7 +1064,10 @@ class FakeAuditRepository implements AuditRepository {
     Map<String, Object?>? before,
     Map<String, Object?>? after,
     String? reason,
-  }) async => entries.insert(
+  }) async {
+    final failure = failWith;
+    if (failure != null) throw failure;
+    return entries.insert(
     0,
     AuditEntry(
       action: action,
@@ -1076,8 +1083,9 @@ class FakeAuditRepository implements AuditRepository {
       // A fixed instant: a fake that read the clock would make a golden
       // test fail once a minute.
       occurredAt: DateTime.utc(2026, 1, 1),
-    ),
-  );
+      ),
+    );
+  }
 
   @override
   Future<List<AuditEntry>> recent({

@@ -1353,6 +1353,44 @@ const posMigrations = <PosMigration>[
         WHERE existing.restaurant_id = r.id AND existing.scope = 'refund')
     ''',
   ]),
+  // The owner role must hold every capability. It is stated in
+  // `SystemRoles.owner`, enforced by `RolesRepository.save`, and was true of
+  // every database at the moment it was seeded — and then Wave A added
+  // `order.item.delete_before_send`, `order.item.delete_after_send` and
+  // `order.view_all`, and every branch server seeded before that kept an owner
+  // who could not grant them.
+  //
+  // That is the exact failure the invariant exists to prevent: a restaurant
+  // reaching a state where nobody can grant a capability nobody holds.
+  //
+  // **Additive, never subtractive.** The union leaves anything a restaurant
+  // configured for itself alone, and re-running adds nothing. Only the *owner*
+  // is touched: manager, supervisor and cashier are defaults a restaurant
+  // edits, and pushing this build's opinion back over an edited role is the
+  // thing migration 12's reason seed was careful not to do.
+  //
+  // The list is a frozen literal, not an interpolation of `PosCapability.all`.
+  // An applied migration is history, and history that changes when a Dart
+  // constant is edited is not history. A capability added after this needs its
+  // own migration — which is the point: somebody has to think about it.
+  PosMigration(13, 'the owner role holds every capability Wave A added', [
+    '''
+    UPDATE pos_roles
+       SET capabilities = ARRAY(
+             SELECT DISTINCT unnest(
+               capabilities || ARRAY[
+                 'order.item.delete_before_send',
+                 'order.item.delete_after_send',
+                 'order.view_all'
+               ]::text[]))
+     WHERE code = 'owner'
+       AND NOT (capabilities @> ARRAY[
+         'order.item.delete_before_send',
+         'order.item.delete_after_send',
+         'order.view_all'
+       ]::text[])
+    ''',
+  ]),
 ];
 
 /// Brings the branch database up to the current schema.

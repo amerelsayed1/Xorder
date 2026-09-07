@@ -8,6 +8,46 @@ import '../../../core/ui/widgets/pos_widgets.dart';
 import '../../../domain/models/discount.dart';
 import '../../../domain/models/ticket.dart';
 
+/// How tightly the cart draws its lines.
+///
+/// **Compact drops one thing and one thing only: the sent timestamp.** Notes,
+/// discounts, void reasons and struck-through prices all survive at both
+/// densities — everything a cashier or a customer needs in order to *dispute*
+/// the ticket is present either way. A density that hid a reason would make the
+/// screen and the ledger disagree exactly when somebody was arguing about them.
+///
+/// (The timestamp itself is not built yet; there is nowhere on a `TicketLine`
+/// that records when a round went out. The rule is written down here so that
+/// whoever adds it knows which mode it belongs in.)
+enum CartDensity {
+  /// 44px plain rows. Seven lines fit the 420 list height.
+  comfortable,
+
+  /// 32px plain rows. Eleven fit — which is what a mid-sized full-service
+  /// check of 9 to 14 lines needs.
+  compact;
+
+  /// Vertical padding inside a line row.
+  double get linePadding => this == CartDensity.compact ? 7 : PosSpace.md;
+
+  /// The gap between a line's name and its meta rows.
+  double get metaGap => this == CartDensity.compact ? 0 : 1;
+
+  double get nameSize => this == CartDensity.compact ? 13.5 : 14.5;
+  double get amountSize => this == CartDensity.compact ? 14 : 15;
+  double get metaSize => this == CartDensity.compact ? 11 : 12;
+
+  /// A section bar's vertical padding.
+  double get sectionPadding => this == CartDensity.compact ? 5 : 9;
+
+  /// The number of lines past which a ticket is dense enough to want the
+  /// compact treatment.
+  ///
+  /// Seven, because that is what fits comfortably — the switch happens exactly
+  /// when the eighth line would otherwise fall off the bottom.
+  static const switchAbove = 7;
+}
+
 /// 378px cart panel on shell ground with a 2px ink left border.
 class CartPanel extends StatelessWidget {
   const CartPanel({
@@ -22,6 +62,8 @@ class CartPanel extends StatelessWidget {
     this.onChangeTable,
     this.selectedLineKey,
     this.onSelectLine,
+    this.onEditNote,
+    this.density = CartDensity.comfortable,
   });
 
   final Ticket ticket;
@@ -42,6 +84,17 @@ class CartPanel extends StatelessWidget {
   /// somebody's cursor on it.
   final String? selectedLineKey;
   final ValueChanged<String>? onSelectLine;
+
+  /// Add or change a line's note. Null hides the affordance entirely.
+  final ValueChanged<String>? onEditNote;
+
+  /// Taken as a parameter, never read from a provider in here.
+  ///
+  /// It is per-terminal settings state, and the rule that makes it safe — the
+  /// switch is automatic above seven lines and then **sticky for the rest of
+  /// that order** — lives where the order does. Rows that resize under a finger
+  /// mid-sale are how a cashier taps the wrong line.
+  final CartDensity density;
 
   @override
   Widget build(BuildContext context) {
@@ -140,23 +193,31 @@ class CartPanel extends StatelessWidget {
             _LineRow(
               line: line,
               dimmed: true,
+              density: density,
               discount: ticket.discountOnLine(line.key),
               isSelected: line.key == selectedLineKey,
               onSelect: onSelectLine == null
                   ? null
                   : () => onSelectLine!(line.key),
+              onEditNote: onEditNote == null
+                  ? null
+                  : () => onEditNote!(line.key),
             ),
           _sectionBar(s.newRound, pos.accent, pos: pos),
         ],
         for (final line in draft)
           _LineRow(
             line: line,
+            density: density,
             discount: ticket.discountOnLine(line.key),
             isSelected: line.key == selectedLineKey,
             onSelect: onSelectLine == null
                 ? null
                 : () => onSelectLine!(line.key),
             onQuantityChanged: (delta) => onQuantityChanged(line.key, delta),
+            onEditNote: onEditNote == null
+                ? null
+                : () => onEditNote!(line.key),
           ),
       ],
     );
@@ -166,9 +227,9 @@ class CartPanel extends StatelessWidget {
       Container(
         width: double.infinity,
         color: pos.shellRow,
-        padding: const EdgeInsets.symmetric(
+        padding: EdgeInsets.symmetric(
           horizontal: PosSpace.lg,
-          vertical: 9,
+          vertical: density.sectionPadding,
         ),
         child: MicroLabel(label, color: color),
       );
@@ -350,10 +411,14 @@ class _LineRow extends StatelessWidget {
     this.isSelected = false,
     this.onSelect,
     this.onQuantityChanged,
+    this.onEditNote,
+    this.density = CartDensity.comfortable,
   });
 
   final TicketLine line;
   final bool dimmed;
+  final CartDensity density;
+  final VoidCallback? onEditNote;
 
   /// What was taken off this line, if anything. Null for most lines.
   final AppliedDiscount? discount;
@@ -367,9 +432,9 @@ class _LineRow extends StatelessWidget {
     final language = context.strings.languageCode;
 
     final row = Container(
-      padding: const EdgeInsets.symmetric(
+      padding: EdgeInsets.symmetric(
         horizontal: PosSpace.lg,
-        vertical: PosSpace.md,
+        vertical: density.linePadding,
       ),
       decoration: BoxDecoration(
         color: isSelected ? context.pos.shellCard : null,
@@ -411,7 +476,7 @@ class _LineRow extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                         style:
                             PosText.ui(
-                              size: 14.5,
+                              size: density.nameSize,
                               weight: FontWeight.w600,
                               color: line.isVoided
                                   ? context.pos.shellMuted
@@ -437,11 +502,18 @@ class _LineRow extends StatelessWidget {
                   Text(
                     line.modifierSummary(language),
                     style: PosText.ui(
-                      size: 12,
+                      size: density.metaSize,
                       color: context.pos.shellLineMeta,
                       height: 1.4,
                     ),
                   ),
+                // The kitchen's instruction, behind a 6px accent square so it
+                // reads as an instruction rather than as part of the dish name.
+                // Present at both densities: a note is what somebody in the
+                // kitchen acts on, and hiding it to save eight pixels is how a
+                // customer gets the onions they asked not to have.
+                if (line.note != null && line.note!.trim().isNotEmpty)
+                  _NoteRow(note: line.note!, density: density),
                 // Why it went. On the meta row rather than in a chip, because
                 // it is a sentence a cashier reads aloud to a customer, not a
                 // status somebody scans for.
@@ -449,7 +521,7 @@ class _LineRow extends StatelessWidget {
                   Text(
                     line.voided!.note!,
                     style: PosText.ui(
-                      size: 12,
+                      size: density.metaSize,
                       color: context.pos.danger,
                       height: 1.4,
                     ),
@@ -481,7 +553,7 @@ class _LineRow extends StatelessWidget {
                 line.lineTotal.format(),
                 style:
                     PosText.mono(
-                      size: 15,
+                      size: density.amountSize,
                       weight: FontWeight.w600,
                       color: line.isVoided
                           ? context.pos.shellMuted
@@ -498,7 +570,7 @@ class _LineRow extends StatelessWidget {
                     ),
               ),
               if (onQuantityChanged != null && !line.isVoided) ...[
-                const SizedBox(height: PosSpace.sm),
+                SizedBox(height: density == CartDensity.compact ? 4 : PosSpace.sm),
                 Row(
                   children: [
                     _stepper(
@@ -512,6 +584,12 @@ class _LineRow extends StatelessWidget {
                       () => onQuantityChanged!(1),
                       pos: context.pos,
                     ),
+                    // No F-key: the map is full, which is an honest answer
+                    // rather than a squeezed-in binding.
+                    if (onEditNote != null) ...[
+                      const SizedBox(width: 2),
+                      _stepper('✎', onEditNote!, pos: context.pos),
+                    ],
                   ],
                 ),
               ],
@@ -612,6 +690,44 @@ class _LineRow extends StatelessWidget {
 }
 
 /// The mark that says this line is not being charged for.
+/// A line's note, on its meta row behind a 6px accent square.
+///
+/// The square rather than a chip or a label: a note is free text a cashier
+/// typed, and wrapping it in a box would make a two-word instruction look like
+/// a status. The mark says "somebody asked for this"; the words say what.
+class _NoteRow extends StatelessWidget {
+  const _NoteRow({required this.note, required this.density});
+
+  final String note;
+  final CartDensity density;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: EdgeInsets.only(top: density.metaGap),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 6,
+          height: 6,
+          margin: const EdgeInsetsDirectional.only(end: 6, top: 5),
+          color: context.pos.accent,
+        ),
+        Expanded(
+          child: Text(
+            note,
+            style: PosText.ui(
+              size: density.metaSize,
+              color: context.pos.shellLineMeta,
+              height: 1.4,
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
 /// Marks a line that is not being sold at the menu price.
 ///
 /// Accent rather than danger: repricing is a decision somebody made on purpose,

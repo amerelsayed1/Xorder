@@ -13,6 +13,7 @@ import '../../../domain/models/order_record.dart';
 import '../../../domain/models/permissions.dart';
 import '../../../domain/models/refund.dart';
 import '../../../domain/services/authorization.dart';
+import '../../receipt/reprint_dialog.dart';
 import '../../refund/presentation/refund_sheet.dart';
 import 'order_status_chip.dart';
 
@@ -464,28 +465,68 @@ class _Detail extends ConsumerWidget {
         detail.order.total.minor >
             refunds.fold<int>(0, (sum, r) => sum + r.total.minor);
 
+    final mayReprint =
+        ref.watch(canProvider(PosCapability.receiptReprint)) is! Denied;
+
     // Nothing to offer and nothing to explain: a footer bar with a sentence
     // about a permission somebody does not hold is a footer bar that is there
-    // all day saying nothing useful. A7's reprint lands here next.
-    if (!mayRefund) return const SizedBox.shrink();
+    // all day saying nothing useful.
+    if (!mayRefund && !mayReprint) return const SizedBox.shrink();
 
     return Container(
       padding: const EdgeInsets.all(PosSpace.md),
       decoration: BoxDecoration(
         border: BorderDirectional(top: context.pos.hairline),
       ),
-      child: PosButton(
-        label: strings.refundAction,
-        border: Border.fromBorderSide(
-          anythingLeft ? BorderSide(color: pos.danger) : pos.resting,
-        ),
-        foreground: anythingLeft ? pos.danger : pos.muted,
-        fontWeight: FontWeight.w700,
-        onPressed: anythingLeft
-            ? () => _refundFlow(context, ref, refunds)
-            : null,
+      child: Row(
+        children: [
+          if (mayReprint)
+            Expanded(
+              child: PosButton(
+                label: strings.receiptReprintAction,
+                border: Border.fromBorderSide(pos.resting),
+                onPressed: () => _reprintFlow(context, ref, refunds),
+              ),
+            ),
+          if (mayReprint && mayRefund) const SizedBox(width: PosSpace.sm),
+          if (mayRefund)
+            Expanded(
+              child: PosButton(
+                label: strings.refundAction,
+                border: Border.fromBorderSide(
+                  anythingLeft ? BorderSide(color: pos.danger) : pos.resting,
+                ),
+                foreground: anythingLeft ? pos.danger : pos.muted,
+                fontWeight: FontWeight.w700,
+                onPressed: anythingLeft
+                    ? () => _refundFlow(context, ref, refunds)
+                    : null,
+              ),
+            ),
+        ],
       ),
     );
+  }
+
+  /// A reprint is offered on **any** order, including a voided one.
+  ///
+  /// Somebody asking for a copy of a slip that was voided is asking a fair
+  /// question, and the paper answers it — the void is on the record and the
+  /// stamp says the document is a copy. Withholding it would only send them to
+  /// the manager.
+  Future<void> _reprintFlow(
+    BuildContext context,
+    WidgetRef ref,
+    List<Refund> refunds,
+  ) async {
+    final printed = await ReprintFlow.run(
+      context,
+      ref,
+      detail: detail,
+      refunds: refunds,
+    );
+    if (!printed || !context.mounted) return;
+    posToast(context, context.strings.receiptReprintRecorded);
   }
 
   Future<void> _refundFlow(

@@ -790,6 +790,11 @@ class TicketController extends Notifier<Ticket> {
     state = next;
   }
 
+  void setLineNote(String lineKey, String note) {
+    final result = TicketEngine.setLineNote(state, lineKey, note);
+    if (result.isOk) state = result.ticket!;
+  }
+
   void setOrderType(OrderType type) =>
       state = TicketEngine.setOrderType(state, type);
 

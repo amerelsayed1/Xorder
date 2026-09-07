@@ -1,6 +1,6 @@
 # Wave A progress — where the gap-closure plan stands
 
-**As of 7 September 2026.** Companion to [11-gap-closure-plan.md](11-gap-closure-plan.md),
+**As of 8 September 2026.** Companion to [11-gap-closure-plan.md](11-gap-closure-plan.md),
 which is the plan; this is the state of it. When the two disagree, this file is
 newer.
 
@@ -8,9 +8,8 @@ newer.
 
 ## 1. The short version
 
-Wave A is **five of eight items done**. Everything that needed new schema is
-built and applied: migrations 9 through 12 cover the order lifecycle, discounts,
-order authorship and refunds. What is left in Wave A needs no migration at all.
+**Wave A is complete.** All eight items are built, and one migration nobody
+planned for turned up along the way.
 
 | | Item | State |
 |---|---|---|
@@ -18,147 +17,116 @@ order authorship and refunds. What is left in Wave A needs no migration at all.
 | A.2 | Discounts | ✅ migration 10 |
 | A.3 | Void & cancel — line and order | ✅ |
 | A.4 | Order history · `served_by` | ✅ migration 11 |
+| A.4b | Price override | ✅ no migration needed |
 | A.5 | Refunds | ✅ migration 12 |
-| A.2b | **Price override** | 🔨 **in progress** |
-| A.7 | **Receipt reprint** | ⬜ not started |
-| A.8 | Cart density modes · per-line note | ⬜ not started |
+| A.7 | Receipt reprint | ✅ |
+| A.8 | Cart density modes · line note | ✅ |
+| A.9 | Owner role backfill | ✅ migration 13 |
 
-**Verification:** `flutter analyze` clean · **723 unit tests** pass, 13 skipped
-(the database suites, which self-skip without `POS_PG_HOST`) · **117 database
-tests** pass against PostgreSQL.
-
----
-
-## 2. What is in progress right now
-
-### Price override (A.2 in the design brief)
-
-**No migration needed** — migration 9 already provisioned
-`pos_order_line_events.unit_price_before_minor`, `unit_price_after_minor` and
-the `price_overridden` event in its CHECK constraint. That foresight is now
-paying for itself.
-
-Done:
-
-* `PriceOverride` on `TicketLine` — a snapshot carrying the replaced price as
-  well as the replacing one, plus who, why and the approver. It overrides the
-  **whole unit price**, modifiers folded in, so adding an extra to a repriced
-  line cannot walk the price back up past what was agreed.
-* `TicketLineEvent` gained `unitPriceBefore` / `unitPriceAfter`.
-
-Still to do:
-
-* `TicketEngine.overridePrice` / `removeOverride`, with refusals.
-* **The limit loophole.** A price override is a discount by another name: a
-  cashier with `price.override` and a 10 % discount ceiling could reprice a
-  50.00 dish to 5.00 and bypass the ceiling entirely. The engine will measure
-  the *reduction* against the same `DiscountLimit` the discount sheet uses, and
-  escalate to a manager the same way. This is the one part of the feature that
-  is a control rather than a convenience.
-* Writing the `price_overridden` event at settlement.
-* Parked-ticket codec round-trip, so a repriced line survives a restart.
-* Inline cart affordance — mono entry, old price struck through.
-* Tests: engine, codec, cart, and the database event.
+**Verification:** `flutter analyze` clean · **799 unit tests** pass, 13 skipped
+(the database suites, which self-skip without `POS_PG_HOST`) · **302 database
+tests** pass against PostgreSQL, with **no failures left** — the two
+long-standing ones are fixed and explained below.
 
 ---
 
-## 3. What is left in Wave A after that
+## 2. The two that were sitting there
 
-### Receipt reprint (A.7)
+Both surfaced from running the whole `test/data` suite rather than the files a
+change touched.
 
-`receipt.reprint` exists as a capability, is overridable, and is held by every
-seeded role including cashier. The audit action constant exists and **is never
-written** — wiring it is part of this.
+**`postgres_permissions_test` was a real bug, not a stale fixture.** The seeded
+owner role held 16 capabilities; the code says it holds all 19. `SystemRoles.owner`
+is `PosCapability.all` and `RolesRepository.save` enforces it, but a role seeded
+*before* Wave A added its three keys kept an owner who could not grant them —
+the exact failure the invariant exists to prevent: a restaurant where nobody can
+grant a capability nobody holds. **Migration 13** backfills it, additively, owner
+only.
 
-Needs: a reprint action on the order-history detail pane (the footer is already
-the place for it), the `REPRINT` marking on the output, and an audit row. The
-order lookup it depends on is built.
-
-### Cart density modes and the per-line note (A.8)
-
-From §9.1 of the patterns handoff. Comfortable and compact modes, plus the
-per-line note affordance. Neither is blocked on anything.
-
-### The capability expansion
-
-The plan's A.6 lists roughly fifty granular keys (`order.transfer`,
-`discount.above_limit`, `payment.partial_refund`…). There are **19**. Four have
-been added as the features that needed them landed —
-`order.item.delete_before_send`, `order.item.delete_after_send`,
-`order.view_all` — and the rest are a Wave C concern in practice: the `text[]`
-model takes them without a migration and `PosCapability.canonical` means nothing
-gets renamed later. It is a real deviation from the plan's sequencing, recorded
-here rather than quietly skipped.
+**`postgres_wiring_test` was a stale assertion.** It expected a bare
+`PostgresOrdersRepository` on a cloud terminal, which was asserting the *absence*
+of the sync wrapper a cloud terminal is supposed to have. It now asserts
+`SyncingOrdersRepository`, which is the binding, with a note on why the write is
+identical either way.
 
 ---
 
-## 4. Everything after Wave A
+## 3. What is left, in order
+
+Nothing in Wave A. The next decision is where to start Wave B.
 
 | Wave | Theme | Migration | Size |
 |---|---|---|---|
-| **B** | Cash drawer · pay in/out · business day | 13 | L |
-| **C** | Permission model to specification | 14 | L |
-| **D** | Settings & configuration screens | 15 | XL |
-| **E** | Floors & tables | 16 | M |
-| **F** | Kitchen, printing, hardware | 17 | L |
+| **B** | Cash drawer · pay in/out · business day | 14 | L |
+| **C** | Permission model to specification | 15 | L |
+| **D** | Settings & configuration screens | 16 | XL |
+| **E** | Floors & tables | 17 | M |
+| **F** | Kitchen, printing, hardware | 18 | L |
 | **G** | Reports · X/Z · export/import | — | L |
-| **H** | Customers | 18 | M |
-| **I** | Auth & security hardening | 19 | M |
-| **J** | Backup · restore · diagnostics | 20 | L |
-| **K** | Local API tier | 21 | XXL |
-| **L** | Inventory & recipes (P1) | 22 | XL |
+| **H** | Customers | 19 | M |
+| **I** | Auth & security hardening | 20 | M |
+| **J** | Backup · restore · diagnostics | 21 | L |
+| **K** | Local API tier | 22 | XXL |
+| **L** | Inventory & recipes (P1) | 23 | XL |
 
-Migration numbers have each shifted by one from the original plan: migration 11
-became `who sold it` (order authorship), which the plan had not anticipated and
-which history, refunds and sales-by-staff all needed.
+Migration numbers have each shifted by two from the original plan: 11 became
+`who sold it`, and 13 became the owner backfill. Neither was anticipated.
 
 **§113 P0 is complete at the end of Wave G** — everything the SRS calls
 mandatory for v1, except §71's API tier, which is Wave K.
 
-### Three things worth carrying forward
+### Three things to carry into Wave B
 
 1. **Ship Wave D's settings *infrastructure* early, inside Wave B.** Scoped
-   `pos_settings` plus the Settings shell. B, F and G all want it, and
-   `RefundPolicy` is already written to read from it the day it exists.
+   `pos_settings` plus the Settings shell. B, F and G all want it, and two
+   things are already written to read from it the day it exists:
+   `RefundPolicy` and the cart's per-terminal density default.
 2. **Wave B carries a trap.** Making payment methods data breaks the
    `wireLabel == 'Cash'` string match behind `ShiftSummary.cashTaken`. It must
    be replaced by a `counts_as_cash` column in the *same* change, or every
-   Arabic till reports a false variance on every cash-up. The note is now on
+   Arabic till reports a false variance on every cash-up. The note now lives on
    `TenderMethod.wireLabel`, where somebody changing it will read it.
 3. **`BlindCountDialog` (pattern 7) is blocked** on the `cash.variance.view`
    naming decision — §4.2 of [13-pattern-handoff-review.md](13-pattern-handoff-review.md).
-   It is Wave B work anyway.
+   It is Wave B work, so this is the moment to settle it.
+
+### Deferred on purpose
+
+**The capability expansion.** The plan's A.10 lists roughly fifty granular keys
+(`order.transfer`, `discount.above_limit`, `payment.partial_refund`…). There are
+**19**. Three were added as the features that needed them landed; the rest are a
+Wave C concern in practice, because the `text[]` model takes them without a
+migration and `PosCapability.canonical` means nothing gets renamed later.
+Migration 13 is the reminder that adding one is not free: an existing owner role
+does not get it by itself.
+
+**The sent timestamp.** Compact density is specified as dropping it and nothing
+else. There is nowhere on a `TicketLine` that records when a round went out, so
+there is nothing yet to drop. The rule is written down in `CartDensity` for
+whoever adds it.
 
 ---
 
-## 5. Verification debt
+## 4. The one thing still unverified
 
-**The `pos_till` password.** Every database suite so far has been run as
-`amerelsayed`, the superuser. That verifies the SQL and none of the grants —
-a superuser needs no grant at all, so a missing one is invisible.
+**The `pos_till` password.** Every database suite has been run as `amerelsayed`,
+the superuser. That verifies the SQL and none of the grants — a superuser needs
+no grant at all, so a missing one is invisible.
 
-Where this bites hardest is refunds. Migration 12's counters are maintained by
-`SECURITY DEFINER` triggers, and the till is deliberately granted **no** UPDATE
-on either of them. Whether that combination actually works under the till's own
-privileges is exactly what a superuser run cannot tell us.
+It matters most for refunds. Migration 12's counters are maintained by
+`SECURITY DEFINER` triggers and the till is deliberately granted **no** UPDATE on
+either. Whether that combination works under the till's own privileges is
+exactly what a superuser run cannot say.
 
 Partial cover exists: `test/data/till_grants_test.dart` asserts the grant list
-itself, without a server — including that the counters are not grantable and
-that refunds are INSERT-only. That is the shape of the grants, not proof they
-suffice.
-
-**Two known `postgres_wiring_test.dart` failures** when run with a database
-present: one environmental, one pre-existing in uncommitted `providers.dart`
-work.
+itself without a server — that the counters are not grantable, that refunds are
+INSERT-only, that every table order history joins is readable. That is the shape
+of the grants, not proof they suffice.
 
 ---
 
-## 6. Everything is uncommitted
+## 5. Working tree
 
-76 changed or new files sit in the working tree against `077d3d3`. That includes
-migrations 9–12, discounts, void, order history, refunds, and roughly 250 new
-tests.
-
-This is the single largest risk on the list. A `git stash` during earlier work
-already resurrected a deleted file and broke `flutter analyze`; a tree this
-large with no commits behind it has no floor under it.
+Everything since `ba665d3` is uncommitted — the price override, the reprint, the
+cart density work, migration 13, and the two test fixes. Worth a commit before
+Wave B starts.

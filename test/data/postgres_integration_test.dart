@@ -308,6 +308,100 @@ void main() {
     });
   });
 
+  group('a repriced line reaches the ledger', () {
+    Ticket repriced(String id) {
+      const grill = Product(
+        id: 501,
+        categoryId: 9,
+        nameEn: 'Mixed Grill',
+        price: Money(5000),
+      );
+
+      var ticket = Ticket(
+        id: id,
+        orderType: OrderType.takeaway,
+        taxConfig: const TaxConfig(serviceBp: 0, vatBp: 0),
+        lines: [TicketLine(product: grill, quantity: 2)],
+      );
+      ticket = TicketEngine.overridePrice(
+        ticket,
+        '501:',
+        const Money(4000),
+        by: staffId,
+        now: DateTime.utc(2026, 9, 7, 13),
+        note: 'Regular customer',
+      ).ticket!;
+
+      return ticket.copyWith(
+        tenders: const [Tender(typeId: 1, label: 'Cash', amount: Money(8000))],
+      );
+    }
+
+    test('the line is written at the price that was agreed', () async {
+      // Not the menu price. `unit_price_minor` is what the receipt said and
+      // what a refund will be measured against.
+      await repository().submit(
+        repriced('66666666-6666-4666-8666-000000000001'),
+      );
+
+      final rows = await db.query(
+        pg.config,
+        'SELECT unit_price_minor, line_total_minor FROM pos_order_lines '
+        'ORDER BY id DESC LIMIT 1',
+      );
+      expect(rows.first[0], 4000);
+      expect(rows.first[1], 8000);
+    });
+
+    test('the order total follows the agreed price', () async {
+      await repository().submit(
+        repriced('66666666-6666-4666-8666-000000000002'),
+      );
+
+      final rows = await db.query(
+        pg.config,
+        'SELECT subtotal_minor, total_minor FROM pos_orders '
+        'ORDER BY id DESC LIMIT 1',
+      );
+      expect(rows.first[0], 8000);
+      expect(rows.first[1], 8000);
+    });
+
+    test('the event records both prices, which is the whole audit', () async {
+      // Migration 9 provisioned `unit_price_before_minor` and
+      // `unit_price_after_minor` for exactly this. "Was 50.00, now 40.00" is
+      // the only way anybody later can tell a repricing from a cheap menu.
+      await repository().submit(
+        repriced('66666666-6666-4666-8666-000000000003'),
+      );
+
+      final rows = await db.query(
+        pg.config,
+        'SELECT event, unit_price_before_minor, unit_price_after_minor, '
+        '       staff_id, note, order_line_id '
+        'FROM pos_order_line_events ORDER BY id DESC LIMIT 1',
+      );
+
+      expect(rows.first[0], 'price_overridden');
+      expect(rows.first[1], 5000);
+      expect(rows.first[2], 4000);
+      expect(rows.first[3], staffId);
+      expect(rows.first[4], 'Regular customer');
+      // The line still exists, so the event points at it.
+      expect(rows.first[5], isNotNull);
+    });
+
+    test('the event name is one the CHECK constraint accepts', () async {
+      // A string this build invents that migration 9 does not know would fail
+      // the whole settlement transaction — silently, from the cashier's side,
+      // as a sale that would not go through.
+      final result = await repository().submit(
+        repriced('66666666-6666-4666-8666-000000000004'),
+      );
+      expect(result.serverId, isNotNull);
+    });
+  });
+
   group('a voided order', () {
     Ticket sentTicket(String id) => Ticket(
       id: id,

@@ -1106,6 +1106,31 @@ sealed class AppStrings {
   String priceOverrideAboveLimit(String reduction, String limit);
   String get priceOverrideNotPermitted;
   String priceOverrideApplied(String price);
+
+  // ── Reprinting a receipt ──────────────────────────────────────────────────
+
+  /// Stamped across the top of a reprinted slip. Uppercase, mono, boxed — it
+  /// has to survive being photographed and photocopied.
+  String get receiptReprintMark;
+
+  /// Also on the slip, so a reprint cannot be used to claim a refund that has
+  /// already been given.
+  String receiptRefundedMark(String amount);
+
+  String get receiptReprintAction;
+  String receiptReprintTitle(String invoice);
+  String get receiptReprintExplain;
+  String get receiptReprintConfirm;
+  String get receiptReprintRecorded;
+  String get receiptReprintNotPermitted;
+
+  /// The audit ledger could not be written, so nothing was printed. An
+  /// unrecorded reprint is exactly the one somebody wanted.
+  String get reprintCouldNotBeRecorded;
+
+  // ── A line's note ─────────────────────────────────────────────────────────
+  String lineNoteTitle(String item);
+  String get lineNoteHint;
 }
 
 /// English. The reference wording — the Arabic below is a translation of this,
@@ -1465,6 +1490,32 @@ final class EnStrings extends AppStrings {
       'You do not have permission to change a price.';
   @override
   String priceOverrideApplied(String price) => 'Price changed to $price';
+
+  @override
+  String get receiptReprintMark => 'REPRINT — NOT AN ORIGINAL';
+  @override
+  String receiptRefundedMark(String amount) => 'REFUNDED $amount';
+  @override
+  String get receiptReprintAction => 'Reprint receipt';
+  @override
+  String receiptReprintTitle(String invoice) => 'Reprint $invoice';
+  @override
+  String get receiptReprintExplain =>
+      'The slip is marked as a reprint, and this is recorded against your name.';
+  @override
+  String get receiptReprintConfirm => 'Print';
+  @override
+  String get receiptReprintRecorded => 'Reprint sent, and recorded';
+  @override
+  String get receiptReprintNotPermitted =>
+      'You do not have permission to reprint a receipt.';
+  @override
+  String get reprintCouldNotBeRecorded =>
+      'This could not be recorded, so nothing was printed. Try again.';
+  @override
+  String lineNoteTitle(String item) => 'Note for $item';
+  @override
+  String get lineNoteHint => 'No onions, well done, on the side…';
 
   @override
   String get cancel => 'Cancel';
@@ -3378,6 +3429,32 @@ final class ArStrings extends AppStrings {
   String get priceOverrideNotPermitted => 'ليس لديك صلاحية لتغيير السعر.';
   @override
   String priceOverrideApplied(String price) => 'تم تغيير السعر إلى $price';
+
+  @override
+  String get receiptReprintMark => 'إعادة طباعة — ليست الأصل';
+  @override
+  String receiptRefundedMark(String amount) => 'مسترجع $amount';
+  @override
+  String get receiptReprintAction => 'إعادة طباعة الفاتورة';
+  @override
+  String receiptReprintTitle(String invoice) => 'إعادة طباعة $invoice';
+  @override
+  String get receiptReprintExplain =>
+      'تُوسم الورقة بأنها إعادة طباعة، ويُسجَّل ذلك باسمك.';
+  @override
+  String get receiptReprintConfirm => 'طباعة';
+  @override
+  String get receiptReprintRecorded => 'أُرسلت إعادة الطباعة وسُجِّلت';
+  @override
+  String get receiptReprintNotPermitted =>
+      'ليس لديك صلاحية لإعادة طباعة الفاتورة.';
+  @override
+  String get reprintCouldNotBeRecorded =>
+      'تعذّر تسجيل ذلك، فلم تتم الطباعة. حاول مرة أخرى.';
+  @override
+  String lineNoteTitle(String item) => 'ملاحظة على $item';
+  @override
+  String get lineNoteHint => 'بدون بصل، جيد الاستواء، على جانب…';
 
   @override
   String get cancel => 'إلغاء';

@@ -20,6 +20,8 @@ import '../shift/presentation/shift_dialogs.dart';
 import 'widgets/cart_panel.dart';
 import 'widgets/discount_sheet.dart';
 import 'widgets/line_void_dialog.dart';
+import 'widgets/line_note_dialog.dart';
+import 'widgets/price_override_dialog.dart';
 import 'widgets/category_rail.dart';
 import 'widgets/modifier_sheet.dart';
 import 'widgets/pos_top_bar.dart';
@@ -62,6 +64,32 @@ class _SaleScreenState extends ConsumerState<SaleScreen> {
   /// a property of the sale. A resumed table must not come back with somebody
   /// else's cursor on it, and a settled sale must not carry one to the ledger.
   String? _selectedLineKey;
+
+  /// Whether the cart has switched to compact rows for this order.
+  ///
+  /// **One way, and sticky until the ticket clears.** It turns on when the
+  /// ticket passes [CartDensity.switchAbove] lines and does not turn off again
+  /// when a line is removed — rows that resize under a finger mid-sale are how
+  /// a cashier taps the wrong one, and a ticket that oscillates around the
+  /// boundary would do exactly that.
+  ///
+  /// Screen state rather than ticket state, for the same reason the selection
+  /// is: a resumed table must not come back carrying somebody else's display
+  /// preference. The per-terminal *default* is Settings › POS behaviour when
+  /// Wave D lands, and there is deliberately no manual toggle on this screen.
+  bool _compactCart = false;
+
+  /// Called on every build with the current ticket.
+  CartDensity _densityFor(Ticket ticket) {
+    if (!_compactCart && ticket.lines.length > CartDensity.switchAbove) {
+      // Deferred, because this is read during build.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && !_compactCart) setState(() => _compactCart = true);
+      });
+      return CartDensity.compact;
+    }
+    return _compactCart ? CartDensity.compact : CartDensity.comfortable;
+  }
 
   @override
   void dispose() {
@@ -187,6 +215,60 @@ class _SaleScreenState extends ConsumerState<SaleScreen> {
   /// all is `discount.apply`; how much they may take off without asking is a
   /// limit the engine enforces. Somebody who lacks the capability entirely is
   /// asked once here and then works inside the sheet with no ceiling — because
+  /// Add or change what the kitchen is being told about one line.
+  ///
+  /// No F-key and no permission gate. A note is an instruction, not a
+  /// concession — it changes nothing about what anybody is charged, so gating
+  /// it would put a supervisor between a cashier and the words "no onions".
+  Future<void> _editNote(Ticket ticket, String lineKey) async {
+    final line = ticket.lines.where((l) => l.key == lineKey).firstOrNull;
+    if (line == null) return;
+
+    final note = await LineNoteDialog.show(
+      context,
+      line: line,
+      strings: context.strings,
+    );
+    if (note == null || !mounted) return;
+
+    ref.read(ticketProvider.notifier).setLineNote(lineKey, note);
+  }
+
+  /// Sell the selected line at a price somebody set by hand.
+  ///
+  /// Aimed at the selected line and nothing else. There is no sensible
+  /// "override the price" of a whole ticket — a bill is not an item — so unlike
+  /// `F6`, this refuses rather than falling back to the order.
+  Future<void> _overridePrice(Ticket ticket) async {
+    final line = ticket.lines
+        .where((l) => l.key == _selectedLineKey)
+        .firstOrNull;
+    if (line == null) {
+      posToast(context, context.strings.priceOverrideNothingSelected);
+      return;
+    }
+
+    final updated = await PriceOverrideFlow.run(
+      context,
+      ref,
+      ticket: ticket,
+      line: line,
+    );
+    if (updated == null || !mounted) return;
+
+    ref.read(ticketProvider.notifier).applyEdit(updated);
+
+    final repriced = updated.lines
+        .where((l) => l.key == line.key)
+        .firstOrNull;
+    posToast(
+      context,
+      context.strings.priceOverrideApplied(
+        (repriced?.unitPrice ?? line.unitPrice).format(withCurrency: true),
+      ),
+    );
+  }
+
   /// Order history.
   ///
   /// Gated here as well as on the rail button. The rail hides the control for
@@ -372,6 +454,8 @@ class _SaleScreenState extends ConsumerState<SaleScreen> {
           const SingleActivator(LogicalKeyboardKey.f4): () {
             if (ticket.hasDraft) _sendRound();
           },
+          const SingleActivator(LogicalKeyboardKey.f5): () =>
+              _overridePrice(ticket),
           const SingleActivator(LogicalKeyboardKey.f6): () => _discount(ticket),
           const SingleActivator(LogicalKeyboardKey.f7): _openOrders,
           const SingleActivator(LogicalKeyboardKey.delete): () =>
@@ -439,6 +523,8 @@ class _SaleScreenState extends ConsumerState<SaleScreen> {
     ticket: ticket,
     cashierName: session.userName,
     online: ui.online,
+    density: _densityFor(ticket),
+    onEditNote: (key) => _editNote(ticket, key),
     selectedLineKey: _selectedLineKey,
     // Tapping the selected line again clears it, so a cashier can get back to
     // discounting the whole order without hunting for a "deselect" control.

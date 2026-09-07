@@ -77,8 +77,8 @@ house rule; it becomes load-bearing here.
 
 | Wave | Theme | Migrations | SRS sections closed | Size |
 |---|---|---|---|---|
-| **A** | Discount · Void · Refund | 9, 10, 11, 12 | 14–21, 39, 42, 90, 91 | XL |
-| **B** | Cash drawer · Pay in/out · Business day | 13 | 22–28, 92 | L |
+| **A** | Discount · Void · Refund | 9, 10, 11, 12, 13 | 14–21, 39, 42, 90, 91 | XL |
+| **B** | Cash drawer · Pay in/out · Business day | 14 | 22–28, 92 | L |
 | **C** | Permission model to spec | 13 | 10–17, 22, 24, 29, 32, 48, 50, 55, 60–61, 81, 105–108, 112 | L |
 | **D** | Settings & configuration surface | 14 | 4.5, 4.7, 31, 37, 38, 40, 51–54, 85 | XL |
 | **E** | Floors & tables | 15 | 29, 30, 42 | M |
@@ -283,6 +283,53 @@ only meaningful once `served_by` has data behind it.
 **Not built here:** reprint (A.7) and refund (A.6) actions. They attach to the
 detail pane, which is why it is its own file.
 
+### A.4b Price override (SRS §16) — **built ✅**
+
+**No migration.** Migration 9 already provisioned
+`pos_order_line_events.unit_price_before_minor`, `unit_price_after_minor` and
+`price_overridden` in its CHECK constraint. Building the feature was a matter of
+filling columns that were waiting for it.
+
+`PriceOverride` sits on `TicketLine` as a snapshot — the replaced price as well
+as the replacing one, plus who, why and the approver. It overrides the **whole
+unit price**, modifiers folded in: "make it 40" means the customer pays 40 for
+that item, not 40 plus the extras.
+
+**The control that matters — a price override is a discount by another name.**
+Without a ceiling, a cashier holding `price.override` and a 10 % discount limit
+could reprice a 50.00 dish to 5.00 and take 90 % off a line the discount sheet
+would have refused. `TicketEngine.overridePrice` therefore measures the
+*reduction* against the same `DiscountLimit`, refuses with `PriceBelowLimit`,
+and the flow escalates to a supervisor and retries with `limit: null` — the same
+three steps the discount sheet already makes.
+
+Two details that follow from it:
+
+* The ceiling is measured against the **menu** price, not the current one.
+  Otherwise 50 → 45 passes, then 45 → 40.50 passes, and the customer has 19 %
+  off with no approval anywhere.
+* "Was" always quotes the menu. A second override that quoted the first one's
+  price as the list price would understate what the restaurant gave away.
+
+Charging **more** than the menu price is allowed and unlimited — it gives
+nothing away, so there is no ceiling to breach — and still recorded and
+reasoned. Zero is allowed: it is a comp. Below zero is refused; that is a refund
+wearing a disguise, and it has its own flow and its own permission.
+
+Restoring the menu price is recorded as another `price_overridden` event rather
+than by deleting the first. A correction that erased its predecessor would let
+somebody reprice, sell, and tidy up after.
+
+**One deviation from the design brief.** The brief asks for this inline on the
+cart line. The half that must be inline is: a repriced line shows its menu price
+struck through above what is being charged, with a `PRICE` chip. The editing is
+a dialog, because a reason is **required** and a reason picker does not fit in a
+378 px panel — and a required field with nowhere to go is how a required field
+quietly becomes optional.
+
+Reached by `F5` on the selected line. Unlike `F6`, it refuses rather than
+falling back to the order: a bill is not an item.
+
 ### A.5 Refunds (SRS §18) — **built ✅**
 
 **Migration 12 — refunds** — **applied ✅**
@@ -377,7 +424,84 @@ from the order-history detail pane. The client refund id is generated **once
 when the dialog opens**, so a retry after a timeout replays instead of paying
 twice.
 
-### A.6 Capabilities added in Wave A
+### A.7 Receipt reprint (SRS §21) — **built ✅**
+
+`AuditAction.receiptReprinted` had existed as a constant since the audit ledger
+was built and had never been written by anything. This is what writes it.
+
+**The receipt had to be taken apart first.** It was built straight from a live
+`Ticket`, and a settled order is not one: no `Product` objects, snapshot prices,
+and rebuilding a ticket from the ledger would re-price the sale against today's
+menu — handing a customer a receipt that disagrees with the one in their hand.
+`ReceiptData` is the plain shape both paths feed: a ticket at settlement, an
+`OrderRecordDetail` on a reprint. It holds no catalogue and no tax
+configuration, so there is nothing there that *could* recompute a total.
+
+Three decisions on the slip itself:
+
+* **`REPRINT — NOT AN ORIGINAL` across the top**, before the restaurant's name.
+  Two identical receipts for one sale is how a refund gets claimed twice, and
+  somebody handed a slip has to know what it is before they read what is on it.
+* **`REFUNDED <amount>` when money has already gone back**, so the paper cannot
+  be used to claim a refund that has already been given.
+* **The sale's time and the seller's name, not the reprint's.** A slip
+  reprinted a week later carrying today's date would be a forgery the till
+  produced on request. An order with no recorded seller prints a dash rather
+  than falling back to whoever is standing at the till.
+
+**No tax rate is printed on a reprint.** The rates are not columns on
+`pos_orders`, and dividing the tax by the net would print a figure that is right
+most of the time and wrong wherever rounding went the other way. "Service" and
+"VAT" without a percentage is honest; an invented rate is a document somebody
+will argue with.
+
+**If the ledger cannot be written, nothing prints.** An unrecorded reprint is
+precisely the one somebody wanted, and a missing printer is a smaller problem
+than a missing record.
+
+Offered on any order including a voided one — somebody asking for a copy of a
+voided slip is asking a fair question, and the paper answers it.
+
+### A.8 Cart density and the line note — **built ✅**
+
+`CartDensity` is a parameter on `CartPanel`, never read from a provider inside
+it: the switch is automatic above seven lines and then **sticky for the rest of
+that order**, and that rule lives in the sale screen where the order does. Rows
+that resize under a finger mid-sale are how a cashier taps the wrong line.
+
+**Compact drops one thing and one thing only: the sent timestamp.** Notes,
+discounts, void reasons and struck-through prices all survive at both densities.
+A density that hid a reason would make the screen and the ledger disagree at
+exactly the moment somebody was arguing about them. (The timestamp is not built
+— nothing on a `TicketLine` records when a round went out — so the rule is
+written down for whoever adds it.)
+
+The **note** sits on the meta row behind a 6px accent square, added from the
+line's action row beside the quantity steppers. No F-key: the map is full, which
+is an honest answer rather than a squeezed-in binding. No permission gate
+either — a note is an instruction, not a concession, and gating it would put a
+supervisor between a cashier and the words "no onions". Draft lines only: a note
+added after the round went out would never reach the kitchen, and a control that
+silently does nothing is worse than none.
+
+### A.9 Migration 13 — the owner role — **applied ✅**
+
+Not planned, found by a database test. `SystemRoles.owner` is `PosCapability.all`
+and `RolesRepository.save` enforces it, but a role seeded **before** Wave A added
+`order.item.delete_before_send`, `order.item.delete_after_send` and
+`order.view_all` kept an owner who could not grant them — the exact failure the
+invariant exists to prevent: a restaurant where nobody can grant a capability
+nobody holds.
+
+Additive union, idempotent, and **only the owner**. Manager, supervisor and
+cashier are defaults a restaurant edits, and pushing this build's opinion back
+over an edited role is what migration 12's reason seed was careful not to do.
+The capability list is a frozen literal rather than an interpolation of
+`PosCapability.all`: an applied migration is history, and a capability added
+after this needs its own migration — which is the point, because somebody has to
+think about it.
+
+### A.10 Capabilities added in Wave A
 
 ```
 order.create · order.view_own · order.view_all · order.edit_own · order.edit_others
@@ -399,21 +523,21 @@ per the §49 default matrix. `discount.apply` and `order.void`/`order.refund` st
 they are and become *umbrella* keys the finer ones sit under — no renames, so no
 `canonical` entries needed.
 
-### A.7 Audit actions added
+### A.11 Audit actions added
 
 `order.created` · `order.cancelled` · `order.voided` · `line.cancelled` ·
 `line.voided` · `line.quantity_changed` · `price.overridden` · `discount.applied` ·
 `discount.removed` · `refund.issued` · `payment.recorded` · `payment.removed` ·
 `receipt.reprinted` (constant exists, is never written — wire it).
 
-### A.8 UI
+### A.12 UI
 
 Discount sheet (F6) · void/cancel dialog with reason picker · refund flow (find
 order → pick lines or amount → reason → tender back → refund receipt) · price
 override on a cart line · reprint action on a settled order. All specified in the
 design brief.
 
-### A.9 Acceptance
+### A.13 Acceptance
 
 * Golden money tests: 30+ cases covering order/line discount × percentage/fixed ×
   dine-in/takeaway × VAT base, each asserting `subtotal + service − discount + vat`.

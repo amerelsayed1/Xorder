@@ -48,6 +48,8 @@ Ticket _parked() {
 }
 
 void main() {
+  _priceOverrideTests();
+
   test('a parked ticket round-trips exactly — id, money and stages included', () {
     final original = _parked();
     final json = jsonDecode(jsonEncode(ParkedTicketCodec.encode(original)))
@@ -212,6 +214,126 @@ void main() {
 
       expect(restored.discounts.single.kind, DiscountKind.fixed);
       expect(restored.discounts.single.amount.minor, 750);
+    });
+  });
+}
+
+void _priceOverrideTests() {
+  group('a repriced line survives a restart', () {
+    Ticket repriced({Money price = const Money(8000)}) {
+      var ticket = Ticket(id: 'txn-price', orderType: OrderType.dineIn);
+      ticket = TicketEngine.attachTable(ticket, 12, 'T12', guests: 2);
+      ticket = TicketEngine.addLine(
+        ticket,
+        _burger,
+        modifiers: const [_cheese],
+        groups: const [_extras],
+        quantity: 2,
+      ).ticket!;
+      return TicketEngine.overridePrice(
+        ticket,
+        ticket.lines.single.key,
+        price,
+        by: 4,
+        now: DateTime.utc(2026, 9, 7, 13),
+        reasonId: 12,
+        note: 'Regular customer',
+        approvedByStaffId: 9,
+        approvedByName: 'Hana Mostafa',
+      ).ticket!;
+    }
+
+    test('the agreed price comes back, not the menu price', () {
+      // A parked line that came back at list price overnight would hand the
+      // guests a bill larger than the one they were quoted, with nothing on
+      // screen to say why.
+      final restored = ParkedTicketCodec.decode(
+        (jsonDecode(jsonEncode(ParkedTicketCodec.encode(repriced()))) as Map).cast<String, Object?>(),
+        _catalog,
+      )!;
+
+      final line = restored.lines.single;
+      expect(line.isRepriced, isTrue);
+      expect(line.unitPrice.minor, 8000);
+      // 95.00 + 15.00 of cheese is what it would have been.
+      expect(line.menuUnitPrice.minor, 11000);
+      expect(line.lineTotal.minor, 16000);
+    });
+
+    test('the whole record comes back, both names included', () {
+      final restored = ParkedTicketCodec.decode(
+        (jsonDecode(jsonEncode(ParkedTicketCodec.encode(repriced()))) as Map).cast<String, Object?>(),
+        _catalog,
+      )!;
+
+      final override = restored.lines.single.priceOverride!;
+      expect(override.original.minor, 11000);
+      expect(override.byStaffId, 4);
+      expect(override.at, DateTime.utc(2026, 9, 7, 13));
+      expect(override.reasonId, 12);
+      expect(override.note, 'Regular customer');
+      expect(override.approvedByStaffId, 9);
+      expect(override.approvedByName, 'Hana Mostafa');
+    });
+
+    test('the price_overridden event round-trips with both figures', () {
+      final restored = ParkedTicketCodec.decode(
+        (jsonDecode(jsonEncode(ParkedTicketCodec.encode(repriced()))) as Map).cast<String, Object?>(),
+        _catalog,
+      )!;
+
+      final event = restored.lineEvents.single;
+      expect(event.event, 'price_overridden');
+      expect(event.unitPriceBefore, 11000);
+      expect(event.unitPriceAfter, 8000);
+    });
+
+    test('a comp round-trips as a comp, not as an absent override', () {
+      // Zero is a real price. Decoding it as "no override" would put the item
+      // back on the bill at full price.
+      final restored = ParkedTicketCodec.decode(
+        (jsonDecode(
+              jsonEncode(
+                ParkedTicketCodec.encode(repriced(price: Money.zero)),
+              ),
+            )
+            as Map).cast<String, Object?>(),
+        _catalog,
+      )!;
+
+      expect(restored.lines.single.isRepriced, isTrue);
+      expect(restored.totals.subtotal.minor, 0);
+    });
+
+    test('an unreadable price decodes to zero, never to the menu price', () {
+      // The safe direction. A line that came back free is wrong in a way
+      // somebody notices at the counter; one that came back at list price
+      // silently overcharges a guest who was quoted less.
+      final encoded = ParkedTicketCodec.encode(repriced());
+      ((encoded['lines'] as List).first as Map)['price_override'] =
+          <String, Object?>{'by_staff_id': 4};
+
+      final restored = ParkedTicketCodec.decode(
+        (jsonDecode(jsonEncode(encoded)) as Map).cast<String, Object?>(),
+        _catalog,
+      )!;
+      expect(restored.lines.single.unitPrice.minor, 0);
+    });
+
+    test('a line with no override decodes without one', () {
+      var plain = Ticket(id: 'txn-plain', orderType: OrderType.takeaway);
+      plain = TicketEngine.addLine(
+        plain,
+        _burger,
+        groups: const [_extras],
+      ).ticket!;
+
+      final restored = ParkedTicketCodec.decode(
+        (jsonDecode(jsonEncode(ParkedTicketCodec.encode(plain))) as Map).cast<String, Object?>(),
+        _catalog,
+      )!;
+      expect(restored.lines.single.isRepriced, isFalse);
+      expect(restored.lines.single.unitPrice.minor, 9500);
     });
   });
 }
