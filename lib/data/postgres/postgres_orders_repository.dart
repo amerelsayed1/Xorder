@@ -163,6 +163,7 @@ class PostgresOrdersRepository implements OrdersRepository {
       final lineIds = await _insertLines(tx, orderId, ticket);
       await _insertLineEvents(tx, orderId, ticket, lineIds);
       await _insertDiscounts(tx, orderId, ticket, lineIds);
+      await _insertTaxLines(tx, orderId, totals);
       await _insertPayments(tx, orderId, ticket, occurredAt);
       final queued = await _enqueueForSync(tx, orderId, ticket);
 
@@ -285,6 +286,9 @@ class PostgresOrdersRepository implements OrdersRepository {
       final lineIds = await _insertLines(tx, orderId, ticket);
       await _insertLineEvents(tx, orderId, ticket, lineIds);
       await _insertDiscounts(tx, orderId, ticket, lineIds);
+      // A voided order too: what tax *would* have been charged is part of the
+      // record of what was thrown away, and a waste report reads it.
+      await _insertTaxLines(tx, orderId, totals);
       // **No payments.** A voided order took no money, and a zero-amount tender
       // row would be refused by `pos_order_payments_amount_positive` anyway.
 
@@ -508,6 +512,43 @@ class PostgresOrdersRepository implements OrdersRepository {
           'staff': event.staffId,
           'approvedBy': event.approvedByStaffId,
           'occurredAt': event.at.toUtc(),
+        },
+      );
+    }
+  }
+
+  /// The tax breakdown, one row per rate.
+  ///
+  /// Written for every order, including a voided one: what tax *would* have
+  /// been charged is part of the record of what was thrown away, and an ETA
+  /// filing is built from these rows rather than from `vat_minor`. The scalar
+  /// stays because every report and every receipt already reads it, and because
+  /// `sum(amount_minor)` here equals it by construction.
+  Future<void> _insertTaxLines(
+    TxSession tx,
+    int orderId,
+    TicketTotals totals,
+  ) async {
+    for (final line in totals.taxLines) {
+      await tx.execute(
+        Sql.named('''
+          INSERT INTO pos_order_taxes (
+            order_id, tax_group_id, name_snapshot, rate_bp, base_minor,
+            amount_minor
+          ) VALUES (@order, @group, @name, @rate, @base, @amount)
+          ON CONFLICT (order_id, rate_bp, name_snapshot) DO NOTHING
+        '''),
+        parameters: {
+          'order': orderId,
+          // Null when the group is this build's fallback rather than a row the
+          // restaurant configured — there is nothing to point at.
+          'group': (line.taxGroupId ?? 0) == 0 ? null : line.taxGroupId,
+          // Snapshotted, like a line's name: a rate renamed or moved next year
+          // must not rewrite what a receipt said today.
+          'name': line.name,
+          'rate': line.rateBp,
+          'base': line.base.minor,
+          'amount': line.amount.minor,
         },
       );
     }

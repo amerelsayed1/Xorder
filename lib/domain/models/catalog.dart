@@ -19,6 +19,7 @@ class Product {
     this.sortOrder = 0,
     this.modifierGroupIds = const [],
     this.isOpenPrice = false,
+    this.taxGroupId,
   });
 
   /// A one-off item somebody typed a price for (§17 open item).
@@ -70,6 +71,13 @@ class Product {
   /// This line has no menu item behind it. See [Product.openPrice].
   final bool isOpenPrice;
 
+  /// Which rate this attracts. Null means the restaurant's default.
+  ///
+  /// Nullable rather than defaulted, because "nobody has said" and "somebody
+  /// chose the standard rate" are different facts: the first follows the
+  /// restaurant if it changes its default, and the second does not.
+  final int? taxGroupId;
+
   /// What the customer actually pays before modifiers.
   Money get effectivePrice => discountedPrice ?? price;
 
@@ -96,6 +104,8 @@ class Product {
     bool? isAvailable,
     int? sortOrder,
     List<int>? modifierGroupIds,
+    int? taxGroupId,
+    bool clearTaxGroup = false,
   }) => Product(
     id: id ?? this.id,
     categoryId: categoryId ?? this.categoryId,
@@ -114,6 +124,7 @@ class Product {
     // item, and an edit that quietly made it one would write a `menu_item_id`
     // pointing at nothing.
     isOpenPrice: isOpenPrice,
+    taxGroupId: clearTaxGroup ? null : (taxGroupId ?? this.taxGroupId),
   );
 }
 

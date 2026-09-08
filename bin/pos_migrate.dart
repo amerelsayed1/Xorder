@@ -578,6 +578,7 @@ Future<Map<String, int>> _seedRoles(
   // seeded the restaurants that already existed, and a restaurant this command
   // is creating right now was not one of them.
   final reasons = await bootstrap.seedReasonCodes(options.config, restaurantId);
+  await bootstrap.seedTaxGroup(options.config, restaurantId);
   stdout.writeln(
     reasons == 0
         ? 'reason codes already exist — left as the restaurant has them.'

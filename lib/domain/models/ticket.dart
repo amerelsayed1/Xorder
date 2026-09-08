@@ -1,6 +1,8 @@
 import 'package:collection/collection.dart';
 
 import '../../core/money/money.dart';
+import '../../core/money/rounding.dart';
+import 'tax.dart';
 import 'catalog.dart';
 import 'discount.dart';
 
@@ -281,7 +283,44 @@ class TaxConfig {
     this.vatBp = 1400,
     this.serviceDineInOnly = true,
     this.source = TaxSource.deviceConfig,
+    this.taxGroups = const [],
   });
+
+  /// The rates this restaurant charges (§17, ETA).
+  ///
+  /// Empty is the normal case and means "one rate for everything, at
+  /// [vatBp]" — which is what every ticket written before this existed was
+  /// charged, and what a restaurant that has configured nothing still gets.
+  final List<TaxGroup> taxGroups;
+
+  /// The rate a product falls back to when it names no group.
+  TaxGroup get defaultTaxGroup {
+    for (final group in taxGroups) {
+      if (group.isDefault) return group;
+    }
+    // Built from `vatBp` rather than from `TaxGroup.standard`, so a branch
+    // configured at 15% keeps charging 15% instead of silently reverting to
+    // Egypt's headline rate.
+    return TaxGroup(
+      id: 0,
+      nameEn: TaxGroup.standard.nameEn,
+      nameAr: TaxGroup.standard.nameAr,
+      rateBp: vatBp,
+      isDefault: true,
+    );
+  }
+
+  /// The group [id] names, or the default when it names none this build knows.
+  TaxGroup groupFor(int? id) {
+    if (id == null) return defaultTaxGroup;
+    for (final group in taxGroups) {
+      if (group.id == id) return group;
+    }
+    // A product pointing at a group this terminal has not synced yet. The
+    // default is the safe answer: under-charging tax is a debt the restaurant
+    // owes, over-charging it is money taken from a customer.
+    return defaultTaxGroup;
+  }
 
   /// Service charge in basis points — 1200 = 12%.
   final int serviceBp;
@@ -328,9 +367,16 @@ class TicketTotals {
     required this.due,
     required this.change,
     this.discount = const Money(0),
+    this.taxLines = const [],
   });
 
   final Money subtotal;
+
+  /// [vat], broken down by rate — the `tax_lines[]` a filing needs.
+  ///
+  /// Their amounts sum to [vat] exactly, because [vat] is built from them
+  /// rather than the other way round.
+  final List<TaxLine> taxLines;
 
   /// Everything taken off, line discounts and order discounts together.
   ///
@@ -465,7 +511,56 @@ class Ticket {
         ? net.percentBp(taxConfig.serviceBp)
         : _zero;
 
-    final vat = (net + service).percentBp(taxConfig.vatBp);
+    // ── Tax, by rate ──────────────────────────────────────────────────────
+    //
+    // Each line's share of the discount comes off before it is taxed, and the
+    // service charge is taxed at the default rate. Bases are accumulated per
+    // rate and rounded **once per rate**, never per line: three lines of 33.33
+    // at 14% round to 4.67 apiece and sum to 14.01, where the same 99.99 taxed
+    // once gives 14.00. Filing is by rate, so per-rate is both what ETA needs
+    // and — on a menu where everything shares one rate — arithmetically
+    // identical to the single-rate calculation this replaces.
+    final bases = <TaxGroup, Money>{};
+    void addBase(TaxGroup group, Money amount) {
+      if (amount.minor == 0) return;
+      bases[group] = (bases[group] ?? _zero) + amount;
+    }
+
+    if (subtotal.minor <= 0 || discount.minor <= 0) {
+      // Nothing to apportion. The common case, and it avoids a division.
+      for (final line in chargeable) {
+        addBase(taxConfig.groupFor(line.product.taxGroupId), line.lineTotal);
+      }
+    } else {
+      // Apportioned by value, with the **last line taking the remainder** so
+      // the bases sum to the net exactly. Rounding each share independently
+      // would leave a piastre of net untaxed or taxed twice, and a receipt
+      // whose parts do not add to its total is one a customer argues with.
+      var apportioned = _zero;
+      final lines = chargeable.toList();
+      for (var i = 0; i < lines.length; i++) {
+        final line = lines[i];
+        final share = i == lines.length - 1
+            ? net - apportioned
+            : line.lineTotal -
+                  discount.copyWith(
+                    minor: roundHalfUp(
+                      discount.minor * line.lineTotal.minor,
+                      subtotal.minor,
+                    ),
+                  );
+        apportioned += share;
+        addBase(taxConfig.groupFor(line.product.taxGroupId), share);
+      }
+    }
+
+    // Service is taxed at the default rate. It is the restaurant's charge for
+    // service, not a product, so it does not inherit a zero-rated bottle of
+    // water's treatment.
+    addBase(taxConfig.defaultTaxGroup, service);
+
+    final taxLines = TaxEngine.linesFor(bases);
+    final vat = TaxEngine.totalOf(taxLines, zero: _zero);
     final total = net + service + vat;
     final paid = tenders.fold(_zero, (sum, tender) => sum + tender.amount);
     final balance = total - paid;
@@ -475,6 +570,7 @@ class Ticket {
       discount: subtotal.minor < discount.minor ? subtotal : discount,
       service: service,
       vat: vat,
+      taxLines: taxLines,
       total: total,
       paid: paid,
       due: balance.clampToZero(),

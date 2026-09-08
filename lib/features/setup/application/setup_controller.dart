@@ -413,6 +413,9 @@ class SetupController extends Notifier<SetupDraft> {
       // than left to migration 9, which can only reach restaurants that already
       // existed when it ran — and this one is being created now.
       await bootstrap.seedReasonCodes(admin, restaurantId);
+      // The rate this branch charges, named — so products can be classified
+      // and an ETA filing has something to put beside its figures.
+      await bootstrap.seedTaxGroup(admin, restaurantId);
 
       final ownerCreated = await bootstrap.seedOwner(
         admin,

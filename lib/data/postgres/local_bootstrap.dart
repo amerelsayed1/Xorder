@@ -197,6 +197,38 @@ class LocalBootstrap {
     return created;
   }
 
+  /// The rate this restaurant charges, named.
+  ///
+  /// Migration 16 backfills every restaurant that existed when it ran; this is
+  /// the other half — a restaurant created afterwards needs one too, or its
+  /// products can never be classified and an ETA filing has an unnamed rate on
+  /// it.
+  ///
+  /// Returns true when it created one. Idempotent: a restaurant that already
+  /// has a default keeps whatever it configured, because a re-run of setup must
+  /// not reset an accountant's decision.
+  Future<bool> seedTaxGroup(
+    DeploymentConfig admin,
+    int restaurantId, {
+    int rateBp = 1400,
+  }) async {
+    final rows = await database.query(
+      admin,
+      'INSERT INTO pos_tax_groups (restaurant_id, name_en, name_ar, rate_bp, '
+      "  is_default) VALUES (@restaurant, 'VAT', @nameAr, @rate, true) "
+      'ON CONFLICT DO NOTHING RETURNING id',
+      parameters: {
+        'restaurant': restaurantId,
+        'nameAr': 'ضريبة القيمة المضافة',
+        // Whatever this branch is actually charging. Defaulting to Egypt's
+        // headline rate for a branch configured otherwise would change what
+        // customers pay.
+        'rate': rateBp,
+      },
+    );
+    return rows.isNotEmpty;
+  }
+
   /// The first person, on the owner role.
   ///
   /// The PIN is hashed here with the same PBKDF2 work factor the till verifies

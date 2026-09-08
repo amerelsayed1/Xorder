@@ -1633,6 +1633,122 @@ const posMigrations = <PosMigration>[
      WHERE 'cash.view_expected' = ANY(capabilities)
     ''',
   ]),
+  // Tax as a breakdown rather than a single figure.
+  //
+  // The risk register promised this in v1 — *"the money model carries a
+  // `tax_lines[]` breakdown from day one so a compliance layer has something to
+  // attach to"* — and nothing was built. `pos_orders.vat_minor` is one number
+  // with no rate behind it, which cannot express a zero-rated bottle of water
+  // beside a standard-rated meal, and cannot produce the per-rate breakdown
+  // Egypt's ETA e-receipt requires.
+  //
+  // It lands **before** anything is filed, because a tax breakdown cannot be
+  // retrofitted onto orders already sent to a tax authority.
+  PosMigration(16, 'tax groups, and the tax breakdown a filing needs', [
+    '''
+    CREATE TABLE IF NOT EXISTS pos_tax_groups (
+      id            bigserial   PRIMARY KEY,
+      restaurant_id bigint      NOT NULL REFERENCES pos_restaurants(id) ON DELETE CASCADE,
+      name_en       text        NOT NULL,
+      name_ar       text,
+      -- Basis points, like every other rate in this schema. 1400 = 14%.
+      rate_bp       integer     NOT NULL,
+      -- Exactly one per restaurant, enforced below. It is what a product with
+      -- no group of its own is charged at.
+      is_default    boolean     NOT NULL DEFAULT false,
+      is_active     boolean     NOT NULL DEFAULT true,
+      created_at    timestamptz NOT NULL DEFAULT now(),
+      CONSTRAINT pos_tax_groups_rate_sane
+        CHECK (rate_bp >= 0 AND rate_bp <= 10000),
+      CONSTRAINT pos_tax_groups_name_unique UNIQUE (restaurant_id, name_en)
+    )
+    ''',
+    // One default, held by the database. Two would make "what does an
+    // unclassified product cost" a question with two answers.
+    '''
+    CREATE UNIQUE INDEX IF NOT EXISTS pos_tax_groups_one_default
+      ON pos_tax_groups (restaurant_id) WHERE is_default
+    ''',
+
+    // Nullable: "nobody has said" and "somebody chose the standard rate" are
+    // different facts. The first follows the restaurant if it changes its
+    // default; the second does not.
+    '''
+    ALTER TABLE pos_products ADD COLUMN IF NOT EXISTS tax_group_id bigint
+      REFERENCES pos_tax_groups(id) ON DELETE SET NULL
+    ''',
+
+    // The breakdown itself. One row per **rate** per order, not per line: tax
+    // is filed by rate, and rounding once per rate is what keeps a ticket's
+    // arithmetic identical to what it was when every product shared one.
+    //
+    // `name_snapshot` and `rate_bp` are snapshots for the same reason a line's
+    // name is: a restaurant that renames "VAT 14%" or is moved to 15% next year
+    // must not rewrite what a receipt said today.
+    '''
+    CREATE TABLE IF NOT EXISTS pos_order_taxes (
+      id            bigserial PRIMARY KEY,
+      order_id      bigint    NOT NULL REFERENCES pos_orders(id) ON DELETE CASCADE,
+      tax_group_id  bigint    REFERENCES pos_tax_groups(id) ON DELETE SET NULL,
+      name_snapshot text      NOT NULL,
+      rate_bp       integer   NOT NULL,
+      base_minor    bigint    NOT NULL,
+      amount_minor  bigint    NOT NULL,
+      CONSTRAINT pos_order_taxes_sane CHECK (
+        rate_bp >= 0 AND rate_bp <= 10000
+        AND base_minor >= 0 AND amount_minor >= 0),
+      -- One row per rate per order. A second row for the same rate would be a
+      -- breakdown that does not break anything down.
+      CONSTRAINT pos_order_taxes_one_per_rate UNIQUE (order_id, rate_bp, name_snapshot)
+    )
+    ''',
+    '''
+    CREATE INDEX IF NOT EXISTS pos_order_taxes_order_idx
+      ON pos_order_taxes (order_id)
+    ''',
+
+    // Every restaurant gets the rate it has been charging all along, named.
+    //
+    // Read out of `pos_money_config`'s payload where one exists, so a branch on
+    // 15% keeps 15% — reverting it to Egypt's headline 14% would change what
+    // customers are charged, which a migration must never do. The path matches
+    // `MoneyConfigCodec`: the first entry of `tax_rules` carrying a `rate_bp`.
+    '''
+    INSERT INTO pos_tax_groups (restaurant_id, name_en, name_ar, rate_bp, is_default)
+    SELECT r.id, 'VAT', 'ضريبة القيمة المضافة',
+           COALESCE(
+             (SELECT (m.payload -> 'tax_rules' -> 0 ->> 'rate_bp')::integer
+                FROM pos_money_config m
+               WHERE m.restaurant_id = r.id
+                 AND jsonb_typeof(m.payload -> 'tax_rules') = 'array'
+                 AND jsonb_array_length(m.payload -> 'tax_rules') > 0),
+             1400),
+           true
+      FROM pos_restaurants r
+     WHERE NOT EXISTS (
+       SELECT 1 FROM pos_tax_groups g WHERE g.restaurant_id = r.id)
+    ''',
+
+    // Backfill the breakdown for orders that already exist.
+    //
+    // One line each, at the restaurant's default rate, based on whatever the
+    // order actually charged. It is not a reconstruction of what the rate *was*
+    // — nothing recorded that — but it is the honest statement that this much
+    // tax was taken, and it means no order is missing a breakdown entirely.
+    '''
+    INSERT INTO pos_order_taxes (order_id, tax_group_id, name_snapshot, rate_bp,
+                                 base_minor, amount_minor)
+    SELECT o.id, g.id, g.name_en, g.rate_bp,
+           GREATEST(o.subtotal_minor - o.discount_minor + o.service_minor, 0),
+           o.vat_minor
+      FROM pos_orders o
+      JOIN pos_tax_groups g
+        ON g.restaurant_id = o.restaurant_id AND g.is_default
+     WHERE o.vat_minor > 0
+       AND NOT EXISTS (
+         SELECT 1 FROM pos_order_taxes t WHERE t.order_id = o.id)
+    ''',
+  ]),
 ];
 
 /// Brings the branch database up to the current schema.
