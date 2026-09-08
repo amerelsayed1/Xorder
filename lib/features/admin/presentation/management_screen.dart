@@ -15,6 +15,7 @@ import 'management_floor_pane.dart';
 import 'management_menu_pane.dart';
 import 'management_eta_pane.dart';
 import 'management_money_pane.dart';
+import 'management_purchasing_pane.dart';
 import 'management_receipt_pane.dart';
 import 'management_roles_pane.dart';
 import 'management_staff_pane.dart';
@@ -57,7 +58,17 @@ class ManagementScreen extends ConsumerStatefulWidget {
 /// [receipt] is deliberately outside the authoring set: every terminal prints
 /// a slip with the restaurant's name and address on it, cloud and offline
 /// alike, and only the write side needs Management's credential.
-enum ManagementPane { staff, menu, floor, money, receipt, eta, roles, activity }
+enum ManagementPane {
+  staff,
+  menu,
+  floor,
+  money,
+  purchasing,
+  receipt,
+  eta,
+  roles,
+  activity,
+}
 
 class _ManagementScreenState extends ConsumerState<ManagementScreen> {
   late ManagementPane _pane = widget.initialPane;
@@ -132,6 +143,8 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
                       ManagementPane.menu => ManagementMenuPane(admin: admin),
                       ManagementPane.floor => ManagementFloorPane(admin: admin),
                       ManagementPane.money => ManagementMoneyPane(admin: admin),
+                      ManagementPane.purchasing =>
+                        ManagementPurchasingPane(admin: admin),
                       ManagementPane.receipt => ManagementReceiptPane(
                         admin: admin,
                       ),
@@ -210,6 +223,7 @@ class _Rail extends StatelessWidget {
     ManagementPane.menu => (s.paneMenu, s.paneMenuBlurb),
     ManagementPane.floor => (s.floorPlan, s.floorPlanHint),
     ManagementPane.money => (s.moneyRules, s.moneyRulesHint),
+    ManagementPane.purchasing => (s.panePurchasing, s.panePurchasingBlurb),
     ManagementPane.receipt => (s.paneReceipt, s.paneReceiptBlurb),
     ManagementPane.eta => (s.paneEta, s.paneEtaBlurb),
     ManagementPane.roles => (s.paneRoles, s.paneRolesBlurb),

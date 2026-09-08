@@ -36,6 +36,9 @@ import '../data/eta/filing_orders_repository.dart';
 import '../data/postgres/postgres_eta_queue_repository.dart';
 import '../data/postgres/postgres_receipt_profile_repository.dart';
 import '../data/postgres/postgres_service_charges_repository.dart';
+import '../data/postgres/postgres_suppliers_repository.dart';
+import '../data/postgres/postgres_purchase_orders_repository.dart';
+import '../data/postgres/postgres_receiving_repository.dart';
 import '../data/postgres/postgres_settings_repository.dart';
 import '../data/postgres/postgres_tender_types_repository.dart';
 import '../data/postgres/postgres_refunds_repository.dart';
@@ -63,6 +66,8 @@ import '../domain/models/reason_code.dart';
 import '../domain/models/eta_submission.dart';
 import '../domain/models/order_type_config.dart';
 import '../domain/models/permissions.dart';
+import '../domain/models/purchase_order.dart';
+import '../domain/models/supplier.dart';
 import '../domain/models/receipt_profile.dart';
 import '../domain/models/service_charge.dart';
 import '../domain/models/tender_method.dart';
@@ -1524,6 +1529,59 @@ final catalogAdminRepositoryProvider = Provider<CatalogAdminRepository?>((ref) {
     restaurantId: context.restaurantId,
     branchId: context.branchId,
     terminalId: context.terminalId,
+  );
+});
+
+// ── Purchasing ──────────────────────────────────────────────────────────────
+//
+// All three run on the administrator connection and none on the till's: a
+// counter credential has no use for who the restaurant owes money to.
+
+bool _canBuy(Ref ref) => ref.watch(adminDbCredentialProvider) != null;
+
+final suppliersRepositoryProvider = Provider<SuppliersRepository>((ref) {
+  final context = ref.watch(posWriteContextProvider);
+  if (context == null) return const UnconfiguredSuppliersRepository();
+  return PostgresSuppliersRepository(
+    database: ref.watch(adminPosDatabaseProvider),
+    config: ref.watch(adminDeploymentProvider),
+    adminAvailable: _canBuy(ref),
+    restaurantId: context.restaurantId,
+    branchId: context.branchId,
+  );
+});
+
+final suppliersProvider = FutureProvider<List<Supplier>>(
+  (ref) => ref.watch(suppliersRepositoryProvider).all(),
+);
+
+final purchaseOrdersRepositoryProvider = Provider<PurchaseOrdersRepository>((
+  ref,
+) {
+  final context = ref.watch(posWriteContextProvider);
+  if (context == null) return const UnconfiguredPurchaseOrdersRepository();
+  return PostgresPurchaseOrdersRepository(
+    database: ref.watch(adminPosDatabaseProvider),
+    config: ref.watch(adminDeploymentProvider),
+    adminAvailable: _canBuy(ref),
+    restaurantId: context.restaurantId,
+    branchId: context.branchId,
+  );
+});
+
+final purchaseOrdersProvider = FutureProvider<List<PurchaseOrder>>(
+  (ref) => ref.watch(purchaseOrdersRepositoryProvider).all(),
+);
+
+final receivingRepositoryProvider = Provider<ReceivingRepository>((ref) {
+  final context = ref.watch(posWriteContextProvider);
+  if (context == null) return const UnconfiguredReceivingRepository();
+  return PostgresReceivingRepository(
+    database: ref.watch(adminPosDatabaseProvider),
+    config: ref.watch(adminDeploymentProvider),
+    adminAvailable: _canBuy(ref),
+    restaurantId: context.restaurantId,
+    branchId: context.branchId,
   );
 });
 

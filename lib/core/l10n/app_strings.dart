@@ -863,12 +863,51 @@ sealed class AppStrings {
   String get chargeActive;
   String get currencyEgp;
 
+  // §36-37 — suppliers and purchase orders.
+  String get suppliers;
+  String get supplierNew;
+  String get supplierEdit;
+  String get supplierName;
+  String get supplierContact;
+  String get supplierEmail;
+  String get supplierPaymentTerms;
+  String get supplierTermsHint;
+  String get supplierCode;
+  String get supplierNotes;
+  String get supplierActive;
+  String get supplierActiveHint;
+  String get supplierCashOnDelivery;
+  String supplierTermDays(int days);
+  String get purchaseOrders;
+  String get purchaseOrderNew;
+  String get purchaseOrderEdit;
+  String get purchaseNoOrdersYet;
+  String get purchaseNoSuppliersYet;
+  String get purchaseNeedsASupplier;
+  String get purchaseNeedsALine;
+  String get purchaseItem;
+  String get purchaseQty;
+  String get purchaseUnitCost;
+  String get purchaseAddLine;
+  String purchaseLineCount(int count);
+  String get purchaseSend;
+  String get purchaseReceive;
+  String purchaseReceiveInto(String reference);
+  String get purchaseReceiveHint;
+  String get purchaseOrdered;
+  String get purchaseOutstanding;
+  String get purchaseArrived;
+  String purchaseBookIn(int lines);
+  String purchaseStatus(String wire);
+
   // Management chrome.
   String get backToTill;
   String get paneStaff;
   String get paneStaffBlurb;
   String get paneMenu;
   String get paneMenuBlurb;
+  String get panePurchasing;
+  String get panePurchasingBlurb;
   String get paneRoles;
   String get paneRolesBlurb;
   String get paneActivity;
@@ -3576,6 +3615,91 @@ final class EnStrings extends AppStrings {
   String get currencyEgp => 'EGP';
 
   @override
+  String get suppliers => 'Suppliers';
+  @override
+  String get supplierNew => 'New supplier';
+  @override
+  String get supplierEdit => 'Supplier';
+  @override
+  String get supplierName => 'Name';
+  @override
+  String get supplierContact => 'Who to call';
+  @override
+  String get supplierEmail => 'Email';
+  @override
+  String get supplierPaymentTerms => 'Days to pay';
+  @override
+  String get supplierTermsHint =>
+      'Zero means cash on delivery. This is what an invoice is due by, not a limit on it.';
+  @override
+  String get supplierCode => 'Your reference for them';
+  @override
+  String get supplierNotes => 'Notes';
+  @override
+  String get supplierActive => 'Still buying from them';
+  @override
+  String get supplierActiveHint =>
+      'Turning this off keeps the history and stops them appearing on new orders.';
+  @override
+  String get supplierCashOnDelivery => 'cash on delivery';
+  @override
+  String supplierTermDays(int days) => '$days days';
+  @override
+  String get purchaseOrders => 'Purchase orders';
+  @override
+  String get purchaseOrderNew => 'New order';
+  @override
+  String get purchaseOrderEdit => 'Order';
+  @override
+  String get purchaseNoOrdersYet => 'Nothing has been ordered yet.';
+  @override
+  String get purchaseNoSuppliersYet =>
+      'No suppliers yet. Add the people you buy from and orders follow.';
+  @override
+  String get purchaseNeedsASupplier =>
+      'Add a supplier first — an order has to be addressed to somebody.';
+  @override
+  String get purchaseNeedsALine =>
+      'Nothing to order. A line needs a name, a quantity and a unit cost.';
+  @override
+  String get purchaseItem => 'Item';
+  @override
+  String get purchaseQty => 'Quantity';
+  @override
+  String get purchaseUnitCost => 'Unit cost';
+  @override
+  String get purchaseAddLine => 'Add a line';
+  @override
+  String purchaseLineCount(int count) => count == 1 ? '1 line' : '$count lines';
+  @override
+  String get purchaseSend => 'Send';
+  @override
+  String get purchaseReceive => 'Receive';
+  @override
+  String purchaseReceiveInto(String reference) => 'Receive against $reference';
+  @override
+  String get purchaseReceiveHint =>
+      'Each box starts at what is still owed. Change one where less arrived.';
+  @override
+  String get purchaseOrdered => 'Ordered';
+  @override
+  String get purchaseOutstanding => 'Still owed';
+  @override
+  String get purchaseArrived => 'Arrived';
+  @override
+  String purchaseBookIn(int lines) =>
+      lines == 1 ? 'Book in 1 line' : 'Book in $lines lines';
+  @override
+  String purchaseStatus(String wire) => switch (wire) {
+    'draft' => 'draft',
+    'sent' => 'sent',
+    'partially_received' => 'part received',
+    'received' => 'received',
+    'cancelled' => 'cancelled',
+    _ => wire,
+  };
+
+  @override
   String get backToTill => 'Back to the till';
   @override
   String get paneStaff => 'Staff';
@@ -3585,6 +3709,11 @@ final class EnStrings extends AppStrings {
   String get paneMenu => 'Menu';
   @override
   String get paneMenuBlurb => 'Categories, items and what they cost';
+  @override
+  String get panePurchasing => 'Purchasing';
+  @override
+  String get panePurchasingBlurb =>
+      'Who you buy from, what you have ordered, and booking in what arrives.';
   @override
   String get paneRoles => 'Roles';
   @override
@@ -5920,6 +6049,91 @@ final class ArStrings extends AppStrings {
   String get currencyEgp => 'ج.م';
 
   @override
+  String get suppliers => 'المورّدون';
+  @override
+  String get supplierNew => 'مورّد جديد';
+  @override
+  String get supplierEdit => 'المورّد';
+  @override
+  String get supplierName => 'الاسم';
+  @override
+  String get supplierContact => 'جهة الاتصال';
+  @override
+  String get supplierEmail => 'البريد الإلكتروني';
+  @override
+  String get supplierPaymentTerms => 'مدة السداد بالأيام';
+  @override
+  String get supplierTermsHint =>
+      'صفر تعني الدفع عند التسليم. هذه مدة استحقاق الفاتورة، لا حد لقيمتها.';
+  @override
+  String get supplierCode => 'الرمز الذي تعرفه به';
+  @override
+  String get supplierNotes => 'ملاحظات';
+  @override
+  String get supplierActive => 'ما زلت تشتري منه';
+  @override
+  String get supplierActiveHint =>
+      'إيقافه يحفظ السجل ويمنع ظهوره في الأوامر الجديدة.';
+  @override
+  String get supplierCashOnDelivery => 'دفع عند التسليم';
+  @override
+  String supplierTermDays(int days) => '$days يوم';
+  @override
+  String get purchaseOrders => 'أوامر الشراء';
+  @override
+  String get purchaseOrderNew => 'أمر جديد';
+  @override
+  String get purchaseOrderEdit => 'الأمر';
+  @override
+  String get purchaseNoOrdersYet => 'لم يُطلب شيء بعد.';
+  @override
+  String get purchaseNoSuppliersYet =>
+      'لا مورّدين بعد. أضف من تشتري منهم ثم تأتي الأوامر.';
+  @override
+  String get purchaseNeedsASupplier =>
+      'أضف مورّدًا أولًا — لا بد أن يكون الأمر موجهًا إلى أحد.';
+  @override
+  String get purchaseNeedsALine =>
+      'لا شيء لطلبه. يحتاج السطر إلى اسم وكمية وسعر وحدة.';
+  @override
+  String get purchaseItem => 'الصنف';
+  @override
+  String get purchaseQty => 'الكمية';
+  @override
+  String get purchaseUnitCost => 'سعر الوحدة';
+  @override
+  String get purchaseAddLine => 'أضف سطرًا';
+  @override
+  String purchaseLineCount(int count) => count == 1 ? 'سطر واحد' : '$count أسطر';
+  @override
+  String get purchaseSend => 'إرسال';
+  @override
+  String get purchaseReceive => 'استلام';
+  @override
+  String purchaseReceiveInto(String reference) => 'استلام على $reference';
+  @override
+  String get purchaseReceiveHint =>
+      'كل خانة تبدأ بما هو مستحق. عدّل ما وصل منه أقل.';
+  @override
+  String get purchaseOrdered => 'المطلوب';
+  @override
+  String get purchaseOutstanding => 'المتبقي';
+  @override
+  String get purchaseArrived => 'الواصل';
+  @override
+  String purchaseBookIn(int lines) =>
+      lines == 1 ? 'تسجيل سطر واحد' : 'تسجيل $lines أسطر';
+  @override
+  String purchaseStatus(String wire) => switch (wire) {
+    'draft' => 'مسودة',
+    'sent' => 'مُرسل',
+    'partially_received' => 'استلام جزئي',
+    'received' => 'مستلم',
+    'cancelled' => 'ملغى',
+    _ => wire,
+  };
+
+  @override
   String get backToTill => 'رجوع إلى الكاشير';
   @override
   String get paneStaff => 'الموظفون';
@@ -5929,6 +6143,11 @@ final class ArStrings extends AppStrings {
   String get paneMenu => 'المنيو';
   @override
   String get paneMenuBlurb => 'الأقسام والأصناف وأسعارها';
+  @override
+  String get panePurchasing => 'المشتريات';
+  @override
+  String get panePurchasingBlurb =>
+      'من تشتري منهم، وما طلبته، وتسجيل ما يصل.';
   @override
   String get paneRoles => 'الأدوار';
   @override

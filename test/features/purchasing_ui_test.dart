@@ -1,0 +1,361 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:xorder_pos/core/l10n/app_strings.dart';
+import 'package:xorder_pos/core/money/money.dart';
+import 'package:xorder_pos/core/money/quantity.dart';
+import 'package:xorder_pos/core/ui/theme.dart';
+import 'package:xorder_pos/core/ui/tokens.dart';
+import 'package:xorder_pos/domain/models/purchase_order.dart';
+import 'package:xorder_pos/domain/models/supplier.dart';
+import 'package:xorder_pos/features/admin/presentation/purchase_order_dialog.dart';
+import 'package:xorder_pos/features/admin/presentation/receive_dialog.dart';
+import 'package:xorder_pos/features/admin/presentation/supplier_dialog.dart';
+
+/// Buying, on screen (§36–37).
+///
+/// Three claims are worth a test because getting any of them wrong makes the
+/// screen quietly lie: the order total has to move as lines are typed, a
+/// half-typed line must not count as an order, and every receiving box has to
+/// start at what is still owed rather than at zero.
+void main() {
+  setUp(() {
+    final view =
+        TestWidgetsFlutterBinding.instance.platformDispatcher.views.first;
+    view.physicalSize = const Size(1440, 1600);
+    view.devicePixelRatio = 1.0;
+  });
+
+  tearDown(() {
+    final view =
+        TestWidgetsFlutterBinding.instance.platformDispatcher.views.first;
+    view.resetPhysicalSize();
+    view.resetDevicePixelRatio();
+  });
+
+  const suppliers = [
+    Supplier(id: 7, nameEn: 'Nile Dairy', code: 'ND'),
+    Supplier(id: 8, nameEn: 'Cairo Meats', code: 'CM'),
+  ];
+
+  Future<void> host(
+    WidgetTester tester,
+    Future<void> Function(BuildContext context) open, {
+    String locale = 'en',
+  }) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          locale: Locale(locale),
+          theme: buildPosTheme(PosPalette.light),
+          localizationsDelegates: const [
+            AppLocalizations(),
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(
+            body: Builder(
+              builder: (context) => TextButton(
+                onPressed: () => open(context),
+                child: const Text('open'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+  }
+
+  group('the supplier dialog', () {
+    testWidgets('one field is required and the rest say they are not', (
+      tester,
+    ) async {
+      // A delivery arrives at seven in the morning. Demanding a tax number is
+      // how the delivery goes unrecorded.
+      Supplier? saved;
+      await host(
+        tester,
+        (context) async => saved = await SupplierDialog.show(context),
+      );
+
+      expect(find.text('NAME'), findsOneWidget);
+      expect(find.textContaining('OPTIONAL'), findsWidgets);
+
+      await tester.enterText(
+        find.byKey(const Key('supplier-name')),
+        'Nile Dairy',
+      );
+      await tester.tap(find.byKey(const Key('supplier-save')));
+      await tester.pumpAndSettle();
+
+      expect(saved?.nameEn, 'Nile Dairy');
+      expect(saved?.paymentTermDays, 0, reason: 'blank terms mean on delivery');
+      expect(saved?.isActive, isTrue);
+    });
+
+    testWidgets('a nameless supplier is refused beside the field', (
+      tester,
+    ) async {
+      Supplier? saved;
+      var closed = false;
+      await host(tester, (context) async {
+        saved = await SupplierDialog.show(context);
+        closed = true;
+      });
+
+      await tester.tap(find.byKey(const Key('supplier-save')));
+      await tester.pumpAndSettle();
+
+      expect(closed, isFalse, reason: 'the dialog stays open');
+      expect(saved, isNull);
+      expect(find.byType(SupplierDialog), findsOneWidget);
+    });
+
+    testWidgets('a new supplier is not asked whether it is retired', (
+      tester,
+    ) async {
+      // There is nothing to retire on a supplier nobody has saved yet, and an
+      // "in use" switch on a blank form is a question about nothing.
+      await host(tester, (context) async => SupplierDialog.show(context));
+      expect(find.byType(SwitchListTile), findsNothing);
+    });
+
+    testWidgets('an existing one can be retired', (tester) async {
+      await host(
+        tester,
+        (context) async =>
+            SupplierDialog.show(context, supplier: suppliers.first),
+      );
+      expect(find.byType(SwitchListTile), findsOneWidget);
+    });
+  });
+
+  group('the order dialog', () {
+    testWidgets('the total moves as the lines are typed', (tester) async {
+      // The number a buyer is deciding about is what the whole order costs. A
+      // figure that only appeared after saving would make them save to find out.
+      await host(
+        tester,
+        (context) async =>
+            PurchaseOrderDialog.show(context, suppliers: suppliers),
+      );
+
+      expect(find.text('120.00'), findsNothing);
+
+      await tester.enterText(find.byType(TextField).at(0), 'Milk 1L');
+      await tester.enterText(find.byType(TextField).at(1), '12');
+      await tester.enterText(find.byType(TextField).at(2), '10.00');
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('120.00'),
+        findsWidgets,
+        reason: '12 × 10.00, shown before anybody saves',
+      );
+    });
+
+    testWidgets('a half-typed line is not an error and not an order', (
+      tester,
+    ) async {
+      PurchaseOrder? saved;
+      await host(
+        tester,
+        (context) async => saved = await PurchaseOrderDialog.show(
+          context,
+          suppliers: suppliers,
+        ),
+      );
+
+      // A name and nothing else: the normal state of a form mid-typing.
+      await tester.enterText(find.byType(TextField).at(0), 'Milk 1L');
+      await tester.pumpAndSettle();
+      expect(
+        find.textContaining('needs a name'),
+        findsNothing,
+        reason: 'not complained about while it is being typed',
+      );
+
+      await tester.tap(find.byKey(const Key('purchase-save')));
+      await tester.pumpAndSettle();
+
+      expect(saved, isNull, reason: 'and not saved either');
+      expect(find.textContaining('Nothing to order'), findsOneWidget);
+    });
+
+    testWidgets('the order carries the supplier that was picked', (
+      tester,
+    ) async {
+      PurchaseOrder? saved;
+      await host(
+        tester,
+        (context) async => saved = await PurchaseOrderDialog.show(
+          context,
+          suppliers: suppliers,
+        ),
+      );
+
+      await tester.tap(find.text('Cairo Meats'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField).at(0), 'Beef mince');
+      await tester.enterText(find.byType(TextField).at(1), '5');
+      await tester.enterText(find.byType(TextField).at(2), '240.00');
+      await tester.tap(find.byKey(const Key('purchase-save')));
+      await tester.pumpAndSettle();
+
+      expect(saved?.supplierId, 8);
+      expect(saved?.supplierName, 'Cairo Meats');
+      expect(saved?.lines.single.lineTotal, const Money(120000));
+    });
+
+    testWidgets('a second line can be added and the first one removed', (
+      tester,
+    ) async {
+      await host(
+        tester,
+        (context) async =>
+            PurchaseOrderDialog.show(context, suppliers: suppliers),
+      );
+
+      expect(
+        find.byIcon(Icons.close),
+        findsNothing,
+        reason: 'the only line cannot be removed — the form would have none',
+      );
+
+      await tester.tap(find.byKey(const Key('purchase-add-line')));
+      await tester.pumpAndSettle();
+      expect(find.byIcon(Icons.close), findsNWidgets(2));
+    });
+  });
+
+  group('the receiving dialog', () {
+    final order = PurchaseOrder(
+      id: 3,
+      supplierId: 7,
+      supplierName: 'Nile Dairy',
+      reference: 'PO-2026-0003',
+      status: PurchaseStatus.sent,
+      lines: [
+        PurchaseOrderLine(
+          id: 11,
+          description: 'Milk 1L',
+          ordered: Quantity.of(10, unit: QuantityUnit.each),
+          unitCost: const Money(1000),
+        ),
+        PurchaseOrderLine(
+          id: 12,
+          description: 'Butter',
+          ordered: Quantity.of(4, unit: QuantityUnit.kilogram),
+          received: Quantity.of(1, unit: QuantityUnit.kilogram),
+          unitCost: const Money(18000),
+        ),
+      ],
+    );
+
+    testWidgets('every box starts at what is still owed', (tester) async {
+      // The common case is that the delivery matches the order. A form that
+      // made somebody retype eight numbers to say "all of it came" is a form
+      // they stop using by Thursday.
+      await host(
+        tester,
+        (context) async => ReceiveDialog.show(context, order: order),
+      );
+
+      expect(
+        tester.widget<TextField>(find.byKey(const Key('receive-11'))).controller?.text,
+        '10',
+      );
+      expect(
+        tester.widget<TextField>(find.byKey(const Key('receive-12'))).controller?.text,
+        '3',
+        reason: '4 ordered, 1 already in',
+      );
+    });
+
+    testWidgets('a short delivery is one number changed', (tester) async {
+      Map<int, Quantity>? booked;
+      await host(
+        tester,
+        (context) async =>
+            booked = await ReceiveDialog.show(context, order: order),
+      );
+
+      await tester.enterText(find.byKey(const Key('receive-11')), '8');
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('receive-confirm')));
+      await tester.pumpAndSettle();
+
+      expect(booked, {
+        11: Quantity.of(8, unit: QuantityUnit.each),
+        12: Quantity.of(3, unit: QuantityUnit.kilogram),
+      });
+    });
+
+    testWidgets('a line typed to zero is left off rather than booked at zero', (
+      tester,
+    ) async {
+      // "Nothing arrived of this one" and "zero of this one arrived" are the
+      // same sentence, and a zero movement in the stock ledger would be a
+      // receipt of nothing that still moved the average cost's denominator.
+      Map<int, Quantity>? booked;
+      await host(
+        tester,
+        (context) async =>
+            booked = await ReceiveDialog.show(context, order: order),
+      );
+
+      await tester.enterText(find.byKey(const Key('receive-11')), '0');
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('receive-confirm')));
+      await tester.pumpAndSettle();
+
+      expect(booked?.keys, [12]);
+    });
+
+    testWidgets('nothing at all cannot be booked in', (tester) async {
+      Map<int, Quantity>? booked;
+      var closed = false;
+      await host(tester, (context) async {
+        booked = await ReceiveDialog.show(context, order: order);
+        closed = true;
+      });
+
+      await tester.enterText(find.byKey(const Key('receive-11')), '');
+      await tester.enterText(find.byKey(const Key('receive-12')), '');
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('receive-confirm')));
+      await tester.pumpAndSettle();
+
+      expect(closed, isFalse);
+      expect(booked, isNull);
+    });
+  });
+
+  testWidgets('the Arabic order dialog keeps its numbers in Latin digits', (
+    tester,
+  ) async {
+    // A unit cost is a figure somebody checks against a printed invoice, and
+    // the invoice is in Latin digits whatever the screen is in.
+    await host(
+      tester,
+      (context) async =>
+          PurchaseOrderDialog.show(context, suppliers: suppliers),
+      locale: 'ar',
+    );
+
+    expect(find.text('أمر جديد'), findsOneWidget);
+
+    await tester.enterText(find.byType(TextField).at(0), 'لبن');
+    await tester.enterText(find.byType(TextField).at(1), '3');
+    await tester.enterText(find.byType(TextField).at(2), '15.50');
+    await tester.pumpAndSettle();
+
+    expect(find.text('46.50'), findsWidgets);
+  });
+}
