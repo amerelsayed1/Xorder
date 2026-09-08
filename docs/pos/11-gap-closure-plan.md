@@ -689,6 +689,21 @@ staff, restaurant manager) — templates a restaurant edits, not rules the code 
 
 ---
 
+**Built**, except §50. The sixteen `SETTINGS.*` keys are deliberately **deferred
+to Wave D**, where the nine settings sections they gate actually exist. Adding
+sixteen constants now would add sixteen permissions nothing checks — dead
+capability keys in a catalogue whose whole value is that every key in it means
+something. `settings.manage` stays the umbrella until then, which is what
+`canonical` is for.
+
+One thing worth recording about the ceilings. `pos_roles.max_discount_bp`
+predates this wave and restaurants have set it, so `limitFor` reads **both** it
+and `pos_permission_limits` and takes the tighter. Reading only the new table
+would silently lift every ceiling already configured; reading only the old column
+would make the new table decorative.
+
+---
+
 ## 6. Wave D — Settings & configuration surface
 
 **Migration 14**

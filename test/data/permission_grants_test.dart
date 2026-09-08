@@ -6,8 +6,10 @@ import 'package:xorder_pos/core/security/pin_hash.dart';
 import 'package:xorder_pos/data/postgres/migrations.dart';
 import 'package:xorder_pos/data/postgres/pos_database.dart';
 import 'package:xorder_pos/data/postgres/postgres_directory_repositories.dart';
+import 'package:xorder_pos/data/postgres/postgres_discounts_repository.dart';
 import 'package:xorder_pos/domain/models/permissions.dart';
 import 'package:xorder_pos/domain/models/shift.dart';
+import 'package:xorder_pos/domain/services/authorization.dart';
 
 import 'pg_fixture.dart';
 
@@ -344,5 +346,108 @@ void main() {
       'SELECT count(*) FROM pos_staff_permission_overrides',
     );
     expect(rows.first[0], 0);
+  });
+
+  group('the ceiling the till actually applies', () {
+    late PostgresDiscountsRepository discounts;
+
+    setUp(() {
+      discounts = PostgresDiscountsRepository(
+        database: db,
+        config: pg.config.copyWith(tenantSlug: slug),
+        restaurantId: restaurantId,
+      );
+    });
+
+    test('an unlimited person is unlimited', () async {
+      final limit = await discounts.limitFor(await signIn());
+      expect(limit.isUnlimited, isTrue);
+    });
+
+    test("the role's old column still binds", () async {
+      // `pos_roles.max_discount_bp` predates Wave C and restaurants have set
+      // it. Reading only the new table would silently lift every ceiling
+      // already configured.
+      await db.query(
+        pg.config,
+        'UPDATE pos_roles SET max_discount_bp = 1000 WHERE id = @r',
+        parameters: {'r': cashierRoleId},
+      );
+
+      final limit = await discounts.limitFor(await signIn());
+      expect(limit.maxBp, 1000);
+    });
+
+    test('a Wave C ceiling binds on its own', () async {
+      // And reading only the old column would make the new table decorative.
+      await limit('staff', staffId, LimitKey.discount, bp: 500);
+      final applied = await discounts.limitFor(await signIn());
+      expect(applied.maxBp, 500);
+    });
+
+    test('the tighter of the two wins, whichever it is', () async {
+      await db.query(
+        pg.config,
+        'UPDATE pos_roles SET max_discount_bp = 1000 WHERE id = @r',
+        parameters: {'r': cashierRoleId},
+      );
+      await limit('staff', staffId, LimitKey.discount, bp: 2500);
+
+      // Neither source can loosen the other.
+      expect((await discounts.limitFor(await signIn())).maxBp, 1000);
+    });
+
+    test('a cash ceiling from one source and a share from the other both apply',
+        () async {
+      await db.query(
+        pg.config,
+        'UPDATE pos_roles SET max_discount_bp = 1500 WHERE id = @r',
+        parameters: {'r': cashierRoleId},
+      );
+      await limit('staff', staffId, LimitKey.discount, minor: 5000);
+
+      final applied = await discounts.limitFor(await signIn());
+      expect(applied.maxBp, 1500);
+      expect(applied.maxAmount!.minor, 5000);
+    });
+
+    test('the ceiling refuses what it should, through Authorization', () async {
+      // End to end: the row in the table becomes the refusal at the till.
+      await limit('staff', staffId, LimitKey.discount, bp: 1000);
+      final staff = await signIn();
+
+      expect(
+        Authorization.checkWithin(
+          staff,
+          PosCapability.discountApply,
+          baseMinor: 10000,
+          amountMinor: 900,
+        ),
+        isA<NeedsOverride>(),
+        reason: 'a cashier cannot discount at all — that comes first',
+      );
+
+      final supervisorish = staff.copyWith(
+        capabilities: {PosCapability.discountApply},
+      );
+      expect(
+        Authorization.checkWithin(
+          supervisorish,
+          PosCapability.discountApply,
+          baseMinor: 10000,
+          amountMinor: 900,
+        ),
+        isA<Allowed>(),
+      );
+      expect(
+        Authorization.checkWithin(
+          supervisorish,
+          PosCapability.discountApply,
+          baseMinor: 10000,
+          amountMinor: 1100,
+        ),
+        isA<DeniedByLimit>(),
+      );
+    });
   });
 }

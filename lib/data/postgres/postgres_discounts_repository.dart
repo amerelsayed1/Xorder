@@ -1,6 +1,7 @@
 import '../../core/config/deployment.dart';
 import '../../core/money/money.dart';
 import '../../domain/models/discount.dart';
+import '../../domain/models/permissions.dart';
 import '../../domain/models/ticket.dart';
 import '../../domain/repositories/repositories.dart';
 import 'pos_database.dart';
@@ -139,14 +140,27 @@ class PostgresDiscountsRepository implements DiscountsRepository {
     );
   }
 
+  /// The ceiling on what this person may discount.
+  ///
+  /// **Two sources, and the tighter of the two wins.** `pos_roles` has carried
+  /// `max_discount_bp` since before Wave C; `pos_permission_limits` is the
+  /// general form, resolved onto the person at sign-in and covering their own
+  /// ceiling as well as every role's. Reading only the new one would silently
+  /// lift every ceiling a restaurant has already set, and reading only the old
+  /// one would make the new table decorative — so both are read and neither can
+  /// loosen the other.
   @override
   Future<DiscountLimit> limitFor(PosStaff? staff) async {
+    // Already resolved when they signed in; no query for this half.
+    final resolved = staff?.limitFor(LimitKey.discount) ??
+        PermissionLimit.unlimited;
+
     final roleId = staff?.role?.id;
     // Nobody signed in, or nobody on a role. Unlimited is **not** the permissive
     // reading it looks like: the capability check happens before this is ever
     // consulted, so a person who reaches a limit question has already been
     // found allowed to discount at all.
-    if (roleId == null) return DiscountLimit.unlimited;
+    if (roleId == null) return _asDiscountLimit(resolved);
 
     final rows = await _db.query(
       config,
@@ -154,13 +168,26 @@ class PostgresDiscountsRepository implements DiscountsRepository {
       'WHERE id = @role AND restaurant_id = @r',
       parameters: {'role': roleId, 'r': restaurantId},
     );
-    if (rows.isEmpty) return DiscountLimit.unlimited;
+    if (rows.isEmpty) return _asDiscountLimit(resolved);
 
-    return DiscountLimit(
-      maxBp: rows.first[0] as int?,
-      maxAmount: rows.first[1] == null ? null : _money(rows.first[1]),
+    return _asDiscountLimit(
+      resolved.tightenedBy(
+        PermissionLimit(
+          maxBp: rows.first[0] as int?,
+          maxMinor: rows.first[1] == null
+              ? null
+              : _money(rows.first[1]).minor,
+        ),
+      ),
     );
   }
+
+  /// The currency arrives here and not in [PermissionLimit] on purpose: a
+  /// ceiling belongs to a role, and a role outlives the currency question.
+  DiscountLimit _asDiscountLimit(PermissionLimit limit) => DiscountLimit(
+    maxBp: limit.maxBp,
+    maxAmount: limit.maxMinor == null ? null : _money(limit.maxMinor),
+  );
 }
 
 /// What a till binds before it has a database.
