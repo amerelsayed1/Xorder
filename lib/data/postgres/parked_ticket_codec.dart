@@ -1,5 +1,6 @@
 import '../../core/money/money.dart';
 import '../../domain/models/catalog.dart';
+import '../../domain/models/combo.dart';
 import '../../domain/models/discount.dart';
 import '../../domain/models/ticket.dart';
 
@@ -40,6 +41,29 @@ abstract final class ParkedTicketCodec {
           'name_ar': line.product.nameAr,
           'price_minor': line.product.price.minor,
           'is_open_price': line.product.isOpenPrice,
+          'tax_group_id': line.product.taxGroupId,
+          'included_allowance_minor': line.includedAllowance.minor,
+          // A parked meal that came back as a bare product would price at the
+          // component's price and lose what the kitchen was told to make.
+          'combo': line.combo == null
+              ? null
+              : {
+                  'combo_id': line.combo!.comboId,
+                  'name_en': line.combo!.nameEn,
+                  'name_ar': line.combo!.nameAr,
+                  'price_minor': line.combo!.price.minor,
+                  'tax_group_id': line.combo!.taxGroupId,
+                  'items': [
+                    for (final item in line.combo!.items)
+                      {
+                        'menu_item_id': item.menuItemId,
+                        'name_en': item.nameEn,
+                        'name_ar': item.nameAr,
+                        'price_delta_minor': item.priceDelta.minor,
+                        'quantity': item.quantity,
+                      },
+                  ],
+                },
           'discounted_price_minor': line.product.discountedPrice?.minor,
           'quantity': line.quantity,
           'note': line.note,
@@ -324,6 +348,9 @@ abstract final class ParkedTicketCodec {
               ? minor(raw['discounted_price_minor'])
               : null,
           isOpenPrice: openPrice,
+          taxGroupId: raw['tax_group_id'] is int
+              ? raw['tax_group_id'] as int
+              : null,
         );
 
     final modifiers = <Modifier>[
@@ -360,6 +387,47 @@ abstract final class ParkedTicketCodec {
           : null,
       voided: _voided(raw['voided']),
       priceOverride: _priceOverride(raw['price_override'], minor),
+      includedAllowance: minor(raw['included_allowance_minor']),
+      combo: _combo(raw['combo'], minor),
+    );
+  }
+
+  /// A parked meal, rebuilt from its own snapshot.
+  ///
+  /// Never from the catalogue: a combo repriced or re-built while a table sat
+  /// there must not change what that table was quoted, and the components a
+  /// cashier chose are not derivable from a combo that now offers different
+  /// ones.
+  static ComboSelection? _combo(Object? value, Money Function(Object?) minor) {
+    if (value is! Map) return null;
+    final raw = value.cast<String, Object?>();
+
+    return ComboSelection(
+      comboId: raw['combo_id'] is int ? raw['combo_id'] as int : 0,
+      nameEn: raw['name_en'] is String ? raw['name_en'] as String : 'Meal',
+      nameAr: raw['name_ar'] is String ? raw['name_ar'] as String : null,
+      price: minor(raw['price_minor']),
+      taxGroupId: raw['tax_group_id'] is int
+          ? raw['tax_group_id'] as int
+          : null,
+      items: [
+        if (raw['items'] is List)
+          for (final item in raw['items'] as List)
+            if (item is Map && item['name_en'] is String)
+              ComboItem(
+                menuItemId: item['menu_item_id'] is int
+                    ? item['menu_item_id'] as int
+                    : null,
+                nameEn: item['name_en'] as String,
+                nameAr: item['name_ar'] is String
+                    ? item['name_ar'] as String
+                    : null,
+                priceDelta: minor(item['price_delta_minor']),
+                quantity: item['quantity'] is int
+                    ? item['quantity'] as int
+                    : 1,
+              ),
+      ],
     );
   }
 

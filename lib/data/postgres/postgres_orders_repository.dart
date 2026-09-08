@@ -432,20 +432,22 @@ class PostgresOrdersRepository implements OrdersRepository {
           INSERT INTO pos_order_lines (
             order_id, line_key, menu_item_id, name_snapshot, modifier_ids,
             modifier_summary, quantity, unit_price_minor, line_total_minor,
-            stage, note, voided_at, voided_by, void_reason_id
+            stage, note, voided_at, voided_by, void_reason_id, combo_id
           ) VALUES (
             @order, @key, @itemId, @name, @modifierIds,
             @summary, @quantity, @unitPrice, @lineTotal,
-            @stage, @note, @voidedAt, @voidedBy, @voidReason
+            @stage, @note, @voidedAt, @voidedBy, @voidReason, @comboId
           )
           RETURNING id
         '''),
         parameters: {
           'order': orderId,
           'key': line.key,
-          // NULL for a one-off charge somebody typed a price for: it names no
-          // menu item, and the synthetic id that keeps two custom lines apart
-          // on the ticket must not reach the database as though it were one.
+          // NULL for a one-off charge and for a combo alike: neither names a
+          // menu item, and the synthetic id that keeps two of them apart on the
+          // ticket must not reach the database as though it were one. A combo
+          // says which combo it is in `combo_id`, and what it was made of in
+          // `pos_order_line_items`.
           'itemId': line.product.isOpenPrice ? null : line.product.id,
           // Snapshotted because an item renamed or deleted tomorrow must not
           // rewrite a receipt printed today.
@@ -464,9 +466,35 @@ class PostgresOrdersRepository implements OrdersRepository {
           'voidedAt': line.voided?.at,
           'voidedBy': line.voided?.byStaffId,
           'voidReason': line.voided?.reasonId,
+          'comboId': line.combo?.comboId,
         },
       );
-      ids[line.key] = inserted.first[0]! as int;
+      final lineId = inserted.first[0]! as int;
+      ids[line.key] = lineId;
+
+      // What the meal was made of. The line carries the combo's name and the
+      // combo's price; these carry the items, so the kitchen knows what to make
+      // and a receipt can list them underneath.
+      final selection = line.combo;
+      if (selection != null) {
+        for (var i = 0; i < selection.items.length; i++) {
+          final item = selection.items[i];
+          await tx.execute(
+            Sql.named(
+              'INSERT INTO pos_order_line_items (order_line_id, menu_item_id, '
+              '  name_snapshot, quantity, sort_order) '
+              'VALUES (@line, @item, @name, @quantity, @sort)',
+            ),
+            parameters: {
+              'line': lineId,
+              'item': item.menuItemId,
+              'name': item.nameEn,
+              'quantity': item.quantity,
+              'sort': i,
+            },
+          );
+        }
+      }
     }
 
     return ids;

@@ -492,12 +492,27 @@ class _LineRow extends StatelessWidget {
                     if (line.isVoided) ...[
                       const SizedBox(width: PosSpace.sm),
                       _VoidChip(),
+                    ] else if (line.isCombo) ...[
+                      const SizedBox(width: PosSpace.sm),
+                      const _MealChip(),
                     ] else if (line.isRepriced) ...[
                       const SizedBox(width: PosSpace.sm),
                       const _RepricedChip(),
                     ],
                   ],
                 ),
+                // What the meal is made of, on the meta row. The kitchen reads
+                // it off the docket and the customer reads it off the screen;
+                // a line saying only "Lunch meal" leaves both guessing.
+                if (line.combo != null)
+                  Text(
+                    line.combo!.summary(language),
+                    style: PosText.ui(
+                      size: density.metaSize,
+                      color: context.pos.shellLineMeta,
+                      height: 1.4,
+                    ),
+                  ),
                 if (line.modifiers.isNotEmpty)
                   Text(
                     line.modifierSummary(language),
@@ -724,6 +739,27 @@ class _NoteRow extends StatelessWidget {
           ),
         ),
       ],
+    ),
+  );
+}
+
+/// Marks a line that is a meal rather than an item.
+class _MealChip extends StatelessWidget {
+  const _MealChip();
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+    decoration: BoxDecoration(
+      border: Border.all(color: context.pos.accent.withValues(alpha: 0.6)),
+    ),
+    child: Text(
+      context.strings.comboBadge,
+      style: PosText.mono(
+        size: 9.5,
+        weight: FontWeight.w600,
+        color: context.pos.accent,
+      ),
     ),
   );
 }

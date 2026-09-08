@@ -2,6 +2,7 @@ import 'package:collection/collection.dart';
 
 import '../../core/money/money.dart';
 import '../models/catalog.dart';
+import '../models/combo.dart';
 import '../models/discount.dart';
 import '../models/ticket.dart';
 
@@ -51,6 +52,20 @@ class WrongStageForAct extends TicketRefusal {
 
   final String lineKey;
   final LineStage stage;
+}
+
+/// A combo group was not answered enough times.
+class ComboGroupUnsatisfied extends TicketRefusal {
+  const ComboGroupUnsatisfied(this.group);
+
+  final ComboGroup group;
+}
+
+/// More was chosen from a combo group than it allows.
+class ComboTooManyChosen extends TicketRefusal {
+  const ComboTooManyChosen(this.group);
+
+  final ComboGroup group;
 }
 
 /// A one-off charge with nothing written on it.
@@ -534,6 +549,104 @@ abstract final class TicketEngine {
   // customer was shown.
 
   /// Take a configured discount off one line.
+  /// Ring up a meal.
+  ///
+  /// [chosen] is one entry per group the cashier answered. The selection is
+  /// snapshotted onto the line — the combo's price, its name and its components
+  /// as they are *now* — because a combo repriced next week must not reprice a
+  /// table still sitting there.
+  ///
+  /// The line's product is synthetic, as an open-price line's is, and for the
+  /// same reason: everything downstream is written in terms of a product, and
+  /// the id keeps two different meals on one ticket from merging into `2×`.
+  static TicketResult addComboLine(
+    Ticket ticket,
+    Combo combo, {
+    required List<ComboOption> chosen,
+    int quantity = 1,
+    String? note,
+  }) {
+    if (!combo.isAvailable) {
+      return TicketResult.refused(
+        OutOfStock(
+          Product(
+            id: combo.id,
+            categoryId: combo.categoryId,
+            nameEn: combo.nameEn,
+            nameAr: combo.nameAr,
+            price: combo.price,
+          ),
+        ),
+      );
+    }
+    if (quantity <= 0) return TicketResult.refused(const NothingToTender());
+
+    // Every group answered within its own bounds. Checked here rather than
+    // trusted from the sheet, because the engine is what the tests drive and
+    // what a future caller will reach for.
+    for (final group in combo.groups) {
+      final picked = chosen.where(
+        (o) => group.options.any((g) => g.id == o.id),
+      );
+      if (picked.length < group.minSelect) {
+        return TicketResult.refused(ComboGroupUnsatisfied(group));
+      }
+      if (picked.length > group.maxSelect) {
+        return TicketResult.refused(ComboTooManyChosen(group));
+      }
+    }
+
+    final selection = ComboSelection(
+      comboId: combo.id,
+      nameEn: combo.nameEn,
+      nameAr: combo.nameAr,
+      price: combo.price,
+      taxGroupId: combo.taxGroupId,
+      items: [
+        for (final option in chosen)
+          ComboItem(
+            menuItemId: option.product.id,
+            nameEn: option.product.nameEn,
+            nameAr: option.product.nameAr,
+            priceDelta: option.priceDelta,
+          ),
+      ],
+    );
+
+    // Negative and unique, so two different meals stay two lines. Combos and
+    // open-price items share the negative space and the same allocator, which
+    // is why this walks the whole ticket rather than only its combos.
+    final lowest = ticket.lines
+        .map((l) => l.product.id)
+        .fold(0, (min, id) => id < min ? id : min);
+
+    final product = Product(
+      id: lowest - 1,
+      categoryId: combo.categoryId,
+      nameEn: combo.nameEn,
+      nameAr: combo.nameAr,
+      // The combo's price rides on the selection, not here. This is the
+      // fallback nothing reads while `combo` is set.
+      price: combo.price,
+      taxGroupId: combo.taxGroupId,
+      isOpenPrice: true,
+    );
+
+    return TicketResult.ok(
+      ticket.copyWith(
+        lines: [
+          ...ticket.lines,
+          TicketLine(
+            product: product,
+            quantity: quantity,
+            note: note,
+            combo: selection,
+          ),
+        ],
+      ),
+    );
+  }
+
   /// Charge for something that is not on the menu (§17).
   ///
   /// A delivery fee, a birthday cake somebody brought in, a corkage. It becomes

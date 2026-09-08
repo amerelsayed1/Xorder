@@ -1842,6 +1842,109 @@ const posMigrations = <PosMigration>[
       ADD COLUMN IF NOT EXISTS is_default boolean NOT NULL DEFAULT false
     ''',
   ]),
+  // Combos — a meal at one price.
+  //
+  // Ubiquitous in Egyptian QSR and unpriceable until now: the schema could
+  // describe a sandwich, chips and a drink as three lines at three prices, and
+  // had no way to say the three together cost 85.00.
+  //
+  // A combo is **not** a product with modifiers. Its components are real menu
+  // items that a kitchen has to make and a receipt has to list, where a modifier
+  // is an adjustment to one item. Flattening them into modifiers would price
+  // correctly and hand the kitchen a docket for a sandwich with "chips" written
+  // on the side of it.
+  PosMigration(18, 'combos — a meal at one price', [
+    '''
+    CREATE TABLE IF NOT EXISTS pos_combos (
+      id            bigserial PRIMARY KEY,
+      restaurant_id bigint    NOT NULL REFERENCES pos_restaurants(id) ON DELETE CASCADE,
+      -- One category, like a product: it has to appear somewhere on the grid.
+      category_id   bigint    NOT NULL REFERENCES pos_categories(id) ON DELETE RESTRICT,
+      name_en       text      NOT NULL,
+      name_ar       text,
+      -- What the meal costs. Not derived from the components — the whole point
+      -- is that it is less than their sum.
+      price_minor   bigint    NOT NULL,
+      tax_group_id  bigint    REFERENCES pos_tax_groups(id) ON DELETE SET NULL,
+      sku           text,
+      is_available  boolean   NOT NULL DEFAULT true,
+      sort_order    integer   NOT NULL DEFAULT 0,
+      CONSTRAINT pos_combos_price_sane CHECK (price_minor >= 0),
+      CONSTRAINT pos_combos_sku_unique UNIQUE (restaurant_id, sku)
+    )
+    ''',
+    '''
+    CREATE INDEX IF NOT EXISTS pos_combos_category_idx
+      ON pos_combos (category_id)
+    ''',
+
+    // "Choose a sandwich", "choose a drink". A group with one option and a
+    // minimum of one is a fixed component nobody is asked about.
+    '''
+    CREATE TABLE IF NOT EXISTS pos_combo_groups (
+      id         bigserial PRIMARY KEY,
+      combo_id   bigint    NOT NULL REFERENCES pos_combos(id) ON DELETE CASCADE,
+      name_en    text      NOT NULL,
+      name_ar    text,
+      min_select integer   NOT NULL DEFAULT 1,
+      max_select integer   NOT NULL DEFAULT 1,
+      sort_order integer   NOT NULL DEFAULT 0,
+      CONSTRAINT pos_combo_groups_selection_sane
+        CHECK (min_select >= 0 AND max_select >= 1 AND min_select <= max_select)
+    )
+    ''',
+    '''
+    CREATE INDEX IF NOT EXISTS pos_combo_groups_combo_idx
+      ON pos_combo_groups (combo_id)
+    ''',
+
+    // Each option is a real menu item. `price_delta_minor` is the upgrade —
+    // large chips instead of regular, +5.00 — and is usually zero.
+    '''
+    CREATE TABLE IF NOT EXISTS pos_combo_options (
+      id                bigserial PRIMARY KEY,
+      combo_group_id    bigint    NOT NULL REFERENCES pos_combo_groups(id) ON DELETE CASCADE,
+      -- RESTRICT, not CASCADE: deleting a product must not silently empty a
+      -- combo group and leave a meal nobody can complete.
+      product_id        bigint    NOT NULL REFERENCES pos_products(id) ON DELETE RESTRICT,
+      price_delta_minor bigint    NOT NULL DEFAULT 0,
+      sort_order        integer   NOT NULL DEFAULT 0,
+      CONSTRAINT pos_combo_options_once UNIQUE (combo_group_id, product_id)
+    )
+    ''',
+    '''
+    CREATE INDEX IF NOT EXISTS pos_combo_options_group_idx
+      ON pos_combo_options (combo_group_id)
+    ''',
+
+    // What a combo line was actually made of.
+    //
+    // The order line carries the combo's name and the combo's price; this
+    // carries the items, so the kitchen knows what to make and a receipt can
+    // list them under it. Snapshotted names, for the same reason a line's is.
+    '''
+    CREATE TABLE IF NOT EXISTS pos_order_line_items (
+      id            bigserial PRIMARY KEY,
+      order_line_id bigint    NOT NULL REFERENCES pos_order_lines(id) ON DELETE CASCADE,
+      menu_item_id  bigint,
+      name_snapshot text      NOT NULL,
+      quantity      integer   NOT NULL DEFAULT 1,
+      sort_order    integer   NOT NULL DEFAULT 0,
+      CONSTRAINT pos_order_line_items_quantity_positive CHECK (quantity > 0)
+    )
+    ''',
+    '''
+    CREATE INDEX IF NOT EXISTS pos_order_line_items_line_idx
+      ON pos_order_line_items (order_line_id)
+    ''',
+
+    // A combo line names its combo. Nullable, because every line written until
+    // now is not one.
+    '''
+    ALTER TABLE pos_order_lines ADD COLUMN IF NOT EXISTS combo_id bigint
+      REFERENCES pos_combos(id) ON DELETE SET NULL
+    ''',
+  ]),
 ];
 
 /// Brings the branch database up to the current schema.

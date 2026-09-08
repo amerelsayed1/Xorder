@@ -1160,6 +1160,13 @@ sealed class AppStrings {
   String lineNoteTitle(String item);
   String get lineNoteHint;
 
+  // ── Combos (§17) ──────────────────────────────────────────────────────────
+  String get comboBadge;
+  String comboChoose(String group);
+  String get comboAddToTicket;
+  String comboPickMore(int count);
+  String get comboIncluded;
+
   // ── §27's expanded cash-up ────────────────────────────────────────────────
   String get zSubtotal;
   String get zDiscounts;
@@ -1596,6 +1603,17 @@ final class EnStrings extends AppStrings {
   String lineNoteTitle(String item) => 'Note for $item';
   @override
   String get lineNoteHint => 'No onions, well done, on the side…';
+  @override
+  String get comboBadge => 'MEAL';
+  @override
+  String comboChoose(String group) => 'Choose $group';
+  @override
+  String get comboAddToTicket => 'Add meal';
+  @override
+  String comboPickMore(int count) =>
+      count == 1 ? 'Choose 1 more' : 'Choose $count more';
+  @override
+  String get comboIncluded => 'included';
 
   @override
   String get zSubtotal => 'Subtotal';
@@ -3664,6 +3682,17 @@ final class ArStrings extends AppStrings {
   String lineNoteTitle(String item) => 'ملاحظة على $item';
   @override
   String get lineNoteHint => 'بدون بصل، جيد الاستواء، على جانب…';
+  @override
+  String get comboBadge => 'وجبة';
+  @override
+  String comboChoose(String group) => 'اختر $group';
+  @override
+  String get comboAddToTicket => 'إضافة الوجبة';
+  @override
+  String comboPickMore(int count) =>
+      count == 1 ? 'اختر واحدًا آخر' : 'اختر $count أخرى';
+  @override
+  String get comboIncluded => 'مشمول';
 
   @override
   String get zSubtotal => 'المجموع الفرعي';

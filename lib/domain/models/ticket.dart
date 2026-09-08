@@ -4,6 +4,7 @@ import '../../core/money/money.dart';
 import '../../core/money/rounding.dart';
 import 'tax.dart';
 import 'catalog.dart';
+import 'combo.dart';
 import 'discount.dart';
 
 /// The order types the till can sell. Which of these are *offered* comes from
@@ -184,6 +185,7 @@ class TicketLine {
     this.voided,
     this.priceOverride,
     this.includedAllowance = Money.zero,
+    this.combo,
   });
 
   final Product product;
@@ -199,6 +201,23 @@ class TicketLine {
 
   /// Non-null when this line is being sold at a price somebody set by hand.
   final PriceOverride? priceOverride;
+
+  /// Non-null when this line is a meal rather than an item.
+  ///
+  /// [product] still stands beside it, carrying the combo's name and its
+  /// merge key, because every path on the ticket — voids, discounts, price
+  /// overrides, the cart, the receipt — is written in terms of one and giving
+  /// them all a second shape to handle would be a far larger change than a
+  /// combo is worth. What the combo adds is the price and the components.
+  final ComboSelection? combo;
+
+  bool get isCombo => combo != null;
+
+  /// Which rate this line attracts.
+  ///
+  /// A combo's own, when it is one: a meal is taxed as a meal, not as whichever
+  /// of its components the merge key happens to name.
+  int? get taxGroupId => combo?.taxGroupId ?? product.taxGroupId;
 
   /// What the modifier groups' free allowances took off this unit.
   ///
@@ -236,6 +255,12 @@ class TicketLine {
   /// were chosen, so the line keeps **every** modifier for the kitchen and the
   /// receipt while charging for only the ones past the allowance.
   Money get menuUnitPrice {
+    // A combo's price is its own, never the sum of its parts — that is the
+    // entire point of one. Modifiers do not apply: the components are real
+    // items, and a modifier belongs to an item rather than to a meal.
+    final selection = combo;
+    if (selection != null) return selection.unitPrice;
+
     final gross = modifiers.fold(
       product.effectivePrice,
       (total, modifier) => total + modifier.priceDelta,
@@ -253,6 +278,10 @@ class TicketLine {
   String modifierSummary(String locale) =>
       modifiers.map((m) => m.displayName(locale)).join(' · ');
 
+  /// What this line is called on a receipt and a kitchen docket.
+  String displayName(String locale) =>
+      combo?.displayName(locale) ?? product.displayName(locale);
+
   TicketLine copyWith({
     int? quantity,
     LineStage? stage,
@@ -261,6 +290,7 @@ class TicketLine {
     LineVoid? voided,
     PriceOverride? priceOverride,
     Money? includedAllowance,
+    ComboSelection? combo,
     /// Put the line back on the menu price. Needed as a flag because null in
     /// [priceOverride] already means "leave it alone", and every other
     /// `copyWith` here reads the same way.
@@ -277,6 +307,7 @@ class TicketLine {
         ? null
         : (priceOverride ?? this.priceOverride),
     includedAllowance: includedAllowance ?? this.includedAllowance,
+    combo: combo ?? this.combo,
   );
 }
 
@@ -555,7 +586,7 @@ class Ticket {
     if (subtotal.minor <= 0 || discount.minor <= 0) {
       // Nothing to apportion. The common case, and it avoids a division.
       for (final line in chargeable) {
-        addBase(taxConfig.groupFor(line.product.taxGroupId), line.lineTotal);
+        addBase(taxConfig.groupFor(line.taxGroupId), line.lineTotal);
       }
     } else {
       // Apportioned by value, with the **last line taking the remainder** so
@@ -576,7 +607,7 @@ class Ticket {
                     ),
                   );
         apportioned += share;
-        addBase(taxConfig.groupFor(line.product.taxGroupId), share);
+        addBase(taxConfig.groupFor(line.taxGroupId), share);
       }
     }
 

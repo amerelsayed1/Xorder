@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:xorder_pos/core/money/money.dart';
 import 'package:xorder_pos/data/postgres/parked_ticket_codec.dart';
 import 'package:xorder_pos/domain/models/catalog.dart';
+import 'package:xorder_pos/domain/models/combo.dart';
 import 'package:xorder_pos/domain/models/discount.dart';
 import 'package:xorder_pos/domain/models/ticket.dart';
 import 'package:xorder_pos/domain/services/ticket_engine.dart';
@@ -48,6 +49,8 @@ Ticket _parked() {
 }
 
 void main() {
+  _comboTests();
+
   _priceOverrideTests();
 
   test('a parked ticket round-trips exactly — id, money and stages included', () {
@@ -334,6 +337,101 @@ void _priceOverrideTests() {
       )!;
       expect(restored.lines.single.isRepriced, isFalse);
       expect(restored.lines.single.unitPrice.minor, 9500);
+    });
+  });
+}
+
+void _comboTests() {
+  group('a parked meal survives a restart', () {
+    Ticket withCombo() {
+      const sandwich = Product(
+        id: 201,
+        categoryId: 11,
+        nameEn: 'Chicken sandwich',
+        price: Money(4500),
+      );
+      const chips = Product(
+        id: 202,
+        categoryId: 11,
+        nameEn: 'Chips',
+        price: Money(2500),
+      );
+      final combo = Combo(
+        id: 90,
+        categoryId: 11,
+        nameEn: 'Lunch meal',
+        nameAr: 'وجبة الغداء',
+        price: const Money(6000),
+        taxGroupId: 3,
+        groups: [
+          ComboGroup(
+            id: 1,
+            nameEn: 'Sandwich',
+            options: [ComboOption(id: 11, product: sandwich)],
+          ),
+          ComboGroup(
+            id: 2,
+            nameEn: 'Side',
+            options: [
+              ComboOption(
+                id: 21,
+                product: chips,
+                priceDelta: const Money(500),
+              ),
+            ],
+          ),
+        ],
+      );
+
+      var ticket = Ticket(id: 'txn-combo', orderType: OrderType.dineIn);
+      ticket = TicketEngine.attachTable(ticket, 12, 'T12', guests: 2);
+      return TicketEngine.addComboLine(
+        ticket,
+        combo,
+        chosen: combo.fixedSelection,
+      ).ticket!;
+    }
+
+    Ticket restored() => ParkedTicketCodec.decode(
+      (jsonDecode(jsonEncode(ParkedTicketCodec.encode(withCombo()))) as Map)
+          .cast<String, Object?>(),
+      _catalog,
+    )!;
+
+    test('it comes back a meal, at the meal price', () {
+      // A parked meal that came back as a bare product would price at the
+      // component's price and lose what the kitchen was told to make.
+      final line = restored().lines.single;
+      expect(line.isCombo, isTrue);
+      expect(line.unitPrice.minor, 6500);
+    });
+
+    test('the components come with it', () {
+      final selection = restored().lines.single.combo!;
+      expect(selection.items.map((i) => i.nameEn), [
+        'Chicken sandwich',
+        'Chips',
+      ]);
+      expect(selection.items.last.priceDelta.minor, 500);
+    });
+
+    test('so do its name and its rate', () {
+      final selection = restored().lines.single.combo!;
+      expect(selection.comboId, 90);
+      expect(selection.displayName('ar'), 'وجبة الغداء');
+      // A meal is taxed as a meal.
+      expect(selection.taxGroupId, 3);
+    });
+
+    test('a line with no combo decodes without one', () {
+      var plain = Ticket(id: 'txn-plain', orderType: OrderType.takeaway);
+      plain = TicketEngine.addLine(plain, _burger, groups: const [_extras]).ticket!;
+      final line = ParkedTicketCodec.decode(
+        (jsonDecode(jsonEncode(ParkedTicketCodec.encode(plain))) as Map)
+            .cast<String, Object?>(),
+        _catalog,
+      )!.lines.single;
+      expect(line.isCombo, isFalse);
     });
   });
 }

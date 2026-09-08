@@ -14,6 +14,7 @@ import '../../domain/repositories/repositories.dart';
 import '../payment/payment_screen.dart';
 import '../../domain/models/permissions.dart';
 import '../../domain/services/authorization.dart';
+import '../../domain/services/ticket_engine.dart';
 import '../admin/presentation/supervisor_override.dart';
 import '../receipt/receipt_dialog.dart';
 import '../shift/presentation/shift_dialogs.dart';
@@ -22,6 +23,8 @@ import 'widgets/discount_sheet.dart';
 import 'widgets/line_void_dialog.dart';
 import '../../domain/models/business_day.dart';
 import '../cash/presentation/cash_dialogs.dart';
+import '../../domain/models/combo.dart';
+import 'widgets/combo_sheet.dart';
 import 'widgets/line_note_dialog.dart';
 import 'widgets/open_item_dialog.dart';
 import 'widgets/price_override_dialog.dart';
@@ -247,6 +250,30 @@ class _SaleScreenState extends ConsumerState<SaleScreen> {
     final amount = await CashMovementDialog.show(context, kind: kind);
     if (amount == null || !mounted) return;
     posToast(context, context.strings.cashRecorded);
+  }
+
+  /// Ring up a meal (§17).
+  ///
+  /// A fixed combo — every group offering one option and demanding it — goes
+  /// straight on. Putting a picker in front of a cashier for a meal with
+  /// nothing to choose is three taps to say the only thing that could be said.
+  Future<void> _addCombo(Combo combo) async {
+    var chosen = combo.fixedSelection;
+
+    if (!combo.isFixed) {
+      final picked = await ComboSheet.show(context, combo: combo);
+      if (picked == null || !mounted) return;
+      chosen = picked;
+    }
+
+    final result = TicketEngine.addComboLine(
+      ref.read(ticketProvider),
+      combo,
+      chosen: chosen,
+    );
+    if (result.refusal != null || !mounted) return;
+
+    ref.read(ticketProvider.notifier).applyEdit(result.ticket!);
   }
 
   /// Charge for something that is not on the menu (§17).
@@ -615,9 +642,16 @@ class _SaleScreenState extends ConsumerState<SaleScreen> {
         Expanded(
           child: ProductGrid(
             products: products,
+            // Only when nobody is searching: a search is a hunt for a named
+            // thing, and answering it with meals that merely sit in the same
+            // category is answering a different question.
+            combos: ui.query.trim().isEmpty
+                ? catalog.combosIn(ui.selectedCategoryId)
+                : const [],
             categorySlugs: slugs,
             inCartProductIds: inCart,
             onTap: (product) => _addProduct(product, catalog),
+            onTapCombo: _addCombo,
           ),
         ),
         _footerStrip(catalog, products, ui),

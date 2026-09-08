@@ -1,4 +1,5 @@
 import '../../core/money/money.dart';
+import 'combo.dart';
 
 /// A sellable product as the till caches it.
 ///
@@ -279,11 +280,17 @@ class Catalog {
     required this.products,
     required this.modifierGroups,
     required this.syncedAt,
+    this.combos = const [],
   });
 
   final List<Category> categories;
   final List<Product> products;
   final List<ModifierGroup> modifierGroups;
+
+  /// Meals at one price. Empty on a restaurant that sells none, which is most
+  /// of them until somebody builds one.
+  final List<Combo> combos;
+
   final DateTime syncedAt;
 
   static final empty = Catalog(
@@ -292,6 +299,13 @@ class Catalog {
     modifierGroups: const [],
     syncedAt: DateTime.fromMillisecondsSinceEpoch(0),
   );
+
+  /// The combos on one category's tile grid, alongside its products.
+  List<Combo> combosIn(int? categoryId) => categoryId == null
+      ? combos.where((c) => c.isAvailable).toList()
+      : combos
+            .where((c) => c.isAvailable && c.categoryId == categoryId)
+            .toList();
 
   List<Product> inCategory(int? categoryId) => categoryId == null
       ? products

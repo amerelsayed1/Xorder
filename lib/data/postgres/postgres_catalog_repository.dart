@@ -1,6 +1,7 @@
 import '../../core/config/deployment.dart';
 import '../../core/money/money.dart';
 import '../../domain/models/catalog.dart';
+import '../../domain/models/combo.dart';
 import '../../domain/repositories/repositories.dart';
 import 'pos_database.dart';
 import 'postgres_tenant.dart';
@@ -87,7 +88,8 @@ class PostgresCatalogRepository implements CatalogRepository {
 
     final groups = await _db.query(
       _config,
-      'SELECT id, name_en, name_ar, is_required, max_select, is_variant '
+      'SELECT id, name_en, name_ar, is_required, max_select, is_variant, '
+      '       min_select, free_options '
       'FROM pos_modifier_groups WHERE restaurant_id = @restaurant '
       'ORDER BY sort_order, id',
       parameters: {'restaurant': tenant.id},
@@ -125,6 +127,63 @@ class PostgresCatalogRepository implements CatalogRepository {
       groupIdsByProduct.putIfAbsent(row[0] as int, () => []).add(row[1] as int);
     }
 
+    // Combos, and the products they are built from. Three small reads rather
+    // than one join: a combo has groups which have options, and unpicking that
+    // shape from a flattened result is more code than asking three times.
+    final comboRows = await _db.query(
+      _config,
+      'SELECT id, category_id, name_en, name_ar, price_minor, tax_group_id, '
+      '       sku, is_available '
+      'FROM pos_combos WHERE restaurant_id = @restaurant '
+      'ORDER BY sort_order, id',
+      parameters: {'restaurant': tenant.id},
+    );
+
+    final comboGroupRows = comboRows.isEmpty
+        ? const []
+        : await _db.query(
+            _config,
+            'SELECT g.id, g.combo_id, g.name_en, g.name_ar, g.min_select, '
+            '       g.max_select '
+            'FROM pos_combo_groups g '
+            'JOIN pos_combos c ON c.id = g.combo_id '
+            'WHERE c.restaurant_id = @restaurant '
+            'ORDER BY g.sort_order, g.id',
+            parameters: {'restaurant': tenant.id},
+          );
+
+    final comboOptionRows = comboRows.isEmpty
+        ? const []
+        : await _db.query(
+            _config,
+            'SELECT o.id, o.combo_group_id, o.product_id, o.price_delta_minor '
+            'FROM pos_combo_options o '
+            'JOIN pos_combo_groups g ON g.id = o.combo_group_id '
+            'JOIN pos_combos c ON c.id = g.combo_id '
+            'WHERE c.restaurant_id = @restaurant '
+            'ORDER BY o.sort_order, o.id',
+            parameters: {'restaurant': tenant.id},
+          );
+
+    // Indexed once. A combo option names a product id, and looking each one
+    // up by walking the list would be quadratic on a large menu.
+    final productsById = <int, Product>{
+      for (final row in products)
+        row[0]! as int: Product(
+          id: row[0]! as int,
+          categoryId: row[1]! as int,
+          nameEn: row[2]! as String,
+          nameAr: row[3] as String?,
+          price: _money(row[4]! as int),
+          discountedPrice: row[5] == null ? null : _money(row[5]! as int),
+          sku: row[6] as String?,
+          barcode: row[7] as String?,
+          isAvailable: row[8]! as bool,
+          taxGroupId: row[9] as int?,
+          modifierGroupIds: groupIdsByProduct[row[0]! as int] ?? const [],
+        ),
+    };
+
     return Catalog(
       syncedAt: _now(),
       categories: [
@@ -137,22 +196,8 @@ class PostgresCatalogRepository implements CatalogRepository {
             sortOrder: row[4] as int,
           ),
       ],
-      products: [
-        for (final row in products)
-          Product(
-            id: row[0] as int,
-            categoryId: row[1] as int,
-            nameEn: row[2] as String,
-            nameAr: row[3] as String?,
-            price: _money(row[4] as int),
-            discountedPrice: row[5] == null ? null : _money(row[5] as int),
-            sku: row[6] as String?,
-            barcode: row[7] as String?,
-            isAvailable: row[8] as bool,
-            taxGroupId: row[9] as int?,
-            modifierGroupIds: groupIdsByProduct[row[0] as int] ?? const [],
-          ),
-      ],
+      // Built once above and reused, rather than constructed twice.
+      products: productsById.values.toList(growable: false),
       modifierGroups: [
         for (final row in groups)
           ModifierGroup(
@@ -163,9 +208,78 @@ class PostgresCatalogRepository implements CatalogRepository {
             maxSelect: row[4] as int,
             isVariant: row[5] as bool,
             modifiers: byGroup[row[0] as int] ?? const [],
+            minSelect: row[6] as int? ?? 0,
+            freeOptions: row[7] as int? ?? 0,
           ),
       ],
+      combos: _combos(
+        comboRows,
+        comboGroupRows,
+        comboOptionRows,
+        productsById,
+      ),
     );
+  }
+
+  /// Assemble combos from their three reads.
+  ///
+  /// An option whose product is gone is **dropped**, and a group left with no
+  /// options is dropped with it: the foreign key is `RESTRICT` so this should
+  /// not happen, and a combo offering a choice nobody can pick would be worse
+  /// than one that quietly offers fewer.
+  List<Combo> _combos(
+    List<dynamic> comboRows,
+    List<dynamic> groupRows,
+    List<dynamic> optionRows,
+    Map<int, Product> productsById,
+  ) {
+    final optionsByGroup = <int, List<ComboOption>>{};
+    for (final raw in optionRows) {
+      final row = (raw as dynamic).toList() as List<Object?>;
+      final product = productsById[row[2] as int];
+      if (product == null) continue;
+      optionsByGroup.putIfAbsent(row[1] as int, () => []).add(
+        ComboOption(
+          id: row[0] as int,
+          product: product,
+          priceDelta: _money(row[3] as int),
+        ),
+      );
+    }
+
+    final groupsByCombo = <int, List<ComboGroup>>{};
+    for (final raw in groupRows) {
+      final row = (raw as dynamic).toList() as List<Object?>;
+      final options = optionsByGroup[row[0] as int] ?? const <ComboOption>[];
+      if (options.isEmpty) continue;
+      groupsByCombo.putIfAbsent(row[1] as int, () => []).add(
+        ComboGroup(
+          id: row[0] as int,
+          nameEn: row[2] as String,
+          nameAr: row[3] as String?,
+          minSelect: row[4] as int,
+          maxSelect: row[5] as int,
+          options: options,
+        ),
+      );
+    }
+
+    return [
+      for (final raw in comboRows)
+        if ((raw as dynamic).toList() case final List<Object?> row)
+          if (groupsByCombo[row[0] as int] case final groups?)
+            Combo(
+              id: row[0] as int,
+              categoryId: row[1] as int,
+              nameEn: row[2] as String,
+              nameAr: row[3] as String?,
+              price: _money(row[4] as int),
+              taxGroupId: row[5] as int?,
+              sku: row[6] as String?,
+              isAvailable: row[7] as bool,
+              groups: groups,
+            ),
+    ];
   }
 
   /// Currency and exponent come from the terminal's own configuration, as they
