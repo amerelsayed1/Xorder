@@ -4,6 +4,7 @@ import '../../core/config/deployment.dart';
 import '../../core/security/pin_hash.dart';
 import '../../domain/models/permissions.dart';
 import '../../domain/repositories/repositories.dart';
+import '../../domain/services/permission_resolver.dart';
 import 'pos_database.dart';
 import 'postgres_admin_repositories.dart';
 import 'postgres_tenant.dart';
@@ -439,7 +440,103 @@ class PostgresSessionRepository implements SessionRepository {
         );
       }
     }
-    return matched;
+    return matched == null ? null : _withGrants(matched);
+  }
+
+  /// Loads the extra roles, the per-person overrides and the ceilings.
+  ///
+  /// **One query, and only for the person who matched.** Sign-in already walks
+  /// every candidate row to keep its timing flat; loading grants for all of
+  /// them would undo that saving for no benefit, because nobody but the matched
+  /// person is about to use them.
+  ///
+  /// A failure here returns the person **unenriched** rather than refusing the
+  /// sign-in. That is the conservative direction: they get their primary role
+  /// and no extras, which is less than they should have rather than more, and a
+  /// cashier locked out of the till by a permissions query is a queue at the
+  /// counter over something nobody at the counter can fix.
+  Future<PosStaff> _withGrants(PosStaff staff) async {
+    try {
+      final extras = await _db.query(
+        _config,
+        'SELECT $joinedRoleColumns FROM pos_staff_roles sr '
+        'JOIN pos_roles r ON r.id = sr.role_id '
+        'WHERE sr.staff_id = @staff ORDER BY r.id',
+        parameters: {'staff': staff.id},
+      );
+
+      final overrides = await _db.query(
+        _config,
+        'SELECT capability, effect, granted_by, granted_at '
+        'FROM pos_staff_permission_overrides WHERE staff_id = @staff',
+        parameters: {'staff': staff.id},
+      );
+
+      // Role ceilings and personal ones in one read, ordered so the role's
+      // arrive first — `PermissionResolver` tightens rather than replaces, so
+      // the order does not change the answer, but it keeps the two apart for
+      // the caller that wants to show which is which.
+      final limits = await _db.query(
+        _config,
+        'SELECT subject_type, limit_key, limit_bp, limit_minor '
+        'FROM pos_permission_limits '
+        'WHERE restaurant_id = @restaurant AND ('
+        "  (subject_type = 'staff' AND subject_id = @staff) OR "
+        "  (subject_type = 'role' AND subject_id = ANY(@roles))) "
+        'ORDER BY subject_type DESC',
+        parameters: {
+          'restaurant': _restaurantId,
+          'staff': staff.id,
+          'roles': [
+            if (staff.role case final own?) own.id,
+            for (final row in extras) row[0]! as int,
+          ],
+        },
+      );
+
+      final roleLimits = <String, PermissionLimit>{};
+      final staffLimits = <String, PermissionLimit>{};
+      for (final row in limits) {
+        final target = (row[0]! as String) == 'role' ? roleLimits : staffLimits;
+        final key = row[1]! as String;
+        final limit = PermissionLimit(
+          maxBp: row[2] as int?,
+          maxMinor: (row[3] as int?),
+        );
+        // Two roles with a ceiling on the same key tighten each other — see
+        // [PermissionLimit.tightenedBy] for why the tighter wins.
+        target[key] = (target[key] ?? PermissionLimit.unlimited).tightenedBy(
+          limit,
+        );
+      }
+
+      final extraRoles = <PosRole>[
+        for (final row in extras)
+          if (row[0] != staff.role?.id) roleFromRow(row),
+      ];
+
+      return staff.copyWith(
+        extraRoles: extraRoles,
+        overrides: [
+          for (final row in overrides)
+            if (OverrideEffect.fromWire(row[1]! as String) case final effect?)
+              PermissionOverride(
+                capability: row[0]! as String,
+                effect: effect,
+                grantedById: row[2] as int?,
+                grantedAt: (row[3] as DateTime?)?.toUtc(),
+              ),
+        ],
+        limits: PermissionResolver.resolve(
+          isActive: staff.isActive,
+          roles: const [],
+          roleLimits: roleLimits,
+          staffLimits: staffLimits,
+        ).limits,
+      );
+    } on Object {
+      return staff;
+    }
   }
 }
 

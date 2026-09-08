@@ -2089,6 +2089,100 @@ const posMigrations = <PosMigration>[
       ADD COLUMN IF NOT EXISTS qr_payload text
     ''',
   ]),
+  PosMigration(22, 'multiple roles, per-person overrides, and ceilings', [
+    // §11 — a person may hold more than one role.
+    //
+    // **This table holds the *additional* roles, not all of them.**
+    // `pos_staff.role_id` stays and remains the primary — the role a person
+    // calls their job, the one the staff list shows and the one the seed sets.
+    //
+    // The plan's shape was to backfill every existing `role_id` into here and
+    // treat this as the complete set. That was tried and is wrong twice over.
+    // It needs both places written on every role change, forever, or the two
+    // readers drift; and worse, when somebody's primary role changes, the
+    // backfilled row *stays*, silently leaving them holding the role they were
+    // moved off. A promotion that quietly kept the old permissions is the exact
+    // failure this wave exists to prevent.
+    //
+    // So there is nothing to keep in sync: the primary lives in one column, the
+    // extras live here, and the union is done at resolution. A later migration
+    // that retires `role_id` can insert the primaries at that point, when there
+    // is one reader rather than two.
+    '''
+    CREATE TABLE IF NOT EXISTS pos_staff_roles (
+      staff_id bigint NOT NULL REFERENCES pos_staff(id) ON DELETE CASCADE,
+      -- RESTRICT, not CASCADE: deleting a role somebody holds has to be
+      -- refused and explained, not performed quietly. The repository names
+      -- who is still on it.
+      role_id  bigint NOT NULL REFERENCES pos_roles(id) ON DELETE RESTRICT,
+      PRIMARY KEY (staff_id, role_id)
+    )
+    ''',
+    // §105 — one person's exception to their roles.
+    //
+    // The capability is stored as **text**, not as a foreign key into a
+    // `pos_permissions` table, and that is a deliberate departure from the
+    // plan's shape. The catalogue lives in Dart, because the code checks
+    // against string constants; a table would be a seeded *copy* of it, and a
+    // foreign key onto a copy buys integrity against the wrong thing. It would
+    // also mean adding a capability needed a Dart change and a seed row, with a
+    // till on an older binary holding a row it cannot interpret.
+    //
+    // `PosCapability.canonical` is what keeps renames safe here, exactly as it
+    // does for `pos_roles.capabilities` — the same discipline migrations 5 and
+    // 13 already rely on.
+    '''
+    CREATE TABLE IF NOT EXISTS pos_staff_permission_overrides (
+      staff_id   bigint      NOT NULL REFERENCES pos_staff(id) ON DELETE CASCADE,
+      capability text        NOT NULL,
+      effect     text        NOT NULL,
+      granted_by bigint      REFERENCES pos_staff(id) ON DELETE SET NULL,
+      granted_at timestamptz NOT NULL DEFAULT now(),
+      -- Why. An override with no reason is a permission somebody will find in
+      -- six months with nobody able to say who asked for it.
+      note       text,
+      PRIMARY KEY (staff_id, capability),
+      CONSTRAINT pos_staff_overrides_effect_known
+        CHECK (effect IN ('ALLOW', 'DENY'))
+    )
+    ''',
+    // §16, §18 — numeric ceilings on a role or on one person.
+    '''
+    CREATE TABLE IF NOT EXISTS pos_permission_limits (
+      id            bigserial PRIMARY KEY,
+      restaurant_id bigint    NOT NULL REFERENCES pos_restaurants(id) ON DELETE CASCADE,
+      -- 'role' or 'staff'. A polymorphic subject rather than two tables,
+      -- because every reader wants both and would otherwise UNION them on
+      -- every load.
+      subject_type  text      NOT NULL,
+      subject_id    bigint    NOT NULL,
+      limit_key     text      NOT NULL,
+      -- Basis points and minor units, both nullable and both meaningful: a
+      -- ceiling can be a share, a cash amount, or one of each. A row with
+      -- neither is a limit that limits nothing, which is what the CHECK
+      -- refuses — an unlimited subject has no row at all.
+      limit_bp      integer,
+      limit_minor   bigint,
+      updated_at    timestamptz NOT NULL DEFAULT now(),
+      updated_by    bigint      REFERENCES pos_staff(id) ON DELETE SET NULL,
+      CONSTRAINT pos_permission_limits_subject_known
+        CHECK (subject_type IN ('role', 'staff')),
+      CONSTRAINT pos_permission_limits_says_something
+        CHECK (limit_bp IS NOT NULL OR limit_minor IS NOT NULL),
+      CONSTRAINT pos_permission_limits_sane
+        CHECK ((limit_bp IS NULL OR limit_bp BETWEEN 0 AND 10000)
+           AND (limit_minor IS NULL OR limit_minor >= 0)),
+      CONSTRAINT pos_permission_limits_unique
+        UNIQUE (restaurant_id, subject_type, subject_id, limit_key)
+    )
+    ''',
+    // The resolver's read: every limit for one restaurant, in one query. It
+    // resolves per person on sign-in, and a query per subject would be four.
+    '''
+    CREATE INDEX IF NOT EXISTS pos_permission_limits_subject_idx
+      ON pos_permission_limits (restaurant_id, subject_type, subject_id)
+    ''',
+  ]),
 ];
 
 /// Brings the branch database up to the current schema.

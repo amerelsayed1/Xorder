@@ -1153,8 +1153,29 @@ prevent. Wave C either keeps it and accepts an owner-only back office, or moves
 to role-based access and leans on the column-scoped grants that are already
 doing most of the work.
 
-Wave C also carries the **branch scoping** that `pos_staff.branch_id` has always
-had a column for and never enforced.
+~~Wave C also carries the **branch scoping** that `pos_staff.branch_id` has
+always had a column for and never enforced.~~ **This was already done.** Both
+`signIn` and `verifyPin` filter on `(s.branch_id IS NULL OR s.branch_id =
+@branch)`, and `postgres_directory_test.dart` pins it — *"a cashier at another
+branch cannot unlock this till"*. The claim above was stale; nothing was
+built for it in Wave C.
+
+**Two departures from the shape above, both deliberate.**
+
+`pos_permissions` and `pos_role_permissions` were **not** built. The catalogue
+lives in Dart because the code checks against string constants, so a table would
+be a seeded *copy* of it and a foreign key onto a copy buys integrity against the
+wrong thing — while making every new capability need a Dart change *and* a seed
+row, with a till on an older binary holding a row it cannot interpret. Role
+capabilities stay in `pos_roles.capabilities text[]`, which three migrations
+already rely on and which `PosCapability.canonical` already makes rename-safe.
+
+`pos_staff_roles` holds the **additional** roles, not all of them. The plan's
+backfill was tried and reverted: it needs both places written on every role
+change forever, and when somebody's primary role changes the backfilled row
+stays, silently leaving them holding the role they were moved off. A promotion
+that quietly keeps the old permissions is the exact failure this wave exists to
+prevent.
 
 ### What is still not on the roadmap
 

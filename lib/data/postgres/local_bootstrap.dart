@@ -383,6 +383,12 @@ class LocalBootstrap {
     // Read by every till on every sign-in: the permission gate needs to
     // know what the person who just entered a PIN may do.
     'GRANT SELECT ON pos_roles TO "$role"',
+    // The rest of that answer — the extra roles, the per-person exceptions and
+    // the ceilings. SELECT only: a till reads what somebody may do and never
+    // writes it, which is the whole reason the back office needs a separate
+    // credential.
+    'GRANT SELECT ON pos_staff_roles, pos_staff_permission_overrides, '
+        'pos_permission_limits TO "$role"',
     // Claiming a pairing code stamps `claimed_at`, and an installer with
     // no dashboard registers the terminal from the wizard.
     'GRANT SELECT, INSERT, UPDATE ON pos_terminals TO "$role"',
@@ -467,6 +473,14 @@ class LocalBootstrap {
     'GRANT USAGE, SELECT ON SEQUENCE pos_staff_id_seq TO "$role"',
     'GRANT SELECT, INSERT, UPDATE ON pos_roles TO "$role"',
     'GRANT USAGE, SELECT ON SEQUENCE pos_roles_id_seq TO "$role"',
+    // Granting a second role, an exception or a ceiling. DELETE here, unlike
+    // almost everywhere else: these three are the *current* shape of somebody's
+    // access rather than a record of anything that happened, and the record is
+    // the audit ledger's job. A revoked override that could only be flipped to
+    // ALLOW and never removed would leave a table nobody can read.
+    'GRANT SELECT, INSERT, UPDATE, DELETE ON pos_staff_roles, '
+        'pos_staff_permission_overrides, pos_permission_limits TO "$role"',
+    'GRANT USAGE, SELECT ON SEQUENCE pos_permission_limits_id_seq TO "$role"',
     // A restaurant's own vocabulary for why things happen. Editable in
     // Settings, which is why this is here and not in the till's set — a
     // cashier who could add a void reason could add one that reads well.
