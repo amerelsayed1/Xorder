@@ -341,6 +341,9 @@ class LocalBootstrap {
     // reads the blind-close switch, they do not flip it. Authoring belongs to
     // [administrativeGrants].
     'GRANT SELECT ON pos_settings TO "$role"',
+    // Who the receipt says sold the food. Read-only for the till: the slip is
+    // printed at the counter, and the address on it is set in Management.
+    'GRANT SELECT ON pos_receipt_profiles TO "$role"',
     // Money into and out of the drawer that is not a sale. INSERT and SELECT,
     // never UPDATE or DELETE — a pay-out already recorded is a record of money
     // that left, and correcting one is a second movement, not an edit.
@@ -455,6 +458,11 @@ class LocalBootstrap {
     // cashier who could add a void reason could add one that reads well.
     'GRANT SELECT, INSERT, UPDATE ON pos_reason_codes TO "$role"',
     'GRANT USAGE, SELECT ON SEQUENCE pos_reason_codes_id_seq TO "$role"',
+    // The trade name, registration number and address a receipt is judged on.
+    // No DELETE: a branch stops having a profile by being archived, not by
+    // having its identity removed from under the receipts already issued.
+    'GRANT SELECT, INSERT, UPDATE ON pos_receipt_profiles TO "$role"',
+    'GRANT USAGE, SELECT ON SEQUENCE pos_receipt_profiles_id_seq TO "$role"',
     // Authoring what the restaurant offers, and what a role may take off by
     // hand. A DELETE on the targets, unlike almost everywhere else: they are
     // not a record of anything that happened, only the current shape of a

@@ -14,6 +14,7 @@ import 'management_activity_pane.dart';
 import 'management_floor_pane.dart';
 import 'management_menu_pane.dart';
 import 'management_money_pane.dart';
+import 'management_receipt_pane.dart';
 import 'management_roles_pane.dart';
 import 'management_staff_pane.dart';
 import '../../../core/security/pin_hash.dart';
@@ -52,7 +53,10 @@ class ManagementScreen extends ConsumerStatefulWidget {
 }
 
 /// The panes, public so a caller can name the one it means.
-enum ManagementPane { staff, menu, floor, money, roles, activity }
+/// [receipt] is deliberately outside the authoring set: every terminal prints
+/// a slip with the restaurant's name and address on it, cloud and offline
+/// alike, and only the write side needs Management's credential.
+enum ManagementPane { staff, menu, floor, money, receipt, roles, activity }
 
 class _ManagementScreenState extends ConsumerState<ManagementScreen> {
   late ManagementPane _pane = widget.initialPane;
@@ -122,6 +126,9 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
                       ManagementPane.menu => ManagementMenuPane(admin: admin),
                       ManagementPane.floor => ManagementFloorPane(admin: admin),
                       ManagementPane.money => ManagementMoneyPane(admin: admin),
+                      ManagementPane.receipt => ManagementReceiptPane(
+                        admin: admin,
+                      ),
                       ManagementPane.roles => ManagementRolesPane(admin: admin),
                       ManagementPane.activity => const ManagementActivityPane(),
                     },
@@ -196,6 +203,7 @@ class _Rail extends StatelessWidget {
     ManagementPane.menu => (s.paneMenu, s.paneMenuBlurb),
     ManagementPane.floor => (s.floorPlan, s.floorPlanHint),
     ManagementPane.money => (s.moneyRules, s.moneyRulesHint),
+    ManagementPane.receipt => (s.paneReceipt, s.paneReceiptBlurb),
     ManagementPane.roles => (s.paneRoles, s.paneRolesBlurb),
     ManagementPane.activity => (s.paneActivity, s.paneActivityBlurb),
   };

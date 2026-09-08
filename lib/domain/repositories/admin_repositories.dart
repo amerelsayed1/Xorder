@@ -2,6 +2,7 @@ import '../models/catalog.dart';
 import '../services/menu_import.dart';
 import '../models/dining_table.dart';
 import '../models/permissions.dart';
+import '../models/receipt_profile.dart';
 import '../models/shift.dart';
 import '../models/ticket.dart';
 import '../services/authorization.dart';
@@ -232,6 +233,11 @@ abstract final class AuditAction {
   /// reason a reprice is: it changes what every future customer pays.
   static const moneyConfigChanged = 'money_config.changed';
 
+  /// Who the receipt says sold the food — trade name, registration number,
+  /// branch address. Its own action because it changes what a legal document
+  /// claims, and the registration number is the field a receipt is judged on.
+  static const receiptProfileChanged = 'receipt_profile.changed';
+
   static const tableCreated = 'table.created';
   static const tableUpdated = 'table.updated';
   static const tableArchived = 'table.archived';
@@ -245,6 +251,7 @@ abstract final class AuditAction {
   static const entityProduct = 'product';
   static const entityMoney = 'money_config';
   static const entityTable = 'table';
+  static const entityReceiptProfile = 'receipt_profile';
 }
 
 /// Authoring the menu on the till itself.
@@ -260,6 +267,21 @@ abstract final class AuditAction {
 /// Nothing here deletes. Categories and products are archived, because
 /// `pos_products.category_id` is `ON DELETE RESTRICT` and because a row that
 /// ever appeared on a receipt is a record of what somebody bought.
+/// Reading and writing who the receipt says sold the food.
+///
+/// Separate from [CatalogAdminRepository] because every till reads it — the
+/// slip is printed at the counter — while only Management writes it. Folding
+/// it into the catalogue repository would have meant a cloud till, which has
+/// no catalogue authoring at all, losing the ability to print its own address.
+abstract interface class ReceiptProfileRepository {
+  Future<ReceiptProfile> load();
+
+  Future<AdminResult<ReceiptProfile>> save(
+    ReceiptProfile profile, {
+    required PosStaff by,
+  });
+}
+
 abstract interface class CatalogAdminRepository {
   /// Create or update a category. Id `0` is a new one.
   Future<AdminResult<Category>> saveCategory(

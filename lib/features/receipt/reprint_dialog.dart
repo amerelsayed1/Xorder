@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/providers.dart';
 import '../../core/l10n/app_strings.dart';
+import '../../domain/models/receipt_profile.dart';
 import '../../core/ui/theme.dart';
 import '../../core/ui/tokens.dart';
 import '../../core/ui/widgets/pos_widgets.dart';
@@ -91,6 +92,8 @@ class _ReprintDialogState extends ConsumerState<ReprintDialog> {
                       widget.detail,
                       refunds: widget.refunds,
                     ),
+                    profile: ref.watch(receiptProfileProvider).valueOrNull ??
+                        const ReceiptProfile(branchId: 0),
                     tenantName: session?.tenantName ?? '',
                     terminalCode: session?.terminalCode ?? '',
                     // The person who **sold** it, not the person reprinting.

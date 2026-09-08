@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../app/providers.dart';
 import '../../core/config/deployment.dart';
 import '../../core/l10n/app_strings.dart';
+import '../../domain/models/receipt_profile.dart';
 import '../../core/ui/tokens.dart';
 import '../../core/ui/widgets/pos_widgets.dart';
 import '../../domain/models/ticket.dart';
@@ -74,6 +75,8 @@ class ReceiptDialog extends ConsumerWidget {
                           ref.watch(deploymentProvider).mode ==
                           DeploymentMode.cloud,
                     ),
+                    profile: ref.watch(receiptProfileProvider).valueOrNull ??
+                        const ReceiptProfile(branchId: 0),
                     tenantName: session?.tenantName ?? '',
                     terminalCode: session?.terminalCode ?? '',
                     cashierName: session?.userName ?? '',

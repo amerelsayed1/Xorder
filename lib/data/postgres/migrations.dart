@@ -1945,6 +1945,52 @@ const posMigrations = <PosMigration>[
       REFERENCES pos_combos(id) ON DELETE SET NULL
     ''',
   ]),
+  PosMigration(19, 'who the receipt says sold the food', [
+    // One row per branch. Not per restaurant: ETA's seller block carries a
+    // branch code and a branch address, and a restaurant group filing one
+    // address for four branches is filing three wrong ones.
+    //
+    // Every text column is NOT NULL DEFAULT '' rather than nullable. A profile
+    // is filled in over several sittings — somebody types the name today and
+    // finds the activity code next week — so "not yet entered" is the normal
+    // state of half these columns, and a NULL that means the same thing as ''
+    // only buys two ways to spell it and a coalesce at every read.
+    '''
+    CREATE TABLE IF NOT EXISTS pos_receipt_profiles (
+      id                  bigserial   PRIMARY KEY,
+      restaurant_id       bigint      NOT NULL REFERENCES pos_restaurants(id) ON DELETE CASCADE,
+      branch_id           bigint      NOT NULL REFERENCES pos_branches(id) ON DELETE CASCADE,
+      trade_name          text        NOT NULL DEFAULT '',
+      -- ETA's `rin`. Nine digits, but unconstrained here: the shape is checked
+      -- in Dart where the message can name the box, and a CHECK would also
+      -- forbid saving a half-typed profile, which is the normal way one is
+      -- entered.
+      registration_number text        NOT NULL DEFAULT '',
+      activity_code       text        NOT NULL DEFAULT '',
+      -- Deliberately not pos_branches.code: that one is the invoice prefix and
+      -- the restaurant chooses it. This one the tax authority chose.
+      branch_code         text        NOT NULL DEFAULT '',
+      country             text        NOT NULL DEFAULT 'EG',
+      governate           text        NOT NULL DEFAULT '',
+      region_city         text        NOT NULL DEFAULT '',
+      street              text        NOT NULL DEFAULT '',
+      building_number     text        NOT NULL DEFAULT '',
+      postal_code         text        NOT NULL DEFAULT '',
+      floor               text        NOT NULL DEFAULT '',
+      room                text        NOT NULL DEFAULT '',
+      landmark            text        NOT NULL DEFAULT '',
+      additional_info     text        NOT NULL DEFAULT '',
+      phone               text        NOT NULL DEFAULT '',
+      header_note         text        NOT NULL DEFAULT '',
+      footer_note         text        NOT NULL DEFAULT '',
+      -- Two managers, an office and a counter. Checked on write.
+      revision            integer     NOT NULL DEFAULT 0,
+      updated_at          timestamptz NOT NULL DEFAULT now(),
+      updated_by          bigint      REFERENCES pos_staff(id) ON DELETE SET NULL,
+      CONSTRAINT pos_receipt_profiles_branch_unique UNIQUE (branch_id)
+    )
+    ''',
+  ]),
 ];
 
 /// Brings the branch database up to the current schema.

@@ -181,7 +181,7 @@ sealed class AppStrings {
   String get enterAmountAboveZero;
 
   // ── Receipt ───────────────────────────────────────────────────────────────
-  String get taxRegistrationLine;
+  String taxRegistrationLine(String number);
   String get provisionalInvoice;
   String get receiptSubtotal;
   String receiptService(String percent);
@@ -1168,6 +1168,36 @@ sealed class AppStrings {
   String get comboIncluded;
 
   // ── Importing a menu from a spreadsheet ───────────────────────────────────
+  // §17, §113 — who the receipt says sold the food.
+  String get paneReceipt;
+  String get paneReceiptBlurb;
+  String get receiptProfileExplain;
+  String get receiptProfileOnThePaper;
+  String get receiptProfileForTheAuthority;
+  String get receiptProfileSave;
+  String get receiptProfileSaved;
+  String get receiptProfileNoDatabase;
+  String get receiptEtaReady;
+  String get receiptEtaIncomplete;
+  String get receiptEtaNotSetUp;
+  String get receiptTradeName;
+  String get receiptPhone;
+  String get receiptHeaderNote;
+  String get receiptFooterNote;
+  String get receiptRegistrationNumber;
+  String get receiptActivityCode;
+  String get receiptBranchCode;
+  String get receiptBranchAddress;
+  String get receiptCountry;
+  String get receiptGovernorate;
+  String get receiptCity;
+  String get receiptStreet;
+  String get receiptBuildingNumber;
+  String get receiptPostalCode;
+  String get receiptFloor;
+  String get receiptRoom;
+  String get receiptLandmark;
+
   String get menuImportAction;
   String get menuImportTitle;
   String get menuImportExplain;
@@ -1636,6 +1666,72 @@ final class EnStrings extends AppStrings {
   @override
   String get comboIncluded => 'included';
   @override
+  String get paneReceipt => 'Receipt';
+  @override
+  String get paneReceiptBlurb => 'What the slip says, and what ETA is told';
+  @override
+  String get receiptProfileExplain =>
+      'Entered once. The top of every printed slip and the seller block of '
+      'every e-receipt are the same facts, so they are typed here and read '
+      'from here.';
+  @override
+  String get receiptProfileOnThePaper => 'On the paper';
+  @override
+  String get receiptProfileForTheAuthority => 'For the tax authority';
+  @override
+  String get receiptProfileSave => 'Save';
+  @override
+  String get receiptProfileSaved => 'Saved.';
+  @override
+  String get receiptProfileNoDatabase =>
+      'This terminal has no database configured, so there is nothing to save '
+      'a receipt profile to.';
+  @override
+  String get receiptEtaReady =>
+      'Complete. Receipts from this branch carry everything ETA asks for.';
+  @override
+  String get receiptEtaIncomplete =>
+      'Incomplete. Receipts still print, but they cannot be filed until the '
+      'fields marked below are right.';
+  @override
+  String get receiptEtaNotSetUp =>
+      'Not set up yet. Fill this in before the first receipt has to be filed.';
+  @override
+  String get receiptTradeName => 'Trade name';
+  @override
+  String get receiptPhone => 'Phone';
+  @override
+  String get receiptHeaderNote => 'Note above the items';
+  @override
+  String get receiptFooterNote => 'Note at the bottom';
+  @override
+  String get receiptRegistrationNumber => 'Tax registration number';
+  @override
+  String get receiptActivityCode => 'Activity code';
+  @override
+  String get receiptBranchCode => 'Branch code';
+  @override
+  String get receiptBranchAddress => 'Branch address';
+  @override
+  String get receiptCountry => 'Country';
+  @override
+  String get receiptGovernorate => 'Governorate';
+  @override
+  String get receiptCity => 'City';
+  @override
+  String get receiptStreet => 'Street';
+  @override
+  String get receiptBuildingNumber => 'Building number';
+  @override
+  String get receiptPostalCode => 'Postal code';
+  @override
+  String get receiptFloor => 'Floor';
+  @override
+  String get receiptRoom => 'Room';
+  @override
+  String get receiptLandmark => 'Landmark';
+
+  @override
   String get menuImportAction => 'Import from a spreadsheet';
   @override
   String get menuImportTitle => 'Import the menu';
@@ -1976,7 +2072,7 @@ final class EnStrings extends AppStrings {
   String get enterAmountAboveZero => 'Enter an amount above zero.';
 
   @override
-  String get taxRegistrationLine => 'TAX REG 000-000-000';
+  String taxRegistrationLine(String number) => 'TAX REG $number';
   @override
   String get provisionalInvoice => 'PROVISIONAL';
   @override
@@ -3760,6 +3856,69 @@ final class ArStrings extends AppStrings {
   @override
   String get comboIncluded => 'مشمول';
   @override
+  String get paneReceipt => 'الإيصال';
+  @override
+  String get paneReceiptBlurb => 'ما يُطبع على الإيصال وما يُرسل للمصلحة';
+  @override
+  String get receiptProfileExplain =>
+      'تُكتب مرة واحدة. أعلى كل إيصال مطبوع وبيانات البائع في كل إيصال '
+      'إلكتروني هي نفس البيانات، فتُكتب هنا وتُقرأ من هنا.';
+  @override
+  String get receiptProfileOnThePaper => 'على الورق';
+  @override
+  String get receiptProfileForTheAuthority => 'لمصلحة الضرائب';
+  @override
+  String get receiptProfileSave => 'حفظ';
+  @override
+  String get receiptProfileSaved => 'تم الحفظ.';
+  @override
+  String get receiptProfileNoDatabase =>
+      'لا توجد قاعدة بيانات على هذه النقطة، فلا مكان لحفظ بيانات الإيصال.';
+  @override
+  String get receiptEtaReady =>
+      'مكتملة. إيصالات هذا الفرع تحمل كل ما تطلبه المصلحة.';
+  @override
+  String get receiptEtaIncomplete =>
+      'غير مكتملة. الإيصالات تُطبع، لكنها لا تُرسل حتى تُصحَّح الحقول المُعلَّمة.';
+  @override
+  String get receiptEtaNotSetUp =>
+      'لم تُضبط بعد. أكملها قبل أن يلزم إرسال أول إيصال.';
+  @override
+  String get receiptTradeName => 'الاسم التجاري';
+  @override
+  String get receiptPhone => 'الهاتف';
+  @override
+  String get receiptHeaderNote => 'ملاحظة أعلى الأصناف';
+  @override
+  String get receiptFooterNote => 'ملاحظة في الأسفل';
+  @override
+  String get receiptRegistrationNumber => 'رقم التسجيل الضريبي';
+  @override
+  String get receiptActivityCode => 'كود النشاط';
+  @override
+  String get receiptBranchCode => 'كود الفرع';
+  @override
+  String get receiptBranchAddress => 'عنوان الفرع';
+  @override
+  String get receiptCountry => 'الدولة';
+  @override
+  String get receiptGovernorate => 'المحافظة';
+  @override
+  String get receiptCity => 'المدينة';
+  @override
+  String get receiptStreet => 'الشارع';
+  @override
+  String get receiptBuildingNumber => 'رقم المبنى';
+  @override
+  String get receiptPostalCode => 'الرمز البريدي';
+  @override
+  String get receiptFloor => 'الطابق';
+  @override
+  String get receiptRoom => 'الغرفة';
+  @override
+  String get receiptLandmark => 'علامة مميزة';
+
+  @override
   String get menuImportAction => 'استيراد من ملف';
   @override
   String get menuImportTitle => 'استيراد المنيو';
@@ -4099,7 +4258,7 @@ final class ArStrings extends AppStrings {
   String get enterAmountAboveZero => 'أدخل مبلغاً أكبر من صفر.';
 
   @override
-  String get taxRegistrationLine => 'سجل ضريبي 000-000-000';
+  String taxRegistrationLine(String number) => 'TAX REG $number';
   @override
   String get provisionalInvoice => 'مبدئية';
   @override

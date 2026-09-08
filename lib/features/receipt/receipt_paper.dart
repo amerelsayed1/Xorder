@@ -4,6 +4,7 @@ import '../../app/labels.dart';
 import '../../core/l10n/app_strings.dart';
 import '../../core/ui/theme.dart';
 import '../../core/ui/tokens.dart';
+import '../../domain/models/receipt_profile.dart';
 import 'receipt_data.dart';
 
 /// A receipt is paper, and paper is white in a dark room too.
@@ -28,9 +29,21 @@ class ReceiptPaper extends StatelessWidget {
     required this.tenantName,
     required this.terminalCode,
     required this.cashierName,
+    this.profile = const ReceiptProfile(branchId: 0),
   });
 
   final ReceiptData data;
+
+  /// Who this branch is, as Management entered it.
+  ///
+  /// Defaults to a blank profile so a till that has never been set up still
+  /// prints — it just prints less. Every line below that reads this is
+  /// conditional for exactly that reason.
+  final ReceiptProfile profile;
+
+  /// The tenant as the session knows it. Still here because it is what a till
+  /// has before anybody opens Management, and [ReceiptProfile.tradeName] wins
+  /// once somebody has.
   final String tenantName;
   final String terminalCode;
   final String cashierName;
@@ -59,7 +72,10 @@ class ReceiptPaper extends StatelessWidget {
               receiptPalette.danger,
             ),
           Text(
-            tenantName.toUpperCase(),
+            (profile.tradeName.trim().isEmpty
+                    ? tenantName
+                    : profile.tradeName)
+                .toUpperCase(),
             textAlign: TextAlign.center,
             style: PosText.ui(
               size: 17,
@@ -67,12 +83,51 @@ class ReceiptPaper extends StatelessWidget {
               color: receiptPalette.ink,
             ),
           ),
-          const SizedBox(height: 2),
-          Text(
-            strings.taxRegistrationLine,
-            textAlign: TextAlign.center,
-            style: PosText.mono(size: 11, color: receiptPalette.body),
-          ),
+          // Address, phone and registration number print only when somebody
+          // has entered them.
+          //
+          // This line used to read `TAX REG 000-000-000` unconditionally — a
+          // fabricated registration number on a document a customer keeps and
+          // an inspector may read. A blank space is not a compliance problem;
+          // a made-up number is.
+          if (profile.address.printed.isNotEmpty) ...[
+            const SizedBox(height: 2),
+            Text(
+              profile.address.printed,
+              textAlign: TextAlign.center,
+              style: PosText.ui(size: 11, color: receiptPalette.body),
+            ),
+          ],
+          if ((profile.phone ?? '').trim().isNotEmpty) ...[
+            const SizedBox(height: 2),
+            Directionality(
+              textDirection: TextDirection.ltr,
+              child: Text(
+                profile.phone!.trim(),
+                textAlign: TextAlign.center,
+                style: PosText.mono(size: 11, color: receiptPalette.body),
+              ),
+            ),
+          ],
+          if (profile.registrationNumber.trim().isNotEmpty) ...[
+            const SizedBox(height: 2),
+            Directionality(
+              textDirection: TextDirection.ltr,
+              child: Text(
+                strings.taxRegistrationLine(profile.registrationNumber.trim()),
+                textAlign: TextAlign.center,
+                style: PosText.mono(size: 11, color: receiptPalette.body),
+              ),
+            ),
+          ],
+          if ((profile.headerNote ?? '').trim().isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              profile.headerNote!.trim(),
+              textAlign: TextAlign.center,
+              style: PosText.ui(size: 11, color: receiptPalette.body),
+            ),
+          ],
           _dashed(),
           _row(
             data.invoiceNumber ?? strings.provisionalInvoice,
@@ -162,6 +217,17 @@ class ReceiptPaper extends StatelessWidget {
             textAlign: TextAlign.center,
             style: PosText.mono(size: 10.5, color: receiptPalette.body),
           ),
+          // The restaurant's own words, above the boilerplate thanks — a
+          // wifi password, an offer, an opening time.
+          if ((profile.footerNote ?? '').trim().isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text(
+                profile.footerNote!.trim(),
+                textAlign: TextAlign.center,
+                style: PosText.ui(size: 11, color: receiptPalette.body),
+              ),
+            ),
           Text(
             strings.receiptThanks,
             textAlign: TextAlign.center,

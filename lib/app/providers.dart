@@ -31,6 +31,7 @@ import '../data/postgres/postgres_order_history_repository.dart';
 import '../data/postgres/postgres_business_day_repository.dart';
 import '../data/postgres/postgres_cash_movements_repository.dart';
 import '../data/postgres/postgres_orders_repository.dart';
+import '../data/postgres/postgres_receipt_profile_repository.dart';
 import '../data/postgres/postgres_settings_repository.dart';
 import '../data/postgres/postgres_refunds_repository.dart';
 import '../data/postgres/money_config_codec.dart';
@@ -55,6 +56,7 @@ import '../domain/models/pos_settings.dart';
 import '../domain/models/refund.dart';
 import '../domain/models/reason_code.dart';
 import '../domain/models/permissions.dart';
+import '../domain/models/receipt_profile.dart';
 import '../domain/repositories/admin_repositories.dart';
 import '../domain/repositories/repositories.dart';
 import '../domain/services/authorization.dart';
@@ -1446,6 +1448,40 @@ final catalogAdminRepositoryProvider = Provider<CatalogAdminRepository?>((ref) {
     branchId: context.branchId,
     terminalId: context.terminalId,
   );
+});
+
+/// Who the receipt says sold the food.
+///
+/// Bound whenever the TILL connection works, unlike the menu author: every
+/// terminal prints a slip with the restaurant's name and address on it, cloud
+/// and offline alike, and only the write side needs Management's credential.
+final receiptProfileRepositoryProvider = Provider<ReceiptProfileRepository?>((
+  ref,
+) {
+  final config = ref.watch(deploymentProvider);
+  final context = ref.watch(posWriteContextProvider);
+  if (context == null || PosDatabase.hostFor(config) == null) return null;
+
+  return PostgresReceiptProfileRepository(
+    database: ref.watch(adminPosDatabaseProvider),
+    config: ref.watch(adminDeploymentProvider),
+    readDatabase: ref.watch(posDatabaseProvider),
+    readConfig: config,
+    adminAvailable: ref.watch(adminDbCredentialProvider) != null,
+    restaurantId: context.restaurantId,
+    branchId: context.branchId,
+  );
+});
+
+/// The profile as the receipt reads it.
+///
+/// A blank profile on a branch nobody has set up, never an error: a till that
+/// refused to print because nobody typed an address would be a till that
+/// stopped the restaurant trading over a settings field.
+final receiptProfileProvider = FutureProvider<ReceiptProfile>((ref) async {
+  final repository = ref.watch(receiptProfileRepositoryProvider);
+  if (repository == null) return const ReceiptProfile(branchId: 0);
+  return repository.load();
 });
 
 final rolesRepositoryProvider = Provider<RolesRepository>((ref) {
