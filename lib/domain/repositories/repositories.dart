@@ -4,6 +4,7 @@ import 'admin_repositories.dart';
 import '../models/catalog.dart';
 import '../models/order_type_config.dart';
 import '../models/service_charge.dart';
+import '../models/supplier.dart';
 import '../models/tender_method.dart';
 import '../models/eta_submission.dart';
 import '../services/eta_serialization.dart';
@@ -137,6 +138,20 @@ abstract interface class ServiceChargesRepository {
 /// What each kind of order requires (§31).
 abstract interface class OrderTypesRepository {
   Future<List<OrderTypeConfig>> all({bool includeInactive = false});
+}
+
+/// Who the restaurant buys from.
+///
+/// Back office only, on the administrator credential: a till does not buy
+/// anything, and giving the counter SELECT on who the restaurant owes money to
+/// would hand out its commercial position for no operational benefit.
+abstract interface class SuppliersRepository {
+  Future<List<Supplier>> all({bool includeInactive = false});
+
+  /// `id == 0` creates. No delete: a supplier is retired with `isActive`,
+  /// because their invoices name them and a purchase history that cannot say
+  /// who supplied something is not a purchase history.
+  Future<AdminResult<Supplier>> save(Supplier supplier, {required PosStaff by});
 }
 
 abstract interface class TablesRepository {

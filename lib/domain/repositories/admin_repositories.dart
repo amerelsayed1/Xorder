@@ -282,6 +282,12 @@ abstract final class AuditAction {
   static const entityMoney = 'money_config';
   static const entityTenderType = 'tender_type';
   static const entityServiceCharge = 'service_charge';
+  static const entitySupplier = 'supplier';
+
+  /// A supplier added, edited or retired. Its own action because a supplier is
+  /// where money leaves the business, and "who added this account" is the
+  /// first question a fraud review asks.
+  static const supplierSaved = 'supplier.saved';
 
   /// A service charge added, retired or repriced (§38). Its own action for the
   /// same reason a product reprice has one: it changes what every future

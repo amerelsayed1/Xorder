@@ -2411,6 +2411,88 @@ const posMigrations = <PosMigration>[
         REFERENCES pos_tax_groups(id) ON DELETE SET NULL
     ''',
   ]),
+  // ── Purchasing ─────────────────────────────────────────────────────────────
+  //
+  // The head of a chain the product has never had: purchases feed a cost
+  // price, a cost price feeds inventory valuation, valuation feeds COGS, COGS
+  // feeds profit. Every step above is a number somebody types until this
+  // exists — see `16-back-office-scope.md` §3.
+  PosMigration(27, 'suppliers — who the restaurant buys from', [
+    '''
+    CREATE TABLE IF NOT EXISTS pos_suppliers (
+      id                bigserial   PRIMARY KEY,
+      restaurant_id     bigint      NOT NULL REFERENCES pos_restaurants(id) ON DELETE CASCADE,
+      name_en           text        NOT NULL,
+      name_ar           text,
+      -- The restaurant's own reference — an account number with the supplier,
+      -- or whatever the bookkeeper already writes on the invoices. Blank for
+      -- most of them, so it is defaulted rather than required, and unique only
+      -- among the ones that have set it (see the partial index below).
+      code              text        NOT NULL DEFAULT '',
+      contact_name      text,
+      phone             text,
+      email             text,
+      address           text,
+      -- Off the supplier's invoice. A purchase invoice is the *input* side of
+      -- the same VAT the receipt reports, and a return claiming input tax has
+      -- to say whose.
+      tax_number        text,
+      -- Days after an invoice before payment is due. Zero is cash on delivery,
+      -- which is most of them.
+      payment_term_days integer     NOT NULL DEFAULT 0,
+      notes             text,
+      is_active         boolean     NOT NULL DEFAULT true,
+      created_at        timestamptz NOT NULL DEFAULT now(),
+      updated_at        timestamptz NOT NULL DEFAULT now(),
+      updated_by        bigint      REFERENCES pos_staff(id) ON DELETE SET NULL,
+      CONSTRAINT pos_suppliers_terms_sane CHECK (payment_term_days >= 0)
+    )
+    ''',
+    // Unique among suppliers that HAVE a code. A plain UNIQUE would let one
+    // restaurant have a single supplier with no code, because '' would collide
+    // with itself — and blank is the normal case.
+    '''
+    CREATE UNIQUE INDEX IF NOT EXISTS pos_suppliers_code_unique
+      ON pos_suppliers (restaurant_id, code) WHERE code <> ''
+    ''',
+    '''
+    CREATE INDEX IF NOT EXISTS pos_suppliers_active_idx
+      ON pos_suppliers (restaurant_id, is_active, name_en)
+    ''',
+
+    // **There is deliberately no balance column.** What a supplier is owed is
+    // invoices minus payments, and a stored total drifts the first time
+    // somebody voids an invoice inside a transaction that fails halfway. It is
+    // derived where it is shown, which costs one join and buys a number that
+    // cannot disagree with the rows underneath it — the same reasoning that
+    // keeps `pos_orders.refunded_minor` under a trigger rather than under the
+    // till's hand.
+
+    // The owner role holds the new capability, as migrations 13 and 15 did for
+    // theirs. Adding a key to `PosCapability.all` does not add it to a role
+    // that already exists, and an owner who could not reach the screen that
+    // grants permissions would have no way to grant themselves the one they
+    // are missing.
+    '''
+    UPDATE pos_roles
+       SET capabilities = ARRAY(
+             SELECT DISTINCT unnest(
+               capabilities || ARRAY['purchase.manage']::text[]))
+     WHERE code = 'owner'
+       AND NOT ('purchase.manage' = ANY(capabilities))
+    ''',
+    // And the manager role, which the seed gives everything a manager does.
+    // Not the supervisor or the cashier: buying is not a shift-floor act, and
+    // a till credential that could add a supplier could add one it then pays.
+    '''
+    UPDATE pos_roles
+       SET capabilities = ARRAY(
+             SELECT DISTINCT unnest(
+               capabilities || ARRAY['purchase.manage']::text[]))
+     WHERE code = 'manager'
+       AND NOT ('purchase.manage' = ANY(capabilities))
+    ''',
+  ]),
 ];
 
 /// Brings the branch database up to the current schema.

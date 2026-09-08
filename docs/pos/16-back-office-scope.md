@@ -111,7 +111,7 @@ Proposed resequencing, if the back office is the product:
 | | Wave | Why here |
 |---|---|---|
 | 1 | **D — finish** (order types, taxes as data, settings navigation) | In flight; and the navigation is where payment methods and service charges stop being cloud-hidden |
-| 2 | **P — purchases, suppliers, cost price** | The head of the chain. Nothing downstream is honest without it |
+| 2 | **P — purchases, suppliers, cost price** | **Started.** The head of the chain. Nothing downstream is honest without it |
 | 3 | **L — inventory** (was last) | Stock levels, movements, adjustments, waste, counts, valuation |
 | 4 | **G — reports** | Now able to report profit rather than only takings |
 | 5 | **Q — expenses & accounting lite** | Payables from purchases, receivables from customers |
@@ -138,6 +138,37 @@ above:
 2. **Is inventory a v1 requirement or a v2 one?** It is the largest single
    piece of work on this page (XL, and the chain behind it is another XL), and
    it is the difference between selling a till and selling a business system.
+
+---
+
+## 6. Purchasing, as it is being built
+
+**Migration 27 — suppliers.** The first row of the chain, and first because
+everything else references it.
+
+Two decisions worth recording now, because both will look like omissions later:
+
+* **No balance column on `pos_suppliers`.** What a supplier is owed is invoices
+  minus payments. A stored total drifts the first time somebody voids an
+  invoice inside a transaction that fails halfway, and then two screens
+  disagree with no way to tell which is right. It is derived where it is shown
+  — one join, and a number that cannot be wrong. Same reasoning as
+  `pos_orders.refunded_minor` living under a trigger rather than under the
+  till's hand.
+* **Suppliers are not granted to the till at all.** Every other table in this
+  product gives the counter credential at least SELECT. A till does not buy
+  anything, and handing it who the restaurant owes money to would give away the
+  restaurant's commercial position for no operational benefit.
+
+`purchase.manage` is **one capability, not five.** The SRS splits purchasing
+several ways; splitting it before there is a screen for each would put keys in
+the catalogue that nothing checks — which is exactly what Wave C deferred
+§50's sixteen settings keys to avoid.
+
+Still to build, in order: purchase orders and their lines, receiving (which is
+where a cost price first becomes real), supplier invoices, supplier payments.
+
+---
 
 Related: [15-competitive-position.md](15-competitive-position.md) rates the same
 product against the market; this page rates it against a specification.
