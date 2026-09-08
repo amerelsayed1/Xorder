@@ -1168,6 +1168,25 @@ sealed class AppStrings {
   String get comboIncluded;
 
   // ── Importing a menu from a spreadsheet ───────────────────────────────────
+  // §17, §113 — the e-receipt queue.
+  String get paneEta;
+  String get paneEtaBlurb;
+  String get etaQueueClear;
+  String etaQueueOutstanding(int count);
+  String etaQueueLate(int count);
+  String etaQueueRejected(int count);
+  String get etaQueueOldest;
+  String get etaQueueNoSeal;
+  String get etaQueueExplain;
+  String get etaColumnReceipt;
+  String get etaColumnIssued;
+  String get etaColumnAge;
+  String get etaColumnStatus;
+  String etaAgeHours(int hours);
+  String etaStatusLabel(String status);
+  String get etaDueSoon;
+  String get etaLate;
+
   // §17, §113 — who the receipt says sold the food.
   String get paneReceipt;
   String get paneReceiptBlurb;
@@ -1665,6 +1684,56 @@ final class EnStrings extends AppStrings {
       count == 1 ? 'Choose 1 more' : 'Choose $count more';
   @override
   String get comboIncluded => 'included';
+  @override
+  String get paneEta => 'E-receipts';
+  @override
+  String get paneEtaBlurb => 'What the tax authority has not accepted yet';
+  @override
+  String get etaQueueClear => 'Everything has been filed.';
+  @override
+  String etaQueueOutstanding(int count) =>
+      count == 1 ? '1 receipt waiting' : '$count receipts waiting';
+  @override
+  String etaQueueLate(int count) =>
+      count == 1 ? '1 past its deadline' : '$count past their deadline';
+  @override
+  String etaQueueRejected(int count) =>
+      count == 1 ? '1 refused' : '$count refused';
+  @override
+  String get etaQueueOldest => 'Oldest';
+  @override
+  String get etaQueueNoSeal =>
+      'No e-seal is configured on this terminal, so nothing here can be '
+      'filed. Receipts are still being recorded and will be sent once one is.';
+  @override
+  String get etaQueueExplain =>
+      'Egypt gives 24 hours from the moment a receipt is issued. A receipt '
+      'refused by the authority will not clear on its own.';
+  @override
+  String get etaColumnReceipt => 'Receipt';
+  @override
+  String get etaColumnIssued => 'Issued';
+  @override
+  String get etaColumnAge => 'Age';
+  @override
+  String get etaColumnStatus => 'Status';
+  @override
+  String etaAgeHours(int hours) => hours < 1 ? 'under an hour' : '${hours}h';
+  @override
+  String etaStatusLabel(String status) => switch (status) {
+    'pending' => 'Not sealed',
+    'signed' => 'Ready to send',
+    'submitted' => 'Sent, awaiting a verdict',
+    'accepted' => 'Filed',
+    'rejected' => 'Refused',
+    'cancelled' => 'Closed by hand',
+    _ => status,
+  };
+  @override
+  String get etaDueSoon => 'Due soon';
+  @override
+  String get etaLate => 'Late';
+
   @override
   String get paneReceipt => 'Receipt';
   @override
@@ -3855,6 +3924,56 @@ final class ArStrings extends AppStrings {
       count == 1 ? 'اختر واحدًا آخر' : 'اختر $count أخرى';
   @override
   String get comboIncluded => 'مشمول';
+  @override
+  String get paneEta => 'الإيصالات الإلكترونية';
+  @override
+  String get paneEtaBlurb => 'ما لم تقبله المصلحة بعد';
+  @override
+  String get etaQueueClear => 'تم إرسال كل شيء.';
+  @override
+  String etaQueueOutstanding(int count) =>
+      count == 1 ? 'إيصال واحد في الانتظار' : '$count إيصالات في الانتظار';
+  @override
+  String etaQueueLate(int count) =>
+      count == 1 ? 'واحد تجاوز موعده' : '$count تجاوزت موعدها';
+  @override
+  String etaQueueRejected(int count) =>
+      count == 1 ? 'واحد مرفوض' : '$count مرفوضة';
+  @override
+  String get etaQueueOldest => 'الأقدم';
+  @override
+  String get etaQueueNoSeal =>
+      'لا يوجد ختم إلكتروني على هذه النقطة، فلا يمكن إرسال أي مما هنا. '
+      'الإيصالات تُسجَّل وستُرسل بمجرد ضبط الختم.';
+  @override
+  String get etaQueueExplain =>
+      'تمنح مصلحة الضرائب ٢٤ ساعة من لحظة إصدار الإيصال. والإيصال المرفوض '
+      'لا يُقبل من تلقاء نفسه.';
+  @override
+  String get etaColumnReceipt => 'الإيصال';
+  @override
+  String get etaColumnIssued => 'وقت الإصدار';
+  @override
+  String get etaColumnAge => 'المدة';
+  @override
+  String get etaColumnStatus => 'الحالة';
+  @override
+  String etaAgeHours(int hours) => hours < 1 ? 'أقل من ساعة' : '$hours س';
+  @override
+  String etaStatusLabel(String status) => switch (status) {
+    'pending' => 'لم يُختم',
+    'signed' => 'جاهز للإرسال',
+    'submitted' => 'أُرسل، في انتظار الرد',
+    'accepted' => 'مُقدَّم',
+    'rejected' => 'مرفوض',
+    'cancelled' => 'أُغلق يدويًا',
+    _ => status,
+  };
+  @override
+  String get etaDueSoon => 'يقترب موعده';
+  @override
+  String get etaLate => 'متأخر';
+
   @override
   String get paneReceipt => 'الإيصال';
   @override

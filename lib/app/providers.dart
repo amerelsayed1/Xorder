@@ -31,6 +31,7 @@ import '../data/postgres/postgres_order_history_repository.dart';
 import '../data/postgres/postgres_business_day_repository.dart';
 import '../data/postgres/postgres_cash_movements_repository.dart';
 import '../data/postgres/postgres_orders_repository.dart';
+import '../data/postgres/postgres_eta_queue_repository.dart';
 import '../data/postgres/postgres_receipt_profile_repository.dart';
 import '../data/postgres/postgres_settings_repository.dart';
 import '../data/postgres/postgres_refunds_repository.dart';
@@ -55,6 +56,7 @@ import '../domain/models/business_day.dart';
 import '../domain/models/pos_settings.dart';
 import '../domain/models/refund.dart';
 import '../domain/models/reason_code.dart';
+import '../domain/models/eta_submission.dart';
 import '../domain/models/permissions.dart';
 import '../domain/models/receipt_profile.dart';
 import '../domain/repositories/admin_repositories.dart';
@@ -1448,6 +1450,40 @@ final catalogAdminRepositoryProvider = Provider<CatalogAdminRepository?>((ref) {
     branchId: context.branchId,
     terminalId: context.terminalId,
   );
+});
+
+/// The queue of receipts owed to Egypt's tax authority.
+///
+/// Null where there is no database to queue into. Not null on a cloud till:
+/// the obligation is the restaurant's, not the deployment's, and a cloud
+/// terminal in Cairo owes the same receipts an offline one does.
+final etaQueueRepositoryProvider = Provider<EtaQueueRepository?>((ref) {
+  final config = ref.watch(deploymentProvider);
+  final context = ref.watch(posWriteContextProvider);
+  if (context == null || PosDatabase.hostFor(config) == null) return null;
+
+  return PostgresEtaQueueRepository(
+    database: ref.watch(posDatabaseProvider),
+    config: config,
+    restaurantId: context.restaurantId,
+    branchId: context.branchId,
+  );
+});
+
+/// What the queue looks like right now.
+///
+/// **Read on a clock that is passed in**, so the pill on the shell and the
+/// screen behind it never disagree about which receipts are late.
+final etaQueueSummaryProvider = FutureProvider<EtaQueueSummary>((ref) async {
+  final repository = ref.watch(etaQueueRepositoryProvider);
+  if (repository == null) return EtaQueueSummary.empty;
+  return repository.summary(now: DateTime.now());
+});
+
+final etaOutstandingProvider = FutureProvider<List<EtaSubmission>>((ref) async {
+  final repository = ref.watch(etaQueueRepositoryProvider);
+  if (repository == null) return const [];
+  return repository.outstanding();
 });
 
 /// Who the receipt says sold the food.
