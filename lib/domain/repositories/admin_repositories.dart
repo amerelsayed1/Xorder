@@ -1,4 +1,5 @@
 import '../models/catalog.dart';
+import '../services/menu_import.dart';
 import '../models/dining_table.dart';
 import '../models/permissions.dart';
 import '../models/shift.dart';
@@ -290,6 +291,26 @@ abstract interface class CatalogAdminRepository {
     bool restore = false,
   });
 
+  /// Apply a whole spreadsheet at once.
+  ///
+  /// **One transaction, or nothing.** Half a menu is worse than none: the
+  /// operator cannot tell which half landed, and re-running the file would
+  /// double what did.
+  ///
+  /// Categories named in the plan that do not exist are created first, because
+  /// a product cannot be written without one.
+  ///
+  /// Nothing is ever deleted. A product missing from the file is one the
+  /// restaurant did not mention, not one it wants gone.
+  ///
+  /// Gated on `catalog.manage`, like every other menu write, and audited: a
+  /// bulk import that changed four hundred prices with no record of who ran it
+  /// is the single largest unattributed change this product can make.
+  Future<AdminResult<MenuImportOutcome>> importMenu(
+    MenuImportPlan plan, {
+    required PosStaff by,
+  });
+
   /// What the restaurant charges on top of the food.
   ///
   /// Offline only, and for the same reason as the menu: on a cloud till the
@@ -422,4 +443,20 @@ abstract interface class AuditRepository {
     String? entityId,
     int? staffId,
   });
+}
+
+
+/// What an import actually did.
+class MenuImportOutcome {
+  const MenuImportOutcome({
+    required this.categoriesCreated,
+    required this.productsCreated,
+    required this.productsUpdated,
+  });
+
+  final int categoriesCreated;
+  final int productsCreated;
+  final int productsUpdated;
+
+  int get total => productsCreated + productsUpdated;
 }

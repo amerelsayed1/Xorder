@@ -10,6 +10,7 @@ import '../../domain/models/permissions.dart';
 import '../../domain/models/shift.dart';
 import '../../domain/models/ticket.dart';
 import '../../domain/repositories/admin_repositories.dart';
+import '../../domain/services/menu_import.dart';
 import '../../domain/services/authorization.dart';
 import 'money_config_codec.dart';
 import 'pos_database.dart';
@@ -179,6 +180,177 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
   }
 
   // ── products ───────────────────────────────────────────────────────────────
+
+  @override
+  Future<AdminResult<MenuImportOutcome>> importMenu(
+    MenuImportPlan plan, {
+    required PosStaff by,
+  }) async {
+    final blocked = _blocked(by);
+    if (blocked != null) return AdminResult.refused(blocked);
+
+    // Re-checked here, not trusted from the screen. The preview is a courtesy;
+    // this is the thing that must not write half a menu.
+    if (!plan.canApply) {
+      return const AdminResult.refused(
+        CatalogInvalid('That file has problems that have to be fixed first.'),
+      );
+    }
+
+    return database.runTx(config, (tx) async {
+      // Categories first: a product cannot be written without one.
+      final categoryIds = <String, int>{};
+      final existing = await tx.execute(
+        Sql.named(
+          'SELECT id, name_en FROM pos_categories WHERE restaurant_id = @r',
+        ),
+        parameters: {'r': restaurantId},
+      );
+      for (final row in existing) {
+        categoryIds[(row[1]! as String).trim().toLowerCase()] = row[0]! as int;
+      }
+
+      var categoriesCreated = 0;
+      for (final name in plan.newCategories) {
+        final key = name.trim().toLowerCase();
+        if (categoryIds.containsKey(key)) continue;
+
+        final rows = await tx.execute(
+          Sql.named(
+            'INSERT INTO pos_categories (restaurant_id, name_en, sort_order) '
+            'VALUES (@r, @name, ('
+            '  SELECT coalesce(max(sort_order), 0) + 1 FROM pos_categories '
+            '   WHERE restaurant_id = @r)) '
+            'RETURNING id',
+          ),
+          parameters: {'r': restaurantId, 'name': name.trim()},
+        );
+        categoryIds[key] = rows.first[0]! as int;
+        categoriesCreated++;
+
+        await _audit(
+          tx,
+          by: by,
+          action: AuditAction.categoryCreated,
+          entityType: AuditAction.entityCategory,
+          entityId: '${categoryIds[key]}',
+          after: {'name': name.trim(), 'source': 'import'},
+        );
+      }
+
+      var created = 0;
+      var updated = 0;
+
+      for (final row in plan.rows) {
+        if (row.action == MenuImportAction.unchanged) continue;
+
+        final categoryId = categoryIds[row.categoryName.trim().toLowerCase()];
+        // Cannot happen — the plan lists every category it names — but a null
+        // here would become a constraint violation halfway through the file,
+        // and "category missing on line 47" is a far better sentence.
+        if (categoryId == null) {
+          throw StateError(
+            'Line ${row.lineNumber} names a category that could not be created.',
+          );
+        }
+
+        if (row.action == MenuImportAction.create) {
+          final inserted = await tx.execute(
+            Sql.named(
+              'INSERT INTO pos_products '
+              '  (restaurant_id, category_id, name_en, name_ar, price_minor, '
+              '   sku, barcode, is_available, sort_order) '
+              'VALUES (@r, @category, @nameEn, @nameAr, @price, @sku, '
+              '        @barcode, @available, ('
+              '  SELECT coalesce(max(sort_order), 0) + 1 FROM pos_products '
+              '   WHERE category_id = @category)) '
+              'RETURNING id',
+            ),
+            parameters: {
+              'r': restaurantId,
+              'category': categoryId,
+              'nameEn': row.nameEn,
+              'nameAr': row.nameAr,
+              'price': row.price.minor,
+              'sku': row.sku,
+              'barcode': row.barcode,
+              'available': row.isAvailable,
+            },
+          );
+          created++;
+
+          await _audit(
+            tx,
+            by: by,
+            action: AuditAction.productCreated,
+            entityType: AuditAction.entityProduct,
+            entityId: '${inserted.first[0]}',
+            after: {
+              'name': row.nameEn,
+              'price_minor': row.price.minor,
+              'source': 'import',
+            },
+          );
+          continue;
+        }
+
+        // An update. `sort_order` and any discounted price are deliberately
+        // untouched: the file said nothing about them, and an import that
+        // silently reordered a grid or cleared an offer would be changing
+        // things nobody asked it to.
+        await tx.execute(
+          Sql.named(
+            'UPDATE pos_products SET category_id = @category, '
+            '  name_en = @nameEn, name_ar = @nameAr, price_minor = @price, '
+            '  barcode = @barcode, is_available = @available, '
+            // Only ever filled in, never cleared: a file with no SKU column is
+            // silent about SKUs, not an instruction to forget them.
+            '  sku = coalesce(@sku, sku) '
+            'WHERE id = @id AND restaurant_id = @r',
+          ),
+          parameters: {
+            'id': row.existingProductId,
+            'r': restaurantId,
+            'category': categoryId,
+            'nameEn': row.nameEn,
+            'nameAr': row.nameAr,
+            'price': row.price.minor,
+            'sku': row.sku,
+            'barcode': row.barcode,
+            'available': row.isAvailable,
+          },
+        );
+        updated++;
+
+        await _audit(
+          tx,
+          by: by,
+          // A changed price is its own action everywhere else in this file,
+          // because "who changed what this costs, and when" is the question a
+          // disputed receipt asks. A bulk import is no exception.
+          action: row.changes.contains('price')
+              ? AuditAction.productRepriced
+              : AuditAction.productUpdated,
+          entityType: AuditAction.entityProduct,
+          entityId: '${row.existingProductId}',
+          after: {
+            'name': row.nameEn,
+            'price_minor': row.price.minor,
+            'changed': row.changes.join(', '),
+            'source': 'import',
+          },
+        );
+      }
+
+      return AdminResult.done(
+        MenuImportOutcome(
+          categoriesCreated: categoriesCreated,
+          productsCreated: created,
+          productsUpdated: updated,
+        ),
+      );
+    });
+  }
 
   @override
   Future<AdminResult<Product>> saveProduct(

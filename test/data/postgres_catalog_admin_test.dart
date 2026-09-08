@@ -16,6 +16,7 @@ import 'package:xorder_pos/domain/models/permissions.dart';
 import 'package:xorder_pos/domain/models/shift.dart';
 import 'package:xorder_pos/domain/models/ticket.dart';
 import 'package:xorder_pos/domain/repositories/admin_repositories.dart';
+import 'package:xorder_pos/domain/services/menu_import.dart';
 
 import 'pg_fixture.dart';
 
@@ -417,6 +418,158 @@ void main() {
         by: manager,
       );
       expect(result.refusal, isA<NotPermitted>());
+    });
+  });
+  group('importing a spreadsheet', () {
+    /// The catalogue as the sale screen would read it back.
+    Future<Catalog> catalog() => PostgresCatalogRepository(
+          database: db,
+          config: pg.config.copyWith(tenantSlug: slug),
+        ).load();
+
+    /// Builds a plan the way the dialog does — against the live catalogue,
+    /// never against rows composed by hand. A test that hand-built its plan
+    /// would pass while the screen it models could not work.
+    Future<MenuImportPlan> plan(List<List<String>> rows) async {
+      final menu = await catalog();
+      return MenuImport.read(
+        rows,
+        existing: menu.products,
+        categories: menu.categories,
+      );
+    }
+
+    final header = MenuImport.templateHeader;
+
+    test('a file the till has never seen becomes a menu', () async {
+      final result = await repository.importMenu(
+        await plan([
+          header,
+          ['Hot Drinks', 'Espresso', 'إسبريسو', '35.00', 'E-1', '', 'yes'],
+          ['Cold Drinks', 'Iced Latte', '', '55.50', 'C-1', '', 'yes'],
+        ]),
+        by: manager,
+      );
+
+      expect(result.value!.categoriesCreated, 1, reason: 'Cold Drinks');
+      expect(result.value!.productsCreated, 2);
+
+      final menu = await catalog();
+      expect(menu.categories.map((c) => c.nameEn), contains('Cold Drinks'));
+      expect(
+        menu.products.singleWhere((p) => p.nameEn == 'Iced Latte').price.minor,
+        5550,
+        reason: 'a price never goes through a double',
+      );
+    });
+
+    test('a second run of the same file changes nothing', () async {
+      final rows = [
+        header,
+        ['Hot Drinks', 'Espresso', '', '35.00', 'E-1', '', 'yes'],
+      ];
+      await repository.importMenu(await plan(rows), by: manager);
+
+      // The second plan is built against what the first one wrote, which is
+      // the whole point: a restaurant re-sends the same file all the time.
+      final again = await plan(rows);
+      expect(again.canApply, isFalse, reason: 'nothing left to do');
+
+      final result = await repository.importMenu(again, by: manager);
+      expect(result.refusal, isA<CatalogInvalid>());
+      expect((await catalog()).products, hasLength(1));
+    });
+
+    test('a price change is audited as a reprice, not a generic update',
+        () async {
+      await repository.importMenu(
+        await plan([
+          header,
+          ['Hot Drinks', 'Espresso', '', '35.00', 'E-1', '', 'yes'],
+        ]),
+        by: manager,
+      );
+      await repository.importMenu(
+        await plan([
+          header,
+          ['Hot Drinks', 'Espresso', '', '40.00', 'E-1', '', 'yes'],
+        ]),
+        by: manager,
+      );
+
+      final rows = await db.query(
+        pg.config,
+        "SELECT action, after_value->>'source' FROM pos_audit_events "
+        'WHERE entity_type = @e ORDER BY id DESC LIMIT 1',
+        parameters: {'e': AuditAction.entityProduct},
+      );
+      expect(rows.first[0], AuditAction.productRepriced);
+      expect(rows.first[1], 'import', reason: 'and says where it came from');
+    });
+
+    test('an item the file never mentions is left alone', () async {
+      await repository.saveProduct(draft(name: 'Turkish Coffee'), by: manager);
+
+      await repository.importMenu(
+        await plan([
+          header,
+          ['Hot Drinks', 'Espresso', '', '35.00', 'E-1', '', 'yes'],
+        ]),
+        by: manager,
+      );
+
+      final menu = await catalog();
+      expect(menu.products.map((p) => p.nameEn),
+          containsAll(<String>['Turkish Coffee', 'Espresso']));
+    });
+
+    test('a file with one bad row writes nothing at all', () async {
+      final result = await repository.importMenu(
+        await plan([
+          header,
+          ['Hot Drinks', 'Espresso', '', '35.00', 'E-1', '', 'yes'],
+          ['Hot Drinks', 'Macchiato', '', 'thirty', 'M-1', '', 'yes'],
+        ]),
+        by: manager,
+      );
+
+      // Half a menu is worse than none: nobody can tell which half landed.
+      expect(result.refusal, isA<CatalogInvalid>());
+      expect((await catalog()).products, isEmpty);
+    });
+
+    test('a cashier cannot import a menu', () async {
+      final result = await repository.importMenu(
+        await plan([
+          header,
+          ['Hot Drinks', 'Espresso', '', '35.00', 'E-1', '', 'yes'],
+        ]),
+        by: cashier,
+      );
+      expect(result.refusal, isA<NotPermitted>());
+      expect((await catalog()).products, isEmpty);
+    });
+
+    test('a re-import that moves an item carries it to the new category',
+        () async {
+      await repository.importMenu(
+        await plan([
+          header,
+          ['Hot Drinks', 'Espresso', '', '35.00', 'E-1', '', 'yes'],
+        ]),
+        by: manager,
+      );
+      await repository.importMenu(
+        await plan([
+          header,
+          ['Cold Drinks', 'Espresso', '', '35.00', 'E-1', '', 'yes'],
+        ]),
+        by: manager,
+      );
+
+      final menu = await catalog();
+      final cold = menu.categories.singleWhere((c) => c.nameEn == 'Cold Drinks');
+      expect(menu.products.single.categoryId, cold.id);
     });
   });
 }

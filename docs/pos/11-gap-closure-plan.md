@@ -1069,6 +1069,27 @@ First, because everything else depends on the shape of a line.
 4. **Per-branch and per-channel price and availability.** Delivery prices differ
    from dine-in almost universally.
 5. **Free and default modifier options**, and a minimum selection per group.
+6. **Menu import from CSV or Excel.** Not in the original list; added because a
+   restaurant arrives with four hundred items already in a spreadsheet, and
+   typing them into a till one dialog at a time is the reason a pilot stalls.
+
+**Built.** On the import specifically, three rules are load-bearing and worth
+recording because they are what make the feature safe to hand to an operator:
+
+* **Nothing is ever deleted.** An item missing from the file is one the
+  restaurant did not mention, not one it wants gone.
+* **One bad row blocks the whole file.** Half a menu is worse than none, because
+  nobody can tell which half landed. The repository re-checks this rather than
+  trusting the screen.
+* **Preview before apply, naming each price change.** "Changes 40 items" is not
+  a sentence anybody can approve.
+
+The parsing (`MenuImport`) is pure and knows nothing about files or the
+database; `SpreadsheetReader` is the only place that knows about formats.
+Matching is SKU first, then name — the fallback matters more than it looks,
+because the first file a restaurant sends is usually its own menu with SKUs
+newly added, and matching on SKU alone would duplicate all four hundred rows.
+A name already held under a *different* SKU is refused rather than guessed.
 
 ### Wave N — ETA e-receipt · migration 17 · **L**
 

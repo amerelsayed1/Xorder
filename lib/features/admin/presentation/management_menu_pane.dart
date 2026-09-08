@@ -11,6 +11,7 @@ import '../../../domain/models/catalog.dart';
 import '../../../domain/models/shift.dart';
 import '../../../domain/repositories/admin_repositories.dart';
 import 'admin_messages.dart';
+import 'menu_import_dialog.dart';
 
 /// The menu, authored on the till.
 ///
@@ -86,6 +87,7 @@ class _ManagementMenuPaneState extends ConsumerState<ManagementMenuPane> {
                 categories.length,
                 menu.products.length,
               ),
+              onImport: _import,
               onAddCategory: () => _editCategory(repository, null),
               onAddProduct: selected == null
                   ? null
@@ -136,6 +138,24 @@ class _ManagementMenuPaneState extends ConsumerState<ManagementMenuPane> {
     );
   }
 
+  /// Import a spreadsheet.
+  ///
+  /// Deliberately not routed through [_write]: the dialog owns its own preview,
+  /// its own refusal and its own invalidation, because it can fail three
+  /// different ways before a write is even attempted.
+  Future<void> _import() async {
+    final outcome = await MenuImportDialog.show(context, admin: widget.admin);
+    if (outcome == null || !mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          context.strings.menuImportDone(outcome.productsCreated,
+          outcome.productsUpdated,),
+        ),
+      ),
+    );
+  }
+
   Future<void> _editCategory(
     CatalogAdminRepository repository,
     Category? existing,
@@ -166,11 +186,13 @@ class _ManagementMenuPaneState extends ConsumerState<ManagementMenuPane> {
 class _Toolbar extends StatelessWidget {
   const _Toolbar({
     required this.summary,
+    required this.onImport,
     required this.onAddCategory,
     required this.onAddProduct,
   });
 
   final String summary;
+  final VoidCallback onImport;
   final VoidCallback onAddCategory;
   final VoidCallback? onAddProduct;
 
@@ -188,6 +210,12 @@ class _Toolbar extends StatelessWidget {
             style: PosText.ui(size: 13, color: context.pos.muted),
           ),
         ),
+        PosButton(
+          label: context.strings.menuImportAction,
+          border: Border.fromBorderSide(context.pos.resting),
+          onPressed: onImport,
+        ),
+        const SizedBox(width: PosSpace.md),
         PosButton(
           label: context.strings.addCategory,
           border: Border.fromBorderSide(context.pos.resting),

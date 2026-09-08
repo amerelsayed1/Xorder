@@ -1167,6 +1167,27 @@ sealed class AppStrings {
   String comboPickMore(int count);
   String get comboIncluded;
 
+  // ── Importing a menu from a spreadsheet ───────────────────────────────────
+  String get menuImportAction;
+  String get menuImportTitle;
+  String get menuImportExplain;
+  String get menuImportChooseFile;
+  String get menuImportReading;
+  String menuImportWillCreate(int count);
+  String menuImportWillUpdate(int count);
+  String menuImportUnchanged(int count);
+  String menuImportNewCategories(String names);
+  String get menuImportNothingToDo;
+  String get menuImportProblemsTitle;
+  String menuImportProblemsCount(int count);
+
+  /// A spreadsheet line, numbered as the spreadsheet numbers it.
+  String menuImportLine(int lineNumber);
+  String get menuImportNeverDeletes;
+  String menuImportApply(int count);
+  String menuImportDone(int created, int updated);
+  String get menuImportFailed;
+
   // ── §27's expanded cash-up ────────────────────────────────────────────────
   String get zSubtotal;
   String get zDiscounts;
@@ -1614,6 +1635,51 @@ final class EnStrings extends AppStrings {
       count == 1 ? 'Choose 1 more' : 'Choose $count more';
   @override
   String get comboIncluded => 'included';
+  @override
+  String get menuImportAction => 'Import from a spreadsheet';
+  @override
+  String get menuImportTitle => 'Import the menu';
+  @override
+  String get menuImportExplain =>
+      'A CSV or Excel file with a category, a name and a price on each row.';
+  @override
+  String get menuImportChooseFile => 'Choose a file';
+  @override
+  String get menuImportReading => 'Reading the file…';
+  @override
+  String menuImportWillCreate(int count) =>
+      count == 1 ? 'Adds 1 item' : 'Adds $count items';
+  @override
+  String menuImportWillUpdate(int count) =>
+      count == 1 ? 'Changes 1 item' : 'Changes $count items';
+  @override
+  String menuImportUnchanged(int count) =>
+      count == 1 ? '1 row already matches' : '$count rows already match';
+  @override
+  String menuImportNewCategories(String names) => 'New categories: $names';
+  @override
+  String get menuImportNothingToDo =>
+      'Every row already matches the menu. Nothing to do.';
+  @override
+  String get menuImportProblemsTitle => 'Fix these and try again';
+
+  @override
+  String menuImportLine(int lineNumber) => 'Line $lineNumber';
+  @override
+  String menuImportProblemsCount(int count) =>
+      count == 1 ? '1 problem' : '$count problems';
+  @override
+  String get menuImportNeverDeletes =>
+      'Nothing is removed. Items not in the file are left alone.';
+  @override
+  String menuImportApply(int count) =>
+      count == 1 ? 'Import 1 item' : 'Import $count items';
+  @override
+  String menuImportDone(int created, int updated) =>
+      'Imported — $created added, $updated changed';
+  @override
+  String get menuImportFailed =>
+      'Nothing was imported. The menu is unchanged.';
 
   @override
   String get zSubtotal => 'Subtotal';
@@ -3693,6 +3759,50 @@ final class ArStrings extends AppStrings {
       count == 1 ? 'اختر واحدًا آخر' : 'اختر $count أخرى';
   @override
   String get comboIncluded => 'مشمول';
+  @override
+  String get menuImportAction => 'استيراد من ملف';
+  @override
+  String get menuImportTitle => 'استيراد المنيو';
+  @override
+  String get menuImportExplain =>
+      'ملف CSV أو Excel، كل صف فيه قسم واسم وسعر.';
+  @override
+  String get menuImportChooseFile => 'اختر ملفًا';
+  @override
+  String get menuImportReading => 'جارٍ قراءة الملف…';
+  @override
+  String menuImportWillCreate(int count) =>
+      count == 1 ? 'يضيف صنفًا واحدًا' : 'يضيف $count أصناف';
+  @override
+  String menuImportWillUpdate(int count) =>
+      count == 1 ? 'يعدّل صنفًا واحدًا' : 'يعدّل $count أصناف';
+  @override
+  String menuImportUnchanged(int count) =>
+      count == 1 ? 'صف واحد مطابق بالفعل' : '$count صفوف مطابقة بالفعل';
+  @override
+  String menuImportNewCategories(String names) => 'أقسام جديدة: $names';
+  @override
+  String get menuImportNothingToDo =>
+      'كل الصفوف مطابقة للمنيو. لا يوجد ما يُنفَّذ.';
+  @override
+  String get menuImportProblemsTitle => 'صحّح هذه ثم أعد المحاولة';
+
+  @override
+  String menuImportLine(int lineNumber) => 'سطر $lineNumber';
+  @override
+  String menuImportProblemsCount(int count) =>
+      count == 1 ? 'مشكلة واحدة' : '$count مشاكل';
+  @override
+  String get menuImportNeverDeletes =>
+      'لا يُحذف شيء. الأصناف غير الموجودة في الملف تبقى كما هي.';
+  @override
+  String menuImportApply(int count) =>
+      count == 1 ? 'استيراد صنف واحد' : 'استيراد $count أصناف';
+  @override
+  String menuImportDone(int created, int updated) =>
+      'تم الاستيراد — أُضيف $created وعُدِّل $updated';
+  @override
+  String get menuImportFailed => 'لم يُستورد شيء. المنيو كما هو.';
 
   @override
   String get zSubtotal => 'المجموع الفرعي';
