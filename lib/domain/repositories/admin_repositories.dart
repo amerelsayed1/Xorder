@@ -257,6 +257,12 @@ abstract final class AuditAction {
   static const entityProduct = 'product';
   static const entityMoney = 'money_config';
   static const entityTenderType = 'tender_type';
+  static const entityServiceCharge = 'service_charge';
+
+  /// A service charge added, retired or repriced (§38). Its own action for the
+  /// same reason a product reprice has one: it changes what every future
+  /// customer pays, and "who added 12% and when" is what a complaint asks.
+  static const serviceChargeSaved = 'service_charge.saved';
 
   /// A payment method created, renamed, retired or reclassified (§40).
   /// Its own action because changing `counts_as_cash` changes what every

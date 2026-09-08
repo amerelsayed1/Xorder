@@ -2262,6 +2262,56 @@ const posMigrations = <PosMigration>[
     ON CONFLICT (restaurant_id, code) DO NOTHING
     ''',
   ]),
+  PosMigration(24, 'service charges become data (§38)', [
+    '''
+    CREATE TABLE IF NOT EXISTS pos_service_charges (
+      id            bigserial   PRIMARY KEY,
+      restaurant_id bigint      NOT NULL REFERENCES pos_restaurants(id) ON DELETE CASCADE,
+      name_en       text        NOT NULL,
+      name_ar       text,
+      -- A rate **or** a fixed amount, never both, never neither. "12% or 20
+      -- EGP, whichever" is a question the model would be asking and nobody has
+      -- answered, and a bill that took both is a bill nobody can check.
+      rate_bp       integer,
+      fixed_minor   bigint,
+      -- Which order types it applies to. Empty means every one: a restaurant
+      -- that has not thought about it gets a charge that applies, and a charge
+      -- that silently applied to nothing would be one somebody configured and
+      -- never saw.
+      order_types   text[]      NOT NULL DEFAULT '{}',
+      -- Service is taxable in Egypt. A delivery fee collected on behalf of an
+      -- aggregator may not be, and a non-taxable charge stays out of the VAT
+      -- base entirely rather than being taxed at zero — those are different
+      -- statements on a filing.
+      is_taxable    boolean     NOT NULL DEFAULT true,
+      is_automatic  boolean     NOT NULL DEFAULT true,
+      is_optional   boolean     NOT NULL DEFAULT false,
+      is_active     boolean     NOT NULL DEFAULT true,
+      sort_order    integer     NOT NULL DEFAULT 0,
+      updated_at    timestamptz NOT NULL DEFAULT now(),
+      updated_by    bigint      REFERENCES pos_staff(id) ON DELETE SET NULL,
+      CONSTRAINT pos_service_charges_one_or_the_other CHECK (
+        (rate_bp IS NULL) <> (fixed_minor IS NULL)
+      ),
+      CONSTRAINT pos_service_charges_sane CHECK (
+        (rate_bp IS NULL OR rate_bp BETWEEN 0 AND 10000)
+        AND (fixed_minor IS NULL OR fixed_minor >= 0)
+      )
+    )
+    ''',
+    '''
+    CREATE INDEX IF NOT EXISTS pos_service_charges_restaurant_idx
+      ON pos_service_charges (restaurant_id, sort_order)
+    ''',
+    // **Not seeded.** An empty table means "charge what `pos_money_config`
+    // says", which is exactly what every existing restaurant is being charged
+    // — see `TaxConfig.serviceFor`. Seeding a row from that config would look
+    // harmless and would not be: the two would then drift, and a restaurant
+    // editing the old screen would wonder why the bill did not change.
+    //
+    // The first row a restaurant writes is the moment it takes over, and the
+    // Money pane says so.
+  ]),
 ];
 
 /// Brings the branch database up to the current schema.

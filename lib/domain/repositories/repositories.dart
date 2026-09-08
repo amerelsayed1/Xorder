@@ -1,6 +1,8 @@
 import '../../core/config/deployment.dart';
 import '../../core/money/money.dart';
+import 'admin_repositories.dart';
 import '../models/catalog.dart';
+import '../models/service_charge.dart';
 import '../models/tender_method.dart';
 import '../models/eta_submission.dart';
 import '../services/eta_serialization.dart';
@@ -112,6 +114,23 @@ abstract interface class TenderTypesRepository {
   /// let somebody bring it back — and for a receipt reprint, where the method a
   /// sale was taken on may since have been retired.
   Future<List<TenderMethod>> all({bool includeInactive = false});
+}
+
+/// What the restaurant adds on top of the food (§38).
+///
+/// Read on every sale — the ticket has to be priced — and written only from
+/// Management, which is why the reads and the writes go to different
+/// credentials in the implementation.
+abstract interface class ServiceChargesRepository {
+  Future<List<ServiceCharge>> all({bool includeInactive = false});
+
+  /// `id == 0` creates. No delete: a charge is retired with `isActive`, because
+  /// an order priced with it has its total snapshotted and somebody will ask
+  /// what the twelve percent on last month's bill was.
+  Future<AdminResult<ServiceCharge>> save(
+    ServiceCharge charge, {
+    required PosStaff by,
+  });
 }
 
 abstract interface class TablesRepository {

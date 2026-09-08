@@ -2,6 +2,7 @@ import 'package:collection/collection.dart';
 
 import '../../core/money/money.dart';
 import '../../core/money/rounding.dart';
+import 'service_charge.dart';
 import 'tax.dart';
 import 'catalog.dart';
 import 'combo.dart';
@@ -352,6 +353,7 @@ class TaxConfig {
     this.serviceDineInOnly = true,
     this.source = TaxSource.deviceConfig,
     this.taxGroups = const [],
+    this.serviceCharges = const [],
   });
 
   /// The rates this restaurant charges (§17, ETA).
@@ -398,8 +400,60 @@ class TaxConfig {
   final bool serviceDineInOnly;
   final TaxSource source;
 
+  /// What the restaurant adds on top of the food (§38).
+  ///
+  /// Empty is the normal case and means "one charge, at [serviceBp], on the
+  /// order types [serviceDineInOnly] allows" — which is what every ticket
+  /// written before this existed was charged. The same fallback shape
+  /// [defaultTaxGroup] uses, and for the same reason: a restaurant that has
+  /// configured nothing keeps being charged what it was.
+  final List<ServiceCharge> serviceCharges;
+
   bool appliesServiceTo(OrderType type) =>
       !serviceDineInOnly || type == OrderType.dineIn;
+
+  /// The same config with §38's charges attached.
+  TaxConfig withServiceCharges(List<ServiceCharge> charges) => TaxConfig(
+    serviceBp: serviceBp,
+    vatBp: vatBp,
+    serviceDineInOnly: serviceDineInOnly,
+    source: source,
+    taxGroups: taxGroups,
+    serviceCharges: charges,
+  );
+
+  /// What an order of [type] is charged on top of [base], split by whether VAT
+  /// applies to it.
+  ///
+  /// Falls back to the single configured rate when no charges are set up, so
+  /// this is arithmetically identical to what it replaced on a restaurant that
+  /// has not touched the new screen. Every automatic charge that applies is
+  /// summed; each rounds once, because two charges are two lines a customer
+  /// can check rather than one number split in half.
+  ServiceTotal serviceFor(OrderType type, {required Money base}) {
+    if (serviceCharges.isEmpty) {
+      final legacy = appliesServiceTo(type)
+          ? base.percentBp(serviceBp)
+          : Money(0, currency: base.currency, exponent: base.exponent);
+      return ServiceTotal(
+        taxable: legacy,
+        untaxed: Money(0, currency: base.currency, exponent: base.exponent),
+      );
+    }
+
+    var taxable = Money(0, currency: base.currency, exponent: base.exponent);
+    var untaxed = taxable;
+    for (final charge in serviceCharges) {
+      if (!charge.appliesTo(type)) continue;
+      final amount = charge.on(base);
+      if (charge.isTaxable) {
+        taxable += amount;
+      } else {
+        untaxed += amount;
+      }
+    }
+    return ServiceTotal(taxable: taxable, untaxed: untaxed);
+  }
 
   /// Value equality, because callers compare configurations to decide whether
   /// anything actually changed — and an identity comparison there would
@@ -575,9 +629,11 @@ class Ticket {
     // a negative tax and a receipt nobody can read.
     final net = (subtotal - discount).clampToZero();
 
-    final service = taxConfig.appliesServiceTo(orderType)
-        ? net.percentBp(taxConfig.serviceBp)
-        : _zero;
+    // Split by whether VAT applies: the taxable part joins the tax base below,
+    // the rest is added to the total and left out of it. A delivery fee
+    // collected for an aggregator is not the restaurant's revenue to tax.
+    final serviceTotal = taxConfig.serviceFor(orderType, base: net);
+    final service = serviceTotal.total;
 
     // ── Tax, by rate ──────────────────────────────────────────────────────
     //
@@ -625,7 +681,7 @@ class Ticket {
     // Service is taxed at the default rate. It is the restaurant's charge for
     // service, not a product, so it does not inherit a zero-rated bottle of
     // water's treatment.
-    addBase(taxConfig.defaultTaxGroup, service);
+    addBase(taxConfig.defaultTaxGroup, serviceTotal.taxable);
 
     final taxLines = TaxEngine.linesFor(bases);
     final vat = TaxEngine.totalOf(taxLines, zero: _zero);

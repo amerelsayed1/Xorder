@@ -34,6 +34,7 @@ import '../data/postgres/postgres_orders_repository.dart';
 import '../data/eta/filing_orders_repository.dart';
 import '../data/postgres/postgres_eta_queue_repository.dart';
 import '../data/postgres/postgres_receipt_profile_repository.dart';
+import '../data/postgres/postgres_service_charges_repository.dart';
 import '../data/postgres/postgres_settings_repository.dart';
 import '../data/postgres/postgres_tender_types_repository.dart';
 import '../data/postgres/postgres_refunds_repository.dart';
@@ -61,6 +62,7 @@ import '../domain/models/reason_code.dart';
 import '../domain/models/eta_submission.dart';
 import '../domain/models/permissions.dart';
 import '../domain/models/receipt_profile.dart';
+import '../domain/models/service_charge.dart';
 import '../domain/models/tender_method.dart';
 import '../domain/repositories/admin_repositories.dart';
 import '../domain/repositories/repositories.dart';
@@ -817,7 +819,14 @@ final branchOrderTypesProvider = Provider<List<OrderType>>((ref) {
 /// back to the device default only when the till has never been seeded — and
 /// that fallback is what `TaxSource.deviceConfig` makes a receipt disclose.
 final taxConfigProvider = Provider<TaxConfig>((ref) {
-  return ref.watch(moneyConfigProvider).valueOrNull ?? const TaxConfig();
+  final stored = ref.watch(moneyConfigProvider).valueOrNull ?? const TaxConfig();
+  // §38's charges are folded in here rather than read separately by the ticket,
+  // so there is still exactly one object that says what a sale costs on top of
+  // the food. An empty list leaves `stored` untouched, which is why every
+  // restaurant that has not opened the new screen is charged exactly what it
+  // was.
+  final charges = ref.watch(serviceChargesProvider).valueOrNull ?? const [];
+  return charges.isEmpty ? stored : stored.withServiceCharges(charges);
 });
 
 final moneyConfigProvider = FutureProvider<TaxConfig?>((ref) async {
@@ -1478,6 +1487,39 @@ final catalogAdminRepositoryProvider = Provider<CatalogAdminRepository?>((ref) {
     terminalId: context.terminalId,
   );
 });
+
+/// What the restaurant adds on top of the food (§38).
+///
+/// Reads on the till's credential because a ticket cannot be priced without
+/// them; writes on Management's.
+final serviceChargesRepositoryProvider = Provider<ServiceChargesRepository>((
+  ref,
+) {
+  final config = ref.watch(deploymentProvider);
+  final context = ref.watch(posWriteContextProvider);
+  if (context == null || PosDatabase.hostFor(config) == null) {
+    return const UnconfiguredServiceChargesRepository();
+  }
+  return PostgresServiceChargesRepository(
+    database: ref.watch(adminPosDatabaseProvider),
+    config: ref.watch(adminDeploymentProvider),
+    readDatabase: ref.watch(posDatabaseProvider),
+    readConfig: config,
+    adminAvailable: ref.watch(adminDbCredentialProvider) != null,
+    restaurantId: context.restaurantId,
+    branchId: context.branchId,
+  );
+});
+
+final serviceChargesProvider = FutureProvider<List<ServiceCharge>>(
+  (ref) => ref.watch(serviceChargesRepositoryProvider).all(),
+);
+
+/// The same list including retired charges, for the editor.
+final serviceChargesAllProvider = FutureProvider<List<ServiceCharge>>(
+  (ref) =>
+      ref.watch(serviceChargesRepositoryProvider).all(includeInactive: true),
+);
 
 /// The payment methods this restaurant takes (§40).
 ///
