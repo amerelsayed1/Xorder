@@ -10,6 +10,7 @@ import '../../../domain/models/permissions.dart';
 import '../../../domain/models/shift.dart';
 import '../../../domain/repositories/admin_repositories.dart';
 import 'admin_messages.dart';
+import 'staff_grants_dialog.dart';
 import '../../../core/security/pin_hash.dart';
 
 /// Who works here.
@@ -70,6 +71,7 @@ class ManagementStaffPane extends ConsumerWidget {
               itemBuilder: (context, index) => _StaffRow(
                 staff: people[index],
                 isSelf: people[index].id == admin.id,
+                admin: admin,
                 roles: roles.valueOrNull ?? const [],
                 onAction: (action) => _act(context, ref, people[index], action),
               ),
@@ -137,6 +139,13 @@ class ManagementStaffPane extends ConsumerWidget {
         by: admin,
         staffId: person.id,
         pin: pin,
+      )).refusal,
+      _SetGrants(:final grants) => (await repository.setGrants(
+        by: admin,
+        staffId: person.id,
+        extraRoleIds: grants.extraRoleIds,
+        overrides: grants.overrides,
+        limits: grants.limits,
       )).refusal,
     };
 
@@ -220,6 +229,13 @@ class _SetRole extends _StaffAction {
   final int roleId;
 }
 
+/// §105, §16 — the exceptions and ceilings dialog handed back its result.
+class _SetGrants extends _StaffAction {
+  const _SetGrants(this.grants);
+
+  final StaffGrants grants;
+}
+
 class _ResetPin extends _StaffAction {
   const _ResetPin(this.pin);
 
@@ -232,12 +248,17 @@ class _StaffRow extends StatelessWidget {
     required this.isSelf,
     required this.roles,
     required this.onAction,
+    required this.admin,
   });
 
   final PosStaff staff;
   final bool isSelf;
   final List<PosRole> roles;
   final ValueChanged<_StaffAction> onAction;
+
+  /// Who is editing. The grants dialog needs it for §48 — an ALLOW for
+  /// something the editor lacks is granting a permission they do not hold.
+  final PosStaff admin;
 
   @override
   Widget build(BuildContext context) {
@@ -290,6 +311,21 @@ class _StaffRow extends StatelessWidget {
                 style: PosText.ui(size: 12, color: context.pos.warn),
               ),
             ),
+            PosButton(
+              key: Key('grants-${staff.id}'),
+              label: strings.grantsAction,
+              border: Border.fromBorderSide(context.pos.resting),
+              onPressed: () async {
+                final grants = await StaffGrantsDialog.show(
+                  context,
+                  person: staff,
+                  roles: roles,
+                  admin: admin,
+                );
+                if (grants != null) onAction(_SetGrants(grants));
+              },
+            ),
+            const SizedBox(width: PosSpace.sm),
             PosButton(
               label: strings.resetPin,
               border: Border.fromBorderSide(context.pos.resting),

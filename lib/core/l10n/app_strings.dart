@@ -808,6 +808,19 @@ sealed class AppStrings {
   String get roleTemplateExplain;
   String roleTemplateCount(int count);
 
+  // §105, §16 — one person's exceptions and ceilings.
+  String grantsFor(String name);
+  String get grantsExplain;
+  String get grantsExtraRoles;
+  String get grantsCeilings;
+  String get grantsDiscountCeiling;
+  String get grantsNoCeiling;
+  String get grantsExceptions;
+  String get grantsFromRole;
+  String get grantsAllowed;
+  String get grantsDenied;
+  String get grantsAction;
+
   // Management chrome.
   String get backToTill;
   String get paneStaff;
@@ -3387,6 +3400,31 @@ final class EnStrings extends AppStrings {
       count == 1 ? '1 permission' : '$count permissions';
 
   @override
+  String grantsFor(String name) => 'Permissions for $name';
+  @override
+  String get grantsExplain =>
+      'Exceptions to what their role already gives them. Tap a permission to '
+      'take it away, or to grant it to this person alone.';
+  @override
+  String get grantsExtraRoles => 'Also holds';
+  @override
+  String get grantsCeilings => 'Limits';
+  @override
+  String get grantsDiscountCeiling => 'Largest discount';
+  @override
+  String get grantsNoCeiling => 'none';
+  @override
+  String get grantsExceptions => 'Permissions';
+  @override
+  String get grantsFromRole => 'from their role';
+  @override
+  String get grantsAllowed => 'granted';
+  @override
+  String get grantsDenied => 'taken away';
+  @override
+  String get grantsAction => 'Permissions';
+
+  @override
   String get backToTill => 'Back to the till';
   @override
   String get paneStaff => 'Staff';
@@ -5600,6 +5638,31 @@ final class ArStrings extends AppStrings {
   @override
   String roleTemplateCount(int count) =>
       count == 1 ? 'صلاحية واحدة' : '$count صلاحيات';
+
+  @override
+  String grantsFor(String name) => 'صلاحيات $name';
+  @override
+  String get grantsExplain =>
+      'استثناءات على ما يمنحه دوره بالفعل. اضغط على صلاحية لسحبها، أو لمنحها '
+      'لهذا الشخص وحده.';
+  @override
+  String get grantsExtraRoles => 'يشغل أيضًا';
+  @override
+  String get grantsCeilings => 'الحدود';
+  @override
+  String get grantsDiscountCeiling => 'أقصى خصم';
+  @override
+  String get grantsNoCeiling => 'بلا حد';
+  @override
+  String get grantsExceptions => 'الصلاحيات';
+  @override
+  String get grantsFromRole => 'من دوره';
+  @override
+  String get grantsAllowed => 'ممنوحة';
+  @override
+  String get grantsDenied => 'مسحوبة';
+  @override
+  String get grantsAction => 'الصلاحيات';
 
   @override
   String get backToTill => 'رجوع إلى الكاشير';

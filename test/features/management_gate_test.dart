@@ -276,6 +276,51 @@ void main() {
     expect(find.text('Kitchen'), findsWidgets);
   });
 
+
+  testWidgets('a permission shows where it came from, in four states',
+      (tester) async {
+    // A checkbox would collapse "comes with the role" and "granted to this
+    // person" into one tick, and "deliberately taken away" into the same blank
+    // as "nobody ever gave it". Those are four different facts.
+    await open(tester);
+    await enter(tester, '1234');
+
+    await tester.tap(find.byKey(const Key('grants-2')));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Permissions for'), findsOneWidget);
+    expect(find.text('from their role'), findsWidgets);
+    expect(find.text('taken away'), findsNothing);
+  });
+
+  testWidgets('tapping a role permission takes it away', (tester) async {
+    await open(tester);
+    await enter(tester, '1234');
+    await tester.tap(find.byKey(const Key('grants-2')));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text(AdminCapabilityLabels.operate));
+    await tester.pumpAndSettle();
+
+    expect(find.text('taken away'), findsOneWidget);
+  });
+
+  testWidgets('tapping it again clears the exception', (tester) async {
+    // An exception has to be undoable in place, or the only way back is to
+    // remember what the role said.
+    await open(tester);
+    await enter(tester, '1234');
+    await tester.tap(find.byKey(const Key('grants-2')));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text(AdminCapabilityLabels.operate));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(AdminCapabilityLabels.operate));
+    await tester.pumpAndSettle();
+
+    expect(find.text('taken away'), findsNothing);
+  });
+
 }
 
 /// The labels the roles pane renders, so a test taps the same string a manager
@@ -283,4 +328,5 @@ void main() {
 abstract final class AdminCapabilityLabels {
   static const catalogManage = 'Add and change menu items and prices';
   static const orderRefund = 'Refund a sale';
+  static const operate = 'Sell at the till';
 }
