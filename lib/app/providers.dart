@@ -1505,6 +1505,15 @@ final tenderTypesProvider = FutureProvider<List<TenderMethod>>(
   (ref) => ref.watch(tenderTypesRepositoryProvider).all(),
 );
 
+/// The same list including retired methods, for the editor.
+///
+/// A separate provider rather than a family: the till and the back office ask
+/// different questions, and a family keyed on a bool would let a screen ask
+/// the wrong one by passing the wrong literal.
+final tenderTypesAllProvider = FutureProvider<List<TenderMethod>>(
+  (ref) => ref.watch(tenderTypesRepositoryProvider).all(includeInactive: true),
+);
+
 /// The queue of receipts owed to Egypt's tax authority.
 ///
 /// Null where there is no database to queue into. Not null on a cloud till:

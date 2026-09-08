@@ -754,10 +754,25 @@ cache; the offline authoring path moves to `pos_taxes` / `pos_service_charges`, 
 the ticket engine reads a resolved `MoneyRules` object either way. **Historic orders
 never re-price** — the tax snapshot on the order row is already the record.
 
-**Payment methods stop being hardcoded.** [payment_screen.dart:40](../../lib/features/payment/payment_screen.dart:40)
-reads `pos_tender_types`. The `wireLabel`-matching trick that finds cash for the
-drawer expectation is replaced by `counts_as_cash` — that string match is a latent
-bug the moment anyone adds a tender.
+**Payment methods stop being hardcoded.** **Built** (migration 23). The payment
+screen reads `pos_tender_types`, Management authors them from the Money pane,
+and the substring match on the label is gone.
+
+One decision came out differently from the sketch above. `counts_as_cash` is
+**snapshotted onto the payment row**, not read from the tender type at cash-up.
+The drawer expectation is a fact about what happened, not about current
+configuration: a restaurant deciding on Thursday that its wallet counts as cash
+must not change what Monday's shift said the drawer should have held, because
+the manager investigating Monday's variance needs the number Monday was judged
+against. It also removes a hazard the sketch did not consider — `tender_type_id`
+was assigned by a compiled-in Dart list, so on a branch server with two
+restaurants those ids do not necessarily mean the same thing in both. A payment
+that carries its own answer does not care, which is why there is deliberately no
+foreign key from a payment to a tender type.
+
+Naming follows the restaurant too: the built-in translations apply only while a
+method still carries the name it shipped with. Renaming "Card" to "Visa" used to
+leave the screen saying "Card" while the customer's receipt said "Visa".
 
 **Setup wizard gains two steps** — *Restaurant Information* (§4.5, after account)
 and *Operation Mode* (§4.7, after branch) — and the *Hardware* step expands

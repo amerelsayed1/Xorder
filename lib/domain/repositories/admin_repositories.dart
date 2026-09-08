@@ -4,6 +4,7 @@ import '../models/dining_table.dart';
 import '../models/permissions.dart';
 import '../models/receipt_profile.dart';
 import '../models/shift.dart';
+import '../models/tender_method.dart';
 import '../models/ticket.dart';
 import '../services/authorization.dart';
 
@@ -255,6 +256,12 @@ abstract final class AuditAction {
   static const entityCategory = 'category';
   static const entityProduct = 'product';
   static const entityMoney = 'money_config';
+  static const entityTenderType = 'tender_type';
+
+  /// A payment method created, renamed, retired or reclassified (§40).
+  /// Its own action because changing `counts_as_cash` changes what every
+  /// future cash-up expects to find in the drawer.
+  static const tenderTypeSaved = 'tender_type.saved';
   static const entityTable = 'table';
   static const entityReceiptProfile = 'receipt_profile';
 }
@@ -360,6 +367,16 @@ abstract interface class CatalogAdminRepository {
   /// pass. Seats must be positive; the database checks that too.
   ///
   /// Gated on `settings.manage`: the floor plan is the room, not the menu.
+  /// Author a payment method (§40).
+  ///
+  /// `id == 0` creates. There is no delete: a method is retired with
+  /// `isActive`, because a settled payment names it and a receipt reprinted
+  /// next year still has to say what the customer paid with.
+  Future<AdminResult<TenderMethod>> saveTenderType(
+    TenderMethod method, {
+    required PosStaff by,
+  });
+
   Future<AdminResult<DiningTable>> saveTable(
     DiningTable table, {
     required PosStaff by,

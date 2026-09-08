@@ -821,6 +821,26 @@ sealed class AppStrings {
   String get grantsDenied;
   String get grantsAction;
 
+  // §40 — payment methods as data.
+  String get tenderTypes;
+  String get tenderTypesHint;
+  String get tenderNew;
+  String get tenderEdit;
+  String get tenderNameEn;
+  String get tenderNameAr;
+  String get tenderCode;
+  String get tenderKind;
+  String tenderKindName(String wire);
+  String get tenderCountsAsCash;
+  String get tenderCountsAsCashHint;
+  String get tenderOpensDrawer;
+  String get tenderOpensDrawerHint;
+  String get tenderRequiresReference;
+  String get tenderRefundAllowed;
+  String get tenderActive;
+  String get tenderActiveHint;
+  String get tenderRetired;
+
   // Management chrome.
   String get backToTill;
   String get paneStaff;
@@ -3425,6 +3445,56 @@ final class EnStrings extends AppStrings {
   String get grantsAction => 'Permissions';
 
   @override
+  String get tenderTypes => 'Payment methods';
+  @override
+  String get tenderTypesHint =>
+      'What the till offers at payment, and which of them end up in the '
+      'drawer.';
+  @override
+  String get tenderNew => 'New payment method';
+  @override
+  String get tenderEdit => 'Payment method';
+  @override
+  String get tenderNameEn => 'Name';
+  @override
+  String get tenderNameAr => 'Arabic name';
+  @override
+  String get tenderCode => 'Code';
+  @override
+  String get tenderKind => 'Kind';
+  @override
+  String tenderKindName(String wire) => switch (wire) {
+    'cash' => 'Cash',
+    'card' => 'Card',
+    'wallet' => 'Wallet',
+    'account' => 'On account',
+    'voucher' => 'Voucher',
+    _ => 'Other',
+  };
+  @override
+  String get tenderCountsAsCash => 'Counts as cash';
+  @override
+  String get tenderCountsAsCashHint =>
+      'The drawer is expected to hold it at cash-up.';
+  @override
+  String get tenderOpensDrawer => 'Opens the drawer';
+  @override
+  String get tenderOpensDrawerHint =>
+      'Not the same question — vouchers kept in the till open it without being '
+      'cash.';
+  @override
+  String get tenderRequiresReference => 'Needs a reference';
+  @override
+  String get tenderRefundAllowed => 'Money can go back this way';
+  @override
+  String get tenderActive => 'Offered at the till';
+  @override
+  String get tenderActiveHint =>
+      'Turning this off retires it. Sales already taken on it keep their name.';
+  @override
+  String get tenderRetired => 'retired';
+
+  @override
   String get backToTill => 'Back to the till';
   @override
   String get paneStaff => 'Staff';
@@ -5663,6 +5733,53 @@ final class ArStrings extends AppStrings {
   String get grantsDenied => 'مسحوبة';
   @override
   String get grantsAction => 'الصلاحيات';
+
+  @override
+  String get tenderTypes => 'طرق الدفع';
+  @override
+  String get tenderTypesHint =>
+      'ما تعرضه نقطة البيع عند الدفع، وأيّها ينتهي في الدرج.';
+  @override
+  String get tenderNew => 'طريقة دفع جديدة';
+  @override
+  String get tenderEdit => 'طريقة الدفع';
+  @override
+  String get tenderNameEn => 'الاسم';
+  @override
+  String get tenderNameAr => 'الاسم بالعربية';
+  @override
+  String get tenderCode => 'الكود';
+  @override
+  String get tenderKind => 'النوع';
+  @override
+  String tenderKindName(String wire) => switch (wire) {
+    'cash' => 'نقدي',
+    'card' => 'بطاقة',
+    'wallet' => 'محفظة',
+    'account' => 'على الحساب',
+    'voucher' => 'قسيمة',
+    _ => 'أخرى',
+  };
+  @override
+  String get tenderCountsAsCash => 'يُحتسب نقدًا';
+  @override
+  String get tenderCountsAsCashHint => 'يُتوقَّع وجوده في الدرج عند الجرد.';
+  @override
+  String get tenderOpensDrawer => 'يفتح الدرج';
+  @override
+  String get tenderOpensDrawerHint =>
+      'ليس السؤال نفسه — القسائم المحفوظة في الدرج تفتحه دون أن تكون نقدًا.';
+  @override
+  String get tenderRequiresReference => 'يتطلب رقمًا مرجعيًا';
+  @override
+  String get tenderRefundAllowed => 'يمكن ردّ المال بهذه الطريقة';
+  @override
+  String get tenderActive => 'متاحة على الكاشير';
+  @override
+  String get tenderActiveHint =>
+      'إيقافها يُخرجها من الخدمة. المبيعات السابقة تحتفظ باسمها.';
+  @override
+  String get tenderRetired => 'خارج الخدمة';
 
   @override
   String get backToTill => 'رجوع إلى الكاشير';

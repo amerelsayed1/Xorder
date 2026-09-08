@@ -4,7 +4,11 @@ library;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:xorder_pos/data/postgres/migrations.dart';
 import 'package:xorder_pos/data/postgres/pos_database.dart';
+import 'package:xorder_pos/data/postgres/postgres_catalog_admin_repository.dart';
 import 'package:xorder_pos/data/postgres/postgres_tender_types_repository.dart';
+import 'package:xorder_pos/domain/models/permissions.dart';
+import 'package:xorder_pos/domain/models/shift.dart';
+import 'package:xorder_pos/domain/repositories/admin_repositories.dart';
 import 'package:xorder_pos/domain/models/tender_method.dart';
 
 import 'pg_fixture.dart';
@@ -201,5 +205,176 @@ void main() {
     // screen is a till that cannot trade.
     await db.query(pg.config, 'DELETE FROM pos_tender_types');
     expect((await tenders.all()).map((t) => t.code), ['cash', 'card', 'wallet', 'account']);
+  });
+
+  group('authoring them', () {
+    late PostgresCatalogAdminRepository admin;
+
+    const owner = PosStaff(
+      id: 1,
+      name: 'Amer M.',
+      capabilities: {
+        PosCapability.settingsManage,
+        PosCapability.catalogManage,
+      },
+    );
+    const cashier = PosStaff(
+      id: 2,
+      name: 'Rana A.',
+      capabilities: {PosCapability.operate},
+    );
+
+    setUp(() async {
+      final branchId = (await db.query(
+        pg.config,
+        "INSERT INTO pos_branches (restaurant_id, code, name) "
+        "VALUES (@r, 'MAIN', 'Main') RETURNING id",
+        parameters: {'r': restaurantId},
+      )).first[0]! as int;
+
+      admin = PostgresCatalogAdminRepository(
+        database: db,
+        config: pg.config,
+        restaurantId: restaurantId,
+        branchId: branchId,
+      );
+    });
+
+    Future<TenderMethod> byCode(String code) async =>
+        (await tenders.all(includeInactive: true))
+            .firstWhere((t) => t.code == code);
+
+    test('a new method reaches the till', () async {
+      final result = await admin.saveTenderType(
+        const TenderMethod(
+          id: 0,
+          code: 'voucher',
+          nameEn: 'Meal voucher',
+          nameAr: 'قسيمة',
+          kind: TenderKind.voucher,
+          opensDrawer: true,
+          refundAllowed: false,
+          sortOrder: 5,
+        ),
+        by: owner,
+      );
+
+      expect(result.succeeded, isTrue, reason: '\${result.refusal}');
+      final saved = await byCode('voucher');
+      expect(saved.nameEn, 'Meal voucher');
+      expect(saved.kind, TenderKind.voucher);
+      expect(saved.refundAllowed, isFalse);
+      expect(
+        saved.opensDrawer && !saved.countsAsCash,
+        isTrue,
+        reason: 'vouchers live in the drawer without being cash',
+      );
+    });
+
+    test('a method is renamed without changing what it is', () async {
+      final card = await byCode('card');
+      await admin.saveTenderType(
+        TenderMethod(
+          id: card.id,
+          code: card.code,
+          nameEn: 'Visa',
+          kind: card.kind,
+          requiresReference: card.requiresReference,
+          sortOrder: card.sortOrder,
+        ),
+        by: owner,
+      );
+
+      final saved = await byCode('card');
+      expect(saved.nameEn, 'Visa');
+      expect(saved.code, 'card', reason: 'the code is identity');
+    });
+
+    test('retiring the last cash method is refused', () async {
+      // A restaurant that does this has a till that can put nothing in the
+      // drawer and a cash-up that reads zero for the rest of time. The fix
+      // afterwards is a database edit, and whoever did it will not know that
+      // is what they did.
+      final cash = await byCode('cash');
+      final result = await admin.saveTenderType(
+        TenderMethod(
+          id: cash.id,
+          code: cash.code,
+          nameEn: cash.nameEn,
+          countsAsCash: false,
+          kind: cash.kind,
+        ),
+        by: owner,
+      );
+
+      expect(result.refusal, isA<CatalogInvalid>());
+      expect((await byCode('cash')).countsAsCash, isTrue);
+    });
+
+    test('retiring one of two cash methods is allowed', () async {
+      await admin.saveTenderType(
+        const TenderMethod(
+          id: 0,
+          code: 'petty',
+          nameEn: 'Petty cash',
+          kind: TenderKind.cash,
+          countsAsCash: true,
+        ),
+        by: owner,
+      );
+
+      final cash = await byCode('cash');
+      final result = await admin.saveTenderType(
+        TenderMethod(
+          id: cash.id,
+          code: cash.code,
+          nameEn: cash.nameEn,
+          kind: cash.kind,
+          isActive: false,
+          countsAsCash: true,
+        ),
+        by: owner,
+      );
+      expect(result.succeeded, isTrue, reason: '\${result.refusal}');
+    });
+
+    test('a nameless method is refused', () async {
+      final result = await admin.saveTenderType(
+        const TenderMethod(id: 0, code: 'x', nameEn: '  '),
+        by: owner,
+      );
+      expect(result.refusal, isA<CatalogInvalid>());
+    });
+
+    test('a cashier cannot change how the restaurant takes money', () async {
+      final result = await admin.saveTenderType(
+        const TenderMethod(id: 0, code: 'x', nameEn: 'Anything'),
+        by: cashier,
+      );
+      expect(result.refusal, isA<NotPermitted>());
+    });
+
+    test('the change is audited, naming what counts as cash', () async {
+      await admin.saveTenderType(
+        const TenderMethod(
+          id: 0,
+          code: 'voucher',
+          nameEn: 'Meal voucher',
+          kind: TenderKind.voucher,
+        ),
+        by: owner,
+      );
+
+      final rows = await db.query(
+        pg.config,
+        "SELECT action, after_value->>'counts_as_cash' FROM pos_audit_events "
+        'WHERE entity_type = @e ORDER BY id DESC LIMIT 1',
+        parameters: {'e': AuditAction.entityTenderType},
+      );
+      // Changing this changes what every future cash-up expects to find in the
+      // drawer, so it has to be findable.
+      expect(rows.first[0], AuditAction.tenderTypeSaved);
+      expect(rows.first[1], 'false');
+    });
   });
 }

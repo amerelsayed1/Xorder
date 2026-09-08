@@ -8,6 +8,7 @@ import '../../domain/models/catalog.dart';
 import '../../domain/models/dining_table.dart';
 import '../../domain/models/permissions.dart';
 import '../../domain/models/shift.dart';
+import '../../domain/models/tender_method.dart';
 import '../../domain/models/ticket.dart';
 import '../../domain/repositories/admin_repositories.dart';
 import '../../domain/services/menu_import.dart';
@@ -575,6 +576,133 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
       return const NotPermitted(PosCapability.settingsManage);
     }
     return null;
+  }
+
+  @override
+  Future<AdminResult<TenderMethod>> saveTenderType(
+    TenderMethod method, {
+    required PosStaff by,
+  }) async {
+    final blocked = _blockedSettings(by);
+    if (blocked != null) return AdminResult.refused(blocked);
+
+    if (method.nameEn.trim().isEmpty) {
+      return const AdminResult.refused(
+        CatalogInvalid('A payment method needs a name.'),
+      );
+    }
+    if (method.code.trim().isEmpty) {
+      return const AdminResult.refused(
+        CatalogInvalid('A payment method needs a code.'),
+      );
+    }
+
+    return database.runTx(config, (tx) async {
+      // A restaurant that retires its last cash method has a till that cannot
+      // put anything in the drawer, and a cash-up that will read zero for the
+      // rest of time. Refused rather than warned: the fix afterwards is a
+      // database edit, and the person who did it will not know that is what
+      // they did.
+      if (!method.isActive || !method.countsAsCash) {
+        final remaining = await tx.execute(
+          Sql.named(
+            'SELECT count(*) FROM pos_tender_types '
+            'WHERE restaurant_id = @r AND is_active AND counts_as_cash '
+            '  AND id <> @id',
+          ),
+          parameters: {'r': restaurantId, 'id': method.id},
+        );
+        if ((remaining.first[0]! as int) == 0) {
+          return const AdminResult<TenderMethod>.refused(
+            CatalogInvalid(
+              'Something has to count as cash, or the drawer can never be '
+              'counted.',
+            ),
+          );
+        }
+      }
+
+      // `id` is added only for the UPDATE: `Sql.named` refuses a parameter the
+      // statement does not use, and the INSERT does not name one.
+      final parameters = <String, Object?>{
+        'r': restaurantId,
+        'code': method.code.trim(),
+        'nameEn': method.nameEn.trim(),
+        'nameAr': method.nameAr?.trim(),
+        'kind': method.kind.wire,
+        'cash': method.countsAsCash,
+        'drawer': method.opensDrawer,
+        'reference': method.requiresReference,
+        'refund': method.refundAllowed,
+        'active': method.isActive,
+        'sort': method.sortOrder,
+      };
+
+      const columns =
+          'id, code, name_en, name_ar, kind, counts_as_cash, opens_drawer, '
+          'requires_reference, refund_allowed, is_active, sort_order';
+
+      final rows = method.id == 0
+          ? await tx.execute(
+              Sql.named(
+                'INSERT INTO pos_tender_types (restaurant_id, code, name_en, '
+                '  name_ar, kind, counts_as_cash, opens_drawer, '
+                '  requires_reference, refund_allowed, is_active, sort_order) '
+                'VALUES (@r, @code, @nameEn, @nameAr, @kind, @cash, @drawer, '
+                '        @reference, @refund, @active, @sort) '
+                'RETURNING $columns',
+              ),
+              parameters: parameters,
+            )
+          : await tx.execute(
+              Sql.named(
+                'UPDATE pos_tender_types SET code = @code, name_en = @nameEn, '
+                '  name_ar = @nameAr, kind = @kind, counts_as_cash = @cash, '
+                '  opens_drawer = @drawer, requires_reference = @reference, '
+                '  refund_allowed = @refund, is_active = @active, '
+                '  sort_order = @sort '
+                'WHERE id = @id AND restaurant_id = @r RETURNING $columns',
+              ),
+              parameters: {...parameters, 'id': method.id},
+            );
+
+      if (rows.isEmpty) {
+        return const AdminResult<TenderMethod>.refused(EditedElsewhere(0));
+      }
+
+      await _audit(
+        tx,
+        by: by,
+        action: AuditAction.tenderTypeSaved,
+        entityType: AuditAction.entityTenderType,
+        entityId: '${rows.first[0]}',
+        after: {
+          'code': method.code.trim(),
+          'name': method.nameEn.trim(),
+          // The field worth being able to find later: changing it changes what
+          // every future cash-up expects to be in the drawer.
+          'counts_as_cash': method.countsAsCash,
+          'is_active': method.isActive,
+        },
+      );
+
+      final row = rows.first;
+      return AdminResult.done(
+        TenderMethod(
+          id: row[0]! as int,
+          code: row[1]! as String,
+          nameEn: row[2]! as String,
+          nameAr: row[3] as String?,
+          kind: TenderKind.fromWire(row[4] as String?),
+          countsAsCash: row[5]! as bool,
+          opensDrawer: row[6]! as bool,
+          requiresReference: row[7]! as bool,
+          refundAllowed: row[8]! as bool,
+          isActive: row[9]! as bool,
+          sortOrder: row[10]! as int,
+        ),
+      );
+    });
   }
 
   @override
