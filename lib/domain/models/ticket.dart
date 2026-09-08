@@ -346,6 +346,34 @@ class Tender {
 /// **This is read-only device config until POS-BE-013 is `READY`.** The server
 /// must become the author of tax; a till that invents its own tax rate produces
 /// numbers nobody can audit. Every receipt printed from device config says so.
+/// Whether menu prices already contain the tax (§37, §85).
+///
+/// **A restaurant is one or the other, not a mixture.** Egypt prices
+/// exclusive; much of the Gulf and the UK price inclusive. Per-tax
+/// inclusivity — which the plan's §37 sketched — would let a restaurant say
+/// "food is inclusive, the levy is not", which is a receipt no customer can
+/// check and an arithmetic nobody can explain at the counter.
+enum TaxMode {
+  /// The rate is added on top. What every ticket written before this was.
+  exclusive('exclusive'),
+
+  /// The rate is already inside the price and is extracted for the filing.
+  inclusive('inclusive');
+
+  const TaxMode(this.wire);
+
+  final String wire;
+
+  /// Unknown values fall back to [exclusive] — the mode every existing
+  /// restaurant is on, so a row this build cannot read changes nobody's bill.
+  static TaxMode fromWire(String? value) {
+    for (final mode in values) {
+      if (mode.wire == value) return mode;
+    }
+    return exclusive;
+  }
+}
+
 class TaxConfig {
   const TaxConfig({
     this.serviceBp = 1200,
@@ -354,6 +382,7 @@ class TaxConfig {
     this.source = TaxSource.deviceConfig,
     this.taxGroups = const [],
     this.serviceCharges = const [],
+    this.taxMode = TaxMode.exclusive,
   });
 
   /// The rates this restaurant charges (§17, ETA).
@@ -409,6 +438,15 @@ class TaxConfig {
   /// configured nothing keeps being charged what it was.
   final List<ServiceCharge> serviceCharges;
 
+  /// Whether the prices on the menu already contain the tax.
+  ///
+  /// Defaults to [TaxMode.exclusive], which is what every ticket written
+  /// before this existed was priced as — so a restaurant that has not been
+  /// asked the question keeps being charged exactly what it was.
+  final TaxMode taxMode;
+
+  bool get isInclusive => taxMode == TaxMode.inclusive;
+
   bool appliesServiceTo(OrderType type) =>
       !serviceDineInOnly || type == OrderType.dineIn;
 
@@ -420,6 +458,7 @@ class TaxConfig {
     source: source,
     taxGroups: taxGroups,
     serviceCharges: charges,
+    taxMode: taxMode,
   );
 
   /// What an order of [type] is charged on top of [base], split by whether VAT
@@ -683,9 +722,17 @@ class Ticket {
     // water's treatment.
     addBase(taxConfig.defaultTaxGroup, serviceTotal.taxable);
 
-    final taxLines = TaxEngine.linesFor(bases);
+    final taxLines = TaxEngine.linesFor(
+      bases,
+      inclusive: taxConfig.isInclusive,
+    );
     final vat = TaxEngine.totalOf(taxLines, zero: _zero);
-    final total = net + service + vat;
+
+    // **Inclusive prices are not added to.** The tax is already inside `net`
+    // and `service`, so adding `vat` again would charge it twice — the single
+    // most expensive mistake available in this file. What changes is where the
+    // number is *reported*, not what the customer pays.
+    final total = taxConfig.isInclusive ? net + service : net + service + vat;
     final paid = tenders.fold(_zero, (sum, tender) => sum + tender.amount);
     final balance = total - paid;
 

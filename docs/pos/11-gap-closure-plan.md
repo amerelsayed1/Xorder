@@ -767,6 +767,28 @@ renders an order type reads its name off the enum, so a fifth code would have
 no name to show until the display path takes a config instead of a value. Saying
 so is better than shipping a table that implies a freedom the UI does not have.
 
+**§37 is built too** (migration 26), and departs from its sketch for the same
+reason §31 did. `pos_taxes` was **not** created: `pos_tax_groups` already is
+that table — named rates, per-product assignment, ETA codes, a default — and a
+second would be a third tax model beside it and `pos_money_config`, with nothing
+keeping the three in step. What §37 genuinely adds over what exists is two
+things, and those are what migration 26 builds:
+
+* **Tax-inclusive pricing**, as `pos_restaurants.tax_mode`. On the restaurant
+  rather than on each tax group, because a restaurant is one or the other —
+  per-tax inclusivity would let somebody price food inclusive and a levy
+  exclusive, which is a receipt no customer can check.
+* **A tax group on the category**, which a product with none falls back to.
+  That is the useful half of `pos_tax_targets`; targeting an *order type* is
+  left out because `pos_product_prices.order_type` already varies a price by
+  channel, and a restaurant needing delivery taxed differently is describing a
+  different price rather than a different rate.
+
+`Money.taxWithinBp` is a separate method from `percentBp` rather than a flag on
+it: the two are different arithmetic, and a caller that picked the wrong one
+would be out by the square of the rate — small enough to survive a spot check,
+large enough to matter over a month.
+
 The **editor is deferred to the settings navigation (§51)**, not skipped. The
 Money pane already holds three sections and a fourth would make it a junk
 drawer; and §51 should be designed against the fifteen-area back office in

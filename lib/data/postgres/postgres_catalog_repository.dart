@@ -65,8 +65,14 @@ class PostgresCatalogRepository implements CatalogRepository {
       '       COALESCE(o.price_minor, p.price_minor), '
       '       p.discounted_price_minor, p.sku, p.barcode, '
       '       p.is_available AND COALESCE(o.is_available, true), '
-      '       p.tax_group_id '
+      // A product that names no tax group falls back to its category's (§37).
+      // Resolved here rather than in the ticket, because the ticket holds a
+      // product and not the category it came from — and a fallback the engine
+      // could not see would be a rate that applied on paper and not in the
+      // bill.
+      '       COALESCE(p.tax_group_id, c.tax_group_id) '
       'FROM pos_products p '
+      'JOIN pos_categories c ON c.id = p.category_id '
       'LEFT JOIN pos_product_prices o '
       '  ON o.product_id = p.id AND o.branch_id = @branch '
       '  AND o.order_type IS NULL '

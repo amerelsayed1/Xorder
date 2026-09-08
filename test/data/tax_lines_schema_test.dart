@@ -6,6 +6,7 @@ import 'package:xorder_pos/core/money/money.dart';
 import 'package:xorder_pos/data/postgres/local_bootstrap.dart';
 import 'package:xorder_pos/data/postgres/migrations.dart';
 import 'package:xorder_pos/data/postgres/pos_database.dart';
+import 'package:xorder_pos/data/postgres/postgres_catalog_repository.dart';
 import 'package:xorder_pos/data/postgres/postgres_orders_repository.dart';
 import 'package:xorder_pos/domain/models/catalog.dart';
 import 'package:xorder_pos/domain/models/tax.dart';
@@ -116,6 +117,75 @@ void main() {
     test('a name is unique within a restaurant', () async {
       await taxGroup('VAT', 1400);
       await expectLater(taxGroup('VAT', 500), throwsA(anything));
+    });
+
+    test('a product with no group inherits its category\'s (§37)', () async {
+      // Resolved in the catalogue query rather than in the ticket, because the
+      // ticket holds a product and not the category it came from — a fallback
+      // the engine could not see would be a rate that applied on paper and not
+      // in the bill.
+      final zeroRated = await taxGroup('Zero-rated', 0);
+      final categoryId =
+          (await db.query(
+                    pg.config,
+                    'INSERT INTO pos_categories (restaurant_id, name_en, '
+                    "  tax_group_id) VALUES (@r, 'Bakery', @g) RETURNING id",
+                    parameters: {'r': restaurantId, 'g': zeroRated},
+                  ))
+                  .first[0]
+              as int;
+
+      await db.query(
+        pg.config,
+        'INSERT INTO pos_products (restaurant_id, category_id, name_en, '
+        "  price_minor) VALUES (@r, @c, 'Baladi bread', 500)",
+        parameters: {'r': restaurantId, 'c': categoryId},
+      );
+
+      final catalog = await PostgresCatalogRepository(
+        database: db,
+        config: pg.config.copyWith(tenantSlug: 'tax'),
+      ).load();
+
+      expect(
+        catalog.products.firstWhere((p) => p.nameEn == 'Baladi bread').taxGroupId,
+        zeroRated,
+      );
+    });
+
+    test('a product that names its own group keeps it', () async {
+      // The category is a fallback, not an override — otherwise a bakery could
+      // not sell one standard-rated thing.
+      final zeroRated = await taxGroup('Zero-rated 2', 0);
+      final standard = await taxGroup('Standard 2', 1400);
+      final categoryId =
+          (await db.query(
+                    pg.config,
+                    'INSERT INTO pos_categories (restaurant_id, name_en, '
+                    "  tax_group_id) VALUES (@r, 'Bakery 2', @g) RETURNING id",
+                    parameters: {'r': restaurantId, 'g': zeroRated},
+                  ))
+                  .first[0]
+              as int;
+
+      await db.query(
+        pg.config,
+        'INSERT INTO pos_products (restaurant_id, category_id, name_en, '
+        "  price_minor, tax_group_id) VALUES (@r, @c, 'Birthday cake', 9000, @g)",
+        parameters: {'r': restaurantId, 'c': categoryId, 'g': standard},
+      );
+
+      final catalog = await PostgresCatalogRepository(
+        database: db,
+        config: pg.config.copyWith(tenantSlug: 'tax'),
+      ).load();
+
+      expect(
+        catalog.products
+            .firstWhere((p) => p.nameEn == 'Birthday cake')
+            .taxGroupId,
+        standard,
+      );
     });
 
     test('a product can name one, and losing it falls back to null', () async {

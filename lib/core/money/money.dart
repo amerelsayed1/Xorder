@@ -86,6 +86,20 @@ class Money implements Comparable<Money> {
   Money percentBp(int basisPoints) =>
       copyWith(minor: roundHalfUp(minor * basisPoints, 10000));
 
+  /// The tax **already inside** this amount, at [basisPoints].
+  ///
+  /// Where [percentBp] adds a rate on top, this takes one out: 114.00 holding
+  /// 14% contains 14.00, not 15.96. The formula is `gross × rate ÷ (10000 +
+  /// rate)`, and it is a separate method rather than a flag on [percentBp]
+  /// because the two are different arithmetic and a caller that picked the
+  /// wrong one would be out by the square of the rate — an error small enough
+  /// to survive a spot check and large enough to matter over a month.
+  ///
+  /// Rounded half-up, once, exactly like [percentBp].
+  Money taxWithinBp(int basisPoints) => copyWith(
+    minor: roundHalfUp(minor * basisPoints, 10000 + basisPoints),
+  );
+
   Money _combine(Money other, int result) {
     assert(
       other.currency == currency && other.exponent == exponent,

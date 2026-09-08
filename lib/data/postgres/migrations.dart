@@ -2370,6 +2370,47 @@ const posMigrations = <PosMigration>[
     ON CONFLICT (restaurant_id, code) DO NOTHING
     ''',
   ]),
+  PosMigration(26, 'tax-inclusive pricing, and tax by category (§37)', [
+    // **Not `pos_taxes`.** The plan sketched a new table; `pos_tax_groups`
+    // (migration 16) already is one — named rates, per-product assignment, ETA
+    // codes, a default. A second would be a third tax model beside it and
+    // `pos_money_config`, with nothing keeping the three in step.
+    //
+    // What §37 actually adds over what exists is two things, and this is them.
+
+    // One. Whether menu prices already contain the tax.
+    //
+    // On the restaurant, not on each tax group. A restaurant is one or the
+    // other: Egypt prices exclusive, much of the Gulf and the UK inclusive.
+    // Per-tax inclusivity would let somebody say "food is inclusive, the levy
+    // is not", which is a receipt no customer can check.
+    '''
+    ALTER TABLE pos_restaurants
+      ADD COLUMN IF NOT EXISTS tax_mode text NOT NULL DEFAULT 'exclusive'
+    ''',
+    '''
+    ALTER TABLE pos_restaurants
+      DROP CONSTRAINT IF EXISTS pos_restaurants_tax_mode_known
+    ''',
+    '''
+    ALTER TABLE pos_restaurants
+      ADD CONSTRAINT pos_restaurants_tax_mode_known
+      CHECK (tax_mode IN ('exclusive', 'inclusive'))
+    ''',
+
+    // Two. A tax group on the category, which a product falls back to.
+    //
+    // This is the useful half of the plan's `pos_tax_targets`. The other half
+    // — targeting an order type — is left out: `pos_product_prices.order_type`
+    // already varies a price by channel, and a restaurant that needs delivery
+    // taxed differently is describing a different price rather than a
+    // different rate. Adding it would be a second way to say the same thing.
+    '''
+    ALTER TABLE pos_categories
+      ADD COLUMN IF NOT EXISTS tax_group_id bigint
+        REFERENCES pos_tax_groups(id) ON DELETE SET NULL
+    ''',
+  ]),
 ];
 
 /// Brings the branch database up to the current schema.
