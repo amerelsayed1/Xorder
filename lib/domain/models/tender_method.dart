@@ -4,58 +4,160 @@
 /// exactly as long as refunds did not exist, and two lists of tender types is
 /// how a till ends up refunding to a method it cannot take payment on.
 ///
-/// §37 makes payment methods configurable data (Wave D). When that lands, this
-/// list becomes the seed rather than the definition — and [wireLabel] is why
-/// that migration has to be careful: see the note on it.
+/// **Data since §40 (Wave D).** These used to be four constants compiled into
+/// the binary. They are now rows a restaurant edits, and [seeded] is what the
+/// migration writes rather than what the code believes. The constants remain
+/// only as the fallback for a till with no database yet — see
+/// [UnconfiguredTenderTypesRepository].
 library;
 
+/// The class of thing a tender is, for the code that treats classes
+/// differently.
+///
+/// ETA files cash and everything-electronic under different codes, and a wallet
+/// is not a card to a reconciliation. A free-text kind would make both of those
+/// a string comparison somebody eventually gets wrong.
+enum TenderKind {
+  cash('cash'),
+  card('card'),
+  wallet('wallet'),
+  account('account'),
+  voucher('voucher'),
+  other('other');
+
+  const TenderKind(this.wire);
+
+  final String wire;
+
+  /// Unknown kinds from a newer build fall to [other] rather than throwing. A
+  /// tender type this binary does not understand must still be *takeable* —
+  /// refusing it would stop a till selling because somebody added a payment
+  /// method in the back office.
+  static TenderKind fromWire(String? value) {
+    for (final kind in values) {
+      if (kind.wire == value) return kind;
+    }
+    return other;
+  }
+}
+
 class TenderMethod {
-  const TenderMethod(this.id, this.wireLabel, {this.countsAsCash = false});
+  const TenderMethod({
+    required this.id,
+    required this.code,
+    required this.nameEn,
+    this.nameAr,
+    this.kind = TenderKind.other,
+    this.countsAsCash = false,
+    this.opensDrawer = false,
+    this.requiresReference = false,
+    this.refundAllowed = true,
+    this.isActive = true,
+    this.sortOrder = 0,
+  });
 
   final int id;
 
+  /// Stable, machine-readable, never shown. A restaurant renaming "Card" into
+  /// Arabic must not change what the seed and the tests refer to.
+  final String code;
+
+  final String nameEn;
+  final String? nameAr;
+  final TenderKind kind;
+
   /// Whether taking this tender puts notes in the drawer.
   ///
-  /// **This replaces a substring match on [wireLabel].** `ShiftSummary` used to
+  /// **This replaced a substring match on the label.** `ShiftSummary` used to
   /// find the drawer's cash with `label.toLowerCase().contains('cash')`, which
-  /// is wrong in two directions: a method called "Cashback voucher" counted
-  /// toward a drawer it never touched, and the moment payment methods become
-  /// configurable data (§37, Wave D) an Arabic label stops matching at all —
-  /// leaving every Arabic till reporting an expected drawer of nothing but the
-  /// float, a false variance on every single cash-up.
+  /// was wrong in two directions: a method called "Cashback voucher" counted
+  /// toward a drawer it never touched, and an Arabic label stopped matching at
+  /// all — leaving every Arabic till reporting an expected drawer of nothing
+  /// but the float, a false variance on every single cash-up.
   ///
-  /// The gap-closure plan names that as a Wave B risk to be fixed *in the same
-  /// change* that makes methods data. Fixing it before is cheaper and means the
-  /// trap is already gone when Wave D arrives: the flag becomes a column, and
-  /// nothing that reads it changes.
+  /// Note where the flag is *read* from at cash-up time: the payment row, not
+  /// this one. See `pos_order_payments.counts_as_cash`.
   final bool countsAsCash;
 
-  /// What is **written** to the tender record, and it stays English on an
-  /// Arabic till on purpose.
+  /// Whether settling on this method should kick the drawer open. Not the same
+  /// question as [countsAsCash]: a restaurant that keeps its vouchers in the
+  /// till drawer opens it for them and does not count them as cash.
+  final bool opensDrawer;
+
+  /// Whether the cashier must type an authorisation code or a last-four.
+  final bool requiresReference;
+
+  /// Whether money may go back out this way. A voucher usually cannot be
+  /// refunded to; cash usually can.
+  final bool refundAllowed;
+
+  final bool isActive;
+  final int sortOrder;
+
+  /// What is **written** to the tender record.
   ///
-  /// `ShiftSummary.cashTaken` finds the drawer's cash by matching this text, so
-  /// translating what gets stored would leave every Arabic shift reporting an
-  /// expected drawer of nothing but the float — a false variance on every
-  /// cash-up, in the one number the count exists to check. Replacing this match
-  /// with a `counts_as_cash` column is a named risk in the gap-closure plan and
-  /// must happen in the same change that makes methods configurable.
-  final String wireLabel;
+  /// English, deliberately, on an Arabic till as much as an English one: it is
+  /// a wire value on a stored row, and a receipt reprinted in a different
+  /// language must still show what was taken. What the cashier *reads* is
+  /// [displayName].
+  String get wireLabel => nameEn;
+
+  String displayName(String locale) =>
+      locale.startsWith('ar') && (nameAr?.isNotEmpty ?? false)
+      ? nameAr!
+      : nameEn;
 
   /// The four a restaurant gets before anybody configures anything.
+  ///
+  /// Kept in step with migration 23's seed by a test, not by discipline: two
+  /// definitions of "what a new restaurant starts with" is how a fresh install
+  /// and a migrated one end up different.
   static const seeded = <TenderMethod>[
-    TenderMethod(1, 'Cash', countsAsCash: true),
-    TenderMethod(2, 'Card'),
-    TenderMethod(3, 'Wallet · InstaPay'),
-    TenderMethod(4, 'On account'),
+    TenderMethod(
+      id: 1,
+      code: 'cash',
+      nameEn: 'Cash',
+      nameAr: 'نقدي',
+      kind: TenderKind.cash,
+      countsAsCash: true,
+      opensDrawer: true,
+      sortOrder: 1,
+    ),
+    TenderMethod(
+      id: 2,
+      code: 'card',
+      nameEn: 'Card',
+      nameAr: 'بطاقة',
+      kind: TenderKind.card,
+      requiresReference: true,
+      sortOrder: 2,
+    ),
+    TenderMethod(
+      id: 3,
+      code: 'wallet',
+      nameEn: 'Wallet · InstaPay',
+      nameAr: 'محفظة',
+      kind: TenderKind.wallet,
+      requiresReference: true,
+      sortOrder: 3,
+    ),
+    TenderMethod(
+      id: 4,
+      code: 'account',
+      nameEn: 'On account',
+      nameAr: 'على الحساب',
+      kind: TenderKind.account,
+      sortOrder: 4,
+    ),
   ];
 
-  /// Whether a stored tender put money in the drawer.
+  /// Whether a tender of this **seeded** type puts money in the drawer.
   ///
-  /// Falls back to **false** for a type this build does not know. An unknown
-  /// method counted as cash would manufacture a variance the cashier cannot
-  /// explain; one counted as non-cash under-states the drawer, which the count
-  /// itself then surfaces. Wrong quietly beats wrong loudly here only because
-  /// the count is the thing that catches it.
+  /// Only correct for a till still on the seeded list, which is why nothing at
+  /// cash-up time uses it any more: a settled payment carries its own
+  /// `counts_as_cash`, snapshotted when the money moved. This remains for the
+  /// one caller that has no payment row to read — pricing a tender before it is
+  /// taken — and falls back to **false** for a type it does not know.
   static bool isCash(int? typeId) =>
       typeId != null && (byId(typeId)?.countsAsCash ?? false);
 

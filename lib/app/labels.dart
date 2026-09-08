@@ -222,14 +222,39 @@ String provisioningRefusal(
 /// Takes the id and the stored label rather than a `Tender`, because the same
 /// question is asked about a settled order's payment, a refund's tender and a
 /// live ticket's, and only one of those three is a `Tender`.
-String tenderName(int? typeId, String stored, AppStrings s) => switch (typeId) {
-  1 => s.tenderCash,
-  2 => s.tenderCard,
-  3 => s.tenderWallet,
-  4 => s.tenderOnAccount,
-  _ => stored,
-};
+String tenderName(int? typeId, String stored, AppStrings s) {
+  // Matched on the stored *label*, not on the id alone.
+  //
+  // Since §40 made payment methods data, a restaurant can rename tender 2 from
+  // "Card" to "Visa". Translating by id would then show "Card" on screen while
+  // the receipt in the customer's hand said "Visa" — the app overruling the
+  // restaurant about the restaurant's own name for something.
+  //
+  // So the built-in translation applies only while a method still carries the
+  // name the product gave it. The moment somebody renames one, what they typed
+  // is what everybody sees, in either language.
+  final seeded = typeId == null ? null : TenderMethod.byId(typeId);
+  if (seeded == null || seeded.wireLabel != stored) return stored;
+
+  return switch (seeded.code) {
+    'cash' => s.tenderCash,
+    'card' => s.tenderCard,
+    'wallet' => s.tenderWallet,
+    'account' => s.tenderOnAccount,
+    _ => stored,
+  };
+}
 
 extension TenderMethodLabel on TenderMethod {
-  String label(AppStrings s) => tenderName(id, wireLabel, s);
+  /// What the cashier reads.
+  ///
+  /// The restaurant's own Arabic wins over the app's, because it is the
+  /// restaurant's payment method. The built-in translations remain for the four
+  /// seeded ones on an install where nobody has typed an Arabic name.
+  String label(AppStrings s) {
+    if (s.languageCode.startsWith('ar') && (nameAr?.isNotEmpty ?? false)) {
+      return nameAr!;
+    }
+    return tenderName(id, wireLabel, s);
+  }
 }

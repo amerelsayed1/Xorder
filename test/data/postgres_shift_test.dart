@@ -11,6 +11,7 @@ import 'package:xorder_pos/data/postgres/postgres_orders_repository.dart';
 import 'package:xorder_pos/data/postgres/postgres_shift_repository.dart';
 import 'package:xorder_pos/domain/models/catalog.dart';
 import 'package:xorder_pos/domain/models/shift.dart';
+import 'package:xorder_pos/domain/models/tender_method.dart';
 import 'package:xorder_pos/domain/models/ticket.dart';
 import 'package:xorder_pos/domain/services/ticket_engine.dart';
 
@@ -110,6 +111,9 @@ void main() {
     PosShift shift, {
     required int priceMinor,
     List<(int, String, int?)> tenders = const [(1, 'Cash', null)],
+    // What the tender type said when the money moved. Defaults to matching the
+    // seeded list, which is what the payment screen passes.
+    bool? countsAsCash,
   }) async {
     final product = Product(
       id: 1,
@@ -126,6 +130,7 @@ void main() {
         typeId: typeId,
         label: label,
         amount: amount == null ? null : Money(amount),
+        countsAsCash: countsAsCash ?? TenderMethod.isCash(typeId),
       ).ticket!;
     }
 
@@ -234,6 +239,46 @@ void main() {
       // Counting card takings against the drawer would manufacture a shortfall
       // on every single shift.
       expect(summary.expectedCash.minor, 20000 + inCash);
+    });
+
+    test('a cash-up does not move when a payment method is later edited',
+        () async {
+      // §40 made payment methods data, which means somebody can decide on
+      // Thursday that the wallet counts as cash. Last week's cash-up must not
+      // change: the manager investigating that variance needs the number the
+      // shift was judged against, and a figure that moves under them is worse
+      // than no figure at all.
+      final shift = await shifts().open(by: sara, openingFloat: Money.zero);
+      final inCash = await sell(shift, priceMinor: 10000);
+      await sell(shift, priceMinor: 30000, tenders: [(3, 'Wallet', null)]);
+
+      expect((await shifts().summarise(shift)).cashTaken.minor, inCash);
+
+      // Thursday. The wallet now counts as cash for everything taken from here.
+      await db.query(
+        pg.config,
+        "UPDATE pos_tender_types SET counts_as_cash = true WHERE code = 'wallet'",
+      );
+
+      expect(
+        (await shifts().summarise(shift)).cashTaken.minor,
+        inCash,
+        reason: 'the flag was snapshotted onto the payment, not looked up',
+      );
+    });
+
+    test('a method that counted as cash at the time still does', () async {
+      // The other direction, and the one a migration gets wrong: a payment
+      // taken on a method that has since been demoted is still in the drawer.
+      final shift = await shifts().open(by: sara, openingFloat: Money.zero);
+      final taken = await sell(
+        shift,
+        priceMinor: 5000,
+        tenders: [(3, 'Wallet', null)],
+        countsAsCash: true,
+      );
+
+      expect((await shifts().summarise(shift)).cashTaken.minor, taken);
     });
 
     test('a split payment lands on both tender lines', () async {

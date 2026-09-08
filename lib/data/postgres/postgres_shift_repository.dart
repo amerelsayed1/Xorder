@@ -178,7 +178,7 @@ class PostgresShiftRepository implements ShiftRepository {
     final tenders = await tx.execute(
       Sql.named('''
         SELECT p.label, count(*), coalesce(sum(p.amount_minor), 0)::bigint,
-               p.tender_type_id
+               p.tender_type_id, bool_or(p.counts_as_cash)
         FROM pos_order_payments p
         JOIN pos_orders o ON o.id = p.order_id
         WHERE o.shift_id = @shift
@@ -264,6 +264,10 @@ class PostgresShiftRepository implements ShiftRepository {
             // Grouped by type as well as label, so the drawer's cash is found
             // by what the method is rather than by what it is called.
             typeId: row[3] as int?,
+            // From the payment row, not from today's tender configuration. A
+            // restaurant that changes what counts as cash must not change what
+            // a shift closed last week said the drawer should have held.
+            countsAsCash: (row[4] as bool?) ?? false,
           ),
       ],
     );

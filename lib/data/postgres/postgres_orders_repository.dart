@@ -638,8 +638,10 @@ class PostgresOrdersRepository implements OrdersRepository {
       await tx.execute(
         Sql.named('''
           INSERT INTO pos_order_payments (
-            order_id, tender_type_id, label, amount_minor, reference, occurred_at
-          ) VALUES (@order, @typeId, @label, @amount, @reference, @occurredAt)
+            order_id, tender_type_id, label, amount_minor, reference,
+            counts_as_cash, occurred_at
+          ) VALUES (@order, @typeId, @label, @amount, @reference, @cash,
+                    @occurredAt)
         '''),
         parameters: {
           'order': orderId,
@@ -647,6 +649,8 @@ class PostgresOrdersRepository implements OrdersRepository {
           'label': tender.label,
           'amount': tender.amount.minor,
           'reference': tender.reference,
+          // Snapshotted with the money. See [Tender.countsAsCash].
+          'cash': tender.countsAsCash,
           'occurredAt': occurredAt,
         },
       );

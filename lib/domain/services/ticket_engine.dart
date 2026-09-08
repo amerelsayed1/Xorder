@@ -502,6 +502,7 @@ abstract final class TicketEngine {
     required String label,
     Money? amount,
     String? reference,
+    bool countsAsCash = false,
   }) {
     if (ticket.isEmpty) return const TicketResult.refused(NothingToTender());
 
@@ -521,6 +522,11 @@ abstract final class TicketEngine {
             label: label,
             amount: value,
             reference: reference,
+            // Carried through the engine untouched. What counts as cash is a
+            // property of the method the cashier chose, not something the
+            // engine can work out — and snapshotting it here is what keeps a
+            // past cash-up stable when the method is later edited.
+            countsAsCash: countsAsCash,
           ),
         ],
       ),

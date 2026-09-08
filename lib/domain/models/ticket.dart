@@ -318,11 +318,22 @@ class Tender {
     required this.label,
     required this.amount,
     this.reference,
+    this.countsAsCash = false,
   });
 
   final int typeId;
   final String label;
   final Money amount;
+
+  /// Whether this put notes in the drawer, **as the tender type said at the
+  /// moment it was taken**.
+  ///
+  /// Snapshotted rather than looked up, for the same reason the label is. A
+  /// restaurant that decides on Thursday its wallet counts as cash must not
+  /// change what Tuesday's cash-up said the drawer should have held — the
+  /// manager investigating Tuesday's variance needs the number Tuesday was
+  /// judged against.
+  final bool countsAsCash;
 
   /// Card auth code for a payment taken on a standalone bank terminal. The POS
   /// is not a payment processor and stores no card data.

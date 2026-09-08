@@ -385,6 +385,10 @@ class LocalBootstrap {
     // did, once it was asked about the tables added since Wave A.
     'GRANT SELECT ON pos_tax_groups, pos_product_prices, pos_combos, '
         'pos_combo_groups, pos_combo_options TO "$role"',
+    // The payment methods this restaurant takes (§40). Read-only, like the
+    // menu and for the same reason: a cashier takes a method, they do not
+    // invent one.
+    'GRANT SELECT ON pos_tender_types TO "$role"',
     // The tax breakdown a filing needs, written with the sale (§17, ETA).
     // INSERT and SELECT, never UPDATE: the rates a customer was charged are
     // part of the record of what they paid.

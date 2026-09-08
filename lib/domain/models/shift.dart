@@ -143,7 +143,11 @@ class ShiftTenderTotal {
     required this.count,
     required this.amount,
     this.typeId,
-  });
+    bool? countsAsCash,
+    // The field is private and the parameter is not: callers set it, readers
+    // go through the getter that supplies the fallback.
+    // ignore: prefer_initializing_formals
+  }) : _countsAsCash = countsAsCash;
 
   final String label;
   final int count;
@@ -154,7 +158,16 @@ class ShiftTenderTotal {
   /// [TenderMethod.countsAsCash].
   final int? typeId;
 
-  bool get countsAsCash => TenderMethod.isCash(typeId);
+  final bool? _countsAsCash;
+
+  /// Whether this line's money is in the drawer.
+  ///
+  /// **Read from the payment row**, which snapshotted it when the money moved,
+  /// and only falls back to the seeded list for rows written before that column
+  /// existed. Resolving it against today's tender configuration would make last
+  /// week's cash-up change when somebody edits a payment method this week —
+  /// which is exactly the number a variance investigation is checking.
+  bool get countsAsCash => _countsAsCash ?? TenderMethod.isCash(typeId);
 }
 
 /// What the shift did — the Z report, in the only form that matters at the

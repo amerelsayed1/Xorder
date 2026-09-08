@@ -1,6 +1,7 @@
 import '../../core/config/deployment.dart';
 import '../../core/money/money.dart';
 import '../models/catalog.dart';
+import '../models/tender_method.dart';
 import '../models/eta_submission.dart';
 import '../services/eta_serialization.dart';
 import '../models/discount.dart';
@@ -97,6 +98,20 @@ class EtaEnqueued {
   final String uuid;
   final String previousUuid;
   final EtaObject document;
+}
+
+/// The payment methods this restaurant takes (§40).
+///
+/// A repository rather than a constant since Wave D. Two lists of tender types
+/// is how a till ends up refunding to a method it cannot take payment on, so
+/// settlement and refunds both read this one.
+abstract interface class TenderTypesRepository {
+  /// Active methods, in the order the restaurant put them in.
+  ///
+  /// [includeInactive] is for the editor, which has to show a retired method to
+  /// let somebody bring it back — and for a receipt reprint, where the method a
+  /// sale was taken on may since have been retired.
+  Future<List<TenderMethod>> all({bool includeInactive = false});
 }
 
 abstract interface class TablesRepository {

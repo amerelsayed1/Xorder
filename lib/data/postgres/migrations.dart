@@ -2183,6 +2183,85 @@ const posMigrations = <PosMigration>[
       ON pos_permission_limits (restaurant_id, subject_type, subject_id)
     ''',
   ]),
+  PosMigration(23, 'payment methods become data (§40)', [
+    '''
+    CREATE TABLE IF NOT EXISTS pos_tender_types (
+      id                 bigserial   PRIMARY KEY,
+      restaurant_id      bigint      NOT NULL REFERENCES pos_restaurants(id) ON DELETE CASCADE,
+      -- Stable, machine-readable, never shown. A restaurant renaming "Card" to
+      -- "بطاقة" must not change what the seed, the tests and the ETA payment
+      -- mapping refer to.
+      code               text        NOT NULL,
+      name_en            text        NOT NULL,
+      name_ar            text,
+      -- What kind of thing it is, for the code that has to treat classes of
+      -- tender differently — ETA files cash and everything-electronic under
+      -- different codes, and a wallet is not a card to a reconciliation.
+      kind               text        NOT NULL DEFAULT 'other',
+      requires_reference boolean     NOT NULL DEFAULT false,
+      opens_drawer       boolean     NOT NULL DEFAULT false,
+      counts_as_cash     boolean     NOT NULL DEFAULT false,
+      refund_allowed     boolean     NOT NULL DEFAULT true,
+      is_active          boolean     NOT NULL DEFAULT true,
+      sort_order         integer     NOT NULL DEFAULT 0,
+      CONSTRAINT pos_tender_types_kind_known CHECK (
+        kind IN ('cash', 'card', 'wallet', 'account', 'voucher', 'other')
+      ),
+      CONSTRAINT pos_tender_types_code_unique UNIQUE (restaurant_id, code)
+    )
+    ''',
+
+    // **`counts_as_cash` is snapshotted onto the payment, not looked up.**
+    //
+    // The drawer expectation is a fact about what happened, not about current
+    // configuration. A restaurant that decides on Thursday that its wallet
+    // tender counts as cash must not change what Tuesday's cash-up said the
+    // drawer should have held — and a manager investigating Tuesday's variance
+    // needs the number Tuesday was judged against.
+    //
+    // It also removes the last way this can go wrong across restaurants: the
+    // ids in `tender_type_id` were assigned by a hardcoded Dart list, so on a
+    // branch server with two restaurants they do not necessarily mean the same
+    // thing in both. A row that carries its own answer does not care.
+    '''
+    ALTER TABLE pos_order_payments
+      ADD COLUMN IF NOT EXISTS counts_as_cash boolean NOT NULL DEFAULT false
+    ''',
+    '''
+    ALTER TABLE pos_refund_payments
+      ADD COLUMN IF NOT EXISTS counts_as_cash boolean NOT NULL DEFAULT false
+    ''',
+    // Every row written before this column existed was taken under the
+    // hardcoded list, where type 1 was Cash and nothing else was. That is not a
+    // guess — it is what `TenderMethod.seeded` said on every build that could
+    // have written these rows.
+    'UPDATE pos_order_payments SET counts_as_cash = true WHERE tender_type_id = 1',
+    'UPDATE pos_refund_payments SET counts_as_cash = true WHERE tender_type_id = 1',
+
+    // The four every restaurant starts with, at the ids the hardcoded list
+    // used. `pos_order_payments.tender_type_id` has no foreign key onto this
+    // table and deliberately keeps none: a payment is a record of money that
+    // moved, and it already snapshots the label and now the cash flag, so it
+    // stays readable after somebody retires a tender. Seeding in the same order
+    // means a single-restaurant branch server — which is nearly all of them —
+    // ends up with the ids its existing rows already name.
+    '''
+    INSERT INTO pos_tender_types
+      (restaurant_id, code, name_en, name_ar, kind, counts_as_cash,
+       opens_drawer, requires_reference, sort_order)
+    SELECT r.id, v.code, v.name_en, v.name_ar, v.kind, v.counts_as_cash,
+           v.opens_drawer, v.requires_reference, v.sort_order
+      FROM pos_restaurants r
+      CROSS JOIN (VALUES
+        ('cash',    'Cash',            'نقدي',    'cash',    true,  true,  false, 1),
+        ('card',    'Card',            'بطاقة',   'card',    false, false, true,  2),
+        ('wallet',  'Wallet · InstaPay','محفظة',  'wallet',  false, false, true,  3),
+        ('account', 'On account',      'على الحساب','account',false, false, false, 4)
+      ) AS v(code, name_en, name_ar, kind, counts_as_cash, opens_drawer,
+             requires_reference, sort_order)
+    ON CONFLICT (restaurant_id, code) DO NOTHING
+    ''',
+  ]),
 ];
 
 /// Brings the branch database up to the current schema.

@@ -20,13 +20,14 @@ import '../../domain/repositories/repositories.dart' show SubmitOrderResult;
 /// The keypad's clear key, by identity rather than by caption.
 const _clearKey = 'CLR';
 
-/// The tender types this till offers.
+/// The tender types this till offers — now read from the restaurant, not from
+/// this file.
 ///
-/// Lifted out of this file when refunds arrived: money going back has to offer
-/// the same methods money came in on, and two lists of tender types is how a
-/// till ends up refunding to a method it cannot take payment on. See
-/// [TenderMethod].
-const _methods = TenderMethod.seeded;
+/// It was a constant here, then a constant in [TenderMethod], and since §40 it
+/// is `pos_tender_types`. Money going back has to offer the same methods money
+/// came in on, so settlement and refunds read the same provider: two lists of
+/// tender types is how a till ends up refunding to a method it cannot take
+/// payment on.
 
 /// Take one or many tenders until the balance clears.
 /// What a completed settlement hands back to the sale screen.
@@ -70,11 +71,31 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
     () => _entry = Money(major * 100, currency: ticket.currency).format(),
   );
 
+  /// The methods on offer, with the seeded four while the query is in flight.
+  ///
+  /// A payment screen with no buttons on it is a till that cannot take money,
+  /// and the four are what the migration writes anyway — so the loading state
+  /// shows something correct rather than something empty.
+  List<TenderMethod> get _methods =>
+      ref.watch(tenderTypesProvider).valueOrNull ?? TenderMethod.seeded;
+
+  TenderMethod get _method => _methods.firstWhere(
+    (m) => m.id == _methodId,
+    // The selection outliving the list is a real state: a manager can retire a
+    // method while a cashier is mid-payment. Falling back to the first on offer
+    // beats an exception at the counter.
+    orElse: () => _methods.first,
+  );
+
   Future<void> _take(Ticket ticket) async {
     final controller = ref.read(ticketProvider.notifier);
+    final method = _method;
     final ok = controller.addTender(
-      typeId: _methodId,
-      label: _methods.firstWhere((m) => m.id == _methodId).wireLabel,
+      typeId: method.id,
+      label: method.wireLabel,
+      // Snapshotted with the money, not resolved at cash-up. See
+      // [Tender.countsAsCash].
+      countsAsCash: method.countsAsCash,
       amount: _parsedEntry(ticket),
     );
 

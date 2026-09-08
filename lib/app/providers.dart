@@ -35,6 +35,7 @@ import '../data/eta/filing_orders_repository.dart';
 import '../data/postgres/postgres_eta_queue_repository.dart';
 import '../data/postgres/postgres_receipt_profile_repository.dart';
 import '../data/postgres/postgres_settings_repository.dart';
+import '../data/postgres/postgres_tender_types_repository.dart';
 import '../data/postgres/postgres_refunds_repository.dart';
 import '../data/postgres/money_config_codec.dart';
 import '../data/postgres/postgres_parked_tickets.dart';
@@ -60,6 +61,7 @@ import '../domain/models/reason_code.dart';
 import '../domain/models/eta_submission.dart';
 import '../domain/models/permissions.dart';
 import '../domain/models/receipt_profile.dart';
+import '../domain/models/tender_method.dart';
 import '../domain/repositories/admin_repositories.dart';
 import '../domain/repositories/repositories.dart';
 import '../domain/services/authorization.dart';
@@ -948,6 +950,7 @@ class TicketController extends Notifier<Ticket> {
     required String label,
     Money? amount,
     String? reference,
+    bool countsAsCash = false,
   }) => _apply(
     TicketEngine.addTender(
       state,
@@ -955,6 +958,7 @@ class TicketController extends Notifier<Ticket> {
       label: label,
       amount: amount,
       reference: reference,
+      countsAsCash: countsAsCash,
     ),
   );
 
@@ -1474,6 +1478,32 @@ final catalogAdminRepositoryProvider = Provider<CatalogAdminRepository?>((ref) {
     terminalId: context.terminalId,
   );
 });
+
+/// The payment methods this restaurant takes (§40).
+///
+/// Read on the till's own credential — a cashier needs the list to take money,
+/// and a back-office password at the counter is not a thing that can exist.
+final tenderTypesRepositoryProvider = Provider<TenderTypesRepository>((ref) {
+  final config = ref.watch(deploymentProvider);
+  final context = ref.watch(posWriteContextProvider);
+  if (context == null || PosDatabase.hostFor(config) == null) {
+    return const UnconfiguredTenderTypesRepository();
+  }
+  return PostgresTenderTypesRepository(
+    database: ref.watch(posDatabaseProvider),
+    config: config,
+    restaurantId: context.restaurantId,
+  );
+});
+
+/// What the payment screen offers.
+///
+/// Falls back to the seeded four while it loads rather than to an empty list: a
+/// payment screen with no methods on it is a till that cannot take money, and
+/// the four are what the migration writes anyway.
+final tenderTypesProvider = FutureProvider<List<TenderMethod>>(
+  (ref) => ref.watch(tenderTypesRepositoryProvider).all(),
+);
 
 /// The queue of receipts owed to Egypt's tax authority.
 ///
