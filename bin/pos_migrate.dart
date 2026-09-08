@@ -579,6 +579,9 @@ Future<Map<String, int>> _seedRoles(
   // is creating right now was not one of them.
   final reasons = await bootstrap.seedReasonCodes(options.config, restaurantId);
   await bootstrap.seedTaxGroup(options.config, restaurantId);
+  // The four payment methods (§40). Migration 23 seeds restaurants that
+  // existed when it ran; this one did not.
+  await bootstrap.seedTenderTypes(options.config, restaurantId);
   stdout.writeln(
     reasons == 0
         ? 'reason codes already exist — left as the restaurant has them.'

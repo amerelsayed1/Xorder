@@ -2,6 +2,7 @@
 library;
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:xorder_pos/data/postgres/local_bootstrap.dart';
 import 'package:xorder_pos/data/postgres/migrations.dart';
 import 'package:xorder_pos/data/postgres/pos_database.dart';
 import 'package:xorder_pos/data/postgres/postgres_catalog_admin_repository.dart';
@@ -197,6 +198,45 @@ void main() {
       expect(TenderKind.fromWire(null), TenderKind.other);
       expect(TenderKind.fromWire('wallet'), TenderKind.wallet);
     });
+  });
+
+  test('a restaurant created after the migration is seeded by the installer',
+      () async {
+    // **Found by installing one.** Migration 23 seeds every restaurant present
+    // when it runs, and a fresh install runs the migrations first and creates
+    // the restaurant second — so without `seedTenderTypes` the new restaurant
+    // has none, the till falls back to the compiled-in four, and Management
+    // shows an empty list beside a payment screen offering four methods.
+    await db.query(pg.config, 'DELETE FROM pos_tender_types');
+
+    final created = await LocalBootstrap(db).seedTenderTypes(
+      pg.config,
+      restaurantId,
+    );
+
+    expect(created, 4);
+    expect(
+      (await tenders.all()).map((t) => t.code),
+      TenderMethod.seeded.map((t) => t.code),
+    );
+  });
+
+  test('seeding twice does not undo a rename', () async {
+    await db.query(
+      pg.config,
+      "UPDATE pos_tender_types SET name_en = 'Visa' WHERE code = 'card'",
+    );
+
+    final created = await LocalBootstrap(db).seedTenderTypes(
+      pg.config,
+      restaurantId,
+    );
+
+    expect(created, 0, reason: 'nothing was missing');
+    expect(
+      (await tenders.all()).firstWhere((t) => t.code == 'card').nameEn,
+      'Visa',
+    );
   });
 
   test('a restaurant with no rows still gets a till that can take money',

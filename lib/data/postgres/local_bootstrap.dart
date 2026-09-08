@@ -1,6 +1,7 @@
 import 'package:postgres/postgres.dart';
 
 import '../../core/config/deployment.dart';
+import '../../domain/models/tender_method.dart';
 import '../../core/security/pin_hash.dart';
 import '../../domain/models/permissions.dart';
 import '../../domain/models/reason_code.dart';
@@ -207,6 +208,46 @@ class LocalBootstrap {
   /// Returns true when it created one. Idempotent: a restaurant that already
   /// has a default keeps whatever it configured, because a re-run of setup must
   /// not reset an accountant's decision.
+  /// The four payment methods a new restaurant starts with (§40).
+  ///
+  /// **Migration 23 cannot do this for a restaurant that does not exist yet.**
+  /// It seeds every restaurant present when it runs, and a fresh install runs
+  /// the migrations first and creates the restaurant second — so without this
+  /// the new restaurant has none, the till falls back to the compiled-in four,
+  /// and Management shows an empty list beside a payment screen offering four
+  /// methods. Found by installing one.
+  ///
+  /// Idempotent on the code, so re-running setup does not undo a rename.
+  Future<int> seedTenderTypes(
+    DeploymentConfig admin,
+    int restaurantId,
+  ) async {
+    var created = 0;
+    for (final method in TenderMethod.seeded) {
+      final rows = await database.query(
+        admin,
+        'INSERT INTO pos_tender_types (restaurant_id, code, name_en, name_ar, '
+        '  kind, counts_as_cash, opens_drawer, requires_reference, sort_order) '
+        'VALUES (@r, @code, @nameEn, @nameAr, @kind, @cash, @drawer, '
+        '        @reference, @sort) '
+        'ON CONFLICT (restaurant_id, code) DO NOTHING RETURNING id',
+        parameters: {
+          'r': restaurantId,
+          'code': method.code,
+          'nameEn': method.nameEn,
+          'nameAr': method.nameAr,
+          'kind': method.kind.wire,
+          'cash': method.countsAsCash,
+          'drawer': method.opensDrawer,
+          'reference': method.requiresReference,
+          'sort': method.sortOrder,
+        },
+      );
+      if (rows.isNotEmpty) created++;
+    }
+    return created;
+  }
+
   Future<bool> seedTaxGroup(
     DeploymentConfig admin,
     int restaurantId, {

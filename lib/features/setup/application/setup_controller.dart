@@ -416,6 +416,9 @@ class SetupController extends Notifier<SetupDraft> {
       // The rate this branch charges, named — so products can be classified
       // and an ETA filing has something to put beside its figures.
       await bootstrap.seedTaxGroup(admin, restaurantId);
+      // The four payment methods (§40). Migration 23 seeds restaurants that
+      // existed when it ran; this one did not.
+      await bootstrap.seedTenderTypes(admin, restaurantId);
 
       final ownerCreated = await bootstrap.seedOwner(
         admin,
