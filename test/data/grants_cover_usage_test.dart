@@ -145,6 +145,54 @@ void main() {
     );
   });
 
+  test('every table granted INSERT is granted its sequence too', () {
+    // The same trap one level down, and it fails at exactly the wrong moment:
+    // `GRANT INSERT` without `GRANT USAGE ON SEQUENCE` passes every shape check
+    // and then refuses `nextval` on the first row anybody writes. A superuser
+    // never sees that either.
+    final source = read('lib/data/postgres/migrations.dart');
+    final owning = <String>{
+      for (final match in RegExp(
+        r'CREATE TABLE IF NOT EXISTS (\w+) \((.*?)\n\s*\)',
+        dotAll: true,
+      ).allMatches(source))
+        if (match.group(2)!.contains('serial')) match.group(1)!,
+    };
+
+    for (final admin in [false, true]) {
+      final grants = grantSource(admin: admin);
+      // Dart concatenates adjacent string literals across lines, so a
+      // multi-line GRANT is several literals. Strip the seams and the newlines
+      // and the block reads as one line of SQL-ish text, which is all this
+      // needs.
+      final flat = grants
+          .replaceAll(RegExp(r"'\s*\n\s*'"), '')
+          .replaceAll(RegExp(r'\s+'), ' ');
+
+      final missing = <String>[];
+      for (final statement in flat.split('GRANT ').skip(1)) {
+        final clause = statement.split(' TO ').first;
+        final parts = clause.split(' ON ');
+        if (parts.length < 2) continue;
+        if (!parts.first.contains('INSERT')) continue;
+
+        for (final table in owning) {
+          if (!RegExp('\\b$table\\b').hasMatch(parts[1])) continue;
+          if (flat.contains('${table}_id_seq')) continue;
+          missing.add(table);
+        }
+      }
+
+      expect(
+        missing,
+        isEmpty,
+        reason: admin
+            ? 'granted INSERT with no sequence, on the administrator list'
+            : 'granted INSERT with no sequence, on the till list',
+      );
+    }
+  });
+
   test('the grant list names no table that does not exist', () {
     // The other direction, and it matters at install time rather than at
     // runtime: `GRANT ... ON a_table_that_was_renamed` throws, and the whole
