@@ -182,8 +182,30 @@ of the grants, not proof they suffice.
 
 ---
 
-## 5. Working tree
+## 5. Where the waves stand (8 Sep 2026)
 
-Everything since `ba665d3` is uncommitted — the price override, the reprint, the
-cart density work, migration 13, and the two test fixes. Worth a commit before
-Wave B starts.
+**A, B, M, N and C are done**, in that order; everything is committed.
+
+* **Wave M** — tax by rate, per-branch pricing, modifier economics, combos, and
+  menu import from CSV or Excel.
+* **Wave N** — the receipt profile, the ETA document with its canonical
+  serialization and uuid, the queue with its per-device chain and 24-hour
+  deadline, settlement wiring, the QR column and rendering, and the Management
+  screen showing what has not cleared. **Not built:** the e-seal and the
+  submission client, which need a token and a sandbox account rather than a
+  decision. The signing binding chosen is ETA's own integration toolkit.
+* **Wave C** — the §106 resolution as a pure resolver, §107 risk levels driving
+  the override and hide/disable rules, §105 per-person overrides, §16/§18
+  ceilings that bind at the till, §48 (no granting what you lack) enforced at
+  every write, and §49's six role templates. §50's sixteen `SETTINGS.*` keys are
+  deferred to Wave D, where the sections they gate exist.
+
+Two claims in the older plan text were **stale and have been struck through
+rather than quietly deleted**: branch scoping was already enforced on both
+sign-in paths with a test, and Wave C's `pos_permissions` table was deliberately
+not built — the catalogue lives in Dart because the code checks against string
+constants, so a table would be a seeded copy.
+
+**Next: Wave D** — the settings surface, the configurable order types, taxes,
+service charges and tender types, and the settings navigation the six Management
+panes fold into.

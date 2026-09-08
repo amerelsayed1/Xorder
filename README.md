@@ -185,12 +185,15 @@ into `AppStrings` is one pass rather than forty.
 
 ## Not built yet
 
-USB printer and scanner ports · refunds ·
-a parked-orders sheet for takeaway (dine-in tickets already park on their
-tables, survive a restart, and resume from the floor) ·
-discounts and price override · catalogue administration ·
-Arabic for the Management section · the tablet and handheld shells
-(the breakpoints exist; only the wide shell is finished).
+USB printer and scanner ports · the tablet and handheld shells (the
+breakpoints exist; only the wide shell is finished) · the ETA e-seal and
+submission client (everything else about e-receipts is built — see below).
+
+Refunds, discounts, price override, catalogue administration, order history,
+combos, per-branch pricing, the cash drawer and business day, menu import from
+a spreadsheet and the permission model have all landed since this list was last
+correct. Arabic covers Management too: `AppStrings` is abstract, so a string
+that exists in English and not in Arabic does not compile.
 
 **The cloud path is built and verified end-to-end (2026-09-04).** A cloud
 terminal claims against the hosted platform with a pairing code (or staff
