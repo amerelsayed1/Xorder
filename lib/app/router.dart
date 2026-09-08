@@ -89,14 +89,21 @@ final routerProvider = Provider<GoRouter>((ref) {
       // land on the start screen rather than half a dialog.
       GoRoute(
         path: PosRoutes.management,
-        builder: (context, state) => ManagementScreen(
-          onClose: () => context.go(PosRoutes.start),
-          // `extra` names which pane the caller meant. Absent means the
-          // default, so "Management" still opens where it always did.
-          initialPane: state.extra is ManagementPane
-              ? state.extra! as ManagementPane
-              : ManagementPane.staff,
-        ),
+        builder: (context, state) {
+          // `extra` names which pane the caller meant and where they came from.
+          // A bare pane is still accepted, and absent means the default, so
+          // "Management" opens where it always did.
+          final destination = switch (state.extra) {
+            final ManagementDestination d => d,
+            final ManagementPane p => ManagementDestination(pane: p),
+            _ => const ManagementDestination(pane: ManagementPane.staff),
+          };
+          return ManagementScreen(
+            onClose: () =>
+                context.go(destination.returnTo ?? PosRoutes.start),
+            initialPane: destination.pane,
+          );
+        },
       ),
       GoRoute(
         path: PosRoutes.licence,
@@ -168,6 +175,16 @@ final routerProvider = Provider<GoRouter>((ref) {
           },
           onOrders: () => context.go(PosRoutes.orders),
           onCloseShift: () => context.go(PosRoutes.start),
+          // Back to the sale screen on close, not to the start screen: the
+          // shift is still open and the ticket is still in memory, so a manager
+          // who steps out to enter an invoice lands back on it.
+          onManage: (pane) => context.go(
+            PosRoutes.management,
+            extra: ManagementDestination(
+              pane: pane,
+              returnTo: PosRoutes.sale,
+            ),
+          ),
         ),
       ),
     ],

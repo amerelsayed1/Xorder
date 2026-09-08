@@ -58,6 +58,68 @@ class ManagementScreen extends ConsumerStatefulWidget {
 /// [receipt] is deliberately outside the authoring set: every terminal prints
 /// a slip with the restaurant's name and address on it, cloud and offline
 /// alike, and only the write side needs Management's credential.
+/// Which panes this terminal and this person actually have.
+///
+/// **Public, and the only answer.** The rail asked this and so does the Manage
+/// menu, and two lists that were meant to agree are two lists that will not —
+/// a menu offering Purchasing to somebody the rail hides it from would take
+/// them to a screen that refuses everything.
+List<ManagementPane> managementPanesFor({
+  required PosStaff admin,
+  required bool authorsItsOwnCatalogue,
+}) => [
+  for (final pane in ManagementPane.values)
+    if ((!_authoringPanes.contains(pane) || authorsItsOwnCatalogue) &&
+        _permits(admin, pane))
+      pane,
+];
+
+/// Menu authoring exists only where this terminal is the author of its own
+/// catalogue — offline. On a cloud till the platform authors it and the
+/// bootstrap seeder overwrites whatever is here, so the pane would be an
+/// invitation to lose work.
+///
+/// **Money is not here.** Its tax rates are the platform's on a cloud till, but
+/// the payment methods and service charges Wave D put in the same pane are local
+/// on both deployments — so the pane gates its own top half rather than
+/// disappearing, and a cloud restaurant can still say how it takes money.
+const _authoringPanes = {ManagementPane.menu, ManagementPane.floor};
+
+/// Where the caller was, and which pane they asked for.
+///
+/// **Both, because the way out matters as much as the way in.** The route used
+/// to send every close to the start screen, which was right while the only door
+/// was on the start screen. A manager who opens Purchasing from the till and
+/// closes it should be back at the till with their ticket still on it, not
+/// standing on a start screen wondering where the shift went.
+class ManagementDestination {
+  const ManagementDestination({required this.pane, this.returnTo});
+
+  final ManagementPane pane;
+
+  /// The route to go back to. Null means the start screen, which is what the
+  /// only previous caller wanted.
+  final String? returnTo;
+}
+
+/// What a pane is called, and what it is for.
+///
+/// A function of the language rather than a const map: this is the one place
+/// that names every pane, so it is the one place a pane added without an Arabic
+/// label has to fail to compile.
+(String, String) managementPaneLabel(AppStrings s, ManagementPane pane) =>
+    switch (pane) {
+      ManagementPane.staff => (s.paneStaff, s.paneStaffBlurb),
+      ManagementPane.menu => (s.paneMenu, s.paneMenuBlurb),
+      ManagementPane.floor => (s.floorPlan, s.floorPlanHint),
+      ManagementPane.money => (s.moneyRules, s.moneyRulesHint),
+      ManagementPane.purchasing => (s.panePurchasing, s.panePurchasingBlurb),
+      ManagementPane.receipt => (s.paneReceipt, s.paneReceiptBlurb),
+      ManagementPane.eta => (s.paneEta, s.paneEtaBlurb),
+      ManagementPane.roles => (s.paneRoles, s.paneRolesBlurb),
+      ManagementPane.activity => (s.paneActivity, s.paneActivityBlurb),
+    };
+
 /// The capability a pane needs beyond the `staffManage` that opened the screen.
 ///
 /// **Only the panes whose repositories actually enforce one appear here.**
@@ -120,27 +182,11 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
       return _AdminCredentialGate(onClose: widget.onClose, admin: admin);
     }
 
-    // Menu authoring exists only where this terminal is the author of its own
-    // catalogue — offline. On a cloud till the platform authors it and the
-    // bootstrap seeder overwrites whatever is here, so the pane would be an
-    // invitation to lose work.
-    // The three panes that exist only where this terminal authors its own
-    // world. Named once, so adding a fourth cannot forget the gate.
-    // **Money is no longer here.** Its tax rates are the platform's on a cloud
-    // till, but the payment methods and service charges Wave D put in the same
-    // pane are local on both deployments — so the pane gates its own top half
-    // rather than disappearing, and a cloud restaurant can still say how it
-    // takes money.
-    const authoring = {ManagementPane.menu, ManagementPane.floor};
-
-    final panes = [
-      for (final pane in ManagementPane.values)
-        // Both authoring panes exist only where this terminal is the author.
-        if ((!authoring.contains(pane) ||
-                ref.watch(catalogAdminRepositoryProvider) != null) &&
-            _permits(admin, pane))
-          pane,
-    ];
+    final panes = managementPanesFor(
+      admin: admin,
+      authorsItsOwnCatalogue:
+          ref.watch(catalogAdminRepositoryProvider) != null,
+    );
 
     // A pane this terminal or this person does not have is not a pane the body
     // may render: `initialPane` is a deep link and a deep link can outlive the
@@ -240,21 +286,6 @@ class _Rail extends StatelessWidget {
   final List<ManagementPane> panes;
   final ValueChanged<ManagementPane> onPick;
 
-  /// A function of the language rather than a const map: the rail is the one
-  /// place in Management that names every pane, so it is the one place a pane
-  /// added without an Arabic label has to fail to compile.
-  static (String, String) _label(AppStrings s, ManagementPane pane) => switch (pane) {
-    ManagementPane.staff => (s.paneStaff, s.paneStaffBlurb),
-    ManagementPane.menu => (s.paneMenu, s.paneMenuBlurb),
-    ManagementPane.floor => (s.floorPlan, s.floorPlanHint),
-    ManagementPane.money => (s.moneyRules, s.moneyRulesHint),
-    ManagementPane.purchasing => (s.panePurchasing, s.panePurchasingBlurb),
-    ManagementPane.receipt => (s.paneReceipt, s.paneReceiptBlurb),
-    ManagementPane.eta => (s.paneEta, s.paneEtaBlurb),
-    ManagementPane.roles => (s.paneRoles, s.paneRolesBlurb),
-    ManagementPane.activity => (s.paneActivity, s.paneActivityBlurb),
-  };
-
   @override
   Widget build(BuildContext context) {
     final strings = context.strings;
@@ -270,8 +301,8 @@ class _Rail extends StatelessWidget {
         children: [
           for (final pane in panes)
             _RailItem(
-              label: _label(strings, pane).$1,
-              hint: _label(strings, pane).$2,
+              label: managementPaneLabel(strings, pane).$1,
+              hint: managementPaneLabel(strings, pane).$2,
               selected: pane == current,
               onTap: () => onPick(pane),
             ),

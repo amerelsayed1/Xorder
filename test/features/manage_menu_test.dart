@@ -1,0 +1,186 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:xorder_pos/app/providers.dart';
+import 'package:xorder_pos/core/ui/theme.dart';
+import 'package:xorder_pos/domain/models/permissions.dart';
+import 'package:xorder_pos/domain/models/shift.dart';
+import 'package:xorder_pos/features/admin/presentation/manage_menu.dart';
+import 'package:xorder_pos/features/admin/presentation/management_screen.dart';
+
+import '../support/fakes.dart';
+
+/// One tap to any back-office pane.
+///
+/// **Nine panes had one door**, on the start screen, opening on Staff. The claim
+/// this menu makes is that everything the signed-in person may use is one tap
+/// away — and the claim worth testing is the other half: that it offers exactly
+/// what the rail would, never more.
+void main() {
+  const owner = PosStaff(
+    id: 1,
+    name: 'Amer M.',
+    role: PosRole(
+      id: 1,
+      code: 'owner',
+      nameEn: 'Owner',
+      capabilities: SystemRoles.owner,
+    ),
+  );
+
+  /// Manages the rota, does not buy the stock. A real job, and the one the
+  /// menu must not lie to.
+  const supervisor = PosStaff(
+    id: 2,
+    name: 'Nour S.',
+    role: PosRole(
+      id: 2,
+      code: 'supervisor',
+      nameEn: 'Supervisor',
+      capabilities: {PosCapability.staffManage},
+    ),
+  );
+
+  const cashier = PosStaff(
+    id: 3,
+    name: 'Rana A.',
+    role: PosRole(
+      id: 3,
+      code: 'cashier',
+      nameEn: 'Cashier',
+      capabilities: {PosCapability.operate},
+    ),
+  );
+
+  Future<List<ManagementPane>> open(
+    WidgetTester tester, {
+    PosStaff? signedIn,
+    bool tap = true,
+  }) async {
+    tester.view
+      ..physicalSize = const Size(1440, 1000)
+      ..devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    final picked = <ManagementPane>[];
+    final container = ProviderContainer(overrides: fakeRepositoryOverrides());
+    addTearDown(container.dispose);
+    if (signedIn != null) {
+      container.read(signedInStaffProvider.notifier).signIn(signedIn);
+    }
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: buildPosTheme(),
+          home: Scaffold(
+            body: Align(
+              alignment: Alignment.topLeft,
+              child: ManageMenu(onPick: picked.add),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    if (tap) {
+      await tester.tap(find.byKey(const Key('manage-menu')));
+      await tester.pumpAndSettle();
+    }
+    return picked;
+  }
+
+  testWidgets('a cashier is shown nothing at all, not a disabled button', (
+    tester,
+  ) async {
+    // A greyed-out Manage button on a cashier's till is a permanent
+    // advertisement for a door they will never be given.
+    await open(tester, signedIn: cashier, tap: false);
+    expect(find.byKey(const Key('manage-menu')), findsNothing);
+  });
+
+  testWidgets('nobody signed in means no menu', (tester) async {
+    await open(tester, tap: false);
+    expect(find.byKey(const Key('manage-menu')), findsNothing);
+  });
+
+  testWidgets('an owner reaches every pane in one tap', (tester) async {
+    await open(tester, signedIn: owner);
+
+    // Every pane this terminal has. Menu and Floor are absent because the
+    // fake harness has no catalogue-authoring repository, which is what an
+    // offline install would provide — the same rule the rail uses.
+    for (final pane in [
+      ManagementPane.staff,
+      ManagementPane.money,
+      ManagementPane.purchasing,
+      ManagementPane.receipt,
+      ManagementPane.eta,
+      ManagementPane.roles,
+      ManagementPane.activity,
+    ]) {
+      expect(
+        find.byKey(Key('manage-menu-${pane.name}')),
+        findsOneWidget,
+        reason: pane.name,
+      );
+    }
+  });
+
+  testWidgets('it offers exactly what the rail would, never more', (
+    tester,
+  ) async {
+    // The reason `managementPanesFor` is a function rather than two lists: a
+    // menu offering Purchasing to somebody the rail hides it from would take
+    // them to a screen that refuses everything.
+    await open(tester, signedIn: supervisor);
+
+    expect(find.byKey(const Key('manage-menu-staff')), findsOneWidget);
+    expect(
+      find.byKey(const Key('manage-menu-purchasing')),
+      findsNothing,
+      reason: 'a supervisor who does not buy',
+    );
+
+    final allowed = managementPanesFor(
+      admin: supervisor,
+      authorsItsOwnCatalogue: false,
+    );
+    for (final pane in ManagementPane.values) {
+      expect(
+        find.byKey(Key('manage-menu-${pane.name}')),
+        allowed.contains(pane) ? findsOneWidget : findsNothing,
+        reason: pane.name,
+      );
+    }
+  });
+
+  testWidgets('picking one names the pane, and nothing else', (tester) async {
+    final picked = await open(tester, signedIn: owner);
+
+    await tester.tap(find.byKey(const Key('manage-menu-purchasing')));
+    await tester.pumpAndSettle();
+
+    expect(picked, [ManagementPane.purchasing]);
+  });
+
+  testWidgets('each row says what the pane is for', (tester) async {
+    // "Purchasing" and "Receipt" are guesses until somebody reads what they do,
+    // and the whole point is not having to open three panes to find one.
+    await open(tester, signedIn: owner);
+    expect(
+      find.textContaining('Who you buy from'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('tapping the button again closes it', (tester) async {
+    await open(tester, signedIn: owner);
+    expect(find.byKey(const Key('manage-menu-staff')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('manage-menu')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('manage-menu-staff')), findsNothing);
+  });
+}

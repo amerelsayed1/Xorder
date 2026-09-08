@@ -30,6 +30,7 @@ import 'widgets/open_item_dialog.dart';
 import 'widgets/price_override_dialog.dart';
 import 'widgets/category_rail.dart';
 import 'widgets/modifier_sheet.dart';
+import '../admin/presentation/management_screen.dart' show ManagementPane;
 import 'widgets/pos_top_bar.dart';
 import 'widgets/product_grid.dart';
 
@@ -46,6 +47,7 @@ class SaleScreen extends ConsumerStatefulWidget {
     required this.onTables,
     required this.onOrders,
     required this.onCloseShift,
+    required this.onManage,
   });
 
   final VoidCallback onLock;
@@ -55,6 +57,11 @@ class SaleScreen extends ConsumerStatefulWidget {
   /// live ticket — it is parked in memory and still here on return.
   final VoidCallback onOrders;
   final VoidCallback onCloseShift;
+
+  /// A back-office pane, asked for from the top bar. The screen does not know
+  /// the routes, and it passes the pane through untouched — the caller decides
+  /// where "back" lands.
+  final void Function(ManagementPane pane) onManage;
 
   @override
   ConsumerState<SaleScreen> createState() => _SaleScreenState();
@@ -483,6 +490,7 @@ class _SaleScreenState extends ConsumerState<SaleScreen> {
               supportedOrderTypes: ref.watch(branchOrderTypesProvider),
               onLock: widget.onLock,
               onCloseShift: () => _closeShift(ticket),
+              onManage: widget.onManage,
             ),
             // The platform stopped recognising this till. A cashier mid-shift
             // never sees the start screen, so the warning has to live where

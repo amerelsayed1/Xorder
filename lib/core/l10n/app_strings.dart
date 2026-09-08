@@ -945,6 +945,8 @@ sealed class AppStrings {
   String get supplierOverdue;
 
   // Management chrome.
+  String get manage;
+  String get manageMenuTooltip;
   String get backToTill;
   String get paneStaff;
   String get paneStaffBlurb;
@@ -3845,6 +3847,10 @@ final class EnStrings extends AppStrings {
   String get supplierOverdue => 'overdue';
 
   @override
+  String get manage => 'Manage';
+  @override
+  String get manageMenuTooltip => 'Open a back-office area';
+  @override
   String get backToTill => 'Back to the till';
   @override
   String get paneStaff => 'Staff';
@@ -6380,6 +6386,10 @@ final class ArStrings extends AppStrings {
   @override
   String get supplierOverdue => 'متأخر';
 
+  @override
+  String get manage => 'الإدارة';
+  @override
+  String get manageMenuTooltip => 'افتح أحد أقسام الإدارة';
   @override
   String get backToTill => 'رجوع إلى الكاشير';
   @override
