@@ -900,6 +900,50 @@ sealed class AppStrings {
   String purchaseBookIn(int lines);
   String purchaseStatus(String wire);
 
+  // §37 — supplier invoices and payments.
+  String get supplierInvoices;
+  String get invoiceNew;
+  String get invoiceEdit;
+  String get invoiceHint;
+  String get invoiceNumber;
+  String get invoiceTotal;
+  String get invoiceTax;
+  String get invoiceTaxFromRate;
+  String get invoiceIssued;
+  String get invoiceDue;
+  String invoiceDueOnTerms(int days);
+  String get invoiceAgainstOrder;
+  String get invoiceNoOrder;
+  String get invoiceAgreesWithDelivery;
+  String get invoiceBilledMore;
+  String get invoiceBilledLess;
+  String invoiceDaysLate(int days);
+  String get invoiceNoneOutstanding;
+  String get invoiceOutstanding;
+  String get invoiceVoid;
+  String get invoiceVoidWhy;
+  String get invoicePay;
+  String get notes;
+  String paymentTo(String supplier);
+  String get paymentDoesNotTouchTheDrawer;
+  String get paymentAgainst;
+  String get paymentAmount;
+  String get paymentMethod;
+  String paymentMethodName(String wire);
+  String get paymentReference;
+  String get paymentOnAccount;
+  String get paymentOnAccountHint;
+  String get paymentPay;
+  String get paymentNeedsAnAmount;
+  String paymentMoreThanTheBill(String room);
+  String get paymentsList;
+  String get paymentNonePaidYet;
+  String get paymentVoid;
+  String get paymentVoidWhy;
+  String get reasonListEmpty;
+  String get supplierOwes;
+  String get supplierOverdue;
+
   // Management chrome.
   String get backToTill;
   String get paneStaff;
@@ -3700,6 +3744,107 @@ final class EnStrings extends AppStrings {
   };
 
   @override
+  String get supplierInvoices => 'Invoices';
+  @override
+  String get invoiceNew => 'Enter an invoice';
+  @override
+  String get invoiceEdit => 'Invoice';
+  @override
+  String get invoiceHint =>
+      'Type the total and the tax as they are printed. The net is worked out.';
+  @override
+  String get invoiceNumber => 'Their invoice number';
+  @override
+  String get invoiceTotal => 'Total on the invoice';
+  @override
+  String get invoiceTax => 'Of which VAT';
+  @override
+  String get invoiceTaxFromRate => 'or take it out at';
+  @override
+  String get invoiceIssued => 'Invoice date';
+  @override
+  String get invoiceDue => 'Due';
+  @override
+  String invoiceDueOnTerms(int days) =>
+      days == 0 ? 'Due · on delivery' : 'Due · $days day terms';
+  @override
+  String get invoiceAgainstOrder => 'Billing which order';
+  @override
+  String get invoiceNoOrder => 'No order';
+  @override
+  String get invoiceAgreesWithDelivery => 'Agrees with what arrived.';
+  @override
+  String get invoiceBilledMore =>
+      'More than what arrived. Worth a call before paying it.';
+  @override
+  String get invoiceBilledLess =>
+      'Less than what arrived — the rest is probably still to be invoiced.';
+  @override
+  String invoiceDaysLate(int days) => days == 1 ? '1 day late' : '$days days late';
+  @override
+  String get invoiceNoneOutstanding => 'Nothing owed. Every invoice is paid.';
+  @override
+  String get invoiceOutstanding => 'Outstanding';
+  @override
+  String get invoiceVoid => 'Cancel';
+  @override
+  String get invoiceVoidWhy => 'Why is this invoice being cancelled?';
+  @override
+  String get invoicePay => 'Pay';
+  @override
+  String get notes => 'Notes';
+  @override
+  String paymentTo(String supplier) => 'Pay $supplier';
+  @override
+  String get paymentDoesNotTouchTheDrawer =>
+      'This records money leaving the business. It does not change the till '
+      'drawer — a supplier paid out of the drawer is a pay-out at the till.';
+  @override
+  String get paymentAgainst => 'Against';
+  @override
+  String get paymentAmount => 'Amount';
+  @override
+  String get paymentMethod => 'How it was paid';
+  @override
+  String paymentMethodName(String wire) => switch (wire) {
+    'cash' => 'Cash',
+    'bank_transfer' => 'Transfer',
+    'cheque' => 'Cheque',
+    'card' => 'Card',
+    'other' => 'Other',
+    _ => wire,
+  };
+  @override
+  String get paymentReference => 'Reference';
+  @override
+  String get paymentOnAccount => 'On account';
+  @override
+  String get paymentOnAccountHint =>
+      'Money against the running tab. It does not clear a particular invoice.';
+  @override
+  String get paymentPay => 'Record the payment';
+  @override
+  String get paymentNeedsAnAmount => 'How much was paid?';
+  @override
+  String paymentMoreThanTheBill(String room) =>
+      'Only $room is left on that invoice. Put the rest on account.';
+  @override
+  String get paymentsList => 'Payments';
+  @override
+  String get paymentNonePaidYet => 'Nothing has been paid yet.';
+  @override
+  String get paymentVoid => 'Reverse';
+  @override
+  String get paymentVoidWhy => 'Why is this payment being reversed?';
+  @override
+  String get reasonListEmpty =>
+      'No reasons are configured for this. Add some in Settings first.';
+  @override
+  String get supplierOwes => 'owed';
+  @override
+  String get supplierOverdue => 'overdue';
+
+  @override
   String get backToTill => 'Back to the till';
   @override
   String get paneStaff => 'Staff';
@@ -6132,6 +6277,108 @@ final class ArStrings extends AppStrings {
     'cancelled' => 'ملغى',
     _ => wire,
   };
+
+  @override
+  String get supplierInvoices => 'الفواتير';
+  @override
+  String get invoiceNew => 'إدخال فاتورة';
+  @override
+  String get invoiceEdit => 'الفاتورة';
+  @override
+  String get invoiceHint =>
+      'أدخل الإجمالي والضريبة كما هما مطبوعان. يُحتسب الصافي تلقائيًا.';
+  @override
+  String get invoiceNumber => 'رقم فاتورتهم';
+  @override
+  String get invoiceTotal => 'إجمالي الفاتورة';
+  @override
+  String get invoiceTax => 'منها ضريبة القيمة المضافة';
+  @override
+  String get invoiceTaxFromRate => 'أو استخرجها بنسبة';
+  @override
+  String get invoiceIssued => 'تاريخ الفاتورة';
+  @override
+  String get invoiceDue => 'الاستحقاق';
+  @override
+  String invoiceDueOnTerms(int days) =>
+      days == 0 ? 'الاستحقاق · عند التسليم' : 'الاستحقاق · $days يوم';
+  @override
+  String get invoiceAgainstOrder => 'على أي أمر شراء';
+  @override
+  String get invoiceNoOrder => 'بدون أمر';
+  @override
+  String get invoiceAgreesWithDelivery => 'مطابقة لما وصل.';
+  @override
+  String get invoiceBilledMore =>
+      'أكثر مما وصل. يستحق مراجعة المورّد قبل السداد.';
+  @override
+  String get invoiceBilledLess =>
+      'أقل مما وصل — الباقي على الأرجح في فاتورة أخرى.';
+  @override
+  String invoiceDaysLate(int days) =>
+      days == 1 ? 'متأخرة يومًا' : 'متأخرة $days يوم';
+  @override
+  String get invoiceNoneOutstanding => 'لا مديونية. كل الفواتير مسدَّدة.';
+  @override
+  String get invoiceOutstanding => 'المتبقي';
+  @override
+  String get invoiceVoid => 'إلغاء';
+  @override
+  String get invoiceVoidWhy => 'ما سبب إلغاء هذه الفاتورة؟';
+  @override
+  String get invoicePay => 'سداد';
+  @override
+  String get notes => 'ملاحظات';
+  @override
+  String paymentTo(String supplier) => 'سداد إلى $supplier';
+  @override
+  String get paymentDoesNotTouchTheDrawer =>
+      'هذا تسجيل لخروج مال من المنشأة، ولا يغيّر درج الكاشير — المورّد الذي '
+      'يُدفع من الدرج يُسجَّل كصرف على الكاشير.';
+  @override
+  String get paymentAgainst => 'مقابل';
+  @override
+  String get paymentAmount => 'المبلغ';
+  @override
+  String get paymentMethod => 'طريقة السداد';
+  @override
+  String paymentMethodName(String wire) => switch (wire) {
+    'cash' => 'نقدًا',
+    'bank_transfer' => 'تحويل',
+    'cheque' => 'شيك',
+    'card' => 'بطاقة',
+    'other' => 'أخرى',
+    _ => wire,
+  };
+  @override
+  String get paymentReference => 'المرجع';
+  @override
+  String get paymentOnAccount => 'على الحساب';
+  @override
+  String get paymentOnAccountHint =>
+      'مبلغ على الحساب الجاري، لا يُسدِّد فاتورة معيّنة.';
+  @override
+  String get paymentPay => 'تسجيل السداد';
+  @override
+  String get paymentNeedsAnAmount => 'كم المبلغ المسدَّد؟';
+  @override
+  String paymentMoreThanTheBill(String room) =>
+      'المتبقي على تلك الفاتورة $room فقط. ضع الباقي على الحساب.';
+  @override
+  String get paymentsList => 'المدفوعات';
+  @override
+  String get paymentNonePaidYet => 'لم يُسدَّد شيء بعد.';
+  @override
+  String get paymentVoid => 'عكس';
+  @override
+  String get paymentVoidWhy => 'ما سبب عكس هذه الدفعة؟';
+  @override
+  String get reasonListEmpty =>
+      'لا توجد أسباب مضبوطة لهذا. أضفها من الإعدادات أولًا.';
+  @override
+  String get supplierOwes => 'مستحق';
+  @override
+  String get supplierOverdue => 'متأخر';
 
   @override
   String get backToTill => 'رجوع إلى الكاشير';

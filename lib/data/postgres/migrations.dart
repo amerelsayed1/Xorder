@@ -2702,7 +2702,304 @@ const posMigrations = <PosMigration>[
       ADD COLUMN IF NOT EXISTS is_stocked boolean NOT NULL DEFAULT false
     ''',
   ]),
+  PosMigration(30, 'supplier invoices and payments — what is owed, and paid', [
+    // The debt. A purchase order is a request and a goods receipt is a fact
+    // about the store room; neither is money owed. This is.
+    //
+    // **No subtotal column and no balance column.** The subtotal is the total
+    // less the tax and what is outstanding is the total less the payments —
+    // both are one subtraction from rows that are already here, and a stored
+    // copy of either is a number that goes wrong the first time a payment is
+    // voided inside a transaction that fails halfway.
+    '''
+    CREATE TABLE IF NOT EXISTS pos_supplier_invoices (
+      id                bigserial   PRIMARY KEY,
+      restaurant_id     bigint      NOT NULL REFERENCES pos_restaurants(id) ON DELETE CASCADE,
+      branch_id         bigint      NOT NULL REFERENCES pos_branches(id) ON DELETE RESTRICT,
+      -- RESTRICT: deleting somebody the restaurant owes money to has to be
+      -- refused and explained. The repository retires them instead.
+      supplier_id       bigint      NOT NULL REFERENCES pos_suppliers(id) ON DELETE RESTRICT,
+      supplier_name     text        NOT NULL,
+      -- The order it bills, when there is one. Null for what arrives without
+      -- one — a repair, a delivery charge, the gas bottle somebody collected.
+      -- SET NULL rather than RESTRICT so archiving old purchasing cannot lock
+      -- the ledger, with the reference snapshotted beside it.
+      purchase_order_id bigint      REFERENCES pos_purchase_orders(id) ON DELETE SET NULL,
+      purchase_order_reference text,
+      -- **The supplier's number, off their paper.** The only string the two
+      -- businesses have in common, so it is what a phone call is conducted in.
+      number            text        NOT NULL,
+      currency          text        NOT NULL DEFAULT 'EGP',
+      exponent          smallint    NOT NULL DEFAULT 2,
+      total_minor       bigint      NOT NULL,
+      tax_minor         bigint      NOT NULL DEFAULT 0,
+      -- Off the paper, not `now()`. An invoice dated the 3rd and typed on the
+      -- 20th is due on the supplier's terms from the 3rd; defaulting this would
+      -- quietly hand the restaurant three weeks the supplier has not agreed to.
+      issued_at         timestamptz NOT NULL,
+      -- Stored rather than derived from the supplier's terms, because those can
+      -- change and this invoice's due date must not move when they do.
+      due_at            timestamptz NOT NULL,
+      note              text,
+      -- Cancelled, never deleted: the supplier's numbering is the evidence and
+      -- a gap in it is a question nobody can answer next year.
+      voided_at         timestamptz,
+      voided_by         bigint      REFERENCES pos_staff(id) ON DELETE SET NULL,
+      -- **A reference, not free text.** `pos_orders` voids the same way, and
+      -- the reason is that a restaurant which cannot count how many invoices it
+      -- cancelled for "entered twice" cannot find the process that keeps
+      -- producing them. RESTRICT: a reason somebody has used is retired, not
+      -- deleted from under the rows that cite it.
+      void_reason_id    bigint      REFERENCES pos_reason_codes(id) ON DELETE RESTRICT,
+      void_note         text,
+      created_at        timestamptz NOT NULL DEFAULT now(),
+      created_by        bigint      REFERENCES pos_staff(id) ON DELETE SET NULL,
+      updated_at        timestamptz NOT NULL DEFAULT now(),
+      updated_by        bigint      REFERENCES pos_staff(id) ON DELETE SET NULL,
+      CONSTRAINT pos_supplier_invoices_total_positive CHECK (total_minor > 0),
+      CONSTRAINT pos_supplier_invoices_tax_within_total
+        CHECK (tax_minor >= 0 AND tax_minor <= total_minor),
+      CONSTRAINT pos_supplier_invoices_due_after_issue CHECK (due_at >= issued_at),
+      -- A void has a reason or it is not a void. Two nullable columns that must
+      -- agree are two columns that will not, unless the database says so.
+      CONSTRAINT pos_supplier_invoices_void_has_a_reason
+        CHECK ((voided_at IS NULL) = (void_reason_id IS NULL)),
+      CONSTRAINT pos_supplier_invoices_number_not_blank
+        CHECK (length(btrim(number)) > 0)
+    )
+    ''',
+    // **Entering the same invoice twice is the commonest error in purchase
+    // bookkeeping**, and unlike most errors it is one a database can simply
+    // refuse. Partial, so that a genuine re-entry after a void is still
+    // possible — which is the reason the void exists.
+    '''
+    CREATE UNIQUE INDEX IF NOT EXISTS pos_supplier_invoices_number_unique
+      ON pos_supplier_invoices (restaurant_id, supplier_id, lower(btrim(number)))
+      WHERE voided_at IS NULL
+    ''',
+    '''
+    CREATE INDEX IF NOT EXISTS pos_supplier_invoices_supplier_idx
+      ON pos_supplier_invoices (supplier_id, issued_at DESC)
+    ''',
+    // "What is overdue" — the one question this table exists to answer quickly.
+    '''
+    CREATE INDEX IF NOT EXISTS pos_supplier_invoices_due_idx
+      ON pos_supplier_invoices (restaurant_id, branch_id, due_at)
+      WHERE voided_at IS NULL
+    ''',
+    '''
+    CREATE INDEX IF NOT EXISTS pos_supplier_invoices_order_idx
+      ON pos_supplier_invoices (purchase_order_id)
+      WHERE purchase_order_id IS NOT NULL
+    ''',
+
+    // What settles it.
+    '''
+    CREATE TABLE IF NOT EXISTS pos_supplier_payments (
+      id               bigserial   PRIMARY KEY,
+      restaurant_id    bigint      NOT NULL REFERENCES pos_restaurants(id) ON DELETE CASCADE,
+      branch_id        bigint      NOT NULL REFERENCES pos_branches(id) ON DELETE RESTRICT,
+      supplier_id      bigint      NOT NULL REFERENCES pos_suppliers(id) ON DELETE RESTRICT,
+      supplier_name    text        NOT NULL,
+      -- Null means paid **on account**: a restaurant hands the dairy man 2,000
+      -- on Friday against a running tab. RESTRICT, because deleting an invoice
+      -- money is allocated to would leave the money pointing at nothing.
+      invoice_id       bigint      REFERENCES pos_supplier_invoices(id) ON DELETE RESTRICT,
+      method           text        NOT NULL,
+      amount_minor     bigint      NOT NULL,
+      currency         text        NOT NULL DEFAULT 'EGP',
+      exponent         smallint    NOT NULL DEFAULT 2,
+      -- The cheque number, the transfer reference — what a bank would need.
+      reference        text,
+      paid_at          timestamptz NOT NULL DEFAULT now(),
+      note             text,
+      -- The drawer movement this money left through, when it left a till. Null
+      -- for everything the back office records, which is currently all of it: a
+      -- cash movement needs an open shift and a terminal and the office has
+      -- neither. Here now so that the day the till offers "pay a supplier" as a
+      -- pay-out reason, the two records can be tied together rather than the
+      -- same money being counted twice.
+      cash_movement_id bigint      REFERENCES pos_cash_movements(id) ON DELETE SET NULL,
+      voided_at        timestamptz,
+      voided_by        bigint      REFERENCES pos_staff(id) ON DELETE SET NULL,
+      void_reason_id   bigint      REFERENCES pos_reason_codes(id) ON DELETE RESTRICT,
+      void_note        text,
+      created_at       timestamptz NOT NULL DEFAULT now(),
+      created_by       bigint      REFERENCES pos_staff(id) ON DELETE SET NULL,
+      CONSTRAINT pos_supplier_payments_amount_positive CHECK (amount_minor > 0),
+      CONSTRAINT pos_supplier_payments_method_known CHECK (method IN (
+        'cash', 'bank_transfer', 'cheque', 'card', 'other')),
+      CONSTRAINT pos_supplier_payments_void_has_a_reason
+        CHECK ((voided_at IS NULL) = (void_reason_id IS NULL))
+    )
+    ''',
+    '''
+    CREATE INDEX IF NOT EXISTS pos_supplier_payments_supplier_idx
+      ON pos_supplier_payments (supplier_id, paid_at DESC)
+    ''',
+    '''
+    CREATE INDEX IF NOT EXISTS pos_supplier_payments_invoice_idx
+      ON pos_supplier_payments (invoice_id)
+      WHERE invoice_id IS NOT NULL
+    ''',
+    // Cheque numbers are how a payment is found again, so they are searched for.
+    '''
+    CREATE INDEX IF NOT EXISTS pos_supplier_payments_reference_idx
+      ON pos_supplier_payments (restaurant_id, reference)
+      WHERE reference IS NOT NULL
+    ''',
+
+    // ── The two invariants that cannot be a CHECK ────────────────────────
+    //
+    // Both are cross-row, so both are triggers — the same shape migration 12
+    // used for refunds, and for the same reason: a rule enforced only in Dart
+    // is a rule that holds until somebody writes the second writer.
+    '''
+    CREATE OR REPLACE FUNCTION pos_supplier_payment_allocation()
+      RETURNS trigger LANGUAGE plpgsql AS \$fn\$
+    DECLARE
+      bill      pos_supplier_invoices%ROWTYPE;
+      allocated bigint;
+    BEGIN
+      IF NEW.invoice_id IS NULL THEN
+        RETURN NEW;   -- on account: nothing to over-allocate.
+      END IF;
+
+      -- FOR UPDATE, so two bookkeepers paying the same invoice at once queue
+      -- rather than both reading the same stale total and both being allowed.
+      SELECT * INTO bill FROM pos_supplier_invoices
+        WHERE id = NEW.invoice_id FOR UPDATE;
+
+      IF bill.supplier_id <> NEW.supplier_id THEN
+        RAISE EXCEPTION
+          'payment is to supplier % but invoice % is from supplier %',
+          NEW.supplier_id, bill.id, bill.supplier_id;
+      END IF;
+
+      IF bill.restaurant_id <> NEW.restaurant_id THEN
+        RAISE EXCEPTION 'a payment and the invoice it settles belong to one restaurant';
+      END IF;
+
+      IF bill.voided_at IS NOT NULL THEN
+        RAISE EXCEPTION 'invoice % was voided, so there is nothing to pay', bill.id;
+      END IF;
+
+      -- Voided payments are excluded, which is what makes a mistyped payment
+      -- correctable: void it and the room it took comes back.
+      SELECT COALESCE(SUM(amount_minor), 0) INTO allocated
+        FROM pos_supplier_payments
+       WHERE invoice_id = NEW.invoice_id
+         AND voided_at IS NULL
+         AND id <> COALESCE(NEW.id, 0);
+
+      IF allocated + NEW.amount_minor > bill.total_minor THEN
+        RAISE EXCEPTION
+          'invoice % is for %, % is already paid against it, and % more would overpay it — money with nowhere to go belongs on account, not on a bill',
+          bill.id, bill.total_minor, allocated, NEW.amount_minor;
+      END IF;
+
+      RETURN NEW;
+    END \$fn\$
+    ''',
+    'DROP TRIGGER IF EXISTS pos_supplier_payments_allocate ON pos_supplier_payments',
+    '''
+    CREATE TRIGGER pos_supplier_payments_allocate
+      BEFORE INSERT OR UPDATE ON pos_supplier_payments
+      FOR EACH ROW EXECUTE FUNCTION pos_supplier_payment_allocation()
+    ''',
+
+    // Voiding an invoice money is allocated to would leave payments pointing at
+    // a bill that is no longer a bill, and a supplier balance that says the
+    // restaurant is in credit when it is not.
+    '''
+    CREATE OR REPLACE FUNCTION pos_supplier_invoice_void_is_clear()
+      RETURNS trigger LANGUAGE plpgsql AS \$fn\$
+    DECLARE
+      allocated bigint;
+    BEGIN
+      IF NEW.voided_at IS NULL OR OLD.voided_at IS NOT NULL THEN
+        RETURN NEW;
+      END IF;
+
+      SELECT COALESCE(SUM(amount_minor), 0) INTO allocated
+        FROM pos_supplier_payments
+       WHERE invoice_id = NEW.id AND voided_at IS NULL;
+
+      IF allocated > 0 THEN
+        RAISE EXCEPTION
+          'invoice % has % paid against it — void the payments first, or the money is allocated to a bill that no longer exists',
+          NEW.id, allocated;
+      END IF;
+
+      RETURN NEW;
+    END \$fn\$
+    ''',
+    'DROP TRIGGER IF EXISTS pos_supplier_invoices_void_clear ON pos_supplier_invoices',
+    '''
+    CREATE TRIGGER pos_supplier_invoices_void_clear
+      BEFORE UPDATE ON pos_supplier_invoices
+      FOR EACH ROW EXECUTE FUNCTION pos_supplier_invoice_void_is_clear()
+    ''',
+  ]),
+  PosMigration(31, 'why an invoice was cancelled, and why a payment was reversed', [
+    // Two new scopes. **Not folded into `void`**: a voided sale and a voided
+    // purchase invoice are asked about by different people for different
+    // reasons, and one list serving both would offer "Customer changed their
+    // mind" to a bookkeeper holding a duplicate from a dairy.
+    //
+    // The CHECK is rewritten rather than added to, because a CHECK cannot be
+    // extended in place. Dropped first so this is re-runnable.
+    '''
+    ALTER TABLE pos_reason_codes
+      DROP CONSTRAINT IF EXISTS pos_reason_codes_scope_known
+    ''',
+    '''
+    ALTER TABLE pos_reason_codes
+      ADD CONSTRAINT pos_reason_codes_scope_known CHECK (scope IN (
+        'void','refund','discount','price_override',
+        'pay_in','pay_out','waste','adjustment',
+        'invoice_void','payment_void'))
+    ''',
+
+    // Seeded like migration 12's, and only where the restaurant has none: a
+    // restaurant that has edited its list must not have this build's opinion
+    // pushed back over it.
+    '''
+    INSERT INTO pos_reason_codes (restaurant_id, scope, code, name_en, name_ar, requires_note, sort_order)
+    SELECT r.id, v.scope, v.code, v.name_en, v.name_ar, v.requires_note, v.sort_order
+      FROM pos_restaurants r
+     CROSS JOIN (VALUES
+       ('invoice_void', 'entered_twice',  'Entered twice',              'مُدخلة مرتين',        false, 1),
+       ('invoice_void', 'wrong_supplier', 'Wrong supplier',             'مورّد خطأ',           false, 2),
+       ('invoice_void', 'wrong_amount',   'Wrong amount',               'مبلغ خطأ',            false, 3),
+       ('invoice_void', 'credit_note',    'Cancelled by a credit note', 'أُلغيت بإشعار دائن',  false, 4),
+       ('invoice_void', 'goods_returned', 'Goods returned',             'مرتجع للمورّد',       false, 5),
+       ('invoice_void', 'other',          'Other — note required',      'أخرى — يلزم كتابة ملاحظة', true, 6)
+     ) AS v(scope, code, name_en, name_ar, requires_note, sort_order)
+     WHERE NOT EXISTS (
+       SELECT 1 FROM pos_reason_codes existing
+        WHERE existing.restaurant_id = r.id AND existing.scope = 'invoice_void')
+    ''',
+    '''
+    INSERT INTO pos_reason_codes (restaurant_id, scope, code, name_en, name_ar, requires_note, sort_order)
+    SELECT r.id, v.scope, v.code, v.name_en, v.name_ar, v.requires_note, v.sort_order
+      FROM pos_restaurants r
+     CROSS JOIN (VALUES
+       ('payment_void', 'wrong_amount',    'Wrong amount',                   'مبلغ خطأ',              false, 1),
+       ('payment_void', 'wrong_invoice',   'Paid against the wrong invoice', 'سُدِّدت على فاتورة خطأ', false, 2),
+       ('payment_void', 'wrong_supplier',  'Paid the wrong supplier',        'سُدِّدت لمورّد خطأ',     false, 3),
+       ('payment_void', 'cheque_bounced',  'Cheque returned',                'شيك مرتجع',             false, 4),
+       ('payment_void', 'entered_twice',   'Entered twice',                  'مُدخلة مرتين',          false, 5),
+       ('payment_void', 'other',           'Other — note required',          'أخرى — يلزم كتابة ملاحظة', true, 6)
+     ) AS v(scope, code, name_en, name_ar, requires_note, sort_order)
+     WHERE NOT EXISTS (
+       SELECT 1 FROM pos_reason_codes existing
+        WHERE existing.restaurant_id = r.id AND existing.scope = 'payment_void')
+    ''',
+  ]),
 ];
+
+
 
 /// Brings the branch database up to the current schema.
 ///

@@ -28,7 +28,18 @@ enum ReasonScope {
   /// Selling a line at a price that is not the menu price.
   priceOverride('price_override'),
 
-  // ── Not yet used. Wave B and Wave L. ──────────────────────────────────────
+  /// Cancelling a supplier's invoice.
+  ///
+  /// Its own scope rather than folded into [voidAct]: a voided sale and a
+  /// voided purchase invoice are asked about by different people for different
+  /// reasons, and one list serving both would offer "Customer changed their
+  /// mind" to a bookkeeper holding a duplicate from a dairy.
+  invoiceVoid('invoice_void'),
+
+  /// Reversing a payment to a supplier.
+  paymentVoid('payment_void'),
+
+  // ── Not yet used. Wave L. ────────────────────────────────────────────────
   // Listed here, and in the CHECK constraint, because the alternative is a
   // migration per act. A scope with no rows seeded is simply an empty list.
   payIn('pay_in'),
@@ -272,8 +283,97 @@ abstract final class SystemReasons {
   seededFor(ReasonScope scope) => switch (scope) {
     ReasonScope.payIn => cashIn,
     ReasonScope.payOut => cashOut,
+    ReasonScope.invoiceVoid => invoiceVoided,
+    ReasonScope.paymentVoid => paymentReversed,
     _ => seeded,
   };
+
+  /// Why a purchase invoice is being cancelled.
+  ///
+  /// **Entered twice leads the list**, because it is what actually happens: two
+  /// people type the same delivery note, or one person types it and then the
+  /// bookkeeper does. The database refuses the duplicate by number, so the ones
+  /// that get this far are the ones where the number was mistyped too.
+  static const invoiceVoided =
+      <({String code, String nameEn, String nameAr, bool requiresNote})>[
+        (
+          code: 'entered_twice',
+          nameEn: 'Entered twice',
+          nameAr: 'مُدخلة مرتين',
+          requiresNote: false,
+        ),
+        (
+          code: 'wrong_supplier',
+          nameEn: 'Wrong supplier',
+          nameAr: 'مورّد خطأ',
+          requiresNote: false,
+        ),
+        (
+          code: 'wrong_amount',
+          nameEn: 'Wrong amount',
+          nameAr: 'مبلغ خطأ',
+          requiresNote: false,
+        ),
+        (
+          code: 'credit_note',
+          nameEn: 'Cancelled by a credit note',
+          nameAr: 'أُلغيت بإشعار دائن',
+          requiresNote: false,
+        ),
+        (
+          code: 'goods_returned',
+          nameEn: 'Goods returned',
+          nameAr: 'مرتجع للمورّد',
+          requiresNote: false,
+        ),
+        (
+          code: 'other',
+          nameEn: 'Other — note required',
+          nameAr: 'أخرى — يلزم كتابة ملاحظة',
+          requiresNote: true,
+        ),
+      ];
+
+  /// Why a payment to a supplier is being reversed.
+  static const paymentReversed =
+      <({String code, String nameEn, String nameAr, bool requiresNote})>[
+        (
+          code: 'wrong_amount',
+          nameEn: 'Wrong amount',
+          nameAr: 'مبلغ خطأ',
+          requiresNote: false,
+        ),
+        (
+          code: 'wrong_invoice',
+          nameEn: 'Paid against the wrong invoice',
+          nameAr: 'سُدِّدت على فاتورة خطأ',
+          requiresNote: false,
+        ),
+        (
+          code: 'wrong_supplier',
+          nameEn: 'Paid the wrong supplier',
+          nameAr: 'سُدِّدت لمورّد خطأ',
+          requiresNote: false,
+        ),
+        (
+          code: 'cheque_bounced',
+          nameEn: 'Cheque returned',
+          nameAr: 'شيك مرتجع',
+          requiresNote: false,
+        ),
+        (
+          code: 'entered_twice',
+          nameEn: 'Entered twice',
+          nameAr: 'مُدخلة مرتين',
+          requiresNote: false,
+        ),
+        (
+          code: 'other',
+          nameEn: 'Other — note required',
+          nameAr: 'أخرى — يلزم كتابة ملاحظة',
+          requiresNote: true,
+        ),
+      ];
 
   /// The scopes seeded on a new restaurant.
   static const seededScopes = <ReasonScope>[
@@ -284,6 +384,9 @@ abstract final class SystemReasons {
     // Wave B records both, so both now have somewhere to appear.
     ReasonScope.payIn,
     ReasonScope.payOut,
+    // And Wave D's purchasing ledger records both of these.
+    ReasonScope.invoiceVoid,
+    ReasonScope.paymentVoid,
   ];
 
   /// Whether an act must carry a reason, before Settings can say otherwise.
@@ -296,7 +399,12 @@ abstract final class SystemReasons {
         ReasonScope.voidAct ||
         ReasonScope.refund ||
         ReasonScope.discount ||
-        ReasonScope.priceOverride => ReasonRequirement.required,
+        ReasonScope.priceOverride ||
+        // Cancelling a debt and un-paying a supplier are the two acts in the
+        // back office that money can leave through. Both are required, for the
+        // same reason a refund is.
+        ReasonScope.invoiceVoid ||
+        ReasonScope.paymentVoid => ReasonRequirement.required,
         ReasonScope.payIn ||
         ReasonScope.payOut ||
         ReasonScope.waste ||

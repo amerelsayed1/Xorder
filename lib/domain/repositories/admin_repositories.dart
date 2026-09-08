@@ -284,6 +284,8 @@ abstract final class AuditAction {
   static const entityServiceCharge = 'service_charge';
   static const entitySupplier = 'supplier';
   static const entityPurchaseOrder = 'purchase_order';
+  static const entitySupplierInvoice = 'supplier_invoice';
+  static const entitySupplierPayment = 'supplier_payment';
 
   /// A purchase order sent, cancelled or closed. Its own action because it is
   /// a commitment to spend money, and "who sent this and when" is what a
@@ -293,6 +295,18 @@ abstract final class AuditAction {
   /// Goods booked in. Its own action because it is the moment a cost price
   /// changes, and every margin afterwards is measured against it.
   static const stockReceived = 'stock.received';
+
+  /// An invoice entered, corrected or voided. Its own action because it is the
+  /// moment a debt comes into existence, and a voided invoice is the shape a
+  /// purchasing fraud takes: enter twice, pay once, keep the difference.
+  static const supplierInvoiceSaved = 'supplier_invoice.saved';
+  static const supplierInvoiceVoided = 'supplier_invoice.voided';
+
+  /// Money paid out. The single most audited act in the back office — "who
+  /// authorised this and against what" is the whole question — so a payment and
+  /// its reversal are separate actions rather than one with a flag.
+  static const supplierPaid = 'supplier.paid';
+  static const supplierPaymentVoided = 'supplier_payment.voided';
 
   /// A supplier added, edited or retired. Its own action because a supplier is
   /// where money leaves the business, and "who added this account" is the

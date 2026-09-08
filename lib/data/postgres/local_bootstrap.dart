@@ -636,6 +636,62 @@ class LocalBootstrap {
     // editing the first.
     'GRANT SELECT ON pos_refunds, pos_refund_lines, pos_refund_payments '
         'TO "$role"',
+
+    // ── What Wave D authored, and had no write grant for ─────────────────
+    //
+    // **Every table below was reachable from a Management pane and writable by
+    // nobody.** The till list grants SELECT on the first three, so an
+    // administrator — who is given both lists — could read a payment method and
+    // could not save one; the purchasing tables had no grant in either list at
+    // all. Every database suite runs as the superuser, so every test passed.
+    //
+    // The coverage test that should have caught it was reading a hand-written
+    // list of repository filenames that these were never added to. It now
+    // enumerates the directory instead and refuses to pass while a repository
+    // is classified as neither till nor back office.
+    'GRANT SELECT, INSERT, UPDATE ON pos_tender_types, pos_service_charges, '
+        'pos_order_types TO "$role"',
+    'GRANT USAGE, SELECT ON SEQUENCE pos_tender_types_id_seq, '
+        'pos_service_charges_id_seq, pos_order_types_id_seq TO "$role"',
+    // Who the restaurant buys from. No DELETE: a supplier is retired, because
+    // their invoices name them.
+    'GRANT SELECT, INSERT, UPDATE ON pos_suppliers TO "$role"',
+    'GRANT USAGE, SELECT ON SEQUENCE pos_suppliers_id_seq TO "$role"',
+    // Purchase orders and their lines. DELETE on the lines alone, and only
+    // there: a draft's lines are the current shape of a document nobody has
+    // sent, so the editor replaces them wholesale — whereas the order itself is
+    // cancelled rather than removed, because an order somebody sent and then
+    // called off is a conversation with a supplier.
+    'GRANT SELECT, INSERT, UPDATE ON pos_purchase_orders TO "$role"',
+    'GRANT SELECT, INSERT, UPDATE, DELETE ON pos_purchase_order_lines TO "$role"',
+    'GRANT USAGE, SELECT ON SEQUENCE pos_purchase_orders_id_seq, '
+        'pos_purchase_order_lines_id_seq TO "$role"',
+    'GRANT SELECT, INSERT, UPDATE ON pos_purchase_sequences TO "$role"',
+    // The stock ledger. INSERT and SELECT, never UPDATE or DELETE — a movement
+    // is a claim about what physically happened, and a row somebody can edit
+    // afterwards is a stock figure nobody can defend. The cached position is
+    // the one thing here that is genuinely a working figure, so it takes
+    // UPDATE.
+    'GRANT SELECT, INSERT ON pos_stock_movements TO "$role"',
+    'GRANT USAGE, SELECT ON SEQUENCE pos_stock_movements_id_seq TO "$role"',
+    // No sequence: the position is keyed by (restaurant, branch, product), so
+    // there is nothing to nextval.
+    'GRANT SELECT, INSERT, UPDATE ON pos_stock_levels TO "$role"',
+    // What is owed and what has been paid. UPDATE is column-scoped on both: an
+    // invoice's numbers and a payment's amount are what the supplier's paper
+    // says, and the only things the back office may change afterwards are the
+    // note and the void. Correcting a figure means voiding the row and entering
+    // it again, which is what leaves a trail.
+    'GRANT SELECT, INSERT ON pos_supplier_invoices TO "$role"',
+    'GRANT UPDATE (number, total_minor, tax_minor, issued_at, due_at, note, '
+        'purchase_order_id, purchase_order_reference, voided_at, voided_by, '
+        'void_reason_id, void_note, updated_at, updated_by) '
+        'ON pos_supplier_invoices TO "$role"',
+    'GRANT USAGE, SELECT ON SEQUENCE pos_supplier_invoices_id_seq TO "$role"',
+    'GRANT SELECT, INSERT ON pos_supplier_payments TO "$role"',
+    'GRANT UPDATE (note, voided_at, voided_by, void_reason_id, void_note) '
+        'ON pos_supplier_payments TO "$role"',
+    'GRANT USAGE, SELECT ON SEQUENCE pos_supplier_payments_id_seq TO "$role"',
   ];
 
   Future<void> applyGrants(

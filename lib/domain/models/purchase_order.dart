@@ -227,6 +227,34 @@ class PurchaseOrder {
         sum + line.unitCost.copyWith(minor: line.received.costAt(line.unitCost.minor)),
   );
 
+  /// What has arrived, with tax — the figure a supplier's invoice should say.
+  ///
+  /// Tax is rounded per rate here too, and on the *received* quantities rather
+  /// than the ordered ones: an order for ten crates that arrived as eight
+  /// should be invoiced for eight, and comparing against [totals] would flag
+  /// every short delivery as a pricing dispute.
+  Money get receivedTotal {
+    final basesByRate = <int, Money>{};
+    var net = _zero;
+
+    for (final line in lines) {
+      final amount = line.unitCost.copyWith(
+        minor: line.received.costAt(line.unitCost.minor),
+      );
+      net += amount;
+      if (line.taxRateBp > 0) {
+        basesByRate[line.taxRateBp] =
+            (basesByRate[line.taxRateBp] ?? _zero) + amount;
+      }
+    }
+
+    var tax = _zero;
+    for (final entry in basesByRate.entries) {
+      tax += entry.value.percentBp(entry.key);
+    }
+    return net + tax;
+  }
+
   bool get isFullyReceived =>
       lines.isNotEmpty && lines.every((l) => l.isFullyReceived);
 

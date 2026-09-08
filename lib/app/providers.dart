@@ -37,6 +37,7 @@ import '../data/postgres/postgres_eta_queue_repository.dart';
 import '../data/postgres/postgres_receipt_profile_repository.dart';
 import '../data/postgres/postgres_service_charges_repository.dart';
 import '../data/postgres/postgres_suppliers_repository.dart';
+import '../data/postgres/postgres_supplier_invoices_repository.dart';
 import '../data/postgres/postgres_purchase_orders_repository.dart';
 import '../data/postgres/postgres_receiving_repository.dart';
 import '../data/postgres/postgres_settings_repository.dart';
@@ -68,6 +69,7 @@ import '../domain/models/order_type_config.dart';
 import '../domain/models/permissions.dart';
 import '../domain/models/purchase_order.dart';
 import '../domain/models/supplier.dart';
+import '../domain/models/supplier_invoice.dart';
 import '../domain/models/receipt_profile.dart';
 import '../domain/models/service_charge.dart';
 import '../domain/models/tender_method.dart';
@@ -1584,6 +1586,38 @@ final receivingRepositoryProvider = Provider<ReceivingRepository>((ref) {
     branchId: context.branchId,
   );
 });
+
+final supplierInvoicesRepositoryProvider =
+    Provider<SupplierInvoicesRepository>((ref) {
+  final context = ref.watch(posWriteContextProvider);
+  if (context == null) return const UnconfiguredSupplierInvoicesRepository();
+  return PostgresSupplierInvoicesRepository(
+    database: ref.watch(adminPosDatabaseProvider),
+    config: ref.watch(adminDeploymentProvider),
+    adminAvailable: _canBuy(ref),
+    restaurantId: context.restaurantId,
+    branchId: context.branchId,
+  );
+});
+
+/// Everything with money still on it, oldest due first.
+///
+/// **The unpaid list rather than every invoice**, because a restaurant that has
+/// been open three years has thousands of settled ones and the screen is a
+/// worklist: what has to be paid, and what is late.
+final unpaidInvoicesProvider = FutureProvider<List<SupplierInvoice>>(
+  (ref) => ref.watch(supplierInvoicesRepositoryProvider).unpaid(),
+);
+
+/// What has been paid recently, so a bounced cheque can be reversed.
+final supplierPaymentsProvider = FutureProvider<List<SupplierPayment>>(
+  (ref) => ref.watch(supplierInvoicesRepositoryProvider).payments(limit: 100),
+);
+
+/// What every supplier is owed, for the supplier list.
+final supplierBalancesProvider = FutureProvider<List<SupplierBalance>>(
+  (ref) => ref.watch(supplierInvoicesRepositoryProvider).balances(),
+);
 
 /// What the restaurant adds on top of the food (§38).
 ///

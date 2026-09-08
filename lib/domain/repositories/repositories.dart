@@ -8,6 +8,7 @@ import '../models/purchase_order.dart';
 import '../services/stock_costing.dart';
 import '../models/service_charge.dart';
 import '../models/supplier.dart';
+import '../models/supplier_invoice.dart';
 import '../models/tender_method.dart';
 import '../models/eta_submission.dart';
 import '../services/eta_serialization.dart';
@@ -203,6 +204,69 @@ abstract interface class ReceivingRepository {
 
   /// What is on hand and what it cost, or null for a product never stocked.
   Future<StockPosition?> positionFor(int productId);
+}
+
+/// What the restaurant owes its suppliers, and what it has paid them (§37).
+///
+/// Back office only, like the rest of purchasing. **The reads return invoices
+/// with `paid` already filled in**, because every question worth asking of this
+/// table is about the unpaid part and a screen that had to make a second call
+/// per row would either make it or quietly stop asking.
+abstract interface class SupplierInvoicesRepository {
+  /// Everything with money still on it, oldest due date first — which is the
+  /// order somebody pays in.
+  Future<List<SupplierInvoice>> unpaid({int? supplierId});
+
+  Future<List<SupplierInvoice>> all({int? supplierId, int limit = 200});
+
+  Future<SupplierInvoice?> byId(int id);
+
+  /// `id == 0` creates. Refuses a number this supplier already has on a live
+  /// invoice — entering the same one twice is the commonest error in purchase
+  /// bookkeeping, and the database refuses it too.
+  Future<AdminResult<SupplierInvoice>> save(
+    SupplierInvoice invoice, {
+    required PosStaff by,
+  });
+
+  /// Cancels it, keeping the row. Refused while payments are allocated to it:
+  /// the money would be pointing at a bill that no longer exists.
+  ///
+  /// [reasonId] is one of the restaurant's `ReasonScope.invoiceVoid` codes, so
+  /// that "how many were cancelled for *entered twice*" is answerable.
+  Future<AdminResult<SupplierInvoice>> voidInvoice(
+    int id, {
+    required int reasonId,
+    required PosStaff by,
+    String? note,
+  });
+
+  /// Money out. `invoiceId` null pays **on account** — against the running tab
+  /// rather than a particular bill.
+  Future<AdminResult<SupplierPayment>> pay(
+    SupplierPayment payment, {
+    required PosStaff by,
+  });
+
+  /// Reverses a payment, keeping the row, and frees the room it took on the
+  /// invoice it was allocated to.
+  Future<AdminResult<SupplierPayment>> voidPayment(
+    int id, {
+    required int reasonId,
+    required PosStaff by,
+    String? note,
+  });
+
+  Future<List<SupplierPayment>> payments({int? supplierId, int limit = 200});
+
+  /// The whole account for one supplier, as at [asOf] — every live invoice and
+  /// every live payment, so the balance, the overdue part and the unallocated
+  /// money are all one subtraction away.
+  Future<SupplierAccount> accountFor(int supplierId, {DateTime? asOf});
+
+  /// What every supplier is owed. One query rather than one per supplier: the
+  /// purchasing pane shows them as a list.
+  Future<List<SupplierBalance>> balances({DateTime? asOf});
 }
 
 abstract interface class TablesRepository {

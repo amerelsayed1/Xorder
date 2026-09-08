@@ -7,14 +7,19 @@ import '../../../core/ui/theme.dart';
 import '../../../core/ui/tokens.dart';
 import '../../../core/ui/widgets/mono_amount.dart';
 import '../../../core/ui/widgets/pos_widgets.dart';
+import '../../../core/ui/widgets/reason_picker.dart';
 import '../../../domain/models/purchase_order.dart';
+import '../../../domain/models/reason_code.dart';
 import '../../../domain/models/shift.dart';
 import '../../../domain/repositories/admin_repositories.dart';
 import '../../../domain/models/supplier.dart';
+import '../../../domain/models/supplier_invoice.dart';
 import 'admin_messages.dart';
 import 'purchase_order_dialog.dart';
 import 'receive_dialog.dart';
 import 'supplier_dialog.dart';
+import 'supplier_invoice_dialog.dart';
+import 'supplier_payment_dialog.dart';
 
 /// What the restaurant buys, and who from.
 ///
@@ -34,7 +39,7 @@ class ManagementPurchasingPane extends ConsumerStatefulWidget {
       _ManagementPurchasingPaneState();
 }
 
-enum _Tab { orders, suppliers }
+enum _Tab { orders, invoices, payments, suppliers }
 
 class _ManagementPurchasingPaneState
     extends ConsumerState<ManagementPurchasingPane> {
@@ -44,7 +49,10 @@ class _ManagementPurchasingPaneState
 
   void _refresh() => ref
     ..invalidate(purchaseOrdersProvider)
-    ..invalidate(suppliersProvider);
+    ..invalidate(suppliersProvider)
+    ..invalidate(unpaidInvoicesProvider)
+    ..invalidate(supplierPaymentsProvider)
+    ..invalidate(supplierBalancesProvider);
 
   Future<void> _run(Future<AdminRefusal?> Function() action) async {
     setState(() {
@@ -116,6 +124,121 @@ class _ManagementPurchasingPaneState
         .refusal,
   );
 
+  Future<void> _editInvoice(SupplierInvoice? invoice) async {
+    final suppliers = ref.read(suppliersProvider).valueOrNull ?? const [];
+    if (suppliers.isEmpty) {
+      setState(() => _note = context.strings.purchaseNeedsASupplier);
+      return;
+    }
+
+    final edited = await SupplierInvoiceDialog.show(
+      context,
+      suppliers: suppliers,
+      invoice: invoice,
+      orders: ref.read(purchaseOrdersProvider).valueOrNull ?? const [],
+    );
+    if (edited == null || !mounted) return;
+    await _run(
+      () async => (await ref
+              .read(supplierInvoicesRepositoryProvider)
+              .save(edited, by: widget.admin))
+          .refusal,
+    );
+  }
+
+  Future<void> _pay(SupplierInvoice? invoice, {Supplier? supplier}) async {
+    final suppliers = ref.read(suppliersProvider).valueOrNull ?? const [];
+    final unpaid = ref.read(unpaidInvoicesProvider).valueOrNull ?? const [];
+    final who =
+        supplier ??
+        suppliers.where((s) => s.id == invoice?.supplierId).firstOrNull;
+    if (who == null) {
+      setState(() => _note = context.strings.purchaseNeedsASupplier);
+      return;
+    }
+
+    final payment = await SupplierPaymentDialog.show(
+      context,
+      supplier: who,
+      invoice: invoice,
+      unpaid: [
+        for (final i in unpaid)
+          if (i.supplierId == who.id) i,
+      ],
+    );
+    if (payment == null || !mounted) return;
+    await _run(
+      () async => (await ref
+              .read(supplierInvoicesRepositoryProvider)
+              .pay(payment, by: widget.admin))
+          .refusal,
+    );
+  }
+
+  Future<void> _voidInvoice(SupplierInvoice invoice) async {
+    // **The restaurant's own list, not a free-text box.** Cancelling a purchase
+    // invoice is one more act in the family `ReasonPicker` exists for — void,
+    // refund, pay-out, price override — and asking it a seventh slightly
+    // different way is how a restaurant ends up unable to report across them.
+    final reasons =
+        ref.read(reasonCodesProvider(ReasonScope.invoiceVoid)).valueOrNull ??
+        const [];
+    if (reasons.isEmpty) {
+      setState(() => _note = context.strings.reasonListEmpty);
+      return;
+    }
+
+    final picked = await ReasonSheet.show(
+      context,
+      reasons: reasons,
+      requirement: SystemReasons.defaultRequirement(ReasonScope.invoiceVoid),
+      title: context.strings.invoiceVoidWhy,
+      confirmLabel: context.strings.invoiceVoid,
+    );
+    if (picked?.reasonId == null || !mounted) return;
+    await _run(
+      () async => (await ref
+              .read(supplierInvoicesRepositoryProvider)
+              .voidInvoice(
+                invoice.id,
+                reasonId: picked!.reasonId!,
+                note: picked.note,
+                by: widget.admin,
+              ))
+          .refusal,
+    );
+  }
+
+  Future<void> _voidPayment(SupplierPayment payment) async {
+    final reasons =
+        ref.read(reasonCodesProvider(ReasonScope.paymentVoid)).valueOrNull ??
+        const [];
+    if (reasons.isEmpty) {
+      setState(() => _note = context.strings.reasonListEmpty);
+      return;
+    }
+
+    final picked = await ReasonSheet.show(
+      context,
+      reasons: reasons,
+      requirement: SystemReasons.defaultRequirement(ReasonScope.paymentVoid),
+      title: context.strings.paymentVoidWhy,
+      confirmLabel: context.strings.paymentVoid,
+    );
+    if (picked?.reasonId == null || !mounted) return;
+    await _run(
+      () async => (await ref
+              .read(supplierInvoicesRepositoryProvider)
+              .voidPayment(
+                payment.id,
+                reasonId: picked!.reasonId!,
+                note: picked.note,
+                by: widget.admin,
+              ))
+          .refusal,
+    );
+  }
+
   Future<void> _receive(PurchaseOrder order) async {
     final booked = await ReceiveDialog.show(context, order: order);
     if (booked == null || !mounted) return;
@@ -156,6 +279,28 @@ class _ManagementPurchasingPaneState
               ),
               const SizedBox(width: PosSpace.sm),
               PosButton(
+                key: const Key('purchasing-invoices'),
+                label: strings.supplierInvoices,
+                background: _tab == _Tab.invoices
+                    ? palette.ink
+                    : Colors.transparent,
+                foreground: _tab == _Tab.invoices ? Colors.white : null,
+                border: Border.fromBorderSide(palette.resting),
+                onPressed: () => setState(() => _tab = _Tab.invoices),
+              ),
+              const SizedBox(width: PosSpace.sm),
+              PosButton(
+                key: const Key('purchasing-payments'),
+                label: strings.paymentsList,
+                background: _tab == _Tab.payments
+                    ? palette.ink
+                    : Colors.transparent,
+                foreground: _tab == _Tab.payments ? Colors.white : null,
+                border: Border.fromBorderSide(palette.resting),
+                onPressed: () => setState(() => _tab = _Tab.payments),
+              ),
+              const SizedBox(width: PosSpace.sm),
+              PosButton(
                 key: const Key('purchasing-suppliers'),
                 label: strings.suppliers,
                 background: _tab == _Tab.suppliers
@@ -168,17 +313,21 @@ class _ManagementPurchasingPaneState
               const Spacer(),
               PosButton(
                 key: const Key('purchasing-new'),
-                label: _tab == _Tab.orders
-                    ? strings.purchaseOrderNew
-                    : strings.supplierNew,
+                label: switch (_tab) {
+                  _Tab.orders => strings.purchaseOrderNew,
+                  _Tab.invoices || _Tab.payments => strings.invoiceNew,
+                  _Tab.suppliers => strings.supplierNew,
+                },
                 background: palette.accent,
                 foreground: Colors.white,
                 fontWeight: FontWeight.w700,
                 onPressed: _busy
                     ? null
-                    : () => _tab == _Tab.orders
-                          ? _editOrder(null)
-                          : _editSupplier(null),
+                    : () => switch (_tab) {
+                        _Tab.orders => _editOrder(null),
+                        _Tab.invoices || _Tab.payments => _editInvoice(null),
+                        _Tab.suppliers => _editSupplier(null),
+                      },
               ),
             ],
           ),
@@ -193,7 +342,12 @@ class _ManagementPurchasingPaneState
             ),
           ),
         Expanded(
-          child: _tab == _Tab.orders ? _orders(strings) : _suppliers(strings),
+          child: switch (_tab) {
+            _Tab.orders => _orders(strings),
+            _Tab.invoices => _invoices(strings),
+            _Tab.payments => _payments(strings),
+            _Tab.suppliers => _suppliers(strings),
+          },
         ),
       ],
     );
@@ -224,6 +378,55 @@ class _ManagementPurchasingPaneState
               ),
       );
 
+  /// **The unpaid list, not every invoice.** A restaurant three years old has
+  /// thousands of settled ones; this pane is a worklist — what has to be paid,
+  /// and what is late.
+  Widget _invoices(AppStrings strings) => ref
+      .watch(unpaidInvoicesProvider)
+      .when(
+        loading: () => Center(
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
+            color: context.pos.accent,
+          ),
+        ),
+        error: (error, _) => _Centred(text: '$error'),
+        data: (invoices) => invoices.isEmpty
+            ? _Centred(text: strings.invoiceNoneOutstanding)
+            : ListView.builder(
+                itemCount: invoices.length,
+                itemBuilder: (context, index) => _InvoiceRow(
+                  invoice: invoices[index],
+                  busy: _busy,
+                  onEdit: () => _editInvoice(invoices[index]),
+                  onPay: () => _pay(invoices[index]),
+                  onVoid: () => _voidInvoice(invoices[index]),
+                ),
+              ),
+      );
+
+  Widget _payments(AppStrings strings) => ref
+      .watch(supplierPaymentsProvider)
+      .when(
+        loading: () => Center(
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
+            color: context.pos.accent,
+          ),
+        ),
+        error: (error, _) => _Centred(text: '$error'),
+        data: (payments) => payments.isEmpty
+            ? _Centred(text: strings.paymentNonePaidYet)
+            : ListView.builder(
+                itemCount: payments.length,
+                itemBuilder: (context, index) => _PaymentRow(
+                  payment: payments[index],
+                  busy: _busy,
+                  onVoid: () => _voidPayment(payments[index]),
+                ),
+              ),
+      );
+
   Widget _suppliers(AppStrings strings) => ref
       .watch(suppliersProvider)
       .when(
@@ -240,7 +443,13 @@ class _ManagementPurchasingPaneState
                 itemCount: suppliers.length,
                 itemBuilder: (context, index) => _SupplierRow(
                   supplier: suppliers[index],
+                  balance: ref
+                      .watch(supplierBalancesProvider)
+                      .valueOrNull
+                      ?.where((b) => b.supplierId == suppliers[index].id)
+                      .firstOrNull,
                   onEdit: () => _editSupplier(suppliers[index]),
+                  onPay: () => _pay(null, supplier: suppliers[index]),
                 ),
               ),
       );
@@ -364,11 +573,251 @@ class _StatusChip extends StatelessWidget {
   }
 }
 
+/// One outstanding invoice.
+///
+/// The days-late badge earns its place: the number a bookkeeper is deciding
+/// with is not what is owed but what is owed *now*, and a list sorted by due
+/// date without saying which rows are past it makes them do the arithmetic.
+class _InvoiceRow extends StatelessWidget {
+  const _InvoiceRow({
+    required this.invoice,
+    required this.busy,
+    required this.onEdit,
+    required this.onPay,
+    required this.onVoid,
+  });
+
+  final SupplierInvoice invoice;
+  final bool busy;
+  final VoidCallback onEdit;
+  final VoidCallback onPay;
+  final VoidCallback onVoid;
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = context.strings;
+    final palette = context.pos;
+    final late = invoice.daysLate(DateTime.now());
+    final part = invoice.paid.isPositive;
+
+    return Container(
+      padding: const EdgeInsets.all(PosSpace.lg),
+      decoration: BoxDecoration(border: Border(bottom: palette.hairline)),
+      child: Row(
+        children: [
+          SizedBox(width: 140, child: MonoCode(invoice.number, size: 12.5)),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  invoice.supplierName ?? '',
+                  style: PosText.ui(size: 13.5, color: palette.ink),
+                ),
+                const SizedBox(height: 2),
+                Row(
+                  children: [
+                    if (late > 0)
+                      Text(
+                        strings.invoiceDaysLate(late),
+                        style: PosText.ui(
+                          size: 11,
+                          weight: FontWeight.w700,
+                          color: palette.danger,
+                        ),
+                      )
+                    else
+                      MonoCode(
+                        '${invoice.dueAt.year}-'
+                        '${invoice.dueAt.month.toString().padLeft(2, '0')}-'
+                        '${invoice.dueAt.day.toString().padLeft(2, '0')}',
+                        size: 11,
+                        color: palette.muted,
+                      ),
+                    if (invoice.purchaseOrderReference != null) ...[
+                      const SizedBox(width: PosSpace.sm),
+                      MonoCode(
+                        invoice.purchaseOrderReference!,
+                        size: 11,
+                        color: palette.muted,
+                      ),
+                    ],
+                  ],
+                ),
+              ],
+            ),
+          ),
+          // Both figures where anything has been paid, because "600 of 1,000"
+          // is the sentence, and the outstanding number alone reads as a
+          // smaller invoice.
+          if (part) ...[
+            MonoCode(invoice.total.format(), size: 11.5, color: palette.muted),
+            const SizedBox(width: PosSpace.xs),
+          ],
+          MonoAmount(invoice.outstanding, size: 13.5),
+          const SizedBox(width: PosSpace.lg),
+          PosButton(
+            label: strings.edit,
+            border: Border.fromBorderSide(palette.resting),
+            onPressed: busy ? null : onEdit,
+          ),
+          const SizedBox(width: PosSpace.sm),
+          // Cancelling is offered only while nothing has been paid. Once money
+          // is against it the answer is to reverse the payment first, and the
+          // repository says so — but a button that always refused would be a
+          // button that teaches people to ignore refusals.
+          if (!part) ...[
+            PosButton(
+              key: Key('invoice-void-${invoice.id}'),
+              label: strings.invoiceVoid,
+              foreground: palette.danger,
+              border: Border.fromBorderSide(palette.resting),
+              onPressed: busy ? null : onVoid,
+            ),
+            const SizedBox(width: PosSpace.sm),
+          ],
+          PosButton(
+            key: Key('invoice-pay-${invoice.id}'),
+            label: strings.invoicePay,
+            background: palette.accent,
+            foreground: Colors.white,
+            fontWeight: FontWeight.w700,
+            onPressed: busy ? null : onPay,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// One payment made, with the way back.
+///
+/// **Reversed payments stay on the list, struck through.** A cheque that bounced
+/// is part of the account's history, and a screen that removed the row would
+/// leave a bookkeeper unable to see that anything had happened at all.
+class _PaymentRow extends StatelessWidget {
+  const _PaymentRow({
+    required this.payment,
+    required this.busy,
+    required this.onVoid,
+  });
+
+  final SupplierPayment payment;
+  final bool busy;
+  final VoidCallback onVoid;
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = context.strings;
+    final palette = context.pos;
+    final gone = payment.isVoided;
+
+    return Container(
+      padding: const EdgeInsets.all(PosSpace.lg),
+      decoration: BoxDecoration(border: Border(bottom: palette.hairline)),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 140,
+            child: MonoCode(
+              '${payment.paidAt.year}-'
+              '${payment.paidAt.month.toString().padLeft(2, '0')}-'
+              '${payment.paidAt.day.toString().padLeft(2, '0')}',
+              size: 12,
+              color: palette.muted,
+            ),
+          ),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  payment.supplierName ?? '',
+                  style: PosText.ui(
+                    size: 13.5,
+                    color: gone ? palette.muted : palette.ink,
+                  ).copyWith(
+                    decoration: gone ? TextDecoration.lineThrough : null,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Row(
+                  children: [
+                    Text(
+                      strings.paymentMethodName(payment.method.wire),
+                      style: PosText.ui(size: 11.5, color: palette.muted),
+                    ),
+                    if (payment.reference != null) ...[
+                      const SizedBox(width: PosSpace.sm),
+                      MonoCode(
+                        payment.reference!,
+                        size: 11,
+                        color: palette.muted,
+                      ),
+                    ],
+                    const SizedBox(width: PosSpace.sm),
+                    Text(
+                      payment.invoiceNumber ?? strings.paymentOnAccount,
+                      style: PosText.ui(size: 11.5, color: palette.muted),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          MonoAmount(payment.amount, size: 13.5),
+          const SizedBox(width: PosSpace.lg),
+          if (gone)
+            _StruckChip(label: strings.paymentVoid)
+          else
+            PosButton(
+              key: Key('payment-void-${payment.id}'),
+              label: strings.paymentVoid,
+              foreground: palette.danger,
+              border: Border.fromBorderSide(palette.resting),
+              onPressed: busy ? null : onVoid,
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StruckChip extends StatelessWidget {
+  const _StruckChip({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.pos;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: PosSpace.sm, vertical: 3),
+      color: palette.chipBg,
+      child: Text(
+        label,
+        style: PosText.ui(
+          size: 10.5,
+          weight: FontWeight.w700,
+          color: palette.muted,
+        ),
+      ),
+    );
+  }
+}
+
 class _SupplierRow extends StatelessWidget {
-  const _SupplierRow({required this.supplier, required this.onEdit});
+  const _SupplierRow({
+    required this.supplier,
+    required this.onEdit,
+    required this.onPay,
+    this.balance,
+  });
 
   final Supplier supplier;
+  final SupplierBalance? balance;
   final VoidCallback onEdit;
+  final VoidCallback onPay;
 
   @override
   Widget build(BuildContext context) {
@@ -409,6 +858,42 @@ class _SupplierRow extends StatelessWidget {
             if (supplier.phone != null) ...[
               const SizedBox(width: PosSpace.lg),
               MonoCode(supplier.phone!, size: 12),
+            ],
+            // What they are owed, beside them. A supplier list without it is a
+            // list of names, and the question anybody opens it with is money.
+            if (balance case final owed? when !owed.outstanding.isZero) ...[
+              const SizedBox(width: PosSpace.lg),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        strings.supplierOwes,
+                        style: PosText.ui(size: 10.5, color: palette.muted),
+                      ),
+                      const SizedBox(width: PosSpace.xs),
+                      MonoAmount(owed.outstanding, size: 13),
+                    ],
+                  ),
+                  if (owed.overdue.isPositive)
+                    Text(
+                      '${owed.overdue.format()} ${strings.supplierOverdue}',
+                      style: PosText.ui(
+                        size: 10.5,
+                        weight: FontWeight.w700,
+                        color: palette.danger,
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(width: PosSpace.md),
+              PosButton(
+                key: Key('supplier-pay-${supplier.id}'),
+                label: strings.invoicePay,
+                border: Border.fromBorderSide(palette.resting),
+                onPressed: onPay,
+              ),
             ],
           ],
         ),
