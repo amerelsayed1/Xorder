@@ -283,6 +283,12 @@ abstract final class AuditAction {
   static const entityTenderType = 'tender_type';
   static const entityServiceCharge = 'service_charge';
   static const entitySupplier = 'supplier';
+  static const entityPurchaseOrder = 'purchase_order';
+
+  /// A purchase order sent, cancelled or closed. Its own action because it is
+  /// a commitment to spend money, and "who sent this and when" is what a
+  /// disputed delivery asks.
+  static const purchaseOrderStatusChanged = 'purchase_order.status_changed';
 
   /// A supplier added, edited or retired. Its own action because a supplier is
   /// where money leaves the business, and "who added this account" is the

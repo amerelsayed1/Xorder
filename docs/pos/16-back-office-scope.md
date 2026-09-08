@@ -165,8 +165,30 @@ several ways; splitting it before there is a screen for each would put keys in
 the catalogue that nothing checks — which is exactly what Wave C deferred
 §50's sixteen settings keys to avoid.
 
-Still to build, in order: purchase orders and their lines, receiving (which is
-where a cost price first becomes real), supplier invoices, supplier payments.
+**Migration 28 — purchase orders and their lines**, with `PurchaseEngine` as
+the pure half: what may be edited when, and what a part delivery means.
+
+The decision with the longest reach is **`core/money/quantity.dart`**. Sales
+quantities are integers — a cashier sells two grills — and purchases are not: a
+restaurant buys 12.5 kg of chicken and 0.75 litres of oil. A `numeric` column
+would be honest and every read would arrive as a Dart `double`, sitting directly
+upstream of every cost price, stock valuation and margin the reports will
+eventually show. So a quantity is an **integer of thousandths**, exactly as
+`Money` is an integer of minor units, with one rounding point (`costAt`) and no
+unit conversion at all — a system that silently turned 500 g into 0.5 kg would
+eventually turn 500 boxes into half a something.
+
+Two smaller ones, recorded because they will look like omissions:
+
+* **Five statuses, not two.** A restaurant almost never receives exactly what it
+  ordered, and a model that knew only *ordered* and *received* would have to lie
+  about the Tuesday when eight of ten crates turned up.
+* **Cancelling is refused once goods have arrived.** The way out of a part
+  delivery is to close the difference, not to pretend the order never happened.
+
+Still to build, in order: **receiving** — which is where a cost price first
+becomes real, and where the valuation method (last cost, moving average, FIFO)
+stops being deferrable — then supplier invoices and supplier payments.
 
 ---
 

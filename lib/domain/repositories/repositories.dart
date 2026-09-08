@@ -3,6 +3,7 @@ import '../../core/money/money.dart';
 import 'admin_repositories.dart';
 import '../models/catalog.dart';
 import '../models/order_type_config.dart';
+import '../models/purchase_order.dart';
 import '../models/service_charge.dart';
 import '../models/supplier.dart';
 import '../models/tender_method.dart';
@@ -152,6 +153,34 @@ abstract interface class SuppliersRepository {
   /// because their invoices name them and a purchase history that cannot say
   /// who supplied something is not a purchase history.
   Future<AdminResult<Supplier>> save(Supplier supplier, {required PosStaff by});
+}
+
+/// What the restaurant has asked its suppliers for.
+abstract interface class PurchaseOrdersRepository {
+  /// Everything still owed — sent, or part-delivered.
+  Future<List<PurchaseOrder>> open();
+
+  Future<List<PurchaseOrder>> all({int limit = 100});
+
+  Future<PurchaseOrder?> byId(int id);
+
+  /// Writes a draft, lines and all. `id == 0` creates and claims a reference.
+  ///
+  /// Refuses once the order has been sent: the supplier is holding a copy, and
+  /// changing what it says here would leave the two of them with different
+  /// pieces of paper.
+  Future<AdminResult<PurchaseOrder>> saveDraft(
+    PurchaseOrder order, {
+    required PosStaff by,
+  });
+
+  /// Move it on — sent, cancelled, or the status the receipts imply.
+  Future<AdminResult<PurchaseOrder>> setStatus(
+    int orderId, {
+    required PurchaseStatus status,
+    required PosStaff by,
+    DateTime? orderedAt,
+  });
 }
 
 abstract interface class TablesRepository {

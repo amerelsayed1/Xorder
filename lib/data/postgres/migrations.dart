@@ -2493,6 +2493,121 @@ const posMigrations = <PosMigration>[
        AND NOT ('purchase.manage' = ANY(capabilities))
     ''',
   ]),
+  PosMigration(28, 'purchase orders — what was asked for', [
+    '''
+    CREATE TABLE IF NOT EXISTS pos_purchase_orders (
+      id             bigserial   PRIMARY KEY,
+      restaurant_id  bigint      NOT NULL REFERENCES pos_restaurants(id) ON DELETE CASCADE,
+      -- Where the goods go. A restaurant group orders per branch, and stock
+      -- that arrived at Downtown is not stock Maadi can sell.
+      branch_id      bigint      NOT NULL REFERENCES pos_branches(id) ON DELETE RESTRICT,
+      -- RESTRICT, not CASCADE: deleting a supplier somebody has ordered from
+      -- has to be refused and explained. The repository retires them instead.
+      supplier_id    bigint      NOT NULL REFERENCES pos_suppliers(id) ON DELETE RESTRICT,
+      -- Snapshotted beside the id, like a payment's label: a purchase history
+      -- has to still say who supplied something after a rename.
+      supplier_name  text        NOT NULL,
+      reference      text        NOT NULL,
+      status         text        NOT NULL DEFAULT 'draft',
+      currency       text        NOT NULL DEFAULT 'EGP',
+      exponent       smallint    NOT NULL DEFAULT 2,
+      -- Fixed when it is sent, and checked against the supplier's invoice.
+      -- Recomputing them from today's lines would let a cost change after the
+      -- fact alter what was agreed.
+      subtotal_minor bigint      NOT NULL DEFAULT 0,
+      tax_minor      bigint      NOT NULL DEFAULT 0,
+      total_minor    bigint      NOT NULL DEFAULT 0,
+      -- Null while it is a draft, which is what makes "sent" a fact about the
+      -- order rather than a flag somebody set.
+      ordered_at     timestamptz,
+      expected_at    timestamptz,
+      notes          text,
+      created_at     timestamptz NOT NULL DEFAULT now(),
+      created_by     bigint      REFERENCES pos_staff(id) ON DELETE SET NULL,
+      updated_at     timestamptz NOT NULL DEFAULT now(),
+      updated_by     bigint      REFERENCES pos_staff(id) ON DELETE SET NULL,
+      CONSTRAINT pos_purchase_orders_status_known CHECK (
+        status IN ('draft', 'sent', 'partially_received', 'received',
+                   'cancelled')
+      ),
+      CONSTRAINT pos_purchase_orders_sent_has_a_date CHECK (
+        status = 'draft' OR status = 'cancelled' OR ordered_at IS NOT NULL
+      ),
+      CONSTRAINT pos_purchase_orders_reference_unique
+        UNIQUE (restaurant_id, reference)
+    )
+    ''',
+    '''
+    CREATE INDEX IF NOT EXISTS pos_purchase_orders_open_idx
+      ON pos_purchase_orders (restaurant_id, branch_id, status)
+      WHERE status IN ('sent', 'partially_received')
+    ''',
+    '''
+    CREATE INDEX IF NOT EXISTS pos_purchase_orders_supplier_idx
+      ON pos_purchase_orders (supplier_id, ordered_at DESC)
+    ''',
+
+    '''
+    CREATE TABLE IF NOT EXISTS pos_purchase_order_lines (
+      id                bigserial PRIMARY KEY,
+      purchase_order_id bigint    NOT NULL REFERENCES pos_purchase_orders(id) ON DELETE CASCADE,
+      -- The menu item this stocks, when it is one. Null for the things a
+      -- restaurant buys and does not sell — cleaning supplies, packaging, gas
+      -- — which is most of a purchase order by line count. SET NULL rather
+      -- than RESTRICT: archiving a product must not lock last year's orders.
+      product_id        bigint    REFERENCES pos_products(id) ON DELETE SET NULL,
+      -- Snapshotted, like the supplier name and for the same reason.
+      description       text      NOT NULL,
+      sku               text,
+      -- **Thousandths, not a decimal and never a float.** A restaurant buys
+      -- 12.5 kg of chicken; `numeric` would be honest but every read would
+      -- arrive as a Dart `double` and sit directly upstream of every cost
+      -- price and margin. See `core/money/quantity.dart`.
+      ordered_milli     bigint    NOT NULL,
+      received_milli    bigint    NOT NULL DEFAULT 0,
+      unit              text      NOT NULL DEFAULT 'ea',
+      -- Per unit, before tax.
+      unit_cost_minor   bigint    NOT NULL,
+      -- Snapshotted: input VAT is reclaimable and the return needs the rate
+      -- that was charged, not today's.
+      tax_rate_bp       integer   NOT NULL DEFAULT 0,
+      sort_order        integer   NOT NULL DEFAULT 0,
+      CONSTRAINT pos_purchase_order_lines_ordered_positive
+        CHECK (ordered_milli > 0),
+      CONSTRAINT pos_purchase_order_lines_received_sane
+        CHECK (received_milli >= 0),
+      CONSTRAINT pos_purchase_order_lines_cost_sane
+        CHECK (unit_cost_minor >= 0),
+      CONSTRAINT pos_purchase_order_lines_tax_sane
+        CHECK (tax_rate_bp BETWEEN 0 AND 10000)
+    )
+    ''',
+    '''
+    CREATE INDEX IF NOT EXISTS pos_purchase_order_lines_order_idx
+      ON pos_purchase_order_lines (purchase_order_id, sort_order)
+    ''',
+    // "What is on order for this product" — the question stock control asks
+    // before it reorders, and the reason `product_id` is indexed separately.
+    '''
+    CREATE INDEX IF NOT EXISTS pos_purchase_order_lines_product_idx
+      ON pos_purchase_order_lines (product_id)
+      WHERE product_id IS NOT NULL
+    ''',
+
+    // The reference sequence, per restaurant per year — the same shape
+    // `pos_invoice_sequences` uses for sales, and deliberately a second table
+    // rather than a shared one: a purchase order and a receipt are numbered
+    // for different audiences, and one sequence serving both would make each
+    // one's numbering depend on the other's volume.
+    '''
+    CREATE TABLE IF NOT EXISTS pos_purchase_sequences (
+      restaurant_id bigint  NOT NULL REFERENCES pos_restaurants(id) ON DELETE CASCADE,
+      period        text    NOT NULL,
+      next_number   bigint  NOT NULL DEFAULT 1,
+      PRIMARY KEY (restaurant_id, period)
+    )
+    ''',
+  ]),
 ];
 
 /// Brings the branch database up to the current schema.
