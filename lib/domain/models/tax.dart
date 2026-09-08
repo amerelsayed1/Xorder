@@ -18,6 +18,8 @@ class TaxGroup {
     required this.rateBp,
     this.nameAr,
     this.isDefault = false,
+    this.etaTaxType = EtaTaxCode.valueAdded,
+    this.etaSubType = EtaTaxCode.standardVat,
   });
 
   /// The rate every product falls back to when it names none.
@@ -42,6 +44,17 @@ class TaxGroup {
 
   final bool isDefault;
 
+  /// How Egypt's tax authority names this tax, and which of its sub-rates this
+  /// is. Carried on the group rather than derived from [rateBp], because two
+  /// taxes can share a rate and mean different things to a filing — and
+  /// because ETA reissue these codes, so a table mapping 14% to a constant
+  /// would be wrong the first time they did.
+  ///
+  /// Defaults are Egypt's standard VAT, which is what a restaurant selling
+  /// food charges. See [EtaTaxCode].
+  final String etaTaxType;
+  final String etaSubType;
+
   /// Zero-rated and exempt look the same on a total and are different on a
   /// filing. Both are `rateBp == 0` here; which one it is belongs to the group's
   /// name, because that is what an accountant reconciles against.
@@ -65,10 +78,12 @@ class TaxGroup {
       other is TaxGroup &&
       other.id == id &&
       other.rateBp == rateBp &&
-      other.nameEn == nameEn;
+      other.nameEn == nameEn &&
+      other.etaTaxType == etaTaxType &&
+      other.etaSubType == etaSubType;
 
   @override
-  int get hashCode => Object.hash(id, rateBp, nameEn);
+  int get hashCode => Object.hash(id, rateBp, nameEn, etaTaxType, etaSubType);
 }
 
 /// One rate's worth of tax on one order.
@@ -77,6 +92,23 @@ class TaxGroup {
 /// One entry per **rate**, not per line: tax is filed by rate, and rounding once
 /// per rate is what keeps a ticket's arithmetic identical to what it was when
 /// every product shared one.
+/// The codes Egypt's tax authority files a tax under.
+///
+/// Only the two a restaurant actually charges are named. The rest of ETA's
+/// list — stamp duty, table tax, entertainment — belongs to industries this
+/// product does not serve, and naming codes nobody has checked would be worse
+/// than not naming them.
+abstract final class EtaTaxCode {
+  /// `T1`, value added tax.
+  static const valueAdded = 'T1';
+
+  /// `V009`, the standard VAT rate.
+  static const standardVat = 'V009';
+
+  /// `V003`, zero-rated.
+  static const zeroRated = 'V003';
+}
+
 class TaxLine {
   const TaxLine({
     required this.name,
@@ -84,6 +116,8 @@ class TaxLine {
     required this.base,
     required this.amount,
     this.taxGroupId,
+    this.etaTaxType = EtaTaxCode.valueAdded,
+    this.etaSubType = EtaTaxCode.standardVat,
   });
 
   final String name;
@@ -94,6 +128,12 @@ class TaxLine {
 
   final Money amount;
   final int? taxGroupId;
+
+  /// Copied from the [TaxGroup] this line came out of, not looked up. A line
+  /// on a settled order has to keep saying what it was filed as even after
+  /// somebody edits the group it came from.
+  final String etaTaxType;
+  final String etaSubType;
 }
 
 /// How a set of lines is taxed.
@@ -125,6 +165,8 @@ abstract final class TaxEngine {
           base: base,
           amount: base.percentBp(group.rateBp),
           taxGroupId: group.id,
+          etaTaxType: group.etaTaxType,
+          etaSubType: group.etaSubType,
         ),
       );
     }
