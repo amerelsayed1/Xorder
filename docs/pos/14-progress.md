@@ -8,18 +8,19 @@ newer.
 
 ## 1. The short version
 
-**Waves A and B are complete. Wave M is two-thirds built.** Migrations 9
-through 17 are applied.
+**Waves A, B and M are complete.** Migrations 9 through 18 are applied.
+**Wave N — the ETA e-receipt — is next, and it is what makes the product
+legal to sell in Egypt.**
 
 | Wave | State |
 |---|---|
 | **A** — discount, void, refund, history, price override, reprint, cart density | ✅ |
 | **B** — settings, cash movements, business day, blind close | ✅ |
-| **M** — menu & tax model | 🔨 tax ✅ · pricing ✅ · modifiers ✅ · **combos ✗** |
+| **M** — menu & tax model | ✅ |
 | **N** — ETA e-receipt | ⬜ next, and blocking |
 
-**Verification:** `flutter analyze` clean · **922 unit tests** pass, 17 skipped
-· **377 database tests** pass.
+**Verification:** `flutter analyze` clean · **943 unit tests** pass, 18 skipped
+· **389 database tests** pass.
 
 ---
 
@@ -61,13 +62,21 @@ be ignored.
 computed when the line is added — a group edited tomorrow must not reprice a
 table still sitting there.
 
-### Combos — not built
+### Combos, done
 
-The remaining Wave M item, and the largest. A combo needs its own tables (a
-combo, its groups, the options in each), a ticket line that can hold a
-selection rather than a product, and a price that is the combo's rather than
-the sum of its parts. It is a genuine feature, not a schema tweak, and it is
-the last thing between Wave M and Wave N.
+A combo is **not** a product with modifiers: its components are real menu items
+a kitchen has to make and a receipt has to list. It is also not the sum of its
+parts, which is the entire point — the components' own prices are never
+consulted.
+
+`TicketLine` keeps its product beside the selection rather than growing a second
+shape, because every path on the ticket is written in terms of a product. The
+picker only opens when there is something to decide, and combos lead their
+category on the grid — one buried under forty items is one nobody rings up.
+
+`pos_combo_options.product_id` is `RESTRICT`, so deleting a product cannot
+silently empty a group. That also means a test fixture must clear combos before
+deleting a restaurant: Postgres cannot tell a teardown from a mistake.
 
 ---
 
@@ -81,7 +90,6 @@ makes the product better; ETA makes it sellable. See
 
 | Wave | Theme | Migration | Size |
 |---|---|---|---|
-| **M** (rest) | **Combos** | 18 | M |
 | **N** | **ETA e-receipt** — e-seal signing, submission queue, QR on the slip | 19 | L |
 | **C** | Permission model to specification | 20 | L |
 | **D** | Settings & configuration screens | 21 | XL |
@@ -94,9 +102,15 @@ makes the product better; ETA makes it sellable. See
 | **K** | Local API tier | 27 | XXL |
 | **L** | Inventory & recipes (P1) | 28 | XL |
 
-**M before N** because `tax_lines[]` cannot be retrofitted onto orders already
-filed with the tax authority, and per-product tax treatment is what makes it
-expressible. The two are one design, not two.
+**Wave N is unblocked.** `tax_lines[]` is underneath it, and the offline
+architecture is already the right shape: ETA permits store-and-forward within 24
+hours, so the outbox, the idempotency and the never-silently-discarded rule are
+all reusable. What is missing is a second destination and a signature.
+
+**Still schema-only:** per-channel (delivery vs dine-in) pricing. It needs the
+price to vary with the *ticket's* order type, which a catalogue read cannot
+know. The column exists and nothing authors one, so nobody can set a delivery
+price and watch it be ignored.
 
 **Not on the roadmap at all:** payment terminals, delivery aggregators, product
 images. Each is table stakes in this market and each is a commercial decision
