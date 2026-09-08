@@ -749,6 +749,7 @@ sealed class AppStrings {
   String get capOperate;
   String get capCatalogView;
   String get capCatalogManage;
+  String get capPurchaseManage;
   String get capStaffManage;
   String get capTerminalManage;
   String get capSettingsManage;
@@ -3397,6 +3398,9 @@ final class EnStrings extends AppStrings {
   @override
   String get capCatalogManage => 'Add and change menu items and prices';
   @override
+  String get capPurchaseManage =>
+      'Order stock, book in deliveries and pay suppliers';
+  @override
   String get capStaffManage => 'Add staff, set roles and reset PINs';
   @override
   String get capTerminalManage => 'Register and reset terminals';
@@ -5944,6 +5948,9 @@ final class ArStrings extends AppStrings {
   String get capCatalogView => 'عرض المنيو';
   @override
   String get capCatalogManage => 'إضافة وتعديل أصناف المنيو والأسعار';
+  @override
+  String get capPurchaseManage =>
+      'طلب المخزون وتسجيل التوريدات وسداد المورّدين';
   @override
   String get capStaffManage => 'إضافة موظفين وتحديد الأدوار وإعادة ضبط الأكواد';
   @override

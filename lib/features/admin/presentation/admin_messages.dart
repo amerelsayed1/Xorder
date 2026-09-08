@@ -22,6 +22,7 @@ abstract final class AdminText {
         PosCapability.operate => s.capOperate,
         PosCapability.catalogView => s.capCatalogView,
         PosCapability.catalogManage => s.capCatalogManage,
+        PosCapability.purchaseManage => s.capPurchaseManage,
         PosCapability.staffManage => s.capStaffManage,
         PosCapability.terminalManage => s.capTerminalManage,
         PosCapability.settingsManage => s.capSettingsManage,

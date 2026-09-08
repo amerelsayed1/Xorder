@@ -189,6 +189,48 @@ void main() {
     );
   });
 
+  testWidgets('purchasing is a permission an owner can grant by name', (
+    tester,
+  ) async {
+    // **It rendered as `purchase.manage`.** `AdminText.capability` ends in a
+    // fall-through so a capability from a newer build is shown rather than
+    // hidden, and the effect on one from *this* build was the raw key on the
+    // screen where a restaurant owner decides who may spend money.
+    final container = await open(tester);
+    await enter(tester, '1234');
+
+    await tester.tap(find.text('Roles'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Manager').first);
+    await tester.pumpAndSettle();
+
+    // Back-office permissions are the last group, so it has to be scrolled to
+    // — which is itself worth asserting, because a raw key would be just as
+    // far down and just as invisible to a test that did not look.
+    final label = find.text(AdminCapabilityLabels.purchaseManage);
+    await tester.scrollUntilVisible(
+      label,
+      200,
+      scrollable: find.byType(Scrollable).last,
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('purchase.manage'), findsNothing);
+    expect(label, findsOneWidget);
+
+    // And it is a real checkbox, not a label: taking it off a role is what
+    // makes the Manage menu hide Purchasing from that person.
+    await tester.tap(find.text(AdminCapabilityLabels.purchaseManage));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+
+    final roles = container.read(rolesRepositoryProvider) as FakeRolesRepository;
+    final manager =
+        roles.roles.firstWhere((r) => r.code == SystemRoles.managerCode);
+    expect(manager.holds(PosCapability.purchaseManage), isFalse);
+  });
+
   // The ledger entry for this is asserted in `postgres_admin_test.dart`, where
   // the write and its audit row share a transaction. The fake does not write
   // one, so proving it here would prove only that the fake was written to
@@ -387,5 +429,7 @@ abstract final class AdminCapabilityLabels {
   static const catalogManage = 'Add and change menu items and prices';
   static const orderRefund = 'Refund a sale';
   static const operate = 'Sell at the till';
+  static const purchaseManage =
+      'Order stock, book in deliveries and pay suppliers';
 
 }
