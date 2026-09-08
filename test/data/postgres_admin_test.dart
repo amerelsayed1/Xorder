@@ -188,6 +188,52 @@ void main() {
       );
     });
 
+    test('a manager cannot write themselves a role holding the database',
+        () async {
+      // §48, at the write rather than in the editor. Without this rule anybody
+      // with staff.manage escalates to everything in one save, and the whole
+      // permission catalogue is a checkbox deep.
+      final manager = await hire(SystemRoles.managerCode, name: 'Mona', pin: '2222');
+
+      final refused = await roles.save(
+        const PosRole(
+          id: 0,
+          code: 'invented',
+          nameEn: 'Invented',
+          capabilities: {
+            PosCapability.operate,
+            PosCapability.backupManage,
+          },
+        ),
+        by: manager,
+      );
+
+      final reason = (refused.refusal as RoleNotAllowed).reason;
+      expect(
+        (reason as CannotGrantWhatYouLack).capabilities,
+        {PosCapability.backupManage},
+      );
+
+      // And nothing was written.
+      final saved = await roles.all();
+      expect(saved.map((r) => r.code), isNot(contains('invented')));
+    });
+
+    test('a manager can grant everything they hold themselves', () async {
+      final manager = await hire(SystemRoles.managerCode, name: 'Nour', pin: '3333');
+
+      final result = await roles.save(
+        PosRole(
+          id: 0,
+          code: 'floor-lead',
+          nameEn: 'Floor lead',
+          capabilities: SystemRoles.supervisor,
+        ),
+        by: manager,
+      );
+      expect(result.succeeded, isTrue);
+    });
+
     test('a system role cannot be deleted', () async {
       final refused = await roles.delete(seeded[SystemRoles.managerCode]!, by: owner);
       expect(refused.refusal, isA<RoleIsSystemDefined>());

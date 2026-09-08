@@ -324,4 +324,148 @@ void main() {
       );
     });
   });
+
+  group('granting (§48)', () {
+    PosRole role(Set<String> capabilities, {String code = 'invented'}) =>
+        PosRole(id: 5, code: code, nameEn: 'Invented', capabilities: capabilities);
+
+    test('a manager cannot grant what they do not hold', () {
+      // The rule that stops the permission model being decorative. Without it
+      // anybody with staff.manage writes themselves a role holding
+      // backup.manage, and the whole catalogue is one checkbox deep.
+      final refusal = Authorization.validateRole(
+        role({PosCapability.operate, PosCapability.backupManage}),
+        editedBy: onRole(SystemRoles.managerCode),
+      );
+
+      expect(refusal, isA<CannotGrantWhatYouLack>());
+      expect(
+        (refusal! as CannotGrantWhatYouLack).capabilities,
+        {PosCapability.backupManage},
+        reason: 'and names which one, so a mistake is fixable',
+      );
+    });
+
+    test('they can grant everything they do hold', () {
+      expect(
+        Authorization.validateRole(
+          role(SystemRoles.supervisor),
+          editedBy: onRole(SystemRoles.managerCode),
+        ),
+        isNull,
+      );
+    });
+
+    test('an owner can grant anything', () {
+      expect(
+        Authorization.validateRole(
+          role(SystemRoles.owner),
+          editedBy: onRole(SystemRoles.ownerCode),
+        ),
+        isNull,
+      );
+    });
+
+    test('taking a permission away needs no permission', () {
+      // Removing authority you do not hold is safe, and refusing it would mean
+      // a manager could not revoke anything an owner had granted.
+      final refusal = Authorization.validateRole(
+        role({PosCapability.operate}),
+        editedBy: onRole(SystemRoles.cashierCode),
+      );
+      expect(refusal, isNull);
+    });
+
+    test('an old capability name is measured against its current one', () {
+      // Otherwise a role stored under a pre-migration spelling would look like
+      // an escalation to everybody.
+      expect(
+        Authorization.validateRole(
+          role({'pos.void'}),
+          editedBy: onRole(SystemRoles.supervisorCode),
+        ),
+        isNull,
+      );
+    });
+
+    test('without an editor the shape rules still apply', () {
+      // The CLI seeds roles with no signed-in person. It must still not be
+      // able to write a cashier role holding the back office.
+      expect(
+        Authorization.validateRole(
+          role({PosCapability.backupManage}, code: SystemRoles.cashierCode),
+        ),
+        isA<CashiersAreNotAdministrators>(),
+      );
+    });
+
+    test('escalation is checked before the shape rules', () {
+      // Both refusals fit; the one that names the real problem wins.
+      final refusal = Authorization.validateRole(
+        role({PosCapability.backupManage}, code: SystemRoles.cashierCode),
+        editedBy: onRole(SystemRoles.managerCode),
+      );
+      expect(refusal, isA<CannotGrantWhatYouLack>());
+    });
+  });
+
+  group('role templates (§49)', () {
+    test('every template holds only capabilities that exist', () {
+      // A template naming a key nobody defines is a checkbox that can never be
+      // unticked, because the editor would not draw it.
+      for (final entry in SystemRoles.templates.entries) {
+        for (final capability in entry.value.capabilities) {
+          expect(
+            PosCapability.isKnown(capability),
+            isTrue,
+            reason: '${entry.key} → $capability',
+          );
+        }
+      }
+    });
+
+    test('no template grants the database', () {
+      // Templates are narrow on purpose: one granting a bit too much would
+      // widen access every time somebody used it.
+      for (final entry in SystemRoles.templates.entries) {
+        expect(
+          entry.value.capabilities,
+          isNot(contains(PosCapability.backupManage)),
+          reason: entry.key,
+        );
+      }
+    });
+
+    test('the kitchen reads the menu and nothing else', () {
+      // A kitchen screen is not a place from which anybody should void a sale.
+      expect(SystemRoles.templates['kitchen']!.capabilities, {
+        PosCapability.catalogView,
+      });
+    });
+
+    test('the accountant can see everything and change nothing', () {
+      final accountant = SystemRoles.templates['accountant']!.capabilities;
+      expect(accountant, contains(PosCapability.orderViewAll));
+      expect(accountant, isNot(contains(PosCapability.orderVoid)));
+      expect(accountant, isNot(contains(PosCapability.orderRefund)));
+      expect(accountant, isNot(contains(PosCapability.catalogManage)));
+    });
+
+    test('a branch manager runs the branch, not the people', () {
+      final branch = SystemRoles.templates['restaurant_manager']!.capabilities;
+      expect(branch, contains(PosCapability.dayForceClose));
+      expect(branch, isNot(contains(PosCapability.staffManage)));
+    });
+
+    test('no template collides with a seeded role code', () {
+      // A template that shared a code with a system role would create a second
+      // "cashier" the seeder then fights over.
+      expect(
+        SystemRoles.templates.keys.toSet().intersection(
+          SystemRoles.seeded.keys.toSet(),
+        ),
+        isEmpty,
+      );
+    });
+  });
 }

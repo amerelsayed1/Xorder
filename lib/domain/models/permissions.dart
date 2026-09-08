@@ -569,6 +569,123 @@ abstract final class SystemRoles {
     // supervisor, not from the screen.
   };
 
+  /// Six more starting points a restaurant can pick from (§49).
+  ///
+  /// **Templates, not roles.** Nothing seeds these and nothing enforces them —
+  /// they are what the role editor offers when somebody presses *New role*, so
+  /// that a restaurant creating an accountant does not start from an empty
+  /// checklist and tick things until the screen stops complaining. Choosing one
+  /// creates an ordinary role the restaurant then edits.
+  ///
+  /// They are deliberately *narrow*. A template that granted a bit too much
+  /// would be a template that quietly widened access every time somebody used
+  /// it, and the cost of a missing permission is a manager adding it back
+  /// knowingly.
+  static const templates =
+      <String, ({String nameEn, String nameAr, Set<String> capabilities})>{
+        'shift_manager': (
+          nameEn: 'Shift manager',
+          nameAr: 'مدير وردية',
+          capabilities: {
+            PosCapability.operate,
+            PosCapability.catalogView,
+            PosCapability.orderViewAll,
+            PosCapability.discountApply,
+            PosCapability.orderVoid,
+            PosCapability.orderItemCancel,
+            PosCapability.orderItemVoid,
+            PosCapability.receiptReprint,
+            PosCapability.shiftOpen,
+            PosCapability.shiftClose,
+            PosCapability.cashMovement,
+            PosCapability.shiftViewExpectedCash,
+            PosCapability.cashVarianceView,
+            PosCapability.reportsView,
+          },
+        ),
+        // Reads the menu to know what a ticket is asking for, and nothing else.
+        // No till, no drawer, no money: a kitchen screen is not a place from
+        // which anybody should be able to void a sale.
+        'kitchen': (
+          nameEn: 'Kitchen',
+          nameAr: 'المطبخ',
+          capabilities: {PosCapability.catalogView},
+        ),
+        // Authors the menu. Not the floor, not the people, not the money rules
+        // — those belong to a manager, and an inventory clerk who could change
+        // the VAT rate is a permission model with a hole in it.
+        'inventory': (
+          nameEn: 'Inventory manager',
+          nameAr: 'مسؤول المخزون',
+          capabilities: {
+            PosCapability.catalogView,
+            PosCapability.catalogManage,
+            PosCapability.reportsView,
+          },
+        ),
+        // Sees everything and touches nothing. The one template whose value is
+        // in what it lacks: an accountant who could void a sale could rewrite
+        // the record they are there to check.
+        'accountant': (
+          nameEn: 'Accountant',
+          nameAr: 'محاسب',
+          capabilities: {
+            PosCapability.catalogView,
+            PosCapability.orderViewAll,
+            PosCapability.reportsView,
+            PosCapability.shiftViewExpectedCash,
+            PosCapability.cashVarianceView,
+            PosCapability.receiptReprint,
+          },
+        ),
+        // Rings up and settles delivery orders. No drawer: a driver carrying a
+        // float is a cash-handling arrangement the restaurant makes, not a
+        // permission the till grants.
+        'delivery': (
+          nameEn: 'Delivery staff',
+          nameAr: 'مندوب توصيل',
+          capabilities: {
+            PosCapability.operate,
+            PosCapability.catalogView,
+            PosCapability.orderItemCancel,
+            PosCapability.receiptReprint,
+          },
+        ),
+        // Everything a manager has except the people. A restaurant group's
+        // branch manager runs the branch; who works there is head office's.
+        'restaurant_manager': (
+          nameEn: 'Restaurant manager',
+          nameAr: 'مدير المطعم',
+          // Spelled out rather than derived from [manager] minus one key: a
+          // derived set changes silently every time somebody edits `manager`,
+          // and a template that quietly gained `backup.manage` because a
+          // different constant grew would be a template nobody reviewed.
+          capabilities: {
+            PosCapability.operate,
+            PosCapability.catalogView,
+            PosCapability.catalogManage,
+            PosCapability.settingsManage,
+            PosCapability.orderViewAll,
+            PosCapability.discountApply,
+            PosCapability.priceOverride,
+            PosCapability.orderVoid,
+            PosCapability.orderItemCancel,
+            PosCapability.orderItemVoid,
+            PosCapability.orderRefund,
+            PosCapability.receiptReprint,
+            PosCapability.shiftOpen,
+            PosCapability.shiftClose,
+            PosCapability.cashMovement,
+            PosCapability.cashOpenWithoutSale,
+            PosCapability.shiftViewExpectedCash,
+            PosCapability.cashVarianceView,
+            PosCapability.dayClose,
+            PosCapability.dayForceClose,
+            PosCapability.reportsView,
+          },
+        ),
+      };
+
   static const seeded =
       <String, ({String nameEn, String nameAr, Set<String> capabilities})>{
         ownerCode: (nameEn: 'Owner', nameAr: 'المالك', capabilities: owner),

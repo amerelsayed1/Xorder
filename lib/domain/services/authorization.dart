@@ -190,7 +190,32 @@ abstract final class Authorization {
   /// permissions; and a cashier role holds nothing from
   /// [PosCapability.backOffice], so the credential sitting on a machine in a
   /// public room cannot reprice the menu.
-  static RoleRefusal? validateRole(PosRole role) {
+  static RoleRefusal? validateRole(PosRole role, {PosStaff? editedBy}) {
+    // §48 — a person may only grant a permission they hold themselves.
+    //
+    // **This is the rule that stops the permission model being decorative.**
+    // Without it, anybody with `staff.manage` — a shift manager, say — writes
+    // themselves a role holding `backup.manage` and the whole catalogue of
+    // permissions becomes one checkbox deep. It is enforced here rather than in
+    // the role editor because a widget is not a control: the repository asks
+    // the same function before it writes.
+    //
+    // Only what the edit is *adding* is checked. Somebody who cannot refund is
+    // still allowed to rename a role that grants refunds, and to take the
+    // permission away — removing authority you do not hold is safe, and
+    // refusing it would mean a manager could not revoke anything an owner had
+    // granted.
+    if (editedBy != null) {
+      final adding = role.capabilities
+          .map(PosCapability.canonical)
+          .where((c) => !editedBy.can(c))
+          .toSet();
+      if (adding.isNotEmpty) return CannotGrantWhatYouLack(adding);
+    }
+    return _validateRoleShape(role);
+  }
+
+  static RoleRefusal? _validateRoleShape(PosRole role) {
     if (role.code == SystemRoles.ownerCode &&
         !PosCapability.all.every(role.capabilities.contains)) {
       return const OwnerMustKeepEverything();
@@ -215,6 +240,18 @@ class OwnerMustKeepEverything extends RoleRefusal {
 
 class CashiersAreNotAdministrators extends RoleRefusal {
   const CashiersAreNotAdministrators(this.capabilities);
+
+  final Set<String> capabilities;
+}
+
+/// §48 — the editor tried to grant something they do not hold.
+///
+/// Names the capabilities rather than saying "not permitted", because the
+/// person doing this is a manager who almost certainly did not realise: they
+/// ticked a box on a template. Telling them which one is the difference between
+/// a fixable mistake and a screen that refuses without saying why.
+class CannotGrantWhatYouLack extends RoleRefusal {
+  const CannotGrantWhatYouLack(this.capabilities);
 
   final Set<String> capabilities;
 }

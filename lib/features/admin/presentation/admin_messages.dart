@@ -94,6 +94,12 @@ abstract final class AdminText {
               for (final c in capabilities) _lower(AdminText.capability(s, c)),
             ]),
           ),
+        CannotGrantWhatYouLack(:final capabilities) =>
+          s.refusalCannotGrantWhatYouLack(
+            _list(s, [
+              for (final c in capabilities) _lower(AdminText.capability(s, c)),
+            ]),
+          ),
       };
 
   /// Lower-casing the first letter is an English sentence-joining trick and

@@ -171,7 +171,8 @@ class PostgresRolesRepository implements RolesRepository {
       return const AdminResult.refused(NotPermitted(PosCapability.staffManage));
     }
 
-    final invalid = Authorization.validateRole(role);
+    // `editedBy` is what enforces §48: no escalating past what you hold.
+    final invalid = Authorization.validateRole(role, editedBy: by);
     if (invalid != null) return AdminResult.refused(RoleNotAllowed(invalid));
 
     // Sorted before it is stored. The array is compared against its previous

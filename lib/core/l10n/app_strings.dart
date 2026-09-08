@@ -796,6 +796,7 @@ sealed class AppStrings {
   String get refusalNoDatabaseConfigured;
   String get refusalOwnerMustKeepEverything;
   String refusalCashiersAreNotAdministrators(String capabilities);
+  String refusalCannotGrantWhatYouLack(String capabilities);
 
   // Management chrome.
   String get backToTill;
@@ -3352,6 +3353,11 @@ final class EnStrings extends AppStrings {
       'manager role for that.';
 
   @override
+  String refusalCannotGrantWhatYouLack(String capabilities) =>
+      'You cannot grant $capabilities, because you do not hold it yourself. '
+      'Ask somebody who does.';
+
+  @override
   String get backToTill => 'Back to the till';
   @override
   String get paneStaff => 'Staff';
@@ -5542,6 +5548,10 @@ final class ArStrings extends AppStrings {
   @override
   String refusalCashiersAreNotAdministrators(String capabilities) =>
       'دور الكاشير لا يصح أن يشمل $capabilities. استخدم دور مشرف أو مدير لذلك.';
+
+  @override
+  String refusalCannotGrantWhatYouLack(String capabilities) =>
+      'لا يمكنك منح $capabilities لأنك لا تملكها بنفسك. اطلب ذلك ممن يملكها.';
 
   @override
   String get backToTill => 'رجوع إلى الكاشير';
