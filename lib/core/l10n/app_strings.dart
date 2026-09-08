@@ -798,6 +798,16 @@ sealed class AppStrings {
   String refusalCashiersAreNotAdministrators(String capabilities);
   String refusalCannotGrantWhatYouLack(String capabilities);
 
+  // §107 — risk levels, on the role editor's badges.
+  String get riskLow;
+  String get riskMedium;
+  String get riskHigh;
+  String get riskCritical;
+  String get roleCannotGrant;
+  String get roleNew;
+  String get roleTemplateExplain;
+  String roleTemplateCount(int count);
+
   // Management chrome.
   String get backToTill;
   String get paneStaff;
@@ -3358,6 +3368,25 @@ final class EnStrings extends AppStrings {
       'Ask somebody who does.';
 
   @override
+  String get riskLow => 'Low';
+  @override
+  String get riskMedium => 'Medium';
+  @override
+  String get riskHigh => 'High';
+  @override
+  String get riskCritical => 'Critical';
+  @override
+  String get roleCannotGrant => 'you do not hold this';
+  @override
+  String get roleNew => 'New role';
+  @override
+  String get roleTemplateExplain =>
+      'Start from one of these and edit it. Nothing about it stays special.';
+  @override
+  String roleTemplateCount(int count) =>
+      count == 1 ? '1 permission' : '$count permissions';
+
+  @override
   String get backToTill => 'Back to the till';
   @override
   String get paneStaff => 'Staff';
@@ -5552,6 +5581,25 @@ final class ArStrings extends AppStrings {
   @override
   String refusalCannotGrantWhatYouLack(String capabilities) =>
       'لا يمكنك منح $capabilities لأنك لا تملكها بنفسك. اطلب ذلك ممن يملكها.';
+
+  @override
+  String get riskLow => 'منخفض';
+  @override
+  String get riskMedium => 'متوسط';
+  @override
+  String get riskHigh => 'مرتفع';
+  @override
+  String get riskCritical => 'حرج';
+  @override
+  String get roleCannotGrant => 'لا تملكها';
+  @override
+  String get roleNew => 'دور جديد';
+  @override
+  String get roleTemplateExplain =>
+      'ابدأ من أحد هذه ثم عدّله. لا شيء فيه يبقى مميزًا.';
+  @override
+  String roleTemplateCount(int count) =>
+      count == 1 ? 'صلاحية واحدة' : '$count صلاحيات';
 
   @override
   String get backToTill => 'رجوع إلى الكاشير';

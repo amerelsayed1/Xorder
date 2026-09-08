@@ -67,6 +67,15 @@ class _ManagementRolesPaneState extends ConsumerState<ManagementRolesPane> {
                 ),
                 child: ListView(
                   children: [
+                    Padding(
+                      padding: const EdgeInsets.all(PosSpace.md),
+                      child: PosButton(
+                        key: const Key('roles-new'),
+                        label: strings.roleNew,
+                        border: Border.fromBorderSide(context.pos.resting),
+                        onPressed: _busy ? null : _createFromTemplate,
+                      ),
+                    ),
                     for (final role in all)
                       _RoleRow(
                         role: role,
@@ -158,8 +167,18 @@ class _ManagementRolesPaneState extends ConsumerState<ManagementRolesPane> {
                 for (final capability in group.capabilities)
                   _CapabilityRow(
                     label: AdminText.capability(strings, capability),
+                    risk: PosCapability.riskOf(capability),
+                    // §48 — a permission the editor does not hold cannot be
+                    // granted, so the box is shown and locked rather than
+                    // hidden. Hiding it would make the role look like it holds
+                    // less than it does, and unticking one you cannot grant
+                    // has to stay possible: revoking is always allowed.
+                    lockedOn:
+                        !widget.admin.can(capability) &&
+                        !draft.contains(capability),
                     checked: draft.contains(capability),
-                    onChanged: _busy
+                    onChanged: _busy || (!widget.admin.can(capability) &&
+                            !draft.contains(capability))
                         ? null
                         : (value) => setState(() {
                             final next = {...draft};
@@ -177,6 +196,42 @@ class _ManagementRolesPaneState extends ConsumerState<ManagementRolesPane> {
         ),
       ],
     );
+  }
+
+  /// Create a role from one of §49's templates.
+  ///
+  /// A template rather than an empty checklist, because somebody creating an
+  /// accountant otherwise starts from nothing and ticks boxes until the screen
+  /// stops complaining — which is how a role ends up holding whatever made the
+  /// error go away. What is created is an ordinary role the restaurant then
+  /// edits; nothing about it stays special.
+  Future<void> _createFromTemplate() async {
+    final picked = await showDialog<String>(
+      context: context,
+      builder: (context) => const _TemplatePicker(),
+    );
+    if (picked == null || !mounted) return;
+
+    final template = SystemRoles.templates[picked]!;
+    // Trimmed to what this person may actually grant, before the repository is
+    // asked. §48 would refuse the save anyway; refusing a template somebody
+    // just picked, by name, would be a worse first experience than quietly
+    // creating the part of it they can grant and showing them the rest greyed.
+    final grantable = template.capabilities
+        .where(widget.admin.can)
+        .toSet();
+
+    await _save(
+      PosRole(
+        id: 0,
+        code: picked,
+        nameEn: template.nameEn,
+        nameAr: template.nameAr,
+        capabilities: grantable,
+      ),
+      grantable,
+    );
+    if (mounted) ref.invalidate(rolesProvider);
   }
 
   Future<void> _save(PosRole role, Set<String> draft) async {
@@ -260,11 +315,20 @@ class _CapabilityRow extends StatelessWidget {
     required this.label,
     required this.checked,
     required this.onChanged,
+    this.risk = PermissionRisk.low,
+    this.lockedOn = false,
   });
 
   final String label;
   final bool checked;
   final ValueChanged<bool>? onChanged;
+
+  /// Shown as a badge beside the name (§107), so somebody ticking a box can
+  /// see what they are handing over before they hand it over.
+  final PermissionRisk risk;
+
+  /// The editor does not hold this and so cannot grant it (§48).
+  final bool lockedOn;
 
   @override
   Widget build(BuildContext context) => InkWell(
@@ -288,11 +352,143 @@ class _CapabilityRow extends StatelessWidget {
                 : null,
           ),
           const SizedBox(width: PosSpace.md),
-          Expanded(child: Text(label, style: PosText.ui(color: context.pos.inkWarm, size: 13.5))),
+          Expanded(
+            child: Text(
+              label,
+              style: PosText.ui(
+                color: lockedOn ? context.pos.muted : context.pos.inkWarm,
+                size: 13.5,
+              ),
+            ),
+          ),
+          if (lockedOn)
+            Padding(
+              padding: const EdgeInsetsDirectional.only(end: PosSpace.sm),
+              // Not a tooltip. A manager who cannot grant something needs to
+              // know why while they are looking at it, not on hover.
+              child: Text(
+                context.strings.roleCannotGrant,
+                style: PosText.ui(size: 11, color: context.pos.muted),
+              ),
+            ),
+          if (risk != PermissionRisk.low) _RiskBadge(risk: risk),
         ],
       ),
     ),
   );
+}
+
+/// The six starting points a new role can be built from (§49).
+class _TemplatePicker extends StatelessWidget {
+  const _TemplatePicker();
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = context.strings;
+    final palette = context.pos;
+
+    return Dialog(
+      backgroundColor: palette.surface,
+      shape: const RoundedRectangleBorder(),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 460),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(PosSpace.lg),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    strings.roleNew,
+                    style: PosText.ui(
+                      size: 18,
+                      weight: FontWeight.w800,
+                      color: palette.ink,
+                    ),
+                  ),
+                  const SizedBox(height: PosSpace.xs),
+                  Text(
+                    strings.roleTemplateExplain,
+                    style: PosText.ui(size: 12.5, color: palette.muted),
+                  ),
+                ],
+              ),
+            ),
+            for (final entry in SystemRoles.templates.entries)
+              InkWell(
+                onTap: () => Navigator.of(context).pop(entry.key),
+                child: Container(
+                  padding: const EdgeInsets.all(PosSpace.md),
+                  decoration: BoxDecoration(
+                    border: BorderDirectional(top: palette.hairline),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          entry.value.nameEn,
+                          style: PosText.ui(size: 14, color: palette.ink),
+                        ),
+                      ),
+                      Text(
+                        strings.roleTemplateCount(
+                          entry.value.capabilities.length,
+                        ),
+                        style: PosText.ui(size: 12, color: palette.muted),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            Padding(
+              padding: const EdgeInsets.all(PosSpace.lg),
+              child: PosButton(
+                label: strings.cancel,
+                border: Border.fromBorderSide(palette.resting),
+                onPressed: () => Navigator.of(context).pop(),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// What a capability costs if it is held by the wrong person.
+///
+/// Only shown from `medium` upwards. A badge on every row would be a badge on
+/// no row: the point is that four of these stand out on a screen of thirty.
+class _RiskBadge extends StatelessWidget {
+  const _RiskBadge({required this.risk});
+
+  final PermissionRisk risk;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.pos;
+    final (background, ink) = switch (risk) {
+      PermissionRisk.low => (palette.chipBg, palette.chipText),
+      PermissionRisk.medium => (palette.chipBg, palette.chipText),
+      PermissionRisk.high => (palette.warnSoft, palette.warn),
+      PermissionRisk.critical => (palette.dangerSoft, palette.danger),
+    };
+
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: PosSpace.sm,
+        vertical: 2,
+      ),
+      color: background,
+      child: Text(
+        AdminText.risk(context.strings, risk),
+        style: PosText.ui(size: 10.5, weight: FontWeight.w700, color: ink),
+      ),
+    );
+  }
 }
 
 class _Message extends StatelessWidget {

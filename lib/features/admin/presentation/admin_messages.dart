@@ -85,6 +85,14 @@ abstract final class AdminText {
         NoDatabaseConfigured() => s.refusalNoDatabaseConfigured,
       };
 
+  /// What a risk level is called on a badge.
+  static String risk(AppStrings s, PermissionRisk level) => switch (level) {
+    PermissionRisk.low => s.riskLow,
+    PermissionRisk.medium => s.riskMedium,
+    PermissionRisk.high => s.riskHigh,
+    PermissionRisk.critical => s.riskCritical,
+  };
+
   static String _roleReason(AppStrings s, RoleRefusal reason) =>
       switch (reason) {
         OwnerMustKeepEverything() => s.refusalOwnerMustKeepEverything,

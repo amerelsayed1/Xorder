@@ -211,6 +211,71 @@ void main() {
         roles.roles.firstWhere((r) => r.code == SystemRoles.supervisorCode);
     expect(supervisor.holds(PosCapability.orderRefund), isFalse);
   });
+
+  testWidgets('a critical permission is badged as such', (tester) async {
+    // §107 on screen: somebody ticking a box can see what they are handing
+    // over before they hand it over. Only medium and above are badged — a
+    // badge on every row would be a badge on no row.
+    await open(tester);
+    await enter(tester, '1234');
+    await tester.tap(find.text('Roles'));
+    await tester.pumpAndSettle();
+
+    // Above the fold: the money group's high-risk permissions.
+    expect(find.text('High'), findsWidgets);
+    expect(find.text('Low'), findsNothing);
+
+    // The critical ones live in the back-office group at the bottom, so the
+    // list has to build them first — `ensureVisible` cannot reach a `ListView`
+    // child that was never built.
+    await tester.scrollUntilVisible(
+      find.text(AdminCapabilityLabels.catalogManage),
+      120,
+      scrollable: find
+          .descendant(
+            of: find.byType(ListView),
+            matching: find.byType(Scrollable),
+          )
+          .last,
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Critical'), findsWidgets);
+  });
+
+  testWidgets('New role offers the templates rather than an empty checklist',
+      (tester) async {
+    // Otherwise somebody creating an accountant ticks boxes until the screen
+    // stops complaining, which is how a role ends up holding whatever made the
+    // error go away.
+    await open(tester);
+    await enter(tester, '1234');
+    await tester.tap(find.text('Roles'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('roles-new')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Accountant'), findsOneWidget);
+    expect(find.text('Kitchen'), findsOneWidget);
+    expect(find.text('Delivery staff'), findsOneWidget);
+  });
+
+  testWidgets('picking a template creates an ordinary role', (tester) async {
+    await open(tester);
+    await enter(tester, '1234');
+    await tester.tap(find.text('Roles'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('roles-new')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Kitchen'));
+    await tester.pumpAndSettle();
+
+    // It appears in the list beside the seeded ones. Nothing about it stays
+    // special.
+    expect(find.text('Kitchen'), findsWidgets);
+  });
+
 }
 
 /// The labels the roles pane renders, so a test taps the same string a manager
