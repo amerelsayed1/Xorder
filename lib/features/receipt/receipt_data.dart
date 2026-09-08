@@ -76,7 +76,16 @@ class ReceiptData {
     this.syncNote = ReceiptSyncNote.none,
     this.refunded = Money.zero,
     this.isReprint = false,
+    this.etaQrPayload,
   });
+
+  /// The QR square Egypt requires on a customer's printed copy.
+  ///
+  /// Null until the e-receipt has been sealed, which on a till selling through
+  /// an outage may be minutes or hours after the slip was handed over. That is
+  /// not a bug and not a compliance failure — ETA allow twenty-four hours — so
+  /// the slip prints without it rather than refusing to print.
+  final String? etaQrPayload;
 
   /// Everything on the slip, taken from the ticket that was just settled.
   /// [cloudBacked] is whether this terminal syncs with a platform at all. It

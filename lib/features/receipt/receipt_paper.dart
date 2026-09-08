@@ -6,6 +6,7 @@ import '../../core/ui/theme.dart';
 import '../../core/ui/tokens.dart';
 import '../../domain/models/receipt_profile.dart';
 import 'receipt_data.dart';
+import 'receipt_qr.dart';
 
 /// A receipt is paper, and paper is white in a dark room too.
 ///
@@ -212,6 +213,13 @@ class ReceiptPaper extends StatelessWidget {
               textAlign: TextAlign.center,
               style: PosText.mono(size: 10.5, color: receiptPalette.body),
             ),
+          // Above the boilerplate, below the totals: where a customer looks
+          // when they have been told to scan something.
+          if (data.etaQrPayload case final payload?) ...[
+            const SizedBox(height: PosSpace.sm),
+            Center(child: ReceiptQr(payload: payload)),
+            const SizedBox(height: PosSpace.sm),
+          ],
           Text(
             'xorder.io',
             textAlign: TextAlign.center,

@@ -15,6 +15,7 @@ import 'package:xorder_pos/domain/repositories/admin_repositories.dart';
 import 'package:xorder_pos/features/admin/presentation/management_receipt_pane.dart';
 import 'package:xorder_pos/features/receipt/receipt_data.dart';
 import 'package:xorder_pos/features/receipt/receipt_paper.dart';
+import 'package:xorder_pos/features/receipt/receipt_qr.dart';
 
 /// Who the receipt says sold the food, on screen.
 ///
@@ -291,6 +292,55 @@ void main() {
     testWidgets("the restaurant's own footer prints", (tester) async {
       await pumpSlip(tester, complete);
       expect(find.text('Open until 2am'), findsOneWidget);
+    });
+
+    testWidgets('no QR prints until the receipt has been sealed', (
+      tester,
+    ) async {
+      // On a till selling through an outage the seal may land minutes or hours
+      // after the slip was handed over. ETA allow twenty-four hours, so the
+      // slip prints without a square rather than with a broken one.
+      await pumpSlip(tester, complete);
+      expect(find.byType(ReceiptQr), findsNothing);
+    });
+
+    testWidgets('a sealed receipt prints its QR', (tester) async {
+      await tester.pumpWidget(
+        host(
+          SingleChildScrollView(
+            child: ReceiptPaper(
+              data: ReceiptData(
+                orderType: OrderType.takeaway,
+                occurredAt: DateTime(2026, 9, 8, 13),
+                lines: const [
+                  ReceiptLine(
+                    name: 'Koshari',
+                    quantity: 1,
+                    lineTotal: Money(4500),
+                  ),
+                ],
+                subtotal: const Money(4500),
+                discount: Money.zero,
+                service: Money.zero,
+                vat: const Money(630),
+                total: const Money(5130),
+                paid: const Money(5130),
+                change: Money.zero,
+                invoiceNumber: 'INV-0001',
+                etaQrPayload: 'https://example.invalid/r/abc123',
+              ),
+              profile: complete,
+              tenantName: 'XOrder Demo',
+              terminalCode: 'T1',
+              cashierName: 'Rana',
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(ReceiptQr), findsOneWidget);
+      expect(tester.takeException(), isNull);
     });
 
     testWidgets('a phone number stays left to right', (tester) async {

@@ -2077,6 +2077,18 @@ const posMigrations = <PosMigration>[
     )
     ''',
   ]),
+  PosMigration(21, 'the QR the customer scans', [
+    // Not computed here. ETA's integration toolkit generates the QR alongside
+    // the seal, and it encodes more than the uuid — so a payload this app
+    // invented would be a square that scans to nothing.
+    //
+    // Nullable, and printed only when present: a till whose toolkit is not yet
+    // configured prints a slip without a QR rather than one with a broken one.
+    '''
+    ALTER TABLE pos_eta_receipts
+      ADD COLUMN IF NOT EXISTS qr_payload text
+    ''',
+  ]),
 ];
 
 /// Brings the branch database up to the current schema.

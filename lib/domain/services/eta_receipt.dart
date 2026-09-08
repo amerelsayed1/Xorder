@@ -152,6 +152,32 @@ class EtaReceiptInput {
   final String currency;
   final Money totalCommercialDiscount;
   final Money totalItemsDiscount;
+
+  /// The same receipt, pointed at its predecessor.
+  ///
+  /// The chain head is only known inside the queue's lock, and everything else
+  /// is known long before — so this exists to keep the two apart rather than
+  /// to make the caller rebuild fourteen fields at the one moment it must not
+  /// get them wrong.
+  EtaReceiptInput chainedTo(String previousUuid) => EtaReceiptInput(
+    profile: profile,
+    receiptNumber: receiptNumber,
+    issuedAt: issuedAt,
+    deviceSerialNumber: deviceSerialNumber,
+    items: items,
+    totalSales: totalSales,
+    netAmount: netAmount,
+    totalAmount: totalAmount,
+    taxTotals: taxTotals,
+    paymentMethod: paymentMethod,
+    buyer: buyer,
+    previousUuid: previousUuid,
+    referenceOldUuid: referenceOldUuid,
+    receiptType: receiptType,
+    currency: currency,
+    totalCommercialDiscount: totalCommercialDiscount,
+    totalItemsDiscount: totalItemsDiscount,
+  );
 }
 
 abstract final class EtaReceiptBuilder {

@@ -351,7 +351,7 @@ class LocalBootstrap {
     // rejection would be a row that proves nothing.
     'GRANT SELECT, INSERT ON pos_eta_receipts TO "$role"',
     'GRANT UPDATE (status, signature, attempts, last_attempt_at, '
-        'submitted_at, submission_uuid, long_id, error_message) '
+        'submitted_at, submission_uuid, long_id, error_message, qr_payload) '
         'ON pos_eta_receipts TO "$role"',
     'GRANT USAGE, SELECT ON SEQUENCE pos_eta_receipts_id_seq TO "$role"',
     // The chain head, one row per device. UPDATE by definition: every receipt

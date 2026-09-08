@@ -19,8 +19,11 @@ class TaxGroup {
     this.nameAr,
     this.isDefault = false,
     this.etaTaxType = EtaTaxCode.valueAdded,
-    this.etaSubType = EtaTaxCode.standardVat,
-  });
+    String? etaSubType,
+    // A private field cannot be a public named parameter, and the name has to
+    // be public because callers set it.
+    // ignore: prefer_initializing_formals
+  }) : _etaSubType = etaSubType;
 
   /// The rate every product falls back to when it names none.
   ///
@@ -53,7 +56,19 @@ class TaxGroup {
   /// Defaults are Egypt's standard VAT, which is what a restaurant selling
   /// food charges. See [EtaTaxCode].
   final String etaTaxType;
-  final String etaSubType;
+
+  final String? _etaSubType;
+
+  /// The sub-rate code, falling back on the rate when nobody has set one.
+  ///
+  /// The fallback has to look at [rateBp] rather than being a plain default:
+  /// a zero-rated group filed under the standard code would be a filing that
+  /// says the restaurant charged 14% and collected nothing, which is the
+  /// discrepancy an audit exists to find. Set it explicitly for anything
+  /// beyond these two — exempt, reduced, and the rest of ETA's list.
+  String get etaSubType =>
+      _etaSubType ??
+      (rateBp == 0 ? EtaTaxCode.zeroRated : EtaTaxCode.standardVat);
 
   /// Zero-rated and exempt look the same on a total and are different on a
   /// filing. Both are `rateBp == 0` here; which one it is belongs to the group's
@@ -117,8 +132,11 @@ class TaxLine {
     required this.amount,
     this.taxGroupId,
     this.etaTaxType = EtaTaxCode.valueAdded,
-    this.etaSubType = EtaTaxCode.standardVat,
-  });
+    String? etaSubType,
+    // A private field cannot be a public named parameter, and the name has to
+    // be public because callers set it.
+    // ignore: prefer_initializing_formals
+  }) : _etaSubType = etaSubType;
 
   final String name;
   final int rateBp;
@@ -133,7 +151,13 @@ class TaxLine {
   /// on a settled order has to keep saying what it was filed as even after
   /// somebody edits the group it came from.
   final String etaTaxType;
-  final String etaSubType;
+
+  final String? _etaSubType;
+
+  /// See [TaxGroup.etaSubType] — the same fallback, for the same reason.
+  String get etaSubType =>
+      _etaSubType ??
+      (rateBp == 0 ? EtaTaxCode.zeroRated : EtaTaxCode.standardVat);
 }
 
 /// How a set of lines is taxed.

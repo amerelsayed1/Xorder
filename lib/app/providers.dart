@@ -31,6 +31,7 @@ import '../data/postgres/postgres_order_history_repository.dart';
 import '../data/postgres/postgres_business_day_repository.dart';
 import '../data/postgres/postgres_cash_movements_repository.dart';
 import '../data/postgres/postgres_orders_repository.dart';
+import '../data/eta/filing_orders_repository.dart';
 import '../data/postgres/postgres_eta_queue_repository.dart';
 import '../data/postgres/postgres_receipt_profile_repository.dart';
 import '../data/postgres/postgres_settings_repository.dart';
@@ -230,7 +231,29 @@ ordersRepositoryProvider = Provider<OrdersRepository>((ref) {
   // identical either way — PostgreSQL first, outbox claim in the same
   // transaction.
   final sync = ref.watch(cloudSyncProvider);
-  return sync == null ? inner : SyncingOrdersRepository(inner, sync.kick);
+  final synced = sync == null ? inner : SyncingOrdersRepository(inner, sync.kick);
+
+  // And then the tax authority, on top of everything else. Outermost on
+  // purpose: the platform sync must happen whether or not this branch files
+  // e-receipts, and a filing failure must not take the sync down with it.
+  final queue = ref.watch(etaQueueRepositoryProvider);
+  if (queue == null) return synced;
+
+  return FilingOrdersRepository(
+    synced,
+    queue: queue,
+    // Read at settlement, not held: a profile completed in Management five
+    // minutes ago is the one this sale is filed under.
+    profile: () =>
+        ref.read(receiptProfileProvider).valueOrNull ??
+        const ReceiptProfile(branchId: 0),
+    // ETA's chain is per POS serial. The terminal id is what this product has
+    // that is stable per till and unique per restaurant; the serial registered
+    // with the authority is set alongside the seal, and until that exists this
+    // keeps two tills in one branch on two chains, which is the property that
+    // matters.
+    deviceSerial: context.terminalId,
+  );
 });
 
 /// Reading settled orders back — history, and everything built on it.

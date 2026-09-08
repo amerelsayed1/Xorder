@@ -9,8 +9,7 @@ import 'package:xorder_pos/data/fakes/fake_repositories.dart';
 import 'package:xorder_pos/data/unconfigured/unconfigured_repositories.dart';
 import 'package:xorder_pos/data/postgres/migrations.dart';
 import 'package:xorder_pos/data/postgres/pos_database.dart';
-import 'package:xorder_pos/data/postgres/postgres_orders_repository.dart';
-import 'package:xorder_pos/data/cloud/outbox_drain.dart';
+import 'package:xorder_pos/data/eta/filing_orders_repository.dart';
 import 'package:xorder_pos/features/setup/application/setup_controller.dart';
 
 import 'pg_fixture.dart';
@@ -92,7 +91,16 @@ void main() {
 
   test('a provisioned terminal gets Postgres', () {
     final container = containerFor(provisioned: true);
-    expect(container.read(ordersRepositoryProvider), isA<PostgresOrdersRepository>());
+    // Wrapped, not bare. Every terminal with a database queues an e-receipt
+    // for every sale, because the obligation is the restaurant's rather than
+    // the deployment's — a branch that files nothing is one whose receipt
+    // profile is blank, which the decorator checks per sale rather than at
+    // construction. Asserting the bare type here would be asserting the
+    // absence of the filing layer.
+    expect(
+      container.read(ordersRepositoryProvider),
+      isA<FilingOrdersRepository>(),
+    );
   });
 
   test('a cloud terminal gets Postgres too — it keeps a local one', () {
@@ -110,9 +118,12 @@ void main() {
     // the behaviour a cloud terminal is supposed to have — the write itself is
     // identical either way, PostgreSQL first and an outbox claim in the same
     // transaction.
+    // …and the filing layer sits over that in turn, so what comes back is the
+    // outermost wrapper. `SyncingOrdersRepository` is still in the stack; it
+    // is no longer the thing on top.
     expect(
       container.read(ordersRepositoryProvider),
-      isA<SyncingOrdersRepository>(),
+      isA<FilingOrdersRepository>(),
     );
   });
 
