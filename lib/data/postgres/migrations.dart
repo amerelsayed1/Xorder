@@ -2608,6 +2608,100 @@ const posMigrations = <PosMigration>[
     )
     ''',
   ]),
+  PosMigration(29, 'receiving stock, and what it cost (moving average)', [
+    // The ledger. Append-only, like the audit events: a movement is a claim
+    // about what physically happened, and a row somebody can edit afterwards
+    // is a stock figure nobody can defend.
+    '''
+    CREATE TABLE IF NOT EXISTS pos_stock_movements (
+      id                bigserial   PRIMARY KEY,
+      restaurant_id     bigint      NOT NULL REFERENCES pos_restaurants(id) ON DELETE CASCADE,
+      branch_id         bigint      NOT NULL REFERENCES pos_branches(id) ON DELETE RESTRICT,
+      product_id        bigint      NOT NULL REFERENCES pos_products(id) ON DELETE RESTRICT,
+      kind              text        NOT NULL,
+      -- Positive in, negative out. One signed column rather than two, because
+      -- every reader wants the net and a pair would make each of them decide
+      -- the sign themselves.
+      quantity_milli    bigint      NOT NULL,
+      unit              text        NOT NULL DEFAULT 'ea',
+      -- What this movement was priced at: the delivery cost on a receipt, the
+      -- carrying average on an issue.
+      unit_cost_minor   bigint      NOT NULL DEFAULT 0,
+      -- **The resulting position, recorded on the movement itself.**
+      -- A moving average is a fold, not a sum: it cannot be recomputed from a
+      -- filter the way a supplier balance can, only by replaying every
+      -- movement in order. Storing the answer beside the input is what makes
+      -- last March's cost auditable without replaying three years.
+      balance_milli     bigint      NOT NULL,
+      average_cost_minor bigint     NOT NULL,
+      purchase_order_id bigint      REFERENCES pos_purchase_orders(id) ON DELETE SET NULL,
+      order_id          bigint      REFERENCES pos_orders(id) ON DELETE SET NULL,
+      note              text,
+      occurred_at       timestamptz NOT NULL DEFAULT now(),
+      created_by        bigint      REFERENCES pos_staff(id) ON DELETE SET NULL,
+      CONSTRAINT pos_stock_movements_kind_known CHECK (
+        kind IN ('receipt', 'sale', 'waste', 'adjustment', 'opening',
+                 'transfer_in', 'transfer_out')
+      ),
+      CONSTRAINT pos_stock_movements_not_nothing CHECK (quantity_milli <> 0),
+      CONSTRAINT pos_stock_movements_cost_sane CHECK (unit_cost_minor >= 0)
+    )
+    ''',
+    // The ledger is read two ways: everything for one product in order (to
+    // replay or to show a history), and everything in a window (to value the
+    // stock at a date).
+    '''
+    CREATE INDEX IF NOT EXISTS pos_stock_movements_product_idx
+      ON pos_stock_movements (product_id, occurred_at, id)
+    ''',
+    '''
+    CREATE INDEX IF NOT EXISTS pos_stock_movements_branch_idx
+      ON pos_stock_movements (restaurant_id, branch_id, occurred_at)
+    ''',
+
+    // The current position, per product per branch.
+    //
+    // **A cache, and unlike the supplier balance it is a justified one.** A
+    // supplier balance is a sum — order-independent, so deriving it costs one
+    // aggregate and can never disagree. A moving average is a fold: it depends
+    // on the order arrivals happened in, so deriving it means replaying the
+    // whole ledger, and doing that on every screen that shows a cost would
+    // make the till slower every month it ran.
+    //
+    // It is written in the same transaction as the movement that changes it,
+    // and every movement records the resulting position, so a drift is
+    // detectable by replay rather than merely suspected.
+    '''
+    CREATE TABLE IF NOT EXISTS pos_stock_levels (
+      restaurant_id      bigint      NOT NULL REFERENCES pos_restaurants(id) ON DELETE CASCADE,
+      branch_id          bigint      NOT NULL REFERENCES pos_branches(id) ON DELETE CASCADE,
+      product_id         bigint      NOT NULL REFERENCES pos_products(id) ON DELETE CASCADE,
+      -- Signed. A restaurant that sells something the system never saw arrive
+      -- is telling the truth about the sale and the wrong thing about the
+      -- stock; clamping at zero would hide the second and fix neither.
+      quantity_milli     bigint      NOT NULL DEFAULT 0,
+      unit               text        NOT NULL DEFAULT 'ea',
+      average_cost_minor bigint      NOT NULL DEFAULT 0,
+      updated_at         timestamptz NOT NULL DEFAULT now(),
+      PRIMARY KEY (branch_id, product_id),
+      CONSTRAINT pos_stock_levels_cost_sane CHECK (average_cost_minor >= 0)
+    )
+    ''',
+
+    // How a product is bought, so a receipt knows what a unit means. Null for
+    // everything until somebody says otherwise, and read as `ea`.
+    '''
+    ALTER TABLE pos_products
+      ADD COLUMN IF NOT EXISTS stock_unit text
+    ''',
+    // Whether this product is stocked at all. Most of a menu is not: a
+    // restaurant tracks chicken and gas, not every assembled dish, and
+    // pretending otherwise would fill the ledger with movements nobody counts.
+    '''
+    ALTER TABLE pos_products
+      ADD COLUMN IF NOT EXISTS is_stocked boolean NOT NULL DEFAULT false
+    ''',
+  ]),
 ];
 
 /// Brings the branch database up to the current schema.

@@ -290,6 +290,10 @@ abstract final class AuditAction {
   /// disputed delivery asks.
   static const purchaseOrderStatusChanged = 'purchase_order.status_changed';
 
+  /// Goods booked in. Its own action because it is the moment a cost price
+  /// changes, and every margin afterwards is measured against it.
+  static const stockReceived = 'stock.received';
+
   /// A supplier added, edited or retired. Its own action because a supplier is
   /// where money leaves the business, and "who added this account" is the
   /// first question a fraud review asks.

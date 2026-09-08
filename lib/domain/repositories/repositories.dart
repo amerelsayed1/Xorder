@@ -1,9 +1,11 @@
 import '../../core/config/deployment.dart';
 import '../../core/money/money.dart';
+import '../../core/money/quantity.dart';
 import 'admin_repositories.dart';
 import '../models/catalog.dart';
 import '../models/order_type_config.dart';
 import '../models/purchase_order.dart';
+import '../services/stock_costing.dart';
 import '../models/service_charge.dart';
 import '../models/supplier.dart';
 import '../models/tender_method.dart';
@@ -181,6 +183,26 @@ abstract interface class PurchaseOrdersRepository {
     required PosStaff by,
     DateTime? orderedAt,
   });
+}
+
+/// Booking goods in against a purchase order.
+abstract interface class ReceivingRepository {
+  /// Records what arrived, by purchase-order line.
+  ///
+  /// Everything happens together: the line's received quantity, a movement in
+  /// the ledger, the new position, and the order's status — which is *derived*
+  /// from the lines rather than passed in, so a receipt cannot leave an order
+  /// saying something its own lines contradict.
+  Future<AdminResult<void>> receive({
+    required int purchaseOrderId,
+    required Map<int, Quantity> byLine,
+    required PosStaff by,
+    DateTime? at,
+    String? note,
+  });
+
+  /// What is on hand and what it cost, or null for a product never stocked.
+  Future<StockPosition?> positionFor(int productId);
 }
 
 abstract interface class TablesRepository {
