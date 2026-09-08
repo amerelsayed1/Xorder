@@ -1108,6 +1108,28 @@ Blocking. Needs Wave M's `tax_lines[]` underneath it.
    and a queue growing where nobody looks is a failure mode this codebase has
    already been bitten by once.
 
+**Built so far:** the receipt profile (2), the document, its canonical
+serialization and its uuid (part of 1), the queue with its chain and deadline
+(3), the screen (5), and the signing seam. **Not built:** the seal itself, the
+submission client, and the QR code — 1, 2 and 4 in the list above.
+
+Three findings from the SDK worth recording, because each one changes a design:
+
+* **The private key cannot live in this process.** Egypt issues an e-seal as an
+  X.509 certificate on a hardware token or HSM, not exportable — which is the
+  point of it. Signing is therefore an interface, and the deployment binds ETA's
+  own integration toolkit (a local REST service they publish), a signing service
+  on the branch server holding the token, or a service provider signing under
+  `signatureType` `S`. **This is an open commercial question, not a code one.**
+* **Receipts are chained per device.** Each names the uuid of the one before it
+  from the same POS serial, so a gap is visible to the authority. That makes
+  enqueuing a locked read-modify-write rather than an append, and makes the
+  device serial part of the identity rather than decoration.
+* **The uuid is a fingerprint, not an identifier.** It is SHA-256 of the
+  canonical document without its own uuid in it, so the same sale resubmitted is
+  recognisably the same document rather than a second one. Idempotency comes
+  free; a random id would have had to buy it.
+
 **The architecture is already right for this.** ETA permits store-and-forward
 within 24 hours — it does not require real-time clearance the way Saudi ZATCA
 Phase 2 does for B2B. A till that sells through an outage and submits when the
