@@ -339,6 +339,7 @@ class PostgresStaffDirectoryRepository implements StaffDirectoryRepository {
     PosDatabase? readDatabase,
     DeploymentConfig? readConfig,
     this.adminAvailable = true,
+    this.offline = true,
     int? branchId,
     String? terminalId,
   }) : _c = _AdminContext(
@@ -357,6 +358,21 @@ class PostgresStaffDirectoryRepository implements StaffDirectoryRepository {
          branchId: branchId,
          terminalId: terminalId,
        );
+
+  /// Whether this terminal owns its own staff records.
+  ///
+  /// **False on a cloud till, and it changes what may be written here — not
+  /// whether anything may be.** `BootstrapSeeder` upserts `pos_staff` from the
+  /// bundle and deactivates anybody the bundle does not name, so creating,
+  /// renaming, disabling or re-PINning somebody locally lasts until the next
+  /// sync and then silently does not.
+  ///
+  /// It does **not** seed `pos_roles`, `pos_staff.role_id`, `pos_staff_roles`,
+  /// the per-person overrides or the ceilings. Assigning a role and setting
+  /// somebody's permissions are local, permanent and correct on a cloud till —
+  /// which is why this refuses per *act* rather than closing the pane. Hiding
+  /// the whole thing would take away the half that works.
+  final bool offline;
 
   final _AdminContext _c;
 
@@ -422,6 +438,13 @@ class PostgresStaffDirectoryRepository implements StaffDirectoryRepository {
     int? branchId,
     Set<String> directGrants = const {},
   }) async {
+    // The bundle owns this record — see [offline].
+    if (!offline) {
+      return const AdminResult<PosStaff>.refused(
+        ManagedByPlatform(ManagedByPlatform.staffRecords),
+      );
+    }
+
     if (!adminAvailable) {
       return const AdminResult<PosStaff>.refused(
         AdministratorCredentialRequired(),
@@ -490,6 +513,21 @@ class PostgresStaffDirectoryRepository implements StaffDirectoryRepository {
     Set<String>? directGrants,
     int? branchId,
   }) async {
+    // Per field, not per call. `role_id` is not in the bundle, so moving
+    // somebody between roles on a cloud till is permanent and correct — while
+    // renaming them, or changing their direct grants, is not. Refusing the
+    // whole method would take away the half that works.
+    final touchesPlatformOwned =
+        name != null ||
+        username != null ||
+        directGrants != null ||
+        branchId != null;
+    if (!offline && touchesPlatformOwned) {
+      return const AdminResult<PosStaff>.refused(
+        ManagedByPlatform(ManagedByPlatform.staffRecords),
+      );
+    }
+
     if (!adminAvailable) {
       return const AdminResult<PosStaff>.refused(
         AdministratorCredentialRequired(),
@@ -580,6 +618,13 @@ class PostgresStaffDirectoryRepository implements StaffDirectoryRepository {
     required int staffId,
     required bool isActive,
   }) async {
+    // The bundle owns this record — see [offline].
+    if (!offline) {
+      return const AdminResult<PosStaff>.refused(
+        ManagedByPlatform(ManagedByPlatform.staffRecords),
+      );
+    }
+
     if (!adminAvailable) {
       return const AdminResult<PosStaff>.refused(
         AdministratorCredentialRequired(),
@@ -639,6 +684,13 @@ class PostgresStaffDirectoryRepository implements StaffDirectoryRepository {
     required int staffId,
     required String pin,
   }) async {
+    // The bundle owns this record — see [offline].
+    if (!offline) {
+      return const AdminResult<void>.refused(
+        ManagedByPlatform(ManagedByPlatform.staffRecords),
+      );
+    }
+
     if (!adminAvailable) {
       return const AdminResult<void>.refused(AdministratorCredentialRequired());
     }

@@ -1661,6 +1661,10 @@ final staffDirectoryRepositoryProvider = Provider<StaffDirectoryRepository>((
     return const UnconfiguredStaffDirectoryRepository();
   }
   return PostgresStaffDirectoryRepository(
+    // Who works here is the platform's on a cloud till — see the field's own
+    // note. Not a reason to hide the pane: roles and permissions are local
+    // there and stay editable.
+    offline: config.mode == DeploymentMode.offline,
     // Writes go through the administrator connection…
     database: ref.watch(adminPosDatabaseProvider),
     config: ref.watch(adminDeploymentProvider),

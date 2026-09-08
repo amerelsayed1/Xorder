@@ -797,6 +797,8 @@ sealed class AppStrings {
   String get refusalOwnerMustKeepEverything;
   String refusalCashiersAreNotAdministrators(String capabilities);
   String refusalCannotGrantWhatYouLack(String capabilities);
+  String refusalManagedByPlatform(String what);
+  String get staffComesFromPlatform;
 
   // §107 — risk levels, on the role editor's badges.
   String get riskLow;
@@ -3421,6 +3423,24 @@ final class EnStrings extends AppStrings {
       'Ask somebody who does.';
 
   @override
+  String refusalManagedByPlatform(String what) => switch (what) {
+    'staff' =>
+      'Who works here is set on XOrder, not on this till. A change made here '
+      'would be undone by the next sync.',
+    'catalogue' =>
+      'The menu is set on XOrder, not on this till. A change made here would '
+      'be undone by the next sync.',
+    'floor' => 'The floor plan is set on XOrder, not on this till.',
+    'money' => 'The money rules are set on XOrder, not on this till.',
+    _ => 'This is set on XOrder, not on this till.',
+  };
+
+  @override
+  String get staffComesFromPlatform =>
+      'Who works here comes from XOrder. You can still set what each person '
+      'may do — roles and permissions live on this till.';
+
+  @override
   String get riskLow => 'Low';
   @override
   String get riskMedium => 'Medium';
@@ -5750,6 +5770,24 @@ final class ArStrings extends AppStrings {
   @override
   String refusalCannotGrantWhatYouLack(String capabilities) =>
       'لا يمكنك منح $capabilities لأنك لا تملكها بنفسك. اطلب ذلك ممن يملكها.';
+
+  @override
+  String refusalManagedByPlatform(String what) => switch (what) {
+    'staff' =>
+      'من يعمل هنا يُضبط على XOrder لا على هذه النقطة. أي تعديل هنا سيُلغى '
+      'مع أول مزامنة.',
+    'catalogue' =>
+      'المنيو يُضبط على XOrder لا على هذه النقطة. أي تعديل هنا سيُلغى مع أول '
+      'مزامنة.',
+    'floor' => 'مخطط الصالة يُضبط على XOrder لا على هذه النقطة.',
+    'money' => 'قواعد المال تُضبط على XOrder لا على هذه النقطة.',
+    _ => 'هذا يُضبط على XOrder لا على هذه النقطة.',
+  };
+
+  @override
+  String get staffComesFromPlatform =>
+      'من يعمل هنا يأتي من XOrder. ويمكنك مع ذلك ضبط ما يفعله كلٌّ منهم — '
+      'الأدوار والصلاحيات تعيش على هذه النقطة.';
 
   @override
   String get riskLow => 'منخفض';

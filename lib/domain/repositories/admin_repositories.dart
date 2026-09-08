@@ -134,6 +134,30 @@ class NoDatabaseConfigured extends AdminRefusal {
   const NoDatabaseConfigured();
 }
 
+/// The platform owns this record, so editing it here would not last.
+///
+/// **A refusal rather than a silent overwrite.** On a cloud till the bootstrap
+/// bundle is authoritative for some rows and not others, and the difference is
+/// invisible from the screen: `BootstrapSeeder` upserts `pos_staff` and
+/// deactivates anyone the bundle does not name, so a cashier added in the back
+/// office is switched off by the next sync — with no error and nothing to
+/// read. It does **not** touch `pos_roles`, `pos_staff.role_id`, or Wave C's
+/// grant tables, so assigning somebody a role locally is permanent and correct.
+///
+/// [what] is the thing that is owned elsewhere, so the message can say where to
+/// go rather than only that the door is shut.
+class ManagedByPlatform extends AdminRefusal {
+  const ManagedByPlatform(this.what);
+
+  /// One of [staffRecords], [theCatalogue], [theFloor], [moneyRules].
+  final String what;
+
+  static const staffRecords = 'staff';
+  static const theCatalogue = 'catalogue';
+  static const theFloor = 'floor';
+  static const moneyRules = 'money';
+}
+
 /// The outcome of an administrative write.
 class AdminResult<T> {
   const AdminResult.done(T this.value) : refusal = null;

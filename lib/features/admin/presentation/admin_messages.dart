@@ -83,6 +83,7 @@ abstract final class AdminText {
         AdministratorCredentialRequired() =>
           s.refusalAdministratorCredentialRequired,
         NoDatabaseConfigured() => s.refusalNoDatabaseConfigured,
+        ManagedByPlatform(:final what) => s.refusalManagedByPlatform(what),
       };
 
   /// What a risk level is called on a badge.

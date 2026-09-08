@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/providers.dart';
+import '../../../core/config/deployment.dart';
 import '../../../core/l10n/app_strings.dart';
 import '../../../core/ui/theme.dart';
 import '../../../core/ui/tokens.dart';
@@ -40,6 +41,24 @@ class ManagementStaffPane extends ConsumerWidget {
       data: (people) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // On a cloud till the bundle owns who works here — see
+          // `PostgresStaffDirectoryRepository.offline`. Said once at the top
+          // rather than as four identical refusals: a manager who reads this
+          // knows where to go, and the half that still works (roles and
+          // permissions) is named in the same sentence.
+          if (ref.watch(deploymentProvider).mode != DeploymentMode.offline)
+            Container(
+              padding: const EdgeInsets.all(PosSpace.lg),
+              color: context.pos.warnSoft,
+              child: Text(
+                context.strings.staffComesFromPlatform,
+                style: PosText.ui(
+                  size: 12.5,
+                  color: context.pos.warn,
+                  height: 1.5,
+                ),
+              ),
+            ),
           Container(
             padding: const EdgeInsets.all(PosSpace.xl),
             decoration: BoxDecoration(
@@ -58,7 +77,10 @@ class ManagementStaffPane extends ConsumerWidget {
                   background: context.pos.accent,
                   foreground: Colors.white,
                   fontWeight: FontWeight.w700,
-                  onPressed: roles.valueOrNull == null
+                  onPressed:
+                      roles.valueOrNull == null ||
+                          ref.watch(deploymentProvider).mode !=
+                              DeploymentMode.offline
                       ? null
                       : () => _add(context, ref, roles.value!, people),
                 ),
