@@ -604,6 +604,9 @@ class _SaleScreenState extends ConsumerState<SaleScreen> {
   }
 
   Widget _cart(PosSession session, Ticket ticket, PosUiState ui) => CartPanel(
+    seatedOrder: ref
+        .watch(orderTypeRulesProvider)
+        .requiresTable(ref.watch(ticketProvider).orderType),
     ticket: ticket,
     cashierName: session.userName,
     online: ui.online,

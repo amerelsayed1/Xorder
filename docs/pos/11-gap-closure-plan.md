@@ -749,8 +749,29 @@ CREATE TABLE pos_tender_types (             -- §40 payment methods as data
 CREATE TABLE pos_receipt_templates (id, restaurant_id, name, config jsonb, is_default)
 ```
 
-**Built so far in D:** payment methods (§40, migration 23) and service charges
-(§38, migration 24), both with their editors in the Money pane. Order types
+**Built so far in D:** payment methods (§40, migration 23), service charges
+(§38, migration 24) — both with their editors in the Money pane — and order
+types (§31, migration 25), data and engine wiring only.
+
+**§31 departs from the shape above in three ways, all deliberate.**
+`service_charge_id` and `price_list_id` were **not** built: both relationships
+already exist pointing the other way — `pos_service_charges.order_types` and
+`pos_product_prices.order_type` — and adding the reverse pointers would model
+each twice with nothing keeping them in step. `receipt_template_id` waits for
+receipt templates to exist.
+
+The **codes remain an enum.** What the table configures is the four the product
+ships with: their names, whether they are offered, and the three requires-flags.
+Opening the set needs one more thing that is not built — every place that
+renders an order type reads its name off the enum, so a fifth code would have
+no name to show until the display path takes a config instead of a value. Saying
+so is better than shipping a table that implies a freedom the UI does not have.
+
+The **editor is deferred to the settings navigation (§51)**, not skipped. The
+Money pane already holds three sections and a fourth would make it a junk
+drawer; and §51 should be designed against the fifteen-area back office in
+[16-back-office-scope.md](16-back-office-scope.md) rather than against today's
+six panes. Order types
 (§31) were **deliberately taken second**, not first: their most useful columns
 point at a service charge, a receipt template and a price list, so building the
 table first would have meant three columns pointing at nothing.

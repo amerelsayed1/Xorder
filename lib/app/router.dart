@@ -11,7 +11,6 @@ import '../features/setup/presentation/welcome_screen.dart';
 import '../features/lock/lock_screen.dart';
 import '../features/sale/sale_screen.dart';
 import '../features/start/start_screen.dart';
-import '../domain/models/ticket.dart';
 import 'providers.dart';
 
 abstract final class PosRoutes {
@@ -57,8 +56,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       }
       // A branch that does not seat anybody has no floor. Sending a takeaway
       // counter to a table picker asks a question it has no answer to.
-      if (at == PosRoutes.floor &&
-          !ref.read(branchOrderTypesProvider).contains(OrderType.dineIn)) {
+      // "Does anything this branch sells have tables", not "does it sell
+      // dine-in". A restaurant that seats catering orders and calls them
+      // nothing of the sort still has a floor plan (§31).
+      if (at == PosRoutes.floor && !ref.read(orderTypeRulesProvider).hasSeating) {
         return PosRoutes.sale;
       }
       return null;
@@ -124,12 +125,13 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => FloorScreen(
           onClose: () => context.go(PosRoutes.start),
           onSellWithoutTable: () {
-            // Nobody is seated, so the ticket must not stay dine-in — it would
-            // price service charge for a table that does not exist. Take the
-            // first non-dine-in type the branch actually sells.
+            // Nobody is seated, so the ticket must not stay on a type that
+            // expects a table — it would price a service charge for one that
+            // does not exist. Take the first unseated type the branch sells.
+            final rules = ref.read(orderTypeRulesProvider);
             final counter = ref
                 .read(branchOrderTypesProvider)
-                .where((type) => type != OrderType.dineIn)
+                .where((type) => !rules.requiresTable(type))
                 .firstOrNull;
             if (counter != null) {
               ref.read(ticketProvider.notifier).setOrderType(counter);

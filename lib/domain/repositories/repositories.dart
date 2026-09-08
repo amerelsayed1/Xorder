@@ -2,6 +2,7 @@ import '../../core/config/deployment.dart';
 import '../../core/money/money.dart';
 import 'admin_repositories.dart';
 import '../models/catalog.dart';
+import '../models/order_type_config.dart';
 import '../models/service_charge.dart';
 import '../models/tender_method.dart';
 import '../models/eta_submission.dart';
@@ -131,6 +132,11 @@ abstract interface class ServiceChargesRepository {
     ServiceCharge charge, {
     required PosStaff by,
   });
+}
+
+/// What each kind of order requires (§31).
+abstract interface class OrderTypesRepository {
+  Future<List<OrderTypeConfig>> all({bool includeInactive = false});
 }
 
 abstract interface class TablesRepository {

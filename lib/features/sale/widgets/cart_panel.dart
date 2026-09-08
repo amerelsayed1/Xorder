@@ -64,9 +64,21 @@ class CartPanel extends StatelessWidget {
     this.onSelectLine,
     this.onEditNote,
     this.density = CartDensity.comfortable,
+    this.seatedOrder = false,
   });
 
   final Ticket ticket;
+
+  /// Whether this kind of order has tables, from the restaurant's own
+  /// configuration (§31). Passed in rather than derived from
+  /// `ticket.orderType == OrderType.dineIn`, which was never the question: a
+  /// restaurant that seats catering orders has one that is seated and is not
+  /// dine-in.
+  ///
+  /// Defaults to false so a caller that has not been updated shows no table
+  /// prompt rather than a wrong one.
+  final bool seatedOrder;
+
   final String cashierName;
   final bool online;
   final void Function(String lineKey, int delta) onQuantityChanged;
@@ -123,11 +135,12 @@ class CartPanel extends StatelessWidget {
     );
   }
 
-  String _title(AppStrings s) {
+  String _title(AppStrings s, {required bool seatedOrder}) {
     if (ticket.isSeated) {
       return s.seatedTable(ticket.tableLabel!, ticket.guestCount);
     }
-    if (ticket.orderType == OrderType.dineIn) return s.noTableYet;
+    // Asked of the order type's own rule, not of its name (§31).
+    if (seatedOrder) return s.noTableYet;
     return s.walkIn(ticket.orderType.label(s));
   }
 
@@ -144,7 +157,7 @@ class CartPanel extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                _title(s),
+                _title(s, seatedOrder: seatedOrder),
                 overflow: TextOverflow.ellipsis,
                 style: PosText.panelTitle(color: pos.shellText),
               ),

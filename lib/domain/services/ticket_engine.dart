@@ -471,13 +471,25 @@ abstract final class TicketEngine {
   /// Leaving dine-in detaches the table — a bill never follows a mode switch.
   /// This is a rule from the design sheet and it exists because the alternative
   /// silently moves a seated party's money onto a takeaway ticket.
-  static Ticket setOrderType(Ticket ticket, OrderType type) {
+  /// [seated] is whether the new type has tables, from the restaurant's own
+  /// configuration (§31).
+  ///
+  /// Passed in rather than compared against `OrderType.dineIn` here: the engine
+  /// is pure and cannot read a table, and "is this dine-in" was never the
+  /// question — "does this kind of order have a table" was. A restaurant that
+  /// seats a catering order could not previously say so.
+  ///
+  /// Defaults to false, which is the safe direction. A ticket that wrongly
+  /// keeps a table sends a cashier to a floor plan that does not have it; one
+  /// that wrongly drops a table asks them to pick it again.
+  static Ticket setOrderType(
+    Ticket ticket,
+    OrderType type, {
+    bool seated = false,
+  }) {
     if (type == ticket.orderType) return ticket;
 
-    return ticket.copyWith(
-      orderType: type,
-      clearTable: type != OrderType.dineIn,
-    );
+    return ticket.copyWith(orderType: type, clearTable: !seated);
   }
 
   static Ticket attachTable(

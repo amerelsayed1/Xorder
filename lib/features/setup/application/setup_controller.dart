@@ -419,6 +419,8 @@ class SetupController extends Notifier<SetupDraft> {
       // The four payment methods (§40). Migration 23 seeds restaurants that
       // existed when it ran; this one did not.
       await bootstrap.seedTenderTypes(admin, restaurantId);
+      // And what each kind of order requires (§31).
+      await bootstrap.seedOrderTypes(admin, restaurantId);
 
       final ownerCreated = await bootstrap.seedOwner(
         admin,

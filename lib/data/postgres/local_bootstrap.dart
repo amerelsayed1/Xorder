@@ -1,6 +1,7 @@
 import 'package:postgres/postgres.dart';
 
 import '../../core/config/deployment.dart';
+import '../../domain/models/order_type_config.dart';
 import '../../domain/models/tender_method.dart';
 import '../../core/security/pin_hash.dart';
 import '../../domain/models/permissions.dart';
@@ -248,6 +249,33 @@ class LocalBootstrap {
     return created;
   }
 
+  /// What each kind of order requires (§31), for a restaurant created after
+  /// migration 25 ran. Same split, same reason, as [seedTenderTypes].
+  Future<int> seedOrderTypes(DeploymentConfig admin, int restaurantId) async {
+    var created = 0;
+    for (final config in OrderTypeConfig.seeded) {
+      final rows = await database.query(
+        admin,
+        'INSERT INTO pos_order_types (restaurant_id, code, name_en, name_ar, '
+        '  requires_table, requires_customer, requires_address, sort_order) '
+        'VALUES (@r, @code, @nameEn, @nameAr, @tbl, @cust, @addr, @sort) '
+        'ON CONFLICT (restaurant_id, code) DO NOTHING RETURNING id',
+        parameters: {
+          'r': restaurantId,
+          'code': config.type.wire,
+          'nameEn': config.nameEn,
+          'nameAr': config.nameAr,
+          'tbl': config.requiresTable,
+          'cust': config.requiresCustomer,
+          'addr': config.requiresAddress,
+          'sort': config.sortOrder,
+        },
+      );
+      if (rows.isNotEmpty) created++;
+    }
+    return created;
+  }
+
   Future<bool> seedTaxGroup(
     DeploymentConfig admin,
     int restaurantId, {
@@ -430,7 +458,8 @@ class LocalBootstrap {
     // of the food (§38). Read-only, like the menu and for the same reason: a
     // cashier takes a method and charges what the restaurant set, they do not
     // invent either.
-    'GRANT SELECT ON pos_tender_types, pos_service_charges TO "$role"',
+    'GRANT SELECT ON pos_tender_types, pos_service_charges, '
+        'pos_order_types TO "$role"',
     // The tax breakdown a filing needs, written with the sale (§17, ETA).
     // INSERT and SELECT, never UPDATE: the rates a customer was charged are
     // part of the record of what they paid.

@@ -30,6 +30,7 @@ import '../data/postgres/postgres_floor_repository.dart';
 import '../data/postgres/postgres_order_history_repository.dart';
 import '../data/postgres/postgres_business_day_repository.dart';
 import '../data/postgres/postgres_cash_movements_repository.dart';
+import '../data/postgres/postgres_order_types_repository.dart';
 import '../data/postgres/postgres_orders_repository.dart';
 import '../data/eta/filing_orders_repository.dart';
 import '../data/postgres/postgres_eta_queue_repository.dart';
@@ -60,6 +61,7 @@ import '../domain/models/pos_settings.dart';
 import '../domain/models/refund.dart';
 import '../domain/models/reason_code.dart';
 import '../domain/models/eta_submission.dart';
+import '../domain/models/order_type_config.dart';
 import '../domain/models/permissions.dart';
 import '../domain/models/receipt_profile.dart';
 import '../domain/models/service_charge.dart';
@@ -797,6 +799,36 @@ final posUiProvider = NotifierProvider<PosUiController, PosUiState>(
 /// would ring a whole ticket and only discover at settlement that the server
 /// refuses it. The rule is mirrored from `PosOrderService` exactly — an empty
 /// list on the branch means "everything allowed" there, so it means the same
+/// What each kind of order requires — tables, a customer, an address (§31).
+///
+/// Falls back to the seeded four while the query is in flight or on a till
+/// with no database. A till that believed nothing was seated would hide its
+/// own floor plan.
+final orderTypeRulesProvider = Provider<OrderTypeRules>((ref) {
+  return ref.watch(orderTypeConfigProvider).valueOrNull ??
+      OrderTypeRules.fallback;
+});
+
+final orderTypeConfigProvider = FutureProvider<OrderTypeRules>((ref) async {
+  final repository = ref.watch(orderTypesRepositoryProvider);
+  if (repository == null) return OrderTypeRules.fallback;
+  final configured = await repository.all();
+  return configured.isEmpty
+      ? OrderTypeRules.fallback
+      : OrderTypeRules(configured);
+});
+
+final orderTypesRepositoryProvider = Provider<OrderTypesRepository?>((ref) {
+  final config = ref.watch(deploymentProvider);
+  final context = ref.watch(posWriteContextProvider);
+  if (context == null || PosDatabase.hostFor(config) == null) return null;
+  return PostgresOrderTypesRepository(
+    database: ref.watch(posDatabaseProvider),
+    config: config,
+    restaurantId: context.restaurantId,
+  );
+});
+
 /// here. An unknown wire value is dropped rather than throwing (rule 11).
 final branchOrderTypesProvider = Provider<List<OrderType>>((ref) {
   final branchId = ref.watch(terminalProfileProvider).branchId;
@@ -944,8 +976,15 @@ class TicketController extends Notifier<Ticket> {
     if (result.isOk) state = result.ticket!;
   }
 
-  void setOrderType(OrderType type) =>
-      state = TicketEngine.setOrderType(state, type);
+  void setOrderType(OrderType type) => state = TicketEngine.setOrderType(
+    state,
+    type,
+    // The restaurant's answer, not a comparison against `dineIn`. Read rather
+    // than watched: switching type is a one-off act, and rebuilding the
+    // controller because somebody edited an order type in the back office
+    // mid-ticket would be worse than reading a value one second stale.
+    seated: ref.read(orderTypeRulesProvider).requiresTable(type),
+  );
 
   void attachTable(DiningTable table) => state = TicketEngine.attachTable(
     state,

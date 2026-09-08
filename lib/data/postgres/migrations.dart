@@ -2312,6 +2312,64 @@ const posMigrations = <PosMigration>[
     // The first row a restaurant writes is the moment it takes over, and the
     // Money pane says so.
   ]),
+  PosMigration(25, 'order types carry their own rules (§31)', [
+    '''
+    CREATE TABLE IF NOT EXISTS pos_order_types (
+      id                bigserial   PRIMARY KEY,
+      restaurant_id     bigint      NOT NULL REFERENCES pos_restaurants(id) ON DELETE CASCADE,
+      -- Matches `pos_orders.order_type` and `OrderType.wire`. The code is the
+      -- identity; the name is the restaurant's to change.
+      code              text        NOT NULL,
+      name_en           text        NOT NULL,
+      name_ar           text,
+      is_active         boolean     NOT NULL DEFAULT true,
+      -- The three rules that were hardcoded as `type == OrderType.dineIn`.
+      -- That comparison appears in the router, the cart panel and the ticket
+      -- engine, and in every one of them what it actually means is "does this
+      -- kind of order have a table".
+      requires_table    boolean     NOT NULL DEFAULT false,
+      requires_customer boolean     NOT NULL DEFAULT false,
+      requires_address  boolean     NOT NULL DEFAULT false,
+      sort_order        integer     NOT NULL DEFAULT 0,
+      updated_at        timestamptz NOT NULL DEFAULT now(),
+      updated_by        bigint      REFERENCES pos_staff(id) ON DELETE SET NULL,
+      CONSTRAINT pos_order_types_code_unique UNIQUE (restaurant_id, code)
+    )
+    ''',
+
+    // **Two columns from the plan are deliberately absent: `service_charge_id`
+    // and `price_list_id`.**
+    //
+    // Both relationships already exist, pointing the other way.
+    // `pos_service_charges.order_types` says which order types a charge
+    // applies to (§38), and `pos_product_prices.order_type` keys a price by
+    // channel (migration 17). Adding the reverse pointers would model each
+    // relationship twice, in opposite directions, with nothing keeping the two
+    // in step — and the first time they disagreed, a bill would be wrong and
+    // neither row would be obviously at fault.
+    //
+    // `receipt_template_id` is absent for a duller reason: receipt templates do
+    // not exist yet.
+
+    // The four the product ships with, for every restaurant that exists now.
+    // A restaurant created later is seeded by `LocalBootstrap.seedOrderTypes`
+    // — the same split, and the same reason, as the payment methods in
+    // migration 23.
+    '''
+    INSERT INTO pos_order_types
+      (restaurant_id, code, name_en, name_ar, requires_table,
+       requires_customer, requires_address, sort_order)
+    SELECT r.id, v.code, v.name_en, v.name_ar, v.tbl, v.cust, v.addr, v.sort
+      FROM pos_restaurants r
+      CROSS JOIN (VALUES
+        ('dine_in',    'Dine in',    'صالة',   true,  false, false, 1),
+        ('takeaway',   'Takeaway',   'تيك أواي', false, false, false, 2),
+        ('delivery',   'Delivery',   'دليفري',  false, true,  true,  3),
+        ('drive_thru', 'Drive-thru', 'سيارة',  false, false, false, 4)
+      ) AS v(code, name_en, name_ar, tbl, cust, addr, sort)
+    ON CONFLICT (restaurant_id, code) DO NOTHING
+    ''',
+  ]),
 ];
 
 /// Brings the branch database up to the current schema.
