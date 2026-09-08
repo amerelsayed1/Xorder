@@ -1,0 +1,126 @@
+import 'dart:io';
+
+import 'package:flutter_test/flutter_test.dart';
+
+/// Every table the till touches is a table the till has a grant on.
+///
+/// **Written because six of them were not.** Waves M and N added
+/// `pos_product_prices`, three combo tables, `pos_order_taxes` and
+/// `pos_order_line_items`; the catalogue query joins the first four and a
+/// settlement writes the last two. None had a grant. Every database suite runs
+/// as the superuser, who needs no grant at all, so nothing failed — an offline
+/// till on its own credential would have been unable to load its menu or record
+/// a sale, and the first person to find out would have been a restaurant.
+///
+/// A grant list only ever grows and nobody re-reads it. This reads it, by
+/// scanning the source rather than the schema, so it holds with no server —
+/// which is the only way it runs on every commit. `theme_test.dart` uses the
+/// same trick for raw colours.
+void main() {
+  final root = Directory.current.path;
+
+  String read(String path) => File('$root/$path').readAsStringSync();
+
+  /// Every table the migrations create.
+  Set<String> allTables() => RegExp(r'CREATE TABLE IF NOT EXISTS (\w+)')
+      .allMatches(read('lib/data/postgres/migrations.dart'))
+      .map((m) => m.group(1)!)
+      .toSet();
+
+  /// The `tillGrants` block, as text. Sliced out rather than executed, because
+  /// the statements interpolate a role name and a database name that only
+  /// exist at install time.
+  String tillGrantsSource() {
+    final source = read('lib/data/postgres/local_bootstrap.dart');
+    final start = source.indexOf('static List<String> tillGrants');
+    final end = source.indexOf('static List<String> administrativeGrants');
+    expect(start, greaterThan(-1));
+    expect(end, greaterThan(start));
+    return source.substring(start, end);
+  }
+
+  /// The repositories bound on the **till's** credential.
+  ///
+  /// Named individually rather than globbed. A repository added to
+  /// `lib/data/postgres/` is not automatically a till one — the admin
+  /// repositories run on the administrator connection and are covered by a
+  /// different grant list — so a new file has to be classified here on
+  /// purpose. That is the point: the decision is which credential it runs on,
+  /// and it should be made by somebody rather than by a glob.
+  const tillRepositories = <String>[
+    'postgres_catalog_repository.dart',
+    'postgres_orders_repository.dart',
+    'postgres_directory_repositories.dart',
+    'postgres_floor_repository.dart',
+    'postgres_shift_repository.dart',
+    'postgres_parked_tickets.dart',
+    'postgres_reason_repository.dart',
+    'postgres_discounts_repository.dart',
+    'postgres_refunds_repository.dart',
+    'postgres_settings_repository.dart',
+    'postgres_business_day_repository.dart',
+    'postgres_cash_movements_repository.dart',
+    'postgres_order_history_repository.dart',
+    'postgres_eta_queue_repository.dart',
+    'postgres_receipt_profile_repository.dart',
+  ];
+
+  test('every till repository named here exists', () {
+    // A renamed file would silently stop being checked, which is the failure
+    // mode of every list of filenames.
+    for (final name in tillRepositories) {
+      expect(
+        File('$root/lib/data/postgres/$name').existsSync(),
+        isTrue,
+        reason: name,
+      );
+    }
+  });
+
+  test('every table a till repository names has a grant', () {
+    final tables = allTables();
+    final grants = tillGrantsSource();
+
+    final missing = <String, List<String>>{};
+    for (final name in tillRepositories) {
+      final source = read('lib/data/postgres/$name');
+      for (final table in tables) {
+        if (!RegExp('\\b$table\\b').hasMatch(source)) continue;
+        if (RegExp('\\b$table\\b').hasMatch(grants)) continue;
+        missing.putIfAbsent(table, () => []).add(name);
+      }
+    }
+
+    expect(
+      missing,
+      isEmpty,
+      reason:
+          'These tables are used on the till credential and appear in no '
+          'grant. Add them to LocalBootstrap.tillGrants — read-only unless '
+          'the till genuinely writes them.',
+    );
+  });
+
+  test('the grant list names no table that does not exist', () {
+    // The other direction, and it matters at install time rather than at
+    // runtime: `GRANT ... ON a_table_that_was_renamed` throws, and the whole
+    // bootstrap fails on a machine nobody is watching.
+    final tables = allTables();
+    final grants = tillGrantsSource();
+
+    final named = RegExp(r'\bpos_\w+\b')
+        .allMatches(grants)
+        .map((m) => m.group(0)!)
+        // Sequences are named after their table with a suffix, and are
+        // granted separately.
+        .where((n) => !n.endsWith('_id_seq'))
+        .toSet();
+
+    final unknown = named.where((n) => !tables.contains(n)).toSet()
+      // The role name itself is interpolated as `pos_till` in the doc comments
+      // and in `GRANT ... TO "$role"`, and is not a table.
+      ..removeWhere((n) => n == 'pos_till');
+
+    expect(unknown, isEmpty);
+  });
+}

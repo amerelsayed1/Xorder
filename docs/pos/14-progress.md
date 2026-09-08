@@ -164,21 +164,39 @@ whoever adds it.
 
 ---
 
-## 4. The one thing still unverified
+## 4. Grants — resolved, and what it cost to leave it
 
-**The `pos_till` password.** Every database suite has been run as `amerelsayed`,
-the superuser. That verifies the SQL and none of the grants — a superuser needs
-no grant at all, so a missing one is invisible.
+**This was wrong for months, and the fix did not need the `pos_till` password.**
 
-It matters most for refunds. Migration 12's counters are maintained by
-`SECURITY DEFINER` triggers and the till is deliberately granted **no** UPDATE on
-either. Whether that combination works under the till's own privileges is
-exactly what a superuser run cannot say.
+Every database suite ran as `amerelsayed`, the superuser, so a missing grant was
+invisible. The standing note here said the way out was the till's own password.
+It was not: `test/data/till_grants_enforced_test.dart` creates a **throwaway
+probe role**, applies the grant list to it and connects as that role — which
+verifies the grants exactly and needs no credential anybody has to be asked for.
+The mechanism was already in the file; it had simply never been pointed at
+anything added after Wave A.
 
-Partial cover exists: `test/data/till_grants_test.dart` asserts the grant list
-itself without a server — that the counters are not grantable, that refunds are
-INSERT-only, that every table order history joins is readable. That is the shape
-of the grants, not proof they suffice.
+When it was, it found six tables the till uses and had **no grant on at all**:
+`pos_product_prices`, `pos_combos`, `pos_combo_groups`, `pos_combo_options`
+(joined by the catalogue query) and `pos_order_taxes`, `pos_order_line_items`
+(written at settlement). An offline till on its own credential could not have
+loaded its menu or recorded a sale. Nothing failed in CI because the superuser
+needs no grant — which is the precise class of bug a superuser run cannot see.
+
+Fixed, and guarded three ways:
+
+* `till_grants_enforced_test.dart` now covers every table added through Wave C —
+  settings, cash movements, business days, tax groups, the receipt profile, the
+  e-receipt queue's column-scoped grant, and the permission tables. The refund
+  counters that this section used to say were unverifiable are among them.
+* `till_grants_cover_usage_test.dart` scans the source: every table a till
+  repository names must appear in `tillGrants`, and every table named in
+  `tillGrants` must exist. It runs with no server, so it fires on every commit,
+  and it was checked by deleting a grant and watching it fail.
+* `till_grants_test.dart` continues to assert the statements' shape.
+
+**The lesson worth keeping:** a grant list only ever grows and nobody re-reads
+it. The guard reads it.
 
 ---
 

@@ -374,6 +374,26 @@ class LocalBootstrap {
     'GRANT SELECT, INSERT, UPDATE ON pos_invoice_sequences TO "$role"',
     'GRANT USAGE, SELECT ON SEQUENCE pos_orders_id_seq, pos_order_lines_id_seq, '
         'pos_order_payments_id_seq TO "$role"',
+    // Everything Wave M added to the menu, read-only on the same terms as the
+    // menu itself.
+    //
+    // **These were missing entirely**, which meant an offline till on its own
+    // credential could not load its catalogue at all: `pos_product_prices` is
+    // joined by the catalogue query and `pos_combos` and its two children are
+    // read straight after it. Every database suite ran as the superuser, so
+    // nothing caught it — the probe role in `till_grants_enforced_test.dart`
+    // did, once it was asked about the tables added since Wave A.
+    'GRANT SELECT ON pos_tax_groups, pos_product_prices, pos_combos, '
+        'pos_combo_groups, pos_combo_options TO "$role"',
+    // The tax breakdown a filing needs, written with the sale (§17, ETA).
+    // INSERT and SELECT, never UPDATE: the rates a customer was charged are
+    // part of the record of what they paid.
+    'GRANT SELECT, INSERT ON pos_order_taxes TO "$role"',
+    'GRANT USAGE, SELECT ON SEQUENCE pos_order_taxes_id_seq TO "$role"',
+    // What a combo line was actually made of. Same discipline: the kitchen
+    // made these, so they are a record rather than a working figure.
+    'GRANT SELECT, INSERT ON pos_order_line_items TO "$role"',
+    'GRANT USAGE, SELECT ON SEQUENCE pos_order_line_items_id_seq TO "$role"',
     // The restaurant's own data. Read-only for the till: a till displays
     // the menu, it does not edit it. Changing what the restaurant sells is
     // a back-office act — see [administrativeGrants].
