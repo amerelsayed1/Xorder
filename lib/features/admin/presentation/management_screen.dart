@@ -96,7 +96,12 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
     // invitation to lose work.
     // The three panes that exist only where this terminal authors its own
     // world. Named once, so adding a fourth cannot forget the gate.
-    const authoring = {ManagementPane.menu, ManagementPane.floor, ManagementPane.money};
+    // **Money is no longer here.** Its tax rates are the platform's on a cloud
+    // till, but the payment methods and service charges Wave D put in the same
+    // pane are local on both deployments — so the pane gates its own top half
+    // rather than disappearing, and a cloud restaurant can still say how it
+    // takes money.
+    const authoring = {ManagementPane.menu, ManagementPane.floor};
 
     final panes = [
       for (final pane in ManagementPane.values)

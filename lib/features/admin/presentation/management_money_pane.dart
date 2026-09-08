@@ -167,11 +167,18 @@ class _ManagementMoneyPaneState extends ConsumerState<ManagementMoneyPane> {
   @override
   Widget build(BuildContext context) {
     final strings = context.strings;
-    final repository = ref.watch(catalogAdminRepositoryProvider);
-    if (repository == null) {
-      return _Centred(text: strings.moneyComesFromPlatform);
-    }
 
+    // **Not an early return any more, and that was a mistake worth naming.**
+    // The tax rates in the top half ARE the platform's on a cloud till —
+    // `pos_money_config` is written by the bootstrap seeder. Payment methods
+    // and service charges, added to this pane in Wave D, are not: nothing seeds
+    // `pos_tender_types` or `pos_service_charges`, on either deployment.
+    //
+    // Bailing out on `repository == null` therefore left a cloud restaurant
+    // unable to configure how it takes money at all — a placement mistake
+    // introduced with those two sections, and fixed by gating the half that is
+    // actually the platform's rather than the whole pane.
+    final authors = ref.watch(catalogAdminRepositoryProvider) != null;
     final config = ref.watch(moneyConfigProvider);
 
     return config.when(
@@ -196,32 +203,50 @@ class _ManagementMoneyPaneState extends ConsumerState<ManagementMoneyPane> {
         return ListView(
           padding: const EdgeInsets.all(PosSpace.xl),
           children: [
-            Text(
-              // `stored == null` is the dangerous state, and it is worth
-              // saying out loud rather than showing plausible numbers.
-              stored == null
-                  ? strings.ratesNotSetYet
-                  : strings.ratesFromThisTerminal,
-              style: PosText.ui(
-                size: 13,
-                color: stored == null ? context.pos.warn : context.pos.muted,
-                height: 1.6,
+            if (!authors) ...[
+              Container(
+                padding: const EdgeInsets.all(PosSpace.md),
+                color: context.pos.warnSoft,
+                child: Text(
+                  strings.moneyComesFromPlatform,
+                  style: PosText.ui(
+                    size: 12.5,
+                    color: context.pos.warn,
+                    height: 1.5,
+                  ),
+                ),
               ),
-            ),
-            const SizedBox(height: PosSpace.xl),
-            _Rate(controller: _service, label: strings.serviceCharge),
-            const SizedBox(height: PosSpace.md),
-            SwitchListTile(
-              value: _dineInOnly,
-              onChanged: (value) => setState(() => _dineInOnly = value),
-              contentPadding: EdgeInsets.zero,
-              title: Text(
-                strings.serviceDineInOnly,
-                style: PosText.ui(size: 13.5, color: context.pos.body),
+              const SizedBox(height: PosSpace.xl),
+            ],
+            if (authors)
+              Text(
+                // `stored == null` is the dangerous state, and it is worth
+                // saying out loud rather than showing plausible numbers.
+                stored == null
+                    ? strings.ratesNotSetYet
+                    : strings.ratesFromThisTerminal,
+                style: PosText.ui(
+                  size: 13,
+                  color: stored == null ? context.pos.warn : context.pos.muted,
+                  height: 1.6,
+                ),
               ),
-            ),
-            const SizedBox(height: PosSpace.lg),
-            _Rate(controller: _vat, label: strings.vat),
+            if (authors) ...[
+              const SizedBox(height: PosSpace.xl),
+              _Rate(controller: _service, label: strings.serviceCharge),
+              const SizedBox(height: PosSpace.md),
+              SwitchListTile(
+                value: _dineInOnly,
+                onChanged: (value) => setState(() => _dineInOnly = value),
+                contentPadding: EdgeInsets.zero,
+                title: Text(
+                  strings.serviceDineInOnly,
+                  style: PosText.ui(size: 13.5, color: context.pos.body),
+                ),
+              ),
+              const SizedBox(height: PosSpace.lg),
+              _Rate(controller: _vat, label: strings.vat),
+            ],
             if (_note != null) ...[
               const SizedBox(height: PosSpace.lg),
               Text(
@@ -229,17 +254,19 @@ class _ManagementMoneyPaneState extends ConsumerState<ManagementMoneyPane> {
                 style: PosText.ui(size: 12.5, color: context.pos.body),
               ),
             ],
-            const SizedBox(height: PosSpace.xl),
-            Align(
-              alignment: AlignmentDirectional.centerStart,
-              child: PosButton(
-                label: strings.saveRates,
-                background: context.pos.ink,
-                foreground: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: PosSpace.xl),
-                onPressed: _busy ? null : _save,
+            if (authors) ...[
+              const SizedBox(height: PosSpace.xl),
+              Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: PosButton(
+                  label: strings.saveRates,
+                  background: context.pos.ink,
+                  foreground: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: PosSpace.xl),
+                  onPressed: _busy ? null : _save,
+                ),
               ),
-            ),
+            ],
 
             // What the restaurant adds on top of the food (§38). Directly
             // under the single rate it supersedes, so a manager can see which
@@ -391,9 +418,7 @@ class _ChargeRow extends StatelessWidget {
               MonoCode(
                 charge.isFixed
                     ? Money(charge.fixedMinor!).format()
-                    : '${(charge.rateBp! / 100).toStringAsFixed(
-                        charge.rateBp! % 100 == 0 ? 0 : 1,
-                      )}%',
+                    : '${(charge.rateBp! / 100).toStringAsFixed(charge.rateBp! % 100 == 0 ? 0 : 1)}%',
                 size: 12.5,
               ),
             ],
