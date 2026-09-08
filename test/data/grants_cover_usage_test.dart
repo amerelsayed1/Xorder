@@ -27,17 +27,28 @@ void main() {
       .map((m) => m.group(1)!)
       .toSet();
 
-  /// The `tillGrants` block, as text. Sliced out rather than executed, because
-  /// the statements interpolate a role name and a database name that only
-  /// exist at install time.
-  String tillGrantsSource() {
+  /// A grant block, as text. Sliced out rather than executed, because the
+  /// statements interpolate a role name and a database name that only exist at
+  /// install time.
+  String grantSource({required bool admin}) {
     final source = read('lib/data/postgres/local_bootstrap.dart');
-    final start = source.indexOf('static List<String> tillGrants');
-    final end = source.indexOf('static List<String> administrativeGrants');
-    expect(start, greaterThan(-1));
-    expect(end, greaterThan(start));
-    return source.substring(start, end);
+    final till = source.indexOf('static List<String> tillGrants');
+    final administrative = source.indexOf(
+      'static List<String> administrativeGrants',
+    );
+    expect(till, greaterThan(-1));
+    expect(administrative, greaterThan(till));
+
+    // An administrator role is given **both** lists — see
+    // `pos_migrate --grant-admin-to` — so the admin block on its own is not
+    // the set it holds. Checking it alone would report every table the till
+    // list already covers as missing, and hide the ones that matter.
+    return admin
+        ? source.substring(till)
+        : source.substring(till, administrative);
   }
+
+  String tillGrantsSource() => grantSource(admin: false);
 
   /// The repositories bound on the **till's** credential.
   ///
@@ -98,6 +109,39 @@ void main() {
           'These tables are used on the till credential and appear in no '
           'grant. Add them to LocalBootstrap.tillGrants — read-only unless '
           'the till genuinely writes them.',
+    );
+  });
+
+  test('every table an admin repository names has a grant', () {
+    // The same question of the back office, which is how the offline
+    // catalogue-authoring hole was found: an administrator is given the till
+    // list *and* the administrative one, and the till list REVOKEs the
+    // catalogue writes on an offline install. Nothing put them back.
+    const adminRepositories = <String>[
+      'postgres_admin_repositories.dart',
+      'postgres_catalog_admin_repository.dart',
+      'postgres_receipt_profile_repository.dart',
+    ];
+
+    final tables = allTables();
+    final grants = grantSource(admin: true);
+
+    final missing = <String, List<String>>{};
+    for (final name in adminRepositories) {
+      final source = read('lib/data/postgres/$name');
+      for (final table in tables) {
+        if (!RegExp('\\b$table\\b').hasMatch(source)) continue;
+        if (RegExp('\\b$table\\b').hasMatch(grants)) continue;
+        missing.putIfAbsent(table, () => []).add(name);
+      }
+    }
+
+    expect(
+      missing,
+      isEmpty,
+      reason:
+          'These tables are used on the administrator credential and appear '
+          'in neither grant list.',
     );
   });
 

@@ -506,6 +506,32 @@ class LocalBootstrap {
     // cashier who could add a void reason could add one that reads well.
     'GRANT SELECT, INSERT, UPDATE ON pos_reason_codes TO "$role"',
     'GRANT USAGE, SELECT ON SEQUENCE pos_reason_codes_id_seq TO "$role"',
+    // Authoring the menu and the floor.
+    //
+    // **These were missing**, and the till list actively REVOKEs them on an
+    // offline install — deliberately, because the till must not reprice its own
+    // menu. An administrator role is given both lists, so without these it was
+    // handed the revoke and nothing to put back: Management could open the Menu
+    // pane on an offline till and fail on the first save. That is the one
+    // deployment where menu authoring exists at all.
+    //
+    // No DELETE on the catalogue: items are archived, not removed, because a
+    // deleted product takes its sales history's subject with it.
+    'GRANT SELECT, INSERT, UPDATE ON pos_categories, pos_products, '
+        'pos_modifier_groups, pos_modifiers, pos_dining_tables TO "$role"',
+    'GRANT USAGE, SELECT ON SEQUENCE pos_categories_id_seq, '
+        'pos_products_id_seq, pos_modifier_groups_id_seq, '
+        'pos_modifiers_id_seq, pos_dining_tables_id_seq TO "$role"',
+    // The join between the two. DELETE here, unlike the tables it joins: a row
+    // is not a record of anything that happened, only the current shape of
+    // which options a product offers.
+    'GRANT SELECT, INSERT, DELETE ON pos_product_modifier_groups TO "$role"',
+    // Tax groups, per-branch prices and combos — everything Wave M made
+    // authorable. Read for now, because nothing in Management edits them yet;
+    // the writes land with Wave D's settings surface, and granting them before
+    // there is a screen would be granting them to nobody.
+    'GRANT SELECT ON pos_tax_groups, pos_product_prices, pos_combos, '
+        'pos_combo_groups, pos_combo_options TO "$role"',
     // The trade name, registration number and address a receipt is judged on.
     // No DELETE: a branch stops having a profile by being archived, not by
     // having its identity removed from under the receipts already issued.

@@ -183,7 +183,14 @@ When it was, it found six tables the till uses and had **no grant on at all**:
 loaded its menu or recorded a sale. Nothing failed in CI because the superuser
 needs no grant — which is the precise class of bug a superuser run cannot see.
 
-Fixed, and guarded three ways:
+Asking the same question of the **administrator** credential found a worse one.
+An admin role is given the till list *and* the administrative one, and on an
+offline install the till list **REVOKEs** the catalogue writes — deliberately, so
+a recovered till password cannot reprice the menu. The administrative list never
+put them back. Management could open the Menu pane on the one deployment where
+menu authoring exists at all, and fail on the first save.
+
+Fixed, and guarded four ways:
 
 * `till_grants_enforced_test.dart` now covers every table added through Wave C —
   settings, cash movements, business days, tax groups, the receipt profile, the
@@ -193,7 +200,14 @@ Fixed, and guarded three ways:
   repository names must appear in `tillGrants`, and every table named in
   `tillGrants` must exist. It runs with no server, so it fires on every commit,
   and it was checked by deleting a grant and watching it fail.
+* `admin_grants_enforced_test.dart` does the same for the administrator role,
+  applying both lists in the order `pos_migrate --grant-admin-to` applies them,
+  and asserting the back office is still not a way around the column-scoped
+  grant on a settled sale.
 * `till_grants_test.dart` continues to assert the statements' shape.
+
+Both enforced suites were checked the only way that means anything: by deleting
+a grant and watching them fail.
 
 **The lesson worth keeping:** a grant list only ever grows and nobody re-reads
 it. The guard reads it.
