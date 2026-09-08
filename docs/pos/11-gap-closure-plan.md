@@ -1213,6 +1213,18 @@ stays, silently leaving them holding the role they were moved off. A promotion
 that quietly keeps the old permissions is the exact failure this wave exists to
 prevent.
 
+### The ordering above assumes a till, not a back office
+
+**Read [16-back-office-scope.md](16-back-office-scope.md) before planning past
+Wave D.** Scored against what an offline-first business expects from a back
+office, this product is five areas done, three partial and seven absent — and
+the seven absent ones are one chain (purchases → cost price → inventory → COGS →
+profit → accounting) whose head, purchasing, appears on no wave here at all.
+
+The sequencing below was written for "a till that can trade legally in Egypt",
+which Waves A, B, M, N and C delivered. It is the wrong sequencing for "an
+offline back office". §4 of that page proposes the alternative.
+
 ### What is still not on the roadmap
 
 Payment terminals, delivery aggregators and product images are table stakes in
