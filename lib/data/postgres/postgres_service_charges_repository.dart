@@ -1,6 +1,7 @@
 import 'package:postgres/postgres.dart';
 
 import '../../core/config/deployment.dart';
+import '../../domain/services/authorization.dart';
 import '../../domain/models/permissions.dart';
 import '../../domain/models/service_charge.dart';
 import '../../domain/models/ticket.dart';
@@ -76,7 +77,11 @@ class PostgresServiceChargesRepository implements ServiceChargesRepository {
     if (!adminAvailable) {
       return const AdminResult.refused(AdministratorCredentialRequired());
     }
-    if (!by.capabilities.contains(PosCapability.settingsManage)) {
+    // `Authorization.check` and not `by.capabilities`: that field holds the
+    // direct grants alone, so a manager whose permission comes from their
+    // role would have been refused. It also asks whether they are still
+    // employed, which membership of a set does not.
+    if (!Authorization.check(by, PosCapability.settingsManage).isAllowed) {
       return const AdminResult.refused(
         NotPermitted(PosCapability.settingsManage),
       );

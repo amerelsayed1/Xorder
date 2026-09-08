@@ -24,10 +24,17 @@ void main() {
   late PostgresSuppliersRepository suppliers;
   late int restaurantId;
 
+  // Held through a role, as every real installation holds it. A check that
+  // read only the direct grants would refuse this person.
   const buyer = PosStaff(
     id: 0,
     name: 'Amer M.',
-    capabilities: {PosCapability.purchaseManage},
+    role: PosRole(
+      id: 1,
+      code: 'buyer',
+      nameEn: 'Buyer',
+      capabilities: {PosCapability.purchaseManage},
+    ),
   );
   const cashier = PosStaff(
     id: 0,
@@ -155,6 +162,23 @@ void main() {
         by: buyer,
       );
       expect(result.refusal, isA<CatalogInvalid>());
+    });
+
+    test('somebody who has left, whose role still would allow it', () async {
+      // Two separate questions, and `capabilities.contains` answered neither:
+      // it cannot see a role, and a set has no opinion about employment.
+      // `Authorization.check` asks both.
+      final result = await suppliers.save(
+        const Supplier(id: 0, nameEn: 'X'),
+        by: PosStaff(
+          id: 0,
+          name: 'Amer M.',
+          isActive: false,
+          role: buyer.role,
+        ),
+      );
+      expect(result.refusal, isA<NotPermitted>());
+      expect(await suppliers.all(), isEmpty);
     });
 
     test('a cashier — buying is not a shift-floor act', () async {

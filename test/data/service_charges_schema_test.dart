@@ -35,7 +35,12 @@ void main() {
   const owner = PosStaff(
     id: 0,
     name: 'Amer M.',
-    capabilities: {PosCapability.settingsManage},
+    role: PosRole(
+      id: 1,
+      code: 'manager',
+      nameEn: 'Manager',
+      capabilities: {PosCapability.settingsManage},
+    ),
   );
   const cashier = PosStaff(
     id: 0,

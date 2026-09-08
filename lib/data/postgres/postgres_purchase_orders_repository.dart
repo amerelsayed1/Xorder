@@ -3,6 +3,7 @@ import 'package:postgres/postgres.dart';
 import '../../core/config/deployment.dart';
 import '../../core/money/money.dart';
 import '../../core/money/quantity.dart';
+import '../../domain/services/authorization.dart';
 import '../../domain/models/permissions.dart';
 import '../../domain/models/purchase_order.dart';
 import '../../domain/repositories/admin_repositories.dart';
@@ -115,7 +116,11 @@ class PostgresPurchaseOrdersRepository implements PurchaseOrdersRepository {
 
   AdminRefusal? _blocked(PosStaff by) {
     if (!adminAvailable) return const AdministratorCredentialRequired();
-    if (!by.capabilities.contains(PosCapability.purchaseManage)) {
+    // `Authorization.check` and not `by.capabilities`: that field holds the
+    // direct grants alone, so a manager whose permission comes from their
+    // role would have been refused. It also asks whether they are still
+    // employed, which membership of a set does not.
+    if (!Authorization.check(by, PosCapability.purchaseManage).isAllowed) {
       return const NotPermitted(PosCapability.purchaseManage);
     }
     return null;

@@ -5,6 +5,7 @@ import 'package:xorder_pos/app/providers.dart';
 import 'package:xorder_pos/core/ui/theme.dart';
 import 'package:xorder_pos/data/fakes/fake_repositories.dart';
 import 'package:xorder_pos/domain/models/permissions.dart';
+import 'package:xorder_pos/domain/models/shift.dart';
 import 'package:xorder_pos/features/admin/presentation/management_screen.dart';
 
 import '../support/fakes.dart';
@@ -293,6 +294,63 @@ void main() {
     expect(find.text('taken away'), findsNothing);
   });
 
+  testWidgets('Purchasing is absent for somebody who cannot buy', (
+    tester,
+  ) async {
+    // A supervisor who manages the rota but does not order the stock is a real
+    // job. Showing them a pane whose every button refuses would make the rail
+    // a list of disappointments.
+    final container = await open(tester);
+    await enter(tester, '1234');
+    expect(find.text('Purchasing'), findsOneWidget, reason: 'the owner buys');
+
+    container.read(signedInStaffProvider.notifier).signIn(
+      const PosStaff(
+        id: 9,
+        name: 'Nour S.',
+        username: 'nour',
+        role: PosRole(
+          id: 9,
+          code: 'supervisor',
+          nameEn: 'Supervisor',
+          capabilities: {PosCapability.staffManage},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Purchasing'), findsNothing);
+  });
+
+  testWidgets('a deep link to Purchasing does not outlive the permission', (
+    tester,
+  ) async {
+    // `initialPane` comes from a menu item somebody may have had every right to
+    // use last week. The rail hiding it while the body still rendered it would
+    // be the gate saying no and the screen saying yes.
+    final container = await open(tester, pane: ManagementPane.purchasing);
+    await enter(tester, '1234');
+    expect(find.text('New order'), findsOneWidget);
+
+    container.read(signedInStaffProvider.notifier).signIn(
+      const PosStaff(
+        id: 9,
+        name: 'Nour S.',
+        username: 'nour',
+        role: PosRole(
+          id: 9,
+          code: 'supervisor',
+          nameEn: 'Supervisor',
+          capabilities: {PosCapability.staffManage},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('New order'), findsNothing);
+    expect(find.text('Add somebody'), findsOneWidget, reason: 'falls back');
+  });
+
   testWidgets('tapping a role permission takes it away', (tester) async {
     await open(tester);
     await enter(tester, '1234');
@@ -329,4 +387,5 @@ abstract final class AdminCapabilityLabels {
   static const catalogManage = 'Add and change menu items and prices';
   static const orderRefund = 'Refund a sale';
   static const operate = 'Sell at the till';
+
 }

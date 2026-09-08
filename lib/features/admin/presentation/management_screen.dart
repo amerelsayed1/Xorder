@@ -58,6 +58,25 @@ class ManagementScreen extends ConsumerStatefulWidget {
 /// [receipt] is deliberately outside the authoring set: every terminal prints
 /// a slip with the restaurant's name and address on it, cloud and offline
 /// alike, and only the write side needs Management's credential.
+/// The capability a pane needs beyond the `staffManage` that opened the screen.
+///
+/// **Only the panes whose repositories actually enforce one appear here.**
+/// Hiding a pane on a capability nothing checks would be a claim the database
+/// does not back — the rail would say no while a direct write said yes. So
+/// Purchasing is gated (its three repositories all demand `purchase.manage`)
+/// and the others are not, until each one's writes are gated too.
+String? _paneRequires(ManagementPane pane) => switch (pane) {
+  ManagementPane.purchasing => PosCapability.purchaseManage,
+  _ => null,
+};
+
+bool _permits(PosStaff admin, ManagementPane pane) {
+  final needed = _paneRequires(pane);
+  // `can` and not `capabilities`: the latter is the direct-grant set alone,
+  // and an owner holds almost everything through their role.
+  return needed == null || admin.can(needed);
+}
+
 enum ManagementPane {
   staff,
   menu,
@@ -117,10 +136,16 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
     final panes = [
       for (final pane in ManagementPane.values)
         // Both authoring panes exist only where this terminal is the author.
-        if (!authoring.contains(pane) ||
-            ref.watch(catalogAdminRepositoryProvider) != null)
+        if ((!authoring.contains(pane) ||
+                ref.watch(catalogAdminRepositoryProvider) != null) &&
+            _permits(admin, pane))
           pane,
     ];
+
+    // A pane this terminal or this person does not have is not a pane the body
+    // may render: `initialPane` is a deep link and a deep link can outlive the
+    // permission that justified it.
+    final showing = panes.contains(_pane) ? _pane : panes.first;
 
     return Scaffold(
       backgroundColor: context.pos.page,
@@ -133,12 +158,12 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   _Rail(
-                    current: _pane,
+                    current: showing,
                     panes: panes,
                     onPick: (pane) => setState(() => _pane = pane),
                   ),
                   Expanded(
-                    child: switch (_pane) {
+                    child: switch (showing) {
                       ManagementPane.staff => ManagementStaffPane(admin: admin),
                       ManagementPane.menu => ManagementMenuPane(admin: admin),
                       ManagementPane.floor => ManagementFloorPane(admin: admin),

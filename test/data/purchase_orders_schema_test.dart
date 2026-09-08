@@ -32,7 +32,12 @@ void main() {
   const buyer = PosStaff(
     id: 0,
     name: 'Amer M.',
-    capabilities: {PosCapability.purchaseManage},
+    role: PosRole(
+      id: 1,
+      code: 'buyer',
+      nameEn: 'Buyer',
+      capabilities: {PosCapability.purchaseManage},
+    ),
   );
   const cashier = PosStaff(
     id: 0,
