@@ -344,6 +344,20 @@ class LocalBootstrap {
     // Who the receipt says sold the food. Read-only for the till: the slip is
     // printed at the counter, and the address on it is set in Management.
     'GRANT SELECT ON pos_receipt_profiles TO "$role"',
+    // The e-receipt queue. The till writes into it at settlement and the drain
+    // updates a row as it gets a verdict, so this needs UPDATE — but not
+    // DELETE, and never on `document` or `canonical`: those are the evidence
+    // of what was actually filed, and a row that could be rewritten after a
+    // rejection would be a row that proves nothing.
+    'GRANT SELECT, INSERT ON pos_eta_receipts TO "$role"',
+    'GRANT UPDATE (status, signature, attempts, last_attempt_at, '
+        'submitted_at, submission_uuid, long_id, error_message) '
+        'ON pos_eta_receipts TO "$role"',
+    'GRANT USAGE, SELECT ON SEQUENCE pos_eta_receipts_id_seq TO "$role"',
+    // The chain head, one row per device. UPDATE by definition: every receipt
+    // moves it.
+    'GRANT SELECT, INSERT, UPDATE ON pos_eta_chains TO "$role"',
+    'GRANT USAGE, SELECT ON SEQUENCE pos_eta_chains_id_seq TO "$role"',
     // Money into and out of the drawer that is not a sale. INSERT and SELECT,
     // never UPDATE or DELETE — a pay-out already recorded is a record of money
     // that left, and correcting one is a second movement, not an edit.

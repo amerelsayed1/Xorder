@@ -1,6 +1,8 @@
 import '../../core/config/deployment.dart';
 import '../../core/money/money.dart';
 import '../models/catalog.dart';
+import '../models/eta_submission.dart';
+import '../services/eta_serialization.dart';
 import '../models/discount.dart';
 import '../models/reason_code.dart';
 import '../models/permissions.dart';
@@ -26,6 +28,75 @@ abstract interface class CatalogRepository {
   /// Full catalog pull. `since` requests a delta (POS-BE-012, still PROPOSED);
   /// implementations that cannot do deltas ignore it and return everything.
   Future<Catalog> load({DateTime? since});
+}
+
+/// The queue of receipts owed to Egypt's tax authority.
+///
+/// Deliberately not the platform outbox. They look alike and are not: the
+/// outbox carries whatever the platform wants, in whatever order, and a failed
+/// row can be retried forever. This one carries documents in a **chain**, each
+/// naming the uuid of the one before it from the same device, and has a legal
+/// deadline attached. One drain deciding retry policy for both would get one
+/// of them wrong, and the wrong answer here is a receipt filed late.
+abstract interface class EtaQueueRepository {
+  /// Builds a receipt against the current chain head and queues it, in one
+  /// transaction.
+  ///
+  /// The document is built by the caller's [build] because only the caller
+  /// knows the order — but it is built *here*, inside the lock, because the
+  /// predecessor it names has to be the one this receipt is actually written
+  /// after. Handing back a head and trusting the caller to use it would be the
+  /// race with extra steps.
+  Future<EtaEnqueued> enqueue({
+    required int orderId,
+    required String deviceSerial,
+    required String receiptNumber,
+    required String receiptType,
+    required DateTime issuedAt,
+    required EtaObject Function(String previousUuid) build,
+    int? refundId,
+  });
+
+  /// Everything not yet filed, oldest first.
+  Future<List<EtaSubmission>> outstanding({int limit = 200});
+
+  /// The queue at a glance, against the caller's clock.
+  Future<EtaQueueSummary> summary({required DateTime now});
+
+  /// The exact text that was hashed, for signing. Null if the row is gone.
+  Future<String?> canonicalFor(int id);
+
+  Future<void> markSigned(int id, String signature);
+
+  Future<void> markAccepted(
+    int id, {
+    required String submissionUuid,
+    String? longId,
+  });
+
+  /// The authority looked at it and refused. Needs a person.
+  Future<void> markRejected(int id, String message);
+
+  /// A try that did not reach a verdict — a dropped line, a timeout. The
+  /// status is deliberately untouched: a network failure is not a rejection,
+  /// and putting a person in front of a problem no person can fix is how a
+  /// queue stops being read.
+  Future<void> markAttempted(int id, String message);
+}
+
+/// What [EtaQueueRepository.enqueue] wrote.
+class EtaEnqueued {
+  const EtaEnqueued({
+    required this.id,
+    required this.uuid,
+    required this.previousUuid,
+    required this.document,
+  });
+
+  final int id;
+  final String uuid;
+  final String previousUuid;
+  final EtaObject document;
 }
 
 abstract interface class TablesRepository {

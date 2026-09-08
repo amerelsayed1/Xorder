@@ -1991,6 +1991,92 @@ const posMigrations = <PosMigration>[
     )
     ''',
   ]),
+  PosMigration(20, 'the e-receipt queue Egypt requires', [
+    // A second destination beside the platform outbox, not a reuse of it.
+    //
+    // They look alike and are not: the outbox carries whatever the platform
+    // wants in whatever order, and a failed row can be retried forever. This
+    // one carries documents in a **chain** — each receipt names the uuid of the
+    // one before it from the same device — and has a legal deadline attached.
+    // Folding them together would mean one drain deciding retry policy for
+    // both, and the wrong answer for this one is a receipt filed late.
+    '''
+    CREATE TABLE IF NOT EXISTS pos_eta_receipts (
+      id              bigserial   PRIMARY KEY,
+      restaurant_id   bigint      NOT NULL REFERENCES pos_restaurants(id) ON DELETE CASCADE,
+      branch_id       bigint      NOT NULL REFERENCES pos_branches(id) ON DELETE CASCADE,
+      -- The sale this documents. Not a foreign key onto a refund: a refund is
+      -- its own receipt with its own row and its own uuid.
+      order_id        bigint      NOT NULL REFERENCES pos_orders(id) ON DELETE RESTRICT,
+      refund_id       bigint      REFERENCES pos_refunds(id) ON DELETE RESTRICT,
+      -- Which till issued it. The chain is per device, so this is not
+      -- decoration: two tills in one branch have two independent chains.
+      device_serial   text        NOT NULL,
+      -- SHA-256 of the canonical document, 64 lowercase hex. Computed on this
+      -- machine before anything is sent, which is what makes a resubmission
+      -- recognisable as the same document rather than as a second one.
+      uuid            text        NOT NULL,
+      previous_uuid   text        NOT NULL DEFAULT '',
+      receipt_number  text        NOT NULL,
+      receipt_type    text        NOT NULL,
+      -- The document exactly as it will be sent, and the canonical text it was
+      -- hashed from. Both stored: a rejection two days later is investigated
+      -- against what was actually submitted, not against what rebuilding it
+      -- today would produce from a menu that has since changed.
+      document        jsonb       NOT NULL,
+      canonical       text        NOT NULL,
+      signature       text,
+      issued_at       timestamptz NOT NULL,
+      status          text        NOT NULL DEFAULT 'pending',
+      attempts        integer     NOT NULL DEFAULT 0,
+      last_attempt_at timestamptz,
+      -- Set the moment the authority accepts it. The gap between issued_at and
+      -- this is the number the 24-hour rule is about.
+      submitted_at    timestamptz,
+      -- What came back: their submission id, their long id, and the reason if
+      -- they refused.
+      submission_uuid text,
+      long_id         text,
+      error_message   text,
+      created_at      timestamptz NOT NULL DEFAULT now(),
+      CONSTRAINT pos_eta_receipts_status_known CHECK (
+        status IN ('pending', 'signed', 'submitted', 'accepted', 'rejected', 'cancelled')
+      ),
+      -- The uuid is a fingerprint of the document, so a duplicate is the same
+      -- document twice and never two sales. Unique per branch rather than
+      -- globally: two branches are two taxpayer submissions.
+      CONSTRAINT pos_eta_receipts_uuid_unique UNIQUE (branch_id, uuid)
+    )
+    ''',
+    // The drain's query: the oldest thing not yet accepted, per device, in the
+    // order it was issued. Partial, because an accepted receipt is history and
+    // the queue is only ever read for what is outstanding.
+    '''
+    CREATE INDEX IF NOT EXISTS pos_eta_receipts_outstanding_idx
+      ON pos_eta_receipts (branch_id, device_serial, issued_at)
+      WHERE status <> 'accepted'
+    ''',
+    // "Has this order been filed" — asked when a receipt is reprinted and by
+    // the screen that shows what has not cleared.
+    '''
+    CREATE INDEX IF NOT EXISTS pos_eta_receipts_order_idx
+      ON pos_eta_receipts (order_id)
+    ''',
+    // The chain head, per device. Read before every new receipt is built and
+    // written after it — under a row lock, because two threads reading the
+    // same head would build two receipts claiming the same predecessor and
+    // the authority would reject the second.
+    '''
+    CREATE TABLE IF NOT EXISTS pos_eta_chains (
+      id            bigserial   PRIMARY KEY,
+      branch_id     bigint      NOT NULL REFERENCES pos_branches(id) ON DELETE CASCADE,
+      device_serial text        NOT NULL,
+      last_uuid     text        NOT NULL DEFAULT '',
+      updated_at    timestamptz NOT NULL DEFAULT now(),
+      CONSTRAINT pos_eta_chains_device_unique UNIQUE (branch_id, device_serial)
+    )
+    ''',
+  ]),
 ];
 
 /// Brings the branch database up to the current schema.
