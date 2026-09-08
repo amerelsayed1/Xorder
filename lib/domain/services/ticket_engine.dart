@@ -196,7 +196,11 @@ abstract final class TicketEngine {
     for (final group in groups) {
       final chosen = selected.where((m) => m.groupId == group.id).toList();
 
-      if (group.isRequired && chosen.isEmpty) {
+      // `effectiveMinimum` rather than `isRequired`, so "pick at least two"
+      // blocks at one rather than only at none. A required group with no
+      // explicit minimum still means one, which is the older statement of the
+      // same rule.
+      if (chosen.length < group.effectiveMinimum) {
         return RequiredGroupUnsatisfied(group);
       }
       if (chosen.length > group.maxSelect) {
@@ -252,6 +256,22 @@ abstract final class TicketEngine {
     final refusal = validateSelection(groups, modifiers);
     if (refusal != null) return TicketResult.refused(refusal);
 
+    // What the groups' free allowances take off one unit. Computed once, here,
+    // and carried on the line as a snapshot — see `TicketLine.includedAllowance`.
+    var allowance = Money(
+      0,
+      currency: product.price.currency,
+      exponent: product.price.exponent,
+    );
+    for (final group in groups) {
+      if (group.freeOptions <= 0) continue;
+      final chosen = modifiers.where((m) => m.groupId == group.id).toList();
+      final charged = group.chargeable(chosen);
+      for (final modifier in chosen) {
+        if (!charged.contains(modifier)) allowance += modifier.priceDelta;
+      }
+    }
+
     final key = TicketLine.keyFor(product, modifiers);
     final lines = [...ticket.lines];
     final index = lines.indexWhere(
@@ -268,6 +288,7 @@ abstract final class TicketEngine {
           product: product,
           quantity: quantity,
           modifiers: modifiers,
+          includedAllowance: allowance,
           note: note,
         ),
       );

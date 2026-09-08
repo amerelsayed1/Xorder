@@ -1749,6 +1749,99 @@ const posMigrations = <PosMigration>[
          SELECT 1 FROM pos_order_taxes t WHERE t.order_id = o.id)
     ''',
   ]),
+  // What a branch charges, and what a modifier group allows.
+  //
+  // Two menu gaps the market treats as table stakes and this schema could not
+  // express: delivery prices differing from dine-in (Foodics calls these
+  // Location Rules), and the modifier economics every competitor ships — free
+  // allowances, pre-selected defaults, a minimum selection.
+  PosMigration(17, 'per-branch and per-channel prices, modifier economics', [
+    // One row per product per (branch, order type) that differs from the menu.
+    //
+    // An override table rather than columns on the product: a restaurant with
+    // one price for everything writes no rows at all, and the common case stays
+    // exactly as cheap to read as it was. Columns would have put four nullable
+    // prices on every product to serve the minority that use them.
+    '''
+    CREATE TABLE IF NOT EXISTS pos_product_prices (
+      id          bigserial PRIMARY KEY,
+      product_id  bigint    NOT NULL REFERENCES pos_products(id) ON DELETE CASCADE,
+      branch_id   bigint    REFERENCES pos_branches(id) ON DELETE CASCADE,
+      -- NULL means "every order type at this branch". A row naming one applies
+      -- only to it, and beats the branch-wide row — same most-specific-wins
+      -- rule the settings table follows.
+      order_type  text,
+      price_minor bigint,
+      -- Sold here at all. A branch that has run out for the season sets false
+      -- rather than deleting a product other branches still sell.
+      is_available boolean  NOT NULL DEFAULT true,
+      CONSTRAINT pos_product_prices_price_sane
+        CHECK (price_minor IS NULL OR price_minor >= 0),
+      CONSTRAINT pos_product_prices_order_type_known CHECK (
+        order_type IS NULL
+        OR order_type IN ('dine_in', 'takeaway', 'delivery', 'drive_thru')),
+      -- A row that overrides nothing is a row somebody will wonder about.
+      CONSTRAINT pos_product_prices_says_something
+        CHECK (price_minor IS NOT NULL OR NOT is_available)
+    )
+    ''',
+    // NULLs are distinct in a UNIQUE constraint, so the branch-wide and
+    // order-type-wide rows need their own partial indexes to be unique at all.
+    // Without these a product could carry two different delivery prices and
+    // nothing would say which was meant.
+    '''
+    CREATE UNIQUE INDEX IF NOT EXISTS pos_product_prices_specific
+      ON pos_product_prices (product_id, branch_id, order_type)
+      WHERE branch_id IS NOT NULL AND order_type IS NOT NULL
+    ''',
+    '''
+    CREATE UNIQUE INDEX IF NOT EXISTS pos_product_prices_branch_wide
+      ON pos_product_prices (product_id, branch_id)
+      WHERE branch_id IS NOT NULL AND order_type IS NULL
+    ''',
+    '''
+    CREATE UNIQUE INDEX IF NOT EXISTS pos_product_prices_channel_wide
+      ON pos_product_prices (product_id, order_type)
+      WHERE branch_id IS NULL AND order_type IS NOT NULL
+    ''',
+    '''
+    CREATE INDEX IF NOT EXISTS pos_product_prices_lookup_idx
+      ON pos_product_prices (branch_id, product_id)
+    ''',
+
+    // Modifier economics, on the group.
+    //
+    // `free_options` is the one worth naming: "two toppings included, then 5.00
+    // each" is how half the market prices a pizza, and the schema could express
+    // neither half of that sentence.
+    '''
+    ALTER TABLE pos_modifier_groups
+      ADD COLUMN IF NOT EXISTS min_select integer NOT NULL DEFAULT 0
+    ''',
+    '''
+    ALTER TABLE pos_modifier_groups
+      ADD COLUMN IF NOT EXISTS free_options integer NOT NULL DEFAULT 0
+    ''',
+    '''
+    DO \$\$ BEGIN
+      ALTER TABLE pos_modifier_groups ADD CONSTRAINT pos_modifier_groups_selection_sane
+        CHECK (min_select >= 0 AND free_options >= 0 AND min_select <= max_select);
+    EXCEPTION WHEN duplicate_object THEN NULL; END \$\$
+    ''',
+    // A required group is one that needs at least one. Stated once here so the
+    // two ways of saying it cannot drift apart.
+    '''
+    UPDATE pos_modifier_groups SET min_select = 1
+     WHERE is_required AND min_select = 0
+    ''',
+
+    // Pre-selected when the sheet opens. "Regular size" already ticked is the
+    // difference between three taps and one.
+    '''
+    ALTER TABLE pos_modifiers
+      ADD COLUMN IF NOT EXISTS is_default boolean NOT NULL DEFAULT false
+    ''',
+  ]),
 ];
 
 /// Brings the branch database up to the current schema.

@@ -183,6 +183,7 @@ class TicketLine {
     this.roundNumber,
     this.voided,
     this.priceOverride,
+    this.includedAllowance = Money.zero,
   });
 
   final Product product;
@@ -198,6 +199,17 @@ class TicketLine {
 
   /// Non-null when this line is being sold at a price somebody set by hand.
   final PriceOverride? priceOverride;
+
+  /// What the modifier groups' free allowances took off this unit.
+  ///
+  /// A **snapshot**, computed when the line was added, for the same reason
+  /// every other price on a ticket is one: a group edited from "two free" to
+  /// "one free" tomorrow must not reprice a table that is still sitting there.
+  ///
+  /// It lives here rather than being recomputed from the modifiers because the
+  /// line does not carry its groups — and giving it them so that a *price*
+  /// could be re-derived is precisely the coupling snapshots exist to avoid.
+  final Money includedAllowance;
 
   bool get isVoided => voided != null;
   bool get isRepriced => priceOverride != null;
@@ -219,10 +231,22 @@ class TicketLine {
 
   /// What this line would cost at menu prices. Struck through in the cart when
   /// [priceOverride] is set, and the base a limit is measured against.
-  Money get menuUnitPrice => modifiers.fold(
-    product.effectivePrice,
-    (total, modifier) => total + modifier.priceDelta,
-  );
+  ///
+  /// The free allowance comes off here rather than at the point the modifiers
+  /// were chosen, so the line keeps **every** modifier for the kitchen and the
+  /// receipt while charging for only the ones past the allowance.
+  Money get menuUnitPrice {
+    final gross = modifiers.fold(
+      product.effectivePrice,
+      (total, modifier) => total + modifier.priceDelta,
+    );
+    // Guarded on zero rather than subtracted unconditionally. `Money.zero` is
+    // EGP, and taking it off a Kuwaiti price trips the currency assertion —
+    // which is the assertion doing its job: an allowance of nothing has no
+    // currency, and pretending it has one is how a three-decimal ticket dies.
+    if (includedAllowance.minor == 0) return gross;
+    return (gross - includedAllowance).clampToZero();
+  }
 
   Money get lineTotal => unitPrice * quantity;
 
@@ -236,6 +260,7 @@ class TicketLine {
     String? note,
     LineVoid? voided,
     PriceOverride? priceOverride,
+    Money? includedAllowance,
     /// Put the line back on the menu price. Needed as a flag because null in
     /// [priceOverride] already means "leave it alone", and every other
     /// `copyWith` here reads the same way.
@@ -251,6 +276,7 @@ class TicketLine {
     priceOverride: clearPriceOverride
         ? null
         : (priceOverride ?? this.priceOverride),
+    includedAllowance: includedAllowance ?? this.includedAllowance,
   );
 }
 

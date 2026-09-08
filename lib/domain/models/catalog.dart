@@ -186,6 +186,8 @@ class ModifierGroup {
     this.isRequired = false,
     this.maxSelect = 1,
     this.isVariant = false,
+    this.minSelect = 0,
+    this.freeOptions = 0,
   });
 
   final int id;
@@ -202,7 +204,36 @@ class ModifierGroup {
   /// A variant group *prices* the item (size) rather than adding to it.
   final bool isVariant;
 
+  /// How many must be chosen. [isRequired] is the same statement in coarser
+  /// words, and a required group has a minimum of at least one.
+  final int minSelect;
+
+  /// How many are included before the option prices start applying.
+  ///
+  /// "Two toppings included, then 5.00 each" is how half the market prices a
+  /// pizza, and it was inexpressible: the schema had a price per option and no
+  /// way to say the first two are free.
+  final int freeOptions;
+
   bool get isSingleSelect => maxSelect <= 1;
+
+  /// The smallest number this group will accept.
+  int get effectiveMinimum => isRequired && minSelect < 1 ? 1 : minSelect;
+
+  /// What [chosen] costs, once the free allowance is taken off.
+  ///
+  /// **The cheapest options are the free ones.** A customer who picks two
+  /// toppings with one included should be charged for the dearer, not the
+  /// nearer-to-hand — anything else makes the price depend on tap order, which
+  /// is the sort of thing a customer notices and a cashier cannot explain.
+  List<Modifier> chargeable(List<Modifier> chosen) {
+    if (freeOptions <= 0 || chosen.length <= freeOptions) {
+      return freeOptions <= 0 ? chosen : const [];
+    }
+    final sorted = [...chosen]
+      ..sort((a, b) => a.priceDelta.minor.compareTo(b.priceDelta.minor));
+    return sorted.sublist(freeOptions);
+  }
 
   String displayName(String locale) =>
       locale.startsWith('ar') && (nameAr?.isNotEmpty ?? false)
@@ -218,6 +249,7 @@ class Modifier {
     required this.priceDelta,
     this.nameAr,
     this.isAvailable = true,
+    this.isDefault = false,
   });
 
   final int id;
@@ -228,6 +260,10 @@ class Modifier {
   /// May be zero (a "Remove onions" style option) or negative.
   final Money priceDelta;
   final bool isAvailable;
+
+  /// Ticked when the sheet opens. "Regular size" already chosen is the
+  /// difference between three taps and one.
+  final bool isDefault;
 
   String displayName(String locale) =>
       locale.startsWith('ar') && (nameAr?.isNotEmpty ?? false)

@@ -19,9 +19,14 @@ class PostgresCatalogRepository implements CatalogRepository {
   PostgresCatalogRepository({
     required PosDatabase database,
     required this._config,
+    this.branchId,
     DateTime Function()? clock,
   }) : _db = database,
        _now = clock ?? DateTime.now;
+
+  /// Which shop is reading. Null before the terminal is provisioned, and on a
+  /// single-branch restaurant it changes nothing — there are no override rows.
+  final int? branchId;
 
   final PosDatabase _db;
   final DeploymentConfig _config;
@@ -46,11 +51,27 @@ class PostgresCatalogRepository implements CatalogRepository {
 
     final products = await _db.query(
       _config,
-      'SELECT id, category_id, name_en, name_ar, price_minor, '
-      '       discounted_price_minor, sku, barcode, is_available '
-      'FROM pos_products WHERE restaurant_id = @restaurant '
-      'ORDER BY sort_order, id',
-      parameters: {'restaurant': tenant.id},
+      // Branch overrides applied here, at the read, rather than carried into
+      // the ticket. A price is a property of the menu this shop is selling
+      // from, so the catalogue is the honest place to resolve it — and a
+      // restaurant with one price everywhere writes no override rows and pays
+      // nothing for the join.
+      //
+      // Only branch-wide rows (`order_type IS NULL`). Per-channel pricing needs
+      // the price to vary with the *ticket's* order type, which a catalogue
+      // read cannot know; the column exists and nothing authors one yet.
+      'SELECT p.id, p.category_id, p.name_en, p.name_ar, '
+      '       COALESCE(o.price_minor, p.price_minor), '
+      '       p.discounted_price_minor, p.sku, p.barcode, '
+      '       p.is_available AND COALESCE(o.is_available, true), '
+      '       p.tax_group_id '
+      'FROM pos_products p '
+      'LEFT JOIN pos_product_prices o '
+      '  ON o.product_id = p.id AND o.branch_id = @branch '
+      '  AND o.order_type IS NULL '
+      'WHERE p.restaurant_id = @restaurant '
+      'ORDER BY p.sort_order, p.id',
+      parameters: {'restaurant': tenant.id, 'branch': branchId},
     );
 
     // Scoped through the product so a group belonging to another restaurant
@@ -128,6 +149,7 @@ class PostgresCatalogRepository implements CatalogRepository {
             sku: row[6] as String?,
             barcode: row[7] as String?,
             isAvailable: row[8] as bool,
+            taxGroupId: row[9] as int?,
             modifierGroupIds: groupIdsByProduct[row[0] as int] ?? const [],
           ),
       ],

@@ -104,6 +104,8 @@ final catalogRepositoryProvider = Provider<CatalogRepository>((ref) {
   return PostgresCatalogRepository(
     database: ref.watch(posDatabaseProvider),
     config: config,
+    // So per-branch prices and availability resolve at the read.
+    branchId: ref.watch(posWriteContextProvider)?.branchId,
   );
 });
 
