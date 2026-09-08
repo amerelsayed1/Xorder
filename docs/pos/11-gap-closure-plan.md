@@ -749,6 +749,12 @@ CREATE TABLE pos_tender_types (             -- §40 payment methods as data
 CREATE TABLE pos_receipt_templates (id, restaurant_id, name, config jsonb, is_default)
 ```
 
+**Built so far in D:** payment methods (§40, migration 23) and service charges
+(§38, migration 24), both with their editors in the Money pane. Order types
+(§31) were **deliberately taken second**, not first: their most useful columns
+point at a service charge, a receipt template and a price list, so building the
+table first would have meant three columns pointing at nothing.
+
 **`pos_money_config` is superseded but not dropped.** It keeps working as the cloud
 cache; the offline authoring path moves to `pos_taxes` / `pos_service_charges`, and
 the ticket engine reads a resolved `MoneyRules` object either way. **Historic orders

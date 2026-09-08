@@ -9,8 +9,11 @@ import '../../../core/ui/widgets/pos_widgets.dart';
 import '../../../domain/models/shift.dart';
 import '../../../domain/models/ticket.dart';
 import '../../../core/ui/widgets/mono_amount.dart';
+import '../../../core/money/money.dart';
+import '../../../domain/models/service_charge.dart';
 import '../../../domain/models/tender_method.dart';
 import 'admin_messages.dart';
+import 'service_charge_dialog.dart';
 import 'tender_type_dialog.dart';
 
 /// What the restaurant charges on top of the food.
@@ -105,6 +108,33 @@ class _ManagementMoneyPaneState extends ConsumerState<ManagementMoneyPane> {
     // the invalidation the next sale would price with the old rates until the
     // app restarted — the same trap the Menu pane has.
     if (result.refusal == null) ref.invalidate(moneyConfigProvider);
+  }
+
+  Future<void> _editCharge(ServiceCharge? charge) async {
+    final edited = await ServiceChargeDialog.show(context, charge: charge);
+    if (edited == null || !mounted) return;
+
+    setState(() => _busy = true);
+    final result = await ref
+        .read(serviceChargesRepositoryProvider)
+        .save(edited, by: widget.admin);
+    if (!mounted) return;
+
+    setState(() {
+      _busy = false;
+      _note = result.succeeded
+          ? null
+          : AdminText.refusal(context.strings, result.refusal!);
+    });
+
+    // `taxConfigProvider` folds these in, and the ticket engine reads that.
+    // Without the invalidation the next sale would price with the old charges
+    // until the app restarted — the same trap the Menu pane has.
+    if (result.succeeded) {
+      ref
+        ..invalidate(serviceChargesProvider)
+        ..invalidate(serviceChargesAllProvider);
+    }
   }
 
   Future<void> _editTender(TenderMethod? method) async {
@@ -211,6 +241,61 @@ class _ManagementMoneyPaneState extends ConsumerState<ManagementMoneyPane> {
               ),
             ),
 
+            // What the restaurant adds on top of the food (§38). Directly
+            // under the single rate it supersedes, so a manager can see which
+            // of the two is actually being charged.
+            const SizedBox(height: PosSpace.s28),
+            Container(height: 1, color: context.pos.line),
+            const SizedBox(height: PosSpace.xl),
+            MicroLabel(strings.serviceCharges),
+            const SizedBox(height: PosSpace.xs),
+            Text(
+              strings.serviceChargesHint,
+              style: PosText.ui(size: 12.5, color: context.pos.muted),
+            ),
+            const SizedBox(height: PosSpace.md),
+            ...ref
+                .watch(serviceChargesAllProvider)
+                .when(
+                  loading: () => const [SizedBox(height: 40)],
+                  error: (error, _) => [
+                    Text(
+                      '$error',
+                      style: PosText.ui(size: 13, color: context.pos.danger),
+                    ),
+                  ],
+                  data: (all) => all.isEmpty
+                      ? [
+                          // The state that matters most: nothing here means the
+                          // rate above is what customers pay, and a blank list
+                          // reads as "no service charge" to everybody.
+                          Text(
+                            strings.serviceChargesFallback,
+                            style: PosText.ui(
+                              size: 12.5,
+                              color: context.pos.warn,
+                            ),
+                          ),
+                        ]
+                      : [
+                          for (final charge in all)
+                            _ChargeRow(
+                              charge: charge,
+                              onEdit: () => _editCharge(charge),
+                            ),
+                        ],
+                ),
+            const SizedBox(height: PosSpace.md),
+            Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: PosButton(
+                key: const Key('charge-new'),
+                label: strings.chargeNew,
+                border: Border.fromBorderSide(context.pos.resting),
+                onPressed: _busy ? null : () => _editCharge(null),
+              ),
+            ),
+
             // Payment methods live here rather than in a pane of their own for
             // now: "what the restaurant charges and how it takes it" is one
             // question a manager asks in one sitting. They move to Settings ›
@@ -256,6 +341,65 @@ class _ManagementMoneyPaneState extends ConsumerState<ManagementMoneyPane> {
           ],
         );
       },
+    );
+  }
+}
+
+/// One service charge, as the editor lists them.
+class _ChargeRow extends StatelessWidget {
+  const _ChargeRow({required this.charge, required this.onEdit});
+
+  final ServiceCharge charge;
+  final VoidCallback onEdit;
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = context.strings;
+    final palette = context.pos;
+
+    return InkWell(
+      onTap: onEdit,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: PosSpace.sm),
+        decoration: BoxDecoration(
+          border: BorderDirectional(bottom: palette.hairline),
+        ),
+        child: Opacity(
+          opacity: charge.isActive ? 1 : 0.5,
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  charge.displayName(strings.languageCode),
+                  style: PosText.ui(size: 13.5, color: palette.ink),
+                ),
+              ),
+              if (!charge.isTaxable)
+                Padding(
+                  padding: const EdgeInsetsDirectional.only(end: PosSpace.sm),
+                  child: Text(
+                    // Worth surfacing in the list: it is the flag with the
+                    // consequences a filing cares about.
+                    strings.chargeTaxable,
+                    style: PosText.ui(
+                      size: 10.5,
+                      weight: FontWeight.w700,
+                      color: palette.warn,
+                    ),
+                  ),
+                ),
+              MonoCode(
+                charge.isFixed
+                    ? Money(charge.fixedMinor!).format()
+                    : '${(charge.rateBp! / 100).toStringAsFixed(
+                        charge.rateBp! % 100 == 0 ? 0 : 1,
+                      )}%',
+                size: 12.5,
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

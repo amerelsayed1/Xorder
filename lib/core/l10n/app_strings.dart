@@ -841,6 +841,26 @@ sealed class AppStrings {
   String get tenderActiveHint;
   String get tenderRetired;
 
+  // §38 — service charges.
+  String get serviceCharges;
+  String get serviceChargesHint;
+  String get serviceChargesFallback;
+  String get chargeNew;
+  String get chargeEdit;
+  String get chargeName;
+  String get chargeHow;
+  String get chargePercentage;
+  String get chargeFixed;
+  String get chargeAppliesTo;
+  String get chargeAppliesToHint;
+  String get chargeTaxable;
+  String get chargeTaxableHint;
+  String get chargeAutomatic;
+  String get chargeOptional;
+  String get chargeOptionalHint;
+  String get chargeActive;
+  String get currencyEgp;
+
   // Management chrome.
   String get backToTill;
   String get paneStaff;
@@ -3495,6 +3515,47 @@ final class EnStrings extends AppStrings {
   String get tenderRetired => 'retired';
 
   @override
+  String get serviceCharges => 'Service charges';
+  @override
+  String get serviceChargesHint =>
+      'What is added on top of the food, and which orders it applies to.';
+  @override
+  String get serviceChargesFallback =>
+      'None configured — the single rate above is being charged.';
+  @override
+  String get chargeNew => 'New charge';
+  @override
+  String get chargeEdit => 'Charge';
+  @override
+  String get chargeName => 'Name on the bill';
+  @override
+  String get chargeHow => 'How it is worked out';
+  @override
+  String get chargePercentage => 'A percentage';
+  @override
+  String get chargeFixed => 'A fixed amount';
+  @override
+  String get chargeAppliesTo => 'Applies to';
+  @override
+  String get chargeAppliesToHint => 'Choose none and it applies to every order.';
+  @override
+  String get chargeTaxable => 'VAT is charged on it';
+  @override
+  String get chargeTaxableHint =>
+      'Off for a fee collected on somebody else\'s behalf.';
+  @override
+  String get chargeAutomatic => 'Added without being asked';
+  @override
+  String get chargeOptional => 'The customer may decline it';
+  @override
+  String get chargeOptionalHint =>
+      'Removing it is then not an override and needs no permission.';
+  @override
+  String get chargeActive => 'In use';
+  @override
+  String get currencyEgp => 'EGP';
+
+  @override
   String get backToTill => 'Back to the till';
   @override
   String get paneStaff => 'Staff';
@@ -5780,6 +5841,45 @@ final class ArStrings extends AppStrings {
       'إيقافها يُخرجها من الخدمة. المبيعات السابقة تحتفظ باسمها.';
   @override
   String get tenderRetired => 'خارج الخدمة';
+
+  @override
+  String get serviceCharges => 'رسوم الخدمة';
+  @override
+  String get serviceChargesHint =>
+      'ما يُضاف فوق قيمة الطعام، وعلى أي الطلبات ينطبق.';
+  @override
+  String get serviceChargesFallback =>
+      'لا توجد رسوم مضبوطة — تُحتسب النسبة الواحدة أعلاه.';
+  @override
+  String get chargeNew => 'رسم جديد';
+  @override
+  String get chargeEdit => 'الرسم';
+  @override
+  String get chargeName => 'الاسم على الفاتورة';
+  @override
+  String get chargeHow => 'طريقة الاحتساب';
+  @override
+  String get chargePercentage => 'نسبة مئوية';
+  @override
+  String get chargeFixed => 'مبلغ ثابت';
+  @override
+  String get chargeAppliesTo => 'ينطبق على';
+  @override
+  String get chargeAppliesToHint => 'إن لم تختر شيئًا فهو ينطبق على كل الطلبات.';
+  @override
+  String get chargeTaxable => 'تُحتسب عليه ضريبة القيمة المضافة';
+  @override
+  String get chargeTaxableHint => 'أوقفها للرسوم المُحصَّلة لحساب جهة أخرى.';
+  @override
+  String get chargeAutomatic => 'يُضاف تلقائيًا';
+  @override
+  String get chargeOptional => 'يمكن للعميل رفضه';
+  @override
+  String get chargeOptionalHint => 'عندئذٍ لا يُعد حذفه تجاوزًا ولا يحتاج صلاحية.';
+  @override
+  String get chargeActive => 'قيد الاستخدام';
+  @override
+  String get currencyEgp => 'ج.م';
 
   @override
   String get backToTill => 'رجوع إلى الكاشير';
