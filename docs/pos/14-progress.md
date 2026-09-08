@@ -8,58 +8,66 @@ newer.
 
 ## 1. The short version
 
-**Wave A is complete. Wave B is built.** Migrations 9 through 15 are applied.
+**Waves A and B are complete. Wave M is two-thirds built.** Migrations 9
+through 17 are applied.
 
 | Wave | State |
 |---|---|
 | **A** — discount, void, refund, history, price override, reprint, cart density | ✅ |
 | **B** — settings, cash movements, business day, blind close | ✅ |
+| **M** — menu & tax model | 🔨 tax ✅ · pricing ✅ · modifiers ✅ · **combos ✗** |
+| **N** — ETA e-receipt | ⬜ next, and blocking |
 
-**Verification:** `flutter analyze` clean · **861 unit tests** pass, 15 skipped
-(the database suites, which self-skip without `POS_PG_HOST`) · **354 database
-tests** pass.
+**Verification:** `flutter analyze` clean · **922 unit tests** pass, 17 skipped
+· **377 database tests** pass.
 
 ---
 
-## 2. What Wave B added
+## 2. Wave M so far
 
-**Migrations 14 and 15.** `pos_settings`, `pos_cash_drawers`,
-`pos_cash_movements`, `pos_business_days`, the late foreign keys, and the owner
-role's new capabilities. Settings landed here rather than in Wave D on the
-plan's own advice.
+### The tax model — the blocking prerequisite, done
 
-**Settings, shaped against the plan's fourth risk.** The map is not the public
-surface: `PosSettings` parses, and `RefundPolicy`, `DayPolicy` and `CashPolicy`
-are what everything else reads. Every key falls back on its own, because partial
-configuration is the normal case.
+`tax_lines[]` exists. Tax is computed **per rate**, not per ticket and not per
+line: products name a tax group, bases accumulate per group, and each group is
+rounded once. Per-rate is what a filing needs and — on a menu where everything
+shares one rate — arithmetically identical to what it replaced. **All 31 golden
+money tests from Wave A pass unchanged**, which is how that is checked rather
+than asserted.
 
-**The trading day.** `DayPolicy.dateFor` is where it stops being the calendar
-day — a restaurant closing at 2 a.m. takes money on Saturday that belongs to
-Friday. Opening is idempotent; a closed day is never reopened silently; closing
-totals inside the same transaction as the close.
+The first attempt failed one of them immediately, which was worth having:
+`defaultTaxGroup` built its fallback fresh per call, so without value equality
+on `TaxGroup` every line became its own map key and was rounded alone.
 
-**The drawer.** Pay in and pay out are two variants of one dialog that must
-never be confusable — they differ in colour, title, button wording and the sign
-beside the amount, because a cashier who reaches for the wrong one records the
-drawer 100 up when it is 100 down. Opening the drawer without a sale (§23) has
-its own capability, its own confirmation and its own audit row; it used to be a
-toast that opened nothing.
+Migration 16 backfills every existing restaurant with the rate it has been
+charging, read out of `pos_money_config` so a branch on 15% keeps 15%. A
+database test found the other half — nothing seeded a restaurant created
+*after* the migration — which `LocalBootstrap.seedTaxGroup` now does.
 
-**§27's cash-up.** The Z report now carries the fifteen totals — subtotal,
-discounts, service, VAT, gross, refunds, voids, net, each tender, float, cash
-in, cash out, drawer openings, expected, counted, difference. Refunds are *not*
-netted off the gross: a shift that sold 1,000 and refunded 200 did both things,
-and showing only 800 hides the number a manager is looking for.
+### Per-branch pricing, done
 
-**Blind close (§25)** needs two conditions, not one: the restaurant asked for
-it **and** this person lacks `shift.view_expected_cash`. A manager counting
-their own drawer under a blind policy still sees the figure, because
-withholding it from the person who set the policy protects nobody. The variance
-is revealed after committing to anyone holding `cash.variance.view` — which is
-why those are two capabilities rather than one.
+An override table, resolved at the catalogue read. A restaurant with one price
+everywhere writes no rows. An override can withdraw a product and never
+reinstate one: the menu is the ceiling.
 
-**The plan's third named risk is closed.** `ShiftSummary.cashTaken` selected the
-drawer's cash with `label.contains('cash')`; it now selects on tender type.
+**Per-channel pricing is schema-only**, deliberately. It needs the price to vary
+with the *ticket's* order type, which a catalogue read cannot know. The column
+exists and nothing authors one, so nobody can set a delivery price and watch it
+be ignored.
+
+### Modifier economics, done
+
+`free_options`, `min_select`, `is_default`. The free allowance takes the
+**cheapest** options, so the price cannot depend on tap order. It is a snapshot
+computed when the line is added — a group edited tomorrow must not reprice a
+table still sitting there.
+
+### Combos — not built
+
+The remaining Wave M item, and the largest. A combo needs its own tables (a
+combo, its groups, the options in each), a ticket line that can hold a
+selection rather than a product, and a price that is the combo's rather than
+the sum of its parts. It is a genuine feature, not a schema tweak, and it is
+the last thing between Wave M and Wave N.
 
 ---
 
@@ -73,18 +81,18 @@ makes the product better; ETA makes it sellable. See
 
 | Wave | Theme | Migration | Size |
 |---|---|---|---|
-| **M** | **Menu & tax model** — `tax_lines[]`, per-product tax, combos, per-branch pricing | 16 | L |
-| **N** | **ETA e-receipt** — e-seal signing, submission queue, QR on the slip | 17 | L |
-| **C** | Permission model to specification | 18 | L |
-| **D** | Settings & configuration screens | 19 | XL |
-| **E** | Floors & tables | 20 | M |
-| **F** | Kitchen, printing, hardware | 21 | L |
+| **M** (rest) | **Combos** | 18 | M |
+| **N** | **ETA e-receipt** — e-seal signing, submission queue, QR on the slip | 19 | L |
+| **C** | Permission model to specification | 20 | L |
+| **D** | Settings & configuration screens | 21 | XL |
+| **E** | Floors & tables | 22 | M |
+| **F** | Kitchen, printing, hardware | 23 | L |
 | **G** | Reports · X/Z · export/import | — | L |
-| **H** | Customers | 22 | M |
-| **I** | Auth & security hardening | 23 | M |
-| **J** | Backup · restore · diagnostics | 24 | L |
-| **K** | Local API tier | 25 | XXL |
-| **L** | Inventory & recipes (P1) | 26 | XL |
+| **H** | Customers | 24 | M |
+| **I** | Auth & security hardening | 25 | M |
+| **J** | Backup · restore · diagnostics | 26 | L |
+| **K** | Local API tier | 27 | XXL |
+| **L** | Inventory & recipes (P1) | 28 | XL |
 
 **M before N** because `tax_lines[]` cannot be retrofitted onto orders already
 filed with the tax authority, and per-product tax treatment is what makes it
