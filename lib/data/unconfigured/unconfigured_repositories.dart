@@ -263,6 +263,15 @@ class UnconfiguredStaffDirectoryRepository implements StaffDirectoryRepository {
     required int staffId,
     required String pin,
   }) async => const AdminResult.refused(NoDatabaseConfigured());
+
+  @override
+  Future<AdminResult<PosStaff>> setGrants({
+    required PosStaff by,
+    required int staffId,
+    required Set<int> extraRoleIds,
+    required List<PermissionOverride> overrides,
+    required Map<String, PermissionLimit> limits,
+  }) async => const AdminResult.refused(NoDatabaseConfigured());
 }
 
 /// Silently drops what it is given.

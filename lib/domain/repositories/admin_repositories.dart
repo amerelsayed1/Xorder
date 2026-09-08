@@ -202,6 +202,11 @@ abstract final class AuditAction {
   static const staffPinReset = 'staff.pin_reset';
   static const staffRoleChanged = 'staff.role_changed';
 
+  /// Extra roles, per-person exceptions or a ceiling changed (§105, §16).
+  /// Its own action rather than a generic update, because "who gave this
+  /// person the right to refund" is the question an investigation asks.
+  static const staffGrantsChanged = 'staff.grants_changed';
+
   static const roleCreated = 'role.created';
   static const roleUpdated = 'role.updated';
   static const roleDeleted = 'role.deleted';
@@ -440,6 +445,25 @@ abstract interface class StaffDirectoryRepository {
     required PosStaff by,
     required int staffId,
     required String pin,
+  });
+
+  /// One person's exceptions to their roles, and their ceilings (§105, §16).
+  ///
+  /// **Replaces, rather than merging.** The editor holds the whole picture —
+  /// every extra role, every override, every ceiling — so a partial write would
+  /// mean the screen and the table could disagree about what was intended by an
+  /// absence. Passing an empty set is how something is removed, and that has to
+  /// be expressible.
+  ///
+  /// The three travel together for the same reason: a manager granting somebody
+  /// a refund permission and a refund ceiling in one sitting must not be able to
+  /// end up with the first written and the second not.
+  Future<AdminResult<PosStaff>> setGrants({
+    required PosStaff by,
+    required int staffId,
+    required Set<int> extraRoleIds,
+    required List<PermissionOverride> overrides,
+    required Map<String, PermissionLimit> limits,
   });
 }
 

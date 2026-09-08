@@ -1042,6 +1042,36 @@ class FakeStaffDirectoryRepository implements StaffDirectoryRepository {
     return const AdminResult.done(null);
   }
 
+  @override
+  Future<AdminResult<PosStaff>> setGrants({
+    required PosStaff by,
+    required int staffId,
+    required Set<int> extraRoleIds,
+    required List<PermissionOverride> overrides,
+    required Map<String, PermissionLimit> limits,
+  }) async {
+    if (!Authorization.check(by, PosCapability.staffManage).isAllowed) {
+      return const AdminResult.refused(NotPermitted(PosCapability.staffManage));
+    }
+    final index = staff.indexWhere((s) => s.id == staffId);
+    if (index < 0) return const AdminResult.refused(EditedElsewhere(0));
+
+    final updated = staff[index].copyWith(
+      extraRoles: [
+        for (final role in roles.roles)
+          if (extraRoleIds.contains(role.id) && role.id != staff[index].role?.id)
+            role,
+      ],
+      overrides: overrides,
+      limits: {
+        for (final entry in limits.entries)
+          if (!entry.value.isUnlimited) entry.key: entry.value,
+      },
+    );
+    staff[index] = updated;
+    return AdminResult.done(updated);
+  }
+
   bool _someoneCanManageStaff({required PosStaff replacing}) => [
     for (final person in staff) person.id == replacing.id ? replacing : person,
   ].any((person) => person.isActive && person.can(PosCapability.staffManage));

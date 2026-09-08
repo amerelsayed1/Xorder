@@ -5,10 +5,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:xorder_pos/core/security/pin_hash.dart';
 import 'package:xorder_pos/data/postgres/migrations.dart';
 import 'package:xorder_pos/data/postgres/pos_database.dart';
+import 'package:xorder_pos/data/postgres/postgres_admin_repositories.dart';
 import 'package:xorder_pos/data/postgres/postgres_directory_repositories.dart';
 import 'package:xorder_pos/data/postgres/postgres_discounts_repository.dart';
 import 'package:xorder_pos/domain/models/permissions.dart';
 import 'package:xorder_pos/domain/models/shift.dart';
+import 'package:xorder_pos/domain/repositories/admin_repositories.dart';
 import 'package:xorder_pos/domain/services/authorization.dart';
 
 import 'pg_fixture.dart';
@@ -448,6 +450,193 @@ void main() {
         ),
         isA<DeniedByLimit>(),
       );
+    });
+  });
+
+  group('editing somebody\'s grants', () {
+    late PostgresStaffDirectoryRepository directory;
+    late PosStaff owner;
+
+    setUp(() async {
+      directory = PostgresStaffDirectoryRepository(
+        database: db,
+        config: pg.config,
+        restaurantId: restaurantId,
+      );
+      final all = await directory.all();
+      owner = all.firstWhere((s) => s.id == staffId).copyWith(
+        // Stands in for whoever is in the back office. The staff row on disk is
+        // a cashier; what matters to `setGrants` is what the *editor* holds.
+        capabilities: {...SystemRoles.owner},
+      );
+    });
+
+    Future<PosStaff> setGrants({
+      Set<int> roles = const {},
+      List<PermissionOverride> overrides = const [],
+      Map<String, PermissionLimit> limits = const {},
+      PosStaff? by,
+    }) async {
+      final result = await directory.setGrants(
+        by: by ?? owner,
+        staffId: staffId,
+        extraRoleIds: roles,
+        overrides: overrides,
+        limits: limits,
+      );
+      expect(result.succeeded, isTrue, reason: '${result.refusal}');
+      return result.value!;
+    }
+
+    test('an extra role is written and read back', () async {
+      await setGrants(roles: {supervisorRoleId});
+      expect((await signIn()).extraRoles.single.code, 'supervisor');
+    });
+
+    test('the primary role is never written into the extras', () async {
+      // Passing it is not an error — the editor sends what it is showing — but
+      // storing it is what makes a later role change leave the old one behind.
+      await setGrants(roles: {cashierRoleId, supervisorRoleId});
+
+      final rows = await db.query(
+        pg.config,
+        'SELECT role_id FROM pos_staff_roles WHERE staff_id = @s',
+        parameters: {'s': staffId},
+      );
+      expect(rows.single[0], supervisorRoleId);
+    });
+
+    test('an empty set removes what was there', () async {
+      // The case that matters: taking a grant away is the write most likely to
+      // be attempted and most damaging to half-apply.
+      await setGrants(roles: {supervisorRoleId});
+      await setGrants();
+      expect((await signIn()).extraRoles, isEmpty);
+    });
+
+    test('a DENY is written and binds', () async {
+      await setGrants(
+        roles: {supervisorRoleId},
+        overrides: [
+          const PermissionOverride(
+            capability: PosCapability.orderVoid,
+            effect: OverrideEffect.deny,
+          ),
+        ],
+      );
+
+      final staff = await signIn();
+      expect(staff.can(PosCapability.orderVoid), isFalse);
+      expect(staff.deniedByOverride, contains(PosCapability.orderVoid));
+    });
+
+    test('removing a DENY gives the permission back', () async {
+      await setGrants(
+        roles: {supervisorRoleId},
+        overrides: [
+          const PermissionOverride(
+            capability: PosCapability.orderVoid,
+            effect: OverrideEffect.deny,
+          ),
+        ],
+      );
+      await setGrants(roles: {supervisorRoleId});
+
+      expect((await signIn()).can(PosCapability.orderVoid), isTrue);
+    });
+
+    test('a ceiling is written and reaches the till', () async {
+      await setGrants(
+        limits: {LimitKey.discount: const PermissionLimit(maxBp: 750)},
+      );
+      expect((await signIn()).limitFor(LimitKey.discount).maxBp, 750);
+    });
+
+    test('an unlimited ceiling is stored as no row at all', () async {
+      // The CHECK refuses a row that limits nothing, and "unlimited" has to be
+      // expressible.
+      await setGrants(limits: {LimitKey.discount: PermissionLimit.unlimited});
+
+      final rows = await db.query(
+        pg.config,
+        'SELECT count(*) FROM pos_permission_limits',
+      );
+      expect(rows.first[0], 0);
+    });
+
+    test('a manager cannot grant an ALLOW for something they lack', () async {
+      // §48 through a different door. Without this, a manager who cannot
+      // refund grants somebody *else* the right to.
+      final manager = owner.copyWith(capabilities: {...SystemRoles.manager});
+      final result = await directory.setGrants(
+        by: manager,
+        staffId: staffId,
+        extraRoleIds: const {},
+        overrides: [
+          const PermissionOverride(
+            capability: PosCapability.backupManage,
+            effect: OverrideEffect.allow,
+          ),
+        ],
+        limits: const {},
+      );
+
+      final reason = (result.refusal! as RoleNotAllowed).reason;
+      expect(
+        (reason as CannotGrantWhatYouLack).capabilities,
+        {PosCapability.backupManage},
+      );
+    });
+
+    test('a manager can always DENY, whatever they hold', () async {
+      // Taking authority away is safe, and refusing it would mean a manager
+      // could not revoke anything an owner had granted.
+      final manager = owner.copyWith(capabilities: {...SystemRoles.manager});
+      final result = await directory.setGrants(
+        by: manager,
+        staffId: staffId,
+        extraRoleIds: const {},
+        overrides: [
+          const PermissionOverride(
+            capability: PosCapability.backupManage,
+            effect: OverrideEffect.deny,
+          ),
+        ],
+        limits: const {},
+      );
+      expect(result.succeeded, isTrue);
+    });
+
+    test('a cashier cannot edit anybody\'s grants', () async {
+      final cashier = owner.copyWith(
+        capabilities: {PosCapability.operate},
+        role: null,
+      );
+      final result = await directory.setGrants(
+        by: cashier,
+        staffId: staffId,
+        extraRoleIds: {supervisorRoleId},
+        overrides: const [],
+        limits: const {},
+      );
+      expect(result.refusal, isA<NotPermitted>());
+      expect((await signIn()).extraRoles, isEmpty);
+    });
+
+    test('the change is audited under its own action', () async {
+      await setGrants(
+        limits: {LimitKey.discount: const PermissionLimit(maxBp: 750)},
+      );
+
+      final rows = await db.query(
+        pg.config,
+        "SELECT action, after_value->'limits'->'discount.max'->>'bp' "
+        'FROM pos_audit_events ORDER BY id DESC LIMIT 1',
+      );
+      // "Who gave this person the right to refund" is the question an
+      // investigation asks, and a generic staff.updated does not answer it.
+      expect(rows.first[0], AuditAction.staffGrantsChanged);
+      expect(rows.first[1], '750');
     });
   });
 }

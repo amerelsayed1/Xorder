@@ -681,6 +681,142 @@ class PostgresStaffDirectoryRepository implements StaffDirectoryRepository {
     });
   }
 
+  /// §105 and §16 — one person's exceptions and ceilings, written whole.
+  ///
+  /// Delete-then-insert inside one transaction rather than a diff. A diff here
+  /// would need three separate reconciliations against three tables to express
+  /// what the editor already knows in full, and would get "removed" wrong,
+  /// which is the case that matters: taking a DENY off somebody is the write
+  /// most likely to be attempted and most damaging to half-apply.
+  @override
+  Future<AdminResult<PosStaff>> setGrants({
+    required PosStaff by,
+    required int staffId,
+    required Set<int> extraRoleIds,
+    required List<PermissionOverride> overrides,
+    required Map<String, PermissionLimit> limits,
+  }) async {
+    if (!adminAvailable) {
+      return const AdminResult.refused(AdministratorCredentialRequired());
+    }
+    if (!Authorization.check(by, PosCapability.staffManage).isAllowed) {
+      return const AdminResult.refused(NotPermitted(PosCapability.staffManage));
+    }
+
+    // §48 again, in the one place it would otherwise be trivially avoidable.
+    // Without this, a manager who cannot refund grants somebody *else* an
+    // ALLOW override for refunding — which is granting a permission they do
+    // not hold, through a different door.
+    final granting = <String>{
+      for (final override in overrides)
+        if (override.effect == OverrideEffect.allow)
+          PosCapability.canonical(override.capability),
+    }..removeWhere(by.can);
+    if (granting.isNotEmpty) {
+      return AdminResult.refused(
+        RoleNotAllowed(CannotGrantWhatYouLack(granting)),
+      );
+    }
+
+    return _c.database.runTx(_c.config, (tx) async {
+      final before = await _readStaffOrNull(tx, staffId, lock: true);
+      if (before == null) return const AdminResult.refused(EditedElsewhere(0));
+
+      await tx.execute(
+        Sql.named('DELETE FROM pos_staff_roles WHERE staff_id = @s'),
+        parameters: {'s': staffId},
+      );
+      for (final roleId in extraRoleIds) {
+        // The primary role is a column, not a row here — see migration 22.
+        // Writing it into both places is what makes a role change leave the
+        // old one behind.
+        if (roleId == before.role?.id) continue;
+        await tx.execute(
+          Sql.named(
+            'INSERT INTO pos_staff_roles (staff_id, role_id) VALUES (@s, @r)',
+          ),
+          parameters: {'s': staffId, 'r': roleId},
+        );
+      }
+
+      await tx.execute(
+        Sql.named(
+          'DELETE FROM pos_staff_permission_overrides WHERE staff_id = @s',
+        ),
+        parameters: {'s': staffId},
+      );
+      for (final override in overrides) {
+        await tx.execute(
+          Sql.named(
+            'INSERT INTO pos_staff_permission_overrides '
+            '  (staff_id, capability, effect, granted_by) '
+            'VALUES (@s, @c, @e, @by)',
+          ),
+          parameters: {
+            's': staffId,
+            'c': PosCapability.canonical(override.capability),
+            'e': override.effect.wire,
+            'by': by.id == 0 ? null : by.id,
+          },
+        );
+      }
+
+      await tx.execute(
+        Sql.named(
+          "DELETE FROM pos_permission_limits WHERE restaurant_id = @r "
+          "  AND subject_type = 'staff' AND subject_id = @s",
+        ),
+        parameters: {'r': _c.restaurantId, 's': staffId},
+      );
+      for (final entry in limits.entries) {
+        // A limit that limits nothing is not written at all — unlimited is the
+        // absence of a row, and the CHECK constraint refuses the alternative.
+        if (entry.value.isUnlimited) continue;
+        await tx.execute(
+          Sql.named(
+            'INSERT INTO pos_permission_limits (restaurant_id, subject_type, '
+            "  subject_id, limit_key, limit_bp, limit_minor, updated_by) "
+            "VALUES (@r, 'staff', @s, @k, @bp, @m, @by)",
+          ),
+          parameters: {
+            'r': _c.restaurantId,
+            's': staffId,
+            'k': entry.key,
+            'bp': entry.value.maxBp,
+            'm': entry.value.maxMinor,
+            'by': by.id == 0 ? null : by.id,
+          },
+        );
+      }
+
+      await _c.audit(
+        tx,
+        by: by,
+        action: AuditAction.staffGrantsChanged,
+        entityType: AuditAction.entityStaff,
+        entityId: '$staffId',
+        after: {
+          'roles': extraRoleIds.toList()..sort(),
+          'allow': [
+            for (final o in overrides)
+              if (o.effect == OverrideEffect.allow) o.capability,
+          ]..sort(),
+          'deny': [
+            for (final o in overrides)
+              if (o.effect == OverrideEffect.deny) o.capability,
+          ]..sort(),
+          'limits': {
+            for (final e in limits.entries)
+              if (!e.value.isUnlimited)
+                e.key: {'bp': e.value.maxBp, 'minor': e.value.maxMinor},
+          },
+        },
+      );
+
+      return AdminResult.done(await _readStaff(tx, staffId));
+    });
+  }
+
   Map<String, Object?> _staffSnapshot(PosStaff staff) => {
     'name': staff.name,
     'username': staff.username,
