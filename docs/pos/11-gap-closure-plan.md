@@ -1023,31 +1023,109 @@ Run alongside the waves, not after them.
 
 ---
 
-## 16. Suggested sequencing
+## 16. Sequencing — revised 8 September 2026
+
+Waves A and B are shipped. The order below changes from the original for one
+reason, set out in [15-competitive-position.md](15-competitive-position.md):
+**Egypt's ETA e-receipt mandate has been in force since 15 September 2025**, and
+a restaurant on the ETA list cannot legally run its tills on this build.
+
+Wave C makes the product better. ETA makes it sellable.
 
 ```
-Now ──► A (discount/void/refund)  ──► B (cash & day, + settings infra)
-                                       │
-                                       ├─► C (permissions to spec)
-                                       │      │
-                                       │      ├─► D (settings screens)
-                                       │      │     ├─► E (floors/tables)
-                                       │      │     ├─► F (kitchen/printing)
-                                       │      │     └─► G (reports/export)
-                                       │      ├─► H (customers)
-                                       │      ├─► I (auth hardening)
-                                       │      └─► J (backup/diagnostics)
-                                       └─► K (local API tier)   ← decision §0
-                                              └─► L (inventory, P1)
+DONE ──► A (discount/void/refund)  ──► B (cash & day, + settings infra)
+                                        │
+                                        ▼
+                          ┌─────────────────────────────┐
+                          │  M — menu & tax model       │  ← NEW, first
+                          │  N — ETA e-receipt          │  ← NEW, blocking
+                          └─────────────────────────────┘
+                                        │
+                                        ├─► C (permissions to spec)
+                                        │      ├─► D (settings screens)
+                                        │      │     ├─► E (floors/tables)
+                                        │      │     ├─► F (kitchen/printing)
+                                        │      │     └─► G (reports/export)
+                                        │      ├─► H (customers)
+                                        │      ├─► I (auth hardening)
+                                        │      └─► J (backup/diagnostics)
+                                        └─► K (local API tier)   ← decision §0
+                                               └─► L (inventory, P1)
 ```
 
-**§113 P0 is complete at the end of Wave G.** Everything the SRS calls mandatory
-for v1 is shipped by then, with the single explicit exception of §71's API tier,
-which is Wave K.
+### Wave M — menu and tax model · migration 16 · **L**
+
+First, because everything else depends on the shape of a line.
+
+1. **`tax_lines[]`** on the ticket, the order and the receipt — the mitigation
+   R-8 promised and nobody built. It cannot be retrofitted onto orders already
+   filed with ETA, so it lands before anything is filed.
+2. **Per-product tax treatment.** One VAT rate for a whole ticket cannot express
+   a zero-rated or exempt line, and a restaurant selling food *and* packaged
+   goods has both. This is why the tax model and the menu model are one wave and
+   not two.
+3. **Combos.** A meal deal at one price. Ubiquitous in Egyptian QSR and
+   unpriceable today.
+4. **Per-branch and per-channel price and availability.** Delivery prices differ
+   from dine-in almost universally.
+5. **Free and default modifier options**, and a minimum selection per group.
+
+### Wave N — ETA e-receipt · migration 17 · **L**
+
+Blocking. Needs Wave M's `tax_lines[]` underneath it.
+
+1. **E-seal (X.509) storage and per-receipt signing.** The secret store and the
+   keychain work already exist to build on.
+2. **ETA structured-format submission**, over authenticated HTTPS.
+3. **A submission queue with its own retry and its own idempotency.** The outbox
+   is the right shape; this is a second destination beside the platform, not a
+   reuse of it.
+4. **The QR code on the printed slip.** `ReceiptPaper` is already the one place
+   both the live receipt and the reprint pass through.
+5. **A submission state on the order, and a screen showing what has not
+   cleared.** "Which receipts has ETA not accepted" becomes a daily question,
+   and a queue growing where nobody looks is a failure mode this codebase has
+   already been bitten by once.
+
+**The architecture is already right for this.** ETA permits store-and-forward
+within 24 hours — it does not require real-time clearance the way Saudi ZATCA
+Phase 2 does for B2B. A till that sells through an outage and submits when the
+line returns is compliant. What is missing is a destination and a signature.
+
+### Then Wave C, unchanged in content
+
+With one decision to take deliberately rather than by default: **Management is
+gated on a PostgreSQL password rather than a permission.** That is stronger than
+the market's model and it does not scale to a restaurant group, because sharing
+one Postgres password among branch managers is the failure mode it exists to
+prevent. Wave C either keeps it and accepts an owner-only back office, or moves
+to role-based access and leans on the column-scoped grants that are already
+doing most of the work.
+
+Wave C also carries the **branch scoping** that `pos_staff.branch_id` has always
+had a column for and never enforced.
+
+### What is still not on the roadmap
+
+Payment terminals, delivery aggregators and product images are table stakes in
+this market and appear in no wave. They are named in
+[15-competitive-position.md](15-competitive-position.md) §4 rather than
+scheduled here, because each is a commercial decision — a payment integration is
+a contract before it is code.
+
+**§113 P0 is complete at the end of Wave G.** Legal sale in Egypt is complete at
+the end of Wave N, which is sooner and matters more.
 
 ---
 
 ## 17. Risks worth naming now
+
+0. **E-invoicing is no longer a risk, it is a deadline.** R-8 in
+   `01-existing-system-analysis.md` was rated *Medium* and *out of scope for
+   v1*; Egypt's ETA mandate took effect 15 September 2025. It now heads this
+   list, and Waves M and N exist to answer it. The mitigation that entry
+   promised — a `tax_lines[]` breakdown "from day one" — was never built, which
+   is the part worth remembering: a recorded mitigation is not a shipped one.
 
 1. **The VAT base changes in Wave A.** Adding discounts moves the tax base from
    `subtotal + service` to `subtotal − discount + service`. Every historic order is

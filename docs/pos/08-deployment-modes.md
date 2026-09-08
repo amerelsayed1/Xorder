@@ -88,10 +88,15 @@ Recorded so nobody is surprised after the first ten installs.
 - **Backups are the real risk.** A mini-PC under the counter with no backup is how
   a restaurant loses a year of sales. The wizard says this out loud on any
   single-machine install: *"there is no second copy."*
-- **E-invoicing may not permit it.** Egypt's ETA e-receipt and Saudi ZATCA Phase 2
-  both involve clearing receipts with the tax authority. An offline-only till
-  cannot. **Confirm the current rules for each target market** — if clearing is
-  mandatory it constrains this decision more than anything else here.
+- **E-invoicing — confirmed, and the answer is favourable.** Egypt's ETA
+  e-receipt mandate permits **store-and-forward within 24 hours**; it does not
+  require real-time clearance the way Saudi ZATCA Phase 2 does for B2B. A till
+  that sells through an outage and submits when the line returns is compliant,
+  which is exactly the machine this document describes. The worry recorded here
+  — *"an offline-only till cannot"* — was wrong for Egypt.
+  **What is still missing is the submission itself**: e-seal signing, the ETA
+  format, the QR code on the slip and a queue with its own retry. None of it is
+  built. See [15-competitive-position.md](15-competitive-position.md).
 
 ## 6. Client implementation
 

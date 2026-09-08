@@ -65,29 +65,34 @@ drawer's cash with `label.contains('cash')`; it now selects on tender type.
 
 ## 3. What is left, in order
 
-Nothing in Wave A or B. **Wave C is next** — the permission model to
-specification, which is also where the capability expansion below lands.
+**The order changed on 8 September 2026.** A competitor comparison found that
+Egypt's ETA e-receipt mandate has been in force since 15 September 2025, and a
+restaurant on the ETA list cannot legally run its tills on this build. Wave C
+makes the product better; ETA makes it sellable. See
+[15-competitive-position.md](15-competitive-position.md).
 
 | Wave | Theme | Migration | Size |
 |---|---|---|---|
-| **C** | Permission model to specification | 16 | L |
-| **D** | Settings & configuration screens | 17 | XL |
-| **E** | Floors & tables | 18 | M |
-| **F** | Kitchen, printing, hardware | 19 | L |
+| **M** | **Menu & tax model** — `tax_lines[]`, per-product tax, combos, per-branch pricing | 16 | L |
+| **N** | **ETA e-receipt** — e-seal signing, submission queue, QR on the slip | 17 | L |
+| **C** | Permission model to specification | 18 | L |
+| **D** | Settings & configuration screens | 19 | XL |
+| **E** | Floors & tables | 20 | M |
+| **F** | Kitchen, printing, hardware | 21 | L |
 | **G** | Reports · X/Z · export/import | — | L |
-| **H** | Customers | 20 | M |
-| **I** | Auth & security hardening | 21 | M |
-| **J** | Backup · restore · diagnostics | 22 | L |
-| **K** | Local API tier | 23 | XXL |
-| **L** | Inventory & recipes (P1) | 24 | XL |
+| **H** | Customers | 22 | M |
+| **I** | Auth & security hardening | 23 | M |
+| **J** | Backup · restore · diagnostics | 24 | L |
+| **K** | Local API tier | 25 | XXL |
+| **L** | Inventory & recipes (P1) | 26 | XL |
 
-Migration numbers have shifted by three from the original plan: 11 became
-`who sold it`, 13 the Wave A owner backfill, 15 the Wave B one. None was
-anticipated, and the last two are the same lesson twice — a capability added
-after a seed does not reach the roles already seeded.
+**M before N** because `tax_lines[]` cannot be retrofitted onto orders already
+filed with the tax authority, and per-product tax treatment is what makes it
+expressible. The two are one design, not two.
 
-**§113 P0 is complete at the end of Wave G** — everything the SRS calls
-mandatory for v1, except §71's API tier, which is Wave K.
+**Not on the roadmap at all:** payment terminals, delivery aggregators, product
+images. Each is table stakes in this market and each is a commercial decision
+before it is code.
 
 ### Three things Wave B settled
 

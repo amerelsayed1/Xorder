@@ -263,7 +263,7 @@ recommendation to standardise on network/ESC-POS printers first.
 | R-5 | Two tills offline at once both mint receipt number 1041. | **Medium** | Client-side numbers are provisional and namespaced by terminal; the server assigns the authoritative invoice number on sync (`POS-BE-008`). The receipt says so. |
 | R-6 | JWT expires mid-offline (C-4). | **Medium** | `POS-BE-011`. Until answered, the app keeps selling offline and surfaces a blocking "re-authenticate to sync" state rather than dropping the queue. |
 | R-7 | RTL/Arabic regressions found late. | **Medium** | Every screen is built and reviewed in both directions from Phase 1, with `Directionality` driven by locale, and `ms/me`-equivalent (`EdgeInsetsDirectional`) spacing only. |
-| R-8 | Tax/e-invoicing (Egypt ETA, KSA ZATCA) turns out to be in scope. | **Medium** | Out of scope for v1 and stated as such. The money model carries a `tax_lines[]` breakdown from day one so a compliance layer has something to attach to. |
+| R-8 | Tax/e-invoicing (Egypt ETA, KSA ZATCA) turns out to be in scope. | ~~Medium~~ **CRITICAL — materialised** | **This is no longer conditional.** Egypt's ETA B2C e-receipt mandate took effect **15 September 2025** and binds every POS of every listed taxpayer. The stated mitigation was never built either: there is no `tax_lines[]` in `lib/` — `TaxConfig` carries two scalars. See [15-competitive-position.md](15-competitive-position.md). |
 | R-9 | Scope creep into inventory/KDS. | **Low** | Explicitly out of scope; noted in `02-pos-requirements.md` §Out of scope. |
 
 ---
