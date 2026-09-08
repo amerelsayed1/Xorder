@@ -2,6 +2,7 @@ import '../../core/money/money.dart';
 import 'business_day.dart';
 import 'tender_method.dart';
 import 'permissions.dart';
+import '../services/permission_resolver.dart';
 
 /// A member of staff, as the till knows them.
 ///
@@ -15,6 +16,9 @@ class PosStaff {
     this.role,
     this.username,
     this.isActive = true,
+    this.extraRoles = const [],
+    this.overrides = const [],
+    this.limits = const {},
   });
 
   final int id;
@@ -34,6 +38,22 @@ class PosStaff {
   /// conservative reading rather than the convenient one.
   final PosRole? role;
 
+  /// The roles beyond [role] (§11).
+  ///
+  /// A supervisor who also covers shifts as a cashier holds two, and their
+  /// permissions union. Separate from [role] rather than replacing it because
+  /// [role] is what the staff list shows and what a person calls their job —
+  /// collapsing the two would make the list say "2 roles" where it used to say
+  /// "Supervisor".
+  final List<PosRole> extraRoles;
+
+  /// This person's exceptions to their roles (§105). DENY wins.
+  final List<PermissionOverride> overrides;
+
+  /// Numeric ceilings, already tightened across every role and this person's
+  /// own. Keyed by [LimitKey]; absent means unlimited.
+  final Map<String, PermissionLimit> limits;
+
   final String? username;
   final bool isActive;
 
@@ -42,8 +62,27 @@ class PosStaff {
   /// Canonicalised on the way out rather than on the way in, because rows
   /// written by an older build are still on disk and a till that has not been
   /// migrated yet must still read them correctly.
-  Set<String> get effectiveCapabilities =>
-      PosCapability.canonicalAll({...?role?.capabilities, ...capabilities});
+  Set<String> get effectiveCapabilities => PermissionResolver.resolve(
+    // Deliberately **not** gated on [isActive] here. `can` is "does this
+    // person hold it"; whether they may use it right now is
+    // `Authorization.check`'s question, and it asks both. Folding the two
+    // together would make a disabled person's staff-editor page render as
+    // though they had never been granted anything.
+    isActive: true,
+    roles: [?role, ...extraRoles],
+    overrides: overrides,
+  ).capabilities.union(PosCapability.canonicalAll(capabilities));
+
+  /// The ceiling on [key], or unlimited when there is none.
+  PermissionLimit limitFor(String key) =>
+      limits[key] ?? PermissionLimit.unlimited;
+
+  /// What a DENY override took away, for the staff editor to show.
+  Set<String> get deniedByOverride => {
+    for (final override in overrides)
+      if (override.effect == OverrideEffect.deny)
+        PosCapability.canonical(override.capability),
+  };
 
   /// Whether this person may do the thing, ignoring any supervisor standing
   /// behind them. Override is a separate question — `Authorization.check`.
@@ -56,6 +95,9 @@ class PosStaff {
     PosRole? role,
     String? username,
     bool? isActive,
+    List<PosRole>? extraRoles,
+    List<PermissionOverride>? overrides,
+    Map<String, PermissionLimit>? limits,
   }) => PosStaff(
     id: id,
     name: name ?? this.name,
@@ -63,6 +105,9 @@ class PosStaff {
     role: role ?? this.role,
     username: username ?? this.username,
     isActive: isActive ?? this.isActive,
+    extraRoles: extraRoles ?? this.extraRoles,
+    overrides: overrides ?? this.overrides,
+    limits: limits ?? this.limits,
   );
 }
 

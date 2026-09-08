@@ -185,6 +185,208 @@ abstract final class PosCapability {
   };
 
   static bool isKnown(String capability) => all.contains(capability);
+
+  /// What each capability costs when it is held by the wrong person (§107).
+  ///
+  /// Every key in [all] appears here — asserted by a test rather than trusted,
+  /// because a capability with no risk level would fall to the default and the
+  /// default has to be *some* answer. The one chosen is [PermissionRisk.high]:
+  /// a new permission nobody has classified is treated as dangerous until
+  /// somebody says otherwise, which fails in the direction that asks a question
+  /// rather than the one that grants access.
+  static const _risk = <String, PermissionRisk>{
+    operate: PermissionRisk.low,
+    catalogView: PermissionRisk.low,
+    orderViewAll: PermissionRisk.low,
+    receiptReprint: PermissionRisk.low,
+    orderItemCancel: PermissionRisk.low,
+    shiftOpen: PermissionRisk.low,
+
+    discountApply: PermissionRisk.medium,
+    orderItemVoid: PermissionRisk.medium,
+    cashMovement: PermissionRisk.medium,
+    shiftClose: PermissionRisk.medium,
+    reportsView: PermissionRisk.medium,
+    dayClose: PermissionRisk.medium,
+
+    // Each of these either moves money the shift cannot absorb or changes the
+    // record of money that already moved.
+    priceOverride: PermissionRisk.high,
+    orderVoid: PermissionRisk.high,
+    orderRefund: PermissionRisk.high,
+    cashOpenWithoutSale: PermissionRisk.high,
+    shiftViewExpectedCash: PermissionRisk.high,
+    cashVarianceView: PermissionRisk.high,
+    dayForceClose: PermissionRisk.high,
+    catalogManage: PermissionRisk.high,
+
+    // Access control and the data itself. A person holding any of these can
+    // grant themselves the rest.
+    staffManage: PermissionRisk.critical,
+    terminalManage: PermissionRisk.critical,
+    settingsManage: PermissionRisk.critical,
+    backupManage: PermissionRisk.critical,
+  };
+
+  /// The risk level of [capability]. Unknown keys are [PermissionRisk.high] —
+  /// see [_risk].
+  static PermissionRisk riskOf(String capability) =>
+      _risk[canonical(capability)] ?? PermissionRisk.high;
+
+  /// Whether somebody has actually decided this capability's risk level.
+  ///
+  /// The difference between "classified as high" and "unclassified, so treated
+  /// as high" is invisible in [riskOf] and matters to exactly one reader: the
+  /// test that asserts nobody shipped a capability without classifying it.
+  static bool isClassified(String capability) =>
+      _risk.containsKey(canonical(capability));
+
+  /// Whether a supervisor may lend [capability] for one action.
+  ///
+  /// Both conditions, not either: on the curated list **and** not critical.
+  static bool mayBeLent(String capability) {
+    final wanted = canonical(capability);
+    return overridable.contains(wanted) && riskOf(wanted).mayBeLent;
+  }
+}
+
+/// Which numeric ceiling a limit is about.
+///
+/// Keys rather than fields on a settings object, because a limit is attached to
+/// a *subject* — a role or one person — and the set of subjects is open. A
+/// column per ceiling would need a migration every time a new one is added.
+abstract final class LimitKey {
+  /// The largest discount this subject may give, as a share and as a cash
+  /// ceiling. Both apply: see [PermissionLimit].
+  static const discount = 'discount.max';
+
+  /// The largest refund they may authorise on their own.
+  static const refund = 'refund.max';
+
+  /// The largest pay-out they may take from the drawer.
+  static const cashPayOut = 'cash.pay_out.max';
+
+  static const all = <String>[discount, refund, cashPayOut];
+}
+
+/// A numeric ceiling on what somebody may do (§16, §18).
+///
+/// Held as raw stored values — basis points and minor units — rather than as a
+/// [Money], because a limit belongs to a role and a role outlives the currency
+/// question: the row says `50000`, and which currency that is depends on the
+/// restaurant reading it.
+class PermissionLimit {
+  const PermissionLimit({this.maxBp, this.maxMinor});
+
+  /// No ceiling of any kind. What an owner holds.
+  static const unlimited = PermissionLimit();
+
+  final int? maxBp;
+  final int? maxMinor;
+
+  bool get isUnlimited => maxBp == null && maxMinor == null;
+
+  /// The tighter of two ceilings, field by field.
+  ///
+  /// **Tighter wins, and it wins per field.** Somebody holding two roles — a
+  /// supervisor who also covers as a cashier — gets the *cashier's* discount
+  /// cap if it is lower, because the alternative is that adding a role can only
+  /// ever increase what a person may do, which makes a limit something you
+  /// escape by collecting roles.
+  PermissionLimit tightenedBy(PermissionLimit other) => PermissionLimit(
+    maxBp: _lower(maxBp, other.maxBp),
+    maxMinor: _lower(maxMinor, other.maxMinor),
+  );
+
+  static int? _lower(int? a, int? b) {
+    if (a == null) return b;
+    if (b == null) return a;
+    return a < b ? a : b;
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is PermissionLimit &&
+      other.maxBp == maxBp &&
+      other.maxMinor == maxMinor;
+
+  @override
+  int get hashCode => Object.hash(maxBp, maxMinor);
+}
+
+/// Whether a per-person override adds a permission or takes one away (§105).
+///
+/// **DENY wins over ALLOW, and both win over roles.** The reason is what an
+/// override is *for*: it is how a restaurant says "this one person, despite
+/// their role". A DENY that could be outvoted by a second role would be a
+/// safety measure somebody could undo by accident.
+enum OverrideEffect {
+  allow('ALLOW'),
+  deny('DENY');
+
+  const OverrideEffect(this.wire);
+
+  final String wire;
+
+  static OverrideEffect? fromWire(String value) {
+    for (final effect in values) {
+      if (effect.wire == value) return effect;
+    }
+    // Unknown effect from a newer build. Null rather than a guess: reading an
+    // unrecognised effect as ALLOW would grant a permission somebody wrote a
+    // row to control, and reading it as DENY would silently demote them.
+    return null;
+  }
+}
+
+/// One person's exception to their roles.
+class PermissionOverride {
+  const PermissionOverride({
+    required this.capability,
+    required this.effect,
+    this.grantedById,
+    this.grantedAt,
+  });
+
+  final String capability;
+  final OverrideEffect effect;
+  final int? grantedById;
+  final DateTime? grantedAt;
+}
+
+/// How much damage holding a permission wrongly does (§107).
+///
+/// **This is not a synonym for "important".** It drives two decisions and
+/// nothing else: whether a supervisor may lend the permission for one action,
+/// and whether a control the person lacks is *disabled* or *hidden*. A `low`
+/// permission missing is a greyed button with a tooltip; a [critical] one is a
+/// button that was never drawn, because offering somebody a database restore
+/// they cannot perform is an invitation to go and find someone who can.
+enum PermissionRisk {
+  /// Routine. Losing it inconveniences somebody.
+  low,
+
+  /// Money moves, in small amounts, with a record.
+  medium,
+
+  /// Money moves in amounts a shift cannot absorb, or the record itself
+  /// changes.
+  high,
+
+  /// The restaurant's data or its access control. Never overridable (§107),
+  /// and hidden rather than disabled (§112).
+  critical;
+
+  /// Whether a supervisor standing at the till may lend this for one action.
+  ///
+  /// [critical] is excluded here as well as in [PosCapability.overridable], so
+  /// the rule holds even if somebody adds a key to that set by hand. Two
+  /// statements of the same rule is worth it for this one: an overridable
+  /// `critical` permission is a manager PIN that restores a database.
+  bool get mayBeLent => this != critical;
+
+  /// Whether a control for a permission the person lacks appears at all.
+  bool get isHidden => this == critical;
 }
 
 /// How the role editor groups the checkboxes.

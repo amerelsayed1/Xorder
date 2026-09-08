@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../domain/models/permissions.dart';
 import '../../../domain/services/authorization.dart';
 import '../tokens.dart';
 
@@ -60,20 +61,21 @@ class PermissionGate extends StatelessWidget {
 
   /// Build a gate from an [Authorization] decision.
   ///
-  /// [deniedBehaviour] decides what a flat `Denied` looks like, and the caller
-  /// has to supply it because the information that would settle it — the
-  /// capability's risk level — does not exist in the schema yet. It arrives in
-  /// Wave C as `pos_permissions.risk_level`, at which point this factory can
-  /// read it and the parameter becomes a default rather than a requirement.
+  /// [deniedBehaviour] decides what a flat `Denied` looks like, and it now has
+  /// a default: the capability's own risk level (§107, §112). `CRITICAL` is
+  /// [GateBehaviour.hidden] — offering somebody a database restore they cannot
+  /// perform is an invitation to go and find someone who can — and everything
+  /// else is [GateBehaviour.disabled], which is discoverable and explains
+  /// itself. Pass it explicitly only to be *stricter* than the risk level says.
   ///
-  /// Until then the rule to apply by hand is the handoff's: `CRITICAL` is
-  /// [GateBehaviour.hidden], everything else a person could reasonably discover
-  /// is [GateBehaviour.disabled].
+  /// Wave C made this a default rather than a requirement, which is what the
+  /// previous version of this comment said would happen once
+  /// `pos_permissions.risk_level` existed.
   factory PermissionGate.forDecision(
     PermissionDecision decision, {
     Key? key,
     required Widget child,
-    required GateBehaviour deniedBehaviour,
+    GateBehaviour? deniedBehaviour,
     String? disabledReason,
     VoidCallback? onApprovalNeeded,
   }) => PermissionGate(
@@ -81,13 +83,22 @@ class PermissionGate extends StatelessWidget {
     behaviour: switch (decision) {
       Allowed() => GateBehaviour.approval,
       NeedsOverride() => GateBehaviour.approval,
-      Denied() => deniedBehaviour,
+      // The person holds the permission and asked for too much. That is an
+      // approval prompt, not a refusal: a supervisor with a higher ceiling is
+      // exactly who resolves it, and greying the control out would tell a
+      // cashier they cannot discount at all — which is untrue.
+      DeniedByLimit(:final mayBeLent) =>
+        mayBeLent ? GateBehaviour.approval : GateBehaviour.disabled,
+      Denied(:final capability) =>
+        deniedBehaviour ?? _behaviourFor(capability),
     },
     disabledReason: disabledReason,
     // An `Allowed` decision must not route through the approval dialog — there
     // is nothing to approve. The caller's own handler is already on the child,
     // so passing null here leaves the child to do its own job.
-    onApprovalNeeded: decision is NeedsOverride ? onApprovalNeeded : null,
+    onApprovalNeeded: decision is NeedsOverride || decision is DeniedByLimit
+        ? onApprovalNeeded
+        : null,
     child: child,
   );
 
@@ -123,6 +134,16 @@ class PermissionGate extends StatelessWidget {
       child: child,
     ),
   };
+
+  /// What a flat refusal looks like, from the capability's risk level.
+  ///
+  /// One place, so two screens cannot disagree about whether the same
+  /// capability's control is hidden or greyed.
+  static GateBehaviour _behaviourFor(String capability) =>
+      PosCapability.riskOf(capability).isHidden
+      ? GateBehaviour.hidden
+      : GateBehaviour.disabled;
+
 }
 
 /// Visible, unusable, and explicit about why.
