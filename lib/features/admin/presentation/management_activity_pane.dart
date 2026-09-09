@@ -6,6 +6,7 @@ import '../../../core/l10n/app_strings.dart';
 import '../../../core/ui/theme.dart';
 import '../../../core/ui/tokens.dart';
 import '../../../domain/repositories/admin_repositories.dart';
+import 'admin_messages.dart';
 
 final _activityProvider = FutureProvider.autoDispose<List<AuditEntry>>(
   (ref) => ref.watch(auditRepositoryProvider).recent(),
@@ -72,9 +73,17 @@ class _EntryRow extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // The sentence, not the key. `AdminText.auditAction` falls back
+              // to the stored string for a row written by a newer build —
+              // deliberately, because an audit log that hides what it cannot
+              // name is an audit log nobody can rely on.
               Text(
-                entry.action,
-                style: PosText.mono(color: context.pos.inkWarm, size: 12.5, weight: FontWeight.w600),
+                AdminText.auditAction(context.strings, entry.action),
+                style: PosText.ui(
+                  color: context.pos.inkWarm,
+                  size: 13,
+                  weight: FontWeight.w700,
+                ),
               ),
               const SizedBox(height: PosSpace.xs),
               Text(

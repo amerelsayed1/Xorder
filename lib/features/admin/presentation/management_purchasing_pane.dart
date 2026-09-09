@@ -566,7 +566,7 @@ class _StatusChip extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: PosSpace.sm, vertical: 3),
       color: background,
       child: Text(
-        context.strings.purchaseStatus(status.wire),
+        AdminText.purchaseStatus(context.strings, status),
         style: PosText.ui(size: 10.5, weight: FontWeight.w700, color: ink),
       ),
     );
@@ -744,7 +744,7 @@ class _PaymentRow extends StatelessWidget {
                 Row(
                   children: [
                     Text(
-                      strings.paymentMethodName(payment.method.wire),
+                      AdminText.paymentMethod(strings, payment.method),
                       style: PosText.ui(size: 11.5, color: palette.muted),
                     ),
                     if (payment.reference != null) ...[

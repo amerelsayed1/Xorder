@@ -8,6 +8,7 @@ import '../../../core/ui/widgets/mono_amount.dart';
 import '../../../core/ui/widgets/pos_widgets.dart';
 import '../../../domain/models/supplier.dart';
 import '../../../domain/models/supplier_invoice.dart';
+import 'admin_messages.dart';
 
 /// Paying a supplier.
 ///
@@ -220,7 +221,7 @@ class _SupplierPaymentDialogState extends State<SupplierPaymentDialog> {
                       for (final method in SupplierPaymentMethod.values)
                         PosButton(
                           key: Key('payment-method-${method.wire}'),
-                          label: strings.paymentMethodName(method.wire),
+                          label: AdminText.paymentMethod(strings, method),
                           background: method == _method
                               ? palette.ink
                               : Colors.transparent,

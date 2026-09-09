@@ -6,6 +6,7 @@ import 'package:xorder_pos/core/ui/theme.dart';
 import 'package:xorder_pos/data/fakes/fake_repositories.dart';
 import 'package:xorder_pos/domain/models/permissions.dart';
 import 'package:xorder_pos/domain/models/shift.dart';
+import 'package:xorder_pos/domain/repositories/admin_repositories.dart';
 import 'package:xorder_pos/features/admin/presentation/management_screen.dart';
 
 import '../support/fakes.dart';
@@ -187,6 +188,38 @@ void main() {
       reason: 'the requirement is that cashiers never receive catalogue '
           'administration, and a checkbox nobody re-reads is not a control',
     );
+  });
+
+  testWidgets('the Activity pane reads as sentences, not as wire values', (
+    tester,
+  ) async {
+    // **It rendered `entry.action` raw.** Every row said
+    // `supplier_invoice.saved`, in mono, in both languages — on the one screen
+    // whose whole purpose is telling a restaurant who changed something.
+    final container = await open(tester, pane: ManagementPane.activity);
+    final audit =
+        container.read(auditRepositoryProvider) as FakeAuditRepository;
+    await audit.record(
+      by: const PosStaff(id: 1, name: 'Amer M.'),
+      action: AuditAction.supplierPaid,
+      entityType: AuditAction.entitySupplierPayment,
+      entityId: '4',
+    );
+    await audit.record(
+      by: const PosStaff(id: 1, name: 'Amer M.'),
+      // A row from a build this one has never heard of. Shown as stored rather
+      // than hidden: an audit log that omits what it cannot name is an audit
+      // log nobody can rely on.
+      action: 'warehouse.transferred',
+      entityType: 'warehouse',
+    );
+
+    await enter(tester, '1234');
+    await tester.pumpAndSettle();
+
+    expect(find.text('Paid a supplier'), findsOneWidget);
+    expect(find.text('supplier.paid'), findsNothing);
+    expect(find.text('warehouse.transferred'), findsOneWidget);
   });
 
   testWidgets('purchasing is a permission an owner can grant by name', (

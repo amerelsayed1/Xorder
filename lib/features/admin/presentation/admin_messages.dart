@@ -1,4 +1,7 @@
 import '../../../core/l10n/app_strings.dart';
+import '../../../core/money/quantity.dart';
+import '../../../domain/models/purchase_order.dart';
+import '../../../domain/models/supplier_invoice.dart';
 import '../../../domain/models/permissions.dart';
 import '../../../domain/repositories/admin_repositories.dart';
 import '../../../domain/services/authorization.dart';
@@ -50,6 +53,100 @@ abstract final class AdminText {
         // this build has never heard of it.
         _ => capability,
       };
+
+  /// What an audit row *did*, in a sentence.
+  ///
+  /// **The Activity pane rendered `entry.action` raw** — every row read
+  /// `supplier_invoice.saved`, in both languages, on the screen a restaurant
+  /// looks at when it wants to know who changed something. Same shape of gap as
+  /// the unlabelled capability, one screen over, and worse: there was no switch
+  /// with a missing case, there was no switch.
+  ///
+  /// The fall-through is deliberate and matches [capability]: a row written by a
+  /// newer build is shown as it was stored rather than hidden, because an audit
+  /// log that omits what it cannot name is an audit log nobody can rely on.
+  /// `capability_labels_test.dart` is what keeps *this* build out of that path.
+  static String auditAction(AppStrings s, String action) => switch (action) {
+    AuditAction.staffCreated => s.actStaffCreated,
+    AuditAction.staffUpdated => s.actStaffUpdated,
+    AuditAction.staffDisabled => s.actStaffDisabled,
+    AuditAction.staffReactivated => s.actStaffReactivated,
+    AuditAction.staffPinReset => s.actStaffPinReset,
+    AuditAction.staffRoleChanged => s.actStaffRoleChanged,
+    AuditAction.staffGrantsChanged => s.actStaffGrantsChanged,
+    AuditAction.roleCreated => s.actRoleCreated,
+    AuditAction.roleUpdated => s.actRoleUpdated,
+    AuditAction.roleDeleted => s.actRoleDeleted,
+    AuditAction.permissionOverridden => s.actPermissionOverridden,
+    AuditAction.shiftOpened => s.actShiftOpened,
+    AuditAction.shiftClosed => s.actShiftClosed,
+    AuditAction.receiptReprinted => s.actReceiptReprinted,
+    AuditAction.categoryCreated => s.actCategoryCreated,
+    AuditAction.categoryUpdated => s.actCategoryUpdated,
+    AuditAction.categoryArchived => s.actCategoryArchived,
+    AuditAction.categoryRestored => s.actCategoryRestored,
+    AuditAction.productCreated => s.actProductCreated,
+    AuditAction.productUpdated => s.actProductUpdated,
+    AuditAction.productArchived => s.actProductArchived,
+    AuditAction.productRestored => s.actProductRestored,
+    AuditAction.productRepriced => s.actProductRepriced,
+    AuditAction.moneyConfigChanged => s.actMoneyConfigChanged,
+    AuditAction.receiptProfileChanged => s.actReceiptProfileChanged,
+    AuditAction.tableCreated => s.actTableCreated,
+    AuditAction.tableUpdated => s.actTableUpdated,
+    AuditAction.tableArchived => s.actTableArchived,
+    AuditAction.tableRestored => s.actTableRestored,
+    AuditAction.purchaseOrderStatusChanged => s.actPurchaseOrderStatusChanged,
+    AuditAction.stockReceived => s.actStockReceived,
+    AuditAction.supplierSaved => s.actSupplierSaved,
+    AuditAction.supplierInvoiceSaved => s.actSupplierInvoiceSaved,
+    AuditAction.supplierInvoiceVoided => s.actSupplierInvoiceVoided,
+    AuditAction.supplierPaid => s.actSupplierPaid,
+    AuditAction.supplierPaymentVoided => s.actSupplierPaymentVoided,
+    AuditAction.serviceChargeSaved => s.actServiceChargeSaved,
+    AuditAction.tenderTypeSaved => s.actTenderTypeSaved,
+    _ => action,
+  };
+
+  /// Where a purchase order has got to.
+  ///
+  /// **Keyed by the enum, not by its wire value.** A `String` switch cannot be
+  /// exhaustive, so a sixth `PurchaseStatus` would have fallen through and
+  /// rendered `partially_received` on a chip. This one fails to compile instead.
+  static String purchaseStatus(AppStrings s, PurchaseStatus status) =>
+      switch (status) {
+        PurchaseStatus.draft => s.statusDraft,
+        PurchaseStatus.sent => s.statusSent,
+        PurchaseStatus.partiallyReceived => s.statusPartReceived,
+        PurchaseStatus.received => s.statusReceived,
+        PurchaseStatus.cancelled => s.statusCancelled,
+      };
+
+  /// How the restaurant paid somebody. Enum-keyed for the same reason.
+  static String paymentMethod(AppStrings s, SupplierPaymentMethod method) =>
+      switch (method) {
+        SupplierPaymentMethod.cash => s.methodCash,
+        SupplierPaymentMethod.bankTransfer => s.methodTransfer,
+        SupplierPaymentMethod.cheque => s.methodCheque,
+        SupplierPaymentMethod.card => s.methodCard,
+        SupplierPaymentMethod.other => s.methodOther,
+      };
+
+  /// What a unit is called on screen.
+  ///
+  /// `QuantityUnit.wire` is a storage token, and `ea` is not a unit anybody
+  /// writes on a delivery note — least of all in Arabic, where it means nothing
+  /// at all. The symbols that *are* conventional (kg, ml) stay Latin in both
+  /// languages, because that is what is printed on the box.
+  static String unit(AppStrings s, QuantityUnit unit) => switch (unit) {
+    QuantityUnit.each => s.unitEach,
+    QuantityUnit.kilogram => s.unitKilogram,
+    QuantityUnit.gram => s.unitGram,
+    QuantityUnit.litre => s.unitLitre,
+    QuantityUnit.millilitre => s.unitMillilitre,
+    QuantityUnit.box => s.unitBox,
+    QuantityUnit.pack => s.unitPack,
+  };
 
   static String group(AppStrings s, CapabilityGroup group) => switch (group) {
     CapabilityGroup.selling => s.capGroupSelling,

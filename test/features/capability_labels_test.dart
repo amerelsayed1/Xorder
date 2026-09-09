@@ -1,9 +1,15 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:xorder_pos/core/l10n/app_strings.dart';
+import 'package:xorder_pos/core/money/quantity.dart';
 import 'package:xorder_pos/domain/models/permissions.dart';
+import 'package:xorder_pos/domain/models/purchase_order.dart';
+import 'package:xorder_pos/domain/models/supplier_invoice.dart';
+import 'package:xorder_pos/domain/repositories/admin_repositories.dart';
 import 'package:xorder_pos/features/admin/presentation/admin_messages.dart';
 
-/// Every permission an owner can tick says what it means.
+/// Every key this build shows a person is a sentence, not a wire value.
 ///
 /// **Written because `purchase.manage` did not.** `AdminText.capability` ends in
 /// a `_ => capability` fall-through — deliberately, so a capability from a newer
@@ -61,6 +67,61 @@ void main() {
           expect(AdminText.risk(strings, level).trim(), isNotEmpty);
         }
       });
+
+      test('every audit action this build writes has a sentence', () {
+        // **The Activity pane rendered `entry.action` raw.** Every row read
+        // `supplier_invoice.saved`, in both languages, on the screen a
+        // restaurant looks at to find out who changed something — and unlike
+        // the unlabelled capability there was no switch with a missing case,
+        // there was no switch.
+        final unlabelled = [
+          for (final action in _actionsThisBuildWrites)
+            if (AdminText.auditAction(strings, action) == action) action,
+        ];
+
+        expect(
+          unlabelled,
+          isEmpty,
+          reason:
+              'These render as raw keys in the Activity pane. Add a case to '
+              'AdminText.auditAction and a string in both languages.',
+        );
+      });
+
+      test('every unit is a word somebody writes on a delivery note', () {
+        // `ea` is not one, least of all in Arabic, where it means nothing.
+        for (final unit in QuantityUnit.values) {
+          final label = AdminText.unit(strings, unit);
+          expect(label.trim(), isNotEmpty, reason: unit.name);
+          expect(
+            label,
+            isNot('ea'),
+            reason: 'the wire token leaked through for ${unit.name}',
+          );
+        }
+      });
+
+      test('every purchase status and payment method is named', () {
+        // Only non-empty, deliberately. Both are keyed by the **enum** rather
+        // than by a wire string, so a new member fails to compile instead of
+        // falling through — there is no silent path left to catch. And the
+        // wire-inequality check the capability test uses would be wrong here:
+        // the English word for the `draft` status is, correctly, "draft".
+        for (final status in PurchaseStatus.values) {
+          expect(
+            AdminText.purchaseStatus(strings, status).trim(),
+            isNotEmpty,
+            reason: status.name,
+          );
+        }
+        for (final method in SupplierPaymentMethod.values) {
+          expect(
+            AdminText.paymentMethod(strings, method).trim(),
+            isNotEmpty,
+            reason: method.name,
+          );
+        }
+      });
     });
   }
 
@@ -103,4 +164,85 @@ void main() {
       );
     }
   });
+
+  test('the list of audit actions below is the whole list', () {
+    // **The hand-written list is the weak point**, so it is checked against the
+    // source rather than trusted. Every `AuditAction` constant whose value
+    // contains a dot is an action (the entity types have none), which makes the
+    // real set greppable — the same trick `grants_cover_usage_test.dart` uses,
+    // for the same reason: a list nobody re-reads is the failure mode this file
+    // exists to catch.
+    final source = File(
+      '${Directory.current.path}/lib/domain/repositories/admin_repositories.dart',
+    ).readAsStringSync();
+
+    final declared = RegExp(r"static const \w+ = '([a-z_]+\.[a-z_]+)';")
+        .allMatches(source)
+        .map((m) => m.group(1)!)
+        .toSet();
+
+    expect(
+      declared.difference(_actionsThisBuildWrites.toSet()),
+      isEmpty,
+      reason:
+          'These audit actions exist and are not in the list below, so nothing '
+          'checks that they have a label. Add them.',
+    );
+    expect(
+      _actionsThisBuildWrites.toSet().difference(declared),
+      isEmpty,
+      reason: 'listed below and no longer declared — a rename, or a removal',
+    );
+    expect(
+      _actionsThisBuildWrites.length,
+      _actionsThisBuildWrites.toSet().length,
+      reason: 'listed twice',
+    );
+  });
 }
+
+/// Every action constant on [AuditAction], listed by hand.
+///
+/// Dart cannot reflect over a class of constants, so this is written out — and
+/// checked against the source above, so that adding an action without adding it
+/// here fails.
+const _actionsThisBuildWrites = <String>[
+  AuditAction.staffCreated,
+  AuditAction.staffUpdated,
+  AuditAction.staffDisabled,
+  AuditAction.staffReactivated,
+  AuditAction.staffPinReset,
+  AuditAction.staffRoleChanged,
+  AuditAction.staffGrantsChanged,
+  AuditAction.roleCreated,
+  AuditAction.roleUpdated,
+  AuditAction.roleDeleted,
+  AuditAction.permissionOverridden,
+  AuditAction.shiftOpened,
+  AuditAction.shiftClosed,
+  AuditAction.receiptReprinted,
+  AuditAction.categoryCreated,
+  AuditAction.categoryUpdated,
+  AuditAction.categoryArchived,
+  AuditAction.categoryRestored,
+  AuditAction.productCreated,
+  AuditAction.productUpdated,
+  AuditAction.productArchived,
+  AuditAction.productRestored,
+  AuditAction.productRepriced,
+  AuditAction.moneyConfigChanged,
+  AuditAction.receiptProfileChanged,
+  AuditAction.tableCreated,
+  AuditAction.tableUpdated,
+  AuditAction.tableArchived,
+  AuditAction.tableRestored,
+  AuditAction.purchaseOrderStatusChanged,
+  AuditAction.stockReceived,
+  AuditAction.supplierSaved,
+  AuditAction.supplierInvoiceSaved,
+  AuditAction.supplierInvoiceVoided,
+  AuditAction.supplierPaid,
+  AuditAction.supplierPaymentVoided,
+  AuditAction.serviceChargeSaved,
+  AuditAction.tenderTypeSaved,
+];

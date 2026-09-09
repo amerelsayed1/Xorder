@@ -899,7 +899,11 @@ sealed class AppStrings {
   String get purchaseOutstanding;
   String get purchaseArrived;
   String purchaseBookIn(int lines);
-  String purchaseStatus(String wire);
+  String get statusDraft;
+  String get statusSent;
+  String get statusPartReceived;
+  String get statusReceived;
+  String get statusCancelled;
 
   // §37 — supplier invoices and payments.
   String get supplierInvoices;
@@ -930,7 +934,11 @@ sealed class AppStrings {
   String get paymentAgainst;
   String get paymentAmount;
   String get paymentMethod;
-  String paymentMethodName(String wire);
+  String get methodCash;
+  String get methodTransfer;
+  String get methodCheque;
+  String get methodCard;
+  String get methodOther;
   String get paymentReference;
   String get paymentOnAccount;
   String get paymentOnAccountHint;
@@ -942,6 +950,53 @@ sealed class AppStrings {
   String get paymentVoid;
   String get paymentVoidWhy;
   String get reasonListEmpty;
+
+  // The Activity pane (§49). One per audit action this build writes.
+  String get actStaffCreated;
+  String get actStaffUpdated;
+  String get actStaffDisabled;
+  String get actStaffReactivated;
+  String get actStaffPinReset;
+  String get actStaffRoleChanged;
+  String get actStaffGrantsChanged;
+  String get actRoleCreated;
+  String get actRoleUpdated;
+  String get actRoleDeleted;
+  String get actPermissionOverridden;
+  String get actShiftOpened;
+  String get actShiftClosed;
+  String get actReceiptReprinted;
+  String get actCategoryCreated;
+  String get actCategoryUpdated;
+  String get actCategoryArchived;
+  String get actCategoryRestored;
+  String get actProductCreated;
+  String get actProductUpdated;
+  String get actProductArchived;
+  String get actProductRestored;
+  String get actProductRepriced;
+  String get actMoneyConfigChanged;
+  String get actReceiptProfileChanged;
+  String get actTableCreated;
+  String get actTableUpdated;
+  String get actTableArchived;
+  String get actTableRestored;
+  String get actPurchaseOrderStatusChanged;
+  String get actStockReceived;
+  String get actSupplierSaved;
+  String get actSupplierInvoiceSaved;
+  String get actSupplierInvoiceVoided;
+  String get actSupplierPaid;
+  String get actSupplierPaymentVoided;
+  String get actServiceChargeSaved;
+  String get actTenderTypeSaved;
+  String get unitEach;
+  String get unitKilogram;
+  String get unitGram;
+  String get unitLitre;
+  String get unitMillilitre;
+  String get unitBox;
+  String get unitPack;
   String get supplierOwes;
   String get supplierOverdue;
 
@@ -3740,14 +3795,15 @@ final class EnStrings extends AppStrings {
   String purchaseBookIn(int lines) =>
       lines == 1 ? 'Book in 1 line' : 'Book in $lines lines';
   @override
-  String purchaseStatus(String wire) => switch (wire) {
-    'draft' => 'draft',
-    'sent' => 'sent',
-    'partially_received' => 'part received',
-    'received' => 'received',
-    'cancelled' => 'cancelled',
-    _ => wire,
-  };
+  String get statusDraft => 'draft';
+  @override
+  String get statusSent => 'sent';
+  @override
+  String get statusPartReceived => 'part received';
+  @override
+  String get statusReceived => 'received';
+  @override
+  String get statusCancelled => 'cancelled';
 
   @override
   String get supplierInvoices => 'Invoices';
@@ -3812,14 +3868,15 @@ final class EnStrings extends AppStrings {
   @override
   String get paymentMethod => 'How it was paid';
   @override
-  String paymentMethodName(String wire) => switch (wire) {
-    'cash' => 'Cash',
-    'bank_transfer' => 'Transfer',
-    'cheque' => 'Cheque',
-    'card' => 'Card',
-    'other' => 'Other',
-    _ => wire,
-  };
+  String get methodCash => 'Cash';
+  @override
+  String get methodTransfer => 'Transfer';
+  @override
+  String get methodCheque => 'Cheque';
+  @override
+  String get methodCard => 'Card';
+  @override
+  String get methodOther => 'Other';
   @override
   String get paymentReference => 'Reference';
   @override
@@ -3845,6 +3902,97 @@ final class EnStrings extends AppStrings {
   @override
   String get reasonListEmpty =>
       'No reasons are configured for this. Add some in Settings first.';
+
+  @override
+  String get actStaffCreated => 'Added somebody';
+  @override
+  String get actStaffUpdated => 'Changed a staff record';
+  @override
+  String get actStaffDisabled => 'Disabled somebody';
+  @override
+  String get actStaffReactivated => 'Brought somebody back';
+  @override
+  String get actStaffPinReset => 'Reset a PIN';
+  @override
+  String get actStaffRoleChanged => 'Changed somebody\'s role';
+  @override
+  String get actStaffGrantsChanged => 'Changed somebody\'s permissions';
+  @override
+  String get actRoleCreated => 'Created a role';
+  @override
+  String get actRoleUpdated => 'Changed a role';
+  @override
+  String get actRoleDeleted => 'Deleted a role';
+  @override
+  String get actPermissionOverridden => 'Approved something for somebody';
+  @override
+  String get actShiftOpened => 'Opened a shift';
+  @override
+  String get actShiftClosed => 'Closed a shift';
+  @override
+  String get actReceiptReprinted => 'Reprinted a receipt';
+  @override
+  String get actCategoryCreated => 'Added a category';
+  @override
+  String get actCategoryUpdated => 'Changed a category';
+  @override
+  String get actCategoryArchived => 'Archived a category';
+  @override
+  String get actCategoryRestored => 'Restored a category';
+  @override
+  String get actProductCreated => 'Added a menu item';
+  @override
+  String get actProductUpdated => 'Changed a menu item';
+  @override
+  String get actProductArchived => 'Archived a menu item';
+  @override
+  String get actProductRestored => 'Restored a menu item';
+  @override
+  String get actProductRepriced => 'Changed a price';
+  @override
+  String get actMoneyConfigChanged => 'Changed the tax and rounding rules';
+  @override
+  String get actReceiptProfileChanged => 'Changed what the receipt says';
+  @override
+  String get actTableCreated => 'Added a table';
+  @override
+  String get actTableUpdated => 'Changed a table';
+  @override
+  String get actTableArchived => 'Archived a table';
+  @override
+  String get actTableRestored => 'Restored a table';
+  @override
+  String get actPurchaseOrderStatusChanged => 'Moved a purchase order on';
+  @override
+  String get actStockReceived => 'Booked in a delivery';
+  @override
+  String get actSupplierSaved => 'Added or changed a supplier';
+  @override
+  String get actSupplierInvoiceSaved => 'Entered a supplier invoice';
+  @override
+  String get actSupplierInvoiceVoided => 'Cancelled a supplier invoice';
+  @override
+  String get actSupplierPaid => 'Paid a supplier';
+  @override
+  String get actSupplierPaymentVoided => 'Reversed a payment to a supplier';
+  @override
+  String get actServiceChargeSaved => 'Changed a service charge';
+  @override
+  String get actTenderTypeSaved => 'Changed a payment method';
+  @override
+  String get unitEach => 'each';
+  @override
+  String get unitKilogram => 'kg';
+  @override
+  String get unitGram => 'g';
+  @override
+  String get unitLitre => 'L';
+  @override
+  String get unitMillilitre => 'ml';
+  @override
+  String get unitBox => 'box';
+  @override
+  String get unitPack => 'pack';
   @override
   String get supplierOwes => 'owed';
   @override
@@ -6282,14 +6430,15 @@ final class ArStrings extends AppStrings {
   String purchaseBookIn(int lines) =>
       lines == 1 ? 'تسجيل سطر واحد' : 'تسجيل $lines أسطر';
   @override
-  String purchaseStatus(String wire) => switch (wire) {
-    'draft' => 'مسودة',
-    'sent' => 'مُرسل',
-    'partially_received' => 'استلام جزئي',
-    'received' => 'مستلم',
-    'cancelled' => 'ملغى',
-    _ => wire,
-  };
+  String get statusDraft => 'مسودة';
+  @override
+  String get statusSent => 'مُرسل';
+  @override
+  String get statusPartReceived => 'استلام جزئي';
+  @override
+  String get statusReceived => 'مستلم';
+  @override
+  String get statusCancelled => 'ملغى';
 
   @override
   String get supplierInvoices => 'الفواتير';
@@ -6355,14 +6504,15 @@ final class ArStrings extends AppStrings {
   @override
   String get paymentMethod => 'طريقة السداد';
   @override
-  String paymentMethodName(String wire) => switch (wire) {
-    'cash' => 'نقدًا',
-    'bank_transfer' => 'تحويل',
-    'cheque' => 'شيك',
-    'card' => 'بطاقة',
-    'other' => 'أخرى',
-    _ => wire,
-  };
+  String get methodCash => 'نقدًا';
+  @override
+  String get methodTransfer => 'تحويل';
+  @override
+  String get methodCheque => 'شيك';
+  @override
+  String get methodCard => 'بطاقة';
+  @override
+  String get methodOther => 'أخرى';
   @override
   String get paymentReference => 'المرجع';
   @override
@@ -6388,6 +6538,97 @@ final class ArStrings extends AppStrings {
   @override
   String get reasonListEmpty =>
       'لا توجد أسباب مضبوطة لهذا. أضفها من الإعدادات أولًا.';
+
+  @override
+  String get actStaffCreated => 'إضافة موظف';
+  @override
+  String get actStaffUpdated => 'تعديل بيانات موظف';
+  @override
+  String get actStaffDisabled => 'إيقاف موظف';
+  @override
+  String get actStaffReactivated => 'إعادة تنشيط موظف';
+  @override
+  String get actStaffPinReset => 'إعادة ضبط رمز الدخول';
+  @override
+  String get actStaffRoleChanged => 'تغيير دور موظف';
+  @override
+  String get actStaffGrantsChanged => 'تغيير صلاحيات موظف';
+  @override
+  String get actRoleCreated => 'إنشاء دور';
+  @override
+  String get actRoleUpdated => 'تعديل دور';
+  @override
+  String get actRoleDeleted => 'حذف دور';
+  @override
+  String get actPermissionOverridden => 'اعتماد إجراء لموظف';
+  @override
+  String get actShiftOpened => 'بدء وردية';
+  @override
+  String get actShiftClosed => 'إغلاق وردية';
+  @override
+  String get actReceiptReprinted => 'إعادة طباعة فاتورة';
+  @override
+  String get actCategoryCreated => 'إضافة تصنيف';
+  @override
+  String get actCategoryUpdated => 'تعديل تصنيف';
+  @override
+  String get actCategoryArchived => 'أرشفة تصنيف';
+  @override
+  String get actCategoryRestored => 'استعادة تصنيف';
+  @override
+  String get actProductCreated => 'إضافة صنف';
+  @override
+  String get actProductUpdated => 'تعديل صنف';
+  @override
+  String get actProductArchived => 'أرشفة صنف';
+  @override
+  String get actProductRestored => 'استعادة صنف';
+  @override
+  String get actProductRepriced => 'تغيير سعر';
+  @override
+  String get actMoneyConfigChanged => 'تعديل قواعد الضريبة والتقريب';
+  @override
+  String get actReceiptProfileChanged => 'تعديل بيانات الفاتورة';
+  @override
+  String get actTableCreated => 'إضافة طاولة';
+  @override
+  String get actTableUpdated => 'تعديل طاولة';
+  @override
+  String get actTableArchived => 'أرشفة طاولة';
+  @override
+  String get actTableRestored => 'استعادة طاولة';
+  @override
+  String get actPurchaseOrderStatusChanged => 'تحديث حالة أمر شراء';
+  @override
+  String get actStockReceived => 'تسجيل توريد';
+  @override
+  String get actSupplierSaved => 'إضافة أو تعديل مورّد';
+  @override
+  String get actSupplierInvoiceSaved => 'إدخال فاتورة مورّد';
+  @override
+  String get actSupplierInvoiceVoided => 'إلغاء فاتورة مورّد';
+  @override
+  String get actSupplierPaid => 'سداد لمورّد';
+  @override
+  String get actSupplierPaymentVoided => 'عكس سداد لمورّد';
+  @override
+  String get actServiceChargeSaved => 'تعديل رسم خدمة';
+  @override
+  String get actTenderTypeSaved => 'تعديل طريقة سداد';
+  @override
+  String get unitEach => 'قطعة';
+  @override
+  String get unitKilogram => 'كجم';
+  @override
+  String get unitGram => 'جم';
+  @override
+  String get unitLitre => 'لتر';
+  @override
+  String get unitMillilitre => 'مل';
+  @override
+  String get unitBox => 'صندوق';
+  @override
+  String get unitPack => 'عبوة';
   @override
   String get supplierOwes => 'مستحق';
   @override

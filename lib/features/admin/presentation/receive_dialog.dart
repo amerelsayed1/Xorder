@@ -6,6 +6,7 @@ import '../../../core/ui/theme.dart';
 import '../../../core/ui/tokens.dart';
 import '../../../core/ui/widgets/mono_amount.dart';
 import '../../../core/ui/widgets/pos_widgets.dart';
+import 'admin_messages.dart';
 import '../../../domain/models/purchase_order.dart';
 
 /// Booking in what actually arrived.
@@ -123,11 +124,24 @@ class _ReceiveDialogState extends State<ReceiveDialog> {
                               style: PosText.ui(size: 13.5, color: palette.ink),
                             ),
                           ),
+                          // The quantity is mono and left-to-right; the unit is
+                          // ordinary text, because in Arabic it is a word
+                          // ("كجم") and forcing it into an LTR mono run is how
+                          // it comes out reversed beside the number.
                           Expanded(
                             flex: 2,
-                            child: MonoCode(
-                              '${line.ordered.format()} ${line.ordered.unit.wire}',
-                              size: 12.5,
+                            child: Row(
+                              children: [
+                                MonoCode(line.ordered.format(), size: 12.5),
+                                const SizedBox(width: 4),
+                                Text(
+                                  AdminText.unit(strings, line.ordered.unit),
+                                  style: PosText.ui(
+                                    size: 11.5,
+                                    color: palette.muted,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                           Expanded(
