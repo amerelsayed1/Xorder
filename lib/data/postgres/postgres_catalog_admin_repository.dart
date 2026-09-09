@@ -58,7 +58,7 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
       'id, name_en, name_ar, slug, sort_order, is_active, revision';
   static const _productColumns =
       'id, category_id, name_en, name_ar, price_minor, discounted_price_minor, '
-      'sku, barcode, is_available, sort_order, revision';
+      'sku, barcode, is_available, sort_order, revision, tax_group_id';
 
   AdminRefusal? _blocked(PosStaff by) {
     if (!offline) return const NotPermitted(PosCapability.catalogManage);
@@ -382,9 +382,10 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
           Sql.named(
             'INSERT INTO pos_products '
             '  (restaurant_id, category_id, name_en, name_ar, price_minor, '
-            '   discounted_price_minor, sku, barcode, is_available, sort_order) '
+            '   discounted_price_minor, sku, barcode, is_available, sort_order, '
+            '   tax_group_id) '
             'VALUES (@r, @category, @nameEn, @nameAr, @price, @discounted, '
-            '        @sku, @barcode, @available, @sort) '
+            '        @sku, @barcode, @available, @sort, @taxGroup) '
             'RETURNING $_productColumns',
           ),
           parameters: _productParams(product),
@@ -419,6 +420,7 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
           '  name_ar = @nameAr, price_minor = @price, '
           '  discounted_price_minor = @discounted, sku = @sku, '
           '  barcode = @barcode, is_available = @available, sort_order = @sort, '
+          '  tax_group_id = @taxGroup, '
           '  revision = revision + 1, updated_at = now() '
           'WHERE id = @id AND restaurant_id = @r '
           'RETURNING $_productColumns',
@@ -1154,6 +1156,12 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
     'barcode': _orNull(product.barcode),
     'available': product.isAvailable,
     'sort': product.sortOrder,
+    // **Written for the first time here.** The column has existed since Wave M
+    // and the catalogue query has read it since — `COALESCE(p.tax_group_id,
+    // c.tax_group_id)` — but no statement in the app ever set it, so a
+    // restaurant could define a zero-rated group and had no way to put anything
+    // on it. Null means "whatever the category says, or the fallback rate".
+    'taxGroup': product.taxGroupId,
   };
 
   /// `jsonb` arrives from the driver already decoded on some paths and as a
@@ -1190,6 +1198,7 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
     barcode: row[7] as String?,
     isAvailable: row[8]! as bool,
     sortOrder: row[9]! as int,
+    taxGroupId: row[11] as int?,
   );
 
   /// One ledger row, on the open transaction.

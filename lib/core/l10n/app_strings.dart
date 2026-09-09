@@ -1005,6 +1005,9 @@ sealed class AppStrings {
   String get supplierOverdue;
 
   // Management chrome.
+  String get fieldTaxGroup;
+  String get fieldTaxGroupHint;
+  String get fieldTaxGroupDefault;
   String get taxGroups;
   String get taxGroupsHint;
   String get taxGroupsFallback;
@@ -4051,6 +4054,14 @@ final class EnStrings extends AppStrings {
   String get supplierOverdue => 'overdue';
 
   @override
+  String get fieldTaxGroup => 'Tax rate';
+  @override
+  String get fieldTaxGroupHint =>
+      'Leave this on the default unless the item is taxed differently — a '
+      'zero-rated bottle of water, say.';
+  @override
+  String get fieldTaxGroupDefault => 'Default';
+  @override
   String get taxGroups => 'Named rates';
   @override
   String get taxGroupsHint =>
@@ -6792,6 +6803,14 @@ final class ArStrings extends AppStrings {
   @override
   String get supplierOverdue => 'متأخر';
 
+  @override
+  String get fieldTaxGroup => 'نسبة الضريبة';
+  @override
+  String get fieldTaxGroupHint =>
+      'اتركها على الافتراضية إلا إذا كان الصنف يخضع لنسبة مختلفة — زجاجة مياه '
+      'بنسبة صفر مثلًا.';
+  @override
+  String get fieldTaxGroupDefault => 'الافتراضية';
   @override
   String get taxGroups => 'النسب المسمّاة';
   @override

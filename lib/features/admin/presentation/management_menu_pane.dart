@@ -8,6 +8,7 @@ import '../../../core/ui/theme.dart';
 import '../../../core/ui/tokens.dart';
 import '../../../core/ui/widgets/pos_widgets.dart';
 import '../../../domain/models/catalog.dart';
+import '../../../domain/models/tax.dart';
 import '../../../domain/models/shift.dart';
 import '../../../domain/repositories/admin_repositories.dart';
 import 'admin_messages.dart';
@@ -58,6 +59,15 @@ class _ManagementMenuPaneState extends ConsumerState<ManagementMenuPane> {
   Widget build(BuildContext context) {
     final repository = ref.watch(catalogAdminRepositoryProvider);
     final catalog = ref.watch(catalogProvider);
+
+    // **Watched here, not read when the dialog opens.** A `read` on a
+    // `FutureProvider` nobody has watched returns no value, so the rate picker
+    // was absent until something else happened to load the list — which on a
+    // real till is never, because this is the only screen that wants it. Watched
+    // at pane level the request starts with the pane and the value is there by
+    // the time an editor opens; passing it down keeps the dialog from rebuilding
+    // on a change and throwing away what somebody typed.
+    final taxGroups = ref.watch(taxGroupsAllProvider).valueOrNull ?? const [];
     final strings = context.strings;
     if (repository == null) {
       return _Centred(text: strings.menuComesFromPlatform);
@@ -91,7 +101,7 @@ class _ManagementMenuPaneState extends ConsumerState<ManagementMenuPane> {
               onAddCategory: () => _editCategory(repository, null),
               onAddProduct: selected == null
                   ? null
-                  : () => _editProduct(repository, null, selected),
+                  : () => _editProduct(repository, null, selected, taxGroups),
             ),
             Expanded(
               child: categories.isEmpty
@@ -119,6 +129,7 @@ class _ManagementMenuPaneState extends ConsumerState<ManagementMenuPane> {
                               repository,
                               product,
                               product.categoryId,
+                              taxGroups,
                             ),
                             onToggle: (product) => _write(
                               () => repository.archiveProduct(
@@ -172,11 +183,15 @@ class _ManagementMenuPaneState extends ConsumerState<ManagementMenuPane> {
     CatalogAdminRepository repository,
     Product? existing,
     int categoryId,
+    List<TaxGroup> taxGroups,
   ) async {
     final edited = await showDialog<Product>(
       context: context,
-      builder: (context) =>
-          _ProductDialog(product: existing, categoryId: categoryId),
+      builder: (context) => _ProductDialog(
+        product: existing,
+        categoryId: categoryId,
+        taxGroups: taxGroups,
+      ),
     );
     if (edited == null) return;
     await _write(() => repository.saveProduct(edited, by: widget.admin));
@@ -424,10 +439,19 @@ class _CategoryDialogState extends State<_CategoryDialog> {
 }
 
 class _ProductDialog extends StatefulWidget {
-  const _ProductDialog({required this.categoryId, this.product});
+  const _ProductDialog({
+    required this.categoryId,
+    required this.taxGroups,
+    this.product,
+  });
 
   final Product? product;
   final int categoryId;
+
+  /// The restaurant's named rates, for the picker. Empty on a restaurant that
+  /// has configured none, in which case the picker is absent rather than
+  /// offering a single choice that means nothing.
+  final List<TaxGroup> taxGroups;
 
   @override
   State<_ProductDialog> createState() => _ProductDialogState();
@@ -445,6 +469,11 @@ class _ProductDialogState extends State<_ProductDialog> {
     text: widget.product?.discountedPrice?.format(),
   );
   late final _sku = TextEditingController(text: widget.product?.sku ?? '');
+
+  /// Null means *follow the category, or the fallback rate* — which is what the
+  /// catalogue query means by `COALESCE(p.tax_group_id, c.tax_group_id)`, and
+  /// what almost every item on a menu wants.
+  late int? _taxGroupId = widget.product?.taxGroupId;
 
   String? _error;
 
@@ -488,6 +517,10 @@ class _ProductDialogState extends State<_ProductDialog> {
         // null it also uses for "unchanged".
         clearDiscount: offer == null,
         sku: _sku.text,
+        taxGroupId: _taxGroupId,
+        // Same problem, same shape: "back to the default rate" is a null the
+        // caller means, not a null it omitted.
+        clearTaxGroup: _taxGroupId == null,
       ),
     );
   }
@@ -523,6 +556,57 @@ class _ProductDialogState extends State<_ProductDialog> {
         mono: true,
         optional: true,
       ),
+
+      // **The picker that made the named rates usable.** `tax_group_id` has
+      // been on this table since Wave M and read by the catalogue query ever
+      // since; nothing wrote it, so a restaurant could define a zero-rated
+      // group and had no way to put a bottle of water on it.
+      //
+      // Absent where no groups are configured: a picker whose only option is
+      // "the default" is a question with one answer.
+      if (widget.taxGroups.isNotEmpty) ...[
+        const SizedBox(height: PosSpace.md),
+        MicroLabel(context.strings.fieldTaxGroup),
+        const SizedBox(height: PosSpace.xs),
+        Text(
+          context.strings.fieldTaxGroupHint,
+          style: PosText.ui(
+            size: 11.5,
+            color: context.pos.muted,
+            height: 1.4,
+          ),
+        ),
+        const SizedBox(height: PosSpace.sm),
+        Wrap(
+          spacing: PosSpace.sm,
+          runSpacing: PosSpace.sm,
+          children: [
+            PosButton(
+              key: const Key('product-tax-default'),
+              label: context.strings.fieldTaxGroupDefault,
+              background: _taxGroupId == null
+                  ? context.pos.ink
+                  : Colors.transparent,
+              foreground: _taxGroupId == null ? Colors.white : null,
+              border: Border.fromBorderSide(context.pos.resting),
+              onPressed: () => setState(() => _taxGroupId = null),
+            ),
+            for (final group in widget.taxGroups)
+              PosButton(
+                key: Key('product-tax-${group.id}'),
+                label:
+                    '${group.displayName(context.strings.languageCode)} · '
+                    '${AdminText.rateBp(group.rateBp)}',
+                background: _taxGroupId == group.id
+                    ? context.pos.ink
+                    : Colors.transparent,
+                foreground: _taxGroupId == group.id ? Colors.white : null,
+                border: Border.fromBorderSide(context.pos.resting),
+                onPressed: () => setState(() => _taxGroupId = group.id),
+              ),
+          ],
+        ),
+      ],
     ],
   );
 }

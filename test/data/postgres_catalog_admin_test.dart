@@ -107,6 +107,7 @@ void main() {
     String name = 'Espresso',
     int price = 3500,
     Money? discounted,
+    int? taxGroupId,
   }) =>
       Product(
         id: id,
@@ -114,7 +115,100 @@ void main() {
         nameEn: name,
         price: Money(price),
         discountedPrice: discounted,
+        taxGroupId: taxGroupId,
       );
+
+  /// A named rate to put an item on.
+  ///
+  /// Inserted directly rather than through `saveTaxGroup`, which needs
+  /// `settings.manage` — this suite's actor holds catalogue permissions, and
+  /// borrowing a second capability here would test the wrong thing. Authoring
+  /// rates has its own suite in `tax_groups_admin_test.dart`.
+  Future<int> taxGroup(String name, int rateBp) async {
+    final rows = await db.query(
+      pg.config,
+      'INSERT INTO pos_tax_groups (restaurant_id, name_en, rate_bp) '
+      'VALUES (@r, @name, @rate) RETURNING id',
+      parameters: {'r': restaurantId, 'name': name, 'rate': rateBp},
+    );
+    return rows.first[0]! as int;
+  }
+
+  group('the rate an item is taxed at', () {
+    test('an item can be put on a named rate', () async {
+      // **`tax_group_id` was written by no statement in the app.** The column
+      // has been on this table since Wave M and the catalogue query has read it
+      // ever since — `COALESCE(p.tax_group_id, c.tax_group_id)` — so a
+      // restaurant could define a zero-rated group and had no way to put a
+      // bottle of water on it. Every item was charged the fallback rate.
+      final zero = await taxGroup('Zero-rated', 0);
+
+      final saved = await repository.saveProduct(
+        draft(name: 'Water', taxGroupId: zero),
+        by: manager,
+      );
+      expect(saved.succeeded, isTrue, reason: '${saved.refusal}');
+      expect(saved.value!.taxGroupId, zero);
+    });
+
+    test('and the till reads it back off the catalogue', () async {
+      // Through the repository the sale screen uses, not by inspecting rows:
+      // what matters is what the cashier's ticket is priced with.
+      final zero = await taxGroup('Zero-rated', 0);
+      await repository.saveProduct(
+        draft(name: 'Water', taxGroupId: zero),
+        by: manager,
+      );
+
+      final menu = await PostgresCatalogRepository(
+        database: db,
+        config: pg.config.copyWith(tenantSlug: slug),
+      ).load();
+      final water = menu.products.firstWhere((p) => p.nameEn == 'Water');
+      expect(water.taxGroupId, zero);
+    });
+
+    test('leaving it unset means the fallback, and stays unset', () async {
+      // Which is what almost every item on a menu wants.
+      final saved = await repository.saveProduct(draft(), by: manager);
+      expect(saved.value!.taxGroupId, isNull);
+    });
+
+    test('an item can be moved back off a rate', () async {
+      // The `clearTaxGroup` path. A null that means "back to the default" and a
+      // null that means "unchanged" are different intentions, and `copyWith`
+      // cannot tell them apart without being told.
+      final reduced = await taxGroup('Reduced', 500);
+      final saved = await repository.saveProduct(
+        draft(taxGroupId: reduced),
+        by: manager,
+      );
+      expect(saved.value!.taxGroupId, reduced);
+
+      final cleared = await repository.saveProduct(
+        saved.value!.copyWith(clearTaxGroup: true),
+        by: manager,
+      );
+      expect(cleared.value!.taxGroupId, isNull);
+    });
+
+    test('an item keeps its rate across an unrelated edit', () async {
+      // The regression that matters: a reprice must not silently move an item
+      // back onto the standard rate.
+      final zero = await taxGroup('Zero-rated', 0);
+      final saved = await repository.saveProduct(
+        draft(name: 'Water', taxGroupId: zero),
+        by: manager,
+      );
+
+      final repriced = await repository.saveProduct(
+        saved.value!.copyWith(price: const Money(1500)),
+        by: manager,
+      );
+      expect(repriced.value!.price, const Money(1500));
+      expect(repriced.value!.taxGroupId, zero);
+    });
+  });
 
   group('what it writes', () {
     test('a category and an item reach the till catalogue', () async {
