@@ -8,6 +8,7 @@ import 'package:xorder_pos/core/money/quantity.dart';
 import 'package:xorder_pos/core/ui/theme.dart';
 import 'package:xorder_pos/core/ui/tokens.dart';
 import 'package:xorder_pos/domain/models/purchase_order.dart';
+import 'package:xorder_pos/domain/models/shift.dart';
 import 'package:xorder_pos/domain/models/supplier.dart';
 import 'package:xorder_pos/domain/models/supplier_invoice.dart';
 import 'package:xorder_pos/features/admin/presentation/supplier_invoice_dialog.dart';
@@ -36,6 +37,15 @@ void main() {
 
   const dairy = Supplier(id: 7, nameEn: 'Nile Dairy', paymentTermDays: 30);
   const meats = Supplier(id: 8, nameEn: 'Cairo Meats');
+
+  /// A shift open on this terminal, which is what makes the drawer switch
+  /// possible at all.
+  final shift = PosShift(
+    id: 42,
+    openedAt: DateTime(2026, 3, 1, 9),
+    openingFloat: const Money(20000),
+    openedByName: 'Sara M.',
+  );
 
   Future<void> host(
     WidgetTester tester,
@@ -362,7 +372,7 @@ void main() {
     testWidgets('money that will not fit is stopped before it is sent', (
       tester,
     ) async {
-      SupplierPayment? paid;
+      SupplierPaymentRequest? paid;
       await host(
         tester,
         (context) async => paid = await SupplierPaymentDialog.show(
@@ -387,7 +397,7 @@ void main() {
     testWidgets('on account takes any amount, because it fits nothing', (
       tester,
     ) async {
-      SupplierPayment? paid;
+      SupplierPaymentRequest? paid;
       await host(
         tester,
         (context) async => paid = await SupplierPaymentDialog.show(
@@ -406,8 +416,8 @@ void main() {
       await tester.tap(find.byKey(const Key('payment-save')));
       await tester.pumpAndSettle();
 
-      expect(paid?.isOnAccount, isTrue);
-      expect(paid?.amount, const Money(200000));
+      expect(paid?.payment.isOnAccount, isTrue);
+      expect(paid?.payment.amount, const Money(200000));
     });
 
     testWidgets('a reference box appears only where a bank needs one', (
@@ -432,7 +442,7 @@ void main() {
     });
 
     testWidgets('the cheque number travels with the payment', (tester) async {
-      SupplierPayment? paid;
+      SupplierPaymentRequest? paid;
       await host(
         tester,
         (context) async => paid = await SupplierPaymentDialog.show(
@@ -451,8 +461,8 @@ void main() {
       await tester.tap(find.byKey(const Key('payment-save')));
       await tester.pumpAndSettle();
 
-      expect(paid?.method, SupplierPaymentMethod.cheque);
-      expect(paid?.reference, '004512');
+      expect(paid?.payment.method, SupplierPaymentMethod.cheque);
+      expect(paid?.payment.reference, '004512');
     });
 
     testWidgets('a late bill is badged in the picker', (tester) async {
@@ -467,9 +477,11 @@ void main() {
       expect(find.text('7 days late'), findsOneWidget);
     });
 
-    testWidgets('it says plainly that the drawer is untouched', (tester) async {
-      // A known gap stated on the screen rather than left for somebody to
-      // discover when their Z report is short.
+    testWidgets('with no shift open it says why, rather than offering a switch '
+        'that would refuse', (tester) async {
+      // The office is not always beside an open till. Saying so in one line is
+      // the difference between a manager knowing the drawer is untouched and
+      // finding out when their Z report is short.
       await host(
         tester,
         (context) async => SupplierPaymentDialog.show(
@@ -478,16 +490,135 @@ void main() {
           unpaid: [invoice()],
         ),
       );
+
+      expect(find.byKey(const Key('payment-from-drawer')), findsNothing);
       expect(
         find.textContaining('does not change the till drawer'),
         findsOneWidget,
       );
     });
 
+    testWidgets('the till switch is offered for cash on an open shift', (
+      tester,
+    ) async {
+      await host(
+        tester,
+        (context) async => SupplierPaymentDialog.show(
+          context,
+          supplier: dairy,
+          unpaid: [invoice()],
+          openShift: shift,
+        ),
+      );
+
+      expect(find.byKey(const Key('payment-from-drawer')), findsOneWidget);
+      // And the no-shift line is gone: the screen says one thing about the
+      // drawer, not two.
+      expect(
+        find.textContaining('does not change the till drawer'),
+        findsNothing,
+      );
+    });
+
+    testWidgets('a transfer is never offered the drawer', (tester) async {
+      // Money that goes out of a bank account does not pass through a till, so
+      // there is nothing to ask about.
+      await host(
+        tester,
+        (context) async => SupplierPaymentDialog.show(
+          context,
+          supplier: dairy,
+          unpaid: [invoice()],
+          openShift: shift,
+        ),
+      );
+
+      await tester.tap(find.byKey(const Key('payment-method-bank_transfer')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('payment-from-drawer')), findsNothing);
+    });
+
+    testWidgets('it starts off — recording a payment must not move cash '
+        'nobody said to move', (tester) async {
+      // A bookkeeper typing up last week's receipt book is the commoner case,
+      // and a switch that started on would take *today's* drawer down for money
+      // that left days ago.
+      SupplierPaymentRequest? paid;
+      await host(
+        tester,
+        (context) async => paid = await SupplierPaymentDialog.show(
+          context,
+          supplier: dairy,
+          unpaid: [invoice()],
+          openShift: shift,
+        ),
+      );
+
+      expect(
+        tester
+            .widget<SwitchListTile>(find.byKey(const Key('payment-from-drawer')))
+            .value,
+        isFalse,
+      );
+
+      await tester.tap(find.byKey(const Key('payment-save')));
+      await tester.pumpAndSettle();
+      expect(paid?.fromShiftId, isNull);
+      expect(paid?.comesOutOfTheDrawer, isFalse);
+    });
+
+    testWidgets('switched on, the payment names the shift the cash comes from', (
+      tester,
+    ) async {
+      SupplierPaymentRequest? paid;
+      await host(
+        tester,
+        (context) async => paid = await SupplierPaymentDialog.show(
+          context,
+          supplier: dairy,
+          unpaid: [invoice()],
+          openShift: shift,
+        ),
+      );
+
+      await tester.tap(find.byKey(const Key('payment-from-drawer')));
+      await tester.tap(find.byKey(const Key('payment-save')));
+      await tester.pumpAndSettle();
+
+      expect(paid?.fromShiftId, 42, reason: 'the open shift, not a flag');
+    });
+
+    testWidgets('switching to a cheque afterwards leaves the drawer alone', (
+      tester,
+    ) async {
+      // The flag stays set behind a control that is no longer on screen, and the
+      // money has to follow what the screen was last saying rather than what it
+      // said two taps ago.
+      SupplierPaymentRequest? paid;
+      await host(
+        tester,
+        (context) async => paid = await SupplierPaymentDialog.show(
+          context,
+          supplier: dairy,
+          unpaid: [invoice()],
+          openShift: shift,
+        ),
+      );
+
+      await tester.tap(find.byKey(const Key('payment-from-drawer')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('payment-method-cheque')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('payment-save')));
+      await tester.pumpAndSettle();
+
+      expect(paid?.fromShiftId, isNull);
+    });
+
     testWidgets('a supplier with nothing owing can still be paid on account', (
       tester,
     ) async {
-      SupplierPayment? paid;
+      SupplierPaymentRequest? paid;
       await host(
         tester,
         (context) async => paid = await SupplierPaymentDialog.show(
@@ -501,8 +632,8 @@ void main() {
       await tester.tap(find.byKey(const Key('payment-save')));
       await tester.pumpAndSettle();
 
-      expect(paid?.isOnAccount, isTrue);
-      expect(paid?.amount, const Money(50000));
+      expect(paid?.payment.isOnAccount, isTrue);
+      expect(paid?.payment.amount, const Money(50000));
     });
   });
 

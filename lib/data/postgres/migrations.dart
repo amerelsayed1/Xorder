@@ -3062,6 +3062,89 @@ const posMigrations = <PosMigration>[
       CHECK (table_id IS NOT NULL OR branch_id IS NOT NULL)
     ''',
   ]),
+  PosMigration(33, 'a supplier paid out of the till, tied to its drawer movement', [
+    // `cash_movement_id` has been on `pos_supplier_payments` since migration 30
+    // and written by nothing: the office had no open shift to attribute a
+    // movement to, so a restaurant paying its vegetable man 500 out of the till
+    // had a drawer 500 short at cash-up with nothing on the shift explaining it.
+    // The payment dialog can now say the cash came out of the drawer, and the
+    // repository writes both rows in one transaction.
+    //
+    // **One movement, one payment.** Two payments pointing at the same pay-out
+    // would each claim to have moved the same 500, and a statement built from
+    // them would say the supplier was paid twice out of a drawer that went down
+    // once. Partial, because almost every payment has no movement at all — money
+    // from the office safe, a transfer, a cheque.
+    '''
+    CREATE UNIQUE INDEX IF NOT EXISTS pos_supplier_payments_movement_unique
+      ON pos_supplier_payments (cash_movement_id)
+      WHERE cash_movement_id IS NOT NULL
+    ''',
+
+    // And the rest of it, which is cross-row and therefore a trigger — the same
+    // shape as `pos_supplier_payment_allocation` two migrations up, for the same
+    // reason: a rule enforced only in Dart holds until somebody writes the
+    // second writer.
+    //
+    // The three things a link has to be true about. A payment pointed at a
+    // `pay_in`, at another restaurant's drawer, or at a movement for a different
+    // amount is a payment whose drawer story is fiction — and every one of them
+    // is a plausible outcome of a half-finished transaction or a hand-written
+    // UPDATE, which is exactly when nobody is watching.
+    '''
+    CREATE OR REPLACE FUNCTION pos_supplier_payment_drawer_link()
+      RETURNS trigger LANGUAGE plpgsql AS \$fn\$
+    DECLARE
+      moved pos_cash_movements%ROWTYPE;
+    BEGIN
+      IF NEW.cash_movement_id IS NULL THEN
+        RETURN NEW;   -- paid from the office: no drawer to be wrong about.
+      END IF;
+
+      SELECT * INTO moved FROM pos_cash_movements
+        WHERE id = NEW.cash_movement_id;
+
+      IF NOT FOUND THEN
+        RAISE EXCEPTION
+          'payment names cash movement % and there is no such movement — record the payment without a drawer movement, or record the pay-out at the till first',
+          NEW.cash_movement_id;
+      END IF;
+
+      IF moved.kind <> 'pay_out' THEN
+        RAISE EXCEPTION
+          'cash movement % is a % — money paid to a supplier leaves the drawer, so only a pay_out can be what it left through',
+          moved.id, moved.kind;
+      END IF;
+
+      IF moved.restaurant_id <> NEW.restaurant_id THEN
+        RAISE EXCEPTION
+          'cash movement % belongs to restaurant % and the payment to restaurant % — a drawer and the ledger that spends out of it belong to one business',
+          moved.id, moved.restaurant_id, NEW.restaurant_id;
+      END IF;
+
+      -- Equal, not "at least". A pay-out of 500 against a payment of 400 leaves
+      -- 100 that left the drawer and is owed to nobody, which is a shortage
+      -- wearing a reference number.
+      IF moved.amount_minor <> NEW.amount_minor THEN
+        RAISE EXCEPTION
+          'payment is for % and cash movement % moved % — a part of a pay-out is not a payment; void this and record the two separately',
+          NEW.amount_minor, moved.id, moved.amount_minor;
+      END IF;
+
+      RETURN NEW;
+    END \$fn\$
+    ''',
+    'DROP TRIGGER IF EXISTS pos_supplier_payments_drawer ON pos_supplier_payments',
+    // UPDATE as well as INSERT. The office's UPDATE grant is column-scoped and
+    // does not include `cash_movement_id`, so this fires on a void and finds
+    // nothing wrong — which is the point: the invariant is checked by the
+    // database rather than trusted to the grant list staying as it is.
+    '''
+    CREATE TRIGGER pos_supplier_payments_drawer
+      BEFORE INSERT OR UPDATE ON pos_supplier_payments
+      FOR EACH ROW EXECUTE FUNCTION pos_supplier_payment_drawer_link()
+    ''',
+  ]),
 ];
 
 /// Brings the branch database up to the current schema.

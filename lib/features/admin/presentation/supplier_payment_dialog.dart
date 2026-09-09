@@ -6,6 +6,7 @@ import '../../../core/ui/theme.dart';
 import '../../../core/ui/tokens.dart';
 import '../../../core/ui/widgets/mono_amount.dart';
 import '../../../core/ui/widgets/pos_widgets.dart';
+import '../../../domain/models/shift.dart';
 import '../../../domain/models/supplier.dart';
 import '../../../domain/models/supplier_invoice.dart';
 import 'admin_messages.dart';
@@ -18,12 +19,18 @@ import 'admin_messages.dart';
 /// account*, which is real — a restaurant hands the dairy man 2,000 on Friday
 /// against a running tab — and is offered as its own choice rather than left as
 /// what happens when somebody forgets to pick one.
+///
+/// **And it asks whether the cash came out of the till.** Paying a supplier from
+/// the office safe and paying them out of the drawer are different acts and both
+/// are ordinary, so the dialog asks rather than guessing from the method — see
+/// [SupplierPayment.cashMovementId] for what guessing would have cost.
 class SupplierPaymentDialog extends StatefulWidget {
   const SupplierPaymentDialog({
     super.key,
     required this.supplier,
     required this.unpaid,
     this.invoice,
+    this.openShift,
   });
 
   final Supplier supplier;
@@ -34,17 +41,26 @@ class SupplierPaymentDialog extends StatefulWidget {
   /// The bill this was opened from, when it was opened from one.
   final SupplierInvoice? invoice;
 
-  static Future<SupplierPayment?> show(
+  /// The shift open on this terminal, when one is.
+  ///
+  /// **Passed in rather than watched**, like [unpaid]: this dialog is a form
+  /// over what its caller already knows, and a widget test that had to stand up
+  /// a provider to see the switch would be a test of the provider.
+  final PosShift? openShift;
+
+  static Future<SupplierPaymentRequest?> show(
     BuildContext context, {
     required Supplier supplier,
     required List<SupplierInvoice> unpaid,
     SupplierInvoice? invoice,
-  }) => showDialog<SupplierPayment>(
+    PosShift? openShift,
+  }) => showDialog<SupplierPaymentRequest>(
     context: context,
     builder: (_) => SupplierPaymentDialog(
       supplier: supplier,
       unpaid: unpaid,
       invoice: invoice,
+      openShift: openShift,
     ),
   );
 
@@ -55,6 +71,23 @@ class SupplierPaymentDialog extends StatefulWidget {
 class _SupplierPaymentDialogState extends State<SupplierPaymentDialog> {
   late int? _invoiceId = widget.invoice?.id ?? widget.unpaid.firstOrNull?.id;
   SupplierPaymentMethod _method = SupplierPaymentMethod.cash;
+
+  /// **Off, always.** Recording what was paid must never move cash the manager
+  /// did not say to move: a bookkeeper typing up last week's receipt book is the
+  /// commoner case, and a switch that started on would take today's drawer down
+  /// for money that left days ago. The cost of the default being wrong the other
+  /// way is one tap.
+  bool _fromTheDrawer = false;
+
+  /// The switch is offered only where it could actually be honoured: cash, and a
+  /// shift open on this terminal to attribute the pay-out to. A transfer never
+  /// passes through a drawer, and with no open shift there is no drawer — so
+  /// rather than showing something that would refuse, the dialog says why.
+  bool get _drawerIsOffered =>
+      _method == SupplierPaymentMethod.cash && widget.openShift != null;
+
+  bool get _explainsNoDrawer =>
+      _method == SupplierPaymentMethod.cash && widget.openShift == null;
 
   late final _amount = TextEditingController(
     text: _outstanding?.format() ?? '',
@@ -114,19 +147,28 @@ class _SupplierPaymentDialogState extends State<SupplierPaymentDialog> {
     }
 
     Navigator.of(context).pop(
-      SupplierPayment(
-        id: 0,
-        supplierId: widget.supplier.id,
-        supplierName: widget.supplier.nameEn,
-        invoiceId: _invoiceId,
-        invoiceNumber: _selected?.number,
-        amount: amount,
-        method: _method,
-        reference: _reference.text.trim().isEmpty
-            ? null
-            : _reference.text.trim(),
-        note: _note.text.trim().isEmpty ? null : _note.text.trim(),
-        paidAt: DateTime.now(),
+      SupplierPaymentRequest(
+        SupplierPayment(
+          id: 0,
+          supplierId: widget.supplier.id,
+          supplierName: widget.supplier.nameEn,
+          invoiceId: _invoiceId,
+          invoiceNumber: _selected?.number,
+          amount: amount,
+          method: _method,
+          reference: _reference.text.trim().isEmpty
+              ? null
+              : _reference.text.trim(),
+          note: _note.text.trim().isEmpty ? null : _note.text.trim(),
+          paidAt: DateTime.now(),
+        ),
+        // Read through `_drawerIsOffered` rather than off `_fromTheDrawer`
+        // alone: switching to a cheque after turning the switch on leaves the
+        // flag set behind a hidden control, and the money must follow what the
+        // screen was last saying.
+        fromShiftId: _drawerIsOffered && _fromTheDrawer
+            ? widget.openShift!.id
+            : null,
       ),
     );
   }
@@ -159,15 +201,6 @@ class _SupplierPaymentDialogState extends State<SupplierPaymentDialog> {
                       size: 18,
                       weight: FontWeight.w800,
                       color: palette.ink,
-                    ),
-                  ),
-                  const SizedBox(height: PosSpace.xs),
-                  Text(
-                    strings.paymentDoesNotTouchTheDrawer,
-                    style: PosText.ui(
-                      size: 11.5,
-                      color: palette.muted,
-                      height: 1.5,
                     ),
                   ),
                 ],
@@ -232,6 +265,25 @@ class _SupplierPaymentDialogState extends State<SupplierPaymentDialog> {
                     ],
                   ),
 
+                  // Directly under the method buttons, because it is a question
+                  // about the method that was just chosen.
+                  if (_drawerIsOffered)
+                    _DrawerSwitch(
+                      value: _fromTheDrawer,
+                      onChanged: (on) => setState(() => _fromTheDrawer = on),
+                    ),
+                  if (_explainsNoDrawer) ...[
+                    const SizedBox(height: PosSpace.sm),
+                    Text(
+                      strings.paymentDoesNotTouchTheDrawer,
+                      style: PosText.ui(
+                        size: 11.5,
+                        color: palette.muted,
+                        height: 1.5,
+                      ),
+                    ),
+                  ],
+
                   // Only where a bank would need one. A reference box on a cash
                   // payment is a box somebody has to decide to leave empty.
                   if (_method.expectsAReference) ...[
@@ -295,6 +347,44 @@ class _SupplierPaymentDialogState extends State<SupplierPaymentDialog> {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Whether the notes come out of the till.
+///
+/// A switch and not a second payment method: *cash* is what the supplier was
+/// handed, and *out of the drawer* is where it came from. Folding them into one
+/// button labelled "Cash from till" would leave a restaurant that pays from an
+/// office safe choosing between a method that is wrong and a drawer movement it
+/// does not want.
+class _DrawerSwitch extends StatelessWidget {
+  const _DrawerSwitch({required this.value, required this.onChanged});
+
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = context.strings;
+    final palette = context.pos;
+
+    return Padding(
+      padding: const EdgeInsets.only(top: PosSpace.sm),
+      child: SwitchListTile(
+        key: const Key('payment-from-drawer'),
+        value: value,
+        onChanged: onChanged,
+        contentPadding: EdgeInsets.zero,
+        title: Text(
+          strings.paymentFromTheDrawer,
+          style: PosText.ui(size: 13.5, color: palette.body),
+        ),
+        subtitle: Text(
+          strings.paymentFromTheDrawerHint,
+          style: PosText.ui(size: 11.5, color: palette.muted, height: 1.4),
         ),
       ),
     );

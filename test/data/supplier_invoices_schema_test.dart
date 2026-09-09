@@ -3,9 +3,11 @@ library;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:xorder_pos/core/money/money.dart';
+import 'package:xorder_pos/core/security/pin_hash.dart';
 import 'package:xorder_pos/data/postgres/local_bootstrap.dart';
 import 'package:xorder_pos/data/postgres/migrations.dart';
 import 'package:xorder_pos/data/postgres/pos_database.dart';
+import 'package:xorder_pos/data/postgres/postgres_shift_repository.dart';
 import 'package:xorder_pos/data/postgres/postgres_supplier_invoices_repository.dart';
 import 'package:xorder_pos/domain/models/permissions.dart';
 import 'package:xorder_pos/domain/models/shift.dart';
@@ -59,6 +61,28 @@ void main() {
       capabilities: {PosCapability.operate},
     ),
   );
+
+  /// The two roles that matter once a drawer is involved. `pos_cash_movements`
+  /// names who took the money out, so both of these are real staff rows rather
+  /// than the `id: 0` [buyer] the rest of the suite uses.
+  const managerRole = PosRole(
+    id: 3,
+    code: 'manager',
+    nameEn: 'Manager',
+    capabilities: {PosCapability.purchaseManage, PosCapability.cashMovement},
+  );
+  const bookkeeperRole = PosRole(
+    id: 4,
+    code: 'bookkeeper',
+    nameEn: 'Bookkeeper',
+    capabilities: {PosCapability.purchaseManage},
+  );
+
+  late PosStaff manager;
+  late PosStaff bookkeeper;
+  late String terminalId;
+  late PosShift openShift;
+  late PostgresShiftRepository shifts;
 
   DateTime day(int d) => DateTime.utc(2026, 3, d);
 
@@ -129,6 +153,49 @@ void main() {
       restaurantId: restaurantId,
       branchId: branchId,
     );
+
+    // ── A till with an open drawer, so a supplier can be paid out of it ──
+    terminalId =
+        (await db.query(
+              pg.config,
+              'INSERT INTO pos_terminals (id, restaurant_id, branch_id, name) '
+              "VALUES (gen_random_uuid(), @r, @b, 'Counter 1') RETURNING id::text",
+              parameters: {'r': restaurantId, 'b': branchId},
+            )).first[0]!
+            as String;
+
+    Future<PosStaff> person(String name, String username, PosRole role) async {
+      final salt = PinHash.newSalt();
+      final row = await db.query(
+        pg.config,
+        'INSERT INTO pos_staff (restaurant_id, branch_id, name, username, '
+        '  pin_salt, pin_hash) VALUES (@r, @b, @n, @u, @s, @h) RETURNING id',
+        parameters: {
+          'r': restaurantId,
+          'b': branchId,
+          'n': name,
+          'u': username,
+          's': salt,
+          'h': await PinHash.hash('1111', salt),
+        },
+      );
+      return PosStaff(id: row.first[0]! as int, name: name, role: role);
+    }
+
+    manager = await person('Hoda K.', 'hoda', managerRole);
+    bookkeeper = await person('Tarek S.', 'tarek', bookkeeperRole);
+
+    shifts = PostgresShiftRepository(
+      database: db,
+      config: pg.config,
+      restaurantId: restaurantId,
+      branchId: branchId,
+      terminalId: terminalId,
+    );
+    openShift = await shifts.open(
+      by: manager,
+      openingFloat: const Money(20000),
+    );
   });
 
   tearDown(() => pg.close());
@@ -179,6 +246,40 @@ void main() {
     expect(result.succeeded, isTrue, reason: '${result.refusal}');
     return result.value!;
   }
+
+  /// Pay out of [openShift]'s drawer — the switch, turned on.
+  Future<AdminResult<SupplierPayment>> payFromTheTill({
+    required int amountMinor,
+    int? invoiceId,
+    SupplierPaymentMethod method = SupplierPaymentMethod.cash,
+    PosStaff? by,
+    int? shiftId,
+  }) => ledger.pay(
+    SupplierPayment(
+      id: 0,
+      supplierId: supplierId,
+      invoiceId: invoiceId,
+      amount: Money(amountMinor),
+      method: method,
+      paidAt: day(5),
+    ),
+    by: by ?? manager,
+    fromShiftId: shiftId ?? openShift.id,
+  );
+
+  /// Every movement on the open shift, oldest first: kind, amount, note.
+  Future<List<List<Object?>>> drawerMovements() async {
+    final rows = await db.query(
+      pg.config,
+      'SELECT kind, amount_minor, note, reason_id, staff_id, terminal_id::text '
+      'FROM pos_cash_movements WHERE shift_id = @s ORDER BY id',
+      parameters: {'s': openShift.id},
+    );
+    return [for (final row in rows) row.toList()];
+  }
+
+  Future<Money> expectedCash() async =>
+      (await shifts.summarise(openShift)).expectedCash;
 
   group('entering one', () {
     test('an invoice round-trips', () async {
@@ -482,12 +583,14 @@ void main() {
       expect(paid.reference, '004512');
     });
 
-    test('a payment carries no drawer movement from the back office', () async {
-      // Stated as a test because it is a known gap rather than an oversight:
-      // the office has no open shift, so nothing here reduces the till. A
-      // restaurant paying out of the drawer records the pay-out at the till.
+    test('a payment nobody said came out of the till touches no drawer', () async {
+      // The default, and it has to stay the default: recording what the
+      // restaurant paid is not the same as saying money left a till, and a
+      // bookkeeper typing up last week's receipt book must not take today's
+      // drawer down. Cash as the method changes nothing on its own.
       final paid = await settle(amountMinor: 50000, invoiceId: null);
       expect(paid.cashMovementId, isNull);
+      expect(await drawerMovements(), isEmpty);
     });
 
     test('paying is audited — it is money leaving the business', () async {
@@ -500,6 +603,247 @@ void main() {
         parameters: {'a': AuditAction.supplierPaid},
       );
       expect(rows.map((r) => r[0]), contains('${paid.id}'));
+    });
+  });
+
+  group('out of the till drawer', () {
+    test('one pay-out, linked to the payment, on the shift\'s own terminal', () async {
+      final bill = await enter(draft(totalMinor: 50000));
+      // Deliberately without `invoiceNumber`: the note has to come off the
+      // invoice row, because that is what somebody reads it back against.
+      final result = await payFromTheTill(amountMinor: 50000, invoiceId: bill.id);
+      expect(result.succeeded, isTrue, reason: '${result.refusal}');
+
+      final movements = await drawerMovements();
+      expect(movements.length, 1, reason: 'exactly one, never two');
+      expect(movements.single[0], 'pay_out');
+      // Positive, with the direction carried by the kind — the table's own rule.
+      expect(movements.single[1], 50000);
+      expect(movements.single[2], 'Nile Dairy — INV-900');
+      expect(movements.single[4], manager.id, reason: 'somebody is answerable');
+      expect(
+        movements.single[5],
+        terminalId,
+        reason: 'the till the shift is open on, not the office machine',
+      );
+      expect(result.value!.cashMovementId, isNotNull);
+    });
+
+    test('the shift expects that much less in the drawer', () async {
+      // The whole point. A restaurant that pays its vegetable man 500 out of the
+      // till used to have a drawer 500 short at cash-up with nothing explaining
+      // it.
+      final before = await expectedCash();
+      expect(before, const Money(20000), reason: 'the float, and nothing sold');
+
+      await payFromTheTill(amountMinor: 50000);
+
+      expect(await expectedCash(), const Money(-30000));
+    });
+
+    test('the pay-out is reported under the restaurant\'s own supplier reason', () async {
+      // `ReasonScope.payOut` already had the right answer on it since migration
+      // 14. Inventing a code would have meant a Z report with a pay-out nobody's
+      // reason list could account for.
+      final supplierReason = (await db.query(
+        pg.config,
+        "SELECT id FROM pos_reason_codes WHERE restaurant_id = @r "
+        "AND scope = 'pay_out' AND code = 'supplier'",
+        parameters: {'r': restaurantId},
+      )).first[0]! as int;
+
+      await payFromTheTill(amountMinor: 50000);
+      expect((await drawerMovements()).single[3], supplierReason);
+    });
+
+    test('the drawer movement is what the payment reads back as', () async {
+      final result = await payFromTheTill(amountMinor: 50000);
+      final movementId = (await db.query(
+        pg.config,
+        'SELECT id FROM pos_cash_movements WHERE shift_id = @s',
+        parameters: {'s': openShift.id},
+      )).first[0]! as int;
+
+      expect(result.value!.cashMovementId, movementId);
+      // And on the reread, not merely on what `pay` handed back.
+      final listed = (await ledger.payments()).single;
+      expect(listed.cashMovementId, movementId);
+    });
+
+    test('a transfer cannot come out of a drawer', () async {
+      // Money leaving a bank account does not pass through a till, and a pay-out
+      // recorded for one would be a drawer short of cash that is still in it.
+      final result = await payFromTheTill(
+        amountMinor: 50000,
+        method: SupplierPaymentMethod.bankTransfer,
+      );
+      expect(result.succeeded, isFalse);
+      expect(await drawerMovements(), isEmpty);
+    });
+
+    test('paying out of a drawer needs the drawer key as well as the purchase one', () async {
+      // Two authorities. A bookkeeper who may say what the restaurant owes is
+      // not automatically somebody who may reach into a till.
+      final result = await payFromTheTill(amountMinor: 50000, by: bookkeeper);
+      expect(result.refusal, isA<NotPermitted>());
+      expect((result.refusal! as NotPermitted).capability, PosCapability.cashMovement);
+      expect(await drawerMovements(), isEmpty);
+      expect(await ledger.payments(), isEmpty, reason: 'and nothing recorded');
+
+      // The same person may still record the payment — it just does not claim to
+      // have come out of the drawer.
+      final office = await ledger.pay(
+        SupplierPayment(
+          id: 0,
+          supplierId: supplierId,
+          amount: const Money(50000),
+          method: SupplierPaymentMethod.cash,
+          paidAt: day(5),
+        ),
+        by: bookkeeper,
+      );
+      expect(office.succeeded, isTrue, reason: '${office.refusal}');
+    });
+
+    test('a shift that has been counted cannot be paid out of', () async {
+      // A pay-out added afterwards would change an expected total a manager has
+      // already argued about.
+      await shifts.close(
+        shift: openShift,
+        by: manager,
+        countedCash: const Money(20000),
+      );
+
+      final result = await payFromTheTill(amountMinor: 50000);
+      expect(result.succeeded, isFalse);
+      expect(
+        (result.refusal! as CatalogInvalid).reason,
+        contains('closed and counted'),
+      );
+      expect(await drawerMovements(), isEmpty);
+    });
+
+    test('another branch\'s shift is not this branch\'s drawer', () async {
+      final elsewhere = (await db.query(
+        pg.config,
+        'INSERT INTO pos_branches (restaurant_id, code, name) '
+        "VALUES (@r, 'TWO', 'Two') RETURNING id",
+        parameters: {'r': restaurantId},
+      )).first[0]! as int;
+      final theirTerminal = (await db.query(
+        pg.config,
+        'INSERT INTO pos_terminals (id, restaurant_id, branch_id, name) '
+        "VALUES (gen_random_uuid(), @r, @b, 'Counter 2') RETURNING id::text",
+        parameters: {'r': restaurantId, 'b': elsewhere},
+      )).first[0]! as String;
+      final theirShift = await PostgresShiftRepository(
+        database: db,
+        config: pg.config,
+        restaurantId: restaurantId,
+        branchId: elsewhere,
+        terminalId: theirTerminal,
+      ).open(by: manager, openingFloat: const Money(10000));
+
+      final result = await payFromTheTill(
+        amountMinor: 5000,
+        shiftId: theirShift.id,
+      );
+      expect(result.succeeded, isFalse);
+      expect(await ledger.payments(), isEmpty);
+    });
+
+    test('a payment refused on the invoice leaves no movement behind', () async {
+      // Both rows or neither. A drawer 1,500 down with no payment behind it is
+      // worse than the shortage this feature removes.
+      final bill = await enter(draft(totalMinor: 100000));
+      final result = await payFromTheTill(
+        amountMinor: 150000,
+        invoiceId: bill.id,
+      );
+
+      expect(result.succeeded, isFalse);
+      expect(await drawerMovements(), isEmpty);
+      expect(await ledger.payments(), isEmpty);
+    });
+
+    test('with no pay-out reason on file, nothing is written at all', () async {
+      // The restaurant edited its list down to nothing this could be reported
+      // under. Refused rather than recorded with a null reason: a pay-out that
+      // appears on a Z report under no heading is a number a manager cannot
+      // account for, which is where this started.
+      await db.query(
+        pg.config,
+        "DELETE FROM pos_cash_movements WHERE shift_id = @s",
+        parameters: {'s': openShift.id},
+      );
+      await db.query(
+        pg.config,
+        "UPDATE pos_reason_codes SET is_active = false "
+        "WHERE restaurant_id = @r AND scope = 'pay_out' AND code = 'supplier'",
+        parameters: {'r': restaurantId},
+      );
+
+      final result = await payFromTheTill(amountMinor: 50000);
+      expect(result.succeeded, isFalse);
+      expect(await ledger.payments(), isEmpty);
+      expect(await drawerMovements(), isEmpty);
+    });
+
+    test('the database refuses a payment pointed at anything but its own pay-out', () async {
+      // The Dart above is one writer. This is the rule, and it holds against the
+      // next one — a hand-written UPDATE included.
+      final payIn = (await db.query(
+        pg.config,
+        'INSERT INTO pos_cash_movements (restaurant_id, branch_id, terminal_id, '
+        '  shift_id, kind, amount_minor, staff_id) '
+        "VALUES (@r, @b, @t::uuid, @s, 'pay_in', 50000, @staff) RETURNING id",
+        parameters: {
+          'r': restaurantId,
+          'b': branchId,
+          't': terminalId,
+          's': openShift.id,
+          'staff': manager.id,
+        },
+      )).first[0]! as int;
+
+      Future<void> pointAt(int movementId, int amountMinor) => db.query(
+        pg.config,
+        'INSERT INTO pos_supplier_payments (restaurant_id, branch_id, '
+        '  supplier_id, supplier_name, method, amount_minor, paid_at, '
+        '  cash_movement_id) '
+        "VALUES (@r, @b, @s, 'Nile Dairy', 'cash', @amount, now(), @m)",
+        parameters: {
+          'r': restaurantId,
+          'b': branchId,
+          's': supplierId,
+          'amount': amountMinor,
+          'm': movementId,
+        },
+      );
+
+      // A pay-in is money arriving. Nothing left the drawer through it.
+      await expectLater(pointAt(payIn, 50000), throwsA(isA<Object>()));
+
+      final payOut = (await db.query(
+        pg.config,
+        'INSERT INTO pos_cash_movements (restaurant_id, branch_id, terminal_id, '
+        '  shift_id, kind, amount_minor, staff_id) '
+        "VALUES (@r, @b, @t::uuid, @s, 'pay_out', 50000, @staff) RETURNING id",
+        parameters: {
+          'r': restaurantId,
+          'b': branchId,
+          't': terminalId,
+          's': openShift.id,
+          'staff': manager.id,
+        },
+      )).first[0]! as int;
+
+      // Right kind, wrong money: 100 left the drawer and is owed to nobody.
+      await expectLater(pointAt(payOut, 40000), throwsA(isA<Object>()));
+
+      // And the same movement cannot be spent twice.
+      await pointAt(payOut, 50000);
+      await expectLater(pointAt(payOut, 50000), throwsA(isA<Object>()));
     });
   });
 
@@ -530,6 +874,98 @@ void main() {
         by: buyer,
       );
       expect(again.succeeded, isTrue, reason: '${again.refusal}');
+    });
+
+    test('voiding a till payment puts the cash back with a pay-in', () async {
+      // **A cash movement is never edited or deleted.** The pay-out stands and a
+      // second movement answers it, which is this product's rule everywhere
+      // money is concerned.
+      final paid = await payFromTheTill(amountMinor: 50000);
+      expect(await expectedCash(), const Money(-30000));
+
+      final undone = await ledger.voidPayment(
+        paid.value!.id,
+        reasonId: paymentVoidReason,
+        by: manager,
+      );
+      expect(undone.succeeded, isTrue, reason: '${undone.refusal}');
+
+      final movements = await drawerMovements();
+      expect(movements.length, 2, reason: 'the pay-out, and the pay-in over it');
+      expect(movements.first[0], 'pay_out');
+      expect(movements.last[0], 'pay_in');
+      expect(movements.last[1], 50000);
+      expect(
+        movements.last[2],
+        movements.first[2],
+        reason: 'the pair reads as a pair on the drawer history',
+      );
+      expect(
+        await expectedCash(),
+        const Money(20000),
+        reason: 'the drawer is back where it started',
+      );
+    });
+
+    test('putting cash back needs the drawer key too', () async {
+      final paid = await payFromTheTill(amountMinor: 50000);
+      final undone = await ledger.voidPayment(
+        paid.value!.id,
+        reasonId: paymentVoidReason,
+        by: bookkeeper,
+      );
+
+      expect(undone.refusal, isA<NotPermitted>());
+      expect(
+        await expectedCash(),
+        const Money(-30000),
+        reason: 'and the pay-out still stands',
+      );
+    });
+
+    test('once the drawer is counted, the void asks where the money went', () async {
+      // No `pay_in` is written either way: one on the closed shift would rewrite
+      // a Z report somebody signed, and one on today's shift would claim cash
+      // appeared in a drawer nobody put cash into. The only thing left worth
+      // recording is where it actually went, so a note is required.
+      // 50 out of a 200 float, so the drawer can be counted at what it holds —
+      // a count is what somebody found in a till and is never negative.
+      final paid = await payFromTheTill(amountMinor: 5000);
+      await shifts.close(
+        shift: openShift,
+        by: manager,
+        countedCash: const Money(15000),
+      );
+
+      final bare = await ledger.voidPayment(
+        paid.value!.id,
+        reasonId: paymentVoidReason,
+        by: manager,
+      );
+      expect(bare.succeeded, isFalse);
+      expect(
+        (bare.refusal! as CatalogInvalid).reason,
+        contains('where the money went'),
+      );
+
+      final told = await ledger.voidPayment(
+        paid.value!.id,
+        reasonId: paymentVoidReason,
+        by: manager,
+        note: 'Hoda brought the 50 back on Tuesday — paid in at the till.',
+      );
+      expect(told.succeeded, isTrue, reason: '${told.refusal}');
+      expect(told.value!.isVoided, isTrue);
+      expect(
+        (await drawerMovements()).length,
+        1,
+        reason: 'the counted shift is left exactly as it was counted',
+      );
+      expect(
+        told.value!.cashMovementId,
+        isNotNull,
+        reason: 'the pay-out is still on the payment: it happened',
+      );
     });
 
     test('a void carries one of the restaurant\'s own reason codes', () async {

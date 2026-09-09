@@ -243,13 +243,29 @@ abstract interface class SupplierInvoicesRepository {
 
   /// Money out. `invoiceId` null pays **on account** — against the running tab
   /// rather than a particular bill.
+  ///
+  /// [fromShiftId] takes the cash out of that shift's drawer: a `pay_out`
+  /// movement is written in the **same transaction** as the payment and linked
+  /// from [SupplierPayment.cashMovementId], so the shift's expected cash falls
+  /// by the amount. A payment with a dangling drawer movement, or a drawer
+  /// movement with no payment behind it, are both worse than the shortage this
+  /// exists to prevent — which is why it is one transaction and not two calls.
+  ///
+  /// Cash only, and it needs `cash.movement` on top of `purchase.manage`.
   Future<AdminResult<SupplierPayment>> pay(
     SupplierPayment payment, {
     required PosStaff by,
+    int? fromShiftId,
   });
 
   /// Reverses a payment, keeping the row, and frees the room it took on the
   /// invoice it was allocated to.
+  ///
+  /// A payment that came out of a drawer is put back with a **compensating
+  /// `pay_in`** on the same shift, while that shift is still open. Once it has
+  /// been counted, the void is refused unless [note] says where the cash went —
+  /// the drawer has already been reconciled and only a person knows. See the
+  /// implementation for the reasoning and what was rejected.
   Future<AdminResult<SupplierPayment>> voidPayment(
     int id, {
     required int reasonId,

@@ -631,10 +631,24 @@ class LocalBootstrap {
     'GRANT USAGE, SELECT ON SEQUENCE pos_settings_id_seq TO "$role"',
     'GRANT SELECT, INSERT, UPDATE ON pos_cash_drawers TO "$role"',
     'GRANT USAGE, SELECT ON SEQUENCE pos_cash_drawers_id_seq TO "$role"',
-    // Reading the drawer's history and the day's. SELECT only, even here: a
-    // pay-out is a record of money that left, and the back office corrects one
-    // by recording another.
-    'GRANT SELECT ON pos_cash_movements, pos_business_days TO "$role"',
+    // Reading the drawer's history and the day's, and — since a supplier can be
+    // paid out of a till from the purchasing pane — writing one movement into
+    // it. **INSERT, and still no UPDATE or DELETE:** a pay-out already recorded
+    // is money that left, and the back office corrects one by recording a
+    // pay-in beside it, which is what voiding such a payment does.
+    //
+    // It was SELECT-only here. An administrator role is given the till list as
+    // well, which already grants INSERT, so a real install happened to work —
+    // and a deployment given only this list would have failed on the first
+    // supplier paid out of the drawer. Spelling it out is what makes the intent
+    // reviewable rather than an accident of two lists overlapping.
+    'GRANT SELECT, INSERT ON pos_cash_movements TO "$role"',
+    'GRANT USAGE, SELECT ON SEQUENCE pos_cash_movements_id_seq TO "$role"',
+    // The shift the pay-out lands on. SELECT only: the office reads which
+    // terminal and which trading day a drawer belongs to, and opens and closes
+    // nothing.
+    'GRANT SELECT ON pos_shifts TO "$role"',
+    'GRANT SELECT ON pos_business_days TO "$role"',
     // Reading refunds back — the void and refund reports, and the Activity
     // pane. SELECT only, even here: a refund is a record of money that left
     // the drawer, and the back office corrects one by issuing another, not by

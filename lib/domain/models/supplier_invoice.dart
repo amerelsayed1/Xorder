@@ -322,13 +322,18 @@ class SupplierPayment {
 
   /// The drawer movement this money left through, when it left a till.
   ///
-  /// Null in the back office, which is where every payment is currently
-  /// recorded: a `pos_cash_movements` row needs an open shift and a terminal,
-  /// and the office has neither. **Until the till offers "pay a supplier" as a
-  /// pay-out reason, a cash payment entered here does not reduce the drawer** —
-  /// so a restaurant paying its vegetable man out of the till must record the
-  /// pay-out at the till, and this column is what will tie the two together
-  /// when it can.
+  /// **Set only when somebody said the cash came out of the drawer.** Paying a
+  /// supplier out of the office safe and paying them out of the till are
+  /// different acts, and both are ordinary: the first touches no drawer, the
+  /// second leaves a till 500 short that a manager has to be able to account
+  /// for. So the payment dialog asks, the answer defaults to *no*, and only a
+  /// yes writes a `pay_out` in the same transaction as the payment — see
+  /// [SupplierPaymentRequest].
+  ///
+  /// Null therefore means "not out of a drawer", not "we do not know". The
+  /// rejected alternative was inferring it from `method == cash`, which would
+  /// have moved the drawer every time a bookkeeper typed last week's cash
+  /// payment in from a receipt book.
   final int? cashMovementId;
 
   /// One of `ReasonScope.paymentVoid`'s codes, for the same reason an invoice's
@@ -384,6 +389,30 @@ class SupplierPayment {
     voidReasonId: voidReasonId ?? this.voidReasonId,
     voidNote: voidNote ?? this.voidNote,
   );
+}
+
+/// A payment somebody has filled in, and whether the cash is to leave a till.
+///
+/// **The shift is on the request rather than on [SupplierPayment], because it
+/// is an instruction and not a fact about the row.** `SupplierPayment` is what
+/// a `pos_supplier_payments` row says, and after the write the fact is
+/// [SupplierPayment.cashMovementId] — the movement that actually happened. A
+/// `takeFromTheDrawer` boolean living on the model would be a field that is
+/// meaningful for one instant and misleading for the rest of the row's life,
+/// which is how a screen ends up reading it back and offering to move the
+/// money a second time.
+class SupplierPaymentRequest {
+  const SupplierPaymentRequest(this.payment, {this.fromShiftId});
+
+  final SupplierPayment payment;
+
+  /// The open shift whose drawer the cash comes out of, or null for money paid
+  /// from the office. An id rather than a flag: the drawer that goes short is a
+  /// particular till's on a particular shift, and the office may well be a
+  /// different machine from the one the shift is open on.
+  final int? fromShiftId;
+
+  bool get comesOutOfTheDrawer => fromShiftId != null;
 }
 
 /// What a supplier's account comes to, from the invoices and the payments.

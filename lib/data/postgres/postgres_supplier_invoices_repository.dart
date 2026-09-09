@@ -2,13 +2,16 @@ import 'package:postgres/postgres.dart';
 
 import '../../core/config/deployment.dart';
 import '../../core/money/money.dart';
+import '../../domain/models/business_day.dart' show CashMovementKind;
 import '../../domain/models/permissions.dart';
+import '../../domain/models/reason_code.dart' show ReasonScope;
 import '../../domain/models/supplier.dart';
 import '../../domain/models/supplier_invoice.dart';
 import '../../domain/repositories/admin_repositories.dart';
 import '../../domain/repositories/repositories.dart';
 import '../../domain/services/authorization.dart';
 import 'pos_database.dart';
+import 'postgres_cash_movements_repository.dart' show CashMovementWrite;
 
 /// Reads and writes `pos_supplier_invoices` and `pos_supplier_payments`.
 ///
@@ -520,13 +523,89 @@ class PostgresSupplierInvoicesRepository implements SupplierInvoicesRepository {
     return AdminResult.done((await byId(id))!);
   }
 
+  /// The reason a supplier pay-out is recorded under.
+  ///
+  /// One of the restaurant's own `ReasonScope.payOut` codes — `SystemReasons`
+  /// has seeded `supplier` since migration 14 — rather than a new code or a free
+  /// sentence. The pay-out list already had the right answer on it, and asking
+  /// the manager to pick "Supplier payment" from a list on a screen that says
+  /// *Pay Nile Dairy* at the top is a tap that cannot go any other way.
+  static const _payOutReasonCode = 'supplier';
+
+  /// And the code a compensating pay-in goes back in under, when a till payment
+  /// is voided. `correction` is what `SystemReasons.cashIn` calls it.
+  static const _payInReasonCode = 'correction';
+
+  /// The id of one of this restaurant's active reason codes, or null.
+  Future<int?> _reasonId(TxSession tx, String scope, String code) async {
+    final rows = await tx.execute(
+      Sql.named(
+        'SELECT id FROM pos_reason_codes '
+        'WHERE restaurant_id = @r AND scope = @scope AND code = @code '
+        '  AND is_active ORDER BY id LIMIT 1',
+      ),
+      parameters: {'r': restaurantId, 'scope': scope, 'code': code},
+    );
+    return rows.isEmpty ? null : rows.first[0]! as int;
+  }
+
+  /// What a drawer movement says beside the amount, on the Z report.
+  ///
+  /// Built from the supplier and the invoice number and nothing else, because
+  /// this is one of the few notes in the product that no person typed — and a
+  /// sentence written in English by the app would be the only English on an
+  /// Arabic Z report. A name and a number read the same in both.
+  static String _movementNote(String supplier, String? invoiceNumber) =>
+      invoiceNumber == null ? supplier : '$supplier — $invoiceNumber';
+
   @override
   Future<AdminResult<SupplierPayment>> pay(
     SupplierPayment payment, {
     required PosStaff by,
+    int? fromShiftId,
   }) async {
     final blocked = _blocked(by);
     if (blocked != null) return AdminResult.refused(blocked);
+
+    // **Two authorities, not one.** `purchase.manage` is permission to say what
+    // the restaurant owes and has paid; reaching into a till drawer is
+    // `cash.movement`, which is what the till itself checks before a pay-out.
+    // A bookkeeper entering invoices is not automatically somebody who may take
+    // 500 out of a drawer, and the manager role holds both anyway — so
+    // requiring both costs a real restaurant nothing and stops the back office
+    // becoming a way around the counter's own gate.
+    //
+    // Refused outright rather than quietly recorded without the movement: a
+    // payment that silently does not reduce the drawer is precisely the bug
+    // this exists to fix, and doing it under a permission refusal would hide
+    // it behind something that looks like a security message.
+    if (fromShiftId != null &&
+        !Authorization.check(by, PosCapability.cashMovement).isAllowed) {
+      return const AdminResult.refused(NotPermitted(PosCapability.cashMovement));
+    }
+
+    if (fromShiftId != null && payment.method != SupplierPaymentMethod.cash) {
+      return const AdminResult.refused(
+        CatalogInvalid(
+          'Only a cash payment comes out of the till drawer. A transfer, a '
+          'cheque or a card never passes through it.',
+        ),
+      );
+    }
+
+    // `pos_cash_movements.staff_id` is NOT NULL, and it is the one column on
+    // that row that matters afterwards: a pay-out nobody is named on is a
+    // shortage nobody can be asked about. Every other write here tolerates
+    // `id == 0` by storing null; this one must not.
+    if (fromShiftId != null && by.id == 0) {
+      return const AdminResult.refused(
+        CatalogInvalid(
+          'A drawer pay-out has to name who took the money out, and this '
+          'session has no staff record. Sign in again before paying out of the '
+          'till.',
+        ),
+      );
+    }
 
     final problems = payment.problems;
     if (problems.isNotEmpty) {
@@ -547,6 +626,11 @@ class PostgresSupplierInvoicesRepository implements SupplierInvoicesRepository {
         );
       }
 
+      // The number as the invoice row has it, for the drawer movement's note —
+      // not `payment.invoiceNumber`, which is whatever the screen was showing.
+      // A note on a Z report is read a month later against the invoice itself.
+      String? invoiceNumber;
+
       if (payment.invoiceId != null) {
         // Locked, so two bookkeepers paying the same invoice queue rather than
         // both reading the same room and both being allowed. The trigger does
@@ -556,7 +640,8 @@ class PostgresSupplierInvoicesRepository implements SupplierInvoicesRepository {
             'SELECT supplier_id, total_minor, voided_at, '
             '  (SELECT COALESCE(SUM(amount_minor), 0)::bigint '
             '     FROM pos_supplier_payments '
-            '    WHERE invoice_id = @i AND voided_at IS NULL) '
+            '    WHERE invoice_id = @i AND voided_at IS NULL), '
+            '  number '
             'FROM pos_supplier_invoices '
             'WHERE id = @i AND restaurant_id = @r FOR UPDATE',
           ),
@@ -578,6 +663,7 @@ class PostgresSupplierInvoicesRepository implements SupplierInvoicesRepository {
           );
         }
 
+        invoiceNumber = _text(bill.first[4]);
         final total = bill.first[1]! as int;
         final already = _bigint(bill.first[3]);
         if (already + payment.amount.minor > total) {
@@ -597,13 +683,98 @@ class PostgresSupplierInvoicesRepository implements SupplierInvoicesRepository {
         }
       }
 
+      // ── Out of the drawer, in the same transaction ──────────────────────
+      //
+      // Written *before* the payment, so the payment can carry the movement's
+      // id in its own INSERT. The office holds no UPDATE grant on
+      // `cash_movement_id` — deliberately, it is a fact about how the money
+      // left and not a working field — so writing the payment first and
+      // pointing it at the movement afterwards is not available, and would not
+      // be better if it were: it is one more statement that can fail with a row
+      // already on file.
+      //
+      // Everything below is inside `runTx`. A throw from any of it takes the
+      // movement and the payment down together, which is the whole point: a
+      // drawer 500 down with no payment behind it is a worse thing to leave
+      // behind than the shortage this feature removes.
+      int? movementId;
+      if (fromShiftId != null) {
+        // The **shift's** terminal, not the machine the bookkeeper is sitting
+        // at. Management may well be running on the back-office PC, and the
+        // drawer that goes short is the one on the till the shift is open on.
+        final drawer = await tx.execute(
+          Sql.named(
+            'SELECT terminal_id::text, business_day_id, closed_at '
+            'FROM pos_shifts '
+            'WHERE id = @s AND restaurant_id = @r AND branch_id = @b '
+            'FOR UPDATE',
+          ),
+          parameters: {'s': fromShiftId, 'r': restaurantId, 'b': branchId},
+        );
+        if (drawer.isEmpty) {
+          return const AdminResult<int>.refused(
+            CatalogInvalid('That shift is not on this branch.'),
+          );
+        }
+        if (drawer.first[2] != null) {
+          // Locked above, so a cash-up running at the same moment either counted
+          // this pay-out or refused it — never counted a drawer and then had a
+          // pay-out appear on the shift it just closed.
+          return const AdminResult<int>.refused(
+            CatalogInvalid(
+              'That shift has been closed and counted. A pay-out added now '
+              'would change a Z report somebody has already signed — record it '
+              'on the shift that is open.',
+            ),
+          );
+        }
+
+        final reasonId = await _reasonId(
+          tx,
+          ReasonScope.payOut.wire,
+          _payOutReasonCode,
+        );
+        if (reasonId == null) {
+          return const AdminResult<int>.refused(
+            CatalogInvalid(
+              'This restaurant has no active pay-out reason coded "supplier", '
+              'so the drawer movement would have nothing to be reported under. '
+              'Add it to the pay-out reasons first.',
+            ),
+          );
+        }
+
+        final amount = CashMovementWrite.normalise(
+          CashMovementKind.payOut,
+          payment.amount,
+        );
+        CashMovementWrite.refuseNothing(CashMovementKind.payOut, amount);
+
+        final movement = await tx.execute(
+          Sql.named(CashMovementWrite.sql),
+          parameters: CashMovementWrite.parameters(
+            restaurantId: restaurantId,
+            branchId: branchId,
+            terminalId: drawer.first[0]! as String,
+            shiftId: fromShiftId,
+            businessDayId: drawer.first[1] as int?,
+            kind: CashMovementKind.payOut,
+            amount: amount,
+            reasonId: reasonId,
+            note: _movementNote(supplier.first[0]! as String, invoiceNumber),
+            staffId: by.id,
+          ),
+        );
+        movementId = movement.first[0]! as int;
+      }
+
       final rows = await tx.execute(
         Sql.named(
           'INSERT INTO pos_supplier_payments (restaurant_id, branch_id, '
           '  supplier_id, supplier_name, invoice_id, method, amount_minor, '
-          '  reference, paid_at, note, created_by) '
+          '  reference, paid_at, note, cash_movement_id, created_by) '
           'VALUES (@r, @b, @s, @name, @i, @method, @amount, @ref, @at, @note, '
-          '        @by) RETURNING id',
+          '        @movement, @by) RETURNING id',
         ),
         parameters: {
           'r': restaurantId,
@@ -616,6 +787,7 @@ class PostgresSupplierInvoicesRepository implements SupplierInvoicesRepository {
           'ref': payment.reference?.trim(),
           'at': payment.paidAt,
           'note': payment.note?.trim(),
+          'movement': movementId,
           'by': by.id == 0 ? null : by.id,
         },
       );
@@ -631,6 +803,11 @@ class PostgresSupplierInvoicesRepository implements SupplierInvoicesRepository {
             '{"amount_minor": ${payment.amount.minor}, '
             '"method": ${_json(payment.method.wire)}, '
             '"invoice_id": ${payment.invoiceId ?? 'null'}, '
+            // On the audit row because "who took money out of which drawer" is
+            // the question a variance turns into, and the payment row alone
+            // does not say which shift.
+            '"shift_id": ${fromShiftId ?? 'null'}, '
+            '"cash_movement_id": ${movementId ?? 'null'}, '
             '"supplier": ${_json(supplier.first[0]! as String)}}',
       );
       return AdminResult<int>.done(id);
@@ -655,7 +832,8 @@ class PostgresSupplierInvoicesRepository implements SupplierInvoicesRepository {
     final outcome = await _db.runTx(config, (tx) async {
       final held = await tx.execute(
         Sql.named(
-          'SELECT voided_at, amount_minor FROM pos_supplier_payments '
+          'SELECT voided_at, amount_minor, cash_movement_id, supplier_name '
+          'FROM pos_supplier_payments '
           'WHERE id = @id AND restaurant_id = @r FOR UPDATE',
         ),
         parameters: {'id': id, 'r': restaurantId},
@@ -664,6 +842,117 @@ class PostgresSupplierInvoicesRepository implements SupplierInvoicesRepository {
         return const AdminResult<int>.refused(EditedElsewhere(0));
       }
       if (held.first[0] != null) return AdminResult<int>.done(id);
+
+      // ── The drawer, when the money came out of one ──────────────────────
+      //
+      // **A cash movement is never edited or deleted; a correction is a second
+      // movement.** That is this product's rule everywhere else and it is not
+      // relaxed here, so the pay-out stands and a `pay_in` puts the cash back —
+      // in this same transaction, on the same shift, while that shift is open.
+      //
+      // Defaulting to "the cash came back" is a judgement, and this is the
+      // argument for it: a void in the back office almost always means *entered
+      // twice* or *wrong amount*, where no second bundle of money left the
+      // building — the drawer is short by a pay-out that should never have
+      // existed and the notes are still in it. The case it gets wrong, paying a
+      // supplier who keeps the money, is not honestly a void at all: that
+      // payment happened, and what is owed comes back as a credit note.
+      //
+      // Two alternatives were rejected. **Leaving the pay-out standing
+      // silently** is the original bug wearing the other hat — the manager would
+      // find a drawer that is right and a ledger that says nothing was paid.
+      // **Refusing the void outright** reads well and is unusable: there is then
+      // no way to correct a mistyped payment from the office at all, and the
+      // person who wants one would edit the database.
+      final movementId = held.first[2] as int?;
+      if (movementId != null) {
+        // Putting cash back is a drawer act like taking it out, so it wants the
+        // same key. A bookkeeper who may not open a drawer may not do this
+        // either, even though what they are undoing is their own row.
+        if (!Authorization.check(by, PosCapability.cashMovement).isAllowed) {
+          return const AdminResult<int>.refused(
+            NotPermitted(PosCapability.cashMovement),
+          );
+        }
+
+        final drawer = await tx.execute(
+          Sql.named(
+            'SELECT m.shift_id, m.terminal_id::text, m.amount_minor, m.note, '
+            '       s.business_day_id, s.closed_at '
+            'FROM pos_cash_movements m JOIN pos_shifts s ON s.id = m.shift_id '
+            'WHERE m.id = @m FOR UPDATE OF s',
+          ),
+          parameters: {'m': movementId},
+        );
+        if (drawer.isEmpty) {
+          return const AdminResult<int>.refused(
+            CatalogInvalid(
+              'This payment names a drawer movement that is no longer on file. '
+              'It cannot be reversed here.',
+            ),
+          );
+        }
+
+        if (drawer.first[5] == null) {
+          final reasonForPayIn = await _reasonId(
+            tx,
+            ReasonScope.payIn.wire,
+            _payInReasonCode,
+          );
+          if (reasonForPayIn == null) {
+            return const AdminResult<int>.refused(
+              CatalogInvalid(
+                'This restaurant has no active pay-in reason coded '
+                '"correction", so the cash has nowhere to go back in under. '
+                'Add it to the pay-in reasons first.',
+              ),
+            );
+          }
+          if (by.id == 0) {
+            return const AdminResult<int>.refused(
+              CatalogInvalid(
+                'Putting cash back in a drawer has to name who put it there, '
+                'and this session has no staff record.',
+              ),
+            );
+          }
+
+          // The same note as the pay-out it answers, so the two read as a pair
+          // on the drawer's history — "− Nile Dairy — INV-900" above
+          // "+ Nile Dairy — INV-900" — rather than as two unrelated events a
+          // manager has to work out for themselves.
+          await tx.execute(
+            Sql.named(CashMovementWrite.sql),
+            parameters: CashMovementWrite.parameters(
+              restaurantId: restaurantId,
+              branchId: branchId,
+              terminalId: drawer.first[1]! as String,
+              shiftId: drawer.first[0]! as int,
+              businessDayId: drawer.first[4] as int?,
+              kind: CashMovementKind.payIn,
+              amount: Money(drawer.first[2]! as int),
+              reasonId: reasonForPayIn,
+              note: drawer.first[3] as String?,
+              staffId: by.id,
+            ),
+          );
+        } else if ((note ?? '').trim().isEmpty) {
+          // The drawer has been counted. A `pay_in` on a closed shift would
+          // rewrite an expected total a manager already argued about, and one on
+          // *today's* shift would claim cash appeared in a drawer nobody put
+          // cash into — so neither is written, and the only thing left worth
+          // recording is where the money actually went. That is a sentence,
+          // and it is required.
+          return const AdminResult<int>.refused(
+            CatalogInvalid(
+              'This payment took cash out of a till whose shift has since been '
+              'counted, so the drawer cannot be put back. Say in a note where '
+              'the money went, and record any cash returning to the till as a '
+              'pay-in there.',
+            ),
+          );
+        }
+      }
 
       await tx.execute(
         Sql.named(
@@ -687,7 +976,8 @@ class PostgresSupplierInvoicesRepository implements SupplierInvoicesRepository {
         entityType: AuditAction.entitySupplierPayment,
         entityId: id,
         after:
-            '{"amount_minor": ${held.first[1]}, "reason_id": $reasonId}',
+            '{"amount_minor": ${held.first[1]}, "reason_id": $reasonId, '
+            '"cash_movement_id": ${held.first[2] ?? 'null'}}',
       );
       return AdminResult<int>.done(id);
     });
@@ -788,6 +1078,7 @@ class UnconfiguredSupplierInvoicesRepository
   Future<AdminResult<SupplierPayment>> pay(
     SupplierPayment payment, {
     required PosStaff by,
+    int? fromShiftId,
   }) async => const AdminResult.refused(NoDatabaseConfigured());
 
   @override

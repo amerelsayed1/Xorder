@@ -157,7 +157,7 @@ class _ManagementPurchasingPaneState
       return;
     }
 
-    final payment = await SupplierPaymentDialog.show(
+    final request = await SupplierPaymentDialog.show(
       context,
       supplier: who,
       invoice: invoice,
@@ -165,14 +165,27 @@ class _ManagementPurchasingPaneState
         for (final i in unpaid)
           if (i.supplierId == who.id) i,
       ],
+      openShift: ref.read(shiftProvider).valueOrNull,
     );
-    if (payment == null || !mounted) return;
+    if (request == null || !mounted) return;
     await _run(
       () async => (await ref
               .read(supplierInvoicesRepositoryProvider)
-              .pay(payment, by: widget.admin))
+              .pay(
+                request.payment,
+                by: widget.admin,
+                fromShiftId: request.fromShiftId,
+              ))
           .refusal,
     );
+
+    // The expected drawer and its movement list have both changed underneath
+    // whatever is showing them — the same invalidation the till's own pay-out
+    // does, for the same reason.
+    if (request.comesOutOfTheDrawer) {
+      ref.invalidate(shiftProvider);
+      ref.invalidate(cashMovementsProvider(request.fromShiftId!));
+    }
   }
 
   Future<void> _voidInvoice(SupplierInvoice invoice) async {
@@ -258,6 +271,13 @@ class _ManagementPurchasingPaneState
   Widget build(BuildContext context) {
     final strings = context.strings;
     final palette = context.pos;
+
+    // Watched, not read when the payment dialog opens. `ref.read` on a provider
+    // nothing else is watching starts the future and hands back `AsyncLoading`,
+    // so the first payment of the session would be told no shift was open when
+    // one was — and would silently not touch the drawer. The cash dialogs learnt
+    // this the same way.
+    ref.watch(shiftProvider);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,

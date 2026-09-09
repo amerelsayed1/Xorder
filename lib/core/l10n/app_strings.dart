@@ -941,6 +941,8 @@ sealed class AppStrings {
   String get notes;
   String paymentTo(String supplier);
   String get paymentDoesNotTouchTheDrawer;
+  String get paymentFromTheDrawer;
+  String get paymentFromTheDrawerHint;
   String get paymentAgainst;
   String get paymentAmount;
   String get paymentMethod;
@@ -3935,8 +3937,14 @@ final class EnStrings extends AppStrings {
   String paymentTo(String supplier) => 'Pay $supplier';
   @override
   String get paymentDoesNotTouchTheDrawer =>
-      'This records money leaving the business. It does not change the till '
-      'drawer — a supplier paid out of the drawer is a pay-out at the till.';
+      'No shift is open on this terminal, so this does not change the till '
+      'drawer. It records the money as paid from the office.';
+  @override
+  String get paymentFromTheDrawer => 'Take it out of the till drawer';
+  @override
+  String get paymentFromTheDrawerHint =>
+      'Records a pay-out on the open shift, so the drawer is not short at '
+      'cash-up. Leave it off for money paid from the office safe.';
   @override
   String get paymentAgainst => 'Against';
   @override
@@ -6702,8 +6710,14 @@ final class ArStrings extends AppStrings {
   String paymentTo(String supplier) => 'سداد إلى $supplier';
   @override
   String get paymentDoesNotTouchTheDrawer =>
-      'هذا تسجيل لخروج مال من المنشأة، ولا يغيّر درج الكاشير — المورّد الذي '
-      'يُدفع من الدرج يُسجَّل كصرف على الكاشير.';
+      'لا توجد وردية مفتوحة على هذا الجهاز، فلن يتغيّر درج الكاشير. يُسجَّل '
+      'المبلغ كأنه مدفوع من المكتب.';
+  @override
+  String get paymentFromTheDrawer => 'صرف المبلغ من درج الكاشير';
+  @override
+  String get paymentFromTheDrawerHint =>
+      'يُسجَّل صرفًا على الوردية المفتوحة، حتى لا يظهر الدرج ناقصًا عند '
+      'التقفيل. اترك المفتاح مغلقًا إذا كان المبلغ مدفوعًا من خزنة المكتب.';
   @override
   String get paymentAgainst => 'مقابل';
   @override
