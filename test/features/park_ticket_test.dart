@@ -9,6 +9,7 @@ import 'package:xorder_pos/domain/models/catalog.dart';
 import 'package:xorder_pos/domain/models/dining_table.dart';
 import 'package:xorder_pos/domain/models/ticket.dart';
 import 'package:xorder_pos/features/sale/sale_screen.dart';
+import 'package:xorder_pos/features/sale/widgets/cart_panel.dart';
 
 import '../support/fakes.dart';
 
@@ -35,6 +36,7 @@ Future<ProviderContainer> _pumpTill(WidgetTester tester) async {
           onTables: () {},
           onOrders: () {},
           onCloseShift: () {},
+          onManage: (_) {},
         ),
       ),
     ),
@@ -53,6 +55,8 @@ void _ringUpTakeaway(ProviderContainer container) {
 }
 
 void main() {
+  _configuredSeating();
+
   testWidgets('the button labelled Park parks, and does not send a round', (
     tester,
   ) async {
@@ -154,5 +158,57 @@ void main() {
       containsAll([first.id, second.id]),
       reason: 'a resume that discarded the live ticket would lose a sale',
     );
+  });
+}
+
+/// The configured answer, not the compiled-in one.
+///
+/// **Added at the merge.** This work was written against a base that predated
+/// §31, so `TicketHoldAction.forTicket` asked `Ticket.isSeated` — which reads
+/// `orderType == OrderType.dineIn`, the exact comparison
+/// `pos_order_types.requires_table` exists to delete. A caterer who seats people
+/// turns seating on for takeaway, and their takeaway tickets have rounds to send
+/// like any other table.
+void _configuredSeating() {
+  group('what counts as seated is the restaurant\'s answer', () {
+    Ticket takeaway({int? tableId}) => Ticket(
+      id: 't1',
+      orderType: OrderType.takeaway,
+      tableId: tableId,
+      lines: [
+        TicketLine(
+          product: const Product(
+            id: 1,
+            categoryId: 1,
+            nameEn: 'Tea',
+            price: Money(1000),
+          ),
+          quantity: 1,
+        ),
+      ],
+    );
+
+    test('an unseated takeaway parks', () {
+      expect(
+        TicketHoldAction.forTicket(takeaway(), seated: false),
+        TicketHoldAction.park,
+      );
+    });
+
+    test('a takeaway the restaurant seats, at a table, sends a round', () {
+      expect(
+        TicketHoldAction.forTicket(takeaway(tableId: 4), seated: true),
+        TicketHoldAction.sendRound,
+      );
+    });
+
+    test('seated but at no table yet still parks', () {
+      // There is no round to send to a table nobody has chosen, and the ticket
+      // still has to be puttable down.
+      expect(
+        TicketHoldAction.forTicket(takeaway(), seated: true),
+        TicketHoldAction.park,
+      );
+    });
   });
 }

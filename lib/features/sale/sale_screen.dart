@@ -462,7 +462,12 @@ class _SaleScreenState extends ConsumerState<SaleScreen> {
   /// takeaway ticket could not be put down at all, and the control that said
   /// *Park* sent food to the kitchen instead.
   void _hold(Ticket ticket) {
-    final action = TicketHoldAction.forTicket(ticket);
+    // The same configured answer the cart panel is given, from the same place,
+    // so F4 and the button cannot disagree about what this ticket is.
+    final action = TicketHoldAction.forTicket(
+      ticket,
+      seated: ref.read(orderTypeRulesProvider).requiresTable(ticket.orderType),
+    );
     if (!action.isAvailableFor(ticket)) return;
 
     switch (action) {

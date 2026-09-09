@@ -2997,39 +2997,7 @@ const posMigrations = <PosMigration>[
         WHERE existing.restaurant_id = r.id AND existing.scope = 'payment_void')
     ''',
   ]),
-];
-
-
-
-/// Brings the branch database up to the current schema.
-///
-/// Safe to call from every till on every launch: the advisory lock serialises
-/// concurrent runners and `schema_migrations` makes each step run once.
-class PosMigrator {
-  const PosMigrator(this._db, {this.migrations = posMigrations});
-
-  final PosDatabase _db;
-  final List<PosMigration> migrations;
-
-  /// Returns the versions actually applied by *this* call.
-  Future<List<int>> migrate(
-    DeploymentConfig config,
-  ) async => _db.runTx(config, (tx) async {
-    // Held for the length of the transaction and released on commit, so a
-    // till that crashes mid-migration does not wedge the branch.
-    await tx.execute('SELECT pg_advisory_xact_lock($_migrationLockKey)');
-
-    await tx.execute('''
-          CREATE TABLE IF NOT EXISTS schema_migrations (
-            version    integer     PRIMARY KEY,
-            applied_at timestamptz NOT NULL DEFAULT now()
-          )
-        ''');
-
-    final existing = await tx.execute('SELECT version FROM schema_migrations');
-    final applied = existing.map((row) => row[0] as int).toSet();
-
-    final ran = <int>[  // A ticket with no table can be put down too.
+  // A ticket with no table can be put down too.
   //
   // Migration 7 keyed this table on (restaurant_id, table_id) with the table
   // NOT NULL, which was the right shape for the only caller there was — leaving
@@ -3124,5 +3092,18 @@ class PosMigrator {
     final existing = await tx.execute('SELECT version FROM schema_migrations');
     final applied = existing.map((row) => row[0] as int).toSet();
 
-    final ran = <int>[
-];
+    final ran = <int>[];
+    for (final migration in migrations) {
+      if (applied.contains(migration.version)) continue;
+      for (final statement in migration.statements) {
+        await tx.execute(statement);
+      }
+      await tx.execute(
+        Sql.named('INSERT INTO schema_migrations (version) VALUES (@version)'),
+        parameters: {'version': migration.version},
+      );
+      ran.add(migration.version);
+    }
+    return ran;
+  });
+}

@@ -74,8 +74,22 @@ enum TicketHoldAction {
   /// Seated is the discriminator rather than the order type, because a dine-in
   /// ticket with nobody seated yet is a ticket with no kitchen destination —
   /// there is no table for the runner to bring the food to.
-  static TicketHoldAction forTicket(Ticket ticket) =>
-      ticket.isSeated ? TicketHoldAction.sendRound : TicketHoldAction.park;
+  /// Which of the two this ticket's secondary button means.
+  ///
+  /// **[seated] is the restaurant's answer, not `Ticket.isSeated`.** That getter
+  /// reads `orderType == OrderType.dineIn`, and deleting exactly that comparison
+  /// is what §31 and `pos_order_types.requires_table` exist for: a caterer who
+  /// seats people turns it on for takeaway, and their takeaway tickets have
+  /// rounds to send like any other table. Passing the configured answer in keeps
+  /// the button, the floor plan and the ticket engine agreeing about what
+  /// "seated" means.
+  ///
+  /// A type that requires a table but has none assigned yet parks — there is no
+  /// round to send to a table nobody has chosen.
+  static TicketHoldAction forTicket(Ticket ticket, {required bool seated}) =>
+      seated && ticket.tableId != null
+      ? TicketHoldAction.sendRound
+      : TicketHoldAction.park;
 
   String label(AppStrings s) => switch (this) {
     TicketHoldAction.sendRound => s.sendRoundKey,
@@ -453,7 +467,7 @@ class CartPanel extends StatelessWidget {
   }) {
     final hasAnything = !ticket.isEmpty;
     final ctaLabel = ticket.isSeated ? s.closeTableCta : s.chargeCta;
-    final hold = TicketHoldAction.forTicket(ticket);
+    final hold = TicketHoldAction.forTicket(ticket, seated: seatedOrder);
 
     return Column(
       children: [
