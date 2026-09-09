@@ -222,6 +222,82 @@ void main() {
     expect(find.text('warehouse.transferred'), findsOneWidget);
   });
 
+  testWidgets('the Activity pane prints money as money, not as piastres', (
+    tester,
+  ) async {
+    // **`total_minor: 100000` was the bug.** A hundred thousand piastres is a
+    // thousand pounds, and the column printed the integer — on an audit trail,
+    // beside a supplier's name, where the whole question is how much money
+    // moved. The suffix is the rule: `_minor` is money, `_milli` is a quantity
+    // in thousandths, `_bp` is a rate in basis points.
+    final container = await open(tester, pane: ManagementPane.activity);
+    final audit =
+        container.read(auditRepositoryProvider) as FakeAuditRepository;
+    await audit.record(
+      by: const PosStaff(id: 1, name: 'Amer M.'),
+      action: AuditAction.supplierInvoiceSaved,
+      entityType: AuditAction.entitySupplierInvoice,
+      after: const {
+        'total_minor': 100000,
+        'tax_minor': 12281,
+        'received_milli': 12500,
+        'tax_rate_bp': 1400,
+        'service_bp': 1250,
+        'is_active': true,
+        'number': 'INV-900',
+      },
+    );
+
+    await enter(tester, '1234');
+    await tester.pumpAndSettle();
+
+    final column = find.textContaining('total:');
+    expect(column, findsOneWidget);
+    final text = tester.widget<Text>(column).data!;
+
+    expect(text, contains('total: 1,000.00'));
+    expect(text, contains('tax: 122.81'));
+    expect(
+      text,
+      contains('received: 12.5'),
+      reason: 'thousandths, and the unit is not repeated in the name',
+    );
+    expect(text, contains('tax rate: 14%'));
+    expect(
+      text,
+      contains('service: 12.5%'),
+      reason: 'not 12.50% — a trailing zero reads as precision nobody claimed',
+    );
+    expect(
+      text,
+      contains('active: yes'),
+      reason: '"is active: yes" is not a sentence',
+    );
+    expect(text, contains('number: INV-900'), reason: 'left alone');
+
+    expect(text, isNot(contains('100000')));
+    expect(text, isNot(contains('_minor')));
+    expect(text, isNot(contains('1400')));
+  });
+
+  testWidgets('a change shows both sides, in the same units', (tester) async {
+    final container = await open(tester, pane: ManagementPane.activity);
+    final audit =
+        container.read(auditRepositoryProvider) as FakeAuditRepository;
+    await audit.record(
+      by: const PosStaff(id: 1, name: 'Amer M.'),
+      action: AuditAction.productRepriced,
+      entityType: AuditAction.entityProduct,
+      before: const {'price_minor': 4500},
+      after: const {'price_minor': 5000},
+    );
+
+    await enter(tester, '1234');
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('price: 45.00 → 50.00'), findsOneWidget);
+  });
+
   testWidgets('purchasing is a permission an owner can grant by name', (
     tester,
   ) async {

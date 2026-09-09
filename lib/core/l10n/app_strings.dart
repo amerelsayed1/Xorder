@@ -990,6 +990,8 @@ sealed class AppStrings {
   String get actSupplierPaymentVoided;
   String get actServiceChargeSaved;
   String get actTenderTypeSaved;
+  String get fieldYes;
+  String get fieldNo;
   String get unitEach;
   String get unitKilogram;
   String get unitGram;
@@ -3980,6 +3982,10 @@ final class EnStrings extends AppStrings {
   @override
   String get actTenderTypeSaved => 'Changed a payment method';
   @override
+  String get fieldYes => 'yes';
+  @override
+  String get fieldNo => 'no';
+  @override
   String get unitEach => 'each';
   @override
   String get unitKilogram => 'kg';
@@ -6615,6 +6621,10 @@ final class ArStrings extends AppStrings {
   String get actServiceChargeSaved => 'تعديل رسم خدمة';
   @override
   String get actTenderTypeSaved => 'تعديل طريقة سداد';
+  @override
+  String get fieldYes => 'نعم';
+  @override
+  String get fieldNo => 'لا';
   @override
   String get unitEach => 'قطعة';
   @override
