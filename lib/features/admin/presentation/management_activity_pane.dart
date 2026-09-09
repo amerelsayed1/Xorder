@@ -196,23 +196,10 @@ class _EntryRow extends StatelessWidget {
     if (number != null) {
       if (key.endsWith('_minor')) return Money(number).format();
       if (key.endsWith('_milli')) return Quantity(number).format();
-      if (key.endsWith('_bp')) return _rate(number);
+      if (key.endsWith('_bp')) return AdminText.rateBp(number);
     }
 
     return _short(value);
-  }
-
-  /// Basis points as a percentage. 1400 is 14%, and 1250 is 12.5% rather than
-  /// 12.50% — a trailing zero on a rate reads as precision nobody claimed.
-  static String _rate(int basisPoints) {
-    final whole = basisPoints ~/ 100;
-    final fraction = basisPoints % 100;
-    if (fraction == 0) return '$whole%';
-    final digits = fraction.toString().padLeft(2, '0').replaceAll(
-      RegExp(r'0+$'),
-      '',
-    );
-    return '$whole.$digits%';
   }
 
   static String _short(Object? value) {

@@ -113,7 +113,9 @@ void main() {
     // offline install would provide — the same rule the rail uses.
     for (final pane in [
       ManagementPane.staff,
-      ManagementPane.money,
+      ManagementPane.taxes,
+      ManagementPane.charges,
+      ManagementPane.tenders,
       ManagementPane.purchasing,
       ManagementPane.receipt,
       ManagementPane.eta,

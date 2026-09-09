@@ -1003,6 +1003,8 @@ sealed class AppStrings {
   String get supplierOverdue;
 
   // Management chrome.
+  String get paneTaxes;
+  String get paneTaxesHint;
   String get areaPeople;
   String get areaMenu;
   String get areaMoney;
@@ -4011,6 +4013,10 @@ final class EnStrings extends AppStrings {
   String get supplierOverdue => 'overdue';
 
   @override
+  String get paneTaxes => 'Tax';
+  @override
+  String get paneTaxesHint => 'The rates this restaurant charges, and on what.';
+  @override
   String get areaPeople => 'People';
   @override
   String get areaMenu => 'Menu';
@@ -6662,6 +6668,10 @@ final class ArStrings extends AppStrings {
   @override
   String get supplierOverdue => 'متأخر';
 
+  @override
+  String get paneTaxes => 'الضريبة';
+  @override
+  String get paneTaxesHint => 'النسب التي يحتسبها المطعم، وعلى ماذا.';
   @override
   String get areaPeople => 'الأفراد';
   @override

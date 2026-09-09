@@ -14,7 +14,9 @@ import 'management_activity_pane.dart';
 import 'management_floor_pane.dart';
 import 'management_menu_pane.dart';
 import 'management_eta_pane.dart';
-import 'management_money_pane.dart';
+import 'management_charges_pane.dart';
+import 'management_taxes_pane.dart';
+import 'management_tenders_pane.dart';
 import 'management_purchasing_pane.dart';
 import 'management_receipt_pane.dart';
 import 'management_roles_pane.dart';
@@ -123,7 +125,9 @@ enum ManagementArea {
 ManagementArea areaOf(ManagementPane pane) => switch (pane) {
   ManagementPane.staff || ManagementPane.roles => ManagementArea.people,
   ManagementPane.menu || ManagementPane.floor => ManagementArea.menu,
-  ManagementPane.money => ManagementArea.money,
+  ManagementPane.taxes ||
+  ManagementPane.charges ||
+  ManagementPane.tenders => ManagementArea.money,
   ManagementPane.purchasing => ManagementArea.buying,
   ManagementPane.receipt || ManagementPane.eta => ManagementArea.compliance,
   ManagementPane.activity => ManagementArea.system,
@@ -185,7 +189,9 @@ class ManagementDestination {
       ManagementPane.staff => (s.paneStaff, s.paneStaffBlurb),
       ManagementPane.menu => (s.paneMenu, s.paneMenuBlurb),
       ManagementPane.floor => (s.floorPlan, s.floorPlanHint),
-      ManagementPane.money => (s.moneyRules, s.moneyRulesHint),
+        ManagementPane.taxes => (s.paneTaxes, s.paneTaxesHint),
+      ManagementPane.charges => (s.serviceCharges, s.serviceChargesHint),
+      ManagementPane.tenders => (s.tenderTypes, s.tenderTypesHint),
       ManagementPane.purchasing => (s.panePurchasing, s.panePurchasingBlurb),
       ManagementPane.receipt => (s.paneReceipt, s.paneReceiptBlurb),
       ManagementPane.eta => (s.paneEta, s.paneEtaBlurb),
@@ -216,7 +222,9 @@ enum ManagementPane {
   staff,
   menu,
   floor,
-  money,
+  taxes,
+  charges,
+  tenders,
   purchasing,
   receipt,
   eta,
@@ -287,7 +295,15 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
                       ManagementPane.staff => ManagementStaffPane(admin: admin),
                       ManagementPane.menu => ManagementMenuPane(admin: admin),
                       ManagementPane.floor => ManagementFloorPane(admin: admin),
-                      ManagementPane.money => ManagementMoneyPane(admin: admin),
+                      ManagementPane.taxes => ManagementTaxesPane(
+                        admin: admin,
+                      ),
+                      ManagementPane.charges => ManagementChargesPane(
+                        admin: admin,
+                      ),
+                      ManagementPane.tenders => ManagementTendersPane(
+                        admin: admin,
+                      ),
                       ManagementPane.purchasing =>
                         ManagementPurchasingPane(admin: admin),
                       ManagementPane.receipt => ManagementReceiptPane(
@@ -414,45 +430,44 @@ class _RailItem extends StatelessWidget {
   final bool selected;
   final VoidCallback onTap;
 
+  /// **One line, and the sentence moved to a tooltip.**
+  ///
+  /// Every row used to carry its blurb, which read well at nine panes and did
+  /// not fit at twelve: six headings and twelve two-line rows come to more than
+  /// a 900px window has, and the last area fell off the bottom. The rail is for
+  /// somebody already inside Management who knows what the panes are called;
+  /// the Manage menu is where the sentences do their work, because that is where
+  /// somebody is looking for a pane they cannot name yet.
   @override
-  Widget build(BuildContext context) => Material(
-    color: selected ? context.pos.accentSoft : Colors.transparent,
-    child: InkWell(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(
-          horizontal: PosSpace.lg,
-          vertical: PosSpace.md,
-        ),
-        decoration: BoxDecoration(
-          border: Border(
-            bottom: context.pos.hairline,
-            // Elevation is a border in this design, so selection is too.
-            left: selected
-                ? context.pos.accentBorder
-                : const BorderSide(color: Colors.transparent, width: 2),
+  Widget build(BuildContext context) => Tooltip(
+    message: hint,
+    waitDuration: const Duration(milliseconds: 600),
+    child: Material(
+      color: selected ? context.pos.accentSoft : Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(
+            horizontal: PosSpace.lg,
+            vertical: PosSpace.md,
           ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              label,
-              style: PosText.ui(color: context.pos.inkWarm, 
-                size: 14,
-                weight: selected ? FontWeight.w700 : FontWeight.w500,
-              ),
+          decoration: BoxDecoration(
+            border: Border(
+              bottom: context.pos.hairline,
+              // Elevation is a border in this design, so selection is too.
+              left: selected
+                  ? context.pos.accentBorder
+                  : const BorderSide(color: Colors.transparent, width: 2),
             ),
-            const SizedBox(height: PosSpace.xs),
-            Text(
-              hint,
-              style: PosText.ui(
-                size: 11.5,
-                color: context.pos.muted,
-                height: 1.4,
-              ),
+          ),
+          child: Text(
+            label,
+            style: PosText.ui(
+              color: context.pos.inkWarm,
+              size: 14,
+              weight: selected ? FontWeight.w700 : FontWeight.w500,
             ),
-          ],
+          ),
         ),
       ),
     ),

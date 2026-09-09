@@ -132,6 +132,26 @@ abstract final class AdminText {
         SupplierPaymentMethod.other => s.methodOther,
       };
 
+  /// Basis points as a percentage, for anywhere a rate is shown.
+  ///
+  /// 1400 is 14%; 1250 is 12.5% and not 12.50%, because a trailing zero on a
+  /// rate reads as precision nobody claimed.
+  ///
+  /// **Integer arithmetic.** The service-charge row did this with
+  /// `(rateBp / 100).toStringAsFixed(...)`, which routes a rate through a
+  /// `double` — harmless for 1250, and exactly the habit the rest of the money
+  /// code exists to avoid.
+  static String rateBp(int basisPoints) {
+    final whole = basisPoints ~/ 100;
+    final fraction = basisPoints % 100;
+    if (fraction == 0) return '$whole%';
+    final digits = fraction.toString().padLeft(2, '0').replaceAll(
+      RegExp(r'0+$'),
+      '',
+    );
+    return '$whole.$digits%';
+  }
+
   /// What a unit is called on screen.
   ///
   /// `QuantityUnit.wire` is a storage token, and `ea` is not a unit anybody
