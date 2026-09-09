@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:xorder_pos/app/providers.dart';
 import 'package:xorder_pos/core/config/deployment.dart';
+import 'package:xorder_pos/core/config/printer_config.dart';
 import 'package:xorder_pos/core/config/terminal_config.dart';
 import 'package:xorder_pos/core/ui/theme.dart';
 import 'package:xorder_pos/data/config/terminal_config_store.dart';
@@ -75,6 +76,46 @@ void main() {
       expect(restored.deployment.databaseHost, '192.168.1.20');
       expect(restored.languageCode, 'ar');
       expect(restored.isUsable, isTrue);
+    });
+
+    test('remembers the printer the installer chose', () async {
+      // **It did not, and that is why nothing printed.** The hardware step has
+      // offered a printer list since setup existed and the choice was held in
+      // the draft and written nowhere — so the till came up the next morning
+      // with no address to send a receipt to.
+      await store().write(
+        saved.copyWith(
+          printer: const PrinterConfig(
+            name: '192.168.1.44:9100',
+            paperWidthDots: PrinterConfig.width58mm,
+          ),
+        ),
+      );
+
+      final restored = await store().read();
+      expect(restored!.printer.name, '192.168.1.44:9100');
+      expect(restored.printer.paperWidthDots, PrinterConfig.width58mm);
+      expect(restored.printer.isConfigured, isTrue);
+    });
+
+    test('a file written before printing existed reads as no printer', () async {
+      final file = File('${directory.path}/${FileTerminalConfigStore.fileName}');
+      final json =
+          jsonDecode(await () async {
+                await store().write(saved);
+                return file.readAsString();
+              }())
+              as Map<String, Object?>;
+      json.remove('printer');
+      await file.writeAsString(jsonEncode(json));
+
+      // Which is the honest answer, and the one the settle dialog reports out
+      // loud rather than claiming to have queued something.
+      final restored = await store().read();
+      expect(restored!.printer.isConfigured, isFalse);
+      // And 80mm, because that is the roll the till most likely has on it and
+      // the installer can see and change it.
+      expect(restored.printer.paperWidthDots, PrinterConfig.width80mm);
     });
 
     test('never holds the database password', () async {
@@ -169,6 +210,9 @@ void main() {
       expect(container.read(deploymentProvider).databaseHost, '192.168.1.20');
       // The language belongs to the terminal, not to whoever signs in.
       expect(container.read(localeProvider).languageCode, 'ar');
+      // So does the printer. A till that had to be told again every morning
+      // which printer it is bolted to is a till that prints nothing.
+      expect(container.read(printerConfigProvider).isConfigured, isFalse);
     });
 
     test('a terminal whose keystore lost the password goes back to setup', () {
@@ -364,6 +408,44 @@ void main() {
         expect(find.textContaining('Could not save'), findsOneWidget);
       },
     );
+
+    test('finishing setup writes the printer to disk and to memory', () async {
+      final store = InMemoryTerminalConfigStore();
+      final container = ProviderContainer(
+        overrides: [
+          ...fakeRepositoryOverrides(),
+          terminalConfigStoreProvider.overrideWithValue(store),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final controller = container.read(setupProvider.notifier);
+      controller.setDatabasePassword('s3cret');
+      controller.setBranch(13, 'Maadi');
+      controller.setTerminalName('Counter 1');
+      controller.setPrinter('192.168.1.44:9100');
+      controller.setPaperWidth(PrinterConfig.width58mm);
+      controller.state = container
+          .read(setupProvider)
+          .copyWith(
+            restaurantId: 7,
+            branchCode: 'MAA',
+            terminalId: terminal.terminalId,
+          );
+
+      expect(await controller.complete(), isNull);
+
+      // On disk, for tomorrow morning.
+      expect(store.saved!.printer.name, '192.168.1.44:9100');
+      expect(store.saved!.printer.paperWidthDots, PrinterConfig.width58mm);
+      // And in memory, for the first sale — setup finishes without a restart,
+      // so a till that only wrote the file would print nothing until it was
+      // relaunched.
+      expect(
+        container.read(printerConfigProvider).name,
+        '192.168.1.44:9100',
+      );
+    });
 
     test('a keystore write failure leaves setup incomplete', () async {
       final credentials = MutablePosDbCredentials(store: _FailingSecretStore());

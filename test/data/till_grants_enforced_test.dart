@@ -352,6 +352,57 @@ void main() {
     expect(await refusalFor('SELECT 1 FROM pos_refunds'), isNull);
   });
 
+  test('the till queues a receipt it could not print, and cannot rewrite it',
+      () async {
+    // A new table with no grant works for the superuser in every suite here and
+    // fails at a real install — which for this table means a printer that goes
+    // off takes the receipt with it.
+    final restaurant = (await db.query(
+      pg.config,
+      "INSERT INTO pos_restaurants (slug, name) VALUES ('print-probe', 'Print') "
+      'ON CONFLICT (slug) DO UPDATE SET name = pos_restaurants.name '
+      'RETURNING id',
+    )).first[0]! as int;
+    final branch = (await db.query(
+      pg.config,
+      "INSERT INTO pos_branches (restaurant_id, code, name) "
+      "VALUES (@r, 'PRP', 'Probe') "
+      'ON CONFLICT (restaurant_id, code) DO UPDATE SET name = pos_branches.name '
+      'RETURNING id',
+      parameters: {'r': restaurant},
+    )).first[0]! as int;
+
+    final connection = await connect();
+    addTearDown(connection.close);
+    final queued = await connection.execute(
+      Sql.named(
+        'INSERT INTO pos_print_jobs (restaurant_id, branch_id, terminal_id, '
+        "  printer_name, payload) "
+        "VALUES (@r, @b, 'till-1', '10.0.0.9:9100', '\\x1b40'::bytea) "
+        'RETURNING id',
+      ),
+      parameters: {'r': restaurant, 'b': branch},
+    );
+    final id = queued.first[0]! as int;
+
+    // Retrying it is the whole point, so the status columns are writable.
+    await connection.execute(
+      Sql.named(
+        "UPDATE pos_print_jobs SET status = 'printed', attempts = attempts + 1 "
+        'WHERE id = @id',
+      ),
+      parameters: {'id': id},
+    );
+
+    // The bytes are not. A job whose contents can be rewritten between the sale
+    // and the paper is a receipt for a different sale.
+    expect(
+      await refusalFor("UPDATE pos_print_jobs SET payload = '\\x00'::bytea"),
+      '42501',
+    );
+    expect(await refusalFor('DELETE FROM pos_print_jobs'), '42501');
+  });
+
   test('the till can park a ticket that has no table, and let it go', () async {
     // Migration 32 gave `pos_parked_tickets` a `branch_id` that references
     // `pos_branches` — a table the till may read and must not write. A foreign

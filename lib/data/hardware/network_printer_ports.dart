@@ -85,6 +85,17 @@ class NetworkPrinterPorts implements HardwarePorts {
     return send(host: target.$1, port: target.$2, bytes: EscPos.testReceipt());
   }
 
+  @override
+  Future<bool> sendJob({
+    required String printerName,
+    required List<int> bytes,
+  }) async {
+    final target = _parse(printerName);
+    if (target == null) return false;
+
+    return send(host: target.$1, port: target.$2, bytes: bytes);
+  }
+
   /// Write raw bytes to a printer and flush.
   ///
   /// Public because the receipt path needs it too, and because "send these
@@ -185,11 +196,58 @@ abstract final class EscPos {
 
   static List<int> feed(int lines) => [_esc, 0x64, lines.clamp(0, 255)];
 
+  /// `GS v 0` — print a raster bit image.
+  ///
+  /// **This is how a receipt gets printed, and `text` is not.** See
+  /// [ReceiptRaster] for the argument: Arabic through a printer code page is a
+  /// guess about firmware nobody controls, and the ETA QR has to reach paper
+  /// regardless. The whole slip goes down as dots.
+  ///
+  /// [bits] is one bit per dot, MSB first, each row padded to a whole byte —
+  /// exactly the order this command wants, so nothing is repacked here.
+  ///
+  /// **Sent in bands.** The command accepts a height up to 65535, and plenty of
+  /// printers accept it and then run out of image buffer half way down and
+  /// print the rest as noise — 4KB of buffer is common on the cheap units this
+  /// is aimed at. 128 rows of 80mm paper is 9KB... so bands are sized by bytes
+  /// rather than by rows, which is the number the buffer actually cares about.
+  static List<int> raster({
+    required int width,
+    required int height,
+    required List<int> bits,
+  }) {
+    final rowBytes = (width + 7) ~/ 8;
+    if (rowBytes == 0 || height == 0) return const [];
+
+    // ~3KB a band, rounded down to whole rows. Small enough for the meanest
+    // buffer, large enough that an 80mm receipt is a handful of commands.
+    final bandRows = (3072 ~/ rowBytes).clamp(1, 255);
+
+    final out = <int>[];
+    for (var top = 0; top < height; top += bandRows) {
+      final rows = top + bandRows > height ? height - top : bandRows;
+      out.addAll([
+        _gs, 0x76, 0x30, 0x00, // GS v 0, mode 0 (normal density)
+        rowBytes & 0xFF, (rowBytes >> 8) & 0xFF,
+        rows & 0xFF, (rows >> 8) & 0xFF,
+      ]);
+      out.addAll(bits.sublist(top * rowBytes, (top + rows) * rowBytes));
+    }
+    return out;
+  }
+
   /// Latin-1, which covers the English side of a receipt.
   ///
   /// Arabic needs a code page the printer actually has loaded, and thermal
   /// printers disagree wildly about which that is — so Arabic receipt printing
   /// is not attempted here rather than printing confident mojibake.
+  ///
+  /// **This is now only the test print.** A customer's receipt does not come
+  /// through here at all: it is rendered to a bitmap and sent with [raster],
+  /// which is how the Arabic this comment gave up on reaches paper. What is
+  /// left is the installer's slip, which is deliberately English — an installer
+  /// checking that a printer is reachable needs eight ASCII words, not a
+  /// picture.
   static List<int> text(String value) => Uint8List.fromList(
     value.codeUnits.map((c) => c <= 0xFF ? c : 0x3F).toList(),
   );

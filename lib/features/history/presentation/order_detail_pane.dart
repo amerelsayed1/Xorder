@@ -13,6 +13,7 @@ import '../../../domain/models/order_record.dart';
 import '../../../domain/models/permissions.dart';
 import '../../../domain/models/refund.dart';
 import '../../../domain/services/authorization.dart';
+import '../../receipt/receipt_printing.dart';
 import '../../receipt/reprint_dialog.dart';
 import '../../refund/presentation/refund_sheet.dart';
 import 'order_status_chip.dart';
@@ -519,14 +520,16 @@ class _Detail extends ConsumerWidget {
     WidgetRef ref,
     List<Refund> refunds,
   ) async {
-    final printed = await ReprintFlow.run(
+    final outcome = await ReprintFlow.run(
       context,
       ref,
       detail: detail,
       refunds: refunds,
     );
-    if (!printed || !context.mounted) return;
-    posToast(context, context.strings.receiptReprintRecorded);
+    if (outcome == null || !context.mounted) return;
+    // What happened to the paper, not "sent, and recorded". Half of that
+    // sentence was a guess made when nothing in the product printed at all.
+    posToast(context, printOutcomeMessage(context.strings, outcome));
   }
 
   Future<void> _refundFlow(

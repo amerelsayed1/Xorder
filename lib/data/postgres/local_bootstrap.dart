@@ -433,6 +433,15 @@ class LocalBootstrap {
     'GRANT SELECT, INSERT ON pos_cash_movements TO "$role"',
     'GRANT USAGE, SELECT ON SEQUENCE pos_cash_movements_id_seq TO "$role"',
     'GRANT SELECT ON pos_cash_drawers TO "$role"',
+    // Paper the printer would not take. The till writes a job when a print
+    // fails and updates it as it retries, so this needs UPDATE — column-scoped
+    // like an order's, and pointedly **not** on `payload`: the bytes are what
+    // the customer was promised, and a job whose contents could be rewritten
+    // between the sale and the paper is a receipt for a different sale.
+    'GRANT SELECT, INSERT ON pos_print_jobs TO "$role"',
+    'GRANT UPDATE (status, attempts, last_attempt_at, last_error, printed_at) '
+        'ON pos_print_jobs TO "$role"',
+    'GRANT USAGE, SELECT ON SEQUENCE pos_print_jobs_id_seq TO "$role"',
     // The trading day. A till opens one when it starts selling and closes one
     // at the end of the night, so this needs UPDATE — but column-scoped, like
     // an order's: the till may close a day and may not rewrite its takings.

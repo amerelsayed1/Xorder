@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../app/providers.dart';
 import '../../../core/config/deployment.dart';
 import '../../../core/config/platform_endpoint.dart';
+import '../../../core/config/printer_config.dart';
 import '../../../app/labels.dart';
 import '../../../core/l10n/app_strings.dart';
 import '../../../core/ui/theme.dart';
@@ -1347,7 +1348,28 @@ class _HardwarePaneState extends ConsumerState<_HardwarePane> {
           ),
           const SizedBox(height: PosSpace.md),
         ],
+        // Asked here because it is a fact about the roll in the machine, and
+        // the person holding the roll is standing at the till right now. A
+        // receipt built for 576 dots on a 58mm printer is not scaled down — the
+        // printer keeps the columns it has a head for and drops the rest, so
+        // the totals go over the edge and the till looks broken.
         const SizedBox(height: PosSpace.sm),
+        MicroLabel(s.printerPaperWidth),
+        const SizedBox(height: PosSpace.sm),
+        _ChoiceTile(
+          title: s.printerPaper80,
+          blurb: s.printerPaperWidthHelp,
+          selected: draft.paperWidthDots == PrinterConfig.width80mm,
+          onTap: () => controller.setPaperWidth(PrinterConfig.width80mm),
+        ),
+        const SizedBox(height: PosSpace.md),
+        _ChoiceTile(
+          title: s.printerPaper58,
+          blurb: s.printerPaperWidthHelp,
+          selected: draft.paperWidthDots == PrinterConfig.width58mm,
+          onTap: () => controller.setPaperWidth(PrinterConfig.width58mm),
+        ),
+        const SizedBox(height: PosSpace.lg),
         _ChoiceTile(
           title: s.cashDrawerAttached,
           blurb: s.cashDrawerAttachedBlurb,

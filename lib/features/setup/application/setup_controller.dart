@@ -5,6 +5,7 @@ import 'package:uuid/uuid.dart';
 import '../../../app/labels.dart';
 import '../../../app/providers.dart';
 import '../../../core/config/deployment.dart';
+import '../../../core/config/printer_config.dart';
 import '../../../core/config/terminal_config.dart';
 import '../../../data/cloud/bootstrap_bundle.dart';
 import '../../../data/cloud/bootstrap_seeder.dart';
@@ -540,6 +541,17 @@ class SetupController extends Notifier<SetupDraft> {
     branchCode: state.branchCode,
   );
 
+  /// The printer this wizard just pointed the till at.
+  ///
+  /// **The hardware step used to end here.** A printer picked in the scan was
+  /// held in the draft and never written anywhere, so the till came up the next
+  /// morning with no address to send a receipt to — the printing path had
+  /// nothing to be configured with, and setup had appeared to configure it.
+  PrinterConfig get printer => PrinterConfig(
+    name: state.printerName,
+    paperWidthDots: state.paperWidthDots,
+  );
+
   /// Finish setup: publish what the wizard gathered, then put it somewhere the
   /// next launch will find it.
   ///
@@ -585,6 +597,7 @@ class SetupController extends Notifier<SetupDraft> {
               deployment: state.deployment,
               terminal: profile,
               languageCode: state.locale,
+              printer: printer,
             ),
           );
     } on Exception catch (error) {
@@ -595,6 +608,10 @@ class SetupController extends Notifier<SetupDraft> {
 
     ref.read(localeProvider.notifier).apply(state.locale);
     ref.read(deploymentProvider.notifier).apply(state.deployment);
+    // In memory as well as on disk. Setup finishes without a restart, so a till
+    // that only wrote the file would take its first sale with no printer — the
+    // provider reads the boot config, and the boot config is last night's.
+    ref.read(printerConfigProvider.notifier).apply(printer);
     ref.read(terminalProfileProvider.notifier).apply(profile);
     ref.read(setupCompleteProvider.notifier).markComplete();
     return null;
@@ -656,6 +673,11 @@ class SetupController extends Notifier<SetupDraft> {
   );
 
   void setPrinter(String? name) => state = state.copyWith(printerName: name);
+
+  /// 576 dots for an 80mm roll, 384 for 58mm. See
+  /// [PrinterConfig.paperWidthDots] for why this is asked rather than guessed.
+  void setPaperWidth(int dots) =>
+      state = state.copyWith(paperWidthDots: dots);
   void setDrawer(bool attached) =>
       state = state.copyWith(drawerAttached: attached);
   void setScanner(bool attached) =>

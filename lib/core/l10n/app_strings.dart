@@ -205,7 +205,19 @@ sealed class AppStrings {
   String get receiptTaxFromDevice;
   String get newSale;
   String get printAndNew;
+
+  /// The three answers the till can honestly give after trying to print, plus
+  /// the one it gives when the queue could not be written either. See
+  /// `PrintOutcome` — the toast used to say "queued" in every case, including
+  /// the case where nothing was printed and nothing was queued.
+  String get receiptPrintedToast;
   String get receiptQueuedToast;
+  String get receiptNotPrintedToast;
+  String get receiptNoPrinterToast;
+  String get printerPaperWidth;
+  String get printerPaper80;
+  String get printerPaper58;
+  String get printerPaperWidthHelp;
 
   // ── Floor ─────────────────────────────────────────────────────────────────
   String get pickATable;
@@ -1415,7 +1427,6 @@ sealed class AppStrings {
   String receiptReprintTitle(String invoice);
   String get receiptReprintExplain;
   String get receiptReprintConfirm;
-  String get receiptReprintRecorded;
   String get receiptReprintNotPermitted;
 
   /// The audit ledger could not be written, so nothing was printed. An
@@ -1930,7 +1941,6 @@ final class EnStrings extends AppStrings {
   @override
   String get receiptReprintConfirm => 'Print';
   @override
-  String get receiptReprintRecorded => 'Reprint sent, and recorded';
   @override
   String get receiptReprintNotPermitted =>
       'You do not have permission to reprint a receipt.';
@@ -2454,7 +2464,28 @@ final class EnStrings extends AppStrings {
   @override
   String get printAndNew => 'Print & new';
   @override
-  String get receiptQueuedToast => 'Receipt queued for the default printer.';
+  String get receiptPrintedToast => 'Receipt printed.';
+  @override
+  String get receiptQueuedToast =>
+      'The printer did not answer. The receipt is queued and will print on the '
+      'next attempt.';
+  @override
+  String get receiptNotPrintedToast =>
+      'Not printed, and it could not be queued — check the printer and the '
+      'branch connection.';
+  @override
+  String get receiptNoPrinterToast =>
+      'No printer is set up on this till, so nothing was printed.';
+  @override
+  String get printerPaperWidth => 'Paper width';
+  @override
+  String get printerPaper80 => '80mm roll (576 dots)';
+  @override
+  String get printerPaper58 => '58mm roll (384 dots)';
+  @override
+  String get printerPaperWidthHelp =>
+      'Measure the roll, not the printer. A receipt built for the wrong width '
+      'is cut off at the edge rather than shrunk to fit.';
 
   @override
   String get pickATable => 'Pick a table';
@@ -4756,7 +4787,6 @@ final class ArStrings extends AppStrings {
   @override
   String get receiptReprintConfirm => 'طباعة';
   @override
-  String get receiptReprintRecorded => 'أُرسلت إعادة الطباعة وسُجِّلت';
   @override
   String get receiptReprintNotPermitted =>
       'ليس لديك صلاحية لإعادة طباعة الفاتورة.';
@@ -5276,7 +5306,28 @@ final class ArStrings extends AppStrings {
   @override
   String get printAndNew => 'طباعة وبيع جديد';
   @override
-  String get receiptQueuedToast => 'أُرسلت الفاتورة إلى الطابعة الافتراضية.';
+  String get receiptPrintedToast => 'تمت طباعة الفاتورة.';
+  @override
+  String get receiptQueuedToast =>
+      'الطابعة لم تستجب. الفاتورة في قائمة الانتظار وستُطبع مع المحاولة '
+      'التالية.';
+  @override
+  String get receiptNotPrintedToast =>
+      'لم تتم الطباعة ولم يمكن حفظها في قائمة الانتظار — راجع الطابعة والاتصال '
+      'بالفرع.';
+  @override
+  String get receiptNoPrinterToast =>
+      'لا توجد طابعة معدَّة على هذه الكاشير، فلم تتم أي طباعة.';
+  @override
+  String get printerPaperWidth => 'عرض الورق';
+  @override
+  String get printerPaper80 => 'رول 80 مم (576 نقطة)';
+  @override
+  String get printerPaper58 => 'رول 58 مم (384 نقطة)';
+  @override
+  String get printerPaperWidthHelp =>
+      'قِس الرول نفسه لا الطابعة. الفاتورة المبنية على عرض خاطئ تُقتص من الحافة '
+      'ولا تُصغَّر لتناسب الورق.';
 
   @override
   String get pickATable => 'اختر طاولة';

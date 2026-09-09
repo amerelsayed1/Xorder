@@ -3145,6 +3145,104 @@ const posMigrations = <PosMigration>[
       FOR EACH ROW EXECUTE FUNCTION pos_supplier_payment_drawer_link()
     ''',
   ]),
+  PosMigration(34, 'the print queue — a receipt the printer refused is not lost', [
+    // **The receipt is stored as bytes, not as a receipt.**
+    //
+    // The alternative was to store the order id and re-render on retry, which
+    // is smaller and was rejected: re-rendering tomorrow prints today's sale
+    // through tomorrow's renderer, tomorrow's receipt profile and tomorrow's
+    // language — so the slip that finally comes out is not the one the customer
+    // was promised. It also cannot work for the one case the queue exists for,
+    // a till whose database is fine and whose printer is not: the bytes are
+    // already built and sending them again is the whole job.
+    //
+    // 40KB a receipt on an 80mm roll. A restaurant that printed nothing for a
+    // week would hold a few hundred megabytes, which is a housekeeping job
+    // somebody can write when there is evidence anybody needs it.
+    '''
+    CREATE TABLE IF NOT EXISTS pos_print_jobs (
+      id             bigserial   PRIMARY KEY,
+      restaurant_id  bigint      NOT NULL REFERENCES pos_restaurants(id) ON DELETE CASCADE,
+      branch_id      bigint      NOT NULL REFERENCES pos_branches(id) ON DELETE CASCADE,
+      -- The till that took the money. A receipt has to come out of the printer
+      -- at the counter the customer is standing at, so the drain is per
+      -- terminal and never picks up another till's paper.
+      terminal_id    text        NOT NULL,
+      -- What it is a receipt FOR. Nullable because a job can outlive its order
+      -- being cancelled, and because a reprint of an order that was purged is
+      -- still a job that has to print.
+      order_id       bigint      REFERENCES pos_orders(id) ON DELETE SET NULL,
+      invoice_number text,
+      printer_name   text        NOT NULL,
+      kind           text        NOT NULL DEFAULT 'receipt',
+      -- The ESC/POS job, complete: reset, picture, feed, drawer kick if the
+      -- tender wanted one, cut. Sent verbatim on retry.
+      payload        bytea       NOT NULL,
+      status         text        NOT NULL DEFAULT 'pending',
+      attempts       integer     NOT NULL DEFAULT 0,
+      last_attempt_at timestamptz,
+      last_error     text,
+      queued_at      timestamptz NOT NULL DEFAULT now(),
+      printed_at     timestamptz,
+      CONSTRAINT pos_print_jobs_status_known CHECK (
+        status IN ('pending', 'printed')
+      ),
+      CONSTRAINT pos_print_jobs_kind_known CHECK (
+        kind IN ('receipt', 'reprint')
+      ),
+      -- A printed job that cannot say when is a job nobody can investigate.
+      CONSTRAINT pos_print_jobs_printed_has_time CHECK (
+        status <> 'printed' OR printed_at IS NOT NULL
+      )
+    )
+    ''',
+    // The drain's query, and the only one: this till's outstanding paper, in
+    // the order the sales happened. Partial, because a printed job is history
+    // and the queue is only ever read for what is still owed.
+    '''
+    CREATE INDEX IF NOT EXISTS pos_print_jobs_outstanding_idx
+      ON pos_print_jobs (branch_id, terminal_id, id)
+      WHERE status = 'pending'
+    ''',
+    // **A receipt prints once.**
+    //
+    // The retry loop marks a job printed and stops considering it. That rule
+    // held for exactly as long as there was one writer — and the second writer
+    // is not hypothetical here, it is two tills sharing a printer, or the same
+    // till relaunched while a drain was in flight. A job put back to 'pending'
+    // after it printed is a second copy of a receipt for one sale, which is how
+    // a refund gets claimed twice.
+    //
+    // In the database rather than only in Dart, for the reason every rule in
+    // this file is: the grant list is column-scoped and can be widened, and a
+    // support engineer with psql is a writer nobody reviewed.
+    '''
+    CREATE OR REPLACE FUNCTION pos_print_job_prints_once()
+      RETURNS trigger LANGUAGE plpgsql AS \$fn\$
+    BEGIN
+      IF OLD.status = 'printed' THEN
+        RAISE EXCEPTION
+          'print job % already printed at % — a receipt that has been on paper cannot be queued again; issue a reprint, which is a new job and is recorded against whoever asked for it',
+          OLD.id, OLD.printed_at;
+      END IF;
+
+      -- Marking a job printed stamps the time, so 'printed' and "when" cannot
+      -- disagree. The CHECK constraint refuses the row that omits it; this is
+      -- what makes the ordinary write not have to think about it.
+      IF NEW.status = 'printed' AND NEW.printed_at IS NULL THEN
+        NEW.printed_at := now();
+      END IF;
+
+      RETURN NEW;
+    END \$fn\$
+    ''',
+    'DROP TRIGGER IF EXISTS pos_print_jobs_print_once ON pos_print_jobs',
+    '''
+    CREATE TRIGGER pos_print_jobs_print_once
+      BEFORE UPDATE ON pos_print_jobs
+      FOR EACH ROW EXECUTE FUNCTION pos_print_job_prints_once()
+    ''',
+  ]),
 ];
 
 /// Brings the branch database up to the current schema.

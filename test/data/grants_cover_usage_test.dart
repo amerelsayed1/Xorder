@@ -73,6 +73,10 @@ void main() {
     'postgres_cash_movements_repository.dart',
     'postgres_order_history_repository.dart',
     'postgres_eta_queue_repository.dart',
+    // Receipts the printer would not take. Written at the counter on the till's
+    // own credential, because a printer that is off is a till problem and not a
+    // back-office one.
+    'postgres_print_queue_repository.dart',
     'postgres_receipt_profile_repository.dart',
     // Read at the till and written in the back office, so they are in both
     // lists. A cashier takes a payment method and charges what the restaurant

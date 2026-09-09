@@ -12,6 +12,7 @@ import '../data/cloud/cloud_sync.dart';
 import '../data/cloud/device_token_vault.dart';
 import '../data/cloud/outbox_drain.dart';
 import '../core/config/platform_endpoint.dart';
+import '../core/config/printer_config.dart';
 import '../core/config/terminal_config.dart';
 import '../core/config/terminal_profile.dart';
 import '../core/l10n/app_strings.dart';
@@ -45,6 +46,7 @@ import '../data/postgres/postgres_tender_types_repository.dart';
 import '../data/postgres/postgres_refunds_repository.dart';
 import '../data/postgres/money_config_codec.dart';
 import '../data/postgres/postgres_parked_tickets.dart';
+import '../data/postgres/postgres_print_queue_repository.dart';
 import '../data/postgres/postgres_shift_repository.dart';
 import '../data/unconfigured/unconfigured_repositories.dart';
 import '../features/licensing/data/file_license_store.dart';
@@ -591,6 +593,44 @@ final Provider<CloudSync?> cloudSyncProvider = Provider<CloudSync?>((ref) {
 final hardwarePortsProvider = Provider<HardwarePorts>(
   (ref) => const NetworkPrinterPorts(),
 );
+
+/// Which printer this till prints on, and how wide its paper is.
+///
+/// A property of the terminal, read from `config.json` before the first frame
+/// and re-applied when the wizard finishes — the same shape as
+/// [DeploymentController], and for the same reason: setup completes without a
+/// restart, so the value in memory has to be updated as well as the file.
+class PrinterConfigController extends Notifier<PrinterConfig> {
+  @override
+  PrinterConfig build() =>
+      ref.watch(terminalBootProvider).config?.printer ?? PrinterConfig.none;
+
+  void apply(PrinterConfig printer) => state = printer;
+
+  void reset() => state = PrinterConfig.none;
+}
+
+final printerConfigProvider =
+    NotifierProvider<PrinterConfigController, PrinterConfig>(
+      PrinterConfigController.new,
+    );
+
+/// Receipts the printer would not take.
+///
+/// Null where there is no database to queue into, exactly like
+/// [etaQueueRepositoryProvider]: a till mid-setup has nowhere to put a failed
+/// print, and the receipt path says "not printed" rather than "queued".
+final printQueueRepositoryProvider = Provider<PrintQueueRepository?>((ref) {
+  final config = ref.watch(deploymentProvider);
+  final context = ref.watch(posWriteContextProvider);
+  if (context == null || PosDatabase.hostFor(config) == null) return null;
+
+  return PostgresPrintQueueRepository(
+    database: ref.watch(posDatabaseProvider),
+    config: config,
+    context: context,
+  );
+});
 
 final branchesProvider = FutureProvider<List<PosBranch>>(
   (ref) => ref.watch(branchRepositoryProvider).forTenant(),

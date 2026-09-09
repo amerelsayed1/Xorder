@@ -828,6 +828,24 @@ class FakeHardwarePorts implements HardwarePorts {
     await Future<void>.delayed(const Duration(milliseconds: 500));
     return true;
   }
+
+  /// Every job this fake is handed, in order, so a widget test can ask what
+  /// actually went to the printer rather than whether a toast appeared.
+  final jobs = <List<int>>[];
+
+  /// Flip to make the printer stop answering, which is the interesting case:
+  /// the receipt has to queue and the sale has to complete anyway.
+  bool reachable = true;
+
+  @override
+  Future<bool> sendJob({
+    required String printerName,
+    required List<int> bytes,
+  }) async {
+    if (!reachable) return false;
+    jobs.add(bytes);
+    return true;
+  }
 }
 
 /// Roles, staff and the ledger, held in memory.

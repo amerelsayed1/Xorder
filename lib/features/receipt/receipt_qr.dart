@@ -16,6 +16,21 @@ import 'receipt_paper.dart';
 /// receipt's uuid; a square this app invented would scan to nothing. So the
 /// widget takes a string and draws it, and prints nothing at all when there
 /// isn't one — a slip without a QR is honest, a slip with a broken one is not.
+/// The code itself, built once for both the screen and the paper.
+///
+/// Extracted when printing arrived. The raster cannot use the widget — it has
+/// no widget tree — so it would otherwise build its own [QrCode], and the two
+/// would be one edit away from disagreeing about the error-correction level.
+/// A preview at M and a printed square at L is a difference nobody would see
+/// until a customer's phone would not read the paper.
+abstract final class ReceiptQrCode {
+  /// Error correction M, not L. A receipt gets folded, rained on and left in a
+  /// pocket, and the extra redundancy costs a few modules.
+  static QrImage imageOf(String payload) => QrImage(
+    QrCode.fromData(data: payload, errorCorrectLevel: QrErrorCorrectLevel.M),
+  );
+}
+
 class ReceiptQr extends StatelessWidget {
   const ReceiptQr({super.key, required this.payload, this.size = 132});
 
@@ -24,13 +39,7 @@ class ReceiptQr extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Error correction M, not L. A receipt gets folded, rained on and left in
-    // a pocket, and the extra redundancy costs a few modules.
-    final code = QrCode.fromData(
-      data: payload,
-      errorCorrectLevel: QrErrorCorrectLevel.M,
-    );
-    final image = QrImage(code);
+    final image = ReceiptQrCode.imageOf(payload);
 
     return SizedBox(
       width: size,

@@ -1,4 +1,5 @@
 import '../../../core/config/deployment.dart';
+import '../../../core/config/printer_config.dart';
 import '../../../domain/repositories/repositories.dart'
     show PosBranch, PosTerminalSummary;
 import '../../licensing/domain/license.dart';
@@ -105,6 +106,7 @@ class SetupDraft {
     this.terminalId,
     this.installationId,
     this.printerName,
+    this.paperWidthDots = PrinterConfig.width80mm,
     this.drawerAttached = false,
     this.scannerAttached = false,
     this.catalogueItems,
@@ -246,6 +248,12 @@ class SetupDraft {
   final String? terminalId;
   final String? installationId;
   final String? printerName;
+
+  /// The printable width of the roll, in dots. Asked in the wizard rather than
+  /// guessed, because a printer given the wrong one prints a receipt with its
+  /// right-hand column missing and looks broken instead of mis-set.
+  final int paperWidthDots;
+
   final bool drawerAttached;
   final bool scannerAttached;
 
@@ -356,6 +364,7 @@ class SetupDraft {
     String? terminalId,
     String? installationId,
     String? printerName,
+    int? paperWidthDots,
     bool? drawerAttached,
     bool? scannerAttached,
     int? catalogueItems,
@@ -408,6 +417,7 @@ class SetupDraft {
     terminalId: clearClaim ? null : (terminalId ?? this.terminalId),
     installationId: installationId ?? this.installationId,
     printerName: printerName ?? this.printerName,
+    paperWidthDots: paperWidthDots ?? this.paperWidthDots,
     drawerAttached: drawerAttached ?? this.drawerAttached,
     scannerAttached: scannerAttached ?? this.scannerAttached,
     catalogueItems: catalogueItems ?? this.catalogueItems,

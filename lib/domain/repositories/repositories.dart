@@ -812,4 +812,78 @@ abstract interface class HardwarePorts {
   /// Returns false when there is nothing to print to, rather than throwing —
   /// a failed test print must not abort setup.
   Future<bool> testPrint(String printerName);
+
+  /// Send a prepared job to a printer. False when the printer did not answer.
+  ///
+  /// **Bytes, not a receipt.** The obvious signature is
+  /// `printReceipt(ReceiptData)`, and it was rejected twice over: it would put
+  /// a `features/` type into a hardware port, and it would render inside the
+  /// port, where the drawer kick would have to be a second call and therefore a
+  /// second connection. A drawer that opens on a receipt which failed to print
+  /// is a drawer that opens for nothing. So the receipt path builds one job —
+  /// picture, feed, kick, cut — and this sends it, once.
+  ///
+  /// False rather than throwing, like everything else here: a printer that is
+  /// off is an ordinary Tuesday, and the sale is already complete.
+  Future<bool> sendJob({required String printerName, required List<int> bytes});
+}
+
+/// A receipt the printer would not take.
+class QueuedPrintJob {
+  const QueuedPrintJob({
+    required this.id,
+    required this.printerName,
+    required this.bytes,
+    required this.attempts,
+    this.invoiceNumber,
+  });
+
+  final int id;
+  final String printerName;
+
+  /// The complete ESC/POS job, as it was built at settlement. Sent verbatim.
+  final List<int> bytes;
+
+  /// How many times this has been tried. Shown to nobody yet; it is the number
+  /// a support engineer asks for first when a restaurant says the printer keeps
+  /// stopping.
+  final int attempts;
+
+  final String? invoiceNumber;
+}
+
+/// Receipts owed to paper.
+///
+/// **The toast promised this before it existed.** *Print & new* has shown
+/// "Receipt queued for the default printer" since the dialog was written, and
+/// nothing was queued and nothing was printed — the customer found out, not the
+/// cashier. This is the queue that makes the sentence true.
+///
+/// Not the outbox and not the ETA queue, though all three retry: those two are
+/// about a *record* reaching a server and are ordered by a chain. This is about
+/// a physical device at one counter, so it is keyed by terminal and its only
+/// ordering rule is that paper comes out in the order the sales happened.
+abstract interface class PrintQueueRepository {
+  /// Returns the id of the queued job.
+  Future<int> enqueue({
+    required String printerName,
+    required List<int> bytes,
+    required bool isReprint,
+    int? orderId,
+    String? invoiceNumber,
+  });
+
+  /// This terminal's outstanding paper, oldest first.
+  ///
+  /// [limit] is a real limit, not paging: a till that has been off all night
+  /// must not spool forty receipts at the counter while a customer waits. It
+  /// catches up a few at a time over the next few sales.
+  Future<List<QueuedPrintJob>> pending({int limit = 5});
+
+  /// It is on paper. A job marked printed is never offered again — the database
+  /// refuses to un-print it, see migration 34.
+  Future<void> markPrinted(int id);
+
+  /// It failed again. Counts the attempt and keeps the job.
+  Future<void> markAttempted(int id, {String? error});
 }
