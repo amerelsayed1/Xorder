@@ -3029,18 +3029,100 @@ class PosMigrator {
     final existing = await tx.execute('SELECT version FROM schema_migrations');
     final applied = existing.map((row) => row[0] as int).toSet();
 
-    final ran = <int>[];
-    for (final migration in migrations) {
-      if (applied.contains(migration.version)) continue;
-      for (final statement in migration.statements) {
-        await tx.execute(statement);
-      }
-      await tx.execute(
-        Sql.named('INSERT INTO schema_migrations (version) VALUES (@version)'),
-        parameters: {'version': migration.version},
-      );
-      ran.add(migration.version);
-    }
-    return ran;
-  });
-}
+    final ran = <int>[  // A ticket with no table can be put down too.
+  //
+  // Migration 7 keyed this table on (restaurant_id, table_id) with the table
+  // NOT NULL, which was the right shape for the only caller there was — leaving
+  // a seated ticket for the floor. The consequence found later is that a
+  // takeaway or a delivery could not be parked **at all**, so it survived
+  // nothing: not a crash, not a restart, not a cashier who has to serve
+  // somebody else first. The Park button on the sale screen was wired to send a
+  // round, which is how it went unnoticed.
+  //
+  // A parked ticket therefore now has two possible identities and exactly one
+  // of them at a time: its table, or its own client transaction id. Both are
+  // unique indexes rather than Dart checks — the floor's one real invariant is
+  // that a table holds at most one open ticket, and that has to be true of the
+  // rows, not of the code that happens to write them.
+  //
+  // No trigger here: every rule in this migration is about a single row. The
+  // triggers in this file exist for the case this is not — `pos_refunds_apply`
+  // has to look at the order it refunds. A unique index and a CHECK say all of
+  // this more cheaply, and fail at the statement that broke them.
+  //
+  // **32, not 25**: this work was branched from a commit whose last migration
+  // was 24, and `main` has since shipped 25 to 31. A duplicate version is the
+  // one mistake this table cannot survive — `schema_migrations` records the
+  // number, not the statements, so the second 25 to reach a real till would be
+  // marked applied without ever running.
+  PosMigration(32, 'a parked ticket without a table (the Park button)', [
+    // `branch_id` because a held ticket has nothing else that can say which
+    // shop it belongs to. The day-close check reached the branch through
+    // `pos_dining_tables`, and a ticket with no table would have been invisible
+    // to it — an unpaid sale that vanishes at midnight, which is precisely the
+    // failure parking is supposed to prevent.
+    '''
+    ALTER TABLE pos_parked_tickets
+      ADD COLUMN IF NOT EXISTS branch_id bigint
+        REFERENCES pos_branches(id) ON DELETE CASCADE
+    ''',
+    '''
+    UPDATE pos_parked_tickets t SET branch_id = dt.branch_id
+      FROM pos_dining_tables dt
+     WHERE dt.id = t.table_id AND t.branch_id IS NULL
+    ''',
+    'ALTER TABLE pos_parked_tickets DROP CONSTRAINT IF EXISTS pos_parked_tickets_pkey',
+    'ALTER TABLE pos_parked_tickets ALTER COLUMN table_id DROP NOT NULL',
+    // NULLs are distinct in a unique index by default, which is exactly the
+    // behaviour wanted: one row per table, and any number of rows with no
+    // table. Spelled out because `NULLS NOT DISTINCT` exists and would break
+    // held tickets the moment somebody parked a second one.
+    '''
+    CREATE UNIQUE INDEX IF NOT EXISTS pos_parked_tickets_table_key
+      ON pos_parked_tickets (restaurant_id, table_id)
+    ''',
+    '''
+    CREATE UNIQUE INDEX IF NOT EXISTS pos_parked_tickets_held_key
+      ON pos_parked_tickets (restaurant_id, client_transaction_id)
+      WHERE table_id IS NULL
+    ''',
+    // Locatable, always. A row that names neither a table nor a branch is one
+    // no till would hydrate and no day close would count.
+    '''
+    ALTER TABLE pos_parked_tickets
+      ADD CONSTRAINT pos_parked_tickets_locatable
+      CHECK (table_id IS NOT NULL OR branch_id IS NOT NULL)
+    ''',
+  ]),
+];
+
+/// Brings the branch database up to the current schema.
+///
+/// Safe to call from every till on every launch: the advisory lock serialises
+/// concurrent runners and `schema_migrations` makes each step run once.
+class PosMigrator {
+  const PosMigrator(this._db, {this.migrations = posMigrations});
+
+  final PosDatabase _db;
+  final List<PosMigration> migrations;
+
+  /// Returns the versions actually applied by *this* call.
+  Future<List<int>> migrate(
+    DeploymentConfig config,
+  ) async => _db.runTx(config, (tx) async {
+    // Held for the length of the transaction and released on commit, so a
+    // till that crashes mid-migration does not wedge the branch.
+    await tx.execute('SELECT pg_advisory_xact_lock($_migrationLockKey)');
+
+    await tx.execute('''
+          CREATE TABLE IF NOT EXISTS schema_migrations (
+            version    integer     PRIMARY KEY,
+            applied_at timestamptz NOT NULL DEFAULT now()
+          )
+        ''');
+
+    final existing = await tx.execute('SELECT version FROM schema_migrations');
+    final applied = existing.map((row) => row[0] as int).toSet();
+
+    final ran = <int>[
+];

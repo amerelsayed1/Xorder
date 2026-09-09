@@ -153,6 +153,16 @@ sealed class AppStrings {
   String get parkKey;
   String get voidTicket;
 
+  // ── Held tickets — parked with no table ───────────────────────────────────
+  String get heldTickets;
+  String heldTicketsKey(int count);
+  String get heldTicketsHelp;
+  String get noHeldTickets;
+
+  /// `Takeaway · 3 items` — what one held ticket is, before its total.
+  String heldTicketSummary(String orderType, int items);
+  String get ticketParked;
+
   // ── Modifier sheet ────────────────────────────────────────────────────────
   String modifierGroupFull(String group, int max);
   String pickGroupFirst(String group);
@@ -1532,7 +1542,9 @@ sealed class AppStrings {
   String get dayCloseClear;
   String get dayCloseBlockersTitle;
   String dayBlockerOpenShifts(int count);
-  String dayBlockerParkedTables(int count);
+  /// Seated tables and held tickets together: both are money the till has
+  /// taken responsibility for and not yet collected.
+  String dayBlockerParkedTickets(int count);
   String dayBlockerUnpaidOrders(int count);
   String get dayCloseAction;
   String get dayForceCloseAction;
@@ -2169,8 +2181,9 @@ final class EnStrings extends AppStrings {
   String dayBlockerOpenShifts(int count) =>
       count == 1 ? '1 till still has a drawer open' : '$count tills still have drawers open';
   @override
-  String dayBlockerParkedTables(int count) =>
-      count == 1 ? '1 table is still seated' : '$count tables are still seated';
+  String dayBlockerParkedTickets(int count) => count == 1
+      ? '1 ticket is still parked'
+      : '$count tickets are still parked';
   @override
   String dayBlockerUnpaidOrders(int count) =>
       count == 1 ? '1 order has not been paid' : '$count orders have not been paid';
@@ -2342,6 +2355,22 @@ final class EnStrings extends AppStrings {
   String get parkKey => 'Park  F4';
   @override
   String get voidTicket => 'Void ticket';
+
+  @override
+  String get heldTickets => 'Held tickets';
+  @override
+  String heldTicketsKey(int count) => 'Held  $count';
+  @override
+  String get heldTicketsHelp =>
+      'Parked with no table. Tap one to bring it back — whatever is on screen '
+      'is parked first, so nothing is lost.';
+  @override
+  String get noHeldTickets => 'Nothing is being held.';
+  @override
+  String heldTicketSummary(String orderType, int items) =>
+      items == 1 ? '$orderType · 1 item' : '$orderType · $items items';
+  @override
+  String get ticketParked => 'Ticket parked. It is under Held.';
 
   @override
   String modifierGroupFull(String group, int max) =>
@@ -4968,8 +4997,9 @@ final class ArStrings extends AppStrings {
   String dayBlockerOpenShifts(int count) =>
       count == 1 ? 'كاشير واحد ما زال درجه مفتوحًا' : '$count كاشيرات ما زالت أدراجها مفتوحة';
   @override
-  String dayBlockerParkedTables(int count) =>
-      count == 1 ? 'طاولة واحدة ما زالت مشغولة' : '$count طاولات ما زالت مشغولة';
+  String dayBlockerParkedTickets(int count) => count == 1
+      ? 'طلب واحد ما زال معلَّقًا'
+      : '$count طلبات ما زالت معلَّقة';
   @override
   String dayBlockerUnpaidOrders(int count) =>
       count == 1 ? 'طلب واحد لم يُدفع' : '$count طلبات لم تُدفع';
@@ -5140,6 +5170,22 @@ final class ArStrings extends AppStrings {
   String get parkKey => 'تعليق  F4';
   @override
   String get voidTicket => 'إلغاء الطلب';
+
+  @override
+  String get heldTickets => 'الطلبات المعلَّقة';
+  @override
+  String heldTicketsKey(int count) => 'المعلَّقة  $count';
+  @override
+  String get heldTicketsHelp =>
+      'طلبات معلَّقة بدون طاولة. اضغط على أحدها لاستعادته — وما هو على الشاشة '
+      'الآن يُعلَّق أولاً، فلا يضيع شيء.';
+  @override
+  String get noHeldTickets => 'لا توجد طلبات معلَّقة.';
+  @override
+  String heldTicketSummary(String orderType, int items) =>
+      items == 1 ? '$orderType · بند واحد' : '$orderType · $items بند';
+  @override
+  String get ticketParked => 'تم تعليق الطلب. تجده في «المعلَّقة».';
 
   @override
   String modifierGroupFull(String group, int max) =>

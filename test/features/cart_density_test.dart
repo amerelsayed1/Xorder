@@ -75,7 +75,7 @@ void main() {
             density: density,
             onEditNote: onEditNote,
             onQuantityChanged: (_, _) {},
-            onSendRound: () {},
+            onHold: () {},
             onVoid: () {},
             onCharge: () {},
           ),

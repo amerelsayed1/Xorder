@@ -20,6 +20,7 @@ import '../receipt/receipt_dialog.dart';
 import '../shift/presentation/shift_dialogs.dart';
 import 'widgets/cart_panel.dart';
 import 'widgets/discount_sheet.dart';
+import 'widgets/held_tickets_dialog.dart';
 import 'widgets/line_void_dialog.dart';
 import '../../domain/models/business_day.dart';
 import '../cash/presentation/cash_dialogs.dart';
@@ -186,7 +187,7 @@ class _SaleScreenState extends ConsumerState<SaleScreen> {
     // and the disk row must go for the same reason it does after payment — a
     // voided table that stayed parked would come back on the floor holding a
     // bill nobody owes.
-    ref.read(openTicketsProvider.notifier).settle(ticket.tableId);
+    ref.read(openTicketsProvider.notifier).settle(ticket);
 
     setState(() => _selectedLineKey = null);
     ref.read(ticketProvider.notifier).reset();
@@ -453,9 +454,64 @@ class _SaleScreenState extends ConsumerState<SaleScreen> {
     }
   }
 
+  /// The secondary cart action, whatever it means for this ticket.
+  ///
+  /// **The single decision point for the button and for F4.** They used to be
+  /// wired separately — the button read its label off `isSeated` and then always
+  /// sent a round, and F4 called the round handler unconditionally — so a
+  /// takeaway ticket could not be put down at all, and the control that said
+  /// *Park* sent food to the kitchen instead.
+  void _hold(Ticket ticket) {
+    final action = TicketHoldAction.forTicket(ticket);
+    if (!action.isAvailableFor(ticket)) return;
+
+    switch (action) {
+      case TicketHoldAction.sendRound:
+        _sendRound();
+      case TicketHoldAction.park:
+        _park(ticket);
+    }
+  }
+
   void _sendRound() {
     ref.read(ticketProvider.notifier).sendRound();
     posToast(context, context.strings.roundSentToKitchen);
+  }
+
+  /// Put the ticket down and clear the till for the next customer.
+  ///
+  /// The live ticket is reset rather than left on screen, because a Park that
+  /// left the ticket where it was would give the cashier two copies of one sale
+  /// — the parked one and the one in front of them — and whichever they then
+  /// charged, the other would still be there at the day close.
+  void _park(Ticket ticket) {
+    ref.read(openTicketsProvider.notifier).park(ticket);
+    ref.read(ticketProvider.notifier).reset();
+    setState(() {
+      _selectedLineKey = null;
+      // The next ticket gets its own answer to the density question.
+      _compactCart = false;
+    });
+    posToast(context, context.strings.ticketParked);
+  }
+
+  /// Pick a held ticket back up.
+  ///
+  /// Whatever is on screen is parked first, so a resume never destroys a sale —
+  /// the alternative, refusing to resume while the till is busy, would leave a
+  /// cashier with a customer in front of them and no way to reach the order they
+  /// are asking about.
+  Future<void> _showHeld(Ticket live) async {
+    final held = ref.read(openTicketsProvider).heldOtherThan(live.id);
+    final chosen = await HeldTicketsDialog.show(context, tickets: held);
+    if (chosen == null || !mounted) return;
+
+    ref.read(openTicketsProvider.notifier).park(live);
+    ref.read(ticketProvider.notifier).adopt(chosen);
+    setState(() {
+      _selectedLineKey = null;
+      _compactCart = false;
+    });
   }
 
   @override
@@ -539,9 +595,11 @@ class _SaleScreenState extends ConsumerState<SaleScreen> {
         bindings: {
           const SingleActivator(LogicalKeyboardKey.f2):
               _searchFocus.requestFocus,
-          const SingleActivator(LogicalKeyboardKey.f4): () {
-            if (ticket.hasDraft) _sendRound();
-          },
+          // Whatever the cart's secondary button does for this ticket. The key
+          // and the button go through one resolver on purpose: they were two
+          // paths once, and the one nobody was looking at sent a round from a
+          // control labelled Park.
+          const SingleActivator(LogicalKeyboardKey.f4): () => _hold(ticket),
           const SingleActivator(LogicalKeyboardKey.f5): () =>
               _overridePrice(ticket),
           const SingleActivator(LogicalKeyboardKey.f6): () => _discount(ticket),
@@ -627,10 +685,12 @@ class _SaleScreenState extends ConsumerState<SaleScreen> {
         setState(() => _selectedLineKey = _selectedLineKey == key ? null : key),
     onQuantityChanged: (key, delta) =>
         ref.read(ticketProvider.notifier).changeQuantity(key, delta),
-    onSendRound: _sendRound,
+    onHold: () => _hold(ticket),
     onVoid: () => _void(ticket),
     onCharge: () => _charge(ticket),
     onChangeTable: widget.onTables,
+    heldCount: ref.watch(openTicketsProvider).heldOtherThan(ticket.id).length,
+    onShowHeld: () => _showHeld(ticket),
   );
 
   List<Product> _visibleProducts(Catalog catalog, PosUiState ui) {

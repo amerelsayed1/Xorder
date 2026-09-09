@@ -193,7 +193,7 @@ class _DayCloseDialogState extends ConsumerState<DayCloseDialog> {
   static String _blockerText(AppStrings strings, DayBlocker blocker) =>
       switch (blocker.kind) {
         DayBlockerKind.openShift => strings.dayBlockerOpenShifts(blocker.count),
-        DayBlockerKind.parkedTicket => strings.dayBlockerParkedTables(
+        DayBlockerKind.parkedTicket => strings.dayBlockerParkedTickets(
           blocker.count,
         ),
         DayBlockerKind.unpaidOrder => strings.dayBlockerUnpaidOrders(

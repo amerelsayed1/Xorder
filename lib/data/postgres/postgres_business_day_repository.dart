@@ -113,14 +113,17 @@ class PostgresBusinessDayRepository implements BusinessDayRepository {
         (SELECT count(*) FROM pos_shifts s
           WHERE s.restaurant_id = @restaurant AND s.branch_id = @branch
             AND s.closed_at IS NULL),
-        -- Joined through the table rather than filtered on a branch column,
-        -- because `pos_parked_tickets` has none: it is keyed on
-        -- (restaurant_id, table_id), and the table is what knows which shop it
-        -- stands in. Without the join a two-branch server would count the other
-        -- shop's seated tables as blockers on this one's night.
+        -- Every parked ticket, seated or not. `branch_id` was added to the
+        -- table in migration 32 for this count: an INNER JOIN through
+        -- `pos_dining_tables` was the only way to know the branch before that,
+        -- and a held takeaway ticket has no table to join to — so it would have
+        -- been an unpaid sale the day close could not see, closed over, and
+        -- gone. The join survives as the fallback for rows parked before the
+        -- migration whose table has since been deleted.
         (SELECT count(*) FROM pos_parked_tickets t
-          JOIN pos_dining_tables dt ON dt.id = t.table_id
-         WHERE t.restaurant_id = @restaurant AND dt.branch_id = @branch),
+          LEFT JOIN pos_dining_tables dt ON dt.id = t.table_id
+         WHERE t.restaurant_id = @restaurant
+           AND coalesce(t.branch_id, dt.branch_id) = @branch),
         (SELECT count(*) FROM pos_orders o
           WHERE o.restaurant_id = @restaurant AND o.branch_id = @branch
             AND o.business_day_id = @day

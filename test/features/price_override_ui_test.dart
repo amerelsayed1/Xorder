@@ -104,7 +104,7 @@ void main() {
           cashierName: 'Nour Adel',
           online: true,
           onQuantityChanged: (_, _) {},
-          onSendRound: () {},
+          onHold: () {},
           onVoid: () {},
           onCharge: () {},
         ),

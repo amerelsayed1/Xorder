@@ -166,6 +166,12 @@ final routerProvider = Provider<GoRouter>((ref) {
             // Leaving a seated, non-empty ticket parks it on its table — the
             // floor then shows the table busy with its running total, and the
             // live ticket clears so the next table starts fresh.
+            //
+            // **Seated only, still.** An unseated ticket on the way to the floor
+            // is a ticket somebody is going to seat: parking it as a held ticket
+            // and clearing the screen would take the order away from the cashier
+            // at the exact moment they were choosing its table. Putting an
+            // unseated ticket down is what Park is for, and it is one key away.
             final ticket = ref.read(ticketProvider);
             if (ticket.isSeated && ticket.lines.isNotEmpty) {
               ref.read(openTicketsProvider.notifier).park(ticket);

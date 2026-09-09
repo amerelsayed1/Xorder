@@ -127,7 +127,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
     ref.invalidate(pendingSyncCountProvider);
 
     // The table's money is in the drawer — its seat is free again.
-    ref.read(openTicketsProvider.notifier).settle(updated.tableId);
+    ref.read(openTicketsProvider.notifier).settle(updated);
 
     Navigator.of(context).pop(SettledSale(ticket: updated, result: result));
   }

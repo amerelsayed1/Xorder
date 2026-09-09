@@ -608,38 +608,84 @@ final tablesProvider = FutureProvider<List<DiningTable>>(
   (ref) => ref.watch(tablesRepositoryProvider).liveFloor(),
 );
 
-/// Tickets parked on tables — the till's own floor state.
+/// Everything this till has open but is not ringing up right now.
 ///
-/// One entry per seated table. Parking happens when the cashier leaves a
-/// seated, non-empty ticket for the floor; resuming happens when its table is
-/// tapped; settlement frees the table. In memory for now — a restart loses
-/// parked (unpaid, unsent) tickets, the same loss the single live ticket
-/// already suffers; persisting the open floor into the local database is the
-/// follow-up that fixes both at once.
-class OpenTicketsController extends Notifier<Map<int, Ticket>> {
+/// **Two collections, because only one kind of open ticket has a table to hold
+/// it.** [onTables] is the dine-in floor, keyed by table id, and it is what the
+/// floor screen paints. [held] is every parked ticket with no table — a
+/// takeaway or a delivery the cashier put down to serve the person behind, and
+/// until now a ticket the till had no way to put down at all.
+///
+/// The alternative was one map keyed by the client transaction id with the
+/// table as an attribute. It was rejected because the floor's question is
+/// "what is on table 12", asked on every repaint of every tile: answering it
+/// from a transaction-keyed map means a scan per tile, and the one invariant
+/// that matters most on a floor — at most one open ticket per table — stops
+/// being a property of the data structure and becomes something code has to
+/// remember to check.
+class OpenTickets {
+  const OpenTickets({this.onTables = const {}, this.held = const []});
+
+  /// Parked dine-in tickets, by table id.
+  final Map<int, Ticket> onTables;
+
+  /// Parked tickets with no table, oldest first.
+  final List<Ticket> held;
+
+  bool get isEmpty => onTables.isEmpty && held.isEmpty;
+
+  /// The held tickets that are not the one on screen.
+  ///
+  /// A resumed hold keeps its parked row until it is paid or voided — a crash
+  /// between resume and payment must not lose the sale — so the live ticket is
+  /// routinely still in [held]. Offering it back to the cashier as something to
+  /// resume would be offering them the screen they are already looking at.
+  List<Ticket> heldOtherThan(String liveTicketId) => [
+    for (final ticket in held)
+      if (ticket.id != liveTicketId) ticket,
+  ];
+
+  OpenTickets copyWith({Map<int, Ticket>? onTables, List<Ticket>? held}) =>
+      OpenTickets(
+        onTables: onTables ?? this.onTables,
+        held: held ?? this.held,
+      );
+}
+
+/// The till's parked work: the dine-in floor, and the tickets on the counter.
+///
+/// Write-through to `pos_parked_tickets`, so all of it survives a restart:
+/// parking upserts, settling and voiding delete, and the boot hydrates.
+class OpenTicketsController extends Notifier<OpenTickets> {
   @override
-  Map<int, Ticket> build() {
+  OpenTickets build() {
     ref.onDispose(() => _disposed = true);
     // Put the floor back the way the restart found it. Async on purpose —
     // the first frame must not wait on a database — and merge-not-replace,
     // so a table seated in the seconds before hydration lands wins over its
     // own stale disk copy.
     Future.microtask(_hydrate);
-    return const {};
+    return const OpenTickets();
   }
 
   bool _disposed = false;
 
   PostgresParkedTickets? get _store {
     final config = ref.read(deploymentProvider);
-    final restaurantId = ref.read(terminalProfileProvider).restaurantId;
-    if (restaurantId == null || PosDatabase.hostFor(config) == null) {
-      return null;
-    }
+    // The write context rather than the restaurant id alone, because a parked
+    // ticket with no table can only say which shop it belongs to by carrying
+    // the branch — and a held ticket the day-close check cannot see is an
+    // unpaid sale that disappears at midnight. A till that cannot name its
+    // branch parks in memory only, which is what it already did before it was
+    // adopted.
+    final context = ref.read(posWriteContextProvider);
+    if (context == null || PosDatabase.hostFor(config) == null) return null;
+
     return PostgresParkedTickets(
       database: ref.read(posDatabaseProvider),
       config: config,
-      restaurantId: restaurantId,
+      restaurantId: context.restaurantId,
+      branchId: context.branchId,
     );
   }
 
@@ -649,40 +695,88 @@ class OpenTicketsController extends Notifier<Map<int, Ticket>> {
     try {
       final catalog = await ref.read(catalogProvider.future);
       final parked = await store.load(catalog);
-      if (_disposed || parked.isEmpty) return;
-      state = {...parked, ...state};
+      if (_disposed || (parked.onTables.isEmpty && parked.held.isEmpty)) {
+        return;
+      }
+      // Merge, never replace: a ticket parked in the seconds before hydration
+      // landed wins over its own stale disk copy — and is not listed twice
+      // beside it, which is what a plain concatenation would have done.
+      final live = {for (final ticket in state.held) ticket.id};
+      state = OpenTickets(
+        onTables: {...parked.onTables, ...state.onTables},
+        held: [
+          for (final ticket in parked.held)
+            if (!live.contains(ticket.id)) ticket,
+          ...state.held,
+        ],
+      );
     } on Object {
       // A floor that cannot hydrate is empty, not broken — parking still
       // works and writes through from here on.
     }
   }
 
-  /// Park a seated ticket on its table. A ticket with no table or no lines
-  /// has nothing to hold a table with, and is ignored rather than refused —
-  /// leaving the sale screen with an empty ticket is normal, not an error.
+  /// Put a ticket down.
+  ///
+  /// A seated ticket goes onto its table; anything else joins [OpenTickets.held]
+  /// under its own transaction id. An empty ticket is ignored rather than
+  /// refused — leaving the sale screen with nothing rung up is normal, not an
+  /// error, and there is nothing to come back to.
   void park(Ticket ticket) {
+    if (ticket.lines.isEmpty) return;
     final tableId = ticket.tableId;
-    if (tableId == null || ticket.lines.isEmpty) return;
-    state = {...state, tableId: ticket};
+
+    state = tableId != null
+        ? state.copyWith(onTables: {...state.onTables, tableId: ticket})
+        // Keyed on the transaction id, so parking the same ticket twice
+        // replaces the earlier copy instead of holding two versions of one
+        // sale — which is what a cashier does when they add a line to a
+        // resumed hold and put it down again.
+        : state.copyWith(
+            held: [
+              for (final held in state.held)
+                if (held.id != ticket.id) held,
+              ticket,
+            ],
+          );
+
     unawaited(_store?.save(ticket) ?? Future.value());
   }
 
-  Ticket? at(int tableId) => state[tableId];
+  Ticket? at(int tableId) => state.onTables[tableId];
 
-  /// The table's money reached the till — the seat is free again.
-  void settle(int? tableId) {
-    if (tableId == null) return;
-    if (state.containsKey(tableId)) {
-      state = {...state}..remove(tableId);
+  /// This ticket's money has been dealt with — paid, or voided. Let it go.
+  ///
+  /// Takes the whole ticket rather than a table id: a held ticket has no table
+  /// to be identified by, and a ticket that was seated when it was parked and
+  /// is not now (somebody switched a dine-in order to takeaway, which clears
+  /// the table) has to release the row it actually left behind.
+  void settle(Ticket ticket) {
+    final tables = {...state.onTables}
+      ..removeWhere(
+        (tableId, parked) =>
+            tableId == ticket.tableId || parked.id == ticket.id,
+      );
+    final held = [
+      for (final parked in state.held)
+        if (parked.id != ticket.id) parked,
+    ];
+
+    if (tables.length != state.onTables.length ||
+        held.length != state.held.length) {
+      state = OpenTickets(onTables: tables, held: held);
     }
-    // The disk row goes regardless of what memory held: a settled table must
+    // The disk row goes regardless of what memory held: a settled sale must
     // not resurrect on the next boot.
-    unawaited(_store?.remove(tableId) ?? Future.value());
+    unawaited(
+      _store?.remove(tableId: ticket.tableId, transactionId: ticket.id) ??
+          Future.value(),
+    );
   }
 }
 
 final openTicketsProvider =
-    NotifierProvider<OpenTicketsController, Map<int, Ticket>>(
+    NotifierProvider<OpenTicketsController, OpenTickets>(
       OpenTicketsController.new,
     );
 
@@ -690,7 +784,7 @@ final openTicketsProvider =
 /// till's parked tickets — busy tiles carry their item count and total.
 final floorTablesProvider = FutureProvider<List<DiningTable>>((ref) async {
   final tables = await ref.watch(tablesProvider.future);
-  return overlayOpenTickets(tables, ref.watch(openTicketsProvider));
+  return overlayOpenTickets(tables, ref.watch(openTicketsProvider).onTables);
 });
 
 /// How many settled sales this terminal still owes the platform.

@@ -352,6 +352,46 @@ void main() {
     expect(await refusalFor('SELECT 1 FROM pos_refunds'), isNull);
   });
 
+  test('the till can park a ticket that has no table, and let it go', () async {
+    // Migration 32 gave `pos_parked_tickets` a `branch_id` that references
+    // `pos_branches` — a table the till may read and must not write. A foreign
+    // key check needs no privilege on the referenced table, but "needs no
+    // privilege" is exactly the kind of claim a superuser run cannot make, and
+    // getting it wrong means a takeaway ticket that parks in every test and
+    // refuses at the counter.
+    final restaurant = (await db.query(
+      pg.config,
+      "INSERT INTO pos_restaurants (slug, name) VALUES ('park-probe', 'Park') "
+      'ON CONFLICT (slug) DO UPDATE SET name = pos_restaurants.name '
+      'RETURNING id',
+    )).first[0]! as int;
+    final branch = (await db.query(
+      pg.config,
+      "INSERT INTO pos_branches (restaurant_id, code, name) "
+      "VALUES (@r, 'PRB', 'Probe') "
+      'ON CONFLICT (restaurant_id, code) DO UPDATE SET name = pos_branches.name '
+      'RETURNING id',
+      parameters: {'r': restaurant},
+    )).first[0]! as int;
+
+    final connection = await connect();
+    addTearDown(connection.close);
+    await connection.execute(
+      Sql.named(
+        'INSERT INTO pos_parked_tickets (restaurant_id, branch_id, table_id, '
+        "  client_transaction_id, payload) "
+        "VALUES (@r, @b, NULL, gen_random_uuid(), '{}'::jsonb)",
+      ),
+      parameters: {'r': restaurant, 'b': branch},
+    );
+    // Picking it up again is the DELETE the till is deliberately granted.
+    await connection.execute(
+      Sql.named(
+        'DELETE FROM pos_parked_tickets WHERE restaurant_id = @r',
+      ),
+      parameters: {'r': restaurant},
+    );
+  });
 }
 
 /// A role with grants on it cannot be dropped until they are revoked, and
