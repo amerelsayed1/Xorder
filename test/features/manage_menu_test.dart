@@ -156,6 +156,50 @@ void main() {
     }
   });
 
+  testWidgets('the panes are grouped by area, not one long list', (
+    tester,
+  ) async {
+    // Nine flat items already reached the bottom of a 900px rail, and Wave D
+    // owes four more. Areas are how somebody thinks about the job anyway:
+    // "where do I change the VAT rate" is answered by *Money* long before it is
+    // answered by reading eleven pane names.
+    await open(tester, signedIn: owner);
+
+    // MicroLabel uppercases.
+    expect(find.text('PEOPLE'), findsOneWidget);
+    expect(find.text('MONEY'), findsOneWidget);
+    expect(find.text('BUYING'), findsOneWidget);
+    expect(find.text('COMPLIANCE'), findsOneWidget);
+    expect(find.text('SYSTEM'), findsOneWidget);
+
+    // And no heading over nothing: this harness has no catalogue-authoring
+    // repository, so the Menu area has no panes and must not appear.
+    expect(find.text('MENU'), findsNothing);
+  });
+
+  testWidgets('every pane has an area, and every area shown has a pane', (
+    tester,
+  ) async {
+    // `areaOf` is total over the enum so the first half cannot fail to compile;
+    // this checks the second — a heading over a gap reads as a pane that failed
+    // to load.
+    final areas = managementAreasFor(
+      admin: owner,
+      authorsItsOwnCatalogue: true,
+    );
+    for (final (area, panes) in areas) {
+      expect(panes, isNotEmpty, reason: area.name);
+      for (final pane in panes) {
+        expect(areaOf(pane), area, reason: pane.name);
+      }
+    }
+    expect(
+      areas.expand((a) => a.$2).toSet().length,
+      ManagementPane.values.length,
+      reason: 'an owner on an offline till has every pane, exactly once',
+    );
+  });
+
   testWidgets('picking one names the pane, and nothing else', (tester) async {
     final picked = await open(tester, signedIn: owner);
 

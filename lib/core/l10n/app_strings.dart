@@ -1003,6 +1003,12 @@ sealed class AppStrings {
   String get supplierOverdue;
 
   // Management chrome.
+  String get areaPeople;
+  String get areaMenu;
+  String get areaMoney;
+  String get areaBuying;
+  String get areaCompliance;
+  String get areaSystem;
   String get manage;
   String get manageMenuTooltip;
   String get backToTill;
@@ -4005,6 +4011,18 @@ final class EnStrings extends AppStrings {
   String get supplierOverdue => 'overdue';
 
   @override
+  String get areaPeople => 'People';
+  @override
+  String get areaMenu => 'Menu';
+  @override
+  String get areaMoney => 'Money';
+  @override
+  String get areaBuying => 'Buying';
+  @override
+  String get areaCompliance => 'Compliance';
+  @override
+  String get areaSystem => 'System';
+  @override
   String get manage => 'Manage';
   @override
   String get manageMenuTooltip => 'Open a back-office area';
@@ -6644,6 +6662,18 @@ final class ArStrings extends AppStrings {
   @override
   String get supplierOverdue => 'متأخر';
 
+  @override
+  String get areaPeople => 'الأفراد';
+  @override
+  String get areaMenu => 'المنيو';
+  @override
+  String get areaMoney => 'المال';
+  @override
+  String get areaBuying => 'المشتريات';
+  @override
+  String get areaCompliance => 'الالتزام الضريبي';
+  @override
+  String get areaSystem => 'النظام';
   @override
   String get manage => 'الإدارة';
   @override

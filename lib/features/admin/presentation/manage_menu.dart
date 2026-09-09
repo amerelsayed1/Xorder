@@ -58,11 +58,11 @@ class ManageMenu extends ConsumerWidget {
       return const SizedBox.shrink();
     }
 
-    final panes = managementPanesFor(
+    final areas = managementAreasFor(
       admin: admin,
       authorsItsOwnCatalogue: ref.watch(catalogAdminRepositoryProvider) != null,
     );
-    if (panes.isEmpty) return const SizedBox.shrink();
+    if (areas.isEmpty) return const SizedBox.shrink();
 
     return MenuAnchor(
       style: MenuStyle(
@@ -77,12 +77,26 @@ class ManageMenu extends ConsumerWidget {
         maximumSize: const WidgetStatePropertyAll(Size(320, 620)),
       ),
       menuChildren: [
-        for (final pane in panes)
-          _MenuRow(
-            key: Key('manage-menu-${pane.name}'),
-            pane: pane,
-            onPressed: () => onPick(pane),
+        // Grouped exactly as the rail groups them, and for the same reason:
+        // "where do I change the VAT rate" is answered by *Money* long before
+        // it is answered by reading eleven pane names.
+        for (final (area, panes) in areas) ...[
+          Padding(
+            padding: const EdgeInsets.only(
+              left: PosSpace.md,
+              right: PosSpace.md,
+              top: PosSpace.sm,
+              bottom: 2,
+            ),
+            child: MicroLabel(managementAreaName(strings, area)),
           ),
+          for (final pane in panes)
+            _MenuRow(
+              key: Key('manage-menu-${pane.name}'),
+              pane: pane,
+              onPressed: () => onPick(pane),
+            ),
+        ],
       ],
       builder: (context, controller, _) => Tooltip(
         message: strings.manageMenuTooltip,

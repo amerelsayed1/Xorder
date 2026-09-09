@@ -85,6 +85,79 @@ List<ManagementPane> managementPanesFor({
 /// disappearing, and a cloud restaurant can still say how it takes money.
 const _authoringPanes = {ManagementPane.menu, ManagementPane.floor};
 
+/// The back office, in areas.
+///
+/// **Added because the rail ran out of room.** Nine flat items already reached
+/// the bottom of a 900px window; the four editors Wave D still owes — taxes,
+/// service charges, payment methods, order types — would have pushed it off the
+/// screen, and a navigation you have to scroll to discover is a navigation that
+/// hides half the product.
+///
+/// Areas rather than one long list for a second reason: they are how somebody
+/// thinks about the job. "Where do I change the VAT rate" is answered by *Money*
+/// long before it is answered by reading eleven pane names.
+enum ManagementArea {
+  /// Who works here and what they may do.
+  people,
+
+  /// What the restaurant sells.
+  menu,
+
+  /// What it charges, and how it takes it.
+  money,
+
+  /// What it buys, and who it owes.
+  buying,
+
+  /// What the tax authority sees.
+  compliance,
+
+  /// Everything about how this till behaves.
+  system,
+}
+
+/// Which area a pane belongs to.
+///
+/// A total function over the enum, so a pane added without an area fails to
+/// compile rather than quietly vanishing from the rail.
+ManagementArea areaOf(ManagementPane pane) => switch (pane) {
+  ManagementPane.staff || ManagementPane.roles => ManagementArea.people,
+  ManagementPane.menu || ManagementPane.floor => ManagementArea.menu,
+  ManagementPane.money => ManagementArea.money,
+  ManagementPane.purchasing => ManagementArea.buying,
+  ManagementPane.receipt || ManagementPane.eta => ManagementArea.compliance,
+  ManagementPane.activity => ManagementArea.system,
+};
+
+String managementAreaName(AppStrings s, ManagementArea area) => switch (area) {
+  ManagementArea.people => s.areaPeople,
+  ManagementArea.menu => s.areaMenu,
+  ManagementArea.money => s.areaMoney,
+  ManagementArea.buying => s.areaBuying,
+  ManagementArea.compliance => s.areaCompliance,
+  ManagementArea.system => s.areaSystem,
+};
+
+/// The visible panes, grouped, in area order and pane order within each.
+///
+/// Empty areas are absent rather than shown with nothing under them — a heading
+/// over a gap reads as a pane that failed to load.
+List<(ManagementArea, List<ManagementPane>)> managementAreasFor({
+  required PosStaff admin,
+  required bool authorsItsOwnCatalogue,
+}) {
+  final panes = managementPanesFor(
+    admin: admin,
+    authorsItsOwnCatalogue: authorsItsOwnCatalogue,
+  );
+  return [
+    for (final area in ManagementArea.values)
+      if ([for (final p in panes) if (areaOf(p) == area) p] case final own
+          when own.isNotEmpty)
+        (area, own),
+  ];
+}
+
 /// Where the caller was, and which pane they asked for.
 ///
 /// **Both, because the way out matters as much as the way in.** The route used
@@ -182,11 +255,12 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
       return _AdminCredentialGate(onClose: widget.onClose, admin: admin);
     }
 
-    final panes = managementPanesFor(
+    final areas = managementAreasFor(
       admin: admin,
       authorsItsOwnCatalogue:
           ref.watch(catalogAdminRepositoryProvider) != null,
     );
+    final panes = [for (final area in areas) ...area.$2];
 
     // A pane this terminal or this person does not have is not a pane the body
     // may render: `initialPane` is a deep link and a deep link can outlive the
@@ -205,7 +279,7 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
                 children: [
                   _Rail(
                     current: showing,
-                    panes: panes,
+                    areas: areas,
                     onPick: (pane) => setState(() => _pane = pane),
                   ),
                   Expanded(
@@ -275,15 +349,16 @@ class _Header extends StatelessWidget {
 class _Rail extends StatelessWidget {
   const _Rail({
     required this.current,
-    required this.panes,
+    required this.areas,
     required this.onPick,
   });
 
   final ManagementPane current;
 
-  /// Which panes this terminal actually has. Not `ManagementPane.values`: the Menu pane
-  /// is offline-only.
-  final List<ManagementPane> panes;
+  /// Which panes this terminal actually has, grouped. Not
+  /// `ManagementPane.values`: the two authoring panes are offline-only and a
+  /// pane whose capability this person lacks is absent.
+  final List<(ManagementArea, List<ManagementPane>)> areas;
   final ValueChanged<ManagementPane> onPick;
 
   @override
@@ -296,16 +371,30 @@ class _Rail extends StatelessWidget {
         color: context.pos.surface,
         border: Border(right: context.pos.resting),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+      // Scrollable, because thirteen panes do not fit a 900px window and a rail
+      // that overflows drops its last area on the floor with no indication that
+      // anything is missing.
+      child: ListView(
+        padding: EdgeInsets.zero,
         children: [
-          for (final pane in panes)
-            _RailItem(
-              label: managementPaneLabel(strings, pane).$1,
-              hint: managementPaneLabel(strings, pane).$2,
-              selected: pane == current,
-              onTap: () => onPick(pane),
+          for (final (area, panes) in areas) ...[
+            Padding(
+              padding: const EdgeInsets.only(
+                left: PosSpace.lg,
+                right: PosSpace.lg,
+                top: PosSpace.lg,
+                bottom: PosSpace.xs,
+              ),
+              child: MicroLabel(managementAreaName(strings, area)),
             ),
+            for (final pane in panes)
+              _RailItem(
+                label: managementPaneLabel(strings, pane).$1,
+                hint: managementPaneLabel(strings, pane).$2,
+                selected: pane == current,
+                onTap: () => onPick(pane),
+              ),
+          ],
         ],
       ),
     );
@@ -331,7 +420,10 @@ class _RailItem extends StatelessWidget {
     child: InkWell(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.all(PosSpace.lg),
+        padding: const EdgeInsets.symmetric(
+          horizontal: PosSpace.lg,
+          vertical: PosSpace.md,
+        ),
         decoration: BoxDecoration(
           border: Border(
             bottom: context.pos.hairline,
