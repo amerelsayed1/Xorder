@@ -6,8 +6,10 @@ import '../../../core/l10n/app_strings.dart';
 import '../../../core/ui/theme.dart';
 import '../../../core/ui/tokens.dart';
 import '../../../core/ui/widgets/pos_widgets.dart';
+import '../../../domain/models/backup.dart';
 import '../../../domain/models/business_day.dart';
 import '../../../domain/models/permissions.dart';
+import '../../../domain/models/shift.dart';
 import '../../../domain/services/authorization.dart';
 import '../../admin/presentation/supervisor_override.dart';
 
@@ -37,6 +39,44 @@ class _DayCloseDialogState extends ConsumerState<DayCloseDialog> {
   DayCloseCheck? _check;
   bool _busy = true;
   String? _error;
+
+  /// Set once the day is actually closed.
+  ///
+  /// The dialog can outlive the close by a few seconds — it stays open to
+  /// report a backup that did not work — and the caller must still be handed
+  /// the closed day when it finally goes. Without this the manager would press
+  /// the only remaining button and the screen behind would carry on believing
+  /// the day was open.
+  BusinessDay? _closed;
+
+  /// Take the automatic copy, if the restaurant asked for one.
+  ///
+  /// **Day close is the hook rather than a scheduler, and that is a decision.**
+  /// A scheduler on a till is a background job on a machine somebody switches
+  /// off at night, whose failures nobody sees and whose window lands in the
+  /// middle of service if the restaurant trades late. Day close is the one
+  /// moment that is *already* defined as "the day's data is complete and no
+  /// shift is open", it happens exactly once per trading day, and a person is
+  /// standing there to be told when it goes wrong. The cost is honest and worth
+  /// naming: a restaurant that never closes its day never gets a copy — and
+  /// that restaurant has a worse problem than backups, which the day-close
+  /// blocker list already puts in front of them.
+  ///
+  /// Returns whether there is now a copy worth the name.
+  Future<bool> _backUp(PosStaff by) async {
+    if (!ref.read(backupPolicyProvider).onDayClose) return true;
+
+    final service = await ref.read(backupServiceProvider.future);
+    if (service == null) return true; // No database; nothing to copy.
+
+    final result = await service.take(by: by, trigger: BackupTrigger.dayClose);
+    ref.invalidate(backupsProvider);
+    // A refusal cannot happen for an automatic copy — `take` only checks the
+    // capability for a manual one, deliberately, so that the nightly backup
+    // does not depend on who was closing. Handled anyway rather than asserted
+    // away: a `!` here would be a crash at midnight.
+    return result.succeeded && result.value!.isRestorable;
+  }
 
   @override
   void initState() {
@@ -123,7 +163,23 @@ class _DayCloseDialogState extends ConsumerState<DayCloseDialog> {
 
   Widget _body(AppStrings strings, PosPalette palette, DayCloseCheck? check) {
     if (_busy) {
-      return Center(child: CircularProgressIndicator(color: palette.accent));
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          CircularProgressIndicator(color: palette.accent),
+          // Only once there is something to close. On the first load this is a
+          // plain spinner, and naming a backup that has not been reached yet
+          // would be describing work nobody has asked for.
+          if (check != null) ...[
+            const SizedBox(height: PosSpace.md),
+            Text(
+              strings.backupDayCloseWorking,
+              textAlign: TextAlign.center,
+              style: PosText.ui(size: 12.5, color: palette.muted),
+            ),
+          ],
+        ],
+      );
     }
     if (check == null) {
       return Text(
@@ -219,7 +275,11 @@ class _DayCloseDialogState extends ConsumerState<DayCloseDialog> {
             child: PosButton(
               label: strings.cancel,
               border: Border.fromBorderSide(palette.resting),
-              onPressed: _busy ? null : () => Navigator.of(context).pop(),
+              // Carries the closed day out when the close succeeded and only
+              // the backup did not — see [_closed].
+              onPressed: _busy
+                  ? null
+                  : () => Navigator.of(context).pop(_closed),
             ),
           ),
           const SizedBox(width: PosSpace.sm),
@@ -285,7 +345,21 @@ class _DayCloseDialogState extends ConsumerState<DayCloseDialog> {
           );
       if (!mounted) return;
       ref.invalidate(businessDayProvider);
-      Navigator.of(context).pop(closed);
+
+      if (await _backUp(by)) {
+        if (!mounted) return;
+        Navigator.of(context).pop(closed);
+        return;
+      }
+      // The day IS closed. The dialog stays open only to say that the copy is
+      // not — popping straight through would make a silent failure of the one
+      // thing this hook exists to make un-forgettable.
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _closed = closed;
+        _error = strings.backupDayCloseFailed;
+      });
     } on Object {
       if (!mounted) return;
       // Still open. A day reported closed that is not would leave tomorrow's

@@ -3393,6 +3393,124 @@ const posMigrations = <PosMigration>[
       FOR EACH ROW EXECUTE FUNCTION pos_stamp_business_day('opened_at')
     ''',
   ]),
+  PosMigration(37, 'a record of every copy taken of this database', [
+    // The restaurant's own answer to "when did we last have a backup, and was
+    // it any good". Until this table there was none: `pg_dump` appeared nowhere
+    // in the product, `backup.manage` was a grantable permission with no screen
+    // behind it, and one failed disk was the whole trading history.
+    //
+    // **No foreign key on `restaurant_id`, exactly as `pos_audit_events` has
+    // none.** The first draft had `REFERENCES pos_restaurants ON DELETE
+    // CASCADE`, on the reasoning that a backup of a business this database no
+    // longer knows about is evidence of nothing. That is a contradiction with
+    // the append-only trigger below and the test found it immediately: a
+    // cascade IS a DELETE, the trigger refuses DELETE from every connection, so
+    // `DELETE FROM pos_restaurants` would have failed on any install that had
+    // ever taken a backup — including, quietly, the tear-down of half the
+    // database suites. A ledger cannot have rows that something else is allowed
+    // to remove on its behalf.
+    //
+    // **`trigger_kind`, not `trigger`.** TRIGGER is a reserved word, and a
+    // column that needs quoting forever is a column somebody eventually forgets
+    // to quote.
+    '''
+    CREATE TABLE IF NOT EXISTS pos_backups (
+      id             bigserial   PRIMARY KEY,
+      restaurant_id  bigint      NOT NULL,
+      branch_id      bigint,
+      terminal_id    uuid,
+      taken_at       timestamptz NOT NULL DEFAULT now(),
+      -- The staff row, and the name at the time. Denormalised for the same
+      -- reason the ledger does it: "who took the last backup" must still read
+      -- correctly after they have left.
+      taken_by       bigint,
+      taken_by_name  text        NOT NULL,
+      trigger_kind   text        NOT NULL,
+      outcome        text        NOT NULL,
+      -- Kept even for a failure. "We tried to write to D:\\backups and could
+      -- not" is the sentence that gets the disk looked at.
+      file_path      text        NOT NULL,
+      size_bytes     bigint      NOT NULL DEFAULT 0,
+      -- SHA-256, lower-case hex. Its job is one comparison: whether the file on
+      -- disk is still the file this row is about.
+      checksum       text,
+      tables_found   integer     NOT NULL DEFAULT 0,
+      failure        text,
+      detail         text,
+      CONSTRAINT pos_backups_outcome_known
+        CHECK (outcome IN ('verified', 'unverified', 'failed')),
+      CONSTRAINT pos_backups_trigger_known
+        CHECK (trigger_kind IN ('manual', 'day_close')),
+      CONSTRAINT pos_backups_counts_sane
+        CHECK (size_bytes >= 0 AND tables_found >= 0),
+      CONSTRAINT pos_backups_actor_present
+        CHECK (length(trim(taken_by_name)) > 0),
+      CONSTRAINT pos_backups_file_present
+        CHECK (length(trim(file_path)) > 0),
+      -- A verified row has to have something behind it. Without this, a row
+      -- claiming 'verified' with no file, no checksum and no tables would read
+      -- on screen as the backup that saves the restaurant.
+      CONSTRAINT pos_backups_verified_has_substance
+        CHECK (outcome <> 'verified'
+               OR (size_bytes > 0 AND checksum IS NOT NULL AND tables_found > 0)),
+      -- And the mirror: exactly the rows that are not verified carry a reason.
+      -- A failure with no reason is a row nobody can act on; a success with one
+      -- is a contradiction.
+      CONSTRAINT pos_backups_failure_explained
+        CHECK ((outcome = 'verified') = (failure IS NULL)),
+      CONSTRAINT pos_backups_checksum_shaped
+        CHECK (checksum IS NULL OR checksum ~ '^[0-9a-f]{64}\$')
+    )
+    ''',
+    '''
+    CREATE INDEX IF NOT EXISTS pos_backups_tenant_time_idx
+      ON pos_backups (restaurant_id, taken_at DESC)
+    ''',
+    // **One row per file, and this one is genuinely cross-row.** Two rows
+    // naming the same path means the older one's checksum and size describe a
+    // file that has since been overwritten — so the list would offer a restore
+    // from a February archive and hand back March. Partial, because a failed
+    // attempt wrote nothing: several failures against the same unwritable path
+    // in the same second are all true at once.
+    '''
+    CREATE UNIQUE INDEX IF NOT EXISTS pos_backups_file_unique
+      ON pos_backups (restaurant_id, file_path)
+      WHERE outcome <> 'failed'
+    ''',
+
+    // Append-only, held by the database and not by the interface having no
+    // update on it.
+    //
+    // The rule this protects is a human one. A pane showing "last night's
+    // backup could not be verified" is an uncomfortable row, and the shortest
+    // path to making it go away is one UPDATE — after which the restaurant
+    // believes it has a copy it does not have, which is strictly worse than
+    // knowing it has none. The message says what to do instead, because
+    // somebody reading it at that moment has a real problem and deserves a next
+    // step rather than a refusal.
+    r'''
+    CREATE OR REPLACE FUNCTION pos_backups_append_only() RETURNS trigger AS $$
+    BEGIN
+      RAISE EXCEPTION 'pos_backups is append-only; % is not permitted — a backup that failed is the record that it failed. Fix what it reports and take another one; the new row is what makes the warning go away.', TG_OP
+        USING ERRCODE = 'restrict_violation';
+    END;
+    $$ LANGUAGE plpgsql
+    ''',
+    'DROP TRIGGER IF EXISTS pos_backups_no_rewrite ON pos_backups',
+    '''
+    CREATE TRIGGER pos_backups_no_rewrite
+      BEFORE UPDATE OR DELETE ON pos_backups
+      FOR EACH ROW EXECUTE FUNCTION pos_backups_append_only()
+    ''',
+    // TRUNCATE fires no row trigger and is exactly how a table gets emptied by
+    // somebody who has just found out that DELETE is blocked.
+    'DROP TRIGGER IF EXISTS pos_backups_no_truncate ON pos_backups',
+    '''
+    CREATE TRIGGER pos_backups_no_truncate
+      BEFORE TRUNCATE ON pos_backups
+      FOR EACH STATEMENT EXECUTE FUNCTION pos_backups_append_only()
+    ''',
+  ]),
 ];
 
 /// Brings the branch database up to the current schema.

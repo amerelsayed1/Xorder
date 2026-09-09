@@ -511,6 +511,16 @@ class LocalBootstrap {
     // than the only one.
     'GRANT SELECT, INSERT ON pos_audit_events TO "$role"',
     'GRANT USAGE, SELECT ON SEQUENCE pos_audit_events_id_seq TO "$role"',
+    // The record of every copy taken of this database. On the TILL's list, not
+    // only the administrator's, because the automatic copy is taken when the
+    // trading day is closed — at the till, by a machine on which nobody has
+    // signed into the back office. Granted the same INSERT and SELECT as the
+    // ledger and for the same reason: a row saying last night's backup failed
+    // verification must not be editable by anybody who would rather it did not
+    // say that. Migration 37's trigger refuses the rest even from an admin
+    // connection.
+    'GRANT SELECT, INSERT ON pos_backups TO "$role"',
+    'GRANT USAGE, SELECT ON SEQUENCE pos_backups_id_seq TO "$role"',
     // Cloud seeding, and ONLY on a cloud till — see [cloudSeeding]. The
     // platform authors the menu, the staff and the floor, and the bootstrap
     // seeder replicates them here as a local cache: wipe-and-rewrite for the

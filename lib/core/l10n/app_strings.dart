@@ -1102,6 +1102,55 @@ sealed class AppStrings {
   String get paneRolesBlurb;
   String get paneActivity;
   String get paneActivityBlurb;
+
+  // ── Backup and restore ────────────────────────────────────────────
+  // One contiguous block here and in each implementation below, so this lands
+  // as a single insert rather than forty interleavings.
+  String get paneBackup;
+  String get paneBackupBlurb;
+  String get backupSameDiskWarning;
+  String get backupToolsMissing;
+  String get backupToolsMissingHelp;
+  String get backupSearchedIn;
+  String get backupDestination;
+  String get backupDestinationHint;
+  String get backupTakeNow;
+  String get backupTaking;
+  String get backupAutomatic;
+  String get backupAutomaticHint;
+  String get backupHistory;
+  String get backupNoneYet;
+  String get backupNoVerifiedCopy;
+  String backupLastVerified(String when);
+  String backupStale(int days);
+  String get backupOutcomeVerified;
+  String get backupOutcomeUnverified;
+  String get backupOutcomeFailed;
+  String get backupTriggerManual;
+  String get backupTriggerDayClose;
+  String get backupFailureToolsMissing;
+  String get backupFailureDestinationUnwritable;
+  String get backupFailureDumpRefused;
+  String get backupFailureArchiveUnreadable;
+  String get backupFailureArchiveIncomplete;
+  String backupTablesFound(int count);
+  String get backupRestoreAction;
+  String backupRestoreTitle(String when);
+  String get backupRestoreBlocked;
+  String restoreBlockerOpenShifts(int count);
+  String restoreBlockerOpenDay(int count);
+  String backupRestoreOrdersLost(int count, String value);
+  String get backupRestoreEverythingElseLost;
+  String get backupRestoreNoWayBack;
+  String get backupRestoreConfirm;
+  String get backupRestoreKeep;
+  String get backupRestoreDone;
+  String backupRestoreFailed(String detail);
+  String get backupDayCloseWorking;
+  String get backupDayCloseFailed;
+  String get actBackupTaken;
+  String get actBackupRestored;
+  // ── end of the backup block ────────────────────────────────────
   String get pinCannotOpenManagement;
   String get managementPinHelp;
   String get managementPinRetryHelp;
@@ -4355,6 +4404,132 @@ final class EnStrings extends AppStrings {
   String get paneActivity => 'Activity';
   @override
   String get paneActivityBlurb => 'What was changed, by whom';
+  // ── Backup and restore ────────────────────────────────────────────
+  @override
+  String get paneBackup => 'Backup';
+  @override
+  String get paneBackupBlurb => 'Copies of this database, and putting one back';
+  @override
+  String get backupSameDiskWarning =>
+      'Copies are written to this machine\'s own disk. That survives a bad '
+      'edit or a dropped table. It does not survive the disk failing, the '
+      'machine being stolen, a fire, or software that encrypts every file this '
+      'account can write — which is the list of things that actually happen. '
+      'Copy this folder somewhere else regularly. Nothing in the till does '
+      'that for you.';
+  @override
+  String get backupToolsMissing =>
+      'PostgreSQL\'s command-line tools are not on this machine, so no backup '
+      'can be taken and none can be restored.';
+  @override
+  String get backupToolsMissingHelp =>
+      'Install the PostgreSQL client tools — pg_dump and pg_restore — from '
+      'postgresql.org, then open this screen again.';
+  @override
+  String get backupSearchedIn => 'Looked in';
+  @override
+  String get backupDestination => 'Where copies go';
+  @override
+  String get backupDestinationHint =>
+      'A folder on this machine. It is created if it is not there.';
+  @override
+  String get backupTakeNow => 'Back up now';
+  @override
+  String get backupTaking => 'Backing up…';
+  @override
+  String get backupAutomatic => 'Take one when the trading day is closed';
+  @override
+  String get backupAutomaticHint =>
+      'On by default. A backup nobody remembers to take is not a backup.';
+  @override
+  String get backupHistory => 'Copies taken';
+  @override
+  String get backupNoneYet => 'No copy of this database has ever been taken.';
+  @override
+  String get backupNoVerifiedCopy =>
+      'No copy has been verified. This restaurant does not have a backup.';
+  @override
+  String backupLastVerified(String when) => 'Last verified copy: $when';
+  @override
+  String backupStale(int days) => days == 1
+      ? 'The last verified copy is a day old.'
+      : 'The last verified copy is $days days old.';
+  @override
+  String get backupOutcomeVerified => 'Verified';
+  @override
+  String get backupOutcomeUnverified => 'Not a backup';
+  @override
+  String get backupOutcomeFailed => 'Failed';
+  @override
+  String get backupTriggerManual => 'By hand';
+  @override
+  String get backupTriggerDayClose => 'Day close';
+  @override
+  String get backupFailureToolsMissing =>
+      'pg_dump is not installed on this machine.';
+  @override
+  String get backupFailureDestinationUnwritable =>
+      'The folder could not be written to.';
+  @override
+  String get backupFailureDumpRefused =>
+      'PostgreSQL refused to produce the copy.';
+  @override
+  String get backupFailureArchiveUnreadable =>
+      'The file was written and could not be read back.';
+  @override
+  String get backupFailureArchiveIncomplete =>
+      'The file is missing tables the restaurant could not trade without.';
+  @override
+  String backupTablesFound(int count) =>
+      count == 1 ? '1 table' : '$count tables';
+  @override
+  String get backupRestoreAction => 'Restore…';
+  @override
+  String backupRestoreTitle(String when) =>
+      'Replace this database with the copy taken $when?';
+  @override
+  String get backupRestoreBlocked =>
+      'This cannot be restored while the till is still trading.';
+  @override
+  String restoreBlockerOpenShifts(int count) => count == 1
+      ? '1 till still has a shift open'
+      : '$count tills still have shifts open';
+  @override
+  String restoreBlockerOpenDay(int count) =>
+      'The trading day has not been closed';
+  @override
+  String backupRestoreOrdersLost(int count, String value) => count == 1
+      ? '1 order taken since then, worth $value, will be discarded.'
+      : '$count orders taken since then, worth $value, will be discarded.';
+  @override
+  String get backupRestoreEverythingElseLost =>
+      'So does everything else recorded since — shifts, cash movements, staff '
+      'changes and the audit trail.';
+  @override
+  String get backupRestoreNoWayBack =>
+      'There is no way back. Nothing here keeps a copy of what is about to be '
+      'replaced.';
+  @override
+  String get backupRestoreConfirm => 'Replace the database';
+  @override
+  String get backupRestoreKeep => 'Keep this database';
+  @override
+  String get backupRestoreDone =>
+      'The database was replaced. Close the app and start it again.';
+  @override
+  String backupRestoreFailed(String detail) =>
+      'The restore did not complete and nothing was changed. $detail';
+  @override
+  String get backupDayCloseWorking => 'Closing the day and taking a backup…';
+  @override
+  String get backupDayCloseFailed =>
+      'The day is closed. The automatic backup did not succeed — open '
+      'Management, then Backup, to see why.';
+  @override
+  String get actBackupTaken => 'Took a backup';
+  @override
+  String get actBackupRestored => 'Restored the database from a backup';
+  // ── end of the backup block ────────────────────────────────────
   @override
   String get pinCannotOpenManagement => 'That PIN cannot open Management.';
   @override
@@ -7201,6 +7376,127 @@ final class ArStrings extends AppStrings {
   String get paneActivity => 'السجل';
   @override
   String get paneActivityBlurb => 'ما الذي تغيّر، وعلى يد من';
+  // ── Backup and restore ────────────────────────────────────────────
+  @override
+  String get paneBackup => 'النسخ الاحتياطي';
+  @override
+  String get paneBackupBlurb => 'نسخ من قاعدة البيانات، واستعادة إحداها';
+  @override
+  String get backupSameDiskWarning =>
+      'تُحفظ النسخ على قرص هذا الجهاز نفسه. هذا ينجّيك من تعديل خاطئ أو جدول '
+      'محذوف، ولا ينجّيك من عطل القرص أو سرقة الجهاز أو حريق أو برنامج يشفّر كل '
+      'ملف يستطيع هذا الحساب الكتابة فيه — وهذه هي الأمور التي تحدث فعلاً. '
+      'انسخ هذا المجلد إلى مكان آخر بانتظام. لا شيء في الكاشير يفعل ذلك '
+      'نيابةً عنك.';
+  @override
+  String get backupToolsMissing =>
+      'أدوات PostgreSQL غير موجودة على هذا الجهاز، فلا يمكن أخذ نسخة احتياطية '
+      'ولا استعادة واحدة.';
+  @override
+  String get backupToolsMissingHelp =>
+      'ثبّت أدوات PostgreSQL — pg_dump و pg_restore — من postgresql.org ثم '
+      'افتح هذه الشاشة من جديد.';
+  @override
+  String get backupSearchedIn => 'تم البحث في';
+  @override
+  String get backupDestination => 'مكان حفظ النسخ';
+  @override
+  String get backupDestinationHint =>
+      'مجلد على هذا الجهاز. يُنشأ تلقائياً إن لم يكن موجوداً.';
+  @override
+  String get backupTakeNow => 'خذ نسخة الآن';
+  @override
+  String get backupTaking => 'جارٍ أخذ النسخة…';
+  @override
+  String get backupAutomatic => 'خذ نسخة عند إقفال يوم العمل';
+  @override
+  String get backupAutomaticHint =>
+      'مفعّل افتراضياً. النسخة التي لا يتذكّر أحد أخذها ليست نسخة احتياطية.';
+  @override
+  String get backupHistory => 'النسخ المأخوذة';
+  @override
+  String get backupNoneYet => 'لم تُؤخذ أي نسخة من قاعدة البيانات حتى الآن.';
+  @override
+  String get backupNoVerifiedCopy =>
+      'لا توجد نسخة تم التحقق منها. هذا المطعم بلا نسخة احتياطية.';
+  @override
+  String backupLastVerified(String when) => 'آخر نسخة موثّقة: $when';
+  @override
+  String backupStale(int days) => days == 1
+      ? 'مضى على آخر نسخة موثّقة يوم واحد.'
+      : 'مضى على آخر نسخة موثّقة $days يوماً.';
+  @override
+  String get backupOutcomeVerified => 'موثّقة';
+  @override
+  String get backupOutcomeUnverified => 'ليست نسخة احتياطية';
+  @override
+  String get backupOutcomeFailed => 'فشلت';
+  @override
+  String get backupTriggerManual => 'يدوي';
+  @override
+  String get backupTriggerDayClose => 'إقفال اليوم';
+  @override
+  String get backupFailureToolsMissing =>
+      'أداة pg_dump غير مثبّتة على هذا الجهاز.';
+  @override
+  String get backupFailureDestinationUnwritable =>
+      'تعذّرت الكتابة في المجلد.';
+  @override
+  String get backupFailureDumpRefused => 'رفضت PostgreSQL إنتاج النسخة.';
+  @override
+  String get backupFailureArchiveUnreadable =>
+      'كُتب الملف ولم تنجح قراءته مرة أخرى.';
+  @override
+  String get backupFailureArchiveIncomplete =>
+      'تنقص الملفَ جداولُ لا يستطيع المطعم العمل بدونها.';
+  @override
+  String backupTablesFound(int count) =>
+      count == 1 ? 'جدول واحد' : '$count جدولاً';
+  @override
+  String get backupRestoreAction => 'استعادة…';
+  @override
+  String backupRestoreTitle(String when) =>
+      'هل تستبدل قاعدة البيانات بالنسخة المأخوذة $when؟';
+  @override
+  String get backupRestoreBlocked => 'لا يمكن الاستعادة والكاشير ما زال يعمل.';
+  @override
+  String restoreBlockerOpenShifts(int count) => count == 1
+      ? 'كاشير واحد ما زالت ورديته مفتوحة'
+      : '$count كاشيرات ما زالت ورديّاتها مفتوحة';
+  @override
+  String restoreBlockerOpenDay(int count) => 'يوم العمل لم يُقفل بعد';
+  @override
+  String backupRestoreOrdersLost(int count, String value) => count == 1
+      ? 'سيضيع طلب واحد سُجّل بعد ذلك الوقت، بقيمة $value.'
+      : 'سيضيع $count طلباً سُجّلت بعد ذلك الوقت، بقيمة $value.';
+  @override
+  String get backupRestoreEverythingElseLost =>
+      'ويضيع معها كل ما سُجّل بعد ذلك — الورديات وحركات النقدية وتغييرات '
+      'الموظفين وسجل التدقيق.';
+  @override
+  String get backupRestoreNoWayBack =>
+      'لا رجوع بعدها. لا شيء هنا يحتفظ بنسخة مما سيُستبدل.';
+  @override
+  String get backupRestoreConfirm => 'استبدل قاعدة البيانات';
+  @override
+  String get backupRestoreKeep => 'أبقِ قاعدة البيانات';
+  @override
+  String get backupRestoreDone =>
+      'تم استبدال قاعدة البيانات. أغلق البرنامج ثم شغّله من جديد.';
+  @override
+  String backupRestoreFailed(String detail) =>
+      'لم تكتمل الاستعادة ولم يتغيّر شيء. $detail';
+  @override
+  String get backupDayCloseWorking => 'جارٍ إقفال اليوم وأخذ نسخة احتياطية…';
+  @override
+  String get backupDayCloseFailed =>
+      'تم إقفال اليوم. لم تنجح النسخة الاحتياطية التلقائية — افتح الإدارة ثم '
+      'النسخ الاحتياطي لمعرفة السبب.';
+  @override
+  String get actBackupTaken => 'أخذ نسخة احتياطية';
+  @override
+  String get actBackupRestored => 'استعاد قاعدة البيانات من نسخة احتياطية';
+  // ── end of the backup block ────────────────────────────────────
   @override
   String get pinCannotOpenManagement => 'هذا الكود لا يفتح الإدارة.';
   @override

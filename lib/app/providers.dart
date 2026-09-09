@@ -18,10 +18,13 @@ import '../core/config/terminal_profile.dart';
 import '../core/l10n/app_strings.dart';
 import '../core/money/money.dart';
 import '../core/network/connectivity_probe.dart';
+import '../data/backup/backup_service.dart';
+import '../data/backup/pg_tools.dart';
 import '../data/config/terminal_config_store.dart';
 import '../data/hardware/network_printer_ports.dart';
 import '../data/postgres/pos_database.dart';
 import '../data/postgres/postgres_admin_repositories.dart';
+import '../data/postgres/postgres_backup_repository.dart';
 import '../data/postgres/postgres_catalog_admin_repository.dart';
 import '../data/postgres/postgres_catalog_repository.dart';
 import '../data/postgres/postgres_directory_repositories.dart';
@@ -58,6 +61,7 @@ import '../features/licensing/data/platform_licence_api.dart';
 import '../features/licensing/domain/license_verifier.dart';
 import '../features/licensing/domain/license.dart';
 import '../features/setup/application/setup_controller.dart';
+import '../domain/models/backup.dart';
 import '../domain/models/catalog.dart';
 import '../domain/models/dining_table.dart';
 import '../domain/models/ticket.dart';
@@ -2162,6 +2166,92 @@ final auditRepositoryProvider = Provider<AuditRepository>((ref) {
     // Read, not watched, for the same reason the orders repository does it: an
     // audit row belongs to the shift that was open when the thing happened.
     shiftId: ref.read(shiftProvider).valueOrNull?.id,
+  );
+});
+
+// ── Backup ──────────────────────────────────────────────────────────────────
+//
+// A restaurant on one Windows box with no backup is one failed disk away from
+// losing its whole trading history. Everything here exists to make that not be
+// true, and to be loud about the ways in which it still is — see
+// `BackupService` for what a copy on the same disk does and does not protect
+// against.
+
+/// Where the copies of this database are recorded.
+///
+/// On the **till's** connection, like the audit ledger and for the same reason:
+/// the automatic copy is taken when the trading day is closed, at a machine on
+/// which nobody has opened the back office. `pos_backups` is granted SELECT and
+/// INSERT to both roles and nothing else.
+final backupRepositoryProvider = Provider<BackupRepository>((ref) {
+  final config = ref.watch(deploymentProvider);
+  final context = ref.watch(posWriteContextProvider);
+
+  if (context == null || PosDatabase.hostFor(config) == null) {
+    return const UnconfiguredBackupRepository();
+  }
+  return PostgresBackupRepository(
+    database: ref.watch(posDatabaseProvider),
+    config: config,
+    restaurantId: context.restaurantId,
+    branchId: context.branchId,
+    terminalId: context.terminalId,
+  );
+});
+
+final backupsProvider = FutureProvider<List<BackupRecord>>(
+  (ref) => ref.watch(backupRepositoryProvider).recent(),
+);
+
+final backupPolicyProvider = Provider<BackupPolicy>((ref) {
+  final settings = ref.watch(settingsProvider).valueOrNull;
+  return settings == null ? BackupPolicy.defaults : BackupPolicy.from(settings);
+});
+
+/// Where `pg_dump` and `pg_restore` are on this machine, or null.
+///
+/// Looked up once and cached for the process: the answer only changes when
+/// somebody installs PostgreSQL, which they do while the app is closed. The
+/// pane invalidates it when it is opened, so "install it and come back" works.
+final pgToolsProvider = FutureProvider<PgToolset?>((ref) => PgTools.locate());
+
+/// Taking a copy, proving it, and putting one back.
+///
+/// Null when this terminal has no database — there is then nothing to back up,
+/// and a service that pretended otherwise would write a record of a copy of
+/// nothing.
+final backupServiceProvider = FutureProvider<BackupService?>((ref) async {
+  final config = ref.watch(deploymentProvider);
+  final context = ref.watch(posWriteContextProvider);
+  if (context == null || PosDatabase.hostFor(config) == null) return null;
+
+  final tools = await ref.watch(pgToolsProvider.future);
+
+  return BackupService(
+    // The till's pool and the till's config: the guard queries are counts the
+    // till credential can already read, and the record and the audit row go
+    // where every other till-written row goes.
+    database: ref.watch(posDatabaseProvider),
+    // …but `pg_dump` runs as the ADMINISTRATOR role, because the till's
+    // credential holds SELECT on the tables it sells from and not on all of
+    // them, and a dump that silently omitted a table would be the exact failure
+    // this feature exists to prevent.
+    config: ref.watch(adminDeploymentProvider),
+    restaurantId: context.restaurantId,
+    branchId: context.branchId,
+    directory: BackupPaths.resolve(ref.watch(backupPolicyProvider)),
+    backups: ref.watch(backupRepositoryProvider),
+    audit: ref.watch(auditRepositoryProvider),
+    toolset: tools,
+    // Null at the till, which is the ordinary case at day close. See
+    // `BackupService.password` for why it is not stored and what that costs.
+    password: ref.watch(adminDbCredentialProvider),
+    // Both pools, because `pg_restore --clean` drops every object in the
+    // database and neither connection should be holding one when it does.
+    quiesce: () async {
+      await ref.read(posDatabaseProvider).close();
+      await ref.read(adminPosDatabaseProvider).close();
+    },
   );
 });
 

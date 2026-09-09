@@ -183,6 +183,33 @@ void main() {
     );
   });
 
+  test('the till records a backup and cannot rewrite the record', () async {
+    // The automatic copy is taken when the trading day is closed, at a machine
+    // on which nobody has opened the back office — so the INSERT has to be on
+    // the TILL's list, not the administrator's. Without it the nightly backup
+    // would work for the superuser in every test here and fail at a real
+    // install, which is the failure mode this whole file exists for.
+    expect(await refusalFor('SELECT 1 FROM pos_backups'), isNull);
+    expect(
+      await refusalFor(
+        'INSERT INTO pos_backups (restaurant_id, taken_by_name, trigger_kind, '
+        "  outcome, file_path, failure) VALUES (1, 'Till', 'day_close', "
+        "  'failed', '/tmp/x.dump', 'tools_missing')",
+      ),
+      isNull,
+    );
+    // The privilege check comes before the trigger, so this is the GRANT
+    // talking and not migration 37's `RAISE EXCEPTION`. Both are asserted —
+    // that one in `backup_restore_test.dart`, from an administrator connection.
+    expect(
+      await refusalFor("UPDATE pos_backups SET outcome = 'verified'"),
+      '42501',
+      reason: 'a row saying last night failed must not be editable by anybody '
+          'who would rather it did not say that',
+    );
+    expect(await refusalFor('DELETE FROM pos_backups'), '42501');
+  });
+
   test('the till records a drawer movement and cannot unrecord one', () async {
     // A pay-out already recorded is money that left. Correcting one is a
     // second movement, not an edit of the first.

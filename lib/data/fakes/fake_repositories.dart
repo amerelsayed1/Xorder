@@ -1,5 +1,6 @@
 import '../../core/config/deployment.dart';
 import '../../core/money/money.dart';
+import '../../domain/models/backup.dart';
 import '../../domain/models/catalog.dart';
 import '../../domain/models/dining_table.dart';
 import '../../domain/models/order_record.dart';
@@ -1162,6 +1163,47 @@ class FakeAuditRepository implements AuditRepository {
       )
       .take(limit)
       .toList();
+}
+
+/// The list of copies taken, held in a list.
+///
+/// A test double only. The real one writes `pos_backups`, which is append-only
+/// in the database as well as in the interface — so this does not offer an
+/// edit either, because a fake that was more permissive than the thing it
+/// stands in for would let a screen pass a test it could not pass in a
+/// restaurant.
+class FakeBackupRepository implements BackupRepository {
+  FakeBackupRepository({List<BackupRecord> records = const []})
+    : records = [...records];
+
+  final List<BackupRecord> records;
+
+  @override
+  Future<List<BackupRecord>> recent({int limit = 50}) async =>
+      records.take(limit).toList();
+
+  @override
+  Future<BackupRecord> record(
+    BackupRecord entry, {
+    required PosStaff by,
+  }) async {
+    final stored = BackupRecord(
+      id: records.length + 1,
+      takenAt: entry.takenAt,
+      takenById: by.id,
+      takenByName: by.name,
+      trigger: entry.trigger,
+      outcome: entry.outcome,
+      filePath: entry.filePath,
+      sizeBytes: entry.sizeBytes,
+      checksum: entry.checksum,
+      tablesFound: entry.tablesFound,
+      failure: entry.failure,
+      detail: entry.detail,
+    );
+    records.insert(0, stored);
+    return stored;
+  }
 }
 
 /// Order history held in a list.

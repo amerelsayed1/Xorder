@@ -1,5 +1,6 @@
 import '../../../core/l10n/app_strings.dart';
 import '../../../core/money/quantity.dart';
+import '../../../domain/models/backup.dart';
 import '../../../domain/models/purchase_order.dart';
 import '../../../domain/models/supplier_invoice.dart';
 import '../../../domain/models/permissions.dart';
@@ -107,8 +108,80 @@ abstract final class AdminText {
     AuditAction.tenderTypeSaved => s.actTenderTypeSaved,
     AuditAction.orderTypeSaved => s.actOrderTypeSaved,
     AuditAction.taxGroupSaved => s.actTaxGroupSaved,
+    AuditAction.backupTaken => s.actBackupTaken,
+    AuditAction.backupRestored => s.actBackupRestored,
     _ => action,
   };
+
+  /// How much of a backup a row actually is.
+  ///
+  /// Enum-keyed, so a fourth outcome fails to compile rather than rendering
+  /// `unverified` on a badge. And the middle case is not a hedge: a copy that
+  /// could not be read back is shown as **not a backup**, because a restaurant
+  /// that believes it has one is in a worse position than one that knows it
+  /// does not.
+  static String backupOutcome(AppStrings s, BackupOutcome outcome) =>
+      switch (outcome) {
+        BackupOutcome.verified => s.backupOutcomeVerified,
+        BackupOutcome.unverified => s.backupOutcomeUnverified,
+        BackupOutcome.failed => s.backupOutcomeFailed,
+      };
+
+  static String backupTrigger(AppStrings s, BackupTrigger trigger) =>
+      switch (trigger) {
+        BackupTrigger.manual => s.backupTriggerManual,
+        BackupTrigger.dayClose => s.backupTriggerDayClose,
+      };
+
+  /// Why a copy is not a copy. The raw output of `pg_dump` travels beside this
+  /// in [BackupRecord.detail] and is shown untranslated — see that field.
+  static String backupFailure(AppStrings s, BackupFailure failure) =>
+      switch (failure) {
+        BackupFailure.toolsMissing => s.backupFailureToolsMissing,
+        BackupFailure.destinationUnwritable =>
+          s.backupFailureDestinationUnwritable,
+        BackupFailure.dumpRefused => s.backupFailureDumpRefused,
+        BackupFailure.archiveUnreadable => s.backupFailureArchiveUnreadable,
+        BackupFailure.archiveIncomplete => s.backupFailureArchiveIncomplete,
+      };
+
+  /// What is standing between somebody and a restore.
+  static String restoreBlocker(AppStrings s, RestoreBlocker blocker) =>
+      switch (blocker.kind) {
+        RestoreBlockerKind.openShift => s.restoreBlockerOpenShifts(
+          blocker.count,
+        ),
+        RestoreBlockerKind.openBusinessDay => s.restoreBlockerOpenDay(
+          blocker.count,
+        ),
+      };
+
+  /// A file size, as somebody reading a folder listing would say it.
+  ///
+  /// **Integer arithmetic, like every other number in this codebase.** The
+  /// obvious `bytes / 1024 / 1024` routes a count through a `double`, which is
+  /// the habit the money code exists to break — and a size is a count. One
+  /// decimal place, computed from the remainder, because "4.2 MB" is what a
+  /// person needs and "4.19 MB" is precision nobody asked for.
+  ///
+  /// Powers of 1024 with the short units, which is what every file manager a
+  /// restaurant has ever used shows.
+  static String bytes(int size) {
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+
+    var unit = 0;
+    var divisor = 1;
+    while (size >= divisor * 1024 && unit < units.length - 1) {
+      divisor *= 1024;
+      unit++;
+    }
+    if (unit == 0) return '$size ${units[0]}';
+
+    // Multiply before dividing, so the tenth survives the integer division
+    // instead of being the thing it throws away.
+    final tenths = (size * 10) ~/ divisor;
+    return '${tenths ~/ 10}.${tenths % 10} ${units[unit]}';
+  }
 
   /// Where a purchase order has got to.
   ///

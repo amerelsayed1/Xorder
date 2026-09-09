@@ -1,3 +1,4 @@
+import '../models/backup.dart';
 import '../models/catalog.dart';
 import '../models/tax.dart';
 import '../models/order_type_config.dart';
@@ -336,8 +337,22 @@ abstract final class AuditAction {
   /// action because turning off *requires a table* changes what the floor plan
   /// is for, and turning off the type itself removes a way of selling.
   static const orderTypeSaved = 'order_type.saved';
+
+  /// A copy of the database taken — or attempted. `backup.manage` is
+  /// critical-risk, so both halves of it are on the ledger: this one is written
+  /// for a failure as well as a success, because "we have been taking backups
+  /// every night" and "we have been failing to take one every night" look
+  /// identical from anywhere except here.
+  static const backupTaken = 'backup.taken';
+
+  /// The database replaced from a copy. The most destructive act the product
+  /// offers, and the row for it necessarily lands in the *restored* database —
+  /// see `BackupService.restore`, which explains why and what that costs.
+  static const backupRestored = 'backup.restored';
+
   static const entityTable = 'table';
   static const entityReceiptProfile = 'receipt_profile';
+  static const entityBackup = 'backup';
 }
 
 /// Authoring the menu on the till itself.
@@ -604,6 +619,27 @@ abstract interface class AuditRepository {
   });
 }
 
+/// The list of copies taken of this database.
+///
+/// **Append-only, like the audit ledger, and for the same reason.** A backup
+/// that failed verification is a record that the restaurant did not have a
+/// backup that night, and a row somebody can quietly correct is not a record.
+/// The database holds that too — see migration 37 — so this interface having no
+/// update and no delete is the second line rather than the only one.
+///
+/// Deliberately **not** gated on `backup.manage` inside the repository. The
+/// automatic copy at day close is written by a till on which nobody has signed
+/// into the back office, and refusing it there would mean the only nights with
+/// a record are the nights a manager happened to be standing at the machine.
+/// The screen that *takes* one on demand is gated, which is where the decision
+/// is actually being made.
+abstract interface class BackupRepository {
+  /// Newest first.
+  Future<List<BackupRecord>> recent({int limit = 50});
+
+  /// Write the attempt down. Returns the stored row, with its id.
+  Future<BackupRecord> record(BackupRecord entry, {required PosStaff by});
+}
 
 /// What an import actually did.
 class MenuImportOutcome {

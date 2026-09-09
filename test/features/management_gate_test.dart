@@ -211,11 +211,13 @@ void main() {
     tester,
   ) async {
     // A single tab over a single pane is a heading dressed as a control.
-    await open(tester, pane: ManagementPane.activity);
+    // Buying, because Purchasing is the one pane in it — System stopped being
+    // the example the day Backup joined Activity there.
+    await open(tester, pane: ManagementPane.purchasing);
     await enter(tester, '1234');
 
-    expect(find.byKey(const Key('management-tab-activity')), findsNothing);
-    expect(find.text('Management › System'), findsOneWidget);
+    expect(find.byKey(const Key('management-tab-purchasing')), findsNothing);
+    expect(find.text('Management › Buying'), findsOneWidget);
   });
 
   testWidgets('a tab switches the pane', (tester) async {

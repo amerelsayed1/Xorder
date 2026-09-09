@@ -11,6 +11,7 @@ import '../../../domain/models/permissions.dart';
 import '../../../domain/models/shift.dart';
 import '../../../domain/services/authorization.dart';
 import 'management_activity_pane.dart';
+import 'management_backup_pane.dart';
 import 'management_floor_pane.dart';
 import 'management_menu_pane.dart';
 import 'management_eta_pane.dart';
@@ -140,7 +141,7 @@ ManagementArea areaOf(ManagementPane pane) => switch (pane) {
   ManagementPane.orderTypes => ManagementArea.money,
   ManagementPane.purchasing => ManagementArea.buying,
   ManagementPane.receipt || ManagementPane.eta => ManagementArea.compliance,
-  ManagementPane.activity => ManagementArea.system,
+  ManagementPane.activity || ManagementPane.backup => ManagementArea.system,
 };
 
 String managementAreaName(AppStrings s, ManagementArea area) => switch (area) {
@@ -277,6 +278,7 @@ ManagementDestination _purchasing(PurchasingTab tab, {bool create = false}) =>
       ManagementPane.eta => (s.paneEta, s.paneEtaBlurb),
       ManagementPane.roles => (s.paneRoles, s.paneRolesBlurb),
       ManagementPane.activity => (s.paneActivity, s.paneActivityBlurb),
+      ManagementPane.backup => (s.paneBackup, s.paneBackupBlurb),
     };
 
 /// The capability a pane needs beyond the `staffManage` that opened the screen.
@@ -288,6 +290,17 @@ ManagementDestination _purchasing(PurchasingTab tab, {bool create = false}) =>
 /// and the others are not, until each one's writes are gated too.
 String? _paneRequires(ManagementPane pane) => switch (pane) {
   ManagementPane.purchasing => PosCapability.purchaseManage,
+  // The third capability that had no screen, and the one with the worst
+  // consequences: `backup.manage` is critical-risk, held only by Owner, and
+  // deliberately outside supervisor override. `reports.view` and
+  // `terminal.manage` still have none.
+  //
+  // Unlike Purchasing, this pane's gate is not backed by a repository that
+  // refuses — `pos_backups` is granted INSERT to the till so the automatic copy
+  // at day close can be recorded without anybody being in the back office. What
+  // the gate protects is the two buttons: taking one on demand, and restoring.
+  // Both go through `BackupService`, which is only ever reached from here.
+  ManagementPane.backup => PosCapability.backupManage,
   _ => null,
 };
 
@@ -311,6 +324,7 @@ enum ManagementPane {
   eta,
   roles,
   activity,
+  backup,
 }
 
 class _ManagementScreenState extends ConsumerState<ManagementScreen> {
@@ -434,6 +448,7 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
                 ManagementPane.eta => const ManagementEtaPane(),
                 ManagementPane.roles => ManagementRolesPane(admin: admin),
                 ManagementPane.activity => const ManagementActivityPane(),
+                ManagementPane.backup => ManagementBackupPane(admin: admin),
               },
             ),
           ],

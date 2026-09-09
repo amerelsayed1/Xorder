@@ -78,6 +78,12 @@ abstract final class SettingKey {
   static const cashBlindClose = 'cash.blind_close';
   static const cashDrawerOpenReason = 'cash.drawer_open_requires_reason';
   static const cashPayOutMax = 'cash.pay_out_max_minor';
+
+  // Backups. Restaurant-scoped rather than terminal-scoped on purpose: there
+  // is one database per branch, and two tills disagreeing about where its
+  // copies go is two half-filled folders and no complete history in either.
+  static const backupDirectory = 'backup.directory';
+  static const backupOnDayClose = 'backup.on_day_close';
 }
 
 /// Resolved settings for one terminal.
