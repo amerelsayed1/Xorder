@@ -11,6 +11,19 @@ import 'package:xorder_pos/data/postgres/pos_database.dart';
 /// would fear most here — a duplicate invoice number — from a test artefact
 /// rather than a real race. A flaky money test is worse than no test, because
 /// people learn to ignore it.
+///
+/// **And each checkout gets its own set**, which is the same lesson one level
+/// out. Naming by suite alone was enough while there was one working copy; the
+/// moment two git worktrees ran `test/data` against the same server they shared
+/// `xorder_pos_permission_grants`, and each suite's `DELETE FROM pos_restaurants`
+/// wiped the other's rows mid-test. It surfaced as a foreign key violation on a
+/// restaurant that had existed a millisecond earlier — a failure that reads
+/// exactly like a real bug and is not one, which is the worst kind to leave
+/// lying around.
+///
+/// The discriminator is derived from the checkout path rather than passed in, so
+/// nothing has to be coordinated between concurrent agents or remembered by a
+/// person.
 class PgFixture {
   PgFixture._(this.database, this.config);
 
@@ -27,7 +40,7 @@ class PgFixture {
     final address = host;
     if (address == null) throw StateError('POS_PG_HOST is not set');
 
-    final databaseName = 'xorder_pos_$suite';
+    final databaseName = 'xorder_pos_${suite}_$_checkout';
     await _ensureDatabase(address, databaseName);
 
     return PgFixture._(
@@ -43,6 +56,24 @@ class PgFixture {
         databasePort: port,
       ),
     );
+  }
+
+  /// A short, stable tag for this working copy.
+  ///
+  /// Hashed rather than derived from the folder name: a worktree path can be
+  /// long, can contain characters a database name may not, and two worktrees can
+  /// share a leaf name. Eight hex digits of the absolute path collide only if
+  /// somebody is running more than a few million checkouts at once.
+  static final String _checkout = _tag(Directory.current.path);
+
+  static String _tag(String path) {
+    // FNV-1a, inline: this needs to be stable across runs and processes, and
+    // `Object.hashCode` is neither.
+    var hash = 0x811c9dc5;
+    for (final unit in path.codeUnits) {
+      hash = ((hash ^ unit) * 0x01000193) & 0xffffffff;
+    }
+    return hash.toRadixString(16).padLeft(8, '0');
   }
 
   /// `CREATE DATABASE` has no `IF NOT EXISTS`, so check first. It also cannot
