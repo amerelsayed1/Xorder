@@ -45,6 +45,15 @@ class _ManagementTaxesPaneState extends ConsumerState<ManagementTaxesPane> {
   final _service = TextEditingController();
   final _vat = TextEditingController();
   bool _dineInOnly = true;
+
+  /// **Carried, not rebuilt.** `saveMoneyConfig` replaces the whole payload and
+  /// the codec writes `tax_mode` into it, so a `TaxConfig` constructed here
+  /// without this field silently reset an inclusive restaurant to exclusive —
+  /// and every ticket afterwards added 14% on top of prices that already
+  /// contained it. Nothing on any screen sets the mode yet, which is exactly why
+  /// saving an unrelated rate must not change it.
+  TaxMode _taxMode = TaxMode.exclusive;
+
   bool _loaded = false;
   bool _busy = false;
   String? _note;
@@ -123,7 +132,12 @@ class _ManagementTaxesPaneState extends ConsumerState<ManagementTaxesPane> {
     });
 
     final result = await repository.saveMoneyConfig(
-      TaxConfig(serviceBp: service, vatBp: vat, serviceDineInOnly: _dineInOnly),
+      TaxConfig(
+        serviceBp: service,
+        vatBp: vat,
+        serviceDineInOnly: _dineInOnly,
+        taxMode: _taxMode,
+      ),
       by: widget.admin,
     );
 
@@ -164,6 +178,7 @@ class _ManagementTaxesPaneState extends ConsumerState<ManagementTaxesPane> {
           _service.text = _percent(current.serviceBp);
           _vat.text = _percent(current.vatBp);
           _dineInOnly = current.serviceDineInOnly;
+          _taxMode = current.taxMode;
         }
 
         // A cloud till is told, and shown nothing to type. The whole pane, not

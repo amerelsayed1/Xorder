@@ -8,6 +8,7 @@ import 'package:xorder_pos/core/ui/theme.dart';
 import 'package:xorder_pos/core/ui/tokens.dart';
 import 'package:xorder_pos/domain/models/permissions.dart';
 import 'package:xorder_pos/domain/models/service_charge.dart';
+import 'package:xorder_pos/domain/models/ticket.dart';
 import 'package:xorder_pos/domain/repositories/admin_repositories.dart';
 import 'package:xorder_pos/data/postgres/postgres_tender_types_repository.dart';
 import 'package:xorder_pos/domain/repositories/repositories.dart';
@@ -45,17 +46,23 @@ void main() {
     view.resetDevicePixelRatio();
   });
 
+  late _Catalogue catalogue;
+
   Future<void> pump(
     WidgetTester tester, {
     required bool authors,
     required Widget pane,
+    TaxConfig? stored,
   }) async {
+    catalogue = _Catalogue();
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
           catalogAdminRepositoryProvider.overrideWithValue(
-            authors ? _Catalogue() : null,
+            authors ? catalogue : null,
           ),
+          if (stored != null)
+            moneyConfigProvider.overrideWith((ref) async => stored),
           tenderTypesRepositoryProvider.overrideWithValue(
             const UnconfiguredTenderTypesRepository(),
           ),
@@ -149,6 +156,39 @@ void main() {
     });
   });
 
+  testWidgets('saving a rate does not reset tax-inclusive mode', (
+    tester,
+  ) async {
+    // **The bug this test exists for charged customers twice.**
+    // `saveMoneyConfig` replaces the whole payload and the codec writes
+    // `tax_mode` into it, so a `TaxConfig` built in the pane without that field
+    // silently reset an inclusive restaurant to exclusive — and every ticket
+    // afterwards added 14% on top of prices that already contained it. Nothing
+    // on any screen sets the mode, which is exactly why saving an unrelated rate
+    // must not change it.
+    await pump(
+      tester,
+      authors: true,
+      pane: const ManagementTaxesPane(admin: admin),
+      stored: const TaxConfig(
+        serviceBp: 1200,
+        vatBp: 1400,
+        taxMode: TaxMode.inclusive,
+      ),
+    );
+
+    await tester.enterText(find.byKey(const Key('rate-vat')), '15');
+    await tester.tap(find.byKey(const Key('rates-save')));
+    await tester.pumpAndSettle();
+
+    expect(catalogue.saved?.vatBp, 1500, reason: 'the change was saved');
+    expect(
+      catalogue.saved?.taxMode,
+      TaxMode.inclusive,
+      reason: 'and the mode came through untouched',
+    );
+  });
+
   testWidgets('the seeded payment methods are listed on either', (
     tester,
   ) async {
@@ -164,6 +204,17 @@ void main() {
 }
 
 class _Catalogue implements CatalogAdminRepository {
+  TaxConfig? saved;
+
+  @override
+  Future<AdminResult<TaxConfig>> saveMoneyConfig(
+    TaxConfig config, {
+    required PosStaff by,
+  }) async {
+    saved = config;
+    return AdminResult.done(config);
+  }
+
   @override
   dynamic noSuchMethod(Invocation invocation) =>
       throw UnsupportedError('${invocation.memberName}');
