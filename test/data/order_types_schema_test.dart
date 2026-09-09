@@ -5,7 +5,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:xorder_pos/data/postgres/local_bootstrap.dart';
 import 'package:xorder_pos/data/postgres/migrations.dart';
 import 'package:xorder_pos/data/postgres/pos_database.dart';
+import 'package:xorder_pos/data/postgres/postgres_catalog_admin_repository.dart';
 import 'package:xorder_pos/data/postgres/postgres_order_types_repository.dart';
+import 'package:xorder_pos/domain/models/permissions.dart';
+import 'package:xorder_pos/domain/models/shift.dart';
+import 'package:xorder_pos/domain/repositories/admin_repositories.dart';
 import 'package:xorder_pos/domain/models/order_type_config.dart';
 import 'package:xorder_pos/domain/models/ticket.dart';
 
@@ -21,7 +25,30 @@ void main() {
   late PgFixture pg;
   late PosDatabase db;
   late PostgresOrderTypesRepository types;
+  late PostgresCatalogAdminRepository admin;
   late int restaurantId;
+  late int branchId;
+
+  const manager = PosStaff(
+    id: 0,
+    name: 'Amer M.',
+    role: PosRole(
+      id: 1,
+      code: 'manager',
+      nameEn: 'Manager',
+      capabilities: {PosCapability.settingsManage},
+    ),
+  );
+  const cashier = PosStaff(
+    id: 0,
+    name: 'Rana A.',
+    role: PosRole(
+      id: 2,
+      code: 'cashier',
+      nameEn: 'Cashier',
+      capabilities: {PosCapability.operate},
+    ),
+  );
 
   const slug = 'order-types-test';
 
@@ -41,10 +68,23 @@ void main() {
     // Created after the migration ran, exactly as a real install does.
     await LocalBootstrap(db).seedOrderTypes(pg.config, restaurantId);
 
+    branchId = (await db.query(
+      pg.config,
+      'INSERT INTO pos_branches (restaurant_id, code, name) '
+      "VALUES (@r, 'MAIN', 'Main') RETURNING id",
+      parameters: {'r': restaurantId},
+    )).first[0]! as int;
+
     types = PostgresOrderTypesRepository(
       database: db,
       config: pg.config.copyWith(tenantSlug: slug),
       restaurantId: restaurantId,
+    );
+    admin = PostgresCatalogAdminRepository(
+      database: db,
+      config: pg.config.copyWith(tenantSlug: slug),
+      restaurantId: restaurantId,
+      branchId: branchId,
     );
   });
 
@@ -166,5 +206,154 @@ void main() {
       4,
     );
     expect(await types.all(), hasLength(4), reason: 'and this one is unchanged');
+  });
+
+  group('editing one', () {
+    OrderTypeConfig of(String wire) =>
+        OrderTypeConfig(type: OrderType.fromWire(wire)!, nameEn: 'x');
+
+    Future<OrderTypeConfig> current(String wire) async =>
+        (await types.all(includeInactive: true))
+            .firstWhere((c) => c.type.wire == wire);
+
+    test('a rename lands on the row the code names', () async {
+      final takeaway = await current('takeaway');
+      final result = await admin.saveOrderType(
+        OrderTypeConfig(
+          type: takeaway.type,
+          nameEn: 'Collection',
+          nameAr: 'استلام',
+          sortOrder: takeaway.sortOrder,
+        ),
+        by: manager,
+      );
+      expect(result.succeeded, isTrue, reason: '${result.refusal}');
+
+      final after = await current('takeaway');
+      expect(after.nameEn, 'Collection');
+      expect(after.nameAr, 'استلام');
+      // And nothing else moved: the upsert is on the code, and four rows are
+      // seeded, so an insert instead of an update would leave five.
+      expect(await types.all(includeInactive: true), hasLength(4));
+      expect((await current('dine_in')).nameEn, 'Dine in');
+    });
+
+    test('a table can be turned on for a type that had none', () async {
+      // The switch that used to be `type == OrderType.dineIn` in three files. A
+      // caterer who seats people turns it on for takeaway.
+      expect((await current('takeaway')).requiresTable, isFalse);
+
+      await admin.saveOrderType(
+        OrderTypeConfig(
+          type: OrderType.takeaway,
+          nameEn: 'Catering',
+          requiresTable: true,
+        ),
+        by: manager,
+      );
+
+      expect((await current('takeaway')).requiresTable, isTrue);
+    });
+
+    test('turning one off takes it off the till but keeps the row', () async {
+      await admin.saveOrderType(
+        OrderTypeConfig(
+          type: OrderType.driveThru,
+          nameEn: 'Drive-thru',
+          isActive: false,
+        ),
+        by: manager,
+      );
+
+      expect(
+        (await types.all()).map((c) => c.type.wire),
+        isNot(contains('drive_thru')),
+        reason: 'the till stops offering it',
+      );
+      expect(
+        (await types.all(includeInactive: true)).map((c) => c.type.wire),
+        contains('drive_thru'),
+        reason: 'and the editor can turn it back on',
+      );
+    });
+
+    test('the last one cannot be turned off', () async {
+      // A restaurant with no active order type has a till that cannot start a
+      // ticket, and the fix afterwards is a database edit by somebody who will
+      // not know that is what they are doing.
+      for (final wire in ['takeaway', 'delivery', 'drive_thru']) {
+        final off = await admin.saveOrderType(
+          OrderTypeConfig(
+            type: OrderType.fromWire(wire)!,
+            nameEn: wire,
+            isActive: false,
+          ),
+          by: manager,
+        );
+        expect(off.succeeded, isTrue, reason: '$wire: ${off.refusal}');
+      }
+
+      final last = await admin.saveOrderType(
+        const OrderTypeConfig(
+          type: OrderType.dineIn,
+          nameEn: 'Dine in',
+          isActive: false,
+        ),
+        by: manager,
+      );
+      expect(last.succeeded, isFalse);
+      expect((last.refusal! as CatalogInvalid).reason, contains('sellable'));
+      expect((await types.all()), hasLength(1));
+    });
+
+    test('a nameless type is refused', () async {
+      final result = await admin.saveOrderType(
+        const OrderTypeConfig(type: OrderType.dineIn, nameEn: '  '),
+        by: manager,
+      );
+      expect(result.succeeded, isFalse);
+    });
+
+    test('a cashier cannot change what the restaurant sells', () async {
+      final result = await admin.saveOrderType(of('dine_in'), by: cashier);
+      expect(result.refusal, isA<NotPermitted>());
+      expect((await current('dine_in')).nameEn, 'Dine in');
+    });
+
+    test('a cloud till is refused — the platform owns these', () async {
+      final cloud = PostgresCatalogAdminRepository(
+        database: db,
+        config: pg.config.copyWith(tenantSlug: slug),
+        restaurantId: restaurantId,
+        branchId: branchId,
+        offline: false,
+      );
+      final result = await cloud.saveOrderType(of('dine_in'), by: manager);
+      expect(result.refusal, isA<NotPermitted>());
+    });
+
+    test('the change is audited — it changes what can be sold', () async {
+      await admin.saveOrderType(
+        const OrderTypeConfig(
+          type: OrderType.delivery,
+          nameEn: 'Delivery',
+          requiresTable: true,
+        ),
+        by: manager,
+      );
+
+      // The newest row, not every row: `pos_audit_events` outlives the
+      // restaurant delete this fixture does between tests, so the earlier
+      // tests' rows are still here — which is the ledger behaving correctly.
+      final rows = await db.query(
+        pg.config,
+        'SELECT after_value FROM pos_audit_events WHERE action = @a '
+        'ORDER BY id DESC LIMIT 1',
+        parameters: {'a': AuditAction.orderTypeSaved},
+      );
+      expect(rows, hasLength(1));
+      expect('${rows.first[0]}', contains('requires_table'));
+      expect('${rows.first[0]}', contains('delivery'));
+    });
   });
 }

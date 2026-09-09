@@ -15,6 +15,7 @@ import 'management_floor_pane.dart';
 import 'management_menu_pane.dart';
 import 'management_eta_pane.dart';
 import 'management_charges_pane.dart';
+import 'management_order_types_pane.dart';
 import 'management_taxes_pane.dart';
 import 'management_tenders_pane.dart';
 import 'management_purchasing_pane.dart';
@@ -127,7 +128,8 @@ ManagementArea areaOf(ManagementPane pane) => switch (pane) {
   ManagementPane.menu || ManagementPane.floor => ManagementArea.menu,
   ManagementPane.taxes ||
   ManagementPane.charges ||
-  ManagementPane.tenders => ManagementArea.money,
+  ManagementPane.tenders ||
+  ManagementPane.orderTypes => ManagementArea.money,
   ManagementPane.purchasing => ManagementArea.buying,
   ManagementPane.receipt || ManagementPane.eta => ManagementArea.compliance,
   ManagementPane.activity => ManagementArea.system,
@@ -192,6 +194,7 @@ class ManagementDestination {
         ManagementPane.taxes => (s.paneTaxes, s.paneTaxesHint),
       ManagementPane.charges => (s.serviceCharges, s.serviceChargesHint),
       ManagementPane.tenders => (s.tenderTypes, s.tenderTypesHint),
+      ManagementPane.orderTypes => (s.orderTypes, s.orderTypesHint),
       ManagementPane.purchasing => (s.panePurchasing, s.panePurchasingBlurb),
       ManagementPane.receipt => (s.paneReceipt, s.paneReceiptBlurb),
       ManagementPane.eta => (s.paneEta, s.paneEtaBlurb),
@@ -225,6 +228,7 @@ enum ManagementPane {
   taxes,
   charges,
   tenders,
+  orderTypes,
   purchasing,
   receipt,
   eta,
@@ -302,6 +306,9 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
                         admin: admin,
                       ),
                       ManagementPane.tenders => ManagementTendersPane(
+                        admin: admin,
+                      ),
+                      ManagementPane.orderTypes => ManagementOrderTypesPane(
                         admin: admin,
                       ),
                       ManagementPane.purchasing =>

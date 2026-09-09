@@ -990,6 +990,7 @@ sealed class AppStrings {
   String get actSupplierPaymentVoided;
   String get actServiceChargeSaved;
   String get actTenderTypeSaved;
+  String get actOrderTypeSaved;
   String get fieldYes;
   String get fieldNo;
   String get unitEach;
@@ -1003,6 +1004,23 @@ sealed class AppStrings {
   String get supplierOverdue;
 
   // Management chrome.
+  String get orderTypes;
+  String get orderTypesHint;
+  String get orderTypesComeFromPlatform;
+  String get orderTypeName;
+  String get orderTypeNeedsAName;
+  String get orderTypeRequiresTable;
+  String get orderTypeRequiresTableHint;
+  String get orderTypeRequiresCustomer;
+  String get orderTypeRequiresCustomerHint;
+  String get orderTypeRequiresAddress;
+  String get orderTypeRequiresAddressHint;
+  String get orderTypeOffered;
+  String get orderTypeOfferedHint;
+  String get orderTypeNotOffered;
+  String get orderTypeChipTable;
+  String get orderTypeChipCustomer;
+  String get orderTypeChipAddress;
   String get paneTaxes;
   String get paneTaxesHint;
   String get areaPeople;
@@ -3990,6 +4008,8 @@ final class EnStrings extends AppStrings {
   @override
   String get actTenderTypeSaved => 'Changed a payment method';
   @override
+  String get actOrderTypeSaved => 'Changed an order type';
+  @override
   String get fieldYes => 'yes';
   @override
   String get fieldNo => 'no';
@@ -4012,6 +4032,48 @@ final class EnStrings extends AppStrings {
   @override
   String get supplierOverdue => 'overdue';
 
+  @override
+  String get orderTypes => 'Order types';
+  @override
+  String get orderTypesHint =>
+      'What each kind of order needs before it can be settled.';
+  @override
+  String get orderTypesComeFromPlatform =>
+      'These come from XOrder on this till. You can see them; the platform sets '
+      'them.';
+  @override
+  String get orderTypeName => 'What you call it';
+  @override
+  String get orderTypeNeedsAName => 'An order type needs a name.';
+  @override
+  String get orderTypeRequiresTable => 'Has a table';
+  @override
+  String get orderTypeRequiresTableHint =>
+      'Turns on the floor plan for this kind of order. On for a caterer who '
+      'seats people, or a drive-thru with numbered bays.';
+  @override
+  String get orderTypeRequiresCustomer => 'Needs a customer';
+  @override
+  String get orderTypeRequiresCustomerHint =>
+      'Nothing asks for one yet — customers are still being built — and it is '
+      'saved so it is right when they arrive.';
+  @override
+  String get orderTypeRequiresAddress => 'Needs an address';
+  @override
+  String get orderTypeRequiresAddressHint => 'For delivery, and only delivery.';
+  @override
+  String get orderTypeOffered => 'Sold here';
+  @override
+  String get orderTypeOfferedHint =>
+      'Turning this off takes it off the till. Orders already taken keep it.';
+  @override
+  String get orderTypeNotOffered => 'not sold';
+  @override
+  String get orderTypeChipTable => 'TABLE';
+  @override
+  String get orderTypeChipCustomer => 'CUSTOMER';
+  @override
+  String get orderTypeChipAddress => 'ADDRESS';
   @override
   String get paneTaxes => 'Tax';
   @override
@@ -6646,6 +6708,8 @@ final class ArStrings extends AppStrings {
   @override
   String get actTenderTypeSaved => 'تعديل طريقة سداد';
   @override
+  String get actOrderTypeSaved => 'تعديل نوع طلب';
+  @override
   String get fieldYes => 'نعم';
   @override
   String get fieldNo => 'لا';
@@ -6668,6 +6732,46 @@ final class ArStrings extends AppStrings {
   @override
   String get supplierOverdue => 'متأخر';
 
+  @override
+  String get orderTypes => 'أنواع الطلبات';
+  @override
+  String get orderTypesHint => 'ما يحتاجه كل نوع من الطلبات قبل أن يُحاسب.';
+  @override
+  String get orderTypesComeFromPlatform =>
+      'هذه تأتي من XOrder على هذا الجهاز. يمكنك رؤيتها، والمنصة تضبطها.';
+  @override
+  String get orderTypeName => 'الاسم الذي تستخدمه';
+  @override
+  String get orderTypeNeedsAName => 'نوع الطلب يحتاج اسمًا.';
+  @override
+  String get orderTypeRequiresTable => 'له طاولة';
+  @override
+  String get orderTypeRequiresTableHint =>
+      'يفعّل مخطط الصالة لهذا النوع. شغّله لخدمة الحفلات التي تُجلس العملاء، أو '
+      'لمسارات السيارات المرقّمة.';
+  @override
+  String get orderTypeRequiresCustomer => 'يحتاج عميلًا';
+  @override
+  String get orderTypeRequiresCustomerHint =>
+      'لا شيء يطلبه بعد — ملف العملاء قيد الإنشاء — ويُحفظ الآن ليكون صحيحًا حين '
+      'يصل.';
+  @override
+  String get orderTypeRequiresAddress => 'يحتاج عنوانًا';
+  @override
+  String get orderTypeRequiresAddressHint => 'للدليفري، وللدليفري وحده.';
+  @override
+  String get orderTypeOffered => 'متاح هنا';
+  @override
+  String get orderTypeOfferedHint =>
+      'إيقافه يُخرجه من الكاشير. الطلبات السابقة تحتفظ به.';
+  @override
+  String get orderTypeNotOffered => 'غير متاح';
+  @override
+  String get orderTypeChipTable => 'طاولة';
+  @override
+  String get orderTypeChipCustomer => 'عميل';
+  @override
+  String get orderTypeChipAddress => 'عنوان';
   @override
   String get paneTaxes => 'الضريبة';
   @override

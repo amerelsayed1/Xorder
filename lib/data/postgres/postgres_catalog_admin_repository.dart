@@ -5,6 +5,7 @@ import 'package:postgres/postgres.dart';
 import '../../core/config/deployment.dart';
 import '../../core/money/money.dart';
 import '../../domain/models/catalog.dart';
+import '../../domain/models/order_type_config.dart';
 import '../../domain/models/dining_table.dart';
 import '../../domain/models/permissions.dart';
 import '../../domain/models/shift.dart';
@@ -576,6 +577,95 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
       return const NotPermitted(PosCapability.settingsManage);
     }
     return null;
+  }
+
+  @override
+  Future<AdminResult<OrderTypeConfig>> saveOrderType(
+    OrderTypeConfig orderType, {
+    required PosStaff by,
+  }) async {
+    final blocked = _blockedSettings(by);
+    if (blocked != null) return AdminResult.refused(blocked);
+
+    if (orderType.nameEn.trim().isEmpty) {
+      return const AdminResult.refused(
+        CatalogInvalid('An order type needs a name.'),
+      );
+    }
+
+    return database.runTx(config, (tx) async {
+      // A restaurant with no active order type has a till that cannot start a
+      // ticket. Refused rather than warned, like the last cash tender method:
+      // the fix afterwards is a database edit by somebody who will not know
+      // that is what they are doing.
+      if (!orderType.isActive) {
+        final remaining = await tx.execute(
+          Sql.named(
+            'SELECT count(*) FROM pos_order_types '
+            'WHERE restaurant_id = @r AND is_active AND code <> @code',
+          ),
+          parameters: {'r': restaurantId, 'code': orderType.type.wire},
+        );
+        if ((remaining.first[0]! as int) == 0) {
+          return const AdminResult<OrderTypeConfig>.refused(
+            CatalogInvalid(
+              'Something has to be sellable. This is the last order type left '
+              'on.',
+            ),
+          );
+        }
+      }
+
+      // **Upsert on the code, not on an id.** The four rows are seeded, so a
+      // restaurant whose seed predates a column edits a row this build has
+      // never inserted — and `OrderTypeConfig` carries no id, because the code
+      // is the identity.
+      final rows = await tx.execute(
+        Sql.named(
+          'INSERT INTO pos_order_types (restaurant_id, code, name_en, name_ar, '
+          '  requires_table, requires_customer, requires_address, is_active, '
+          '  sort_order) '
+          'VALUES (@r, @code, @nameEn, @nameAr, @table, @customer, @address, '
+          '        @active, @sort) '
+          'ON CONFLICT (restaurant_id, code) DO UPDATE SET '
+          '  name_en = EXCLUDED.name_en, name_ar = EXCLUDED.name_ar, '
+          '  requires_table = EXCLUDED.requires_table, '
+          '  requires_customer = EXCLUDED.requires_customer, '
+          '  requires_address = EXCLUDED.requires_address, '
+          '  is_active = EXCLUDED.is_active, sort_order = EXCLUDED.sort_order '
+          'RETURNING id',
+        ),
+        parameters: {
+          'r': restaurantId,
+          'code': orderType.type.wire,
+          'nameEn': orderType.nameEn.trim(),
+          'nameAr': orderType.nameAr?.trim(),
+          'table': orderType.requiresTable,
+          'customer': orderType.requiresCustomer,
+          'address': orderType.requiresAddress,
+          'active': orderType.isActive,
+          'sort': orderType.sortOrder,
+        },
+      );
+
+      await _audit(
+        tx,
+        by: by,
+        action: AuditAction.orderTypeSaved,
+        entityType: AuditAction.entityOrderType,
+        entityId: '${rows.first[0]}',
+        after: {
+          'code': orderType.type.wire,
+          'name': orderType.nameEn.trim(),
+          // The two with consequences beyond a label: one decides whether the
+          // floor plan is offered, the other whether the type can be sold.
+          'requires_table': orderType.requiresTable,
+          'is_active': orderType.isActive,
+        },
+      );
+
+      return AdminResult.done(orderType);
+    });
   }
 
   @override

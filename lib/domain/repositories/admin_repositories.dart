@@ -1,4 +1,5 @@
 import '../models/catalog.dart';
+import '../models/order_type_config.dart';
 import '../services/menu_import.dart';
 import '../models/dining_table.dart';
 import '../models/permissions.dart';
@@ -281,6 +282,7 @@ abstract final class AuditAction {
   static const entityProduct = 'product';
   static const entityMoney = 'money_config';
   static const entityTenderType = 'tender_type';
+  static const entityOrderType = 'order_type';
   static const entityServiceCharge = 'service_charge';
   static const entitySupplier = 'supplier';
   static const entityPurchaseOrder = 'purchase_order';
@@ -322,6 +324,11 @@ abstract final class AuditAction {
   /// Its own action because changing `counts_as_cash` changes what every
   /// future cash-up expects to find in the drawer.
   static const tenderTypeSaved = 'tender_type.saved';
+
+  /// An order type renamed, retired, or its requirements changed (§31). Its own
+  /// action because turning off *requires a table* changes what the floor plan
+  /// is for, and turning off the type itself removes a way of selling.
+  static const orderTypeSaved = 'order_type.saved';
   static const entityTable = 'table';
   static const entityReceiptProfile = 'receipt_profile';
 }
@@ -434,6 +441,18 @@ abstract interface class CatalogAdminRepository {
   /// next year still has to say what the customer paid with.
   Future<AdminResult<TenderMethod>> saveTenderType(
     TenderMethod method, {
+    required PosStaff by,
+  });
+
+  /// What a kind of order requires (§31).
+  ///
+  /// **No create and no delete**, unlike almost everything else here. The codes
+  /// are an `OrderType` enum and the four of them are seeded: a fifth would have
+  /// no name to render, because every place that shows an order type reads it off
+  /// the enum. So this edits the four — their names, what they require, and
+  /// whether the branch offers them at all.
+  Future<AdminResult<OrderTypeConfig>> saveOrderType(
+    OrderTypeConfig config, {
     required PosStaff by,
   });
 

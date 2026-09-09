@@ -825,6 +825,20 @@ final orderTypeConfigProvider = FutureProvider<OrderTypeRules>((ref) async {
       : OrderTypeRules(configured);
 });
 
+/// Every order type, including the ones a branch has turned off — the editor's
+/// list, not the till's. The till reads `orderTypeConfigProvider`, which hides
+/// them, because a cashier must never be offered a type the branch refuses.
+final orderTypesAllProvider = FutureProvider<List<OrderTypeConfig>>((
+  ref,
+) async {
+  final repository = ref.watch(orderTypesRepositoryProvider);
+  if (repository == null) return OrderTypeConfig.seeded;
+  final configured = await repository.all(includeInactive: true);
+  // Seeded rather than empty: migration 25 seeds four rows, and a restaurant
+  // whose seed has not run yet still has four types to name.
+  return configured.isEmpty ? OrderTypeConfig.seeded : configured;
+});
+
 final orderTypesRepositoryProvider = Provider<OrderTypesRepository?>((ref) {
   final config = ref.watch(deploymentProvider);
   final context = ref.watch(posWriteContextProvider);
