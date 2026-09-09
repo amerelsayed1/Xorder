@@ -5,6 +5,7 @@ import 'package:postgres/postgres.dart';
 import '../../core/config/deployment.dart';
 import '../../core/money/money.dart';
 import '../../domain/models/catalog.dart';
+import '../../domain/models/tax.dart';
 import '../../domain/models/order_type_config.dart';
 import '../../domain/models/dining_table.dart';
 import '../../domain/models/permissions.dart';
@@ -577,6 +578,135 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
       return const NotPermitted(PosCapability.settingsManage);
     }
     return null;
+  }
+
+  @override
+  Future<AdminResult<TaxGroup>> saveTaxGroup(
+    TaxGroup group, {
+    required PosStaff by,
+  }) async {
+    final blocked = _blockedSettings(by);
+    if (blocked != null) return AdminResult.refused(blocked);
+
+    if (group.nameEn.trim().isEmpty) {
+      return const AdminResult.refused(
+        CatalogInvalid('A rate needs a name — it is what an accountant '
+            'reconciles against.'),
+      );
+    }
+    if (group.rateBp < 0 || group.rateBp > 10000) {
+      return const AdminResult.refused(
+        CatalogInvalid('A rate is between 0% and 100%.'),
+      );
+    }
+
+    return database.runTx(config, (tx) async {
+      // **One default, and the database holds it too** — a partial unique index
+      // since Wave M. Cleared here rather than left to the constraint so the
+      // manager gets a saved rate instead of a constraint violation: making a
+      // second group the default means the first one stops being it.
+      if (group.isDefault) {
+        await tx.execute(
+          Sql.named(
+            'UPDATE pos_tax_groups SET is_default = false '
+            'WHERE restaurant_id = @r AND is_default AND id <> @id',
+          ),
+          parameters: {'r': restaurantId, 'id': group.id},
+        );
+      }
+
+      // Retiring the default would leave "what does an unclassified product
+      // cost" with no answer, and every product that names no group is
+      // unclassified.
+      if (group.id != 0 && (!group.isActive || !group.isDefault)) {
+        final wasDefault = await tx.execute(
+          Sql.named(
+            'SELECT is_default FROM pos_tax_groups '
+            'WHERE id = @id AND restaurant_id = @r FOR UPDATE',
+          ),
+          parameters: {'id': group.id, 'r': restaurantId},
+        );
+        if (wasDefault.isEmpty) {
+          return const AdminResult<TaxGroup>.refused(EditedElsewhere(0));
+        }
+        if (wasDefault.first[0] == true && !group.isDefault) {
+          return const AdminResult<TaxGroup>.refused(
+            CatalogInvalid(
+              'Something has to be the fallback rate. Make another group the '
+              'default first.',
+            ),
+          );
+        }
+        if (wasDefault.first[0] == true && !group.isActive) {
+          return const AdminResult<TaxGroup>.refused(
+            CatalogInvalid(
+              'The fallback rate cannot be retired. Make another group the '
+              'default first.',
+            ),
+          );
+        }
+      }
+
+      const columns = 'id, name_en, name_ar, rate_bp, is_default, is_active';
+      final parameters = <String, Object?>{
+        'r': restaurantId,
+        'nameEn': group.nameEn.trim(),
+        'nameAr': group.nameAr?.trim(),
+        'rate': group.rateBp,
+        'isDefault': group.isDefault,
+        'active': group.isActive,
+      };
+
+      final rows = group.id == 0
+          ? await tx.execute(
+              Sql.named(
+                'INSERT INTO pos_tax_groups (restaurant_id, name_en, name_ar, '
+                '  rate_bp, is_default, is_active) '
+                'VALUES (@r, @nameEn, @nameAr, @rate, @isDefault, @active) '
+                'RETURNING $columns',
+              ),
+              parameters: parameters,
+            )
+          : await tx.execute(
+              Sql.named(
+                'UPDATE pos_tax_groups SET name_en = @nameEn, '
+                '  name_ar = @nameAr, rate_bp = @rate, '
+                '  is_default = @isDefault, is_active = @active '
+                'WHERE id = @id AND restaurant_id = @r RETURNING $columns',
+              ),
+              parameters: {...parameters, 'id': group.id},
+            );
+
+      if (rows.isEmpty) {
+        return const AdminResult<TaxGroup>.refused(EditedElsewhere(0));
+      }
+
+      await _audit(
+        tx,
+        by: by,
+        action: AuditAction.taxGroupSaved,
+        entityType: AuditAction.entityTaxGroup,
+        entityId: '${rows.first[0]}',
+        after: {
+          'name': group.nameEn.trim(),
+          // The figure a filing is reconciled against.
+          'rate_bp': group.rateBp,
+          'is_default': group.isDefault,
+          'is_active': group.isActive,
+        },
+      );
+
+      final row = rows.first;
+      return AdminResult.done(
+        TaxGroup(
+          id: row[0]! as int,
+          nameEn: row[1]! as String,
+          nameAr: row[2] as String?,
+          rateBp: row[3]! as int,
+          isDefault: row[4]! as bool,
+        ),
+      );
+    });
   }
 
   @override

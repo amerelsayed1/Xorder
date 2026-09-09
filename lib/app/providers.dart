@@ -68,6 +68,7 @@ import '../domain/models/eta_submission.dart';
 import '../domain/models/order_type_config.dart';
 import '../domain/models/permissions.dart';
 import '../domain/models/purchase_order.dart';
+import '../domain/models/tax.dart';
 import '../domain/models/supplier.dart';
 import '../domain/models/supplier_invoice.dart';
 import '../domain/models/receipt_profile.dart';
@@ -879,7 +880,81 @@ final taxConfigProvider = Provider<TaxConfig>((ref) {
   // restaurant that has not opened the new screen is charged exactly what it
   // was.
   final charges = ref.watch(serviceChargesProvider).valueOrNull ?? const [];
-  return charges.isEmpty ? stored : stored.withServiceCharges(charges);
+  final withCharges = charges.isEmpty
+      ? stored
+      : stored.withServiceCharges(charges);
+
+  // **And the named rates, which nothing loaded.** `pos_tax_groups` has been
+  // seeded since the installer wrote it and `pos_products.tax_group_id` has
+  // pointed at it since Wave M, but `TaxConfig.taxGroups` arrived empty on every
+  // till — so `defaultTaxGroup` answered every lookup, and a bottle of water a
+  // restaurant had marked zero-rated was charged the standard rate anyway. Same
+  // shape as the charges above: empty changes nothing.
+  final groups = ref.watch(taxGroupsProvider).valueOrNull ?? const [];
+  return groups.isEmpty ? withCharges : withCharges.withTaxGroups(groups);
+});
+
+/// The restaurant's named rates (§17).
+///
+/// On the **till's** credential, unlike the editor's write: a ticket cannot be
+/// priced without them, and the catalogue query already reads the group id off
+/// every product.
+final taxGroupsProvider = FutureProvider<List<TaxGroup>>((ref) async {
+  final config = ref.watch(deploymentProvider);
+  final context = ref.watch(posWriteContextProvider);
+  if (context == null || PosDatabase.hostFor(config) == null) return const [];
+
+  try {
+    final rows = await ref.watch(posDatabaseProvider).query(
+      config,
+      'SELECT id, name_en, name_ar, rate_bp, is_default FROM pos_tax_groups '
+      'WHERE restaurant_id = @r AND is_active ORDER BY is_default DESC, id',
+      parameters: {'r': context.restaurantId},
+    );
+    return [
+      for (final row in rows)
+        TaxGroup(
+          id: row[0]! as int,
+          nameEn: row[1]! as String,
+          nameAr: row[2] as String?,
+          rateBp: row[3]! as int,
+          isDefault: row[4]! as bool,
+        ),
+    ];
+  } on Object {
+    // A till that cannot read its rates keeps the single configured one rather
+    // than refusing to sell — the same choice `moneyConfigProvider` makes, and
+    // for the same reason.
+    return const [];
+  }
+});
+
+/// Every group including the retired ones — the editor's list.
+final taxGroupsAllProvider = FutureProvider<List<TaxGroup>>((ref) async {
+  final config = ref.watch(adminDeploymentProvider);
+  final context = ref.watch(posWriteContextProvider);
+  if (context == null || ref.watch(adminDbCredentialProvider) == null) {
+    return const [];
+  }
+
+  final rows = await ref.watch(adminPosDatabaseProvider).query(
+    config,
+    'SELECT id, name_en, name_ar, rate_bp, is_default, is_active '
+    'FROM pos_tax_groups WHERE restaurant_id = @r '
+    'ORDER BY is_default DESC, id',
+    parameters: {'r': context.restaurantId},
+  );
+  return [
+    for (final row in rows)
+      TaxGroup(
+        id: row[0]! as int,
+        nameEn: row[1]! as String,
+        nameAr: row[2] as String?,
+        rateBp: row[3]! as int,
+        isDefault: row[4]! as bool,
+        isActive: row[5]! as bool,
+      ),
+  ];
 });
 
 final moneyConfigProvider = FutureProvider<TaxConfig?>((ref) async {

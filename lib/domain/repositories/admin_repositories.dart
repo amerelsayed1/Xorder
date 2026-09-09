@@ -1,4 +1,5 @@
 import '../models/catalog.dart';
+import '../models/tax.dart';
 import '../models/order_type_config.dart';
 import '../services/menu_import.dart';
 import '../models/dining_table.dart';
@@ -283,6 +284,7 @@ abstract final class AuditAction {
   static const entityMoney = 'money_config';
   static const entityTenderType = 'tender_type';
   static const entityOrderType = 'order_type';
+  static const entityTaxGroup = 'tax_group';
   static const entityServiceCharge = 'service_charge';
   static const entitySupplier = 'supplier';
   static const entityPurchaseOrder = 'purchase_order';
@@ -324,6 +326,11 @@ abstract final class AuditAction {
   /// Its own action because changing `counts_as_cash` changes what every
   /// future cash-up expects to find in the drawer.
   static const tenderTypeSaved = 'tender_type.saved';
+
+  /// A named rate added, repriced or retired (§17). Its own action because
+  /// changing a rate changes what every product in that group costs, and a
+  /// filing is reconciled against the rate that was charged on the day.
+  static const taxGroupSaved = 'tax_group.saved';
 
   /// An order type renamed, retired, or its requirements changed (§31). Its own
   /// action because turning off *requires a table* changes what the floor plan
@@ -441,6 +448,16 @@ abstract interface class CatalogAdminRepository {
   /// next year still has to say what the customer paid with.
   Future<AdminResult<TenderMethod>> saveTenderType(
     TenderMethod method, {
+    required PosStaff by,
+  });
+
+  /// A named rate (§17).
+  ///
+  /// `id == 0` creates. No delete: a group a product points at cannot be removed
+  /// without silently reclassifying that product, so it is retired with
+  /// `isActive` — and the default one cannot even be retired.
+  Future<AdminResult<TaxGroup>> saveTaxGroup(
+    TaxGroup group, {
     required PosStaff by,
   });
 

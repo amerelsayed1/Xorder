@@ -601,11 +601,16 @@ class LocalBootstrap {
     // is not a record of anything that happened, only the current shape of
     // which options a product offers.
     'GRANT SELECT, INSERT, DELETE ON pos_product_modifier_groups TO "$role"',
-    // Tax groups, per-branch prices and combos — everything Wave M made
-    // authorable. Read for now, because nothing in Management edits them yet;
-    // the writes land with Wave D's settings surface, and granting them before
-    // there is a screen would be granting them to nobody.
-    'GRANT SELECT ON pos_tax_groups, pos_product_prices, pos_combos, '
+    // The named rates. **The write that Wave M deferred** — "granting them
+    // before there is a screen would be granting them to nobody" — now that the
+    // Tax pane edits them. No DELETE: a group a product points at cannot be
+    // removed without silently reclassifying that product, so it is retired.
+    'GRANT SELECT, INSERT, UPDATE ON pos_tax_groups TO "$role"',
+    'GRANT USAGE, SELECT ON SEQUENCE pos_tax_groups_id_seq TO "$role"',
+    // Per-branch prices and combos are still read-only here: nothing in
+    // Management edits them yet, and granting a write to nobody is how a role
+    // ends up holding more than anything needs.
+    'GRANT SELECT ON pos_product_prices, pos_combos, '
         'pos_combo_groups, pos_combo_options TO "$role"',
     // The trade name, registration number and address a receipt is judged on.
     // No DELETE: a branch stops having a profile by being archived, not by

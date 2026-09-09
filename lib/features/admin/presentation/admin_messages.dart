@@ -106,6 +106,7 @@ abstract final class AdminText {
     AuditAction.serviceChargeSaved => s.actServiceChargeSaved,
     AuditAction.tenderTypeSaved => s.actTenderTypeSaved,
     AuditAction.orderTypeSaved => s.actOrderTypeSaved,
+    AuditAction.taxGroupSaved => s.actTaxGroupSaved,
     _ => action,
   };
 

@@ -8,8 +8,11 @@ import '../../../core/ui/tokens.dart';
 import '../../../core/ui/widgets/pos_widgets.dart';
 import '../../../domain/models/shift.dart';
 import '../../../domain/models/ticket.dart';
+import '../../../core/ui/widgets/mono_amount.dart';
+import '../../../domain/models/tax.dart';
 import 'admin_messages.dart';
 import 'admin_pane_bits.dart';
+import 'tax_group_dialog.dart';
 
 /// What the restaurant charges in tax (§17).
 ///
@@ -70,6 +73,37 @@ class _ManagementTaxesPaneState extends ConsumerState<ManagementTaxesPane> {
     final value = double.tryParse(trimmed);
     if (value == null || value < 0) return null;
     return (value * 100).round();
+  }
+
+  Future<void> _editGroup(TaxGroup? group) async {
+    final repository = ref.read(catalogAdminRepositoryProvider);
+    if (repository == null) return;
+
+    final edited = await TaxGroupDialog.show(context, group: group);
+    if (edited == null || !mounted) return;
+
+    setState(() {
+      _busy = true;
+      _note = null;
+    });
+    final result = await repository.saveTaxGroup(edited, by: widget.admin);
+    if (!mounted) return;
+
+    setState(() {
+      _busy = false;
+      _note = result.succeeded
+          ? null
+          : AdminText.refusal(context.strings, result.refusal!);
+    });
+
+    // The ticket prices off `taxConfigProvider`, which folds these in. Without
+    // the invalidation a rate change would reach the till on the next restart —
+    // and the till would keep charging the old one in the meantime.
+    if (result.succeeded) {
+      ref
+        ..invalidate(taxGroupsProvider)
+        ..invalidate(taxGroupsAllProvider);
+    }
   }
 
   Future<void> _save() async {
@@ -200,9 +234,125 @@ class _ManagementTaxesPaneState extends ConsumerState<ManagementTaxesPane> {
                 onPressed: _busy ? null : _save,
               ),
             ),
+
+            // The named rates, under the single one they supersede — the same
+            // placement the service charges had under theirs, and for the same
+            // reason: a manager can see which of the two is actually charged.
+            const SizedBox(height: PosSpace.s28),
+            Container(height: 1, color: context.pos.line),
+            const SizedBox(height: PosSpace.xl),
+            PaneSection(title: strings.taxGroups, hint: strings.taxGroupsHint),
+            ...ref
+                .watch(taxGroupsAllProvider)
+                .when(
+                  loading: () => const [SizedBox(height: 40)],
+                  error: (error, _) => [
+                    Text(
+                      '$error',
+                      style: PosText.ui(size: 13, color: context.pos.danger),
+                    ),
+                  ],
+                  data: (groups) => groups.isEmpty
+                      ? [
+                          // The state worth naming: with no groups every product
+                          // is charged the single rate above, whatever a
+                          // restaurant has written on its menu about water.
+                          Text(
+                            strings.taxGroupsFallback,
+                            style: PosText.ui(
+                              size: 12.5,
+                              color: context.pos.warn,
+                            ),
+                          ),
+                        ]
+                      : [
+                          for (final group in groups)
+                            _GroupRow(
+                              group: group,
+                              onEdit: () => _editGroup(group),
+                            ),
+                        ],
+                ),
+            const SizedBox(height: PosSpace.md),
+            Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: PosButton(
+                key: const Key('tax-group-new'),
+                label: strings.taxGroupNew,
+                border: Border.fromBorderSide(context.pos.resting),
+                onPressed: _busy ? null : () => _editGroup(null),
+              ),
+            ),
           ],
         );
       },
+    );
+  }
+}
+
+/// One named rate, as the editor lists them.
+class _GroupRow extends StatelessWidget {
+  const _GroupRow({required this.group, required this.onEdit});
+
+  final TaxGroup group;
+  final VoidCallback onEdit;
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = context.strings;
+    final palette = context.pos;
+
+    return InkWell(
+      onTap: onEdit,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: PosSpace.sm),
+        decoration: BoxDecoration(
+          border: BorderDirectional(bottom: palette.hairline),
+        ),
+        child: Opacity(
+          opacity: group.isActive ? 1 : 0.5,
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  group.displayName(strings.languageCode),
+                  style: PosText.ui(size: 13.5, color: palette.ink),
+                ),
+              ),
+              if (group.isDefault)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: PosSpace.sm,
+                    vertical: 2,
+                  ),
+                  color: palette.chipBg,
+                  child: Text(
+                    // Which one an unclassified product is charged at — the
+                    // question this whole table answers.
+                    strings.taxGroupIsDefault,
+                    style: PosText.ui(
+                      size: 10.5,
+                      weight: FontWeight.w700,
+                      color: palette.chipText,
+                    ),
+                  ),
+                ),
+              if (!group.isActive)
+                Padding(
+                  padding: const EdgeInsetsDirectional.only(
+                    start: PosSpace.sm,
+                  ),
+                  child: Text(
+                    strings.tenderRetired,
+                    style: PosText.ui(size: 11.5, color: palette.muted),
+                  ),
+                ),
+              const SizedBox(width: PosSpace.sm),
+              MonoCode(AdminText.rateBp(group.rateBp), size: 12.5),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

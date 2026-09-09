@@ -461,6 +461,25 @@ class TaxConfig {
     taxMode: taxMode,
   );
 
+  /// The same object with the restaurant's named rates folded in.
+  ///
+  /// **Nothing populated [taxGroups] until this existed.** Products have carried
+  /// `tax_group_id` since Wave M and `pos_tax_groups` has been seeded since the
+  /// installer wrote it, but the list arrived empty on every till — so
+  /// [defaultTaxGroup] answered every lookup and a product a restaurant had
+  /// marked zero-rated was charged the standard rate anyway. An empty list still
+  /// leaves everything untouched, which is why a restaurant that has configured
+  /// nothing is charged exactly what it was.
+  TaxConfig withTaxGroups(List<TaxGroup> groups) => TaxConfig(
+    serviceBp: serviceBp,
+    vatBp: vatBp,
+    serviceDineInOnly: serviceDineInOnly,
+    source: source,
+    taxGroups: groups,
+    serviceCharges: serviceCharges,
+    taxMode: taxMode,
+  );
+
   /// What an order of [type] is charged on top of [base], split by whether VAT
   /// applies to it.
   ///

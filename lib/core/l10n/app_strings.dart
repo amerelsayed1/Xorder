@@ -991,6 +991,7 @@ sealed class AppStrings {
   String get actServiceChargeSaved;
   String get actTenderTypeSaved;
   String get actOrderTypeSaved;
+  String get actTaxGroupSaved;
   String get fieldYes;
   String get fieldNo;
   String get unitEach;
@@ -1004,6 +1005,21 @@ sealed class AppStrings {
   String get supplierOverdue;
 
   // Management chrome.
+  String get taxGroups;
+  String get taxGroupsHint;
+  String get taxGroupsFallback;
+  String get taxGroupNew;
+  String get taxGroupEdit;
+  String get taxGroupHint;
+  String get taxGroupName;
+  String get taxGroupNeedsAName;
+  String get taxGroupRate;
+  String get taxGroupRateNotValid;
+  String get taxGroupDefault;
+  String get taxGroupDefaultHint;
+  String get taxGroupIsDefault;
+  String get taxGroupActive;
+  String get taxGroupActiveHint;
   String get orderTypes;
   String get orderTypesHint;
   String get orderTypesComeFromPlatform;
@@ -4010,6 +4026,8 @@ final class EnStrings extends AppStrings {
   @override
   String get actOrderTypeSaved => 'Changed an order type';
   @override
+  String get actTaxGroupSaved => 'Changed a tax rate';
+  @override
   String get fieldYes => 'yes';
   @override
   String get fieldNo => 'no';
@@ -4032,6 +4050,46 @@ final class EnStrings extends AppStrings {
   @override
   String get supplierOverdue => 'overdue';
 
+  @override
+  String get taxGroups => 'Named rates';
+  @override
+  String get taxGroupsHint =>
+      'A rate per kind of thing you sell. A menu item is charged its own '
+      'group\'s rate, or the fallback below if it names none.';
+  @override
+  String get taxGroupsFallback =>
+      'None configured — every item is charged the single rate above, including '
+      'anything you sell zero-rated.';
+  @override
+  String get taxGroupNew => 'New rate';
+  @override
+  String get taxGroupEdit => 'Rate';
+  @override
+  String get taxGroupHint =>
+      'Zero-rated and exempt are both 0% and are different things on a filing. '
+      'The name is the only place that difference lives.';
+  @override
+  String get taxGroupName => 'What your accountant calls it';
+  @override
+  String get taxGroupNeedsAName => 'A rate needs a name.';
+  @override
+  String get taxGroupRate => 'Rate';
+  @override
+  String get taxGroupRateNotValid => 'A rate is a number between 0 and 100.';
+  @override
+  String get taxGroupDefault => 'The fallback rate';
+  @override
+  String get taxGroupDefaultHint =>
+      'What an item is charged when it names no rate of its own. Exactly one '
+      'group is the fallback; making this one takes it off the other.';
+  @override
+  String get taxGroupIsDefault => 'FALLBACK';
+  @override
+  String get taxGroupActive => 'In use';
+  @override
+  String get taxGroupActiveHint =>
+      'Turning this off retires it. Items already on it fall back to the '
+      'default rate, so check what is on it first.';
   @override
   String get orderTypes => 'Order types';
   @override
@@ -6710,6 +6768,8 @@ final class ArStrings extends AppStrings {
   @override
   String get actOrderTypeSaved => 'تعديل نوع طلب';
   @override
+  String get actTaxGroupSaved => 'تعديل نسبة ضريبة';
+  @override
   String get fieldYes => 'نعم';
   @override
   String get fieldNo => 'لا';
@@ -6732,6 +6792,46 @@ final class ArStrings extends AppStrings {
   @override
   String get supplierOverdue => 'متأخر';
 
+  @override
+  String get taxGroups => 'النسب المسمّاة';
+  @override
+  String get taxGroupsHint =>
+      'نسبة لكل نوع مما تبيعه. يُحتسب على الصنف نسبة مجموعته، أو النسبة '
+      'الافتراضية أدناه إن لم يذكر مجموعة.';
+  @override
+  String get taxGroupsFallback =>
+      'لا توجد نسب مضبوطة — تُحتسب النسبة الواحدة أعلاه على كل الأصناف، بما فيها '
+      'ما تبيعه بنسبة صفر.';
+  @override
+  String get taxGroupNew => 'نسبة جديدة';
+  @override
+  String get taxGroupEdit => 'النسبة';
+  @override
+  String get taxGroupHint =>
+      'النسبة صفر والإعفاء كلاهما ٠٪ وهما مختلفان في الإقرار الضريبي، والاسم هو '
+      'المكان الوحيد الذي يظهر فيه هذا الفرق.';
+  @override
+  String get taxGroupName => 'الاسم كما يعرفه محاسبك';
+  @override
+  String get taxGroupNeedsAName => 'النسبة تحتاج اسمًا.';
+  @override
+  String get taxGroupRate => 'النسبة';
+  @override
+  String get taxGroupRateNotValid => 'النسبة رقم بين ٠ و ١٠٠.';
+  @override
+  String get taxGroupDefault => 'النسبة الافتراضية';
+  @override
+  String get taxGroupDefaultHint =>
+      'ما يُحتسب على الصنف الذي لا يذكر نسبة خاصة به. مجموعة واحدة فقط تكون '
+      'الافتراضية، وجعل هذه افتراضية يُلغيها عن الأخرى.';
+  @override
+  String get taxGroupIsDefault => 'الافتراضية';
+  @override
+  String get taxGroupActive => 'قيد الاستخدام';
+  @override
+  String get taxGroupActiveHint =>
+      'إيقافها يُخرجها من الخدمة، وتعود الأصناف التي عليها إلى النسبة '
+      'الافتراضية — فراجع ما عليها أولًا.';
   @override
   String get orderTypes => 'أنواع الطلبات';
   @override

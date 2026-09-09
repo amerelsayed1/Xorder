@@ -18,6 +18,7 @@ class TaxGroup {
     required this.rateBp,
     this.nameAr,
     this.isDefault = false,
+    this.isActive = true,
     this.etaTaxType = EtaTaxCode.valueAdded,
     String? etaSubType,
     // A private field cannot be a public named parameter, and the name has to
@@ -46,6 +47,15 @@ class TaxGroup {
   final int rateBp;
 
   final bool isDefault;
+
+  /// Retired rather than deleted: a product points at this row, and removing it
+  /// would silently reclassify that product onto the fallback rate.
+  ///
+  /// **Deliberately not part of [operator ==].** The till only ever sees active
+  /// groups — the provider filters them — so this cannot vary among the keys the
+  /// ticket accumulates by, and adding a field to that equality is how the
+  /// rounding-once-per-rate property gets broken by accident.
+  final bool isActive;
 
   /// How Egypt's tax authority names this tax, and which of its sub-rates this
   /// is. Carried on the group rather than derived from [rateBp], because two
