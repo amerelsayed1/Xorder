@@ -39,11 +39,34 @@ class _ManagementOrderTypesPaneState
   String? _note;
 
   Future<void> _edit(OrderTypeConfig config) async {
-    final repository = ref.read(catalogAdminRepositoryProvider);
-    if (repository == null) return;
-
     final edited = await OrderTypeDialog.show(context, config: config);
     if (edited == null || !mounted) return;
+
+    await _save(edited);
+  }
+
+  /// Turn one on or off without opening it.
+  ///
+  /// It was always possible — the editor has the switch — and that is one tap
+  /// too deep for the thing a restaurant changes most: Ramadan starts and
+  /// delivery goes on, the dining room closes for a refit and seating goes off.
+  /// A pane you have to open a row inside to answer "what do we sell today"
+  /// reads as a pane that cannot answer it.
+  Future<void> _setActive(OrderTypeConfig config, bool active) =>
+      _save(OrderTypeConfig(
+        type: config.type,
+        nameEn: config.nameEn,
+        nameAr: config.nameAr,
+        requiresTable: config.requiresTable,
+        requiresCustomer: config.requiresCustomer,
+        requiresAddress: config.requiresAddress,
+        isActive: active,
+        sortOrder: config.sortOrder,
+      ));
+
+  Future<void> _save(OrderTypeConfig edited) async {
+    final repository = ref.read(catalogAdminRepositoryProvider);
+    if (repository == null) return;
 
     setState(() {
       _busy = true;
@@ -97,6 +120,9 @@ class _ManagementOrderTypesPaneState
                   _OrderTypeRow(
                     config: config,
                     onEdit: authors && !_busy ? () => _edit(config) : null,
+                    onActive: authors && !_busy
+                        ? (active) => _setActive(config, active)
+                        : null,
                   ),
               ],
             ),
@@ -114,10 +140,18 @@ class _ManagementOrderTypesPaneState
 
 /// One order type, with the requirements that have consequences.
 class _OrderTypeRow extends StatelessWidget {
-  const _OrderTypeRow({required this.config, required this.onEdit});
+  const _OrderTypeRow({
+    required this.config,
+    required this.onEdit,
+    required this.onActive,
+  });
 
   final OrderTypeConfig config;
   final VoidCallback? onEdit;
+
+  /// Null while the pane is saving, or on a terminal whose catalogue belongs to
+  /// the platform — the same rule that greys the row's editor.
+  final ValueChanged<bool>? onActive;
 
   @override
   Widget build(BuildContext context) {
@@ -184,6 +218,16 @@ class _OrderTypeRow extends StatelessWidget {
                     style: PosText.ui(size: 11.5, color: palette.muted),
                   ),
                 ),
+              // Outside the Opacity above would be tidier; inside is correct.
+              // A switch at full strength on a row that is greyed out reads as
+              // the one thing still working on a broken row, when it is the
+              // control that says WHY the row is grey.
+              Switch(
+                key: Key('order-type-active-${config.type.wire}'),
+                value: config.isActive,
+                onChanged: onActive,
+              ),
+              const SizedBox(width: PosSpace.sm),
               MonoCode(config.type.wire, size: 11.5),
             ],
           ),
