@@ -264,11 +264,28 @@ class _Field extends StatelessWidget {
           key: Key('supplier-$name'),
           controller: controller,
           textDirection: mono ? TextDirection.ltr : null,
-          decoration: hint == null ? null : InputDecoration(hintText: hint),
+          // Always a decoration. `null` here is not "the default" — it is NO
+          // decoration: no border, no fill, none of the theme. Nine of these
+          // boxes were invisible for it, and the one with a hint was the only
+          // field on the form that looked like a field.
+          decoration: const InputDecoration(),
           style: mono
               ? PosText.mono(size: 15, color: context.pos.ink)
               : PosText.ui(size: 15, color: context.pos.ink),
         ),
+        // Under the box, not inside it. It explains the field — a sentence in
+        // the box read as something already typed there.
+        if (hint case final text?) ...[
+          const SizedBox(height: PosSpace.xs),
+          Text(
+            text,
+            style: PosText.ui(
+              size: 12,
+              color: context.pos.muted,
+              height: 1.4,
+            ),
+          ),
+        ],
       ],
     ),
   );

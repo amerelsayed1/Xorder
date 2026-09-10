@@ -117,6 +117,47 @@ void main() {
       expect(find.byType(SupplierDialog), findsOneWidget);
     });
 
+    testWidgets('every field is a box you can see, and the terms hint sits '
+        'under its box rather than in it', (tester) async {
+      // Nine of the ten boxes on this form had no border and no fill: a
+      // `null` decoration is not the theme's default, it is no decoration at
+      // all. The one field with a hint was the only one that looked like a
+      // field — and its hint, sitting in the box in full ink, read as typed.
+      await host(tester, (context) async => SupplierDialog.show(context));
+
+      // Each one scrolled to first: the form is longer than the dialog, and a
+      // list does not build what is below the fold.
+      final list = find
+          .descendant(
+            of: find.byType(SupplierDialog),
+            matching: find.byType(Scrollable),
+          )
+          .first;
+      for (final name in const [
+        'name', 'name_ar', 'contact', 'phone', 'email', //
+        'address', 'tax', 'terms', 'code', 'notes',
+      ]) {
+        final box = find.byKey(Key('supplier-$name'));
+        await tester.scrollUntilVisible(box, 80, scrollable: list);
+        final decorator = tester.widget<InputDecorator>(
+          find.descendant(of: box, matching: find.byType(InputDecorator)),
+        );
+        expect(
+          decorator.decoration.enabledBorder,
+          isA<OutlineInputBorder>().having(
+            (b) => b.borderSide.style,
+            'side',
+            BorderStyle.solid,
+          ),
+          reason: 'supplier-$name must draw the theme\'s border',
+        );
+        expect(decorator.decoration.filled, isTrue, reason: name);
+        expect(decorator.decoration.hintText, isNull, reason: name);
+      }
+
+      expect(find.text(const EnStrings().supplierTermsHint), findsOneWidget);
+    });
+
     testWidgets('a new supplier is not asked whether it is retired', (
       tester,
     ) async {
@@ -131,6 +172,16 @@ void main() {
         tester,
         (context) async =>
             SupplierDialog.show(context, supplier: suppliers.first),
+      );
+      await tester.scrollUntilVisible(
+        find.byType(SwitchListTile),
+        80,
+        scrollable: find
+            .descendant(
+              of: find.byType(SupplierDialog),
+              matching: find.byType(Scrollable),
+            )
+            .first,
       );
       expect(find.byType(SwitchListTile), findsOneWidget);
     });
