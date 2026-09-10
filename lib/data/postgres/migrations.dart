@@ -3243,6 +3243,156 @@ const posMigrations = <PosMigration>[
       FOR EACH ROW EXECUTE FUNCTION pos_print_job_prints_once()
     ''',
   ]),
+  PosMigration(35, 'every sale, refund and shift knows its trading day', [
+    // **Nothing ever wrote `business_day_id`.** The column has been on orders,
+    // refunds and shifts for waves, and the day close totals by it alone — so
+    // every day closed recorded gross and net of 0, and the only readers that
+    // got the right answer were the ones that had quietly learned to fall back
+    // to the day's opening and closing times.
+    //
+    // A trigger rather than a parameter on each writer. There are two order
+    // inserts, a refund insert and a shift insert, and whichever one somebody
+    // writes next: a column that has to be remembered at every INSERT is the
+    // column that was forgotten at every INSERT. The database already holds the
+    // one fact needed — which day is open at this branch — and the unique index
+    // on open days guarantees there is at most one.
+    //
+    // Only when the writer left it NULL: a row that names its day keeps it. No
+    // open day leaves it NULL, which is the truth — the sale happened outside a
+    // trading day — and every reader already falls back to the day's window.
+    //
+    // The body is single-quoted rather than dollar-quoted so a `$` never has to
+    // survive a Dart string on its way here.
+    '''
+    CREATE OR REPLACE FUNCTION pos_stamp_business_day() RETURNS trigger
+    LANGUAGE plpgsql AS '
+    BEGIN
+      IF NEW.business_day_id IS NULL THEN
+        SELECT d.id INTO NEW.business_day_id
+          FROM pos_business_days d
+         WHERE d.branch_id = NEW.branch_id
+           AND d.closed_at IS NULL
+         LIMIT 1;
+      END IF;
+      RETURN NEW;
+    END
+    '
+    ''',
+    'DROP TRIGGER IF EXISTS pos_orders_business_day ON pos_orders',
+    '''
+    CREATE TRIGGER pos_orders_business_day BEFORE INSERT ON pos_orders
+      FOR EACH ROW EXECUTE FUNCTION pos_stamp_business_day()
+    ''',
+    'DROP TRIGGER IF EXISTS pos_refunds_business_day ON pos_refunds',
+    '''
+    CREATE TRIGGER pos_refunds_business_day BEFORE INSERT ON pos_refunds
+      FOR EACH ROW EXECUTE FUNCTION pos_stamp_business_day()
+    ''',
+    'DROP TRIGGER IF EXISTS pos_shifts_business_day ON pos_shifts',
+    '''
+    CREATE TRIGGER pos_shifts_business_day BEFORE INSERT ON pos_shifts
+      FOR EACH ROW EXECUTE FUNCTION pos_stamp_business_day()
+    ''',
+    // Every row written before this migration, filed under the day whose
+    // window contains it — the same rule the history screen and the branch
+    // view already use as their fallback, so nothing they show moves.
+    '''
+    UPDATE pos_orders o SET business_day_id = d.id
+      FROM pos_business_days d
+     WHERE o.business_day_id IS NULL
+       AND d.branch_id = o.branch_id
+       AND o.occurred_at >= d.opened_at
+       AND (d.closed_at IS NULL OR o.occurred_at < d.closed_at)
+    ''',
+    '''
+    UPDATE pos_refunds r SET business_day_id = d.id
+      FROM pos_business_days d
+     WHERE r.business_day_id IS NULL
+       AND d.branch_id = r.branch_id
+       AND r.occurred_at >= d.opened_at
+       AND (d.closed_at IS NULL OR r.occurred_at < d.closed_at)
+    ''',
+    '''
+    UPDATE pos_shifts s SET business_day_id = d.id
+      FROM pos_business_days d
+     WHERE s.business_day_id IS NULL
+       AND d.branch_id = s.branch_id
+       AND s.opened_at >= d.opened_at
+       AND (d.closed_at IS NULL OR s.opened_at < d.closed_at)
+    ''',
+    // **The closed days' figures, recomputed.** They are a SUMMARY the close
+    // wrote, not a money record, and they were written as 0 by the bug above.
+    // Recomputed with the close's own formula, and only for days that now have
+    // sales filed under them: a day with none keeps what it recorded.
+    '''
+    UPDATE pos_business_days d
+       SET gross_minor = t.gross, net_minor = t.net
+      FROM (
+        SELECT business_day_id,
+               coalesce(sum(total_minor), 0)::bigint AS gross,
+               coalesce(sum(total_minor - refunded_minor), 0)::bigint AS net
+          FROM pos_orders
+         WHERE business_day_id IS NOT NULL
+           AND status IN ('PAID', 'CLOSED', 'PARTIALLY_REFUNDED', 'REFUNDED')
+         GROUP BY business_day_id
+      ) t
+     WHERE d.id = t.business_day_id
+       AND d.closed_at IS NOT NULL
+    ''',
+  ]),
+  PosMigration(36, 'a row is filed under the day it happened in', [
+    // **Migration 35 stamped whichever day was open at the moment of writing.**
+    // For a sale rung up now that is the same day. But it was not the rule the
+    // backfill in 35, the history screen and the branch view all file by — the
+    // day whose window CONTAINS the moment — and a row dated into another day,
+    // written while today was open, was filed under today by the trigger and
+    // under its own day by every reader. The branch view's tests caught the two
+    // disagreeing by exactly one sale. One rule, everywhere.
+    //
+    // The time column differs by table — a shift's is `opened_at`, a sale's and
+    // a refund's `occurred_at` — so each trigger names it and the function reads
+    // it off the row, rather than the same six lines being written three times.
+    //
+    // A known edge, stated rather than hidden: on a branch whose tills share a
+    // database on another machine, a till whose clock runs behind the host can
+    // write a sale seconds "before" the day opened. It stays unfiled — NULL —
+    // which is exactly how every reader already treats it.
+    '''
+    CREATE OR REPLACE FUNCTION pos_stamp_business_day() RETURNS trigger
+    LANGUAGE plpgsql AS '
+    DECLARE
+      stamp_at timestamptz :=
+        coalesce((to_jsonb(NEW) ->> TG_ARGV[0])::timestamptz, now());
+    BEGIN
+      IF NEW.business_day_id IS NULL THEN
+        SELECT d.id INTO NEW.business_day_id
+          FROM pos_business_days d
+         WHERE d.branch_id = NEW.branch_id
+           AND d.opened_at <= stamp_at
+           AND (d.closed_at IS NULL OR stamp_at < d.closed_at)
+         ORDER BY d.opened_at DESC
+         LIMIT 1;
+      END IF;
+      RETURN NEW;
+    END
+    '
+    ''',
+    'DROP TRIGGER IF EXISTS pos_orders_business_day ON pos_orders',
+    '''
+    CREATE TRIGGER pos_orders_business_day BEFORE INSERT ON pos_orders
+      FOR EACH ROW EXECUTE FUNCTION pos_stamp_business_day('occurred_at')
+    ''',
+    'DROP TRIGGER IF EXISTS pos_refunds_business_day ON pos_refunds',
+    '''
+    CREATE TRIGGER pos_refunds_business_day BEFORE INSERT ON pos_refunds
+      FOR EACH ROW EXECUTE FUNCTION pos_stamp_business_day('occurred_at')
+    ''',
+    'DROP TRIGGER IF EXISTS pos_shifts_business_day ON pos_shifts',
+    '''
+    CREATE TRIGGER pos_shifts_business_day BEFORE INSERT ON pos_shifts
+      FOR EACH ROW EXECUTE FUNCTION pos_stamp_business_day('opened_at')
+    ''',
+  ]),
 ];
 
 /// Brings the branch database up to the current schema.
