@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -19,7 +20,10 @@ import '../core/l10n/app_strings.dart';
 import '../core/money/money.dart';
 import '../core/network/connectivity_probe.dart';
 import '../data/backup/backup_service.dart';
+import '../data/backup/pg_archive.dart';
 import '../data/backup/pg_tools.dart';
+import '../data/config/file_secret_store.dart';
+import '../data/config/pos_db_secret_store.dart';
 import '../data/config/terminal_config_store.dart';
 import '../data/hardware/network_printer_ports.dart';
 import '../data/postgres/pos_database.dart';
@@ -2220,32 +2224,86 @@ final pgToolsProvider = FutureProvider<PgToolset?>((ref) => PgTools.locate());
 /// Null when this terminal has no database — there is then nothing to back up,
 /// and a service that pretended otherwise would write a record of a copy of
 /// nothing.
+/// Whether this terminal has a database whose copies are worth talking about.
+/// False on a till with no database configured, where there is nothing to back
+/// up and a warning about it would be noise.
+final backupsApplyProvider = Provider<bool>(
+  (ref) => ref.watch(backupRepositoryProvider) is! UnconfiguredBackupRepository,
+);
+
+/// Whether a backup file is still on this machine.
+///
+/// A seam, because the list asks it of every row and a widget test has no
+/// files: only the newest copies are kept, so an old row's file being gone is
+/// the ordinary case rather than an error.
+final backupFileExistsProvider = Provider<bool Function(String path)>(
+  (ref) => (path) => File(path).existsSync(),
+);
+
+/// Where the backup account's password is kept on this machine.
+///
+/// Beside the till's own, in `secrets.json` — see
+/// [FileSecretStore.backupPasswordKey] for why that is safe for this one and
+/// would not be for the administrator's.
+final backupPasswordStoreProvider = Provider<PosDbSecretStore>(
+  (ref) => FileSecretStore(key: FileSecretStore.backupPasswordKey),
+);
+
+/// The backup account's password, or null when none has been entered.
+///
+/// A store that cannot be read is "none": the copy then runs without one, which
+/// works wherever the installer used `trust` or wrote a `.pgpass` — and where it
+/// does not, the attempt is recorded as refused with the reason, which is the
+/// honest outcome.
+final backupPasswordProvider = FutureProvider<String?>((ref) async {
+  try {
+    return await ref.watch(backupPasswordStoreProvider).read();
+  } on Object {
+    return null;
+  }
+});
+
 final backupServiceProvider = FutureProvider<BackupService?>((ref) async {
   final config = ref.watch(deploymentProvider);
   final context = ref.watch(posWriteContextProvider);
   if (context == null || PosDatabase.hostFor(config) == null) return null;
 
   final tools = await ref.watch(pgToolsProvider.future);
+  final readerPassword = await ref.watch(backupPasswordProvider.future);
+
+  final admin = ref.watch(adminDeploymentProvider);
+  final adminPassword = ref.watch(adminDbCredentialProvider);
 
   return BackupService(
     // The till's pool and the till's config: the guard queries are counts the
     // till credential can already read, and the record and the audit row go
     // where every other till-written row goes.
     database: ref.watch(posDatabaseProvider),
-    // …but `pg_dump` runs as the ADMINISTRATOR role, because the till's
-    // credential holds SELECT on the tables it sells from and not on all of
-    // them, and a dump that silently omitted a table would be the exact failure
-    // this feature exists to prevent.
-    config: ref.watch(adminDeploymentProvider),
+    config: config,
     restaurantId: context.restaurantId,
     branchId: context.branchId,
     directory: BackupPaths.resolve(ref.watch(backupPolicyProvider)),
     backups: ref.watch(backupRepositoryProvider),
     audit: ref.watch(auditRepositoryProvider),
     toolset: tools,
-    // Null at the till, which is the ordinary case at day close. See
-    // `BackupService.password` for why it is not stored and what that costs.
-    password: ref.watch(adminDbCredentialProvider),
+    // `pg_dump` runs as the read-only backup account, which is the one
+    // credential that can read every table and is safe to keep on the till —
+    // so the copy at day close works with nobody signed into the back office.
+    reader: BackupConnection.forDeployment(
+      config,
+      user: BackupService.readerRole,
+      password: readerPassword,
+    ),
+    // A restore runs as the database's owner, whose password is in memory
+    // only while somebody has the back office open — and a restore is only
+    // ever started from there.
+    restorer: adminPassword == null
+        ? null
+        : BackupConnection.forDeployment(
+            admin,
+            user: admin.databaseUser,
+            password: adminPassword,
+          ),
     // Both pools, because `pg_restore --clean` drops every object in the
     // database and neither connection should be holding one when it does.
     quiesce: () async {

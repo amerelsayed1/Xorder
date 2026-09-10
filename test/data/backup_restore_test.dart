@@ -6,6 +6,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:xorder_pos/core/config/deployment.dart';
 import 'package:xorder_pos/data/backup/backup_service.dart';
+import 'package:xorder_pos/data/backup/pg_archive.dart';
 import 'package:xorder_pos/data/backup/pg_tools.dart';
 import 'package:xorder_pos/data/postgres/migrations.dart';
 import 'package:xorder_pos/data/postgres/pos_database.dart';
@@ -81,10 +82,23 @@ void main() {
     ),
   );
 
+  /// The fixture's own account, as both the reader and the restorer. The
+  /// accounts a real install uses — a `pg_read_all_data` reader and a database
+  /// owner that is not a superuser — are `pg_archive_restore_test.dart`'s job.
+  BackupConnection connectionTo(DeploymentConfig config) => BackupConnection(
+    host: PgFixture.host!,
+    port: PgFixture.port,
+    database: config.databaseName,
+    user: PgFixture.user,
+    password: PgFixture.password,
+    verifyTls: false,
+  );
+
   BackupService serviceWith({
     DeploymentConfig? config,
     PgToolset? toolset,
     String? directory,
+    int keep = 14,
   }) => BackupService(
     database: db,
     config: config ?? pg.config,
@@ -94,8 +108,9 @@ void main() {
     backups: backups,
     audit: audit,
     toolset: toolset ?? tools,
-    // Null: local authentication here is `trust`, which is also the shape an
-    // automatic copy at day close runs in — no back-office password in memory.
+    reader: connectionTo(config ?? pg.config),
+    restorer: connectionTo(config ?? pg.config),
+    keep: keep,
     quiesce: () => db.close(),
   );
 
@@ -395,9 +410,12 @@ void main() {
         isFalse,
         reason: 'the list must not offer a restore from this',
       );
-      // The file and its checksum are still recorded: something IS on disk, and
-      // a technician may yet get something out of it.
+      // How big it was is recorded; the file itself is not kept. A readable
+      // name and a plausible size on a file nothing can restore from is exactly
+      // what somebody reaches for in a panic.
       expect(record.sizeBytes, greaterThan(0));
+      expect(File(record.filePath).existsSync(), isFalse);
+      expect(File('${record.filePath}.part').existsSync(), isFalse);
     });
 
     test('with no tools at all it says so rather than doing nothing', () async {
@@ -713,6 +731,106 @@ void main() {
       expect(
         ledger.where((e) => e.action == AuditAction.backupTaken),
         isEmpty,
+      );
+    });
+  });
+
+  group('beyond this machine', () {
+    test('a verified copy goes to a USB drive, and the copy is the same file',
+        () async {
+      final copy = (await service.take(
+        by: owner,
+        trigger: BackupTrigger.manual,
+      )).value!;
+      final drive = Directory.systemTemp.createTempSync('xorder-usb');
+      addTearDown(() => drive.deleteSync(recursive: true));
+
+      final copied = await service.copyTo(copy, drive.path);
+
+      expect(copied.existsSync(), isTrue);
+      expect(
+        (await service.describeFile(copied, by: owner)).checksum,
+        copy.checksum,
+      );
+      expect(
+        drive.listSync().map((f) => f.path).where((p) => p.endsWith('.part')),
+        isEmpty,
+      );
+    });
+
+    test('only a backup is worth copying', () async {
+      final drive = Directory.systemTemp.createTempSync('xorder-usb');
+      addTearDown(() => drive.deleteSync(recursive: true));
+
+      await expectLater(
+        service.copyTo(
+          BackupRecord(
+            takenAt: DateTime.now(),
+            takenByName: 'Amer M.',
+            trigger: BackupTrigger.manual,
+            outcome: BackupOutcome.unverified,
+            filePath: '${folder.path}/nothing.dump',
+            failure: BackupFailure.archiveUnreadable,
+          ),
+          drive.path,
+        ),
+        throwsA(isA<StateError>()),
+      );
+      expect(drive.listSync(), isEmpty);
+    });
+
+    test('a copy brought back on the drive restores, with no record of it here',
+        () async {
+      // The disaster case: the database that recorded this copy is the one
+      // that is gone, so the file has to stand on its own.
+      await order('INV-BEFORE');
+      // A file only knows the second it was taken in, and is read as the START
+      // of that second — so an order earlier in the same second would be
+      // counted as lost. Over-counting is the safe direction for that warning;
+      // the pause keeps this test about the restore rather than the rounding.
+      await Future<void>.delayed(const Duration(milliseconds: 1100));
+      final copy = (await service.take(
+        by: owner,
+        trigger: BackupTrigger.manual,
+      )).value!;
+      final drive = Directory.systemTemp.createTempSync('xorder-usb');
+      addTearDown(() => drive.deleteSync(recursive: true));
+      final onTheDrive = await service.copyTo(copy, drive.path);
+      await order('INV-AFTER');
+
+      final described = await service.describeFile(onTheDrive, by: owner);
+      expect(
+        described.takenAt.difference(copy.takenAt).inSeconds.abs(),
+        lessThan(1),
+        reason: 'when it was taken is read off its name',
+      );
+      expect((await service.checkRestore(described)).ordersSince, 1);
+
+      final result = await service.restore(described, by: owner);
+
+      expect(result.succeeded, isTrue);
+      expect(await invoices(), ['INV-BEFORE']);
+    });
+
+    test('the folder keeps the newest copies, not every copy ever taken',
+        () async {
+      final kept = serviceWith(keep: 1);
+      final first = (await kept.take(
+        by: owner,
+        trigger: BackupTrigger.manual,
+      )).value!;
+      // Named for the second they were taken in.
+      await Future<void>.delayed(const Duration(milliseconds: 1100));
+      final second = (await kept.take(
+        by: owner,
+        trigger: BackupTrigger.manual,
+      )).value!;
+
+      expect(File(first.filePath).existsSync(), isFalse);
+      expect(File(second.filePath).existsSync(), isTrue);
+      expect(
+        folder.listSync().where((f) => f.path.endsWith('.dump')),
+        hasLength(1),
       );
     });
   });

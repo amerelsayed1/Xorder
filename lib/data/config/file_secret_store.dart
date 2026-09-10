@@ -43,6 +43,13 @@ class FileSecretStore implements PosDbSecretStore {
   /// The cloud device token (POS-BE-011 Option C).
   static const deviceTokenKey = 'pos_cloud_device_token';
 
+  /// The read-only backup account's password (`pos_backup`).
+  ///
+  /// Kept here, beside the till's, because it can do no more than the till's
+  /// file already can: it reads every row and writes none. The administrator's
+  /// password is never kept anywhere — see `adminDbCredentialProvider`.
+  static const backupPasswordKey = 'pos_backup_database_password';
+
   final Future<Directory> Function() _directory;
 
   @override

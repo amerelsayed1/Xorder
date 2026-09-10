@@ -4,12 +4,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:xorder_pos/app/providers.dart';
 import 'package:xorder_pos/core/l10n/app_strings.dart';
 import 'package:xorder_pos/core/ui/theme.dart';
+import 'package:xorder_pos/data/config/pos_db_secret_store.dart';
 import 'package:xorder_pos/data/backup/pg_tools.dart';
 import 'package:xorder_pos/data/fakes/fake_repositories.dart';
 import 'package:xorder_pos/domain/models/backup.dart';
 import 'package:xorder_pos/domain/models/permissions.dart';
 import 'package:xorder_pos/domain/models/shift.dart';
 import 'package:xorder_pos/features/admin/presentation/admin_messages.dart';
+import 'package:xorder_pos/features/admin/presentation/management_backup_pane.dart';
 import 'package:xorder_pos/features/admin/presentation/management_screen.dart';
 
 import '../support/fakes.dart';
@@ -69,9 +71,15 @@ void main() {
     detail: failure == null ? null : 'pg_restore: error: did not find magic',
   );
 
+  // In memory: the file-backed store is `FileSecretStore`'s own test's
+  // business, and real disk writes do not complete on a widget test's clock.
+  late _MemoryStore reader;
+  setUp(() => reader = _MemoryStore());
+
   Future<void> open(
     WidgetTester tester, {
     List<BackupRecord> records = const [],
+    bool filesExist = true,
     PgToolset? tools = const PgToolset(
       pgDump: '/usr/local/bin/pg_dump',
       pgRestore: '/usr/local/bin/pg_restore',
@@ -93,6 +101,9 @@ void main() {
         // PostgreSQL happens to be installed on the box running the tests is
         // not what any of these assertions are about.
         pgToolsProvider.overrideWith((ref) async => tools),
+        // Whether a file is on disk is a fact about the box running the tests.
+        backupFileExistsProvider.overrideWithValue((_) => filesExist),
+        backupPasswordStoreProvider.overrideWithValue(reader),
       ],
     );
     addTearDown(container.dispose);
@@ -133,7 +144,7 @@ void main() {
       tester.widget<Text>(warning).data,
       allOf(
         contains('stolen'),
-        contains('Copy this folder somewhere else'),
+        contains('USB drive'),
       ),
     );
   });
@@ -148,7 +159,19 @@ void main() {
     expect(find.text(strings.backupToolsMissingHelp), findsOneWidget);
     expect(find.text(strings.backupSearchedIn.toUpperCase()), findsOneWidget);
 
-    // And the button is dead rather than hopeful.
+    // And the button is dead rather than hopeful. Scrolled to first: the
+    // account section sits above it, and a list does not build what is below
+    // the fold.
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('backup-now')),
+      200,
+      scrollable: find
+          .descendant(
+            of: find.byType(ManagementBackupPane),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
     final button = tester.widget<InkWell>(
       find
           .descendant(
@@ -214,6 +237,65 @@ void main() {
     expect(find.text(strings.backupNoneYet), findsOneWidget);
   });
 
+  testWidgets('the backup account: it says when no password is kept, and '
+      'keeps the one entered', (tester) async {
+    // The nightly copy runs at day close with nobody in the back office, so
+    // the account it signs in as has to be answerable without anyone typing.
+    await open(tester);
+    expect(find.text(strings.backupAccountMissing), findsOneWidget);
+
+    await tester.enterText(
+      find.byKey(const Key('backup-account-password')),
+      'read-only-please',
+    );
+    await tester.tap(find.byKey(const Key('backup-account-save')));
+    await tester.pumpAndSettle();
+
+    expect(reader.value, 'read-only-please');
+    expect(find.text(strings.backupAccountStored), findsOneWidget);
+    // And the field is emptied: a password left sitting in a box on a till
+    // screen is a password on a till screen.
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const Key('backup-account-password')))
+          .controller!
+          .text,
+      isEmpty,
+    );
+  });
+
+  testWidgets('a verified copy can go to a USB drive', (tester) async {
+    await open(tester, records: [record(outcome: BackupOutcome.verified)]);
+
+    expect(find.byKey(const Key('backup-copy-1')), findsOneWidget);
+    expect(find.text(strings.backupCopyAction), findsOneWidget);
+  });
+
+  testWidgets('a copy whose file is gone says so, and offers nothing to press',
+      (tester) async {
+    // Only the newest copies stay on disk, so an old verified row with no file
+    // is the ordinary case. Its Restore would fail; its Copy would copy
+    // nothing.
+    await open(
+      tester,
+      records: [record(outcome: BackupOutcome.verified, daysAgo: 20)],
+      filesExist: false,
+    );
+
+    expect(find.text(strings.backupOutcomeVerified), findsOneWidget);
+    expect(find.text(strings.backupFileGone), findsOneWidget);
+    expect(find.text(strings.backupRestoreAction), findsNothing);
+    expect(find.text(strings.backupCopyAction), findsNothing);
+  });
+
+  testWidgets('a copy brought back on a drive can be restored from', (
+    tester,
+  ) async {
+    await open(tester);
+    expect(find.byKey(const Key('backup-restore-file')), findsOneWidget);
+    expect(find.text(strings.backupRestoreFromFile), findsOneWidget);
+  });
+
   group('a size somebody can read', () {
     test('bytes become KB and MB, in integer arithmetic', () {
       // A size is a count, and this codebase does not put counted things in
@@ -265,4 +347,20 @@ void main() {
       );
     });
   });
+}
+
+class _MemoryStore implements PosDbSecretStore {
+  String? value;
+
+  @override
+  Object? get lastFailure => null;
+
+  @override
+  Future<String?> read() async => value;
+
+  @override
+  Future<void> write(String value) async => this.value = value;
+
+  @override
+  Future<void> clear() async => value = null;
 }

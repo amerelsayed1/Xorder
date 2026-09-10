@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:crypto/crypto.dart';
@@ -11,6 +10,7 @@ import '../../domain/models/shift.dart';
 import '../../domain/repositories/admin_repositories.dart';
 import '../../domain/services/authorization.dart';
 import '../postgres/pos_database.dart';
+import 'pg_archive.dart';
 import 'pg_tools.dart';
 
 /// Taking a copy of the branch database, proving it, and putting one back.
@@ -41,11 +41,15 @@ class BackupService {
     required this.backups,
     required this.audit,
     this.toolset,
-    this.password,
+    this.reader,
+    this.restorer,
     this.quiesce,
     this.currency = 'EGP',
     this.exponent = 2,
-  }) : _db = database;
+    this.keep = 14,
+    ProcessRunner? run,
+  }) : _db = database,
+       _runner = run;
 
   final PosDatabase _db;
 
@@ -55,8 +59,8 @@ class BackupService {
   final AuditRepository audit;
 
 
-  /// The connection the guard queries and the audit row run on. The **till's**,
-  /// deliberately: a backup is taken at day close by a machine on which nobody
+  /// The connection the guard queries, the record and the audit row run on.
+  /// The **till's**, deliberately: a backup is taken at day close by a machine on which nobody
   /// has opened the back office, and the counts it needs — open shifts, open
   /// days, orders since — are all reads the till credential already holds.
   final DeploymentConfig config;
@@ -72,21 +76,36 @@ class BackupService {
   /// then refuses in a way the screen can print — see [BackupFailure.toolsMissing].
   final PgToolset? toolset;
 
-  /// The administrator role's database password, when somebody has supplied it
-  /// this session.
+  /// Who `pg_dump` connects as: [readerRole], on the till's own host and
+  /// database, with the password kept for it on this machine.
   ///
-  /// **Null is the ordinary case at day close, and the automatic backup still
-  /// tries.** The password is held in memory for a Management session and never
-  /// written to disk — that decision predates this file and is the reason a
-  /// stolen till credential cannot reprice the menu. Storing it so that
-  /// backups could always run would hand back exactly what the split was
-  /// protecting, so instead `pg_dump` is invoked with no `PGPASSWORD` and
-  /// succeeds wherever local authentication is `trust`, `peer`, or a `.pgpass`
-  /// the installer wrote. Where it is none of those the attempt is recorded as
-  /// a failure and the pane says so, which is the honest outcome: the
-  /// restaurant learns it has no nightly copy on the day it starts not having
-  /// one, rather than on the day it needs one.
-  final String? password;
+  /// **A dedicated account, because neither of the other two can do this
+  /// job.** The till's credential holds SELECT on the tables it sells from and
+  /// not on all of them, and a dump that silently omitted a table is the exact
+  /// failure this feature exists to prevent. The administrator's password is
+  /// held in memory for a Management session and never written to disk — and
+  /// the nightly copy is taken at day close, when nobody has opened the back
+  /// office. So the backup runs as a member of `pg_read_all_data` and nothing
+  /// else: it can read every row and change none, which makes it the one
+  /// credential it is safe to keep beside the till's.
+  ///
+  /// Null only when this terminal has no database to copy.
+  final BackupConnection? reader;
+
+  /// Who a restore connects as: the database's owner, with the password
+  /// supplied this session. Null until somebody has — and a restore is only
+  /// ever started from the back office, which asks for it at the door.
+  final BackupConnection? restorer;
+
+  /// How many verified copies the folder keeps before the oldest goes. Two
+  /// weeks of day closes: long enough to notice a mistake made last week, short
+  /// enough that the folder cannot quietly fill the disk it is protecting.
+  final int keep;
+
+  final ProcessRunner? _runner;
+
+  /// The read-only account the installer creates for backups.
+  static const readerRole = 'pos_backup';
 
   /// Closes every pool before a restore drops the objects underneath them.
   final Future<void> Function()? quiesce;
@@ -184,24 +203,8 @@ class BackupService {
       );
     }
 
-    final dump = await _run(tools.pgDump, [
-      '--format=custom',
-      // Compressed by default in custom format, which matters on a till whose
-      // disk is the reason we are here.
-      '--file=$path',
-      '--host=${config.databaseHost}',
-      '--port=${config.databasePort}',
-      '--username=${config.databaseUser}',
-      // Never prompt. A subprocess waiting on a password nobody can see is a
-      // till that appears to hang at midnight, forever.
-      '--no-password',
-      config.databaseName,
-    ]);
-
-    if (dump == null || dump.exitCode != 0) {
-      // Leave nothing that looks like a backup. A half-written file with a
-      // plausible size is precisely what somebody restores from in a panic.
-      _deleteQuietly(path);
+    final from = reader;
+    if (from == null) {
       return _record(
         by: by,
         entry: BackupRecord(
@@ -212,20 +215,22 @@ class BackupService {
           outcome: BackupOutcome.failed,
           filePath: path,
           failure: BackupFailure.dumpRefused,
-          detail: dump == null
-              ? 'pg_dump could not be started'
-              : _tail('${dump.stderr}'),
+          detail: 'This terminal has no database connection to copy from.',
         ),
       );
     }
 
-    final file = File(path);
-    final size = file.existsSync() ? file.lengthSync() : 0;
-    final checksum = size == 0 ? null : await _checksum(file);
-
-    // The verification, and the reason this is a feature rather than a button.
-    final listed = await _run(tools.pgRestore, ['--list', path]);
-    if (listed == null || listed.exitCode != 0) {
+    final String contents;
+    try {
+      contents = await PgArchive(tools, run: _runner).dump(
+        from: from,
+        to: File(path),
+      );
+    } on ArchiveFailure catch (failure) {
+      // Nothing is left on disk either way: `PgArchive` writes to `.part` and
+      // throws the part away. A file with a plausible name and a plausible size
+      // that cannot be read is precisely what somebody restores from in a panic.
+      final unreadable = failure.kind == ArchiveFailureKind.unreadable;
       return _record(
         by: by,
         entry: BackupRecord(
@@ -233,25 +238,30 @@ class BackupService {
           takenByName: by.name,
           takenById: by.id,
           trigger: trigger,
-          outcome: BackupOutcome.unverified,
+          outcome: unreadable ? BackupOutcome.unverified : BackupOutcome.failed,
           filePath: path,
-          sizeBytes: size,
-          checksum: checksum,
-          failure: BackupFailure.archiveUnreadable,
-          detail: listed == null
-              ? 'pg_restore could not be started'
-              : _tail('${listed.stderr}'),
+          sizeBytes: failure.sizeBytes ?? 0,
+          failure: unreadable
+              ? BackupFailure.archiveUnreadable
+              : BackupFailure.dumpRefused,
+          detail: unreadable
+              ? failure.detail
+              : explainRefusal(failure.detail, user: from.user),
         ),
       );
     }
 
-    final tables = tablesIn('${listed.stdout}');
+    final file = File(path);
+    final size = file.lengthSync();
+    final checksum = await _checksum(file);
+
+    final tables = tablesIn(contents);
     final missing = [
       for (final wanted in essentialTables)
         if (!tables.contains(wanted)) wanted,
     ];
 
-    return _record(
+    final stored = await _record(
       by: by,
       entry: BackupRecord(
         takenAt: at,
@@ -271,6 +281,40 @@ class BackupService {
         detail: missing.isEmpty ? null : missing.join(', '),
       ),
     );
+
+    // Only after a copy that counts. Pruning after a failure would delete a
+    // good old copy to make room for a bad new one.
+    if (stored.isRestorable) {
+      try {
+        PgArchive.prune(
+          Directory(directory),
+          prefix: '${config.databaseName}-',
+          keep: keep,
+        );
+      } on FileSystemException {
+        // A copy that could not be tidied away is still a copy. The folder
+        // growing is visible; a failed backup caused by housekeeping is not.
+      }
+    }
+    return stored;
+  }
+
+  /// PostgreSQL's refusal, with the one next step it cannot know.
+  ///
+  /// The commonest refusal on a new install is the backup account itself — not
+  /// created yet, or no password entered on this machine — and PostgreSQL's
+  /// wording for that names the role but not where to fix it.
+  static String explainRefusal(String? detail, {required String user}) {
+    final said = detail ?? '';
+    final aboutTheAccount =
+        said.contains('password authentication failed') ||
+        said.contains('no password supplied') ||
+        said.contains('role "$user" does not exist');
+    if (!aboutTheAccount) return said;
+    return '$said\n'
+        'Backups sign in as "$user": enter its password under Backup account, '
+        'or ask whoever installed PostgreSQL to create it — see the offline '
+        'install runbook, "The backup account".';
   }
 
   /// The table names in a `pg_restore --list` table of contents.
@@ -427,31 +471,27 @@ class BackupService {
       );
     }
 
+    final into = restorer;
+    if (into == null) {
+      throw StateError(
+        'Restoring needs the back-office database password, and none has been '
+        'entered this session.',
+      );
+    }
+
     // Let go of every pooled connection first. An idle session holds no locks,
     // so this is belt and braces rather than a fix — but `--clean` drops every
     // object in the database and the failure mode if it does block is a till
     // frozen mid-restore, which is the one state worse than not having started.
     await quiesce?.call();
 
-    final run = await _run(tools.pgRestore, [
-      '--clean',
-      '--if-exists',
-      // All or nothing. Without this a restore that fails two thirds of the way
-      // through leaves a database that is neither the old one nor the new one,
-      // and no button anywhere puts that right.
-      '--single-transaction',
-      '--host=${config.databaseHost}',
-      '--port=${config.databasePort}',
-      '--username=${config.databaseUser}',
-      '--no-password',
-      '--dbname=${config.databaseName}',
-      from.filePath,
-    ]);
-
-    if (run == null || run.exitCode != 0) {
+    try {
+      // Read in full first, then all or nothing — see `PgArchive.restore`.
+      await PgArchive(tools, run: _runner).restore(from: file, into: into);
+    } on ArchiveFailure catch (failure) {
       throw StateError(
         'The restore did not complete and the database was not changed: '
-        '${run == null ? 'pg_restore could not be started' : _tail('${run.stderr}')}',
+        '${failure.detail ?? failure.kind.name}',
       );
     }
 
@@ -474,6 +514,94 @@ class BackupService {
     );
 
     return AdminResult.done(from);
+  }
+
+  /// Copy a verified backup somewhere else — a USB drive — and prove the copy.
+  ///
+  /// **The copy is what leaves the building, so it is checked, not assumed.**
+  /// A stick pulled out a second early, or a full one, leaves a file with the
+  /// right name that is not the backup; so the copy is written to `.part`, its
+  /// checksum compared with the one recorded when the original was verified,
+  /// and only then given the name. Same checksum, same bytes — the copy is as
+  /// good as the verified original, without running `pg_restore` over a slow
+  /// drive.
+  ///
+  /// Not recorded in `pos_backups`: that table is a record of copies taken of
+  /// this database, and this is the same copy in a second place.
+  Future<File> copyTo(BackupRecord record, String destination) async {
+    if (!record.isRestorable) {
+      throw StateError(
+        'That copy failed verification when it was taken, so it is not a '
+        'backup and there is nothing worth copying.',
+      );
+    }
+    final source = File(record.filePath);
+    if (!source.existsSync()) {
+      throw StateError('The backup file is no longer at ${record.filePath}.');
+    }
+
+    final name = source.uri.pathSegments.last;
+    final target = File('$destination${Platform.pathSeparator}$name');
+    final part = File('${target.path}.part');
+    try {
+      await source.copy(part.path);
+      final copied = await _checksum(part);
+      if (record.checksum != null && copied != record.checksum) {
+        throw StateError(
+          'The copy at ${target.path} does not match the backup — the drive '
+          'may be full, failing or removed too early. Nothing was kept there.',
+        );
+      }
+      if (target.existsSync()) await target.delete();
+      await part.rename(target.path);
+    } finally {
+      if (part.existsSync()) await part.delete();
+    }
+    return target;
+  }
+
+  /// A backup file brought from somewhere else — a USB drive, another till —
+  /// described the way a restore needs it.
+  ///
+  /// **Nothing here is taken on trust.** The file has no row in this database
+  /// (the database it was recorded in may be the one that died), so it is
+  /// described as the file claims to be, and [restore] then does what it always
+  /// does: reads it in full before touching anything, and refuses one that does
+  /// not read. When it was taken comes from its name where the name is one of
+  /// ours — that is what the orders-since count is measured from — and from
+  /// the file's own date otherwise. A name knows only the second, and is read
+  /// as the start of it: an order earlier in that same second is counted as
+  /// lost when it is not, which is the direction that warning can afford to be
+  /// wrong in.
+  Future<BackupRecord> describeFile(File file, {required PosStaff by}) async {
+    final name = file.uri.pathSegments.last;
+    final stamp = RegExp(
+      r'(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})\.dump$',
+    ).firstMatch(name);
+    final takenAt = stamp == null
+        ? file.lastModifiedSync()
+        : DateTime(
+            int.parse(stamp.group(1)!),
+            int.parse(stamp.group(2)!),
+            int.parse(stamp.group(3)!),
+            int.parse(stamp.group(4)!),
+            int.parse(stamp.group(5)!),
+            int.parse(stamp.group(6)!),
+          );
+
+    return BackupRecord(
+      takenAt: takenAt,
+      takenByName: by.name,
+      takenById: by.id,
+      trigger: BackupTrigger.manual,
+      // Verified in the only sense a restore relies on: the checksum below is
+      // this file's, so the file restored is the file described. Whether it
+      // READS is decided by the restore itself, before anything is dropped.
+      outcome: BackupOutcome.verified,
+      filePath: file.path,
+      sizeBytes: file.lengthSync(),
+      checksum: await _checksum(file),
+    );
   }
 
   /// `xorder_pos-20260909-231407.dump`
@@ -511,51 +639,10 @@ class BackupService {
     return stored;
   }
 
-  Future<ProcessResult?> _run(String executable, List<String> arguments) async {
-    try {
-      return await Process.run(
-        executable,
-        arguments,
-        environment: {
-          // Only when there is one. An empty PGPASSWORD is not the same as no
-          // PGPASSWORD: it is a password, and it is wrong.
-          if (password != null && password!.isNotEmpty) 'PGPASSWORD': password!,
-        },
-        // stdout is a table of contents we parse; stderr is diagnostics we
-        // show. Neither is binary — the dump itself goes to `--file`.
-        stdoutEncoding: utf8,
-        stderrEncoding: utf8,
-      );
-    } on ProcessException {
-      return null;
-    }
-  }
-
   /// Streamed, not read into memory. A year of a busy restaurant is a file
   /// nobody should be loading into a till's RAM to hash.
   static Future<String> _checksum(File file) async =>
       (await sha256.bind(file.openRead()).first).toString();
-
-  /// The last few lines of PostgreSQL's diagnostics.
-  ///
-  /// `pg_dump` can be verbose, and a column of a thousand characters in a list
-  /// row is a row nobody reads. The last lines are where the reason is.
-  static String _tail(String text, {int lines = 4}) {
-    final kept = text.trim().split('\n');
-    return (kept.length <= lines ? kept : kept.sublist(kept.length - lines))
-        .join('\n')
-        .trim();
-  }
-
-  static void _deleteQuietly(String path) {
-    try {
-      final file = File(path);
-      if (file.existsSync()) file.deleteSync();
-    } on FileSystemException {
-      // Nothing to do and nothing to say: the record already carries the
-      // failure, and a second error about tidying up would bury the first.
-    }
-  }
 }
 
 /// Where copies go when nobody has said.

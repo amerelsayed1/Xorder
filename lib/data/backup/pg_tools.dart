@@ -46,6 +46,10 @@ abstract final class PgTools {
   /// found" sends somebody to a search engine; one that lists the six places
   /// looked in sends them to the right folder.
   static List<String> searchPath() => [
+    // Beside the app, first: the Windows installer bundles PostgreSQL and puts
+    // its tools here, and that copy is the one known to match the server.
+    '${File(Platform.resolvedExecutable).parent.path}'
+        '${Platform.pathSeparator}pgsql${Platform.pathSeparator}bin',
     ...?Platform.environment['PATH']?.split(Platform.isWindows ? ';' : ':'),
     ..._wellKnown(),
   ].where((entry) => entry.trim().isNotEmpty).toList();

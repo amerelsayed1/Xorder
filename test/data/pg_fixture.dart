@@ -40,7 +40,7 @@ class PgFixture {
     final address = host;
     if (address == null) throw StateError('POS_PG_HOST is not set');
 
-    final databaseName = 'xorder_pos_${suite}_$_checkout';
+    final databaseName = nameFor(suite);
     await _ensureDatabase(address, databaseName);
 
     return PgFixture._(
@@ -56,6 +56,33 @@ class PgFixture {
         databasePort: port,
       ),
     );
+  }
+
+  /// The database [open] uses for [suite] in this checkout.
+  static String nameFor(String suite) => 'xorder_pos_${suite}_$_checkout';
+
+  /// Run [statements] against the maintenance database, one by one, outside
+  /// any transaction — for what `CREATE` and `DROP DATABASE` need.
+  static Future<void> maintenance(List<String> statements) async {
+    final address = host;
+    if (address == null) throw StateError('POS_PG_HOST is not set');
+    final admin = await Connection.open(
+      Endpoint(
+        host: address,
+        port: port,
+        database: 'postgres',
+        username: user,
+        password: password,
+      ),
+      settings: const ConnectionSettings(sslMode: SslMode.disable),
+    );
+    try {
+      for (final statement in statements) {
+        await admin.execute(statement);
+      }
+    } finally {
+      await admin.close();
+    }
   }
 
   /// A short, stable tag for this working copy.

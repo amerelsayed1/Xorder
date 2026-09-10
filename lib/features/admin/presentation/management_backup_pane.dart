@@ -1,3 +1,6 @@
+import 'dart:io';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -8,7 +11,8 @@ import '../../../core/ui/tokens.dart';
 import '../../../core/ui/widgets/destructive_confirm_dialog.dart';
 import '../../../core/ui/widgets/mono_amount.dart';
 import '../../../core/ui/widgets/pos_widgets.dart';
-import '../../../data/backup/backup_service.dart' show BackupPaths;
+import '../../../data/backup/backup_service.dart'
+    show BackupPaths, BackupService;
 import '../../../data/backup/pg_tools.dart';
 import '../../../domain/models/backup.dart';
 import '../../../domain/models/permissions.dart';
@@ -45,6 +49,7 @@ class ManagementBackupPane extends ConsumerStatefulWidget {
 
 class _ManagementBackupPaneState extends ConsumerState<ManagementBackupPane> {
   final _directory = TextEditingController();
+  final _readerPassword = TextEditingController();
   bool _busy = false;
   String? _note;
   bool _noteIsGood = false;
@@ -74,6 +79,7 @@ class _ManagementBackupPaneState extends ConsumerState<ManagementBackupPane> {
   @override
   void dispose() {
     _directory.dispose();
+    _readerPassword.dispose();
     super.dispose();
   }
 
@@ -221,11 +227,103 @@ class _ManagementBackupPaneState extends ConsumerState<ManagementBackupPane> {
     }
   }
 
+  /// Keep the backup account's password on this machine.
+  ///
+  /// Not tried first, unlike the back-office password at the door: the only
+  /// thing that proves it is a backup, and the next one — pressed here, or at
+  /// day close — records exactly why if it is wrong.
+  Future<void> _saveReaderPassword() async {
+    final value = _readerPassword.text;
+    if (value.isEmpty || _busy) return;
+    final strings = context.strings;
+    setState(() {
+      _busy = true;
+      _note = null;
+    });
+    try {
+      await ref.read(backupPasswordStoreProvider).write(value);
+      ref.invalidate(backupPasswordProvider);
+      _readerPassword.clear();
+      if (mounted) {
+        setState(() {
+          _note = strings.backupAccountSaved;
+          _noteIsGood = true;
+        });
+      }
+    } on Object catch (error) {
+      if (mounted) {
+        setState(() {
+          _note = '$error';
+          _noteIsGood = false;
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// Put a verified copy on a USB drive — the one copy that leaves the
+  /// building, and so the one checked rather than assumed.
+  Future<void> _copy(BackupRecord record) async {
+    final strings = context.strings;
+    final destination = await FilePicker.getDirectoryPath(
+      dialogTitle: strings.backupCopyAction,
+    );
+    if (destination == null || !mounted) return;
+
+    setState(() {
+      _busy = true;
+      _note = null;
+    });
+    final service = await ref.read(backupServiceProvider.future);
+    if (!mounted) return;
+    try {
+      if (service == null) throw StateError('No database on this terminal.');
+      final copied = await service.copyTo(record, destination);
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _noteIsGood = true;
+        _note = strings.backupCopyDone(copied.path);
+      });
+    } on Object catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _noteIsGood = false;
+        _note = strings.backupCopyFailed(
+          error is StateError ? error.message : '$error',
+        );
+      });
+    }
+  }
+
+  /// A copy brought back on a drive — the case where the database that
+  /// recorded it is the one that is gone. From here it is the same restore,
+  /// with the same guards and the same confirmation.
+  Future<void> _restoreFromFile() async {
+    final picked = await FilePicker.pickFiles(
+      dialogTitle: context.strings.backupRestoreFromFile,
+      type: FileType.custom,
+      allowedExtensions: const ['dump'],
+    );
+    final path = picked.isEmpty ? null : picked.single.path;
+    if (path == null || !mounted) return;
+
+    final service = await ref.read(backupServiceProvider.future);
+    if (service == null || !mounted) return;
+    final described = await service.describeFile(File(path), by: widget.admin);
+    if (!mounted) return;
+    await _restore(described);
+  }
+
   @override
   Widget build(BuildContext context) {
     final strings = context.strings;
     final palette = context.pos;
     final policy = ref.watch(backupPolicyProvider);
+    final fileExists = ref.watch(backupFileExistsProvider);
+    final readerStored = ref.watch(backupPasswordProvider).valueOrNull != null;
     final tools = ref.watch(pgToolsProvider);
     final history = ref.watch(backupsProvider);
 
@@ -260,6 +358,48 @@ class _ManagementBackupPaneState extends ConsumerState<ManagementBackupPane> {
                     size: 12,
                   ),
                 ),
+        ),
+        const SizedBox(height: PosSpace.lg),
+
+        MicroLabel(strings.backupAccount),
+        const SizedBox(height: PosSpace.xs),
+        Text(
+          strings.backupAccountHint,
+          style: PosText.ui(size: 12.5, color: palette.muted, height: 1.5),
+        ),
+        const SizedBox(height: PosSpace.xs),
+        Text(
+          readerStored ? strings.backupAccountStored : strings.backupAccountMissing,
+          key: const Key('backup-account-status'),
+          style: PosText.ui(
+            size: 12.5,
+            weight: FontWeight.w600,
+            color: readerStored ? palette.ok : palette.warn,
+          ),
+        ),
+        const SizedBox(height: PosSpace.sm),
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                key: const Key('backup-account-password'),
+                controller: _readerPassword,
+                obscureText: true,
+                enabled: _mayManage && !_busy,
+                textDirection: TextDirection.ltr,
+                onSubmitted: (_) => _saveReaderPassword(),
+                style: PosText.mono(size: 13, color: palette.ink),
+                decoration: _boxed(palette, label: BackupService.readerRole),
+              ),
+            ),
+            const SizedBox(width: PosSpace.sm),
+            PosButton(
+              key: const Key('backup-account-save'),
+              label: strings.save,
+              border: Border.fromBorderSide(palette.resting),
+              onPressed: _mayManage && !_busy ? _saveReaderPassword : null,
+            ),
+          ],
         ),
         const SizedBox(height: PosSpace.lg),
 
@@ -331,18 +471,30 @@ class _ManagementBackupPaneState extends ConsumerState<ManagementBackupPane> {
         ),
         const SizedBox(height: PosSpace.md),
 
-        Align(
-          alignment: AlignmentDirectional.centerStart,
-          child: PosButton(
-            key: const Key('backup-now'),
-            label: _busy ? strings.backupTaking : strings.backupTakeNow,
-            background: palette.accent,
-            foreground: Colors.white,
-            fontWeight: FontWeight.w700,
-            onPressed: _mayManage && !_busy && tools.valueOrNull != null
-                ? _backUpNow
-                : null,
-          ),
+        Wrap(
+          spacing: PosSpace.sm,
+          runSpacing: PosSpace.sm,
+          children: [
+            PosButton(
+              key: const Key('backup-now'),
+              label: _busy ? strings.backupTaking : strings.backupTakeNow,
+              background: palette.accent,
+              foreground: Colors.white,
+              fontWeight: FontWeight.w700,
+              onPressed: _mayManage && !_busy && tools.valueOrNull != null
+                  ? _backUpNow
+                  : null,
+            ),
+            PosButton(
+              key: const Key('backup-restore-file'),
+              label: strings.backupRestoreFromFile,
+              border: Border.fromBorderSide(BorderSide(color: palette.danger)),
+              foreground: palette.danger,
+              onPressed: _mayManage && !_busy && tools.valueOrNull != null
+                  ? _restoreFromFile
+                  : null,
+            ),
+          ],
         ),
 
         if (_note != null) ...[
@@ -367,12 +519,18 @@ class _ManagementBackupPaneState extends ConsumerState<ManagementBackupPane> {
             _Freshness(records: all),
             const SizedBox(height: PosSpace.sm),
             for (final record in all)
-              _BackupRow(
-                record: record,
-                onRestore: _mayManage && !_busy && record.isRestorable
-                    ? () => _restore(record)
-                    : null,
-              ),
+              if (record.isRestorable && !fileExists(record.filePath))
+                _BackupRow(record: record, fileGone: true)
+              else
+                _BackupRow(
+                  record: record,
+                  onRestore: _mayManage && !_busy && record.isRestorable
+                      ? () => _restore(record)
+                      : null,
+                  onCopy: _mayManage && !_busy && record.isRestorable
+                      ? () => _copy(record)
+                      : null,
+                ),
           ],
         ),
       ],
@@ -426,10 +584,21 @@ class _Freshness extends StatelessWidget {
 }
 
 class _BackupRow extends StatelessWidget {
-  const _BackupRow({required this.record, this.onRestore});
+  const _BackupRow({
+    required this.record,
+    this.onRestore,
+    this.onCopy,
+    this.fileGone = false,
+  });
 
   final BackupRecord record;
   final VoidCallback? onRestore;
+  final VoidCallback? onCopy;
+
+  /// A verified copy whose file has since been pruned. Still shown — the
+  /// record of it having existed is the point of the list — but with nothing
+  /// to press, because there is nothing left to restore or copy.
+  final bool fileGone;
 
   @override
   Widget build(BuildContext context) {
@@ -524,16 +693,37 @@ class _BackupRow extends StatelessWidget {
             // Absent, not disabled, on a row that is not a backup: a Restore
             // button beside a file nobody could restore from is an invitation
             // to try it at the worst possible moment.
-            child: record.isRestorable
-                ? PosButton(
-                    label: strings.backupRestoreAction,
-                    border: Border.fromBorderSide(
-                      BorderSide(color: palette.danger),
+            child: !record.isRestorable
+                ? null
+                : fileGone
+                ? Text(
+                    strings.backupFileGone,
+                    style: PosText.ui(
+                      size: 11,
+                      color: palette.muted,
+                      height: 1.4,
                     ),
-                    foreground: palette.danger,
-                    onPressed: onRestore,
                   )
-                : null,
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      PosButton(
+                        label: strings.backupRestoreAction,
+                        border: Border.fromBorderSide(
+                          BorderSide(color: palette.danger),
+                        ),
+                        foreground: palette.danger,
+                        onPressed: onRestore,
+                      ),
+                      const SizedBox(height: PosSpace.xs),
+                      PosButton(
+                        key: Key('backup-copy-${record.id}'),
+                        label: strings.backupCopyAction,
+                        border: Border.fromBorderSide(palette.resting),
+                        onPressed: onCopy,
+                      ),
+                    ],
+                  ),
           ),
         ],
       ),
@@ -679,3 +869,22 @@ String _stamp(DateTime at) {
   return '${local.year}-${two(local.month)}-${two(local.day)} '
       '${two(local.hour)}:${two(local.minute)}';
 }
+
+/// The pane's boxed field: square, hairline at rest, accent when focused.
+InputDecoration _boxed(PosPalette palette, {String? label}) => InputDecoration(
+  isDense: true,
+  labelText: label,
+  labelStyle: PosText.mono(size: 12, color: palette.muted),
+  border: OutlineInputBorder(
+    borderRadius: BorderRadius.zero,
+    borderSide: palette.resting,
+  ),
+  enabledBorder: OutlineInputBorder(
+    borderRadius: BorderRadius.zero,
+    borderSide: palette.resting,
+  ),
+  focusedBorder: OutlineInputBorder(
+    borderRadius: BorderRadius.zero,
+    borderSide: palette.accentBorder,
+  ),
+);

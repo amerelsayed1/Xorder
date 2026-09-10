@@ -43,6 +43,51 @@ ALTER DATABASE pos_desktop_db OWNER TO pos_admin;
 ALTER SCHEMA public OWNER TO pos_admin;
 ```
 
+### The backup account
+
+Backups run `pg_dump` as their own account, **`pos_backup`**, not as the till
+or the administrator:
+
+- the till's account (`pos_till`) cannot read every table, and a dump that
+  silently left one out is the failure backups exist to prevent;
+- the administrator's password is never stored, and the nightly copy runs at
+  day close when nobody has the back office open.
+
+`pos_backup` is a member of `pg_read_all_data` and nothing else. It can read
+every row and change none, so it is safe to keep its password on the till. It
+needs a superuser (or a role with `CREATEROLE`) to create; `pos_admin` has
+neither, deliberately:
+
+```sql
+CREATE ROLE pos_backup LOGIN PASSWORD '<a password you write down>';
+GRANT pg_read_all_data TO pos_backup;
+-- and in pg_hba.conf, the same line pos_till has, for pos_backup.
+```
+
+Then **Management → System → Backup → Backup account**: enter the password
+once on each till that closes the day. It is kept in `secrets.json` beside the
+till's own.
+
+Things worth knowing before the day somebody needs a restore:
+
+- **Every copy is read back in full before it counts.** A dump that lists but
+  does not read to its end — a USB drive pulled out, a disk that filled — is recorded
+  as *Not a backup* and not kept.
+- **Only the newest 14 copies stay in the folder.** Use **Copy to…** on a
+  verified row to put one on a USB drive. The copy is checked against the
+  original's checksum before it gets its name. Then keep the drive somewhere
+  other than the till.
+- **Restore from a file…** takes a copy brought back from a drive. It is read
+  in full before anything is touched.
+- **A restore runs as the administrator (`pos_admin`), all or nothing.** It
+  drops and recreates every table, so `pos_admin` has to own them. It does when
+  the wizard built the database. If the database was built by `postgres` with
+  `bin/pos_migrate.dart`, hand it over first:
+  `REASSIGN OWNED BY postgres TO pos_admin;` run in that database.
+- **The server being restored onto needs the roles the copy grants to.**
+  Restoring onto a fresh PostgreSQL that has no `pos_till` fails, and changes
+  nothing. Create the roles first, the same way as on the first install.
+
 ### Running the app against a local platform
 
 `PlatformEndpoint.base` is a build-time constant. A **debug** build now defaults

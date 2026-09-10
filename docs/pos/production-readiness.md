@@ -311,6 +311,38 @@ a backup.
 **Size: M** — a process wrapper, a destination setting, a schedule, and one pane. The
 honest work is testing the restore.
 
+**Status (2026-09-11): built, restore tested end to end.** Owner's decision: local
+disk plus a USB drive.
+
+- **Taking a copy.** `pg_dump -Fc` runs at every day close and on demand, as a
+  read-only `pos_backup` account (a `pg_read_all_data` member whose password is kept
+  on the till). Every copy is read back **in full** before it counts: a dump missing its
+  last few bytes still passes `pg_restore --list` (measured), so a list alone does not
+  prove anything. A copy that fails is recorded as *Not a backup* and not kept.
+- **Records and housekeeping.** Each attempt is written to the append-only
+  `pos_backups` table (migration 37). The folder keeps the newest 14 copies.
+- **Getting a copy off the machine.** *Copy to…* puts a copy on a USB drive and checks
+  the copy's checksum against the original's.
+- **Restoring.** *Restore from a file…* brings one back. A restore runs as the
+  database owner with `--no-owner --single-transaction`, and is refused while a shift
+  or trading day is open.
+- **Warnings.** The start screen warns when there is no verified copy, or the newest is
+  two days old.
+
+**Tests.** `test/data/pg_archive_restore_test.dart` restores as `pos_admin` (not a
+superuser) onto a blank database and compares every table's rows, every sequence and
+every grant `pos_till` holds. It also proves that a half-read file is refused before
+anything is touched, and that a restore failing at its very end leaves the database it
+found.
+
+**Still open.**
+- The installer (item 10) must create `pos_backup`; until then it is the runbook's
+  "The backup account".
+- A restore needs `pos_admin` to own the tables, which is true for wizard-built
+  databases but not for ones built by `postgres` with `pos_migrate`.
+- Recovering onto a *replacement* machine restores the data but not that machine's
+  terminal registration, which the wizard created fresh. That flow is not designed yet.
+
 ---
 
 ## Not blockers — and why each can wait
@@ -437,6 +469,8 @@ Decisions that cannot be read out of the code. Items 2 and 5 cannot start withou
    a machine — an update channel, or a technician with a USB stick?
 5. **Where do backups go, and who owns testing the restore?** Local disk, a second
    machine on the LAN, or cloud. Until somebody has restored one, item 11 is not done.
+   *Answered 2026-09-11: local disk plus a USB drive. The restore is exercised by
+   `pg_archive_restore_test.dart` on every database-suite run.*
 6. **Is cloud a deployment we sell today, or a direction of travel?** It decides
    whether the platform-owned code paths — the bootstrap seeder, the outbox drain, the
    gated panes — are a live surface to maintain and test, or weight we are carrying.

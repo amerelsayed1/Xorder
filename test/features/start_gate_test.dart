@@ -5,6 +5,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:xorder_pos/app/providers.dart';
 import 'package:xorder_pos/core/config/deployment.dart';
 import 'package:xorder_pos/core/ui/theme.dart';
+import 'package:xorder_pos/data/fakes/fake_repositories.dart';
+import 'package:xorder_pos/domain/models/backup.dart';
 import 'package:xorder_pos/features/licensing/data/licence_service.dart';
 import 'package:xorder_pos/features/start/start_screen.dart';
 
@@ -21,13 +23,22 @@ const _cloud = DeploymentConfig(
 Future<({ProviderContainer container, List<String> events})> _boot(
   WidgetTester tester, {
   String? licenceKey,
+  List<BackupRecord>? backups,
 }) async {
   tester.view
     ..physicalSize = const Size(1440, 900)
     ..devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
 
-  final container = ProviderContainer(overrides: fakeRepositoryOverrides());
+  final container = ProviderContainer(
+    overrides: [
+      ...fakeRepositoryOverrides(),
+      if (backups != null)
+        backupRepositoryProvider.overrideWithValue(
+          FakeBackupRepository(records: backups),
+        ),
+    ],
+  );
   addTearDown(container.dispose);
   container.read(deploymentProvider.notifier).apply(_cloud);
 
@@ -200,5 +211,57 @@ void main() {
 
     expect(find.text('Open shift'), findsNothing, reason: 'no second float is asked for');
     expect(app.events.where((e) => e == 'start').length, 2);
+  });
+
+  group('backups, from the screen the restaurant is opened from', () {
+    BackupRecord verified({required int daysAgo}) => BackupRecord(
+      id: 1,
+      takenAt: DateTime.now().subtract(Duration(days: daysAgo)),
+      takenByName: 'Amer M.',
+      trigger: BackupTrigger.dayClose,
+      outcome: BackupOutcome.verified,
+      filePath: '/backups/xorder_pos-20260910-231407.dump',
+      sizeBytes: 4404019,
+      checksum: 'a' * 64,
+      tablesFound: 44,
+    );
+
+    testWidgets('a till that has never been backed up says so, and says where '
+        'to go', (tester) async {
+      // The Backup pane is behind the owner's PIN, two menus deep. Whoever
+      // opens up tomorrow is the person who needs to know.
+      final app = await _boot(tester, licenceKey: 'XORD-GOOD-1', backups: []);
+
+      expect(find.byKey(const Key('start-backup-warning')), findsOneWidget);
+      expect(
+        find.text('No copy of this database has ever been taken.'),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.byKey(const Key('start-backup-open')));
+      await tester.pumpAndSettle();
+      expect(app.events, contains('manage'));
+    });
+
+    testWidgets('a copy from last night says nothing', (tester) async {
+      await _boot(
+        tester,
+        licenceKey: 'XORD-GOOD-1',
+        backups: [verified(daysAgo: 0)],
+      );
+      expect(find.byKey(const Key('start-backup-warning')), findsNothing);
+    });
+
+    testWidgets('a copy three days old is called old', (tester) async {
+      await _boot(
+        tester,
+        licenceKey: 'XORD-GOOD-1',
+        backups: [verified(daysAgo: 3)],
+      );
+      expect(
+        find.text('The last verified copy is 3 days old.'),
+        findsOneWidget,
+      );
+    });
   });
 }

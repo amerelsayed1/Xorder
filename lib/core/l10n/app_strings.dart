@@ -1146,6 +1146,17 @@ sealed class AppStrings {
   String get backupRestoreKeep;
   String get backupRestoreDone;
   String backupRestoreFailed(String detail);
+  String get backupAccount;
+  String get backupAccountHint;
+  String get backupAccountStored;
+  String get backupAccountMissing;
+  String get backupAccountSaved;
+  String get backupCopyAction;
+  String backupCopyDone(String path);
+  String backupCopyFailed(String detail);
+  String get backupRestoreFromFile;
+  String get backupFileGone;
+  String get backupOpenPane;
   String get backupDayCloseWorking;
   String get backupDayCloseFailed;
   String get actBackupTaken;
@@ -4415,8 +4426,8 @@ final class EnStrings extends AppStrings {
       'edit or a dropped table. It does not survive the disk failing, the '
       'machine being stolen, a fire, or software that encrypts every file this '
       'account can write — which is the list of things that actually happen. '
-      'Copy this folder somewhere else regularly. Nothing in the till does '
-      'that for you.';
+      'Copy the newest one to a USB drive regularly — "Copy to…" on any '
+      'verified copy — and keep the drive somewhere other than this machine.';
   @override
   String get backupToolsMissing =>
       'PostgreSQL\'s command-line tools are not on this machine, so no backup '
@@ -4519,6 +4530,35 @@ final class EnStrings extends AppStrings {
   @override
   String backupRestoreFailed(String detail) =>
       'The restore did not complete and nothing was changed. $detail';
+  @override
+  String get backupAccount => 'Backup account';
+  @override
+  String get backupAccountHint =>
+      'Backups sign in to PostgreSQL as pos_backup, a read-only account '
+      'created when PostgreSQL was installed. Enter its password once. It is '
+      'kept on this machine, so the backup at day close works with nobody '
+      'signed in here.';
+  @override
+  String get backupAccountStored => 'A password is saved on this machine.';
+  @override
+  String get backupAccountMissing => 'No password saved on this machine yet.';
+  @override
+  String get backupAccountSaved =>
+      'Saved. The next backup signs in with it.';
+  @override
+  String get backupCopyAction => 'Copy to…';
+  @override
+  String backupCopyDone(String path) =>
+      'Copied to $path and checked against the original.';
+  @override
+  String backupCopyFailed(String detail) => 'The copy was not made. $detail';
+  @override
+  String get backupRestoreFromFile => 'Restore from a file…';
+  @override
+  String get backupFileGone =>
+      'No longer on this machine — only the newest 14 copies are kept here.';
+  @override
+  String get backupOpenPane => 'Open Backup';
   @override
   String get backupDayCloseWorking => 'Closing the day and taking a backup…';
   @override
@@ -7386,8 +7426,8 @@ final class ArStrings extends AppStrings {
       'تُحفظ النسخ على قرص هذا الجهاز نفسه. هذا ينجّيك من تعديل خاطئ أو جدول '
       'محذوف، ولا ينجّيك من عطل القرص أو سرقة الجهاز أو حريق أو برنامج يشفّر كل '
       'ملف يستطيع هذا الحساب الكتابة فيه — وهذه هي الأمور التي تحدث فعلاً. '
-      'انسخ هذا المجلد إلى مكان آخر بانتظام. لا شيء في الكاشير يفعل ذلك '
-      'نيابةً عنك.';
+      'انسخ أحدث نسخة إلى ذاكرة USB بانتظام — «انسخ إلى…» بجانب أي نسخة '
+      'موثّقة — واحتفظ بها في مكان غير هذا الجهاز.';
   @override
   String get backupToolsMissing =>
       'أدوات PostgreSQL غير موجودة على هذا الجهاز، فلا يمكن أخذ نسخة احتياطية '
@@ -7486,6 +7526,33 @@ final class ArStrings extends AppStrings {
   @override
   String backupRestoreFailed(String detail) =>
       'لم تكتمل الاستعادة ولم يتغيّر شيء. $detail';
+  @override
+  String get backupAccount => 'حساب النسخ الاحتياطي';
+  @override
+  String get backupAccountHint =>
+      'يدخل النسخ الاحتياطي إلى PostgreSQL باسم pos_backup، وهو حساب للقراءة '
+      'فقط أُنشئ عند تثبيت PostgreSQL. أدخل كلمة مروره مرة واحدة؛ تُحفظ على '
+      'هذا الجهاز كي تعمل نسخة إقفال اليوم دون أن يكون أحد مسجّلاً هنا.';
+  @override
+  String get backupAccountStored => 'كلمة المرور محفوظة على هذا الجهاز.';
+  @override
+  String get backupAccountMissing => 'لم تُحفظ كلمة مرور على هذا الجهاز بعد.';
+  @override
+  String get backupAccountSaved => 'تم الحفظ. ستستخدمها النسخة القادمة.';
+  @override
+  String get backupCopyAction => 'انسخ إلى…';
+  @override
+  String backupCopyDone(String path) =>
+      'نُسخت إلى $path وتمت مطابقتها مع الأصل.';
+  @override
+  String backupCopyFailed(String detail) => 'لم تتم النسخ. $detail';
+  @override
+  String get backupRestoreFromFile => 'استعادة من ملف…';
+  @override
+  String get backupFileGone =>
+      'لم تعد على هذا الجهاز — يُحتفظ هنا بأحدث 14 نسخة فقط.';
+  @override
+  String get backupOpenPane => 'افتح النسخ الاحتياطي';
   @override
   String get backupDayCloseWorking => 'جارٍ إقفال اليوم وأخذ نسخة احتياطية…';
   @override
