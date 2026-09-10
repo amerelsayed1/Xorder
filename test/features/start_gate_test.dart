@@ -7,6 +7,8 @@ import 'package:xorder_pos/core/config/deployment.dart';
 import 'package:xorder_pos/core/ui/theme.dart';
 import 'package:xorder_pos/data/fakes/fake_repositories.dart';
 import 'package:xorder_pos/domain/models/backup.dart';
+import 'package:xorder_pos/domain/services/eta_filing.dart';
+import 'package:xorder_pos/domain/models/receipt_profile.dart';
 import 'package:xorder_pos/features/licensing/data/licence_service.dart';
 import 'package:xorder_pos/features/start/start_screen.dart';
 
@@ -211,6 +213,46 @@ void main() {
 
     expect(find.text('Open shift'), findsNothing, reason: 'no second float is asked for');
     expect(app.events.where((e) => e == 'start').length, 2);
+  });
+
+  testWidgets('a filing problem is said on the start screen, with the way '
+      'to it', (tester) async {
+    // Raised at settlement into a provider nobody watched, a half-typed profile
+    // meant a restaurant filed nothing for a month and heard it from the
+    // authority. It is said where the restaurant is opened from.
+    final app = await _boot(tester, licenceKey: 'XORD-GOOD-1', backups: [
+      BackupRecord(
+        id: 1,
+        takenAt: DateTime.now(),
+        takenByName: 'Amer M.',
+        trigger: BackupTrigger.dayClose,
+        outcome: BackupOutcome.verified,
+        filePath: '/backups/x.dump',
+        sizeBytes: 1,
+        checksum: 'a' * 64,
+        tablesFound: 44,
+      ),
+    ]);
+    expect(find.byKey(const Key('start-eta-problem')), findsNothing);
+
+    app.container.read(etaFilingProblemProvider.notifier).report(
+      const ProfileIncomplete([
+        ProfileProblem(ProfileField.registrationNumber, 'nine digits'),
+        ProfileProblem(ProfileField.activityCode, 'four digits'),
+      ]),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text(
+        'E-receipts are not being filed: the receipt profile has 2 things to '
+        'fix.',
+      ),
+      findsOneWidget,
+    );
+    await tester.tap(find.byKey(const Key('start-eta-open')));
+    await tester.pumpAndSettle();
+    expect(app.events, contains('manage'));
   });
 
   group('backups, from the screen the restaurant is opened from', () {

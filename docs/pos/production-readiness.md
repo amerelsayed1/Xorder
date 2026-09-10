@@ -104,6 +104,24 @@ one row; run it twice → still one row.
 
 **Size: S** — one query, one loop, one provider wire.
 
+**Status (2026-09-11): built.**
+
+- **One filer for every path.** `EtaFiler` reads a sale back from the rows it was
+  written to and queues its receipt. Settlement files through it, and so does the
+  reconciler.
+- **The reconciler.** It runs 10 seconds after start and every 5 minutes, and files
+  this till's settled sales that have no receipt, oldest first. It stops at the first
+  failure so the chain keeps the order sales were made in.
+- **The idempotency guard.** The one this item assumed — the uuid index — cannot
+  catch a duplicate: the same sale queued twice is two documents with two uuids. So
+  migration 38 adds one receipt per sale and one per refund, and cancels duplicates
+  already written (none was ever submitted).
+- **The alarm has a destination.** `onProblem` feeds `etaFilingProblemProvider`,
+  shown on the E-receipts pane and the start screen. It fires for a half-typed
+  profile or a queue that refused a write; a blank profile stays quiet. The pane has
+  *File missing receipts now*.
+- **Tests.** `test/data/eta_filer_test.dart` covers the acceptance as written.
+
 ### 4. Refunds are never filed.
 
 **Missing.** `EtaReceiptType.refund` (`lib/domain/services/eta_receipt.dart:26`) has
@@ -124,6 +142,23 @@ item 3 covers refunds too.
 
 **Size: M** — the document shape exists; the reference chain and the "what if the sale
 is not accepted yet" rule are the work.
+
+**Status (2026-09-11): built, with one rule left for the submission client.**
+
+- **Filed at issue time.** Issuing a refund queues a `receiptType: 'r'` document,
+  numbered `<invoice>-R<refund id>`, whose `referenceOldUUID` is the sale's receipt
+  uuid.
+- **What it carries.** The refund's own lines, and the sale's per-rate tax scaled to
+  what the refund row says went back. A full refund that names no lines carries the
+  sale's lines.
+- **A refund whose sale has no receipt waits** (`RefundAwaitingSale`, not an alarm).
+  The reconciler files sales before refunds, so the refund goes on the pass that
+  files its sale.
+
+**Still open for item 2's submission client.** A refund's sale may be on another
+till's chain. The drain must therefore not submit a refund until the sale it
+references is *accepted*, or the authority rejects it as a reference to a document
+it has not seen. Queueing is safe today; submission order is the drain's job.
 
 ### 5. The QR never reaches paper.
 

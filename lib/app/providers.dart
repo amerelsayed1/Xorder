@@ -41,6 +41,9 @@ import '../data/postgres/postgres_cash_movements_repository.dart';
 import '../data/postgres/postgres_order_types_repository.dart';
 import '../data/postgres/postgres_orders_repository.dart';
 import '../data/eta/filing_orders_repository.dart';
+import '../domain/services/eta_filing.dart';
+import '../data/eta/filing_refunds_repository.dart';
+import '../data/eta/eta_filer.dart';
 import '../data/postgres/postgres_eta_queue_repository.dart';
 import '../data/postgres/postgres_receipt_profile_repository.dart';
 import '../data/postgres/postgres_service_charges_repository.dart';
@@ -261,23 +264,17 @@ ordersRepositoryProvider = Provider<OrdersRepository>((ref) {
   // And then the tax authority, on top of everything else. Outermost on
   // purpose: the platform sync must happen whether or not this branch files
   // e-receipts, and a filing failure must not take the sync down with it.
-  final queue = ref.watch(etaQueueRepositoryProvider);
-  if (queue == null) return synced;
+  final filer = ref.watch(etaFilerProvider);
+  if (filer == null) return synced;
+
+  // Wherever sales are taken, the catch-up runs: a sale the settlement could
+  // not file is found on the next pass rather than never.
+  ref.watch(etaReconcilerProvider);
 
   return FilingOrdersRepository(
     synced,
-    queue: queue,
-    // Read at settlement, not held: a profile completed in Management five
-    // minutes ago is the one this sale is filed under.
-    profile: () =>
-        ref.read(receiptProfileProvider).valueOrNull ??
-        const ReceiptProfile(branchId: 0),
-    // ETA's chain is per POS serial. The terminal id is what this product has
-    // that is stable per till and unique per restaurant; the serial registered
-    // with the authority is set alongside the seal, and until that exists this
-    // keeps two tills in one branch on two chains, which is the property that
-    // matters.
-    deviceSerial: context.terminalId,
+    filer: filer,
+    onProblem: (problem) => reportEtaProblem(ref.container, problem),
   );
 });
 
@@ -356,11 +353,21 @@ final refundsRepositoryProvider = Provider<RefundsRepository>((ref) {
   if (context == null || PosDatabase.hostFor(config) == null) {
     return const UnconfiguredRefundsRepository();
   }
-  return PostgresRefundsRepository(
+  final inner = PostgresRefundsRepository(
     database: ref.watch(posDatabaseProvider),
     config: config,
     context: context,
     shiftId: ref.read(shiftProvider).valueOrNull?.id,
+  );
+
+  // A refund is a receipt too — a credit note naming the sale it undoes.
+  // Filed the same way a sale is, and caught up the same way if it cannot be.
+  final filer = ref.watch(etaFilerProvider);
+  if (filer == null) return inner;
+  return FilingRefundsRepository(
+    inner,
+    filer: filer,
+    onProblem: (problem) => reportEtaProblem(ref.container, problem),
   );
 });
 
@@ -2045,6 +2052,107 @@ final etaQueueRepositoryProvider = Provider<EtaQueueRepository?>((ref) {
     branchId: context.branchId,
   );
 });
+
+/// Files the receipt a recorded sale or refund owes, from its rows.
+///
+/// Null where there is no queue. See [EtaFiler] for why it reads the database
+/// rather than the ticket, and why each till files only its own.
+final etaFilerProvider = Provider<EtaFiler?>((ref) {
+  final queue = ref.watch(etaQueueRepositoryProvider);
+  final context = ref.watch(posWriteContextProvider);
+  if (queue == null || context == null) return null;
+
+  return EtaFiler(
+    database: ref.watch(posDatabaseProvider),
+    config: ref.watch(deploymentProvider),
+    branchId: context.branchId,
+    // ETA's chain is per POS serial. The terminal id is what this product has
+    // that is stable per till and unique per restaurant; the serial registered
+    // with the authority is set alongside the seal, and until that exists this
+    // keeps two tills in one branch on two chains, which is the property that
+    // matters.
+    terminalId: context.terminalId,
+    queue: queue,
+    // Read on every call: a profile completed in Management five minutes ago
+    // is the one the next receipt is filed under.
+    profile: () => ref.read(receiptProfileProvider.future),
+  );
+});
+
+/// The catch-up: every sale and refund this till recorded and has not filed.
+///
+/// On a timer rather than only at settlement, because the cases it exists for
+/// have no settlement to hang on — the profile completed on Thursday for
+/// Tuesday's sales, the crash between the sale's write and its receipt's.
+/// Ten seconds after start, then every five minutes.
+final etaReconcilerProvider = Provider<EtaReconciler?>((ref) {
+  final filer = ref.watch(etaFilerProvider);
+  if (filer == null) return null;
+
+  var alive = true;
+  ref.onDispose(() => alive = false);
+
+  final reconciler = EtaReconciler(
+    filer,
+    // Through the CONTAINER, after the current build — the same cycle the
+    // cloud sync hit: these providers read ones that read this one.
+    onReport: (report) => Future.microtask(() {
+      if (alive) applyEtaReport(ref.container, report);
+    }),
+  );
+
+  final first = Timer(const Duration(seconds: 10), reconciler.run);
+  final periodic = Timer.periodic(
+    const Duration(minutes: 5),
+    (_) => reconciler.run(),
+  );
+  ref.onDispose(() {
+    first.cancel();
+    periodic.cancel();
+  });
+  return reconciler;
+});
+
+/// The filing problem a person can fix, or null when there is none.
+///
+/// Only what somebody can act on reaches here — a half-typed receipt profile,
+/// a queue that refused a write. Held so the screens a manager actually opens
+/// can say it: an alarm raised into nothing is how a restaurant files nothing
+/// for a month and hears it from the authority.
+class EtaFilingProblem extends Notifier<EtaFilingSkipped?> {
+  @override
+  EtaFilingSkipped? build() => null;
+
+  void report(EtaFilingSkipped problem) => state = problem;
+
+  void clear() => state = null;
+}
+
+final etaFilingProblemProvider =
+    NotifierProvider<EtaFilingProblem, EtaFilingSkipped?>(EtaFilingProblem.new);
+
+/// Raise [problem] where the screens read it.
+void reportEtaProblem(ProviderContainer container, EtaFilingSkipped problem) =>
+    Future.microtask(
+      () => container.read(etaFilingProblemProvider.notifier).report(problem),
+    );
+
+/// What a reconcile pass means for the screens: its problem, or the all-clear,
+/// and a fresh queue when it filed anything.
+void applyEtaReport(ProviderContainer container, EtaReconcileReport report) {
+  final problem = report.problem;
+  final notifier = container.read(etaFilingProblemProvider.notifier);
+  if (problem == null) {
+    notifier.clear();
+  } else {
+    notifier.report(problem);
+  }
+  if (report.salesFiled + report.refundsFiled > 0) {
+    container
+      ..invalidate(etaQueueSummaryProvider)
+      ..invalidate(etaOutstandingProvider);
+  }
+}
 
 /// What the queue looks like right now.
 ///

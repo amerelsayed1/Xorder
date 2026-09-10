@@ -1571,6 +1571,11 @@ sealed class AppStrings {
   String etaStatusLabel(String status);
   String get etaDueSoon;
   String get etaLate;
+  String etaProblemProfile(int count);
+  String etaProblemFailed(String detail);
+  String get etaReconcileNow;
+  String etaReconcileDone(int sales, int refunds, int waiting);
+  String get etaOpenPane;
 
   // §17, §113 — who the receipt says sold the food.
   String get paneReceipt;
@@ -2162,6 +2167,35 @@ final class EnStrings extends AppStrings {
   String get etaDueSoon => 'Due soon';
   @override
   String get etaLate => 'Late';
+  @override
+  String etaProblemProfile(int count) => count == 1
+      ? 'E-receipts are not being filed: the receipt profile has 1 thing to '
+            'fix.'
+      : 'E-receipts are not being filed: the receipt profile has $count '
+            'things to fix.';
+  @override
+  String etaProblemFailed(String detail) =>
+      'E-receipts could not be queued. $detail';
+  @override
+  String get etaReconcileNow => 'File missing receipts now';
+  @override
+  String etaReconcileDone(int sales, int refunds, int waiting) {
+    if (sales + refunds + waiting == 0) return 'Nothing was missing.';
+    final parts = [
+      if (sales > 0) sales == 1 ? '1 sale receipt' : '$sales sale receipts',
+      if (refunds > 0)
+        refunds == 1 ? '1 refund receipt' : '$refunds refund receipts',
+    ];
+    final queued = parts.isEmpty ? '' : 'Queued ${parts.join(' and ')}.';
+    final waits = waiting == 0
+        ? ''
+        : waiting == 1
+        ? ' 1 refund is waiting for its sale to be filed first.'
+        : ' $waiting refunds are waiting for their sales to be filed first.';
+    return '$queued$waits'.trim();
+  }
+  @override
+  String get etaOpenPane => 'Open E-receipts';
 
   @override
   String get paneReceipt => 'Receipt';
@@ -5217,6 +5251,32 @@ final class ArStrings extends AppStrings {
   String get etaDueSoon => 'يقترب موعده';
   @override
   String get etaLate => 'متأخر';
+  @override
+  String etaProblemProfile(int count) => count == 1
+      ? 'لا يتم إرسال الإيصالات الإلكترونية: في ملف الإيصال أمر واحد يجب '
+            'إصلاحه.'
+      : 'لا يتم إرسال الإيصالات الإلكترونية: في ملف الإيصال $count أمور يجب '
+            'إصلاحها.';
+  @override
+  String etaProblemFailed(String detail) =>
+      'تعذّر إدراج الإيصالات الإلكترونية في قائمة الإرسال. $detail';
+  @override
+  String get etaReconcileNow => 'أرسل الإيصالات الناقصة الآن';
+  @override
+  String etaReconcileDone(int sales, int refunds, int waiting) {
+    if (sales + refunds + waiting == 0) return 'لم يكن هناك شيء ناقص.';
+    final parts = [
+      if (sales > 0) 'إيصالات بيع: $sales',
+      if (refunds > 0) 'إيصالات مرتجع: $refunds',
+    ];
+    final queued = parts.isEmpty ? '' : 'أُدرجت ${parts.join(' · ')}.';
+    final waits = waiting == 0
+        ? ''
+        : ' مرتجعات تنتظر إرسال فاتورة البيع أولاً: $waiting.';
+    return '$queued$waits'.trim();
+  }
+  @override
+  String get etaOpenPane => 'افتح الإيصالات الإلكترونية';
 
   @override
   String get paneReceipt => 'الإيصال';

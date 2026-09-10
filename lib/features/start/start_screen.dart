@@ -10,6 +10,7 @@ import '../../core/ui/theme.dart';
 import '../../core/ui/tokens.dart';
 import '../../core/ui/widgets/pos_widgets.dart';
 import '../admin/presentation/manage_menu.dart';
+import '../admin/presentation/management_eta_pane.dart' show etaProblemText;
 import '../admin/presentation/management_screen.dart' show ManagementPane;
 import '../../domain/repositories/repositories.dart';
 import '../licensing/domain/license.dart';
@@ -298,6 +299,35 @@ class _StartScreenState extends ConsumerState<StartScreen> {
             background: blocked ? context.pos.accent : context.pos.shellCard,
             foreground: blocked ? Colors.white : context.pos.shellText,
             onPressed: widget.onManageLicence,
+          ),
+        ],
+        if (etaProblemText(strings, ref.watch(etaFilingProblemProvider))
+            case final problem?) ...[
+          const SizedBox(height: PosSpace.lg),
+          Container(
+            key: const Key('start-eta-problem'),
+            padding: const EdgeInsets.all(PosSpace.md),
+            decoration: BoxDecoration(
+              color: context.pos.shellDangerBg,
+              border: Border.all(color: context.pos.danger),
+            ),
+            child: Text(
+              problem,
+              textAlign: TextAlign.center,
+              style: PosText.ui(
+                size: 12.5,
+                color: context.pos.shellDangerText,
+                height: 1.5,
+              ),
+            ),
+          ),
+          const SizedBox(height: PosSpace.md),
+          PosButton(
+            key: const Key('start-eta-open'),
+            label: strings.etaOpenPane,
+            background: context.pos.shellCard,
+            foreground: context.pos.shellText,
+            onPressed: () => widget.onManage(ManagementPane.eta),
           ),
         ],
         if (_backupWarning(strings) case final warning?) ...[

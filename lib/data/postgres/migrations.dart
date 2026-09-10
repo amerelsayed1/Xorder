@@ -3511,6 +3511,54 @@ const posMigrations = <PosMigration>[
       FOR EACH STATEMENT EXECUTE FUNCTION pos_backups_append_only()
     ''',
   ]),
+  PosMigration(38, 'one receipt per sale, and one per refund', [
+    // The design leaned on `pos_eta_receipts_uuid_unique` to stop a sale being
+    // filed twice, and it cannot: a receipt's uuid is the hash of a document
+    // that names the receipt BEFORE it, so the same sale queued twice is two
+    // different documents with two different uuids, and the index lets both
+    // in. A replayed submission and the reconciler racing the settlement are
+    // both that. The guard has to be on what the receipt is ABOUT.
+    //
+    // Duplicates already written are cancelled, keeping the first — not
+    // deleted: a receipt row is part of a legal record even unsubmitted, and
+    // nothing has ever been submitted (there is no drain yet), so no
+    // cancelled one has reached the authority. The drain, when it comes, skips
+    // cancelled rows when it walks a chain.
+    """
+    UPDATE pos_eta_receipts r
+       SET status = 'cancelled',
+           error_message = 'Duplicate of receipt ' || keep.id
+             || ' for the same sale; never submitted.'
+      FROM (SELECT order_id, min(id) AS id FROM pos_eta_receipts
+             WHERE refund_id IS NULL AND status <> 'cancelled'
+             GROUP BY order_id) keep
+     WHERE r.refund_id IS NULL AND r.status IN ('pending', 'signed')
+       AND r.order_id = keep.order_id AND r.id <> keep.id
+    """,
+    """
+    UPDATE pos_eta_receipts r
+       SET status = 'cancelled',
+           error_message = 'Duplicate of receipt ' || keep.id
+             || ' for the same refund; never submitted.'
+      FROM (SELECT refund_id, min(id) AS id FROM pos_eta_receipts
+             WHERE refund_id IS NOT NULL AND status <> 'cancelled'
+             GROUP BY refund_id) keep
+     WHERE r.refund_id IS NOT NULL AND r.status IN ('pending', 'signed')
+       AND r.refund_id = keep.refund_id AND r.id <> keep.id
+    """,
+    // Partial on `cancelled`, so a receipt cancelled for a reason can be
+    // replaced by the one that should have been sent.
+    """
+    CREATE UNIQUE INDEX IF NOT EXISTS pos_eta_receipts_one_per_sale
+      ON pos_eta_receipts (order_id)
+      WHERE refund_id IS NULL AND status <> 'cancelled'
+    """,
+    """
+    CREATE UNIQUE INDEX IF NOT EXISTS pos_eta_receipts_one_per_refund
+      ON pos_eta_receipts (refund_id)
+      WHERE refund_id IS NOT NULL AND status <> 'cancelled'
+    """,
+  ]),
 ];
 
 /// Brings the branch database up to the current schema.

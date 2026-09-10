@@ -2,12 +2,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:xorder_pos/core/money/money.dart';
 import 'package:xorder_pos/data/eta/filing_orders_repository.dart';
 import 'package:xorder_pos/domain/models/catalog.dart';
-import 'package:xorder_pos/domain/models/eta_submission.dart';
 import 'package:xorder_pos/domain/models/receipt_profile.dart';
 import 'package:xorder_pos/domain/models/ticket.dart';
 import 'package:xorder_pos/domain/repositories/repositories.dart';
 import 'package:xorder_pos/domain/services/eta_filing.dart';
-import 'package:xorder_pos/domain/services/eta_serialization.dart';
 
 /// Queuing an e-receipt for every sale that reaches the database.
 ///
@@ -16,20 +14,6 @@ import 'package:xorder_pos/domain/services/eta_serialization.dart';
 /// exception thrown on the way to the tax authority would lose a settled order
 /// to protect a filing that has twenty-four hours to catch up.
 void main() {
-  const profile = ReceiptProfile(
-    branchId: 1,
-    tradeName: 'Koshari Abou Tarek',
-    registrationNumber: '123456789',
-    activityCode: '5610',
-    branchCode: 'B1',
-    address: BranchAddress(
-      governate: 'Cairo',
-      regionCity: 'Downtown',
-      street: 'Champollion',
-      buildingNumber: '16',
-    ),
-  );
-
   const koshari = Product(
     id: 1,
     categoryId: 1,
@@ -46,39 +30,37 @@ void main() {
 
   ({
     _Orders orders,
-    _Queue queue,
+    _Filer filer,
     List<EtaFilingSkipped> problems,
     FilingOrdersRepository filing,
   })
   build({
-    ReceiptProfile with_ = profile,
     SubmitOrderResult? result,
-    bool queueThrows = false,
+    EtaFilingSkipped? answer,
+    bool filerThrows = false,
   }) {
     final orders = _Orders(result);
-    final queue = _Queue(throws: queueThrows);
+    final filer = _Filer(answer: answer, throws: filerThrows);
     final problems = <EtaFilingSkipped>[];
     return (
       orders: orders,
-      queue: queue,
+      filer: filer,
       problems: problems,
       filing: FilingOrdersRepository(
         orders,
-        queue: queue,
-        profile: () => with_,
-        deviceSerial: 'TILL-1',
+        filer: filer,
         onProblem: problems.add,
       ),
     );
   }
 
-  test('a settled sale is queued', () async {
+  test('a settled sale is filed, by the id it was written under', () async {
+    // By id, not by ticket: the filer reads the sale back from the rows it
+    // was written to — the same path the reconciler takes a week later.
     final world = build();
     await world.filing.submit(ticket());
 
-    expect(world.queue.enqueued, hasLength(1));
-    expect(world.queue.enqueued.single.receiptNumber, 'INV-0001');
-    expect(world.queue.enqueued.single.orderId, 42);
+    expect(world.filer.orders, [42]);
   });
 
   test('the sale is written first, and its result is returned unchanged',
@@ -91,43 +73,38 @@ void main() {
     expect(result.invoiceNumber, 'INV-0001');
   });
 
-  test('a queue that throws does not lose the sale', () async {
+  test('a filer that throws does not lose the sale', () async {
     // The whole point. The money is already in the drawer.
-    final world = build(queueThrows: true);
+    final world = build(filerThrows: true);
     final result = await world.filing.submit(ticket());
 
     expect(result.serverId, 42);
     expect(world.problems.single, isA<FilingFailed>());
   });
 
-  test('a blank profile files nothing, quietly', () async {
-    // A restaurant outside Egypt, or one still in setup. Reporting a problem
-    // for every sale it makes would be an alarm that is always on.
-    final world = build(with_: const ReceiptProfile(branchId: 1));
+  test('a restaurant that is not filing is not told off for it', () async {
+    // A blank profile: one outside Egypt, or one still in setup. Reporting a
+    // problem for every sale it makes would be an alarm that is always on.
+    final world = build(answer: const FilingNotInUse());
     await world.filing.submit(ticket());
 
-    expect(world.queue.enqueued, isEmpty);
     expect(world.problems, isEmpty);
   });
 
   test('a half-typed profile is reported, not swallowed', () async {
-    // Different from blank: somebody has typed a name, so they intend to file
-    // and should be told they cannot yet. Silence here is how a queue stops
-    // being read.
-    const half = ReceiptProfile(branchId: 1, tradeName: 'Koshari');
-    final world = build(with_: half);
+    // Somebody typed a name, so they intend to file and should be told they
+    // cannot yet. Silence here is how a queue stops being read.
+    final world = build(
+      answer: const ProfileIncomplete([
+        ProfileProblem(ProfileField.registrationNumber, 'nine digits'),
+      ]),
+    );
     await world.filing.submit(ticket());
 
-    expect(world.queue.enqueued, isEmpty);
-    final problem = world.problems.single;
-    expect(problem, isA<ProfileIncomplete>());
-    expect(
-      (problem as ProfileIncomplete).problems.map((p) => p.field),
-      contains(ProfileField.registrationNumber),
-    );
+    expect(world.problems.single, isA<ProfileIncomplete>());
   });
 
-  test('an order that did not reach the database is not queued', () async {
+  test('an order that did not reach the database is not filed', () async {
     // No row, nothing to file against.
     final world = build(
       result: const SubmitOrderResult(
@@ -136,41 +113,7 @@ void main() {
       ),
     );
     await world.filing.submit(ticket());
-    expect(world.queue.enqueued, isEmpty);
-  });
-
-  test('the receipt is built against the chain head the queue supplies',
-      () async {
-    // Not against one read beforehand. The predecessor has to be the receipt
-    // this one is actually written after, and only the queue knows that
-    // inside its lock.
-    final world = build();
-    await world.filing.submit(ticket());
-
-    final built = world.queue.enqueued.single.document;
-    final header = built['header']! as EtaObject;
-    expect((header['previousUUID']! as EtaText).value, 'chain-head');
-  });
-
-  test('the profile is read at settlement, not held', () async {
-    // A profile completed in Management five minutes ago is the one this sale
-    // is filed under.
-    var current = const ReceiptProfile(branchId: 1, tradeName: 'Koshari');
-    final orders = _Orders(null);
-    final queue = _Queue();
-    final filing = FilingOrdersRepository(
-      orders,
-      queue: queue,
-      profile: () => current,
-      deviceSerial: 'TILL-1',
-    );
-
-    await filing.submit(ticket());
-    expect(queue.enqueued, isEmpty, reason: 'incomplete');
-
-    current = profile;
-    await filing.submit(ticket());
-    expect(queue.enqueued, hasLength(1));
+    expect(world.filer.orders, isEmpty);
   });
 
   test('a void is not filed', () async {
@@ -184,7 +127,7 @@ void main() {
     );
 
     expect(world.orders.voided, hasLength(1));
-    expect(world.queue.enqueued, isEmpty);
+    expect(world.filer.orders, isEmpty);
   });
 
   test('the backlog count passes straight through', () async {
@@ -233,63 +176,25 @@ class _Orders implements OrdersRepository {
   }
 }
 
-class _Queue implements EtaQueueRepository {
-  _Queue({this.throws = false});
+class _Filer implements EtaFilingPort {
+  _Filer({this.answer, this.throws = false});
 
+  final EtaFilingSkipped? answer;
   final bool throws;
-  final enqueued = <({int orderId, String receiptNumber, EtaObject document})>[];
+  final orders = <int>[];
+  final refunds = <int>[];
 
   @override
-  Future<EtaEnqueued> enqueue({
-    required int orderId,
-    required String deviceSerial,
-    required String receiptNumber,
-    required String receiptType,
-    required DateTime issuedAt,
-    required EtaObject Function(String previousUuid) build,
-    int? refundId,
-  }) async {
+  Future<EtaFilingSkipped?> fileOrder(int orderId) async {
     if (throws) throw StateError('connection reset');
-    final document = build('chain-head');
-    enqueued.add((
-      orderId: orderId,
-      receiptNumber: receiptNumber,
-      document: document,
-    ));
-    return EtaEnqueued(
-      id: 1,
-      uuid: 'a' * 64,
-      previousUuid: 'chain-head',
-      document: document,
-    );
+    orders.add(orderId);
+    return answer;
   }
 
   @override
-  Future<List<EtaSubmission>> outstanding({int limit = 200}) async => const [];
-
-  @override
-  Future<EtaQueueSummary> summary({required DateTime now}) async =>
-      EtaQueueSummary.empty;
-
-  @override
-  Future<String?> canonicalFor(int id) => throw UnimplementedError();
-
-  @override
-  Future<void> markSigned(int id, String signature) =>
-      throw UnimplementedError();
-
-  @override
-  Future<void> markAccepted(
-    int id, {
-    required String submissionUuid,
-    String? longId,
-  }) => throw UnimplementedError();
-
-  @override
-  Future<void> markRejected(int id, String message) =>
-      throw UnimplementedError();
-
-  @override
-  Future<void> markAttempted(int id, String message) =>
-      throw UnimplementedError();
+  Future<EtaFilingSkipped?> fileRefund(int refundId) async {
+    if (throws) throw StateError('connection reset');
+    refunds.add(refundId);
+    return answer;
+  }
 }
