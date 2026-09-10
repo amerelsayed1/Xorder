@@ -9,6 +9,7 @@ import 'package:xorder_pos/core/config/deployment.dart';
 import 'package:xorder_pos/core/config/terminal_config.dart';
 import 'package:xorder_pos/core/l10n/app_strings.dart';
 import 'package:xorder_pos/domain/models/dining_table.dart';
+import 'package:xorder_pos/features/setup/domain/setup_state.dart';
 import 'package:xorder_pos/features/floor/floor_screen.dart';
 
 import '../support/fakes.dart';
@@ -314,6 +315,43 @@ void main() {
           'Operator-facing text belongs in AppStrings, where writing it obliges '
           'somebody to write the Arabic too:\n${offenders.join('\n')}',
     );
+  });
+
+  test('a terminal with no configuration yet opens in Arabic', () {
+    // The restaurants this ships to are in Egypt, and an installer who wants
+    // English is one item away in the Settings bar on every screen — including
+    // the first one. Only the FALLBACK moves: a terminal that has been set up
+    // reads its own `languageCode` and keeps whatever was chosen there.
+    final fresh = ProviderContainer();
+    addTearDown(fresh.dispose);
+    expect(fresh.read(localeProvider).languageCode, 'ar');
+
+    final configured = ProviderContainer(
+      overrides: [
+        terminalBootProvider.overrideWithValue(
+          const TerminalBoot(
+            config: SavedTerminalConfig(
+              deployment: DeploymentConfig(mode: DeploymentMode.offline),
+              terminal: TerminalProfile(
+                branchId: 1,
+                terminalName: 'Counter 1',
+                terminalId: 'e6c0f0a2-0000-4000-8000-000000000001',
+                restaurantId: 1,
+                branchCode: 'MAIN',
+              ),
+              languageCode: 'en',
+            ),
+            hasDatabaseCredential: true,
+          ),
+        ),
+      ],
+    );
+    addTearDown(configured.dispose);
+    expect(configured.read(localeProvider).languageCode, 'en');
+  });
+
+  test('and so does the wizard it opens', () {
+    expect(const SetupDraft().locale, 'ar');
   });
 }
 

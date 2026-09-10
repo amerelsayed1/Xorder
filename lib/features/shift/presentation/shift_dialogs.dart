@@ -40,6 +40,7 @@ class OpenShiftDialog extends ConsumerStatefulWidget {
 
 class _OpenShiftDialogState extends ConsumerState<OpenShiftDialog> {
   final _float = TextEditingController(text: '0.00');
+  final _username = TextEditingController();
   String _pin = '';
   PosStaff? _staff;
   bool _busy = false;
@@ -48,6 +49,7 @@ class _OpenShiftDialogState extends ConsumerState<OpenShiftDialog> {
   @override
   void dispose() {
     _float.dispose();
+    _username.dispose();
     super.dispose();
   }
 
@@ -60,7 +62,15 @@ class _OpenShiftDialogState extends ConsumerState<OpenShiftDialog> {
     if (_pin.length < PinRules.length) return;
 
     setState(() => _busy = true);
-    final staff = await ref.read(sessionRepositoryProvider).signIn(_pin);
+    // Name and PIN, exactly as switching user asks for them. Opening a shift is
+    // the same act by another name: the person becomes the operator, and the
+    // drawer becomes theirs to answer for. A PIN alone hands that to whichever
+    // active member of staff happens to hold those four digits — which, in a
+    // restaurant where two people were set up on the same PIN, is not
+    // necessarily the person standing at the till.
+    final staff = await ref
+        .read(sessionRepositoryProvider)
+        .signInAs(username: _username.text, pin: _pin);
     if (!mounted) return;
     final strings = context.strings;
 
@@ -77,7 +87,9 @@ class _OpenShiftDialogState extends ConsumerState<OpenShiftDialog> {
       _pin = '';
       _staff = permitted ? staff : null;
       _error = switch (staff) {
-        null => strings.pinNotRecognised,
+        // One message for both halves, so this cannot be used to find out
+        // which usernames exist.
+        null => strings.wrongUsernameOrPin,
         _ when !permitted => strings.notPermittedToOpenShift(staff.name),
         _ => null,
       };
@@ -157,9 +169,15 @@ class _OpenShiftDialogState extends ConsumerState<OpenShiftDialog> {
   Widget _pinPane() => Column(
     mainAxisSize: MainAxisSize.min,
     children: [
+      UsernameField(
+        controller: _username,
+        onSubmitted: () => FocusScope.of(context).nextFocus(),
+      ),
+      const SizedBox(height: PosSpace.lg),
       PinDots(length: _pin.length),
       const SizedBox(height: PosSpace.lg),
       PinPad(
+        autofocus: false,
         onDigit: _submitPin,
         onBackspace: () => setState(() {
           if (_pin.isNotEmpty) _pin = _pin.substring(0, _pin.length - 1);
@@ -291,13 +309,34 @@ class _CloseShiftDialogState extends ConsumerState<CloseShiftDialog> {
       return;
     }
 
-    // The person closing signs for the count, and it need not be whoever opened
-    // the shift — a manager cashing up at the end of the night is the normal
-    // case, not an exception.
     final by = ref.read(signedInStaffProvider);
     if (by == null) {
       setState(() => _error = strings.signInBeforeClosing);
       return;
+    }
+
+    // **The drawer belongs to whoever opened it.**
+    //
+    // This used to read the other way round — a manager cashing up at the end
+    // of the night was treated as the normal case — and that made the count
+    // signable by anybody holding the capability, with only a name on the audit
+    // row to say who. The float was counted in by one person and out by
+    // another, and the variance had two people to argue about it.
+    //
+    // Not a dead end, though: somebody goes home sick, and a till that can
+    // never be cashed up is worse than one cashed up under supervision. Anybody
+    // else needs a manager to put their PIN in HERE, in front of the drawer,
+    // and both names go on the audit row.
+    ApprovalOutcome? handover;
+    if (!widget.shift.openedBy(by.id)) {
+      handover = await SupervisorOverrideDialog.show(
+        context,
+        capability: PosCapability.shiftClose,
+        action: strings.closeShiftNotYours(widget.shift.openedByName),
+        requestedBy: by.name,
+      );
+      if (handover == null) return;
+      if (!mounted) return;
     }
 
     // Overridable, unlike opening: a cashier who may not cash up is standing at
@@ -332,7 +371,9 @@ class _CloseShiftDialogState extends ConsumerState<CloseShiftDialog> {
           .read(auditRepositoryProvider)
           .record(
             by: by,
-            approvedBy: decision.approvedBy,
+            // The manager who released somebody else's drawer, when that is
+            // what happened — otherwise whoever approved the capability.
+            approvedBy: handover?.approver ?? decision.approvedBy,
             action: AuditAction.shiftClosed,
             entityType: AuditAction.entityShift,
             entityId: '${widget.shift.id}',
@@ -480,7 +521,7 @@ class _CloseShiftDialogState extends ConsumerState<CloseShiftDialog> {
         label: strings.done,
         height: 56,
         background: pos.ink,
-        foreground: Colors.white,
+        foreground: pos.onInk,
         fontSize: 15,
         fontWeight: FontWeight.w800,
         onPressed: _finish,

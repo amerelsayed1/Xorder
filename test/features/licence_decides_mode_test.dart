@@ -126,6 +126,65 @@ void main() {
     );
   });
 
+  /// A screen with one choosable option is not a question.
+  ///
+  /// The mode screen offers what the tenant bought and greys out what it did
+  /// not. On a single-mode licence — which is most of them — that leaves the
+  /// answer already filled in, since adoption moves the draft onto a covered
+  /// mode the moment the licence is read. The installer's only move is Continue.
+  test('a single-mode licence takes the mode screen away entirely', () async {
+    final container = _container();
+    final controller = container.read(setupProvider.notifier);
+
+    // Before a licence is read, nothing has answered it, so it is asked.
+    expect(
+      container.read(setupProvider).visibleSteps,
+      contains(SetupStep.setupType),
+    );
+
+    await controller.activateLicence(
+      fileContents: _licence(modes: {DeploymentMode.offline}).serialize(),
+    );
+
+    final draft = container.read(setupProvider);
+    expect(draft.asksSetupType, isFalse);
+    expect(draft.visibleSteps, isNot(contains(SetupStep.setupType)));
+    expect(draft.stepCount, SetupStep.values.length - 1);
+    // Taken away, not skipped past: the mode is set, and the summary screen is
+    // where it is read back.
+    expect(draft.deployment.mode, DeploymentMode.offline);
+
+    // And the wizard walks straight by it, in both directions, so nobody lands
+    // on a screen the rail no longer lists.
+    expect(draft.step, SetupStep.licence);
+    controller.next();
+    expect(container.read(setupProvider).step, SetupStep.language);
+    controller.next();
+    expect(container.read(setupProvider).step, SetupStep.deployment);
+    controller.back();
+    expect(container.read(setupProvider).step, SetupStep.language);
+  });
+
+  test('a licence covering both keeps it, because it is a question', () async {
+    final container = _container();
+    final controller = container.read(setupProvider.notifier);
+
+    await controller.activateLicence(
+      fileContents: _licence(
+        modes: {DeploymentMode.cloud, DeploymentMode.offline},
+      ).serialize(),
+    );
+
+    final draft = container.read(setupProvider);
+    expect(draft.asksSetupType, isTrue);
+    expect(draft.visibleSteps, contains(SetupStep.setupType));
+    expect(draft.stepCount, SetupStep.values.length);
+
+    controller.next();
+    controller.next();
+    expect(container.read(setupProvider).step, SetupStep.setupType);
+  });
+
   test('re-judging the mode does not rescue an expired licence', () async {
     final container = _container();
     final controller = container.read(setupProvider.notifier);

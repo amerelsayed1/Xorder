@@ -148,17 +148,24 @@ class PosTopBar extends ConsumerWidget {
               border: Border.all(color: context.pos.warn),
               onPressed: onCloseShift,
             ),
-            const SizedBox(width: PosSpace.s14),
-            _avatar(pos: context.pos),
-            const SizedBox(width: PosSpace.sm),
-            Text(
-              session.userName,
-              style: PosText.ui(
-                size: 13.5,
-                weight: FontWeight.w600,
-                color: context.pos.shellText,
+            // Whoever entered a PIN, and NOTHING before one has been entered.
+            // This used to read `session.userName`, which the branch server
+            // answers with the first active staff row rather than with the
+            // person holding the till — see `operatorNameProvider`.
+            if (ref.watch(operatorNameProvider) case final operator
+                when operator.isNotEmpty) ...[
+              const SizedBox(width: PosSpace.s14),
+              _avatar(pos: context.pos, initials: ref.watch(operatorInitialsProvider)),
+              const SizedBox(width: PosSpace.sm),
+              Text(
+                operator,
+                style: PosText.ui(
+                  size: 13.5,
+                  weight: FontWeight.w600,
+                  color: context.pos.shellText,
+                ),
               ),
-            ),
+            ],
           ],
         ),
       ),
@@ -177,7 +184,7 @@ class PosTopBar extends ConsumerWidget {
           style: PosText.ui(
             size: 16,
             weight: FontWeight.w800,
-            color: Colors.white,
+            color: pos.onAccent,
           ),
         ),
       ),
@@ -238,13 +245,14 @@ class PosTopBar extends ConsumerWidget {
     ),
   );
 
-  Widget _avatar({required PosPalette pos}) => Container(
+  Widget _avatar({required PosPalette pos, required String initials}) =>
+      Container(
     width: 30,
     height: 30,
     alignment: Alignment.center,
     color: pos.shellCard,
     child: Text(
-      session.initials,
+      initials,
       style: PosText.ui(
         size: 11.5,
         weight: FontWeight.w800,

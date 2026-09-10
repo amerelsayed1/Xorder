@@ -51,10 +51,30 @@ class ManageMenu extends ConsumerWidget {
     final palette = context.pos;
     final admin = ref.watch(signedInStaffProvider);
 
+    // **Nobody signed in is not the same as nobody permitted.**
+    //
+    // A till before its shift — and any till after a restart — has no signed-in
+    // staff at all, and hiding the door there left the back office unreachable:
+    // the management screen's own PIN pad is what signs somebody in, so a menu
+    // that waits to be signed in before showing the way to it is a lock with
+    // its key inside. One plain button, and the pane behind it opens locked.
+    if (admin == null) {
+      return PosButton(
+        key: const Key('manage-menu'),
+        label: label ?? strings.manage,
+        height: height,
+        foreground: onShell ? palette.shellText : null,
+        border: Border.fromBorderSide(
+          onShell ? palette.shellBorder : palette.resting,
+        ),
+        onPressed: () => onPick(ManagementPane.staff),
+      );
+    }
+
     // Nothing to offer somebody who cannot open the back office at all. Absent
     // rather than disabled: a greyed-out Manage button on a cashier's till is a
     // permanent advertisement for a door they will never be given.
-    if (admin == null || !admin.can(PosCapability.staffManage)) {
+    if (!admin.can(PosCapability.staffManage)) {
       return const SizedBox.shrink();
     }
 

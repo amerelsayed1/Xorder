@@ -25,6 +25,30 @@ abstract final class PosRoutes {
   static const management = '/management';
 }
 
+/// Whether a screen that SELLS is about to be shown with nobody signed in.
+///
+/// A till restarted mid-service comes back with its shift still open — the
+/// shift is a row in PostgreSQL and the drawer never closed — but with nobody
+/// signed in, because a PIN is deliberately not remembered across a restart.
+/// Nothing then asked for one: resuming an open shift went straight to the
+/// till. So sales were rung up under no name at all, and the cash-up refused
+/// with "sign in before closing a shift" behind a door that did not exist —
+/// `_start()` skips the PIN when a shift is already open, and the lock screen
+/// only checked PINs rather than acting on them.
+///
+/// Both halves are fixed: the lock screen signs in whoever's PIN it is, and
+/// this sends an unattended till to it.
+///
+/// Only when a shift is OPEN. A terminal sitting on the start screen before
+/// trading has nobody signed in either, and that is the ordinary morning state
+/// — opening the shift is what asks who is there.
+bool needsSignIn({
+  required String at,
+  required bool signedIn,
+  required bool shiftOpen,
+}) =>
+    (at == PosRoutes.sale || at == PosRoutes.floor) && !signedIn && shiftOpen;
+
 /// Top-level navigation.
 ///
 /// Only whole-screen transitions live here. Modifier sheets, payment and the
@@ -53,6 +77,13 @@ final routerProvider = Provider<GoRouter>((ref) {
       }
       if (configured && (at == PosRoutes.setup || at == PosRoutes.welcome)) {
         return PosRoutes.start;
+      }
+      if (needsSignIn(
+        at: at,
+        signedIn: ref.read(signedInStaffProvider) != null,
+        shiftOpen: ref.read(shiftProvider).valueOrNull != null,
+      )) {
+        return PosRoutes.lock;
       }
       // A branch that does not seat anybody has no floor. Sending a takeaway
       // counter to a table picker asks a question it has no answer to.
@@ -102,6 +133,9 @@ final routerProvider = Provider<GoRouter>((ref) {
             onClose: () =>
                 context.go(destination.returnTo ?? PosRoutes.start),
             initialPane: destination.pane,
+            purchasingTab: destination.purchasingTab,
+            create: destination.create,
+            request: destination.request,
           );
         },
       ),
@@ -116,7 +150,8 @@ final routerProvider = Provider<GoRouter>((ref) {
           onStart: () => context.go(PosRoutes.floor),
           onManageLicence: () => context.go(PosRoutes.licence),
           onReconfigure: () => context.go(PosRoutes.setup),
-          onManage: () => context.go(PosRoutes.management),
+          onManage: (pane) =>
+              context.go(PosRoutes.management, extra: pane),
         ),
       ),
       GoRoute(

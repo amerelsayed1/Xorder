@@ -367,7 +367,12 @@ class _SaleScreenState extends ConsumerState<SaleScreen> {
   /// Not overridable: this is not an act somebody supervises for one moment,
   /// it is a body of records they either may read or may not.
   void _openOrders() {
-    if (ref.read(canProvider(PosCapability.orderViewAll)) is! Allowed) {
+    // `operate`, not `order.view_all`. History used to be all-or-nothing — a
+    // cashier saw everybody's sales or nobody's — so the door was the gate. It
+    // is scoped per person now (`history_scope.dart`: without `order.view_all`
+    // the list is the viewer's own), so the door opens for anyone who may work
+    // the till, and what they see behind it is decided there.
+    if (ref.read(canProvider(PosCapability.operate)) is! Allowed) {
       posToast(context, context.strings.orderHistoryNotPermitted);
       return;
     }
@@ -651,7 +656,7 @@ class _SaleScreenState extends ConsumerState<SaleScreen> {
             // Hidden rather than disabled when the person may not look. See
             // `CategoryRail.onOrders`.
             onOrders:
-                ref.watch(canProvider(PosCapability.orderViewAll)) is Allowed
+                ref.watch(canProvider(PosCapability.operate)) is Allowed
                 ? _openOrders
                 : null,
           ),
@@ -679,7 +684,10 @@ class _SaleScreenState extends ConsumerState<SaleScreen> {
         .watch(orderTypeRulesProvider)
         .requiresTable(ref.watch(ticketProvider).orderType),
     ticket: ticket,
-    cashierName: session.userName,
+    // The person who is selling, not the branch's first staff row — a receipt
+    // carrying the wrong cashier is a receipt that misdirects every question
+    // asked about the sale afterwards. See `operatorNameProvider`.
+    cashierName: ref.watch(operatorNameProvider),
     online: ui.online,
     density: _densityFor(ticket),
     onEditNote: (key) => _editNote(ticket, key),

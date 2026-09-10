@@ -501,6 +501,17 @@ class FakeSessionRepository implements SessionRepository {
   Future<PosStaff?> signIn(String pin) async => pin == '1234'
       ? const PosStaff(id: 1, name: 'Rana A.', username: 'rana', role: cashier)
       : null;
+
+  @override
+  Future<PosStaff?> signInAs({
+    required String username,
+    required String pin,
+  }) async {
+    final staff = await signIn(pin);
+    return staff?.username?.toLowerCase() == username.trim().toLowerCase()
+        ? staff
+        : null;
+  }
 }
 
 /// Holds one shift in memory. Enough for a widget test to walk open → close
@@ -520,6 +531,7 @@ class FakeShiftRepository implements ShiftRepository {
     openedAt: DateTime(2026),
     openingFloat: openingFloat,
     openedByName: by.name,
+    openedById: by.id,
   );
 
   @override
@@ -1163,11 +1175,14 @@ class FakeOrderHistoryRepository implements OrderHistoryRepository {
   FakeOrderHistoryRepository({
     List<OrderRecord> orders = const [],
     Map<int, OrderRecordDetail> details = const {},
+    List<HistoryTerminal> terminals = const [],
   }) : orders = [...orders],
-       details = {...details};
+       details = {...details},
+       _terminals = [...terminals];
 
   final List<OrderRecord> orders;
   final Map<int, OrderRecordDetail> details;
+  final List<HistoryTerminal> _terminals;
 
   /// Every query this repository has been asked, in order. Lets a test assert
   /// that changing a filter actually reached the data layer rather than being
@@ -1179,11 +1194,25 @@ class FakeOrderHistoryRepository implements OrderHistoryRepository {
     queries.add(query);
     final term = query.search?.trim().toLowerCase();
 
+    DateTime dateOf(DateTime at) => DateTime(at.year, at.month, at.day);
+
     final matched = orders.where((order) {
-      if (query.from != null && order.occurredAt.isBefore(query.from!)) {
+      // The business date where the sale has one, the instant where it has
+      // not — the same CASE the real query runs, so a widget test about a
+      // night past midnight asserts what PostgreSQL would do.
+      final day = order.businessDate;
+      final from = query.from;
+      if (from != null &&
+          (day != null
+              ? day.isBefore(dateOf(from))
+              : order.occurredAt.isBefore(from))) {
         return false;
       }
-      if (query.to != null && !order.occurredAt.isBefore(query.to!)) {
+      final to = query.to;
+      if (to != null &&
+          (day != null
+              ? !day.isBefore(dateOf(to))
+              : !order.occurredAt.isBefore(to))) {
         return false;
       }
       if (query.statuses.isNotEmpty && !query.statuses.contains(order.status)) {
@@ -1195,6 +1224,18 @@ class FakeOrderHistoryRepository implements OrderHistoryRepository {
       }
       if (query.servedByStaffId != null &&
           order.servedByStaffId != query.servedByStaffId) {
+        return false;
+      }
+      // Any payment in the tender, as the real EXISTS does. Read off the
+      // detail's payments because that is where a fake order keeps them.
+      if (query.tenderTypeId != null &&
+          !(details[order.id]?.payments.any(
+                (p) => p.tenderTypeId == query.tenderTypeId,
+              ) ??
+              false)) {
+        return false;
+      }
+      if (query.terminalId != null && order.terminalId != query.terminalId) {
         return false;
       }
       if (term != null && term.isNotEmpty) {
@@ -1218,6 +1259,9 @@ class FakeOrderHistoryRepository implements OrderHistoryRepository {
     }
     return null;
   }
+
+  @override
+  Future<List<HistoryTerminal>> terminals() async => _terminals;
 }
 
 /// Refunds held in a list.

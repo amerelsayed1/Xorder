@@ -118,6 +118,7 @@ class PosShift {
     required this.openedAt,
     required this.openingFloat,
     required this.openedByName,
+    this.openedById,
     this.closedAt,
   });
 
@@ -125,7 +126,22 @@ class PosShift {
   final DateTime openedAt;
   final Money openingFloat;
   final String openedByName;
+
+  /// The staff row that opened it — the drawer's owner.
+  ///
+  /// A name cannot answer this: two people called Ahmed is a restaurant, not a
+  /// corner case, and the question "is this your drawer" has to be settled by
+  /// identity. Null only for a shift read by an older build, which is why
+  /// [openedBy] treats null as "unknown" rather than as "not you".
+  final int? openedById;
   final DateTime? closedAt;
+
+  /// Whether [staffId] is the person this drawer belongs to.
+  ///
+  /// Unknown owners answer TRUE. A shift written before the id was recorded has
+  /// nobody to compare against, and a till that cannot be cashed up at all is a
+  /// worse outcome than one cashed up by the wrong person.
+  bool openedBy(int staffId) => openedById == null || openedById == staffId;
 
   bool get isOpen => closedAt == null;
 

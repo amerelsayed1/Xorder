@@ -311,7 +311,7 @@ class _ManagementReceiptPaneState extends ConsumerState<ManagementReceiptPane> {
             key: const Key('receipt-profile-save'),
             label: strings.receiptProfileSave,
             background: palette.ink,
-            foreground: Colors.white,
+            foreground: palette.onInk,
             padding: const EdgeInsets.symmetric(horizontal: PosSpace.xl),
             onPressed: _busy ? null : () => _save(base),
           ),

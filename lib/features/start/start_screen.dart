@@ -9,6 +9,8 @@ import '../../core/money/money.dart';
 import '../../core/ui/theme.dart';
 import '../../core/ui/tokens.dart';
 import '../../core/ui/widgets/pos_widgets.dart';
+import '../admin/presentation/manage_menu.dart';
+import '../admin/presentation/management_screen.dart' show ManagementPane;
 import '../../domain/repositories/repositories.dart';
 import '../licensing/domain/license.dart';
 import '../cash/presentation/day_close_dialog.dart';
@@ -31,9 +33,14 @@ class StartScreen extends ConsumerStatefulWidget {
   final VoidCallback onStart;
   final VoidCallback onManageLicence;
 
-  /// The back office. Quiet here and asks for a PIN on arrival: a cashier
-  /// finding it must get no further than the keypad.
-  final VoidCallback onManage;
+  /// The back office, and WHICH pane of it.
+  ///
+  /// It used to be one quiet word at the bottom of this screen that landed on
+  /// Staff, so "where do I enter this invoice" meant arriving somewhere else
+  /// and reading a rail to find out. The bar carries `ManageMenu` now — every
+  /// pane the signed-in person actually has, one tap each — which is what the
+  /// sale screen's bar has done since the back office grew past two panes.
+  final void Function(ManagementPane pane) onManage;
 
   /// Back to the setup wizard, after the terminal's configuration has been
   /// cleared. The router will not redirect there on its own once setup is
@@ -144,18 +151,25 @@ class _StartScreenState extends ConsumerState<StartScreen> {
             },
             child: Focus(
               autofocus: true,
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 520),
-                  child: _body(
-                    context,
-                    data,
-                    catalog.valueOrNull?.products.length,
-                    licence,
-                    terminal,
-                    ref.watch(shiftProvider).valueOrNull,
+              child: Column(
+                children: [
+                  _topBar(),
+                  Expanded(
+                    child: Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 520),
+                        child: _body(
+                          context,
+                          data,
+                          catalog.valueOrNull?.products.length,
+                          licence,
+                          terminal,
+                          ref.watch(shiftProvider).valueOrNull,
+                        ),
+                      ),
+                    ),
                   ),
-                ),
+                ],
               ),
             ),
           ),
@@ -163,6 +177,64 @@ class _StartScreenState extends ConsumerState<StartScreen> {
       ),
     );
   }
+
+  /// The bar this screen did not have.
+  ///
+  /// Two things belong to a terminal nobody is selling on yet, and neither was
+  /// on screen: WHO is signed in — the shift about to open is opened by a
+  /// person, and the screen asking for it named the restaurant, the branch, the
+  /// till and the menu but not them — and the way into the back office, which
+  /// was a quiet word at the bottom that landed on one pane out of thirteen.
+  ///
+  /// Same shell, same accent rule, same identity treatment as the sale screen's
+  /// bar, because it is the same bar: crossing into the till should not feel
+  /// like arriving somewhere else.
+  Widget _topBar() => Container(
+    height: PosSize.topBar,
+    decoration: BoxDecoration(
+      color: context.pos.shell,
+      border: Border(bottom: context.pos.accentBorder),
+    ),
+    padding: const EdgeInsets.symmetric(horizontal: PosSpace.s14),
+    child: Row(
+      children: [
+        // Renders nothing at all for somebody who cannot open the back office,
+        // rather than a greyed-out word: see `ManageMenu`.
+        ManageMenu(onPick: widget.onManage, onShell: true),
+        const Spacer(),
+        // Nobody has necessarily signed in yet — this screen is where the shift
+        // is opened, and opening it is what asks for a PIN. Blank until then,
+        // rather than the first cashier on the branch: see
+        // `operatorNameProvider`.
+        if (ref.watch(operatorNameProvider) case final operator
+            when operator.isNotEmpty) ...[
+          Container(
+            width: 34,
+            height: 34,
+            alignment: Alignment.center,
+            color: context.pos.accent,
+            child: Text(
+              ref.watch(operatorInitialsProvider),
+              style: PosText.ui(
+                size: 16,
+                weight: FontWeight.w800,
+                color: context.pos.onAccent,
+              ),
+            ),
+          ),
+          const SizedBox(width: PosSpace.sm),
+          Text(
+            operator,
+            style: PosText.ui(
+              size: 13.5,
+              weight: FontWeight.w600,
+              color: context.pos.shellText,
+            ),
+          ),
+        ],
+      ],
+    ),
+  );
 
   Widget _body(
     BuildContext context,
@@ -265,14 +337,6 @@ class _StartScreenState extends ConsumerState<StartScreen> {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              PosButton(
-                label: context.strings.management,
-                height: PosSize.minTouchTarget,
-                foreground: context.pos.shellMuted,
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                onPressed: widget.onManage,
-              ),
               // Ending the night. Here rather than on the sale screen because
               // it is the last thing anybody does, and because a trading day
               // is a property of the branch rather than of the till somebody

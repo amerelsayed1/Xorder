@@ -192,7 +192,7 @@ class _OrderTypeDialogState extends State<OrderTypeDialog> {
                       key: const Key('order-type-save'),
                       label: strings.save,
                       background: palette.ink,
-                      foreground: Colors.white,
+                      foreground: palette.onInk,
                       onPressed: _save,
                     ),
                   ),

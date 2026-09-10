@@ -40,6 +40,9 @@ class ManagementScreen extends ConsumerStatefulWidget {
   const ManagementScreen({
     required this.onClose,
     this.initialPane = ManagementPane.staff,
+    this.purchasingTab,
+    this.create = false,
+    this.request,
     super.key,
   });
 
@@ -52,6 +55,11 @@ class ManagementScreen extends ConsumerStatefulWidget {
   /// they should not have to learn that accounts live behind the first word to
   /// find them.
   final ManagementPane initialPane;
+
+  /// Passed through to Purchasing — see [ManagementDestination].
+  final PurchasingTab? purchasingTab;
+  final bool create;
+  final Object? request;
 
   @override
   ConsumerState<ManagementScreen> createState() => _ManagementScreenState();
@@ -172,14 +180,83 @@ List<(ManagementArea, List<ManagementPane>)> managementAreasFor({
 /// closes it should be back at the till with their ticket still on it, not
 /// standing on a start screen wondering where the shift went.
 class ManagementDestination {
-  const ManagementDestination({required this.pane, this.returnTo});
+  const ManagementDestination({
+    required this.pane,
+    this.returnTo,
+    this.purchasingTab,
+    this.create = false,
+    this.request,
+  });
 
   final ManagementPane pane;
 
   /// The route to go back to. Null means the start screen, which is what the
   /// only previous caller wanted.
   final String? returnTo;
+
+  /// For [ManagementPane.purchasing]: which half of buying to open on.
+  final PurchasingTab? purchasingTab;
+
+  /// Start a new one straight away, rather than showing the list it joins.
+  final bool create;
+
+  /// A fresh `Object()` per menu tap. Without it the same request twice is the
+  /// same value twice, and a screen already showing it has nothing to notice.
+  final Object? request;
 }
+
+/// What the menu bar offers under one pane.
+///
+/// Usually the pane itself. Purchasing is really four things — orders, the
+/// invoices that arrive against them, the payments that settle those, and the
+/// suppliers behind all three — and "where do I enter this invoice" is answered
+/// by an invoice, not by a pane that holds a tab of them. So it lists each,
+/// with the "new" that starts one beside the list it belongs to.
+///
+/// A FACTORY per entry rather than a destination: each tap has to be a fresh
+/// request, or asking for "New order" twice would be answered once. The bool
+/// marks the first entry of a group, where the bar draws a divider.
+List<(String, ManagementDestination Function(), bool)> managementMenuEntries(
+  AppStrings s,
+  ManagementPane pane,
+) => switch (pane) {
+  ManagementPane.purchasing => [
+    (s.purchaseOrders, () => _purchasing(PurchasingTab.orders), true),
+    (
+      s.purchaseOrderNew,
+      () => _purchasing(PurchasingTab.orders, create: true),
+      false,
+    ),
+    (s.supplierInvoices, () => _purchasing(PurchasingTab.invoices), true),
+    (
+      s.invoiceNew,
+      () => _purchasing(PurchasingTab.invoices, create: true),
+      false,
+    ),
+    (s.paymentsList, () => _purchasing(PurchasingTab.payments), false),
+    (s.suppliers, () => _purchasing(PurchasingTab.suppliers), true),
+    (
+      s.supplierNew,
+      () => _purchasing(PurchasingTab.suppliers, create: true),
+      false,
+    ),
+  ],
+  _ => [
+    (
+      managementPaneLabel(s, pane).$1,
+      () => ManagementDestination(pane: pane, request: Object()),
+      true,
+    ),
+  ],
+};
+
+ManagementDestination _purchasing(PurchasingTab tab, {bool create = false}) =>
+    ManagementDestination(
+      pane: ManagementPane.purchasing,
+      purchasingTab: tab,
+      create: create,
+      request: Object(),
+    );
 
 /// What a pane is called, and what it is for.
 ///
@@ -239,6 +316,30 @@ enum ManagementPane {
 class _ManagementScreenState extends ConsumerState<ManagementScreen> {
   late ManagementPane _pane = widget.initialPane;
 
+  /// Follow the caller when it names a DIFFERENT pane.
+  ///
+  /// Without this, asking for a pane while already inside the back office did
+  /// nothing at all: `go('/management', extra: pane)` rebuilds this widget with
+  /// a new `initialPane`, and a `late` field initialised once kept showing
+  /// whatever was already open. From the start screen it worked, because that
+  /// built a fresh screen — which is why the menu bar appeared to work until
+  /// somebody used it twice.
+  ///
+  /// Guarded on the OLD value rather than on `_pane`, so a manager who picked a
+  /// pane from the rail and is then rebuilt for any other reason stays where
+  /// they put themselves. Only a caller changing its mind moves them.
+  @override
+  void didUpdateWidget(ManagementScreen old) {
+    super.didUpdateWidget(old);
+    // A new REQUEST counts even for the same pane: "Invoices" from the bar
+    // while already on Purchasing names the pane it is already showing, and
+    // still has to be followed.
+    if (widget.initialPane != old.initialPane ||
+        !identical(widget.request, old.request)) {
+      setState(() => _pane = widget.initialPane);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final admin = ref.watch(signedInStaffProvider);
@@ -279,50 +380,61 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
     // permission that justified it.
     final showing = panes.contains(_pane) ? _pane : panes.first;
 
+    // The panes of the area you are in — the tabs across the top.
+    final areaPanes = [
+      for (final (area, own) in areas)
+        if (area == areaOf(showing)) ...own,
+    ];
+
     return Scaffold(
       backgroundColor: context.pos.page,
       body: SafeArea(
         child: Column(
           children: [
-            _Header(admin: admin, onClose: widget.onClose),
-            Expanded(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _Rail(
-                    current: showing,
-                    areas: areas,
-                    onPick: (pane) => setState(() => _pane = pane),
-                  ),
-                  Expanded(
-                    child: switch (showing) {
-                      ManagementPane.staff => ManagementStaffPane(admin: admin),
-                      ManagementPane.menu => ManagementMenuPane(admin: admin),
-                      ManagementPane.floor => ManagementFloorPane(admin: admin),
-                      ManagementPane.taxes => ManagementTaxesPane(
-                        admin: admin,
-                      ),
-                      ManagementPane.charges => ManagementChargesPane(
-                        admin: admin,
-                      ),
-                      ManagementPane.tenders => ManagementTendersPane(
-                        admin: admin,
-                      ),
-                      ManagementPane.orderTypes => ManagementOrderTypesPane(
-                        admin: admin,
-                      ),
-                      ManagementPane.purchasing =>
-                        ManagementPurchasingPane(admin: admin),
-                      ManagementPane.receipt => ManagementReceiptPane(
-                        admin: admin,
-                      ),
-                      ManagementPane.eta => const ManagementEtaPane(),
-                      ManagementPane.roles => ManagementRolesPane(admin: admin),
-                      ManagementPane.activity => const ManagementActivityPane(),
-                    },
-                  ),
-                ],
+            _Header(
+              admin: admin,
+              onClose: widget.onClose,
+              area: areaOf(showing),
+            ),
+            // Tabs only where there is more than one pane. A single tab over a
+            // single pane is a heading dressed as a control, and the header
+            // already says where you are.
+            if (areaPanes.length > 1)
+              _AreaTabs(
+                panes: areaPanes,
+                current: showing,
+                onPick: (pane) => setState(() => _pane = pane),
               ),
+            Expanded(
+              child: switch (showing) {
+                ManagementPane.staff => ManagementStaffPane(admin: admin),
+                ManagementPane.menu => ManagementMenuPane(admin: admin),
+                ManagementPane.floor => ManagementFloorPane(admin: admin),
+                ManagementPane.taxes => ManagementTaxesPane(
+                  admin: admin,
+                ),
+                ManagementPane.charges => ManagementChargesPane(
+                  admin: admin,
+                ),
+                ManagementPane.tenders => ManagementTendersPane(
+                  admin: admin,
+                ),
+                ManagementPane.orderTypes => ManagementOrderTypesPane(
+                  admin: admin,
+                ),
+                ManagementPane.purchasing => ManagementPurchasingPane(
+                  admin: admin,
+                  initialTab: widget.purchasingTab ?? PurchasingTab.orders,
+                  create: widget.create,
+                  request: widget.request,
+                ),
+                ManagementPane.receipt => ManagementReceiptPane(
+                  admin: admin,
+                ),
+                ManagementPane.eta => const ManagementEtaPane(),
+                ManagementPane.roles => ManagementRolesPane(admin: admin),
+                ManagementPane.activity => const ManagementActivityPane(),
+              },
             ),
           ],
         ),
@@ -332,10 +444,19 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
 }
 
 class _Header extends StatelessWidget {
-  const _Header({required this.admin, required this.onClose});
+  const _Header({
+    required this.admin,
+    required this.onClose,
+    required this.area,
+  });
 
   final PosStaff admin;
   final VoidCallback onClose;
+
+  /// Where you are. The rail used to say so by highlighting a row; with the
+  /// rail gone the header has to, or the bar's area and the pane's tabs are
+  /// two answers to a question nobody asked out loud.
+  final ManagementArea area;
 
   @override
   Widget build(BuildContext context) {
@@ -350,7 +471,10 @@ class _Header extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Text(strings.management, style: PosText.screenTitle(color: context.pos.ink)),
+          Text(
+            '${strings.management} › ${managementAreaName(strings, area)}',
+            style: PosText.screenTitle(color: context.pos.ink),
+          ),
           const SizedBox(width: PosSpace.lg),
           Text(
             '${admin.name} · '
@@ -369,116 +493,68 @@ class _Header extends StatelessWidget {
   }
 }
 
-class _Rail extends StatelessWidget {
-  const _Rail({
+/// The panes of one area, as tabs across the top of the screen.
+///
+/// **Replaces a rail that listed all thirteen.** The window's bar now names
+/// every area and every pane, so a second full index down the side of the
+/// screen was the same navigation twice, spending a quarter of the width on it.
+/// What is left to show here is only the neighbours of where you are — the
+/// other panes of the same area, which is what somebody switching between the
+/// VAT rate and the service charge actually wants one tap away.
+class _AreaTabs extends StatelessWidget {
+  const _AreaTabs({
+    required this.panes,
     required this.current,
-    required this.areas,
     required this.onPick,
   });
 
+  final List<ManagementPane> panes;
   final ManagementPane current;
-
-  /// Which panes this terminal actually has, grouped. Not
-  /// `ManagementPane.values`: the two authoring panes are offline-only and a
-  /// pane whose capability this person lacks is absent.
-  final List<(ManagementArea, List<ManagementPane>)> areas;
   final ValueChanged<ManagementPane> onPick;
 
   @override
   Widget build(BuildContext context) {
     final strings = context.strings;
+    final palette = context.pos;
 
     return Container(
-      width: 232,
-      decoration: BoxDecoration(
-        color: context.pos.surface,
-        border: Border(right: context.pos.resting),
+      padding: const EdgeInsets.symmetric(
+        horizontal: PosSpace.xl,
+        vertical: PosSpace.md,
       ),
-      // Scrollable, because thirteen panes do not fit a 900px window and a rail
-      // that overflows drops its last area on the floor with no indication that
-      // anything is missing.
-      child: ListView(
-        padding: EdgeInsets.zero,
-        children: [
-          for (final (area, panes) in areas) ...[
-            Padding(
-              padding: const EdgeInsets.only(
-                left: PosSpace.lg,
-                right: PosSpace.lg,
-                top: PosSpace.lg,
-                bottom: PosSpace.xs,
+      decoration: BoxDecoration(
+        color: palette.surface,
+        border: Border(bottom: palette.hairline),
+      ),
+      // Scrollable rather than wrapping: a row of tabs that breaks onto a
+      // second line stops reading as one choice.
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            for (final pane in panes) ...[
+              // The sentence the rail used to carry, where it still helps: on
+              // a pointer that lingers.
+              Tooltip(
+                message: managementPaneLabel(strings, pane).$2,
+                waitDuration: const Duration(milliseconds: 600),
+                child: PosButton(
+                  key: Key('management-tab-${pane.name}'),
+                  label: managementPaneLabel(strings, pane).$1,
+                  background:
+                      pane == current ? palette.ink : Colors.transparent,
+                  foreground: pane == current ? palette.onInk : null,
+                  border: Border.fromBorderSide(palette.resting),
+                  onPressed: () => onPick(pane),
+                ),
               ),
-              child: MicroLabel(managementAreaName(strings, area)),
-            ),
-            for (final pane in panes)
-              _RailItem(
-                label: managementPaneLabel(strings, pane).$1,
-                hint: managementPaneLabel(strings, pane).$2,
-                selected: pane == current,
-                onTap: () => onPick(pane),
-              ),
+              const SizedBox(width: PosSpace.sm),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }
-}
-
-class _RailItem extends StatelessWidget {
-  const _RailItem({
-    required this.label,
-    required this.hint,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final String label;
-  final String hint;
-  final bool selected;
-  final VoidCallback onTap;
-
-  /// **One line, and the sentence moved to a tooltip.**
-  ///
-  /// Every row used to carry its blurb, which read well at nine panes and did
-  /// not fit at twelve: six headings and twelve two-line rows come to more than
-  /// a 900px window has, and the last area fell off the bottom. The rail is for
-  /// somebody already inside Management who knows what the panes are called;
-  /// the Manage menu is where the sentences do their work, because that is where
-  /// somebody is looking for a pane they cannot name yet.
-  @override
-  Widget build(BuildContext context) => Tooltip(
-    message: hint,
-    waitDuration: const Duration(milliseconds: 600),
-    child: Material(
-      color: selected ? context.pos.accentSoft : Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(
-            horizontal: PosSpace.lg,
-            vertical: PosSpace.md,
-          ),
-          decoration: BoxDecoration(
-            border: Border(
-              bottom: context.pos.hairline,
-              // Elevation is a border in this design, so selection is too.
-              left: selected
-                  ? context.pos.accentBorder
-                  : const BorderSide(color: Colors.transparent, width: 2),
-            ),
-          ),
-          child: Text(
-            label,
-            style: PosText.ui(
-              color: context.pos.inkWarm,
-              size: 14,
-              weight: selected ? FontWeight.w700 : FontWeight.w500,
-            ),
-          ),
-        ),
-      ),
-    ),
-  );
 }
 
 /// What somebody sees when they reach Management without the permission for it.

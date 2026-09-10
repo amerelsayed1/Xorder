@@ -30,22 +30,87 @@ import 'supplier_payment_dialog.dart';
 /// arrive against it — rather than a form somebody edits, which is why the
 /// orders list leads and the suppliers sit behind it.
 class ManagementPurchasingPane extends ConsumerStatefulWidget {
-  const ManagementPurchasingPane({required this.admin, super.key});
+  const ManagementPurchasingPane({
+    required this.admin,
+    this.initialTab = PurchasingTab.orders,
+    this.create = false,
+    this.request,
+    super.key,
+  });
 
   final PosStaff admin;
+
+  /// Which half of buying to open on.
+  final PurchasingTab initialTab;
+
+  /// Whether to start a new one straight away — "New order" from the menu bar
+  /// means the order form, not the list with the button on it.
+  final bool create;
+
+  /// A fresh object per request from outside, so the same request twice is
+  /// still two requests. See `_answered`.
+  final Object? request;
 
   @override
   ConsumerState<ManagementPurchasingPane> createState() =>
       _ManagementPurchasingPaneState();
 }
 
-enum _Tab { orders, invoices, payments, suppliers }
+/// The four halves of buying. Public so a menu can open the one it means.
+enum PurchasingTab { orders, invoices, payments, suppliers }
 
 class _ManagementPurchasingPaneState
     extends ConsumerState<ManagementPurchasingPane> {
-  _Tab _tab = _Tab.orders;
+  late PurchasingTab _tab = widget.initialTab;
   bool _busy = false;
   String? _note;
+
+  /// Requests already acted on, across every state this pane will ever have.
+  ///
+  /// Keyed on the request object rather than a flag on this state: the state
+  /// is rebuilt when somebody switches area and comes back, and a flag there
+  /// would open "New order" all over again. The request is what was asked for,
+  /// and it is answered exactly once.
+  static final _answered = Expando<bool>('purchasing requests answered');
+
+  @override
+  void initState() {
+    super.initState();
+    _maybeCreate();
+  }
+
+  /// Follow a NEW request from outside — "Invoices" from the menu bar while
+  /// already on orders. The same bug the management screen had: a field
+  /// initialised once would otherwise keep showing whatever was already open.
+  @override
+  void didUpdateWidget(ManagementPurchasingPane old) {
+    super.didUpdateWidget(old);
+    if (!identical(widget.request, old.request)) {
+      setState(() => _tab = widget.initialTab);
+      _maybeCreate();
+    }
+  }
+
+  void _maybeCreate() {
+    final request = widget.request;
+    if (!widget.create || request == null || _answered[request] == true) {
+      return;
+    }
+    _answered[request] = true;
+    // After the frame: a dialog opened during build has no Navigator to open
+    // into yet.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && !_busy) _create(_tab);
+    });
+  }
+
+  /// Start a new one of whatever this tab lists. Payments are settled against
+  /// an invoice, so "new" on that tab enters the invoice they will pay.
+  Future<void> _create(PurchasingTab tab) => switch (tab) {
+    PurchasingTab.orders => _editOrder(null),
+    PurchasingTab.invoices || PurchasingTab.payments => _editInvoice(null),
+    PurchasingTab.suppliers => _editSupplier(null),
+  };
 
   void _refresh() => ref
     ..invalidate(purchaseOrdersProvider)
@@ -290,64 +355,58 @@ class _ManagementPurchasingPaneState
               PosButton(
                 key: const Key('purchasing-orders'),
                 label: strings.purchaseOrders,
-                background: _tab == _Tab.orders
+                background: _tab == PurchasingTab.orders
                     ? palette.ink
                     : Colors.transparent,
-                foreground: _tab == _Tab.orders ? Colors.white : null,
+                foreground: _tab == PurchasingTab.orders ? palette.onInk : null,
                 border: Border.fromBorderSide(palette.resting),
-                onPressed: () => setState(() => _tab = _Tab.orders),
+                onPressed: () => setState(() => _tab = PurchasingTab.orders),
               ),
               const SizedBox(width: PosSpace.sm),
               PosButton(
                 key: const Key('purchasing-invoices'),
                 label: strings.supplierInvoices,
-                background: _tab == _Tab.invoices
+                background: _tab == PurchasingTab.invoices
                     ? palette.ink
                     : Colors.transparent,
-                foreground: _tab == _Tab.invoices ? Colors.white : null,
+                foreground: _tab == PurchasingTab.invoices ? palette.onInk : null,
                 border: Border.fromBorderSide(palette.resting),
-                onPressed: () => setState(() => _tab = _Tab.invoices),
+                onPressed: () => setState(() => _tab = PurchasingTab.invoices),
               ),
               const SizedBox(width: PosSpace.sm),
               PosButton(
                 key: const Key('purchasing-payments'),
                 label: strings.paymentsList,
-                background: _tab == _Tab.payments
+                background: _tab == PurchasingTab.payments
                     ? palette.ink
                     : Colors.transparent,
-                foreground: _tab == _Tab.payments ? Colors.white : null,
+                foreground: _tab == PurchasingTab.payments ? palette.onInk : null,
                 border: Border.fromBorderSide(palette.resting),
-                onPressed: () => setState(() => _tab = _Tab.payments),
+                onPressed: () => setState(() => _tab = PurchasingTab.payments),
               ),
               const SizedBox(width: PosSpace.sm),
               PosButton(
                 key: const Key('purchasing-suppliers'),
                 label: strings.suppliers,
-                background: _tab == _Tab.suppliers
+                background: _tab == PurchasingTab.suppliers
                     ? palette.ink
                     : Colors.transparent,
-                foreground: _tab == _Tab.suppliers ? Colors.white : null,
+                foreground: _tab == PurchasingTab.suppliers ? palette.onInk : null,
                 border: Border.fromBorderSide(palette.resting),
-                onPressed: () => setState(() => _tab = _Tab.suppliers),
+                onPressed: () => setState(() => _tab = PurchasingTab.suppliers),
               ),
               const Spacer(),
               PosButton(
                 key: const Key('purchasing-new'),
                 label: switch (_tab) {
-                  _Tab.orders => strings.purchaseOrderNew,
-                  _Tab.invoices || _Tab.payments => strings.invoiceNew,
-                  _Tab.suppliers => strings.supplierNew,
+                  PurchasingTab.orders => strings.purchaseOrderNew,
+                  PurchasingTab.invoices || PurchasingTab.payments => strings.invoiceNew,
+                  PurchasingTab.suppliers => strings.supplierNew,
                 },
                 background: palette.accent,
                 foreground: Colors.white,
                 fontWeight: FontWeight.w700,
-                onPressed: _busy
-                    ? null
-                    : () => switch (_tab) {
-                        _Tab.orders => _editOrder(null),
-                        _Tab.invoices || _Tab.payments => _editInvoice(null),
-                        _Tab.suppliers => _editSupplier(null),
-                      },
+                onPressed: _busy ? null : () => _create(_tab),
               ),
             ],
           ),
@@ -363,10 +422,10 @@ class _ManagementPurchasingPaneState
           ),
         Expanded(
           child: switch (_tab) {
-            _Tab.orders => _orders(strings),
-            _Tab.invoices => _invoices(strings),
-            _Tab.payments => _payments(strings),
-            _Tab.suppliers => _suppliers(strings),
+            PurchasingTab.orders => _orders(strings),
+            PurchasingTab.invoices => _invoices(strings),
+            PurchasingTab.payments => _payments(strings),
+            PurchasingTab.suppliers => _suppliers(strings),
           },
         ),
       ],
@@ -538,7 +597,7 @@ class _OrderRow extends StatelessWidget {
               key: Key('purchase-send-${order.id}'),
               label: strings.purchaseSend,
               background: palette.ink,
-              foreground: Colors.white,
+              foreground: palette.onInk,
               onPressed: busy ? null : onSend,
             ),
           ] else if (order.status.isOpen) ...[

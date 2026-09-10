@@ -441,7 +441,7 @@ class _DeploymentPane extends ConsumerWidget {
         // simply empty. Typing a password here will be accepted either way, so
         // the operator has to learn *now* that this one will not survive a
         // restart, rather than tomorrow morning when the wizard reappears.
-        if (ref.watch(terminalBootProvider).credentialStoreUnavailable) ...[
+        if (ref.watch(terminalSeedProvider).credentialStoreUnavailable) ...[
           Container(
             padding: const EdgeInsets.all(PosSpace.lg),
             decoration: BoxDecoration(
@@ -569,7 +569,7 @@ class _LicencePane extends ConsumerWidget {
               PosButton(
                 label: s.activateOnline,
                 background: context.pos.ink,
-                foreground: Colors.white,
+                foreground: context.pos.onInk,
                 padding: const EdgeInsets.symmetric(horizontal: PosSpace.xl),
                 onPressed: draft.busy
                     ? null
@@ -581,7 +581,7 @@ class _LicencePane extends ConsumerWidget {
               label: s.activateFromFile,
               // Promoted to the primary action when it is the only action.
               background: online ? context.pos.surface : context.pos.ink,
-              foreground: online ? context.pos.ink : Colors.white,
+              foreground: online ? context.pos.ink : context.pos.onInk,
               border: online
                   ? Border.fromBorderSide(
                       BorderSide(color: context.pos.inkWarm),
@@ -1484,7 +1484,7 @@ class _CataloguePane extends ConsumerWidget {
                 ? (items == null ? s.downloadMenu : s.downloadAgain)
                 : (items == null ? s.readMenu : s.readMenuAgain),
             background: context.pos.ink,
-            foreground: Colors.white,
+            foreground: context.pos.onInk,
             padding: const EdgeInsets.symmetric(horizontal: PosSpace.xl),
             onPressed: draft.busy
                 ? null
@@ -1783,7 +1783,7 @@ class _FirstInstallFieldsState extends ConsumerState<_FirstInstallFields> {
           child: PosButton(
             label: draft.busy ? s.buildingDatabase : s.buildTheDatabase,
             background: context.pos.ink,
-            foreground: Colors.white,
+            foreground: context.pos.onInk,
             padding: const EdgeInsets.symmetric(horizontal: PosSpace.xl),
             onPressed: draft.busy ? null : controller.bootstrapDatabase,
           ),

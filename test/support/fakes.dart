@@ -1,3 +1,4 @@
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:xorder_pos/app/providers.dart';
 import 'package:xorder_pos/core/config/terminal_config.dart';
@@ -19,7 +20,23 @@ import 'package:xorder_pos/features/licensing/data/licence_service.dart';
 /// binding never did.
 ///
 /// A test that wants a real database wants `test/data/pg_fixture.dart` instead.
-List<Override> fakeRepositoryOverrides() => [
+/// English, so the suite reads the copy it was written against.
+///
+/// The PRODUCT's default is Arabic — the restaurants it ships to are in Egypt —
+/// and `test/core/localisation_test.dart` is what pins that. Everything else
+/// asserts English strings, and a suite that had to be rewritten in Arabic to
+/// change a default would make the default unchangeable. A test that is about
+/// Arabic asks for it: `container.read(localeProvider.notifier).apply('ar')`.
+class EnglishTerminal extends TerminalLocaleController {
+  @override
+  Locale build() => const Locale('en');
+}
+
+/// [english] false leaves the language alone, for the handful of tests that are
+/// ABOUT it — a terminal opening in the language it was set up in, or a wizard
+/// keeping it across a reset. Everything else takes English.
+List<Override> fakeRepositoryOverrides({bool english = true}) => [
+      if (english) localeProvider.overrideWith(EnglishTerminal.new),
       catalogRepositoryProvider.overrideWithValue(FakeCatalogRepository()),
       tablesRepositoryProvider.overrideWithValue(FakeTablesRepository()),
       sessionRepositoryProvider.overrideWithValue(FakeSessionRepository()),

@@ -80,7 +80,7 @@ Widget _startScreen() => StartScreen(
   onStart: () {},
   onManageLicence: () {},
   onReconfigure: () {},
-  onManage: () {},
+  onManage: (_) {},
 );
 
 /// Every caption the screen is currently showing.
@@ -178,12 +178,21 @@ void main() {
     // A backstop for captions nobody thought to name above. Two things are
     // exempt, both by design rather than by oversight:
     //
-    // * the operator's own data — a tenant, a branch and a terminal code are
-    //   what they are in any language;
+    // * the operator's own data — a tenant, a branch, a terminal code and the
+    //   NAME OF THE PERSON SIGNED IN are what they are in any language, and
+    //   the last of those is on this screen now that it carries the same bar
+    //   the till does;
     // * the ENTER keycap, which names a key the cashier is looking at. Taken
     //   from the catalogue rather than written out here, so translating it
     //   would relax this test instead of breaking it.
-    const operatorData = {'MAHSOUB GRILL', 'Mahsoub Grill', 'DOWNTOWN', 'T-02'};
+    const operatorData = {
+      'MAHSOUB GRILL',
+      'Mahsoub Grill',
+      'DOWNTOWN',
+      'T-02',
+      'Rana A.',
+      'R',
+    };
     final exempt = {...operatorData, const ArStrings().enterKeyCap};
 
     final latin = _onScreen(tester)

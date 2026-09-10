@@ -5,6 +5,7 @@ import 'package:menu_bar/menu_bar.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/l10n/app_strings.dart';
+import '../domain/models/permissions.dart';
 import '../core/ui/theme.dart';
 import '../core/ui/tokens.dart';
 import '../features/setup/presentation/force_reset_dialog.dart';
@@ -72,15 +73,24 @@ class XorderPosApp extends ConsumerWidget {
               shift: true,
             ): () =>
                 _forceReset(ref),
+            // The back office, from anywhere — the till, the start screen, a
+            // floor plan, a pane already open. An F-key rather than a chord
+            // because that is the vocabulary of the rest of this product's
+            // keyboard (F2 search, F7 open orders, F10 drawer) and of the
+            // keyboards it ships on, and because back-office work is something
+            // a manager does twenty times an evening between orders.
+            //
+            // Safe to bind globally and ungated: the pane it opens gates
+            // itself, with a PIN pad for somebody who has not signed in and a
+            // refusal by name for somebody who may not be there.
+            const SingleActivator(LogicalKeyboardKey.f8): () =>
+                ref.read(routerProvider).go(PosRoutes.management),
           },
           // Root focus so the binding receives keys wherever focus currently
           // sits — key events bubble up to here from any focused field.
           child: Focus(
             autofocus: true,
-            child: Builder(
-              builder: (context) =>
-                  _settingsBar(context, ref, child ?? const SizedBox()),
-            ),
+            child: _settingsBar(child ?? const SizedBox()),
           ),
         ),
       ),
@@ -156,18 +166,7 @@ class XorderPosApp extends ConsumerWidget {
   /// The split is by concern, not by duplication. The native bar keeps what
   /// belongs to the operating system — About, Hide, Quit, window management —
   /// and this keeps what belongs to the till. Nothing appears in both.
-  Widget _settingsBar(BuildContext context, WidgetRef ref, Widget child) {
-    final strings = AppStrings.of(ref.watch(localeProvider));
-    final arabic = ref.watch(localeProvider).languageCode == 'ar';
-
-    // What is on screen right now, which is not the same as what was chosen:
-    // while following the machine the override is null and says nothing about
-    // which way the toggle should go.
-    final showing =
-        ref.watch(brightnessProvider) ??
-        MediaQuery.platformBrightnessOf(context);
-    final dark = showing == Brightness.dark;
-
+  Widget _settingsBar(Widget child) {
     // An Overlay of its own, because this sits ABOVE the router: `MenuBarWidget`
     // uses Material's `MenuBar`, which needs an Overlay ancestor to float its
     // submenus into, and the app's own Overlay lives BELOW here inside the
@@ -176,88 +175,214 @@ class XorderPosApp extends ConsumerWidget {
     return Overlay(
       initialEntries: [
         OverlayEntry(
-          builder: (context) => MenuBarWidget(
-            barButtons: [
-              BarButton(
-                text: Text(strings.settings),
-                submenu: SubMenu(
-                  menuItems: [
-                    // Only where there is a platform to sync with. On an
-                    // offline terminal `cloudSyncProvider` is null and this
-                    // item did nothing at all when tapped — an entry that
-                    // silently no-ops teaches an operator that the menu is
-                    // unreliable, which is worse than not offering it.
-                    if (ref.watch(cloudSyncProvider) case final cloud?)
-                      MenuButton(
-                        text: Text(strings.syncNow),
-                        icon: const Icon(Icons.sync, size: 16),
-                        onTap: cloud.kick,
+          // Everything this menu says is read INSIDE the entry, through a
+          // Consumer of its own, and that is load-bearing rather than a matter
+          // of taste. `initialEntries` is used ONCE — when the Overlay first
+          // builds — and every entry constructed on a later build is discarded,
+          // so a menu assembled outside it is frozen at the first frame for the
+          // life of the process. The body still followed the theme and the
+          // language, because those travel by inherited widget, which left this
+          // menu as the only thing on screen describing a till that no longer
+          // existed: "Switch to light", offered on a till already showing
+          // light. The language item and Sync now were frozen the same way.
+          //
+          // [child] stays the first frame's, and that is fine: it is the
+          // router's Navigator, which updates itself from below.
+          builder: (_) => Consumer(
+            builder: (context, ref, _) {
+              final strings = AppStrings.of(ref.watch(localeProvider));
+              final arabic = ref.watch(localeProvider).languageCode == 'ar';
+
+              // What is on screen right now, which is not the same as what was
+              // chosen: while following the machine the override is null and
+              // says nothing about which way the toggle should go.
+              final showing =
+                  ref.watch(brightnessProvider) ??
+                  MediaQuery.platformBrightnessOf(context);
+              final dark = showing == Brightness.dark;
+
+              return MenuBarWidget(
+                barButtons: [
+                  // **The back office, in the window's own bar.**
+                  //
+                  // It was reachable from the till's bar and from the start
+                  // screen, and from neither of those with a pane already open.
+                  // A menu bar is the one surface that is always there, so the
+                  // panes hang off it — grouped by area exactly as the rail and
+                  // `ManageMenu` group them, because "where do I change the VAT
+                  // rate" is answered by *Money* long before it is answered by
+                  // reading thirteen pane names.
+                  //
+                  // Absent entirely for somebody who cannot open the back
+                  // office: a greyed-out menu is a permanent advertisement for
+                  // a door they will never be given.
+                  // **One button per area of the back office.**
+                  //
+                  // Thirteen panes under a single word called Management is a
+                  // list somebody reads rather than a menu somebody uses: the
+                  // question is never "what is in the back office", it is "where
+                  // do I enter this invoice" — and the answer to that is
+                  // Purchasing, which is now a word in the bar rather than the
+                  // fifth line of a scrolling list.
+                  for (final (label, panes) in _managementMenus(ref, strings))
+                    BarButton(
+                      text: Text(label),
+                      submenu: SubMenu(
+                        menuItems: [
+                          // The pane — or, where a pane is really several
+                          // things, each of them and the "new" that starts
+                          // one. Under المشتريات that is orders, invoices,
+                          // payments and suppliers, not one word that opens a
+                          // screen and makes you find them again.
+                          for (final pane in panes)
+                            for (final (i, (label, destination, groups))
+                                in managementMenuEntries(strings, pane)
+                                    .indexed) ...[
+                              if (groups && i > 0) const MenuDivider(),
+                              MenuButton(
+                                text: Text(label),
+                                onTap: () => ref
+                                    .read(routerProvider)
+                                    .go(
+                                      PosRoutes.management,
+                                      extra: destination(),
+                                    ),
+                              ),
+                            ],
+                        ],
                       ),
-                    // Named for the thing somebody is looking for. Adding a
-                    // cashier has always been possible; it was behind a word
-                    // that does not mention accounts, which is the same as not
-                    // being there.
-                    MenuButton(
-                      text: Text(strings.staffAndAccounts),
-                      icon: const Icon(Icons.person_add_alt, size: 16),
-                      onTap: () => ref
-                          .read(routerProvider)
-                          .go(PosRoutes.management, extra: ManagementPane.staff),
                     ),
-                    MenuButton(
-                      text: Text(strings.management),
-                      icon: const Icon(Icons.tune, size: 16),
-                      onTap: () =>
-                          ref.read(routerProvider).go(PosRoutes.management),
+                  BarButton(
+                    text: Text(strings.settings),
+                    submenu: SubMenu(
+                      menuItems: [
+                        // Only where there is a platform to sync with. On an
+                        // offline terminal `cloudSyncProvider` is null and this
+                        // item did nothing at all when tapped — an entry that
+                        // silently no-ops teaches an operator that the menu is
+                        // unreliable, which is worse than not offering it.
+                        if (ref.watch(cloudSyncProvider) case final cloud?)
+                          MenuButton(
+                            text: Text(strings.syncNow),
+                            icon: const Icon(Icons.sync, size: 16),
+                            onTap: cloud.kick,
+                          ),
+                        // Named for the thing somebody is looking for. Adding a
+                        // cashier has always been possible; it was behind a word
+                        // that does not mention accounts, which is the same as not
+                        // being there.
+                        MenuButton(
+                          text: Text(strings.staffAndAccounts),
+                          icon: const Icon(Icons.person_add_alt, size: 16),
+                          onTap: () => ref
+                              .read(routerProvider)
+                              .go(PosRoutes.management, extra: ManagementPane.staff),
+                        ),
+                        MenuButton(
+                          text: Text(strings.management),
+                          icon: const Icon(Icons.tune, size: 16),
+                          // Printed, not bound: the global binding above is
+                          // what fires. Naming it here is how somebody finds a
+                          // key they would never have guessed.
+                          shortcutText: 'F8',
+                          onTap: () =>
+                              ref.read(routerProvider).go(PosRoutes.management),
+                        ),
+                        const MenuDivider(),
+                        // Switching language rebuilds the whole tree, including this
+                        // bar — the label flips with it, which is why it reads as the
+                        // language you would GET rather than the one you are in.
+                        MenuButton(
+                          text: Text(
+                            arabic
+                                ? const EnStrings().languageName
+                                : const ArStrings().languageName,
+                          ),
+                          icon: const Icon(Icons.translate, size: 16),
+                          onTap: () => ref
+                              .read(localeProvider.notifier)
+                              .apply(arabic ? 'en' : 'ar'),
+                        ),
+                        // Reads as the theme you would GET, for the same reason the
+                        // language item does.
+                        MenuButton(
+                          text: Text(
+                            dark ? strings.switchToLight : strings.switchToDark,
+                          ),
+                          icon: Icon(
+                            dark ? Icons.light_mode_outlined : Icons.dark_mode_outlined,
+                            size: 16,
+                          ),
+                          onTap: () =>
+                              ref.read(brightnessProvider.notifier).toggle(showing),
+                        ),
+                        const MenuDivider(),
+                        // Handing the till over. The lock screen signs in
+                        // whoever's PIN it is, so locking already switches the
+                        // operator — but nobody hands a till to a colleague by
+                        // reaching for a control called Lock. Same door, named
+                        // for what people are actually doing when they use it.
+                        MenuButton(
+                          text: Text(strings.switchUser),
+                          icon: const Icon(Icons.switch_account, size: 16),
+                          onTap: () =>
+                              ref.read(routerProvider).go(PosRoutes.lock),
+                        ),
+                        const MenuDivider(),
+                        MenuButton(
+                          text: Text(strings.forceResetConfirm),
+                          icon: const Icon(Icons.restart_alt, size: 16),
+                          // Printed, not bound: the chord above is what fires. Showing
+                          // it here is how an installer discovers a shortcut nobody
+                          // would guess, without making a destructive action something
+                          // a cashier finds by wandering the menus.
+                          shortcutText: '⇧⌘S',
+                          onTap: () => _forceReset(ref),
+                        ),
+                      ],
                     ),
-                    const MenuDivider(),
-                    // Switching language rebuilds the whole tree, including this
-                    // bar — the label flips with it, which is why it reads as the
-                    // language you would GET rather than the one you are in.
-                    MenuButton(
-                      text: Text(
-                        arabic
-                            ? const EnStrings().languageName
-                            : const ArStrings().languageName,
-                      ),
-                      icon: const Icon(Icons.translate, size: 16),
-                      onTap: () => ref
-                          .read(localeProvider.notifier)
-                          .apply(arabic ? 'en' : 'ar'),
-                    ),
-                    // Reads as the theme you would GET, for the same reason the
-                    // language item does.
-                    MenuButton(
-                      text: Text(
-                        dark ? strings.switchToLight : strings.switchToDark,
-                      ),
-                      icon: Icon(
-                        dark ? Icons.light_mode_outlined : Icons.dark_mode_outlined,
-                        size: 16,
-                      ),
-                      onTap: () =>
-                          ref.read(brightnessProvider.notifier).toggle(showing),
-                    ),
-                    const MenuDivider(),
-                    MenuButton(
-                      text: Text(strings.forceResetConfirm),
-                      icon: const Icon(Icons.restart_alt, size: 16),
-                      // Printed, not bound: the chord above is what fires. Showing
-                      // it here is how an installer discovers a shortcut nobody
-                      // would guess, without making a destructive action something
-                      // a cashier finds by wandering the menus.
-                      shortcutText: '⇧⌘S',
-                      onTap: () => _forceReset(ref),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-            child: child,
+                  ),
+                ],
+                child: child,
+              );
+            },
           ),
         ),
       ],
     );
+  }
+
+  /// The bar's back-office buttons: one per area, each with its own panes.
+  ///
+  /// Asks `managementAreasFor` rather than listing panes, for the reason that
+  /// function exists: a menu offering Purchasing to somebody the rail hides it
+  /// from would take them to a screen that refuses everything.
+  List<(String, List<ManagementPane>)> _managementMenus(
+    WidgetRef ref,
+    AppStrings strings,
+  ) {
+    final admin = ref.watch(signedInStaffProvider);
+
+    // Nobody signed in is not nobody permitted. Before a shift — and after any
+    // restart — there is no signed-in staff at all, and the management screen's
+    // own PIN pad is what signs somebody in. Which areas an unknown person has
+    // is not a question this bar can answer, so it offers the one door under
+    // the one word: Management, opening on Staff, which opens locked and asks.
+    if (admin == null) {
+      return [(strings.management, const [ManagementPane.staff])];
+    }
+    if (!admin.can(PosCapability.staffManage)) {
+      return const [];
+    }
+
+    return [
+      for (final (area, panes) in managementAreasFor(
+        admin: admin,
+        authorsItsOwnCatalogue:
+            ref.watch(catalogAdminRepositoryProvider) != null,
+      ))
+        (managementAreaName(strings, area), panes),
+    ];
   }
 
   /// Guarded so a second Cmd+Shift+S while the dialog is open cannot stack a

@@ -49,6 +49,7 @@ import '../data/postgres/postgres_parked_tickets.dart';
 import '../data/postgres/postgres_print_queue_repository.dart';
 import '../data/postgres/postgres_shift_repository.dart';
 import '../data/unconfigured/unconfigured_repositories.dart';
+import '../features/history/history_scope.dart';
 import '../features/licensing/data/file_license_store.dart';
 import '../features/licensing/data/licence_service.dart';
 import '../features/licensing/data/license_keys.dart';
@@ -298,14 +299,40 @@ final orderHistoryRepositoryProvider = Provider<OrderHistoryRepository>((ref) {
 
 /// One slice of history. Keyed by the query, so changing a filter is a new
 /// read rather than a mutation of a list somebody is looking at.
+///
+/// **Narrowed to what the person at the till may read** before it reaches the
+/// repository — their own sales, without `order.view_all`. Here rather than
+/// in the screen because this is the one road to the data: a second screen
+/// built on this provider inherits the rule instead of having to remember it.
+/// See [HistoryScope].
 final orderHistoryProvider =
-    FutureProvider.family<List<OrderRecord>, OrderHistoryQuery>(
-      (ref, query) => ref.watch(orderHistoryRepositoryProvider).search(query),
-    );
+    FutureProvider.family<List<OrderRecord>, OrderHistoryQuery>((ref, query) {
+      final scoped = HistoryScope.scope(
+        query,
+        ref.watch(signedInStaffProvider),
+      );
+      if (scoped == null) return const <OrderRecord>[];
+      return ref.watch(orderHistoryRepositoryProvider).search(scoped);
+    });
 
-/// One order, opened from the list.
-final orderDetailProvider = FutureProvider.family<OrderRecordDetail?, int>(
-  (ref, orderId) => ref.watch(orderHistoryRepositoryProvider).detail(orderId),
+/// One order, opened from the list — or null when it is not the viewer's to
+/// open, which the pane already shows as "no longer there".
+final orderDetailProvider = FutureProvider.family<OrderRecordDetail?, int>((
+  ref,
+  orderId,
+) async {
+  final viewer = ref.watch(signedInStaffProvider);
+  final repository = ref.watch(orderHistoryRepositoryProvider);
+  final detail = await repository.detail(orderId);
+  if (detail == null || !HistoryScope.mayOpen(detail.order, viewer)) {
+    return null;
+  }
+  return detail;
+});
+
+/// The tills at this branch, for the history screen's terminal filter.
+final historyTerminalsProvider = FutureProvider<List<HistoryTerminal>>(
+  (ref) => ref.watch(orderHistoryRepositoryProvider).terminals(),
 );
 
 /// Money going back.
@@ -480,17 +507,24 @@ final provisioningRepositoryProvider = Provider<ProvisioningRepository>((ref) {
       fingerprint: TerminalIdFingerprint(
         ref.watch(terminalProfileProvider).installationId,
       ).value,
-      // The bundle's licence embed installs through the same verified path a
-      // typed key uses — signature checked, tenant checked, stored on disk.
+      // The bundle's licence embed goes through the same verified path a typed
+      // key uses — signature checked, tenant checked — and is then HELD by the
+      // wizard rather than written, exactly like a typed one. A claim happens
+      // at step six of ten, and an installer can still walk away at any of the
+      // four that follow; `SetupController.complete()` is the only place a
+      // licence reaches this machine's disk.
       installLicence: (licence) async {
-        await ref
+        final installed = await ref
             .read(licenceServiceProvider)
             .activate(
               deployment: config,
               key: '',
               fileContents: jsonEncode(licence),
+              persist: false,
             );
-        ref.invalidate(licenceEntitlementProvider);
+        if (installed.file case final file?) {
+          ref.read(setupProvider.notifier).holdLicence(file);
+        }
       },
     );
   }
@@ -1280,6 +1314,33 @@ final shiftRepositoryProvider = Provider<ShiftRepository>((ref) {
 /// Null until somebody signs in. The till deliberately does not remember across
 /// a restart: whoever opens the drawer next has to say who they are, because the
 /// shift they open makes them answerable for what is in it.
+/// The person working this till, for everything that SHOWS or PRINTS a name.
+///
+/// Empty until somebody enters a PIN, and empty on purpose. The name used to
+/// come off `PosSession.userName`, which the branch server answers with the
+/// first active staff row for the branch — `ORDER BY st.id LIMIT 1` — rather
+/// than with whoever is standing at the till. On a shared terminal that put one
+/// cashier's name in the top bar all day and on the receipts every other
+/// cashier printed, which is worse than showing nothing: a blank is visibly
+/// missing, a plausible wrong name is not. (POS-BE-024.)
+final operatorNameProvider = Provider<String>(
+  (ref) => ref.watch(signedInStaffProvider)?.name ?? '',
+);
+
+/// The same person's initials, for the avatar. Empty when nobody has signed in,
+/// so the chip is absent rather than showing a "?" for a person who is not
+/// missing — nobody has arrived yet.
+final operatorInitialsProvider = Provider<String>((ref) {
+  final name = ref.watch(operatorNameProvider).trim();
+  if (name.isEmpty) return '';
+
+  final parts = name.split(RegExp(r'\s+'));
+  String first(String s) => s.isEmpty ? '' : s.substring(0, 1).toUpperCase();
+  return parts.length == 1
+      ? first(parts.first)
+      : '${first(parts.first)}${first(parts[1])}';
+});
+
 final signedInStaffProvider =
     NotifierProvider<SignedInStaffController, PosStaff?>(
       SignedInStaffController.new,
@@ -1388,7 +1449,16 @@ final licenseStoreProvider = Provider<LicenseStore>(
 class TerminalLocaleController extends Notifier<Locale> {
   @override
   Locale build() =>
-      Locale(ref.watch(terminalBootProvider).config?.languageCode ?? 'en');
+      Locale(ref.watch(terminalBootProvider).config?.languageCode ?? _default);
+
+  /// Arabic, because the restaurants this ships to are in Egypt.
+  ///
+  /// Only the fallback moves: a terminal that has been set up reads its own
+  /// `languageCode` and keeps whatever was chosen, so this is what a machine
+  /// with no configuration yet opens in — the wizard, and the first frame after
+  /// a reset. An installer who wants English is one item away in the Settings
+  /// bar, on every screen including that first one.
+  static const _default = 'ar';
 
   /// Switches the language NOW and writes it to the terminal's config file.
   ///
@@ -1419,8 +1489,16 @@ class TerminalLocaleController extends Notifier<Locale> {
       final saved = await store.read();
       if (saved == null || saved.languageCode == languageCode) return;
       await store.write(saved.copyWith(languageCode: languageCode));
-    } on Exception {
+    } on Object {
       // See above: the language on screen is already correct.
+      //
+      // `Object`, not `Exception`. The failures that actually reach here are
+      // mostly not exceptions: a platform with no binding, a missing plugin, a
+      // support directory the OS will not name all arrive as `Error`s, and an
+      // `on Exception` let them escape a future nobody awaits — an unhandled
+      // error thrown from a language switch that had already succeeded on
+      // screen. The bargain stated above is "silent on failure", and it has to
+      // hold for every kind of failure or it is not the bargain.
     }
   }
 }
@@ -1466,8 +1544,8 @@ class BrightnessController extends Notifier<Brightness?> {
       final saved = await store.read();
       if (saved == null || saved.brightness == brightness) return;
       await store.write(saved.copyWith(brightness: brightness));
-    } on Exception {
-      // See above.
+    } on Object {
+      // See above — including why this is `Object` and not `Exception`.
     }
   }
 }
@@ -1495,6 +1573,32 @@ final stringsProvider = Provider<AppStrings>(
 /// a machine that has never been set up gets: the wizard.
 final terminalBootProvider = Provider<TerminalBoot>((ref) => TerminalBoot.none);
 
+/// What this terminal believes is on disk **now**.
+///
+/// [terminalBootProvider] is the snapshot `main()` took before the first frame,
+/// and it is an override — nothing inside a running process can correct it. So
+/// a reset that deleted `config.json` left everything seeded from that snapshot
+/// still holding the configuration the operator had just cleared, until the
+/// next launch. The wizard is where that showed: reset a till, activate another
+/// restaurant's licence, and the tenant read off the DELETED config refused the
+/// new one as a mismatch — naming a restaurant no longer on the machine, and
+/// blaming a licence that was perfectly good.
+///
+/// The same value, made correctable. Read this; override [terminalBootProvider].
+class TerminalSeed extends Notifier<TerminalBoot> {
+  @override
+  TerminalBoot build() => ref.watch(terminalBootProvider);
+
+  /// Nothing on disk any more — called by [TerminalReset] once the file is
+  /// actually gone, so that whatever rebuilds from here rebuilds as the fresh
+  /// install this machine now is.
+  void clear() => state = TerminalBoot.none;
+}
+
+final terminalSeedProvider = NotifierProvider<TerminalSeed, TerminalBoot>(
+  TerminalSeed.new,
+);
+
 /// Where a finished setup is written. The one place that knows there is a file.
 final terminalConfigStoreProvider = Provider<TerminalConfigStore>(
   (ref) => FileTerminalConfigStore(),
@@ -1505,7 +1609,7 @@ final terminalConfigStoreProvider = Provider<TerminalConfigStore>(
 class DeploymentController extends Notifier<DeploymentConfig> {
   @override
   DeploymentConfig build() =>
-      ref.watch(terminalBootProvider).config?.deployment ??
+      ref.watch(terminalSeedProvider).config?.deployment ??
       DeploymentConfig.unconfigured;
 
   void apply(DeploymentConfig config) => state = config;
@@ -1526,7 +1630,7 @@ final deploymentProvider =
 /// finished, whatever the flag in the file says.
 class SetupCompletionController extends Notifier<bool> {
   @override
-  bool build() => ref.watch(terminalBootProvider).isConfigured;
+  bool build() => ref.watch(terminalSeedProvider).isConfigured;
 
   void markComplete() => state = true;
 
@@ -1560,6 +1664,12 @@ class TerminalReset {
     // operator just asked for.
     await _ref.read(terminalConfigStoreProvider).clear();
     await _ref.read(posDbCredentialsStoreProvider).forget();
+
+    // Then the snapshot the process booted from, which now describes a file
+    // that is gone. Without this the wizard reopens seeded from the terminal
+    // just cleared — and the tenant on that dead config refuses the next
+    // restaurant's licence as though the licence were the thing at fault.
+    _ref.read(terminalSeedProvider.notifier).clear();
 
     _ref.read(setupCompleteProvider.notifier).reset();
     _ref.read(deploymentProvider.notifier).reset();

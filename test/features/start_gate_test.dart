@@ -54,7 +54,7 @@ Future<({ProviderContainer container, List<String> events})> _boot(
           onStart: () => events.add('start'),
           onManageLicence: () => events.add('licence'),
           onReconfigure: () => events.add('reconfigure'),
-          onManage: () => events.add('manage'),
+          onManage: (_) => events.add('manage'),
         ),
       ),
     ),
@@ -73,6 +73,11 @@ Future<({ProviderContainer container, List<String> events})> _boot(
 /// tests are about the licence gate, so they push through the dialog rather
 /// than asserting on it.
 Future<void> _openShift(WidgetTester tester) async {
+  // A name as well as a PIN. Opening a shift makes somebody answerable for the
+  // drawer, and four digits get shared — so the till checks a claim rather than
+  // handing the drawer to whoever holds them.
+  await tester.enterText(find.byType(TextField), 'rana');
+  await tester.pump();
   for (final digit in ['1', '2', '3', '4']) {
     await tester.tap(find.text(digit));
     await tester.pumpAndSettle();

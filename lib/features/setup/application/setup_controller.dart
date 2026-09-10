@@ -14,6 +14,7 @@ import '../../../domain/models/permissions.dart';
 import '../../../data/postgres/pos_database.dart';
 import '../../licensing/data/licence_service.dart';
 import '../../licensing/domain/license.dart';
+import '../../licensing/domain/license_verifier.dart' show LicenseFile;
 import '../domain/setup_state.dart';
 
 const _uuid = Uuid();
@@ -58,10 +59,26 @@ class SetupController extends Notifier<SetupDraft> {
     // a restart mid-setup from asking for a licence this machine already holds.
     Future.microtask(_restoreInstalledLicence);
 
-    final saved = ref.watch(terminalBootProvider).config;
+    // The seed, not the boot snapshot: a reset deletes `config.json` mid-process
+    // and the wizard must reopen as a fresh install, not as the terminal that
+    // was just cleared. Seeding from the dead config is what made a till refuse
+    // the next restaurant's licence for belonging to the wrong tenant.
+    final saved = ref.watch(terminalSeedProvider).config;
     if (saved == null) {
+      final profile = ref.read(terminalProfileProvider);
+
       return SetupDraft(
-        installationId: ref.read(terminalProfileProvider).installationId,
+        // A reset keeps this machine's identity on purpose — the licence is
+        // pinned to it — and once the file is gone the profile is the only
+        // place still holding it. Minting a new one here would unpin the
+        // licence this till already has.
+        terminalId: profile.terminalId,
+        installationId: profile.installationId,
+        // Likewise the language: the screen is in Arabic because this terminal
+        // was set up in Arabic, and a wizard that quietly defaulted back to
+        // English would write English to disk at the end of a reconfiguration
+        // nobody asked to change the language of.
+        locale: ref.read(localeProvider).languageCode,
       );
     }
 
@@ -590,6 +607,15 @@ class SetupController extends Notifier<SetupDraft> {
     try {
       publishCredentials();
       await ref.read(posDbCredentialsStoreProvider).save();
+      // The licence, carried in memory since the first screen. It goes down
+      // BEFORE the config file, because the config file is what makes this
+      // machine a configured terminal at the next boot, and a configured
+      // terminal that cannot find its licence opens on "Not licensed" with no
+      // way to explain itself. Null when the licence was restored from disk
+      // rather than activated — see [SetupDraft.licenceFile].
+      if (state.licenceFile case final licence?) {
+        await ref.read(licenceServiceProvider).store(licence);
+      }
       await ref
           .read(terminalConfigStoreProvider)
           .write(
@@ -608,6 +634,9 @@ class SetupController extends Notifier<SetupDraft> {
 
     ref.read(localeProvider.notifier).apply(state.locale);
     ref.read(deploymentProvider.notifier).apply(state.deployment);
+    // The licence reached disk a moment ago, and the start screen this hands
+    // over to reads the INSTALLED one rather than the draft's copy.
+    ref.invalidate(licenceEntitlementProvider);
     // In memory as well as on disk. Setup finishes without a restart, so a till
     // that only wrote the file would take its first sale with no printer — the
     // provider reads the boot config, and the boot config is last night's.
@@ -729,17 +758,29 @@ class SetupController extends Notifier<SetupDraft> {
     ref.read(posDbCredentialsStoreProvider).set(state.databasePassword);
     final failure = await ref.read(posDatabaseProvider).probe(config);
 
+    // A database that does not exist yet is not a failure of THIS step. It is
+    // the ordinary state of a first install, and the very next step is what
+    // creates it — the message says exactly that, and said it in red, which
+    // taught the installer something was wrong at the moment nothing was. The
+    // only two outcomes that belong in red here are the ones that stop the
+    // wizard: an address that cannot be reached, or a login that is refused.
+    final expected = failure == PosDbFailure.missingDatabase;
+    final s = ref.read(stringsProvider);
+
     // Success used to be SILENT — the error bar cleared and nothing took its
     // place, so the only difference between "it worked" and "the button does
     // nothing" was the absence of red. A test whose good outcome is invisible
     // is a test nobody trusts.
     state = state.copyWith(
       busy: false,
-      error: _describe(failure, config),
-      notice: failure == null
-          ? ref.read(stringsProvider).connectionOk(config.databaseName)
-          : null,
-      clearNotice: failure != null,
+      error: expected ? null : _describe(failure, config),
+      clearError: expected || failure == null,
+      notice: switch (failure) {
+        null => s.connectionOk(config.databaseName),
+        _ when expected => s.missingDatabase(config.databaseName),
+        _ => null,
+      },
+      clearNotice: failure != null && !expected,
     );
     return failure == null;
   }
@@ -818,11 +859,21 @@ class SetupController extends Notifier<SetupDraft> {
               : state.deployment.copyWith(clearTenantSlug: true),
           key: state.licenceKey,
           fileContents: fileContents,
+          // Held, not installed. This is step one of ten, and a licence written
+          // here survives a wizard abandoned on any of the nine that follow —
+          // an owner trying a key to see what it covers, an installer who never
+          // gets past the database password. `complete()` writes it, once this
+          // terminal is a terminal.
+          persist: false,
         );
 
     final claims = result.claims;
     final adopted = claims == null ? state.deployment : _adopt(claims);
-    final entitlement = await _judgeOnCoveredMode(result.entitlement, adopted);
+    final entitlement = await _judgeOnCoveredMode(
+      result.entitlement,
+      adopted,
+      file: result.file,
+    );
 
     // `result.notice` speaks for the first verdict, and it is the only thing
     // that speaks at all when there was no verdict to give — an unrecognised
@@ -847,13 +898,15 @@ class SetupController extends Notifier<SetupDraft> {
       busy: false,
       entitlement: entitlement,
       claims: claims,
+      // Carried until `complete()`. A licence that refuses trade is carried
+      // too: setup may well be finished on one inside its grace window, and the
+      // terminal must end up holding the file its status screen describes.
+      licenceFile: result.file,
       deployment: claims == null ? null : adopted,
       error: notice?.text(ref.read(stringsProvider)),
       notice: modeChanged,
       clearNotice: modeChanged == null,
     );
-    // Anything reading the installed licence must see the new one immediately.
-    ref.invalidate(licenceEntitlementProvider);
   }
 
   /// Re-judge a licence against the mode it actually puts this terminal in.
@@ -874,18 +927,20 @@ class SetupController extends Notifier<SetupDraft> {
   /// itself, not of a question the wizard had not asked yet.
   Future<LicenseEntitlement?> _judgeOnCoveredMode(
     LicenseEntitlement? verdict,
-    DeploymentConfig adopted,
-  ) async {
+    DeploymentConfig adopted, {
+    LicenseFile? file,
+  }) async {
     if (verdict?.state != LicenseState.modeNotLicensed) return verdict;
 
     final service = ref.read(licenceServiceProvider);
-    // Sound because activation persists a licence even when it refuses trade —
-    // "the operator needs the status screen to show what they actually
-    // installed" — so the file backing this verdict is on disk either way.
-    final file = await service.installed();
-    if (file == null) return verdict;
+    // The file this verdict was given on. Activation hands it over directly,
+    // because the wizard no longer writes it at step one and there is nothing
+    // on disk to go back for; the restore path passes none, and is reading the
+    // installed one by definition.
+    final backing = file ?? await service.installed();
+    if (backing == null) return verdict;
 
-    return service.evaluate(file, adopted);
+    return service.evaluate(backing, adopted);
   }
 
   /// Fold what the licence knows into the deployment config.
@@ -932,6 +987,16 @@ class SetupController extends Notifier<SetupDraft> {
 
     return s.licenceModeChanged(chosen.label(s), landed.label(s));
   }
+
+  /// Hold a licence that arrived from somewhere other than the licence step.
+  ///
+  /// The bootstrap bundle a cloud claim carries has one embedded, so a cloud
+  /// terminal is licensed without anyone typing a key. It is held rather than
+  /// installed for the reason every other licence here is — the claim happens
+  /// at step six of ten — and it supersedes whatever the operator activated,
+  /// because it is the platform's own current copy for this terminal.
+  void holdLicence(LicenseFile file) =>
+      state = state.copyWith(licenceFile: file);
 
   /// Verify the slug + admin credentials and pull the tenant's configuration
   /// (the owner's phase-1 cloud flow). Everything the following steps show —

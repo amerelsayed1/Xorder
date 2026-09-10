@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:xorder_pos/app/providers.dart';
 import 'package:xorder_pos/core/ui/theme.dart';
+import 'package:xorder_pos/app/router.dart';
 import 'package:xorder_pos/features/lock/lock_screen.dart';
 
 import '../support/fakes.dart';
@@ -42,6 +44,11 @@ void main() {
     return container;
   }
 
+  Future<void> typeUsername(WidgetTester tester, String username) async {
+    await tester.enterText(find.byType(TextField), username);
+    await tester.pump();
+  }
+
   Future<void> typePin(WidgetTester tester, String pin) async {
     for (final digit in pin.split('')) {
       await tester.tap(find.text(digit).last);
@@ -66,6 +73,7 @@ void main() {
     var unlocked = false;
     final container = await pumpLock(tester, onUnlocked: () => unlocked = true);
 
+    await typeUsername(tester, 'rana');
     await typePin(tester, '1234');
 
     expect(unlocked, isTrue);
@@ -83,11 +91,40 @@ void main() {
     var unlocked = false;
     final container = await pumpLock(tester, onUnlocked: () => unlocked = true);
 
+    await typeUsername(tester, 'rana');
     await typePin(tester, '9999');
 
     expect(unlocked, isFalse);
     expect(container.read(signedInStaffProvider), isNull);
     expect(container.read(operatorNameProvider), isEmpty);
+  });
+
+  testWidgets('the right PIN under the wrong name gets nowhere', (
+    tester,
+  ) async {
+    var unlocked = false;
+    final container = await pumpLock(tester, onUnlocked: () => unlocked = true);
+
+    // Four digits get shared, watched over a shoulder and reused. Taking over a
+    // drawer is a claim the till checks, not an identity it guesses.
+    await typeUsername(tester, 'omar');
+    await typePin(tester, '1234');
+
+    expect(unlocked, isFalse);
+    expect(container.read(signedInStaffProvider), isNull);
+    // And it does not say WHICH half was wrong, or this screen becomes a way of
+    // finding out which usernames exist.
+    expect(find.text('Wrong username or PIN — try again'), findsOneWidget);
+  });
+
+  testWidgets('a PIN with no name at all is refused', (tester) async {
+    var unlocked = false;
+    final container = await pumpLock(tester, onUnlocked: () => unlocked = true);
+
+    await typePin(tester, '1234');
+
+    expect(unlocked, isFalse);
+    expect(container.read(signedInStaffProvider), isNull);
   });
 
   testWidgets('the screen names nobody before a PIN is typed', (tester) async {
@@ -98,5 +135,96 @@ void main() {
     // somebody else's name.
     expect(find.text('Enter your PIN'), findsOneWidget);
     expect(find.textContaining('·'), findsNothing);
+  });
+
+  group('an unattended till is sent to sign in', () {
+    // The state a restart leaves: the shift is a row in PostgreSQL and the
+    // drawer never closed, but the PIN was never remembered. Resuming went
+    // straight to the till, so sales carried no cashier and the cash-up refused
+    // with a message whose door did not exist.
+    test('selling with a shift open and nobody signed in', () {
+      for (final at in [PosRoutes.sale, PosRoutes.floor]) {
+        expect(
+          needsSignIn(at: at, signedIn: false, shiftOpen: true),
+          isTrue,
+          reason: at,
+        );
+      }
+    });
+
+    test('somebody signed in is left alone', () {
+      expect(
+        needsSignIn(at: PosRoutes.sale, signedIn: true, shiftOpen: true),
+        isFalse,
+      );
+    });
+
+    test('and so is the ordinary morning', () {
+      // Nobody is signed in before trading either. Opening the shift is what
+      // asks who is there — being sent to a PIN pad to reach a start screen
+      // that will ask for one anyway is a door for the sake of a door.
+      expect(
+        needsSignIn(at: PosRoutes.start, signedIn: false, shiftOpen: false),
+        isFalse,
+      );
+      expect(
+        needsSignIn(at: PosRoutes.sale, signedIn: false, shiftOpen: false),
+        isFalse,
+      );
+    });
+  });
+
+  testWidgets('the PIN can be typed, not only tapped', (tester) async {
+    var unlocked = false;
+    final container = await pumpLock(tester, onUnlocked: () => unlocked = true);
+
+    await typeUsername(tester, 'rana');
+    // Enter leaves the name and hands the keyboard to the pad — the keys on
+    // screen are for the touch screen this ships on, and a manager at a desk
+    // reaches for the keyboard.
+    await tester.testTextInput.receiveAction(TextInputAction.next);
+    await tester.pumpAndSettle();
+
+    for (final digit in [
+      LogicalKeyboardKey.digit1,
+      LogicalKeyboardKey.digit2,
+      LogicalKeyboardKey.digit3,
+      LogicalKeyboardKey.digit4,
+    ]) {
+      await tester.sendKeyEvent(digit);
+      await tester.pump();
+    }
+    await tester.pumpAndSettle();
+
+    expect(unlocked, isTrue);
+    expect(container.read(operatorNameProvider), 'Rana A.');
+  });
+
+  testWidgets('and backspace takes a typed digit back', (tester) async {
+    var unlocked = false;
+    await pumpLock(tester, onUnlocked: () => unlocked = true);
+
+    await typeUsername(tester, 'rana');
+    await tester.testTextInput.receiveAction(TextInputAction.next);
+    await tester.pumpAndSettle();
+
+    for (final key in [
+      LogicalKeyboardKey.digit1,
+      LogicalKeyboardKey.digit9,
+      LogicalKeyboardKey.backspace,
+      LogicalKeyboardKey.digit2,
+      LogicalKeyboardKey.digit3,
+    ]) {
+      await tester.sendKeyEvent(key);
+      await tester.pump();
+    }
+    await tester.pumpAndSettle();
+
+    // 1-9-⌫-2-3 is three digits, not five: nothing has been submitted yet.
+    expect(unlocked, isFalse);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.digit4);
+    await tester.pumpAndSettle();
+    expect(unlocked, isTrue, reason: '1234 once the 9 is taken back');
   });
 }

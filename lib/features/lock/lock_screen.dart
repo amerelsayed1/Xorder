@@ -23,8 +23,15 @@ class LockScreen extends ConsumerStatefulWidget {
 }
 
 class _LockScreenState extends ConsumerState<LockScreen> {
+  final _username = TextEditingController();
   String _pin = '';
   bool _error = false;
+
+  @override
+  void dispose() {
+    _username.dispose();
+    super.dispose();
+  }
 
   Future<void> _push(String digit) async {
     if (_pin.length >= PinRules.length) return;
@@ -34,10 +41,24 @@ class _LockScreenState extends ConsumerState<LockScreen> {
     });
 
     if (_pin.length == PinRules.length) {
-      final ok = await ref.read(sessionRepositoryProvider).verifyPin(_pin);
+      // Name AND PIN. A PIN alone is four digits that get shared, watched over
+      // a shoulder and reused, and `signIn` hands the till to whichever active
+      // member of staff happens to hold them — fine for approving a discount
+      // somebody is standing over, not for taking over the drawer. Saying the
+      // name first makes this check a claim instead of guessing an identity.
+      //
+      // `signIn`, not `verifyPin`: this screen is the handover. A till is
+      // shared, and the person coming back to it is often not the one who
+      // locked it — `verifyPin` only ever answered "does somebody who works
+      // here know a PIN", so whoever unlocked went on selling under the name
+      // and the capabilities of whoever had been standing there before.
+      final staff = await ref
+          .read(sessionRepositoryProvider)
+          .signInAs(username: _username.text, pin: _pin);
       if (!mounted) return;
 
-      if (ok) {
+      if (staff != null) {
+        ref.read(signedInStaffProvider.notifier).signIn(staff);
         widget.onUnlocked();
       } else {
         setState(() {
@@ -55,7 +76,6 @@ class _LockScreenState extends ConsumerState<LockScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final name = ref.watch(sessionProvider).valueOrNull?.userName ?? '';
     final strings = context.strings;
 
     return Scaffold(
@@ -85,7 +105,11 @@ class _LockScreenState extends ConsumerState<LockScreen> {
                 ),
               ),
               Text(
-                _error ? strings.wrongPin : strings.enterPinFor(name),
+                // Nobody is named here any more: this screen does not know who
+                // is coming back to the till, and naming the last person to
+                // stand at it invited the next one to type their own PIN under
+                // somebody else's name.
+                _error ? strings.wrongUsernameOrPin : strings.enterYourPin,
                 textAlign: TextAlign.center,
                 style: PosText.ui(
                   size: 20,
@@ -96,9 +120,23 @@ class _LockScreenState extends ConsumerState<LockScreen> {
                 ),
               ),
               const SizedBox(height: PosSpace.s24),
+              // Above the keypad, and focused first: the name is the claim and
+              // the PIN is what backs it up, so they are asked in that order.
+              UsernameField(
+                controller: _username,
+                onSubmitted: () => FocusScope.of(context).nextFocus(),
+              ),
+              const SizedBox(height: PosSpace.s24),
               PinDots(length: _pin.length),
               const SizedBox(height: PosSpace.s24),
-              PinPad(onDigit: _push, onBackspace: _backspace),
+              // Not autofocused: the username field above is asked for first,
+              // and a pad that grabbed the keyboard would swallow every letter
+              // typed into it. Enter moves along, and so does a tap on a key.
+              PinPad(
+                onDigit: _push,
+                onBackspace: _backspace,
+                autofocus: false,
+              ),
             ],
           ),
         ),

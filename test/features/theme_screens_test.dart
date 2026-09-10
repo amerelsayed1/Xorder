@@ -56,7 +56,7 @@ Future<Set<Color>> _paint(WidgetTester tester, Brightness brightness) async {
             onStart: () {},
             onManageLicence: () {},
             onReconfigure: () {},
-            onManage: () {},
+            onManage: (_) {},
           ),
         ),
       ),

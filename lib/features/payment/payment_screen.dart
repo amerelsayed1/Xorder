@@ -186,7 +186,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
           style: PosText.ui(
             size: 15,
             weight: FontWeight.w800,
-            color: Colors.white,
+            color: context.pos.onInk,
           ),
         ),
         const Spacer(),
@@ -352,7 +352,9 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
       Container(
         decoration: BoxDecoration(
           color: context.pos.surface,
-          border: Border(left: context.pos.emphasis),
+          // Directional, so the rule stays between the two panels rather than
+          // running down the outside edge of the window in Arabic.
+          border: BorderDirectional(start: context.pos.emphasis),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -365,7 +367,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
               height: 72,
               alignLeft: true,
               background: context.pos.ok,
-              foreground: Colors.white,
+              foreground: context.pos.onOk,
               fontSize: 16,
               fontWeight: FontWeight.w800,
               padding: const EdgeInsets.symmetric(horizontal: PosSpace.lg),
@@ -374,7 +376,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                 style: PosText.mono(
                   size: 16,
                   weight: FontWeight.w600,
-                  color: Colors.white,
+                  color: context.pos.onOk,
                 ),
               ),
               onPressed: () => _take(ticket),
@@ -401,14 +403,18 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: PosSpace.s14),
                 child: Align(
-                  alignment: Alignment.centerLeft,
+                  // Directional: this label sits at the START of its tile, which
+                  // is the right-hand edge in Arabic. `centerLeft` pinned it to
+                  // the far side, so every method read as though it belonged to
+                  // the tile beside it.
+                  alignment: AlignmentDirectional.centerStart,
                   child: Text(
                     method.label(strings),
                     style: PosText.ui(
                       size: 13.5,
                       weight: FontWeight.w600,
                       color: method.id == _methodId
-                          ? Colors.white
+                          ? context.pos.onInk
                           : context.pos.inkWarm,
                     ),
                   ),

@@ -3,6 +3,7 @@ import '../../../core/config/printer_config.dart';
 import '../../../domain/repositories/repositories.dart'
     show PosBranch, PosTerminalSummary;
 import '../../licensing/domain/license.dart';
+import '../../licensing/domain/license_verifier.dart' show LicenseFile;
 import '../../../core/security/pin_hash.dart';
 
 /// How this terminal is being set up (POS-BE-023).
@@ -73,10 +74,11 @@ class SetupDraft {
   const SetupDraft({
     // The wizard opens on the licence — see [SetupStep].
     this.step = SetupStep.licence,
-    this.locale = 'en',
+    this.locale = 'ar',
     this.deployment = DeploymentConfig.unconfigured,
     this.entitlement,
     this.claims,
+    this.licenceFile,
     this.licenceKey = '',
     // Credentials are the phase-1 default: the owner's notes define cloud
     // setup as slug + admin credentials pulling the tenant's configuration.
@@ -122,9 +124,22 @@ class SetupDraft {
   /// Null until the licence step has run.
   final LicenseEntitlement? entitlement;
 
-  /// The claims of the licence just installed. Null until the licence step has
+  /// The claims of the licence just activated. Null until the licence step has
   /// run, which is why that step now comes first — see [SetupStep].
   final LicenseClaims? claims;
+
+  /// The licence itself, held here until the terminal is finished.
+  ///
+  /// Activating no longer writes it: the licence step is the FIRST of ten, and
+  /// a file written there outlives every abandoned wizard — an owner trying a
+  /// key to see what it covers, an installer stopped at the database password.
+  /// The machine was left holding a licence for a restaurant it had never been
+  /// set up for. `complete()` is what puts this on disk.
+  ///
+  /// Null also when the licence was RESTORED rather than activated: that one is
+  /// already on disk, and rewriting a working licence file buys nothing and
+  /// risks a disk error.
+  final LicenseFile? licenceFile;
   final String licenceKey;
 
   /// The deployments this licence covers.
@@ -179,6 +194,21 @@ class SetupDraft {
   /// adoptable came back.
   final int? adoptTerminalId;
 
+  /// Whether the licence leaves a mode question worth asking.
+  ///
+  /// A tenant is sold cloud, offline, or both, and the `modes` claim carries
+  /// that to the till. When it names ONE, the setup-type screen has a single
+  /// choosable option — already chosen, because adopting the licence moves the
+  /// draft onto a covered mode the moment it is read — sitting beside one
+  /// greyed NOT LICENSED. That is not a question. It is a screen the installer
+  /// presses Continue on to be told what the restaurant was already sold, on a
+  /// wizard that is ten screens long before it adds any.
+  ///
+  /// Null claims mean no licence has been read yet, which is the licence step
+  /// itself: both modes are notionally open, so the step stays visible until
+  /// the licence says otherwise.
+  bool get asksSetupType => licensedModes.length > 1;
+
   /// The wizard's steps for the path being walked.
   ///
   /// Every step is walked, including the licence. This used to hide the licence
@@ -190,7 +220,19 @@ class SetupDraft {
   /// no longer does is excuse this terminal from holding one before it picks
   /// how to run. The Super Admin issues the key with the tenant, so an
   /// installer on either path arrives with one in hand.
-  List<SetupStep> get visibleSteps => SetupStep.values;
+  ///
+  /// [SetupStep.setupType] is the one step that can drop out, and only because
+  /// the licence has answered it — see [asksSetupType].
+  List<SetupStep> get visibleSteps => [
+    for (final candidate in SetupStep.values)
+      if (candidate != SetupStep.setupType ||
+          asksSetupType ||
+          // A step being stood on is always listed, whatever the rule says: the
+          // rail has to describe where the operator actually is, and `next()`
+          // and `back()` count positions in this list.
+          candidate == step)
+        candidate,
+  ];
 
   bool get isFirstStep => visibleSteps.first == step;
   bool get isLastStep => visibleSteps.last == step;
@@ -337,6 +379,7 @@ class SetupDraft {
     DeploymentConfig? deployment,
     LicenseEntitlement? entitlement,
     LicenseClaims? claims,
+    LicenseFile? licenceFile,
     String? licenceKey,
     SetupMethod? method,
     String? pairingCode,
@@ -384,6 +427,7 @@ class SetupDraft {
     deployment: deployment ?? this.deployment,
     entitlement: entitlement ?? this.entitlement,
     claims: claims ?? this.claims,
+    licenceFile: licenceFile ?? this.licenceFile,
     licenceKey: licenceKey ?? this.licenceKey,
     method: method ?? this.method,
     pairingCode: pairingCode ?? this.pairingCode,

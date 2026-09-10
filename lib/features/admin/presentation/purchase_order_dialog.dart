@@ -217,7 +217,7 @@ class _PurchaseOrderDialogState extends State<PurchaseOrderDialog> {
                     key: const Key('purchase-save'),
                     label: strings.save,
                     background: palette.ink,
-                    foreground: Colors.white,
+                    foreground: palette.onInk,
                     padding: const EdgeInsets.symmetric(
                       horizontal: PosSpace.xl,
                     ),

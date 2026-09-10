@@ -16,6 +16,7 @@ library;
 import 'package:collection/collection.dart';
 
 import '../../core/money/money.dart';
+import '../services/payment_status.dart';
 import 'ticket.dart' show OrderType;
 
 /// Where an order stands.
@@ -202,7 +203,21 @@ class OrderRecord {
     this.voidReasonAr,
     this.voidNote,
     this.refundedTotal = Money.zero,
+    this.paidTotal = Money.zero,
+    this._paymentStatus,
+    this.businessDate,
+    this.terminalId,
+    this.terminalName,
   });
+
+  /// The day `served_by` became trustworthy.
+  ///
+  /// Before the username sign-in fix, a PIN shared by two people signed in as
+  /// whichever of them had the lowest staff id, and every sale they rang up
+  /// was credited to that one person. Those rows cannot be repaired — nobody
+  /// knows who was really at the till — so the screens say so rather than
+  /// presenting a per-cashier figure that is wrong in a way that looks right.
+  static final servedByReliableFrom = DateTime(2026, 9, 10);
 
   final int id;
   final String clientTransactionId;
@@ -234,8 +249,37 @@ class OrderRecord {
   final String? voidReasonAr;
   final String? voidNote;
 
-  /// What has already gone back. Zero until Wave A's refunds land.
+  /// What has already gone back — the sum of this sale's `pos_refunds` rows.
   final Money refundedTotal;
+
+  /// What was taken — the sum of this sale's `pos_order_payments` rows, which
+  /// record the amount applied, never the amount tendered.
+  final Money paidTotal;
+
+  final PaymentStatus? _paymentStatus;
+
+  /// Where the money stands, beside [status] which says where the order does.
+  ///
+  /// The database's answer when this record was read from it; the same rule
+  /// applied to [paidTotal] and [refundedTotal] otherwise. Both routes are one
+  /// rule — see `payment_status.dart` — so a record built by hand cannot show a
+  /// status the ledger would not.
+  PaymentStatus get paymentStatus =>
+      _paymentStatus ??
+      paymentStatusFromSums(
+        totalMinor: total.minor,
+        paidMinor: paidTotal.minor,
+        refundedMinor: refundedTotal.minor,
+      );
+
+  /// The trading day this sale belongs to — midnight, local. Null when no
+  /// business day covers it, and the list then files it by its calendar date.
+  final DateTime? businessDate;
+
+  /// The till that rang it up, and what that till is called. The name is null
+  /// for a terminal whose row is gone; the sale still appears.
+  final String? terminalId;
+  final String? terminalName;
 
   /// What is still with the restaurant.
   Money get netTotal => Money(
@@ -255,12 +299,16 @@ class OrderRecordDetail {
     required this.lines,
     required this.payments,
     required this.discounts,
+    this.events = const [],
   });
 
   final OrderRecord order;
   final List<OrderRecordLine> lines;
   final List<OrderRecordPayment> payments;
   final List<OrderRecordDiscount> discounts;
+
+  /// What happened to this sale after it was rung up, oldest first.
+  final List<SaleEvent> events;
 
   /// Lines that were actually charged for.
   Iterable<OrderRecordLine> get chargedLines =>
@@ -270,6 +318,76 @@ class OrderRecordDetail {
   bool get hasRefundableLines =>
       order.status.tookMoney &&
       lines.any((line) => line.refundableQuantity > 0);
+}
+
+/// What kind of thing happened to a sale.
+///
+/// An enum rather than the wire strings of the tables it is read from, so the
+/// label switch is exhaustive and a new kind cannot fall through to a blank
+/// row. [audit] is the one open-ended member: an audit row this build has no
+/// kind for is still shown, under the Activity pane's own label for it.
+enum SaleEventKind {
+  /// The receipt came out of the printer.
+  printed,
+
+  /// The receipt is queued and has not printed yet. Not a failure — the queue
+  /// retries — but a customer holding no receipt is the question it answers.
+  printPending,
+
+  /// A copy came out of the printer.
+  reprinted,
+
+  /// A copy is queued and has not printed yet.
+  reprintPending,
+
+  /// Somebody asked for a copy. Separate from [reprinted] because the person
+  /// is on the audit row and the paper is on the print job — a copy asked for
+  /// and never printed is exactly the pair that shows it.
+  reprintRequested,
+
+  voided,
+  refunded,
+
+  /// Any other audit row against this order — an approval lent, for one.
+  audit,
+}
+
+/// One line in a sale's activity.
+///
+/// Assembled from four tables — print jobs, audit rows, the order's own void
+/// columns and its refunds — because none of them alone is the history. Each
+/// keeps its own table's truth: the print queue knows whether paper came out,
+/// the audit log knows who asked.
+class SaleEvent {
+  const SaleEvent({
+    required this.kind,
+    required this.at,
+    this.actorName,
+    this.approvedByName,
+    this.auditAction,
+    this.amount,
+  });
+
+  final SaleEventKind kind;
+  final DateTime at;
+  final String? actorName;
+  final String? approvedByName;
+
+  /// The audit row's action, for [SaleEventKind.audit] only.
+  final String? auditAction;
+
+  /// Set for a refund: how much went back.
+  final Money? amount;
+}
+
+/// A till that has sold at this branch, for the terminal filter.
+class HistoryTerminal {
+  const HistoryTerminal({required this.id, this.name});
+
+  /// `pos_terminals.id`, as text — the column is a uuid and nothing here does
+  /// arithmetic on it.
+  final String id;
+  final String? name;
 }
 
 /// Which slice of history to read.
@@ -285,15 +403,24 @@ class OrderHistoryQuery {
     this.statuses = const {},
     this.orderTypes = const {},
     this.servedByStaffId,
+    this.tenderTypeId,
+    this.terminalId,
     this.search,
     this.limit = 200,
   });
 
-  /// Inclusive lower bound on `occurred_at`. Null means "as far back as there
-  /// is".
+  /// Inclusive lower bound, as a **business date** — local midnight of the
+  /// trading day. Null means "as far back as there is".
+  ///
+  /// A sale belongs to the business day that was open when it was rung up, not
+  /// to the calendar date on its timestamp: a restaurant trading until 2 a.m.
+  /// sees one night as one date (plan 17 §0 rule 5). A sale no business day
+  /// covers — a branch that never opens one — is filed by its local calendar
+  /// date instead, which is what this filter meant before and is still the
+  /// honest answer when there is no trading day to ask.
   final DateTime? from;
 
-  /// Exclusive upper bound.
+  /// Exclusive upper bound, the same kind of date as [from].
   final DateTime? to;
 
   /// Empty means every status.
@@ -303,6 +430,14 @@ class OrderHistoryQuery {
   final Set<OrderType> orderTypes;
 
   final int? servedByStaffId;
+
+  /// Sales with at least one payment in this tender. A split bill matches
+  /// every method it was paid in — "show me the card sales" includes the one
+  /// that was half card.
+  final int? tenderTypeId;
+
+  /// `pos_terminals.id` as text.
+  final String? terminalId;
 
   /// Matches an invoice number or a table label. Cashiers type the last few
   /// digits off a receipt, so this matches anywhere in the number rather than
@@ -318,6 +453,8 @@ class OrderHistoryQuery {
       statuses.isNotEmpty ||
       orderTypes.isNotEmpty ||
       servedByStaffId != null ||
+      tenderTypeId != null ||
+      terminalId != null ||
       (search != null && search!.trim().isNotEmpty);
 
   OrderHistoryQuery copyWith({
@@ -329,6 +466,10 @@ class OrderHistoryQuery {
     Set<OrderType>? orderTypes,
     int? servedByStaffId,
     bool clearServedBy = false,
+    int? tenderTypeId,
+    bool clearTenderType = false,
+    String? terminalId,
+    bool clearTerminal = false,
     String? search,
     int? limit,
   }) => OrderHistoryQuery(
@@ -339,6 +480,8 @@ class OrderHistoryQuery {
     servedByStaffId: clearServedBy
         ? null
         : (servedByStaffId ?? this.servedByStaffId),
+    tenderTypeId: clearTenderType ? null : (tenderTypeId ?? this.tenderTypeId),
+    terminalId: clearTerminal ? null : (terminalId ?? this.terminalId),
     search: search ?? this.search,
     limit: limit ?? this.limit,
   );
@@ -360,6 +503,8 @@ class OrderHistoryQuery {
       other.from == from &&
       other.to == to &&
       other.servedByStaffId == servedByStaffId &&
+      other.tenderTypeId == tenderTypeId &&
+      other.terminalId == terminalId &&
       other.search == search &&
       other.limit == limit &&
       const SetEquality<OrderStatus>().equals(other.statuses, statuses) &&
@@ -370,21 +515,21 @@ class OrderHistoryQuery {
     from,
     to,
     servedByStaffId,
+    tenderTypeId,
+    terminalId,
     search,
     limit,
     const SetEquality<OrderStatus>().hash(statuses),
     const SetEquality<OrderType>().hash(orderTypes),
   );
 
-  /// Midnight-to-midnight in the terminal's own time zone.
+  /// Today's calendar date, from midnight to midnight in the terminal's own
+  /// time zone.
   ///
   /// Local, not UTC: "today" at a till in Cairo means the day the people
-  /// standing at it are having. A UTC day would roll over at 2 a.m. local and
-  /// split a late shift's takings across two lists.
-  ///
-  /// It is **not** the business day (§92) — that arrives with Wave B, and once
-  /// it does this becomes the fallback for a branch that has not configured
-  /// one.
+  /// standing at it are having. The history screen anchors on the open
+  /// business day instead when there is one; this is the answer for a caller
+  /// that has no business day to hand.
   static OrderHistoryQuery today({DateTime? now}) {
     final at = now ?? DateTime.now();
     final start = DateTime(at.year, at.month, at.day);

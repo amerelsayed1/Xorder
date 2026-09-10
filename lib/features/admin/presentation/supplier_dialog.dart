@@ -219,7 +219,7 @@ class _SupplierDialogState extends State<SupplierDialog> {
                       key: const Key('supplier-save'),
                       label: strings.save,
                       background: palette.ink,
-                      foreground: Colors.white,
+                      foreground: palette.onInk,
                       onPressed: _save,
                     ),
                   ),

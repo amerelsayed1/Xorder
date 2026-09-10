@@ -244,7 +244,7 @@ class _ManagementTaxesPaneState extends ConsumerState<ManagementTaxesPane> {
                 key: const Key('rates-save'),
                 label: strings.saveRates,
                 background: context.pos.ink,
-                foreground: Colors.white,
+                foreground: context.pos.onInk,
                 padding: const EdgeInsets.symmetric(horizontal: PosSpace.xl),
                 onPressed: _busy ? null : _save,
               ),

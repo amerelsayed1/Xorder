@@ -6,6 +6,7 @@ import 'package:xorder_pos/core/config/deployment.dart';
 import 'package:xorder_pos/core/config/platform_endpoint.dart';
 import 'package:xorder_pos/core/ui/theme.dart';
 import 'package:xorder_pos/data/fakes/fake_repositories.dart';
+import 'package:xorder_pos/data/postgres/pos_database.dart';
 import 'package:xorder_pos/features/licensing/domain/license.dart';
 import 'package:xorder_pos/features/setup/application/setup_controller.dart';
 import 'package:xorder_pos/features/setup/domain/setup_state.dart';
@@ -96,6 +97,58 @@ void main() {
       // a field they had simply not filled in yet.
       expect(error, isNot(contains('null')));
       expect(error, contains('platform address'));
+    });
+
+    /// A database that does not exist yet is the ordinary state of a first
+    /// install — the NEXT step is what creates it, and the message says so.
+    /// Painting it red anyway told the installer something was wrong at the one
+    /// moment nothing was, on a screen whose own words are "continue".
+    test('a database that is not there yet is a notice, not a refusal', () async {
+      final container = ProviderContainer(
+        overrides: [
+          ...fakeRepositoryOverrides(),
+          posDatabaseProvider.overrideWithValue(
+            _ProbesAs(PosDbFailure.missingDatabase),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final controller = container.read(setupProvider.notifier);
+      controller.setMode(DeploymentMode.offline);
+      controller.setDatabaseName('kashri_altahrir');
+      controller.setDatabasePassword('s3cret');
+
+      // Still false: the database did not answer, and a caller asking whether
+      // it did must not be told otherwise.
+      expect(await controller.testConnection(), isFalse);
+
+      final draft = container.read(setupProvider);
+      expect(draft.error, isNull, reason: draft.error ?? '');
+      expect(draft.notice, contains('kashri_altahrir'));
+      // And the step is not gated on the probe, so the operator can do what the
+      // message tells them to.
+      expect(draft.copyWith(step: SetupStep.deployment).canAdvance, isTrue);
+    });
+
+    test('a login that is refused is still a refusal', () async {
+      final container = ProviderContainer(
+        overrides: [
+          ...fakeRepositoryOverrides(),
+          posDatabaseProvider.overrideWithValue(_ProbesAs(PosDbFailure.auth)),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final controller = container.read(setupProvider.notifier);
+      controller.setMode(DeploymentMode.offline);
+      controller.setDatabasePassword('wrong');
+
+      expect(await controller.testConnection(), isFalse);
+
+      final draft = container.read(setupProvider);
+      expect(draft.error, isNotNull);
+      expect(draft.notice, isNull);
     });
   });
 
@@ -1209,4 +1262,16 @@ void main() {
       expect(find.text('No menu on this terminal'), findsNothing);
     });
   });
+}
+
+/// A database that always answers with [failure] — or with success when it is
+/// null. Subclassed rather than mocked: `probe` is the only thing under test
+/// here, and everything else on `PosDatabase` needs a live server.
+class _ProbesAs extends PosDatabase {
+  _ProbesAs(this.failure) : super(credentials: MutablePosDbCredentials());
+
+  final PosDbFailure? failure;
+
+  @override
+  Future<PosDbFailure?> probe(DeploymentConfig config) async => failure;
 }

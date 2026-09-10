@@ -108,7 +108,7 @@ class _ReceiptDialogState extends ConsumerState<ReceiptDialog> {
                         const ReceiptProfile(branchId: 0),
                     tenantName: session?.tenantName ?? '',
                     terminalCode: session?.terminalCode ?? '',
-                    cashierName: session?.userName ?? '',
+                    cashierName: ref.watch(operatorNameProvider),
                   ),
                 ),
               ),
@@ -166,7 +166,7 @@ class _ReceiptDialogState extends ConsumerState<ReceiptDialog> {
           const ReceiptProfile(branchId: 0),
       tenantName: session?.tenantName ?? '',
       terminalCode: session?.terminalCode ?? '',
-      cashierName: session?.userName ?? '',
+      cashierName: ref.watch(operatorNameProvider),
     );
 
     final outcome = await ref

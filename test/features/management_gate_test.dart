@@ -7,6 +7,8 @@ import 'package:xorder_pos/data/fakes/fake_repositories.dart';
 import 'package:xorder_pos/domain/models/permissions.dart';
 import 'package:xorder_pos/domain/models/shift.dart';
 import 'package:xorder_pos/domain/repositories/admin_repositories.dart';
+import 'package:xorder_pos/features/admin/presentation/management_activity_pane.dart';
+import 'package:xorder_pos/features/admin/presentation/management_roles_pane.dart';
 import 'package:xorder_pos/features/admin/presentation/management_screen.dart';
 
 import '../support/fakes.dart';
@@ -99,7 +101,8 @@ void main() {
 
     await enter(tester, '1234'); // Amer, the owner.
 
-    expect(find.text('Management'), findsWidgets);
+    // The header names the area, now that the rail that said so is gone.
+    expect(find.text('Management › People'), findsOneWidget);
     expect(find.text('Amer M.'), findsWidgets);
     expect(find.text('Rana A.'), findsOneWidget);
     expect(container.read(signedInStaffProvider)!.name, 'Amer M.');
@@ -141,8 +144,88 @@ void main() {
     await open(tester, pane: ManagementPane.activity);
     await enter(tester, '1234');
 
-    expect(find.text('Activity'), findsWidgets);
+    // The pane itself. Activity is the only pane in its area, so no tab names
+    // it — and the header says "System", which is where it lives.
+    expect(find.byType(ManagementActivityPane), findsOneWidget);
     expect(find.text('Add somebody'), findsNothing);
+  });
+
+  testWidgets('and pointed at another pane again, from inside', (tester) async {
+    // **The bug the bar found.** `go('/management', extra: pane)` rebuilds this
+    // screen with a new `initialPane`, and the pane it shows was a `late` field
+    // initialised once — so asking for a pane while already in the back office
+    // did nothing at all. From the start screen it worked, because that built a
+    // fresh screen, which is why the menu appeared to work until it was used
+    // twice.
+    final container = await open(tester, pane: ManagementPane.activity);
+    await enter(tester, '1234');
+    // The pane itself, never its name: every pane's name is in the rail all the
+    // time, so `find.text('Roles')` passes on a screen that never moved.
+    expect(find.byType(ManagementActivityPane), findsOneWidget);
+
+    // The same screen, asked for a different pane — what the menu bar does.
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: buildPosTheme(),
+          home: ManagementScreen(
+            onClose: () {},
+            initialPane: ManagementPane.roles,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(ManagementRolesPane), findsOneWidget);
+    expect(find.byType(ManagementActivityPane), findsNothing);
+  });
+
+  testWidgets('the panes of one area are tabs, and only those', (
+    tester,
+  ) async {
+    // The rail listed all thirteen; the window's bar does that now. What is
+    // left here is only the neighbours of where you are.
+    await open(tester, pane: ManagementPane.taxes);
+    await enter(tester, '1234');
+
+    // Money's panes on this terminal. Order types is absent because the fake
+    // harness authors no catalogue — the same rule the bar applies.
+    for (final pane in [
+      ManagementPane.taxes,
+      ManagementPane.charges,
+      ManagementPane.tenders,
+    ]) {
+      expect(
+        find.byKey(Key('management-tab-${pane.name}')),
+        findsOneWidget,
+        reason: pane.name,
+      );
+    }
+    expect(find.byKey(const Key('management-tab-staff')), findsNothing);
+    expect(find.text('Management › Money'), findsOneWidget);
+  });
+
+  testWidgets('and a pane alone in its area gets no tab at all', (
+    tester,
+  ) async {
+    // A single tab over a single pane is a heading dressed as a control.
+    await open(tester, pane: ManagementPane.activity);
+    await enter(tester, '1234');
+
+    expect(find.byKey(const Key('management-tab-activity')), findsNothing);
+    expect(find.text('Management › System'), findsOneWidget);
+  });
+
+  testWidgets('a tab switches the pane', (tester) async {
+    await open(tester);
+    await enter(tester, '1234');
+
+    await tester.tap(find.byKey(const Key('management-tab-roles')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(ManagementRolesPane), findsOneWidget);
   });
 
   testWidgets('the roles pane refuses to make a cashier an administrator',
@@ -453,7 +536,18 @@ void main() {
     // a list of disappointments.
     final container = await open(tester);
     await enter(tester, '1234');
-    expect(find.text('Purchasing'), findsOneWidget, reason: 'the owner buys');
+
+    // Asked of the rule rather than of a rail that no longer exists. What
+    // decides whether Purchasing is offered — in the window's bar, in the
+    // tabs, and to a deep link — is `managementAreasFor`, so that is asked.
+    bool offersPurchasing() =>
+        managementAreasFor(
+          admin: container.read(signedInStaffProvider)!,
+          authorsItsOwnCatalogue:
+              container.read(catalogAdminRepositoryProvider) != null,
+        ).expand((area) => area.$2).contains(ManagementPane.purchasing);
+
+    expect(offersPurchasing(), isTrue, reason: 'the owner buys');
 
     container.read(signedInStaffProvider.notifier).signIn(
       const PosStaff(
@@ -470,7 +564,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Purchasing'), findsNothing);
+    expect(offersPurchasing(), isFalse);
   });
 
   testWidgets('a deep link to Purchasing does not outlive the permission', (

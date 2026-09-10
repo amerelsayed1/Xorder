@@ -56,6 +56,12 @@ class UnconfiguredSessionRepository implements SessionRepository {
   Future<bool> verifyPin(String pin) async => false;
 
   @override
+  Future<PosStaff?> signInAs({
+    required String username,
+    required String pin,
+  }) async => null;
+
+  @override
   Future<PosStaff?> signIn(String pin) async => null;
 }
 

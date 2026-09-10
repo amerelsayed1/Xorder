@@ -100,9 +100,24 @@ void main() {
     expect(find.byKey(const Key('manage-menu')), findsNothing);
   });
 
-  testWidgets('nobody signed in means no menu', (tester) async {
-    await open(tester, tap: false);
-    expect(find.byKey(const Key('manage-menu')), findsNothing);
+  testWidgets('nobody signed in gets the door, not a guess at the panes', (
+    tester,
+  ) async {
+    // This used to assert the opposite, and it was right at the time: the start
+    // screen carried its own always-visible Manage word, so hiding the menu
+    // when nobody was signed in cost nothing. That word is gone — the bars
+    // carry this menu instead — and hiding it left the back office unreachable
+    // on a till before its shift or after a restart, because the management
+    // screen's own PIN pad is what signs somebody in. A lock with its key
+    // inside.
+    //
+    // So: one plain button rather than the pane list. Which panes an unknown
+    // person may have is not a question this menu can answer; the pane it opens
+    // is locked, and asks.
+    final picked = await open(tester);
+
+    expect(find.byKey(const Key('manage-menu')), findsOneWidget);
+    expect(picked, [ManagementPane.staff]);
   });
 
   testWidgets('an owner reaches every pane in one tap', (tester) async {

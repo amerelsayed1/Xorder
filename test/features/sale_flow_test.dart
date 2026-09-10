@@ -268,25 +268,44 @@ void main() {
       expect(opened(), isTrue);
     });
 
-    testWidgets('a cashier is not shown a control they cannot use', (
+    testWidgets('a cashier gets the button too — for their own sales', (
       tester,
     ) async {
-      await pumpTill(tester, capabilities: {PosCapability.operate});
-      // Hidden, not greyed. A control that is dead for a cashier's whole shift
-      // is clutter in a rail they use all day.
-      expect(find.text('Orders'), findsNothing);
+      // It used to be hidden: history was all-or-nothing, so a cashier saw
+      // everybody's sales or nobody's. It is scoped per person now — without
+      // `order.view_all` the list is the cashier's own (`history_scope.dart`,
+      // tested there) — so the door opens for anyone who may work the till.
+      final opened = await pumpTill(
+        tester,
+        capabilities: {PosCapability.operate},
+      );
+
+      expect(find.text('Orders'), findsOneWidget);
+      await tester.tap(find.text('Orders'));
+      await tester.pumpAndSettle();
+      expect(opened(), isTrue);
     });
 
-    testWidgets('F7 is refused for a cashier, not merely undrawn', (
+    testWidgets('and F7 opens it for them, not only the button', (
+      tester,
+    ) async {
+      final opened = await pumpTill(
+        tester,
+        capabilities: {PosCapability.operate},
+      );
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.f7);
+      await tester.pumpAndSettle();
+      expect(opened(), isTrue);
+    });
+
+    testWidgets('F7 is refused for somebody who may not work the till', (
       tester,
     ) async {
       // The gate that matters. A key on a keyboard reaches the handler whether
       // or not a button was drawn, so a check that lived only in the widget
       // tree would be one the shortcut walks straight past.
-      final opened = await pumpTill(
-        tester,
-        capabilities: {PosCapability.operate},
-      );
+      final opened = await pumpTill(tester, capabilities: const {});
 
       await tester.sendKeyEvent(LogicalKeyboardKey.f7);
       await tester.pumpAndSettle();

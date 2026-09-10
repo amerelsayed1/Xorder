@@ -240,7 +240,7 @@ class _Toolbar extends StatelessWidget {
         PosButton(
           label: context.strings.addItem,
           background: context.pos.ink,
-          foreground: Colors.white,
+          foreground: context.pos.onInk,
           onPressed: onAddProduct,
         ),
       ],
@@ -661,7 +661,7 @@ class _Dialog extends StatelessWidget {
                   child: PosButton(
                     label: context.strings.save,
                     background: context.pos.ink,
-                    foreground: Colors.white,
+                    foreground: context.pos.onInk,
                     onPressed: onSave,
                   ),
                 ),

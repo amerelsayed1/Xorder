@@ -100,7 +100,7 @@ class _ManagementFloorPaneState extends ConsumerState<ManagementFloorPane> {
                 PosButton(
                   label: strings.addTable,
                   background: context.pos.ink,
-                  foreground: Colors.white,
+                  foreground: context.pos.onInk,
                   onPressed: () => _edit(repository, null),
                 ),
               ],
@@ -244,7 +244,7 @@ class _TableDialogState extends State<_TableDialog> {
                     child: PosButton(
                       label: strings.save,
                       background: context.pos.ink,
-                      foreground: Colors.white,
+                      foreground: context.pos.onInk,
                       onPressed: () => Navigator.of(context).pop(
                         DiningTable(
                           id: widget.table?.id ?? 0,

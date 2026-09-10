@@ -246,6 +246,10 @@ sealed class AppStrings {
   String get wrongPin;
   String enterPinFor(String name);
 
+  /// Asked of NOBODY in particular — the lock screen signs in whoever's PIN
+  /// it is, so it cannot name a person before one has typed anything.
+  String get enterYourPin;
+
   // ── Start ─────────────────────────────────────────────────────────────────
   String get pointOfSale;
   String get renewLicence;
@@ -266,6 +270,15 @@ sealed class AppStrings {
 
   // ── Opening and closing a shift ───────────────────────────────────────────
   String get signIn;
+
+  /// Handing the till to a colleague. The same door as Lock — the lock screen
+  /// signs in whoever's PIN it is — named for what people are doing when they
+  /// reach for it.
+  String get switchUser;
+
+  /// ONE message for both halves, on purpose: saying which of the two was wrong
+  /// turns the lock screen into a way of finding out which usernames exist.
+  String get wrongUsernameOrPin;
   String get openTheDrawer;
   String get signInHelp;
   String countTheDrawerHelp(String name);
@@ -290,6 +303,10 @@ sealed class AppStrings {
   String closeShiftApproval(String reference);
   String get countTheDrawer;
   String get signInBeforeClosing;
+
+  /// Stated as the act a manager is being asked to approve: releasing a drawer
+  /// that belongs to somebody else.
+  String closeShiftNotYours(String openedBy);
   String get countedInDrawer;
   String expectedInDrawerHelp(String expected, String float, String taken);
   String get varianceBalances;
@@ -1330,6 +1347,37 @@ sealed class AppStrings {
   String orderDetailGuests(int count);
   String orderDetailApprovedBy(String name);
 
+  // Sales list and sale details (plan 17 S1).
+  String get orderColumnPayment;
+  String get orderHistoryEveryMethod;
+  String get orderHistoryEveryTerminal;
+
+  /// The list is narrowed to the viewer's own sales because they do not hold
+  /// `order.view_all`. Said on screen, or a cashier concludes the rest of the
+  /// day's sales are missing.
+  String get orderHistoryOwnSalesOnly;
+
+  /// `served_by` before [reliableFrom] credited shared-PIN sales to one person.
+  /// [reliableFrom] is a Latin-digit date in both languages.
+  String orderHistoryAttributionCaveat(String reliableFrom);
+  /// Followed by the date in mono, never interpolated: a date inside an
+  /// Arabic sentence is one bidi run away from reading backwards.
+  String get orderDetailBusinessDay;
+  String get orderDetailTerminal;
+  String get orderDetailActivity;
+  String get saleEventPrinted;
+  String get saleEventPrintPending;
+  String get saleEventReprinted;
+  String get saleEventReprintPending;
+  String get saleEventReprintRequested;
+  String get saleEventVoided;
+  String get saleEventRefunded;
+  String get paymentStatusUnpaid;
+  String get paymentStatusPartiallyPaid;
+  String get paymentStatusPaid;
+  String get paymentStatusPartiallyRefunded;
+  String get paymentStatusRefunded;
+
   /// Named as coming, not merely missing. A greyed-out button with no
   /// explanation reads as broken.
   String get orderActionsComingWithRefunds;
@@ -1796,6 +1844,49 @@ final class EnStrings extends AppStrings {
   String orderDetailGuests(int count) => count == 1 ? '1 guest' : '$count guests';
   @override
   String orderDetailApprovedBy(String name) => 'Approved by $name';
+  @override
+  String get orderColumnPayment => 'Payment';
+  @override
+  String get orderHistoryEveryMethod => 'Every payment method';
+  @override
+  String get orderHistoryEveryTerminal => 'Every till';
+  @override
+  String get orderHistoryOwnSalesOnly => 'Your sales only';
+  @override
+  String orderHistoryAttributionCaveat(String reliableFrom) =>
+      'Who sold each order is reliable only from $reliableFrom. Before that, '
+      'a PIN shared by two people credited all their sales to one of them, so '
+      'per-cashier figures for earlier days are not accurate.';
+  @override
+  String get orderDetailBusinessDay => 'Business day';
+  @override
+  String get orderDetailTerminal => 'Till';
+  @override
+  String get orderDetailActivity => 'Activity';
+  @override
+  String get saleEventPrinted => 'Receipt printed';
+  @override
+  String get saleEventPrintPending => 'Receipt waiting for the printer';
+  @override
+  String get saleEventReprinted => 'Copy printed';
+  @override
+  String get saleEventReprintPending => 'Copy waiting for the printer';
+  @override
+  String get saleEventReprintRequested => 'Copy requested';
+  @override
+  String get saleEventVoided => 'Order voided';
+  @override
+  String get saleEventRefunded => 'Money refunded';
+  @override
+  String get paymentStatusUnpaid => 'Unpaid';
+  @override
+  String get paymentStatusPartiallyPaid => 'Part paid';
+  @override
+  String get paymentStatusPaid => 'Paid';
+  @override
+  String get paymentStatusPartiallyRefunded => 'Part refunded';
+  @override
+  String get paymentStatusRefunded => 'Refunded';
   @override
   String get orderActionsComingWithRefunds =>
       'Reprint and refund arrive with the refund flow.';
@@ -2523,6 +2614,8 @@ final class EnStrings extends AppStrings {
   String get wrongPin => 'Wrong PIN — try again';
   @override
   String enterPinFor(String name) => '$name · enter PIN';
+  @override
+  String get enterYourPin => 'Enter your PIN';
 
   @override
   String get pointOfSale => 'POINT OF SALE';
@@ -2564,9 +2657,14 @@ final class EnStrings extends AppStrings {
   @override
   String get signIn => 'Sign in';
   @override
+  String get switchUser => 'Switch user';
+  @override
+  String get wrongUsernameOrPin => 'Wrong username or PIN — try again';
+  @override
   String get openTheDrawer => 'Open the drawer';
   @override
-  String get signInHelp => 'Enter your PIN. The shift is opened in your name.';
+  String get signInHelp =>
+      'Your name and your PIN. The shift is opened in your name.';
   @override
   String countTheDrawerHelp(String name) =>
       '$name · count what is in the drawer before you start.';
@@ -2600,6 +2698,9 @@ final class EnStrings extends AppStrings {
   String get countTheDrawer => 'Count the drawer and enter the total.';
   @override
   String get signInBeforeClosing => 'Sign in before closing a shift.';
+  @override
+  String closeShiftNotYours(String openedBy) =>
+      'Close a drawer opened by $openedBy';
   @override
   String get countedInDrawer => 'Counted in the drawer';
   @override
@@ -4645,6 +4746,50 @@ final class ArStrings extends AppStrings {
   @override
   String orderDetailApprovedBy(String name) => 'اعتمده $name';
   @override
+  String get orderColumnPayment => 'الدفع';
+  @override
+  String get orderHistoryEveryMethod => 'كل طرق الدفع';
+  @override
+  String get orderHistoryEveryTerminal => 'كل نقاط البيع';
+  @override
+  String get orderHistoryOwnSalesOnly => 'مبيعاتك فقط';
+  @override
+  String orderHistoryAttributionCaveat(String reliableFrom) =>
+      'اسم البائع المسجَّل على كل طلب موثوق ابتداءً من '
+      '\u2066$reliableFrom\u2069 فقط. '
+      'قبل ذلك كان رمز PIN المشترك بين شخصين ينسب كل مبيعاتهما إلى أحدهما، '
+      'لذا فأرقام كل كاشير في الأيام السابقة غير دقيقة.';
+  @override
+  String get orderDetailBusinessDay => 'يوم العمل';
+  @override
+  String get orderDetailTerminal => 'نقطة البيع';
+  @override
+  String get orderDetailActivity => 'السجل';
+  @override
+  String get saleEventPrinted => 'طُبعت الفاتورة';
+  @override
+  String get saleEventPrintPending => 'الفاتورة بانتظار الطابعة';
+  @override
+  String get saleEventReprinted => 'طُبعت نسخة';
+  @override
+  String get saleEventReprintPending => 'النسخة بانتظار الطابعة';
+  @override
+  String get saleEventReprintRequested => 'طُلبت نسخة';
+  @override
+  String get saleEventVoided => 'أُلغي الطلب';
+  @override
+  String get saleEventRefunded => 'استُرجع مبلغ';
+  @override
+  String get paymentStatusUnpaid => 'غير مدفوع';
+  @override
+  String get paymentStatusPartiallyPaid => 'مدفوع جزئيًا';
+  @override
+  String get paymentStatusPaid => 'مدفوع';
+  @override
+  String get paymentStatusPartiallyRefunded => 'مسترد جزئيًا';
+  @override
+  String get paymentStatusRefunded => 'مسترد بالكامل';
+  @override
   String get orderActionsComingWithRefunds =>
       'إعادة الطباعة والاسترجاع تأتيان مع مسار الاسترجاع.';
   @override
@@ -5364,6 +5509,8 @@ final class ArStrings extends AppStrings {
   String get wrongPin => 'رقم سري خاطئ — حاول مرة أخرى';
   @override
   String enterPinFor(String name) => '$name · أدخل الرقم السري';
+  @override
+  String get enterYourPin => 'أدخل رقمك السري';
 
   @override
   String get pointOfSale => 'نقطة بيع';
@@ -5404,9 +5551,15 @@ final class ArStrings extends AppStrings {
   @override
   String get signIn => 'تسجيل الدخول';
   @override
+  String get switchUser => 'تبديل المستخدم';
+  @override
+  String get wrongUsernameOrPin =>
+      'اسم المستخدم أو الرقم السري خاطئ — حاول مرة أخرى';
+  @override
   String get openTheDrawer => 'افتح الدرج';
   @override
-  String get signInHelp => 'أدخل رقمك السري. ستُفتح الوردية باسمك.';
+  String get signInHelp =>
+      'اسمك ورقمك السري. ستُفتح الوردية باسمك.';
   @override
   String countTheDrawerHelp(String name) =>
       '$name · اعدّ ما في الدرج قبل أن تبدأ.';
@@ -5439,6 +5592,9 @@ final class ArStrings extends AppStrings {
   String get countTheDrawer => 'اعدّ الدرج وأدخل الإجمالي.';
   @override
   String get signInBeforeClosing => 'سجّل دخولك قبل تقفيل الوردية.';
+  @override
+  String closeShiftNotYours(String openedBy) =>
+      'تقفيل درج فتحه $openedBy';
   @override
   String get countedInDrawer => 'المعدود في الدرج';
   @override

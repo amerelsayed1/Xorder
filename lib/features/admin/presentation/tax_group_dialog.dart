@@ -218,7 +218,7 @@ class _TaxGroupDialogState extends State<TaxGroupDialog> {
                       key: const Key('tax-group-save'),
                       label: strings.save,
                       background: palette.ink,
-                      foreground: Colors.white,
+                      foreground: palette.onInk,
                       onPressed: _save,
                     ),
                   ),

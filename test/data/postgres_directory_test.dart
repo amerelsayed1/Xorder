@@ -455,6 +455,45 @@ void main() {
       expect(await session(branch: otherBranchId).verifyPin('1357'), isTrue);
     });
 
+    /// Two people, one PIN — what a restaurant does on its first afternoon.
+    ///
+    /// Switching user asks for a name as well as a PIN, and the first version
+    /// asked "who holds this PIN" and then checked the name against whoever
+    /// came back. The lower staff id always won that race, so the second person
+    /// with that PIN was refused under their own name, with a message that read
+    /// as though they had typed it wrong.
+    test('two people sharing a PIN each sign in as themselves', () async {
+      final salt = PinHash.newSalt();
+      await db.query(
+        pg.config,
+        'INSERT INTO pos_staff (restaurant_id, branch_id, name, username, '
+        'pin_salt, pin_hash) '
+        "VALUES (@r, @b, 'Sayed A.', 'sayed', @salt, @hash)",
+        parameters: {
+          'r': restaurantId,
+          'b': branchId,
+          'salt': salt,
+          // The SAME PIN the fixture's first member of staff already has.
+          'hash': await PinHash.hash(pin, salt),
+        },
+      );
+
+      final first = await session().signInAs(username: 'sara', pin: pin);
+      final second = await session().signInAs(username: 'sayed', pin: pin);
+
+      expect(first?.username, 'sara');
+      expect(second?.username, 'sayed', reason: 'the lower id must not win');
+      // And the PIN-only path still answers with whoever it finds first, which
+      // is all an approval needs.
+      expect(await session().verifyPin(pin), isTrue);
+    });
+
+    test('the right PIN under the wrong name is refused', () async {
+      expect(await session().signInAs(username: 'nobody', pin: pin), isNull);
+      expect(await session().signInAs(username: '', pin: pin), isNull);
+      expect(await session().signInAs(username: 'sara', pin: '0000'), isNull);
+    });
+
     test('a member of staff who left cannot unlock the till', () async {
       await db.query(pg.config, 'UPDATE pos_staff SET is_active = false');
 

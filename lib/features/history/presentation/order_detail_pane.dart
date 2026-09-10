@@ -13,10 +13,12 @@ import '../../../domain/models/order_record.dart';
 import '../../../domain/models/permissions.dart';
 import '../../../domain/models/refund.dart';
 import '../../../domain/services/authorization.dart';
+import '../../admin/presentation/admin_messages.dart';
 import '../../receipt/receipt_printing.dart';
 import '../../receipt/reprint_dialog.dart';
 import '../../refund/presentation/refund_sheet.dart';
 import 'order_status_chip.dart';
+import 'payment_status_chip.dart';
 
 /// One order, opened from the list.
 ///
@@ -27,6 +29,11 @@ import 'order_status_chip.dart';
 /// the one that was paid, which is the failure history exists to prevent.
 ///
 /// A7 (reprint) and A5 (refund) attach their actions to the footer.
+///
+/// Below the money: every refund against the sale with what it took back, and
+/// the sale's activity — printed, reprinted, voided, refunded — so "did the
+/// customer get a receipt, and who gave the money back" is answered on one
+/// pane rather than in the audit screen with a date filter (plan 17 S1).
 class OrderDetailPane extends ConsumerWidget {
   const OrderDetailPane({super.key, required this.orderId});
 
@@ -122,6 +129,12 @@ class _Detail extends ConsumerWidget {
                 const SizedBox(height: PosSpace.xs),
                 for (final refund in refunds) _refund(context, strings, refund),
               ],
+              if (detail.events.isNotEmpty) ...[
+                const SizedBox(height: PosSpace.md),
+                MicroLabel(strings.orderDetailActivity),
+                const SizedBox(height: PosSpace.xs),
+                for (final event in detail.events) SaleEventRow(event: event),
+              ],
             ],
           ),
         ),
@@ -157,10 +170,39 @@ class _Detail extends ConsumerWidget {
                 ),
               ),
               OrderStatusChip(order.status),
+              const SizedBox(width: 6),
+              PaymentStatusChip(order.paymentStatus),
             ],
           ),
           const SizedBox(height: PosSpace.xs),
           Text(where, style: PosText.ui(size: 12.5, color: pos.muted)),
+          if (order.businessDate != null || order.terminalName != null) ...[
+            const SizedBox(height: 2),
+            Row(
+              children: [
+                if (order.terminalName case final till?)
+                  Expanded(
+                    child: Text(
+                      '${strings.orderDetailTerminal}: $till',
+                      overflow: TextOverflow.ellipsis,
+                      style: PosText.ui(size: 12.5, color: pos.muted),
+                    ),
+                  )
+                else
+                  const Spacer(),
+                // The trading day, when it differs in meaning from the stamp
+                // below: a sale at 01:30 belongs to the night before, and
+                // this is the line that says so.
+                if (order.businessDate case final day?) ...[
+                  Text(
+                    '${strings.orderDetailBusinessDay} ',
+                    style: PosText.ui(size: 12.5, color: pos.muted),
+                  ),
+                  MonoCode(_date(day), size: 11.5),
+                ],
+              ],
+            ),
+          ],
           const SizedBox(height: 2),
           Row(
             children: [
@@ -396,7 +438,7 @@ class _Detail extends ConsumerWidget {
     ),
   );
 
-  Widget _refund(BuildContext context, AppStrings strings, Refund refund) {
+  Widget _refundHead(BuildContext context, AppStrings strings, Refund refund) {
     final pos = context.pos;
     final who = refund.refundedByName;
     return Padding(
@@ -430,6 +472,60 @@ class _Detail extends ConsumerWidget {
           MonoAmount(-refund.total, size: 12.5, color: pos.warn),
         ],
       ),
+    );
+  }
+
+  /// A refund, with what it took back and where the money went.
+  ///
+  /// The lines are the refund's own snapshot — the quantity and price given
+  /// back, not the order line's — so a partial refund reads as the part it
+  /// was. An amount-only refund has no lines and shows none; its tenders are
+  /// still the answer to "back to the card, or cash?".
+  Widget _refund(BuildContext context, AppStrings strings, Refund refund) {
+    final pos = context.pos;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _refundHead(context, strings, refund),
+        for (final line in refund.lines)
+          Padding(
+            key: ValueKey('refund-line-${refund.id}-${line.orderLineId}'),
+            padding: const EdgeInsetsDirectional.only(start: PosSpace.md),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 28,
+                  child: MonoCode('${line.quantity}', size: 11.5),
+                ),
+                Expanded(
+                  child: Text(
+                    line.name,
+                    overflow: TextOverflow.ellipsis,
+                    style: PosText.ui(size: 11.5, color: pos.body),
+                  ),
+                ),
+                MonoAmount(-line.lineTotal, size: 11.5, color: pos.muted),
+              ],
+            ),
+          ),
+        for (final (index, tender) in refund.payments.indexed)
+          Padding(
+            key: ValueKey('refund-tender-${refund.id}-$index'),
+            padding: const EdgeInsetsDirectional.only(start: PosSpace.md),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    tenderName(tender.tenderTypeId, tender.label, strings),
+                    overflow: TextOverflow.ellipsis,
+                    style: PosText.ui(size: 11.5, color: pos.muted),
+                  ),
+                ),
+                MonoAmount(tender.amount, size: 11.5, color: pos.muted),
+              ],
+            ),
+          ),
+      ],
     );
   }
 
@@ -559,8 +655,92 @@ class _Detail extends ConsumerWidget {
   }
 
   static String _stamp(DateTime at) =>
-      '${at.year}-${_two(at.month)}-${_two(at.day)} '
-      '${_two(at.hour)}:${_two(at.minute)}';
+      '${_date(at)} ${_two(at.hour)}:${_two(at.minute)}';
+
+  static String _date(DateTime at) =>
+      '${at.year}-${_two(at.month)}-${_two(at.day)}';
 
   static String _two(int value) => value.toString().padLeft(2, '0');
+}
+
+/// One line of a sale's activity.
+///
+/// Public so a test can find the rows by type and read the kind off them,
+/// rather than matching words that also appear in the status chips above.
+class SaleEventRow extends StatelessWidget {
+  const SaleEventRow({super.key, required this.event});
+
+  final SaleEvent event;
+
+  @override
+  Widget build(BuildContext context) {
+    final pos = context.pos;
+    final strings = context.strings;
+    final who = [
+      ?event.actorName,
+      if (event.approvedByName case final approver?)
+        strings.orderDetailApprovedBy(approver),
+    ].join(' · ');
+    final at = event.at;
+    String two(int value) => value.toString().padLeft(2, '0');
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label(strings, event),
+                  style: PosText.ui(
+                    size: 12.5,
+                    color: _pending ? pos.warn : pos.ink,
+                  ),
+                ),
+                if (who.isNotEmpty)
+                  Text(who, style: PosText.ui(size: 11.5, color: pos.muted)),
+              ],
+            ),
+          ),
+          if (event.amount case final amount?) ...[
+            MonoAmount(-amount, size: 12.5, color: pos.warn),
+            const SizedBox(width: PosSpace.sm),
+          ],
+          MonoCode(
+            '${at.year}-${two(at.month)}-${two(at.day)} '
+            '${two(at.hour)}:${two(at.minute)}',
+            size: 11.5,
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Paper still owed to a customer is the one row here that wants action.
+  bool get _pending => switch (event.kind) {
+    SaleEventKind.printPending || SaleEventKind.reprintPending => true,
+    SaleEventKind.printed ||
+    SaleEventKind.reprinted ||
+    SaleEventKind.reprintRequested ||
+    SaleEventKind.voided ||
+    SaleEventKind.refunded ||
+    SaleEventKind.audit => false,
+  };
+
+  /// Keyed by the enum, so a new kind is a compile error here. An audit row
+  /// takes the Activity pane's own label for its action — one wording for one
+  /// act, whichever screen shows it.
+  static String label(AppStrings s, SaleEvent event) => switch (event.kind) {
+    SaleEventKind.printed => s.saleEventPrinted,
+    SaleEventKind.printPending => s.saleEventPrintPending,
+    SaleEventKind.reprinted => s.saleEventReprinted,
+    SaleEventKind.reprintPending => s.saleEventReprintPending,
+    SaleEventKind.reprintRequested => s.saleEventReprintRequested,
+    SaleEventKind.voided => s.saleEventVoided,
+    SaleEventKind.refunded => s.saleEventRefunded,
+    SaleEventKind.audit => AdminText.auditAction(s, event.auditAction ?? ''),
+  };
 }

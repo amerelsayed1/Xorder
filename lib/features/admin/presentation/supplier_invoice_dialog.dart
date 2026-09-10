@@ -453,7 +453,7 @@ class _SupplierInvoiceDialogState extends State<SupplierInvoiceDialog> {
                       key: const Key('invoice-save'),
                       label: strings.save,
                       background: palette.ink,
-                      foreground: Colors.white,
+                      foreground: palette.onInk,
                       onPressed: _save,
                     ),
                   ),

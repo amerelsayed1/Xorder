@@ -385,6 +385,9 @@ abstract interface class OrderHistoryRepository {
   /// somebody's hand, and "did you mean one of these four" is not a question to
   /// ask while money is being given back.
   Future<OrderRecord?> byInvoiceNumber(String invoiceNumber);
+
+  /// The tills at this branch, for the terminal filter.
+  Future<List<HistoryTerminal>> terminals();
 }
 
 /// The outcome of issuing a refund.
@@ -585,6 +588,20 @@ abstract interface class SessionRepository {
   /// here is present, while opening a shift needs a name to put against the
   /// money. Returns null when no active member of staff has that PIN.
   Future<PosStaff?> signIn(String pin);
+
+  /// Identify somebody by NAME and PIN, for the act of becoming the operator.
+  ///
+  /// Separate from [signIn] because the two acts carry different weight. A PIN
+  /// alone is enough to approve a discount somebody is standing over, and it is
+  /// not enough to take over a till: four digits are shared, watched over a
+  /// shoulder and reused, and [signIn] hands the session to whichever active
+  /// member of staff happens to hold them. Saying the name first makes the till
+  /// check a claim rather than guess an identity.
+  ///
+  /// Returns null when no active member of staff has that username AND that
+  /// PIN. Deliberately one answer for both, so this cannot be used to find out
+  /// which usernames exist.
+  Future<PosStaff?> signInAs({required String username, required String pin});
 }
 
 /// Opening and closing a till session, and counting the drawer.
