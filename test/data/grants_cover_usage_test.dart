@@ -72,6 +72,7 @@ void main() {
     'postgres_business_day_repository.dart',
     'postgres_cash_movements_repository.dart',
     'postgres_order_history_repository.dart',
+    'postgres_branch_sales_repository.dart',
     'postgres_eta_queue_repository.dart',
     // Receipts the printer would not take. Written at the counter on the till's
     // own credential, because a printer that is off is a till problem and not a

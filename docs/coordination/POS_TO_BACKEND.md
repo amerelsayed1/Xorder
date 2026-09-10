@@ -1445,6 +1445,122 @@ is worth finding in the trail.
 
 ---
 
+## POS-BE-029
+
+**Status:** PROPOSED — filed 2026-09-10. Client built against this text and tested against a fake HTTP layer (`lib/data/cloud/branch_sales_api.dart`); no backend work exists.
+**Feature:** The branch view on a cloud till — its own branch, every terminal summed and broken out
+
+**Description:** Two reads, both scoped to the branch of the terminal whose
+device token makes the request:
+
+- `GET /api/pos/branch/sales/summary?business_day=YYYY-MM-DD&acting_user_id=9`
+  → one row per terminal of the branch, **zeros included**, for that business day.
+- `GET /api/pos/branch/sales?terminal_id=<uuid>&business_day=YYYY-MM-DD&acting_user_id=9`
+  → that terminal's sales for the day, for drill-down.
+
+**Why it is worth an entry of its own.** Owner decision, 2026-09-10: a cloud
+till shows its own branch — the summary and the per-terminal breakdown
+(`docs/pos/17-sales-and-payments-plan.md` §3a, §6 C4). Where a branch's tills
+share one LAN database the till answers that locally and needs nothing from
+the platform. Where each till has its own database, the till holds only its own
+sales, and the platform is the only place the branch exists as a whole.
+
+**Scope — the rule `GET /shifts/{id}/report` already follows.** Device token
++ `feature:pos` + `pos.reports` on `acting_user_id` (the till's
+`reports.view`; `permissions.dart` maps one to the other). There is **no
+`branch_id` parameter**: the branch is the requesting terminal's, so there is
+nothing to tamper with. A `terminal_id` outside that branch, or unknown →
+`404`, regardless of the user's capability — the no-existence-leak rule from
+§009's "Report scoping". This stays a branch read and must never become a
+cross-branch dashboard; that is C3's job, on the web.
+
+**Rules the numbers must keep** (§3a, binding on both sides):
+
+1. The branch total is the sum of the terminal rows — one query, `GROUP BY`
+   terminal. The client **derives** its totals from `terminals[]` and only
+   checks `totals` against them; a disagreement is flagged, not shown.
+2. Every terminal of the branch is listed, including one with no sales, and a
+   revoked terminal that took money that day. `last_received_at` is what lets
+   a manager see a till that stopped syncing.
+3. Payments by method carry the tender's `kind` and the payment's
+   `counts_as_cash`. Cash = `counts_as_cash`; card / electronic = kinds `card`
+   and `wallet`; **`account` is neither** — money owed, never collected.
+4. A refund belongs to the terminal that **issued** it, in the business day it
+   was issued — not the original sale's terminal or day.
+5. Net = gross − discounts − refunds, where gross is **before** discounts
+   (`total_minor + discount_minor` in the till's terms).
+
+Settled sales only: voided, cancelled and still-open orders are not sales.
+
+**Summary response `200`:**
+
+```jsonc
+{ "data": {
+    "branch_id": 3, "business_day": "2026-09-10",
+    "currency": "EGP", "exponent": 2,
+    "generated_at": "2026-09-10T21:00:04Z",
+    "terminals": [
+      { "terminal_id": "uuid", "name": "POS-01",
+        "orders": 2, "gross_minor": 67345, "discount_minor": 5000,
+        "refund_minor": 0, "refund_count": 0, "net_minor": 62345,
+        "last_received_at": "2026-09-10T20:58:11Z",
+        "payments": [
+          { "tender_type_id": 1, "label": "Cash", "kind": "cash",
+            "counts_as_cash": true, "count": 1, "amount_minor": 30000 },
+          { "tender_type_id": 4, "label": "On account", "kind": "account",
+            "counts_as_cash": false, "count": 1, "amount_minor": 12345 } ] },
+      { "terminal_id": "uuid", "name": "POS-03",
+        "orders": 0, "gross_minor": 0, "discount_minor": 0,
+        "refund_minor": 0, "refund_count": 0, "net_minor": 0,
+        "last_received_at": null, "payments": [] } ],
+    "totals": { "orders": 2, "gross_minor": 67345, "discount_minor": 5000,
+                "refund_minor": 0, "net_minor": 62345 } } }
+```
+
+**Drill-down response `200`:**
+
+```jsonc
+{ "data": [
+    { "id": 8814, "client_transaction_id": "uuid",
+      "invoice_number": "MANS-2026-000042", "settlement_status": "PAID",
+      "created_at": "2026-09-10T13:05:00+02:00",
+      "total_minor": 30000, "discount_minor": 1000, "refunded_minor": 0,
+      "acting_user_id": 9 } ],
+  "meta": { "terminal_id": "uuid", "business_day": "2026-09-10",
+            "currency": "EGP", "exponent": 2 } }
+```
+
+Without `pos.order_view_all` on `acting_user_id`, only that user's own sales
+are listed — the till's S1 rule, applied where the rows are.
+
+**Open question — the platform needs each sale's business day.** §006 carries
+only `created_at`, and a trading day that runs past midnight is not a calendar
+date. Proposed: an optional `business_day` (`YYYY-MM-DD`) on §006 and §010
+requests, additive; until the till sends it, the platform derives it from
+`created_at` and the branch's day boundary and **says which it did** in the
+response. The till does not yet stamp a business day on its own sales rows
+(recorded in the plan's §6 C4), so this is not a field the client can fill
+today — flagged now so the two land together.
+
+**Client behaviour, so the semantics are agreed before either side builds:**
+
+- A `200` naming another `branch_id`, another `business_day`, or carrying a
+  money figure that is not an integer is refused as unreadable — never shown,
+  never rounded (POS-BE-007).
+- When a refresh fails, the till shows the last snapshot it did read, labelled
+  with the time it read it. Never silently stale.
+- The till's own not-yet-synced sales are counted in a banner and **never
+  added** to these figures — adding them would double-count each one the moment
+  it syncs.
+
+**Errors:** `401 DEVICE_TOKEN_INVALID` · `403 POS_FEATURE_DISABLED /
+POS_CAPABILITY_MISSING / TERMINAL_REVOKED` · `404` terminal not in the
+requesting branch · `422 VALIDATION_FAILED` (malformed `business_day`).
+**Priority:** MEDIUM · **Blocking:** NO — shared-database branches need nothing
+from the platform; only per-till cloud branches wait on this.
+
+---
+
 ## Amendment to POS-BE-022 — please specify the heartbeat *response*
 
 **This is the highest-leverage single item in the whole request set, and it costs
@@ -1708,3 +1824,4 @@ owner's explicit go to move `APPROVED → IN_PROGRESS`.
 | 2026-09-04 | **Cloud Wave 1 integrated and smoke-verified end-to-end.** Owner go: "make the POS work with cloud for now". Client side shipped in `lib/data/cloud/`: `PosCloudApi`, tolerant `BootstrapBundle` parser, `BootstrapSeeder` (bundle → local PostgreSQL, platform ids verbatim, staff deactivated never deleted), `OutboxDrain` (§006 requests, per-payment uuid-v5 keys, quarantine-vs-defer per §019, delivery bookkeeping in migration 6), `CloudSync` (heartbeat → config-version reseed → drain; automatic timer + kick-on-sale + sync-pill manual), `DeviceTokenVault` (keychain), cloud `ProvisioningRepository` (Path A claim + Path B login/register). Backend Wave 1 implemented in `apps/api` (see `BACKEND_TO_POS.md` and `docs/backend/CLOUD_WAVE1_PROGRESS.md`). **Live smoke against `php artisan serve`: claim → bootstrap (frozen key map, 0 products dropped by the real parser) → server-priced order `201` with invoice `MAIN-2026-000001` → replay `200` same id+invoice → recovery → heartbeat → error envelope. All passed.** Client suites green (247); backend green (721). |
 | 2026-09-02 | **Contracts closed.** Owner directed full contract agreement. Agent 2 assessed every item and rewrote `BACKEND_TO_POS.md` as the agreed-contract document: POS-BE-001…028 all `APPROVED` (015 `READY`), open questions a–l decided (dual idempotency keys, per-collection `complete` flag, heartbeat response as proposed, **POS-BE-011 resolved as Option C** device token, batch bound 100, PIN hash bcrypt cost 10, canonical §019 error list). Agent 1 accepted DIS-1…DIS-5; `LICENCE_TENANT_MISMATCH` split from `LICENCE_SITE_MISMATCH`. Statuses here flipped to `APPROVED`; client backlog recorded above. **No code written on either side.** |
 | 2026-08-28 | Setup architecture designed end to end — `docs/pos/10-setup-architecture.md`. POS-BE-025 … POS-BE-028 raised: pre-auth tenant config by slug with a monotonic `config_version`, site registration and `ServerId`, three additive licence claims, terminal rename. Amendments requested to POS-BE-023 (a redacted pre-auth projection of the bootstrap bundle) and POS-BE-022 (specify the heartbeat *response*, which collapses three client polling loops into one). A separate "offline certificate" was requested by the owner and **declined** in favour of three claims on the existing licence — recorded as a disagreement in POS-BE-027, not a silent substitution. Design only; no client or backend code written. |
+| 2026-09-10 | POS-BE-029 raised: the branch view on a cloud till whose database is its own — `GET /api/pos/branch/sales/summary` and `GET /api/pos/branch/sales`, device token + `pos.reports`, the requesting terminal's branch only (404 otherwise). Open question recorded: the platform needs each sale's business day, which §006 does not carry. Client built against the text in `lib/data/cloud/branch_sales_api.dart`, tested against a fake HTTP layer; no backend code touched. |
