@@ -51,11 +51,22 @@ class MicroLabel extends StatelessWidget {
   /// Null means "the palette's muted". See [PosSurface.color].
   final Color? color;
 
+  static final _arabic = RegExp(r'[\u0600-\u06FF]');
+
   @override
-  Widget build(BuildContext context) => Text(
-    text.toUpperCase(),
-    style: PosText.microLabel(color: color ?? context.pos.muted),
-  );
+  Widget build(BuildContext context) {
+    final color = this.color ?? context.pos.muted;
+    // Arabic has no capitals, and must not be letter-spaced: tracking pulls a
+    // joined word apart into letters. It is set in the Arabic face, too — the
+    // mono has no Arabic at all, so it fell back to whatever the system had.
+    if (_arabic.hasMatch(text)) {
+      return Text(
+        text,
+        style: PosText.ui(size: 11.5, weight: FontWeight.w600, color: color),
+      );
+    }
+    return Text(text.toUpperCase(), style: PosText.microLabel(color: color));
+  }
 }
 
 /// A keyboard-hint chip — the `F2` next to the search field, `ENTER` on a CTA.
@@ -468,6 +479,41 @@ class PinPad extends StatelessWidget {
   }
 }
 
+/// A text box on the shell: one frame, and only one.
+///
+/// **All three borders, stated.** `border: InputBorder.none` alone switches off
+/// the default and nothing else — the theme's `enabledBorder` and
+/// `focusedBorder` still apply, and a box wrapped in its own frame then drew a
+/// heavy ink outline inside the thin one, orange when focused.
+InputDecoration shellInputDecoration(
+  PosPalette pos, {
+  String? hintText,
+  TextStyle? hintStyle,
+}) {
+  final resting = OutlineInputBorder(
+    borderRadius: BorderRadius.zero,
+    borderSide: pos.shellBorder,
+  );
+  return InputDecoration(
+    isDense: true,
+    filled: true,
+    fillColor: pos.shellCard,
+    hintText: hintText,
+    hintStyle: hintStyle,
+    contentPadding: const EdgeInsets.symmetric(
+      horizontal: PosSpace.md,
+      vertical: PosSpace.md,
+    ),
+    border: resting,
+    enabledBorder: resting,
+    disabledBorder: resting,
+    focusedBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.zero,
+      borderSide: BorderSide(color: pos.accent, width: 2),
+    ),
+  );
+}
+
 /// The name of the person taking the till, above a PIN pad.
 ///
 /// Mono, like every other identifier in this product, and autofocused because
@@ -492,29 +538,18 @@ class UsernameField extends StatelessWidget {
     children: [
       MicroLabel(context.strings.username),
       const SizedBox(height: PosSpace.sm),
-      Container(
-        decoration: BoxDecoration(
-          color: context.pos.shellCard,
-          border: Border.fromBorderSide(context.pos.shellBorder),
-        ),
-        padding: const EdgeInsets.symmetric(horizontal: PosSpace.md),
-        child: TextField(
-          controller: controller,
-          autofocus: true,
-          textInputAction: TextInputAction.next,
-          onSubmitted: (_) => onSubmitted?.call(),
-          textAlign: TextAlign.center,
-          style: PosText.mono(size: 16, color: context.pos.shellText),
-          cursorColor: context.pos.accent,
-          decoration: InputDecoration(
-            border: InputBorder.none,
-            isDense: true,
-            contentPadding: const EdgeInsets.symmetric(
-              vertical: PosSpace.md,
-            ),
-            hintText: 'rana',
-            hintStyle: PosText.mono(size: 16, color: context.pos.shellMuted),
-          ),
+      TextField(
+        controller: controller,
+        autofocus: true,
+        textInputAction: TextInputAction.next,
+        onSubmitted: (_) => onSubmitted?.call(),
+        textAlign: TextAlign.center,
+        style: PosText.mono(size: 16, color: context.pos.shellText),
+        cursorColor: context.pos.accent,
+        decoration: shellInputDecoration(
+          context.pos,
+          hintText: 'rana',
+          hintStyle: PosText.mono(size: 16, color: context.pos.shellMuted),
         ),
       ),
     ],

@@ -707,31 +707,17 @@ class _BackOfficeSignInState extends ConsumerState<_BackOfficeSignIn> {
                 const SizedBox(height: PosSpace.lg),
                 MicroLabel(strings.backOfficePassword),
                 const SizedBox(height: PosSpace.sm),
-                Container(
-                  decoration: BoxDecoration(
-                    color: pos.shellCard,
-                    border: Border.fromBorderSide(pos.shellBorder),
-                  ),
-                  padding: const EdgeInsets.symmetric(horizontal: PosSpace.md),
-                  child: TextField(
-                    key: const Key('back-office-password'),
-                    controller: _password,
-                    focusNode: _passwordFocus,
-                    obscureText: true,
-                    enabled: !_busy,
-                    onSubmitted: (_) => _submit(),
-                    textAlign: TextAlign.center,
-                    style: PosText.mono(size: 16, color: pos.shellText),
-                    cursorColor: pos.accent,
-                    decoration: const InputDecoration(
-                      border: InputBorder.none,
-                      isDense: true,
-                      filled: false,
-                      contentPadding: EdgeInsets.symmetric(
-                        vertical: PosSpace.md,
-                      ),
-                    ),
-                  ),
+                TextField(
+                  key: const Key('back-office-password'),
+                  controller: _password,
+                  focusNode: _passwordFocus,
+                  obscureText: true,
+                  enabled: !_busy,
+                  onSubmitted: (_) => _submit(),
+                  textAlign: TextAlign.center,
+                  style: PosText.mono(size: 16, color: pos.shellText),
+                  cursorColor: pos.accent,
+                  decoration: shellInputDecoration(pos),
                 ),
                 // Reserved, not conditional, so the button does not jump
                 // under a finger already on its way to it.

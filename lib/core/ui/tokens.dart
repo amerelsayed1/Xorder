@@ -388,6 +388,9 @@ abstract final class PosFonts {
   /// Only for a glyph the bundled faces lack.
   static const uiFallback = <String>['Segoe UI', 'Helvetica Neue', 'Roboto'];
   static const monoFallback = <String>[
+    // First, so Arabic in a mono style — a label, a code beside a name — is
+    // drawn in the till's Arabic face rather than the system's.
+    'IBM Plex Sans Arabic',
     'SF Mono',
     'Consolas',
     'Menlo',
