@@ -11,6 +11,7 @@ use App\Models\PosPairingCode;
 use App\Models\PosShift;
 use App\Models\PosTerminal;
 use App\Models\Restaurant;
+use App\Models\TenderType;
 use App\Models\User;
 use App\Support\DeviceToken;
 use App\Support\PairingCode;
@@ -83,6 +84,8 @@ class PosProvisioningService
                 'terminal_id' => (string) Str::uuid(),
                 'state' => PosTerminal::STATE_PROVISIONED,
             ])->save();
+
+            $this->ensureDefaultTenders($restaurant);
 
             AuditLogger::record('pos_terminal.provisioned', [
                 'restaurant_id' => $restaurant->id,
@@ -195,6 +198,10 @@ class PosProvisioningService
                     $this->assertSeatAvailable($restaurant);
                 }
 
+                // Backstop for a terminal provisioned before the defaults
+                // existed: its first bundle is built right below.
+                $this->ensureDefaultTenders($restaurant);
+
                 $token = DeviceToken::generate();
 
                 $terminal->forceFill([
@@ -288,6 +295,8 @@ class PosProvisioningService
                 'device_token_hash' => DeviceToken::hash($token),
                 'client_transaction_id' => $data['client_transaction_id'],
             ])->save();
+
+            $this->ensureDefaultTenders($actor->restaurant);
 
             $body = [
                 'device_token' => $token,
@@ -539,6 +548,69 @@ class PosProvisioningService
             'code' => 'MAX_TERMINALS_EXCEEDED',
             'details' => ['licensed' => (int) $max, 'claimed' => $claimed],
         ]];
+    }
+
+    /**
+     * A POS restaurant never delivers an empty money.tender_types (defect fix,
+     * owner go 2026-09-11; POS-BE-013 amendment in BACKEND_TO_POS.md).
+     *
+     * Why: a payment's tender_type_id must be an id from the bundle, and
+     * nothing but the dashboard's TenderTypeController::store ever made one.
+     * A restaurant that paired a till before authoring tenders got an empty
+     * list, and a cloud till then had no valid way to take money. Null is not
+     * a way out, because the shift report counts an untyped payment as cash.
+     *
+     * Why HERE, at terminal birth: every path to a first bundle goes through
+     * provision() (Path A, both front doors, then claim) or register()
+     * (Path B). Both are already writes, inside a transaction, so the tender
+     * rows commit with the terminal or not at all. The earlier candidates
+     * don't work. Tenant creation seeds non-POS restaurants too. Enabling the
+     * pos feature is spread across plan sync and admin toggles, with no single
+     * hook. The bundle is a GET, and a GET should not write. claim() calls
+     * this as well, as a backstop for a terminal provisioned before this
+     * existed.
+     *
+     * Idempotent: seeds ONLY when the restaurant has zero tender types,
+     * inactive ones included. An owner who deactivated every tender chose
+     * that; a second terminal adds nothing. Scoped by hand
+     * (withoutGlobalScopes + explicit restaurant_id), because on the Super
+     * Admin front door the RestaurantScope is a no-op and a scoped count would
+     * see every tenant's tenders.
+     *
+     * Matches the dashboard store path exactly: plain model saves, so the
+     * Auditable trait records tender_type.created and the PosConfigVersion
+     * hook bumps pos_config_version. Neither is called by hand. Single-column
+     * names (no name_ar), written in the restaurant's default language.
+     */
+    private function ensureDefaultTenders(Restaurant $restaurant): void
+    {
+        $has = fn () => TenderType::withoutGlobalScopes()
+            ->where('restaurant_id', $restaurant->id)
+            ->exists();
+
+        if ($has()) {
+            return;
+        }
+
+        // Two first-terminals at once must not both see zero. Lock the tenant
+        // row (the rows being counted don't exist yet) and check again.
+        Restaurant::whereKey($restaurant->id)->lockForUpdate()->first();
+
+        if ($has()) {
+            return;
+        }
+
+        $locale = $restaurant->default_language?->value ?? 'en';
+
+        foreach (['cash', 'card'] as $sort => $kind) {
+            $tender = new TenderType([
+                'name' => __('xorder.pos.default_tender_'.$kind, [], $locale),
+                'kind' => $kind,
+                'is_active' => true,
+                'sort_order' => $sort,
+            ]);
+            $tender->forceFill(['restaurant_id' => $restaurant->id])->save();
+        }
     }
 
     /** @return array<string,mixed> */

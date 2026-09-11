@@ -36,6 +36,9 @@ return [
         'SHIFT_NOT_OPEN' => 'لا توجد وردية مفتوحة على هذا الجهاز.',
         'VALIDATION_FAILED' => 'الطلب غير صالح.',
         'unknown_item' => 'صنف غير معروف',
+        // Default tenders seeded at a POS restaurant's first terminal.
+        'default_tender_cash' => 'نقدي',
+        'default_tender_card' => 'بطاقة',
     ],
     'messages' => [
         'signup_received' => 'مطعمك جاهز! تفقد بريدك الإلكتروني للحصول على بيانات الدخول إلى لوحة التحكم.',

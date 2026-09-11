@@ -41,6 +41,9 @@ return [
         'SHIFT_NOT_OPEN' => 'No open shift on this terminal.',
         'VALIDATION_FAILED' => 'The request was invalid.',
         'unknown_item' => 'Unknown item',
+        // Default tenders seeded at a POS restaurant's first terminal.
+        'default_tender_cash' => 'Cash',
+        'default_tender_card' => 'Card',
     ],
     'messages' => [
         'signup_received' => 'Your restaurant is ready! Check your email for your dashboard login details.',
