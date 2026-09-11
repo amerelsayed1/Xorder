@@ -866,6 +866,7 @@ sealed class AppStrings {
   // §40 — payment methods as data.
   String get tenderTypes;
   String get tenderTypesHint;
+  String get tenderTypesComeFromPlatform;
   String get tenderNew;
   String get tenderEdit;
   String get tenderNameEn;
@@ -3991,6 +3992,10 @@ final class EnStrings extends AppStrings {
   String get tenderTypesHint =>
       'What the till offers at payment, and which of them end up in the '
       'drawer.';
+  @override
+  String get tenderTypesComeFromPlatform =>
+      'On this till, payment methods come from XOrder. Add or change them on '
+      'the dashboard; they arrive here at the next sync.';
   @override
   String get tenderNew => 'New payment method';
   @override
@@ -7146,6 +7151,10 @@ final class ArStrings extends AppStrings {
   @override
   String get tenderTypesHint =>
       'ما تعرضه نقطة البيع عند الدفع، وأيّها ينتهي في الدرج.';
+  @override
+  String get tenderTypesComeFromPlatform =>
+      'على هذا الجهاز تأتي طرق الدفع من XOrder. أضفها أو عدّلها من لوحة '
+      'التحكم، وتصل إلى هنا مع المزامنة التالية.';
   @override
   String get tenderNew => 'طريقة دفع جديدة';
   @override

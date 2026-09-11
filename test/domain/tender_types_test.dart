@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:xorder_pos/core/money/money.dart';
+import 'package:xorder_pos/domain/models/branch_sales.dart';
 import 'package:xorder_pos/domain/models/catalog.dart';
 import 'package:xorder_pos/domain/models/tender_method.dart';
 import 'package:xorder_pos/domain/models/ticket.dart';
@@ -137,6 +138,47 @@ void main() {
       for (final kind in TenderKind.values) {
         expect(TenderKind.fromWire(kind.wire), kind);
       }
+    });
+  });
+
+  group('what the platform calls them (POS-BE-013)', () {
+    test('each lands on the till kind that reconciles it right', () {
+      expect(PlatformTenderKind.cash.tillKind, TenderKind.cash);
+      expect(PlatformTenderKind.card.tillKind, TenderKind.card);
+      expect(PlatformTenderKind.external.tillKind, TenderKind.card);
+      expect(PlatformTenderKind.other.tillKind, TenderKind.other);
+    });
+
+    test('a card on the bank\'s own terminal is electronic takings', () {
+      // The reason `external` is not `other`: the manager checks electronic
+      // against the bank terminal's settlement slip.
+      expect(
+        PaymentBucket.of(
+          kind: PlatformTenderKind.external.tillKind,
+          countsAsCash: false,
+        ),
+        PaymentBucket.electronic,
+      );
+    });
+
+    test('a kind this build has not heard of is unknown, never a throw', () {
+      expect(PlatformTenderKind.fromWire('crypto'), isNull);
+      expect(PlatformTenderKind.fromWire(null), isNull);
+      for (final kind in PlatformTenderKind.values) {
+        expect(PlatformTenderKind.fromWire(kind.wire), kind);
+      }
+    });
+
+    test('the compiled-in four sit at or under the platform floor', () {
+      // Migration 41's CHECK keeps platform rows above this number. A fifth
+      // seeded method above it would be a fallback payment that could share
+      // an id with a platform tender — the collision the ceiling exists for.
+      expect(
+        TenderMethod.seeded.every(
+          (t) => t.id <= TenderMethod.seededIdCeiling,
+        ),
+        isTrue,
+      );
     });
   });
 }

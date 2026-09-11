@@ -3649,6 +3649,60 @@ const posMigrations = <PosMigration>[
       WHERE is_stocked
     ''',
   ]),
+  PosMigration(41, 'a payment method remembers that the platform sent it', [
+    // A cloud till takes its payment methods from the bootstrap bundle
+    // (POS-BE-013), and until now sent the platform its OWN row ids — which the
+    // platform refused, or booked against whichever of its tenders shared the
+    // number.
+    //
+    // **The platform id is a column, not the primary key.** Products keep the
+    // platform id as their key; this table cannot. Its rows 1–4 were written by
+    // migration 23 and the installer before any bundle said anything, and a
+    // queued payment names its tender by exactly that local id. Had the seeder
+    // overwritten row 1 with the platform's tender 1, every sale still queued
+    // on the till's own Cash would have drained as whatever the platform calls
+    // tender 1 — the defect, relabelled. With the id in its own column a
+    // payment either names a row the platform sent, and the drain sends that
+    // row's platform id, or it does not, and the drain holds it for a person.
+    'ALTER TABLE pos_tender_types ADD COLUMN IF NOT EXISTS platform_id bigint',
+    // What the seeder's upsert is keyed on. NULLs are distinct, so every row a
+    // restaurant authored itself passes untouched.
+    '''
+    CREATE UNIQUE INDEX IF NOT EXISTS pos_tender_types_platform_unique
+      ON pos_tender_types (restaurant_id, platform_id)
+    ''',
+    // The code prefix below belongs to the seeder. Nothing can have written one
+    // yet, but a CHECK added over a row that breaks it fails this migration on
+    // a till in a restaurant — so anything that did is moved aside first.
+    '''
+    UPDATE pos_tender_types SET code = 'local-' || id || '-' || code
+     WHERE platform_id IS NULL AND code LIKE 'platform-%'
+    ''',
+    'ALTER TABLE pos_tender_types '
+        'DROP CONSTRAINT IF EXISTS pos_tender_types_platform_shape',
+    // Two promises, one constraint.
+    //
+    // The code: a platform row's is `platform-<id>` and nobody else may use the
+    // prefix, so the seeder's INSERT can never trip UNIQUE(restaurant_id, code)
+    // and roll back a whole bundle over a name.
+    //
+    // The id: a platform row never sits at 1–4. Those are the ids of
+    // `TenderMethod.seeded`, which the payment screen still offers while its
+    // list loads and whenever no row is active, and a payment taken on that
+    // fallback must read as "not the platform's". If the serial ever handed a
+    // platform tender id 1, the fallback Cash would drain as that tender. The
+    // seeder `setval`s past 4 before it inserts; this is what refuses it if it
+    // did not.
+    '''
+    ALTER TABLE pos_tender_types
+      ADD CONSTRAINT pos_tender_types_platform_shape CHECK (
+        (platform_id IS NULL AND code NOT LIKE 'platform-%')
+        OR (platform_id IS NOT NULL
+            AND code = 'platform-' || platform_id
+            AND id > 4)
+      )
+    ''',
+  ]),
 ];
 
 /// Brings the branch database up to the current schema.

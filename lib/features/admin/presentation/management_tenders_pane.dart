@@ -15,9 +15,13 @@ import 'tender_type_dialog.dart';
 
 /// How the restaurant takes money (§40).
 ///
-/// Local on both deployments, like the service charges: nothing seeds
-/// `pos_tender_types`, so a cloud restaurant says for itself what it accepts.
-/// The tax rates are the platform's; this is not.
+/// Authored here on an offline till only. On a cloud till the platform is the
+/// author (POS-BE-013): `BootstrapSeeder` writes these rows from the bundle,
+/// and the drain sends a payment only if its tender is one the platform sent.
+/// A method made here would be one the platform has never heard of, and every
+/// sale taken on it would be held unsent — so on cloud the pane lists them,
+/// operates nothing, and says where they come from. Same rule and same notice
+/// as the order types.
 class ManagementTendersPane extends ConsumerStatefulWidget {
   const ManagementTendersPane({required this.admin, super.key});
 
@@ -62,10 +66,15 @@ class _ManagementTendersPaneState extends ConsumerState<ManagementTendersPane> {
   @override
   Widget build(BuildContext context) {
     final strings = context.strings;
+    final authors = ref.watch(catalogAdminRepositoryProvider) != null;
 
     return ListView(
       padding: const EdgeInsets.all(PosSpace.xl),
       children: [
+        if (!authors) ...[
+          PlatformOwnedNotice(text: strings.tenderTypesComeFromPlatform),
+          const SizedBox(height: PosSpace.xl),
+        ],
         PaneSection(title: strings.tenderTypes, hint: strings.tenderTypesHint),
         ...ref
             .watch(tenderTypesAllProvider)
@@ -79,23 +88,31 @@ class _ManagementTendersPaneState extends ConsumerState<ManagementTendersPane> {
               ],
               data: (methods) => [
                 for (final method in methods)
-                  _TenderRow(method: method, onEdit: () => _edit(method)),
+                  _TenderRow(
+                    method: method,
+                    onEdit: authors && !_busy ? () => _edit(method) : null,
+                  ),
               ],
             ),
         if (_note != null) ...[
           const SizedBox(height: PosSpace.md),
           Text(_note!, style: PosText.ui(size: 12.5, color: context.pos.danger)),
         ],
-        const SizedBox(height: PosSpace.md),
-        Align(
-          alignment: AlignmentDirectional.centerStart,
-          child: PosButton(
-            key: const Key('tender-new'),
-            label: strings.tenderNew,
-            border: Border.fromBorderSide(context.pos.resting),
-            onPressed: _busy ? null : () => _edit(null),
+        // Absent rather than disabled on cloud. It used to be shown there and
+        // do nothing at all — `_edit` returned on the null repository — which
+        // is a button that lies.
+        if (authors) ...[
+          const SizedBox(height: PosSpace.md),
+          Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: PosButton(
+              key: const Key('tender-new'),
+              label: strings.tenderNew,
+              border: Border.fromBorderSide(context.pos.resting),
+              onPressed: _busy ? null : () => _edit(null),
+            ),
           ),
-        ),
+        ],
       ],
     );
   }
@@ -106,7 +123,10 @@ class _TenderRow extends StatelessWidget {
   const _TenderRow({required this.method, required this.onEdit});
 
   final TenderMethod method;
-  final VoidCallback onEdit;
+
+  /// Null while the pane is saving, or on a terminal whose payment methods
+  /// belong to the platform.
+  final VoidCallback? onEdit;
 
   @override
   Widget build(BuildContext context) {

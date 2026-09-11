@@ -655,6 +655,14 @@ class LocalBootstrap {
           'pos_branches_id_seq, pos_staff_id_seq, pos_categories_id_seq, '
           'pos_products_id_seq, pos_modifier_groups_id_seq, '
           'pos_modifiers_id_seq, pos_dining_tables_id_seq TO "$role"',
+      // Payment methods, since POS-BE-013 delivers them in the bundle. No
+      // DELETE: a tender the platform stopped sending is retired, because a
+      // queued payment names it by id and nothing else would. UPDATE on the
+      // sequence is for the `setval` that keeps platform rows above the
+      // compiled-in ids — see migration 41.
+      'GRANT INSERT, UPDATE ON pos_tender_types TO "$role"',
+      'GRANT USAGE, SELECT, UPDATE ON SEQUENCE pos_tender_types_id_seq '
+          'TO "$role"',
     ] else ...[
       // Taken away, not merely withheld. Every offline branch server built
       // before this distinction existed was granted the block above, and a
@@ -669,6 +677,12 @@ class LocalBootstrap {
           'pos_branches_id_seq, pos_staff_id_seq, pos_categories_id_seq, '
           'pos_products_id_seq, pos_modifier_groups_id_seq, '
           'pos_modifiers_id_seq, pos_dining_tables_id_seq FROM "$role"',
+      // Offline, `counts_as_cash` on this table is what every cash-up expects
+      // in the drawer. Authoring it is Management's, over the admin
+      // credential — which the migration tool and the setup wizard both grant
+      // AFTER this list, so the REVOKE cannot take it from an administrator.
+      'REVOKE INSERT, UPDATE ON pos_tender_types FROM "$role"',
+      'REVOKE UPDATE ON SEQUENCE pos_tender_types_id_seq FROM "$role"',
     ],
     'GRANT SELECT, INSERT, UPDATE ON pos_cloud_state TO "$role"',
     // The open floor. The ONE table the till may DELETE from: settlement

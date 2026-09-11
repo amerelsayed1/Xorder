@@ -12,6 +12,7 @@ import 'package:xorder_pos/domain/models/ticket.dart';
 import 'package:xorder_pos/domain/repositories/admin_repositories.dart';
 import 'package:xorder_pos/data/postgres/postgres_tender_types_repository.dart';
 import 'package:xorder_pos/domain/repositories/repositories.dart';
+import 'package:xorder_pos/features/admin/presentation/admin_pane_bits.dart';
 import 'package:xorder_pos/features/admin/presentation/management_charges_pane.dart';
 import 'package:xorder_pos/features/admin/presentation/management_taxes_pane.dart';
 import 'package:xorder_pos/features/admin/presentation/management_tenders_pane.dart';
@@ -23,8 +24,10 @@ import 'package:xorder_pos/features/admin/presentation/management_tenders_pane.d
 /// `pos_money_config` — so the pane disappeared; then Wave D put payment methods
 /// and service charges in it, which are local on both deployments, and a cloud
 /// restaurant was left unable to say how it takes money. That was patched by
-/// gating half a pane, and is now settled properly: three panes, and the one the
-/// platform owns is the only one that says so.
+/// gating half a pane, and is now settled properly: three panes, and each one
+/// the platform owns says so. Since POS-BE-013 that is two of them — the bundle
+/// delivers payment methods too, and the drain sends a payment only on a
+/// tender the platform sent.
 void main() {
   const admin = PosStaff(
     id: 1,
@@ -105,14 +108,33 @@ void main() {
       expect(find.byKey(const Key('rate-vat')), findsNothing);
     });
 
-    testWidgets('can still say how it takes money', (tester) async {
+    testWidgets('is shown how it takes money, and told whose that is', (
+      tester,
+    ) async {
+      // **This test used to assert the opposite** — that a cloud till could
+      // add a payment method. The button was there and did nothing (the admin
+      // repository is null on cloud), and a method made on the till would be
+      // one the platform had never heard of. POS-BE-013 makes the platform the
+      // author; the pane now says so and operates nothing.
       await pump(
         tester,
         authors: false,
         pane: const ManagementTendersPane(admin: admin),
       );
       expect(find.text('PAYMENT METHODS'), findsOneWidget);
-      expect(find.byKey(const Key('tender-new')), findsOneWidget);
+      expect(find.byType(PlatformOwnedNotice), findsOneWidget);
+      expect(find.textContaining('dashboard'), findsOneWidget);
+      expect(
+        find.byKey(const Key('tender-new')),
+        findsNothing,
+        reason: 'a button that cannot save is a lie',
+      );
+      final row = tester.widget<InkWell>(
+        find
+            .ancestor(of: find.text('Cash'), matching: find.byType(InkWell))
+            .first,
+      );
+      expect(row.onTap, isNull, reason: 'listed, and not operable');
     });
 
     testWidgets('and what it adds on top of the food', (tester) async {
@@ -153,6 +175,12 @@ void main() {
         pane: const ManagementTendersPane(admin: admin),
       );
       expect(find.text('PAYMENT METHODS'), findsOneWidget);
+      expect(find.byKey(const Key('tender-new')), findsOneWidget);
+      expect(
+        find.byType(PlatformOwnedNotice),
+        findsNothing,
+        reason: 'offline, these are this terminal\'s',
+      );
     });
   });
 

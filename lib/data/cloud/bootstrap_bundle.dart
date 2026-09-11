@@ -13,6 +13,8 @@
 /// price on a till is worse than a missing product.
 library;
 
+import '../../domain/models/tender_method.dart';
+
 /// One parsed key, or null — never an exception.
 int? _asInt(Object? value) => switch (value) {
   final int v => v,
@@ -402,6 +404,43 @@ class BootstrapStaff {
   }
 }
 
+/// One payment method, as POS-BE-013 delivers it inside `money.tender_types`:
+/// `{id, name, kind, is_active, sort_order}` and nothing else. The flags the
+/// till needs beyond these are derived by the seeder, not read from here.
+class BootstrapTenderType {
+  const BootstrapTenderType({
+    required this.id,
+    required this.name,
+    this.kind,
+    this.isActive = true,
+    this.sortOrder = 0,
+  });
+
+  /// The **platform** tender id — what the drain must send.
+  final int id;
+  final String name;
+
+  /// Null when the platform sent a kind this build does not know.
+  final PlatformTenderKind? kind;
+  final bool isActive;
+  final int sortOrder;
+
+  static BootstrapTenderType? fromJson(Map<String, Object?> json) {
+    final id = _asInt(json['id']);
+    if (id == null) return null;
+    return BootstrapTenderType(
+      id: id,
+      // A nameless tender is still one the owner created and may be taking
+      // money on. Dropping it would retire the row on the next seed; a plain
+      // label keeps it takeable and makes the gap obvious on the button.
+      name: _asString(json['name']) ?? 'Payment method $id',
+      kind: PlatformTenderKind.fromWire(_asString(json['kind'])),
+      isActive: _asBool(json['is_active'], orElse: true),
+      sortOrder: _asInt(json['sort_order']) ?? 0,
+    );
+  }
+}
+
 /// The whole document.
 class BootstrapBundle {
   const BootstrapBundle({
@@ -442,6 +481,16 @@ class BootstrapBundle {
 
   /// `{payload, signature, key_id}` when the tenant holds one (POS-BE-015).
   final Map<String, Object?>? licence;
+
+  /// The payment methods in [money], parsed.
+  ///
+  /// A reading of [money] rather than a field beside it: [money] stays the
+  /// verbatim payload `pos_money_config` stores, and there is one copy of the
+  /// truth rather than two that a hand-built bundle could make disagree.
+  List<BootstrapTenderType> get tenderTypes => [
+    for (final tender in _asMapList(money['tender_types']))
+      ?BootstrapTenderType.fromJson(tender),
+  ];
 
   /// Can this bundle seed a database at all? The identity block is the floor:
   /// without knowing *which restaurant this is*, seeding anything would write

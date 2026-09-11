@@ -275,6 +275,26 @@ void main() {
     expect(await refusalFor('DELETE FROM pos_order_line_items'), '42501');
   });
 
+  test('the till may not invent a payment method, or make one count as cash',
+      () async {
+    // The probe started from the CLOUD set, which since POS-BE-013 writes
+    // `pos_tender_types` for the bootstrap seeder — so this is the offline
+    // REVOKE doing its job. Offline, `counts_as_cash` is what every cash-up
+    // expects to find in the drawer.
+    expect(await refusalFor('SELECT 1 FROM pos_tender_types'), isNull);
+    expect(
+      await refusalFor('UPDATE pos_tender_types SET counts_as_cash = true'),
+      '42501',
+    );
+    expect(
+      await refusalFor(
+        'INSERT INTO pos_tender_types (restaurant_id, code, name_en) '
+        "VALUES (1, 'x', 'X')",
+      ),
+      '42501',
+    );
+  });
+
   test('the till may not change what the receipt says about the seller',
       () async {
     // The trade name and registration number on a legal document.
