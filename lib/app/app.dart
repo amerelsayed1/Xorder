@@ -242,6 +242,13 @@ class XorderPosApp extends ConsumerWidget {
                               if (groups && i > 0) const MenuDivider(),
                               MenuButton(
                                 text: Text(label),
+                                // Printed, not bound: the global binding is
+                                // what fires, and it lands on Staff — so the
+                                // key is named on the item it opens.
+                                shortcutText:
+                                    pane == ManagementPane.staff && i == 0
+                                    ? 'F8'
+                                    : null,
                                 onTap: () => ref
                                     .read(routerProvider)
                                     .go(
@@ -268,28 +275,9 @@ class XorderPosApp extends ConsumerWidget {
                             icon: const Icon(Icons.sync, size: 16),
                             onTap: cloud.kick,
                           ),
-                        // Named for the thing somebody is looking for. Adding a
-                        // cashier has always been possible; it was behind a word
-                        // that does not mention accounts, which is the same as not
-                        // being there.
-                        MenuButton(
-                          text: Text(strings.staffAndAccounts),
-                          icon: const Icon(Icons.person_add_alt, size: 16),
-                          onTap: () => ref
-                              .read(routerProvider)
-                              .go(PosRoutes.management, extra: ManagementPane.staff),
-                        ),
-                        MenuButton(
-                          text: Text(strings.management),
-                          icon: const Icon(Icons.tune, size: 16),
-                          // Printed, not bound: the global binding above is
-                          // what fires. Naming it here is how somebody finds a
-                          // key they would never have guessed.
-                          shortcutText: 'F8',
-                          onTap: () =>
-                              ref.read(routerProvider).go(PosRoutes.management),
-                        ),
-                        const MenuDivider(),
+                        // Not the back office: the bar's own Management menu
+                        // opens it, and "Staff & accounts" and "Management"
+                        // here were the same door twice more.
                         // Switching language rebuilds the whole tree, including this
                         // bar — the label flips with it, which is why it reads as the
                         // language you would GET rather than the one you are in.

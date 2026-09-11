@@ -183,7 +183,9 @@ void main() {
   ) async {
     await pumpApp(tester);
 
-    await openSettings(tester);
+    // On the Management menu, beside the item it opens — not in Settings,
+    // where "Staff & accounts" and "Management" were the same door twice.
+    await openSettings(tester, label: 'Management');
     // Back-office work is something a manager does twenty times an evening
     // between orders, and a key nobody can guess is a key nobody uses.
     expect(find.text('F8'), findsOneWidget);
