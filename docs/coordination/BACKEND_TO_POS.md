@@ -4,7 +4,7 @@
 **Request channel:** `./POS_TO_BACKEND.md` (Agent 1's; the authoritative copy lives in
 `~/Projects/Mobile Application/xorder-pos/docs/coordination/POS_TO_BACKEND.md`)
 **Backend repo:** `~/Projects/Web Application/xorder-new` (`apps/api`)
-**Last updated:** 2026-09-04 — **Cloud Wave 1 implemented, tested and
+**Last updated:** 2026-09-11 (CB-00: both repos' copies reconciled) · 2026-09-04 — **Cloud Wave 1 implemented, tested and
 smoke-verified; 16 items `READY`** (see the banner and change log). Deferred
 items stay `APPROVED`. Nothing committed or deployed.
 
@@ -820,6 +820,45 @@ one thing to invalidate. Every write to these tables bumps `config_version`.
 `tender_types`, all `BelongsToRestaurant`), `restaurants.tax_registration_number`
 nullable. Additive.
 
+**Amendment, 2026-09-11: the tender-id defect** (owner go 2026-09-11: "fix
+the tender-id mismatch now as a defect"). **This is an amendment to POS-BE-013,
+not new surface.** No endpoint, bundle key, field or error code is added, and
+the wire shape above is unchanged, so there is no POS-BE-030. It writes down
+rules the shape already implied, which a cloud till was breaking:
+
+1. **`payments[].tender_type_id` MUST be an `id` from this bundle's
+   `money.tender_types`.** That goes for §006 and §006-P alike. The platform
+   checks it against the requesting terminal's own tenant, and an id from
+   anywhere else is `422 VALIDATION_FAILED` (`errors.payments`: "Unknown tender
+   type."). A till's local tender ids mean nothing to the platform. On a cloud
+   terminal the till seeds its tender table from this list, keyed by the
+   platform id, and pays with those ids.
+2. **A POS restaurant's list is never empty.** When the restaurant's first
+   terminal is created (dashboard or Super Admin provision, or Path B
+   register) and it has **zero** tender types, active or inactive, the
+   platform creates two:
+   `{ "name": "Cash", "kind": "cash", "is_active": true, "sort_order": 0 }` and
+   `{ "name": "Card", "kind": "card", "is_active": true, "sort_order": 1 }`.
+   Names are in the restaurant's default language (`نقدي` / `بطاقة` for an
+   Arabic restaurant); `name` is still a single column. A claim runs the same
+   check, as a backstop for a terminal provisioned before this change. It is
+   idempotent: a restaurant that already has any tender gets nothing, and so
+   does a second terminal. Seeding bumps `config_version` like any tender
+   write. The owner renames, adds or deactivates tenders in the dashboard as
+   before. The ids are ordinary platform ids, **not** 1 and 2. Match on `id`,
+   or on `kind`, never on the name.
+3. **`tender_type_id: null` means "unspecified". It is not a fallback.** The
+   field stays nullable on the wire, and a null payment is still accepted. But
+   the §009 shift report counts an untyped payment **as cash** in expected cash.
+   A card payment sent as null inflates the drawer's expected cash and hides a
+   real short. Clients MUST NOT send null in place of an id they couldn't map.
+   A payment with no matching id is a client defect: fix the mapping, don't
+   null it.
+4. The platform does not overrule an owner who deactivated **every** tender.
+   The list is then non-empty but has nothing active, and an inactive id is
+   still accepted on a payment (historical FKs, the rule above). What the till
+   shows in that state is the till's decision.
+
 ---
 
 ## POS-BE-014 — authenticated customer creation · APPROVED
@@ -1493,6 +1532,13 @@ Deployment consequences recorded 2026-08-26 (mandatory check-in window via the
 catalog authored in the cloud only) are **accepted as constraints on the
 backend contracts** — one enforcement path, through the licence.
 
+**Amendment 2026-09-06 — "catalog authored in the cloud only" now reads "on a
+cloud terminal".** `DeploymentMode.offline` authors its menu, floor and money
+rules locally, because an offline restaurant has no dashboard to author them in.
+**Nothing on the backend changes:** an offline till never sends a catalogue and
+the platform is never asked to reconcile one. The constraint still holds for
+every terminal the fleet views can see, which is every cloud terminal.
+
 **Schema:** `pos_terminals` heartbeat columns — `last_seen_at, app_version,
 platform, deployment_mode, sync_policy, pending_count, oldest_pending_at,
 shift_open, clock_offset_seconds, last_catalog_sync_at,
@@ -1872,6 +1918,8 @@ today; everything else awaits the owner's go for implementation.
 | 2026-08-26 | Agent 2 analysis of POS-BE-001…014 + 016 complete; A1–A7 answered; BE-A01…BE-A05 raised. |
 | 2026-08-26 | Owner decision D6; POS-BE-015 contract frozen, then **implemented and tested** (`READY`): `pos_licences`, Ed25519 issuance, key activation, renewal-supersedes-in-place, revocation, `.xlic` download, `licences.manage`, 14 feature tests, Super Admin screens at `/pos/licences`. |
 | 2026-09-02 | **Owner instructed full contract agreement (docs only, no code).** Every item POS-BE-001…028 assessed and moved to `APPROVED`; POS-BE-015 stays `READY` with its shipped section preserved verbatim. Decisions recorded: BE-A01 dual idempotency keys (envelope + per-payment; Agent 1 adds `Tender.clientId`); A5 `complete` flag per collection; POS-BE-022 heartbeat response accepted as proposed; POS-BE-011 resolved as **Option C** (device token at claim, no TTL, rotation with 24 h overlap); POS-BE-021 bounded at 100 elements; POS-BE-024 PIN hash fixed as **bcrypt cost 10**; POS-BE-025/026/027/028 accepted with DIS-1/DIS-2 counter-proposals; canonical §019 error list consolidated (lowercase licence codes grandfathered, DIS-4); agreed defaults adopted for D1, D2, Q1, Q2, Q3, A4 (five `settlement_status` strings now final). Five disagreements/counter-proposals recorded at the top for Agent 1 / the owner. **No migration, controller, or code of any kind written.** |
+| 2026-09-02 | **Agent 1 accepted DIS-1…DIS-5** (DIS-3 jointly declined, on the owner's desk). Error-code inconsistency fixed: uppercase `LICENCE_TENANT_MISMATCH` added to §019 for the site-register ref check, with a grandfather-collision note against the lowercase activation code; `LICENCE_SITE_MISMATCH` now solely the `server_id` claim mismatch; DIS-2, §019 and §026 agree. Client commitment recorded: `Tender.clientId` generated in `TicketEngine.addTender`. **Contracts closed.** No code written. |
 | 2026-09-04 | **Cloud Wave 1 implemented and tested** under the owner's 2026-09-02 go ("make the POS work with cloud for now"). READY: POS-BE-001, 002, 003, 005, 006 (+§006-P), 007, 008, 009 (registry subsumed by §023), 011, 013, 016 (claim/register warning), 019, 020, 022 (API; web UI later; `stale` awaits §026), 023, 024. Deferred, still APPROVED: 004, 010, 012, 014, 017, 018, 021, 025, 026, 027, 028. As-shipped amendments recorded in the banner: PBKDF2 PIN hash (supersedes bcrypt), bundle `tables` block + frozen normalized catalog, §006 v1 relaxations, UTC-instant timestamp rule, licence `current` tightened to the device credential. 740 backend tests green; end-to-end smoke by Agent 1 2026-09-04 (real Flutter parser, 0 products dropped). Implementation journal: `docs/backend/CLOUD_WAVE1_PROGRESS.md`. Nothing committed or deployed. |
 | 2026-09-05 | **Tenant creation split from terminal creation** (owner decision). Creating a client now mints the client **and its POS licence in one transaction** — a licence failure rolls the whole tenant back, so there is no such thing as an unlicensed client created through the wizard. Creating a client still creates **no terminal of any kind**; terminals are provisioned one at a time afterwards, and a licensed tenant with zero terminals is a valid resting state. New platform-side routes under `/api/admin/restaurants/{restaurant}/terminals` (§023 amendment), new `pos_fleet.manage` capability. **No POS-facing wire contract changed.** |
-| 2026-09-02 | **Agent 1 accepted DIS-1…DIS-5** (DIS-3 jointly declined, on the owner's desk). Error-code inconsistency fixed: uppercase `LICENCE_TENANT_MISMATCH` added to §019 for the site-register ref check, with a grandfather-collision note against the lowercase activation code; `LICENCE_SITE_MISMATCH` now solely the `server_id` claim mismatch; DIS-2, §019 and §026 agree. Client commitment recorded: `Tender.clientId` generated in `TicketEngine.addTender`. **Contracts closed.** No code written. |
+| 2026-09-11 | **CB-00 — the two repos' copies reconciled** (`xorder-cloud`, docs only). They had drifted in both directions. xorder-new (2026-09-05) alone had the §023 "Amendment, owner decision 2026-09-05 — the platform-side front door" (the four `/api/admin/restaurants/{restaurant}/terminals` routes and the "zero terminals is a normal state" note) and the 2026-09-05 "tenant creation split from terminal creation" change-log row. xorder-pos (2026-09-06) alone had the §022 "Amendment 2026-09-06 — 'catalog authored in the cloud only' now reads 'on a cloud terminal'" (which carried no change-log row of its own). Both are kept; they touch different passages, so nothing conflicted. Change-log rows re-sorted into date order (no row removed or reworded). No contract status changed (the two copies agreed on every status). Both copies are now byte-identical. |
+| 2026-09-11 | **POS-BE-013 amended: the tender-id defect is fixed** (owner go 2026-09-11, `xorder-cloud`). A cloud till had been paying with its own local tender ids (1–4), and the platform validates `tender_type_id` against its own tenant-scoped `tender_types`. Platform side: `PosProvisioningService::ensureDefaultTenders()` creates Cash + Card at a POS restaurant's first terminal (provision or register, with claim as the backstop) when the restaurant has no tender types. It is idempotent, scoped per tenant, and bumps `config_version`. The rules added to §013 are that `tender_type_id` MUST come from `money.tender_types`, the list is never empty, and null means "unspecified" (counted as cash) and is never a fallback. This is an amendment, not new surface, so there is no POS-BE-030, and POS-BE-013 stays `READY`. Tests: `tests/Feature/Pos/PosDefaultTendersTest.php` (11). No migration. Till side (`pos-dev`, in parallel): seed `pos_tender_types` from the bundle on cloud and pay with platform ids. Nothing committed or deployed. |

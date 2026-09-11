@@ -4,7 +4,7 @@
 **Absolute path:** `~/Projects/Mobile Application/xorder-pos/docs/coordination/POS_TO_BACKEND.md`
 **Backend repo under analysis:** `~/Projects/Web Application/xorder-new` (`apps/api`)
 **Reply channel:** `./BACKEND_TO_POS.md`
-**Last updated:** 2026-09-02
+**Last updated:** 2026-09-11 (CB-00: both repos' copies reconciled — see change log)
 
 ---
 
@@ -1015,10 +1015,21 @@ licence status · shift open. Sortable by last seen and by pending count.
   backend is that **no tenant is exempt** from POS-BE-008's provisional
   references, POS-BE-011, POS-BE-019, POS-BE-020 or POS-BE-021; they are
   universal, not per-SKU.
-- **The catalog stays authored in the cloud dashboard.** Local catalog authoring
-  on the till is now explicitly *out* of scope: a Super Admin cannot meaningfully
-  track a fleet whose tills each invented their own menu and prices. Islanded
-  tills are *seeded* from the platform and refreshed at each check-in.
+- **The catalog stays authored in the cloud dashboard — on a CLOUD terminal.**
+  A Super Admin cannot meaningfully track a fleet whose tills each invented
+  their own menu and prices, so a cloud till remains a reader: seeded from the
+  platform and refreshed at each check-in, with `BootstrapSeeder` replacing its
+  catalogue wholesale.
+
+  **Narrowed 2026-09-06 (owner decision):** this rule binds the *cloud* product
+  only. `DeploymentMode.offline` now authors its own menu, floor and money
+  rules on the till, because an offline restaurant has no dashboard to author
+  them in and no fleet for a Super Admin to track. The two are kept apart by
+  construction rather than by convention — `catalogAdminRepositoryProvider`
+  returns null outside offline, and `PostgresCatalogAdminRepository` refuses
+  again on its own, so a cloud till cannot author even if something built one.
+  There is still **exactly one author per deployment**, which is what the
+  no-merge rule below actually depends on.
 
 **Permissions:** heartbeat — `pos.operate` (or the terminal's own credential, if
 POS-BE-011 lands as Option C). Fleet views — Super Admin `Capability`, not
@@ -1434,6 +1445,122 @@ is worth finding in the trail.
 
 ---
 
+## POS-BE-029
+
+**Status:** PROPOSED — filed 2026-09-10. Client built against this text and tested against a fake HTTP layer (`lib/data/cloud/branch_sales_api.dart`); no backend work exists.
+**Feature:** The branch view on a cloud till — its own branch, every terminal summed and broken out
+
+**Description:** Two reads, both scoped to the branch of the terminal whose
+device token makes the request:
+
+- `GET /api/pos/branch/sales/summary?business_day=YYYY-MM-DD&acting_user_id=9`
+  → one row per terminal of the branch, **zeros included**, for that business day.
+- `GET /api/pos/branch/sales?terminal_id=<uuid>&business_day=YYYY-MM-DD&acting_user_id=9`
+  → that terminal's sales for the day, for drill-down.
+
+**Why it is worth an entry of its own.** Owner decision, 2026-09-10: a cloud
+till shows its own branch — the summary and the per-terminal breakdown
+(`docs/pos/17-sales-and-payments-plan.md` §3a, §6 C4). Where a branch's tills
+share one LAN database the till answers that locally and needs nothing from
+the platform. Where each till has its own database, the till holds only its own
+sales, and the platform is the only place the branch exists as a whole.
+
+**Scope — the rule `GET /shifts/{id}/report` already follows.** Device token
++ `feature:pos` + `pos.reports` on `acting_user_id` (the till's
+`reports.view`; `permissions.dart` maps one to the other). There is **no
+`branch_id` parameter**: the branch is the requesting terminal's, so there is
+nothing to tamper with. A `terminal_id` outside that branch, or unknown →
+`404`, regardless of the user's capability — the no-existence-leak rule from
+§009's "Report scoping". This stays a branch read and must never become a
+cross-branch dashboard; that is C3's job, on the web.
+
+**Rules the numbers must keep** (§3a, binding on both sides):
+
+1. The branch total is the sum of the terminal rows — one query, `GROUP BY`
+   terminal. The client **derives** its totals from `terminals[]` and only
+   checks `totals` against them; a disagreement is flagged, not shown.
+2. Every terminal of the branch is listed, including one with no sales, and a
+   revoked terminal that took money that day. `last_received_at` is what lets
+   a manager see a till that stopped syncing.
+3. Payments by method carry the tender's `kind` and the payment's
+   `counts_as_cash`. Cash = `counts_as_cash`; card / electronic = kinds `card`
+   and `wallet`; **`account` is neither** — money owed, never collected.
+4. A refund belongs to the terminal that **issued** it, in the business day it
+   was issued — not the original sale's terminal or day.
+5. Net = gross − discounts − refunds, where gross is **before** discounts
+   (`total_minor + discount_minor` in the till's terms).
+
+Settled sales only: voided, cancelled and still-open orders are not sales.
+
+**Summary response `200`:**
+
+```jsonc
+{ "data": {
+    "branch_id": 3, "business_day": "2026-09-10",
+    "currency": "EGP", "exponent": 2,
+    "generated_at": "2026-09-10T21:00:04Z",
+    "terminals": [
+      { "terminal_id": "uuid", "name": "POS-01",
+        "orders": 2, "gross_minor": 67345, "discount_minor": 5000,
+        "refund_minor": 0, "refund_count": 0, "net_minor": 62345,
+        "last_received_at": "2026-09-10T20:58:11Z",
+        "payments": [
+          { "tender_type_id": 1, "label": "Cash", "kind": "cash",
+            "counts_as_cash": true, "count": 1, "amount_minor": 30000 },
+          { "tender_type_id": 4, "label": "On account", "kind": "account",
+            "counts_as_cash": false, "count": 1, "amount_minor": 12345 } ] },
+      { "terminal_id": "uuid", "name": "POS-03",
+        "orders": 0, "gross_minor": 0, "discount_minor": 0,
+        "refund_minor": 0, "refund_count": 0, "net_minor": 0,
+        "last_received_at": null, "payments": [] } ],
+    "totals": { "orders": 2, "gross_minor": 67345, "discount_minor": 5000,
+                "refund_minor": 0, "net_minor": 62345 } } }
+```
+
+**Drill-down response `200`:**
+
+```jsonc
+{ "data": [
+    { "id": 8814, "client_transaction_id": "uuid",
+      "invoice_number": "MANS-2026-000042", "settlement_status": "PAID",
+      "created_at": "2026-09-10T13:05:00+02:00",
+      "total_minor": 30000, "discount_minor": 1000, "refunded_minor": 0,
+      "acting_user_id": 9 } ],
+  "meta": { "terminal_id": "uuid", "business_day": "2026-09-10",
+            "currency": "EGP", "exponent": 2 } }
+```
+
+Without `pos.order_view_all` on `acting_user_id`, only that user's own sales
+are listed — the till's S1 rule, applied where the rows are.
+
+**Open question — the platform needs each sale's business day.** §006 carries
+only `created_at`, and a trading day that runs past midnight is not a calendar
+date. Proposed: an optional `business_day` (`YYYY-MM-DD`) on §006 and §010
+requests, additive; until the till sends it, the platform derives it from
+`created_at` and the branch's day boundary and **says which it did** in the
+response. The till does not yet stamp a business day on its own sales rows
+(recorded in the plan's §6 C4), so this is not a field the client can fill
+today — flagged now so the two land together.
+
+**Client behaviour, so the semantics are agreed before either side builds:**
+
+- A `200` naming another `branch_id`, another `business_day`, or carrying a
+  money figure that is not an integer is refused as unreadable — never shown,
+  never rounded (POS-BE-007).
+- When a refresh fails, the till shows the last snapshot it did read, labelled
+  with the time it read it. Never silently stale.
+- The till's own not-yet-synced sales are counted in a banner and **never
+  added** to these figures — adding them would double-count each one the moment
+  it syncs.
+
+**Errors:** `401 DEVICE_TOKEN_INVALID` · `403 POS_FEATURE_DISABLED /
+POS_CAPABILITY_MISSING / TERMINAL_REVOKED` · `404` terminal not in the
+requesting branch · `422 VALIDATION_FAILED` (malformed `business_day`).
+**Priority:** MEDIUM · **Blocking:** NO — shared-database branches need nothing
+from the platform; only per-till cloud branches wait on this.
+
+---
+
 ## Amendment to POS-BE-022 — please specify the heartbeat *response*
 
 **This is the highest-leverage single item in the whole request set, and it costs
@@ -1693,6 +1820,11 @@ owner's explicit go to move `APPROVED → IN_PROGRESS`.
 | 2026-08-26 | Owner decision **D6**: a licence is its own per-client record, issued from the Super Admin dashboard — not derived from the subscription. POS-BE-015 contract frozen in `BACKEND_TO_POS.md` (table, endpoints, wire shape, claims mapping). Two client-side gaps recorded: `max_offline_days` is not yet read by `LicenseClaims`, and `modes[]` must never be emitted empty. No code written on either side. |
 | 2026-08-26 | POS-BE-015 **implemented**: `pos_licences`, Ed25519 issuance, key activation, renewal-supersedes-in-place, revocation, `.xlic` download, `licences.manage` (SUPER_ADMIN only), 14 feature tests green. Super Admin screens shipped at `/pos/licences`. POS client still on `FakeLicenceService` pending the `max_offline_days` claim and the real public key. |
 | 2026-08-28 | **Client gap closed:** `LicenseClaims` now reads `max_offline_days` and `license_version`, tolerantly — absent, null or wrongly typed all fall back to the safe default, because a throw here becomes `LicenceFileDamaged` and refuses trade. No existing licence needs re-signing; proven by a signed fixture in `test/features/licensing_test.dart`. The window is **parsed but not yet enforced**, pending a durable last-contact timestamp. `licenceServiceProvider` was already on `DefaultLicenceService` — the earlier note saying otherwise was stale. **Still outstanding: the real Ed25519 public key**, which only the issuer can produce. |
-| 2026-09-04 | **Cloud Wave 1 integrated and smoke-verified end-to-end.** Owner go: "make the POS work with cloud for now". Client side shipped in `lib/data/cloud/`: `PosCloudApi`, tolerant `BootstrapBundle` parser, `BootstrapSeeder` (bundle → local PostgreSQL, platform ids verbatim, staff deactivated never deleted), `OutboxDrain` (§006 requests, per-payment uuid-v5 keys, quarantine-vs-defer per §019, delivery bookkeeping in migration 6), `CloudSync` (heartbeat → config-version reseed → drain; automatic timer + kick-on-sale + sync-pill manual), `DeviceTokenVault` (keychain), cloud `ProvisioningRepository` (Path A claim + Path B login/register). Backend Wave 1 implemented in `apps/api` (see `BACKEND_TO_POS.md` and `docs/backend/CLOUD_WAVE1_PROGRESS.md`). **Live smoke against `php artisan serve`: claim → bootstrap (frozen key map, 0 products dropped by the real parser) → server-priced order `201` with invoice `MAIN-2026-000001` → replay `200` same id+invoice → recovery → heartbeat → error envelope. All passed.** Client suites green (247); backend green (721). |
-| 2026-09-02 | **Contracts closed.** Owner directed full contract agreement. Agent 2 assessed every item and rewrote `BACKEND_TO_POS.md` as the agreed-contract document: POS-BE-001…028 all `APPROVED` (015 `READY`), open questions a–l decided (dual idempotency keys, per-collection `complete` flag, heartbeat response as proposed, **POS-BE-011 resolved as Option C** device token, batch bound 100, PIN hash bcrypt cost 10, canonical §019 error list). Agent 1 accepted DIS-1…DIS-5; `LICENCE_TENANT_MISMATCH` split from `LICENCE_SITE_MISMATCH`. Statuses here flipped to `APPROVED`; client backlog recorded above. **No code written on either side.** |
 | 2026-08-28 | Setup architecture designed end to end — `docs/pos/10-setup-architecture.md`. POS-BE-025 … POS-BE-028 raised: pre-auth tenant config by slug with a monotonic `config_version`, site registration and `ServerId`, three additive licence claims, terminal rename. Amendments requested to POS-BE-023 (a redacted pre-auth projection of the bootstrap bundle) and POS-BE-022 (specify the heartbeat *response*, which collapses three client polling loops into one). A separate "offline certificate" was requested by the owner and **declined** in favour of three claims on the existing licence — recorded as a disagreement in POS-BE-027, not a silent substitution. Design only; no client or backend code written. |
+| 2026-09-02 | **Contracts closed.** Owner directed full contract agreement. Agent 2 assessed every item and rewrote `BACKEND_TO_POS.md` as the agreed-contract document: POS-BE-001…028 all `APPROVED` (015 `READY`), open questions a–l decided (dual idempotency keys, per-collection `complete` flag, heartbeat response as proposed, **POS-BE-011 resolved as Option C** device token, batch bound 100, PIN hash bcrypt cost 10, canonical §019 error list). Agent 1 accepted DIS-1…DIS-5; `LICENCE_TENANT_MISMATCH` split from `LICENCE_SITE_MISMATCH`. Statuses here flipped to `APPROVED`; client backlog recorded above. **No code written on either side.** |
+| 2026-09-04 | **Cloud Wave 1 integrated and smoke-verified end-to-end.** Owner go: "make the POS work with cloud for now". Client side shipped in `lib/data/cloud/`: `PosCloudApi`, tolerant `BootstrapBundle` parser, `BootstrapSeeder` (bundle → local PostgreSQL, platform ids verbatim, staff deactivated never deleted), `OutboxDrain` (§006 requests, per-payment uuid-v5 keys, quarantine-vs-defer per §019, delivery bookkeeping in migration 6), `CloudSync` (heartbeat → config-version reseed → drain; automatic timer + kick-on-sale + sync-pill manual), `DeviceTokenVault` (keychain), cloud `ProvisioningRepository` (Path A claim + Path B login/register). Backend Wave 1 implemented in `apps/api` (see `BACKEND_TO_POS.md` and `docs/backend/CLOUD_WAVE1_PROGRESS.md`). **Live smoke against `php artisan serve`: claim → bootstrap (frozen key map, 0 products dropped by the real parser) → server-priced order `201` with invoice `MAIN-2026-000001` → replay `200` same id+invoice → recovery → heartbeat → error envelope. All passed.** Client suites green (247); backend green (721). |
+| 2026-09-06 | Owner decision: **`DeploymentMode.offline` is buildable, and authors its own world.** The two phase-1 blocks are removed and the wizard offers whichever modes the licence covers. An offline till can create its own database from the wizard (admin credential used once, never stored), and its Management section gains Menu, Floor and Money panes writing `pos_categories` / `pos_products` / `pos_dining_tables` / `pos_money_config` with the same audited-write discipline as staff and roles. **The 2026-08-26 ruling above is narrowed, not reversed:** local authoring is refused on cloud terminals in both the provider and the repository, so every deployment still has exactly one author and no merge path is needed. Back-office writes also move onto a second database role, asked for when Management opens and held in memory only — `bin/pos_migrate.dart` always refused to grant both role sets to one role, and the app now honours that instead of running Management as `pos_till`. No backend contract changed. |
+| 2026-09-10 | POS-BE-029 raised: the branch view on a cloud till whose database is its own — `GET /api/pos/branch/sales/summary` and `GET /api/pos/branch/sales`, device token + `pos.reports`, the requesting terminal's branch only (404 otherwise). Open question recorded: the platform needs each sale's business day, which §006 does not carry. Client built against the text in `lib/data/cloud/branch_sales_api.dart`, tested against a fake HTTP layer; no backend code touched. |
+| 2026-09-11 | **CB-00 — the two repos' copies reconciled** (`xorder-cloud`, docs only). The xorder-pos copy (2026-09-11) was a strict superset of the xorder-new copy (2026-09-04) except one passage: the "catalog stays authored in the cloud dashboard" bullet under the 2026-08-26 deployment consequences. xorder-new still had the original 2026-08-26 wording ("local catalog authoring on the till is now explicitly *out* of scope"); xorder-pos had the 2026-09-06 owner narrowing ("— on a CLOUD terminal", offline authors its own world). **The later-dated 2026-09-06 text is kept.** Carried into xorder-new: that narrowing, the whole POS-BE-029 entry and its summary row, and the 2026-09-06 and 2026-09-10 change-log rows. Change-log rows re-sorted into date order (no row removed or reworded). No request status changed. Both copies are now byte-identical. |
+| 2026-09-11 | **Defect: a cloud till paid with its own local tender ids.** The drain sent the till's local `tender_type_id` (the seeded 1–4) unchanged, and the platform validates that field against its own tenant-scoped `tender_types`. So a synced payment was refused with 422 "Unknown tender type", or it landed on a different platform tender that happened to share the id. The owner's go of 2026-09-11 was to fix it as a defect. It is conformance with POS-BE-013, as amended the same day in `BACKEND_TO_POS.md`, so no new request was raised. On a cloud terminal the till now seeds `pos_tender_types` from the bundle's `money.tender_types`, keyed by the platform id, and pays with those ids (`pos-dev`, in parallel with the platform change). It never falls back to null, because the shift report counts a null tender as cash. The platform now guarantees the list is never empty: Cash and Card are created at the restaurant's first terminal. |
+| 2026-09-11 | **POS-BE-013 tender types: how the client conforms** (`pos-dev`, same defect go). A cloud till now upserts each `money.tender_types` element into `pos_tender_types`, keyed on a new column `(restaurant_id, platform_id)` (migration 41). The till's own primary key is kept, so platform tender 1 never overwrites local row 1. The drain sends `platform_id` as `payments[].tender_type_id`. A database CHECK keeps platform rows at ids above 4, with code `platform-<id>`. Kind mapping: `cash→cash`, `card→card`, `external→card` (reconciled as electronic against the bank terminal's slip), `other→other`, unknown→`other` (never cash). Only `cash` counts as cash and opens the drawer. Tenders the bundle no longer names are deactivated, never deleted. An empty list changes nothing. **Refused on the client:** a payment on a tender the bundle didn't deliver (the seeded 1–4, or legacy queued sales) is never sent, with a guessed id or with null. The order is quarantined locally with code `TENDER_NOT_FROM_PLATFORM`, which the platform never returns. The Payment methods pane is read-only on cloud. **Relies on the platform to:** never deliver an empty list for a POS restaurant; keep tender ids stable (delete means deactivate); treat a new `kind` as a contract change. It should always deliver one active `cash` tender. **Consequences:** a cloud till no longer offers "On account", because the platform has no `account` kind. Upgraded dev tills must re-apply the cloud till grants (`pos_migrate --cloud-till` or the wizard) and force a reseed. |
