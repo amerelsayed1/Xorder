@@ -7,11 +7,9 @@ import '../../../core/l10n/app_strings.dart';
 import '../../../core/ui/theme.dart';
 import '../../../core/ui/tokens.dart';
 import '../../../core/ui/widgets/pos_widgets.dart';
-import '../../admin/presentation/manage_menu.dart';
 import '../../cash/presentation/cash_dialogs.dart';
 import '../../../domain/models/ticket.dart';
 import '../../../domain/repositories/repositories.dart';
-import '../../admin/presentation/management_screen.dart' show ManagementPane;
 
 /// 56px top bar on shell ground with a 2px accent bottom border.
 ///
@@ -23,16 +21,12 @@ class PosTopBar extends ConsumerWidget {
     required this.session,
     required this.onLock,
     required this.onCloseShift,
-    required this.onManage,
     this.supportedOrderTypes = OrderType.values,
   });
 
   final PosSession session;
   final VoidCallback onLock;
   final VoidCallback onCloseShift;
-
-  /// Where a back-office pane was asked for. The bar does not know the routes.
-  final void Function(ManagementPane pane) onManage;
 
   /// Comes from `branch.supported_order_types` (POS-BE-005). Only enabled types
   /// are shown — never a hardcoded set, and never a visibly disabled control.
@@ -120,17 +114,6 @@ class PosTopBar extends ConsumerWidget {
               ref.watch(shiftProvider).valueOrNull?.reference ??
                   strings.noShift,
               style: PosText.mono(size: 11.5, color: context.pos.shellMuted),
-            ),
-            const SizedBox(width: PosSpace.s14),
-            // **The back office, from where somebody actually asks for it.**
-            // Nine panes had one door and it was on the start screen, so
-            // "where do I enter this invoice" meant leaving the sale screen,
-            // landing on Staff and reading a rail. This lists every pane the
-            // signed-in person has and goes straight there — and renders
-            // nothing at all for a cashier, because a greyed-out Manage button
-            // is a permanent advertisement for a door they never get.
-            ManageMenu(
-              onPick: (pane) => onManage(pane),
             ),
             const SizedBox(width: PosSpace.s14),
             PosButton(

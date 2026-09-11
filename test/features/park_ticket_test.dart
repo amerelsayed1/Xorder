@@ -36,7 +36,6 @@ Future<ProviderContainer> _pumpTill(WidgetTester tester) async {
           onTables: () {},
           onOrders: () {},
           onCloseShift: () {},
-          onManage: (_) {},
         ),
       ),
     ),

@@ -216,16 +216,6 @@ final routerProvider = Provider<GoRouter>((ref) {
           },
           onOrders: () => context.go(PosRoutes.orders),
           onCloseShift: () => context.go(PosRoutes.start),
-          // Back to the sale screen on close, not to the start screen: the
-          // shift is still open and the ticket is still in memory, so a manager
-          // who steps out to enter an invoice lands back on it.
-          onManage: (pane) => context.go(
-            PosRoutes.management,
-            extra: ManagementDestination(
-              pane: pane,
-              returnTo: PosRoutes.sale,
-            ),
-          ),
         ),
       ),
     ],

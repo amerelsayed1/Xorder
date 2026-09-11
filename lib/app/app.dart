@@ -205,13 +205,14 @@ class XorderPosApp extends ConsumerWidget {
                 barButtons: [
                   // **The back office, in the window's own bar.**
                   //
-                  // It was reachable from the till's bar and from the start
-                  // screen, and from neither of those with a pane already open.
-                  // A menu bar is the one surface that is always there, so the
-                  // panes hang off it — grouped by area exactly as the rail and
-                  // `ManageMenu` group them, because "where do I change the VAT
-                  // rate" is answered by *Money* long before it is answered by
-                  // reading thirteen pane names.
+                  // The only door, with F8. The till's bar and the start
+                  // screen each had a Management button too — the same door
+                  // twice, three times on the start screen counting this bar —
+                  // and both are gone. A menu bar is the one surface that is
+                  // always there, so the panes hang off it, grouped by area as
+                  // the back office's own tabs are, because "where do I change
+                  // the VAT rate" is answered by *Money* long before it is
+                  // answered by reading thirteen pane names.
                   //
                   // Absent entirely for somebody who cannot open the back
                   // office: a greyed-out menu is a permanent advertisement for

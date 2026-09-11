@@ -94,11 +94,10 @@ void main() {
   testWidgets('the start screen identity grid is Arabic', (tester) async {
     await _pump(tester, _startScreen, licenceKey: 'XORD-GOOD-1');
 
-    // The strap under the tenant name, and all four identity cells. The VALUES
+    // The strap under the tenant name, and the three identity cells. The VALUES
     // stay as the operator's own data — a branch is not translated.
     for (final arabic in [
       'نقطة بيع', // pointOfSale
-      'المطعم', // tenantCell
       'الفرع', // branchCell
       'الجهاز', // terminalCell
       'المنيو', // catalogCell
@@ -106,10 +105,13 @@ void main() {
       expect(find.text(arabic), findsOneWidget, reason: 'missing: $arabic');
     }
 
+    // Not the restaurant: it is the heading above the grid, and a cell saying
+    // it again was the same name twice.
+    expect(find.text('المطعم'), findsNothing);
+
     // The exact literals that used to be hardcoded in their place.
     for (final english in [
       'POINT OF SALE',
-      'TENANT',
       'BRANCH',
       'TERMINAL',
       'CATALOG',

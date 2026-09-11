@@ -9,7 +9,6 @@ import '../../core/money/money.dart';
 import '../../core/ui/theme.dart';
 import '../../core/ui/tokens.dart';
 import '../../core/ui/widgets/pos_widgets.dart';
-import '../admin/presentation/manage_menu.dart';
 import '../admin/presentation/management_eta_pane.dart' show etaProblemText;
 import '../admin/presentation/management_screen.dart' show ManagementPane;
 import '../../domain/repositories/repositories.dart';
@@ -34,13 +33,9 @@ class StartScreen extends ConsumerStatefulWidget {
   final VoidCallback onStart;
   final VoidCallback onManageLicence;
 
-  /// The back office, and WHICH pane of it.
-  ///
-  /// It used to be one quiet word at the bottom of this screen that landed on
-  /// Staff, so "where do I enter this invoice" meant arriving somewhere else
-  /// and reading a rail to find out. The bar carries `ManageMenu` now — every
-  /// pane the signed-in person actually has, one tap each — which is what the
-  /// sale screen's bar has done since the back office grew past two panes.
+  /// A back-office pane, for the warnings that point at one — the Backup pane
+  /// from "no verified copy", E-receipts from a filing problem. The way into
+  /// the back office itself is the window's bar and F8, not this screen.
   final void Function(ManagementPane pane) onManage;
 
   /// Back to the setup wizard, after the terminal's configuration has been
@@ -179,36 +174,29 @@ class _StartScreenState extends ConsumerState<StartScreen> {
     );
   }
 
-  /// The bar this screen did not have.
+  /// Who is signed in, when somebody is.
   ///
-  /// Two things belong to a terminal nobody is selling on yet, and neither was
-  /// on screen: WHO is signed in — the shift about to open is opened by a
-  /// person, and the screen asking for it named the restaurant, the branch, the
-  /// till and the menu but not them — and the way into the back office, which
-  /// was a quiet word at the bottom that landed on one pane out of thirteen.
+  /// The back office is not here: the window's own bar carries it, beside
+  /// Settings, and F8 opens it from anywhere. A second button for it on this
+  /// screen was the same door twice.
   ///
-  /// Same shell, same accent rule, same identity treatment as the sale screen's
-  /// bar, because it is the same bar: crossing into the till should not feel
-  /// like arriving somewhere else.
-  Widget _topBar() => Container(
-    height: PosSize.topBar,
-    decoration: BoxDecoration(
-      color: context.pos.shell,
-      border: Border(bottom: context.pos.accentBorder),
-    ),
-    padding: const EdgeInsets.symmetric(horizontal: PosSpace.s14),
-    child: Row(
-      children: [
-        // Renders nothing at all for somebody who cannot open the back office,
-        // rather than a greyed-out word: see `ManageMenu`.
-        ManageMenu(onPick: widget.onManage, onShell: true),
-        const Spacer(),
-        // Nobody has necessarily signed in yet — this screen is where the shift
-        // is opened, and opening it is what asks for a PIN. Blank until then,
-        // rather than the first cashier on the branch: see
-        // `operatorNameProvider`.
-        if (ref.watch(operatorNameProvider) case final operator
-            when operator.isNotEmpty) ...[
+  /// Nothing at all before a PIN has been entered — this screen is where the
+  /// shift is opened, and opening it is what asks for one. See
+  /// `operatorNameProvider`.
+  Widget _topBar() {
+    final operator = ref.watch(operatorNameProvider);
+    if (operator.isEmpty) return const SizedBox.shrink();
+
+    return Container(
+      height: PosSize.topBar,
+      decoration: BoxDecoration(
+        color: context.pos.shell,
+        border: Border(bottom: context.pos.accentBorder),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: PosSpace.s14),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
           Container(
             width: 34,
             height: 34,
@@ -233,9 +221,9 @@ class _StartScreenState extends ConsumerState<StartScreen> {
             ),
           ),
         ],
-      ],
-    ),
-  );
+      ),
+    );
+  }
 
   Widget _body(
     BuildContext context,
@@ -529,52 +517,52 @@ class _StartScreenState extends ConsumerState<StartScreen> {
     );
   }
 
-  /// 2×2 grid of shellRow cells on 1px shellLine gaps.
+  /// Branch, till and menu: one row of cells on 1px shellLine gaps.
+  ///
+  /// Not the restaurant — it is the heading directly above, and a cell saying
+  /// it again under the heading was the same name twice.
   Widget _identityGrid(
     AppStrings strings,
     PosSession session,
     int? itemCount,
-    TerminalProfile terminal,{required PosPalette pos}
-  ) => Container(
+    TerminalProfile terminal, {
+    required PosPalette pos,
+  }) => Container(
     color: pos.shellLine,
-    child: Column(
-      children: [
-        Row(
-          children: [
-            Expanded(child: _cell(strings.tenantCell, session.tenantName, pos: pos)),
-            const SizedBox(width: 1),
-            Expanded(
-              child: _cell(
-                strings.branchCell,
-                terminal.branchName ?? session.branchName,
-              pos: pos),
+    child: IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(
+            child: _cell(
+              strings.branchCell,
+              terminal.branchName ?? session.branchName,
+              pos: pos,
             ),
-          ],
-        ),
-        const SizedBox(height: 1),
-        Row(
-          children: [
-            Expanded(
-              child: _cell(
-                strings.terminalCell,
-                terminal.terminalName ?? session.terminalCode,
-              pos: pos),
+          ),
+          const SizedBox(width: 1),
+          Expanded(
+            child: _cell(
+              strings.terminalCell,
+              terminal.terminalName ?? session.terminalCode,
+              pos: pos,
             ),
-            const SizedBox(width: 1),
-            Expanded(
-              child: _cell(
-                strings.catalogCell,
-                itemCount == null
-                    ? strings.catalogSyncing
-                    : strings.catalogCachedItems(itemCount),
-                valueColor: itemCount == null
-                    ? pos.shellMuted
-                    : pos.onlinePillText,
-              pos: pos),
+          ),
+          const SizedBox(width: 1),
+          Expanded(
+            child: _cell(
+              strings.catalogCell,
+              itemCount == null
+                  ? strings.catalogSyncing
+                  : strings.catalogCachedItems(itemCount),
+              valueColor: itemCount == null
+                  ? pos.shellMuted
+                  : pos.onlinePillText,
+              pos: pos,
             ),
-          ],
-        ),
-      ],
+          ),
+        ],
+      ),
     ),
   );
 

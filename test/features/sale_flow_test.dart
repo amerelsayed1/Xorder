@@ -78,7 +78,6 @@ void main() {
         onTables: () {},
         onOrders: () {},
         onCloseShift: () {},
-              onManage: (_) {},
       ),
     );
 
@@ -108,7 +107,6 @@ void main() {
         onTables: () {},
         onOrders: () {},
         onCloseShift: () {},
-              onManage: (_) {},
       );
           }),
         ),
@@ -134,7 +132,6 @@ void main() {
         onTables: () {},
         onOrders: () {},
         onCloseShift: () {},
-              onManage: (_) {},
       ),
     );
 
@@ -153,7 +150,6 @@ void main() {
         onTables: () {},
         onOrders: () {},
         onCloseShift: () {},
-              onManage: (_) {},
       ),
     );
 
@@ -247,7 +243,6 @@ void main() {
               onTables: () {},
               onOrders: () => opened = true,
               onCloseShift: () {},
-              onManage: (_) {},
             ),
           ),
         ),
