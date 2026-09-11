@@ -367,16 +367,26 @@ extension PosPaletteContext on BuildContext {
 /// `pubspec.yaml`, these names resolve to a platform substitute. Layout metrics
 /// are specified in logical pixels and do not depend on the substitution.
 abstract final class PosFonts {
-  static const ui = 'Archivo';
+  /// IBM Plex Sans Arabic, bundled in `assets/fonts/` — for Arabic AND
+  /// English. It carries a Latin set drawn to match its Arabic, so a line that
+  /// mixes the two (a dish name, then "EGP") is one voice rather than two
+  /// fonts taking turns. Chosen by the owner, 2026-09-11.
+  ///
+  /// Bundled, not assumed: the faces this replaced were named here and never
+  /// shipped, so every till drew itself in whatever the machine had — Segoe UI
+  /// on Windows, Helvetica on a Mac — and no two looked alike.
+  static const ui = 'IBM Plex Sans Arabic';
 
   /// Every number in the product renders in mono — prices, totals, codes,
-  /// times, SKUs, keypad digits — plus all-caps micro-labels.
+  /// times, SKUs, keypad digits — plus all-caps micro-labels. Same family as
+  /// [ui], so the figures and the words beside them belong together.
   static const mono = 'IBM Plex Mono';
-  static const arabic = 'Tajawal';
 
-  /// Fallbacks used until the real files land, so the app looks deliberate
-  /// rather than broken on a machine without them.
-  static const uiFallback = <String>['Helvetica Neue', 'Segoe UI', 'Roboto'];
+  /// The same face as [ui]: there is one family for both scripts now.
+  static const arabic = ui;
+
+  /// Only for a glyph the bundled faces lack.
+  static const uiFallback = <String>['Segoe UI', 'Helvetica Neue', 'Roboto'];
   static const monoFallback = <String>[
     'SF Mono',
     'Consolas',
