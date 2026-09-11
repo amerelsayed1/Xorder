@@ -223,4 +223,25 @@ void main() {
     // an assertion that a menu which never opened would still pass.
     expect(find.text('الضريبة'), findsOneWidget);
   }, variant: desktop);
+
+  testWidgets('Settings holds the till\'s own settings, not the back office '
+      'again', (tester) async {
+    await pumpApp(tester);
+    await openSettings(tester);
+
+    expect(find.text('Orders & invoices'), findsOneWidget);
+    expect(find.text('Printer & cash drawer…'), findsOneWidget);
+    expect(find.text('About XOrder POS'), findsOneWidget);
+    // The back office has its own menu beside this one.
+    expect(find.text('Staff & accounts…'), findsNothing);
+  }, variant: desktop);
+
+  testWidgets('About names the version support will ask for', (tester) async {
+    await pumpApp(tester);
+    await openSettings(tester);
+    await tester.tap(find.text('About XOrder POS'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('1.0.0'), findsOneWidget);
+  }, variant: desktop);
 }

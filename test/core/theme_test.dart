@@ -352,6 +352,9 @@ void main() {
       if (path.endsWith('receipt/receipt_dialog.dart')) continue;
       if (path.endsWith('receipt/receipt_paper.dart')) continue;
       if (path.endsWith('receipt/reprint_dialog.dart')) continue;
+      // The preview is the reprint's paper without the printing: the same
+      // slip on the same desk grey, and just as white in a dark room.
+      if (path.endsWith('receipt/receipt_preview_dialog.dart')) continue;
       // And the fourth argues its case here, as required. `receipt_raster.dart`
       // is not a screen: it paints the bitmap that goes down the wire to a
       // thermal head, which has exactly two states — a dot is burned or it is

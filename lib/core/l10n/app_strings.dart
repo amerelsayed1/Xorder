@@ -1186,6 +1186,17 @@ sealed class AppStrings {
   String staffCountLicensed(int active, int total, int licensed);
   String get notSaved;
   String get close;
+  String get settingsOrders;
+  String get settingsPrinter;
+  String get settingsAbout;
+  String get printerSettingsTitle;
+  String get printerNoneChosen;
+  String get aboutVersion;
+  String get aboutMode;
+  String get aboutTerminalId;
+  String get aboutDatabase;
+  String get receiptPreviewAction;
+  String get receiptPreviewNote;
   String get you;
   String extraCapabilities(int count);
   String get resetPin;
@@ -4658,6 +4669,30 @@ final class EnStrings extends AppStrings {
   @override
   String get close => 'Close';
   @override
+  String get settingsOrders => 'Orders & invoices';
+  @override
+  String get settingsPrinter => 'Printer & cash drawer…';
+  @override
+  String get settingsAbout => 'About XOrder POS';
+  @override
+  String get printerSettingsTitle => 'Printer & cash drawer';
+  @override
+  String get printerNoneChosen =>
+      'No printer chosen. Find the printers on this network, then pick one.';
+  @override
+  String get aboutVersion => 'Version';
+  @override
+  String get aboutMode => 'Mode';
+  @override
+  String get aboutTerminalId => 'Terminal id';
+  @override
+  String get aboutDatabase => 'Database';
+  @override
+  String get receiptPreviewAction => 'Preview';
+  @override
+  String get receiptPreviewNote =>
+      'A preview only — nothing is printed and nothing is recorded.';
+  @override
   String get you => 'you';
   @override
   String extraCapabilities(int count) => '+$count extra';
@@ -7682,6 +7717,30 @@ final class ArStrings extends AppStrings {
   String get notSaved => 'لم يُحفظ';
   @override
   String get close => 'إغلاق';
+  @override
+  String get settingsOrders => 'الطلبات والفواتير';
+  @override
+  String get settingsPrinter => 'الطابعة ودرج النقدية…';
+  @override
+  String get settingsAbout => 'حول XOrder POS';
+  @override
+  String get printerSettingsTitle => 'الطابعة ودرج النقدية';
+  @override
+  String get printerNoneChosen =>
+      'لم تُختر طابعة. ابحث عن الطابعات على هذه الشبكة ثم اختر واحدة.';
+  @override
+  String get aboutVersion => 'الإصدار';
+  @override
+  String get aboutMode => 'الوضع';
+  @override
+  String get aboutTerminalId => 'معرّف الجهاز';
+  @override
+  String get aboutDatabase => 'قاعدة البيانات';
+  @override
+  String get receiptPreviewAction => 'معاينة';
+  @override
+  String get receiptPreviewNote =>
+      'معاينة فقط — لا شيء يُطبع ولا شيء يُسجَّل.';
   @override
   String get you => 'أنت';
   @override

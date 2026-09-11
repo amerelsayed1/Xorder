@@ -112,8 +112,13 @@ final routerProvider = Provider<GoRouter>((ref) {
       // the till with that ticket exactly as it was.
       GoRoute(
         path: PosRoutes.orders,
-        builder: (context, state) =>
-            OrderHistoryScreen(onClose: () => context.go(PosRoutes.sale)),
+        // Back to where it was opened from — the Settings menu can open it
+        // from any screen — and to the till when nobody said.
+        builder: (context, state) => OrderHistoryScreen(
+          onClose: () => context.go(
+            state.extra is String ? state.extra! as String : PosRoutes.sale,
+          ),
+        ),
       ),
       // Not nested under the sale screen: Management is a place somebody goes,
       // not a step in ringing up a ticket, and a back gesture out of it must

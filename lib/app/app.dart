@@ -8,6 +8,8 @@ import '../core/l10n/app_strings.dart';
 import '../domain/models/permissions.dart';
 import '../core/ui/theme.dart';
 import '../core/ui/tokens.dart';
+import '../features/settings/about_dialog.dart';
+import '../features/settings/printer_settings_dialog.dart';
 import '../features/setup/presentation/force_reset_dialog.dart';
 import 'providers.dart';
 import '../features/admin/presentation/management_screen.dart';
@@ -278,6 +280,35 @@ class XorderPosApp extends ConsumerWidget {
                         // Not the back office: the bar's own Management menu
                         // opens it, and "Staff & accounts" and "Management"
                         // here were the same door twice more.
+                        //
+                        // Every sale and its receipt, from wherever the till is
+                        // — and back there on close, not to the sale screen.
+                        MenuButton(
+                          text: Text(strings.settingsOrders),
+                          icon: const Icon(Icons.receipt_long_outlined, size: 16),
+                          onTap: () {
+                            final router = ref.read(routerProvider);
+                            final here = router
+                                .routerDelegate
+                                .currentConfiguration
+                                .uri
+                                .path;
+                            router.go(PosRoutes.orders, extra: here);
+                          },
+                        ),
+                        MenuButton(
+                          text: Text(strings.settingsPrinter),
+                          icon: const Icon(Icons.print_outlined, size: 16),
+                          onTap: () {
+                            // The bar sits above the router; its dialogs are
+                            // shown from inside the navigator, as reset's is.
+                            final context = rootNavigatorKey.currentContext;
+                            if (context != null) {
+                              PrinterSettingsDialog.show(context);
+                            }
+                          },
+                        ),
+                        const MenuDivider(),
                         // Switching language rebuilds the whole tree, including this
                         // bar — the label flips with it, which is why it reads as the
                         // language you would GET rather than the one you are in.
@@ -318,6 +349,14 @@ class XorderPosApp extends ConsumerWidget {
                               ref.read(routerProvider).go(PosRoutes.lock),
                         ),
                         const MenuDivider(),
+                        MenuButton(
+                          text: Text(strings.settingsAbout),
+                          icon: const Icon(Icons.info_outline, size: 16),
+                          onTap: () {
+                            final context = rootNavigatorKey.currentContext;
+                            if (context != null) PosAboutDialog.show(context);
+                          },
+                        ),
                         MenuButton(
                           text: Text(strings.forceResetConfirm),
                           icon: const Icon(Icons.restart_alt, size: 16),

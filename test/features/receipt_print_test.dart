@@ -18,6 +18,7 @@ import 'package:xorder_pos/domain/models/ticket.dart';
 import 'package:xorder_pos/domain/services/ticket_engine.dart';
 import 'package:xorder_pos/domain/repositories/repositories.dart';
 import 'package:xorder_pos/features/receipt/receipt_dialog.dart';
+import 'package:xorder_pos/features/receipt/receipt_preview_dialog.dart';
 import 'package:xorder_pos/features/receipt/receipt_printing.dart';
 import 'package:xorder_pos/features/receipt/reprint_dialog.dart';
 
@@ -344,6 +345,83 @@ void main() {
       expect(queue.jobs, isEmpty);
     });
   });
+  group('a preview', () {
+    testWidgets('shows the slip and sends nothing to the printer', (
+      tester,
+    ) async {
+      // Looking at what a customer was given should not cost a sheet of paper
+      // and an audit row.
+      final ports = FakeHardwarePorts();
+      tester.view
+        ..physicalSize = const Size(1200, 1600)
+        ..devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            hardwarePortsProvider.overrideWithValue(ports),
+            printerConfigProvider.overrideWith(
+              () => _FixedPrinter(const PrinterConfig(name: '10.20.30.40:9100')),
+            ),
+          ],
+          child: MaterialApp(
+            theme: buildPosTheme(PosPalette.light),
+            localizationsDelegates: const [
+              AppLocalizations(),
+              GlobalMaterialLocalizations.delegate,
+              GlobalWidgetsLocalizations.delegate,
+              GlobalCupertinoLocalizations.delegate,
+            ],
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: Scaffold(
+              body: ReceiptPreviewDialog(
+                detail: OrderRecordDetail(
+                  order: OrderRecord(
+                    id: 7,
+                    clientTransactionId: 'txn-7',
+                    invoiceNumber: 'HST-000481',
+                    status: OrderStatus.paid,
+                    orderType: OrderType.dineIn,
+                    occurredAt: DateTime(2026, 9, 7, 13, 5),
+                    subtotal: const Money(17500),
+                    discount: Money.zero,
+                    service: const Money(1750),
+                    vat: const Money(2695),
+                    total: const Money(21945),
+                    servedByName: 'Nour Adel',
+                  ),
+                  lines: const [
+                    OrderRecordLine(
+                      id: 10,
+                      lineKey: 'L1',
+                      name: 'Mixed Grill',
+                      quantity: 1,
+                      unitPrice: Money(17500),
+                      lineTotal: Money(17500),
+                    ),
+                  ],
+                  payments: const [],
+                  discounts: const [],
+                ),
+                refunds: const [],
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('Mixed Grill'), findsWidgets);
+      expect(find.textContaining('HST-000481'), findsWidgets);
+      expect(find.text(const EnStrings().receiptPreviewNote), findsOneWidget);
+
+      await tester.tap(find.text(const EnStrings().close));
+      await tester.pumpAndSettle();
+      expect(ports.jobs, isEmpty, reason: 'a preview prints nothing');
+    });
+  });
+
 }
 
 /// A printer config that is simply what the test says it is.

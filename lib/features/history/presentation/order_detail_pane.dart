@@ -15,6 +15,7 @@ import '../../../domain/models/refund.dart';
 import '../../../domain/services/authorization.dart';
 import '../../admin/presentation/admin_messages.dart';
 import '../../receipt/receipt_printing.dart';
+import '../../receipt/receipt_preview_dialog.dart';
 import '../../receipt/reprint_dialog.dart';
 import '../../refund/presentation/refund_sheet.dart';
 import 'order_status_chip.dart';
@@ -565,11 +566,6 @@ class _Detail extends ConsumerWidget {
     final mayReprint =
         ref.watch(canProvider(PosCapability.receiptReprint)) is! Denied;
 
-    // Nothing to offer and nothing to explain: a footer bar with a sentence
-    // about a permission somebody does not hold is a footer bar that is there
-    // all day saying nothing useful.
-    if (!mayRefund && !mayReprint) return const SizedBox.shrink();
-
     return Container(
       padding: const EdgeInsets.all(PosSpace.md),
       decoration: BoxDecoration(
@@ -577,6 +573,21 @@ class _Detail extends ConsumerWidget {
       ),
       child: Row(
         children: [
+          // Looking costs nothing — no paper, no audit row — so anybody who
+          // can open the order can see its receipt.
+          Expanded(
+            child: PosButton(
+              key: const Key('order-receipt-preview'),
+              label: strings.receiptPreviewAction,
+              border: Border.fromBorderSide(pos.resting),
+              onPressed: () => ReceiptPreviewDialog.show(
+                context,
+                detail: detail,
+                refunds: refunds,
+              ),
+            ),
+          ),
+          const SizedBox(width: PosSpace.sm),
           if (mayReprint)
             Expanded(
               child: PosButton(
