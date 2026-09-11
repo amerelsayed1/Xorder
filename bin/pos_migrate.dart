@@ -55,7 +55,13 @@ Future<void> main(List<String> arguments) async {
   }
 
   try {
+    // An installer's first step, as a superuser: the accounts, then the
+    // database owned by the administrator — and, with --no-migrate, nothing
+    // else, so the migrations that follow run as that owner and the tables
+    // are its. A restore can only drop and recreate what its account owns.
+    if (options.createRoles) await _createRoles(options);
     if (options.createDatabase) await _createDatabase(options);
+    if (options.noMigrate) return;
 
     final database = PosDatabase(
       credentials: InMemoryPosDbCredentials(options.password),
@@ -152,11 +158,33 @@ Future<void> _createDatabase(Options options) async {
     options.config,
     options.password,
     options.database,
+    owner: options.owner,
   );
   stdout.writeln(
     created
         ? 'created ${options.database}.'
         : '${options.database} already exists.',
+  );
+}
+
+/// `pos_admin`, `pos_till` and `pos_backup`, where missing. Passwords from
+/// the environment only: these are the passwords a till and its backups will
+/// keep, and a command line is shell history and a process-table entry.
+Future<void> _createRoles(Options options) async {
+  final env = Platform.environment;
+  final created = await LocalBootstrap.createRoles(
+    options.config,
+    options.password,
+    passwords: {
+      InstallRole.admin: env['POS_ADMIN_PASSWORD'] ?? '',
+      InstallRole.till: env['POS_TILL_PASSWORD'] ?? '',
+      InstallRole.backup: env['POS_BACKUP_PASSWORD'] ?? '',
+    },
+  );
+  stdout.writeln(
+    created.isEmpty
+        ? 'pos_admin, pos_till and pos_backup already exist; left as they are.'
+        : 'created ${created.join(', ')}.',
   );
 }
 
@@ -654,6 +682,8 @@ class Options {
     required this.user,
     required this.password,
     required this.createDatabase,
+    required this.createRoles,
+    required this.noMigrate,
     required this.grantTo,
     required this.grantAdminTo,
     required this.verifyTls,
@@ -671,6 +701,13 @@ class Options {
   final String user;
   final String password;
   final bool createDatabase;
+
+  /// Create the install's three accounts. Needs a superuser.
+  final bool createRoles;
+
+  /// Stop after the roles and the database, before migrating — so the
+  /// migrations can run as the database's owner instead.
+  final bool noMigrate;
   final String? grantTo;
 
   /// The role the Management section connects as. Separate from [grantTo] on
@@ -693,6 +730,9 @@ class Options {
   /// Everything `--seed` needs. Held as raw values rather than a dozen more
   /// constructor parameters, because they matter to exactly one function.
   final Map<String, String> _values;
+
+  /// Who owns a database `--create-database` creates.
+  String? get owner => _values['owner']?.trim();
 
   String? get restaurantName => _values['restaurant']?.trim();
   String? get slug => _values['slug']?.trim().toLowerCase();
@@ -737,14 +777,15 @@ class Options {
 
       if (const {
         'create-database', 'no-verify-tls', 'status', 'seed', //
-        'seed-catalogue', 'cloud-till', 'help', //
+        'seed-catalogue', 'cloud-till', 'help', 'create-roles', //
+        'no-migrate', //
       }.contains(name)) {
         flags.add(name);
         continue;
       }
       if (!const {
         'host', 'port', 'database', 'user', 'password', 'grant-to', //
-        'grant-admin-to', //
+        'grant-admin-to', 'owner', //
         'restaurant', 'slug', 'branch', 'branch-code', 'terminal', //
         'staff', 'staff-username', 'pin',
       }.contains(name)) {
@@ -792,6 +833,17 @@ class Options {
       );
     }
 
+    final owner = values['owner'];
+    if (owner != null && !_identifier.hasMatch(owner)) {
+      throw FormatException('Role name "$owner" is not a plain identifier.');
+    }
+    if (owner != null && !flags.contains('create-database')) {
+      throw FormatException(
+        '--owner names who owns a database --create-database creates; on its '
+        'own it would change nothing.',
+      );
+    }
+
     final slug = values['slug'];
     if (slug != null &&
         !RegExp(r'^[a-z0-9][a-z0-9-]*$').hasMatch(slug.toLowerCase())) {
@@ -826,6 +878,8 @@ class Options {
       password:
           values['password'] ?? Platform.environment['POS_PG_PASSWORD'] ?? '',
       createDatabase: flags.contains('create-database'),
+      createRoles: flags.contains('create-roles'),
+      noMigrate: flags.contains('no-migrate'),
       grantTo: role,
       grantAdminTo: adminRole,
       // Matches the wizard: skipping certificate checks is only ever honoured
@@ -853,6 +907,13 @@ Prepare a branch server's database for the tills that write to it.
                        not the till's own role. Default postgres
   --password <secret>  Prefer the POS_PG_PASSWORD environment variable
   --create-database    Create the database first if it is not there yet
+  --owner <role>       Who owns the database --create-database creates
+  --create-roles       Create pos_admin, pos_till and pos_backup where missing
+                       (needs a superuser). Passwords come from
+                       POS_ADMIN_PASSWORD, POS_TILL_PASSWORD and
+                       POS_BACKUP_PASSWORD; existing roles are left untouched
+  --no-migrate         Stop after the roles and the database. An installer runs
+                       migrations next as the owner, so the tables are its
   --grant-to <role>    Grant that role what a till needs, and nothing else
   --cloud-till         The till granted above syncs from XOrder Cloud, so it
                        also needs to write the seeded copy of the menu, staff

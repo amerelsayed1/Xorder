@@ -36,8 +36,9 @@ class LocalBootstrap {
   static Future<bool> createDatabase(
     DeploymentConfig admin,
     String adminPassword,
-    String name,
-  ) async {
+    String name, {
+    String? owner,
+  }) async {
     if (!_isPlainIdentifier(name)) {
       throw ArgumentError.value(
         name,
@@ -70,11 +71,115 @@ class LocalBootstrap {
       );
       if (existing.isNotEmpty) return false;
 
-      await connection.execute('CREATE DATABASE "$name"');
+      // Owned by the administrator role rather than whoever ran this, when
+      // asked: a restore drops and recreates every table, and only an owner
+      // may — so a database built by `postgres` could never be restored by
+      // the account the back office signs in as.
+      await connection.execute(
+        owner == null
+            ? 'CREATE DATABASE "$name"'
+            : 'CREATE DATABASE "$name" OWNER "${_identifier(owner)}"',
+      );
       return true;
     } finally {
       await connection.close();
     }
+  }
+
+  /// The three accounts an install needs, created where missing.
+  ///
+  /// **Created, never changed.** A role that already exists keeps its
+  /// password: the till and the backup have it stored, and an upgrade that
+  /// quietly reset it would stop both on the day after the upgrade.
+  ///
+  /// Needs a superuser, or a role with CREATEROLE — `pos_admin` deliberately
+  /// has neither, which is why this is the installer's step and not the
+  /// wizard's.
+  ///
+  /// @return the roles this call created.
+  static Future<List<String>> createRoles(
+    DeploymentConfig superuser,
+    String superuserPassword, {
+    required Map<InstallRole, String> passwords,
+    Map<InstallRole, String> names = InstallRole.defaultNames,
+  }) async {
+    final connection = await Connection.open(
+      Endpoint(
+        host: superuser.databaseHost,
+        port: superuser.databasePort,
+        database: 'postgres',
+        username: superuser.databaseUser,
+        password: superuserPassword,
+      ),
+      settings: ConnectionSettings(
+        sslMode: superuser.allowsInsecureTransport
+            ? SslMode.disable
+            : SslMode.require,
+      ),
+    );
+
+    final created = <String>[];
+    try {
+      for (final role in InstallRole.values) {
+        final name = names[role]!;
+        final existing = await connection.execute(
+          Sql.named('SELECT 1 FROM pg_roles WHERE rolname = @name'),
+          parameters: {'name': name},
+        );
+        if (existing.isNotEmpty) continue;
+
+        final password = passwords[role];
+        if (password == null || password.isEmpty) {
+          throw ArgumentError.value(
+            role.name,
+            'passwords',
+            'No password for the $name role, and it does not exist yet.',
+          );
+        }
+        for (final statement in roleStatements(role, name, password)) {
+          await connection.execute(statement);
+        }
+        created.add(name);
+      }
+    } finally {
+      await connection.close();
+    }
+    return created;
+  }
+
+  /// What creating one install role runs. Pure, so a test can read it.
+  ///
+  /// The password is a literal, not a bind parameter — `CREATE ROLE` takes
+  /// none — so it is quoted by doubling, the one escape a string literal
+  /// needs with `standard_conforming_strings` on, which it is from 9.1.
+  static List<String> roleStatements(
+    InstallRole role,
+    String name,
+    String password,
+  ) {
+    final quoted = "'${password.replaceAll("'", "''")}'";
+    final ident = _identifier(name);
+    return switch (role) {
+      // Creates databases — the wizard's "Build the database" connects as it —
+      // and owns this one. Nothing else: no superuser, no CREATEROLE.
+      InstallRole.admin => [
+        'CREATE ROLE "$ident" LOGIN CREATEDB PASSWORD $quoted',
+      ],
+      // Granted table by table by [tillGrants], after the migrations.
+      InstallRole.till => ['CREATE ROLE "$ident" LOGIN PASSWORD $quoted'],
+      // Reads every row and writes none: see `BackupService.reader`.
+      InstallRole.backup => [
+        'CREATE ROLE "$ident" LOGIN PASSWORD $quoted',
+        'GRANT pg_read_all_data TO "$ident"',
+      ],
+    };
+  }
+
+  static String _identifier(String name) {
+    if (!_isPlainIdentifier(name)) {
+      throw ArgumentError.value(name, 'name', 'Not a plain identifier.');
+    }
+    return name;
   }
 
   /// Apply every pending migration. Returns the versions this call applied.
@@ -747,4 +852,17 @@ class LocalBootstrap {
   /// point of typing. This is the last line of defence, not the first.
   static bool _isPlainIdentifier(String value) =>
       DeploymentConfig.isPlainIdentifier(value);
+}
+
+/// The accounts an install creates. See [LocalBootstrap.createRoles].
+enum InstallRole {
+  admin,
+  till,
+  backup;
+
+  static const defaultNames = {
+    InstallRole.admin: 'pos_admin',
+    InstallRole.till: 'pos_till',
+    InstallRole.backup: 'pos_backup',
+  };
 }

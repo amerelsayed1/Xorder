@@ -319,6 +319,24 @@ CI produces the artefact on a tag.
 **Size: L** — packaging, PostgreSQL provisioning, migration-on-upgrade and a build
 pipeline, none of which exist in any form.
 
+**Status (2026-09-11): written, not yet run on Windows.** See
+`docs/pos/18-windows-installer.md`.
+
+- **The installer.** An Inno Setup installer with two types: the machine that
+  keeps the database, or a till only. It bundles PostgreSQL 16.
+- **Provisioning.** `provision.ps1` provisions it and re-runs as the upgrade. The
+  database work is in `pos_migrate`, with new flags `--create-roles`, `--owner`
+  and `--no-migrate`, and is tested against a real server.
+- **The app.** It is branded; the template's `com.example` is gone.
+- **CI.** It builds the installer, installs it on a Windows runner, upgrades it
+  in place and checks nothing was lost.
+
+**Still open:**
+- Nothing Windows-side has been run yet: CI's first run is the first test.
+- There is no signing certificate.
+- The wizard does not yet pre-fill the credentials the installer created.
+- PostgreSQL major-version upgrades are not attempted.
+
 ### 11. There is no backup, and no restore.
 
 **Missing.** `pg_dump` and `pg_restore` appear nowhere in the repository — not in
