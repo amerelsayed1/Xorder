@@ -1,4 +1,5 @@
 import '../../core/money/money.dart';
+import '../../core/money/quantity.dart';
 import 'combo.dart';
 
 /// A sellable product as the till caches it.
@@ -21,6 +22,8 @@ class Product {
     this.modifierGroupIds = const [],
     this.isOpenPrice = false,
     this.taxGroupId,
+    this.isStocked = false,
+    this.stockUnit,
   });
 
   /// A one-off item somebody typed a price for (§17 open item).
@@ -79,6 +82,13 @@ class Product {
   /// restaurant if it changes its default, and the second does not.
   final int? taxGroupId;
 
+  /// Counted when it is bought and sold — the bottled water a restaurant
+  /// also sells. Most of a menu is not: nobody counts assembled dishes.
+  final bool isStocked;
+
+  /// What it is counted in, when [isStocked]. Null reads as each.
+  final QuantityUnit? stockUnit;
+
   /// What the customer actually pays before modifiers.
   Money get effectivePrice => discountedPrice ?? price;
 
@@ -107,6 +117,8 @@ class Product {
     List<int>? modifierGroupIds,
     int? taxGroupId,
     bool clearTaxGroup = false,
+    bool? isStocked,
+    QuantityUnit? stockUnit,
   }) => Product(
     id: id ?? this.id,
     categoryId: categoryId ?? this.categoryId,
@@ -126,6 +138,8 @@ class Product {
     // pointing at nothing.
     isOpenPrice: isOpenPrice,
     taxGroupId: clearTaxGroup ? null : (taxGroupId ?? this.taxGroupId),
+    isStocked: isStocked ?? this.isStocked,
+    stockUnit: stockUnit ?? this.stockUnit,
   );
 }
 

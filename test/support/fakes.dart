@@ -61,6 +61,7 @@ List<Override> fakeRepositoryOverrides({bool english = true}) => [
       // The real binding writes `pos_backups` on the till's credential.
       backupRepositoryProvider.overrideWithValue(FakeBackupRepository()),
       unitsRepositoryProvider.overrideWithValue(FakeUnitsRepository()),
+      stockItemsRepositoryProvider.overrideWithValue(FakeStockItemsRepository()),
       // The development issuer, which self-signs. The app binds
       // `DefaultLicenceService` against the real embedded key, so a widget
       // test that wanted a working licence would otherwise have to sign one.

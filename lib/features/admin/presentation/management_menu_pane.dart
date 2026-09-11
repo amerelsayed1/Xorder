@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/providers.dart';
 import '../../../core/l10n/app_strings.dart';
+import '../../../domain/models/pos_unit.dart';
+import '../../../core/money/quantity.dart';
 import '../../../core/money/money.dart';
 import '../../../core/ui/theme.dart';
 import '../../../core/ui/tokens.dart';
@@ -68,6 +70,7 @@ class _ManagementMenuPaneState extends ConsumerState<ManagementMenuPane> {
     // the time an editor opens; passing it down keeps the dialog from rebuilding
     // on a change and throwing away what somebody typed.
     final taxGroups = ref.watch(taxGroupsAllProvider).valueOrNull ?? const [];
+    final units = ref.watch(unitsProvider).valueOrNull ?? const <PosUnit>[];
     final strings = context.strings;
     if (repository == null) {
       return _Centred(text: strings.menuComesFromPlatform);
@@ -101,7 +104,13 @@ class _ManagementMenuPaneState extends ConsumerState<ManagementMenuPane> {
               onAddCategory: () => _editCategory(repository, null),
               onAddProduct: selected == null
                   ? null
-                  : () => _editProduct(repository, null, selected, taxGroups),
+                  : () => _editProduct(
+                      repository,
+                      null,
+                      selected,
+                      taxGroups,
+                      units,
+                    ),
             ),
             Expanded(
               child: categories.isEmpty
@@ -130,6 +139,7 @@ class _ManagementMenuPaneState extends ConsumerState<ManagementMenuPane> {
                               product,
                               product.categoryId,
                               taxGroups,
+                              units,
                             ),
                             onToggle: (product) => _write(
                               () => repository.archiveProduct(
@@ -184,6 +194,7 @@ class _ManagementMenuPaneState extends ConsumerState<ManagementMenuPane> {
     Product? existing,
     int categoryId,
     List<TaxGroup> taxGroups,
+    List<PosUnit> units,
   ) async {
     final edited = await showDialog<Product>(
       context: context,
@@ -191,6 +202,7 @@ class _ManagementMenuPaneState extends ConsumerState<ManagementMenuPane> {
         product: existing,
         categoryId: categoryId,
         taxGroups: taxGroups,
+        units: units,
       ),
     );
     if (edited == null) return;
@@ -443,10 +455,14 @@ class _ProductDialog extends StatefulWidget {
     required this.categoryId,
     required this.taxGroups,
     this.product,
+    this.units = const [],
   });
 
   final Product? product;
   final int categoryId;
+
+  /// The units in use, for counting it in when it is tracked.
+  final List<PosUnit> units;
 
   /// The restaurant's named rates, for the picker. Empty on a restaurant that
   /// has configured none, in which case the picker is absent rather than
@@ -474,6 +490,10 @@ class _ProductDialogState extends State<_ProductDialog> {
   /// catalogue query means by `COALESCE(p.tax_group_id, c.tax_group_id)`, and
   /// what almost every item on a menu wants.
   late int? _taxGroupId = widget.product?.taxGroupId;
+
+  late bool _stocked = widget.product?.isStocked ?? false;
+  late QuantityUnit _stockUnit =
+      widget.product?.stockUnit ?? QuantityUnit.each;
 
   String? _error;
 
@@ -521,6 +541,8 @@ class _ProductDialogState extends State<_ProductDialog> {
         // Same problem, same shape: "back to the default rate" is a null the
         // caller means, not a null it omitted.
         clearTaxGroup: _taxGroupId == null,
+        isStocked: _stocked,
+        stockUnit: _stockUnit,
       ),
     );
   }
@@ -556,6 +578,42 @@ class _ProductDialogState extends State<_ProductDialog> {
         mono: true,
         optional: true,
       ),
+
+      // Counted in stock — the bottled water a restaurant also sells. Its
+      // purchases and sales then move a number somebody can check.
+      const SizedBox(height: PosSpace.md),
+      SwitchListTile(
+        key: const Key('product-track-stock'),
+        value: _stocked,
+        onChanged: (v) => setState(() => _stocked = v),
+        contentPadding: EdgeInsets.zero,
+        title: Text(
+          context.strings.fieldTrackStock,
+          style: PosText.ui(size: 13.5, color: context.pos.body),
+        ),
+        subtitle: Text(
+          context.strings.fieldTrackStockHint,
+          style: PosText.ui(size: 11.5, color: context.pos.muted),
+        ),
+      ),
+      if (_stocked && widget.units.isNotEmpty)
+        Wrap(
+          spacing: PosSpace.sm,
+          runSpacing: PosSpace.sm,
+          children: [
+            for (final unit in widget.units)
+              PosButton(
+                key: Key('product-unit-${unit.code}'),
+                label: unit.displayName(context.strings.languageCode),
+                background: unit.unit == _stockUnit
+                    ? context.pos.ink
+                    : Colors.transparent,
+                foreground: unit.unit == _stockUnit ? context.pos.onInk : null,
+                border: Border.fromBorderSide(context.pos.resting),
+                onPressed: () => setState(() => _stockUnit = unit.unit),
+              ),
+          ],
+        ),
 
       // **The picker that made the named rates usable.** `tax_group_id` has
       // been on this table since Wave M and read by the catalogue query ever

@@ -12,6 +12,7 @@ import '../../../domain/models/shift.dart';
 import '../../../domain/services/authorization.dart';
 import 'management_activity_pane.dart';
 import 'management_backup_pane.dart';
+import 'management_items_pane.dart';
 import 'management_units_pane.dart';
 import 'management_floor_pane.dart';
 import 'management_menu_pane.dart';
@@ -95,7 +96,13 @@ List<ManagementPane> managementPanesFor({
 /// the payment methods and service charges Wave D put in the same pane are local
 /// on both deployments — so the pane gates its own top half rather than
 /// disappearing, and a cloud restaurant can still say how it takes money.
-const _authoringPanes = {ManagementPane.menu, ManagementPane.floor};
+// Stock items too: a bought-only item is a product row, and on a cloud till
+// the bootstrap seeder deletes every product and rewrites the platform's.
+const _authoringPanes = {
+  ManagementPane.menu,
+  ManagementPane.floor,
+  ManagementPane.items,
+};
 
 /// The back office, in areas.
 ///
@@ -145,7 +152,7 @@ ManagementArea areaOf(ManagementPane pane) => switch (pane) {
   ManagementPane.purchasing => ManagementArea.buying,
   ManagementPane.receipt || ManagementPane.eta => ManagementArea.compliance,
   ManagementPane.activity || ManagementPane.backup => ManagementArea.system,
-  ManagementPane.units => ManagementArea.inventory,
+  ManagementPane.items || ManagementPane.units => ManagementArea.inventory,
 };
 
 String managementAreaName(AppStrings s, ManagementArea area) => switch (area) {
@@ -284,6 +291,7 @@ ManagementDestination _purchasing(PurchasingTab tab, {bool create = false}) =>
       ManagementPane.roles => (s.paneRoles, s.paneRolesBlurb),
       ManagementPane.activity => (s.paneActivity, s.paneActivityBlurb),
       ManagementPane.backup => (s.paneBackup, s.paneBackupBlurb),
+      ManagementPane.items => (s.paneItems, s.paneItemsBlurb),
       ManagementPane.units => (s.paneUnits, s.paneUnitsBlurb),
     };
 
@@ -308,7 +316,7 @@ String? _paneRequires(ManagementPane pane) => switch (pane) {
   // Both go through `BackupService`, which is only ever reached from here.
   ManagementPane.backup => PosCapability.backupManage,
   // Units exist for buying and counting stock: the buyer's.
-  ManagementPane.units => PosCapability.purchaseManage,
+  ManagementPane.items || ManagementPane.units => PosCapability.purchaseManage,
   _ => null,
 };
 
@@ -333,6 +341,7 @@ enum ManagementPane {
   roles,
   activity,
   backup,
+  items,
   units,
 }
 
@@ -454,6 +463,7 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
                 ManagementPane.roles => ManagementRolesPane(admin: admin),
                 ManagementPane.activity => const ManagementActivityPane(),
                 ManagementPane.backup => ManagementBackupPane(admin: admin),
+                ManagementPane.items => ManagementItemsPane(admin: admin),
                 ManagementPane.units => ManagementUnitsPane(admin: admin),
               },
             ),

@@ -245,6 +245,7 @@ const _actionsThisBuildWrites = <String>[
   AuditAction.supplierPaymentVoided,
   AuditAction.serviceChargeSaved,
   AuditAction.unitSaved,
+  AuditAction.stockItemSaved,
   AuditAction.tenderTypeSaved,
   AuditAction.orderTypeSaved,
   AuditAction.taxGroupSaved,

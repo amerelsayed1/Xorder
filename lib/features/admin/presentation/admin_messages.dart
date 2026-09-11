@@ -92,6 +92,7 @@ abstract final class AdminText {
     AuditAction.productRestored => s.actProductRestored,
     AuditAction.productRepriced => s.actProductRepriced,
     AuditAction.unitSaved => s.actUnitSaved,
+    AuditAction.stockItemSaved => s.actStockItemSaved,
     AuditAction.moneyConfigChanged => s.actMoneyConfigChanged,
     AuditAction.receiptProfileChanged => s.actReceiptProfileChanged,
     AuditAction.tableCreated => s.actTableCreated,

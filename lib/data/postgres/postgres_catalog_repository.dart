@@ -1,5 +1,6 @@
 import '../../core/config/deployment.dart';
 import '../../core/money/money.dart';
+import '../../core/money/quantity.dart';
 import '../../domain/models/catalog.dart';
 import '../../domain/models/combo.dart';
 import '../../domain/repositories/repositories.dart';
@@ -70,7 +71,11 @@ class PostgresCatalogRepository implements CatalogRepository {
       // product and not the category it came from — and a fallback the engine
       // could not see would be a rate that applied on paper and not in the
       // bill.
-      '       COALESCE(p.tax_group_id, c.tax_group_id) '
+      '       COALESCE(p.tax_group_id, c.tax_group_id), '
+      // Read so the Menu pane's editor holds them: saving a product it built
+      // from this row writes both back, and a row without them would quietly
+      // stop a tracked item being counted.
+      '       p.is_stocked, p.stock_unit '
       'FROM pos_products p '
       'JOIN pos_categories c ON c.id = p.category_id '
       'LEFT JOIN pos_product_prices o '
@@ -187,6 +192,10 @@ class PostgresCatalogRepository implements CatalogRepository {
           isAvailable: row[8]! as bool,
           taxGroupId: row[9] as int?,
           modifierGroupIds: groupIdsByProduct[row[0]! as int] ?? const [],
+          isStocked: row[10]! as bool,
+          stockUnit: row[11] == null
+              ? null
+              : QuantityUnit.fromWire(row[11] as String),
         ),
     };
 

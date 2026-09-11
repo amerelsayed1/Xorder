@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:xorder_pos/app/providers.dart';
 import 'package:xorder_pos/core/l10n/app_strings.dart';
 import 'package:xorder_pos/core/money/money.dart';
+import 'package:xorder_pos/core/money/quantity.dart';
 import 'package:xorder_pos/core/ui/theme.dart';
 import 'package:xorder_pos/core/ui/tokens.dart';
 import 'package:xorder_pos/domain/models/catalog.dart';
@@ -167,6 +168,25 @@ void main() {
     expect(find.byKey(const Key('product-tax-default')), findsNothing);
     expect(find.text('Save'), findsOneWidget, reason: 'the rest still works');
   });
+
+  testWidgets('an item can be counted in stock, in a unit', (tester) async {
+    // The bottled water a restaurant also sells: counted when bought, so how
+    // much is left is a number somebody can check.
+    await pump(tester);
+    await openEditor(tester);
+
+    await tester.ensureVisible(find.byKey(const Key('product-track-stock')));
+    await tester.tap(find.byKey(const Key('product-track-stock')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('product-unit-kg')));
+    await tester.pump();
+    await tester.tap(find.text(const EnStrings().save).last);
+    await tester.pumpAndSettle();
+
+    expect(catalogue.saved?.isStocked, isTrue);
+    expect(catalogue.saved?.stockUnit, QuantityUnit.kilogram);
+  });
+
 }
 
 /// Records what the pane asked to save. Everything else throws, so a test that

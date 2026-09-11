@@ -3627,6 +3627,28 @@ const posMigrations = <PosMigration>[
     ''',
     'SELECT pos_seed_units(id) FROM pos_restaurants',
   ]),
+  PosMigration(40, 'an item can be bought and counted without being sold', [
+    // Chicken, oil, a gas cylinder: bought, received, counted — and never on
+    // the menu. They are product rows, because receiving, stock movements and
+    // stock levels all key on pos_products.id and a second table would be a
+    // second ledger. What keeps one off the cashier's screen is having no
+    // category: the menu query joins categories, so it can never appear.
+    'ALTER TABLE pos_products ALTER COLUMN category_id DROP NOT NULL',
+    // And only a stocked item may be without one. An uncategorised product
+    // that is not counted either is a row nobody can find anywhere.
+    'ALTER TABLE pos_products '
+        'DROP CONSTRAINT IF EXISTS pos_products_uncategorised_is_stock',
+    '''
+    ALTER TABLE pos_products
+      ADD CONSTRAINT pos_products_uncategorised_is_stock
+      CHECK (category_id IS NOT NULL OR is_stocked)
+    ''',
+    '''
+    CREATE INDEX IF NOT EXISTS pos_products_stocked_idx
+      ON pos_products (restaurant_id)
+      WHERE is_stocked
+    ''',
+  ]),
 ];
 
 /// Brings the branch database up to the current schema.

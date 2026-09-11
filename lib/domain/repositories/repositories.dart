@@ -3,6 +3,7 @@ import '../../core/money/money.dart';
 import '../../core/money/quantity.dart';
 import 'admin_repositories.dart';
 import '../models/pos_unit.dart';
+import '../models/stock_item.dart';
 import '../models/catalog.dart';
 import '../models/order_type_config.dart';
 import '../models/purchase_order.dart';
@@ -131,6 +132,17 @@ abstract interface class UnitsRepository {
   /// `id == 0` creates. No delete: a unit is retired with `isActive`, because
   /// last month's purchase order still names it. The code is fixed once saved.
   Future<AdminResult<PosUnit>> save(PosUnit unit, {required PosStaff by});
+}
+
+/// What the restaurant buys and counts: the stocked products, on the menu or
+/// not (migration 40).
+abstract interface class StockItemsRepository {
+  /// Everything counted in stock, by name.
+  Future<List<StockItem>> all({bool includeInactive = false});
+
+  /// `id == 0` adds an item that is bought and not sold. An item on the menu
+  /// changes only its unit here — its name and price are the Menu pane's.
+  Future<AdminResult<StockItem>> save(StockItem item, {required PosStaff by});
 }
 
 /// What the restaurant adds on top of the food (§38).

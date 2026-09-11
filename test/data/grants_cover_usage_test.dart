@@ -86,6 +86,7 @@ void main() {
     'postgres_service_charges_repository.dart',
     'postgres_order_types_repository.dart',
     'postgres_units_repository.dart',
+    'postgres_stock_items_repository.dart',
     // Written by the till at day close and read in the back office. It is on
     // the till's list because the automatic copy is taken by a machine on which
     // nobody has signed into Management — see `PostgresBackupRepository`.
@@ -101,6 +102,7 @@ void main() {
     'postgres_service_charges_repository.dart',
     'postgres_order_types_repository.dart',
     'postgres_units_repository.dart',
+    'postgres_stock_items_repository.dart',
     'postgres_suppliers_repository.dart',
     'postgres_purchase_orders_repository.dart',
     'postgres_receiving_repository.dart',

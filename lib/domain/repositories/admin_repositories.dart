@@ -324,6 +324,7 @@ abstract final class AuditAction {
   /// customer pays, and "who added 12% and when" is what a complaint asks.
   static const serviceChargeSaved = 'service_charge.saved';
   static const unitSaved = 'unit.saved';
+  static const stockItemSaved = 'stock_item.saved';
 
   /// A payment method created, renamed, retired or reclassified (§40).
   /// Its own action because changing `counts_as_cash` changes what every

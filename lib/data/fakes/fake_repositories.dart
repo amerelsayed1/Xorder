@@ -2,6 +2,8 @@ import '../../core/config/deployment.dart';
 import '../../core/money/money.dart';
 import '../../domain/models/backup.dart';
 import '../../domain/models/pos_unit.dart';
+import '../../core/money/quantity.dart';
+import '../../domain/models/stock_item.dart';
 import '../../domain/models/catalog.dart';
 import '../../domain/models/dining_table.dart';
 import '../../domain/models/order_record.dart';
@@ -1448,5 +1450,51 @@ class FakeUnitsRepository implements UnitsRepository {
     if (at < 0) return const AdminResult.refused(EditedElsewhere(0));
     units[at] = unit;
     return AdminResult.done(unit);
+  }
+}
+
+/// What is counted in stock, held in a list. A test double only.
+class FakeStockItemsRepository implements StockItemsRepository {
+  FakeStockItemsRepository({List<StockItem>? items})
+    : items = [...(items ?? _seeded)];
+
+  static const _seeded = [
+    StockItem(
+      id: 101,
+      nameEn: 'Chicken',
+      nameAr: 'فراخ',
+      unit: QuantityUnit.kilogram,
+    ),
+    StockItem(
+      id: 102,
+      nameEn: 'Cooking oil',
+      nameAr: 'زيت طبخ',
+      unit: QuantityUnit.litre,
+    ),
+    StockItem(id: 103, nameEn: 'Bottled water', onMenu: true),
+  ];
+
+  final List<StockItem> items;
+
+  @override
+  Future<List<StockItem>> all({bool includeInactive = false}) async => [
+    for (final item in items)
+      if (includeInactive || item.isActive) item,
+  ];
+
+  @override
+  Future<AdminResult<StockItem>> save(
+    StockItem item, {
+    required PosStaff by,
+  }) async {
+    if (item.id == 0) {
+      final created = item.copyWith(id: 1000 + items.length);
+      items.add(created);
+      return AdminResult.done(created);
+    }
+    final at = items.indexWhere((i) => i.id == item.id);
+    if (at < 0) return const AdminResult.refused(EditedElsewhere(0));
+    items[at] = item;
+    return AdminResult.done(item);
   }
 }

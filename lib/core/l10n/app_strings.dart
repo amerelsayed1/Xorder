@@ -1214,6 +1214,19 @@ sealed class AppStrings {
   String get unitActive;
   String get unitRetired;
   String get actUnitSaved;
+  String get paneItems;
+  String get paneItemsBlurb;
+  String get itemNew;
+  String get itemEdit;
+  String get itemName;
+  String get itemNameAr;
+  String get itemUnit;
+  String get itemOnMenu;
+  String get itemOnMenuHint;
+  String get itemsEmpty;
+  String get fieldTrackStock;
+  String get fieldTrackStockHint;
+  String get actStockItemSaved;
   String get you;
   String extraCapabilities(int count);
   String get resetPin;
@@ -4749,6 +4762,36 @@ final class EnStrings extends AppStrings {
   @override
   String get actUnitSaved => 'Saved a unit';
   @override
+  String get paneItems => 'Stock items';
+  @override
+  String get paneItemsBlurb => 'What you buy and count — on the menu or not';
+  @override
+  String get itemNew => 'Add an item';
+  @override
+  String get itemEdit => 'Edit item';
+  @override
+  String get itemName => 'Name';
+  @override
+  String get itemNameAr => 'Name in Arabic';
+  @override
+  String get itemUnit => 'Counted in';
+  @override
+  String get itemOnMenu => 'On the menu';
+  @override
+  String get itemOnMenuHint =>
+      'Its name and price are set in Menu; only the unit it is counted in is '
+      'set here.';
+  @override
+  String get itemsEmpty =>
+      'Nothing is counted in stock yet. Add what you buy — chicken, oil, gas.';
+  @override
+  String get fieldTrackStock => 'Track stock';
+  @override
+  String get fieldTrackStockHint =>
+      'Count it when it is bought, and see how much is left.';
+  @override
+  String get actStockItemSaved => 'Saved a stock item';
+  @override
   String get you => 'you';
   @override
   String extraCapabilities(int count) => '+$count extra';
@@ -7836,6 +7879,34 @@ final class ArStrings extends AppStrings {
   String get unitRetired => 'غير مستخدمة';
   @override
   String get actUnitSaved => 'حفظ وحدة';
+  @override
+  String get paneItems => 'أصناف المخزون';
+  @override
+  String get paneItemsBlurb => 'ما تشتريه وتعدّه — على المنيو أو لا';
+  @override
+  String get itemNew => 'إضافة صنف';
+  @override
+  String get itemEdit => 'تعديل الصنف';
+  @override
+  String get itemName => 'الاسم';
+  @override
+  String get itemNameAr => 'الاسم بالعربية';
+  @override
+  String get itemUnit => 'يُعدّ بـ';
+  @override
+  String get itemOnMenu => 'على المنيو';
+  @override
+  String get itemOnMenuHint =>
+      'اسمه وسعره يُحدَّدان في المنيو؛ هنا تُحدَّد وحدة عدّه فقط.';
+  @override
+  String get itemsEmpty =>
+      'لا شيء يُعدّ في المخزون بعد. أضف ما تشتريه — فراخ، زيت، غاز.';
+  @override
+  String get fieldTrackStock => 'تتبّع المخزون';
+  @override
+  String get fieldTrackStockHint => 'يُعدّ عند الشراء وتعرف كم تبقّى منه.';
+  @override
+  String get actStockItemSaved => 'حفظ صنف مخزون';
   @override
   String get you => 'أنت';
   @override

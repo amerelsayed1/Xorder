@@ -48,6 +48,8 @@ import '../data/postgres/postgres_eta_queue_repository.dart';
 import '../data/postgres/postgres_receipt_profile_repository.dart';
 import '../data/postgres/postgres_service_charges_repository.dart';
 import '../domain/models/pos_unit.dart';
+import '../domain/models/stock_item.dart';
+import '../data/postgres/postgres_stock_items_repository.dart';
 import '../data/postgres/postgres_units_repository.dart';
 import '../data/postgres/postgres_suppliers_repository.dart';
 import '../data/postgres/postgres_supplier_invoices_repository.dart';
@@ -1991,6 +1993,35 @@ final serviceChargesRepositoryProvider = Provider<ServiceChargesRepository>((
     branchId: context.branchId,
   );
 });
+
+/// What the restaurant buys and counts. Read on the till's credential,
+/// written on the administrator's — see [PostgresStockItemsRepository].
+final stockItemsRepositoryProvider = Provider<StockItemsRepository>((ref) {
+  final config = ref.watch(deploymentProvider);
+  final context = ref.watch(posWriteContextProvider);
+  if (context == null || PosDatabase.hostFor(config) == null) {
+    return const UnconfiguredStockItemsRepository();
+  }
+  return PostgresStockItemsRepository(
+    database: ref.watch(adminPosDatabaseProvider),
+    config: ref.watch(adminDeploymentProvider),
+    readDatabase: ref.watch(posDatabaseProvider),
+    readConfig: config,
+    adminAvailable: ref.watch(adminDbCredentialProvider) != null,
+    restaurantId: context.restaurantId,
+    branchId: context.branchId,
+  );
+});
+
+/// Items in use — what a purchase line can name.
+final stockItemsProvider = FutureProvider<List<StockItem>>(
+  (ref) => ref.watch(stockItemsRepositoryProvider).all(),
+);
+
+/// Every item, retired ones too — the Stock items pane's list.
+final stockItemsAllProvider = FutureProvider<List<StockItem>>(
+  (ref) => ref.watch(stockItemsRepositoryProvider).all(includeInactive: true),
+);
 
 /// The units stock is counted and bought in. Read on the till's credential,
 /// written on the administrator's — see [PostgresUnitsRepository].
