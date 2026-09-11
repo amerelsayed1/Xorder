@@ -3559,6 +3559,74 @@ const posMigrations = <PosMigration>[
       WHERE refund_id IS NOT NULL AND status <> 'cancelled'
     """,
   ]),
+  PosMigration(39, 'the units stock is counted and bought in', [
+    // A list the back office owns, where there was a closed set in code. The
+    // seven every restaurant starts with are seeded; a sack of rice or a tray
+    // of thirty eggs is the restaurant's to add.
+    //
+    // **The code is what the rest of the schema stores** — purchase lines and
+    // stock rows keep `unit text` and always have — so this table names codes
+    // rather than replacing them, and no existing row changes.
+    //
+    // `eta_unit_type` is what an e-receipt says the item was sold in. The
+    // seeded values are the UN/ECE codes the authority's list is built on
+    // (EA, KGM, GRM, LTR, MLT; BX and PK from the packaging list) — to be
+    // checked against the authority's published table before the first filing
+    // that uses anything but EA.
+    r'''
+    CREATE TABLE IF NOT EXISTS pos_units (
+      id              bigserial   PRIMARY KEY,
+      restaurant_id   bigint      NOT NULL REFERENCES pos_restaurants(id) ON DELETE CASCADE,
+      code            text        NOT NULL,
+      name_en         text        NOT NULL,
+      name_ar         text,
+      eta_unit_type   text        NOT NULL DEFAULT 'EA',
+      allows_fraction boolean     NOT NULL DEFAULT false,
+      is_active       boolean     NOT NULL DEFAULT true,
+      sort_order      integer     NOT NULL DEFAULT 0,
+      updated_at      timestamptz NOT NULL DEFAULT now(),
+      CONSTRAINT pos_units_code_shaped CHECK (code ~ '^[a-z][a-z0-9_]{0,15}$'),
+      CONSTRAINT pos_units_name_present CHECK (length(trim(name_en)) > 0),
+      CONSTRAINT pos_units_eta_shaped CHECK (eta_unit_type ~ '^[A-Z0-9]{1,6}$'),
+      CONSTRAINT pos_units_code_unique UNIQUE (restaurant_id, code)
+    )
+    ''',
+    r'''
+    CREATE OR REPLACE FUNCTION pos_seed_units(restaurant bigint) RETURNS void
+    LANGUAGE sql AS $$
+      INSERT INTO pos_units (restaurant_id, code, name_en, name_ar,
+                             eta_unit_type, allows_fraction, sort_order)
+      VALUES (restaurant, 'ea',   'Each',       'قطعة',     'EA',  false, 10),
+             (restaurant, 'kg',   'Kilogram',   'كيلوجرام', 'KGM', true,  20),
+             (restaurant, 'g',    'Gram',       'جرام',     'GRM', true,  30),
+             (restaurant, 'l',    'Litre',      'لتر',      'LTR', true,  40),
+             (restaurant, 'ml',   'Millilitre', 'مليلتر',   'MLT', true,  50),
+             (restaurant, 'box',  'Box',        'علبة',     'BX',  false, 60),
+             (restaurant, 'pack', 'Pack',       'عبوة',     'PK',  false, 70)
+      ON CONFLICT (restaurant_id, code) DO NOTHING
+    $$
+    ''',
+    // Every new restaurant gets them, by the database rather than by each of
+    // the three places that create one (the wizard, pos_migrate --seed, the
+    // cloud bootstrap) remembering to. SECURITY DEFINER so the account that
+    // inserts the restaurant needs no grant on the units for it to work.
+    r'''
+    CREATE OR REPLACE FUNCTION pos_restaurant_units() RETURNS trigger
+    LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+    BEGIN
+      PERFORM pos_seed_units(NEW.id);
+      RETURN NEW;
+    END;
+    $$
+    ''',
+    'DROP TRIGGER IF EXISTS pos_restaurants_seed_units ON pos_restaurants',
+    r'''
+    CREATE TRIGGER pos_restaurants_seed_units
+      AFTER INSERT ON pos_restaurants
+      FOR EACH ROW EXECUTE FUNCTION pos_restaurant_units()
+    ''',
+    'SELECT pos_seed_units(id) FROM pos_restaurants',
+  ]),
 ];
 
 /// Brings the branch database up to the current schema.

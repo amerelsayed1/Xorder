@@ -12,6 +12,7 @@ import '../../../domain/models/shift.dart';
 import '../../../domain/services/authorization.dart';
 import 'management_activity_pane.dart';
 import 'management_backup_pane.dart';
+import 'management_units_pane.dart';
 import 'management_floor_pane.dart';
 import 'management_menu_pane.dart';
 import 'management_eta_pane.dart';
@@ -120,6 +121,9 @@ enum ManagementArea {
   /// What it buys, and who it owes.
   buying,
 
+  /// What it keeps, and what it is counted in.
+  inventory,
+
   /// What the tax authority sees.
   compliance,
 
@@ -141,6 +145,7 @@ ManagementArea areaOf(ManagementPane pane) => switch (pane) {
   ManagementPane.purchasing => ManagementArea.buying,
   ManagementPane.receipt || ManagementPane.eta => ManagementArea.compliance,
   ManagementPane.activity || ManagementPane.backup => ManagementArea.system,
+  ManagementPane.units => ManagementArea.inventory,
 };
 
 String managementAreaName(AppStrings s, ManagementArea area) => switch (area) {
@@ -148,6 +153,7 @@ String managementAreaName(AppStrings s, ManagementArea area) => switch (area) {
   ManagementArea.menu => s.areaMenu,
   ManagementArea.money => s.areaMoney,
   ManagementArea.buying => s.areaBuying,
+  ManagementArea.inventory => s.areaInventory,
   ManagementArea.compliance => s.areaCompliance,
   ManagementArea.system => s.areaSystem,
 };
@@ -278,6 +284,7 @@ ManagementDestination _purchasing(PurchasingTab tab, {bool create = false}) =>
       ManagementPane.roles => (s.paneRoles, s.paneRolesBlurb),
       ManagementPane.activity => (s.paneActivity, s.paneActivityBlurb),
       ManagementPane.backup => (s.paneBackup, s.paneBackupBlurb),
+      ManagementPane.units => (s.paneUnits, s.paneUnitsBlurb),
     };
 
 /// The capability a pane needs beyond the `staffManage` that opened the screen.
@@ -300,6 +307,8 @@ String? _paneRequires(ManagementPane pane) => switch (pane) {
   // the gate protects is the two buttons: taking one on demand, and restoring.
   // Both go through `BackupService`, which is only ever reached from here.
   ManagementPane.backup => PosCapability.backupManage,
+  // Units exist for buying and counting stock: the buyer's.
+  ManagementPane.units => PosCapability.purchaseManage,
   _ => null,
 };
 
@@ -324,6 +333,7 @@ enum ManagementPane {
   roles,
   activity,
   backup,
+  units,
 }
 
 class _ManagementScreenState extends ConsumerState<ManagementScreen> {
@@ -444,6 +454,7 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
                 ManagementPane.roles => ManagementRolesPane(admin: admin),
                 ManagementPane.activity => const ManagementActivityPane(),
                 ManagementPane.backup => ManagementBackupPane(admin: admin),
+                ManagementPane.units => ManagementUnitsPane(admin: admin),
               },
             ),
           ],

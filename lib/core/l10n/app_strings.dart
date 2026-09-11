@@ -1197,6 +1197,23 @@ sealed class AppStrings {
   String get aboutDatabase;
   String get receiptPreviewAction;
   String get receiptPreviewNote;
+  String get areaInventory;
+  String get paneUnits;
+  String get paneUnitsBlurb;
+  String get unitNew;
+  String get unitEdit;
+  String get unitNameEn;
+  String get unitNameAr;
+  String get unitCode;
+  String get unitCodeHelp;
+  String get unitEtaCode;
+  String get unitEtaCodeHelp;
+  String get unitAllowsFraction;
+  String get unitAllowsFractionHelp;
+  String get unitFractionChip;
+  String get unitActive;
+  String get unitRetired;
+  String get actUnitSaved;
   String get you;
   String extraCapabilities(int count);
   String get resetPin;
@@ -4693,6 +4710,45 @@ final class EnStrings extends AppStrings {
   String get receiptPreviewNote =>
       'A preview only — nothing is printed and nothing is recorded.';
   @override
+  String get areaInventory => 'Inventory';
+  @override
+  String get paneUnits => 'Units';
+  @override
+  String get paneUnitsBlurb => 'What stock is counted and bought in';
+  @override
+  String get unitNew => 'Add a unit';
+  @override
+  String get unitEdit => 'Edit unit';
+  @override
+  String get unitNameEn => 'Name';
+  @override
+  String get unitNameAr => 'Name in Arabic';
+  @override
+  String get unitCode => 'Code';
+  @override
+  String get unitCodeHelp =>
+      'Short, and fixed once saved — purchase lines store it. Lowercase '
+      'letters and digits: kg, tray, box6.';
+  @override
+  String get unitEtaCode => 'Tax authority unit code';
+  @override
+  String get unitEtaCodeHelp =>
+      'What e-receipts say the item was sold in: EA each, KGM kilogram, '
+      'LTR litre.';
+  @override
+  String get unitAllowsFraction => 'Can be part of one';
+  @override
+  String get unitAllowsFractionHelp =>
+      '12.5 kg is a real amount; 12.5 boxes is not.';
+  @override
+  String get unitFractionChip => 'fractions';
+  @override
+  String get unitActive => 'In use';
+  @override
+  String get unitRetired => 'Not in use';
+  @override
+  String get actUnitSaved => 'Saved a unit';
+  @override
   String get you => 'you';
   @override
   String extraCapabilities(int count) => '+$count extra';
@@ -7741,6 +7797,45 @@ final class ArStrings extends AppStrings {
   @override
   String get receiptPreviewNote =>
       'معاينة فقط — لا شيء يُطبع ولا شيء يُسجَّل.';
+  @override
+  String get areaInventory => 'المخزون';
+  @override
+  String get paneUnits => 'الوحدات';
+  @override
+  String get paneUnitsBlurb => 'الوحدات التي يُعدّ ويُشترى بها المخزون';
+  @override
+  String get unitNew => 'إضافة وحدة';
+  @override
+  String get unitEdit => 'تعديل الوحدة';
+  @override
+  String get unitNameEn => 'الاسم';
+  @override
+  String get unitNameAr => 'الاسم بالعربية';
+  @override
+  String get unitCode => 'الرمز';
+  @override
+  String get unitCodeHelp =>
+      'قصير، ولا يتغيّر بعد الحفظ — تحفظه سطور المشتريات. حروف إنجليزية صغيرة '
+      'وأرقام: kg، tray، box6.';
+  @override
+  String get unitEtaCode => 'رمز الوحدة لدى مصلحة الضرائب';
+  @override
+  String get unitEtaCodeHelp =>
+      'ما تذكره الإيصالات الإلكترونية كوحدة بيع: EA قطعة، KGM كيلوجرام، '
+      'LTR لتر.';
+  @override
+  String get unitAllowsFraction => 'تقبل الكسور';
+  @override
+  String get unitAllowsFractionHelp =>
+      '١٢٫٥ كيلوجرام كمية حقيقية؛ ١٢٫٥ علبة ليست كذلك.';
+  @override
+  String get unitFractionChip => 'كسور';
+  @override
+  String get unitActive => 'مستخدمة';
+  @override
+  String get unitRetired => 'غير مستخدمة';
+  @override
+  String get actUnitSaved => 'حفظ وحدة';
   @override
   String get you => 'أنت';
   @override

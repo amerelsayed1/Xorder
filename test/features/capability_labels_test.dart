@@ -92,11 +92,11 @@ void main() {
         // `ea` is not one, least of all in Arabic, where it means nothing.
         for (final unit in QuantityUnit.values) {
           final label = AdminText.unit(strings, unit);
-          expect(label.trim(), isNotEmpty, reason: unit.name);
+          expect(label.trim(), isNotEmpty, reason: unit.wire);
           expect(
             label,
             isNot('ea'),
-            reason: 'the wire token leaked through for ${unit.name}',
+            reason: 'the wire token leaked through for ${unit.wire}',
           );
         }
       });
@@ -244,6 +244,7 @@ const _actionsThisBuildWrites = <String>[
   AuditAction.supplierPaid,
   AuditAction.supplierPaymentVoided,
   AuditAction.serviceChargeSaved,
+  AuditAction.unitSaved,
   AuditAction.tenderTypeSaved,
   AuditAction.orderTypeSaved,
   AuditAction.taxGroupSaved,

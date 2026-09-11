@@ -1,6 +1,7 @@
 import '../../core/config/deployment.dart';
 import '../../core/money/money.dart';
 import '../../domain/models/backup.dart';
+import '../../domain/models/pos_unit.dart';
 import '../../domain/models/catalog.dart';
 import '../../domain/models/dining_table.dart';
 import '../../domain/models/order_record.dart';
@@ -1383,5 +1384,69 @@ class FakeRefundsRepository implements RefundsRepository {
       refundId: refund.id,
       replayed: false,
     );
+  }
+}
+
+/// The units, held in a list: the seven every restaurant starts with.
+///
+/// A test double only — the real list is `pos_units`, seeded by migration 39.
+class FakeUnitsRepository implements UnitsRepository {
+  FakeUnitsRepository({List<PosUnit>? units})
+    : units = [...(units ?? _seeded)];
+
+  static const _seeded = [
+    PosUnit(id: 1, code: 'ea', nameEn: 'Each', nameAr: 'قطعة', sortOrder: 10),
+    PosUnit(
+      id: 2,
+      code: 'kg',
+      nameEn: 'Kilogram',
+      nameAr: 'كيلوجرام',
+      etaUnitType: 'KGM',
+      allowsFraction: true,
+      sortOrder: 20,
+    ),
+    PosUnit(
+      id: 3,
+      code: 'l',
+      nameEn: 'Litre',
+      nameAr: 'لتر',
+      etaUnitType: 'LTR',
+      allowsFraction: true,
+      sortOrder: 40,
+    ),
+    PosUnit(
+      id: 4,
+      code: 'box',
+      nameEn: 'Box',
+      nameAr: 'علبة',
+      etaUnitType: 'BX',
+      sortOrder: 60,
+    ),
+  ];
+
+  final List<PosUnit> units;
+
+  @override
+  Future<List<PosUnit>> all({bool includeInactive = false}) async => [
+    for (final unit in units)
+      if (includeInactive || unit.isActive) unit,
+  ];
+
+  @override
+  Future<AdminResult<PosUnit>> save(PosUnit unit, {required PosStaff by}) async {
+    if (unit.id == 0) {
+      if (units.any((u) => u.code == unit.code)) {
+        return AdminResult.refused(
+          CatalogInvalid('There is already a unit with the code "${unit.code}".'),
+        );
+      }
+      final created = unit.copyWith(id: units.length + 1);
+      units.add(created);
+      return AdminResult.done(created);
+    }
+    final at = units.indexWhere((u) => u.id == unit.id);
+    if (at < 0) return const AdminResult.refused(EditedElsewhere(0));
+    units[at] = unit;
+    return AdminResult.done(unit);
   }
 }

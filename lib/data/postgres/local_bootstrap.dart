@@ -523,6 +523,8 @@ class LocalBootstrap {
     // DELETE, and never on `document` or `canonical`: those are the evidence
     // of what was actually filed, and a row that could be rewritten after a
     // rejection would be a row that proves nothing.
+    // What a purchase line and a stock row are labelled in.
+    'GRANT SELECT ON pos_units TO "$role"',
     'GRANT SELECT, INSERT ON pos_eta_receipts TO "$role"',
     'GRANT UPDATE (status, signature, attempts, last_attempt_at, '
         'submitted_at, submission_uuid, long_id, error_message, qr_payload) '
@@ -730,6 +732,8 @@ class LocalBootstrap {
     // Tax pane edits them. No DELETE: a group a product points at cannot be
     // removed without silently reclassifying that product, so it is retired.
     'GRANT SELECT, INSERT, UPDATE ON pos_tax_groups TO "$role"',
+    'GRANT SELECT, INSERT, UPDATE ON pos_units TO "$role"',
+    'GRANT USAGE, SELECT ON SEQUENCE pos_units_id_seq TO "$role"',
     'GRANT USAGE, SELECT ON SEQUENCE pos_tax_groups_id_seq TO "$role"',
     // Per-branch prices and combos are still read-only here: nothing in
     // Management edits them yet, and granting a write to nobody is how a role

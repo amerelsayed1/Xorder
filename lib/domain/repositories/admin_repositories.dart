@@ -287,6 +287,7 @@ abstract final class AuditAction {
   static const entityOrderType = 'order_type';
   static const entityTaxGroup = 'tax_group';
   static const entityServiceCharge = 'service_charge';
+  static const entityUnit = 'unit';
   static const entitySupplier = 'supplier';
   static const entityPurchaseOrder = 'purchase_order';
   static const entitySupplierInvoice = 'supplier_invoice';
@@ -322,6 +323,7 @@ abstract final class AuditAction {
   /// same reason a product reprice has one: it changes what every future
   /// customer pays, and "who added 12% and when" is what a complaint asks.
   static const serviceChargeSaved = 'service_charge.saved';
+  static const unitSaved = 'unit.saved';
 
   /// A payment method created, renamed, retired or reclassified (§40).
   /// Its own action because changing `counts_as_cash` changes what every

@@ -2,6 +2,7 @@ import '../../core/config/deployment.dart';
 import '../../core/money/money.dart';
 import '../../core/money/quantity.dart';
 import 'admin_repositories.dart';
+import '../models/pos_unit.dart';
 import '../models/catalog.dart';
 import '../models/order_type_config.dart';
 import '../models/purchase_order.dart';
@@ -120,6 +121,16 @@ abstract interface class TenderTypesRepository {
   /// let somebody bring it back — and for a receipt reprint, where the method a
   /// sale was taken on may since have been retired.
   Future<List<TenderMethod>> all({bool includeInactive = false});
+}
+
+/// What stock is counted and bought in — kg, litre, a tray of thirty — as the
+/// restaurant names them (migration 39).
+abstract interface class UnitsRepository {
+  Future<List<PosUnit>> all({bool includeInactive = false});
+
+  /// `id == 0` creates. No delete: a unit is retired with `isActive`, because
+  /// last month's purchase order still names it. The code is fixed once saved.
+  Future<AdminResult<PosUnit>> save(PosUnit unit, {required PosStaff by});
 }
 
 /// What the restaurant adds on top of the food (§38).

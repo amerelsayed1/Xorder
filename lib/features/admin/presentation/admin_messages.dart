@@ -91,6 +91,7 @@ abstract final class AdminText {
     AuditAction.productArchived => s.actProductArchived,
     AuditAction.productRestored => s.actProductRestored,
     AuditAction.productRepriced => s.actProductRepriced,
+    AuditAction.unitSaved => s.actUnitSaved,
     AuditAction.moneyConfigChanged => s.actMoneyConfigChanged,
     AuditAction.receiptProfileChanged => s.actReceiptProfileChanged,
     AuditAction.tableCreated => s.actTableCreated,
@@ -233,14 +234,17 @@ abstract final class AdminText {
   /// writes on a delivery note — least of all in Arabic, where it means nothing
   /// at all. The symbols that *are* conventional (kg, ml) stay Latin in both
   /// languages, because that is what is printed on the box.
-  static String unit(AppStrings s, QuantityUnit unit) => switch (unit) {
-    QuantityUnit.each => s.unitEach,
-    QuantityUnit.kilogram => s.unitKilogram,
-    QuantityUnit.gram => s.unitGram,
-    QuantityUnit.litre => s.unitLitre,
-    QuantityUnit.millilitre => s.unitMillilitre,
-    QuantityUnit.box => s.unitBox,
-    QuantityUnit.pack => s.unitPack,
+  static String unit(AppStrings s, QuantityUnit unit) => switch (unit.wire) {
+    'ea' => s.unitEach,
+    'kg' => s.unitKilogram,
+    'g' => s.unitGram,
+    'l' => s.unitLitre,
+    'ml' => s.unitMillilitre,
+    'box' => s.unitBox,
+    'pack' => s.unitPack,
+    // One the restaurant added. Its code is what it wrote on the delivery
+    // note; the screens that list units show the names it gave it.
+    final code => code,
   };
 
   static String group(AppStrings s, CapabilityGroup group) => switch (group) {

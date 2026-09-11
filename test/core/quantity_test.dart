@@ -143,10 +143,21 @@ void main() {
       }
     });
 
-    test('an unknown unit reads as each rather than throwing', () {
-      // A purchase order written on a newer build must still be readable.
-      expect(QuantityUnit.fromWire('dozen'), QuantityUnit.each);
+    test('a unit the restaurant added is kept by its code, not read as each',
+        () {
+      // The back office can add units now (migration 39). "1 of something"
+      // was the old reading of any code this build did not know, and on a
+      // tray the restaurant added on purpose it is simply wrong.
+      expect(QuantityUnit.fromWire('tray').wire, 'tray');
+      expect(QuantityUnit.fromWire('tray'), const QuantityUnit('tray'));
+      expect(QuantityUnit.fromWire('tray').isBuiltIn, isFalse);
+    });
+
+    test('nothing recorded still reads as each', () {
+      // A row from before units existed meant one of something, and still
+      // does.
       expect(QuantityUnit.fromWire(null), QuantityUnit.each);
+      expect(QuantityUnit.fromWire('  '), QuantityUnit.each);
     });
   });
 

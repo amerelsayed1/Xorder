@@ -22,29 +22,47 @@ import 'rounding.dart';
 
 /// What a quantity is counted in.
 ///
-/// A label rather than a conversion table. See the library note.
-enum QuantityUnit {
-  each('ea'),
-  kilogram('kg'),
-  gram('g'),
-  litre('l'),
-  millilitre('ml'),
-  box('box'),
-  pack('pack');
-
+/// **A code, not a closed list.** The seven below are the units every
+/// restaurant starts with (migration 39 seeds them), and the back office can
+/// add its own — a sack, a tray of thirty. A code this build has never seen is
+/// kept as that code rather than read as "each": "1 of something" was the old
+/// fallback, and on a unit the restaurant added on purpose it is simply wrong.
+///
+/// Still a label rather than a conversion table. See the library note.
+class QuantityUnit {
   const QuantityUnit(this.wire);
+
+  static const each = QuantityUnit('ea');
+  static const kilogram = QuantityUnit('kg');
+  static const gram = QuantityUnit('g');
+  static const litre = QuantityUnit('l');
+  static const millilitre = QuantityUnit('ml');
+  static const box = QuantityUnit('box');
+  static const pack = QuantityUnit('pack');
+
+  /// The built-in seven, in the order the back office lists them.
+  static const values = [each, kilogram, gram, litre, millilitre, box, pack];
 
   final String wire;
 
-  /// Unknown units fall back to [each] rather than throwing. A purchase order
-  /// written on a newer build must still be readable, and "1 of something"
-  /// is the reading that loses the least.
+  bool get isBuiltIn => values.contains(this);
+
+  /// Nothing recorded reads as [each] — a row older than units reads as one
+  /// of something, which is what it always meant. Anything else is kept.
   static QuantityUnit fromWire(String? value) {
-    for (final unit in values) {
-      if (unit.wire == value) return unit;
-    }
-    return each;
+    final code = value?.trim();
+    if (code == null || code.isEmpty) return each;
+    return QuantityUnit(code);
   }
+
+  @override
+  bool operator ==(Object other) => other is QuantityUnit && other.wire == wire;
+
+  @override
+  int get hashCode => wire.hashCode;
+
+  @override
+  String toString() => wire;
 }
 
 class Quantity {
