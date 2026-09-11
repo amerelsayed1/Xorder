@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:xorder_pos/app/providers.dart';
 import 'package:xorder_pos/core/ui/theme.dart';
+import 'package:xorder_pos/core/ui/widgets/pos_widgets.dart';
 import 'package:xorder_pos/data/fakes/fake_repositories.dart';
 import 'package:xorder_pos/domain/models/permissions.dart';
 import 'package:xorder_pos/domain/models/shift.dart';
@@ -46,11 +47,22 @@ void main() {
     return container;
   }
 
-  Future<void> enter(WidgetTester tester, String pin) async {
-    for (final digit in pin.split('')) {
-      await tester.tap(find.widgetWithText(InkWell, digit).first);
-      await tester.pump();
-    }
+  /// The door: the administrator's username and the back-office password.
+  /// The shared harness holds 'test-credential' as that password.
+  Future<void> enter(
+    WidgetTester tester,
+    String username, {
+    String password = 'test-credential',
+  }) async {
+    await tester.enterText(
+      find.descendant(
+        of: find.byKey(const Key('back-office-username')),
+        matching: find.byType(TextField),
+      ),
+      username,
+    );
+    await tester.enterText(find.byKey(const Key('back-office-password')), password);
+    await tester.tap(find.byKey(const Key('back-office-open')));
     await tester.pumpAndSettle();
   }
 
@@ -87,9 +99,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await enter(tester, '1234'); // Amer, the owner.
-
-    expect(find.text('Back office password'), findsOneWidget);
+    expect(find.byKey(const Key('back-office-username')), findsOneWidget);
+    expect(find.text('BACK OFFICE PASSWORD'), findsOneWidget);
+    expect(find.byType(PinPad), findsNothing, reason: 'PINs are for the till');
     // And none of the panes are reachable behind it.
     expect(find.text('Staff'), findsNothing);
     expect(find.text('Roles'), findsNothing);
@@ -99,7 +111,7 @@ void main() {
     final container = await open(tester);
     expect(find.text('Staff'), findsNothing, reason: 'locked until a PIN is entered');
 
-    await enter(tester, '1234'); // Amer, the owner.
+    await enter(tester, 'amer'); // Amer, the owner.
 
     // The header names the area, now that the rail that said so is gone.
     expect(find.text('Management › People'), findsOneWidget);
@@ -108,12 +120,12 @@ void main() {
     expect(container.read(signedInStaffProvider)!.name, 'Amer M.');
   });
 
-  testWidgets('a cashier PIN gets no further than the keypad', (tester) async {
+  testWidgets('a cashier gets no further than the door', (tester) async {
     final container = await open(tester);
 
-    await enter(tester, '5678'); // Rana, a cashier.
+    await enter(tester, 'rana'); // Rana, a cashier.
 
-    expect(find.text('That PIN cannot open Management.'), findsOneWidget);
+    expect(find.text('That username and password cannot open Management.'), findsOneWidget);
     expect(find.text('Rana A.'), findsNothing, reason: 'the staff list must not render');
     expect(
       container.read(signedInStaffProvider),
@@ -122,17 +134,37 @@ void main() {
     );
   });
 
-  testWidgets('an unknown PIN is refused in the same words as a cashier', (tester) async {
+  testWidgets('a wrong password is refused in the same words, and opens nothing',
+      (tester) async {
+    final container = await open(tester);
+    await enter(tester, 'amer', password: 'not-it');
+
+    expect(
+      find.text('That username and password cannot open Management.'),
+      findsOneWidget,
+    );
+    expect(container.read(signedInStaffProvider), isNull);
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const Key('back-office-password')))
+          .controller!
+          .text,
+      isEmpty,
+      reason: 'a refused password is not left sitting in the box',
+    );
+  });
+
+  testWidgets('an unknown username is refused in the same words as a cashier', (tester) async {
     // Identical messages on purpose. Telling them apart would turn the keypad
     // into a way of finding out who the managers are.
     await open(tester);
-    await enter(tester, '0000');
-    expect(find.text('That PIN cannot open Management.'), findsOneWidget);
+    await enter(tester, 'nobody');
+    expect(find.text('That username and password cannot open Management.'), findsOneWidget);
   });
 
   testWidgets('opens on staff by default, as it always did', (tester) async {
     await open(tester);
-    await enter(tester, '1234');
+    await enter(tester, 'amer');
     expect(find.text('Add somebody'), findsOneWidget);
   });
 
@@ -142,7 +174,7 @@ void main() {
     // that does not mention accounts — and a path that exists but cannot be
     // found is, to the person looking for it, the same as one that does not.
     await open(tester, pane: ManagementPane.activity);
-    await enter(tester, '1234');
+    await enter(tester, 'amer');
 
     // The pane itself. Activity is the only pane in its area, so no tab names
     // it — and the header says "System", which is where it lives.
@@ -158,7 +190,7 @@ void main() {
     // fresh screen, which is why the menu appeared to work until it was used
     // twice.
     final container = await open(tester, pane: ManagementPane.activity);
-    await enter(tester, '1234');
+    await enter(tester, 'amer');
     // The pane itself, never its name: every pane's name is in the rail all the
     // time, so `find.text('Roles')` passes on a screen that never moved.
     expect(find.byType(ManagementActivityPane), findsOneWidget);
@@ -188,7 +220,7 @@ void main() {
     // The rail listed all thirteen; the window's bar does that now. What is
     // left here is only the neighbours of where you are.
     await open(tester, pane: ManagementPane.taxes);
-    await enter(tester, '1234');
+    await enter(tester, 'amer');
 
     // Money's panes on this terminal. Order types is absent because the fake
     // harness authors no catalogue — the same rule the bar applies.
@@ -214,7 +246,7 @@ void main() {
     // Buying, because Purchasing is the one pane in it — System stopped being
     // the example the day Backup joined Activity there.
     await open(tester, pane: ManagementPane.purchasing);
-    await enter(tester, '1234');
+    await enter(tester, 'amer');
 
     expect(find.byKey(const Key('management-tab-purchasing')), findsNothing);
     expect(find.text('Management › Buying'), findsOneWidget);
@@ -222,7 +254,7 @@ void main() {
 
   testWidgets('a tab switches the pane', (tester) async {
     await open(tester);
-    await enter(tester, '1234');
+    await enter(tester, 'amer');
 
     await tester.tap(find.byKey(const Key('management-tab-roles')));
     await tester.pumpAndSettle();
@@ -233,7 +265,7 @@ void main() {
   testWidgets('the roles pane refuses to make a cashier an administrator',
       (tester) async {
     await open(tester);
-    await enter(tester, '1234');
+    await enter(tester, 'amer');
 
     await tester.tap(find.text('Roles'));
     await tester.pumpAndSettle();
@@ -299,7 +331,7 @@ void main() {
       entityType: 'warehouse',
     );
 
-    await enter(tester, '1234');
+    await enter(tester, 'amer');
     await tester.pumpAndSettle();
 
     expect(find.text('Paid a supplier'), findsOneWidget);
@@ -333,7 +365,7 @@ void main() {
       },
     );
 
-    await enter(tester, '1234');
+    await enter(tester, 'amer');
     await tester.pumpAndSettle();
 
     final column = find.textContaining('total:');
@@ -377,7 +409,7 @@ void main() {
       after: const {'price_minor': 5000},
     );
 
-    await enter(tester, '1234');
+    await enter(tester, 'amer');
     await tester.pumpAndSettle();
 
     expect(find.textContaining('price: 45.00 → 50.00'), findsOneWidget);
@@ -391,7 +423,7 @@ void main() {
     // hidden, and the effect on one from *this* build was the raw key on the
     // screen where a restaurant owner decides who may spend money.
     final container = await open(tester);
-    await enter(tester, '1234');
+    await enter(tester, 'amer');
 
     await tester.tap(find.text('Roles'));
     await tester.pumpAndSettle();
@@ -431,7 +463,7 @@ void main() {
   // agree with the test.
   testWidgets('a permission taken off a role is saved', (tester) async {
     final container = await open(tester);
-    await enter(tester, '1234');
+    await enter(tester, 'amer');
 
     await tester.tap(find.text('Roles'));
     await tester.pumpAndSettle();
@@ -454,7 +486,7 @@ void main() {
     // over before they hand it over. Only medium and above are badged — a
     // badge on every row would be a badge on no row.
     await open(tester);
-    await enter(tester, '1234');
+    await enter(tester, 'amer');
     await tester.tap(find.text('Roles'));
     await tester.pumpAndSettle();
 
@@ -485,7 +517,7 @@ void main() {
     // stops complaining, which is how a role ends up holding whatever made the
     // error go away.
     await open(tester);
-    await enter(tester, '1234');
+    await enter(tester, 'amer');
     await tester.tap(find.text('Roles'));
     await tester.pumpAndSettle();
 
@@ -499,7 +531,7 @@ void main() {
 
   testWidgets('picking a template creates an ordinary role', (tester) async {
     await open(tester);
-    await enter(tester, '1234');
+    await enter(tester, 'amer');
     await tester.tap(find.text('Roles'));
     await tester.pumpAndSettle();
 
@@ -520,7 +552,7 @@ void main() {
     // person" into one tick, and "deliberately taken away" into the same blank
     // as "nobody ever gave it". Those are four different facts.
     await open(tester);
-    await enter(tester, '1234');
+    await enter(tester, 'amer');
 
     await tester.tap(find.byKey(const Key('grants-2')));
     await tester.pumpAndSettle();
@@ -537,7 +569,7 @@ void main() {
     // job. Showing them a pane whose every button refuses would make the rail
     // a list of disappointments.
     final container = await open(tester);
-    await enter(tester, '1234');
+    await enter(tester, 'amer');
 
     // Asked of the rule rather than of a rail that no longer exists. What
     // decides whether Purchasing is offered — in the window's bar, in the
@@ -576,7 +608,7 @@ void main() {
     // use last week. The rail hiding it while the body still rendered it would
     // be the gate saying no and the screen saying yes.
     final container = await open(tester, pane: ManagementPane.purchasing);
-    await enter(tester, '1234');
+    await enter(tester, 'amer');
     expect(find.text('New order'), findsOneWidget);
 
     container.read(signedInStaffProvider.notifier).signIn(
@@ -600,7 +632,7 @@ void main() {
 
   testWidgets('tapping a role permission takes it away', (tester) async {
     await open(tester);
-    await enter(tester, '1234');
+    await enter(tester, 'amer');
     await tester.tap(find.byKey(const Key('grants-2')));
     await tester.pumpAndSettle();
 
@@ -614,7 +646,7 @@ void main() {
     // An exception has to be undoable in place, or the only way back is to
     // remember what the role said.
     await open(tester);
-    await enter(tester, '1234');
+    await enter(tester, 'amer');
     await tester.tap(find.byKey(const Key('grants-2')));
     await tester.pumpAndSettle();
 

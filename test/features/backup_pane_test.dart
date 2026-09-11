@@ -122,10 +122,20 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    for (final digit in '1234'.split('')) {
-      await tester.tap(find.widgetWithText(InkWell, digit).first);
-      await tester.pump();
-    }
+    // Through the back office's door: the owner's username and the password
+    // the shared harness holds.
+    await tester.enterText(
+      find.descendant(
+        of: find.byKey(const Key('back-office-username')),
+        matching: find.byType(TextField),
+      ),
+      'amer',
+    );
+    await tester.enterText(
+      find.byKey(const Key('back-office-password')),
+      'test-credential',
+    );
+    await tester.tap(find.byKey(const Key('back-office-open')));
     await tester.pumpAndSettle();
   }
 

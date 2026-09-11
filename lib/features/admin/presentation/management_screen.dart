@@ -23,7 +23,6 @@ import 'management_purchasing_pane.dart';
 import 'management_receipt_pane.dart';
 import 'management_roles_pane.dart';
 import 'management_staff_pane.dart';
-import '../../../core/security/pin_hash.dart';
 
 /// The back office, inside the till.
 ///
@@ -358,28 +357,24 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
   Widget build(BuildContext context) {
     final admin = ref.watch(signedInStaffProvider);
 
+    // One door: the administrator's username and the back-office password.
+    //
+    // **The password is the database's, not a person's.** The till credential
+    // holds SELECT and nothing more, deliberately, so nothing here can save
+    // until the back office's own password is supplied — and it is held for
+    // the session and never written to disk: on the same machine as the till's
+    // password it would hand back everything the split protects.
+    //
     // Watched rather than read once: a manager whose role is changed from
     // another till mid-session loses the screen on the next frame, which is
     // the same answer the database would give the next time they saved.
-    if (admin == null || !admin.can(PosCapability.staffManage)) {
-      return _LockedOut(
+    if (admin == null ||
+        !admin.can(PosCapability.staffManage) ||
+        ref.watch(adminDbCredentialProvider) == null) {
+      return _BackOfficeSignIn(
         onClose: widget.onClose,
-        signedIn: admin,
-        onSignedIn: (staff) =>
-            ref.read(signedInStaffProvider.notifier).signIn(staff),
+        username: admin?.username,
       );
-    }
-
-    // Two gates, and they ask different questions. The PIN pad asks WHO this
-    // is. This asks for the back office's own database password — the till's
-    // credential holds SELECT and nothing more, deliberately, so nothing on
-    // this screen can save until an administrator supplies theirs.
-    //
-    // Held for the session and never written to disk: putting it on the same
-    // machine as the till's password would hand back everything the split was
-    // protecting.
-    if (ref.watch(adminDbCredentialProvider) == null) {
-      return _AdminCredentialGate(onClose: widget.onClose, admin: admin);
     }
 
     final areas = managementAreasFor(
@@ -572,196 +567,103 @@ class _AreaTabs extends StatelessWidget {
   }
 }
 
-/// What somebody sees when they reach Management without the permission for it.
+/// The back office's one door: the administrator's username and the
+/// back-office password — the database administrator password set when this
+/// install was made. No PIN: PINs are for the till.
 ///
-/// A PIN prompt rather than a closed door, because the person who *can* get in
-/// is usually standing next to the person who cannot, and the alternative is
-/// signing the cashier out of a till mid-shift to let a manager sign in.
-class _LockedOut extends ConsumerStatefulWidget {
-  const _LockedOut({
-    required this.onClose,
-    required this.onSignedIn,
-    this.signedIn,
-  });
+/// **Checked against the database the first time in a session**, then against
+/// the password already held — so a second manager signing in after the first
+/// is not another round trip, and a wrong one is refused all the same.
+///
+/// One refusal for every way in being wrong: an unknown username, a cashier's,
+/// and a wrong password all read the same, so the form is no way of finding
+/// out who the managers are.
+class _BackOfficeSignIn extends ConsumerStatefulWidget {
+  const _BackOfficeSignIn({required this.onClose, this.username});
 
   final VoidCallback onClose;
-  final ValueChanged<PosStaff> onSignedIn;
-  final PosStaff? signedIn;
+
+  /// Whoever is signed in at the till, offered as the name to sign in under.
+  final String? username;
 
   @override
-  ConsumerState<_LockedOut> createState() => _LockedOutState();
+  ConsumerState<_BackOfficeSignIn> createState() => _BackOfficeSignInState();
 }
 
-class _LockedOutState extends ConsumerState<_LockedOut> {
-  String _pin = '';
-  bool _busy = false;
-  String? _error;
-
-  Future<void> _digit(String digit) async {
-    if (_pin.length >= PinRules.length || _busy) return;
-    setState(() {
-      _pin += digit;
-      _error = null;
-    });
-    if (_pin.length < PinRules.length) return;
-
-    setState(() => _busy = true);
-    final staff = await ref.read(staffDirectoryRepositoryProvider).byPin(_pin);
-    if (!mounted) return;
-
-    if (staff != null &&
-        Authorization.check(staff, PosCapability.staffManage).isAllowed) {
-      widget.onSignedIn(staff);
-      return;
-    }
-
-    setState(() {
-      _busy = false;
-      _pin = '';
-      // One message for "no such PIN" and "not a manager" alike. Telling them
-      // apart would make the keypad a way of finding out who the managers are.
-      _error = context.strings.pinCannotOpenManagement;
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final strings = context.strings;
-
-    return Scaffold(
-      backgroundColor: context.pos.shell,
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 400),
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(PosSpace.xl),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  strings.management,
-                  style: PosText.screenTitle(color: context.pos.shellText),
-                ),
-                const SizedBox(height: PosSpace.sm),
-                Text(
-                  widget.signedIn == null
-                      ? strings.managementPinHelp
-                      : '${strings.cannotManageStaff(widget.signedIn!.name)} '
-                            '${strings.managementPinRetryHelp}',
-                  style: PosText.ui(
-                    size: 13,
-                    color: context.pos.shellMuted,
-                    height: 1.5,
-                  ),
-                ),
-                const SizedBox(height: PosSpace.xl),
-                PinDots(length: _pin.length),
-                const SizedBox(height: PosSpace.lg),
-                PinPad(
-                  onDigit: _digit,
-                  onBackspace: () => setState(() {
-                    if (_pin.isNotEmpty) {
-                      _pin = _pin.substring(0, _pin.length - 1);
-                    }
-                  }),
-                ),
-                // The space is RESERVED, not conditional. Growing the column
-                // when a refusal appears — and shrinking it again on the next
-                // digit — moved the keypad under the finger already on its way
-                // down, so the second attempt at a PIN landed on the wrong
-                // keys. On a touchscreen at a counter that is not a cosmetic
-                // problem; it is why the third attempt fails too.
-                const SizedBox(height: PosSpace.md),
-                SizedBox(
-                  height: 18,
-                  child: _error == null
-                      ? null
-                      : Text(
-                          _error!,
-                          textAlign: TextAlign.center,
-                          style: PosText.ui(
-                            size: 12.5,
-                            color: context.pos.offlinePillText,
-                          ),
-                        ),
-                ),
-                const SizedBox(height: PosSpace.xl),
-                PosButton(
-                  label: strings.backToTill,
-                  foreground: context.pos.shellText,
-                  border: Border.fromBorderSide(context.pos.shellBorder),
-                  onPressed: widget.onClose,
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Asks for the administrator database password, once per session.
-///
-/// Separate from the PIN pad on purpose: a PIN says who somebody is, and this
-/// says which database role the writes run as. Conflating them would mean the
-/// till credential could do everything a manager can, which is the boundary
-/// `bin/pos_migrate.dart` refuses to cross when it grants.
-class _AdminCredentialGate extends ConsumerStatefulWidget {
-  const _AdminCredentialGate({required this.onClose, required this.admin});
-
-  final VoidCallback onClose;
-  final PosStaff admin;
-
-  @override
-  ConsumerState<_AdminCredentialGate> createState() =>
-      _AdminCredentialGateState();
-}
-
-class _AdminCredentialGateState extends ConsumerState<_AdminCredentialGate> {
-  final _controller = TextEditingController();
+class _BackOfficeSignInState extends ConsumerState<_BackOfficeSignIn> {
+  late final _username = TextEditingController(text: widget.username ?? '');
+  final _password = TextEditingController();
+  final _passwordFocus = FocusNode();
   bool _busy = false;
   String? _error;
 
   @override
   void dispose() {
-    _controller.dispose();
+    _username.dispose();
+    _password.dispose();
+    _passwordFocus.dispose();
     super.dispose();
   }
 
-  /// Try the credential before accepting it.
-  ///
-  /// A password that is merely *stored* would fail later, on the first save,
-  /// after the manager had typed a whole staff record — so it is proved here,
-  /// against the real connection, while there is nothing to lose.
-  Future<void> _submit() async {
-    final value = _controller.text;
-    if (value.isEmpty || _busy) return;
+  /// The active staff member [username] names, if they may manage staff.
+  Future<PosStaff?> _manager(String username) async {
+    try {
+      final everyone = await ref
+          .read(staffDirectoryRepositoryProvider)
+          .all(includeInactive: false);
+      for (final person in everyone) {
+        if (person.username?.toLowerCase() == username.toLowerCase() &&
+            Authorization.check(person, PosCapability.staffManage).isAllowed) {
+          return person;
+        }
+      }
+    } on Object {
+      // Unreadable is refused like unknown. The password check below says
+      // whether the database is reachable at all.
+    }
+    return null;
+  }
 
+  Future<void> _submit() async {
+    final username = _username.text.trim();
+    final password = _password.text;
+    if (username.isEmpty || password.isEmpty || _busy) return;
+
+    final strings = context.strings;
     setState(() {
       _busy = true;
       _error = null;
     });
 
-    ref.read(adminDbCredentialProvider.notifier).set(value);
-
-    final failure = await ref
-        .read(adminPosDatabaseProvider)
-        .probe(ref.read(adminDeploymentProvider));
-
+    final held = ref.read(adminDbCredentialProvider);
+    PosDbFailure? failure;
+    if (held != null) {
+      failure = held == password ? null : PosDbFailure.auth;
+    } else {
+      // Tried before it is accepted: a password that was merely stored would
+      // fail later, on the first save, after somebody had typed a whole staff
+      // record.
+      ref.read(adminDbCredentialProvider.notifier).set(password);
+      failure = await ref
+          .read(adminPosDatabaseProvider)
+          .probe(ref.read(adminDeploymentProvider));
+    }
+    final staff = failure == null ? await _manager(username) : null;
     if (!mounted) return;
-    if (failure == null) return; // The screen rebuilds; the gate is gone.
 
-    ref.read(adminDbCredentialProvider.notifier).forget();
+    if (staff != null) {
+      // The screen rebuilds on the far side of the door.
+      ref.read(signedInStaffProvider.notifier).signIn(staff);
+      return;
+    }
+
+    if (held == null) ref.read(adminDbCredentialProvider.notifier).forget();
+    _password.clear();
     setState(() {
       _busy = false;
-      final strings = context.strings;
       _error = switch (failure) {
-        PosDbFailure.auth => strings.backOfficeAuthFailed(
-          ref.read(adminDeploymentProvider).databaseUser,
-        ),
         PosDbFailure.dns || PosDbFailure.tcp => strings.backOfficeUnreachable,
+        null || PosDbFailure.auth => strings.backOfficeSignInRefused,
         _ => strings.backOfficeRefused,
       };
     });
@@ -770,9 +672,10 @@ class _AdminCredentialGateState extends ConsumerState<_AdminCredentialGate> {
   @override
   Widget build(BuildContext context) {
     final strings = context.strings;
+    final pos = context.pos;
 
     return Scaffold(
-      backgroundColor: context.pos.shell,
+      backgroundColor: pos.shell,
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 420),
@@ -780,67 +683,82 @@ class _AdminCredentialGateState extends ConsumerState<_AdminCredentialGate> {
             padding: const EdgeInsets.all(PosSpace.xl),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  strings.backOfficePassword,
-                  textAlign: TextAlign.center,
-                  style: PosText.ui(
-                    size: 20,
-                    weight: FontWeight.w700,
-                    color: context.pos.shellText,
-                  ),
+                  strings.management,
+                  style: PosText.screenTitle(color: pos.shellText),
                 ),
                 const SizedBox(height: PosSpace.sm),
                 Text(
-                  strings.backOfficePasswordHelp(widget.admin.name),
-                  textAlign: TextAlign.center,
+                  strings.backOfficeSignInHelp,
                   style: PosText.ui(
-                    size: 12.5,
-                    color: context.pos.shellMuted,
+                    size: 13,
+                    color: pos.shellMuted,
                     height: 1.5,
                   ),
                 ),
                 const SizedBox(height: PosSpace.xl),
-                TextField(
-                  controller: _controller,
-                  obscureText: true,
-                  autofocus: true,
-                  enabled: !_busy,
-                  onSubmitted: (_) => _submit(),
-                  style: PosText.mono(size: 15, color: context.pos.shellText),
-                  decoration: InputDecoration(
-                    labelText: ref.read(adminDeploymentProvider).databaseUser,
-                    labelStyle: PosText.mono(
-                      size: 12,
-                      color: context.pos.shellMuted,
-                    ),
-                    filled: true,
-                    fillColor: context.pos.shellCard,
-                    border: const OutlineInputBorder(
-                      borderRadius: BorderRadius.zero,
+                UsernameField(
+                  key: const Key('back-office-username'),
+                  controller: _username,
+                  onSubmitted: _passwordFocus.requestFocus,
+                ),
+                const SizedBox(height: PosSpace.lg),
+                MicroLabel(strings.backOfficePassword),
+                const SizedBox(height: PosSpace.sm),
+                Container(
+                  decoration: BoxDecoration(
+                    color: pos.shellCard,
+                    border: Border.fromBorderSide(pos.shellBorder),
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: PosSpace.md),
+                  child: TextField(
+                    key: const Key('back-office-password'),
+                    controller: _password,
+                    focusNode: _passwordFocus,
+                    obscureText: true,
+                    enabled: !_busy,
+                    onSubmitted: (_) => _submit(),
+                    textAlign: TextAlign.center,
+                    style: PosText.mono(size: 16, color: pos.shellText),
+                    cursorColor: pos.accent,
+                    decoration: const InputDecoration(
+                      border: InputBorder.none,
+                      isDense: true,
+                      filled: false,
+                      contentPadding: EdgeInsets.symmetric(
+                        vertical: PosSpace.md,
+                      ),
                     ),
                   ),
                 ),
-                if (_error != null) ...[
-                  const SizedBox(height: PosSpace.md),
-                  Text(
-                    _error!,
-                    textAlign: TextAlign.center,
-                    style: PosText.ui(size: 12.5, color: context.pos.danger),
-                  ),
-                ],
-                const SizedBox(height: PosSpace.xl),
+                // Reserved, not conditional, so the button does not jump
+                // under a finger already on its way to it.
+                const SizedBox(height: PosSpace.md),
+                SizedBox(
+                  height: 36,
+                  child: _error == null
+                      ? null
+                      : Text(
+                          _error!,
+                          textAlign: TextAlign.center,
+                          style: PosText.ui(size: 12.5, color: pos.danger),
+                        ),
+                ),
+                const SizedBox(height: PosSpace.sm),
                 PosButton(
+                  key: const Key('back-office-open'),
                   label: _busy ? strings.checking : strings.openManagement,
-                  background: context.pos.accent,
-                  foreground: Colors.white,
+                  background: pos.accent,
+                  foreground: pos.onAccent,
                   onPressed: _busy ? null : _submit,
                 ),
                 const SizedBox(height: PosSpace.md),
                 PosButton(
                   label: strings.backToTill,
-                  foreground: context.pos.shellText,
-                  border: Border.fromBorderSide(context.pos.shellBorder),
+                  foreground: pos.shellText,
+                  border: Border.fromBorderSide(pos.shellBorder),
                   onPressed: widget.onClose,
                 ),
               ],

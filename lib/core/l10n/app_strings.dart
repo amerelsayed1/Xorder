@@ -1167,6 +1167,8 @@ sealed class AppStrings {
   String get managementPinRetryHelp;
   String cannotManageStaff(String name);
   String get backOfficePassword;
+  String get backOfficeSignInHelp;
+  String get backOfficeSignInRefused;
   String backOfficePasswordHelp(String name);
   String backOfficeAuthFailed(String user);
   String get backOfficeUnreachable;
@@ -4617,6 +4619,13 @@ final class EnStrings extends AppStrings {
   @override
   String get backOfficePassword => 'Back office password';
   @override
+  String get backOfficeSignInHelp =>
+      "Sign in with the administrator's username and the back-office "
+      'password — the admin password set when XOrder POS was installed.';
+  @override
+  String get backOfficeSignInRefused =>
+      'That username and password cannot open Management.';
+  @override
   String backOfficePasswordHelp(String name) =>
       'Signed in as $name. Changing staff, roles and the menu runs on a '
       'database account of its own, so the till\'s cannot. It is asked for '
@@ -7636,6 +7645,13 @@ final class ArStrings extends AppStrings {
       '$name غير مصرّح له بإدارة الموظفين.';
   @override
   String get backOfficePassword => 'كلمة مرور الإدارة';
+  @override
+  String get backOfficeSignInHelp =>
+      'سجّل الدخول باسم مستخدم المسؤول وكلمة مرور الإدارة — كلمة مرور المسؤول '
+      'التي حُددت عند تثبيت XOrder POS.';
+  @override
+  String get backOfficeSignInRefused =>
+      'اسم المستخدم وكلمة المرور هذان لا يفتحان الإدارة.';
   @override
   String backOfficePasswordHelp(String name) =>
       'أنت داخل باسم $name. تعديل الموظفين والأدوار والمنيو يعمل على حساب '
