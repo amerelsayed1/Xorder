@@ -14,7 +14,12 @@ import 'admin_messages.dart';
 /// An item on the menu shows its name and SKU but will not change them: those
 /// are the Menu pane's, and only the unit it is counted in is set here.
 class StockItemDialog extends StatefulWidget {
-  const StockItemDialog({super.key, required this.units, this.item});
+  const StockItemDialog({
+    super.key,
+    required this.units,
+    this.item,
+    this.initialName,
+  });
 
   /// Null adds a new one — bought, counted, not sold.
   final StockItem? item;
@@ -22,13 +27,19 @@ class StockItemDialog extends StatefulWidget {
   /// The units in use, to count it in.
   final List<PosUnit> units;
 
+  /// What somebody had already typed — on a purchase line, before asking to
+  /// add it as a new item.
+  final String? initialName;
+
   static Future<StockItem?> show(
     BuildContext context, {
     required List<PosUnit> units,
     StockItem? item,
+    String? initialName,
   }) => showDialog<StockItem>(
     context: context,
-    builder: (_) => StockItemDialog(units: units, item: item),
+    builder: (_) =>
+        StockItemDialog(units: units, item: item, initialName: initialName),
   );
 
   @override
@@ -36,7 +47,9 @@ class StockItemDialog extends StatefulWidget {
 }
 
 class _StockItemDialogState extends State<StockItemDialog> {
-  late final _nameEn = TextEditingController(text: widget.item?.nameEn ?? '');
+  late final _nameEn = TextEditingController(
+    text: widget.item?.nameEn ?? widget.initialName ?? '',
+  );
   late final _nameAr = TextEditingController(text: widget.item?.nameAr ?? '');
   late final _sku = TextEditingController(text: widget.item?.sku ?? '');
   late QuantityUnit _unit = widget.item?.unit ?? QuantityUnit.each;

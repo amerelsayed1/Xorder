@@ -4,6 +4,7 @@ import '../../domain/models/backup.dart';
 import '../../domain/models/pos_unit.dart';
 import '../../core/money/quantity.dart';
 import '../../domain/models/stock_item.dart';
+import '../../domain/models/stock_level.dart';
 import '../../domain/models/catalog.dart';
 import '../../domain/models/dining_table.dart';
 import '../../domain/models/order_record.dart';
@@ -1497,4 +1498,37 @@ class FakeStockItemsRepository implements StockItemsRepository {
     items[at] = item;
     return AdminResult.done(item);
   }
+}
+
+/// What each counted item stands at, held in a list. A test double only.
+class FakeStockLevelsRepository implements StockLevelsRepository {
+  FakeStockLevelsRepository({List<StockLevel>? levels})
+    : levels = [...(levels ?? _seeded)];
+
+  static const _seeded = [
+    StockLevel(
+      productId: 101,
+      nameEn: 'Chicken',
+      onHand: Quantity(12500, unit: QuantityUnit.kilogram),
+      unitCost: Money(9500),
+    ),
+    StockLevel(
+      productId: 102,
+      nameEn: 'Cooking oil',
+      onHand: Quantity(-2000, unit: QuantityUnit.litre),
+      unitCost: Money(6000),
+    ),
+    StockLevel(
+      productId: 103,
+      nameEn: 'Bottled water',
+      onHand: Quantity(48000),
+      unitCost: Money(500),
+      onMenu: true,
+    ),
+  ];
+
+  final List<StockLevel> levels;
+
+  @override
+  Future<List<StockLevel>> all() async => [...levels];
 }

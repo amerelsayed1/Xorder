@@ -9,6 +9,9 @@ import '../../../core/ui/widgets/mono_amount.dart';
 import '../../../core/ui/widgets/pos_widgets.dart';
 import '../../../domain/models/purchase_order.dart';
 import '../../../domain/models/supplier.dart';
+import 'admin_messages.dart';
+import '../../../domain/models/stock_item.dart';
+import '../../../domain/models/pos_unit.dart';
 
 /// Writing what to ask a supplier for.
 ///
@@ -20,18 +23,43 @@ class PurchaseOrderDialog extends StatefulWidget {
     super.key,
     required this.suppliers,
     this.order,
+    this.items = const [],
+    this.units = const [],
+    this.onCreateItem,
   });
 
   final PurchaseOrder? order;
   final List<Supplier> suppliers;
 
+  /// What the restaurant counts, for a line to name. A line that names one is
+  /// received into its stock; a line that does not — a service, packaging —
+  /// moves the order along and touches no ledger.
+  final List<StockItem> items;
+
+  /// The units in use, for a line that names no item.
+  final List<PosUnit> units;
+
+  /// Adds what was typed as a new item and hands it back, or null when the
+  /// buyer changed their mind. Absent where items cannot be added here — a
+  /// cloud till, whose products are the platform's.
+  final Future<StockItem?> Function(String name)? onCreateItem;
+
   static Future<PurchaseOrder?> show(
     BuildContext context, {
     required List<Supplier> suppliers,
     PurchaseOrder? order,
+    List<StockItem> items = const [],
+    List<PosUnit> units = const [],
+    Future<StockItem?> Function(String name)? onCreateItem,
   }) => showDialog<PurchaseOrder>(
     context: context,
-    builder: (_) => PurchaseOrderDialog(suppliers: suppliers, order: order),
+    builder: (_) => PurchaseOrderDialog(
+      suppliers: suppliers,
+      order: order,
+      items: items,
+      units: units,
+      onCreateItem: onCreateItem,
+    ),
   );
 
   @override
@@ -147,6 +175,7 @@ class _PurchaseOrderDialogState extends State<PurchaseOrderDialog> {
                     children: [
                       Expanded(flex: 4, child: MicroLabel(strings.purchaseItem)),
                       Expanded(flex: 2, child: MicroLabel(strings.purchaseQty)),
+                      Expanded(flex: 2, child: MicroLabel(strings.purchaseUnit)),
                       Expanded(flex: 2, child: MicroLabel(strings.purchaseUnitCost)),
                       Expanded(flex: 2, child: MicroLabel(strings.subtotal)),
                     ],
@@ -155,6 +184,13 @@ class _PurchaseOrderDialogState extends State<PurchaseOrderDialog> {
                   for (var i = 0; i < _lines.length; i++)
                     _LineRow(
                       draft: _lines[i],
+                      items: widget.items,
+                      units: widget.units,
+                      onCreateItem: widget.onCreateItem,
+                      onPicked: (item) => setState(() {
+                        _lines[i].pick(item);
+                        _problem = null;
+                      }),
                       onChanged: () => setState(() => _problem = null),
                       onRemove: _lines.length == 1
                           ? null
@@ -266,10 +302,16 @@ class _LineDraft {
     unitCost: line.unitCost.format(),
     unit: line.ordered.unit,
     taxRateBp: line.taxRateBp,
-  );
+  ).._pickedName = line.productId == null ? null : line.description;
 
   final int id;
-  final int? productId;
+
+  /// The item this line buys, when it names one. Cleared when somebody types
+  /// over the name: a line that says "Chicken" and stocks the oil is worse
+  /// than a line that stocks nothing.
+  int? productId;
+  String? _pickedName;
+  final focus = FocusNode();
   final TextEditingController description;
   final TextEditingController quantity;
   final TextEditingController unitCost;
@@ -295,10 +337,27 @@ class _LineDraft {
     );
   }
 
+  /// Name this line after [item], in the unit it is counted in.
+  void pick(StockItem item) {
+    productId = item.id;
+    _pickedName = item.nameEn;
+    unit = item.unit;
+    if (description.text != item.nameEn) description.text = item.nameEn;
+  }
+
+  /// Typed over a picked name: a free line again.
+  void typed() {
+    if (productId != null && description.text != _pickedName) {
+      productId = null;
+      _pickedName = null;
+    }
+  }
+
   void dispose() {
     description.dispose();
     quantity.dispose();
     unitCost.dispose();
+    focus.dispose();
   }
 }
 
@@ -307,11 +366,19 @@ class _LineRow extends StatelessWidget {
     required this.draft,
     required this.onChanged,
     required this.onRemove,
+    required this.onPicked,
+    this.items = const [],
+    this.units = const [],
+    this.onCreateItem,
   });
 
   final _LineDraft draft;
   final VoidCallback onChanged;
   final VoidCallback? onRemove;
+  final ValueChanged<StockItem> onPicked;
+  final List<StockItem> items;
+  final List<PosUnit> units;
+  final Future<StockItem?> Function(String name)? onCreateItem;
 
   @override
   Widget build(BuildContext context) {
@@ -324,10 +391,12 @@ class _LineRow extends StatelessWidget {
         children: [
           Expanded(
             flex: 4,
-            child: TextField(
-              controller: draft.description,
-              onChanged: (_) => onChanged(),
-              style: PosText.ui(size: 14, color: palette.ink),
+            child: _ItemField(
+              draft: draft,
+              items: items,
+              onCreateItem: onCreateItem,
+              onPicked: onPicked,
+              onChanged: onChanged,
             ),
           ),
           const SizedBox(width: PosSpace.sm),
@@ -339,6 +408,15 @@ class _LineRow extends StatelessWidget {
               textDirection: TextDirection.ltr,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
               style: PosText.mono(size: 14, color: palette.ink),
+            ),
+          ),
+          const SizedBox(width: PosSpace.sm),
+          Expanded(
+            flex: 2,
+            child: _UnitPicker(
+              draft: draft,
+              units: units,
+              onChanged: onChanged,
             ),
           ),
           const SizedBox(width: PosSpace.sm),
@@ -366,6 +444,206 @@ class _LineRow extends StatelessWidget {
             ),
         ],
       ),
+    );
+  }
+}
+
+/// One suggestion under the item box: an item, or "add this as a new one".
+class _Pick {
+  const _Pick.item(StockItem this.item) : newName = null;
+  const _Pick.create(String this.newName) : item = null;
+
+  final StockItem? item;
+  final String? newName;
+}
+
+/// The item box: type a name, pick what the restaurant counts, or add it.
+///
+/// Free text stays allowed — a delivery charge or a cleaning service is a
+/// real line that stocks nothing — so a name that matches nothing is just a
+/// line, and "add as a new item" is offered rather than forced.
+class _ItemField extends StatelessWidget {
+  const _ItemField({
+    required this.draft,
+    required this.items,
+    required this.onPicked,
+    required this.onChanged,
+    this.onCreateItem,
+  });
+
+  final _LineDraft draft;
+  final List<StockItem> items;
+  final ValueChanged<StockItem> onPicked;
+  final VoidCallback onChanged;
+  final Future<StockItem?> Function(String name)? onCreateItem;
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = context.strings;
+    final palette = context.pos;
+
+    return RawAutocomplete<_Pick>(
+      textEditingController: draft.description,
+      focusNode: draft.focus,
+      displayStringForOption: (pick) => pick.item?.nameEn ?? pick.newName!,
+      optionsBuilder: (value) {
+        final typed = value.text.trim();
+        if (typed.isEmpty || (items.isEmpty && onCreateItem == null)) {
+          return const <_Pick>[];
+        }
+        final lower = typed.toLowerCase();
+        final matches = [
+          for (final item in items)
+            if (item.nameEn.toLowerCase().contains(lower) ||
+                (item.nameAr?.contains(typed) ?? false) ||
+                (item.sku?.toLowerCase().contains(lower) ?? false))
+              _Pick.item(item),
+        ];
+        final exact = items.any((i) => i.nameEn.toLowerCase() == lower);
+        return [
+          ...matches.take(8),
+          if (onCreateItem != null && !exact) _Pick.create(typed),
+        ];
+      },
+      onSelected: (pick) async {
+        if (pick.item case final item?) {
+          onPicked(item);
+          return;
+        }
+        final created = await onCreateItem!(pick.newName!);
+        if (created != null) onPicked(created);
+      },
+      fieldViewBuilder: (context, controller, focusNode, _) => TextField(
+        controller: controller,
+        focusNode: focusNode,
+        onChanged: (_) {
+          draft.typed();
+          onChanged();
+        },
+        style: PosText.ui(size: 14, color: palette.ink),
+      ),
+      optionsViewBuilder: (context, onSelected, options) => Align(
+        alignment: AlignmentDirectional.topStart,
+        child: Material(
+          elevation: 4,
+          color: palette.surface,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 280, maxWidth: 360),
+            child: ListView(
+              padding: EdgeInsets.zero,
+              shrinkWrap: true,
+              children: [
+                for (final pick in options)
+                  InkWell(
+                    onTap: () => onSelected(pick),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: PosSpace.md,
+                        vertical: PosSpace.sm,
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              pick.item?.displayName(strings.languageCode) ??
+                                  strings.purchaseAddAsItem(pick.newName!),
+                              style: PosText.ui(
+                                size: 13.5,
+                                weight: pick.item == null
+                                    ? FontWeight.w700
+                                    : FontWeight.w400,
+                                color: palette.ink,
+                              ),
+                            ),
+                          ),
+                          if (pick.item case final item?)
+                            Text(
+                              AdminText.unit(strings, item.unit),
+                              style: PosText.mono(size: 11, color: palette.muted),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// What a line is counted in.
+///
+/// **Fixed to the item's unit when the line names one.** Receiving writes the
+/// line's unit onto the item's stock position, so a line in boxes against an
+/// item counted in kilograms would quietly relabel the stock and add boxes to
+/// kilograms. A line that names nothing may be in anything.
+class _UnitPicker extends StatelessWidget {
+  const _UnitPicker({
+    required this.draft,
+    required this.units,
+    required this.onChanged,
+  });
+
+  final _LineDraft draft;
+  final List<PosUnit> units;
+  final VoidCallback onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = context.strings;
+    final palette = context.pos;
+    String label(QuantityUnit unit) {
+      for (final named in units) {
+        if (named.unit == unit) return named.displayName(strings.languageCode);
+      }
+      return AdminText.unit(strings, unit);
+    }
+
+    final locked = draft.productId != null;
+    final choices = [
+      if (!units.any((u) => u.unit == draft.unit)) draft.unit,
+      for (final unit in units) unit.unit,
+    ];
+    final face = Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: PosSpace.sm,
+        vertical: PosSpace.md,
+      ),
+      decoration: BoxDecoration(
+        border: Border.fromBorderSide(palette.resting),
+        color: locked ? palette.page : palette.surface,
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              label(draft.unit),
+              overflow: TextOverflow.ellipsis,
+              style: PosText.ui(size: 13, color: palette.ink),
+            ),
+          ),
+          if (!locked)
+            Icon(Icons.arrow_drop_down, size: 18, color: palette.muted),
+        ],
+      ),
+    );
+
+    if (locked) return KeyedSubtree(key: const Key('purchase-line-unit'), child: face);
+    return PopupMenuButton<QuantityUnit>(
+      key: const Key('purchase-line-unit'),
+      initialValue: draft.unit,
+      onSelected: (unit) {
+        draft.unit = unit;
+        onChanged();
+      },
+      itemBuilder: (_) => [
+        for (final unit in choices)
+          PopupMenuItem(value: unit, child: Text(label(unit))),
+      ],
+      child: face,
     );
   }
 }

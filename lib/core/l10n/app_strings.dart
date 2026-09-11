@@ -1227,6 +1227,16 @@ sealed class AppStrings {
   String get fieldTrackStock;
   String get fieldTrackStockHint;
   String get actStockItemSaved;
+  String get paneStock;
+  String get paneStockBlurb;
+  String get stockColumnItem;
+  String get stockColumnOnHand;
+  String get stockColumnAvgCost;
+  String get stockColumnValue;
+  String stockTotalValue(String amount);
+  String get stockEmpty;
+  String get purchaseUnit;
+  String purchaseAddAsItem(String name);
   String get you;
   String extraCapabilities(int count);
   String get resetPin;
@@ -4792,6 +4802,29 @@ final class EnStrings extends AppStrings {
   @override
   String get actStockItemSaved => 'Saved a stock item';
   @override
+  String get paneStock => 'Stock on hand';
+  @override
+  String get paneStockBlurb =>
+      'How much of each counted item this branch holds, and what it is worth';
+  @override
+  String get stockColumnItem => 'Item';
+  @override
+  String get stockColumnOnHand => 'On hand';
+  @override
+  String get stockColumnAvgCost => 'Average cost';
+  @override
+  String get stockColumnValue => 'Value';
+  @override
+  String stockTotalValue(String amount) => 'Stock value: $amount';
+  @override
+  String get stockEmpty =>
+      'Nothing is counted yet. Add what you buy in Stock items, then receive '
+      'a delivery.';
+  @override
+  String get purchaseUnit => 'Unit';
+  @override
+  String purchaseAddAsItem(String name) => 'Add “$name” as a new item';
+  @override
   String get you => 'you';
   @override
   String extraCapabilities(int count) => '+$count extra';
@@ -7907,6 +7940,28 @@ final class ArStrings extends AppStrings {
   String get fieldTrackStockHint => 'يُعدّ عند الشراء وتعرف كم تبقّى منه.';
   @override
   String get actStockItemSaved => 'حفظ صنف مخزون';
+  @override
+  String get paneStock => 'المخزون المتاح';
+  @override
+  String get paneStockBlurb =>
+      'كم يوجد في هذا الفرع من كل صنف يُعدّ، وكم قيمته';
+  @override
+  String get stockColumnItem => 'الصنف';
+  @override
+  String get stockColumnOnHand => 'المتاح';
+  @override
+  String get stockColumnAvgCost => 'متوسط التكلفة';
+  @override
+  String get stockColumnValue => 'القيمة';
+  @override
+  String stockTotalValue(String amount) => 'قيمة المخزون: $amount';
+  @override
+  String get stockEmpty =>
+      'لا شيء يُعدّ بعد. أضف ما تشتريه في أصناف المخزون، ثم استلم توريدة.';
+  @override
+  String get purchaseUnit => 'الوحدة';
+  @override
+  String purchaseAddAsItem(String name) => 'إضافة «$name» كصنف جديد';
   @override
   String get you => 'أنت';
   @override

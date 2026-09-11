@@ -49,7 +49,9 @@ import '../data/postgres/postgres_receipt_profile_repository.dart';
 import '../data/postgres/postgres_service_charges_repository.dart';
 import '../domain/models/pos_unit.dart';
 import '../domain/models/stock_item.dart';
+import '../domain/models/stock_level.dart';
 import '../data/postgres/postgres_stock_items_repository.dart';
+import '../data/postgres/postgres_stock_levels_repository.dart';
 import '../data/postgres/postgres_units_repository.dart';
 import '../data/postgres/postgres_suppliers_repository.dart';
 import '../data/postgres/postgres_supplier_invoices_repository.dart';
@@ -1993,6 +1995,28 @@ final serviceChargesRepositoryProvider = Provider<ServiceChargesRepository>((
     branchId: context.branchId,
   );
 });
+
+/// What each counted item stands at here. On the administrator's credential:
+/// the till holds no grant on stock levels.
+final stockLevelsRepositoryProvider = Provider<StockLevelsRepository>((ref) {
+  final config = ref.watch(deploymentProvider);
+  final context = ref.watch(posWriteContextProvider);
+  if (context == null || PosDatabase.hostFor(config) == null) {
+    return const UnconfiguredStockLevelsRepository();
+  }
+  return PostgresStockLevelsRepository(
+    database: ref.watch(adminPosDatabaseProvider),
+    config: ref.watch(adminDeploymentProvider),
+    restaurantId: context.restaurantId,
+    branchId: context.branchId,
+  );
+});
+
+/// Auto-disposed, so the pane reads fresh each time it is opened — after the
+/// delivery that was received a minute ago, not before it.
+final stockLevelsProvider = FutureProvider.autoDispose<List<StockLevel>>(
+  (ref) => ref.watch(stockLevelsRepositoryProvider).all(),
+);
 
 /// What the restaurant buys and counts. Read on the till's credential,
 /// written on the administrator's — see [PostgresStockItemsRepository].

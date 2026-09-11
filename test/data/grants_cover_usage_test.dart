@@ -107,6 +107,8 @@ void main() {
     'postgres_purchase_orders_repository.dart',
     'postgres_receiving_repository.dart',
     'postgres_supplier_invoices_repository.dart',
+    // Read only from the back office: the till holds no grant on stock levels.
+    'postgres_stock_levels_repository.dart',
   ];
 
   test('every repository is classified as one or the other', () {

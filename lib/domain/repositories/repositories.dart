@@ -4,6 +4,7 @@ import '../../core/money/quantity.dart';
 import 'admin_repositories.dart';
 import '../models/pos_unit.dart';
 import '../models/stock_item.dart';
+import '../models/stock_level.dart';
 import '../models/catalog.dart';
 import '../models/order_type_config.dart';
 import '../models/purchase_order.dart';
@@ -143,6 +144,13 @@ abstract interface class StockItemsRepository {
   /// `id == 0` adds an item that is bought and not sold. An item on the menu
   /// changes only its unit here — its name and price are the Menu pane's.
   Future<AdminResult<StockItem>> save(StockItem item, {required PosStaff by});
+}
+
+/// What each counted item stands at in this branch.
+abstract interface class StockLevelsRepository {
+  /// Every counted item, by name — including one counted and never received,
+  /// which stands at nothing.
+  Future<List<StockLevel>> all();
 }
 
 /// What the restaurant adds on top of the food (§38).

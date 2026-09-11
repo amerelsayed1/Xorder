@@ -9,6 +9,8 @@ import 'package:xorder_pos/core/ui/theme.dart';
 import 'package:xorder_pos/core/ui/tokens.dart';
 import 'package:xorder_pos/domain/models/purchase_order.dart';
 import 'package:xorder_pos/domain/models/supplier.dart';
+import 'package:xorder_pos/domain/models/pos_unit.dart';
+import 'package:xorder_pos/domain/models/stock_item.dart';
 import 'package:xorder_pos/features/admin/presentation/purchase_order_dialog.dart';
 import 'package:xorder_pos/features/admin/presentation/receive_dialog.dart';
 import 'package:xorder_pos/features/admin/presentation/supplier_dialog.dart';
@@ -188,6 +190,135 @@ void main() {
   });
 
   group('the order dialog', () {
+    const chicken = StockItem(
+      id: 101,
+      nameEn: 'Chicken',
+      unit: QuantityUnit.kilogram,
+    );
+    const units = [
+      PosUnit(id: 1, code: 'ea', nameEn: 'Each'),
+      PosUnit(id: 2, code: 'kg', nameEn: 'Kilogram', allowsFraction: true),
+      PosUnit(id: 3, code: 'box', nameEn: 'Box'),
+    ];
+
+    testWidgets('picking an item names the line, counts it in its unit, and '
+        'links it', (tester) async {
+      // Linked, so the delivery raises the chicken's stock — not a line that
+      // happens to say "Chicken" and stocks nothing.
+      PurchaseOrder? saved;
+      await host(
+        tester,
+        (context) async => saved = await PurchaseOrderDialog.show(
+          context,
+          suppliers: suppliers,
+          items: const [chicken],
+          units: units,
+        ),
+      );
+
+      await tester.enterText(find.byType(TextField).at(0), 'chi');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Chicken').last);
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField).at(1), '12.5');
+      await tester.enterText(find.byType(TextField).at(2), '95.00');
+      await tester.tap(find.byKey(const Key('purchase-save')));
+      await tester.pumpAndSettle();
+
+      final line = saved!.lines.single;
+      expect(line.productId, 101);
+      expect(line.description, 'Chicken');
+      expect(line.ordered.unit, QuantityUnit.kilogram);
+      expect(line.ordered.milli, 12500);
+    });
+
+    testWidgets('a name not in the list is added as a new item, from the line',
+        (tester) async {
+      PurchaseOrder? saved;
+      String? asked;
+      await host(
+        tester,
+        (context) async => saved = await PurchaseOrderDialog.show(
+          context,
+          suppliers: suppliers,
+          items: const [chicken],
+          units: units,
+          onCreateItem: (name) async {
+            asked = name;
+            return StockItem(id: 555, nameEn: name, unit: QuantityUnit.box);
+          },
+        ),
+      );
+
+      await tester.enterText(find.byType(TextField).at(0), 'Gas cylinder');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Add “Gas cylinder” as a new item'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField).at(1), '3');
+      await tester.enterText(find.byType(TextField).at(2), '400.00');
+      await tester.tap(find.byKey(const Key('purchase-save')));
+      await tester.pumpAndSettle();
+
+      expect(asked, 'Gas cylinder');
+      expect(saved!.lines.single.productId, 555);
+      expect(saved!.lines.single.ordered.unit, QuantityUnit.box);
+    });
+
+    testWidgets('typing over a picked item makes it a free line again', (
+      tester,
+    ) async {
+      // A line that says "Chicken wings" and stocks the chicken is worse than
+      // a line that stocks nothing.
+      PurchaseOrder? saved;
+      await host(
+        tester,
+        (context) async => saved = await PurchaseOrderDialog.show(
+          context,
+          suppliers: suppliers,
+          items: const [chicken],
+          units: units,
+        ),
+      );
+
+      await tester.enterText(find.byType(TextField).at(0), 'chi');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Chicken').last);
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField).at(0), 'Chicken wings');
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField).at(1), '2');
+      await tester.enterText(find.byType(TextField).at(2), '50.00');
+      await tester.tap(find.byKey(const Key('purchase-save')));
+      await tester.pumpAndSettle();
+
+      expect(saved!.lines.single.productId, isNull);
+    });
+
+    testWidgets('a line that names an item is fixed to its unit', (
+      tester,
+    ) async {
+      // Receiving writes the line's unit onto the item's stock: boxes against
+      // an item counted in kilograms would add boxes to kilograms.
+      await host(
+        tester,
+        (context) async => PurchaseOrderDialog.show(
+          context,
+          suppliers: suppliers,
+          items: const [chicken],
+          units: units,
+        ),
+      );
+      expect(find.byType(PopupMenuButton<QuantityUnit>), findsOneWidget);
+
+      await tester.enterText(find.byType(TextField).at(0), 'chi');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Chicken').last);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(PopupMenuButton<QuantityUnit>), findsNothing);
+      expect(find.text('Kilogram'), findsOneWidget);
+    });
+
     testWidgets('the total moves as the lines are typed', (tester) async {
       // The number a buyer is deciding about is what the whole order costs. A
       // figure that only appeared after saving would make them save to find out.

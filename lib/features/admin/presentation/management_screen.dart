@@ -13,6 +13,7 @@ import '../../../domain/services/authorization.dart';
 import 'management_activity_pane.dart';
 import 'management_backup_pane.dart';
 import 'management_items_pane.dart';
+import 'management_stock_pane.dart';
 import 'management_units_pane.dart';
 import 'management_floor_pane.dart';
 import 'management_menu_pane.dart';
@@ -152,7 +153,9 @@ ManagementArea areaOf(ManagementPane pane) => switch (pane) {
   ManagementPane.purchasing => ManagementArea.buying,
   ManagementPane.receipt || ManagementPane.eta => ManagementArea.compliance,
   ManagementPane.activity || ManagementPane.backup => ManagementArea.system,
-  ManagementPane.items || ManagementPane.units => ManagementArea.inventory,
+  ManagementPane.items ||
+  ManagementPane.stock ||
+  ManagementPane.units => ManagementArea.inventory,
 };
 
 String managementAreaName(AppStrings s, ManagementArea area) => switch (area) {
@@ -292,6 +295,7 @@ ManagementDestination _purchasing(PurchasingTab tab, {bool create = false}) =>
       ManagementPane.activity => (s.paneActivity, s.paneActivityBlurb),
       ManagementPane.backup => (s.paneBackup, s.paneBackupBlurb),
       ManagementPane.items => (s.paneItems, s.paneItemsBlurb),
+      ManagementPane.stock => (s.paneStock, s.paneStockBlurb),
       ManagementPane.units => (s.paneUnits, s.paneUnitsBlurb),
     };
 
@@ -316,7 +320,9 @@ String? _paneRequires(ManagementPane pane) => switch (pane) {
   // Both go through `BackupService`, which is only ever reached from here.
   ManagementPane.backup => PosCapability.backupManage,
   // Units exist for buying and counting stock: the buyer's.
-  ManagementPane.items || ManagementPane.units => PosCapability.purchaseManage,
+  ManagementPane.items ||
+  ManagementPane.stock ||
+  ManagementPane.units => PosCapability.purchaseManage,
   _ => null,
 };
 
@@ -342,6 +348,7 @@ enum ManagementPane {
   activity,
   backup,
   items,
+  stock,
   units,
 }
 
@@ -464,6 +471,7 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
                 ManagementPane.activity => const ManagementActivityPane(),
                 ManagementPane.backup => ManagementBackupPane(admin: admin),
                 ManagementPane.items => ManagementItemsPane(admin: admin),
+                ManagementPane.stock => const ManagementStockPane(),
                 ManagementPane.units => ManagementUnitsPane(admin: admin),
               },
             ),

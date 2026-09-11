@@ -16,6 +16,8 @@ import '../../../domain/models/supplier.dart';
 import '../../../domain/models/supplier_invoice.dart';
 import 'admin_messages.dart';
 import 'purchase_order_dialog.dart';
+import 'stock_item_dialog.dart';
+import '../../../domain/models/stock_item.dart';
 import 'receive_dialog.dart';
 import 'supplier_dialog.dart';
 import 'supplier_invoice_dialog.dart';
@@ -156,10 +158,21 @@ class _ManagementPurchasingPaneState
       return;
     }
 
+    // Loaded here, before the dialog, so the line picker has them the moment
+    // somebody types. An item can be added from a line only where this till
+    // writes its own products — see `_authoringPanes`.
+    final items = await ref.read(stockItemsProvider.future);
+    final units = await ref.read(unitsProvider.future);
+    if (!mounted) return;
+    final addsItems = ref.read(catalogAdminRepositoryProvider) != null;
+
     final edited = await PurchaseOrderDialog.show(
       context,
       order: order,
       suppliers: suppliers,
+      items: items,
+      units: units,
+      onCreateItem: addsItems ? _createItem : null,
     );
     if (edited == null || !mounted) return;
     await _run(
@@ -168,6 +181,34 @@ class _ManagementPurchasingPaneState
               .saveDraft(edited, by: widget.admin))
           .refusal,
     );
+  }
+
+  /// "Add as a new item", from a purchase line: the item dialog with what was
+  /// typed, then the item handed back to the line that asked.
+  Future<StockItem?> _createItem(String name) async {
+    final units = await ref.read(unitsProvider.future);
+    if (!mounted) return null;
+    final draft = await StockItemDialog.show(
+      context,
+      units: units,
+      initialName: name,
+    );
+    if (draft == null || !mounted) return null;
+
+    final result = await ref
+        .read(stockItemsRepositoryProvider)
+        .save(draft, by: widget.admin);
+    if (!mounted) return null;
+    if (!result.succeeded) {
+      setState(
+        () => _note = AdminText.refusal(context.strings, result.refusal!),
+      );
+      return null;
+    }
+    ref
+      ..invalidate(stockItemsProvider)
+      ..invalidate(stockItemsAllProvider);
+    return result.value;
   }
 
   Future<void> _send(PurchaseOrder order) => _run(

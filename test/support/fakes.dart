@@ -62,6 +62,7 @@ List<Override> fakeRepositoryOverrides({bool english = true}) => [
       backupRepositoryProvider.overrideWithValue(FakeBackupRepository()),
       unitsRepositoryProvider.overrideWithValue(FakeUnitsRepository()),
       stockItemsRepositoryProvider.overrideWithValue(FakeStockItemsRepository()),
+      stockLevelsRepositoryProvider.overrideWithValue(FakeStockLevelsRepository()),
       // The development issuer, which self-signs. The app binds
       // `DefaultLicenceService` against the real embedded key, so a widget
       // test that wanted a working licence would otherwise have to sign one.
