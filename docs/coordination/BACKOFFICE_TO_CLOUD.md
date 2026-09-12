@@ -20,9 +20,10 @@ cloud story actually looks like open. This handoff answers it with a backlog.
 **Everything below is handed off.** The offline panes stay as they are. They are
 the offline product and are not changing. Your job is the cloud counterpart.
 
-**Status of every item: `PROPOSED`**, except CB-00 (`DONE` 2026-09-11) and
-CB-01 (`DRAFTED — awaiting owner`, see §4a). Nothing here authorises
-implementation. Each `CB-xx` needs an explicit owner go.
+**Status of every item: `PROPOSED`**, except CB-00 (`DONE` 2026-09-11),
+CB-01 (`DRAFTED — awaiting owner`, see §4a) and CB-09 (`IN PROGRESS — slice a`
+2026-09-12). Nothing here authorises implementation. Each `CB-xx` needs an
+explicit owner go.
 
 ---
 
@@ -191,7 +192,36 @@ a ruling; the web side is the dashboard's existing login.
 till-local on both. Decide whether a cloud restaurant sets it once on the
 platform (the restaurant profile already carries `tax_registration_number`).
 
-### CB-09: Purchasing, suppliers, units, stock on cloud · L · owner decision first
+### CB-09: Purchasing, suppliers, units, stock on cloud · L · **`IN PROGRESS — slice a`**
+
+> **Owner decisions 2026-09-12.** (1) On cloud the platform is the only author
+> of purchasing and receiving (D1). (2) `purchasing` is a **standalone** plan
+> feature and **does not depend on `pos`** (D6, amended by the owner). Any
+> client type (restaurant, café, cloud kitchen, and so on) can have it, with
+> or without a till, so there is no `pos` in its gate stack, entitlement or
+> navigation, and new copy uses neutral wording ("business"/"client",
+> "النشاط"/"العميل"). (3) One capability, `purchase.manage`, gates reads and
+> writes (D7). (4) Slices a, b and c are approved, built in that order with an
+> owner review between slices. Slice a (suppliers, units, the feature, the
+> capability, and the D8 bundle filter) is being built on the xorder-new
+> branch `feat/cb-09-purchasing`: uncommitted, not deployed. **No till work
+> and no contract:** slice e and POS-BE-030 are not approved.
+>
+> **Designed 2026-09-12 (`xorder-cloud`), after the owner's "go CB-09".** The
+> go was taken as design only: the design comes back for review before
+> anything is built. No code, migration or test was written. Design, with a
+> recommended answer for each question and item-by-item approval points:
+> [`xorder-new/docs/backend/CB-09-cloud-purchasing-design.md`](../backend/CB-09-cloud-purchasing-design.md).
+> In brief: on cloud the platform is the only author of purchasing and stock.
+> There is a new `purchasing` plan feature (standalone since the owner's
+> 2026-09-12 ruling; the original design had it require `pos`) and one
+> `purchase.manage` capability, the till's own name. Stock items get their own
+> table, not a `MenuItem` flag. Valuation is the till's moving average, and
+> neither side deducts sales. The till's buying and inventory panes are hidden
+> on cloud. One draft contract, text in the design, is to be filed as
+> POS-BE-030 on approval. It also records four places where the till's code
+> and doc 16 disagree (design §10). Nothing here authorises implementation:
+> each slice needs its own go.
 
 Till-local only: `pos_suppliers`, `pos_purchase_orders`/`lines`,
 `pos_supplier_invoices`, `pos_supplier_payments`, `pos_units`, `pos_stock_levels`,
@@ -397,13 +427,13 @@ means the seeder must delete combos first.
 | Service charges | two authors; local wins once a row exists | **platform** (recommend) | The platform already has `Charge`, its controller, `PosMoneyView` and the config-version bump. This is the "platform authors, till reads" template. | Platform: additive `name_ar`, `is_automatic`, `is_optional`. Bundle: full list. Till: seed `pos_service_charges` from the bundle on cloud; the pane goes read-only like Taxes. | CB-02 |
 | Payment methods | **nobody**; the seeded four; ids don't match the platform's | **platform**: **settled 2026-09-11** (owner go: fixed as a defect; POS-BE-013 amended) | The platform already validates tender ids on every synced payment, so the ids must be its own. The alternative, the platform learning the till's ids, would be a merge path. | Done 2026-09-11: the platform creates default Cash + Card at the first terminal; the till seeds `pos_tender_types` by platform id on cloud. Still optional: additive `code`, `name_ar`, `counts_as_cash`, `opens_drawer`, `requires_reference`, `refund_allowed`; one `kind` vocabulary; the pane going read-only. | POS-BE-013 amendment (done); CB-02 for the optional fields |
 | Order types | platform picks the offered set; rules frozen, no author | **platform** | The till already tells the manager these come from the platform. Make that true. | Platform: rules per restaurant (or per branch), one vocabulary, bundle block, config-version bump. Till: seeder writes `pos_order_types`. | CB-03 |
-| Purchasing | till-local | **till-local** until the owner answers CB-09 | No platform model. Doc 16 §5 Q1 is open. | none now | CB-09 |
+| Purchasing | till-local | **platform** (owner, 2026-09-12, CB-09 D1) | The platform is the only author on cloud; the till's panes are to be hidden on cloud (slice e, not yet approved). | Platform: slices a → b → c. Till: nothing until slice e. | CB-09 |
 | Receipt | till-local `pos_receipt_profiles` | **platform** for the legal identity (name, TRN, address); **till** for print-layout preferences | Who the slip says sold the food is a fact about the business, and the platform already sends name and TRN. How a given printer lays it out is a fact about the device. | Platform: profile fields plus a bundle block. Till: split the profile. | CB-08 |
 | ETA | till job | **till** (keep) | Submission happens on the device and is queued there. | none | — |
 | Activity | till-local, not synced | **till** writes events; platform gets a read-only copy if wanted | Only the till writes these events, so this is a sync question, not an ownership one. | only if CB-13 says yes | CB-13 |
 | Backup | till | **till** (keep) | It covers local-only state. Synced facts are durable on the platform. | none | — |
-| Items (stock) | hidden; nobody | decided with CB-09 | The seeder would delete stock-only products. | — | CB-09 |
-| Units | till-local | **till-local**, tied to CB-09 | Only purchasing and stock use units. | — | CB-09 |
+| Items (stock) | hidden; nobody | **platform** (CB-09 D1, D3: a separate `stock_items` table) | The seeder would delete stock-only products. | Platform: slice b. | CB-09 |
+| Units | till-local | **platform** (CB-09 D1) | Only purchasing and stock use units. | Platform: slice a (same seven default codes as the till). | CB-09 |
 
 ### Questions the owner must answer
 
@@ -428,8 +458,8 @@ means the seeder must delete combos first.
 5. **Receipt: does the platform author the legal identity on the slip?** (CB-08)
 6. **May `pos-dev` verify the `pos_tax_groups` caveat** (Q1)? If it holds, a
    cloud till may be charging 14% regardless of the platform's rate.
-7. Unchanged from §5: is purchasing and inventory a cloud v1 feature (CB-09),
-   and is Cloud Wave 1 deployed?
+7. Unchanged from §5: is Cloud Wave 1 deployed? (*Purchasing answered
+   2026-09-12:* yes, platform-authored and standalone. See CB-09.)
 
 ---
 
@@ -438,7 +468,9 @@ means the seeder must delete combos first.
 1. **CB-01 ownership map**, above all CB-02 (service charges; payment methods
    were settled 2026-09-11 as a defect fix) and
    CB-06 (roles). The draft and the exact questions are in §4a.
-2. **Is purchasing and inventory a cloud v1 feature?** (CB-09; doc 16 §5.)
+2. ~~**Is purchasing and inventory a cloud v1 feature?**~~ **Answered
+   2026-09-12:** yes. The platform authors it, as a standalone `purchasing`
+   feature that doesn't need `pos`. Slices a → b → c are approved (CB-09).
 3. **Deploy Cloud Wave 1 to production?** It's still local-only per the Wave 1
    journal, and every CB item that ships assumes it's live.
 
