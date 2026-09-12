@@ -36,6 +36,19 @@ enum Feature: string
      */
     case POS = 'pos';
 
+    /**
+     * Purchasing and inventory (CB-09): suppliers, units, and later purchase
+     * orders, receiving, supplier invoices and stock. Gates the dashboard
+     * purchasing routes via `feature:purchasing`.
+     *
+     * A STANDALONE feature: it deliberately does not require `pos`. A café, a
+     * cloud kitchen or any other client may buy it with no till at all (owner
+     * decision 2026-09-12). Like `pos`, it is sold, not inherited: absent from
+     * defaultSet() and from every existing plan's feature_keys, so it resolves
+     * to FALSE for every existing tenant.
+     */
+    case PURCHASING = 'purchasing';
+
     /** @return list<string> */
     public static function values(): array
     {

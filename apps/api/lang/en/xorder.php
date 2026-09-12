@@ -219,6 +219,13 @@ return [
         'subscription_start_date_required' => 'A start date is required for an active subscription.',
         'subscription_end_date_required' => 'An end date is required for active and trial subscriptions — renewal and expiry alerts depend on it.',
         'phone_invalid' => 'Please enter a valid phone number.',
+        'supplier_name_required' => 'Provide the supplier name in at least one language.',
+        'supplier_code_taken' => 'Another supplier already uses this code.',
+        'supplier_tax_number' => 'A tax registration number is nine digits.',
+        'unit_name_required' => 'Provide the unit name in at least one language.',
+        'unit_code_shape' => 'A unit code starts with a lowercase letter and uses only lowercase letters, digits and _ (16 characters at most).',
+        'unit_code_taken' => 'A unit with this code already exists.',
+        'unit_eta_shape' => 'The e-invoice unit type is 1 to 6 capital letters or digits, e.g. KGM.',
     ],
     // Human names for the fine-grained in-restaurant permissions
     // (App\Enums\TenantCapability). Keyed with underscores because the enum
@@ -241,5 +248,6 @@ return [
         'reports_view' => 'View reports',
         'settings_manage' => 'Manage restaurant settings',
         'staff_manage' => 'Manage staff & roles',
+        'purchase_manage' => 'Manage purchasing, suppliers & stock',
     ],
 ];

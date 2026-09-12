@@ -48,6 +48,24 @@ export const DASHBOARD_NAV = [
             { key: 'tables', labelKey: 'nav.tables', icon: 'pi pi-table', to: { name: 'dashboard.tables' }, feature: 'table_management', capability: 'tables.view' },
         ],
     },
+    // Purchasing and inventory (CB-09). Operational pages, so they live in the
+    // sidebar rather than the settings shell, and deliberately OUTSIDE the
+    // "Point of sale & money" settings group: `purchasing` is a standalone
+    // feature a café or cloud kitchen may buy with no till (owner decision
+    // 2026-09-12), so nothing here depends on the `pos` flag. One capability,
+    // purchase.manage, covers reads and writes, as on the server.
+    {
+        key: 'purchasing', labelKey: 'nav.group_purchasing', icon: 'pi pi-truck',
+        children: [
+            { key: 'purchasing.suppliers', labelKey: 'nav.suppliers', icon: 'pi pi-briefcase', to: { name: 'dashboard.purchasing.suppliers' }, feature: 'purchasing', capability: 'purchase.manage' },
+        ],
+    },
+    {
+        key: 'inventory', labelKey: 'nav.group_inventory', icon: 'pi pi-box',
+        children: [
+            { key: 'inventory.units', labelKey: 'nav.units', icon: 'pi pi-tag', to: { name: 'dashboard.inventory.units' }, feature: 'purchasing', capability: 'purchase.manage' },
+        ],
+    },
     {
         key: 'engagement', labelKey: 'nav.group_engagement', icon: 'pi pi-users',
         children: [

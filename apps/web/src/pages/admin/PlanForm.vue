@@ -83,7 +83,9 @@ function loadOrdering(keys) {
 // Non-ordering capabilities the admin toggles directly. customer_tracking is
 // gone — customers are captured on every plan now.
 // bill_requests is not here — it's a dine-in sub-option nested under table ordering.
-const capabilityKeys = ['qr_menu', 'internal_reviews', 'product_analytics', 'multi_branch', 'pos']
+// purchasing is standalone (CB-09): ticking it does not tick pos, and a plan
+// may carry it with no till at all.
+const capabilityKeys = ['qr_menu', 'internal_reviews', 'product_analytics', 'multi_branch', 'pos', 'purchasing']
 const capabilities = ref([])
 function toggleCapability(key, on) {
     const i = capabilities.value.indexOf(key)

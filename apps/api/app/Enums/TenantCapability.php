@@ -108,6 +108,20 @@ enum TenantCapability: string
     // dashboard's read; the till creates through /api/pos/customers.
     case CUSTOMERS_CREATE = 'customers.create';
 
+    /*
+    | Purchasing and inventory (CB-09). ONE capability, not five, and it gates
+    | reads as well as writes: who a business buys from and what it pays is
+    | its commercial position, not something every account should browse
+    | (till doc 16 §6, owner decision 2026-09-12). It is the till's own string
+    | (xorder-pos permissions.dart).
+    |
+    | NOTE: this `.manage` is a LIVE single verb. Elsewhere in this enum
+    | `.manage` means "pre-split legacy value" (legacyManageMap). This one must
+    | never join legacyManageMap, or every role holding it would be rewritten
+    | into verbs that don't exist. It has no `.view`, so implies() is null.
+    */
+    case PURCHASE_MANAGE = 'purchase.manage';
+
     /** @return list<string> */
     public static function values(): array
     {
@@ -139,6 +153,7 @@ enum TenantCapability: string
             'tables', 'branches' => 'place',
             'customers', 'reviews' => 'engagement',
             'analytics', 'reports' => 'analytics',
+            'purchase' => 'buying',
             default => 'administration',
         };
     }

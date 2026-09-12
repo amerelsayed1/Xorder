@@ -43,9 +43,11 @@ use App\Http\Controllers\Dashboard\ReviewController;
 use App\Http\Controllers\Dashboard\RoleController;
 use App\Http\Controllers\Dashboard\StaffController;
 use App\Http\Controllers\Dashboard\StatsController;
+use App\Http\Controllers\Dashboard\SupplierController;
 use App\Http\Controllers\Dashboard\TableController;
 use App\Http\Controllers\Dashboard\TaxRuleController;
 use App\Http\Controllers\Dashboard\TenderTypeController;
+use App\Http\Controllers\Dashboard\UnitController;
 use App\Http\Controllers\Pos\BootstrapController as PosBootstrapController;
 use App\Http\Controllers\Pos\LicenceController as PosLicenceController;
 use App\Http\Controllers\Pos\OrderController as PosOrderController;
@@ -520,6 +522,36 @@ Route::prefix('dashboard')
             Route::get('reports/products-by-time', [ReportController::class, 'productsByTime']);
             Route::get('reports/products-by-time/export', [ReportController::class, 'export']);
             Route::get('reports/dining-areas', [ReportController::class, 'diningAreas']);
+        });
+
+        /*
+        | Purchasing and inventory (CB-09). A STANDALONE feature: it is
+        | deliberately NOT nested under feature:pos, because a café or a cloud
+        | kitchen with no till may buy it (owner decision 2026-09-12).
+        |
+        |   feature:purchasing    the tenant bought purchasing
+        |   can:purchase.manage   ONE capability for reads AND writes: who a
+        |                         business buys from is its commercial
+        |                         position, so reading is gated too (till
+        |                         doc 16 §6). There is no purchase.view.
+        |   subscription.writable on writes, like every configuration write
+        |
+        | No DELETE on either resource: both are retired with is_active=false,
+        | because later purchasing rows keep pointing at them.
+        */
+        Route::middleware(['feature:purchasing', 'can:purchase.manage'])->group(function () {
+            Route::get('units', [UnitController::class, 'index']);
+            Route::get('units/{unit}', [UnitController::class, 'show']);
+            Route::get('suppliers', [SupplierController::class, 'index']);
+            Route::get('suppliers/{supplier}', [SupplierController::class, 'show']);
+
+            Route::middleware('subscription.writable')->group(function () {
+                Route::post('units', [UnitController::class, 'store']);
+                // `code` is immutable: UpdateUnitRequest has no rule for it.
+                Route::put('units/{unit}', [UnitController::class, 'update']);
+                Route::post('suppliers', [SupplierController::class, 'store']);
+                Route::put('suppliers/{supplier}', [SupplierController::class, 'update']);
+            });
         });
 
         /*

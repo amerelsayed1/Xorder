@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Enums\RoleEnum;
+use App\Enums\TenantCapability;
 use App\Enums\UserStatus;
 use App\Models\Category;
 use App\Models\Charge;
@@ -258,7 +259,16 @@ class PosBootstrapService
                 'name' => $u->name,
                 'username' => $u->username,
                 'role_id' => $u->role_id,
-                'capabilities' => $u->tenantCapabilities(),
+                // CB-09 D8: purchase.manage is the platform's capability AND
+                // the till's own canonical name, so sending it would light up
+                // the till-local Purchasing pane for exactly the people the
+                // platform made buyers: two authors of one row. On a cloud
+                // terminal the platform is the only author of purchasing, and
+                // no till screen should check this key, so it never travels.
+                'capabilities' => array_values(array_diff(
+                    $u->tenantCapabilities(),
+                    [TenantCapability::PURCHASE_MANAGE->value],
+                )),
                 'is_active' => true,
                 'pin' => PosPin::wire($u->pos_pin_salt, $u->pos_pin_hash),
             ])->values()->all();

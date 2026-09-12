@@ -134,6 +134,12 @@ const restaurantRoutes = [
             { path: 'branches/:id/edit', name: 'dashboard.branches.edit', component: () => import('../pages/dashboard/BranchForm.vue'), meta: { capability: 'branches.update' } },
             { path: 'dining-areas', name: 'dashboard.areas', component: () => import('../pages/dashboard/DiningAreasView.vue'), meta: { capability: 'tables.view' } },
             { path: 'tables', name: 'dashboard.tables', component: () => import('../pages/dashboard/TablesView.vue'), meta: { capability: 'tables.view' } },
+            // Purchasing and inventory (CB-09). The server stacks
+            // feature:purchasing + can:purchase.manage; as elsewhere, the
+            // feature half lives on the sidebar entry and the guard mirrors
+            // the capability. No `pos` involvement: purchasing is standalone.
+            { path: 'purchasing/suppliers', name: 'dashboard.purchasing.suppliers', component: () => import('../pages/dashboard/purchasing/SuppliersView.vue'), meta: { capability: 'purchase.manage' } },
+            { path: 'inventory/units', name: 'dashboard.inventory.units', component: () => import('../pages/dashboard/inventory/UnitsView.vue'), meta: { capability: 'purchase.manage' } },
             // ------------------------------------------------------ settings
             // Five sections, one shell. The route *names* are the ones these
             // pages have always had, so every existing RouterLink keeps
