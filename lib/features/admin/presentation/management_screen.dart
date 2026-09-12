@@ -415,6 +415,21 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
     // permission that justified it.
     final showing = panes.contains(_pane) ? _pane : panes.first;
 
+    // Backups are the back office's business, said here rather than on the
+    // screen a cashier opens the till from: only somebody who can open the
+    // Backup pane can do anything about it, so only they are told. Not on the
+    // Backup pane itself, which already says how old the last copy is.
+    final backupNotice =
+        panes.contains(ManagementPane.backup) &&
+            showing != ManagementPane.backup &&
+            ref.watch(backupsApplyProvider)
+        ? backupWarning(
+            context.strings,
+            ref.watch(backupsProvider).valueOrNull,
+            DateTime.now(),
+          )
+        : null;
+
     // The panes of the area you are in — the tabs across the top.
     final areaPanes = [
       for (final (area, own) in areas)
@@ -439,6 +454,11 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
                 panes: areaPanes,
                 current: showing,
                 onPick: (pane) => setState(() => _pane = pane),
+              ),
+            if (backupNotice != null)
+              _BackupNotice(
+                text: backupNotice,
+                onOpen: () => setState(() => _pane = ManagementPane.backup),
               ),
             Expanded(
               child: switch (showing) {
@@ -780,6 +800,50 @@ class _BackOfficeSignInState extends ConsumerState<_BackOfficeSignIn> {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// The back office's backup warning: what is wrong, and the way to it.
+class _BackupNotice extends StatelessWidget {
+  const _BackupNotice({required this.text, required this.onOpen});
+
+  final String text;
+  final VoidCallback onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final pos = context.pos;
+    return Container(
+      key: const Key('management-backup-notice'),
+      padding: const EdgeInsets.symmetric(
+        horizontal: PosSpace.xl,
+        vertical: PosSpace.sm,
+      ),
+      decoration: BoxDecoration(
+        color: pos.warnSoft,
+        border: Border(bottom: BorderSide(color: pos.warn)),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.backup_outlined, size: 18, color: pos.warn),
+          const SizedBox(width: PosSpace.sm),
+          Expanded(
+            child: Text(
+              text,
+              style: PosText.ui(size: 13, color: pos.ink, height: 1.4),
+            ),
+          ),
+          const SizedBox(width: PosSpace.md),
+          PosButton(
+            key: const Key('management-backup-open'),
+            label: context.strings.backupOpenPane,
+            height: 36,
+            border: Border.fromBorderSide(BorderSide(color: pos.warn)),
+            onPressed: onOpen,
+          ),
+        ],
       ),
     );
   }

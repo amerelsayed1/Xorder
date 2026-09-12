@@ -33,9 +33,9 @@ class StartScreen extends ConsumerStatefulWidget {
   final VoidCallback onStart;
   final VoidCallback onManageLicence;
 
-  /// A back-office pane, for the warnings that point at one — the Backup pane
-  /// from "no verified copy", E-receipts from a filing problem. The way into
-  /// the back office itself is the window's bar and F8, not this screen.
+  /// A back-office pane, for the warnings that point at one — E-receipts from
+  /// a filing problem. The way into the back office itself is the window's
+  /// bar and F8, not this screen; backups are said inside it.
   final void Function(ManagementPane pane) onManage;
 
   /// Back to the setup wizard, after the terminal's configuration has been
@@ -318,18 +318,6 @@ class _StartScreenState extends ConsumerState<StartScreen> {
             onPressed: () => widget.onManage(ManagementPane.eta),
           ),
         ],
-        if (_backupWarning(strings) case final warning?) ...[
-          const SizedBox(height: PosSpace.lg),
-          _backupBanner(warning, pos: context.pos),
-          const SizedBox(height: PosSpace.md),
-          PosButton(
-            key: const Key('start-backup-open'),
-            label: strings.backupOpenPane,
-            background: context.pos.shellCard,
-            foreground: context.pos.shellText,
-            onPressed: () => widget.onManage(ManagementPane.backup),
-          ),
-        ],
         const SizedBox(height: PosSpace.s28),
         PosButton(
           label: blocked
@@ -460,41 +448,6 @@ class _StartScreenState extends ConsumerState<StartScreen> {
       ),
     );
   }
-
-  /// What the screen somebody opens the restaurant from should say about
-  /// backups, or null for nothing.
-  ///
-  /// Here and not only in the Backup pane, because the pane is two menus deep
-  /// behind the owner's PIN and the person who needs to know the nightly copy
-  /// has been failing is whoever opens up tomorrow. Only a VERIFIED copy
-  /// counts, and two days rather than one before an old one is called old — a
-  /// restaurant closed on Sunday should not be told off on Monday morning.
-  String? _backupWarning(AppStrings strings) {
-    if (!ref.watch(backupsApplyProvider)) return null;
-    final records = ref.watch(backupsProvider).valueOrNull;
-    if (records == null) return null;
-
-    final verified = records.where((r) => r.isRestorable);
-    if (verified.isEmpty) {
-      return records.isEmpty ? strings.backupNoneYet : strings.backupNoVerifiedCopy;
-    }
-    final days = verified.first.ageAt(DateTime.now()).inDays;
-    return days >= 2 ? strings.backupStale(days) : null;
-  }
-
-  Widget _backupBanner(String text, {required PosPalette pos}) => Container(
-    key: const Key('start-backup-warning'),
-    padding: const EdgeInsets.all(PosSpace.md),
-    decoration: BoxDecoration(
-      color: pos.offlinePillBg,
-      border: Border.all(color: pos.warn),
-    ),
-    child: Text(
-      text,
-      textAlign: TextAlign.center,
-      style: PosText.ui(size: 12.5, color: pos.offlinePillText, height: 1.5),
-    ),
-  );
 
   Widget _licenceBanner(LicenseEntitlement licence, {required PosPalette pos}) {
     final severe = !licence.canOpenShift;

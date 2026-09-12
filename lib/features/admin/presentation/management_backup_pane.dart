@@ -888,3 +888,22 @@ InputDecoration _boxed(PosPalette palette, {String? label}) => InputDecoration(
     borderSide: palette.accentBorder,
   ),
 );
+
+/// What the back office should say about backups, or null for nothing.
+///
+/// Only a VERIFIED copy counts, and two days rather than one before an old one
+/// is called old — a restaurant closed on Sunday should not be told off on
+/// Monday morning. Null records (still loading) say nothing.
+String? backupWarning(
+  AppStrings strings,
+  List<BackupRecord>? records,
+  DateTime now,
+) {
+  if (records == null) return null;
+  final verified = records.where((r) => r.isRestorable);
+  if (verified.isEmpty) {
+    return records.isEmpty ? strings.backupNoneYet : strings.backupNoVerifiedCopy;
+  }
+  final days = verified.first.ageAt(now).inDays;
+  return days >= 2 ? strings.backupStale(days) : null;
+}

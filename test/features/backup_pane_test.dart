@@ -80,6 +80,7 @@ void main() {
     WidgetTester tester, {
     List<BackupRecord> records = const [],
     bool filesExist = true,
+    ManagementPane pane = ManagementPane.backup,
     PgToolset? tools = const PgToolset(
       pgDump: '/usr/local/bin/pg_dump',
       pgRestore: '/usr/local/bin/pg_restore',
@@ -115,7 +116,7 @@ void main() {
           theme: buildPosTheme(),
           home: ManagementScreen(
             onClose: () {},
-            initialPane: ManagementPane.backup,
+            initialPane: pane,
           ),
         ),
       ),
@@ -304,6 +305,47 @@ void main() {
     await open(tester);
     expect(find.byKey(const Key('backup-restore-file')), findsOneWidget);
     expect(find.text(strings.backupRestoreFromFile), findsOneWidget);
+  });
+
+  testWidgets('the back office says when there is no copy, and goes to Backup',
+      (tester) async {
+    // Said here, for somebody who can act on it — not on the start screen a
+    // cashier opens the till from.
+    await open(tester, pane: ManagementPane.staff);
+
+    expect(find.byKey(const Key('management-backup-notice')), findsOneWidget);
+    expect(find.text(strings.backupNoneYet), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('management-backup-open')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(ManagementBackupPane), findsOneWidget);
+    expect(find.byKey(const Key('management-backup-notice')), findsNothing);
+  });
+
+  testWidgets('not on the Backup pane, which says it already', (tester) async {
+    await open(tester);
+    expect(find.byKey(const Key('management-backup-notice')), findsNothing);
+  });
+
+  testWidgets('a copy verified today says nothing', (tester) async {
+    await open(
+      tester,
+      pane: ManagementPane.staff,
+      records: [record(outcome: BackupOutcome.verified)],
+    );
+    expect(find.byKey(const Key('management-backup-notice')), findsNothing);
+  });
+
+  testWidgets('an old one is called old, wherever the manager is', (
+    tester,
+  ) async {
+    await open(
+      tester,
+      pane: ManagementPane.staff,
+      records: [record(outcome: BackupOutcome.verified, daysAgo: 4)],
+    );
+    expect(find.text(strings.backupStale(4)), findsOneWidget);
   });
 
   group('a size somebody can read', () {

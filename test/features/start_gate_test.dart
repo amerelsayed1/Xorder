@@ -255,55 +255,16 @@ void main() {
     expect(app.events, contains('manage'));
   });
 
-  group('backups, from the screen the restaurant is opened from', () {
-    BackupRecord verified({required int daysAgo}) => BackupRecord(
-      id: 1,
-      takenAt: DateTime.now().subtract(Duration(days: daysAgo)),
-      takenByName: 'Amer M.',
-      trigger: BackupTrigger.dayClose,
-      outcome: BackupOutcome.verified,
-      filePath: '/backups/xorder_pos-20260910-231407.dump',
-      sizeBytes: 4404019,
-      checksum: 'a' * 64,
-      tablesFound: 44,
+  testWidgets('backups are the back office\'s business, not the start '
+      'screen\'s', (tester) async {
+    // A cashier opens the till from here and can do nothing about a backup;
+    // the warning is in Management, for somebody who can.
+    await _boot(tester, licenceKey: 'XORD-GOOD-1', backups: []);
+
+    expect(find.byKey(const Key('start-backup-warning')), findsNothing);
+    expect(
+      find.text('No copy of this database has ever been taken.'),
+      findsNothing,
     );
-
-    testWidgets('a till that has never been backed up says so, and says where '
-        'to go', (tester) async {
-      // The Backup pane is behind the owner's PIN, two menus deep. Whoever
-      // opens up tomorrow is the person who needs to know.
-      final app = await _boot(tester, licenceKey: 'XORD-GOOD-1', backups: []);
-
-      expect(find.byKey(const Key('start-backup-warning')), findsOneWidget);
-      expect(
-        find.text('No copy of this database has ever been taken.'),
-        findsOneWidget,
-      );
-
-      await tester.tap(find.byKey(const Key('start-backup-open')));
-      await tester.pumpAndSettle();
-      expect(app.events, contains('manage'));
-    });
-
-    testWidgets('a copy from last night says nothing', (tester) async {
-      await _boot(
-        tester,
-        licenceKey: 'XORD-GOOD-1',
-        backups: [verified(daysAgo: 0)],
-      );
-      expect(find.byKey(const Key('start-backup-warning')), findsNothing);
-    });
-
-    testWidgets('a copy three days old is called old', (tester) async {
-      await _boot(
-        tester,
-        licenceKey: 'XORD-GOOD-1',
-        backups: [verified(daysAgo: 3)],
-      );
-      expect(
-        find.text('The last verified copy is 3 days old.'),
-        findsOneWidget,
-      );
-    });
   });
 }
