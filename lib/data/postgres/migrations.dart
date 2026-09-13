@@ -4087,6 +4087,176 @@ const posMigrations = <PosMigration>[
       EXECUTE FUNCTION pos_product_unit_follows_stock()
     ''',
   ]),
+  PosMigration(45, 'an option group can be shared, and a size can be on sale', [
+    // Sizes and extras authored the way the platform authors them, so an
+    // offline menu and a cloud one mean the same thing by the same words. A
+    // group is either typed on one item (inline) or kept in the restaurant's
+    // library (global), and a library group reaches items by link, by
+    // category, or everywhere.
+    'ALTER TABLE pos_modifier_groups ADD COLUMN IF NOT EXISTS is_global boolean NOT NULL DEFAULT false',
+    "ALTER TABLE pos_modifier_groups ADD COLUMN IF NOT EXISTS apply_scope text NOT NULL DEFAULT 'items'",
+    r'''
+    DO $$ BEGIN
+      ALTER TABLE pos_modifier_groups ADD CONSTRAINT pos_modifier_groups_scope_known
+        CHECK (apply_scope IN ('items', 'categories', 'all'));
+    EXCEPTION WHEN duplicate_object THEN NULL; END $$
+    ''',
+    // A group typed on one item reaching every item would be a library group
+    // nobody can find in the library.
+    r'''
+    DO $$ BEGIN
+      ALTER TABLE pos_modifier_groups ADD CONSTRAINT pos_modifier_groups_scope_is_global
+        CHECK (apply_scope = 'items' OR is_global);
+    EXCEPTION WHEN duplicate_object THEN NULL; END $$
+    ''',
+    // The heading on the sheet, when it should differ from the library name.
+    // Null means use the name — which is every group that existed before.
+    'ALTER TABLE pos_modifier_groups ADD COLUMN IF NOT EXISTS display_name_en text',
+    'ALTER TABLE pos_modifier_groups ADD COLUMN IF NOT EXISTS display_name_ar text',
+
+    // A size on offer. `price_delta_minor` stays the REGULAR price and this is
+    // what the customer is charged when set — the pair a strike-through needs.
+    // Strictly below, as the platform checks it: a "sale" at the full price is
+    // a strike-through that saves nothing.
+    //
+    // Only sizes use it, and that is not checked here. It is a rule across two
+    // tables, the catalogue read ignores it on an extra, and the one writer
+    // drops it there — so a stray value costs nobody anything.
+    //
+    // The cloud bundle seeds `price_delta_minor` with what a size charges and
+    // leaves this null, which stays correct: the charged price is
+    // `COALESCE(discounted_price_minor, price_delta_minor)` either way.
+    'ALTER TABLE pos_modifiers ADD COLUMN IF NOT EXISTS discounted_price_minor bigint',
+    r'''
+    DO $$ BEGIN
+      ALTER TABLE pos_modifiers ADD CONSTRAINT pos_modifiers_sale_price_sane
+        CHECK (discounted_price_minor IS NULL
+               OR (discounted_price_minor >= 0
+                   AND discounted_price_minor < price_delta_minor));
+    EXCEPTION WHEN duplicate_object THEN NULL; END $$
+    ''',
+
+    // The categories a category-wide group reaches. Current shape rather than
+    // history, so both sides cascade: a group or a category that goes takes
+    // its links with it, as the platform's pivot does.
+    '''
+    CREATE TABLE IF NOT EXISTS pos_modifier_group_categories (
+      group_id    bigint NOT NULL REFERENCES pos_modifier_groups(id) ON DELETE CASCADE,
+      category_id bigint NOT NULL REFERENCES pos_categories(id) ON DELETE CASCADE,
+      PRIMARY KEY (group_id, category_id)
+    )
+    ''',
+    '''
+    CREATE INDEX IF NOT EXISTS pos_modifier_group_categories_category_idx
+      ON pos_modifier_group_categories (category_id)
+    ''',
+
+    // **The groups that were already shared.** Before this, nothing here
+    // authored a group — `attachModifierGroups` only linked existing ones —
+    // so a group on two items, or on none, was shared in all but name. Left
+    // inline, the item editor would treat it as that item's own and delete it
+    // from under the other item the first time somebody removed it from one.
+    // Marked global, it appears in the library, which is where a manager will
+    // look for it. A group on exactly one item stays that item's.
+    //
+    // A cloud till's next bundle rewrites every group anyway, so this changes
+    // nothing there that lasts.
+    '''
+    UPDATE pos_modifier_groups g SET is_global = true
+     WHERE NOT g.is_global
+       AND (SELECT count(*) FROM pos_product_modifier_groups l
+             WHERE l.group_id = g.id) <> 1
+    ''',
+
+    // ── A group reaches its items through one path at a time ─────────────
+    //
+    // Linked one by one, through its categories, or everywhere — never two at
+    // once, because the platform clears the old path when the scope changes,
+    // and a till still holding the old links would offer the group on items
+    // the restaurant took it off. The repository clears them first and says
+    // so; these are for the writers that do not come through it.
+    //
+    // FOR SHARE on the group, so a link and a scope change on the same group
+    // queue rather than each seeing the other's row as it was: the link waits
+    // for the new scope and is refused by it, or the change waits for the
+    // link and then finds it.
+    r'''
+    CREATE OR REPLACE FUNCTION pos_modifier_group_link_follows_scope()
+      RETURNS trigger LANGUAGE plpgsql AS $fn$
+    DECLARE
+      g pos_modifier_groups%ROWTYPE;
+    BEGIN
+      SELECT * INTO g FROM pos_modifier_groups WHERE id = NEW.group_id FOR SHARE;
+      -- A missing group is the foreign key's to say, and it says it better.
+      IF NOT FOUND THEN
+        RETURN NEW;
+      END IF;
+
+      IF TG_TABLE_NAME = 'pos_product_modifier_groups' AND g.apply_scope <> 'items' THEN
+        RAISE EXCEPTION
+          'option group "%" already reaches % by itself, so it cannot also be linked to one item — set it back to chosen items first, or leave the item to pick it up',
+          g.name_en,
+          CASE g.apply_scope WHEN 'all' THEN 'every item' ELSE 'the items in its categories' END;
+      END IF;
+
+      IF TG_TABLE_NAME = 'pos_modifier_group_categories' AND g.apply_scope <> 'categories' THEN
+        RAISE EXCEPTION
+          'option group "%" applies to %, not to chosen categories — set it to categories before linking one',
+          g.name_en,
+          CASE g.apply_scope WHEN 'all' THEN 'every item' ELSE 'chosen items' END;
+      END IF;
+
+      RETURN NEW;
+    END $fn$
+    ''',
+    'DROP TRIGGER IF EXISTS pos_product_modifier_groups_follow_scope ON pos_product_modifier_groups',
+    '''
+    CREATE TRIGGER pos_product_modifier_groups_follow_scope
+      BEFORE INSERT OR UPDATE ON pos_product_modifier_groups
+      FOR EACH ROW
+      EXECUTE FUNCTION pos_modifier_group_link_follows_scope()
+    ''',
+    'DROP TRIGGER IF EXISTS pos_modifier_group_categories_follow_scope ON pos_modifier_group_categories',
+    '''
+    CREATE TRIGGER pos_modifier_group_categories_follow_scope
+      BEFORE INSERT OR UPDATE ON pos_modifier_group_categories
+      FOR EACH ROW
+      EXECUTE FUNCTION pos_modifier_group_link_follows_scope()
+    ''',
+    // And the other side: the scope cannot move while links of the old kind
+    // remain. Refused rather than cleaned up here, because a trigger that
+    // quietly deleted a restaurant's links is a trigger nobody would think to
+    // suspect when they went missing.
+    r'''
+    CREATE OR REPLACE FUNCTION pos_modifier_group_scope_leaves_no_links()
+      RETURNS trigger LANGUAGE plpgsql AS $fn$
+    BEGIN
+      IF NEW.apply_scope <> 'items' AND EXISTS (
+           SELECT 1 FROM pos_product_modifier_groups WHERE group_id = NEW.id) THEN
+        RAISE EXCEPTION
+          'option group "%" is still linked to items one by one, so it cannot start applying to % — remove those links first; a group reaches its items through one path at a time',
+          NEW.name_en, NEW.apply_scope;
+      END IF;
+
+      IF NEW.apply_scope <> 'categories' AND EXISTS (
+           SELECT 1 FROM pos_modifier_group_categories WHERE group_id = NEW.id) THEN
+        RAISE EXCEPTION
+          'option group "%" is still linked to categories, so it cannot start applying to % — remove those links first; a group reaches its items through one path at a time',
+          NEW.name_en, NEW.apply_scope;
+      END IF;
+
+      RETURN NEW;
+    END $fn$
+    ''',
+    'DROP TRIGGER IF EXISTS pos_modifier_groups_scope_leaves_no_links ON pos_modifier_groups',
+    '''
+    CREATE TRIGGER pos_modifier_groups_scope_leaves_no_links
+      BEFORE UPDATE ON pos_modifier_groups
+      FOR EACH ROW
+      WHEN (OLD.apply_scope IS DISTINCT FROM NEW.apply_scope)
+      EXECUTE FUNCTION pos_modifier_group_scope_leaves_no_links()
+    ''',
+  ]),
 ];
 
 /// Brings the branch database up to the current schema.

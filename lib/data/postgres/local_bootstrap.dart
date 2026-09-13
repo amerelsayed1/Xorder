@@ -614,7 +614,8 @@ class LocalBootstrap {
     // a back-office act — see [administrativeGrants].
     'GRANT SELECT ON pos_restaurants, pos_branches, pos_staff, pos_categories, '
         'pos_products, pos_modifier_groups, pos_modifiers, '
-        'pos_product_modifier_groups, pos_dining_tables TO "$role"',
+        'pos_product_modifier_groups, pos_modifier_group_categories, '
+        'pos_dining_tables TO "$role"',
     // Read by every till on every sign-in: the permission gate needs to
     // know what the person who just entered a PIN may do.
     'GRANT SELECT ON pos_roles TO "$role"',
@@ -680,7 +681,7 @@ class LocalBootstrap {
       'GRANT INSERT, UPDATE ON pos_restaurants, pos_branches, pos_staff TO "$role"',
       'GRANT INSERT, UPDATE, DELETE ON pos_categories, pos_products, '
           'pos_modifier_groups, pos_modifiers, pos_product_modifier_groups, '
-          'pos_dining_tables TO "$role"',
+          'pos_modifier_group_categories, pos_dining_tables TO "$role"',
       'GRANT USAGE, SELECT, UPDATE ON SEQUENCE pos_restaurants_id_seq, '
           'pos_branches_id_seq, pos_staff_id_seq, pos_categories_id_seq, '
           'pos_products_id_seq, pos_modifier_groups_id_seq, '
@@ -701,7 +702,8 @@ class LocalBootstrap {
       // held is a no-op, so a fresh install pays nothing for this.
       'REVOKE INSERT, UPDATE, DELETE ON pos_restaurants, pos_branches, '
           'pos_staff, pos_categories, pos_products, pos_modifier_groups, '
-          'pos_modifiers, pos_product_modifier_groups, pos_dining_tables '
+          'pos_modifiers, pos_product_modifier_groups, '
+          'pos_modifier_group_categories, pos_dining_tables '
           'FROM "$role"',
       'REVOKE UPDATE ON SEQUENCE pos_restaurants_id_seq, '
           'pos_branches_id_seq, pos_staff_id_seq, pos_categories_id_seq, '
@@ -769,8 +771,18 @@ class LocalBootstrap {
         'pos_modifiers_id_seq, pos_dining_tables_id_seq TO "$role"',
     // The join between the two. DELETE here, unlike the tables it joins: a row
     // is not a record of anything that happened, only the current shape of
-    // which options a product offers.
-    'GRANT SELECT, INSERT, DELETE ON pos_product_modifier_groups TO "$role"',
+    // which options a product offers. The categories a library group reaches
+    // (migration 45) are the same kind of row.
+    'GRANT SELECT, INSERT, DELETE ON pos_product_modifier_groups, '
+        'pos_modifier_group_categories TO "$role"',
+    // **The one DELETE on the catalogue itself**, and only on sizes and
+    // extras. Removing an option from a group, or a group from the library,
+    // is how the platform edits them and what a manager means by it — and
+    // unlike a product, neither is the subject of anything a sale recorded: an
+    // order line keeps its own `modifier_summary` and names the options by id
+    // only. The rule that matters for those ids is that an option which STAYS
+    // keeps its id, which is the repository's to hold, not a grant's.
+    'GRANT DELETE ON pos_modifier_groups, pos_modifiers TO "$role"',
     // The named rates. **The write that Wave M deferred** — "granting them
     // before there is a screen would be granting them to nobody" — now that the
     // Tax pane edits them. No DELETE: a group a product points at cannot be

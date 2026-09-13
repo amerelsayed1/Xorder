@@ -77,6 +77,39 @@ void main() {
     expect(restored.totals.total.minor, original.totals.total.minor);
   });
 
+  test('a parked Large is still the price after the size leaves the menu', () {
+    const large = Modifier(
+      id: 92,
+      groupId: 44,
+      nameEn: 'Large',
+      priceDelta: Money(12000),
+      isVariant: true,
+    );
+    const size = ModifierGroup(
+      id: 44,
+      nameEn: 'Size',
+      isRequired: true,
+      isVariant: true,
+      modifiers: [large],
+    );
+    final original = TicketEngine.addLine(
+      Ticket(id: 'txn-size', orderType: OrderType.takeaway),
+      _burger,
+      modifiers: const [large, _cheese],
+      groups: const [size, _extras],
+    ).ticket!;
+    final json = jsonDecode(jsonEncode(ParkedTicketCodec.encode(original)))
+        as Map<String, dynamic>;
+
+    // Only the extras are still on the menu: the Large comes back from its
+    // snapshot, and must come back as a size rather than as a 120.00 extra.
+    final restored =
+        ParkedTicketCodec.decode(json.cast<String, Object?>(), _catalog)!;
+
+    expect(restored.lines.single.unitPrice.minor, 12000 + 1500);
+    expect(restored.totals.total.minor, original.totals.total.minor);
+  });
+
   test('a product deleted while parked settles from its snapshots', () {
     final original = _parked();
     final json = jsonDecode(jsonEncode(ParkedTicketCodec.encode(original)))

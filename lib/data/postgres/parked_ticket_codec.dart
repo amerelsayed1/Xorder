@@ -105,6 +105,9 @@ abstract final class ParkedTicketCodec {
                 'name_en': modifier.nameEn,
                 'name_ar': modifier.nameAr,
                 'price_delta_minor': modifier.priceDelta.minor,
+                // Without it a parked Large resumes as an extra on top of the
+                // item, when the option has left the menu since.
+                'is_variant': modifier.isVariant,
               },
           ],
         },
@@ -388,6 +391,7 @@ abstract final class ParkedTicketCodec {
                       ? m['name_ar'] as String
                       : null,
                   priceDelta: minor(m['price_delta_minor']),
+                  isVariant: m['is_variant'] == true,
                 ),
     ];
 

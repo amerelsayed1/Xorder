@@ -51,6 +51,7 @@ void main() {
         'pos_modifier_groups',
         'pos_modifiers',
         'pos_product_modifier_groups',
+        'pos_modifier_group_categories',
       ]) {
         expect(
           writesTo(offline, table),
@@ -203,6 +204,9 @@ void main() {
       expect(writesTo(cloud, 'pos_products'), isNotEmpty);
       expect(writesTo(cloud, 'pos_staff'), isNotEmpty);
       expect(writesTo(cloud, 'pos_categories'), isNotEmpty);
+      // Granted with the rest of the catalogue so the seeder can be taught to
+      // write it, though today it only goes by cascade — see `_seedCatalog`.
+      expect(writesTo(cloud, 'pos_modifier_group_categories'), isNotEmpty);
     });
 
     test('holds every grant the offline set holds, and more', () {

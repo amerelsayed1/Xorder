@@ -1083,6 +1083,10 @@ sealed class AppStrings {
   String get actTenderTypeSaved;
   String get actOrderTypeSaved;
   String get actTaxGroupSaved;
+  String get actProductOptionsChanged;
+  String get actOptionGroupSaved;
+  String get actOptionGroupRepriced;
+  String get actOptionGroupDeleted;
   String get fieldYes;
   String get fieldNo;
   String get unitEach;
@@ -1351,6 +1355,84 @@ sealed class AppStrings {
   String get rateIsNotANumber;
   String get priceIsNotANumber;
   String get offerPriceIsNotANumber;
+
+  // ── Management: sizes and extras ──────────────────────────────────────────
+  // The cloud dashboard's words, in both languages, taken from its i18n file
+  // (`item.*`, `extras.*`) rather than rewritten: the owner's instruction is
+  // that the desktop and the cloud say the same thing, and a manager who uses
+  // both should not have to learn two names for one switch. Its "(s)" plurals
+  // are kept as it writes them for the same reason.
+  String get extrasTitle;
+  String get extrasSubtitle;
+  String get extrasNew;
+  String get extrasEdit;
+  String get extrasNone;
+  String extrasUsedBy(int n);
+  String get extrasNotUsed;
+  String extrasDeleteWarning(int n);
+  String extrasOptionsSummary(int n);
+  String get extrasApplyTo;
+  String get extrasScopeItems;
+  String get extrasScopeItemsHint;
+  String get extrasScopeCategories;
+  String get extrasScopeAll;
+  String get extrasPickCategories;
+  String extrasAppliesCategories(int n);
+  String get extrasLibraryNameEn;
+  String get extrasLibraryNameAr;
+  String get extrasLibraryNameHint;
+  String get extrasMenuNameEn;
+  String get extrasMenuNameAr;
+  String get extrasMenuNamePlaceholder;
+  String get extrasMenuNameHint;
+  String extrasShownAs(String name);
+  String get itemOptions;
+  String get itemNoOptions;
+  String get itemAddGroup;
+  String get itemGroupNameEn;
+  String get itemGroupNameAr;
+  String get itemRequired;
+  String get itemVariant;
+  String get itemVariantHint;
+  String get itemPricedBySize;
+  String get itemDefaultSize;
+  String get itemOptionDiscount;
+  String get itemOptionDiscountHint;
+  String get itemMaxSelect;
+  String get itemOptionEn;
+  String get itemOptionAr;
+  String get itemAddOption;
+  String get itemAddFromLibrary;
+  String get itemFromLibrary;
+  String get itemLibraryEmpty;
+  String get itemManageLibrary;
+  String get deleteLabel;
+  String get deleteConfirmGeneric;
+  String get savingLabel;
+
+  // Why a size or extra was refused. See `OptionGroupProblem`.
+  String get refusalGroupNameMissing;
+  String get refusalGroupScopeNeedsLibrary;
+  String get refusalGroupCategoriesMissing;
+  String refusalGroupChoicesOutOfRange(int max);
+  String get refusalGroupNegativeCounts;
+  String get refusalGroupNeedsMoreThanAllows;
+  String refusalGroupTooManyOptions(int max);
+  String get refusalGroupRequiredButEmpty;
+  String get refusalOptionNameMissing;
+  String get refusalOptionTwice;
+  String get refusalOptionNegativePrice;
+  String get refusalOptionSaleNotBelowPrice;
+  String get refusalGroupTwice;
+  String get refusalGroupTypedOnAnotherItem;
+  String refusalGroupNotInLibrary(String name);
+  String refusalGroupAlreadyReaches(String name);
+  String refusalGroupSecondSizes(int count, String names);
+  String refusalGroupWouldGiveSecondSizes(String item);
+  String get refusalGroupBelongsToOneItem;
+  String get refusalGroupBelongsToLibrary;
+  String get refusalGroupForeignOption;
+  String get refusalGroupForeignCategory;
 
   // ── Reasons ───────────────────────────────────────────────────────────────
   // The chrome around the reason picker. The reasons THEMSELVES are rows in
@@ -4522,6 +4604,14 @@ final class EnStrings extends AppStrings {
   @override
   String get actTaxGroupSaved => 'Changed a tax rate';
   @override
+  String get actProductOptionsChanged => "Changed an item's sizes or extras";
+  @override
+  String get actOptionGroupSaved => 'Changed a sizes or extras group';
+  @override
+  String get actOptionGroupRepriced => 'Changed the price of a size or extra';
+  @override
+  String get actOptionGroupDeleted => 'Deleted a sizes or extras group';
+  @override
   String get fieldYes => 'yes';
   @override
   String get fieldNo => 'no';
@@ -5115,6 +5205,190 @@ final class EnStrings extends AppStrings {
   String get priceIsNotANumber => 'The price is not a number.';
   @override
   String get offerPriceIsNotANumber => 'The offer price is not a number.';
+
+  @override
+  String get extrasTitle => 'Extras library';
+  @override
+  String get extrasSubtitle =>
+      'Reusable option groups you can attach to any item. Editing one updates '
+      'it everywhere it is used.';
+  @override
+  String get extrasNew => 'Add extra';
+  @override
+  String get extrasEdit => 'Edit extra';
+  @override
+  String get extrasNone =>
+      'No shared extras yet. Create one to reuse across items.';
+  @override
+  String extrasUsedBy(int n) => '$n item(s)';
+  @override
+  String get extrasNotUsed => 'Not used yet';
+  @override
+  String extrasDeleteWarning(int n) =>
+      'Delete this extra? It will be removed from the $n item(s) currently '
+      'using it.';
+  @override
+  String extrasOptionsSummary(int n) => '$n option(s)';
+  @override
+  String get extrasApplyTo => 'Applies to';
+  @override
+  String get extrasScopeItems => 'Specific items';
+  @override
+  String get extrasScopeItemsHint =>
+      'Attach it to items from each item’s page.';
+  @override
+  String get extrasScopeCategories => 'Categories';
+  @override
+  String get extrasScopeAll => 'All items';
+  @override
+  String get extrasPickCategories => 'Choose categories';
+  @override
+  String extrasAppliesCategories(int n) => '$n categor(y/ies)';
+  @override
+  String get extrasLibraryNameEn => 'Name in your list (English)';
+  @override
+  String get extrasLibraryNameAr => 'Name in your list (Arabic)';
+  @override
+  String get extrasLibraryNameHint =>
+      'How you find this group here. Only you see it.';
+  @override
+  String get extrasMenuNameEn => 'Menu heading (English)';
+  @override
+  String get extrasMenuNameAr => 'Menu heading (Arabic)';
+  @override
+  String get extrasMenuNamePlaceholder => 'e.g. Choose your size';
+  @override
+  String get extrasMenuNameHint =>
+      'What diners read above the choices. Leave blank to use the name above.';
+  @override
+  String extrasShownAs(String name) => 'On the menu: $name';
+  @override
+  String get itemOptions => 'Options & add-ons';
+  @override
+  String get itemNoOptions =>
+      'No option groups. Add one for sizes, add-ons, or "without…".';
+  @override
+  String get itemAddGroup => 'Add group';
+  @override
+  String get itemGroupNameEn => 'Group name (e.g. Size)';
+  // Arabic in both languages: a placeholder is written in the language of
+  // the field it sits in, which is the cloud's choice too.
+  @override
+  String get itemGroupNameAr => 'اسم المجموعة';
+  @override
+  String get itemRequired => 'Required';
+  @override
+  String get itemVariant => 'Size / variant';
+  @override
+  String get itemVariantHint =>
+      'Each option sets the item price (small/medium/large). One choice '
+      'required, and the first size listed is the default the menu opens on.';
+  @override
+  String get itemPricedBySize =>
+      'Priced by its sizes below. The price above mirrors the default — the '
+      'first size listed — so edit that size to change it.';
+  @override
+  String get itemDefaultSize => 'Default';
+  @override
+  String get itemOptionDiscount => 'Sale';
+  @override
+  String get itemOptionDiscountHint =>
+      'Optional sale price for this size. Diners see it with the normal price '
+      'struck through. Must be lower than the price.';
+  @override
+  String get itemMaxSelect => 'Max select';
+  @override
+  String get itemOptionEn => 'Option (English)';
+  @override
+  String get itemOptionAr => 'الخيار';
+  @override
+  String get itemAddOption => 'Add option';
+  @override
+  String get itemAddFromLibrary => 'Add from library';
+  @override
+  String get itemFromLibrary => 'From library';
+  @override
+  String get itemLibraryEmpty =>
+      'No shared extras yet. Create them under Extras.';
+  @override
+  String get itemManageLibrary => 'Manage extras';
+  @override
+  String get deleteLabel => 'Delete';
+  @override
+  String get deleteConfirmGeneric => 'Are you sure you want to delete this?';
+  @override
+  String get savingLabel => 'Saving…';
+
+  @override
+  String get refusalGroupNameMissing =>
+      'An option group needs a name — it is how the group is found again.';
+  @override
+  String get refusalGroupScopeNeedsLibrary =>
+      'Only a library group can apply to whole categories or to every item.';
+  @override
+  String get refusalGroupCategoriesMissing =>
+      'A group for chosen categories needs at least one category.';
+  @override
+  String refusalGroupChoicesOutOfRange(int max) =>
+      'A group allows between 1 and $max choices.';
+  @override
+  String get refusalGroupNegativeCounts =>
+      'A group cannot need, or include, fewer than none.';
+  @override
+  String get refusalGroupNeedsMoreThanAllows =>
+      'A group cannot need more choices than it allows.';
+  @override
+  String refusalGroupTooManyOptions(int max) =>
+      'A group holds at most $max options.';
+  @override
+  String get refusalGroupRequiredButEmpty =>
+      'A required group needs at least one option, or the item it is on could '
+      'never be sold.';
+  @override
+  String get refusalOptionNameMissing => 'Every option needs a name.';
+  @override
+  String get refusalOptionTwice => 'The same option is in this group twice.';
+  @override
+  String get refusalOptionNegativePrice =>
+      'An option cannot cost less than nothing.';
+  @override
+  String get refusalOptionSaleNotBelowPrice =>
+      "A sale price has to be below the size's normal price.";
+  @override
+  String get refusalGroupTwice => 'The same group is on this item twice.';
+  @override
+  String get refusalGroupTypedOnAnotherItem =>
+      'That group was typed on another item. Put it in the library to use it '
+      'on more than one.';
+  @override
+  String refusalGroupNotInLibrary(String name) =>
+      '"$name" was typed on one item. Put it in the library to use it on more '
+      'than one.';
+  @override
+  String refusalGroupAlreadyReaches(String name) =>
+      '"$name" already reaches this item by itself, so it cannot also be '
+      'added to it.';
+  @override
+  String refusalGroupSecondSizes(int count, String names) =>
+      'An item has one set of sizes, and this would give it $count: $names. '
+      'Keep one.';
+  @override
+  String refusalGroupWouldGiveSecondSizes(String item) =>
+      '"$item" already has sizes. An item has one set, and this group would '
+      'give it a second — take the other off it first.';
+  @override
+  String get refusalGroupBelongsToOneItem =>
+      'That group belongs to one item. Change it on the item.';
+  @override
+  String get refusalGroupBelongsToLibrary =>
+      'That group is in the library. Change it there, and every item using it '
+      'follows.';
+  @override
+  String get refusalGroupForeignOption =>
+      'One of those options belongs to another group.';
+  @override
+  String get refusalGroupForeignCategory =>
+      'One of those categories is not on this menu.';
 }
 
 /// Arabic.
@@ -7791,6 +8065,14 @@ final class ArStrings extends AppStrings {
   @override
   String get actTaxGroupSaved => 'تعديل نسبة ضريبة';
   @override
+  String get actProductOptionsChanged => 'تعديل أحجام أو إضافات صنف';
+  @override
+  String get actOptionGroupSaved => 'تعديل مجموعة أحجام أو إضافات';
+  @override
+  String get actOptionGroupRepriced => 'تغيير سعر حجم أو إضافة';
+  @override
+  String get actOptionGroupDeleted => 'حذف مجموعة أحجام أو إضافات';
+  @override
   String get fieldYes => 'نعم';
   @override
   String get fieldNo => 'لا';
@@ -8368,6 +8650,185 @@ final class ArStrings extends AppStrings {
   String get priceIsNotANumber => 'السعر ليس رقماً.';
   @override
   String get offerPriceIsNotANumber => 'سعر العرض ليس رقماً.';
+
+  @override
+  String get extrasTitle => 'مكتبة الإضافات';
+  @override
+  String get extrasSubtitle =>
+      'مجموعات خيارات قابلة لإعادة الاستخدام يمكنك ربطها بأي صنف. تعديل أي '
+      'مجموعة يحدّثها في كل مكان تُستخدم فيه.';
+  @override
+  String get extrasNew => 'إضافة';
+  @override
+  String get extrasEdit => 'تعديل الإضافة';
+  @override
+  String get extrasNone =>
+      'لا توجد إضافات مشتركة بعد. أنشئ واحدة لإعادة استخدامها عبر الأصناف.';
+  @override
+  String extrasUsedBy(int n) => '$n صنف';
+  @override
+  String get extrasNotUsed => 'غير مستخدمة بعد';
+  @override
+  String extrasDeleteWarning(int n) =>
+      'حذف هذه الإضافة؟ ستتم إزالتها من $n صنف يستخدمها حالياً.';
+  @override
+  String extrasOptionsSummary(int n) => '$n خيار';
+  @override
+  String get extrasApplyTo => 'تنطبق على';
+  @override
+  String get extrasScopeItems => 'أصناف محددة';
+  @override
+  String get extrasScopeItemsHint => 'اربطها بالأصناف من صفحة كل صنف.';
+  @override
+  String get extrasScopeCategories => 'تصنيفات';
+  @override
+  String get extrasScopeAll => 'كل الأصناف';
+  @override
+  String get extrasPickCategories => 'اختر التصنيفات';
+  @override
+  String extrasAppliesCategories(int n) => '$n تصنيف';
+  @override
+  String get extrasLibraryNameEn => 'الاسم في قائمتك (إنجليزي)';
+  @override
+  String get extrasLibraryNameAr => 'الاسم في قائمتك (عربي)';
+  @override
+  String get extrasLibraryNameHint =>
+      'به تجد هذه المجموعة هنا. لا يراه إلا أنت.';
+  @override
+  String get extrasMenuNameEn => 'عنوان المنيو (إنجليزي)';
+  @override
+  String get extrasMenuNameAr => 'عنوان المنيو (عربي)';
+  @override
+  String get extrasMenuNamePlaceholder => 'مثال: اختر الحجم';
+  @override
+  String get extrasMenuNameHint =>
+      'ما يقرأه العميل فوق الاختيارات. اتركه فارغاً لاستخدام الاسم بالأعلى.';
+  @override
+  String extrasShownAs(String name) => 'في المنيو: $name';
+  @override
+  String get itemOptions => 'الخيارات والإضافات';
+  @override
+  String get itemNoOptions =>
+      'لا توجد مجموعات خيارات. أضف واحدة للأحجام أو الإضافات أو "بدون…".';
+  @override
+  String get itemAddGroup => 'إضافة مجموعة';
+  @override
+  String get itemGroupNameEn => 'اسم المجموعة (مثال: الحجم)';
+  @override
+  String get itemGroupNameAr => 'اسم المجموعة';
+  @override
+  String get itemRequired => 'مطلوب';
+  @override
+  String get itemVariant => 'الحجم / النوع';
+  @override
+  String get itemVariantHint =>
+      'كل خيار يحدد سعر الصنف (صغير/وسط/كبير). الاختيار مطلوب، وأول حجم في '
+      'القائمة هو الافتراضي الذي تفتح عليه القائمة.';
+  @override
+  String get itemPricedBySize =>
+      'سعر هذا الصنف يأتي من الأحجام بالأسفل. السعر بالأعلى يعكس الحجم '
+      'الافتراضي — أول حجم في القائمة — فعدّل ذلك الحجم لتغييره.';
+  @override
+  String get itemDefaultSize => 'افتراضي';
+  @override
+  String get itemOptionDiscount => 'عرض';
+  @override
+  String get itemOptionDiscountHint =>
+      'سعر عرض اختياري لهذا الحجم. يظهر للعميل مع شطب السعر الأصلي. يجب أن '
+      'يكون أقل من السعر.';
+  @override
+  String get itemMaxSelect => 'أقصى اختيار';
+  @override
+  String get itemOptionEn => 'الخيار (إنجليزي)';
+  @override
+  String get itemOptionAr => 'الخيار';
+  @override
+  String get itemAddOption => 'إضافة خيار';
+  @override
+  String get itemAddFromLibrary => 'إضافة من المكتبة';
+  @override
+  String get itemFromLibrary => 'من المكتبة';
+  @override
+  String get itemLibraryEmpty =>
+      'لا توجد إضافات مشتركة بعد. أنشئها من صفحة الإضافات.';
+  @override
+  String get itemManageLibrary => 'إدارة الإضافات';
+  @override
+  String get deleteLabel => 'حذف';
+  @override
+  String get deleteConfirmGeneric => 'هل أنت متأكد من الحذف؟';
+  @override
+  String get savingLabel => 'جارٍ الحفظ…';
+
+  @override
+  String get refusalGroupNameMissing =>
+      'مجموعة الخيارات تحتاج إلى اسم — به تجدها مرة أخرى.';
+  @override
+  String get refusalGroupScopeNeedsLibrary =>
+      'مجموعات المكتبة وحدها يمكن أن تنطبق على تصنيفات كاملة أو على كل '
+      'الأصناف.';
+  @override
+  String get refusalGroupCategoriesMissing =>
+      'المجموعة المخصصة لتصنيفات محددة تحتاج إلى تصنيف واحد على الأقل.';
+  @override
+  String refusalGroupChoicesOutOfRange(int max) =>
+      'تسمح المجموعة بعدد اختيارات من 1 إلى $max.';
+  @override
+  String get refusalGroupNegativeCounts =>
+      'لا يمكن أن يقل الحد الأدنى للاختيارات أو عدد الخيارات المجانية عن '
+      'صفر.';
+  @override
+  String get refusalGroupNeedsMoreThanAllows =>
+      'لا يمكن أن تطلب المجموعة اختيارات أكثر مما تسمح به.';
+  @override
+  String refusalGroupTooManyOptions(int max) =>
+      'تتسع المجموعة لـ $max خياراً على الأكثر.';
+  @override
+  String get refusalGroupRequiredButEmpty =>
+      'المجموعة المطلوبة تحتاج إلى خيار واحد على الأقل، وإلا فلن يمكن بيع '
+      'الصنف الذي هي عليه أبداً.';
+  @override
+  String get refusalOptionNameMissing => 'كل خيار يحتاج إلى اسم.';
+  @override
+  String get refusalOptionTwice => 'الخيار نفسه موجود في هذه المجموعة مرتين.';
+  @override
+  String get refusalOptionNegativePrice =>
+      'لا يمكن أن يكون سعر الخيار أقل من صفر.';
+  @override
+  String get refusalOptionSaleNotBelowPrice =>
+      'سعر العرض يجب أن يكون أقل من السعر العادي للحجم.';
+  @override
+  String get refusalGroupTwice => 'المجموعة نفسها موجودة على هذا الصنف مرتين.';
+  @override
+  String get refusalGroupTypedOnAnotherItem =>
+      'هذه المجموعة أُنشئت على صنف آخر. أضفها إلى المكتبة لاستخدامها على أكثر '
+      'من صنف.';
+  @override
+  String refusalGroupNotInLibrary(String name) =>
+      '«$name» أُنشئت على صنف واحد. أضفها إلى المكتبة لاستخدامها على أكثر من '
+      'صنف.';
+  @override
+  String refusalGroupAlreadyReaches(String name) =>
+      '«$name» تصل إلى هذا الصنف تلقائياً بالفعل، فلا يمكن إضافتها إليه مرة '
+      'أخرى.';
+  @override
+  String refusalGroupSecondSizes(int count, String names) =>
+      'للصنف مجموعة أحجام واحدة، وهذا سيعطيه $count: $names. أبقِ واحدة.';
+  @override
+  String refusalGroupWouldGiveSecondSizes(String item) =>
+      '«$item» لديه أحجام بالفعل. للصنف مجموعة أحجام واحدة، وهذه المجموعة '
+      'ستعطيه مجموعة ثانية — أزل الأخرى منه أولاً.';
+  @override
+  String get refusalGroupBelongsToOneItem =>
+      'هذه المجموعة تخص صنفاً واحداً. عدّلها من الصنف نفسه.';
+  @override
+  String get refusalGroupBelongsToLibrary =>
+      'هذه المجموعة في المكتبة. عدّلها هناك، وسيتبعها كل صنف يستخدمها.';
+  @override
+  String get refusalGroupForeignOption => 'أحد هذه الخيارات يخص مجموعة أخرى.';
+  @override
+  String get refusalGroupForeignCategory =>
+      'أحد هذه التصنيفات ليس في هذا المنيو.';
 }
 
 /// Makes [AppStrings] reachable from a [BuildContext], and tells Flutter which

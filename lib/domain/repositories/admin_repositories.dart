@@ -1,6 +1,7 @@
 import '../../core/money/quantity.dart';
 import '../models/backup.dart';
 import '../models/catalog.dart';
+import '../models/option_group.dart';
 import '../models/purchase_order.dart';
 import '../models/tax.dart';
 import '../models/order_type_config.dart';
@@ -169,6 +170,21 @@ class CatalogInvalid extends AdminRefusal {
   const CatalogInvalid(this.reason);
 
   final String reason;
+}
+
+/// A size or extra, or an item's list of them, broke one of the option-group
+/// rules — [OptionGroupProblem] says which.
+///
+/// Its own refusal rather than a [CatalogInvalid] with a sentence in it: that
+/// one carries finished English, which an Arabic back office then showed as
+/// it was. [names] are what the sentence has to name — the group, the item,
+/// or every set of sizes an item would end up with — kept apart from the
+/// wording so each language can put them where its grammar wants them.
+class OptionGroupRefused extends AdminRefusal {
+  const OptionGroupRefused(this.problem, {this.names = const []});
+
+  final OptionGroupProblem problem;
+  final List<String> names;
 }
 
 class AdministratorCredentialRequired extends AdminRefusal {
@@ -343,6 +359,24 @@ abstract final class AuditAction {
   /// what this costs, and when" is the question a disputed receipt asks.
   static const productRepriced = 'product.repriced';
 
+  /// Which size and extras groups an item offers, or their order, changed.
+  /// Its own action because the first size group prices the item, so moving
+  /// one above another can change what the tile says.
+  static const productOptionsChanged = 'product.options_changed';
+
+  /// A size or extras group created or edited — in the library, or on the one
+  /// item it was typed on.
+  static const optionGroupSaved = 'option_group.saved';
+
+  /// An option that already existed now costs something else. Called out for
+  /// a product reprice's reason: a size's price IS the item's price, and "who
+  /// changed what a Large costs" is the question a disputed receipt asks.
+  static const optionGroupRepriced = 'option_group.repriced';
+
+  /// Taken out of the library, or off the one item it was typed on. The row
+  /// carries what the group offered, because afterwards nothing else does.
+  static const optionGroupDeleted = 'option_group.deleted';
+
   /// Changing the service charge or the tax rate. Its own action for the same
   /// reason a reprice is: it changes what every future customer pays.
   static const moneyConfigChanged = 'money_config.changed';
@@ -363,6 +397,7 @@ abstract final class AuditAction {
   static const entityOrder = 'order';
   static const entityCategory = 'category';
   static const entityProduct = 'product';
+  static const entityOptionGroup = 'option_group';
   static const entityMoney = 'money_config';
   static const entityTenderType = 'tender_type';
   static const entityOrderType = 'order_type';
@@ -585,14 +620,71 @@ abstract interface class CatalogAdminRepository {
     bool restore = false,
   });
 
-  /// Which modifier groups a product offers, in the order shown.
+  /// Which modifier groups a product offers, in the order shown, by id.
   ///
-  /// Replaces the whole set rather than diffing it: the caller holds the list
-  /// the operator just arranged, and a partial update would need the previous
-  /// one to be correct.
+  /// The ids form of [setProductOptionGroups], and kept for its callers: a
+  /// library group's id is linked, the product's own groups are kept as they
+  /// are, and anything else is refused with that method's reasons — including
+  /// a group typed on another item, which linking would have quietly made
+  /// shared.
   Future<AdminResult<void>> attachModifierGroups(
     int productId,
     List<int> groupIds, {
+    required PosStaff by,
+  });
+
+  // ── sizes and extras ──────────────────────────────────────────────────────
+  //
+  // Authored the way the platform authors them (`OptionGroupController`,
+  // `MenuItemController::syncOptionGroups`), with two of its behaviours
+  // deliberately not copied: options keep their ids across a save, and an
+  // item is never given two sets of sizes. Both are explained where they are
+  // held, in `PostgresCatalogAdminRepository`.
+
+  /// The restaurant's library — every shared group, with its options, its
+  /// scope and how many items it reaches. By name, as the platform lists it.
+  Future<List<LibraryGroup>> optionLibrary();
+
+  /// The groups an item carries itself, in its order: library groups linked
+  /// to it, by id, and the ones typed on it, whole.
+  ///
+  /// Not the groups that reach it by category or everywhere — those are not
+  /// the item's to arrange, and [optionLibrary] says which they are.
+  Future<List<OptionGroupRef>> productOptionGroups(int productId);
+
+  /// Create or update a library group. Id `0` is a new one.
+  ///
+  /// The platform's rules, normalised first (see
+  /// [OptionGroupDraft.normalized]) and then checked
+  /// ([OptionGroupRules.refusal]); the repository adds what only the database
+  /// knows — that the categories are this restaurant's, that the options are
+  /// this group's, that nobody saved it since it was read, and that no item
+  /// ends up with two sets of sizes. Changing the scope away from chosen items
+  /// removes its item links, and away from categories its category links.
+  ///
+  /// Options are matched by id: updated in place, added, or removed — never
+  /// recreated. A group typed on one item is refused here; it is saved with
+  /// its item through [setProductOptionGroups].
+  Future<AdminResult<OptionGroupDraft>> saveOptionGroup(
+    OptionGroupDraft group, {
+    required PosStaff by,
+  });
+
+  /// Take a group out of the library. Every item it was on loses it.
+  Future<AdminResult<void>> deleteOptionGroup(
+    OptionGroupDraft group, {
+    required PosStaff by,
+  });
+
+  /// Replace the groups an item carries with [groups], in that order.
+  ///
+  /// A shared entry must be a library group that reaches items by link. An
+  /// inline entry is written as this item's own; one the item had and the
+  /// list no longer names is deleted. Returns the list as stored, with the
+  /// ids of anything new.
+  Future<AdminResult<List<OptionGroupRef>>> setProductOptionGroups(
+    int productId,
+    List<OptionGroupRef> groups, {
     required PosStaff by,
   });
 }

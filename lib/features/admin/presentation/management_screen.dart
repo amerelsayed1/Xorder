@@ -20,6 +20,7 @@ import 'management_units_pane.dart';
 import 'management_floor_pane.dart';
 import 'management_menu_pane.dart';
 import 'management_eta_pane.dart';
+import 'management_extras_pane.dart';
 import 'management_charges_pane.dart';
 import 'management_order_types_pane.dart';
 import 'management_taxes_pane.dart';
@@ -112,6 +113,9 @@ List<ManagementPane> managementPanesFor({
 // the bootstrap seeder deletes every product and rewrites the platform's.
 const _authoringPanes = {
   ManagementPane.menu,
+  // The library is the menu's too: a group made here would be erased by the
+  // next sync on a cloud till, where the platform's Extras page is the author.
+  ManagementPane.extras,
   ManagementPane.floor,
   ManagementPane.items,
 };
@@ -156,7 +160,9 @@ enum ManagementArea {
 /// compile rather than quietly vanishing from the rail.
 ManagementArea areaOf(ManagementPane pane) => switch (pane) {
   ManagementPane.staff || ManagementPane.roles => ManagementArea.people,
-  ManagementPane.menu || ManagementPane.floor => ManagementArea.menu,
+  ManagementPane.menu ||
+  ManagementPane.extras ||
+  ManagementPane.floor => ManagementArea.menu,
   ManagementPane.taxes ||
   ManagementPane.charges ||
   ManagementPane.tenders ||
@@ -296,6 +302,7 @@ ManagementDestination _purchasing(PurchasingTab tab, {bool create = false}) =>
     switch (pane) {
       ManagementPane.staff => (s.paneStaff, s.paneStaffBlurb),
       ManagementPane.menu => (s.paneMenu, s.paneMenuBlurb),
+      ManagementPane.extras => (s.extrasTitle, s.extrasSubtitle),
       ManagementPane.floor => (s.floorPlan, s.floorPlanHint),
         ManagementPane.taxes => (s.paneTaxes, s.paneTaxesHint),
       ManagementPane.charges => (s.serviceCharges, s.serviceChargesHint),
@@ -353,6 +360,7 @@ bool _permits(PosStaff admin, ManagementPane pane) {
 enum ManagementPane {
   staff,
   menu,
+  extras,
   floor,
   taxes,
   charges,
@@ -514,7 +522,15 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
             Expanded(
               child: switch (showing) {
                 ManagementPane.staff => ManagementStaffPane(admin: admin),
-                ManagementPane.menu => ManagementMenuPane(admin: admin),
+                // The item editor's "Manage extras" link. Moved here rather
+                // than through the router: this screen already owns which
+                // pane is showing, as the backup notice's button does.
+                ManagementPane.menu => ManagementMenuPane(
+                  admin: admin,
+                  onOpenExtras: () =>
+                      setState(() => _pane = ManagementPane.extras),
+                ),
+                ManagementPane.extras => ManagementExtrasPane(admin: admin),
                 ManagementPane.floor => ManagementFloorPane(admin: admin),
                 ManagementPane.taxes => ManagementTaxesPane(
                   admin: admin,

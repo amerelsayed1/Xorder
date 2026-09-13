@@ -365,6 +365,10 @@ class BootstrapSeeder {
       ),
       parameters: {'restaurant': restaurantId},
     );
+    // `pos_modifier_group_categories` goes with the groups and the categories
+    // — it cascades from both (migration 45). Deliberately not deleted by
+    // name: a cascade needs no grant, and a cloud till whose grants predate
+    // the table would be refused a DELETE on it and lose the whole seed.
     for (final table in [
       'pos_products',
       'pos_modifier_groups',
