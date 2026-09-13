@@ -1,8 +1,10 @@
 # CB-09: Purchasing, suppliers, units and stock on cloud (design)
 
-**Status: `IN PROGRESS — slice a`.** Written 2026-09-12 by `xorder-cloud`,
+**Status: `IN PROGRESS — slice b`.** Written 2026-09-12 by `xorder-cloud`,
 on the owner's "go CB-09", and reviewed by the owner the same day. Slice a is
-built on branch `feat/cb-09-purchasing` (uncommitted, not deployed; see §13).
+committed on branch `feat/cb-09-purchasing` as `dd9a530`, not deployed (§13).
+Slice b is built on the same branch after the owner's "go slice b"
+(2026-09-12): uncommitted, not deployed, awaiting owner review (§14).
 Slices b and c are approved **in order, one at a time, with an owner review
 between slices**. Nothing else is approved: slice d waits on D12, slice e
 (POS-BE-030 and the till change) is not approved, and D11 is still open.
@@ -730,7 +732,7 @@ nod:
 | Slice | Contents | Size | Till work (`pos-dev`)? | Accepted when |
 |---|---|---|---|---|
 | **a. Foundations: suppliers and units** *(built, §13)* | `Feature::PURCHASING` (standalone, no `pos`); `TenantCapability::PURCHASE_MANAGE` + group + labels; `units` + `UnitCatalog::ensureDefaults`; `suppliers`; the two nav groups (Suppliers and Units live); `purchase.manage` withheld from the bundle (D8) | M | **No** | Migrations are additive and reversible. The feature is false for every existing tenant (test). `purchase.manage` is absent from the owner's bundle (test). Cross-tenant 404/422. Units are seeded once, idempotently; `code` is immutable; no delete route. Supplier tax number is nine digits; code is unique when set, and many suppliers can have none. EN and AR plus RTL checked; `pnpm --filter web build` clean; `php artisan test` green |
-| **b. Stock items, POs, receiving, cost** | `stock_items`, `purchase_orders`, `_lines`, `purchase_sequences`, `stock_movements`, `stock_levels`; `PurchaseOrderService`, `ReceivingService`, `StockCosting` (PHP); the PO list, detail and receive modal; read-only Stock and movements pages | L | **No** | A `StockCosting` parity table matches the till's (including a negative on-hand, and the half-up edge like 0.333 kg at 47.30). Send snapshots totals, with tax rounded per rate. Cancel is refused once anything arrived, with the status re-checked under the lock. Over-receipt is accepted. The status follows the lines. Lines with no item touch no ledger. A movement's balance and average equal the level's. Movements can't be updated or deleted. The unit is locked once movements exist. Two receipts on one item are serialised (reviewed on PG). References are gap-free per restaurant per year |
+| **b. Stock items, POs, receiving, cost** *(built, §14)* | `stock_items`, `purchase_orders`, `_lines`, `purchase_sequences`, `stock_movements`, `stock_levels`; `PurchaseOrderService`, `ReceivingService`, `StockCosting` (PHP); the PO list, detail and receive modal; read-only Stock and movements pages | L | **No** | A `StockCosting` parity table matches the till's (including a negative on-hand, and the half-up edge like 0.333 kg at 47.30). Send snapshots totals, with tax rounded per rate. Cancel is refused once anything arrived, with the status re-checked under the lock. Over-receipt is accepted. The status follows the lines. Lines with no item touch no ledger. A movement's balance and average equal the level's. Movements can't be updated or deleted. The unit is locked once movements exist. Two receipts on one item are serialised (reviewed on PG). References are gap-free per restaurant per year |
 | **c. Supplier invoices and payments** | `supplier_invoices`, `supplier_payments`; `SupplierLedgerService`; void reasons; derived balances and overdue; optional drawer link (D13) | M–L | **No** | Over-allocation is refused with the room named. Paying a voided invoice or another supplier's invoice is refused. An invoice with live payments can't be voided. A voided number can be re-entered and a live duplicate can't. On-account payments reduce the balance and not overdue (a test mirroring `supplier_invoice.dart:421-470`). The drawer link is refused unless it's an unlinked `out` movement of equal amount. No balance column exists anywhere |
 | **d. Stock adjustments** *(held, D12)* | `opening`, `adjustment`, `waste` movements with reasons; the adjustment modal | M | No, but the till would want the same kinds, so it's better designed together | Issue movements keep the average (`StockCosting::issue`). Openings set the cost when nothing is on hand. Every change is a movement with a reason, never an edit to a level |
 | **e. Till integration** | File **POS-BE-030** (§3.6); `pos-dev` hides Purchasing, Stock and Units on cloud by deployment mode | S | **Yes** (small) | On a cloud till with `purchase.manage` granted locally, none of the four panes or their Manage-menu entries appear (test). Offline is unchanged. Existing local rows are untouched |
@@ -843,7 +845,8 @@ Found while reading. None of it is fixed here, because xorder-pos belongs to
 
 ## 13. Slice a as built (2026-09-12)
 
-Branch `feat/cb-09-purchasing` in xorder-new. Uncommitted and not deployed.
+Branch `feat/cb-09-purchasing` in xorder-new. Committed as `dd9a530`; not
+deployed.
 
 **Built:** `Feature::PURCHASING` (standalone); `TenantCapability::PURCHASE_MANAGE`
 in group `buying`, with server labels in EN and AR (`xorder.capabilities.purchase_manage`)
@@ -903,3 +906,163 @@ to a plan that carries it. That's an owner call if wanted.
 - Extend the existing route group and the Inventory nav group, and add keys
   to the `purchasing.*` i18n namespace. The gate is `purchase.manage` for
   everything.
+
+---
+
+## 14. Slice b as built (2026-09-12)
+
+Branch `feat/cb-09-purchasing` in xorder-new, on top of `dd9a530`.
+Uncommitted and not deployed. Built on the owner's "go slice b". A first
+session started it and was cut off; this one reviewed its drafts, finished
+them and built the rest.
+
+**Built (API):**
+- Migrations `2026_09_12_000300_create_stock_items_table`,
+  `…000400_create_purchase_orders_tables` (`purchase_orders`,
+  `purchase_order_lines`, `purchase_sequences`) and
+  `…000500_create_stock_ledger_tables` (`stock_movements`, `stock_levels`).
+  All five tables are new, and nothing existing is altered. Every table
+  carries `restaurant_id` with a cascade, and every model uses
+  `BelongsToRestaurant`. Each `down()` drops only its own tables. There is
+  no engine-specific SQL: plain uniques with NULLs distinct, and
+  `insertOrIgnore` for the two get-or-create rows.
+- `PurchaseStatus` (the till's five values, with `isEditable`, `isOpen`,
+  `isClosed` and `canCancel`) and the `PurchasingRefusal` exception, which
+  renders `{message, code[, errors]}`: 409 for a state conflict, 422 for
+  an invalid request.
+- `App\Support\StockCosting`, a line-for-line port of the till's
+  `stock_costing.dart`: `roundHalfUp` including the negative branch,
+  `costAt`, `percentBp`, `receive`, `issue`, `costOfGoods` and `value`.
+  Every product is checked, so an overflow throws instead of silently
+  becoming a float.
+- `PurchaseOrderService` (create, update, send, cancel, and `totals` with tax
+  per rate), `PurchaseSequenceService` (`PO-YYYY-NNNNNN`, per business per
+  year, consumed at send), `ReceivingService` (the till's five-part receipt as
+  one transaction), `StockItemService` (the unit lock) and `StockLedger::replay`
+  (folds the ledger through `StockCosting` and reports drift against the
+  stored balances and the level).
+- Controllers: `StockItemController` (index, show, store, update,
+  movements), `PurchaseOrderController` (index, show, store, update, send,
+  cancel, receive), `StockLevelController` and `PurchasingLookupController`.
+  Requests: `Store/UpdateStockItemRequest`, `Store/UpdatePurchaseOrderRequest`
+  and `ReceivePurchaseOrderRequest`. Resource: `PurchaseOrderResource`.
+- Routes, inside the slice-a group `feature:purchasing` + `can:purchase.manage`,
+  with `subscription.writable` on writes: `purchasing/lookups`;
+  `stock-items` (GET, POST), `stock-items/{stockItem}` (GET, PUT) and
+  `stock-items/{stockItem}/movements`; `stock-levels`; `purchase-orders`
+  (GET, POST), `purchase-orders/{purchaseOrder}` (GET, PUT), and `…/send`,
+  `…/cancel`, `…/receipts`.
+- Audit: `purchase_order.created/updated/sent/cancelled/received`, written
+  by the services (the PO model is not `Auditable`, so a transition isn't
+  logged twice), and `stock_item.created/updated` via `Auditable`.
+- Server strings in EN and AR: `xorder.purchasing.*` (the refusals and the
+  status names), `xorder.validation.stock_item_*`/`po_*`, and
+  `xorder.messages.branch_has_purchasing`.
+
+**Built (web):** `lib/quantity.js` (the `Quantity.tryParse`/`format` mirror,
+with `costAt`, `percentBp` and `orderTotals` on BigInt; no float anywhere);
+`purchasing/PurchaseOrdersView.vue` (list with branch, status and supplier
+filters, paginated); `purchasing/PurchaseOrderForm.vue` (create or edit a
+draft, with a live integer preview of the totals); `purchasing/PurchaseOrderView.vue`
+(detail, send, cancel, and the receive dialog, prefilled with what is still
+owed); `inventory/StockItemsView.vue`; `inventory/StockView.vue` (headed
+**Received to date** / **المستلم حتى الآن**, with the "sales are not
+deducted" note); `inventory/StockMovementsView.vue`; and a shared
+`purchasing/format.js`. The Purchasing group gains Purchase orders, and
+Inventory gains Received to date and Stock items. Every string is in EN and
+AR in `purchasing.*` and `nav.*`, in neutral wording. Codes, quantities,
+amounts and references sit in `.mono dir="ltr"` spans.
+
+**Tests:** `tests/Unit/StockCostingParityTest.php` (15) and
+`tests/Feature/PurchasingOrdersAndStockTest.php` (27).
+
+**Parity vectors**, all copied from the till's own tests, and all matching:
+- `test/domain/stock_costing_test.dart`: 10 kg at 40.00 + 10 at 50.00 gives
+  45.00; 30 + 10 at 60.00 gives 45.00; 7.5 kg at 44.00 + 12.5 at 47.30 gives
+  20 kg at 46.06; nothing on hand takes 47.30; −2 kg on hand takes 47.30 and
+  settles to 8 kg; receiving nothing is a no-op; a free delivery gives 20.00;
+  the value property (±1); issue 3 kg keeps 45.00; issuing to −2 kg; COGS
+  135.00; 0.333 × 33.33 = 11.10; value 591.25, 0, and −90.00.
+- `test/core/quantity_test.dart` `costAt`: 94.60, 15.75 (0.333 kg at
+  47.30), 23.68 (0.5 at 47.35), 0, 3 × 3.33, and 10.00.
+- `test/domain/purchase_order_test.dart`: line 591.25; line tax 82.78; lines
+  sum to 130.00; three lines of 33.33 at 14% give 14.00 tax, not 14.01; two
+  rates give two roundings; an empty order is 0; received value 378.40.
+- The till has no test for `roundHalfUp`'s negative branch, so those rows
+  were derived from `rounding.dart` and are labelled that way.
+- The 7.5 kg + 12.5 kg vector also runs through the whole HTTP stack,
+  including as a part delivery (5 kg then 7.5 kg, giving 45.32 then 46.06).
+
+**Departures from §4 to §7, with reasons:**
+- **The unit lock rule.** §4.3 said the unit is fixed "once the item has a
+  movement". Built, per the owner's brief: it is refused while any branch
+  holds a **non-zero** quantity, **or** while the item is on a draft, sent or
+  part-received order (whose lines were written in the old unit). A zero
+  position has nothing to mix, and each movement records its own unit, so the
+  history stays honest.
+- **Receiving checks the line's unit against the item** (`LINE_UNIT_DIFFERS`)
+  as well as the held unit (`STOCK_HELD_IN_ANOTHER_UNIT`). Neither can happen
+  through the API, but both are refused rather than converted.
+- **`purchase_orders.reference` is nullable** until send: a draft has no
+  number, and NULLs are distinct in the unique index.
+- **FKs to `branches`, `suppliers` and `stock_items` are NO ACTION, not
+  RESTRICT.** Both block deleting a referenced row, but NO ACTION is checked
+  at the end of the statement, so deleting a whole business still cascades
+  cleanly. **`BranchController::destroy` now answers 409 with a reason**,
+  not a 500, for a branch that has purchase orders or stock movements.
+- **The supplier-name snapshot is refreshed at send**, and on a draft whose
+  supplier changes. The issued document carries the name at the time of
+  issue and never changes after that.
+- **Sending to a retired supplier is refused** (`PO_SUPPLIER_RETIRED`), even
+  for a draft started while the supplier was active. A draft may keep a
+  retired supplier, item or unit it already carried; new orders may not pick
+  them. Old orders display them, flagged.
+- **`GET purchasing/lookups` is new.** It returns branch, supplier, unit,
+  stock-item and menu-item ids and names under `purchase.manage` alone. A
+  buyer's role need not include `branches.list` or `menu.view` (and so gain
+  those screens) just to fill the pickers. Menu-item names are already public.
+- **`GET stock-items/{id}` exists**, as in slice a. `stock_items` has
+  `updated_by`, and `name_en` is nullable (either language, as in slice a).
+- **There is no separate `StockService`.** `ReceivingService` writes the
+  movement and the level in one transaction, and `StockLedger::replay` is
+  the check. There is no artisan `stock:verify` yet.
+- **Limits that keep the arithmetic in 64 bits:** ≤ 100 lines per order;
+  quantity ≤ 10⁹ thousandths; unit cost ≤ 10¹⁰ minor; each line ≤ 10¹²
+  minor. `occurred_at` may be backdated but not set ahead (a 10-minute
+  allowance for clock drift). The ledger is folded and listed in id order,
+  which is the order the fold happened in.
+- **The PO editor is its own route** (`/purchasing/orders/new`,
+  `/purchasing/orders/:id/edit`), not a modal. The nav leaf for levels
+  reads "Received to date", like its heading.
+
+**Deliberately not in slice b:**
+- short-closing a part delivery (`close`, D11), which is still an owner
+  decision: a short order stays `partially_received`, as on the till, and
+  the page says closing short isn't available;
+- supplier invoices, payments and balances (slice c);
+- adjustments, openings, waste and counts (slice d, D12);
+- transfers; sales deduction;
+- `stock:verify`;
+- a per-order receipt history view (the item ledger and the audit trail
+  carry it);
+- editing or voiding a receipt;
+- printing a PO or sending it to the supplier (Send only changes the
+  status);
+- any till change or POS-BE-030.
+
+**What slice c builds on:**
+- `purchase_orders.id`, `reference`, `supplier_id`, `branch_id`, `currency`
+  and `exponent`, for `supplier_invoices.purchase_order_id` (nullOnDelete)
+  and its `purchase_order_reference` snapshot. `PurchaseOrderService::receivedValue`
+  (`received_value_minor` on the resource) is the figure the till says an
+  invoice should match. It is for display only: an invoice never reprices
+  stock (§10 C4).
+- `PurchasingRefusal` (a stable `code`, 409 or 422) for the ledger service's
+  over-allocation and void rules, and the `purchasing.*` namespaces on both
+  sides.
+- `purchasing/lookups` can carry suppliers' `payment_term_days` for the
+  due-date default.
+- `BranchController::destroy` must also refuse a branch with invoices or
+  payments.
+- The Purchasing nav group gets the Invoices and Payments leaves, and
+  `/purchasing/suppliers/:id` the account view.

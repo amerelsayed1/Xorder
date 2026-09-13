@@ -8,7 +8,9 @@ use App\Http\Requests\Dashboard\UpdateBranchEgressIpsRequest;
 use App\Http\Requests\Dashboard\UpdateBranchRequest;
 use App\Http\Resources\BranchResource;
 use App\Models\Branch;
+use App\Models\PurchaseOrder;
 use App\Models\Restaurant;
+use App\Models\StockMovement;
 use App\Services\BranchEgressIpService;
 use App\Services\PlanLimitService;
 use Illuminate\Http\JsonResponse;
@@ -102,6 +104,15 @@ class BranchController extends Controller
 
     public function destroy(Branch $branch): JsonResponse
     {
+        // CB-09: purchase orders and the stock ledger point at their branch
+        // with no cascade, on purpose (stock booked in at a branch is that
+        // branch's history). Without this the FK would refuse the delete as
+        // a 500; say why instead.
+        if (PurchaseOrder::where('branch_id', $branch->id)->exists()
+            || StockMovement::where('branch_id', $branch->id)->exists()) {
+            return response()->json(['message' => __('xorder.messages.branch_has_purchasing')], 409);
+        }
+
         $branch->delete();
 
         return response()->json(['message' => __('xorder.messages.branch_deleted')]);

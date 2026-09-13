@@ -57,12 +57,16 @@ export const DASHBOARD_NAV = [
     {
         key: 'purchasing', labelKey: 'nav.group_purchasing', icon: 'pi pi-truck',
         children: [
+            { key: 'purchasing.orders', labelKey: 'nav.purchase_orders', icon: 'pi pi-file-edit', to: { name: 'dashboard.purchasing.orders' }, feature: 'purchasing', capability: 'purchase.manage' },
             { key: 'purchasing.suppliers', labelKey: 'nav.suppliers', icon: 'pi pi-briefcase', to: { name: 'dashboard.purchasing.suppliers' }, feature: 'purchasing', capability: 'purchase.manage' },
         ],
     },
     {
         key: 'inventory', labelKey: 'nav.group_inventory', icon: 'pi pi-box',
         children: [
+            // "Received to date", never "on hand": tills don't deduct sales.
+            { key: 'inventory.stock', labelKey: 'nav.stock', icon: 'pi pi-inbox', to: { name: 'dashboard.inventory.stock' }, feature: 'purchasing', capability: 'purchase.manage' },
+            { key: 'inventory.items', labelKey: 'nav.stock_items', icon: 'pi pi-list', to: { name: 'dashboard.inventory.items' }, feature: 'purchasing', capability: 'purchase.manage' },
             { key: 'inventory.units', labelKey: 'nav.units', icon: 'pi pi-tag', to: { name: 'dashboard.inventory.units' }, feature: 'purchasing', capability: 'purchase.manage' },
         ],
     },

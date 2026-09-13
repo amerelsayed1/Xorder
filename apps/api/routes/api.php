@@ -43,6 +43,10 @@ use App\Http\Controllers\Dashboard\ReviewController;
 use App\Http\Controllers\Dashboard\RoleController;
 use App\Http\Controllers\Dashboard\StaffController;
 use App\Http\Controllers\Dashboard\StatsController;
+use App\Http\Controllers\Dashboard\StockItemController;
+use App\Http\Controllers\Dashboard\StockLevelController;
+use App\Http\Controllers\Dashboard\PurchaseOrderController;
+use App\Http\Controllers\Dashboard\PurchasingLookupController;
 use App\Http\Controllers\Dashboard\SupplierController;
 use App\Http\Controllers\Dashboard\TableController;
 use App\Http\Controllers\Dashboard\TaxRuleController;
@@ -536,14 +540,31 @@ Route::prefix('dashboard')
         |                         doc 16 §6). There is no purchase.view.
         |   subscription.writable on writes, like every configuration write
         |
-        | No DELETE on either resource: both are retired with is_active=false,
-        | because later purchasing rows keep pointing at them.
+        | No DELETE on any purchasing resource. Suppliers, units and stock
+        | items are retired with is_active=false, because later purchasing rows
+        | keep pointing at them; an unwanted purchase order is cancelled; stock
+        | movements are append-only.
+        |
+        | Slice b: stock items, purchase orders, receiving, stock levels.
+        | Every PO transition (edit, send, cancel, receive) is a service call
+        | that locks the order row and re-reads its status under the lock, so
+        | the route decides only WHO may try, never whether the order allows it.
         */
         Route::middleware(['feature:purchasing', 'can:purchase.manage'])->group(function () {
             Route::get('units', [UnitController::class, 'index']);
             Route::get('units/{unit}', [UnitController::class, 'show']);
             Route::get('suppliers', [SupplierController::class, 'index']);
             Route::get('suppliers/{supplier}', [SupplierController::class, 'show']);
+            // Branch/supplier/unit/item/menu-item pickers under purchase.manage
+            // alone (ids and names only), so a buyer needs no menu or branch grant.
+            Route::get('purchasing/lookups', [PurchasingLookupController::class, 'index']);
+            Route::get('stock-items', [StockItemController::class, 'index']);
+            Route::get('stock-items/{stockItem}', [StockItemController::class, 'show']);
+            Route::get('stock-items/{stockItem}/movements', [StockItemController::class, 'movements']);
+            // "Received to date", not on hand: tills don't deduct sales (D4).
+            Route::get('stock-levels', [StockLevelController::class, 'index']);
+            Route::get('purchase-orders', [PurchaseOrderController::class, 'index']);
+            Route::get('purchase-orders/{purchaseOrder}', [PurchaseOrderController::class, 'show']);
 
             Route::middleware('subscription.writable')->group(function () {
                 Route::post('units', [UnitController::class, 'store']);
@@ -551,6 +572,19 @@ Route::prefix('dashboard')
                 Route::put('units/{unit}', [UnitController::class, 'update']);
                 Route::post('suppliers', [SupplierController::class, 'store']);
                 Route::put('suppliers/{supplier}', [SupplierController::class, 'update']);
+                // The unit can't change while stock is held or the item is on
+                // a draft or open order (StockItemService, under a lock).
+                Route::post('stock-items', [StockItemController::class, 'store']);
+                Route::put('stock-items/{stockItem}', [StockItemController::class, 'update']);
+                Route::post('purchase-orders', [PurchaseOrderController::class, 'store']);
+                // Draft only; replaces the lines wholesale.
+                Route::put('purchase-orders/{purchaseOrder}', [PurchaseOrderController::class, 'update']);
+                Route::post('purchase-orders/{purchaseOrder}/send', [PurchaseOrderController::class, 'send']);
+                // Draft or sent only; refused once anything has arrived.
+                Route::post('purchase-orders/{purchaseOrder}/cancel', [PurchaseOrderController::class, 'cancel']);
+                Route::post('purchase-orders/{purchaseOrder}/receipts', [PurchaseOrderController::class, 'receive']);
+                // No `close` (short-close a part delivery): D11 is an open
+                // owner decision.
             });
         });
 

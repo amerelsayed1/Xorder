@@ -140,6 +140,13 @@ const restaurantRoutes = [
             // the capability. No `pos` involvement: purchasing is standalone.
             { path: 'purchasing/suppliers', name: 'dashboard.purchasing.suppliers', component: () => import('../pages/dashboard/purchasing/SuppliersView.vue'), meta: { capability: 'purchase.manage' } },
             { path: 'inventory/units', name: 'dashboard.inventory.units', component: () => import('../pages/dashboard/inventory/UnitsView.vue'), meta: { capability: 'purchase.manage' } },
+            { path: 'purchasing/orders', name: 'dashboard.purchasing.orders', component: () => import('../pages/dashboard/purchasing/PurchaseOrdersView.vue'), meta: { capability: 'purchase.manage' } },
+            { path: 'purchasing/orders/new', name: 'dashboard.purchasing.orders.create', component: () => import('../pages/dashboard/purchasing/PurchaseOrderForm.vue'), meta: { capability: 'purchase.manage' } },
+            { path: 'purchasing/orders/:id', name: 'dashboard.purchasing.order', component: () => import('../pages/dashboard/purchasing/PurchaseOrderView.vue'), meta: { capability: 'purchase.manage' } },
+            { path: 'purchasing/orders/:id/edit', name: 'dashboard.purchasing.orders.edit', component: () => import('../pages/dashboard/purchasing/PurchaseOrderForm.vue'), meta: { capability: 'purchase.manage' } },
+            { path: 'inventory/stock', name: 'dashboard.inventory.stock', component: () => import('../pages/dashboard/inventory/StockView.vue'), meta: { capability: 'purchase.manage' } },
+            { path: 'inventory/stock/:itemId', name: 'dashboard.inventory.movements', component: () => import('../pages/dashboard/inventory/StockMovementsView.vue'), meta: { capability: 'purchase.manage' } },
+            { path: 'inventory/items', name: 'dashboard.inventory.items', component: () => import('../pages/dashboard/inventory/StockItemsView.vue'), meta: { capability: 'purchase.manage' } },
             // ------------------------------------------------------ settings
             // Five sections, one shell. The route *names* are the ones these
             // pages have always had, so every existing RouterLink keeps
