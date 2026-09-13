@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/providers.dart';
+import '../../../core/config/deployment.dart';
 import '../../../core/l10n/app_strings.dart';
 import '../../../core/ui/theme.dart';
 import '../../../core/ui/tokens.dart';
@@ -40,6 +41,24 @@ class ManagementStaffPane extends ConsumerWidget {
       data: (people) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // On a cloud till the bundle owns who works here — see
+          // `PostgresStaffDirectoryRepository.offline`. Said once at the top
+          // rather than as four identical refusals: a manager who reads this
+          // knows where to go, and the half that still works (roles and
+          // permissions) is named in the same sentence.
+          if (ref.watch(deploymentProvider).mode != DeploymentMode.offline)
+            Container(
+              padding: const EdgeInsets.all(PosSpace.lg),
+              color: context.pos.warnSoft,
+              child: Text(
+                context.strings.staffComesFromPlatform,
+                style: PosText.ui(
+                  size: 12.5,
+                  color: context.pos.warn,
+                  height: 1.5,
+                ),
+              ),
+            ),
           Container(
             padding: const EdgeInsets.all(PosSpace.xl),
             decoration: BoxDecoration(
@@ -58,7 +77,10 @@ class ManagementStaffPane extends ConsumerWidget {
                   background: context.pos.accent,
                   foreground: Colors.white,
                   fontWeight: FontWeight.w700,
-                  onPressed: roles.valueOrNull == null
+                  onPressed:
+                      roles.valueOrNull == null ||
+                          ref.watch(deploymentProvider).mode !=
+                              DeploymentMode.offline
                       ? null
                       : () => _add(context, ref, roles.value!, people),
                 ),
@@ -73,6 +95,7 @@ class ManagementStaffPane extends ConsumerWidget {
                 isSelf: people[index].id == admin.id,
                 admin: admin,
                 roles: roles.valueOrNull ?? const [],
+                ownerTaken: _hasActiveOwner(people),
                 onAction: (action) => _act(context, ref, people[index], action),
               ),
             ),
@@ -101,7 +124,17 @@ class ManagementStaffPane extends ConsumerWidget {
       return;
     }
 
-    final draft = await StaffEditorDialog.show(context, roles: roles);
+    // Owner is not offered while somebody holds it — the repository would
+    // refuse it, and a choice that is always refused teaches people to stop
+    // reading refusals.
+    final draft = await StaffEditorDialog.show(
+      context,
+      roles: [
+        for (final role in roles)
+          if (role.code != SystemRoles.ownerCode || !_hasActiveOwner(people))
+            role,
+      ],
+    );
     if (draft == null) return;
 
     final result = await ref
@@ -151,6 +184,14 @@ class ManagementStaffPane extends ConsumerWidget {
 
     if (context.mounted) _report(context, ref, refusal);
   }
+
+  /// Whether somebody active already owns the restaurant.
+  ///
+  /// Active only, as the repository counts: once the owner is disabled Owner
+  /// is offered again, which is how ownership is handed over from this pane.
+  static bool _hasActiveOwner(List<PosStaff> people) => people.any(
+    (p) => p.isActive && p.role?.code == SystemRoles.ownerCode,
+  );
 
   /// "4 of 7 active" — and, when the licence caps them, what the cap is.
   ///
@@ -249,12 +290,25 @@ class _StaffRow extends StatelessWidget {
     required this.roles,
     required this.onAction,
     required this.admin,
+    required this.ownerTaken,
   });
 
   final PosStaff staff;
   final bool isSelf;
   final List<PosRole> roles;
   final ValueChanged<_StaffAction> onAction;
+
+  /// Whether somebody active owns the restaurant. Owner is not offered on
+  /// anybody else's row while they do.
+  final bool ownerTaken;
+
+  /// On the owner role, active or not. Their permissions are shut either way:
+  /// nothing in that dialog means anything on the role that holds everything.
+  bool get _onOwnerRole => staff.role?.code == SystemRoles.ownerCode;
+
+  /// THE owner. Their role is fixed; a disabled former owner's is not, or they
+  /// could never come back as anything else — see [OwnerIsFixed].
+  bool get _isTheOwner => _onOwnerRole && staff.isActive;
 
   /// Who is editing. The grants dialog needs it for §48 — an ALLOW for
   /// something the editor lacks is granting a permission they do not hold.
@@ -315,11 +369,20 @@ class _StaffRow extends StatelessWidget {
               key: Key('grants-${staff.id}'),
               label: strings.grantsAction,
               border: Border.fromBorderSide(context.pos.resting),
-              onPressed: () async {
+              // Shut on the owner rather than left to refuse: extra roles and
+              // exceptions on somebody who holds everything mean nothing, and
+              // a DENY is a lock-out.
+              onPressed: _onOwnerRole
+                  ? null
+                  : () async {
                 final grants = await StaffGrantsDialog.show(
                   context,
                   person: staff,
-                  roles: roles,
+                  // Owner is never an extra role — see [OwnerIsNotAnExtraRole].
+                  roles: [
+                    for (final role in roles)
+                      if (role.code != SystemRoles.ownerCode) role,
+                  ],
                   admin: admin,
                 );
                 if (grants != null) onAction(_SetGrants(grants));
@@ -361,23 +424,42 @@ class _StaffRow extends StatelessWidget {
     return Align(
       alignment: AlignmentDirectional.centerStart,
       child: DropdownButton<int>(
+        key: Key('role-${staff.id}'),
         value: roles.any((r) => r.id == staff.role?.id) ? staff.role?.id : null,
         hint: Text(
           strings.noRole,
+          style: PosText.ui(size: 13, color: pos.muted),
+        ),
+        // A disabled DropdownButton shows its hint, not its value. Without
+        // this the owner's row would read "No role" — on the one row where
+        // what the role is matters most.
+        disabledHint: Text(
+          staff.role?.displayName(strings.languageCode) ?? strings.noRole,
           style: PosText.ui(size: 13, color: pos.muted),
         ),
         underline: const SizedBox.shrink(),
         style: PosText.ui(color: pos.inkWarm, size: 13),
         items: [
           for (final role in roles)
-            DropdownMenuItem(
-              value: role.id,
-              child: Text(role.displayName(strings.languageCode)),
-            ),
+            // Owner is withheld while somebody else holds it — but kept on the
+            // row of anybody already on it, because a DropdownButton whose
+            // value is not among its items asserts.
+            if (role.code != SystemRoles.ownerCode ||
+                !ownerTaken ||
+                role.id == staff.role?.id)
+              DropdownMenuItem(
+                value: role.id,
+                child: Text(role.displayName(strings.languageCode)),
+              ),
         ],
-        onChanged: (id) {
-          if (id != null && id != staff.role?.id) onAction(_SetRole(id));
-        },
+        // Disabled on the owner rather than left to refuse: a picker every
+        // choice of which ends in "not saved" is ownership one misclick away
+        // from being given away, were the refusal ever to go.
+        onChanged: _isTheOwner
+            ? null
+            : (id) {
+                if (id != null && id != staff.role?.id) onAction(_SetRole(id));
+              },
       ),
     );
   }
@@ -502,6 +584,7 @@ class _StaffEditorDialogState extends State<StaffEditorDialog> {
               MicroLabel(strings.fieldRole),
               const SizedBox(height: PosSpace.xs),
               DropdownButton<int>(
+                key: const Key('staff-editor-role'),
                 value: _roleId,
                 isExpanded: true,
                 style: PosText.ui(color: context.pos.inkWarm, size: 14),

@@ -72,11 +72,14 @@ void main() {
           'c': caps.toList(),
         },
       );
+      // Through a role, not as direct grants: that is how a real manager
+      // holds `settings.manage`, and it is the shape a permission check that
+      // reads only `capabilities` gets wrong.
       return PosStaff(
         id: rows.first[0]! as int,
         name: name,
         username: username,
-        capabilities: caps,
+        role: PosRole(id: 1, code: name, nameEn: name, capabilities: caps),
       );
     }
 

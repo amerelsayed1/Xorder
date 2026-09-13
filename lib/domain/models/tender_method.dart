@@ -41,6 +41,53 @@ enum TenderKind {
   }
 }
 
+/// What the platform calls a kind of tender (POS-BE-013): `cash | card |
+/// external | other`.
+///
+/// A separate vocabulary from [TenderKind], not four more members on it. The
+/// two lists share three words and disagree about the fourth, and folding
+/// `external` into [TenderKind] would put it in the offline editor, where it
+/// means nothing. The translation is one exhaustive switch, so a fifth
+/// platform kind is a compile error in [tillKind] rather than a payment
+/// method that quietly lands in the wrong column of a reconciliation.
+enum PlatformTenderKind {
+  cash('cash'),
+  card('card'),
+  external('external'),
+  other('other');
+
+  const PlatformTenderKind(this.wire);
+
+  final String wire;
+
+  /// Null for a kind this build has never heard of. The caller decides what
+  /// unknown means — for the seeder, a takeable tender that is not cash —
+  /// rather than this pretending it knows.
+  static PlatformTenderKind? fromWire(String? value) {
+    for (final kind in values) {
+      if (kind.wire == value) return kind;
+    }
+    return null;
+  }
+
+  TenderKind get tillKind => switch (this) {
+    cash => TenderKind.cash,
+    card => TenderKind.card,
+    // A card taken on the bank's own standalone terminal — which is what the
+    // platform's model says `external` exists for. Card rather than other
+    // because of the one reader that tells them apart: the branch-sales
+    // breakdown (`PaymentBucket`) puts card in ELECTRONIC and other beside
+    // vouchers, and electronic is the figure a manager holds up against the
+    // bank terminal's settlement slip. Filing it as other would leave that
+    // slip short by every external payment, every night. ETA does not care
+    // either way: it files C/V/M from the payment's own cash flag, and this
+    // is not cash. Wallet was the other candidate, and is wrong for the same
+    // reason the platform did not call it one — nothing here is InstaPay.
+    external => TenderKind.card,
+    other => TenderKind.other,
+  };
+}
+
 class TenderMethod {
   const TenderMethod({
     required this.id,
@@ -151,13 +198,28 @@ class TenderMethod {
     ),
   ];
 
+  /// The highest id [seeded] uses, and the floor every platform-sent row sits
+  /// above.
+  ///
+  /// The payment screen falls back to [seeded] while its list loads and when
+  /// no row is active, so a payment can carry one of these ids without any row
+  /// having been chosen. On a cloud till that payment must never be mistaken
+  /// for one taken on a platform tender — so no platform row may hold one of
+  /// these ids. Migration 41's CHECK states the same number; a test keeps
+  /// [seeded] under it.
+  static const seededIdCeiling = 4;
+
   /// Whether a tender of this **seeded** type puts money in the drawer.
   ///
-  /// Only correct for a till still on the seeded list, which is why nothing at
-  /// cash-up time uses it any more: a settled payment carries its own
-  /// `counts_as_cash`, snapshotted when the money moved. This remains for the
-  /// one caller that has no payment row to read — pricing a tender before it is
-  /// taken — and falls back to **false** for a type it does not know.
+  /// Only correct for a till still on the seeded list, which is why nothing
+  /// asks it about money moved today: a tender carries its own
+  /// `counts_as_cash`, snapshotted when the money moved. It remains only as the
+  /// fallback for records written before that snapshot existed — payment rows
+  /// from before the column (`ShiftTenderTotal.countsAsCash`) and tickets
+  /// parked before the key (`ParkedTicketCodec`) — and falls back to **false**
+  /// for a type it does not know, which includes every platform tender above
+  /// [seededIdCeiling]. A new caller that has a snapshot to read should read
+  /// it instead.
   static bool isCash(int? typeId) =>
       typeId != null && (byId(typeId)?.countsAsCash ?? false);
 

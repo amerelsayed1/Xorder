@@ -33,6 +33,7 @@ void main() {
   late PostgresEtaQueueRepository queue;
   late int branchId;
   late int orderId;
+  late int restaurantId;
 
   const slug = 'eta-queue-test';
 
@@ -62,7 +63,7 @@ void main() {
       'RETURNING id',
       parameters: {'slug': slug},
     );
-    final restaurantId = restaurant.first[0]! as int;
+    restaurantId = restaurant.first[0]! as int;
 
     final branch = await db.query(
       pg.config,
@@ -141,12 +142,27 @@ void main() {
         ),
       );
 
+  /// Another sale to file. One receipt per sale is the database's rule since
+  /// migration 38, so a chain of receipts is a chain of sales.
+  Future<int> newOrder(String number) async {
+    final order = await db.query(
+      pg.config,
+      'INSERT INTO pos_orders (client_transaction_id, restaurant_id, branch_id, '
+      '  terminal_id, invoice_number, order_type, currency, exponent, '
+      '  subtotal_minor, service_minor, vat_minor, total_minor, occurred_at) '
+      "VALUES (gen_random_uuid(), @r, @b, '11111111-1111-4111-8111-111111111111', "
+      "  @n, 'takeaway', 'EGP', 2, 4500, 0, 630, 5130, now()) RETURNING id",
+      parameters: {'r': restaurantId, 'b': branchId, 'n': number},
+    );
+    return order.first[0]! as int;
+  }
+
   Future<EtaEnqueued> enqueue({
     String number = 'INV-1',
     String device = 'TILL-1',
     DateTime? at,
-  }) => queue.enqueue(
-    orderId: orderId,
+  }) async => queue.enqueue(
+    orderId: number == 'INV-1' ? orderId : await newOrder(number),
     deviceSerial: device,
     receiptNumber: number,
     receiptType: 's',

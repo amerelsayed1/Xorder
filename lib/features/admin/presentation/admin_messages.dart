@@ -1,4 +1,10 @@
 import '../../../core/l10n/app_strings.dart';
+import '../../../core/money/quantity.dart';
+import '../../../domain/models/backup.dart';
+import '../../../domain/models/catalog.dart';
+import '../../../domain/models/option_group.dart';
+import '../../../domain/models/purchase_order.dart';
+import '../../../domain/models/supplier_invoice.dart';
 import '../../../domain/models/permissions.dart';
 import '../../../domain/repositories/admin_repositories.dart';
 import '../../../domain/services/authorization.dart';
@@ -22,6 +28,7 @@ abstract final class AdminText {
         PosCapability.operate => s.capOperate,
         PosCapability.catalogView => s.capCatalogView,
         PosCapability.catalogManage => s.capCatalogManage,
+        PosCapability.purchaseManage => s.capPurchaseManage,
         PosCapability.staffManage => s.capStaffManage,
         PosCapability.terminalManage => s.capTerminalManage,
         PosCapability.settingsManage => s.capSettingsManage,
@@ -50,6 +57,203 @@ abstract final class AdminText {
         _ => capability,
       };
 
+  /// What an audit row *did*, in a sentence.
+  ///
+  /// **The Activity pane rendered `entry.action` raw** — every row read
+  /// `supplier_invoice.saved`, in both languages, on the screen a restaurant
+  /// looks at when it wants to know who changed something. Same shape of gap as
+  /// the unlabelled capability, one screen over, and worse: there was no switch
+  /// with a missing case, there was no switch.
+  ///
+  /// The fall-through is deliberate and matches [capability]: a row written by a
+  /// newer build is shown as it was stored rather than hidden, because an audit
+  /// log that omits what it cannot name is an audit log nobody can rely on.
+  /// `capability_labels_test.dart` is what keeps *this* build out of that path.
+  static String auditAction(AppStrings s, String action) => switch (action) {
+    AuditAction.staffCreated => s.actStaffCreated,
+    AuditAction.staffUpdated => s.actStaffUpdated,
+    AuditAction.staffDisabled => s.actStaffDisabled,
+    AuditAction.staffReactivated => s.actStaffReactivated,
+    AuditAction.staffPinReset => s.actStaffPinReset,
+    AuditAction.staffRoleChanged => s.actStaffRoleChanged,
+    AuditAction.staffGrantsChanged => s.actStaffGrantsChanged,
+    AuditAction.roleCreated => s.actRoleCreated,
+    AuditAction.roleUpdated => s.actRoleUpdated,
+    AuditAction.roleDeleted => s.actRoleDeleted,
+    AuditAction.permissionOverridden => s.actPermissionOverridden,
+    AuditAction.shiftOpened => s.actShiftOpened,
+    AuditAction.shiftClosed => s.actShiftClosed,
+    AuditAction.receiptReprinted => s.actReceiptReprinted,
+    AuditAction.categoryCreated => s.actCategoryCreated,
+    AuditAction.categoryUpdated => s.actCategoryUpdated,
+    AuditAction.categoryArchived => s.actCategoryArchived,
+    AuditAction.categoryRestored => s.actCategoryRestored,
+    AuditAction.productCreated => s.actProductCreated,
+    AuditAction.productUpdated => s.actProductUpdated,
+    AuditAction.productArchived => s.actProductArchived,
+    AuditAction.productRestored => s.actProductRestored,
+    AuditAction.productRepriced => s.actProductRepriced,
+    AuditAction.unitSaved => s.actUnitSaved,
+    AuditAction.stockItemSaved => s.actStockItemSaved,
+    AuditAction.moneyConfigChanged => s.actMoneyConfigChanged,
+    AuditAction.receiptProfileChanged => s.actReceiptProfileChanged,
+    AuditAction.tableCreated => s.actTableCreated,
+    AuditAction.tableUpdated => s.actTableUpdated,
+    AuditAction.tableArchived => s.actTableArchived,
+    AuditAction.tableRestored => s.actTableRestored,
+    AuditAction.purchaseOrderStatusChanged => s.actPurchaseOrderStatusChanged,
+    AuditAction.stockReceived => s.actStockReceived,
+    AuditAction.supplierSaved => s.actSupplierSaved,
+    AuditAction.supplierInvoiceSaved => s.actSupplierInvoiceSaved,
+    AuditAction.supplierInvoiceVoided => s.actSupplierInvoiceVoided,
+    AuditAction.supplierPaid => s.actSupplierPaid,
+    AuditAction.supplierPaymentVoided => s.actSupplierPaymentVoided,
+    AuditAction.serviceChargeSaved => s.actServiceChargeSaved,
+    AuditAction.tenderTypeSaved => s.actTenderTypeSaved,
+    AuditAction.orderTypeSaved => s.actOrderTypeSaved,
+    AuditAction.taxGroupSaved => s.actTaxGroupSaved,
+    AuditAction.productOptionsChanged => s.actProductOptionsChanged,
+    AuditAction.optionGroupSaved => s.actOptionGroupSaved,
+    AuditAction.optionGroupRepriced => s.actOptionGroupRepriced,
+    AuditAction.optionGroupDeleted => s.actOptionGroupDeleted,
+    AuditAction.backupTaken => s.actBackupTaken,
+    AuditAction.backupRestored => s.actBackupRestored,
+    _ => action,
+  };
+
+  /// How much of a backup a row actually is.
+  ///
+  /// Enum-keyed, so a fourth outcome fails to compile rather than rendering
+  /// `unverified` on a badge. And the middle case is not a hedge: a copy that
+  /// could not be read back is shown as **not a backup**, because a restaurant
+  /// that believes it has one is in a worse position than one that knows it
+  /// does not.
+  static String backupOutcome(AppStrings s, BackupOutcome outcome) =>
+      switch (outcome) {
+        BackupOutcome.verified => s.backupOutcomeVerified,
+        BackupOutcome.unverified => s.backupOutcomeUnverified,
+        BackupOutcome.failed => s.backupOutcomeFailed,
+      };
+
+  static String backupTrigger(AppStrings s, BackupTrigger trigger) =>
+      switch (trigger) {
+        BackupTrigger.manual => s.backupTriggerManual,
+        BackupTrigger.dayClose => s.backupTriggerDayClose,
+      };
+
+  /// Why a copy is not a copy. The raw output of `pg_dump` travels beside this
+  /// in [BackupRecord.detail] and is shown untranslated — see that field.
+  static String backupFailure(AppStrings s, BackupFailure failure) =>
+      switch (failure) {
+        BackupFailure.toolsMissing => s.backupFailureToolsMissing,
+        BackupFailure.destinationUnwritable =>
+          s.backupFailureDestinationUnwritable,
+        BackupFailure.dumpRefused => s.backupFailureDumpRefused,
+        BackupFailure.archiveUnreadable => s.backupFailureArchiveUnreadable,
+        BackupFailure.archiveIncomplete => s.backupFailureArchiveIncomplete,
+      };
+
+  /// What is standing between somebody and a restore.
+  static String restoreBlocker(AppStrings s, RestoreBlocker blocker) =>
+      switch (blocker.kind) {
+        RestoreBlockerKind.openShift => s.restoreBlockerOpenShifts(
+          blocker.count,
+        ),
+        RestoreBlockerKind.openBusinessDay => s.restoreBlockerOpenDay(
+          blocker.count,
+        ),
+      };
+
+  /// A file size, as somebody reading a folder listing would say it.
+  ///
+  /// **Integer arithmetic, like every other number in this codebase.** The
+  /// obvious `bytes / 1024 / 1024` routes a count through a `double`, which is
+  /// the habit the money code exists to break — and a size is a count. One
+  /// decimal place, computed from the remainder, because "4.2 MB" is what a
+  /// person needs and "4.19 MB" is precision nobody asked for.
+  ///
+  /// Powers of 1024 with the short units, which is what every file manager a
+  /// restaurant has ever used shows.
+  static String bytes(int size) {
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+
+    var unit = 0;
+    var divisor = 1;
+    while (size >= divisor * 1024 && unit < units.length - 1) {
+      divisor *= 1024;
+      unit++;
+    }
+    if (unit == 0) return '$size ${units[0]}';
+
+    // Multiply before dividing, so the tenth survives the integer division
+    // instead of being the thing it throws away.
+    final tenths = (size * 10) ~/ divisor;
+    return '${tenths ~/ 10}.${tenths % 10} ${units[unit]}';
+  }
+
+  /// Where a purchase order has got to.
+  ///
+  /// **Keyed by the enum, not by its wire value.** A `String` switch cannot be
+  /// exhaustive, so a sixth `PurchaseStatus` would have fallen through and
+  /// rendered `partially_received` on a chip. This one fails to compile instead.
+  static String purchaseStatus(AppStrings s, PurchaseStatus status) =>
+      switch (status) {
+        PurchaseStatus.draft => s.statusDraft,
+        PurchaseStatus.sent => s.statusSent,
+        PurchaseStatus.partiallyReceived => s.statusPartReceived,
+        PurchaseStatus.received => s.statusReceived,
+        PurchaseStatus.cancelled => s.statusCancelled,
+      };
+
+  /// How the restaurant paid somebody. Enum-keyed for the same reason.
+  static String paymentMethod(AppStrings s, SupplierPaymentMethod method) =>
+      switch (method) {
+        SupplierPaymentMethod.cash => s.methodCash,
+        SupplierPaymentMethod.bankTransfer => s.methodTransfer,
+        SupplierPaymentMethod.cheque => s.methodCheque,
+        SupplierPaymentMethod.card => s.methodCard,
+        SupplierPaymentMethod.other => s.methodOther,
+      };
+
+  /// Basis points as a percentage, for anywhere a rate is shown.
+  ///
+  /// 1400 is 14%; 1250 is 12.5% and not 12.50%, because a trailing zero on a
+  /// rate reads as precision nobody claimed.
+  ///
+  /// **Integer arithmetic.** The service-charge row did this with
+  /// `(rateBp / 100).toStringAsFixed(...)`, which routes a rate through a
+  /// `double` — harmless for 1250, and exactly the habit the rest of the money
+  /// code exists to avoid.
+  static String rateBp(int basisPoints) {
+    final whole = basisPoints ~/ 100;
+    final fraction = basisPoints % 100;
+    if (fraction == 0) return '$whole%';
+    final digits = fraction.toString().padLeft(2, '0').replaceAll(
+      RegExp(r'0+$'),
+      '',
+    );
+    return '$whole.$digits%';
+  }
+
+  /// What a unit is called on screen.
+  ///
+  /// `QuantityUnit.wire` is a storage token, and `ea` is not a unit anybody
+  /// writes on a delivery note — least of all in Arabic, where it means nothing
+  /// at all. The symbols that *are* conventional (kg, ml) stay Latin in both
+  /// languages, because that is what is printed on the box.
+  static String unit(AppStrings s, QuantityUnit unit) => switch (unit.wire) {
+    'ea' => s.unitEach,
+    'kg' => s.unitKilogram,
+    'g' => s.unitGram,
+    'l' => s.unitLitre,
+    'ml' => s.unitMillilitre,
+    'box' => s.unitBox,
+    'pack' => s.unitPack,
+    // One the restaurant added. Its code is what it wrote on the delivery
+    // note; the screens that list units show the names it gave it.
+    final code => code,
+  };
+
   static String group(AppStrings s, CapabilityGroup group) => switch (group) {
     CapabilityGroup.selling => s.capGroupSelling,
     CapabilityGroup.money => s.capGroupMoney,
@@ -76,13 +280,117 @@ abstract final class AdminText {
         ),
         UsernameTaken(:final username) => s.refusalUsernameTaken(username),
         WouldLockEveryoneOut() => s.refusalWouldLockEveryoneOut,
+        OwnerAlreadyExists(:final ownerName) => s.refusalOwnerAlreadyExists(
+          ownerName,
+        ),
+        OwnerIsFixed() => s.refusalOwnerIsFixed,
+        OwnerIsNotAnExtraRole() => s.refusalOwnerIsNotAnExtraRole,
         EditedElsewhere() => s.refusalEditedElsewhere,
         // The reason comes from the catalogue importer, which speaks for
         // itself; there is nothing here to translate it into.
         CatalogInvalid(:final reason) => reason,
+        CatalogRefused(:final problem) => catalogProblem(s, problem),
+        OptionGroupRefused(:final problem, :final names) => optionGroupProblem(
+          s,
+          problem,
+          names,
+        ),
         AdministratorCredentialRequired() =>
           s.refusalAdministratorCredentialRequired,
         NoDatabaseConfigured() => s.refusalNoDatabaseConfigured,
+        ManagedByPlatform(:final what) => s.refusalManagedByPlatform(what),
+        PurchaseRefused(:final reason) => _purchaseReason(s, reason),
+        StockHeldInAnotherUnit(:final item, :final held, :final asked) =>
+          s.refusalStockHeldInAnotherUnit(
+            item,
+            held.format(),
+            unit(s, held.unit),
+            unit(s, asked),
+          ),
+      };
+
+  /// Why an item or a category could not be saved. Keyed by the enum, like
+  /// [optionGroupProblem], so a new reason cannot reach the screen unworded.
+  static String catalogProblem(AppStrings s, CatalogProblem problem) =>
+      switch (problem) {
+        CatalogProblem.itemNameMissing => s.refusalItemNameMissing,
+        CatalogProblem.offerAbovePrice => s.refusalOfferAbovePrice,
+        CatalogProblem.categoryNameMissing => s.refusalCategoryNameMissing,
+      };
+
+  /// Why a size or extra could not be saved.
+  ///
+  /// Keyed by the enum, so a reason the repository learns is a compile error
+  /// here rather than an English sentence on an Arabic back office — which is
+  /// exactly what these were while they travelled inside `CatalogInvalid`.
+  /// [names] is empty for every reason that names nothing; the ones that do
+  /// always receive at least one, and read an empty name rather than throwing
+  /// if a newer writer ever sends none.
+  static String optionGroupProblem(
+    AppStrings s,
+    OptionGroupProblem problem,
+    List<String> names,
+  ) {
+    final name = names.isEmpty ? '' : names.first;
+    return switch (problem) {
+      OptionGroupProblem.nameMissing => s.refusalGroupNameMissing,
+      OptionGroupProblem.scopeNeedsLibrary => s.refusalGroupScopeNeedsLibrary,
+      OptionGroupProblem.categoriesMissing => s.refusalGroupCategoriesMissing,
+      OptionGroupProblem.choicesOutOfRange => s.refusalGroupChoicesOutOfRange(
+        OptionGroupRules.maxChoices,
+      ),
+      OptionGroupProblem.negativeCounts => s.refusalGroupNegativeCounts,
+      OptionGroupProblem.needsMoreThanAllows =>
+        s.refusalGroupNeedsMoreThanAllows,
+      OptionGroupProblem.tooManyOptions => s.refusalGroupTooManyOptions(
+        OptionGroupRules.maxOptions,
+      ),
+      OptionGroupProblem.requiredButEmpty => s.refusalGroupRequiredButEmpty,
+      OptionGroupProblem.optionNameMissing => s.refusalOptionNameMissing,
+      OptionGroupProblem.optionTwice => s.refusalOptionTwice,
+      OptionGroupProblem.negativePrice => s.refusalOptionNegativePrice,
+      OptionGroupProblem.saleNotBelowPrice => s.refusalOptionSaleNotBelowPrice,
+      OptionGroupProblem.groupTwice => s.refusalGroupTwice,
+      OptionGroupProblem.typedOnAnotherItem => s.refusalGroupTypedOnAnotherItem,
+      OptionGroupProblem.notInLibrary => s.refusalGroupNotInLibrary(name),
+      OptionGroupProblem.alreadyReaches => s.refusalGroupAlreadyReaches(name),
+      OptionGroupProblem.secondSizes => s.refusalGroupSecondSizes(
+        names.length,
+        _list(s, names),
+      ),
+      OptionGroupProblem.wouldGiveSecondSizes =>
+        s.refusalGroupWouldGiveSecondSizes(name),
+      OptionGroupProblem.belongsToOneItem => s.refusalGroupBelongsToOneItem,
+      OptionGroupProblem.belongsToLibrary => s.refusalGroupBelongsToLibrary,
+      OptionGroupProblem.foreignOption => s.refusalGroupForeignOption,
+      OptionGroupProblem.foreignCategory => s.refusalGroupForeignCategory,
+    };
+  }
+
+  /// Keyed by the refusal and then by the status it names — both sealed or
+  /// enums — so a sixth status is a compile error here rather than a blank
+  /// line on the Purchasing pane.
+  static String _purchaseReason(AppStrings s, PurchaseRefusal reason) =>
+      switch (reason) {
+        OrderNotEditable(:final status) => switch (status) {
+          PurchaseStatus.sent => s.refusalPurchaseAlreadySent,
+          PurchaseStatus.partiallyReceived ||
+          PurchaseStatus.received => s.refusalPurchaseGoodsArrived,
+          PurchaseStatus.cancelled => s.refusalPurchaseCancelled,
+          // A draft is editable by definition; only a stale screen gets here.
+          PurchaseStatus.draft => s.refusalEditedElsewhere,
+        },
+        OrderHasNoLines() => s.refusalPurchaseHasNoLines,
+        LineQuantityNotPositive() => s.refusalPurchaseQuantityNotPositive,
+        OrderAlreadyClosed(:final status) => switch (status) {
+          PurchaseStatus.partiallyReceived =>
+            s.refusalPurchaseCannotCancelArrived,
+          PurchaseStatus.received => s.refusalPurchaseAllArrived,
+          PurchaseStatus.cancelled => s.refusalPurchaseCancelled,
+          PurchaseStatus.draft ||
+          PurchaseStatus.sent => s.refusalEditedElsewhere,
+        },
+        StatusFollowsTheGoods() => s.refusalPurchaseFollowsTheGoods,
       };
 
   /// What a risk level is called on a badge.

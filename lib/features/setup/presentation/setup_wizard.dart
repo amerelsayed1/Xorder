@@ -183,7 +183,11 @@ class _RailRow extends StatelessWidget {
           const SizedBox(width: PosSpace.md),
           Expanded(
             child: Text(
-              step.title(context.strings, mode: draft.deployment.mode),
+              step.title(
+                context.strings,
+                mode: draft.deployment.mode,
+                role: draft.deployment.role,
+              ),
               overflow: TextOverflow.ellipsis,
               style: PosText.ui(
                 size: 14,
@@ -221,12 +225,20 @@ class _Header extends StatelessWidget {
         MicroLabel(context.strings.stepOf(draft.stepNumber, draft.stepCount)),
         const SizedBox(height: PosSpace.sm),
         Text(
-          draft.step.title(context.strings, mode: draft.deployment.mode),
+          draft.step.title(
+            context.strings,
+            mode: draft.deployment.mode,
+            role: draft.deployment.role,
+          ),
           style: PosText.screenTitle(color: context.pos.ink),
         ),
         const SizedBox(height: PosSpace.xs),
         Text(
-          draft.step.blurb(context.strings, mode: draft.deployment.mode),
+          draft.step.blurb(
+            context.strings,
+            mode: draft.deployment.mode,
+            role: draft.deployment.role,
+          ),
           style: PosText.ui(size: 13.5, color: context.pos.muted),
         ),
       ],

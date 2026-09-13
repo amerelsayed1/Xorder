@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:xorder_pos/app/providers.dart';
 import 'package:xorder_pos/core/config/deployment.dart';
+import 'package:xorder_pos/core/config/printer_config.dart';
 import 'package:xorder_pos/core/config/terminal_config.dart';
 import 'package:xorder_pos/core/ui/theme.dart';
 import 'package:xorder_pos/data/config/terminal_config_store.dart';
@@ -75,6 +76,46 @@ void main() {
       expect(restored.deployment.databaseHost, '192.168.1.20');
       expect(restored.languageCode, 'ar');
       expect(restored.isUsable, isTrue);
+    });
+
+    test('remembers the printer the installer chose', () async {
+      // **It did not, and that is why nothing printed.** The hardware step has
+      // offered a printer list since setup existed and the choice was held in
+      // the draft and written nowhere — so the till came up the next morning
+      // with no address to send a receipt to.
+      await store().write(
+        saved.copyWith(
+          printer: const PrinterConfig(
+            name: '192.168.1.44:9100',
+            paperWidthDots: PrinterConfig.width58mm,
+          ),
+        ),
+      );
+
+      final restored = await store().read();
+      expect(restored!.printer.name, '192.168.1.44:9100');
+      expect(restored.printer.paperWidthDots, PrinterConfig.width58mm);
+      expect(restored.printer.isConfigured, isTrue);
+    });
+
+    test('a file written before printing existed reads as no printer', () async {
+      final file = File('${directory.path}/${FileTerminalConfigStore.fileName}');
+      final json =
+          jsonDecode(await () async {
+                await store().write(saved);
+                return file.readAsString();
+              }())
+              as Map<String, Object?>;
+      json.remove('printer');
+      await file.writeAsString(jsonEncode(json));
+
+      // Which is the honest answer, and the one the settle dialog reports out
+      // loud rather than claiming to have queued something.
+      final restored = await store().read();
+      expect(restored!.printer.isConfigured, isFalse);
+      // And 80mm, because that is the roll the till most likely has on it and
+      // the installer can see and change it.
+      expect(restored.printer.paperWidthDots, PrinterConfig.width80mm);
     });
 
     test('never holds the database password', () async {
@@ -148,7 +189,9 @@ void main() {
     ProviderContainer boot(TerminalBoot state) {
       final container = ProviderContainer(
         overrides: [
-          ...fakeRepositoryOverrides(),
+          // Not the English override: what this group asserts is that a
+          // terminal opens in the language it was SET UP in.
+          ...fakeRepositoryOverrides(english: false),
           terminalBootProvider.overrideWithValue(state),
         ],
       );
@@ -169,6 +212,9 @@ void main() {
       expect(container.read(deploymentProvider).databaseHost, '192.168.1.20');
       // The language belongs to the terminal, not to whoever signs in.
       expect(container.read(localeProvider).languageCode, 'ar');
+      // So does the printer. A till that had to be told again every morning
+      // which printer it is bolted to is a till that prints nothing.
+      expect(container.read(printerConfigProvider).isConfigured, isFalse);
     });
 
     test('a terminal whose keystore lost the password goes back to setup', () {
@@ -365,6 +411,196 @@ void main() {
       },
     );
 
+    test('finishing setup writes the printer to disk and to memory', () async {
+      final store = InMemoryTerminalConfigStore();
+      final container = ProviderContainer(
+        overrides: [
+          ...fakeRepositoryOverrides(),
+          terminalConfigStoreProvider.overrideWithValue(store),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final controller = container.read(setupProvider.notifier);
+      controller.setDatabasePassword('s3cret');
+      controller.setBranch(13, 'Maadi');
+      controller.setTerminalName('Counter 1');
+      controller.setPrinter('192.168.1.44:9100');
+      controller.setPaperWidth(PrinterConfig.width58mm);
+      controller.state = container
+          .read(setupProvider)
+          .copyWith(
+            restaurantId: 7,
+            branchCode: 'MAA',
+            terminalId: terminal.terminalId,
+          );
+
+      expect(await controller.complete(), isNull);
+
+      // On disk, for tomorrow morning.
+      expect(store.saved!.printer.name, '192.168.1.44:9100');
+      expect(store.saved!.printer.paperWidthDots, PrinterConfig.width58mm);
+      // And in memory, for the first sale — setup finishes without a restart,
+      // so a till that only wrote the file would print nothing until it was
+      // relaunched.
+      expect(
+        container.read(printerConfigProvider).name,
+        '192.168.1.44:9100',
+      );
+    });
+
+    /// The licence is step ONE of ten. Writing it there installed it on every
+    /// machine somebody merely *tried* a key on — an owner seeing what a key
+    /// covers, an installer stopped at the database password — and the file
+    /// outlived the abandoned wizard. The next person through was judged
+    /// against a licence for a restaurant that terminal had never been set up
+    /// for, and told their own licence was the wrong one.
+    test('activating a licence installs nothing until setup finishes', () async {
+      final licences = FakeLicenceService();
+      final container = ProviderContainer(
+        overrides: [
+          ...fakeRepositoryOverrides(),
+          licenceServiceProvider.overrideWithValue(licences),
+          terminalConfigStoreProvider.overrideWithValue(
+            InMemoryTerminalConfigStore(),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final controller = container.read(setupProvider.notifier);
+      await controller.activateLicence(
+        fileContents: _licenceFor('kashri-altahrir'),
+      );
+
+      // Read, judged and on screen — the wizard runs on these claims.
+      final draft = container.read(setupProvider);
+      expect(draft.entitlement, isNotNull);
+      expect(draft.claims?.tenantSlug, 'kashri-altahrir');
+      // And nothing on disk. That is the whole point: walk away here and the
+      // machine is exactly as it was.
+      expect(
+        await licences.installed(),
+        isNull,
+        reason: 'an abandoned wizard must not leave a licence behind',
+      );
+
+      // Now finish, as the last screen does.
+      controller.setDatabasePassword('s3cret');
+      controller.setBranch(13, 'Maadi');
+      controller.setTerminalName('Counter 1');
+      controller.state = container
+          .read(setupProvider)
+          .copyWith(
+            restaurantId: 7,
+            branchCode: 'MAA',
+            terminalId: terminal.terminalId,
+          );
+
+      expect(await controller.complete(), isNull);
+
+      final installed = await licences.installed();
+      expect(installed, isNotNull);
+      expect(
+        LicenseVerifier.claimsOf(installed!)?.tenantSlug,
+        'kashri-altahrir',
+        reason:
+            'a finished terminal that cannot find its licence opens on '
+            '"Not licensed" with nothing to explain itself with',
+      );
+    });
+
+    test('the licence that lands is the last one activated', () async {
+      final licences = FakeLicenceService();
+      final container = ProviderContainer(
+        overrides: [
+          ...fakeRepositoryOverrides(),
+          licenceServiceProvider.overrideWithValue(licences),
+          terminalConfigStoreProvider.overrideWithValue(
+            InMemoryTerminalConfigStore(),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final controller = container.read(setupProvider.notifier);
+      // Somebody pastes the wrong file first, then the right one. Only the
+      // second was ever meant to be on this machine.
+      await controller.activateLicence(fileContents: _licenceFor('wrong-one'));
+      await controller.activateLicence(
+        fileContents: _licenceFor('kashri-altahrir'),
+      );
+
+      controller.setDatabasePassword('s3cret');
+      controller.setBranch(13, 'Maadi');
+      controller.setTerminalName('Counter 1');
+      controller.state = container
+          .read(setupProvider)
+          .copyWith(
+            restaurantId: 7,
+            branchCode: 'MAA',
+            terminalId: terminal.terminalId,
+          );
+
+      expect(await controller.complete(), isNull);
+
+      expect(
+        LicenseVerifier.claimsOf((await licences.installed())!)?.tenantSlug,
+        'kashri-altahrir',
+      );
+    });
+
+    /// A cloud terminal never types a key: the bootstrap bundle its claim
+    /// carries has a licence embedded, and that used to be written to disk the
+    /// moment the claim returned — at step six, with four screens still to go.
+    /// The same rule has to hold for it.
+    test('a licence from the bootstrap bundle waits with the rest', () async {
+      final licences = FakeLicenceService();
+      final container = ProviderContainer(
+        overrides: [
+          ...fakeRepositoryOverrides(),
+          licenceServiceProvider.overrideWithValue(licences),
+          terminalConfigStoreProvider.overrideWithValue(
+            InMemoryTerminalConfigStore(),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final controller = container.read(setupProvider.notifier);
+      // What the operator typed at step one.
+      await controller.activateLicence(fileContents: _licenceFor('typed-one'));
+      // What the claim came back with four steps later. The platform's own
+      // copy for this terminal, so it supersedes the typed one.
+      controller.holdLicence(
+        LicenseFile.tryParse(_licenceFor('from-the-bundle'))!,
+      );
+
+      expect(
+        await licences.installed(),
+        isNull,
+        reason: 'a claim is step six of ten, not the end of the wizard',
+      );
+
+      controller.setDatabasePassword('s3cret');
+      controller.setBranch(13, 'Maadi');
+      controller.setTerminalName('Counter 1');
+      controller.state = container
+          .read(setupProvider)
+          .copyWith(
+            restaurantId: 7,
+            branchCode: 'MAA',
+            terminalId: terminal.terminalId,
+          );
+
+      expect(await controller.complete(), isNull);
+
+      expect(
+        LicenseVerifier.claimsOf((await licences.installed())!)?.tenantSlug,
+        'from-the-bundle',
+      );
+    });
+
     test('a keystore write failure leaves setup incomplete', () async {
       final credentials = MutablePosDbCredentials(store: _FailingSecretStore());
       final container = ProviderContainer(
@@ -460,6 +696,87 @@ void main() {
         expect(container.read(terminalProfileProvider).terminalName, isNull);
       },
     );
+
+    /// The reset that worked on disk and not in memory.
+    ///
+    /// `terminalBootProvider` is the snapshot taken before the first frame, and
+    /// an override cannot be corrected from inside the process — so the wizard
+    /// reopened seeded from the terminal that had just been cleared: the old
+    /// tenant, and `claimed: true`. That pair is exactly what switches the
+    /// tenant check back on in `activateLicence`, so the next restaurant's
+    /// licence was refused for belonging to the wrong restaurant, naming one no
+    /// longer on the machine. Restarting the app fixed it, which is a support
+    /// call for a button whose whole purpose is not to need one.
+    test('and the wizard it reopens has forgotten that restaurant', () async {
+      const claimed = SavedTerminalConfig(
+        deployment: DeploymentConfig(
+          mode: DeploymentMode.offline,
+          databaseHost: '192.168.1.20',
+          tenantSlug: 'first-restaurant',
+        ),
+        terminal: TerminalProfile(
+          branchId: 13,
+          branchName: 'Maadi',
+          terminalName: 'Counter 1',
+          terminalId: 'e6c0f0a2-0000-4000-8000-000000000001',
+          restaurantId: 7,
+          branchCode: 'MAA',
+          provisioned: true,
+        ),
+        languageCode: 'ar',
+      );
+
+      final container = ProviderContainer(
+        overrides: [
+          // Not the English override: the draft keeping Arabic across a reset
+          // is one of the things this test is for.
+          ...fakeRepositoryOverrides(english: false),
+          terminalBootProvider.overrideWithValue(
+            const TerminalBoot(config: claimed, hasDatabaseCredential: true),
+          ),
+          terminalConfigStoreProvider.overrideWithValue(
+            InMemoryTerminalConfigStore()..saved = claimed,
+          ),
+          licenceServiceProvider.overrideWithValue(FakeLicenceService()),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      // The terminal as it stands: one restaurant's, and claimed.
+      expect(
+        container.read(setupProvider).deployment.tenantSlug,
+        'first-restaurant',
+      );
+      expect(container.read(setupProvider).claimed, isTrue);
+
+      await container.read(terminalResetProvider).run();
+
+      final draft = container.read(setupProvider);
+      expect(draft.deployment.tenantSlug, isNull);
+      expect(draft.claimed, isFalse);
+      expect(draft.terminalName, isEmpty);
+      expect(draft.branchLabel, isNull);
+      // Kept, because the licence is pinned to it and the config file that
+      // held it is gone — the profile is the only place that still knows.
+      expect(
+        draft.terminalId,
+        'e6c0f0a2-0000-4000-8000-000000000001',
+        reason: 'a new id here unpins the licence this till already holds',
+      );
+      // Kept for the same class of reason: the screen is in Arabic, and
+      // completing the wizard writes whatever this says.
+      expect(draft.locale, 'ar');
+
+      // And the point of all of it: another restaurant's licence installs.
+      await container
+          .read(setupProvider.notifier)
+          .activateLicence(fileContents: _licenceFor('second-restaurant'));
+
+      final activated = container.read(setupProvider);
+      expect(activated.error, isNull, reason: activated.error ?? '');
+      expect(activated.claims?.tenantSlug, 'second-restaurant');
+      expect(activated.deployment.tenantSlug, 'second-restaurant');
+    });
   });
   group('a licence installed on an earlier run', () {
     /// Pre-load the fake issuer the way a previous launch would have left it:

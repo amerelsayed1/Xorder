@@ -1,6 +1,7 @@
 import 'dart:ui' show Brightness;
 
 import 'deployment.dart';
+import 'printer_config.dart';
 import 'terminal_profile.dart';
 
 /// Everything the setup wizard settled that has to outlive the process.
@@ -21,6 +22,7 @@ class SavedTerminalConfig {
     required this.deployment,
     required this.terminal,
     required this.languageCode,
+    this.printer = PrinterConfig.none,
     this.brightness,
     this.setupComplete = true,
   });
@@ -44,6 +46,17 @@ class SavedTerminalConfig {
   /// till that switches at dusk with the rest of the desk, the second must not.
   final Brightness? brightness;
 
+  /// Which printer this till prints on, and how wide its paper is.
+  ///
+  /// **This was chosen in the wizard and then dropped on the floor.** The
+  /// hardware step has offered a printer list since setup existed, and nothing
+  /// wrote the choice anywhere — so a till that had been pointed at a printer
+  /// during installation came up the next morning knowing nothing about it, and
+  /// there was no address for a receipt to be sent to. It is saved here for the
+  /// same reason the branch is: it is a fact about this machine, not about
+  /// whoever is signed into it.
+  final PrinterConfig printer;
+
   /// False would mean a config written by a wizard that did not finish. Nothing
   /// writes that today; it is read so that a future partial save cannot silently
   /// present itself as a configured till.
@@ -56,6 +69,7 @@ class SavedTerminalConfig {
     'brightness': brightness?.name,
     'deployment': deployment.toJson(),
     'terminal': terminal.toJson(),
+    'printer': printer.toJson(),
   };
 
   static SavedTerminalConfig fromJson(Map<String, Object?> json) =>
@@ -67,6 +81,12 @@ class SavedTerminalConfig {
           (json['terminal'] as Map?)?.cast<String, Object?>() ?? const {},
         ),
         languageCode: json['language'] as String? ?? 'en',
+        // Absent on every config file written before printing existed, which is
+        // all of them: that reads as "no printer set up", and the till says so
+        // at settlement rather than claiming to have printed.
+        printer: PrinterConfig.fromJson(
+          (json['printer'] as Map?)?.cast<String, Object?>() ?? const {},
+        ),
         // An unknown or absent value reads as "follow the machine" rather than
         // as a failure: a config written by a newer build must not send this
         // terminal back to the wizard over a colour scheme.
@@ -95,10 +115,12 @@ class SavedTerminalConfig {
   SavedTerminalConfig copyWith({
     String? languageCode,
     Object? brightness = _unset,
+    PrinterConfig? printer,
   }) => SavedTerminalConfig(
     deployment: deployment,
     terminal: terminal,
     languageCode: languageCode ?? this.languageCode,
+    printer: printer ?? this.printer,
     brightness: brightness == _unset
         ? this.brightness
         : brightness as Brightness?,

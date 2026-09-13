@@ -225,6 +225,31 @@ abstract final class TicketEngine {
     return null;
   }
 
+  /// What the sheet has ticked before anybody touches it.
+  ///
+  /// The platform's menu rule, so a cashier and a diner see the same starting
+  /// point: a pick-one group that is a size or is required opens on its first
+  /// **available** option — the size the item is advertised at. Options the
+  /// menu marks as defaults are ticked too, in groups that rule leaves alone.
+  ///
+  /// **A size group never follows a marked default.** The catalogue prices a
+  /// sized item from its first available size, as the platform does, and a
+  /// sheet opening on a different one would charge a figure the tile never
+  /// showed.
+  static List<Modifier> defaultSelection(List<ModifierGroup> groups) => [
+    for (final group in groups)
+      ...() {
+        final available = group.modifiers.where((m) => m.isAvailable);
+        if (group.isVariant) return available.take(1);
+        final marked = available.where((m) => m.isDefault).take(group.maxSelect);
+        if (marked.isNotEmpty) return marked;
+        if (group.isSingleSelect && (group.isVariant || group.isRequired)) {
+          return available.take(1);
+        }
+        return const <Modifier>[];
+      }(),
+  ];
+
   /// Apply a tap on a modifier, honouring the group's selection rule.
   ///
   /// Single-select groups replace; multi-select groups stop at `maxSelect`
@@ -279,7 +304,9 @@ abstract final class TicketEngine {
       exponent: product.price.exponent,
     );
     for (final group in groups) {
-      if (group.freeOptions <= 0) continue;
+      // A size is the price, not an extra on it, so there is nothing to give
+      // away: an allowance on a size group would make the item free.
+      if (group.freeOptions <= 0 || group.isVariant) continue;
       final chosen = modifiers.where((m) => m.groupId == group.id).toList();
       final charged = group.chargeable(chosen);
       for (final modifier in chosen) {
@@ -471,13 +498,25 @@ abstract final class TicketEngine {
   /// Leaving dine-in detaches the table — a bill never follows a mode switch.
   /// This is a rule from the design sheet and it exists because the alternative
   /// silently moves a seated party's money onto a takeaway ticket.
-  static Ticket setOrderType(Ticket ticket, OrderType type) {
+  /// [seated] is whether the new type has tables, from the restaurant's own
+  /// configuration (§31).
+  ///
+  /// Passed in rather than compared against `OrderType.dineIn` here: the engine
+  /// is pure and cannot read a table, and "is this dine-in" was never the
+  /// question — "does this kind of order have a table" was. A restaurant that
+  /// seats a catering order could not previously say so.
+  ///
+  /// Defaults to false, which is the safe direction. A ticket that wrongly
+  /// keeps a table sends a cashier to a floor plan that does not have it; one
+  /// that wrongly drops a table asks them to pick it again.
+  static Ticket setOrderType(
+    Ticket ticket,
+    OrderType type, {
+    bool seated = false,
+  }) {
     if (type == ticket.orderType) return ticket;
 
-    return ticket.copyWith(
-      orderType: type,
-      clearTable: type != OrderType.dineIn,
-    );
+    return ticket.copyWith(orderType: type, clearTable: !seated);
   }
 
   static Ticket attachTable(

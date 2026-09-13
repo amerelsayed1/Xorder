@@ -79,8 +79,7 @@ Future<ProviderContainer> _pump(
 Widget _startScreen() => StartScreen(
   onStart: () {},
   onManageLicence: () {},
-  onReconfigure: () {},
-  onManage: () {},
+  onManage: (_) {},
 );
 
 /// Every caption the screen is currently showing.
@@ -94,22 +93,27 @@ void main() {
   testWidgets('the start screen identity grid is Arabic', (tester) async {
     await _pump(tester, _startScreen, licenceKey: 'XORD-GOOD-1');
 
-    // The strap under the tenant name, and all four identity cells. The VALUES
+    // The strap under the tenant name, and the two identity cells. The VALUES
     // stay as the operator's own data — a branch is not translated.
     for (final arabic in [
       'نقطة بيع', // pointOfSale
-      'المطعم', // tenantCell
       'الفرع', // branchCell
       'الجهاز', // terminalCell
-      'المنيو', // catalogCell
     ]) {
       expect(find.text(arabic), findsOneWidget, reason: 'missing: $arabic');
     }
+    // Not the menu: how many items are cached is nothing to act on here.
+    expect(find.text('المنيو'), findsNothing);
+    // XOrder's mark sits above the restaurant's name.
+    expect(find.byKey(const Key('start-xorder-logo')), findsOneWidget);
+
+    // Not the restaurant: it is the heading above the grid, and a cell saying
+    // it again was the same name twice.
+    expect(find.text('المطعم'), findsNothing);
 
     // The exact literals that used to be hardcoded in their place.
     for (final english in [
       'POINT OF SALE',
-      'TENANT',
       'BRANCH',
       'TERMINAL',
       'CATALOG',
@@ -134,13 +138,11 @@ void main() {
 
     expect(find.text('بدء الوردية'), findsOneWidget); // startShift
     expect(find.text('Start shift'), findsNothing);
-    // The help line under it, and the cached-catalogue cell, both of which
-    // carry a number: Arabic words, Western digits.
+    // The help line under it.
     expect(
       find.textContaining('سيُطلب منك رقمك السري'), // startShiftHelp
       findsOneWidget,
     );
-    expect(find.textContaining(RegExp(r'محفوظ · \d+ صنف')), findsOneWidget);
   });
 
   testWidgets('the start screen is Arabic when the licence blocks the shift', (
@@ -178,12 +180,21 @@ void main() {
     // A backstop for captions nobody thought to name above. Two things are
     // exempt, both by design rather than by oversight:
     //
-    // * the operator's own data — a tenant, a branch and a terminal code are
-    //   what they are in any language;
+    // * the operator's own data — a tenant, a branch, a terminal code and the
+    //   NAME OF THE PERSON SIGNED IN are what they are in any language, and
+    //   the last of those is on this screen now that it carries the same bar
+    //   the till does;
     // * the ENTER keycap, which names a key the cashier is looking at. Taken
     //   from the catalogue rather than written out here, so translating it
     //   would relax this test instead of breaking it.
-    const operatorData = {'MAHSOUB GRILL', 'Mahsoub Grill', 'DOWNTOWN', 'T-02'};
+    const operatorData = {
+      'MAHSOUB GRILL',
+      'Mahsoub Grill',
+      'DOWNTOWN',
+      'T-02',
+      'Rana A.',
+      'R',
+    };
     final exempt = {...operatorData, const ArStrings().enterKeyCap};
 
     final latin = _onScreen(tester)

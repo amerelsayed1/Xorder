@@ -202,7 +202,7 @@ class _TenderTypeDialogState extends State<TenderTypeDialog> {
                       key: const Key('tender-save'),
                       label: strings.save,
                       background: palette.ink,
-                      foreground: Colors.white,
+                      foreground: palette.onInk,
                       onPressed: _save,
                     ),
                   ),

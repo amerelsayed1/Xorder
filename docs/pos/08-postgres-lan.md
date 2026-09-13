@@ -459,6 +459,9 @@ till writes to Postgres directly rather than draining a SQLite queue into it.
 - ~~Ship Postgres inside the installer?~~ Not on the till — it never runs one. On
   the branch box it is `docker-compose.yml`, which already exists. The packaging
   question that remains is `POS-BE-017`, and it is the backend's.
+  **Superseded 2026-09-11:** the owner chose an installer with PostgreSQL
+  bundled. The Windows installer's "This machine keeps the database" type does it;
+  see `18-windows-installer.md`.
 
 ---
 

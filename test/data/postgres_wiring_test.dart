@@ -9,9 +9,12 @@ import 'package:xorder_pos/data/fakes/fake_repositories.dart';
 import 'package:xorder_pos/data/unconfigured/unconfigured_repositories.dart';
 import 'package:xorder_pos/data/postgres/migrations.dart';
 import 'package:xorder_pos/data/postgres/pos_database.dart';
+import 'package:xorder_pos/data/cloud/outbox_drain.dart';
 import 'package:xorder_pos/data/eta/filing_orders_repository.dart';
+import 'package:xorder_pos/data/postgres/postgres_orders_repository.dart';
 import 'package:xorder_pos/features/setup/application/setup_controller.dart';
 
+import '../support/fakes.dart';
 import 'pg_fixture.dart';
 
 /// End-to-end through the **real provider graph**.
@@ -49,9 +52,12 @@ void main() {
   DeploymentConfig cloudConfig() =>
       branchConfig.copyWith(mode: DeploymentMode.cloud, baseUrl: 'https://xorder.io');
 
-  ProviderContainer containerFor({required bool provisioned}) {
+  ProviderContainer containerFor({required bool provisioned, bool files = false}) {
     final container = ProviderContainer(
       overrides: [
+        // E-receipts are off in a default build (13 September 2026); a case
+        // about the filing layer turns them on.
+        etaFilingEnabledProvider.overrideWithValue(files),
         posDatabaseProvider.overrideWithValue(database),
         posDbCredentialsProvider
             .overrideWithValue(InMemoryPosDbCredentials(PgFixture.password)),
@@ -91,12 +97,21 @@ void main() {
 
   test('a provisioned terminal gets Postgres', () {
     final container = containerFor(provisioned: true);
+    // Bare: with e-receipts off there is no filing layer to wrap it in, and a
+    // branch till has no platform sync either.
+    expect(
+      container.read(ordersRepositoryProvider),
+      isA<PostgresOrdersRepository>(),
+    );
+  });
+
+  test('with e-receipts on, every sale is filed on top', () {
+    final container = containerFor(provisioned: true, files: true);
     // Wrapped, not bare. Every terminal with a database queues an e-receipt
     // for every sale, because the obligation is the restaurant's rather than
     // the deployment's — a branch that files nothing is one whose receipt
     // profile is blank, which the decorator checks per sale rather than at
-    // construction. Asserting the bare type here would be asserting the
-    // absence of the filing layer.
+    // construction.
     expect(
       container.read(ordersRepositoryProvider),
       isA<FilingOrdersRepository>(),
@@ -118,12 +133,11 @@ void main() {
     // the behaviour a cloud terminal is supposed to have — the write itself is
     // identical either way, PostgreSQL first and an outbox claim in the same
     // transaction.
-    // …and the filing layer sits over that in turn, so what comes back is the
-    // outermost wrapper. `SyncingOrdersRepository` is still in the stack; it
-    // is no longer the thing on top.
+    // With e-receipts off nothing sits over it, so what comes back is the
+    // sync kicker itself.
     expect(
       container.read(ordersRepositoryProvider),
-      isA<FilingOrdersRepository>(),
+      isA<SyncingOrdersRepository>(),
     );
   });
 
@@ -188,7 +202,14 @@ void main() {
       // correct password, which would mask exactly the failures this group is
       // supposed to catch. Build one that reads the wizard's own credential
       // store, as production does.
-      final container = ProviderContainer();
+      // English, asked for rather than assumed: the product's default is
+      // Arabic — its restaurants are in Egypt — and this group reads the
+      // English refusals. An override rather than `apply('en')`, because apply
+      // writes the choice to the terminal's config file, and this is a
+      // pure-Dart test with no platform to find that file on.
+      final container = ProviderContainer(
+        overrides: [localeProvider.overrideWith(EnglishTerminal.new)],
+      );
       // `posDatabaseProvider` closes its own pool via ref.onDispose, so
       // disposing the container is enough.
       addTearDown(container.dispose);
@@ -255,7 +276,15 @@ void main() {
       controller.setDatabaseName('no_such_database');
 
       expect(await controller.testConnection(), isFalse);
-      expect(container.read(setupProvider).error, contains('no_such_database'));
+
+      final draft = container.read(setupProvider);
+      // A NOTICE, not a refusal. A database that does not exist yet is the
+      // ordinary state of a first install and the next step is what creates it,
+      // so this arriving in red told the installer something was wrong at the
+      // one moment nothing was. What this test is actually about is unchanged:
+      // it names the DATABASE rather than blaming the credential.
+      expect(draft.error, isNull);
+      expect(draft.notice, contains('no_such_database'));
     });
 
     test('a failed test does not leave a stale credential behind', () async {

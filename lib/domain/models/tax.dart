@@ -18,6 +18,7 @@ class TaxGroup {
     required this.rateBp,
     this.nameAr,
     this.isDefault = false,
+    this.isActive = true,
     this.etaTaxType = EtaTaxCode.valueAdded,
     String? etaSubType,
     // A private field cannot be a public named parameter, and the name has to
@@ -46,6 +47,15 @@ class TaxGroup {
   final int rateBp;
 
   final bool isDefault;
+
+  /// Retired rather than deleted: a product points at this row, and removing it
+  /// would silently reclassify that product onto the fallback rate.
+  ///
+  /// **Deliberately not part of [operator ==].** The till only ever sees active
+  /// groups — the provider filters them — so this cannot vary among the keys the
+  /// ticket accumulates by, and adding a field to that equality is how the
+  /// rounding-once-per-rate property gets broken by accident.
+  final bool isActive;
 
   /// How Egypt's tax authority names this tax, and which of its sub-rates this
   /// is. Carried on the group rather than derived from [rateBp], because two
@@ -174,7 +184,17 @@ abstract final class TaxEngine {
   /// Groups with a zero base are dropped: a receipt listing "0% on 0.00" tells
   /// nobody anything. A zero-rated group with a real base is **kept**, because
   /// "40.00 at 0%" is exactly what a filing needs to see.
-  static List<TaxLine> linesFor(Map<TaxGroup, Money> bases) {
+  /// [inclusive] is whether the amounts in [bases] already contain the tax
+  /// (§37, §85).
+  ///
+  /// The two are different arithmetic, not a presentation choice: 114.00
+  /// holding 14% contains 14.00, where 114.00 plus 14% is 129.96. What the
+  /// filing then wants is the **net** base either way, so an inclusive line
+  /// reports `gross − tax` as its base rather than the gross it was priced at.
+  static List<TaxLine> linesFor(
+    Map<TaxGroup, Money> bases, {
+    bool inclusive = false,
+  }) {
     final lines = <TaxLine>[];
 
     for (final entry in bases.entries) {
@@ -182,12 +202,16 @@ abstract final class TaxEngine {
       final base = entry.value;
       if (base.minor <= 0) continue;
 
+      final amount = inclusive
+          ? base.taxWithinBp(group.rateBp)
+          : base.percentBp(group.rateBp);
+
       lines.add(
         TaxLine(
           name: group.nameEn,
           rateBp: group.rateBp,
-          base: base,
-          amount: base.percentBp(group.rateBp),
+          base: inclusive ? base - amount : base,
+          amount: amount,
           taxGroupId: group.id,
           etaTaxType: group.etaTaxType,
           etaSubType: group.etaSubType,

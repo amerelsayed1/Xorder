@@ -35,6 +35,9 @@ abstract final class MoneyConfigCodec {
       // is. Anything else scoped is treated as applying everywhere rather
       // than being dropped — under-charging is the safer error at a till.
       serviceDineInOnly: _dineInOnly(service),
+      // Absent means exclusive, which is what every row written before §37
+      // meant — so a payload from an older platform changes nobody's bill.
+      taxMode: TaxMode.fromWire(money['tax_mode'] as String?),
       // Only now is this true: the rates came from the platform.
       source: TaxSource.server,
     );
@@ -66,6 +69,7 @@ abstract final class MoneyConfigCodec {
           },
       },
     ],
+    'tax_mode': config.taxMode.wire,
     'tax_rules': [
       {'rate_bp': config.vatBp},
     ],

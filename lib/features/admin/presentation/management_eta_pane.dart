@@ -8,6 +8,7 @@ import '../../../core/ui/tokens.dart';
 import '../../../core/ui/widgets/mono_amount.dart';
 import '../../../core/ui/widgets/pos_widgets.dart';
 import '../../../domain/models/eta_submission.dart';
+import '../../../domain/services/eta_filing.dart';
 
 /// What Egypt's tax authority has not accepted yet.
 ///
@@ -35,10 +36,31 @@ class ManagementEtaPane extends ConsumerWidget {
 
     final summary = ref.watch(etaQueueSummaryProvider);
     final rows = ref.watch(etaOutstandingProvider);
+    final problem = etaProblemText(strings, ref.watch(etaFilingProblemProvider));
+    final reconciler = ref.watch(etaReconcilerProvider);
 
     return ListView(
       padding: const EdgeInsets.all(PosSpace.xl),
       children: [
+        // Above the queue: a queue that stopped growing because nothing is
+        // being filed looks exactly like one that is keeping up.
+        if (problem != null) ...[
+          Container(
+            key: const Key('eta-filing-problem'),
+            padding: const EdgeInsets.all(PosSpace.md),
+            color: palette.dangerSoft,
+            child: Text(
+              problem,
+              style: PosText.ui(
+                size: 13.5,
+                weight: FontWeight.w600,
+                color: palette.danger,
+                height: 1.5,
+              ),
+            ),
+          ),
+          const SizedBox(height: PosSpace.md),
+        ],
         summary.when(
           loading: () => const SizedBox(height: 60),
           error: (error, _) => Text(
@@ -52,6 +74,34 @@ class ManagementEtaPane extends ConsumerWidget {
           strings.etaQueueExplain,
           style: PosText.ui(size: 12.5, color: palette.muted, height: 1.6),
         ),
+        if (reconciler != null) ...[
+          const SizedBox(height: PosSpace.md),
+          Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: PosButton(
+              key: const Key('eta-reconcile-now'),
+              label: strings.etaReconcileNow,
+              border: Border.fromBorderSide(palette.resting),
+              onPressed: () async {
+                final messenger = ScaffoldMessenger.maybeOf(context);
+                final report = await reconciler.run();
+                if (report == null) return; // A pass was already running.
+                messenger?.showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      etaProblemText(strings, report.problem) ??
+                          strings.etaReconcileDone(
+                            report.salesFiled,
+                            report.refundsFiled,
+                            report.refundsWaiting,
+                          ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
         const SizedBox(height: PosSpace.xl),
         rows.when(
           loading: () => Center(
@@ -261,3 +311,16 @@ class _Row extends StatelessWidget {
     );
   }
 }
+
+/// The sentence for a filing problem a person can fix, or null for none.
+///
+/// Public because the start screen says the same thing: the problem is the
+/// restaurant's, whichever screen somebody happens to open.
+String? etaProblemText(AppStrings strings, EtaFilingSkipped? problem) =>
+    switch (problem) {
+      ProfileIncomplete(:final problems) => strings.etaProblemProfile(
+        problems.length,
+      ),
+      FilingFailed(:final detail) => strings.etaProblemFailed(detail),
+      _ => null,
+    };

@@ -56,6 +56,12 @@ class UnconfiguredSessionRepository implements SessionRepository {
   Future<bool> verifyPin(String pin) async => false;
 
   @override
+  Future<PosStaff?> signInAs({
+    required String username,
+    required String pin,
+  }) async => null;
+
+  @override
   Future<PosStaff?> signIn(String pin) async => null;
 }
 
@@ -192,6 +198,14 @@ class UndiscoverableHardwarePorts implements HardwarePorts {
 
   @override
   Future<bool> testPrint(String printerName) async => false;
+
+  /// Nothing was sent, and it says so. The receipt path queues on false, so a
+  /// terminal bound to this loses no paper — it just prints none.
+  @override
+  Future<bool> sendJob({
+    required String printerName,
+    required List<int> bytes,
+  }) async => false;
 }
 
 /// Administration before there is a database to administer.

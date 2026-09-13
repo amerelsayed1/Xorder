@@ -48,6 +48,66 @@ enum CartDensity {
   static const switchAbove = 7;
 }
 
+/// What the cart's secondary button and F4 do, for one ticket state.
+///
+/// **One resolver, because there used to be two and they disagreed.** The
+/// button's label switched on `isSeated` while its `onPressed` was always
+/// "send round", so the control reading *Park* sent a round to the kitchen and
+/// a takeaway ticket could never be put down at all. F4 was wired straight to
+/// the same handler and drifted the same way.
+///
+/// An enum rather than a bool because the switches over it are exhaustive: if
+/// this control ever means a third thing — "send and park", which is what a
+/// handheld taken to a table actually wants — the label, the enablement and the
+/// handler all stop compiling until somebody has answered for each of them. A
+/// bool would simply have taken the false branch.
+enum TicketHoldAction {
+  /// Fire the draft lines at the kitchen. The ticket stays on screen — the
+  /// table is still eating.
+  sendRound,
+
+  /// Put the whole ticket down and clear the screen for the next customer.
+  park;
+
+  /// A seated ticket sends; anything else parks.
+  ///
+  /// Seated is the discriminator rather than the order type, because a dine-in
+  /// ticket with nobody seated yet is a ticket with no kitchen destination —
+  /// there is no table for the runner to bring the food to.
+  /// Which of the two this ticket's secondary button means.
+  ///
+  /// **[seated] is the restaurant's answer, not `Ticket.isSeated`.** That getter
+  /// reads `orderType == OrderType.dineIn`, and deleting exactly that comparison
+  /// is what §31 and `pos_order_types.requires_table` exist for: a caterer who
+  /// seats people turns it on for takeaway, and their takeaway tickets have
+  /// rounds to send like any other table. Passing the configured answer in keeps
+  /// the button, the floor plan and the ticket engine agreeing about what
+  /// "seated" means.
+  ///
+  /// A type that requires a table but has none assigned yet parks — there is no
+  /// round to send to a table nobody has chosen.
+  static TicketHoldAction forTicket(Ticket ticket, {required bool seated}) =>
+      seated && ticket.tableId != null
+      ? TicketHoldAction.sendRound
+      : TicketHoldAction.park;
+
+  String label(AppStrings s) => switch (this) {
+    TicketHoldAction.sendRound => s.sendRoundKey,
+    TicketHoldAction.park => s.parkKey,
+  };
+
+  /// Whether this ticket is in a state the action can act on.
+  ///
+  /// Sending needs something unsent. **Parking needs only something on the
+  /// ticket** — a ticket whose lines have all gone to the kitchen still has to
+  /// be puttable-down, or a cashier who sent a round and then had to serve
+  /// somebody else would be stuck holding it until it was paid.
+  bool isAvailableFor(Ticket ticket) => switch (this) {
+    TicketHoldAction.sendRound => ticket.hasDraft,
+    TicketHoldAction.park => !ticket.isEmpty,
+  };
+}
+
 /// 378px cart panel on shell ground with a 2px ink left border.
 class CartPanel extends StatelessWidget {
   const CartPanel({
@@ -56,24 +116,48 @@ class CartPanel extends StatelessWidget {
     required this.cashierName,
     required this.online,
     required this.onQuantityChanged,
-    required this.onSendRound,
+    required this.onHold,
     required this.onVoid,
     required this.onCharge,
     this.onChangeTable,
+    this.heldCount = 0,
+    this.onShowHeld,
     this.selectedLineKey,
     this.onSelectLine,
     this.onEditNote,
     this.density = CartDensity.comfortable,
+    this.seatedOrder = false,
   });
 
   final Ticket ticket;
+
+  /// Whether this kind of order has tables, from the restaurant's own
+  /// configuration (§31). Passed in rather than derived from
+  /// `ticket.orderType == OrderType.dineIn`, which was never the question: a
+  /// restaurant that seats catering orders has one that is seated and is not
+  /// dine-in.
+  ///
+  /// Defaults to false so a caller that has not been updated shows no table
+  /// prompt rather than a wrong one.
+  final bool seatedOrder;
+
   final String cashierName;
   final bool online;
   final void Function(String lineKey, int delta) onQuantityChanged;
-  final VoidCallback onSendRound;
+
+  /// Do whatever [TicketHoldAction.forTicket] says this ticket's secondary
+  /// button means. One callback rather than one per action, so the label the
+  /// cashier reads and the work that happens cannot come from two decisions.
+  final VoidCallback onHold;
   final VoidCallback onVoid;
   final VoidCallback onCharge;
   final VoidCallback? onChangeTable;
+
+  /// How many parked tickets with no table are waiting, excluding this one.
+  final int heldCount;
+
+  /// Open the list of those. Null hides the affordance.
+  final VoidCallback? onShowHeld;
 
   /// The line the cashier is working on, if any.
   ///
@@ -123,13 +207,16 @@ class CartPanel extends StatelessWidget {
     );
   }
 
-  String _title(AppStrings s) {
+  String _title(AppStrings s, {required bool seatedOrder}) {
     if (ticket.isSeated) {
       return s.seatedTable(ticket.tableLabel!, ticket.guestCount);
     }
-    if (ticket.orderType == OrderType.dineIn) return s.noTableYet;
+    // Asked of the order type's own rule, not of its name (§31).
+    if (seatedOrder) return s.noTableYet;
     return s.walkIn(ticket.orderType.label(s));
   }
+
+  bool get showsHeld => heldCount > 0 && onShowHeld != null;
 
   Widget _header(AppStrings s, {required PosPalette pos}) => Container(
     padding: const EdgeInsets.symmetric(
@@ -144,7 +231,7 @@ class CartPanel extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                _title(s),
+                _title(s, seatedOrder: seatedOrder),
                 overflow: TextOverflow.ellipsis,
                 style: PosText.panelTitle(color: pos.shellText),
               ),
@@ -157,7 +244,29 @@ class CartPanel extends StatelessWidget {
             ],
           ),
         ),
-        if (ticket.isSeated && onChangeTable != null)
+        // The way back to a parked takeaway, and the only one there is.
+        //
+        // Here rather than on the floor screen: the floor is a grid of tables
+        // and a held ticket has none, so a tile for it would have to invent a
+        // seat — a floor that lies about who is sitting where is worse than a
+        // list somewhere else. The counter above the Park button is also where
+        // the cashier just was when they put the thing down, and it is the only
+        // control that exists in the medium shell, which has no rail and
+        // therefore no way to reach the floor at all.
+        //
+        // Drawn only when something is actually held: a permanent "Held 0" is
+        // clutter in a panel a cashier reads all day.
+        if (showsHeld)
+          PosButton(
+            label: s.heldTicketsKey(heldCount),
+            height: 38,
+            background: pos.shellCard,
+            foreground: pos.accent,
+            fontSize: 12.5,
+            onPressed: onShowHeld,
+          ),
+        if (ticket.isSeated && onChangeTable != null) ...[
+          if (showsHeld) const SizedBox(width: PosSpace.sm),
           PosButton(
             label: s.changeTable,
             height: 38,
@@ -166,6 +275,7 @@ class CartPanel extends StatelessWidget {
             fontSize: 12.5,
             onPressed: onChangeTable,
           ),
+        ],
       ],
     ),
   );
@@ -357,6 +467,7 @@ class CartPanel extends StatelessWidget {
   }) {
     final hasAnything = !ticket.isEmpty;
     final ctaLabel = ticket.isSeated ? s.closeTableCta : s.chargeCta;
+    final hold = TicketHoldAction.forTicket(ticket, seated: seatedOrder);
 
     return Column(
       children: [
@@ -366,11 +477,11 @@ class CartPanel extends StatelessWidget {
             children: [
               Expanded(
                 child: PosButton(
-                  label: ticket.isSeated ? s.sendRoundKey : s.parkKey,
+                  label: hold.label(s),
                   height: PosSize.secondaryAction,
                   background: pos.shell,
                   foreground: pos.shellText,
-                  onPressed: ticket.hasDraft ? onSendRound : null,
+                  onPressed: hold.isAvailableFor(ticket) ? onHold : null,
                 ),
               ),
               const SizedBox(width: 1),

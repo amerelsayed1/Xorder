@@ -1,4 +1,10 @@
+import '../../core/money/quantity.dart';
+import '../models/backup.dart';
 import '../models/catalog.dart';
+import '../models/option_group.dart';
+import '../models/purchase_order.dart';
+import '../models/tax.dart';
+import '../models/order_type_config.dart';
 import '../services/menu_import.dart';
 import '../models/dining_table.dart';
 import '../models/permissions.dart';
@@ -91,6 +97,46 @@ class WouldLockEveryoneOut extends AdminRefusal {
   final String capability;
 }
 
+/// A restaurant has one owner, and it already has one.
+///
+/// Counted among ACTIVE staff, which is what keeps ownership transferable:
+/// disable the current owner, then appoint the new one. Counting every row
+/// would have made the first owner the owner forever — nobody is ever deleted
+/// here — and the only way to sell the restaurant would be a psql prompt.
+///
+/// Named, like [RoleStillHeld], because "there is already an owner" sends a
+/// manager looking for them and the name is the row they are looking for.
+/// Migration 42 refuses the same thing in the database, for the writers that
+/// do not come through here.
+class OwnerAlreadyExists extends AdminRefusal {
+  const OwnerAlreadyExists(this.ownerName);
+
+  final String ownerName;
+}
+
+/// The owner's own role and permissions are not editable.
+///
+/// Extra roles and ALLOW overrides on somebody who already holds everything
+/// mean nothing, and a DENY override on them is how a restaurant locks itself
+/// out of the screen that would take it off. Moving the active owner to
+/// another role is refused for the second reason: it is ownership given away
+/// in a dropdown. Handing over is two deliberate acts — disable, appoint —
+/// and neither of them is this one.
+class OwnerIsFixed extends AdminRefusal {
+  const OwnerIsFixed();
+}
+
+/// Owner is somebody's job, never an extra role on top of another one.
+///
+/// Refused even when there is no owner at the moment. An extra role is a way
+/// of *adding* permissions, and owning the restaurant is not an addition —
+/// a manager-who-is-also-owner would count as the owner for the one-owner
+/// rule while the staff list said "Manager". Choosing Owner as their role says
+/// what it means.
+class OwnerIsNotAnExtraRole extends AdminRefusal {
+  const OwnerIsNotAnExtraRole();
+}
+
 /// Somebody else saved this record first.
 ///
 /// Two managers editing over the LAN is the normal case in a branch, not an
@@ -117,13 +163,40 @@ class EditedElsewhere extends AdminRefusal {
 /// own credential holds SELECT and nothing more, deliberately.
 /// The values do not make sense, in a way the database cannot see.
 ///
-/// `price_minor >= 0` is a CHECK constraint; "the offer price is above the
-/// normal price" is not, and could not usefully be — so it is refused here,
-/// carrying the sentence to show rather than a code to look up.
+/// Carries the sentence to show rather than a code to look up — which is why
+/// items, categories and option groups no longer use it: see
+/// [CatalogRefused] and [OptionGroupRefused].
 class CatalogInvalid extends AdminRefusal {
   const CatalogInvalid(this.reason);
 
   final String reason;
+}
+
+/// An item or a category broke one of the rules the editor checks before the
+/// database is asked — [CatalogProblem] says which.
+///
+/// `price_minor >= 0` is a CHECK constraint; "the offer price is above the
+/// normal price" is not, and could not usefully be — so it is refused here,
+/// as a code the screen words in its own language.
+class CatalogRefused extends AdminRefusal {
+  const CatalogRefused(this.problem);
+
+  final CatalogProblem problem;
+}
+
+/// A size or extra, or an item's list of them, broke one of the option-group
+/// rules — [OptionGroupProblem] says which.
+///
+/// Its own refusal rather than a [CatalogInvalid] with a sentence in it: that
+/// one carries finished English, which an Arabic back office then showed as
+/// it was. [names] are what the sentence has to name — the group, the item,
+/// or every set of sizes an item would end up with — kept apart from the
+/// wording so each language can put them where its grammar wants them.
+class OptionGroupRefused extends AdminRefusal {
+  const OptionGroupRefused(this.problem, {this.names = const []});
+
+  final OptionGroupProblem problem;
+  final List<String> names;
 }
 
 class AdministratorCredentialRequired extends AdminRefusal {
@@ -132,6 +205,69 @@ class AdministratorCredentialRequired extends AdminRefusal {
 
 class NoDatabaseConfigured extends AdminRefusal {
   const NoDatabaseConfigured();
+}
+
+/// The platform owns this record, so editing it here would not last.
+///
+/// **A refusal rather than a silent overwrite.** On a cloud till the bootstrap
+/// bundle is authoritative for some rows and not others, and the difference is
+/// invisible from the screen: `BootstrapSeeder` upserts `pos_staff` and
+/// deactivates anyone the bundle does not name, so a cashier added in the back
+/// office is switched off by the next sync — with no error and nothing to
+/// read. It does **not** touch `pos_roles`, `pos_staff.role_id`, or Wave C's
+/// grant tables, so assigning somebody a role locally is permanent and correct.
+///
+/// [what] is the thing that is owned elsewhere, so the message can say where to
+/// go rather than only that the door is shut.
+class ManagedByPlatform extends AdminRefusal {
+  const ManagedByPlatform(this.what);
+
+  /// One of [staffRecords], [theCatalogue], [theFloor], [moneyRules].
+  final String what;
+
+  static const staffRecords = 'staff';
+  static const theCatalogue = 'catalogue';
+  static const theFloor = 'floor';
+  static const moneyRules = 'money';
+}
+
+/// The purchase order cannot move the way it was asked to, for one of
+/// `PurchaseEngine`'s reasons.
+///
+/// A wrapper, like [RoleNotAllowed], rather than a second copy of the reasons:
+/// the engine decides, the repository asks it again against the row it has
+/// just locked, and one set of reasons means one set of sentences. Asking the
+/// screen's copy of the order instead is what let a part-received order be
+/// cancelled — the Cancel button was drawn before the goods arrived.
+class PurchaseRefused extends AdminRefusal {
+  const PurchaseRefused(this.reason);
+
+  final PurchaseRefusal reason;
+}
+
+/// Stock of this item is held in one unit, and this would count it in another.
+///
+/// **Refused, never converted.** Nothing in this product knows how many kilos
+/// are in a box, and before this existed receiving added 5 kg to 10 boxes and
+/// stored 15 kg — a stock figure and an average cost that are both wrong, and
+/// wrong in a way no screen shows. Said by receiving, of a delivery in the
+/// other unit, and by both item editors, of a unit change while stock is held.
+/// Migration 44 refuses both in the database, for the writers that do not come
+/// through here.
+class StockHeldInAnotherUnit extends AdminRefusal {
+  const StockHeldInAnotherUnit({
+    required this.item,
+    required this.held,
+    required this.asked,
+  });
+
+  final String item;
+
+  /// How much is held, in the unit it is held in — which is the unit it has to
+  /// stay in until none is left.
+  final Quantity held;
+
+  final QuantityUnit asked;
 }
 
 /// The outcome of an administrative write.
@@ -235,6 +371,24 @@ abstract final class AuditAction {
   /// what this costs, and when" is the question a disputed receipt asks.
   static const productRepriced = 'product.repriced';
 
+  /// Which size and extras groups an item offers, or their order, changed.
+  /// Its own action because the first size group prices the item, so moving
+  /// one above another can change what the tile says.
+  static const productOptionsChanged = 'product.options_changed';
+
+  /// A size or extras group created or edited — in the library, or on the one
+  /// item it was typed on.
+  static const optionGroupSaved = 'option_group.saved';
+
+  /// An option that already existed now costs something else. Called out for
+  /// a product reprice's reason: a size's price IS the item's price, and "who
+  /// changed what a Large costs" is the question a disputed receipt asks.
+  static const optionGroupRepriced = 'option_group.repriced';
+
+  /// Taken out of the library, or off the one item it was typed on. The row
+  /// carries what the group offered, because afterwards nothing else does.
+  static const optionGroupDeleted = 'option_group.deleted';
+
   /// Changing the service charge or the tax rate. Its own action for the same
   /// reason a reprice is: it changes what every future customer pays.
   static const moneyConfigChanged = 'money_config.changed';
@@ -255,21 +409,81 @@ abstract final class AuditAction {
   static const entityOrder = 'order';
   static const entityCategory = 'category';
   static const entityProduct = 'product';
+  static const entityOptionGroup = 'option_group';
   static const entityMoney = 'money_config';
   static const entityTenderType = 'tender_type';
+  static const entityOrderType = 'order_type';
+  static const entityTaxGroup = 'tax_group';
   static const entityServiceCharge = 'service_charge';
+  static const entityUnit = 'unit';
+  static const entitySupplier = 'supplier';
+  static const entityPurchaseOrder = 'purchase_order';
+  static const entitySupplierInvoice = 'supplier_invoice';
+  static const entitySupplierPayment = 'supplier_payment';
+
+  /// A purchase order sent, cancelled or closed. Its own action because it is
+  /// a commitment to spend money, and "who sent this and when" is what a
+  /// disputed delivery asks.
+  static const purchaseOrderStatusChanged = 'purchase_order.status_changed';
+
+  /// Goods booked in. Its own action because it is the moment a cost price
+  /// changes, and every margin afterwards is measured against it.
+  static const stockReceived = 'stock.received';
+
+  /// An invoice entered, corrected or voided. Its own action because it is the
+  /// moment a debt comes into existence, and a voided invoice is the shape a
+  /// purchasing fraud takes: enter twice, pay once, keep the difference.
+  static const supplierInvoiceSaved = 'supplier_invoice.saved';
+  static const supplierInvoiceVoided = 'supplier_invoice.voided';
+
+  /// Money paid out. The single most audited act in the back office — "who
+  /// authorised this and against what" is the whole question — so a payment and
+  /// its reversal are separate actions rather than one with a flag.
+  static const supplierPaid = 'supplier.paid';
+  static const supplierPaymentVoided = 'supplier_payment.voided';
+
+  /// A supplier added, edited or retired. Its own action because a supplier is
+  /// where money leaves the business, and "who added this account" is the
+  /// first question a fraud review asks.
+  static const supplierSaved = 'supplier.saved';
 
   /// A service charge added, retired or repriced (§38). Its own action for the
   /// same reason a product reprice has one: it changes what every future
   /// customer pays, and "who added 12% and when" is what a complaint asks.
   static const serviceChargeSaved = 'service_charge.saved';
+  static const unitSaved = 'unit.saved';
+  static const stockItemSaved = 'stock_item.saved';
 
   /// A payment method created, renamed, retired or reclassified (§40).
   /// Its own action because changing `counts_as_cash` changes what every
   /// future cash-up expects to find in the drawer.
   static const tenderTypeSaved = 'tender_type.saved';
+
+  /// A named rate added, repriced or retired (§17). Its own action because
+  /// changing a rate changes what every product in that group costs, and a
+  /// filing is reconciled against the rate that was charged on the day.
+  static const taxGroupSaved = 'tax_group.saved';
+
+  /// An order type renamed, retired, or its requirements changed (§31). Its own
+  /// action because turning off *requires a table* changes what the floor plan
+  /// is for, and turning off the type itself removes a way of selling.
+  static const orderTypeSaved = 'order_type.saved';
+
+  /// A copy of the database taken — or attempted. `backup.manage` is
+  /// critical-risk, so both halves of it are on the ledger: this one is written
+  /// for a failure as well as a success, because "we have been taking backups
+  /// every night" and "we have been failing to take one every night" look
+  /// identical from anywhere except here.
+  static const backupTaken = 'backup.taken';
+
+  /// The database replaced from a copy. The most destructive act the product
+  /// offers, and the row for it necessarily lands in the *restored* database —
+  /// see `BackupService.restore`, which explains why and what that costs.
+  static const backupRestored = 'backup.restored';
+
   static const entityTable = 'table';
   static const entityReceiptProfile = 'receipt_profile';
+  static const entityBackup = 'backup';
 }
 
 /// Authoring the menu on the till itself.
@@ -383,6 +597,28 @@ abstract interface class CatalogAdminRepository {
     required PosStaff by,
   });
 
+  /// A named rate (§17).
+  ///
+  /// `id == 0` creates. No delete: a group a product points at cannot be removed
+  /// without silently reclassifying that product, so it is retired with
+  /// `isActive` — and the default one cannot even be retired.
+  Future<AdminResult<TaxGroup>> saveTaxGroup(
+    TaxGroup group, {
+    required PosStaff by,
+  });
+
+  /// What a kind of order requires (§31).
+  ///
+  /// **No create and no delete**, unlike almost everything else here. The codes
+  /// are an `OrderType` enum and the four of them are seeded: a fifth would have
+  /// no name to render, because every place that shows an order type reads it off
+  /// the enum. So this edits the four — their names, what they require, and
+  /// whether the branch offers them at all.
+  Future<AdminResult<OrderTypeConfig>> saveOrderType(
+    OrderTypeConfig config, {
+    required PosStaff by,
+  });
+
   Future<AdminResult<DiningTable>> saveTable(
     DiningTable table, {
     required PosStaff by,
@@ -396,14 +632,71 @@ abstract interface class CatalogAdminRepository {
     bool restore = false,
   });
 
-  /// Which modifier groups a product offers, in the order shown.
+  /// Which modifier groups a product offers, in the order shown, by id.
   ///
-  /// Replaces the whole set rather than diffing it: the caller holds the list
-  /// the operator just arranged, and a partial update would need the previous
-  /// one to be correct.
+  /// The ids form of [setProductOptionGroups], and kept for its callers: a
+  /// library group's id is linked, the product's own groups are kept as they
+  /// are, and anything else is refused with that method's reasons — including
+  /// a group typed on another item, which linking would have quietly made
+  /// shared.
   Future<AdminResult<void>> attachModifierGroups(
     int productId,
     List<int> groupIds, {
+    required PosStaff by,
+  });
+
+  // ── sizes and extras ──────────────────────────────────────────────────────
+  //
+  // Authored the way the platform authors them (`OptionGroupController`,
+  // `MenuItemController::syncOptionGroups`), with two of its behaviours
+  // deliberately not copied: options keep their ids across a save, and an
+  // item is never given two sets of sizes. Both are explained where they are
+  // held, in `PostgresCatalogAdminRepository`.
+
+  /// The restaurant's library — every shared group, with its options, its
+  /// scope and how many items it reaches. By name, as the platform lists it.
+  Future<List<LibraryGroup>> optionLibrary();
+
+  /// The groups an item carries itself, in its order: library groups linked
+  /// to it, by id, and the ones typed on it, whole.
+  ///
+  /// Not the groups that reach it by category or everywhere — those are not
+  /// the item's to arrange, and [optionLibrary] says which they are.
+  Future<List<OptionGroupRef>> productOptionGroups(int productId);
+
+  /// Create or update a library group. Id `0` is a new one.
+  ///
+  /// The platform's rules, normalised first (see
+  /// [OptionGroupDraft.normalized]) and then checked
+  /// ([OptionGroupRules.refusal]); the repository adds what only the database
+  /// knows — that the categories are this restaurant's, that the options are
+  /// this group's, that nobody saved it since it was read, and that no item
+  /// ends up with two sets of sizes. Changing the scope away from chosen items
+  /// removes its item links, and away from categories its category links.
+  ///
+  /// Options are matched by id: updated in place, added, or removed — never
+  /// recreated. A group typed on one item is refused here; it is saved with
+  /// its item through [setProductOptionGroups].
+  Future<AdminResult<OptionGroupDraft>> saveOptionGroup(
+    OptionGroupDraft group, {
+    required PosStaff by,
+  });
+
+  /// Take a group out of the library. Every item it was on loses it.
+  Future<AdminResult<void>> deleteOptionGroup(
+    OptionGroupDraft group, {
+    required PosStaff by,
+  });
+
+  /// Replace the groups an item carries with [groups], in that order.
+  ///
+  /// A shared entry must be a library group that reaches items by link. An
+  /// inline entry is written as this item's own; one the item had and the
+  /// list no longer names is deleted. Returns the list as stored, with the
+  /// ids of anything new.
+  Future<AdminResult<List<OptionGroupRef>>> setProductOptionGroups(
+    int productId,
+    List<OptionGroupRef> groups, {
     required PosStaff by,
   });
 }
@@ -514,6 +807,27 @@ abstract interface class AuditRepository {
   });
 }
 
+/// The list of copies taken of this database.
+///
+/// **Append-only, like the audit ledger, and for the same reason.** A backup
+/// that failed verification is a record that the restaurant did not have a
+/// backup that night, and a row somebody can quietly correct is not a record.
+/// The database holds that too — see migration 37 — so this interface having no
+/// update and no delete is the second line rather than the only one.
+///
+/// Deliberately **not** gated on `backup.manage` inside the repository. The
+/// automatic copy at day close is written by a till on which nobody has signed
+/// into the back office, and refusing it there would mean the only nights with
+/// a record are the nights a manager happened to be standing at the machine.
+/// The screen that *takes* one on demand is gated, which is where the decision
+/// is actually being made.
+abstract interface class BackupRepository {
+  /// Newest first.
+  Future<List<BackupRecord>> recent({int limit = 50});
+
+  /// Write the attempt down. Returns the stored row, with its id.
+  Future<BackupRecord> record(BackupRecord entry, {required PosStaff by});
+}
 
 /// What an import actually did.
 class MenuImportOutcome {

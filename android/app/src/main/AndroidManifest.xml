@@ -1,4 +1,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Android gates every socket behind this, a LAN one included: without it
+         a release build cannot reach the branch PostgreSQL on 192.168.x.x. The
+         debug manifest declares it too, which is why `flutter run` hides its
+         absence. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
     <application
         android:label="xorder_pos"
         android:name="${applicationName}"

@@ -1,0 +1,170 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../../app/providers.dart';
+import '../../../core/l10n/app_strings.dart';
+import '../../../core/money/money.dart';
+import '../../../core/ui/theme.dart';
+import '../../../core/ui/tokens.dart';
+import '../../../core/ui/widgets/mono_amount.dart';
+import '../../../core/ui/widgets/pos_widgets.dart';
+import '../../../domain/models/stock_level.dart';
+import 'admin_messages.dart';
+import 'admin_pane_bits.dart';
+
+/// How much of each counted item this branch holds, and what it is worth.
+///
+/// Read-only, and on purpose for now: stock moves when a delivery is received,
+/// and a number somebody could type over here would be a number no delivery
+/// note explains. Counts, waste and adjustments are the next wave, and each
+/// will be a movement with a reason — never an edit to this figure.
+class ManagementStockPane extends ConsumerWidget {
+  const ManagementStockPane({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final strings = context.strings;
+    final palette = context.pos;
+    final named = {
+      for (final unit in ref.watch(unitsAllProvider).valueOrNull ?? const [])
+        unit.code: unit.displayName(strings.languageCode),
+    };
+
+    return ListView(
+      padding: const EdgeInsets.all(PosSpace.xl),
+      children: [
+        PaneSection(title: strings.paneStock, hint: strings.paneStockBlurb),
+        ...ref
+            .watch(stockLevelsProvider)
+            .when(
+              loading: () => const [SizedBox(height: 40)],
+              error: (error, _) => [
+                Text('$error', style: PosText.ui(size: 13, color: palette.danger)),
+              ],
+              data: (levels) {
+                if (levels.isEmpty) {
+                  return [
+                    Text(
+                      strings.stockEmpty,
+                      style: PosText.ui(size: 13, color: palette.muted),
+                    ),
+                  ];
+                }
+                final total = levels.fold<Money>(
+                  Money.zero,
+                  (sum, level) => sum + level.value,
+                );
+                return [
+                  Text(
+                    strings.stockTotalValue(total.format()),
+                    key: const Key('stock-total'),
+                    style: PosText.ui(
+                      size: 15,
+                      weight: FontWeight.w700,
+                      color: palette.ink,
+                    ),
+                  ),
+                  const SizedBox(height: PosSpace.md),
+                  _Header(),
+                  for (final level in levels)
+                    _LevelRow(
+                      level: level,
+                      unitName:
+                          named[level.onHand.unit.wire] ??
+                          AdminText.unit(strings, level.onHand.unit),
+                    ),
+                ];
+              },
+            ),
+      ],
+    );
+  }
+}
+
+class _Header extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final strings = context.strings;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: PosSpace.xs),
+      child: Row(
+        children: [
+          Expanded(child: MicroLabel(strings.stockColumnItem)),
+          SizedBox(width: 150, child: MicroLabel(strings.stockColumnOnHand)),
+          SizedBox(width: 120, child: MicroLabel(strings.stockColumnAvgCost)),
+          SizedBox(width: 120, child: MicroLabel(strings.stockColumnValue)),
+        ],
+      ),
+    );
+  }
+}
+
+class _LevelRow extends StatelessWidget {
+  const _LevelRow({required this.level, required this.unitName});
+
+  final StockLevel level;
+  final String unitName;
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = context.strings;
+    final palette = context.pos;
+    // Below zero is a real state and is shown as one: something was sold that
+    // never arrived as far as the system knows.
+    final short = level.onHand.isNegative;
+
+    return Container(
+      key: Key('stock-row-${level.productId}'),
+      padding: const EdgeInsets.symmetric(vertical: PosSpace.sm),
+      decoration: BoxDecoration(
+        border: BorderDirectional(bottom: palette.hairline),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Row(
+              children: [
+                Flexible(
+                  child: Text(
+                    level.displayName(strings.languageCode),
+                    style: PosText.ui(size: 13.5, color: palette.ink),
+                  ),
+                ),
+                if (level.onMenu) ...[
+                  const SizedBox(width: PosSpace.sm),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: PosSpace.sm,
+                      vertical: 2,
+                    ),
+                    color: palette.accentSoft,
+                    child: Text(
+                      strings.itemOnMenu,
+                      style: PosText.ui(
+                        size: 10.5,
+                        weight: FontWeight.w700,
+                        color: palette.ink,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          SizedBox(
+            width: 150,
+            child: Text(
+              '${level.onHand.format()} $unitName',
+              style: PosText.mono(
+                size: 13,
+                color: short ? palette.danger : palette.ink,
+              ),
+            ),
+          ),
+          SizedBox(width: 120, child: MonoAmount(level.unitCost, size: 13)),
+          SizedBox(width: 120, child: MonoAmount(level.value, size: 13)),
+        ],
+      ),
+    );
+  }
+}

@@ -101,6 +101,37 @@ enum SyncPolicy {
   };
 }
 
+/// Whether this terminal is the restaurant's main device or a child of one
+/// (`docs/pos/10-setup-architecture.md` §9).
+///
+/// **A tablet is always a child** (owner decision, 2026-09-12). It was being
+/// walked through the desktop wizard — licence key, database build, first
+/// owner — none of which a tablet should own: it is carried round the floor,
+/// it holds no database, and a licence activated on it pinned the restaurant's
+/// licence to the one device most likely to walk out of the building.
+///
+/// A child therefore answers none of those questions. It points at the main
+/// device's PostgreSQL, **uses the licence the main device published there**,
+/// signs in with a manager who already exists, and registers itself as one
+/// more of the licence's terminals. The mode is the main device's too.
+enum TerminalRole {
+  /// Holds the site's database, activates the licence and builds the schema.
+  /// Every desktop till is one today, including the single-till shape.
+  main('main_device'),
+
+  /// Sells through a main device's database and licence.
+  child('client_terminal');
+
+  const TerminalRole(this.wire);
+
+  final String wire;
+
+  /// Unknown or absent reads as [main]: every config written before this
+  /// field existed belongs to a till that set itself up as one.
+  static TerminalRole fromWire(String? value) =>
+      value == child.wire ? child : main;
+}
+
 /// Resolved endpoint configuration for this terminal.
 class DeploymentConfig {
   const DeploymentConfig({
@@ -115,6 +146,7 @@ class DeploymentConfig {
     this.databaseUser = 'pos_till',
     this.adminDatabaseUser = 'pos_admin',
     this.databasePort = 5432,
+    this.role = TerminalRole.main,
   });
 
   /// The host of a database running on the till itself — the single-terminal
@@ -188,6 +220,11 @@ class DeploymentConfig {
 
   final int databasePort;
 
+  /// Main device or child. See [TerminalRole].
+  final TerminalRole role;
+
+  bool get isChild => role == TerminalRole.child;
+
   /// When this terminal drains its queue. Every mode is offline-first — there is
   /// no online-required variant, because a desktop till always has a disk and
   /// refusing to sell without a connection buys the restaurant nothing.
@@ -224,7 +261,12 @@ class DeploymentConfig {
   bool get hasValidDatabaseName => isPlainIdentifier(databaseName);
 
   bool get isConfigured {
-    if (mode.needsBaseUrl && (baseUrl?.isEmpty ?? true)) return false;
+    // A child of a cloud main device has no platform address of its own and
+    // needs none: its sales go into the main device's database, and the main
+    // device's outbox drain is what carries them up.
+    if (mode.needsBaseUrl && !isChild && (baseUrl?.isEmpty ?? true)) {
+      return false;
+    }
     // Every mode reads and writes PostgreSQL, so a terminal with nowhere to
     // find it is not a configuration.
     if (databaseHost.trim().isEmpty) return false;
@@ -281,6 +323,7 @@ class DeploymentConfig {
     String? databaseUser,
     String? adminDatabaseUser,
     int? databasePort,
+    TerminalRole? role,
 
     /// Forget the tenant rather than keep it — `tenantSlug: null` cannot say
     /// that, since null means "leave it alone". Needed where a tenant that was
@@ -303,6 +346,7 @@ class DeploymentConfig {
     databaseUser: databaseUser ?? this.databaseUser,
     adminDatabaseUser: adminDatabaseUser ?? this.adminDatabaseUser,
     databasePort: databasePort ?? this.databasePort,
+    role: role ?? this.role,
   );
 
   Map<String, Object?> toJson() => {
@@ -320,6 +364,7 @@ class DeploymentConfig {
     'database_user': databaseUser,
     'admin_database_user': adminDatabaseUser,
     'database_port': databasePort,
+    'role': role.wire,
     // The database password is deliberately absent. It belongs in the OS
     // keystore, not in a config file a support engineer might email.
   };
@@ -350,6 +395,7 @@ class DeploymentConfig {
       databaseUser: json['database_user'] as String? ?? 'pos_till',
       adminDatabaseUser: json['admin_database_user'] as String? ?? 'pos_admin',
       databasePort: json['database_port'] as int? ?? 5432,
+      role: TerminalRole.fromWire(json['role'] as String?),
     );
   }
 

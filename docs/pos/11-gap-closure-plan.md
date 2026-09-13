@@ -749,8 +749,51 @@ CREATE TABLE pos_tender_types (             -- §40 payment methods as data
 CREATE TABLE pos_receipt_templates (id, restaurant_id, name, config jsonb, is_default)
 ```
 
-**Built so far in D:** payment methods (§40, migration 23) and service charges
-(§38, migration 24), both with their editors in the Money pane. Order types
+**Built so far in D:** payment methods (§40, migration 23), service charges
+(§38, migration 24) — both with their editors in the Money pane — and order
+types (§31, migration 25), data and engine wiring only.
+
+**§31 departs from the shape above in three ways, all deliberate.**
+`service_charge_id` and `price_list_id` were **not** built: both relationships
+already exist pointing the other way — `pos_service_charges.order_types` and
+`pos_product_prices.order_type` — and adding the reverse pointers would model
+each twice with nothing keeping them in step. `receipt_template_id` waits for
+receipt templates to exist.
+
+The **codes remain an enum.** What the table configures is the four the product
+ships with: their names, whether they are offered, and the three requires-flags.
+Opening the set needs one more thing that is not built — every place that
+renders an order type reads its name off the enum, so a fifth code would have
+no name to show until the display path takes a config instead of a value. Saying
+so is better than shipping a table that implies a freedom the UI does not have.
+
+**§37 is built too** (migration 26), and departs from its sketch for the same
+reason §31 did. `pos_taxes` was **not** created: `pos_tax_groups` already is
+that table — named rates, per-product assignment, ETA codes, a default — and a
+second would be a third tax model beside it and `pos_money_config`, with nothing
+keeping the three in step. What §37 genuinely adds over what exists is two
+things, and those are what migration 26 builds:
+
+* **Tax-inclusive pricing**, as `pos_restaurants.tax_mode`. On the restaurant
+  rather than on each tax group, because a restaurant is one or the other —
+  per-tax inclusivity would let somebody price food inclusive and a levy
+  exclusive, which is a receipt no customer can check.
+* **A tax group on the category**, which a product with none falls back to.
+  That is the useful half of `pos_tax_targets`; targeting an *order type* is
+  left out because `pos_product_prices.order_type` already varies a price by
+  channel, and a restaurant needing delivery taxed differently is describing a
+  different price rather than a different rate.
+
+`Money.taxWithinBp` is a separate method from `percentBp` rather than a flag on
+it: the two are different arithmetic, and a caller that picked the wrong one
+would be out by the square of the rate — small enough to survive a spot check,
+large enough to matter over a month.
+
+The **editor is deferred to the settings navigation (§51)**, not skipped. The
+Money pane already holds three sections and a fourth would make it a junk
+drawer; and §51 should be designed against the fifteen-area back office in
+[16-back-office-scope.md](16-back-office-scope.md) rather than against today's
+six panes. Order types
 (§31) were **deliberately taken second**, not first: their most useful columns
 point at a service charge, a receipt template and a price list, so building the
 table first would have meant three columns pointing at nothing.
@@ -1061,6 +1104,12 @@ Run alongside the waves, not after them.
 
 ## 16. Sequencing — revised 8 September 2026
 
+> **Superseded on 13 September 2026 for Wave N.** E-receipts are not needed
+> for the restaurants being sold to now, so filing is switched off
+> (`etaFilingEnabled`, see `14-progress.md`) and the two unbuilt pieces — the
+> e-seal and the submission client — are parked, not next. What Wave N built
+> stays in the tree, dormant. The rest of this section is kept as written.
+
 Waves A and B are shipped. The order below changes from the original for one
 reason, set out in [15-competitive-position.md](15-competitive-position.md):
 **Egypt's ETA e-receipt mandate has been in force since 15 September 2025**, and
@@ -1212,6 +1261,18 @@ change forever, and when somebody's primary role changes the backfilled row
 stays, silently leaving them holding the role they were moved off. A promotion
 that quietly keeps the old permissions is the exact failure this wave exists to
 prevent.
+
+### The ordering above assumes a till, not a back office
+
+**Read [16-back-office-scope.md](16-back-office-scope.md) before planning past
+Wave D.** Scored against what an offline-first business expects from a back
+office, this product is five areas done, three partial and seven absent — and
+the seven absent ones are one chain (purchases → cost price → inventory → COGS →
+profit → accounting) whose head, purchasing, appears on no wave here at all.
+
+The sequencing below was written for "a till that can trade legally in Egypt",
+which Waves A, B, M, N and C delivered. It is the wrong sequencing for "an
+offline back office". §4 of that page proposes the alternative.
 
 ### What is still not on the roadmap
 

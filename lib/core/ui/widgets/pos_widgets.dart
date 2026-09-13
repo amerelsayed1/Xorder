@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../l10n/app_strings.dart';
 import '../tokens.dart';
@@ -50,11 +51,22 @@ class MicroLabel extends StatelessWidget {
   /// Null means "the palette's muted". See [PosSurface.color].
   final Color? color;
 
+  static final _arabic = RegExp(r'[\u0600-\u06FF]');
+
   @override
-  Widget build(BuildContext context) => Text(
-    text.toUpperCase(),
-    style: PosText.microLabel(color: color ?? context.pos.muted),
-  );
+  Widget build(BuildContext context) {
+    final color = this.color ?? context.pos.muted;
+    // Arabic has no capitals, and must not be letter-spaced: tracking pulls a
+    // joined word apart into letters. It is set in the Arabic face, too — the
+    // mono has no Arabic at all, so it fell back to whatever the system had.
+    if (_arabic.hasMatch(text)) {
+      return Text(
+        text,
+        style: PosText.ui(size: 11.5, weight: FontWeight.w600, color: color),
+      );
+    }
+    return Text(text.toUpperCase(), style: PosText.microLabel(color: color));
+  }
 }
 
 /// A keyboard-hint chip — the `F2` next to the search field, `ENTER` on a CTA.
@@ -357,25 +369,90 @@ class PinDots extends StatelessWidget {
 
 /// The numeric pad a PIN is entered on.
 class PinPad extends StatelessWidget {
-  const PinPad({super.key, required this.onDigit, required this.onBackspace});
+  const PinPad({
+    super.key,
+    required this.onDigit,
+    required this.onBackspace,
+    this.autofocus = true,
+  });
 
   final ValueChanged<String> onDigit;
   final VoidCallback onBackspace;
+
+  /// Whether the pad takes the keyboard as soon as it appears.
+  ///
+  /// True everywhere except where something else on the screen is asked for
+  /// first — the lock screen's username field, which would otherwise never see
+  /// a keystroke.
+  final bool autofocus;
+
+  /// Both rows of digits a keyboard has.
+  ///
+  /// A till has a number pad on the right of its keyboard; a laptop has only
+  /// the row above the letters. They are the same key to the person pressing
+  /// them. Not `const`, because a const map cannot be keyed on a class that
+  /// overrides `==`, and `LogicalKeyboardKey` does.
+  static final Map<LogicalKeyboardKey, String> _digits = {
+    LogicalKeyboardKey.digit0: '0',
+    LogicalKeyboardKey.digit1: '1',
+    LogicalKeyboardKey.digit2: '2',
+    LogicalKeyboardKey.digit3: '3',
+    LogicalKeyboardKey.digit4: '4',
+    LogicalKeyboardKey.digit5: '5',
+    LogicalKeyboardKey.digit6: '6',
+    LogicalKeyboardKey.digit7: '7',
+    LogicalKeyboardKey.digit8: '8',
+    LogicalKeyboardKey.digit9: '9',
+    LogicalKeyboardKey.numpad0: '0',
+    LogicalKeyboardKey.numpad1: '1',
+    LogicalKeyboardKey.numpad2: '2',
+    LogicalKeyboardKey.numpad3: '3',
+    LogicalKeyboardKey.numpad4: '4',
+    LogicalKeyboardKey.numpad5: '5',
+    LogicalKeyboardKey.numpad6: '6',
+    LogicalKeyboardKey.numpad7: '7',
+    LogicalKeyboardKey.numpad8: '8',
+    LogicalKeyboardKey.numpad9: '9',
+  };
 
   @override
   Widget build(BuildContext context) {
     const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', '⌫'];
 
-    return Container(
-      color: context.pos.shellLine,
-      child: GridView.count(
-        crossAxisCount: 3,
-        shrinkWrap: true,
-        mainAxisSpacing: 1,
-        crossAxisSpacing: 1,
-        childAspectRatio: 320 / 3 / PosSize.pinKey,
-        physics: const NeverScrollableScrollPhysics(),
-        children: keys.map((key) => _key(context, key)).toList(),
+    // **Typed as well as tapped.** The keys on screen are for the touch screen
+    // this ships on; the keyboard is what an installer, a manager at a desk and
+    // anybody testing actually reach for, and a keypad that ignored them read
+    // as a dialog that had frozen.
+    //
+    // `KeyDownEvent` only. Handling every event would enter a digit on press
+    // and again on release, and a held key would fill the PIN with one number.
+    return Focus(
+      autofocus: autofocus,
+      onKeyEvent: (_, event) {
+        if (event is! KeyDownEvent) return KeyEventResult.ignored;
+
+        if (_digits[event.logicalKey] case final digit?) {
+          onDigit(digit);
+          return KeyEventResult.handled;
+        }
+        if (event.logicalKey == LogicalKeyboardKey.backspace ||
+            event.logicalKey == LogicalKeyboardKey.delete) {
+          onBackspace();
+          return KeyEventResult.handled;
+        }
+        return KeyEventResult.ignored;
+      },
+      child: Container(
+        color: context.pos.shellLine,
+        child: GridView.count(
+          crossAxisCount: 3,
+          shrinkWrap: true,
+          mainAxisSpacing: 1,
+          crossAxisSpacing: 1,
+          childAspectRatio: 320 / 3 / PosSize.pinKey,
+          physics: const NeverScrollableScrollPhysics(),
+          children: keys.map((key) => _key(context, key)).toList(),
+        ),
       ),
     );
   }
@@ -400,4 +477,80 @@ class PinPad extends StatelessWidget {
       ),
     );
   }
+}
+
+/// A text box on the shell: one frame, and only one.
+///
+/// **All three borders, stated.** `border: InputBorder.none` alone switches off
+/// the default and nothing else — the theme's `enabledBorder` and
+/// `focusedBorder` still apply, and a box wrapped in its own frame then drew a
+/// heavy ink outline inside the thin one, orange when focused.
+InputDecoration shellInputDecoration(
+  PosPalette pos, {
+  String? hintText,
+  TextStyle? hintStyle,
+}) {
+  final resting = OutlineInputBorder(
+    borderRadius: BorderRadius.zero,
+    borderSide: pos.shellBorder,
+  );
+  return InputDecoration(
+    isDense: true,
+    filled: true,
+    fillColor: pos.shellCard,
+    hintText: hintText,
+    hintStyle: hintStyle,
+    contentPadding: const EdgeInsets.symmetric(
+      horizontal: PosSpace.md,
+      vertical: PosSpace.md,
+    ),
+    border: resting,
+    enabledBorder: resting,
+    disabledBorder: resting,
+    focusedBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.zero,
+      borderSide: BorderSide(color: pos.accent, width: 2),
+    ),
+  );
+}
+
+/// The name of the person taking the till, above a PIN pad.
+///
+/// Mono, like every other identifier in this product, and autofocused because
+/// it is the first thing asked for — a keypad that took digits while the name
+/// was still empty would refuse every PIN and say nothing about why.
+class UsernameField extends StatelessWidget {
+  const UsernameField({
+    required this.controller,
+    this.onSubmitted,
+    super.key,
+  });
+
+  final TextEditingController controller;
+
+  /// Enter, which on a keyboard means "done with this field". Without it the
+  /// only way from the name to the keypad is the mouse.
+  final VoidCallback? onSubmitted;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      MicroLabel(context.strings.username),
+      const SizedBox(height: PosSpace.sm),
+      TextField(
+        controller: controller,
+        autofocus: true,
+        textInputAction: TextInputAction.next,
+        onSubmitted: (_) => onSubmitted?.call(),
+        textAlign: TextAlign.center,
+        style: PosText.mono(size: 16, color: context.pos.shellText),
+        cursorColor: context.pos.accent,
+        decoration: shellInputDecoration(
+          context.pos,
+          hintStyle: PosText.mono(size: 16, color: context.pos.shellMuted),
+        ),
+      ),
+    ],
+  );
 }

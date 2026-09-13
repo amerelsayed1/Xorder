@@ -5,6 +5,71 @@ import '../../domain/repositories/repositories.dart';
 import 'pos_database.dart';
 import 'postgres_orders_repository.dart' show PosWriteContext;
 
+/// The one INSERT that puts a row in `pos_cash_movements`.
+///
+/// **Extracted because there is now a second writer.** A supplier paid out of
+/// the till drawer has to record its `pay_out` in the *same transaction* as the
+/// payment, and [PostgresCashMovementsRepository.record] opens its own
+/// connection — so the back office cannot call it from inside that transaction.
+///
+/// The rejected alternative was a second INSERT written out in
+/// `postgres_supplier_invoices_repository.dart`. That is how the drawer-open
+/// normalisation and the refusal of a movement of nothing come to exist in one
+/// place and not the other, and how a column added to this table gets set by
+/// one writer and left null by the other.
+abstract final class CashMovementWrite {
+  static const sql =
+      'INSERT INTO pos_cash_movements (restaurant_id, branch_id, terminal_id, '
+      '  shift_id, business_day_id, kind, amount_minor, reason_id, note, '
+      '  staff_id, approved_by_id) '
+      'VALUES (@restaurant, @branch, @terminal, @shift, @day, @kind, @amount, '
+      '  @reason, @note, @staff, @approvedBy) RETURNING id, occurred_at';
+
+  /// What actually gets stored for [kind].
+  ///
+  /// Opening the drawer moves nothing, and migration 14 refuses a row that
+  /// claims otherwise. Normalised here rather than trusted from the caller,
+  /// because a screen passing the till's float by accident would otherwise
+  /// surface as a constraint violation instead of a zero.
+  static Money normalise(CashMovementKind kind, Money amount) =>
+      kind == CashMovementKind.drawerOpen ? amount.copyWith(minor: 0) : amount;
+
+  /// Throws if [amount] is not something that can move. Called by both writers
+  /// before the INSERT, so the message names the act rather than a constraint.
+  static void refuseNothing(CashMovementKind kind, Money amount) {
+    if (kind != CashMovementKind.drawerOpen && amount.minor <= 0) {
+      throw ArgumentError('A ${kind.wire} of nothing is not a movement.');
+    }
+  }
+
+  static Map<String, Object?> parameters({
+    required int restaurantId,
+    required int branchId,
+    required String terminalId,
+    required int shiftId,
+    required CashMovementKind kind,
+    required Money amount,
+    required int staffId,
+    int? businessDayId,
+    int? reasonId,
+    String? note,
+    int? approvedById,
+  }) => {
+    'restaurant': restaurantId,
+    'branch': branchId,
+    'terminal': terminalId,
+    'shift': shiftId,
+    'day': businessDayId,
+    'kind': kind.wire,
+    'amount': amount.minor,
+    'reason': reasonId,
+    'note': note,
+    'staff': staffId,
+    // Both people on the row when there were two, as everywhere else.
+    'approvedBy': approvedById,
+  };
+}
+
 /// Money into and out of the drawer that is not a sale.
 ///
 /// Append-only by grant: the till holds `SELECT, INSERT` and nothing more. A
@@ -65,39 +130,25 @@ class PostgresCashMovementsRepository implements CashMovementsRepository {
     PosStaff? approvedBy,
     int? businessDayId,
   }) async {
-    // Opening the drawer moves nothing, and migration 14 refuses a row that
-    // claims otherwise. Normalised here rather than trusted from the caller,
-    // because a screen passing the till's float by accident would otherwise
-    // surface as a constraint violation instead of a zero.
-    final stored = kind == CashMovementKind.drawerOpen
-        ? amount.copyWith(minor: 0)
-        : amount;
-
-    if (kind != CashMovementKind.drawerOpen && stored.minor <= 0) {
-      throw ArgumentError('A ${kind.wire} of nothing is not a movement.');
-    }
+    final stored = CashMovementWrite.normalise(kind, amount);
+    CashMovementWrite.refuseNothing(kind, stored);
 
     final rows = await _db.query(
       config,
-      'INSERT INTO pos_cash_movements (restaurant_id, branch_id, terminal_id, '
-      '  shift_id, business_day_id, kind, amount_minor, reason_id, note, '
-      '  staff_id, approved_by_id) '
-      'VALUES (@restaurant, @branch, @terminal, @shift, @day, @kind, @amount, '
-      '  @reason, @note, @staff, @approvedBy) RETURNING id, occurred_at',
-      parameters: {
-        'restaurant': context.restaurantId,
-        'branch': context.branchId,
-        'terminal': context.terminalId,
-        'shift': shiftId,
-        'day': businessDayId,
-        'kind': kind.wire,
-        'amount': stored.minor,
-        'reason': reasonId,
-        'note': note,
-        'staff': by.id,
-        // Both people on the row when there were two, as everywhere else.
-        'approvedBy': approvedBy?.id,
-      },
+      CashMovementWrite.sql,
+      parameters: CashMovementWrite.parameters(
+        restaurantId: context.restaurantId,
+        branchId: context.branchId,
+        terminalId: context.terminalId,
+        shiftId: shiftId,
+        businessDayId: businessDayId,
+        kind: kind,
+        amount: stored,
+        reasonId: reasonId,
+        note: note,
+        staffId: by.id,
+        approvedById: approvedBy?.id,
+      ),
     );
 
     return CashMovement(

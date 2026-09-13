@@ -341,9 +341,20 @@ void main() {
     });
 
     test('moving the last manager to a cashier role is refused too', () async {
+      // Asked of a manager, not of the owner as it used to be. The owner's
+      // role is now fixed outright (`OwnerIsFixed`, one_owner_test.dart), so
+      // moving them is refused before lock-out is asked. A manager is the last
+      // who can manage staff once the owner has been disabled.
+      final hala = await hire(SystemRoles.managerCode, name: 'Hala', pin: '3333');
+      expect(
+        (await staff.setActive(by: owner, staffId: owner.id, isActive: false))
+            .succeeded,
+        isTrue,
+      );
+
       final refused = await staff.update(
-        by: owner,
-        staffId: owner.id,
+        by: hala,
+        staffId: hala.id,
         roleId: seeded[SystemRoles.cashierCode]!.id,
       );
       expect(refused.refusal, isA<WouldLockEveryoneOut>());
@@ -401,6 +412,115 @@ void main() {
       final before = (await audit.recent()).length;
       await roles.delete(seeded[SystemRoles.managerCode]!, by: owner);
       expect((await audit.recent()).length, before);
+    });
+  });
+  group('a cloud till, where the platform owns who works here', () {
+    // `BootstrapSeeder` upserts `pos_staff` from the bundle and deactivates
+    // anybody the bundle does not name. Before this, the back office let a
+    // manager add a cashier on a cloud till and the next sync switched them
+    // off — silently, with nothing to read. Found by auditing the panes
+    // against the seeder rather than by any test.
+    late PostgresStaffDirectoryRepository cloud;
+
+    setUp(() {
+      cloud = PostgresStaffDirectoryRepository(
+        database: db,
+        config: pg.config,
+        restaurantId: restaurantId,
+        offline: false,
+      );
+    });
+
+    test('adding somebody is refused, and says where to go', () async {
+      final result = await cloud.create(
+        by: owner,
+        name: 'Nour',
+        username: 'nour',
+        pin: '9876',
+        roleId: seeded[SystemRoles.cashierCode]!.id,
+      );
+
+      expect(result.refusal, isA<ManagedByPlatform>());
+      expect(
+        (result.refusal! as ManagedByPlatform).what,
+        ManagedByPlatform.staffRecords,
+      );
+    });
+
+    test('renaming somebody is refused', () async {
+      final rana = await hire(SystemRoles.cashierCode);
+      final result = await cloud.update(
+        by: owner,
+        staffId: rana.id,
+        name: 'Renamed',
+      );
+      expect(result.refusal, isA<ManagedByPlatform>());
+    });
+
+    test('a PIN reset is refused', () async {
+      final rana = await hire(SystemRoles.cashierCode, name: 'Dina', pin: '2468');
+      final result = await cloud.resetPin(by: owner, staffId: rana.id, pin: '1357');
+      expect(result.refusal, isA<ManagedByPlatform>());
+    });
+
+    test('disabling somebody is refused', () async {
+      final rana = await hire(SystemRoles.cashierCode, name: 'Hala', pin: '3579');
+      final result = await cloud.setActive(
+        by: owner,
+        staffId: rana.id,
+        isActive: false,
+      );
+      expect(result.refusal, isA<ManagedByPlatform>());
+    });
+
+    test('changing direct grants is refused — the bundle carries them',
+        () async {
+      final rana = await hire(SystemRoles.cashierCode, name: 'Sara', pin: '1122');
+      final result = await cloud.update(
+        by: owner,
+        staffId: rana.id,
+        directGrants: {PosCapability.orderRefund},
+      );
+      expect(result.refusal, isA<ManagedByPlatform>());
+    });
+
+    test('but assigning a role is allowed — it is not in the bundle', () async {
+      // The half that works, and the reason this refuses per act rather than
+      // closing the pane. `pos_staff.role_id` is never written by the seeder.
+      final rana = await hire(SystemRoles.cashierCode, name: 'Mai', pin: '3344');
+      final result = await cloud.update(
+        by: owner,
+        staffId: rana.id,
+        roleId: seeded[SystemRoles.supervisorCode]!.id,
+      );
+
+      expect(result.succeeded, isTrue, reason: '${result.refusal}');
+      expect(result.value!.role!.code, SystemRoles.supervisorCode);
+    });
+
+    test('and so are the per-person grants Wave C added', () async {
+      // `pos_staff_roles`, the overrides and the ceilings are local tables the
+      // bundle does not touch.
+      final rana = await hire(SystemRoles.cashierCode, name: 'Yara', pin: '5566');
+      final result = await cloud.setGrants(
+        by: owner,
+        staffId: rana.id,
+        extraRoleIds: {seeded[SystemRoles.supervisorCode]!.id},
+        overrides: const [],
+        limits: const {},
+      );
+      expect(result.succeeded, isTrue, reason: '${result.refusal}');
+    });
+
+    test('an offline till is unaffected', () async {
+      final result = await staff.create(
+        by: owner,
+        name: 'Offline',
+        username: 'offline',
+        pin: '7788',
+        roleId: seeded[SystemRoles.cashierCode]!.id,
+      );
+      expect(result.succeeded, isTrue, reason: '${result.refusal}');
     });
   });
 }

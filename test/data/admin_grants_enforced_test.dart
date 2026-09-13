@@ -29,7 +29,10 @@ void main() {
     return;
   }
 
-  const role = 'pos_admin_grant_probe';
+  // Per checkout, for the till probe's reason: a role is cluster-wide, and one
+  // name shared by two worktrees meant each one's cleanup broke the other's
+  // run.
+  final role = PgFixture.roleFor('admin_grant_probe');
   const password = 'probe-only';
 
   late PgFixture pg;
@@ -114,6 +117,32 @@ void main() {
       isNull,
       reason: 'which options a product offers is current shape, not history',
     );
+  });
+
+  test('Management can author sizes and extras', () async {
+    // Migration 45. The categories a library group reaches, and the one
+    // DELETE the catalogue has: an option taken out of a group, or a group
+    // out of the library. Without it the Extras pane would fail on the first
+    // option anybody removed — for everybody but the superuser the suites
+    // run as.
+    expect(
+      await refusalFor(
+        'INSERT INTO pos_modifier_group_categories (group_id, category_id) '
+        'VALUES (1, 1)',
+      ),
+      isNot('42501'),
+      reason: 'a foreign key failure is fine here; a privilege one is not',
+    );
+    expect(
+      await refusalFor('DELETE FROM pos_modifier_group_categories'),
+      isNull,
+    );
+    expect(
+      await refusalFor('UPDATE pos_modifiers SET discounted_price_minor = NULL'),
+      isNull,
+    );
+    expect(await refusalFor('DELETE FROM pos_modifiers'), isNull);
+    expect(await refusalFor('DELETE FROM pos_modifier_groups'), isNull);
   });
 
   test('Management can author what the restaurant charges', () async {

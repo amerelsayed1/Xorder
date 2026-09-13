@@ -7,7 +7,9 @@ import 'package:xorder_pos/core/l10n/app_strings.dart';
 import 'package:xorder_pos/core/ui/theme.dart';
 import 'package:xorder_pos/core/ui/tokens.dart';
 import 'package:xorder_pos/domain/models/eta_submission.dart';
+import 'package:xorder_pos/domain/models/receipt_profile.dart';
 import 'package:xorder_pos/domain/repositories/repositories.dart';
+import 'package:xorder_pos/domain/services/eta_filing.dart';
 import 'package:xorder_pos/domain/services/eta_serialization.dart';
 import 'package:xorder_pos/features/admin/presentation/management_eta_pane.dart';
 
@@ -55,11 +57,13 @@ void main() {
     WidgetTester tester,
     List<EtaSubmission> rows, {
     String locale = 'en',
+    EtaFilingSkipped? problem,
   }) async {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
           etaQueueRepositoryProvider.overrideWithValue(_Queue(rows, now)),
+          etaFilingProblemProvider.overrideWith(() => _Problem(problem)),
         ],
         child: MaterialApp(
           locale: Locale(locale),
@@ -77,6 +81,34 @@ void main() {
     );
     await tester.pumpAndSettle();
   }
+
+  testWidgets('filing that has stopped is said above the queue', (
+    tester,
+  ) async {
+    // An empty queue and a queue that stopped growing because nothing is
+    // being filed look identical. The problem is what tells them apart.
+    await pump(
+      tester,
+      const [],
+      problem: const ProfileIncomplete([
+        ProfileProblem(ProfileField.registrationNumber, 'nine digits'),
+      ]),
+    );
+
+    expect(find.byKey(const Key('eta-filing-problem')), findsOneWidget);
+    expect(
+      find.text(
+        'E-receipts are not being filed: the receipt profile has 1 thing to '
+        'fix.',
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('and nothing is said when filing is working', (tester) async {
+    await pump(tester, const []);
+    expect(find.byKey(const Key('eta-filing-problem')), findsNothing);
+  });
 
   testWidgets('an empty queue says so in one sentence', (tester) async {
     // The good state has to be readable at a glance, or nobody will glance.
@@ -215,4 +247,13 @@ class _Queue implements EtaQueueRepository {
   @override
   Future<void> markAttempted(int id, String message) =>
       throw UnimplementedError();
+}
+
+class _Problem extends EtaFilingProblem {
+  _Problem(this._initial);
+
+  final EtaFilingSkipped? _initial;
+
+  @override
+  EtaFilingSkipped? build() => _initial;
 }

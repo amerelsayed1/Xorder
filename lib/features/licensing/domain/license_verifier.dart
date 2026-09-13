@@ -113,6 +113,7 @@ class LicenseVerifier {
     required DeploymentConfig deployment,
     required DateTime now,
     String? terminalFingerprint,
+    bool viaMainDevice = false,
   }) async {
     if (file == null) {
       return _deny(LicenseState.missing, const LicenceMissing());
@@ -132,16 +133,27 @@ class LicenseVerifier {
       deployment: deployment,
       now: now,
       terminalFingerprint: terminalFingerprint,
+      viaMainDevice: viaMainDevice,
     );
   }
 
   /// Policy only, separated from the crypto so it is exhaustively testable
   /// without generating keys for every case.
+  ///
+  /// [viaMainDevice] is a child terminal judging the licence its main device
+  /// published. A pinned licence names the MAIN device's fingerprint, and the
+  /// child is not that machine and never will be — so pinning is not the
+  /// question for it. What stands in for it is its `pos_terminals` row, which
+  /// only a manager on the main device's database could have created, and
+  /// which is counted against `max_terminals` before it is (see
+  /// `SetupController.registerTerminal`). Tenant, mode, dates and signature
+  /// are judged exactly as for anybody else.
   static LicenseEntitlement evaluateClaims({
     required LicenseClaims claims,
     required DeploymentConfig deployment,
     required DateTime now,
     String? terminalFingerprint,
+    bool viaMainDevice = false,
   }) {
     final tenant = deployment.tenantSlug;
     if (tenant != null && tenant.isNotEmpty && tenant != claims.tenantSlug) {
@@ -163,7 +175,8 @@ class LicenseVerifier {
       );
     }
 
-    if (claims.fingerprints.isNotEmpty &&
+    if (!viaMainDevice &&
+        claims.fingerprints.isNotEmpty &&
         (terminalFingerprint == null ||
             !claims.fingerprints.contains(terminalFingerprint))) {
       return _deny(

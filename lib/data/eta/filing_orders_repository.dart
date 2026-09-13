@@ -1,11 +1,9 @@
 // The collaborators are private fields with public parameter names: the
 // names belong to the call site, the fields do not belong to the API.
 // ignore_for_file: prefer_initializing_formals
-import '../../domain/models/receipt_profile.dart';
 import '../../domain/models/ticket.dart';
 import '../../domain/repositories/repositories.dart';
 import '../../domain/services/eta_filing.dart';
-import '../../domain/services/eta_receipt.dart';
 
 /// Queues an e-receipt for every sale that reaches the database.
 ///
@@ -26,22 +24,16 @@ import '../../domain/services/eta_receipt.dart';
 class FilingOrdersRepository implements OrdersRepository {
   const FilingOrdersRepository(
     this._inner, {
-    required ReceiptProfile Function() profile,
-    required EtaQueueRepository queue,
-    required String deviceSerial,
+    required EtaFilingPort filer,
     this.onProblem,
-  }) : _profile = profile,
-       _queue = queue,
-       _deviceSerial = deviceSerial;
+  }) : _filer = filer;
 
   final OrdersRepository _inner;
 
-  /// Read at settlement rather than held, so a profile completed in Management
-  /// five minutes ago is the one this sale is filed under.
-  final ReceiptProfile Function() _profile;
-
-  final EtaQueueRepository _queue;
-  final String _deviceSerial;
+  /// Reads the sale back from the rows it was written to and files THAT — the
+  /// same path the reconciler takes, so a sale filed now and one caught up
+  /// next week are the same document.
+  final EtaFilingPort _filer;
 
   /// Told when a sale could not be queued, so somebody can be shown it.
   /// Silence here is how a queue stops being read.
@@ -50,56 +42,33 @@ class FilingOrdersRepository implements OrdersRepository {
   @override
   Future<SubmitOrderResult> submit(Ticket ticket, {PosStaff? servedBy}) async {
     final result = await _inner.submit(ticket, servedBy: servedBy);
-    await _file(ticket, result);
+    await _file(result);
     return result;
   }
 
-  Future<void> _file(Ticket ticket, SubmitOrderResult result) async {
-    final orderId = result.serverId;
+  Future<void> _file(SubmitOrderResult result) async {
     // No row, nothing to file against. A replayed submission returns the
-    // existing order's id, which is right: the uuid is a fingerprint, so
-    // enqueuing the same document twice is refused by the unique index rather
-    // than producing a second receipt.
+    // existing order's id, and the filer finds its receipt already there.
+    final orderId = result.serverId;
     if (orderId == null) return;
 
-    final profile = _profile();
-    final input = EtaFiling.inputFor(
-      ticket: ticket,
-      profile: profile,
-      receiptNumber: result.invoiceNumber ?? ticket.id,
-      deviceSerial: _deviceSerial,
-      issuedAt: DateTime.now(),
-    );
-
-    if (input == null) {
-      // A blank profile is a restaurant that is not filing — one outside
-      // Egypt, or one still in setup — and reporting a problem for every sale
-      // it makes would be an alarm that is always on, which is an alarm nobody
-      // reads. A *partly* filled one is different: somebody has typed a
-      // registration number, so they intend to file and should be told they
-      // cannot yet.
-      if (!profile.isBlank) {
-        onProblem?.call(ProfileIncomplete(profile.filingProblems));
-      }
-      return;
-    }
-
     try {
-      await _queue.enqueue(
-        orderId: orderId,
-        deviceSerial: _deviceSerial,
-        receiptNumber: input.receiptNumber,
-        receiptType: EtaReceiptType.sale,
-        issuedAt: input.issuedAt,
-        // Built inside the queue's lock, against the chain head this receipt
-        // is actually written after — see [EtaQueueRepository.enqueue].
-        build: (previousUuid) =>
-            EtaReceiptBuilder.build(input.chainedTo(previousUuid)),
-      );
+      report(await _filer.fileOrder(orderId), onProblem);
     } on Object catch (error) {
       // Swallowed on purpose. See the class comment: the sale is already
       // recorded and the reconciler will find this order without a receipt.
       onProblem?.call(FilingFailed('$error'));
+    }
+  }
+
+  /// Only what a person can act on. A blank profile is a restaurant that is
+  /// not filing, and a refund waiting for its sale is the system working.
+  static void report(
+    EtaFilingSkipped? skipped,
+    void Function(EtaFilingSkipped)? onProblem,
+  ) {
+    if (skipped is ProfileIncomplete || skipped is FilingFailed) {
+      onProblem?.call(skipped!);
     }
   }
 

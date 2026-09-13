@@ -6,6 +6,15 @@ newer.
 
 ---
 
+> **13 September 2026 — e-receipts are switched off.** The restaurants this is
+> being sold to do not need e-invoicing yet. Nothing was deleted: one switch,
+> `etaFilingEnabled` in `lib/domain/services/eta_filing.dart`, stops the queue,
+> the filer and the reconciler and hides the Tax authority pane, the receipt
+> profile's filing block and the unit's ETA code. A build turns it back on with
+> `--dart-define=XORDER_ETA_FILING=true`. The seal and the submission client
+> are **not** being built until that changes, and ETA no longer blocks sale.
+> Where the text below calls Wave N blocking, read it as history.
+
 ## 1. The short version
 
 **Waves A, B and M are complete.** Migrations 9 through 18 are applied.

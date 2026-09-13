@@ -31,6 +31,35 @@ class WelcomeScreen extends ConsumerStatefulWidget {
 class _WelcomeScreenState extends ConsumerState<WelcomeScreen> {
   final _focus = FocusNode();
 
+  /// **The tablet's way in: tap the mark twelve times.**
+  ///
+  /// The chord below is the only other door, and a tablet has no keyboard —
+  /// so an Android till sat on this screen forever. Twelve rather than the
+  /// usual seven because this is in front of customers: a child at the
+  /// counter taps a logo five or six times, and nobody taps it twelve by
+  /// accident. The count starts again after a pause, so twelve stray taps
+  /// spread over a morning add up to nothing.
+  static const _tapsToOpenSetup = 12;
+  static const _tapPause = Duration(seconds: 2);
+
+  int _logoTaps = 0;
+  DateTime? _lastLogoTap;
+
+  void _onLogoTap() {
+    _focus.requestFocus();
+
+    final now = DateTime.now();
+    final last = _lastLogoTap;
+    _lastLogoTap = now;
+    _logoTaps = last != null && now.difference(last) < _tapPause
+        ? _logoTaps + 1
+        : 1;
+
+    if (_logoTaps < _tapsToOpenSetup) return;
+    _logoTaps = 0;
+    widget.onOpenSetup();
+  }
+
   @override
   void dispose() {
     _focus.dispose();
@@ -87,18 +116,21 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen> {
                       // Fixed WIDTH, not height: the asset is 1348x376, and
                       // sizing by width keeps the mark the same size on screen
                       // regardless of what the aspect ratio does later.
-                      Image.asset(
-                        'assets/icons/xorder_logo_official.png',
-                        width: 280,
-                        fit: BoxFit.contain,
-                        // A missing asset must not paint a broken-image glyph
-                        // across the first screen of a new install.
-                        errorBuilder: (context, error, stack) => Text(
-                          context.strings.productWordmark,
-                          style: PosText.ui(
-                            size: 40,
-                            weight: FontWeight.w800,
-                            color: context.pos.accent,
+                      GestureDetector(
+                        onTap: _onLogoTap,
+                        child: Image.asset(
+                          'assets/icons/xorder_logo_official.png',
+                          width: 280,
+                          fit: BoxFit.contain,
+                          // A missing asset must not paint a broken-image
+                          // glyph across the first screen of a new install.
+                          errorBuilder: (context, error, stack) => Text(
+                            context.strings.productWordmark,
+                            style: PosText.ui(
+                              size: 40,
+                              weight: FontWeight.w800,
+                              color: context.pos.accent,
+                            ),
                           ),
                         ),
                       ),

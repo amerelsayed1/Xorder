@@ -405,7 +405,27 @@ class PostgresSessionRepository implements SessionRepository {
   /// would make the response time depend on where in the list the right person
   /// sits, which over a few hundred attempts is enough to order the staff table.
   @override
-  Future<PosStaff?> signIn(String pin) async {
+  Future<PosStaff?> signIn(String pin) => _match(pin: pin);
+
+  /// The same walk, with a name the PIN has to belong to.
+  ///
+  /// **Checked inside the walk, not after it.** The first version asked
+  /// [signIn] for whoever held the PIN and then compared the username to that
+  /// answer — which fails the moment two people share a PIN, and two people
+  /// sharing a PIN is not exotic: it is what a restaurant does on its first
+  /// afternoon. The lower staff id always won the match, so everybody else with
+  /// that PIN was refused under their own name, with a message that read as
+  /// though they had typed it wrong.
+  @override
+  Future<PosStaff?> signInAs({required String username, required String pin}) {
+    final wanted = username.trim().toLowerCase();
+    return wanted.isEmpty
+        ? Future<PosStaff?>.value()
+        : _match(pin: pin, username: wanted);
+  }
+
+  /// [username] narrows the match; null accepts whoever holds the PIN.
+  Future<PosStaff?> _match({required String pin, String? username}) async {
     if (pin.trim().isEmpty) return null;
 
     // The role comes back with the person. Signing in is the moment the till
@@ -429,7 +449,12 @@ class PostgresSessionRepository implements SessionRepository {
         salt: row[11] as String,
         expected: row[12] as String,
       );
-      if (ok && matched == null) {
+      // Both halves, together. Every candidate is hashed either way — see the
+      // note above — so narrowing by name costs nothing and leaks nothing.
+      final named =
+          username == null ||
+          (row[2] as String?)?.trim().toLowerCase() == username;
+      if (ok && named && matched == null) {
         matched = PosStaff(
           id: row[0] as int,
           name: row[1] as String,

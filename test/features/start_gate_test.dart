@@ -5,6 +5,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:xorder_pos/app/providers.dart';
 import 'package:xorder_pos/core/config/deployment.dart';
 import 'package:xorder_pos/core/ui/theme.dart';
+import 'package:xorder_pos/data/fakes/fake_repositories.dart';
+import 'package:xorder_pos/domain/models/backup.dart';
+import 'package:xorder_pos/domain/services/eta_filing.dart';
+import 'package:xorder_pos/domain/models/receipt_profile.dart';
 import 'package:xorder_pos/features/licensing/data/licence_service.dart';
 import 'package:xorder_pos/features/start/start_screen.dart';
 
@@ -21,13 +25,22 @@ const _cloud = DeploymentConfig(
 Future<({ProviderContainer container, List<String> events})> _boot(
   WidgetTester tester, {
   String? licenceKey,
+  List<BackupRecord>? backups,
 }) async {
   tester.view
     ..physicalSize = const Size(1440, 900)
     ..devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
 
-  final container = ProviderContainer(overrides: fakeRepositoryOverrides());
+  final container = ProviderContainer(
+    overrides: [
+      ...fakeRepositoryOverrides(),
+      if (backups != null)
+        backupRepositoryProvider.overrideWithValue(
+          FakeBackupRepository(records: backups),
+        ),
+    ],
+  );
   addTearDown(container.dispose);
   container.read(deploymentProvider.notifier).apply(_cloud);
 
@@ -53,8 +66,7 @@ Future<({ProviderContainer container, List<String> events})> _boot(
         home: StartScreen(
           onStart: () => events.add('start'),
           onManageLicence: () => events.add('licence'),
-          onReconfigure: () => events.add('reconfigure'),
-          onManage: () => events.add('manage'),
+          onManage: (_) => events.add('manage'),
         ),
       ),
     ),
@@ -73,6 +85,11 @@ Future<({ProviderContainer container, List<String> events})> _boot(
 /// tests are about the licence gate, so they push through the dialog rather
 /// than asserting on it.
 Future<void> _openShift(WidgetTester tester) async {
+  // A name as well as a PIN. Opening a shift makes somebody answerable for the
+  // drawer, and four digits get shared — so the till checks a claim rather than
+  // handing the drawer to whoever holds them.
+  await tester.enterText(find.byType(TextField), 'rana');
+  await tester.pump();
   for (final digit in ['1', '2', '3', '4']) {
     await tester.tap(find.text(digit));
     await tester.pumpAndSettle();
@@ -195,5 +212,67 @@ void main() {
 
     expect(find.text('Open shift'), findsNothing, reason: 'no second float is asked for');
     expect(app.events.where((e) => e == 'start').length, 2);
+  });
+
+  testWidgets('a filing problem is said on the start screen, with the way '
+      'to it', (tester) async {
+    // Raised at settlement into a provider nobody watched, a half-typed profile
+    // meant a restaurant filed nothing for a month and heard it from the
+    // authority. It is said where the restaurant is opened from.
+    final app = await _boot(tester, licenceKey: 'XORD-GOOD-1', backups: [
+      BackupRecord(
+        id: 1,
+        takenAt: DateTime.now(),
+        takenByName: 'Amer M.',
+        trigger: BackupTrigger.dayClose,
+        outcome: BackupOutcome.verified,
+        filePath: '/backups/x.dump',
+        sizeBytes: 1,
+        checksum: 'a' * 64,
+        tablesFound: 44,
+      ),
+    ]);
+    expect(find.byKey(const Key('start-eta-problem')), findsNothing);
+
+    app.container.read(etaFilingProblemProvider.notifier).report(
+      const ProfileIncomplete([
+        ProfileProblem(ProfileField.registrationNumber, 'nine digits'),
+        ProfileProblem(ProfileField.activityCode, 'four digits'),
+      ]),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text(
+        'E-receipts are not being filed: the receipt profile has 2 things to '
+        'fix.',
+      ),
+      findsOneWidget,
+    );
+    await tester.tap(find.byKey(const Key('start-eta-open')));
+    await tester.pumpAndSettle();
+    expect(app.events, contains('manage'));
+  });
+
+  testWidgets('backups are the back office\'s business, not the start '
+      'screen\'s', (tester) async {
+    // A cashier opens the till from here and can do nothing about a backup;
+    // the warning is in Management, for somebody who can.
+    await _boot(tester, licenceKey: 'XORD-GOOD-1', backups: []);
+
+    expect(find.byKey(const Key('start-backup-warning')), findsNothing);
+    expect(
+      find.text('No copy of this database has ever been taken.'),
+      findsNothing,
+    );
+  });
+
+  testWidgets('resetting the terminal is the back office\'s business, not the '
+      'start screen\'s', (tester) async {
+    // A cashier opens the till from here, and must not be one tap from wiping
+    // its setup. The reset is in Management › System › Terminal.
+    await _boot(tester, licenceKey: 'XORD-GOOD-1');
+
+    expect(find.text('Reset terminal'), findsNothing);
   });
 }

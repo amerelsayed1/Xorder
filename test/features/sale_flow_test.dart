@@ -10,6 +10,7 @@ import 'package:xorder_pos/domain/models/permissions.dart';
 import 'package:xorder_pos/domain/repositories/repositories.dart';
 import 'package:xorder_pos/domain/models/ticket.dart';
 import 'package:xorder_pos/features/floor/floor_screen.dart';
+import 'package:xorder_pos/features/payment/payment_screen.dart';
 import 'package:xorder_pos/features/sale/sale_screen.dart';
 
 import '../support/fakes.dart';
@@ -122,6 +123,75 @@ void main() {
     final ticket = capturedRef.read(ticketProvider);
     expect(ticket.lines, hasLength(1));
     expect(ticket.lines.single.product.nameEn, 'Soft Drink');
+  });
+
+  group('an order served at a table is charged at one', () {
+    Future<({WidgetRef ref, List<String> events})> sell(
+      WidgetTester tester,
+      OrderType type,
+    ) async {
+      late WidgetRef capturedRef;
+      final events = <String>[];
+      tester.view
+        ..physicalSize = _desktop
+        ..devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: fakeRepositoryOverrides(),
+          child: MaterialApp(
+            theme: buildPosTheme(),
+            home: Consumer(builder: (context, ref, _) {
+              capturedRef = ref;
+              return SaleScreen(
+                onLock: () {},
+                onTables: () => events.add('tables'),
+                onOrders: () {},
+                onCloseShift: () {},
+              );
+            }),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      capturedRef.read(ticketProvider.notifier).setOrderType(type);
+      await tester.tap(find.text('Soft Drink'));
+      await tester.pumpAndSettle();
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.f9);
+      await tester.pumpAndSettle();
+      return (ref: capturedRef, events: events);
+    }
+
+    testWidgets('a dine-in ticket with no table goes to the floor, not to '
+        'payment', (tester) async {
+      // A dine-in bill with no table on it is one the floor cannot show and
+      // the receipt cannot place.
+      final sale = await sell(tester, OrderType.dineIn);
+      expect(
+        sale.ref.read(orderTypeRulesProvider).requiresTable(OrderType.dineIn),
+        isTrue,
+        reason: 'the precondition: dine-in is served at a table',
+      );
+
+      expect(find.byType(PaymentScreen), findsNothing);
+      expect(find.textContaining('Choose a table first'), findsOneWidget);
+      expect(sale.events, ['tables']);
+      expect(
+        sale.ref.read(ticketProvider).lines,
+        hasLength(1),
+        reason: 'the order waits for its table; it is not thrown away',
+      );
+    });
+
+    testWidgets('a takeaway ticket needs no table', (tester) async {
+      final sale = await sell(tester, OrderType.takeaway);
+
+      expect(find.byType(PaymentScreen), findsOneWidget);
+      expect(sale.events, isEmpty);
+    });
   });
 
   testWidgets('a product with required modifiers opens the sheet first', (tester) async {
@@ -263,25 +333,44 @@ void main() {
       expect(opened(), isTrue);
     });
 
-    testWidgets('a cashier is not shown a control they cannot use', (
+    testWidgets('a cashier gets the button too — for their own sales', (
       tester,
     ) async {
-      await pumpTill(tester, capabilities: {PosCapability.operate});
-      // Hidden, not greyed. A control that is dead for a cashier's whole shift
-      // is clutter in a rail they use all day.
-      expect(find.text('Orders'), findsNothing);
+      // It used to be hidden: history was all-or-nothing, so a cashier saw
+      // everybody's sales or nobody's. It is scoped per person now — without
+      // `order.view_all` the list is the cashier's own (`history_scope.dart`,
+      // tested there) — so the door opens for anyone who may work the till.
+      final opened = await pumpTill(
+        tester,
+        capabilities: {PosCapability.operate},
+      );
+
+      expect(find.text('Orders'), findsOneWidget);
+      await tester.tap(find.text('Orders'));
+      await tester.pumpAndSettle();
+      expect(opened(), isTrue);
     });
 
-    testWidgets('F7 is refused for a cashier, not merely undrawn', (
+    testWidgets('and F7 opens it for them, not only the button', (
+      tester,
+    ) async {
+      final opened = await pumpTill(
+        tester,
+        capabilities: {PosCapability.operate},
+      );
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.f7);
+      await tester.pumpAndSettle();
+      expect(opened(), isTrue);
+    });
+
+    testWidgets('F7 is refused for somebody who may not work the till', (
       tester,
     ) async {
       // The gate that matters. A key on a keyboard reaches the handler whether
       // or not a button was drawn, so a check that lived only in the widget
       // tree would be one the shortcut walks straight past.
-      final opened = await pumpTill(
-        tester,
-        capabilities: {PosCapability.operate},
-      );
+      final opened = await pumpTill(tester, capabilities: const {});
 
       await tester.sendKeyEvent(LogicalKeyboardKey.f7);
       await tester.pumpAndSettle();

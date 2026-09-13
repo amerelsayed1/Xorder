@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:xorder_pos/data/cloud/bootstrap_bundle.dart';
+import 'package:xorder_pos/domain/models/tender_method.dart';
 
 /// A representative bundle, shaped exactly as the agreed POS-BE-023 contract
 /// serialises it. If the backend changes a key, this fixture is where the
@@ -123,6 +124,51 @@ void main() {
     test('carries money and licence blocks through unparsed', () {
       expect((bundle.money['tax_rules'] as List), hasLength(1));
       expect(bundle.licence!['key_id'], 'v1');
+    });
+
+    test('reads the payment methods out of the money block', () {
+      final cash = bundle.tenderTypes.single;
+      expect(cash.id, 1);
+      expect(cash.name, 'Cash');
+      expect(cash.kind, PlatformTenderKind.cash);
+      expect(cash.isActive, isTrue, reason: 'absent means active');
+    });
+  });
+
+  group('payment methods', () {
+    test('tolerate what the platform may send and drop what they cannot', () {
+      final bundle = BootstrapBundle(
+        configVersion: 1,
+        money: {
+          'tender_types': [
+            {'id': 5, 'name': 'Bank terminal', 'kind': 'external',
+             'is_active': false, 'sort_order': 3},
+            {'id': 6, 'name': 'Crypto', 'kind': 'crypto'},
+            {'id': '7', 'kind': 'card'},
+            {'name': 'No id', 'kind': 'cash'},
+            'not a map',
+          ],
+        },
+      );
+      final tenders = bundle.tenderTypes;
+      expect(tenders.map((t) => t.id), [5, 6, 7],
+          reason: 'no id is the one thing nothing can be keyed on');
+      expect(tenders[0].kind, PlatformTenderKind.external);
+      expect(tenders[0].isActive, isFalse);
+      expect(tenders[0].sortOrder, 3);
+      expect(tenders[1].kind, isNull, reason: 'unknown, and still takeable');
+      expect(tenders[2].name, 'Payment method 7');
+    });
+
+    test('a bundle without them has none, and does not throw', () {
+      expect(const BootstrapBundle(configVersion: 1).tenderTypes, isEmpty);
+      expect(
+        const BootstrapBundle(
+          configVersion: 1,
+          money: {'tender_types': 'nonsense'},
+        ).tenderTypes,
+        isEmpty,
+      );
     });
   });
 

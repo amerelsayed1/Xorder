@@ -1,4 +1,5 @@
 import '../../core/money/money.dart';
+import '../../core/money/quantity.dart';
 import 'combo.dart';
 
 /// A sellable product as the till caches it.
@@ -21,6 +22,8 @@ class Product {
     this.modifierGroupIds = const [],
     this.isOpenPrice = false,
     this.taxGroupId,
+    this.isStocked = false,
+    this.stockUnit,
   });
 
   /// A one-off item somebody typed a price for (§17 open item).
@@ -79,6 +82,13 @@ class Product {
   /// restaurant if it changes its default, and the second does not.
   final int? taxGroupId;
 
+  /// Counted when it is bought and sold — the bottled water a restaurant
+  /// also sells. Most of a menu is not: nobody counts assembled dishes.
+  final bool isStocked;
+
+  /// What it is counted in, when [isStocked]. Null reads as each.
+  final QuantityUnit? stockUnit;
+
   /// What the customer actually pays before modifiers.
   Money get effectivePrice => discountedPrice ?? price;
 
@@ -107,6 +117,8 @@ class Product {
     List<int>? modifierGroupIds,
     int? taxGroupId,
     bool clearTaxGroup = false,
+    bool? isStocked,
+    QuantityUnit? stockUnit,
   }) => Product(
     id: id ?? this.id,
     categoryId: categoryId ?? this.categoryId,
@@ -126,6 +138,8 @@ class Product {
     // pointing at nothing.
     isOpenPrice: isOpenPrice,
     taxGroupId: clearTaxGroup ? null : (taxGroupId ?? this.taxGroupId),
+    isStocked: isStocked ?? this.isStocked,
+    stockUnit: stockUnit ?? this.stockUnit,
   );
 }
 
@@ -177,6 +191,24 @@ class Category {
   );
 }
 
+/// Why an item or a category cannot be saved.
+///
+/// **A code, not a sentence**, for the same reason as `OptionGroupProblem`:
+/// these travelled as English inside `CatalogInvalid`, and the back office is
+/// used in Arabic. Enum-keyed so the switch that words them
+/// (`AdminText.catalogProblem`) is exhaustive — a reason added here without
+/// both languages fails to compile.
+enum CatalogProblem {
+  /// The English name is blank. It is the one the kitchen ticket prints.
+  itemNameMissing,
+
+  /// The offer price is above the normal price. The database checks both are
+  /// non-negative and cannot see this; the editor refuses it instead.
+  offerAbovePrice,
+
+  categoryNameMissing,
+}
+
 /// A modifier group — the server's `option_group`.
 class ModifierGroup {
   const ModifierGroup({
@@ -189,11 +221,23 @@ class ModifierGroup {
     this.isVariant = false,
     this.minSelect = 0,
     this.freeOptions = 0,
+    this.displayNameEn,
+    this.displayNameAr,
   });
 
   final int id;
+
+  /// The library name — what the back office calls it.
   final String nameEn;
   final String? nameAr;
+
+  /// The heading on the sheet, when it should read differently from the
+  /// library name. A restaurant with three size groups calls them "Burger
+  /// sizes", "Pizza sizes" and "Drink sizes" to tell them apart, and a cashier
+  /// should see "Size" on all three. Null means use the name.
+  final String? displayNameEn;
+  final String? displayNameAr;
+
   final List<Modifier> modifiers;
 
   /// A required group blocks "Add to ticket" until satisfied.
@@ -236,10 +280,21 @@ class ModifierGroup {
     return sorted.sublist(freeOptions);
   }
 
-  String displayName(String locale) =>
-      locale.startsWith('ar') && (nameAr?.isNotEmpty ?? false)
-      ? nameAr!
-      : nameEn;
+  /// The heading on the sheet: the display name in [locale], then the name in
+  /// it, then the same two in English.
+  ///
+  /// The display name wins inside a language, never across one. An Arabic
+  /// till showing an English "Size" because only the English heading was
+  /// filled in would be reading the wrong column to the cashier.
+  String displayName(String locale) {
+    if (locale.startsWith('ar')) {
+      for (final candidate in [displayNameAr, nameAr]) {
+        if (candidate != null && candidate.isNotEmpty) return candidate;
+      }
+    }
+    final english = displayNameEn;
+    return english != null && english.isNotEmpty ? english : nameEn;
+  }
 }
 
 class Modifier {
@@ -251,6 +306,7 @@ class Modifier {
     this.nameAr,
     this.isAvailable = true,
     this.isDefault = false,
+    this.isVariant = false,
   });
 
   final int id;
@@ -258,7 +314,9 @@ class Modifier {
   final String nameEn;
   final String? nameAr;
 
-  /// May be zero (a "Remove onions" style option) or negative.
+  /// What choosing this costs. For an extra it is **added** to the item and may
+  /// be zero (a "Remove onions" style option) or negative. For a size — see
+  /// [isVariant] — it is the item's whole price.
   final Money priceDelta;
   final bool isAvailable;
 
@@ -266,10 +324,36 @@ class Modifier {
   /// difference between three taps and one.
   final bool isDefault;
 
+  /// A size: one of a variant group's options, whose price **replaces** the
+  /// item's rather than adding to it.
+  ///
+  /// Carried on the option and not only on its group, because a ticket line
+  /// holds options and no groups, and pricing it must not need the catalogue.
+  /// The platform sends a size's full price in `price_delta_minor` for exactly
+  /// this reason — its menu, its dashboard and its order pricing all treat a
+  /// size as the price, and a till that added it charged a Medium Burger 85 +
+  /// 85.
+  final bool isVariant;
+
   String displayName(String locale) =>
       locale.startsWith('ar') && (nameAr?.isNotEmpty ?? false)
       ? nameAr!
       : nameEn;
+}
+
+/// What one of [product] costs with [chosen]: the size's price when a size is
+/// among them, the item's otherwise, and every extra added on top.
+///
+/// The one place this rule lives, so the sheet's running figure and the
+/// ticket's line can never disagree about a Large with cheese.
+Money priceWithOptions(Product product, Iterable<Modifier> chosen) {
+  var base = product.effectivePrice;
+  for (final option in chosen) {
+    if (option.isVariant) base = option.priceDelta;
+  }
+  return chosen
+      .where((option) => !option.isVariant)
+      .fold(base, (total, option) => total + option.priceDelta);
 }
 
 /// The catalog as one immutable snapshot, so the sale screen never reads a

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -55,6 +57,11 @@ class _LicenceScreenState extends ConsumerState<LicenceScreen> {
 
     // Re-read the installed licence so every screen sees the new one at once.
     ref.invalidate(licenceEntitlementProvider);
+    // And every tablet selling through this main device, which reads it from
+    // the shared database rather than holding one of its own.
+    if (result.installed) {
+      unawaited(ref.read(siteLicencePublisherProvider).publish());
+    }
 
     setState(() {
       _busy = false;

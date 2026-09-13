@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -12,15 +13,23 @@ import '../data/cloud/cloud_sync.dart';
 import '../data/cloud/device_token_vault.dart';
 import '../data/cloud/outbox_drain.dart';
 import '../core/config/platform_endpoint.dart';
+import '../core/config/printer_config.dart';
 import '../core/config/terminal_config.dart';
 import '../core/config/terminal_profile.dart';
 import '../core/l10n/app_strings.dart';
 import '../core/money/money.dart';
 import '../core/network/connectivity_probe.dart';
+import '../data/backup/backup_service.dart';
+import '../data/backup/pg_archive.dart';
+import '../data/backup/pg_tools.dart';
+import '../data/config/file_secret_store.dart';
+import '../data/config/pos_db_secret_store.dart';
 import '../data/config/terminal_config_store.dart';
 import '../data/hardware/network_printer_ports.dart';
 import '../data/postgres/pos_database.dart';
+import '../data/postgres/local_bootstrap.dart';
 import '../data/postgres/postgres_admin_repositories.dart';
+import '../data/postgres/postgres_backup_repository.dart';
 import '../data/postgres/postgres_catalog_admin_repository.dart';
 import '../data/postgres/postgres_catalog_repository.dart';
 import '../data/postgres/postgres_directory_repositories.dart';
@@ -30,26 +39,45 @@ import '../data/postgres/postgres_floor_repository.dart';
 import '../data/postgres/postgres_order_history_repository.dart';
 import '../data/postgres/postgres_business_day_repository.dart';
 import '../data/postgres/postgres_cash_movements_repository.dart';
+import '../data/postgres/postgres_order_types_repository.dart';
 import '../data/postgres/postgres_orders_repository.dart';
 import '../data/eta/filing_orders_repository.dart';
+import '../domain/services/eta_filing.dart';
+import '../data/eta/filing_refunds_repository.dart';
+import '../data/eta/eta_filer.dart';
 import '../data/postgres/postgres_eta_queue_repository.dart';
 import '../data/postgres/postgres_receipt_profile_repository.dart';
 import '../data/postgres/postgres_service_charges_repository.dart';
+import '../domain/models/pos_unit.dart';
+import '../domain/models/stock_item.dart';
+import '../domain/models/stock_level.dart';
+import '../data/postgres/postgres_stock_items_repository.dart';
+import '../data/postgres/postgres_stock_levels_repository.dart';
+import '../data/postgres/postgres_units_repository.dart';
+import '../data/postgres/postgres_suppliers_repository.dart';
+import '../data/postgres/postgres_supplier_invoices_repository.dart';
+import '../data/postgres/postgres_purchase_orders_repository.dart';
+import '../data/postgres/postgres_receiving_repository.dart';
 import '../data/postgres/postgres_settings_repository.dart';
 import '../data/postgres/postgres_tender_types_repository.dart';
 import '../data/postgres/postgres_refunds_repository.dart';
 import '../data/postgres/money_config_codec.dart';
 import '../data/postgres/postgres_parked_tickets.dart';
+import '../data/postgres/postgres_print_queue_repository.dart';
 import '../data/postgres/postgres_shift_repository.dart';
+import '../data/postgres/postgres_site_licence.dart';
 import '../data/unconfigured/unconfigured_repositories.dart';
+import '../features/history/history_scope.dart';
 import '../features/licensing/data/file_license_store.dart';
 import '../features/licensing/data/licence_service.dart';
 import '../features/licensing/data/license_keys.dart';
 import '../features/licensing/data/license_store.dart';
 import '../features/licensing/data/platform_licence_api.dart';
+import '../features/licensing/data/site_licence.dart';
 import '../features/licensing/domain/license_verifier.dart';
 import '../features/licensing/domain/license.dart';
 import '../features/setup/application/setup_controller.dart';
+import '../domain/models/backup.dart';
 import '../domain/models/catalog.dart';
 import '../domain/models/dining_table.dart';
 import '../domain/models/ticket.dart';
@@ -60,7 +88,12 @@ import '../domain/models/pos_settings.dart';
 import '../domain/models/refund.dart';
 import '../domain/models/reason_code.dart';
 import '../domain/models/eta_submission.dart';
+import '../domain/models/order_type_config.dart';
 import '../domain/models/permissions.dart';
+import '../domain/models/purchase_order.dart';
+import '../domain/models/tax.dart';
+import '../domain/models/supplier.dart';
+import '../domain/models/supplier_invoice.dart';
 import '../domain/models/receipt_profile.dart';
 import '../domain/models/service_charge.dart';
 import '../domain/models/tender_method.dart';
@@ -240,23 +273,17 @@ ordersRepositoryProvider = Provider<OrdersRepository>((ref) {
   // And then the tax authority, on top of everything else. Outermost on
   // purpose: the platform sync must happen whether or not this branch files
   // e-receipts, and a filing failure must not take the sync down with it.
-  final queue = ref.watch(etaQueueRepositoryProvider);
-  if (queue == null) return synced;
+  final filer = ref.watch(etaFilerProvider);
+  if (filer == null) return synced;
+
+  // Wherever sales are taken, the catch-up runs: a sale the settlement could
+  // not file is found on the next pass rather than never.
+  ref.watch(etaReconcilerProvider);
 
   return FilingOrdersRepository(
     synced,
-    queue: queue,
-    // Read at settlement, not held: a profile completed in Management five
-    // minutes ago is the one this sale is filed under.
-    profile: () =>
-        ref.read(receiptProfileProvider).valueOrNull ??
-        const ReceiptProfile(branchId: 0),
-    // ETA's chain is per POS serial. The terminal id is what this product has
-    // that is stable per till and unique per restaurant; the serial registered
-    // with the authority is set alongside the seal, and until that exists this
-    // keeps two tills in one branch on two chains, which is the property that
-    // matters.
-    deviceSerial: context.terminalId,
+    filer: filer,
+    onProblem: (problem) => reportEtaProblem(ref.container, problem),
   );
 });
 
@@ -286,14 +313,40 @@ final orderHistoryRepositoryProvider = Provider<OrderHistoryRepository>((ref) {
 
 /// One slice of history. Keyed by the query, so changing a filter is a new
 /// read rather than a mutation of a list somebody is looking at.
+///
+/// **Narrowed to what the person at the till may read** before it reaches the
+/// repository — their own sales, without `order.view_all`. Here rather than
+/// in the screen because this is the one road to the data: a second screen
+/// built on this provider inherits the rule instead of having to remember it.
+/// See [HistoryScope].
 final orderHistoryProvider =
-    FutureProvider.family<List<OrderRecord>, OrderHistoryQuery>(
-      (ref, query) => ref.watch(orderHistoryRepositoryProvider).search(query),
-    );
+    FutureProvider.family<List<OrderRecord>, OrderHistoryQuery>((ref, query) {
+      final scoped = HistoryScope.scope(
+        query,
+        ref.watch(signedInStaffProvider),
+      );
+      if (scoped == null) return const <OrderRecord>[];
+      return ref.watch(orderHistoryRepositoryProvider).search(scoped);
+    });
 
-/// One order, opened from the list.
-final orderDetailProvider = FutureProvider.family<OrderRecordDetail?, int>(
-  (ref, orderId) => ref.watch(orderHistoryRepositoryProvider).detail(orderId),
+/// One order, opened from the list — or null when it is not the viewer's to
+/// open, which the pane already shows as "no longer there".
+final orderDetailProvider = FutureProvider.family<OrderRecordDetail?, int>((
+  ref,
+  orderId,
+) async {
+  final viewer = ref.watch(signedInStaffProvider);
+  final repository = ref.watch(orderHistoryRepositoryProvider);
+  final detail = await repository.detail(orderId);
+  if (detail == null || !HistoryScope.mayOpen(detail.order, viewer)) {
+    return null;
+  }
+  return detail;
+});
+
+/// The tills at this branch, for the history screen's terminal filter.
+final historyTerminalsProvider = FutureProvider<List<HistoryTerminal>>(
+  (ref) => ref.watch(orderHistoryRepositoryProvider).terminals(),
 );
 
 /// Money going back.
@@ -309,11 +362,21 @@ final refundsRepositoryProvider = Provider<RefundsRepository>((ref) {
   if (context == null || PosDatabase.hostFor(config) == null) {
     return const UnconfiguredRefundsRepository();
   }
-  return PostgresRefundsRepository(
+  final inner = PostgresRefundsRepository(
     database: ref.watch(posDatabaseProvider),
     config: config,
     context: context,
     shiftId: ref.read(shiftProvider).valueOrNull?.id,
+  );
+
+  // A refund is a receipt too — a credit note naming the sale it undoes.
+  // Filed the same way a sale is, and caught up the same way if it cannot be.
+  final filer = ref.watch(etaFilerProvider);
+  if (filer == null) return inner;
+  return FilingRefundsRepository(
+    inner,
+    filer: filer,
+    onProblem: (problem) => reportEtaProblem(ref.container, problem),
   );
 });
 
@@ -457,7 +520,11 @@ final provisioningRepositoryProvider = Provider<ProvisioningRepository>((ref) {
   // device token (POS-BE-011 Option C), and seeds its local database from the
   // bootstrap bundle the claim carries. Offline terminals keep claiming
   // against the branch server's own PostgreSQL, as before.
-  if (config.mode == DeploymentMode.cloud) {
+  //
+  // A child tablet registers against its main device's PostgreSQL whatever
+  // mode that main device runs in: the platform has never heard of it, and it
+  // holds no device token to claim with.
+  if (config.mode == DeploymentMode.cloud && !config.isChild) {
     final api = ref.watch(posCloudApiProvider);
     if (api == null) return const UnconfiguredProvisioningRepository();
     return CloudProvisioningRepository(
@@ -468,17 +535,24 @@ final provisioningRepositoryProvider = Provider<ProvisioningRepository>((ref) {
       fingerprint: TerminalIdFingerprint(
         ref.watch(terminalProfileProvider).installationId,
       ).value,
-      // The bundle's licence embed installs through the same verified path a
-      // typed key uses — signature checked, tenant checked, stored on disk.
+      // The bundle's licence embed goes through the same verified path a typed
+      // key uses — signature checked, tenant checked — and is then HELD by the
+      // wizard rather than written, exactly like a typed one. A claim happens
+      // at step six of ten, and an installer can still walk away at any of the
+      // four that follow; `SetupController.complete()` is the only place a
+      // licence reaches this machine's disk.
       installLicence: (licence) async {
-        await ref
+        final installed = await ref
             .read(licenceServiceProvider)
             .activate(
               deployment: config,
               key: '',
               fileContents: jsonEncode(licence),
+              persist: false,
             );
-        ref.invalidate(licenceEntitlementProvider);
+        if (installed.file case final file?) {
+          ref.read(setupProvider.notifier).holdLicence(file);
+        }
       },
     );
   }
@@ -497,7 +571,12 @@ final provisioningRepositoryProvider = Provider<ProvisioningRepository>((ref) {
 final posCloudApiProvider = Provider<PosCloudApi?>((ref) {
   final config = ref.watch(deploymentProvider);
   final base = config.baseUrl;
-  if (!config.mode.syncsSalesToPlatform || base == null || base.isEmpty) {
+  // A child of a cloud main device included: its sales reach the platform
+  // through the main device's outbox drain, and it has no token of its own.
+  if (!config.mode.syncsSalesToPlatform ||
+      config.isChild ||
+      base == null ||
+      base.isEmpty) {
     return null;
   }
   final vault = ref.watch(deviceTokenVaultProvider);
@@ -582,6 +661,44 @@ final hardwarePortsProvider = Provider<HardwarePorts>(
   (ref) => const NetworkPrinterPorts(),
 );
 
+/// Which printer this till prints on, and how wide its paper is.
+///
+/// A property of the terminal, read from `config.json` before the first frame
+/// and re-applied when the wizard finishes — the same shape as
+/// [DeploymentController], and for the same reason: setup completes without a
+/// restart, so the value in memory has to be updated as well as the file.
+class PrinterConfigController extends Notifier<PrinterConfig> {
+  @override
+  PrinterConfig build() =>
+      ref.watch(terminalBootProvider).config?.printer ?? PrinterConfig.none;
+
+  void apply(PrinterConfig printer) => state = printer;
+
+  void reset() => state = PrinterConfig.none;
+}
+
+final printerConfigProvider =
+    NotifierProvider<PrinterConfigController, PrinterConfig>(
+      PrinterConfigController.new,
+    );
+
+/// Receipts the printer would not take.
+///
+/// Null where there is no database to queue into, exactly like
+/// [etaQueueRepositoryProvider]: a till mid-setup has nowhere to put a failed
+/// print, and the receipt path says "not printed" rather than "queued".
+final printQueueRepositoryProvider = Provider<PrintQueueRepository?>((ref) {
+  final config = ref.watch(deploymentProvider);
+  final context = ref.watch(posWriteContextProvider);
+  if (context == null || PosDatabase.hostFor(config) == null) return null;
+
+  return PostgresPrintQueueRepository(
+    database: ref.watch(posDatabaseProvider),
+    config: config,
+    context: context,
+  );
+});
+
 final branchesProvider = FutureProvider<List<PosBranch>>(
   (ref) => ref.watch(branchRepositoryProvider).forTenant(),
 );
@@ -598,38 +715,84 @@ final tablesProvider = FutureProvider<List<DiningTable>>(
   (ref) => ref.watch(tablesRepositoryProvider).liveFloor(),
 );
 
-/// Tickets parked on tables — the till's own floor state.
+/// Everything this till has open but is not ringing up right now.
 ///
-/// One entry per seated table. Parking happens when the cashier leaves a
-/// seated, non-empty ticket for the floor; resuming happens when its table is
-/// tapped; settlement frees the table. In memory for now — a restart loses
-/// parked (unpaid, unsent) tickets, the same loss the single live ticket
-/// already suffers; persisting the open floor into the local database is the
-/// follow-up that fixes both at once.
-class OpenTicketsController extends Notifier<Map<int, Ticket>> {
+/// **Two collections, because only one kind of open ticket has a table to hold
+/// it.** [onTables] is the dine-in floor, keyed by table id, and it is what the
+/// floor screen paints. [held] is every parked ticket with no table — a
+/// takeaway or a delivery the cashier put down to serve the person behind, and
+/// until now a ticket the till had no way to put down at all.
+///
+/// The alternative was one map keyed by the client transaction id with the
+/// table as an attribute. It was rejected because the floor's question is
+/// "what is on table 12", asked on every repaint of every tile: answering it
+/// from a transaction-keyed map means a scan per tile, and the one invariant
+/// that matters most on a floor — at most one open ticket per table — stops
+/// being a property of the data structure and becomes something code has to
+/// remember to check.
+class OpenTickets {
+  const OpenTickets({this.onTables = const {}, this.held = const []});
+
+  /// Parked dine-in tickets, by table id.
+  final Map<int, Ticket> onTables;
+
+  /// Parked tickets with no table, oldest first.
+  final List<Ticket> held;
+
+  bool get isEmpty => onTables.isEmpty && held.isEmpty;
+
+  /// The held tickets that are not the one on screen.
+  ///
+  /// A resumed hold keeps its parked row until it is paid or voided — a crash
+  /// between resume and payment must not lose the sale — so the live ticket is
+  /// routinely still in [held]. Offering it back to the cashier as something to
+  /// resume would be offering them the screen they are already looking at.
+  List<Ticket> heldOtherThan(String liveTicketId) => [
+    for (final ticket in held)
+      if (ticket.id != liveTicketId) ticket,
+  ];
+
+  OpenTickets copyWith({Map<int, Ticket>? onTables, List<Ticket>? held}) =>
+      OpenTickets(
+        onTables: onTables ?? this.onTables,
+        held: held ?? this.held,
+      );
+}
+
+/// The till's parked work: the dine-in floor, and the tickets on the counter.
+///
+/// Write-through to `pos_parked_tickets`, so all of it survives a restart:
+/// parking upserts, settling and voiding delete, and the boot hydrates.
+class OpenTicketsController extends Notifier<OpenTickets> {
   @override
-  Map<int, Ticket> build() {
+  OpenTickets build() {
     ref.onDispose(() => _disposed = true);
     // Put the floor back the way the restart found it. Async on purpose —
     // the first frame must not wait on a database — and merge-not-replace,
     // so a table seated in the seconds before hydration lands wins over its
     // own stale disk copy.
     Future.microtask(_hydrate);
-    return const {};
+    return const OpenTickets();
   }
 
   bool _disposed = false;
 
   PostgresParkedTickets? get _store {
     final config = ref.read(deploymentProvider);
-    final restaurantId = ref.read(terminalProfileProvider).restaurantId;
-    if (restaurantId == null || PosDatabase.hostFor(config) == null) {
-      return null;
-    }
+    // The write context rather than the restaurant id alone, because a parked
+    // ticket with no table can only say which shop it belongs to by carrying
+    // the branch — and a held ticket the day-close check cannot see is an
+    // unpaid sale that disappears at midnight. A till that cannot name its
+    // branch parks in memory only, which is what it already did before it was
+    // adopted.
+    final context = ref.read(posWriteContextProvider);
+    if (context == null || PosDatabase.hostFor(config) == null) return null;
+
     return PostgresParkedTickets(
       database: ref.read(posDatabaseProvider),
       config: config,
-      restaurantId: restaurantId,
+      restaurantId: context.restaurantId,
+      branchId: context.branchId,
     );
   }
 
@@ -639,40 +802,88 @@ class OpenTicketsController extends Notifier<Map<int, Ticket>> {
     try {
       final catalog = await ref.read(catalogProvider.future);
       final parked = await store.load(catalog);
-      if (_disposed || parked.isEmpty) return;
-      state = {...parked, ...state};
+      if (_disposed || (parked.onTables.isEmpty && parked.held.isEmpty)) {
+        return;
+      }
+      // Merge, never replace: a ticket parked in the seconds before hydration
+      // landed wins over its own stale disk copy — and is not listed twice
+      // beside it, which is what a plain concatenation would have done.
+      final live = {for (final ticket in state.held) ticket.id};
+      state = OpenTickets(
+        onTables: {...parked.onTables, ...state.onTables},
+        held: [
+          for (final ticket in parked.held)
+            if (!live.contains(ticket.id)) ticket,
+          ...state.held,
+        ],
+      );
     } on Object {
       // A floor that cannot hydrate is empty, not broken — parking still
       // works and writes through from here on.
     }
   }
 
-  /// Park a seated ticket on its table. A ticket with no table or no lines
-  /// has nothing to hold a table with, and is ignored rather than refused —
-  /// leaving the sale screen with an empty ticket is normal, not an error.
+  /// Put a ticket down.
+  ///
+  /// A seated ticket goes onto its table; anything else joins [OpenTickets.held]
+  /// under its own transaction id. An empty ticket is ignored rather than
+  /// refused — leaving the sale screen with nothing rung up is normal, not an
+  /// error, and there is nothing to come back to.
   void park(Ticket ticket) {
+    if (ticket.lines.isEmpty) return;
     final tableId = ticket.tableId;
-    if (tableId == null || ticket.lines.isEmpty) return;
-    state = {...state, tableId: ticket};
+
+    state = tableId != null
+        ? state.copyWith(onTables: {...state.onTables, tableId: ticket})
+        // Keyed on the transaction id, so parking the same ticket twice
+        // replaces the earlier copy instead of holding two versions of one
+        // sale — which is what a cashier does when they add a line to a
+        // resumed hold and put it down again.
+        : state.copyWith(
+            held: [
+              for (final held in state.held)
+                if (held.id != ticket.id) held,
+              ticket,
+            ],
+          );
+
     unawaited(_store?.save(ticket) ?? Future.value());
   }
 
-  Ticket? at(int tableId) => state[tableId];
+  Ticket? at(int tableId) => state.onTables[tableId];
 
-  /// The table's money reached the till — the seat is free again.
-  void settle(int? tableId) {
-    if (tableId == null) return;
-    if (state.containsKey(tableId)) {
-      state = {...state}..remove(tableId);
+  /// This ticket's money has been dealt with — paid, or voided. Let it go.
+  ///
+  /// Takes the whole ticket rather than a table id: a held ticket has no table
+  /// to be identified by, and a ticket that was seated when it was parked and
+  /// is not now (somebody switched a dine-in order to takeaway, which clears
+  /// the table) has to release the row it actually left behind.
+  void settle(Ticket ticket) {
+    final tables = {...state.onTables}
+      ..removeWhere(
+        (tableId, parked) =>
+            tableId == ticket.tableId || parked.id == ticket.id,
+      );
+    final held = [
+      for (final parked in state.held)
+        if (parked.id != ticket.id) parked,
+    ];
+
+    if (tables.length != state.onTables.length ||
+        held.length != state.held.length) {
+      state = OpenTickets(onTables: tables, held: held);
     }
-    // The disk row goes regardless of what memory held: a settled table must
+    // The disk row goes regardless of what memory held: a settled sale must
     // not resurrect on the next boot.
-    unawaited(_store?.remove(tableId) ?? Future.value());
+    unawaited(
+      _store?.remove(tableId: ticket.tableId, transactionId: ticket.id) ??
+          Future.value(),
+    );
   }
 }
 
 final openTicketsProvider =
-    NotifierProvider<OpenTicketsController, Map<int, Ticket>>(
+    NotifierProvider<OpenTicketsController, OpenTickets>(
       OpenTicketsController.new,
     );
 
@@ -680,7 +891,7 @@ final openTicketsProvider =
 /// till's parked tickets — busy tiles carry their item count and total.
 final floorTablesProvider = FutureProvider<List<DiningTable>>((ref) async {
   final tables = await ref.watch(tablesProvider.future);
-  return overlayOpenTickets(tables, ref.watch(openTicketsProvider));
+  return overlayOpenTickets(tables, ref.watch(openTicketsProvider).onTables);
 });
 
 /// How many settled sales this terminal still owes the platform.
@@ -791,25 +1002,85 @@ final posUiProvider = NotifierProvider<PosUiController, PosUiState>(
   PosUiController.new,
 );
 
-/// The order types THIS branch actually offers (POS-BE-005).
+/// What each kind of order requires — tables, a customer, an address (§31).
 ///
-/// The till must never show a type the branch does not support: the cashier
-/// would ring a whole ticket and only discover at settlement that the server
-/// refuses it. The rule is mirrored from `PosOrderService` exactly — an empty
+/// Falls back to the seeded four while the query is in flight or on a till
+/// with no database. A till that believed nothing was seated would hide its
+/// own floor plan.
+final orderTypeRulesProvider = Provider<OrderTypeRules>((ref) {
+  return ref.watch(orderTypeConfigProvider).valueOrNull ??
+      OrderTypeRules.fallback;
+});
+
+final orderTypeConfigProvider = FutureProvider<OrderTypeRules>((ref) async {
+  final repository = ref.watch(orderTypesRepositoryProvider);
+  if (repository == null) return OrderTypeRules.fallback;
+  final configured = await repository.all();
+  return configured.isEmpty
+      ? OrderTypeRules.fallback
+      : OrderTypeRules(configured);
+});
+
+/// Every order type, including the ones a branch has turned off — the editor's
+/// list, not the till's. The till reads `orderTypeConfigProvider`, which hides
+/// them, because a cashier must never be offered a type the branch refuses.
+final orderTypesAllProvider = FutureProvider<List<OrderTypeConfig>>((
+  ref,
+) async {
+  final repository = ref.watch(orderTypesRepositoryProvider);
+  if (repository == null) return OrderTypeConfig.seeded;
+  final configured = await repository.all(includeInactive: true);
+  // Seeded rather than empty: migration 25 seeds four rows, and a restaurant
+  // whose seed has not run yet still has four types to name.
+  return configured.isEmpty ? OrderTypeConfig.seeded : configured;
+});
+
+final orderTypesRepositoryProvider = Provider<OrderTypesRepository?>((ref) {
+  final config = ref.watch(deploymentProvider);
+  final context = ref.watch(posWriteContextProvider);
+  if (context == null || PosDatabase.hostFor(config) == null) return null;
+  return PostgresOrderTypesRepository(
+    database: ref.watch(posDatabaseProvider),
+    config: config,
+    restaurantId: context.restaurantId,
+  );
+});
+
+/// The order types THIS branch actually offers the cashier (POS-BE-005, §31).
+///
+/// Two filters, and both have to pass. The branch's own list from the platform:
+/// the till must never show a type the branch does not support, or the cashier
+/// rings a whole ticket and only discovers at settlement that the server
+/// refuses it. That rule is mirrored from `PosOrderService` exactly — an empty
 /// list on the branch means "everything allowed" there, so it means the same
-/// here. An unknown wire value is dropped rather than throwing (rule 11).
+/// here, and an unknown wire value is dropped rather than thrown on (rule 11).
+///
+/// And the restaurant's own switch in the back office. Turning delivery off
+/// there used to change nothing on the till, because this read only the
+/// branch; `orderTypeConfigProvider` already hides the inactive rows, and it
+/// also supplies the order the restaurant sorted them into.
 final branchOrderTypesProvider = Provider<List<OrderType>>((ref) {
+  final active = ref.watch(orderTypeRulesProvider).active;
   final branchId = ref.watch(terminalProfileProvider).branchId;
   final branches = ref.watch(branchesProvider).valueOrNull;
-  if (branchId == null || branches == null) return OrderType.values;
 
-  final branch = branches.where((b) => b.id == branchId).firstOrNull;
-  final wire = branch?.supportedOrderTypes ?? const <String>[];
-  if (wire.isEmpty) return OrderType.values;
+  var supported = OrderType.values;
+  if (branchId != null && branches != null) {
+    final branch = branches.where((b) => b.id == branchId).firstOrNull;
+    final wire = branch?.supportedOrderTypes ?? const <String>[];
+    final parsed = [for (final value in wire) ?OrderType.fromWire(value)];
+    // A branch whose every value this build fails to parse still has to sell.
+    if (parsed.isNotEmpty) supported = parsed;
+  }
 
-  final supported = [for (final value in wire) ?OrderType.fromWire(value)];
-  // A branch whose every value this build fails to parse still has to sell.
-  return supported.isEmpty ? OrderType.values : supported;
+  final offered = [
+    for (final type in active)
+      if (supported.contains(type)) type,
+  ];
+  // Nothing in common — the back office turned on only what the platform
+  // refuses here — and a till with no order type cannot sell at all. The
+  // platform's list wins, because it is the one settlement enforces.
+  return offered.isEmpty ? supported : offered;
 });
 
 /// How much tax and service this till charges.
@@ -826,7 +1097,81 @@ final taxConfigProvider = Provider<TaxConfig>((ref) {
   // restaurant that has not opened the new screen is charged exactly what it
   // was.
   final charges = ref.watch(serviceChargesProvider).valueOrNull ?? const [];
-  return charges.isEmpty ? stored : stored.withServiceCharges(charges);
+  final withCharges = charges.isEmpty
+      ? stored
+      : stored.withServiceCharges(charges);
+
+  // **And the named rates, which nothing loaded.** `pos_tax_groups` has been
+  // seeded since the installer wrote it and `pos_products.tax_group_id` has
+  // pointed at it since Wave M, but `TaxConfig.taxGroups` arrived empty on every
+  // till — so `defaultTaxGroup` answered every lookup, and a bottle of water a
+  // restaurant had marked zero-rated was charged the standard rate anyway. Same
+  // shape as the charges above: empty changes nothing.
+  final groups = ref.watch(taxGroupsProvider).valueOrNull ?? const [];
+  return groups.isEmpty ? withCharges : withCharges.withTaxGroups(groups);
+});
+
+/// The restaurant's named rates (§17).
+///
+/// On the **till's** credential, unlike the editor's write: a ticket cannot be
+/// priced without them, and the catalogue query already reads the group id off
+/// every product.
+final taxGroupsProvider = FutureProvider<List<TaxGroup>>((ref) async {
+  final config = ref.watch(deploymentProvider);
+  final context = ref.watch(posWriteContextProvider);
+  if (context == null || PosDatabase.hostFor(config) == null) return const [];
+
+  try {
+    final rows = await ref.watch(posDatabaseProvider).query(
+      config,
+      'SELECT id, name_en, name_ar, rate_bp, is_default FROM pos_tax_groups '
+      'WHERE restaurant_id = @r AND is_active ORDER BY is_default DESC, id',
+      parameters: {'r': context.restaurantId},
+    );
+    return [
+      for (final row in rows)
+        TaxGroup(
+          id: row[0]! as int,
+          nameEn: row[1]! as String,
+          nameAr: row[2] as String?,
+          rateBp: row[3]! as int,
+          isDefault: row[4]! as bool,
+        ),
+    ];
+  } on Object {
+    // A till that cannot read its rates keeps the single configured one rather
+    // than refusing to sell — the same choice `moneyConfigProvider` makes, and
+    // for the same reason.
+    return const [];
+  }
+});
+
+/// Every group including the retired ones — the editor's list.
+final taxGroupsAllProvider = FutureProvider<List<TaxGroup>>((ref) async {
+  final config = ref.watch(adminDeploymentProvider);
+  final context = ref.watch(posWriteContextProvider);
+  if (context == null || ref.watch(adminDbCredentialProvider) == null) {
+    return const [];
+  }
+
+  final rows = await ref.watch(adminPosDatabaseProvider).query(
+    config,
+    'SELECT id, name_en, name_ar, rate_bp, is_default, is_active '
+    'FROM pos_tax_groups WHERE restaurant_id = @r '
+    'ORDER BY is_default DESC, id',
+    parameters: {'r': context.restaurantId},
+  );
+  return [
+    for (final row in rows)
+      TaxGroup(
+        id: row[0]! as int,
+        nameEn: row[1]! as String,
+        nameAr: row[2] as String?,
+        rateBp: row[3]! as int,
+        isDefault: row[4]! as bool,
+        isActive: row[5]! as bool,
+      ),
+  ];
 });
 
 final moneyConfigProvider = FutureProvider<TaxConfig?>((ref) async {
@@ -880,9 +1225,25 @@ class TicketController extends Notifier<Ticket> {
       state = state.copyWith(taxConfig: next);
     });
 
+    // The back office can turn a kind of order off while this till is open,
+    // and the restaurant's rules arrive a beat after the first ticket does. An
+    // empty ticket left on a type nobody offers any more moves to the first one
+    // that is. A ticket with lines or a table keeps its type: switching it
+    // would detach a seated party's bill, and the cashier can see the bar.
+    ref.listen<List<OrderType>>(branchOrderTypesProvider, (_, offered) {
+      if (offered.contains(state.orderType)) return;
+      if (!state.isEmpty || state.tableId != null) return;
+      setOrderType(offered.first);
+    });
+
+    final offered = ref.read(branchOrderTypesProvider);
     return Ticket(
       id: _uuid.v4(),
-      orderType: OrderType.dineIn,
+      // Dine in when the till sells it, as it always has; otherwise whatever
+      // the restaurant sorted first. Never empty — see the provider.
+      orderType: offered.contains(OrderType.dineIn)
+          ? OrderType.dineIn
+          : offered.first,
       // The platform's rates when it has sent any; otherwise the read-only
       // device default, which every receipt then discloses. What must never
       // happen — and used to — is the till inventing a rate the platform does
@@ -944,8 +1305,15 @@ class TicketController extends Notifier<Ticket> {
     if (result.isOk) state = result.ticket!;
   }
 
-  void setOrderType(OrderType type) =>
-      state = TicketEngine.setOrderType(state, type);
+  void setOrderType(OrderType type) => state = TicketEngine.setOrderType(
+    state,
+    type,
+    // The restaurant's answer, not a comparison against `dineIn`. Read rather
+    // than watched: switching type is a one-off act, and rebuilding the
+    // controller because somebody edited an order type in the back office
+    // mid-ticket would be worse than reading a value one second stale.
+    seated: ref.read(orderTypeRulesProvider).requiresTable(type),
+  );
 
   void attachTable(DiningTable table) => state = TicketEngine.attachTable(
     state,
@@ -1011,6 +1379,33 @@ final shiftRepositoryProvider = Provider<ShiftRepository>((ref) {
 /// Null until somebody signs in. The till deliberately does not remember across
 /// a restart: whoever opens the drawer next has to say who they are, because the
 /// shift they open makes them answerable for what is in it.
+/// The person working this till, for everything that SHOWS or PRINTS a name.
+///
+/// Empty until somebody enters a PIN, and empty on purpose. The name used to
+/// come off `PosSession.userName`, which the branch server answers with the
+/// first active staff row for the branch — `ORDER BY st.id LIMIT 1` — rather
+/// than with whoever is standing at the till. On a shared terminal that put one
+/// cashier's name in the top bar all day and on the receipts every other
+/// cashier printed, which is worse than showing nothing: a blank is visibly
+/// missing, a plausible wrong name is not. (POS-BE-024.)
+final operatorNameProvider = Provider<String>(
+  (ref) => ref.watch(signedInStaffProvider)?.name ?? '',
+);
+
+/// The same person's initials, for the avatar. Empty when nobody has signed in,
+/// so the chip is absent rather than showing a "?" for a person who is not
+/// missing — nobody has arrived yet.
+final operatorInitialsProvider = Provider<String>((ref) {
+  final name = ref.watch(operatorNameProvider).trim();
+  if (name.isEmpty) return '';
+
+  final parts = name.split(RegExp(r'\s+'));
+  String first(String s) => s.isEmpty ? '' : s.substring(0, 1).toUpperCase();
+  return parts.length == 1
+      ? first(parts.first)
+      : '${first(parts.first)}${first(parts[1])}';
+});
+
 final signedInStaffProvider =
     NotifierProvider<SignedInStaffController, PosStaff?>(
       SignedInStaffController.new,
@@ -1058,10 +1453,23 @@ final connectivityProbeProvider = Provider<ConnectivityProbe>(
 /// The fingerprint follows the terminal id — generated once on this machine and
 /// never reissued — so a licence can be pinned to a till. It is hashed, so what
 /// a licence carries says nothing about the machine or the person on it.
+///
+/// **A child tablet reads its main device's licence instead** — see
+/// [SiteLicenceService]. Same public key, same policy; the file simply lives in
+/// the database they share rather than on the tablet.
 final licenceServiceProvider = Provider<LicenceService>((ref) {
+  final verifier = LicenseVerifier(publicKeyBytes: LicenseKeys.current);
+  if (ref.watch(deploymentProvider).isChild) {
+    return SiteLicenceService(
+      source: ref.watch(siteLicenceSourceProvider) ?? InMemorySiteLicenceSource(),
+      verifySignature: verifier.verifySignature,
+      clock: DateTime.now,
+      restaurantId: ref.watch(terminalProfileProvider).restaurantId,
+    );
+  }
   final platform = ref.watch(platformLicenceApiProvider);
   return DefaultLicenceService(
-    verifier: LicenseVerifier(publicKeyBytes: LicenseKeys.current),
+    verifier: verifier,
     store_: ref.watch(licenseStoreProvider),
     fingerprint: TerminalIdFingerprint(
       ref.watch(terminalProfileProvider).installationId,
@@ -1106,6 +1514,113 @@ final licenseStoreProvider = Provider<LicenseStore>(
   (ref) => FileLicenseStore(),
 );
 
+/// The role a FRESH install takes. A saved config keeps the role it was set
+/// up with; this only decides which wizard a new machine opens on.
+///
+/// A tablet is a child, always — see [TerminalRole]. Decided by the operating
+/// system rather than by screen size: a large Android tablet is still the
+/// device carried round the floor, and a small Windows till is still the one
+/// with the database on it.
+final deviceRoleProvider = Provider<TerminalRole>(
+  (ref) => Platform.isAndroid || Platform.isIOS
+      ? TerminalRole.child
+      : TerminalRole.main,
+);
+
+/// The licence a main device shares with its children, in their database.
+/// Null until there is a database to find it in.
+final siteLicenceSourceProvider = Provider<SiteLicenceSource?>((ref) {
+  final config = ref.watch(deploymentProvider);
+  if (PosDatabase.hostFor(config) == null) return null;
+  return _PostgresSiteLicenceSource(
+    PostgresSiteLicence(
+      database: ref.watch(posDatabaseProvider),
+      config: config,
+    ),
+  );
+});
+
+/// [PostgresSiteLicence]'s plain rows, as the licensing types.
+class _PostgresSiteLicenceSource implements SiteLicenceSource {
+  const _PostgresSiteLicenceSource(this._table);
+
+  final PostgresSiteLicence _table;
+
+  @override
+  Future<SiteLicence?> read({int? restaurantId}) async {
+    final row = await _table.read(restaurantId: restaurantId);
+    if (row == null) return null;
+    return SiteLicence(
+      file: LicenseFile(
+        payloadB64: row.payload,
+        signatureB64: row.signature,
+        keyId: row.keyId,
+      ),
+      restaurantId: row.restaurantId,
+      // The CHECK constraint admits only the two wire values, so the fallback
+      // is for a newer build's mode this one does not know.
+      mode: DeploymentMode.fromWire(row.mode) ?? DeploymentMode.offline,
+      terminalCount: row.terminalCount,
+    );
+  }
+
+  @override
+  Future<void> publish({
+    required int restaurantId,
+    required LicenseFile file,
+    required DeploymentMode mode,
+  }) => _table.publish(
+    SiteLicenceRow(
+      restaurantId: restaurantId,
+      payload: file.payloadB64,
+      signature: file.signatureB64,
+      keyId: file.keyId,
+      mode: mode.wire,
+    ),
+  );
+}
+
+final siteLicencePublisherProvider = Provider<SiteLicencePublisher>(
+  SiteLicencePublisher.new,
+);
+
+/// Shares this main device's licence with its children.
+///
+/// Run when the start screen opens and after a renewal — the two moments a
+/// main device's licence can have changed — rather than once at setup, so a
+/// main device installed before children existed shares its licence the next
+/// time anybody reaches its start screen, and a renewal reaches every tablet
+/// without anyone touching them.
+class SiteLicencePublisher {
+  SiteLicencePublisher(this._ref);
+
+  final Ref _ref;
+
+  /// Never throws. Sharing is for the children's benefit, and a main device
+  /// that could not write the row must still open its own shift.
+  Future<void> publish() async {
+    final config = _ref.read(deploymentProvider);
+    if (config.isChild) return;
+    final restaurantId = _ref.read(terminalProfileProvider).restaurantId;
+    final source = _ref.read(siteLicenceSourceProvider);
+    if (restaurantId == null || source == null) return;
+
+    try {
+      final file = await _ref.read(licenceServiceProvider).installed();
+      if (file == null) return;
+      // A one-terminal licence has nobody to share with.
+      if ((LicenseVerifier.claimsOf(file)?.maxTerminals ?? 1) <= 1) return;
+      await source.publish(
+        restaurantId: restaurantId,
+        file: file,
+        mode: config.mode,
+      );
+    } on Object catch (error) {
+      debugPrint('site licence not shared: $error');
+    }
+  }
+}
+
 /// The language this terminal is operated in.
 ///
 /// A property of the **terminal**, not of the person signed into it. A till in
@@ -1119,7 +1634,16 @@ final licenseStoreProvider = Provider<LicenseStore>(
 class TerminalLocaleController extends Notifier<Locale> {
   @override
   Locale build() =>
-      Locale(ref.watch(terminalBootProvider).config?.languageCode ?? 'en');
+      Locale(ref.watch(terminalBootProvider).config?.languageCode ?? _default);
+
+  /// Arabic, because the restaurants this ships to are in Egypt.
+  ///
+  /// Only the fallback moves: a terminal that has been set up reads its own
+  /// `languageCode` and keeps whatever was chosen, so this is what a machine
+  /// with no configuration yet opens in — the wizard, and the first frame after
+  /// a reset. An installer who wants English is one item away in the Settings
+  /// bar, on every screen including that first one.
+  static const _default = 'ar';
 
   /// Switches the language NOW and writes it to the terminal's config file.
   ///
@@ -1150,8 +1674,16 @@ class TerminalLocaleController extends Notifier<Locale> {
       final saved = await store.read();
       if (saved == null || saved.languageCode == languageCode) return;
       await store.write(saved.copyWith(languageCode: languageCode));
-    } on Exception {
+    } on Object {
       // See above: the language on screen is already correct.
+      //
+      // `Object`, not `Exception`. The failures that actually reach here are
+      // mostly not exceptions: a platform with no binding, a missing plugin, a
+      // support directory the OS will not name all arrive as `Error`s, and an
+      // `on Exception` let them escape a future nobody awaits — an unhandled
+      // error thrown from a language switch that had already succeeded on
+      // screen. The bargain stated above is "silent on failure", and it has to
+      // hold for every kind of failure or it is not the bargain.
     }
   }
 }
@@ -1197,8 +1729,8 @@ class BrightnessController extends Notifier<Brightness?> {
       final saved = await store.read();
       if (saved == null || saved.brightness == brightness) return;
       await store.write(saved.copyWith(brightness: brightness));
-    } on Exception {
-      // See above.
+    } on Object {
+      // See above — including why this is `Object` and not `Exception`.
     }
   }
 }
@@ -1226,6 +1758,32 @@ final stringsProvider = Provider<AppStrings>(
 /// a machine that has never been set up gets: the wizard.
 final terminalBootProvider = Provider<TerminalBoot>((ref) => TerminalBoot.none);
 
+/// What this terminal believes is on disk **now**.
+///
+/// [terminalBootProvider] is the snapshot `main()` took before the first frame,
+/// and it is an override — nothing inside a running process can correct it. So
+/// a reset that deleted `config.json` left everything seeded from that snapshot
+/// still holding the configuration the operator had just cleared, until the
+/// next launch. The wizard is where that showed: reset a till, activate another
+/// restaurant's licence, and the tenant read off the DELETED config refused the
+/// new one as a mismatch — naming a restaurant no longer on the machine, and
+/// blaming a licence that was perfectly good.
+///
+/// The same value, made correctable. Read this; override [terminalBootProvider].
+class TerminalSeed extends Notifier<TerminalBoot> {
+  @override
+  TerminalBoot build() => ref.watch(terminalBootProvider);
+
+  /// Nothing on disk any more — called by [TerminalReset] once the file is
+  /// actually gone, so that whatever rebuilds from here rebuilds as the fresh
+  /// install this machine now is.
+  void clear() => state = TerminalBoot.none;
+}
+
+final terminalSeedProvider = NotifierProvider<TerminalSeed, TerminalBoot>(
+  TerminalSeed.new,
+);
+
 /// Where a finished setup is written. The one place that knows there is a file.
 final terminalConfigStoreProvider = Provider<TerminalConfigStore>(
   (ref) => FileTerminalConfigStore(),
@@ -1236,7 +1794,7 @@ final terminalConfigStoreProvider = Provider<TerminalConfigStore>(
 class DeploymentController extends Notifier<DeploymentConfig> {
   @override
   DeploymentConfig build() =>
-      ref.watch(terminalBootProvider).config?.deployment ??
+      ref.watch(terminalSeedProvider).config?.deployment ??
       DeploymentConfig.unconfigured;
 
   void apply(DeploymentConfig config) => state = config;
@@ -1257,7 +1815,7 @@ final deploymentProvider =
 /// finished, whatever the flag in the file says.
 class SetupCompletionController extends Notifier<bool> {
   @override
-  bool build() => ref.watch(terminalBootProvider).isConfigured;
+  bool build() => ref.watch(terminalSeedProvider).isConfigured;
 
   void markComplete() => state = true;
 
@@ -1291,6 +1849,12 @@ class TerminalReset {
     // operator just asked for.
     await _ref.read(terminalConfigStoreProvider).clear();
     await _ref.read(posDbCredentialsStoreProvider).forget();
+
+    // Then the snapshot the process booted from, which now describes a file
+    // that is gone. Without this the wizard reopens seeded from the terminal
+    // just cleared — and the tenant on that dead config refuses the next
+    // restaurant's licence as though the licence were the thing at fault.
+    _ref.read(terminalSeedProvider.notifier).clear();
 
     _ref.read(setupCompleteProvider.notifier).reset();
     _ref.read(deploymentProvider.notifier).reset();
@@ -1452,6 +2016,43 @@ final adminPosDatabaseProvider = Provider<PosDatabase>((ref) {
   return database;
 });
 
+/// Applies the migrations this build carries and the database lacks, as the
+/// back office's administrator.
+///
+/// **The only thing that upgrades an installed till.** The till's own role has
+/// no DDL, the wizard runs once, and `bin/pos_migrate.dart` is a command nobody
+/// at a restaurant runs — so a new version met a database a version behind it,
+/// and the first pane that read a new table said so in SQL. The back-office
+/// door is the one moment the app holds a credential that can change the
+/// schema, so that is where this runs.
+///
+/// Null where there is nothing this till may upgrade: no database, or a
+/// tablet, whose main device owns the schema and may be running an older build
+/// that has never heard of what a newer tablet would add.
+final schemaUpgraderProvider = Provider<Future<List<int>> Function()?>((ref) {
+  final config = ref.watch(deploymentProvider);
+  if (config.isChild || PosDatabase.hostFor(config) == null) return null;
+  return () => LocalBootstrap(
+    ref.read(adminPosDatabaseProvider),
+  ).upgrade(ref.read(adminDeploymentProvider), till: config);
+});
+
+/// Why the last upgrade at the back-office door failed, or null.
+///
+/// Held rather than thrown: a failed upgrade must not keep anybody out of the
+/// back office — Backup is in there — so it is said above the panes instead.
+class SchemaUpgradeFailure extends Notifier<String?> {
+  @override
+  String? build() => null;
+
+  void report(String message) => state = message;
+
+  void clear() => state = null;
+}
+
+final schemaUpgradeFailureProvider =
+    NotifierProvider<SchemaUpgradeFailure, String?>(SchemaUpgradeFailure.new);
+
 /// Roles, staff and the audit ledger, bound the same way as everything else:
 /// PostgreSQL when this terminal has a branch server, and an `Unconfigured…`
 /// binding that refuses out loud when it does not.
@@ -1488,6 +2089,91 @@ final catalogAdminRepositoryProvider = Provider<CatalogAdminRepository?>((ref) {
   );
 });
 
+// ── Purchasing ──────────────────────────────────────────────────────────────
+//
+// All three run on the administrator connection and none on the till's: a
+// counter credential has no use for who the restaurant owes money to.
+
+bool _canBuy(Ref ref) => ref.watch(adminDbCredentialProvider) != null;
+
+final suppliersRepositoryProvider = Provider<SuppliersRepository>((ref) {
+  final context = ref.watch(posWriteContextProvider);
+  if (context == null) return const UnconfiguredSuppliersRepository();
+  return PostgresSuppliersRepository(
+    database: ref.watch(adminPosDatabaseProvider),
+    config: ref.watch(adminDeploymentProvider),
+    adminAvailable: _canBuy(ref),
+    restaurantId: context.restaurantId,
+    branchId: context.branchId,
+  );
+});
+
+final suppliersProvider = FutureProvider<List<Supplier>>(
+  (ref) => ref.watch(suppliersRepositoryProvider).all(),
+);
+
+final purchaseOrdersRepositoryProvider = Provider<PurchaseOrdersRepository>((
+  ref,
+) {
+  final context = ref.watch(posWriteContextProvider);
+  if (context == null) return const UnconfiguredPurchaseOrdersRepository();
+  return PostgresPurchaseOrdersRepository(
+    database: ref.watch(adminPosDatabaseProvider),
+    config: ref.watch(adminDeploymentProvider),
+    adminAvailable: _canBuy(ref),
+    restaurantId: context.restaurantId,
+    branchId: context.branchId,
+  );
+});
+
+final purchaseOrdersProvider = FutureProvider<List<PurchaseOrder>>(
+  (ref) => ref.watch(purchaseOrdersRepositoryProvider).all(),
+);
+
+final receivingRepositoryProvider = Provider<ReceivingRepository>((ref) {
+  final context = ref.watch(posWriteContextProvider);
+  if (context == null) return const UnconfiguredReceivingRepository();
+  return PostgresReceivingRepository(
+    database: ref.watch(adminPosDatabaseProvider),
+    config: ref.watch(adminDeploymentProvider),
+    adminAvailable: _canBuy(ref),
+    restaurantId: context.restaurantId,
+    branchId: context.branchId,
+  );
+});
+
+final supplierInvoicesRepositoryProvider =
+    Provider<SupplierInvoicesRepository>((ref) {
+  final context = ref.watch(posWriteContextProvider);
+  if (context == null) return const UnconfiguredSupplierInvoicesRepository();
+  return PostgresSupplierInvoicesRepository(
+    database: ref.watch(adminPosDatabaseProvider),
+    config: ref.watch(adminDeploymentProvider),
+    adminAvailable: _canBuy(ref),
+    restaurantId: context.restaurantId,
+    branchId: context.branchId,
+  );
+});
+
+/// Everything with money still on it, oldest due first.
+///
+/// **The unpaid list rather than every invoice**, because a restaurant that has
+/// been open three years has thousands of settled ones and the screen is a
+/// worklist: what has to be paid, and what is late.
+final unpaidInvoicesProvider = FutureProvider<List<SupplierInvoice>>(
+  (ref) => ref.watch(supplierInvoicesRepositoryProvider).unpaid(),
+);
+
+/// What has been paid recently, so a bounced cheque can be reversed.
+final supplierPaymentsProvider = FutureProvider<List<SupplierPayment>>(
+  (ref) => ref.watch(supplierInvoicesRepositoryProvider).payments(limit: 100),
+);
+
+/// What every supplier is owed, for the supplier list.
+final supplierBalancesProvider = FutureProvider<List<SupplierBalance>>(
+  (ref) => ref.watch(supplierInvoicesRepositoryProvider).balances(),
+);
+
 /// What the restaurant adds on top of the food (§38).
 ///
 /// Reads on the till's credential because a ticket cannot be priced without
@@ -1510,6 +2196,86 @@ final serviceChargesRepositoryProvider = Provider<ServiceChargesRepository>((
     branchId: context.branchId,
   );
 });
+
+/// What each counted item stands at here. On the administrator's credential:
+/// the till holds no grant on stock levels.
+final stockLevelsRepositoryProvider = Provider<StockLevelsRepository>((ref) {
+  final config = ref.watch(deploymentProvider);
+  final context = ref.watch(posWriteContextProvider);
+  if (context == null || PosDatabase.hostFor(config) == null) {
+    return const UnconfiguredStockLevelsRepository();
+  }
+  return PostgresStockLevelsRepository(
+    database: ref.watch(adminPosDatabaseProvider),
+    config: ref.watch(adminDeploymentProvider),
+    restaurantId: context.restaurantId,
+    branchId: context.branchId,
+  );
+});
+
+/// Auto-disposed, so the pane reads fresh each time it is opened — after the
+/// delivery that was received a minute ago, not before it.
+final stockLevelsProvider = FutureProvider.autoDispose<List<StockLevel>>(
+  (ref) => ref.watch(stockLevelsRepositoryProvider).all(),
+);
+
+/// What the restaurant buys and counts. Read on the till's credential,
+/// written on the administrator's — see [PostgresStockItemsRepository].
+final stockItemsRepositoryProvider = Provider<StockItemsRepository>((ref) {
+  final config = ref.watch(deploymentProvider);
+  final context = ref.watch(posWriteContextProvider);
+  if (context == null || PosDatabase.hostFor(config) == null) {
+    return const UnconfiguredStockItemsRepository();
+  }
+  return PostgresStockItemsRepository(
+    database: ref.watch(adminPosDatabaseProvider),
+    config: ref.watch(adminDeploymentProvider),
+    readDatabase: ref.watch(posDatabaseProvider),
+    readConfig: config,
+    adminAvailable: ref.watch(adminDbCredentialProvider) != null,
+    restaurantId: context.restaurantId,
+    branchId: context.branchId,
+  );
+});
+
+/// Items in use — what a purchase line can name.
+final stockItemsProvider = FutureProvider<List<StockItem>>(
+  (ref) => ref.watch(stockItemsRepositoryProvider).all(),
+);
+
+/// Every item, retired ones too — the Stock items pane's list.
+final stockItemsAllProvider = FutureProvider<List<StockItem>>(
+  (ref) => ref.watch(stockItemsRepositoryProvider).all(includeInactive: true),
+);
+
+/// The units stock is counted and bought in. Read on the till's credential,
+/// written on the administrator's — see [PostgresUnitsRepository].
+final unitsRepositoryProvider = Provider<UnitsRepository>((ref) {
+  final config = ref.watch(deploymentProvider);
+  final context = ref.watch(posWriteContextProvider);
+  if (context == null || PosDatabase.hostFor(config) == null) {
+    return const UnconfiguredUnitsRepository();
+  }
+  return PostgresUnitsRepository(
+    database: ref.watch(adminPosDatabaseProvider),
+    config: ref.watch(adminDeploymentProvider),
+    readDatabase: ref.watch(posDatabaseProvider),
+    readConfig: config,
+    adminAvailable: ref.watch(adminDbCredentialProvider) != null,
+    restaurantId: context.restaurantId,
+    branchId: context.branchId,
+  );
+});
+
+/// Units in use — what a purchase line can be written in.
+final unitsProvider = FutureProvider<List<PosUnit>>(
+  (ref) => ref.watch(unitsRepositoryProvider).all(),
+);
+
+/// Every unit, retired ones too — the Units pane's list.
+final unitsAllProvider = FutureProvider<List<PosUnit>>(
+  (ref) => ref.watch(unitsRepositoryProvider).all(includeInactive: true),
+);
 
 final serviceChargesProvider = FutureProvider<List<ServiceCharge>>(
   (ref) => ref.watch(serviceChargesRepositoryProvider).all(),
@@ -1556,12 +2322,20 @@ final tenderTypesAllProvider = FutureProvider<List<TenderMethod>>(
   (ref) => ref.watch(tenderTypesRepositoryProvider).all(includeInactive: true),
 );
 
+/// Whether e-receipts are filed on this build. See [etaFilingEnabled].
+///
+/// A provider so a test of the filing screens can turn it on.
+final etaFilingEnabledProvider = Provider<bool>((_) => etaFilingEnabled);
+
 /// The queue of receipts owed to Egypt's tax authority.
 ///
-/// Null where there is no database to queue into. Not null on a cloud till:
-/// the obligation is the restaurant's, not the deployment's, and a cloud
-/// terminal in Cairo owes the same receipts an offline one does.
+/// Null where there is no database to queue into, and wherever filing is off —
+/// which takes the filer, the reconciler and every warning they raise with it.
+/// Not null on a cloud till: the obligation is the restaurant's, not the
+/// deployment's, and a cloud terminal in Cairo owes the same receipts an
+/// offline one does.
 final etaQueueRepositoryProvider = Provider<EtaQueueRepository?>((ref) {
+  if (!ref.watch(etaFilingEnabledProvider)) return null;
   final config = ref.watch(deploymentProvider);
   final context = ref.watch(posWriteContextProvider);
   if (context == null || PosDatabase.hostFor(config) == null) return null;
@@ -1573,6 +2347,107 @@ final etaQueueRepositoryProvider = Provider<EtaQueueRepository?>((ref) {
     branchId: context.branchId,
   );
 });
+
+/// Files the receipt a recorded sale or refund owes, from its rows.
+///
+/// Null where there is no queue. See [EtaFiler] for why it reads the database
+/// rather than the ticket, and why each till files only its own.
+final etaFilerProvider = Provider<EtaFiler?>((ref) {
+  final queue = ref.watch(etaQueueRepositoryProvider);
+  final context = ref.watch(posWriteContextProvider);
+  if (queue == null || context == null) return null;
+
+  return EtaFiler(
+    database: ref.watch(posDatabaseProvider),
+    config: ref.watch(deploymentProvider),
+    branchId: context.branchId,
+    // ETA's chain is per POS serial. The terminal id is what this product has
+    // that is stable per till and unique per restaurant; the serial registered
+    // with the authority is set alongside the seal, and until that exists this
+    // keeps two tills in one branch on two chains, which is the property that
+    // matters.
+    terminalId: context.terminalId,
+    queue: queue,
+    // Read on every call: a profile completed in Management five minutes ago
+    // is the one the next receipt is filed under.
+    profile: () => ref.read(receiptProfileProvider.future),
+  );
+});
+
+/// The catch-up: every sale and refund this till recorded and has not filed.
+///
+/// On a timer rather than only at settlement, because the cases it exists for
+/// have no settlement to hang on — the profile completed on Thursday for
+/// Tuesday's sales, the crash between the sale's write and its receipt's.
+/// Ten seconds after start, then every five minutes.
+final etaReconcilerProvider = Provider<EtaReconciler?>((ref) {
+  final filer = ref.watch(etaFilerProvider);
+  if (filer == null) return null;
+
+  var alive = true;
+  ref.onDispose(() => alive = false);
+
+  final reconciler = EtaReconciler(
+    filer,
+    // Through the CONTAINER, after the current build — the same cycle the
+    // cloud sync hit: these providers read ones that read this one.
+    onReport: (report) => Future.microtask(() {
+      if (alive) applyEtaReport(ref.container, report);
+    }),
+  );
+
+  final first = Timer(const Duration(seconds: 10), reconciler.run);
+  final periodic = Timer.periodic(
+    const Duration(minutes: 5),
+    (_) => reconciler.run(),
+  );
+  ref.onDispose(() {
+    first.cancel();
+    periodic.cancel();
+  });
+  return reconciler;
+});
+
+/// The filing problem a person can fix, or null when there is none.
+///
+/// Only what somebody can act on reaches here — a half-typed receipt profile,
+/// a queue that refused a write. Held so the screens a manager actually opens
+/// can say it: an alarm raised into nothing is how a restaurant files nothing
+/// for a month and hears it from the authority.
+class EtaFilingProblem extends Notifier<EtaFilingSkipped?> {
+  @override
+  EtaFilingSkipped? build() => null;
+
+  void report(EtaFilingSkipped problem) => state = problem;
+
+  void clear() => state = null;
+}
+
+final etaFilingProblemProvider =
+    NotifierProvider<EtaFilingProblem, EtaFilingSkipped?>(EtaFilingProblem.new);
+
+/// Raise [problem] where the screens read it.
+void reportEtaProblem(ProviderContainer container, EtaFilingSkipped problem) =>
+    Future.microtask(
+      () => container.read(etaFilingProblemProvider.notifier).report(problem),
+    );
+
+/// What a reconcile pass means for the screens: its problem, or the all-clear,
+/// and a fresh queue when it filed anything.
+void applyEtaReport(ProviderContainer container, EtaReconcileReport report) {
+  final problem = report.problem;
+  final notifier = container.read(etaFilingProblemProvider.notifier);
+  if (problem == null) {
+    notifier.clear();
+  } else {
+    notifier.report(problem);
+  }
+  if (report.salesFiled + report.refundsFiled > 0) {
+    container
+      ..invalidate(etaQueueSummaryProvider)
+      ..invalidate(etaOutstandingProvider);
+  }
+}
 
 /// What the queue looks like right now.
 ///
@@ -1661,6 +2536,10 @@ final staffDirectoryRepositoryProvider = Provider<StaffDirectoryRepository>((
     return const UnconfiguredStaffDirectoryRepository();
   }
   return PostgresStaffDirectoryRepository(
+    // Who works here is the platform's on a cloud till — see the field's own
+    // note. Not a reason to hide the pane: roles and permissions are local
+    // there and stay editable.
+    offline: config.mode == DeploymentMode.offline,
     // Writes go through the administrator connection…
     database: ref.watch(adminPosDatabaseProvider),
     config: ref.watch(adminDeploymentProvider),
@@ -1694,6 +2573,146 @@ final auditRepositoryProvider = Provider<AuditRepository>((ref) {
     // Read, not watched, for the same reason the orders repository does it: an
     // audit row belongs to the shift that was open when the thing happened.
     shiftId: ref.read(shiftProvider).valueOrNull?.id,
+  );
+});
+
+// ── Backup ──────────────────────────────────────────────────────────────────
+//
+// A restaurant on one Windows box with no backup is one failed disk away from
+// losing its whole trading history. Everything here exists to make that not be
+// true, and to be loud about the ways in which it still is — see
+// `BackupService` for what a copy on the same disk does and does not protect
+// against.
+
+/// Where the copies of this database are recorded.
+///
+/// On the **till's** connection, like the audit ledger and for the same reason:
+/// the automatic copy is taken when the trading day is closed, at a machine on
+/// which nobody has opened the back office. `pos_backups` is granted SELECT and
+/// INSERT to both roles and nothing else.
+final backupRepositoryProvider = Provider<BackupRepository>((ref) {
+  final config = ref.watch(deploymentProvider);
+  final context = ref.watch(posWriteContextProvider);
+
+  if (context == null || PosDatabase.hostFor(config) == null) {
+    return const UnconfiguredBackupRepository();
+  }
+  return PostgresBackupRepository(
+    database: ref.watch(posDatabaseProvider),
+    config: config,
+    restaurantId: context.restaurantId,
+    branchId: context.branchId,
+    terminalId: context.terminalId,
+  );
+});
+
+final backupsProvider = FutureProvider<List<BackupRecord>>(
+  (ref) => ref.watch(backupRepositoryProvider).recent(),
+);
+
+final backupPolicyProvider = Provider<BackupPolicy>((ref) {
+  final settings = ref.watch(settingsProvider).valueOrNull;
+  return settings == null ? BackupPolicy.defaults : BackupPolicy.from(settings);
+});
+
+/// Where `pg_dump` and `pg_restore` are on this machine, or null.
+///
+/// Looked up once and cached for the process: the answer only changes when
+/// somebody installs PostgreSQL, which they do while the app is closed. The
+/// pane invalidates it when it is opened, so "install it and come back" works.
+final pgToolsProvider = FutureProvider<PgToolset?>((ref) => PgTools.locate());
+
+/// Taking a copy, proving it, and putting one back.
+///
+/// Null when this terminal has no database — there is then nothing to back up,
+/// and a service that pretended otherwise would write a record of a copy of
+/// nothing.
+/// Whether this terminal has a database whose copies are worth talking about.
+/// False on a till with no database configured, where there is nothing to back
+/// up and a warning about it would be noise.
+final backupsApplyProvider = Provider<bool>(
+  (ref) => ref.watch(backupRepositoryProvider) is! UnconfiguredBackupRepository,
+);
+
+/// Whether a backup file is still on this machine.
+///
+/// A seam, because the list asks it of every row and a widget test has no
+/// files: only the newest copies are kept, so an old row's file being gone is
+/// the ordinary case rather than an error.
+final backupFileExistsProvider = Provider<bool Function(String path)>(
+  (ref) => (path) => File(path).existsSync(),
+);
+
+/// Where the backup account's password is kept on this machine.
+///
+/// Beside the till's own, in `secrets.json` — see
+/// [FileSecretStore.backupPasswordKey] for why that is safe for this one and
+/// would not be for the administrator's.
+final backupPasswordStoreProvider = Provider<PosDbSecretStore>(
+  (ref) => FileSecretStore(key: FileSecretStore.backupPasswordKey),
+);
+
+/// The backup account's password, or null when none has been entered.
+///
+/// A store that cannot be read is "none": the copy then runs without one, which
+/// works wherever the installer used `trust` or wrote a `.pgpass` — and where it
+/// does not, the attempt is recorded as refused with the reason, which is the
+/// honest outcome.
+final backupPasswordProvider = FutureProvider<String?>((ref) async {
+  try {
+    return await ref.watch(backupPasswordStoreProvider).read();
+  } on Object {
+    return null;
+  }
+});
+
+final backupServiceProvider = FutureProvider<BackupService?>((ref) async {
+  final config = ref.watch(deploymentProvider);
+  final context = ref.watch(posWriteContextProvider);
+  if (context == null || PosDatabase.hostFor(config) == null) return null;
+
+  final tools = await ref.watch(pgToolsProvider.future);
+  final readerPassword = await ref.watch(backupPasswordProvider.future);
+
+  final admin = ref.watch(adminDeploymentProvider);
+  final adminPassword = ref.watch(adminDbCredentialProvider);
+
+  return BackupService(
+    // The till's pool and the till's config: the guard queries are counts the
+    // till credential can already read, and the record and the audit row go
+    // where every other till-written row goes.
+    database: ref.watch(posDatabaseProvider),
+    config: config,
+    restaurantId: context.restaurantId,
+    branchId: context.branchId,
+    directory: BackupPaths.resolve(ref.watch(backupPolicyProvider)),
+    backups: ref.watch(backupRepositoryProvider),
+    audit: ref.watch(auditRepositoryProvider),
+    toolset: tools,
+    // `pg_dump` runs as the read-only backup account, which is the one
+    // credential that can read every table and is safe to keep on the till —
+    // so the copy at day close works with nobody signed into the back office.
+    reader: BackupConnection.forDeployment(
+      config,
+      user: BackupService.readerRole,
+      password: readerPassword,
+    ),
+    // A restore runs as the database's owner, whose password is in memory
+    // only while somebody has the back office open — and a restore is only
+    // ever started from there.
+    restorer: adminPassword == null
+        ? null
+        : BackupConnection.forDeployment(
+            admin,
+            user: admin.databaseUser,
+            password: adminPassword,
+          ),
+    // Both pools, because `pg_restore --clean` drops every object in the
+    // database and neither connection should be holding one when it does.
+    quiesce: () async {
+      await ref.read(posDatabaseProvider).close();
+      await ref.read(adminPosDatabaseProvider).close();
+    },
   );
 });
 

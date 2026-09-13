@@ -1,3 +1,4 @@
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:xorder_pos/app/providers.dart';
 import 'package:xorder_pos/core/config/terminal_config.dart';
@@ -19,7 +20,32 @@ import 'package:xorder_pos/features/licensing/data/licence_service.dart';
 /// binding never did.
 ///
 /// A test that wants a real database wants `test/data/pg_fixture.dart` instead.
-List<Override> fakeRepositoryOverrides() => [
+/// English, so the suite reads the copy it was written against.
+///
+/// The PRODUCT's default is Arabic — the restaurants it ships to are in Egypt —
+/// and `test/core/localisation_test.dart` is what pins that. Everything else
+/// asserts English strings, and a suite that had to be rewritten in Arabic to
+/// change a default would make the default unchangeable. A test that is about
+/// Arabic asks for it: `container.read(localeProvider.notifier).apply('ar')`.
+class EnglishTerminal extends TerminalLocaleController {
+  @override
+  Locale build() => const Locale('en');
+}
+
+/// [english] false leaves the language alone, for the handful of tests that are
+/// ABOUT it — a terminal opening in the language it was set up in, or a wizard
+/// keeping it across a reset. Everything else takes English.
+///
+/// [schemaUpgrader] stands in for the migrations the back-office door applies.
+/// Absent by default: there is no database in a widget test, and the real
+/// upgrader would wait on a connection that never comes, so the door would
+/// never open.
+List<Override> fakeRepositoryOverrides({
+  bool english = true,
+  Future<List<int>> Function()? schemaUpgrader,
+}) => [
+      if (english) localeProvider.overrideWith(EnglishTerminal.new),
+      schemaUpgraderProvider.overrideWithValue(schemaUpgrader),
       catalogRepositoryProvider.overrideWithValue(FakeCatalogRepository()),
       tablesRepositoryProvider.overrideWithValue(FakeTablesRepository()),
       sessionRepositoryProvider.overrideWithValue(FakeSessionRepository()),
@@ -40,6 +66,12 @@ List<Override> fakeRepositoryOverrides() => [
           auditRepositoryProvider.overrideWithValue(FakeAuditRepository()),
         ];
       })(),
+      // No database in a widget test, so no copies and nowhere to write one.
+      // The real binding writes `pos_backups` on the till's credential.
+      backupRepositoryProvider.overrideWithValue(FakeBackupRepository()),
+      unitsRepositoryProvider.overrideWithValue(FakeUnitsRepository()),
+      stockItemsRepositoryProvider.overrideWithValue(FakeStockItemsRepository()),
+      stockLevelsRepositoryProvider.overrideWithValue(FakeStockLevelsRepository()),
       // The development issuer, which self-signs. The app binds
       // `DefaultLicenceService` against the real embedded key, so a widget
       // test that wanted a working licence would otherwise have to sign one.

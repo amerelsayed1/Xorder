@@ -4,6 +4,7 @@ import 'package:postgres/postgres.dart';
 
 import '../../core/config/deployment.dart';
 import '../../domain/models/permissions.dart';
+import '../../domain/models/tender_method.dart';
 import '../postgres/pos_database.dart';
 import 'bootstrap_bundle.dart';
 
@@ -75,6 +76,7 @@ class BootstrapSeeder {
 
       await _seedIdentity(tx, bundle);
       await _seedMoney(tx, bundle);
+      await _seedTenderTypes(tx, bundle);
       await _seedStaff(tx, bundle);
       await _seedCatalog(tx, bundle);
       await _seedTables(tx, bundle);
@@ -191,6 +193,108 @@ class BootstrapSeeder {
     );
   }
 
+  /// The platform's payment methods, as the rows the payment screen reads.
+  ///
+  /// `tender_types` also stays inside the verbatim payload above, where
+  /// nothing reads it; the payment screen and the drain read these rows.
+  ///
+  /// **Keyed on `platform_id`, not on the primary key** — the one place this
+  /// seeder does not keep a platform id as the local key. Migration 41 says
+  /// why: the till's own rows 1–4 were here first, and a queued payment names
+  /// its tender by local id, so overwriting them in place would re-mean those
+  /// payments as whichever platform tender shared the number. Every column is
+  /// rewritten on conflict, so no flag of an earlier row survives into the
+  /// platform's.
+  ///
+  /// Retired, never deleted, like people: `pos_order_payments.tender_type_id`
+  /// has no foreign key onto this table, so a DELETE would orphan a payment in
+  /// silence where a retired row stays readable.
+  Future<void> _seedTenderTypes(TxSession tx, BootstrapBundle bundle) async {
+    final restaurantId = bundle.restaurant!.id;
+    final tenders = bundle.tenderTypes;
+
+    // An empty list leaves the table as it is. Retiring everything would drop
+    // the payment screen onto its compiled-in fallback, and every payment
+    // taken on that would be held by the drain anyway — no better than what
+    // is here, and a crash would be worse than both. The platform guarantees
+    // a POS restaurant is never delivered an empty list; this is the till not
+    // relying on that.
+    if (tenders.isEmpty) return;
+
+    // Past the compiled-in ids before anything is inserted. Migration 41's
+    // CHECK refuses a platform row at 1–4; this is what stops the serial from
+    // offering one.
+    await tx.execute(
+      Sql.named(
+        "SELECT setval(pg_get_serial_sequence('pos_tender_types', 'id'), "
+        'GREATEST(COALESCE((SELECT MAX(id) FROM pos_tender_types), 0), '
+        '@floor), true)',
+      ),
+      parameters: {'floor': TenderMethod.seededIdCeiling},
+    );
+
+    for (final tender in tenders) {
+      final kind = tender.kind;
+      // Only cash is notes in the drawer. An unknown kind counts as nothing,
+      // which is the safe direction for a drawer and the same default
+      // `Tender.countsAsCash` has.
+      final cash = kind == PlatformTenderKind.cash;
+
+      await tx.execute(
+        Sql.named('''
+          INSERT INTO pos_tender_types (restaurant_id, platform_id, code,
+            name_en, name_ar, kind, counts_as_cash, opens_drawer,
+            requires_reference, refund_allowed, is_active, sort_order)
+          VALUES (@restaurant, @platformId, @code, @name, NULL, @kind, @cash,
+            @cash, false, true, @active, @sort)
+          ON CONFLICT (restaurant_id, platform_id) DO UPDATE
+            SET code = @code, name_en = @name, name_ar = NULL, kind = @kind,
+                counts_as_cash = @cash, opens_drawer = @cash,
+                requires_reference = false, refund_allowed = true,
+                is_active = @active, sort_order = @sort
+        '''),
+        parameters: {
+          'restaurant': restaurantId,
+          'platformId': tender.id,
+          // Unique by construction: platform_id is unique per restaurant, and
+          // migration 41 keeps the prefix off every row the platform did not
+          // send.
+          'code': 'platform-${tender.id}',
+          // One name comes over the wire. `name_ar` stays null rather than a
+          // copy of it, so `displayName` falls back openly instead of
+          // claiming a translation nobody wrote.
+          'name': tender.name,
+          'kind': (kind?.tillKind ?? TenderKind.other).wire,
+          'cash': cash,
+          // `requires_reference` is false for all of them. The platform has
+          // nowhere to say a tender wants one, and nothing at the counter reads
+          // the flag today — so setting it here would be a rule the owner can
+          // neither see on the dashboard nor switch off there, waiting for the
+          // day the payment screen starts enforcing it. `refund_allowed` is
+          // true for the matching reason: refusing a refund the owner never
+          // refused is the worse error at a counter.
+          'active': tender.isActive,
+          'sort': tender.sortOrder,
+        },
+      );
+    }
+
+    // Everything the bundle did not name is switched off — the till's own four
+    // included. On a cloud till those were never the platform's, and a payment
+    // taken on one is exactly what the drain now refuses to send.
+    await tx.execute(
+      Sql.named(
+        'UPDATE pos_tender_types SET is_active = false '
+        'WHERE restaurant_id = @restaurant '
+        '  AND (platform_id IS NULL OR NOT (platform_id = ANY(@keep)))',
+      ),
+      parameters: {
+        'restaurant': restaurantId,
+        'keep': [for (final t in tenders) t.id],
+      },
+    );
+  }
+
   Future<void> _seedStaff(TxSession tx, BootstrapBundle bundle) async {
     final restaurantId = bundle.restaurant!.id;
 
@@ -261,6 +365,10 @@ class BootstrapSeeder {
       ),
       parameters: {'restaurant': restaurantId},
     );
+    // `pos_modifier_group_categories` goes with the groups and the categories
+    // — it cascades from both (migration 45). Deliberately not deleted by
+    // name: a cascade needs no grant, and a cloud till whose grants predate
+    // the table would be refused a DELETE on it and lose the whole seed.
     for (final table in [
       'pos_products',
       'pos_modifier_groups',

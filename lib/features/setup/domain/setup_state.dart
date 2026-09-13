@@ -1,7 +1,9 @@
 import '../../../core/config/deployment.dart';
+import '../../../core/config/printer_config.dart';
 import '../../../domain/repositories/repositories.dart'
     show PosBranch, PosTerminalSummary;
 import '../../licensing/domain/license.dart';
+import '../../licensing/domain/license_verifier.dart' show LicenseFile;
 import '../../../core/security/pin_hash.dart';
 
 /// How this terminal is being set up (POS-BE-023).
@@ -72,10 +74,11 @@ class SetupDraft {
   const SetupDraft({
     // The wizard opens on the licence — see [SetupStep].
     this.step = SetupStep.licence,
-    this.locale = 'en',
+    this.locale = 'ar',
     this.deployment = DeploymentConfig.unconfigured,
     this.entitlement,
     this.claims,
+    this.licenceFile,
     this.licenceKey = '',
     // Credentials are the phase-1 default: the owner's notes define cloud
     // setup as slug + admin credentials pulling the tenant's configuration.
@@ -105,9 +108,11 @@ class SetupDraft {
     this.terminalId,
     this.installationId,
     this.printerName,
+    this.paperWidthDots = PrinterConfig.width80mm,
     this.drawerAttached = false,
     this.scannerAttached = false,
     this.catalogueItems,
+    this.mainDeviceLinked = false,
     this.busy = false,
     this.error,
     this.notice,
@@ -120,9 +125,22 @@ class SetupDraft {
   /// Null until the licence step has run.
   final LicenseEntitlement? entitlement;
 
-  /// The claims of the licence just installed. Null until the licence step has
+  /// The claims of the licence just activated. Null until the licence step has
   /// run, which is why that step now comes first — see [SetupStep].
   final LicenseClaims? claims;
+
+  /// The licence itself, held here until the terminal is finished.
+  ///
+  /// Activating no longer writes it: the licence step is the FIRST of ten, and
+  /// a file written there outlives every abandoned wizard — an owner trying a
+  /// key to see what it covers, an installer stopped at the database password.
+  /// The machine was left holding a licence for a restaurant it had never been
+  /// set up for. `complete()` is what puts this on disk.
+  ///
+  /// Null also when the licence was RESTORED rather than activated: that one is
+  /// already on disk, and rewriting a working licence file buys nothing and
+  /// risks a disk error.
+  final LicenseFile? licenceFile;
   final String licenceKey;
 
   /// The deployments this licence covers.
@@ -177,6 +195,21 @@ class SetupDraft {
   /// adoptable came back.
   final int? adoptTerminalId;
 
+  /// Whether the licence leaves a mode question worth asking.
+  ///
+  /// A tenant is sold cloud, offline, or both, and the `modes` claim carries
+  /// that to the till. When it names ONE, the setup-type screen has a single
+  /// choosable option — already chosen, because adopting the licence moves the
+  /// draft onto a covered mode the moment it is read — sitting beside one
+  /// greyed NOT LICENSED. That is not a question. It is a screen the installer
+  /// presses Continue on to be told what the restaurant was already sold, on a
+  /// wizard that is ten screens long before it adds any.
+  ///
+  /// Null claims mean no licence has been read yet, which is the licence step
+  /// itself: both modes are notionally open, so the step stays visible until
+  /// the licence says otherwise.
+  bool get asksSetupType => licensedModes.length > 1;
+
   /// The wizard's steps for the path being walked.
   ///
   /// Every step is walked, including the licence. This used to hide the licence
@@ -188,7 +221,41 @@ class SetupDraft {
   /// no longer does is excuse this terminal from holding one before it picks
   /// how to run. The Super Admin issues the key with the tenant, so an
   /// installer on either path arrives with one in hand.
-  List<SetupStep> get visibleSteps => SetupStep.values;
+  ///
+  /// [SetupStep.setupType] is the one step that can drop out, and only because
+  /// the licence has answered it — see [asksSetupType].
+  ///
+  /// **A child tablet walks a different, shorter path** — see [childSteps].
+  List<SetupStep> get visibleSteps => deployment.isChild
+      ? childSteps
+      : [
+    for (final candidate in SetupStep.values)
+      if (candidate != SetupStep.setupType ||
+          asksSetupType ||
+          // A step being stood on is always listed, whatever the rule says: the
+          // rail has to describe where the operator actually is, and `next()`
+          // and `back()` count positions in this list.
+          candidate == step)
+        candidate,
+  ];
+
+  /// What a child tablet is asked (owner decision, 2026-09-12).
+  ///
+  /// This does not contradict the "no fork" rule on [SetupStep]: the fork is
+  /// decided by the device before the first screen, not by an answer halfway
+  /// through, so nobody is stranded on the wrong branch of it. What is left out
+  /// is everything the main device already owns — the licence and the mode (it
+  /// shares its own), the database and the first administrator (it built them),
+  /// and the money settings (the restaurant's, not the tablet's).
+  static const childSteps = [
+    SetupStep.deployment,
+    SetupStep.account,
+    SetupStep.branch,
+    SetupStep.terminal,
+    SetupStep.hardware,
+    SetupStep.catalogue,
+    SetupStep.summary,
+  ];
 
   bool get isFirstStep => visibleSteps.first == step;
   bool get isLastStep => visibleSteps.last == step;
@@ -246,11 +313,24 @@ class SetupDraft {
   final String? terminalId;
   final String? installationId;
   final String? printerName;
+
+  /// The printable width of the roll, in dots. Asked in the wizard rather than
+  /// guessed, because a printer given the wrong one prints a receipt with its
+  /// right-hand column missing and looks broken instead of mis-set.
+  final int paperWidthDots;
+
   final bool drawerAttached;
   final bool scannerAttached;
 
   /// Items pulled in the first catalogue sync; null until it runs.
   final int? catalogueItems;
+
+  /// A child tablet only: true once the main device's licence has been read
+  /// from the database at the address on screen. Editing that address, or
+  /// anything else about the connection, sets it back to false — the licence
+  /// on the draft then belongs to a database the tablet is no longer pointing
+  /// at.
+  final bool mainDeviceLinked;
 
   final bool busy;
   final String? error;
@@ -267,6 +347,17 @@ class SetupDraft {
   /// must still finish setup — the receipt queues and the sale completes.
   /// Printing is never on the critical path of taking money.
   bool get canAdvance => switch (step) {
+    // A child tablet has reached its main device, and the licence found there
+    // lets it trade. Loopback is refused on principle: a child's database is
+    // by definition on another machine.
+    SetupStep.deployment when deployment.isChild =>
+      mainDeviceLinked &&
+          !deployment.isLoopback &&
+          databasePassword.isNotEmpty &&
+          (entitlement?.canSell ?? false),
+    // Signed in as a manager the main device already has. Never the offline
+    // rule below — a child builds no database, so it is never `bootstrapped`.
+    SetupStep.account when deployment.isChild => connected,
     // Either mode may go on, provided the licence covers it. `setMode` refuses
     // anything unlicensed, so a draft can only be sitting on a covered mode —
     // this re-states the rule rather than trusting that.
@@ -329,6 +420,7 @@ class SetupDraft {
     DeploymentConfig? deployment,
     LicenseEntitlement? entitlement,
     LicenseClaims? claims,
+    LicenseFile? licenceFile,
     String? licenceKey,
     SetupMethod? method,
     String? pairingCode,
@@ -356,9 +448,11 @@ class SetupDraft {
     String? terminalId,
     String? installationId,
     String? printerName,
+    int? paperWidthDots,
     bool? drawerAttached,
     bool? scannerAttached,
     int? catalogueItems,
+    bool? mainDeviceLinked,
     bool? busy,
     String? error,
     String? notice,
@@ -375,6 +469,7 @@ class SetupDraft {
     deployment: deployment ?? this.deployment,
     entitlement: entitlement ?? this.entitlement,
     claims: claims ?? this.claims,
+    licenceFile: licenceFile ?? this.licenceFile,
     licenceKey: licenceKey ?? this.licenceKey,
     method: method ?? this.method,
     pairingCode: pairingCode ?? this.pairingCode,
@@ -408,9 +503,11 @@ class SetupDraft {
     terminalId: clearClaim ? null : (terminalId ?? this.terminalId),
     installationId: installationId ?? this.installationId,
     printerName: printerName ?? this.printerName,
+    paperWidthDots: paperWidthDots ?? this.paperWidthDots,
     drawerAttached: drawerAttached ?? this.drawerAttached,
     scannerAttached: scannerAttached ?? this.scannerAttached,
     catalogueItems: catalogueItems ?? this.catalogueItems,
+    mainDeviceLinked: mainDeviceLinked ?? this.mainDeviceLinked,
     busy: busy ?? this.busy,
     error: clearError ? null : (error ?? this.error),
     notice: clearNotice ? null : (notice ?? this.notice),

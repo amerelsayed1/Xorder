@@ -11,7 +11,6 @@ import '../features/setup/presentation/welcome_screen.dart';
 import '../features/lock/lock_screen.dart';
 import '../features/sale/sale_screen.dart';
 import '../features/start/start_screen.dart';
-import '../domain/models/ticket.dart';
 import 'providers.dart';
 
 abstract final class PosRoutes {
@@ -25,6 +24,30 @@ abstract final class PosRoutes {
   static const orders = '/orders';
   static const management = '/management';
 }
+
+/// Whether a screen that SELLS is about to be shown with nobody signed in.
+///
+/// A till restarted mid-service comes back with its shift still open — the
+/// shift is a row in PostgreSQL and the drawer never closed — but with nobody
+/// signed in, because a PIN is deliberately not remembered across a restart.
+/// Nothing then asked for one: resuming an open shift went straight to the
+/// till. So sales were rung up under no name at all, and the cash-up refused
+/// with "sign in before closing a shift" behind a door that did not exist —
+/// `_start()` skips the PIN when a shift is already open, and the lock screen
+/// only checked PINs rather than acting on them.
+///
+/// Both halves are fixed: the lock screen signs in whoever's PIN it is, and
+/// this sends an unattended till to it.
+///
+/// Only when a shift is OPEN. A terminal sitting on the start screen before
+/// trading has nobody signed in either, and that is the ordinary morning state
+/// — opening the shift is what asks who is there.
+bool needsSignIn({
+  required String at,
+  required bool signedIn,
+  required bool shiftOpen,
+}) =>
+    (at == PosRoutes.sale || at == PosRoutes.floor) && !signedIn && shiftOpen;
 
 /// Top-level navigation.
 ///
@@ -55,10 +78,19 @@ final routerProvider = Provider<GoRouter>((ref) {
       if (configured && (at == PosRoutes.setup || at == PosRoutes.welcome)) {
         return PosRoutes.start;
       }
+      if (needsSignIn(
+        at: at,
+        signedIn: ref.read(signedInStaffProvider) != null,
+        shiftOpen: ref.read(shiftProvider).valueOrNull != null,
+      )) {
+        return PosRoutes.lock;
+      }
       // A branch that does not seat anybody has no floor. Sending a takeaway
       // counter to a table picker asks a question it has no answer to.
-      if (at == PosRoutes.floor &&
-          !ref.read(branchOrderTypesProvider).contains(OrderType.dineIn)) {
+      // "Does anything this branch sells have tables", not "does it sell
+      // dine-in". A restaurant that seats catering orders and calls them
+      // nothing of the sort still has a floor plan (§31).
+      if (at == PosRoutes.floor && !ref.read(orderTypeRulesProvider).hasSeating) {
         return PosRoutes.sale;
       }
       return null;
@@ -80,22 +112,38 @@ final routerProvider = Provider<GoRouter>((ref) {
       // the till with that ticket exactly as it was.
       GoRoute(
         path: PosRoutes.orders,
-        builder: (context, state) =>
-            OrderHistoryScreen(onClose: () => context.go(PosRoutes.sale)),
+        // Back to where it was opened from — the Settings menu can open it
+        // from any screen — and to the till when nobody said.
+        builder: (context, state) => OrderHistoryScreen(
+          onClose: () => context.go(
+            state.extra is String ? state.extra! as String : PosRoutes.sale,
+          ),
+        ),
       ),
       // Not nested under the sale screen: Management is a place somebody goes,
       // not a step in ringing up a ticket, and a back gesture out of it must
       // land on the start screen rather than half a dialog.
       GoRoute(
         path: PosRoutes.management,
-        builder: (context, state) => ManagementScreen(
-          onClose: () => context.go(PosRoutes.start),
-          // `extra` names which pane the caller meant. Absent means the
-          // default, so "Management" still opens where it always did.
-          initialPane: state.extra is ManagementPane
-              ? state.extra! as ManagementPane
-              : ManagementPane.staff,
-        ),
+        builder: (context, state) {
+          // `extra` names which pane the caller meant and where they came from.
+          // A bare pane is still accepted, and absent means the default, so
+          // "Management" opens where it always did.
+          final destination = switch (state.extra) {
+            final ManagementDestination d => d,
+            final ManagementPane p => ManagementDestination(pane: p),
+            _ => const ManagementDestination(pane: ManagementPane.staff),
+          };
+          return ManagementScreen(
+            onClose: () =>
+                context.go(destination.returnTo ?? PosRoutes.start),
+            onReconfigure: () => context.go(PosRoutes.setup),
+            initialPane: destination.pane,
+            purchasingTab: destination.purchasingTab,
+            create: destination.create,
+            request: destination.request,
+          );
+        },
       ),
       GoRoute(
         path: PosRoutes.licence,
@@ -107,8 +155,8 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => StartScreen(
           onStart: () => context.go(PosRoutes.floor),
           onManageLicence: () => context.go(PosRoutes.licence),
-          onReconfigure: () => context.go(PosRoutes.setup),
-          onManage: () => context.go(PosRoutes.management),
+          onManage: (pane) =>
+              context.go(PosRoutes.management, extra: pane),
         ),
       ),
       GoRoute(
@@ -117,6 +165,9 @@ final routerProvider = Provider<GoRouter>((ref) {
           // Unlocking returns to the sale screen: the shift stayed open and the
           // ticket is still in memory, so the cashier lands where they left off.
           onUnlocked: () => context.go(PosRoutes.sale),
+          // The screen signs out first, so resuming the shift from the start
+          // screen is sent straight back here for a name and a PIN.
+          onBack: () => context.go(PosRoutes.start),
         ),
       ),
       GoRoute(
@@ -124,12 +175,13 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => FloorScreen(
           onClose: () => context.go(PosRoutes.start),
           onSellWithoutTable: () {
-            // Nobody is seated, so the ticket must not stay dine-in — it would
-            // price service charge for a table that does not exist. Take the
-            // first non-dine-in type the branch actually sells.
+            // Nobody is seated, so the ticket must not stay on a type that
+            // expects a table — it would price a service charge for one that
+            // does not exist. Take the first unseated type the branch sells.
+            final rules = ref.read(orderTypeRulesProvider);
             final counter = ref
                 .read(branchOrderTypesProvider)
-                .where((type) => type != OrderType.dineIn)
+                .where((type) => !rules.requiresTable(type))
                 .firstOrNull;
             if (counter != null) {
               ref.read(ticketProvider.notifier).setOrderType(counter);
@@ -157,6 +209,12 @@ final routerProvider = Provider<GoRouter>((ref) {
             // Leaving a seated, non-empty ticket parks it on its table — the
             // floor then shows the table busy with its running total, and the
             // live ticket clears so the next table starts fresh.
+            //
+            // **Seated only, still.** An unseated ticket on the way to the floor
+            // is a ticket somebody is going to seat: parking it as a held ticket
+            // and clearing the screen would take the order away from the cashier
+            // at the exact moment they were choosing its table. Putting an
+            // unseated ticket down is what Park is for, and it is one key away.
             final ticket = ref.read(ticketProvider);
             if (ticket.isSeated && ticket.lines.isNotEmpty) {
               ref.read(openTicketsProvider.notifier).park(ticket);

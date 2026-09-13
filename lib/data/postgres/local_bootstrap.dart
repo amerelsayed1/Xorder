@@ -1,6 +1,7 @@
 import 'package:postgres/postgres.dart';
 
 import '../../core/config/deployment.dart';
+import '../../domain/models/order_type_config.dart';
 import '../../domain/models/tender_method.dart';
 import '../../core/security/pin_hash.dart';
 import '../../domain/models/permissions.dart';
@@ -35,8 +36,9 @@ class LocalBootstrap {
   static Future<bool> createDatabase(
     DeploymentConfig admin,
     String adminPassword,
-    String name,
-  ) async {
+    String name, {
+    String? owner,
+  }) async {
     if (!_isPlainIdentifier(name)) {
       throw ArgumentError.value(
         name,
@@ -69,16 +71,144 @@ class LocalBootstrap {
       );
       if (existing.isNotEmpty) return false;
 
-      await connection.execute('CREATE DATABASE "$name"');
+      // Owned by the administrator role rather than whoever ran this, when
+      // asked: a restore drops and recreates every table, and only an owner
+      // may — so a database built by `postgres` could never be restored by
+      // the account the back office signs in as.
+      await connection.execute(
+        owner == null
+            ? 'CREATE DATABASE "$name"'
+            : 'CREATE DATABASE "$name" OWNER "${_identifier(owner)}"',
+      );
       return true;
     } finally {
       await connection.close();
     }
   }
 
+  /// The three accounts an install needs, created where missing.
+  ///
+  /// **Created, never changed.** A role that already exists keeps its
+  /// password: the till and the backup have it stored, and an upgrade that
+  /// quietly reset it would stop both on the day after the upgrade.
+  ///
+  /// Needs a superuser, or a role with CREATEROLE — `pos_admin` deliberately
+  /// has neither, which is why this is the installer's step and not the
+  /// wizard's.
+  ///
+  /// @return the roles this call created.
+  static Future<List<String>> createRoles(
+    DeploymentConfig superuser,
+    String superuserPassword, {
+    required Map<InstallRole, String> passwords,
+    Map<InstallRole, String> names = InstallRole.defaultNames,
+  }) async {
+    final connection = await Connection.open(
+      Endpoint(
+        host: superuser.databaseHost,
+        port: superuser.databasePort,
+        database: 'postgres',
+        username: superuser.databaseUser,
+        password: superuserPassword,
+      ),
+      settings: ConnectionSettings(
+        sslMode: superuser.allowsInsecureTransport
+            ? SslMode.disable
+            : SslMode.require,
+      ),
+    );
+
+    final created = <String>[];
+    try {
+      for (final role in InstallRole.values) {
+        final name = names[role]!;
+        final existing = await connection.execute(
+          Sql.named('SELECT 1 FROM pg_roles WHERE rolname = @name'),
+          parameters: {'name': name},
+        );
+        if (existing.isNotEmpty) continue;
+
+        final password = passwords[role];
+        if (password == null || password.isEmpty) {
+          throw ArgumentError.value(
+            role.name,
+            'passwords',
+            'No password for the $name role, and it does not exist yet.',
+          );
+        }
+        for (final statement in roleStatements(role, name, password)) {
+          await connection.execute(statement);
+        }
+        created.add(name);
+      }
+    } finally {
+      await connection.close();
+    }
+    return created;
+  }
+
+  /// What creating one install role runs. Pure, so a test can read it.
+  ///
+  /// The password is a literal, not a bind parameter — `CREATE ROLE` takes
+  /// none — so it is quoted by doubling, the one escape a string literal
+  /// needs with `standard_conforming_strings` on, which it is from 9.1.
+  static List<String> roleStatements(
+    InstallRole role,
+    String name,
+    String password,
+  ) {
+    final quoted = "'${password.replaceAll("'", "''")}'";
+    final ident = _identifier(name);
+    return switch (role) {
+      // Creates databases — the wizard's "Build the database" connects as it —
+      // and owns this one. Nothing else: no superuser, no CREATEROLE.
+      InstallRole.admin => [
+        'CREATE ROLE "$ident" LOGIN CREATEDB PASSWORD $quoted',
+      ],
+      // Granted table by table by [tillGrants], after the migrations.
+      InstallRole.till => ['CREATE ROLE "$ident" LOGIN PASSWORD $quoted'],
+      // Reads every row and writes none: see `BackupService.reader`.
+      InstallRole.backup => [
+        'CREATE ROLE "$ident" LOGIN PASSWORD $quoted',
+        'GRANT pg_read_all_data TO "$ident"',
+      ],
+    };
+  }
+
+  static String _identifier(String name) {
+    if (!_isPlainIdentifier(name)) {
+      throw ArgumentError.value(name, 'name', 'Not a plain identifier.');
+    }
+    return name;
+  }
+
   /// Apply every pending migration. Returns the versions this call applied.
   Future<List<int>> migrate(DeploymentConfig admin) =>
       PosMigrator(database).migrate(admin);
+
+  /// Bring an installed database up to this build: [migrate], then the same
+  /// grants the wizard gave, because a table a new migration created has none.
+  ///
+  /// The grants are re-applied only when something was migrated. They are all
+  /// GRANTs, so repeating them is harmless, but there is no reason to write to
+  /// the catalogue on every visit to the back office.
+  Future<List<int>> upgrade(
+    DeploymentConfig admin, {
+    required DeploymentConfig till,
+  }) async {
+    final applied = await migrate(admin);
+    if (applied.isNotEmpty) {
+      await applyGrants(admin, [
+        ...tillGrants(
+          database: till.databaseName,
+          role: till.databaseUser,
+          cloudSeeding: till.mode == DeploymentMode.cloud,
+        ),
+        ...administrativeGrants(role: till.adminDatabaseUser),
+      ]);
+    }
+    return applied;
+  }
 
   /// The restaurant row, matched on slug so a re-run adopts rather than
   /// duplicates.
@@ -248,6 +378,33 @@ class LocalBootstrap {
     return created;
   }
 
+  /// What each kind of order requires (§31), for a restaurant created after
+  /// migration 25 ran. Same split, same reason, as [seedTenderTypes].
+  Future<int> seedOrderTypes(DeploymentConfig admin, int restaurantId) async {
+    var created = 0;
+    for (final config in OrderTypeConfig.seeded) {
+      final rows = await database.query(
+        admin,
+        'INSERT INTO pos_order_types (restaurant_id, code, name_en, name_ar, '
+        '  requires_table, requires_customer, requires_address, sort_order) '
+        'VALUES (@r, @code, @nameEn, @nameAr, @tbl, @cust, @addr, @sort) '
+        'ON CONFLICT (restaurant_id, code) DO NOTHING RETURNING id',
+        parameters: {
+          'r': restaurantId,
+          'code': config.type.wire,
+          'nameEn': config.nameEn,
+          'nameAr': config.nameAr,
+          'tbl': config.requiresTable,
+          'cust': config.requiresCustomer,
+          'addr': config.requiresAddress,
+          'sort': config.sortOrder,
+        },
+      );
+      if (rows.isNotEmpty) created++;
+    }
+    return created;
+  }
+
   Future<bool> seedTaxGroup(
     DeploymentConfig admin,
     int restaurantId, {
@@ -390,6 +547,8 @@ class LocalBootstrap {
     // DELETE, and never on `document` or `canonical`: those are the evidence
     // of what was actually filed, and a row that could be rewritten after a
     // rejection would be a row that proves nothing.
+    // What a purchase line and a stock row are labelled in.
+    'GRANT SELECT ON pos_units TO "$role"',
     'GRANT SELECT, INSERT ON pos_eta_receipts TO "$role"',
     'GRANT UPDATE (status, signature, attempts, last_attempt_at, '
         'submitted_at, submission_uuid, long_id, error_message, qr_payload) '
@@ -405,6 +564,15 @@ class LocalBootstrap {
     'GRANT SELECT, INSERT ON pos_cash_movements TO "$role"',
     'GRANT USAGE, SELECT ON SEQUENCE pos_cash_movements_id_seq TO "$role"',
     'GRANT SELECT ON pos_cash_drawers TO "$role"',
+    // Paper the printer would not take. The till writes a job when a print
+    // fails and updates it as it retries, so this needs UPDATE — column-scoped
+    // like an order's, and pointedly **not** on `payload`: the bytes are what
+    // the customer was promised, and a job whose contents could be rewritten
+    // between the sale and the paper is a receipt for a different sale.
+    'GRANT SELECT, INSERT ON pos_print_jobs TO "$role"',
+    'GRANT UPDATE (status, attempts, last_attempt_at, last_error, printed_at) '
+        'ON pos_print_jobs TO "$role"',
+    'GRANT USAGE, SELECT ON SEQUENCE pos_print_jobs_id_seq TO "$role"',
     // The trading day. A till opens one when it starts selling and closes one
     // at the end of the night, so this needs UPDATE — but column-scoped, like
     // an order's: the till may close a day and may not rewrite its takings.
@@ -430,7 +598,8 @@ class LocalBootstrap {
     // of the food (§38). Read-only, like the menu and for the same reason: a
     // cashier takes a method and charges what the restaurant set, they do not
     // invent either.
-    'GRANT SELECT ON pos_tender_types, pos_service_charges TO "$role"',
+    'GRANT SELECT ON pos_tender_types, pos_service_charges, '
+        'pos_order_types TO "$role"',
     // The tax breakdown a filing needs, written with the sale (§17, ETA).
     // INSERT and SELECT, never UPDATE: the rates a customer was charged are
     // part of the record of what they paid.
@@ -445,7 +614,8 @@ class LocalBootstrap {
     // a back-office act — see [administrativeGrants].
     'GRANT SELECT ON pos_restaurants, pos_branches, pos_staff, pos_categories, '
         'pos_products, pos_modifier_groups, pos_modifiers, '
-        'pos_product_modifier_groups, pos_dining_tables TO "$role"',
+        'pos_product_modifier_groups, pos_modifier_group_categories, '
+        'pos_dining_tables TO "$role"',
     // Read by every till on every sign-in: the permission gate needs to
     // know what the person who just entered a PIN may do.
     'GRANT SELECT ON pos_roles TO "$role"',
@@ -458,6 +628,12 @@ class LocalBootstrap {
     // Claiming a pairing code stamps `claimed_at`, and an installer with
     // no dashboard registers the terminal from the wizard.
     'GRANT SELECT, INSERT, UPDATE ON pos_terminals TO "$role"',
+    // The licence the main device shares with its children (migration 43). The
+    // main device writes it on the till credential — it renews at the till,
+    // with nobody in the back office — and a child reads it. UPDATE hands a
+    // stolen credential nothing: every licence is Ed25519-signed, so the most
+    // it can write is a licence that already existed.
+    'GRANT SELECT, INSERT, UPDATE ON pos_site_licence TO "$role"',
     // Shifts are opened and closed at the till by definition. No DELETE: a
     // cash-up somebody wants to disappear is exactly the row that must not.
     'GRANT SELECT, INSERT, UPDATE ON pos_shifts TO "$role"',
@@ -473,6 +649,16 @@ class LocalBootstrap {
     // than the only one.
     'GRANT SELECT, INSERT ON pos_audit_events TO "$role"',
     'GRANT USAGE, SELECT ON SEQUENCE pos_audit_events_id_seq TO "$role"',
+    // The record of every copy taken of this database. On the TILL's list, not
+    // only the administrator's, because the automatic copy is taken when the
+    // trading day is closed — at the till, by a machine on which nobody has
+    // signed into the back office. Granted the same INSERT and SELECT as the
+    // ledger and for the same reason: a row saying last night's backup failed
+    // verification must not be editable by anybody who would rather it did not
+    // say that. Migration 37's trigger refuses the rest even from an admin
+    // connection.
+    'GRANT SELECT, INSERT ON pos_backups TO "$role"',
+    'GRANT USAGE, SELECT ON SEQUENCE pos_backups_id_seq TO "$role"',
     // Cloud seeding, and ONLY on a cloud till — see [cloudSeeding]. The
     // platform authors the menu, the staff and the floor, and the bootstrap
     // seeder replicates them here as a local cache: wipe-and-rewrite for the
@@ -495,11 +681,19 @@ class LocalBootstrap {
       'GRANT INSERT, UPDATE ON pos_restaurants, pos_branches, pos_staff TO "$role"',
       'GRANT INSERT, UPDATE, DELETE ON pos_categories, pos_products, '
           'pos_modifier_groups, pos_modifiers, pos_product_modifier_groups, '
-          'pos_dining_tables TO "$role"',
+          'pos_modifier_group_categories, pos_dining_tables TO "$role"',
       'GRANT USAGE, SELECT, UPDATE ON SEQUENCE pos_restaurants_id_seq, '
           'pos_branches_id_seq, pos_staff_id_seq, pos_categories_id_seq, '
           'pos_products_id_seq, pos_modifier_groups_id_seq, '
           'pos_modifiers_id_seq, pos_dining_tables_id_seq TO "$role"',
+      // Payment methods, since POS-BE-013 delivers them in the bundle. No
+      // DELETE: a tender the platform stopped sending is retired, because a
+      // queued payment names it by id and nothing else would. UPDATE on the
+      // sequence is for the `setval` that keeps platform rows above the
+      // compiled-in ids — see migration 41.
+      'GRANT INSERT, UPDATE ON pos_tender_types TO "$role"',
+      'GRANT USAGE, SELECT, UPDATE ON SEQUENCE pos_tender_types_id_seq '
+          'TO "$role"',
     ] else ...[
       // Taken away, not merely withheld. Every offline branch server built
       // before this distinction existed was granted the block above, and a
@@ -508,12 +702,19 @@ class LocalBootstrap {
       // held is a no-op, so a fresh install pays nothing for this.
       'REVOKE INSERT, UPDATE, DELETE ON pos_restaurants, pos_branches, '
           'pos_staff, pos_categories, pos_products, pos_modifier_groups, '
-          'pos_modifiers, pos_product_modifier_groups, pos_dining_tables '
+          'pos_modifiers, pos_product_modifier_groups, '
+          'pos_modifier_group_categories, pos_dining_tables '
           'FROM "$role"',
       'REVOKE UPDATE ON SEQUENCE pos_restaurants_id_seq, '
           'pos_branches_id_seq, pos_staff_id_seq, pos_categories_id_seq, '
           'pos_products_id_seq, pos_modifier_groups_id_seq, '
           'pos_modifiers_id_seq, pos_dining_tables_id_seq FROM "$role"',
+      // Offline, `counts_as_cash` on this table is what every cash-up expects
+      // in the drawer. Authoring it is Management's, over the admin
+      // credential — which the migration tool and the setup wizard both grant
+      // AFTER this list, so the REVOKE cannot take it from an administrator.
+      'REVOKE INSERT, UPDATE ON pos_tender_types FROM "$role"',
+      'REVOKE UPDATE ON SEQUENCE pos_tender_types_id_seq FROM "$role"',
     ],
     'GRANT SELECT, INSERT, UPDATE ON pos_cloud_state TO "$role"',
     // The open floor. The ONE table the till may DELETE from: settlement
@@ -570,13 +771,30 @@ class LocalBootstrap {
         'pos_modifiers_id_seq, pos_dining_tables_id_seq TO "$role"',
     // The join between the two. DELETE here, unlike the tables it joins: a row
     // is not a record of anything that happened, only the current shape of
-    // which options a product offers.
-    'GRANT SELECT, INSERT, DELETE ON pos_product_modifier_groups TO "$role"',
-    // Tax groups, per-branch prices and combos — everything Wave M made
-    // authorable. Read for now, because nothing in Management edits them yet;
-    // the writes land with Wave D's settings surface, and granting them before
-    // there is a screen would be granting them to nobody.
-    'GRANT SELECT ON pos_tax_groups, pos_product_prices, pos_combos, '
+    // which options a product offers. The categories a library group reaches
+    // (migration 45) are the same kind of row.
+    'GRANT SELECT, INSERT, DELETE ON pos_product_modifier_groups, '
+        'pos_modifier_group_categories TO "$role"',
+    // **The one DELETE on the catalogue itself**, and only on sizes and
+    // extras. Removing an option from a group, or a group from the library,
+    // is how the platform edits them and what a manager means by it — and
+    // unlike a product, neither is the subject of anything a sale recorded: an
+    // order line keeps its own `modifier_summary` and names the options by id
+    // only. The rule that matters for those ids is that an option which STAYS
+    // keeps its id, which is the repository's to hold, not a grant's.
+    'GRANT DELETE ON pos_modifier_groups, pos_modifiers TO "$role"',
+    // The named rates. **The write that Wave M deferred** — "granting them
+    // before there is a screen would be granting them to nobody" — now that the
+    // Tax pane edits them. No DELETE: a group a product points at cannot be
+    // removed without silently reclassifying that product, so it is retired.
+    'GRANT SELECT, INSERT, UPDATE ON pos_tax_groups TO "$role"',
+    'GRANT SELECT, INSERT, UPDATE ON pos_units TO "$role"',
+    'GRANT USAGE, SELECT ON SEQUENCE pos_units_id_seq TO "$role"',
+    'GRANT USAGE, SELECT ON SEQUENCE pos_tax_groups_id_seq TO "$role"',
+    // Per-branch prices and combos are still read-only here: nothing in
+    // Management edits them yet, and granting a write to nobody is how a role
+    // ends up holding more than anything needs.
+    'GRANT SELECT ON pos_product_prices, pos_combos, '
         'pos_combo_groups, pos_combo_options TO "$role"',
     // The trade name, registration number and address a receipt is judged on.
     // No DELETE: a branch stops having a profile by being archived, not by
@@ -597,16 +815,86 @@ class LocalBootstrap {
     'GRANT USAGE, SELECT ON SEQUENCE pos_settings_id_seq TO "$role"',
     'GRANT SELECT, INSERT, UPDATE ON pos_cash_drawers TO "$role"',
     'GRANT USAGE, SELECT ON SEQUENCE pos_cash_drawers_id_seq TO "$role"',
-    // Reading the drawer's history and the day's. SELECT only, even here: a
-    // pay-out is a record of money that left, and the back office corrects one
-    // by recording another.
-    'GRANT SELECT ON pos_cash_movements, pos_business_days TO "$role"',
+    // Reading the drawer's history and the day's, and — since a supplier can be
+    // paid out of a till from the purchasing pane — writing one movement into
+    // it. **INSERT, and still no UPDATE or DELETE:** a pay-out already recorded
+    // is money that left, and the back office corrects one by recording a
+    // pay-in beside it, which is what voiding such a payment does.
+    //
+    // It was SELECT-only here. An administrator role is given the till list as
+    // well, which already grants INSERT, so a real install happened to work —
+    // and a deployment given only this list would have failed on the first
+    // supplier paid out of the drawer. Spelling it out is what makes the intent
+    // reviewable rather than an accident of two lists overlapping.
+    'GRANT SELECT, INSERT ON pos_cash_movements TO "$role"',
+    'GRANT USAGE, SELECT ON SEQUENCE pos_cash_movements_id_seq TO "$role"',
+    // The shift the pay-out lands on. SELECT only: the office reads which
+    // terminal and which trading day a drawer belongs to, and opens and closes
+    // nothing.
+    'GRANT SELECT ON pos_shifts TO "$role"',
+    'GRANT SELECT ON pos_business_days TO "$role"',
     // Reading refunds back — the void and refund reports, and the Activity
     // pane. SELECT only, even here: a refund is a record of money that left
     // the drawer, and the back office corrects one by issuing another, not by
     // editing the first.
     'GRANT SELECT ON pos_refunds, pos_refund_lines, pos_refund_payments '
         'TO "$role"',
+
+    // ── What Wave D authored, and had no write grant for ─────────────────
+    //
+    // **Every table below was reachable from a Management pane and writable by
+    // nobody.** The till list grants SELECT on the first three, so an
+    // administrator — who is given both lists — could read a payment method and
+    // could not save one; the purchasing tables had no grant in either list at
+    // all. Every database suite runs as the superuser, so every test passed.
+    //
+    // The coverage test that should have caught it was reading a hand-written
+    // list of repository filenames that these were never added to. It now
+    // enumerates the directory instead and refuses to pass while a repository
+    // is classified as neither till nor back office.
+    'GRANT SELECT, INSERT, UPDATE ON pos_tender_types, pos_service_charges, '
+        'pos_order_types TO "$role"',
+    'GRANT USAGE, SELECT ON SEQUENCE pos_tender_types_id_seq, '
+        'pos_service_charges_id_seq, pos_order_types_id_seq TO "$role"',
+    // Who the restaurant buys from. No DELETE: a supplier is retired, because
+    // their invoices name them.
+    'GRANT SELECT, INSERT, UPDATE ON pos_suppliers TO "$role"',
+    'GRANT USAGE, SELECT ON SEQUENCE pos_suppliers_id_seq TO "$role"',
+    // Purchase orders and their lines. DELETE on the lines alone, and only
+    // there: a draft's lines are the current shape of a document nobody has
+    // sent, so the editor replaces them wholesale — whereas the order itself is
+    // cancelled rather than removed, because an order somebody sent and then
+    // called off is a conversation with a supplier.
+    'GRANT SELECT, INSERT, UPDATE ON pos_purchase_orders TO "$role"',
+    'GRANT SELECT, INSERT, UPDATE, DELETE ON pos_purchase_order_lines TO "$role"',
+    'GRANT USAGE, SELECT ON SEQUENCE pos_purchase_orders_id_seq, '
+        'pos_purchase_order_lines_id_seq TO "$role"',
+    'GRANT SELECT, INSERT, UPDATE ON pos_purchase_sequences TO "$role"',
+    // The stock ledger. INSERT and SELECT, never UPDATE or DELETE — a movement
+    // is a claim about what physically happened, and a row somebody can edit
+    // afterwards is a stock figure nobody can defend. The cached position is
+    // the one thing here that is genuinely a working figure, so it takes
+    // UPDATE.
+    'GRANT SELECT, INSERT ON pos_stock_movements TO "$role"',
+    'GRANT USAGE, SELECT ON SEQUENCE pos_stock_movements_id_seq TO "$role"',
+    // No sequence: the position is keyed by (restaurant, branch, product), so
+    // there is nothing to nextval.
+    'GRANT SELECT, INSERT, UPDATE ON pos_stock_levels TO "$role"',
+    // What is owed and what has been paid. UPDATE is column-scoped on both: an
+    // invoice's numbers and a payment's amount are what the supplier's paper
+    // says, and the only things the back office may change afterwards are the
+    // note and the void. Correcting a figure means voiding the row and entering
+    // it again, which is what leaves a trail.
+    'GRANT SELECT, INSERT ON pos_supplier_invoices TO "$role"',
+    'GRANT UPDATE (number, total_minor, tax_minor, issued_at, due_at, note, '
+        'purchase_order_id, purchase_order_reference, voided_at, voided_by, '
+        'void_reason_id, void_note, updated_at, updated_by) '
+        'ON pos_supplier_invoices TO "$role"',
+    'GRANT USAGE, SELECT ON SEQUENCE pos_supplier_invoices_id_seq TO "$role"',
+    'GRANT SELECT, INSERT ON pos_supplier_payments TO "$role"',
+    'GRANT UPDATE (note, voided_at, voided_by, void_reason_id, void_note) '
+        'ON pos_supplier_payments TO "$role"',
+    'GRANT USAGE, SELECT ON SEQUENCE pos_supplier_payments_id_seq TO "$role"',
   ];
 
   Future<void> applyGrants(
@@ -624,4 +912,17 @@ class LocalBootstrap {
   /// point of typing. This is the last line of defence, not the first.
   static bool _isPlainIdentifier(String value) =>
       DeploymentConfig.isPlainIdentifier(value);
+}
+
+/// The accounts an install creates. See [LocalBootstrap.createRoles].
+enum InstallRole {
+  admin,
+  till,
+  backup;
+
+  static const defaultNames = {
+    InstallRole.admin: 'pos_admin',
+    InstallRole.till: 'pos_till',
+    InstallRole.backup: 'pos_backup',
+  };
 }

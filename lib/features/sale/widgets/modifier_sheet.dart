@@ -42,13 +42,17 @@ class ModifierSheet extends StatefulWidget {
 }
 
 class _ModifierSheetState extends State<ModifierSheet> {
-  List<Modifier> _selected = [];
+  // Opens on the size the item is advertised at, as the platform's menu does.
+  late List<Modifier> _selected = TicketEngine.defaultSelection(widget.groups);
   int _quantity = 1;
 
-  Money get _unitPrice => _selected.fold(
-    widget.product.effectivePrice,
-    (total, m) => total + m.priceDelta,
-  );
+  Money get _unitPrice => priceWithOptions(widget.product, _selected);
+
+  /// The header's figure: the running price once sizes decide it, the item's
+  /// own otherwise — the same choice the platform's item modal makes.
+  Money get _headerPrice => widget.groups.any((g) => g.isVariant)
+      ? _unitPrice
+      : widget.product.effectivePrice;
 
   void _toggle(ModifierGroup group, Modifier modifier) {
     final next = TicketEngine.toggleModifier(_selected, group, modifier);
@@ -152,7 +156,7 @@ class _ModifierSheetState extends State<ModifierSheet> {
             ),
           ),
           Text(
-            widget.product.effectivePrice.format(),
+            _headerPrice.format(),
             style: PosText.mono(
               size: 22,
               weight: FontWeight.w600,
@@ -251,11 +255,18 @@ class _ModifierSheetState extends State<ModifierSheet> {
   Widget _option(ModifierGroup group, Modifier modifier) {
     final selected = _selected.any((m) => m.id == modifier.id);
     final name = modifier.displayName(context.strings.languageCode);
+    // Shown and struck through rather than hidden: a cashier has to be able to
+    // tell the customer "we're out of Large".
+    final out = !modifier.isAvailable;
+    final ink = out
+        ? context.pos.muted
+        : (selected ? context.pos.warn : context.pos.inkWarm);
 
     return Material(
       color: selected ? context.pos.accentSoft : context.pos.surface,
       child: InkWell(
-        onTap: () => _toggle(group, modifier),
+        key: Key('modifier-option-${modifier.id}'),
+        onTap: out ? null : () => _toggle(group, modifier),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: PosSpace.lg),
           child: Row(
@@ -264,18 +275,22 @@ class _ModifierSheetState extends State<ModifierSheet> {
                 child: Text(
                   selected ? '✓ $name' : name,
                   overflow: TextOverflow.ellipsis,
-                  style: PosText.ui(
-                    size: 13.5,
-                    color: selected ? context.pos.warn : context.pos.inkWarm,
+                  style: PosText.ui(size: 13.5, color: ink).copyWith(
+                    decoration: out ? TextDecoration.lineThrough : null,
                   ),
                 ),
               ),
-              if (!modifier.priceDelta.isZero)
+              // A size is the price; an extra is added to it.
+              if (modifier.isVariant || !modifier.priceDelta.isZero)
                 Text(
-                  '+${modifier.priceDelta.format()}',
+                  modifier.isVariant
+                      ? modifier.priceDelta.format()
+                      : '+${modifier.priceDelta.format()}',
                   style: PosText.mono(
                     size: 13,
-                    color: selected ? context.pos.warn : context.pos.muted,
+                    color: out
+                        ? context.pos.muted
+                        : (selected ? context.pos.warn : context.pos.muted),
                   ),
                 ),
             ],

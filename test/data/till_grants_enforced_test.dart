@@ -22,7 +22,12 @@ void main() {
     return;
   }
 
-  const role = 'pos_till_grant_probe';
+  // Per checkout, because roles are cluster-wide. With one fixed name, the
+  // other worktree's grants in its own database kept DROP ROLE from ever
+  // succeeding here, so the CREATE below failed on a role that "already
+  // exists" — and this run's DROP OWNED, which reaches grants on every
+  // database, took away the CONNECT the other run was using.
+  final role = PgFixture.roleFor('till_grant_probe');
   const password = 'probe-only';
 
   late PgFixture pg;
@@ -183,6 +188,33 @@ void main() {
     );
   });
 
+  test('the till records a backup and cannot rewrite the record', () async {
+    // The automatic copy is taken when the trading day is closed, at a machine
+    // on which nobody has opened the back office — so the INSERT has to be on
+    // the TILL's list, not the administrator's. Without it the nightly backup
+    // would work for the superuser in every test here and fail at a real
+    // install, which is the failure mode this whole file exists for.
+    expect(await refusalFor('SELECT 1 FROM pos_backups'), isNull);
+    expect(
+      await refusalFor(
+        'INSERT INTO pos_backups (restaurant_id, taken_by_name, trigger_kind, '
+        "  outcome, file_path, failure) VALUES (1, 'Till', 'day_close', "
+        "  'failed', '/tmp/x.dump', 'tools_missing')",
+      ),
+      isNull,
+    );
+    // The privilege check comes before the trigger, so this is the GRANT
+    // talking and not migration 37's `RAISE EXCEPTION`. Both are asserted —
+    // that one in `backup_restore_test.dart`, from an administrator connection.
+    expect(
+      await refusalFor("UPDATE pos_backups SET outcome = 'verified'"),
+      '42501',
+      reason: 'a row saying last night failed must not be editable by anybody '
+          'who would rather it did not say that',
+    );
+    expect(await refusalFor('DELETE FROM pos_backups'), '42501');
+  });
+
   test('the till records a drawer movement and cannot unrecord one', () async {
     // A pay-out already recorded is money that left. Correcting one is a
     // second movement, not an edit of the first.
@@ -222,6 +254,38 @@ void main() {
     expect(await refusalFor('SELECT 1 FROM pos_combo_options'), isNull);
   });
 
+  test('the till reads which items a library group reaches, and sets none',
+      () async {
+    // Migration 45's table is joined by the catalogue read, so without the
+    // SELECT an offline till could not load its menu at all. The probe
+    // started from the CLOUD set, which writes it for the seeder, so the
+    // refusals are the offline REVOKE doing its job.
+    expect(
+      await refusalFor('SELECT 1 FROM pos_modifier_group_categories'),
+      isNull,
+    );
+    expect(
+      await refusalFor(
+        'INSERT INTO pos_modifier_group_categories (group_id, category_id) '
+        'VALUES (1, 1)',
+      ),
+      '42501',
+    );
+    expect(
+      await refusalFor('DELETE FROM pos_modifier_group_categories'),
+      '42501',
+    );
+    expect(
+      await refusalFor('UPDATE pos_modifiers SET discounted_price_minor = 0'),
+      '42501',
+      reason: 'a size on sale is a price, and the till does not set prices',
+    );
+    expect(
+      await refusalFor("UPDATE pos_modifier_groups SET apply_scope = 'all'"),
+      '42501',
+    );
+  });
+
   test('the till may not change the tax rates it charges', () async {
     // Offline, this row IS the VAT rate on every receipt.
     expect(await refusalFor('UPDATE pos_tax_groups SET rate_bp = 0'), '42501');
@@ -246,6 +310,26 @@ void main() {
     );
     expect(await refusalFor('DELETE FROM pos_order_taxes'), '42501');
     expect(await refusalFor('DELETE FROM pos_order_line_items'), '42501');
+  });
+
+  test('the till may not invent a payment method, or make one count as cash',
+      () async {
+    // The probe started from the CLOUD set, which since POS-BE-013 writes
+    // `pos_tender_types` for the bootstrap seeder — so this is the offline
+    // REVOKE doing its job. Offline, `counts_as_cash` is what every cash-up
+    // expects to find in the drawer.
+    expect(await refusalFor('SELECT 1 FROM pos_tender_types'), isNull);
+    expect(
+      await refusalFor('UPDATE pos_tender_types SET counts_as_cash = true'),
+      '42501',
+    );
+    expect(
+      await refusalFor(
+        'INSERT INTO pos_tender_types (restaurant_id, code, name_en) '
+        "VALUES (1, 'x', 'X')",
+      ),
+      '42501',
+    );
   });
 
   test('the till may not change what the receipt says about the seller',
@@ -352,6 +436,97 @@ void main() {
     expect(await refusalFor('SELECT 1 FROM pos_refunds'), isNull);
   });
 
+  test('the till queues a receipt it could not print, and cannot rewrite it',
+      () async {
+    // A new table with no grant works for the superuser in every suite here and
+    // fails at a real install — which for this table means a printer that goes
+    // off takes the receipt with it.
+    final restaurant = (await db.query(
+      pg.config,
+      "INSERT INTO pos_restaurants (slug, name) VALUES ('print-probe', 'Print') "
+      'ON CONFLICT (slug) DO UPDATE SET name = pos_restaurants.name '
+      'RETURNING id',
+    )).first[0]! as int;
+    final branch = (await db.query(
+      pg.config,
+      "INSERT INTO pos_branches (restaurant_id, code, name) "
+      "VALUES (@r, 'PRP', 'Probe') "
+      'ON CONFLICT (restaurant_id, code) DO UPDATE SET name = pos_branches.name '
+      'RETURNING id',
+      parameters: {'r': restaurant},
+    )).first[0]! as int;
+
+    final connection = await connect();
+    addTearDown(connection.close);
+    final queued = await connection.execute(
+      Sql.named(
+        'INSERT INTO pos_print_jobs (restaurant_id, branch_id, terminal_id, '
+        "  printer_name, payload) "
+        "VALUES (@r, @b, 'till-1', '10.0.0.9:9100', '\\x1b40'::bytea) "
+        'RETURNING id',
+      ),
+      parameters: {'r': restaurant, 'b': branch},
+    );
+    final id = queued.first[0]! as int;
+
+    // Retrying it is the whole point, so the status columns are writable.
+    await connection.execute(
+      Sql.named(
+        "UPDATE pos_print_jobs SET status = 'printed', attempts = attempts + 1 "
+        'WHERE id = @id',
+      ),
+      parameters: {'id': id},
+    );
+
+    // The bytes are not. A job whose contents can be rewritten between the sale
+    // and the paper is a receipt for a different sale.
+    expect(
+      await refusalFor("UPDATE pos_print_jobs SET payload = '\\x00'::bytea"),
+      '42501',
+    );
+    expect(await refusalFor('DELETE FROM pos_print_jobs'), '42501');
+  });
+
+  test('the till can park a ticket that has no table, and let it go', () async {
+    // Migration 32 gave `pos_parked_tickets` a `branch_id` that references
+    // `pos_branches` — a table the till may read and must not write. A foreign
+    // key check needs no privilege on the referenced table, but "needs no
+    // privilege" is exactly the kind of claim a superuser run cannot make, and
+    // getting it wrong means a takeaway ticket that parks in every test and
+    // refuses at the counter.
+    final restaurant = (await db.query(
+      pg.config,
+      "INSERT INTO pos_restaurants (slug, name) VALUES ('park-probe', 'Park') "
+      'ON CONFLICT (slug) DO UPDATE SET name = pos_restaurants.name '
+      'RETURNING id',
+    )).first[0]! as int;
+    final branch = (await db.query(
+      pg.config,
+      "INSERT INTO pos_branches (restaurant_id, code, name) "
+      "VALUES (@r, 'PRB', 'Probe') "
+      'ON CONFLICT (restaurant_id, code) DO UPDATE SET name = pos_branches.name '
+      'RETURNING id',
+      parameters: {'r': restaurant},
+    )).first[0]! as int;
+
+    final connection = await connect();
+    addTearDown(connection.close);
+    await connection.execute(
+      Sql.named(
+        'INSERT INTO pos_parked_tickets (restaurant_id, branch_id, table_id, '
+        "  client_transaction_id, payload) "
+        "VALUES (@r, @b, NULL, gen_random_uuid(), '{}'::jsonb)",
+      ),
+      parameters: {'r': restaurant, 'b': branch},
+    );
+    // Picking it up again is the DELETE the till is deliberately granted.
+    await connection.execute(
+      Sql.named(
+        'DELETE FROM pos_parked_tickets WHERE restaurant_id = @r',
+      ),
+      parameters: {'r': restaurant},
+    );
+  });
 }
 
 /// A role with grants on it cannot be dropped until they are revoked, and

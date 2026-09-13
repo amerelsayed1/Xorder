@@ -310,7 +310,7 @@ void main() {
       );
 
       expect(find.text('2 tills still have drawers open'), findsOneWidget);
-      expect(find.text('1 table is still seated'), findsOneWidget);
+      expect(find.text('1 ticket is still parked'), findsOneWidget);
       expect(find.text('3 orders have not been paid'), findsOneWidget);
     });
 

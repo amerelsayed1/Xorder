@@ -35,7 +35,8 @@ class PostgresShiftRepository implements ShiftRepository {
   final String _terminalId;
 
   static const _selectShift = '''
-    SELECT s.id, s.opened_at, s.opening_float_minor, st.name, s.closed_at
+    SELECT s.id, s.opened_at, s.opening_float_minor, st.name, s.closed_at,
+           s.opened_by
     FROM pos_shifts s JOIN pos_staff st ON st.id = s.opened_by
   ''';
 
@@ -82,6 +83,7 @@ class PostgresShiftRepository implements ShiftRepository {
       openedAt: rows.first[1] as DateTime,
       openingFloat: openingFloat,
       openedByName: by.name,
+      openedById: by.id,
     );
   }
 
@@ -279,5 +281,6 @@ class PostgresShiftRepository implements ShiftRepository {
     openingFloat: Money(row[2] as int),
     openedByName: row[3] as String,
     closedAt: row[4] as DateTime?,
+    openedById: row[5] as int?,
   );
 }

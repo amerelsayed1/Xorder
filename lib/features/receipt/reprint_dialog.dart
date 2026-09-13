@@ -14,7 +14,9 @@ import '../../domain/repositories/admin_repositories.dart';
 import '../../domain/services/authorization.dart';
 import '../admin/presentation/supervisor_override.dart';
 import 'receipt_data.dart';
+import 'receipt_document.dart';
 import 'receipt_paper.dart';
+import 'receipt_printing.dart';
 
 /// Printing a copy of a receipt that already exists.
 ///
@@ -40,18 +42,22 @@ class ReprintDialog extends ConsumerStatefulWidget {
   /// claim a refund that has already been given.
   final List<Refund> refunds;
 
-  /// Returns true when a reprint was actually sent.
-  static Future<bool> show(
+  /// What happened to the paper, or null when nothing was attempted — the
+  /// cashier cancelled, or the reprint could not be recorded.
+  ///
+  /// **It used to return a bare `true` and the caller said "Reprint sent, and
+  /// recorded".** Half of that sentence was a guess: nothing was sent, because
+  /// nothing printed anywhere in the product. Now that a reprint really does go
+  /// to a printer, the caller is told which of the four things happened.
+  static Future<PrintOutcome?> show(
     BuildContext context, {
     required OrderRecordDetail detail,
     required List<Refund> refunds,
-  }) async =>
-      await showDialog<bool>(
-        context: context,
-        barrierColor: context.pos.scrimHeavy,
-        builder: (_) => ReprintDialog(detail: detail, refunds: refunds),
-      ) ??
-      false;
+  }) => showDialog<PrintOutcome>(
+    context: context,
+    barrierColor: context.pos.scrimHeavy,
+    builder: (_) => ReprintDialog(detail: detail, refunds: refunds),
+  );
 
   @override
   ConsumerState<ReprintDialog> createState() => _ReprintDialogState();
@@ -127,7 +133,9 @@ class _ReprintDialogState extends ConsumerState<ReprintDialog> {
                       ),
                       onPressed: _busy
                           ? null
-                          : () => Navigator.of(context).pop(false),
+                          // Null, not an outcome: nothing was attempted, so
+                          // there is nothing to tell the cashier about paper.
+                          : () => Navigator.of(context).pop(),
                     ),
                   ),
                   const SizedBox(width: PosSpace.sm),
@@ -178,15 +186,47 @@ class _ReprintDialogState extends ConsumerState<ReprintDialog> {
       return;
     }
 
+    // Recorded first, printed second, and deliberately in that order: a job
+    // that reaches the printer and then fails to be recorded is the copy
+    // somebody wanted off the books.
+    //
+    // Down the same path as a settlement — same document, same raster, same
+    // queue. A reprint that took a different route would be the one that
+    // printed differently, and the whole point of the stamp is that this slip
+    // is recognisably the same document as the original.
+    final session = ref.read(sessionProvider).valueOrNull;
+    final outcome = await ref
+        .read(receiptPrinterProvider)
+        .printReceipt(
+          ReceiptDocument.of(
+            ReceiptData.fromOrder(widget.detail, refunds: widget.refunds),
+            strings: ref.read(stringsProvider),
+            profile:
+                ref.read(receiptProfileProvider).valueOrNull ??
+                const ReceiptProfile(branchId: 0),
+            tenantName: session?.tenantName ?? '',
+            terminalCode: session?.terminalCode ?? '',
+            // The person who sold it, not the person reprinting — see the
+            // preview above.
+            cashierName: order.servedByName ?? '—',
+          ),
+          isReprint: true,
+          // A reprint never kicks the drawer. No money is moving, and a drawer
+          // that springs open on a copy of an old receipt is a drawer standing
+          // open for nobody.
+          orderId: order.id,
+          invoiceNumber: order.invoiceNumber,
+        );
+
     if (!mounted) return;
-    Navigator.of(context).pop(true);
+    Navigator.of(context).pop(outcome);
   }
 }
 
 /// Permission, preview, record, print.
 abstract final class ReprintFlow {
-  /// Returns true when a reprint was sent.
-  static Future<bool> run(
+  /// What happened to the paper, or null when the reprint did not go ahead.
+  static Future<PrintOutcome?> run(
     BuildContext context,
     WidgetRef ref, {
     required OrderRecordDetail detail,
@@ -206,7 +246,7 @@ abstract final class ReprintFlow {
       subject: detail.order.total.format(withCurrency: true),
       approveLabel: strings.receiptReprintConfirm,
     );
-    if (!context.mounted || decision is! Allowed) return false;
+    if (!context.mounted || decision is! Allowed) return null;
 
     return ReprintDialog.show(context, detail: detail, refunds: refunds);
   }

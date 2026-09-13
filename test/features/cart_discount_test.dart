@@ -88,7 +88,7 @@ void main() {
             selectedLineKey: selected,
             onSelectLine: onSelect,
             onQuantityChanged: (_, _) {},
-            onSendRound: () {},
+            onHold: () {},
             onVoid: () {},
             onCharge: () {},
           ),

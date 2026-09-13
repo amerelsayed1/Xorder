@@ -70,7 +70,17 @@ extension SetupStepLabel on SetupStep {
   /// account to sign in with — the first administrator does not exist yet, and
   /// this is the screen that creates them. Same position in the wizard, a
   /// different question, so it must not wear the same title.
-  String title(AppStrings s, {DeploymentMode? mode}) => switch (this) {
+  ///
+  /// [role] does the same for a child tablet, whose connection step is finding
+  /// the main device and whose sign-in is a manager who already exists there —
+  /// never the first administrator, whom the main device created.
+  String title(
+    AppStrings s, {
+    DeploymentMode? mode,
+    TerminalRole role = TerminalRole.main,
+  }) => switch (this) {
+    SetupStep.deployment when role == TerminalRole.child => s.stepMainDevice,
+    SetupStep.account when role == TerminalRole.child => s.stepAccount,
     SetupStep.account when mode == DeploymentMode.offline =>
       s.stepFirstAdministrator,
     SetupStep.setupType => s.stepSetupType,
@@ -86,7 +96,15 @@ extension SetupStepLabel on SetupStep {
     SetupStep.summary => s.stepReady,
   };
 
-  String blurb(AppStrings s, {DeploymentMode? mode}) => switch (this) {
+  String blurb(
+    AppStrings s, {
+    DeploymentMode? mode,
+    TerminalRole role = TerminalRole.main,
+  }) => switch (this) {
+    SetupStep.deployment when role == TerminalRole.child =>
+      s.stepMainDeviceBlurb,
+    SetupStep.account when role == TerminalRole.child =>
+      s.stepChildAccountBlurb,
     SetupStep.account when mode == DeploymentMode.offline =>
       s.stepFirstAdministratorBlurb,
     SetupStep.setupType => s.stepSetupTypeBlurb,

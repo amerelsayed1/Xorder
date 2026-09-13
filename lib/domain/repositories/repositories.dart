@@ -1,8 +1,17 @@
 import '../../core/config/deployment.dart';
 import '../../core/money/money.dart';
+import '../../core/money/quantity.dart';
 import 'admin_repositories.dart';
+import '../models/pos_unit.dart';
+import '../models/stock_item.dart';
+import '../models/stock_level.dart';
 import '../models/catalog.dart';
+import '../models/order_type_config.dart';
+import '../models/purchase_order.dart';
+import '../services/stock_costing.dart';
 import '../models/service_charge.dart';
+import '../models/supplier.dart';
+import '../models/supplier_invoice.dart';
 import '../models/tender_method.dart';
 import '../models/eta_submission.dart';
 import '../services/eta_serialization.dart';
@@ -116,6 +125,34 @@ abstract interface class TenderTypesRepository {
   Future<List<TenderMethod>> all({bool includeInactive = false});
 }
 
+/// What stock is counted and bought in — kg, litre, a tray of thirty — as the
+/// restaurant names them (migration 39).
+abstract interface class UnitsRepository {
+  Future<List<PosUnit>> all({bool includeInactive = false});
+
+  /// `id == 0` creates. No delete: a unit is retired with `isActive`, because
+  /// last month's purchase order still names it. The code is fixed once saved.
+  Future<AdminResult<PosUnit>> save(PosUnit unit, {required PosStaff by});
+}
+
+/// What the restaurant buys and counts: the stocked products, on the menu or
+/// not (migration 40).
+abstract interface class StockItemsRepository {
+  /// Everything counted in stock, by name.
+  Future<List<StockItem>> all({bool includeInactive = false});
+
+  /// `id == 0` adds an item that is bought and not sold. An item on the menu
+  /// changes only its unit here — its name and price are the Menu pane's.
+  Future<AdminResult<StockItem>> save(StockItem item, {required PosStaff by});
+}
+
+/// What each counted item stands at in this branch.
+abstract interface class StockLevelsRepository {
+  /// Every counted item, by name — including one counted and never received,
+  /// which stands at nothing.
+  Future<List<StockLevel>> all();
+}
+
 /// What the restaurant adds on top of the food (§38).
 ///
 /// Read on every sale — the ticket has to be priced — and written only from
@@ -131,6 +168,152 @@ abstract interface class ServiceChargesRepository {
     ServiceCharge charge, {
     required PosStaff by,
   });
+}
+
+/// What each kind of order requires (§31).
+abstract interface class OrderTypesRepository {
+  Future<List<OrderTypeConfig>> all({bool includeInactive = false});
+}
+
+/// Who the restaurant buys from.
+///
+/// Back office only, on the administrator credential: a till does not buy
+/// anything, and giving the counter SELECT on who the restaurant owes money to
+/// would hand out its commercial position for no operational benefit.
+abstract interface class SuppliersRepository {
+  Future<List<Supplier>> all({bool includeInactive = false});
+
+  /// `id == 0` creates. No delete: a supplier is retired with `isActive`,
+  /// because their invoices name them and a purchase history that cannot say
+  /// who supplied something is not a purchase history.
+  Future<AdminResult<Supplier>> save(Supplier supplier, {required PosStaff by});
+}
+
+/// What the restaurant has asked its suppliers for.
+abstract interface class PurchaseOrdersRepository {
+  /// Everything still owed — sent, or part-delivered.
+  Future<List<PurchaseOrder>> open();
+
+  Future<List<PurchaseOrder>> all({int limit = 100});
+
+  Future<PurchaseOrder?> byId(int id);
+
+  /// Writes a draft, lines and all. `id == 0` creates and claims a reference.
+  ///
+  /// Refuses once the order has been sent: the supplier is holding a copy, and
+  /// changing what it says here would leave the two of them with different
+  /// pieces of paper.
+  Future<AdminResult<PurchaseOrder>> saveDraft(
+    PurchaseOrder order, {
+    required PosStaff by,
+  });
+
+  /// Move it on — sent, cancelled, or the status the receipts imply.
+  Future<AdminResult<PurchaseOrder>> setStatus(
+    int orderId, {
+    required PurchaseStatus status,
+    required PosStaff by,
+    DateTime? orderedAt,
+  });
+}
+
+/// Booking goods in against a purchase order.
+abstract interface class ReceivingRepository {
+  /// Records what arrived, by purchase-order line.
+  ///
+  /// Everything happens together: the line's received quantity, a movement in
+  /// the ledger, the new position, and the order's status — which is *derived*
+  /// from the lines rather than passed in, so a receipt cannot leave an order
+  /// saying something its own lines contradict.
+  Future<AdminResult<void>> receive({
+    required int purchaseOrderId,
+    required Map<int, Quantity> byLine,
+    required PosStaff by,
+    DateTime? at,
+    String? note,
+  });
+
+  /// What is on hand and what it cost, or null for a product never stocked.
+  Future<StockPosition?> positionFor(int productId);
+}
+
+/// What the restaurant owes its suppliers, and what it has paid them (§37).
+///
+/// Back office only, like the rest of purchasing. **The reads return invoices
+/// with `paid` already filled in**, because every question worth asking of this
+/// table is about the unpaid part and a screen that had to make a second call
+/// per row would either make it or quietly stop asking.
+abstract interface class SupplierInvoicesRepository {
+  /// Everything with money still on it, oldest due date first — which is the
+  /// order somebody pays in.
+  Future<List<SupplierInvoice>> unpaid({int? supplierId});
+
+  Future<List<SupplierInvoice>> all({int? supplierId, int limit = 200});
+
+  Future<SupplierInvoice?> byId(int id);
+
+  /// `id == 0` creates. Refuses a number this supplier already has on a live
+  /// invoice — entering the same one twice is the commonest error in purchase
+  /// bookkeeping, and the database refuses it too.
+  Future<AdminResult<SupplierInvoice>> save(
+    SupplierInvoice invoice, {
+    required PosStaff by,
+  });
+
+  /// Cancels it, keeping the row. Refused while payments are allocated to it:
+  /// the money would be pointing at a bill that no longer exists.
+  ///
+  /// [reasonId] is one of the restaurant's `ReasonScope.invoiceVoid` codes, so
+  /// that "how many were cancelled for *entered twice*" is answerable.
+  Future<AdminResult<SupplierInvoice>> voidInvoice(
+    int id, {
+    required int reasonId,
+    required PosStaff by,
+    String? note,
+  });
+
+  /// Money out. `invoiceId` null pays **on account** — against the running tab
+  /// rather than a particular bill.
+  ///
+  /// [fromShiftId] takes the cash out of that shift's drawer: a `pay_out`
+  /// movement is written in the **same transaction** as the payment and linked
+  /// from [SupplierPayment.cashMovementId], so the shift's expected cash falls
+  /// by the amount. A payment with a dangling drawer movement, or a drawer
+  /// movement with no payment behind it, are both worse than the shortage this
+  /// exists to prevent — which is why it is one transaction and not two calls.
+  ///
+  /// Cash only, and it needs `cash.movement` on top of `purchase.manage`.
+  Future<AdminResult<SupplierPayment>> pay(
+    SupplierPayment payment, {
+    required PosStaff by,
+    int? fromShiftId,
+  });
+
+  /// Reverses a payment, keeping the row, and frees the room it took on the
+  /// invoice it was allocated to.
+  ///
+  /// A payment that came out of a drawer is put back with a **compensating
+  /// `pay_in`** on the same shift, while that shift is still open. Once it has
+  /// been counted, the void is refused unless [note] says where the cash went —
+  /// the drawer has already been reconciled and only a person knows. See the
+  /// implementation for the reasoning and what was rejected.
+  Future<AdminResult<SupplierPayment>> voidPayment(
+    int id, {
+    required int reasonId,
+    required PosStaff by,
+    String? note,
+  });
+
+  Future<List<SupplierPayment>> payments({int? supplierId, int limit = 200});
+
+  /// The whole account for one supplier, as at [asOf] — every live invoice and
+  /// every live payment, so the balance, the overdue part and the unallocated
+  /// money are all one subtraction away.
+  Future<SupplierAccount> accountFor(int supplierId, {DateTime? asOf});
+
+  /// What every supplier is owed. One query rather than one per supplier: the
+  /// purchasing pane shows them as a list.
+  Future<List<SupplierBalance>> balances({DateTime? asOf});
 }
 
 abstract interface class TablesRepository {
@@ -233,6 +416,9 @@ abstract interface class OrderHistoryRepository {
   /// somebody's hand, and "did you mean one of these four" is not a question to
   /// ask while money is being given back.
   Future<OrderRecord?> byInvoiceNumber(String invoiceNumber);
+
+  /// The tills at this branch, for the terminal filter.
+  Future<List<HistoryTerminal>> terminals();
 }
 
 /// The outcome of issuing a refund.
@@ -433,6 +619,20 @@ abstract interface class SessionRepository {
   /// here is present, while opening a shift needs a name to put against the
   /// money. Returns null when no active member of staff has that PIN.
   Future<PosStaff?> signIn(String pin);
+
+  /// Identify somebody by NAME and PIN, for the act of becoming the operator.
+  ///
+  /// Separate from [signIn] because the two acts carry different weight. A PIN
+  /// alone is enough to approve a discount somebody is standing over, and it is
+  /// not enough to take over a till: four digits are shared, watched over a
+  /// shoulder and reused, and [signIn] hands the session to whichever active
+  /// member of staff happens to hold them. Saying the name first makes the till
+  /// check a claim rather than guess an identity.
+  ///
+  /// Returns null when no active member of staff has that username AND that
+  /// PIN. Deliberately one answer for both, so this cannot be used to find out
+  /// which usernames exist.
+  Future<PosStaff?> signInAs({required String username, required String pin});
 }
 
 /// Opening and closing a till session, and counting the drawer.
@@ -660,4 +860,78 @@ abstract interface class HardwarePorts {
   /// Returns false when there is nothing to print to, rather than throwing —
   /// a failed test print must not abort setup.
   Future<bool> testPrint(String printerName);
+
+  /// Send a prepared job to a printer. False when the printer did not answer.
+  ///
+  /// **Bytes, not a receipt.** The obvious signature is
+  /// `printReceipt(ReceiptData)`, and it was rejected twice over: it would put
+  /// a `features/` type into a hardware port, and it would render inside the
+  /// port, where the drawer kick would have to be a second call and therefore a
+  /// second connection. A drawer that opens on a receipt which failed to print
+  /// is a drawer that opens for nothing. So the receipt path builds one job —
+  /// picture, feed, kick, cut — and this sends it, once.
+  ///
+  /// False rather than throwing, like everything else here: a printer that is
+  /// off is an ordinary Tuesday, and the sale is already complete.
+  Future<bool> sendJob({required String printerName, required List<int> bytes});
+}
+
+/// A receipt the printer would not take.
+class QueuedPrintJob {
+  const QueuedPrintJob({
+    required this.id,
+    required this.printerName,
+    required this.bytes,
+    required this.attempts,
+    this.invoiceNumber,
+  });
+
+  final int id;
+  final String printerName;
+
+  /// The complete ESC/POS job, as it was built at settlement. Sent verbatim.
+  final List<int> bytes;
+
+  /// How many times this has been tried. Shown to nobody yet; it is the number
+  /// a support engineer asks for first when a restaurant says the printer keeps
+  /// stopping.
+  final int attempts;
+
+  final String? invoiceNumber;
+}
+
+/// Receipts owed to paper.
+///
+/// **The toast promised this before it existed.** *Print & new* has shown
+/// "Receipt queued for the default printer" since the dialog was written, and
+/// nothing was queued and nothing was printed — the customer found out, not the
+/// cashier. This is the queue that makes the sentence true.
+///
+/// Not the outbox and not the ETA queue, though all three retry: those two are
+/// about a *record* reaching a server and are ordered by a chain. This is about
+/// a physical device at one counter, so it is keyed by terminal and its only
+/// ordering rule is that paper comes out in the order the sales happened.
+abstract interface class PrintQueueRepository {
+  /// Returns the id of the queued job.
+  Future<int> enqueue({
+    required String printerName,
+    required List<int> bytes,
+    required bool isReprint,
+    int? orderId,
+    String? invoiceNumber,
+  });
+
+  /// This terminal's outstanding paper, oldest first.
+  ///
+  /// [limit] is a real limit, not paging: a till that has been off all night
+  /// must not spool forty receipts at the counter while a customer waits. It
+  /// catches up a few at a time over the next few sales.
+  Future<List<QueuedPrintJob>> pending({int limit = 5});
+
+  /// It is on paper. A job marked printed is never offered again — the database
+  /// refuses to un-print it, see migration 34.
+  Future<void> markPrinted(int id);
+
+  /// It failed again. Counts the attempt and keeps the job.
+  Future<void> markAttempted(int id, {String? error});
 }

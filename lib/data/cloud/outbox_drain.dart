@@ -52,6 +52,10 @@ enum DrainAction {
 ///   dies between the server writing and the till recording gets the same
 ///   answer — same id, same invoice number — on the next pass (POS-BE-007).
 /// * A rejection quarantines **that record**; it never stops the queue.
+/// * A payment names its tender by the **platform's** id, read off the tender
+///   row the bootstrap seeder wrote. A payment whose tender row did not come
+///   from the platform is held here, before anything is sent — see
+///   [tenderNotFromPlatform].
 class OutboxDrain {
   const OutboxDrain({
     required PosDatabase database,
@@ -73,6 +77,16 @@ class OutboxDrain {
   /// the same payment row must present the same `client_transaction_id` on
   /// every pass, or a retry after a timeout would double-record the money.
   static const _namespace = '6ba7b811-9dad-11d1-80b4-00c04fd430c8';
+
+  /// The quarantine code for a sale paid on a tender the platform never sent.
+  ///
+  /// Decided on the till, not by a refusal from the platform, because the
+  /// platform's answer is not safe to wait for: an id it does not know gets a
+  /// 422, but an id that happens to match one of ITS tenders is accepted and
+  /// booked against the wrong one — and card money counted as cash in a
+  /// cash-up is found a week later, if at all. Nor is null an option: the
+  /// platform's shift maths counts a payment with no tender as cash.
+  static const tenderNotFromPlatform = 'TENDER_NOT_FROM_PLATFORM';
 
   static String paymentClientId({
     required String orderClientId,
@@ -168,7 +182,7 @@ class OutboxDrain {
       SELECT ob.id, o.id, o.client_transaction_id, o.branch_id, o.order_type,
              o.table_id, o.currency, o.exponent, o.subtotal_minor,
              o.service_minor, o.vat_minor, o.total_minor, o.occurred_at,
-             s.opened_by
+             s.opened_by, o.restaurant_id
       FROM pos_outbox ob
       JOIN pos_orders o ON o.id = ob.order_id
       LEFT JOIN pos_shifts s ON s.id = o.shift_id
@@ -184,6 +198,17 @@ class OutboxDrain {
       final orderId = row[1] as int;
       final clientTransactionId = row[2].toString();
 
+      final payments = await _paymentsFor(
+        orderId,
+        clientTransactionId,
+        restaurantId: row[14] as int,
+      );
+      if (payments.stranded.isNotEmpty) {
+        await _hold(outboxId, payments.stranded);
+        quarantined++;
+        continue;
+      }
+
       final request = buildOrderRequest(
         clientTransactionId: clientTransactionId,
         branchId: row[3] as int,
@@ -198,7 +223,7 @@ class OutboxDrain {
         occurredAt: (row[12] as DateTime),
         actingUserId: row[13] as int?,
         lines: await _linesFor(orderId),
-        payments: await _paymentsFor(orderId, clientTransactionId),
+        payments: payments.sendable,
       );
 
       final reply = await api.submitOrder(request);
@@ -292,29 +317,76 @@ class OutboxDrain {
     ];
   }
 
-  Future<List<Map<String, Object?>>> _paymentsFor(
+  /// The §006 `payments[]`, plus the ones that cannot be sent.
+  ///
+  /// `pos_order_payments.tender_type_id` is the LOCAL row id — it is what the
+  /// payment screen had in hand — and on a cloud till it means nothing to the
+  /// platform. What goes on the wire is that row's `platform_id`, which only
+  /// the bootstrap seeder writes. A payment whose row has none (one of the
+  /// till's own four, the compiled-in fallback, or a row that is gone) is
+  /// [stranded], and the whole order is held: a sale sent with one of its
+  /// payments missing is a sale the platform records as underpaid.
+  Future<({List<Map<String, Object?>> sendable, List<String> stranded})>
+  _paymentsFor(
     int orderId,
-    String orderClientId,
-  ) async {
+    String orderClientId, {
+    required int restaurantId,
+  }) async {
     final rows = await _db.query(
       config,
-      'SELECT id, tender_type_id, amount_minor, reference, occurred_at '
-      'FROM pos_order_payments WHERE order_id = @order ORDER BY id',
-      parameters: {'order': orderId},
+      'SELECT p.id, t.platform_id, p.amount_minor, p.reference, p.occurred_at, '
+      '       p.tender_type_id, p.label '
+      'FROM pos_order_payments p '
+      'LEFT JOIN pos_tender_types t '
+      '  ON t.id = p.tender_type_id AND t.restaurant_id = @restaurant '
+      'WHERE p.order_id = @order ORDER BY p.id',
+      parameters: {'order': orderId, 'restaurant': restaurantId},
     );
-    return [
-      for (final row in rows)
-        {
-          'client_transaction_id': paymentClientId(
-            orderClientId: orderClientId,
-            paymentRowId: row[0] as int,
-          ),
-          'tender_type_id': row[1] as int,
-          'amount_minor': row[2] as int,
-          'reference': row[3] as String?,
-          'received_at': (row[4] as DateTime).toUtc().toIso8601String(),
-        },
-    ];
+    return (
+      sendable: [
+        for (final row in rows)
+          if (row[1] case final int platformId)
+            {
+              'client_transaction_id': paymentClientId(
+                orderClientId: orderClientId,
+                paymentRowId: row[0] as int,
+              ),
+              'tender_type_id': platformId,
+              'amount_minor': row[2] as int,
+              'reference': row[3] as String?,
+              'received_at': (row[4] as DateTime).toUtc().toIso8601String(),
+            },
+      ],
+      stranded: [
+        for (final row in rows)
+          if (row[1] == null) '${row[6]} (payment method ${row[5]} on this till)',
+      ],
+    );
+  }
+
+  /// Quarantine an order before it is sent, saying which payment and why.
+  ///
+  /// `attempts` is left alone: it counts conversations with the platform, and
+  /// this was not one. Nothing is deleted — money changed hands, and the row
+  /// is what a person resolves it from.
+  Future<void> _hold(int outboxId, List<String> stranded) async {
+    await _db.query(
+      config,
+      '''
+      UPDATE pos_outbox
+      SET quarantined_at = now(), quarantine_code = @code, last_error = @error
+      WHERE id = @id
+      ''',
+      parameters: {
+        'id': outboxId,
+        'code': tenderNotFromPlatform,
+        'error':
+            'Not sent: paid by ${stranded.join(', ')}, which the platform did '
+            'not send this till. The platform would refuse it, or book it '
+            'against a different payment method. Held for a person — do not '
+            'resend it under a guessed method.',
+      },
+    );
   }
 }
 

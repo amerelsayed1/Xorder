@@ -81,6 +81,15 @@ abstract final class PosCapability {
   static const dayClose = 'day.close';
   static const dayForceClose = 'day.force_close';
 
+  /// Buying: suppliers, purchase orders, receiving, supplier invoices and
+  /// payments.
+  ///
+  /// One key rather than five, for now. The SRS's granular list splits
+  /// purchasing several ways, and splitting it before there is a screen for
+  /// each would put keys in the catalogue that nothing checks — the thing
+  /// Wave C deferred §50's sixteen settings keys for.
+  static const purchaseManage = 'purchase.manage';
+
   static const reportsView = 'reports.view';
   static const backupManage = 'backup.manage';
 
@@ -111,6 +120,7 @@ abstract final class PosCapability {
     cashVarianceView,
     dayClose,
     dayForceClose,
+    purchaseManage,
     reportsView,
     backupManage,
   ];
@@ -149,6 +159,7 @@ abstract final class PosCapability {
   /// and a checkbox nobody re-reads is not a control.
   static const backOffice = <String>{
     catalogManage,
+    purchaseManage,
     staffManage,
     terminalManage,
     settingsManage,
@@ -219,6 +230,10 @@ abstract final class PosCapability {
     cashVarianceView: PermissionRisk.high,
     dayForceClose: PermissionRisk.high,
     catalogManage: PermissionRisk.high,
+    // Money leaving the business, and the cost prices every margin is measured
+    // against. Not critical: it is an ordinary job somebody does, and a
+    // manager should be able to see the control they lack.
+    purchaseManage: PermissionRisk.high,
 
     // Access control and the data itself. A person holding any of these can
     // grant themselves the rest.
@@ -422,6 +437,7 @@ enum CapabilityGroup {
   ]),
   backOffice([
     PosCapability.catalogManage,
+    PosCapability.purchaseManage,
     PosCapability.staffManage,
     PosCapability.terminalManage,
     PosCapability.settingsManage,
@@ -508,6 +524,7 @@ abstract final class SystemRoles {
     PosCapability.catalogManage,
     PosCapability.staffManage,
     PosCapability.settingsManage,
+    PosCapability.purchaseManage,
     PosCapability.orderViewAll,
     PosCapability.discountApply,
     PosCapability.priceOverride,
@@ -620,6 +637,7 @@ abstract final class SystemRoles {
           capabilities: {
             PosCapability.catalogView,
             PosCapability.catalogManage,
+            PosCapability.purchaseManage,
             PosCapability.reportsView,
           },
         ),

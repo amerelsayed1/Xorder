@@ -133,6 +133,7 @@ sealed class AppStrings {
 
   // ── Cart ──────────────────────────────────────────────────────────────────
   String get noTableYet;
+  String get chooseTableFirst;
   String seatedTable(String table, int? guests);
   String walkIn(String orderType);
 
@@ -152,6 +153,16 @@ sealed class AppStrings {
   String get sendRoundKey;
   String get parkKey;
   String get voidTicket;
+
+  // ── Held tickets — parked with no table ───────────────────────────────────
+  String get heldTickets;
+  String heldTicketsKey(int count);
+  String get heldTicketsHelp;
+  String get noHeldTickets;
+
+  /// `Takeaway · 3 items` — what one held ticket is, before its total.
+  String heldTicketSummary(String orderType, int items);
+  String get ticketParked;
 
   // ── Modifier sheet ────────────────────────────────────────────────────────
   String modifierGroupFull(String group, int max);
@@ -195,7 +206,19 @@ sealed class AppStrings {
   String get receiptTaxFromDevice;
   String get newSale;
   String get printAndNew;
+
+  /// The three answers the till can honestly give after trying to print, plus
+  /// the one it gives when the queue could not be written either. See
+  /// `PrintOutcome` — the toast used to say "queued" in every case, including
+  /// the case where nothing was printed and nothing was queued.
+  String get receiptPrintedToast;
   String get receiptQueuedToast;
+  String get receiptNotPrintedToast;
+  String get receiptNoPrinterToast;
+  String get printerPaperWidth;
+  String get printerPaper80;
+  String get printerPaper58;
+  String get printerPaperWidthHelp;
 
   // ── Floor ─────────────────────────────────────────────────────────────────
   String get pickATable;
@@ -224,6 +247,10 @@ sealed class AppStrings {
   String get wrongPin;
   String enterPinFor(String name);
 
+  /// Asked of NOBODY in particular — the lock screen signs in whoever's PIN
+  /// it is, so it cannot name a person before one has typed anything.
+  String get enterYourPin;
+
   // ── Start ─────────────────────────────────────────────────────────────────
   String get pointOfSale;
   String get renewLicence;
@@ -244,6 +271,15 @@ sealed class AppStrings {
 
   // ── Opening and closing a shift ───────────────────────────────────────────
   String get signIn;
+
+  /// Handing the till to a colleague. The same door as Lock — the lock screen
+  /// signs in whoever's PIN it is — named for what people are doing when they
+  /// reach for it.
+  String get switchUser;
+
+  /// ONE message for both halves, on purpose: saying which of the two was wrong
+  /// turns the lock screen into a way of finding out which usernames exist.
+  String get wrongUsernameOrPin;
   String get openTheDrawer;
   String get signInHelp;
   String countTheDrawerHelp(String name);
@@ -268,6 +304,10 @@ sealed class AppStrings {
   String closeShiftApproval(String reference);
   String get countTheDrawer;
   String get signInBeforeClosing;
+
+  /// Stated as the act a manager is being asked to approve: releasing a drawer
+  /// that belongs to somebody else.
+  String closeShiftNotYours(String openedBy);
   String get countedInDrawer;
   String expectedInDrawerHelp(String expected, String float, String taken);
   String get varianceBalances;
@@ -373,6 +413,20 @@ sealed class AppStrings {
   String get stepAccount;
   String get stepAccountBlurb;
 
+  // A child tablet's wizard: it finds the main device rather than building
+  // anything, and signs in with a manager the main device already has.
+  String get stepMainDevice;
+  String get stepMainDeviceBlurb;
+  String get stepChildAccountBlurb;
+  String get mainDeviceHelp;
+  String get mainDeviceAddress;
+  String get mainDeviceAddressHelp;
+  String get mainDeviceIsThisTablet;
+  String get connectToMainDevice;
+  String mainDeviceLinked(String tenant);
+  String get mainDeviceHasNoLicence;
+  String allTerminalsTaken(int max);
+
   /// The same step on an offline till, where it is a different question.
   /// There is no platform to sign in to and no account to sign in with — this
   /// is the screen that creates the first one.
@@ -476,6 +530,7 @@ sealed class AppStrings {
   String databaseAlreadyThere(String database);
   String get schemaAlreadyCurrent;
   String migrationsApplied(int count);
+  String schemaUpgradeFailed(String error);
   String restaurantSeeded(String restaurant);
   String get rolesAlreadyThere;
   String rolesCreated(int count);
@@ -712,6 +767,9 @@ sealed class AppStrings {
   String get resetTerminalShiftOpen;
   String get resetTerminalShiftUnknown;
   String get resetTerminalConfirm;
+  String get resetTerminalHint;
+  String get paneTerminal;
+  String get paneTerminalBlurb;
 
   // ── Terminal no longer recognised ─────────────────────────────────────────
   String get terminalRejectedTitle;
@@ -724,6 +782,9 @@ sealed class AppStrings {
   String get forceResetShiftOpen;
   String get forceResetQueued;
   String get forceResetConfirm;
+  String get forceResetSignInTitle;
+  String get forceResetSignInHelp;
+  String get forceResetSignInRefused;
 
   // ── Settings menu bar ─────────────────────────────────────────────────────
   String get settings;
@@ -749,6 +810,7 @@ sealed class AppStrings {
   String get capOperate;
   String get capCatalogView;
   String get capCatalogManage;
+  String get capPurchaseManage;
   String get capStaffManage;
   String get capTerminalManage;
   String get capSettingsManage;
@@ -797,6 +859,35 @@ sealed class AppStrings {
   String get refusalOwnerMustKeepEverything;
   String refusalCashiersAreNotAdministrators(String capabilities);
   String refusalCannotGrantWhatYouLack(String capabilities);
+  String refusalManagedByPlatform(String what);
+
+  /// One owner per restaurant. Each says how ownership actually moves —
+  /// disable, then appoint — because a refusal that only says "no" is tried
+  /// again.
+  String refusalOwnerAlreadyExists(String ownerName);
+  String get refusalOwnerIsFixed;
+  String get refusalOwnerIsNotAnExtraRole;
+
+  /// Why a purchase order cannot move as asked. The button that was pressed
+  /// was showing, so each says what changed and what to do instead.
+  String get refusalPurchaseAlreadySent;
+  String get refusalPurchaseGoodsArrived;
+  String get refusalPurchaseCancelled;
+  String get refusalPurchaseHasNoLines;
+  String get refusalPurchaseQuantityNotPositive;
+  String get refusalPurchaseCannotCancelArrived;
+  String get refusalPurchaseAllArrived;
+  String get refusalPurchaseFollowsTheGoods;
+
+  /// Stock is never converted between units. [quantity] is already formatted,
+  /// in Latin digits.
+  String refusalStockHeldInAnotherUnit(
+    String item,
+    String quantity,
+    String heldUnit,
+    String askedUnit,
+  );
+  String get staffComesFromPlatform;
 
   // §107 — risk levels, on the role editor's badges.
   String get riskLow;
@@ -824,6 +915,7 @@ sealed class AppStrings {
   // §40 — payment methods as data.
   String get tenderTypes;
   String get tenderTypesHint;
+  String get tenderTypesComeFromPlatform;
   String get tenderNew;
   String get tenderEdit;
   String get tenderNameEn;
@@ -861,21 +953,276 @@ sealed class AppStrings {
   String get chargeActive;
   String get currencyEgp;
 
+  // §36-37 — suppliers and purchase orders.
+  String get suppliers;
+  String get supplierNew;
+  String get supplierEdit;
+  String get supplierName;
+  String get supplierContact;
+  String get supplierEmail;
+  String get supplierPaymentTerms;
+  String get supplierTermsHint;
+  String get supplierCode;
+  String get supplierNotes;
+  String get supplierActive;
+  String get supplierActiveHint;
+  String get supplierCashOnDelivery;
+  String supplierTermDays(int days);
+  String get purchaseOrders;
+  String get purchaseOrderNew;
+  String get purchaseOrderEdit;
+  String get purchaseNoOrdersYet;
+  String get purchaseNoSuppliersYet;
+  String get purchaseNeedsASupplier;
+  String get purchaseNeedsALine;
+  String get purchaseItem;
+  String get purchaseQty;
+  String get purchaseUnitCost;
+  String get purchaseAddLine;
+  String purchaseLineCount(int count);
+  String get purchaseSend;
+  String get purchaseReceive;
+  String purchaseReceiveInto(String reference);
+  String get purchaseReceiveHint;
+  String get purchaseOrdered;
+  String get purchaseOutstanding;
+  String get purchaseArrived;
+  String purchaseBookIn(int lines);
+  String get statusDraft;
+  String get statusSent;
+  String get statusPartReceived;
+  String get statusReceived;
+  String get statusCancelled;
+
+  // §37 — supplier invoices and payments.
+  String get supplierInvoices;
+  String get invoiceNew;
+  String get invoiceEdit;
+  String get invoiceHint;
+  String get invoiceNumber;
+  String get invoiceTotal;
+  String get invoiceTax;
+  String get invoiceTaxFromRate;
+  String get invoiceIssued;
+  String get invoiceDue;
+  String invoiceDueOnTerms(int days);
+  String get invoiceAgainstOrder;
+  String get invoiceNoOrder;
+  String get invoiceAgreesWithDelivery;
+  String get invoiceBilledMore;
+  String get invoiceBilledLess;
+  String invoiceDaysLate(int days);
+  String get invoiceNoneOutstanding;
+  String get invoiceOutstanding;
+  String get invoiceVoid;
+  String get invoiceVoidWhy;
+  String get invoicePay;
+  String get notes;
+  String paymentTo(String supplier);
+  String get paymentDoesNotTouchTheDrawer;
+  String get paymentFromTheDrawer;
+  String get paymentFromTheDrawerHint;
+  String get paymentAgainst;
+  String get paymentAmount;
+  String get paymentMethod;
+  String get methodCash;
+  String get methodTransfer;
+  String get methodCheque;
+  String get methodCard;
+  String get methodOther;
+  String get paymentReference;
+  String get paymentOnAccount;
+  String get paymentOnAccountHint;
+  String get paymentPay;
+  String get paymentNeedsAnAmount;
+  String paymentMoreThanTheBill(String room);
+  String get paymentsList;
+  String get paymentNonePaidYet;
+  String get paymentVoid;
+  String get paymentVoidWhy;
+  String get reasonListEmpty;
+
+  // The Activity pane (§49). One per audit action this build writes.
+  String get actStaffCreated;
+  String get actStaffUpdated;
+  String get actStaffDisabled;
+  String get actStaffReactivated;
+  String get actStaffPinReset;
+  String get actStaffRoleChanged;
+  String get actStaffGrantsChanged;
+  String get actRoleCreated;
+  String get actRoleUpdated;
+  String get actRoleDeleted;
+  String get actPermissionOverridden;
+  String get actShiftOpened;
+  String get actShiftClosed;
+  String get actReceiptReprinted;
+  String get actCategoryCreated;
+  String get actCategoryUpdated;
+  String get actCategoryArchived;
+  String get actCategoryRestored;
+  String get actProductCreated;
+  String get actProductUpdated;
+  String get actProductArchived;
+  String get actProductRestored;
+  String get actProductRepriced;
+  String get actMoneyConfigChanged;
+  String get actReceiptProfileChanged;
+  String get actTableCreated;
+  String get actTableUpdated;
+  String get actTableArchived;
+  String get actTableRestored;
+  String get actPurchaseOrderStatusChanged;
+  String get actStockReceived;
+  String get actSupplierSaved;
+  String get actSupplierInvoiceSaved;
+  String get actSupplierInvoiceVoided;
+  String get actSupplierPaid;
+  String get actSupplierPaymentVoided;
+  String get actServiceChargeSaved;
+  String get actTenderTypeSaved;
+  String get actOrderTypeSaved;
+  String get actTaxGroupSaved;
+  String get actProductOptionsChanged;
+  String get actOptionGroupSaved;
+  String get actOptionGroupRepriced;
+  String get actOptionGroupDeleted;
+  String get fieldYes;
+  String get fieldNo;
+  String get unitEach;
+  String get unitKilogram;
+  String get unitGram;
+  String get unitLitre;
+  String get unitMillilitre;
+  String get unitBox;
+  String get unitPack;
+  String get supplierOwes;
+  String get supplierOverdue;
+
   // Management chrome.
+  String get fieldTaxGroup;
+  String get fieldTaxGroupHint;
+  String get fieldTaxGroupDefault;
+  String get taxGroups;
+  String get taxGroupsHint;
+  String get taxGroupsFallback;
+  String get taxGroupNew;
+  String get taxGroupEdit;
+  String get taxGroupHint;
+  String get taxGroupName;
+  String get taxGroupNeedsAName;
+  String get taxGroupRate;
+  String get taxGroupRateNotValid;
+  String get taxGroupDefault;
+  String get taxGroupDefaultHint;
+  String get taxGroupIsDefault;
+  String get taxGroupActive;
+  String get taxGroupActiveHint;
+  String get orderTypes;
+  String get orderTypesHint;
+  String get orderTypesComeFromPlatform;
+  String get orderTypeName;
+  String get orderTypeNeedsAName;
+  String get orderTypeRequiresTable;
+  String get orderTypeRequiresTableHint;
+  String get orderTypeRequiresCustomer;
+  String get orderTypeRequiresCustomerHint;
+  String get orderTypeRequiresAddress;
+  String get orderTypeRequiresAddressHint;
+  String get orderTypeOffered;
+  String get orderTypeOfferedHint;
+  String get orderTypeNotOffered;
+  String get orderTypeChipTable;
+  String get orderTypeChipCustomer;
+  String get orderTypeChipAddress;
+  String get paneTaxes;
+  String get paneTaxesHint;
+  String get areaPeople;
+  String get areaMenu;
+  String get areaMoney;
+  String get areaBuying;
+  String get areaCompliance;
+  String get areaSystem;
+  String get manage;
+  String get manageMenuTooltip;
   String get backToTill;
   String get paneStaff;
   String get paneStaffBlurb;
   String get paneMenu;
   String get paneMenuBlurb;
+  String get panePurchasing;
+  String get panePurchasingBlurb;
   String get paneRoles;
   String get paneRolesBlurb;
   String get paneActivity;
   String get paneActivityBlurb;
+
+  // ── Backup and restore ────────────────────────────────────────────
+  // One contiguous block here and in each implementation below, so this lands
+  // as a single insert rather than forty interleavings.
+  String get paneBackup;
+  String get paneBackupBlurb;
+  String get backupSameDiskWarning;
+  String get backupToolsMissing;
+  String get backupToolsMissingHelp;
+  String get backupSearchedIn;
+  String get backupDestination;
+  String get backupDestinationHint;
+  String get backupTakeNow;
+  String get backupTaking;
+  String get backupAutomatic;
+  String get backupAutomaticHint;
+  String get backupHistory;
+  String get backupNoneYet;
+  String get backupNoVerifiedCopy;
+  String backupLastVerified(String when);
+  String backupStale(int days);
+  String get backupOutcomeVerified;
+  String get backupOutcomeUnverified;
+  String get backupOutcomeFailed;
+  String get backupTriggerManual;
+  String get backupTriggerDayClose;
+  String get backupFailureToolsMissing;
+  String get backupFailureDestinationUnwritable;
+  String get backupFailureDumpRefused;
+  String get backupFailureArchiveUnreadable;
+  String get backupFailureArchiveIncomplete;
+  String backupTablesFound(int count);
+  String get backupRestoreAction;
+  String backupRestoreTitle(String when);
+  String get backupRestoreBlocked;
+  String restoreBlockerOpenShifts(int count);
+  String restoreBlockerOpenDay(int count);
+  String backupRestoreOrdersLost(int count, String value);
+  String get backupRestoreEverythingElseLost;
+  String get backupRestoreNoWayBack;
+  String get backupRestoreConfirm;
+  String get backupRestoreKeep;
+  String get backupRestoreDone;
+  String backupRestoreFailed(String detail);
+  String get backupAccount;
+  String get backupAccountHint;
+  String get backupAccountStored;
+  String get backupAccountMissing;
+  String get backupAccountSaved;
+  String get backupCopyAction;
+  String backupCopyDone(String path);
+  String backupCopyFailed(String detail);
+  String get backupRestoreFromFile;
+  String get backupFileGone;
+  String get backupOpenPane;
+  String get backupDayCloseWorking;
+  String get backupDayCloseFailed;
+  String get actBackupTaken;
+  String get actBackupRestored;
+  // ── end of the backup block ────────────────────────────────────
   String get pinCannotOpenManagement;
   String get managementPinHelp;
   String get managementPinRetryHelp;
   String cannotManageStaff(String name);
   String get backOfficePassword;
+  String get backOfficeSignInHelp;
+  String get backOfficeSignInRefused;
   String backOfficePasswordHelp(String name);
   String backOfficeAuthFailed(String user);
   String get backOfficeUnreachable;
@@ -893,6 +1240,57 @@ sealed class AppStrings {
   String staffCountLicensed(int active, int total, int licensed);
   String get notSaved;
   String get close;
+  String get settingsOrders;
+  String get settingsPrinter;
+  String get settingsAbout;
+  String get printerSettingsTitle;
+  String get printerNoneChosen;
+  String get aboutVersion;
+  String get aboutMode;
+  String get aboutTerminalId;
+  String get aboutDatabase;
+  String get receiptPreviewAction;
+  String get receiptPreviewNote;
+  String get areaInventory;
+  String get paneUnits;
+  String get paneUnitsBlurb;
+  String get unitNew;
+  String get unitEdit;
+  String get unitNameEn;
+  String get unitNameAr;
+  String get unitCode;
+  String get unitCodeHelp;
+  String get unitEtaCode;
+  String get unitEtaCodeHelp;
+  String get unitAllowsFraction;
+  String get unitAllowsFractionHelp;
+  String get unitFractionChip;
+  String get unitActive;
+  String get unitRetired;
+  String get actUnitSaved;
+  String get paneItems;
+  String get paneItemsBlurb;
+  String get itemNew;
+  String get itemEdit;
+  String get itemName;
+  String get itemNameAr;
+  String get itemUnit;
+  String get itemOnMenu;
+  String get itemOnMenuHint;
+  String get itemsEmpty;
+  String get fieldTrackStock;
+  String get fieldTrackStockHint;
+  String get actStockItemSaved;
+  String get paneStock;
+  String get paneStockBlurb;
+  String get stockColumnItem;
+  String get stockColumnOnHand;
+  String get stockColumnAvgCost;
+  String get stockColumnValue;
+  String stockTotalValue(String amount);
+  String get stockEmpty;
+  String get purchaseUnit;
+  String purchaseAddAsItem(String name);
   String get you;
   String extraCapabilities(int count);
   String get resetPin;
@@ -957,6 +1355,89 @@ sealed class AppStrings {
   String get rateIsNotANumber;
   String get priceIsNotANumber;
   String get offerPriceIsNotANumber;
+
+  // ── Management: sizes and extras ──────────────────────────────────────────
+  // The cloud dashboard's words, in both languages, taken from its i18n file
+  // (`item.*`, `extras.*`) rather than rewritten: the owner's instruction is
+  // that the desktop and the cloud say the same thing, and a manager who uses
+  // both should not have to learn two names for one switch. Its "(s)" plurals
+  // are kept as it writes them for the same reason.
+  String get extrasTitle;
+  String get extrasSubtitle;
+  String get extrasNew;
+  String get extrasEdit;
+  String get extrasNone;
+  String extrasUsedBy(int n);
+  String get extrasNotUsed;
+  String extrasDeleteWarning(int n);
+  String extrasOptionsSummary(int n);
+  String get extrasApplyTo;
+  String get extrasScopeItems;
+  String get extrasScopeItemsHint;
+  String get extrasScopeCategories;
+  String get extrasScopeAll;
+  String get extrasPickCategories;
+  String extrasAppliesCategories(int n);
+  String get extrasLibraryNameEn;
+  String get extrasLibraryNameAr;
+  String get extrasLibraryNameHint;
+  String get extrasMenuNameEn;
+  String get extrasMenuNameAr;
+  String get extrasMenuNamePlaceholder;
+  String get extrasMenuNameHint;
+  String extrasShownAs(String name);
+  String get itemOptions;
+  String get itemNoOptions;
+  String get itemAddGroup;
+  String get itemGroupNameEn;
+  String get itemGroupNameAr;
+  String get itemRequired;
+  String get itemVariant;
+  String get itemVariantHint;
+  String get itemPricedBySize;
+  String get itemDefaultSize;
+  String get itemOptionDiscount;
+  String get itemOptionDiscountHint;
+  String get itemMaxSelect;
+  String get itemOptionEn;
+  String get itemOptionAr;
+  String get itemAddOption;
+  String get itemAddFromLibrary;
+  String get itemFromLibrary;
+  String get itemLibraryEmpty;
+  String get itemManageLibrary;
+  String get deleteLabel;
+  String get deleteConfirmGeneric;
+  String get savingLabel;
+
+  // Why a size or extra was refused. See `OptionGroupProblem`.
+  String get refusalGroupNameMissing;
+  String get refusalGroupScopeNeedsLibrary;
+  String get refusalGroupCategoriesMissing;
+  String refusalGroupChoicesOutOfRange(int max);
+  String get refusalGroupNegativeCounts;
+  String get refusalGroupNeedsMoreThanAllows;
+  String refusalGroupTooManyOptions(int max);
+  String get refusalGroupRequiredButEmpty;
+  String get refusalOptionNameMissing;
+  String get refusalOptionTwice;
+  String get refusalOptionNegativePrice;
+  String get refusalOptionSaleNotBelowPrice;
+  String get refusalGroupTwice;
+  String get refusalGroupTypedOnAnotherItem;
+  String refusalGroupNotInLibrary(String name);
+  String refusalGroupAlreadyReaches(String name);
+  String refusalGroupSecondSizes(int count, String names);
+  String refusalGroupWouldGiveSecondSizes(String item);
+  String get refusalGroupBelongsToOneItem;
+  String get refusalGroupBelongsToLibrary;
+  String get refusalGroupForeignOption;
+  String get refusalGroupForeignCategory;
+
+  // Why an item or a category was refused. See `CatalogProblem`.
+  String get refusalItemNameMissing;
+  String get refusalOfferAbovePrice;
+  String get refusalCategoryNameMissing;
 
   // ── Reasons ───────────────────────────────────────────────────────────────
   // The chrome around the reason picker. The reasons THEMSELVES are rows in
@@ -1116,6 +1597,37 @@ sealed class AppStrings {
   String orderDetailGuests(int count);
   String orderDetailApprovedBy(String name);
 
+  // Sales list and sale details (plan 17 S1).
+  String get orderColumnPayment;
+  String get orderHistoryEveryMethod;
+  String get orderHistoryEveryTerminal;
+
+  /// The list is narrowed to the viewer's own sales because they do not hold
+  /// `order.view_all`. Said on screen, or a cashier concludes the rest of the
+  /// day's sales are missing.
+  String get orderHistoryOwnSalesOnly;
+
+  /// `served_by` before [reliableFrom] credited shared-PIN sales to one person.
+  /// [reliableFrom] is a Latin-digit date in both languages.
+  String orderHistoryAttributionCaveat(String reliableFrom);
+  /// Followed by the date in mono, never interpolated: a date inside an
+  /// Arabic sentence is one bidi run away from reading backwards.
+  String get orderDetailBusinessDay;
+  String get orderDetailTerminal;
+  String get orderDetailActivity;
+  String get saleEventPrinted;
+  String get saleEventPrintPending;
+  String get saleEventReprinted;
+  String get saleEventReprintPending;
+  String get saleEventReprintRequested;
+  String get saleEventVoided;
+  String get saleEventRefunded;
+  String get paymentStatusUnpaid;
+  String get paymentStatusPartiallyPaid;
+  String get paymentStatusPaid;
+  String get paymentStatusPartiallyRefunded;
+  String get paymentStatusRefunded;
+
   /// Named as coming, not merely missing. A greyed-out button with no
   /// explanation reads as broken.
   String get orderActionsComingWithRefunds;
@@ -1213,7 +1725,6 @@ sealed class AppStrings {
   String receiptReprintTitle(String invoice);
   String get receiptReprintExplain;
   String get receiptReprintConfirm;
-  String get receiptReprintRecorded;
   String get receiptReprintNotPermitted;
 
   /// The audit ledger could not be written, so nothing was printed. An
@@ -1250,6 +1761,11 @@ sealed class AppStrings {
   String etaStatusLabel(String status);
   String get etaDueSoon;
   String get etaLate;
+  String etaProblemProfile(int count);
+  String etaProblemFailed(String detail);
+  String get etaReconcileNow;
+  String etaReconcileDone(int sales, int refunds, int waiting);
+  String get etaOpenPane;
 
   // §17, §113 — who the receipt says sold the food.
   String get paneReceipt;
@@ -1342,7 +1858,9 @@ sealed class AppStrings {
   String get dayCloseClear;
   String get dayCloseBlockersTitle;
   String dayBlockerOpenShifts(int count);
-  String dayBlockerParkedTables(int count);
+  /// Seated tables and held tickets together: both are money the till has
+  /// taken responsibility for and not yet collected.
+  String dayBlockerParkedTickets(int count);
   String dayBlockerUnpaidOrders(int count);
   String get dayCloseAction;
   String get dayForceCloseAction;
@@ -1582,6 +2100,49 @@ final class EnStrings extends AppStrings {
   @override
   String orderDetailApprovedBy(String name) => 'Approved by $name';
   @override
+  String get orderColumnPayment => 'Payment';
+  @override
+  String get orderHistoryEveryMethod => 'Every payment method';
+  @override
+  String get orderHistoryEveryTerminal => 'Every till';
+  @override
+  String get orderHistoryOwnSalesOnly => 'Your sales only';
+  @override
+  String orderHistoryAttributionCaveat(String reliableFrom) =>
+      'Who sold each order is reliable only from $reliableFrom. Before that, '
+      'a PIN shared by two people credited all their sales to one of them, so '
+      'per-cashier figures for earlier days are not accurate.';
+  @override
+  String get orderDetailBusinessDay => 'Business day';
+  @override
+  String get orderDetailTerminal => 'Till';
+  @override
+  String get orderDetailActivity => 'Activity';
+  @override
+  String get saleEventPrinted => 'Receipt printed';
+  @override
+  String get saleEventPrintPending => 'Receipt waiting for the printer';
+  @override
+  String get saleEventReprinted => 'Copy printed';
+  @override
+  String get saleEventReprintPending => 'Copy waiting for the printer';
+  @override
+  String get saleEventReprintRequested => 'Copy requested';
+  @override
+  String get saleEventVoided => 'Order voided';
+  @override
+  String get saleEventRefunded => 'Money refunded';
+  @override
+  String get paymentStatusUnpaid => 'Unpaid';
+  @override
+  String get paymentStatusPartiallyPaid => 'Part paid';
+  @override
+  String get paymentStatusPaid => 'Paid';
+  @override
+  String get paymentStatusPartiallyRefunded => 'Part refunded';
+  @override
+  String get paymentStatusRefunded => 'Refunded';
+  @override
   String get orderActionsComingWithRefunds =>
       'Reprint and refund arrive with the refund flow.';
   @override
@@ -1726,7 +2287,6 @@ final class EnStrings extends AppStrings {
   @override
   String get receiptReprintConfirm => 'Print';
   @override
-  String get receiptReprintRecorded => 'Reprint sent, and recorded';
   @override
   String get receiptReprintNotPermitted =>
       'You do not have permission to reprint a receipt.';
@@ -1797,6 +2357,35 @@ final class EnStrings extends AppStrings {
   String get etaDueSoon => 'Due soon';
   @override
   String get etaLate => 'Late';
+  @override
+  String etaProblemProfile(int count) => count == 1
+      ? 'E-receipts are not being filed: the receipt profile has 1 thing to '
+            'fix.'
+      : 'E-receipts are not being filed: the receipt profile has $count '
+            'things to fix.';
+  @override
+  String etaProblemFailed(String detail) =>
+      'E-receipts could not be queued. $detail';
+  @override
+  String get etaReconcileNow => 'File missing receipts now';
+  @override
+  String etaReconcileDone(int sales, int refunds, int waiting) {
+    if (sales + refunds + waiting == 0) return 'Nothing was missing.';
+    final parts = [
+      if (sales > 0) sales == 1 ? '1 sale receipt' : '$sales sale receipts',
+      if (refunds > 0)
+        refunds == 1 ? '1 refund receipt' : '$refunds refund receipts',
+    ];
+    final queued = parts.isEmpty ? '' : 'Queued ${parts.join(' and ')}.';
+    final waits = waiting == 0
+        ? ''
+        : waiting == 1
+        ? ' 1 refund is waiting for its sale to be filed first.'
+        : ' $waiting refunds are waiting for their sales to be filed first.';
+    return '$queued$waits'.trim();
+  }
+  @override
+  String get etaOpenPane => 'Open E-receipts';
 
   @override
   String get paneReceipt => 'Receipt';
@@ -1979,8 +2568,9 @@ final class EnStrings extends AppStrings {
   String dayBlockerOpenShifts(int count) =>
       count == 1 ? '1 till still has a drawer open' : '$count tills still have drawers open';
   @override
-  String dayBlockerParkedTables(int count) =>
-      count == 1 ? '1 table is still seated' : '$count tables are still seated';
+  String dayBlockerParkedTickets(int count) => count == 1
+      ? '1 ticket is still parked'
+      : '$count tickets are still parked';
   @override
   String dayBlockerUnpaidOrders(int count) =>
       count == 1 ? '1 order has not been paid' : '$count orders have not been paid';
@@ -2117,6 +2707,9 @@ final class EnStrings extends AppStrings {
   @override
   String get noTableYet => 'No table yet';
   @override
+  String get chooseTableFirst =>
+      'Choose a table first — this order is served at one.';
+  @override
   String seatedTable(String table, int? guests) =>
       guests == null ? table : '$table · $guests guests';
   @override
@@ -2152,6 +2745,22 @@ final class EnStrings extends AppStrings {
   String get parkKey => 'Park  F4';
   @override
   String get voidTicket => 'Void ticket';
+
+  @override
+  String get heldTickets => 'Held tickets';
+  @override
+  String heldTicketsKey(int count) => 'Held  $count';
+  @override
+  String get heldTicketsHelp =>
+      'Parked with no table. Tap one to bring it back — whatever is on screen '
+      'is parked first, so nothing is lost.';
+  @override
+  String get noHeldTickets => 'Nothing is being held.';
+  @override
+  String heldTicketSummary(String orderType, int items) =>
+      items == 1 ? '$orderType · 1 item' : '$orderType · $items items';
+  @override
+  String get ticketParked => 'Ticket parked. It is under Held.';
 
   @override
   String modifierGroupFull(String group, int max) =>
@@ -2233,7 +2842,28 @@ final class EnStrings extends AppStrings {
   @override
   String get printAndNew => 'Print & new';
   @override
-  String get receiptQueuedToast => 'Receipt queued for the default printer.';
+  String get receiptPrintedToast => 'Receipt printed.';
+  @override
+  String get receiptQueuedToast =>
+      'The printer did not answer. The receipt is queued and will print on the '
+      'next attempt.';
+  @override
+  String get receiptNotPrintedToast =>
+      'Not printed, and it could not be queued — check the printer and the '
+      'branch connection.';
+  @override
+  String get receiptNoPrinterToast =>
+      'No printer is set up on this till, so nothing was printed.';
+  @override
+  String get printerPaperWidth => 'Paper width';
+  @override
+  String get printerPaper80 => '80mm roll (576 dots)';
+  @override
+  String get printerPaper58 => '58mm roll (384 dots)';
+  @override
+  String get printerPaperWidthHelp =>
+      'Measure the roll, not the printer. A receipt built for the wrong width '
+      'is cut off at the edge rather than shrunk to fit.';
 
   @override
   String get pickATable => 'Pick a table';
@@ -2271,6 +2901,8 @@ final class EnStrings extends AppStrings {
   String get wrongPin => 'Wrong PIN — try again';
   @override
   String enterPinFor(String name) => '$name · enter PIN';
+  @override
+  String get enterYourPin => 'Enter your PIN';
 
   @override
   String get pointOfSale => 'POINT OF SALE';
@@ -2312,9 +2944,14 @@ final class EnStrings extends AppStrings {
   @override
   String get signIn => 'Sign in';
   @override
+  String get switchUser => 'Switch user';
+  @override
+  String get wrongUsernameOrPin => 'Wrong username or PIN — try again';
+  @override
   String get openTheDrawer => 'Open the drawer';
   @override
-  String get signInHelp => 'Enter your PIN. The shift is opened in your name.';
+  String get signInHelp =>
+      'Your name and your PIN. The shift is opened in your name.';
   @override
   String countTheDrawerHelp(String name) =>
       '$name · count what is in the drawer before you start.';
@@ -2348,6 +2985,9 @@ final class EnStrings extends AppStrings {
   String get countTheDrawer => 'Count the drawer and enter the total.';
   @override
   String get signInBeforeClosing => 'Sign in before closing a shift.';
+  @override
+  String closeShiftNotYours(String openedBy) =>
+      'Close a drawer opened by $openedBy';
   @override
   String get countedInDrawer => 'Counted in the drawer';
   @override
@@ -2551,6 +3191,43 @@ final class EnStrings extends AppStrings {
   @override
   String get stepConnectionBlurb => 'Where does this terminal send its sales?';
   @override
+  String get stepMainDevice => 'Main device';
+  @override
+  String get stepMainDeviceBlurb =>
+      'This tablet sells through the restaurant\'s main device.';
+  @override
+  String get stepChildAccountBlurb =>
+      'A manager\'s username and PIN, from the main device.';
+  @override
+  String get mainDeviceHelp =>
+      'Nothing is activated or built on this tablet. The licence, the '
+      'restaurant, the staff and the menu all come from the main device — '
+      'give its address and the till database password it was set up with.';
+  @override
+  String get mainDeviceAddress => 'Main device address';
+  @override
+  String get mainDeviceAddressHelp =>
+      'Its address on the restaurant network. Settings on the main device '
+      'shows it; a reserved address on the router keeps it from changing.';
+  @override
+  String get mainDeviceIsThisTablet =>
+      'That address is this tablet itself. Enter the main device\'s address '
+      'on the restaurant network, such as 192.168.1.20.';
+  @override
+  String get connectToMainDevice => 'Connect to the main device';
+  @override
+  String mainDeviceLinked(String tenant) =>
+      'Connected to $tenant\'s main device. This tablet uses its licence.';
+  @override
+  String get mainDeviceHasNoLicence =>
+      'The main device has not shared its licence yet. Open XOrder POS on '
+      'the main device — it shares the licence when it reaches its start '
+      'screen — then connect again.';
+  @override
+  String allTerminalsTaken(int max) =>
+      'The licence covers $max terminals and all of them are registered. '
+      'Retire one on the main device, or ask for a licence with more.';
+  @override
   String get stepAccount => 'Sign in';
   @override
   String get stepFirstAdministrator => 'First administrator';
@@ -2743,6 +3420,11 @@ final class EnStrings extends AppStrings {
   String get schemaAlreadyCurrent => 'The schema was already current.';
   @override
   String migrationsApplied(int count) => 'Applied $count migration(s).';
+  @override
+  String schemaUpgradeFailed(String error) =>
+      'This database is older than this version of XOrder POS and could not '
+      'be brought up to date, so some screens may fail. Take a backup and '
+      'call support. The database said: $error';
   @override
   String restaurantSeeded(String restaurant) =>
       '$restaurant and its first branch are on this machine.';
@@ -3260,6 +3942,15 @@ final class EnStrings extends AppStrings {
       'Could not verify whether a shift is open. Check the database connection and try again.';
   @override
   String get resetTerminalConfirm => 'Reset and run setup';
+  @override
+  String get resetTerminalHint =>
+      'For a till moving to another branch server, or one whose database '
+      'password has been lost. Setup runs again; sales already recorded stay in '
+      'the database. Not while a shift is open.';
+  @override
+  String get paneTerminal => 'Terminal';
+  @override
+  String get paneTerminalBlurb => "This till's setup, and running it again";
 
   @override
   String get terminalRejectedTitle => 'This terminal is no longer recognised';
@@ -3291,6 +3982,15 @@ final class EnStrings extends AppStrings {
       'machine but nothing will send them once the credential is gone.';
   @override
   String get forceResetConfirm => 'Delete and set up again';
+  @override
+  String get forceResetSignInTitle => 'Who is resetting this terminal?';
+  @override
+  String get forceResetSignInHelp =>
+      "Deleting a working terminal's setup needs somebody who may manage "
+      'terminals: their username and the back-office password.';
+  @override
+  String get forceResetSignInRefused =>
+      'That username and password cannot reset this terminal.';
 
   @override
   String get settings => 'Settings';
@@ -3309,6 +4009,9 @@ final class EnStrings extends AppStrings {
   String get capCatalogView => 'See the menu';
   @override
   String get capCatalogManage => 'Add and change menu items and prices';
+  @override
+  String get capPurchaseManage =>
+      'Order stock, book in deliveries and pay suppliers';
   @override
   String get capStaffManage => 'Add staff, set roles and reset PINs';
   @override
@@ -3421,6 +4124,82 @@ final class EnStrings extends AppStrings {
       'Ask somebody who does.';
 
   @override
+  String refusalManagedByPlatform(String what) => switch (what) {
+    'staff' =>
+      'Who works here is set on XOrder, not on this till. A change made here '
+      'would be undone by the next sync.',
+    'catalogue' =>
+      'The menu is set on XOrder, not on this till. A change made here would '
+      'be undone by the next sync.',
+    'floor' => 'The floor plan is set on XOrder, not on this till.',
+    'money' => 'The money rules are set on XOrder, not on this till.',
+    _ => 'This is set on XOrder, not on this till.',
+  };
+
+  @override
+  String refusalOwnerAlreadyExists(String ownerName) =>
+      '$ownerName is already the owner, and a restaurant has one. To hand '
+      'ownership over, disable $ownerName first, then choose Owner for the new '
+      'person.';
+  @override
+  String get refusalOwnerIsFixed =>
+      "The owner's role and permissions cannot be changed. The owner already "
+      'holds every permission, and one taken away from them could lock '
+      'everybody out. To hand ownership over, disable the owner, then make '
+      'somebody else the owner.';
+  @override
+  String get refusalOwnerIsNotAnExtraRole =>
+      'Owner cannot be an extra role. To make somebody the owner, choose Owner '
+      'as their role instead.';
+
+  @override
+  String get refusalPurchaseAlreadySent =>
+      'That order has already gone to the supplier, so it cannot be sent '
+      'again or changed.';
+  @override
+  String get refusalPurchaseGoodsArrived =>
+      'Goods have already arrived against that order, so it cannot be '
+      'changed.';
+  @override
+  String get refusalPurchaseCancelled =>
+      'That order was cancelled, and a cancelled order does not reopen. Write '
+      'a new one.';
+  @override
+  String get refusalPurchaseHasNoLines =>
+      'There is nothing on this order yet. Add what you are ordering before '
+      'sending it.';
+  @override
+  String get refusalPurchaseQuantityNotPositive =>
+      'Every line needs a quantity above zero.';
+  @override
+  String get refusalPurchaseCannotCancelArrived =>
+      'Goods have already arrived against this order, so it cannot be '
+      'cancelled — they are in stock, and this order is their record. It '
+      'stays open for the rest.';
+  @override
+  String get refusalPurchaseAllArrived =>
+      'Everything on this order has arrived, so there is nothing left to '
+      'cancel.';
+  @override
+  String get refusalPurchaseFollowsTheGoods =>
+      'An order becomes received by booking the goods in, not by choosing it.';
+  @override
+  String refusalStockHeldInAnotherUnit(
+    String item,
+    String quantity,
+    String heldUnit,
+    String askedUnit,
+  ) =>
+      '$item has $quantity $heldUnit in stock. Stock is never converted from '
+      'one unit to another, so while any is held it is counted and booked in '
+      'as $heldUnit only, not $askedUnit.';
+
+  @override
+  String get staffComesFromPlatform =>
+      'Who works here comes from XOrder. You can still set what each person '
+      'may do — roles and permissions live on this till.';
+
+  @override
   String get riskLow => 'Low';
   @override
   String get riskMedium => 'Medium';
@@ -3470,6 +4249,10 @@ final class EnStrings extends AppStrings {
   String get tenderTypesHint =>
       'What the till offers at payment, and which of them end up in the '
       'drawer.';
+  @override
+  String get tenderTypesComeFromPlatform =>
+      'On this till, payment methods come from XOrder. Add or change them on '
+      'the dashboard; they arrive here at the next sync.';
   @override
   String get tenderNew => 'New payment method';
   @override
@@ -3556,6 +4339,417 @@ final class EnStrings extends AppStrings {
   String get currencyEgp => 'EGP';
 
   @override
+  String get suppliers => 'Suppliers';
+  @override
+  String get supplierNew => 'New supplier';
+  @override
+  String get supplierEdit => 'Supplier';
+  @override
+  String get supplierName => 'Name';
+  @override
+  String get supplierContact => 'Who to call';
+  @override
+  String get supplierEmail => 'Email';
+  @override
+  String get supplierPaymentTerms => 'Days to pay';
+  @override
+  String get supplierTermsHint =>
+      'Zero means cash on delivery. This is what an invoice is due by, not a limit on it.';
+  @override
+  String get supplierCode => 'Your reference for them';
+  @override
+  String get supplierNotes => 'Notes';
+  @override
+  String get supplierActive => 'Still buying from them';
+  @override
+  String get supplierActiveHint =>
+      'Turning this off keeps the history and stops them appearing on new orders.';
+  @override
+  String get supplierCashOnDelivery => 'cash on delivery';
+  @override
+  String supplierTermDays(int days) => '$days days';
+  @override
+  String get purchaseOrders => 'Purchase orders';
+  @override
+  String get purchaseOrderNew => 'New order';
+  @override
+  String get purchaseOrderEdit => 'Order';
+  @override
+  String get purchaseNoOrdersYet => 'Nothing has been ordered yet.';
+  @override
+  String get purchaseNoSuppliersYet =>
+      'No suppliers yet. Add the people you buy from and orders follow.';
+  @override
+  String get purchaseNeedsASupplier =>
+      'Add a supplier first — an order has to be addressed to somebody.';
+  @override
+  String get purchaseNeedsALine =>
+      'Nothing to order. A line needs a name, a quantity and a unit cost.';
+  @override
+  String get purchaseItem => 'Item';
+  @override
+  String get purchaseQty => 'Quantity';
+  @override
+  String get purchaseUnitCost => 'Unit cost';
+  @override
+  String get purchaseAddLine => 'Add a line';
+  @override
+  String purchaseLineCount(int count) => count == 1 ? '1 line' : '$count lines';
+  @override
+  String get purchaseSend => 'Send';
+  @override
+  String get purchaseReceive => 'Receive';
+  @override
+  String purchaseReceiveInto(String reference) => 'Receive against $reference';
+  @override
+  String get purchaseReceiveHint =>
+      'Each box starts at what is still owed. Change one where less arrived.';
+  @override
+  String get purchaseOrdered => 'Ordered';
+  @override
+  String get purchaseOutstanding => 'Still owed';
+  @override
+  String get purchaseArrived => 'Arrived';
+  @override
+  String purchaseBookIn(int lines) =>
+      lines == 1 ? 'Book in 1 line' : 'Book in $lines lines';
+  @override
+  String get statusDraft => 'draft';
+  @override
+  String get statusSent => 'sent';
+  @override
+  String get statusPartReceived => 'part received';
+  @override
+  String get statusReceived => 'received';
+  @override
+  String get statusCancelled => 'cancelled';
+
+  @override
+  String get supplierInvoices => 'Invoices';
+  @override
+  String get invoiceNew => 'Enter an invoice';
+  @override
+  String get invoiceEdit => 'Invoice';
+  @override
+  String get invoiceHint =>
+      'Type the total and the tax as they are printed. The net is worked out.';
+  @override
+  String get invoiceNumber => 'Their invoice number';
+  @override
+  String get invoiceTotal => 'Total on the invoice';
+  @override
+  String get invoiceTax => 'Of which VAT';
+  @override
+  String get invoiceTaxFromRate => 'or take it out at';
+  @override
+  String get invoiceIssued => 'Invoice date';
+  @override
+  String get invoiceDue => 'Due';
+  @override
+  String invoiceDueOnTerms(int days) =>
+      days == 0 ? 'Due · on delivery' : 'Due · $days day terms';
+  @override
+  String get invoiceAgainstOrder => 'Billing which order';
+  @override
+  String get invoiceNoOrder => 'No order';
+  @override
+  String get invoiceAgreesWithDelivery => 'Agrees with what arrived.';
+  @override
+  String get invoiceBilledMore =>
+      'More than what arrived. Worth a call before paying it.';
+  @override
+  String get invoiceBilledLess =>
+      'Less than what arrived — the rest is probably still to be invoiced.';
+  @override
+  String invoiceDaysLate(int days) => days == 1 ? '1 day late' : '$days days late';
+  @override
+  String get invoiceNoneOutstanding => 'Nothing owed. Every invoice is paid.';
+  @override
+  String get invoiceOutstanding => 'Outstanding';
+  @override
+  String get invoiceVoid => 'Cancel';
+  @override
+  String get invoiceVoidWhy => 'Why is this invoice being cancelled?';
+  @override
+  String get invoicePay => 'Pay';
+  @override
+  String get notes => 'Notes';
+  @override
+  String paymentTo(String supplier) => 'Pay $supplier';
+  @override
+  String get paymentDoesNotTouchTheDrawer =>
+      'No shift is open on this terminal, so this does not change the till '
+      'drawer. It records the money as paid from the office.';
+  @override
+  String get paymentFromTheDrawer => 'Take it out of the till drawer';
+  @override
+  String get paymentFromTheDrawerHint =>
+      'Records a pay-out on the open shift, so the drawer is not short at '
+      'cash-up. Leave it off for money paid from the office safe.';
+  @override
+  String get paymentAgainst => 'Against';
+  @override
+  String get paymentAmount => 'Amount';
+  @override
+  String get paymentMethod => 'How it was paid';
+  @override
+  String get methodCash => 'Cash';
+  @override
+  String get methodTransfer => 'Transfer';
+  @override
+  String get methodCheque => 'Cheque';
+  @override
+  String get methodCard => 'Card';
+  @override
+  String get methodOther => 'Other';
+  @override
+  String get paymentReference => 'Reference';
+  @override
+  String get paymentOnAccount => 'On account';
+  @override
+  String get paymentOnAccountHint =>
+      'Money against the running tab. It does not clear a particular invoice.';
+  @override
+  String get paymentPay => 'Record the payment';
+  @override
+  String get paymentNeedsAnAmount => 'How much was paid?';
+  @override
+  String paymentMoreThanTheBill(String room) =>
+      'Only $room is left on that invoice. Put the rest on account.';
+  @override
+  String get paymentsList => 'Payments';
+  @override
+  String get paymentNonePaidYet => 'Nothing has been paid yet.';
+  @override
+  String get paymentVoid => 'Reverse';
+  @override
+  String get paymentVoidWhy => 'Why is this payment being reversed?';
+  @override
+  String get reasonListEmpty =>
+      'No reasons are configured for this. Add some in Settings first.';
+
+  @override
+  String get actStaffCreated => 'Added somebody';
+  @override
+  String get actStaffUpdated => 'Changed a staff record';
+  @override
+  String get actStaffDisabled => 'Disabled somebody';
+  @override
+  String get actStaffReactivated => 'Brought somebody back';
+  @override
+  String get actStaffPinReset => 'Reset a PIN';
+  @override
+  String get actStaffRoleChanged => 'Changed somebody\'s role';
+  @override
+  String get actStaffGrantsChanged => 'Changed somebody\'s permissions';
+  @override
+  String get actRoleCreated => 'Created a role';
+  @override
+  String get actRoleUpdated => 'Changed a role';
+  @override
+  String get actRoleDeleted => 'Deleted a role';
+  @override
+  String get actPermissionOverridden => 'Approved something for somebody';
+  @override
+  String get actShiftOpened => 'Opened a shift';
+  @override
+  String get actShiftClosed => 'Closed a shift';
+  @override
+  String get actReceiptReprinted => 'Reprinted a receipt';
+  @override
+  String get actCategoryCreated => 'Added a category';
+  @override
+  String get actCategoryUpdated => 'Changed a category';
+  @override
+  String get actCategoryArchived => 'Archived a category';
+  @override
+  String get actCategoryRestored => 'Restored a category';
+  @override
+  String get actProductCreated => 'Added a menu item';
+  @override
+  String get actProductUpdated => 'Changed a menu item';
+  @override
+  String get actProductArchived => 'Archived a menu item';
+  @override
+  String get actProductRestored => 'Restored a menu item';
+  @override
+  String get actProductRepriced => 'Changed a price';
+  @override
+  String get actMoneyConfigChanged => 'Changed the tax and rounding rules';
+  @override
+  String get actReceiptProfileChanged => 'Changed what the receipt says';
+  @override
+  String get actTableCreated => 'Added a table';
+  @override
+  String get actTableUpdated => 'Changed a table';
+  @override
+  String get actTableArchived => 'Archived a table';
+  @override
+  String get actTableRestored => 'Restored a table';
+  @override
+  String get actPurchaseOrderStatusChanged => 'Moved a purchase order on';
+  @override
+  String get actStockReceived => 'Booked in a delivery';
+  @override
+  String get actSupplierSaved => 'Added or changed a supplier';
+  @override
+  String get actSupplierInvoiceSaved => 'Entered a supplier invoice';
+  @override
+  String get actSupplierInvoiceVoided => 'Cancelled a supplier invoice';
+  @override
+  String get actSupplierPaid => 'Paid a supplier';
+  @override
+  String get actSupplierPaymentVoided => 'Reversed a payment to a supplier';
+  @override
+  String get actServiceChargeSaved => 'Changed a service charge';
+  @override
+  String get actTenderTypeSaved => 'Changed a payment method';
+  @override
+  String get actOrderTypeSaved => 'Changed an order type';
+  @override
+  String get actTaxGroupSaved => 'Changed a tax rate';
+  @override
+  String get actProductOptionsChanged => "Changed an item's sizes or extras";
+  @override
+  String get actOptionGroupSaved => 'Changed a sizes or extras group';
+  @override
+  String get actOptionGroupRepriced => 'Changed the price of a size or extra';
+  @override
+  String get actOptionGroupDeleted => 'Deleted a sizes or extras group';
+  @override
+  String get fieldYes => 'yes';
+  @override
+  String get fieldNo => 'no';
+  @override
+  String get unitEach => 'each';
+  @override
+  String get unitKilogram => 'kg';
+  @override
+  String get unitGram => 'g';
+  @override
+  String get unitLitre => 'L';
+  @override
+  String get unitMillilitre => 'ml';
+  @override
+  String get unitBox => 'box';
+  @override
+  String get unitPack => 'pack';
+  @override
+  String get supplierOwes => 'owed';
+  @override
+  String get supplierOverdue => 'overdue';
+
+  @override
+  String get fieldTaxGroup => 'Tax rate';
+  @override
+  String get fieldTaxGroupHint =>
+      'Leave this on the default unless the item is taxed differently — a '
+      'zero-rated bottle of water, say.';
+  @override
+  String get fieldTaxGroupDefault => 'Default';
+  @override
+  String get taxGroups => 'Named rates';
+  @override
+  String get taxGroupsHint =>
+      'A rate per kind of thing you sell. A menu item is charged its own '
+      'group\'s rate, or the fallback below if it names none.';
+  @override
+  String get taxGroupsFallback =>
+      'None configured — every item is charged the single rate above, including '
+      'anything you sell zero-rated.';
+  @override
+  String get taxGroupNew => 'New rate';
+  @override
+  String get taxGroupEdit => 'Rate';
+  @override
+  String get taxGroupHint =>
+      'Zero-rated and exempt are both 0% and are different things on a filing. '
+      'The name is the only place that difference lives.';
+  @override
+  String get taxGroupName => 'What your accountant calls it';
+  @override
+  String get taxGroupNeedsAName => 'A rate needs a name.';
+  @override
+  String get taxGroupRate => 'Rate';
+  @override
+  String get taxGroupRateNotValid => 'A rate is a number between 0 and 100.';
+  @override
+  String get taxGroupDefault => 'The fallback rate';
+  @override
+  String get taxGroupDefaultHint =>
+      'What an item is charged when it names no rate of its own. Exactly one '
+      'group is the fallback; making this one takes it off the other.';
+  @override
+  String get taxGroupIsDefault => 'FALLBACK';
+  @override
+  String get taxGroupActive => 'In use';
+  @override
+  String get taxGroupActiveHint =>
+      'Turning this off retires it. Items already on it fall back to the '
+      'default rate, so check what is on it first.';
+  @override
+  String get orderTypes => 'Order types';
+  @override
+  String get orderTypesHint =>
+      'What each kind of order needs before it can be settled.';
+  @override
+  String get orderTypesComeFromPlatform =>
+      'These come from XOrder on this till. You can see them; the platform sets '
+      'them.';
+  @override
+  String get orderTypeName => 'What you call it';
+  @override
+  String get orderTypeNeedsAName => 'An order type needs a name.';
+  @override
+  String get orderTypeRequiresTable => 'Has a table';
+  @override
+  String get orderTypeRequiresTableHint =>
+      'Turns on the floor plan for this kind of order. On for a caterer who '
+      'seats people, or a drive-thru with numbered bays.';
+  @override
+  String get orderTypeRequiresCustomer => 'Needs a customer';
+  @override
+  String get orderTypeRequiresCustomerHint =>
+      'Nothing asks for one yet — customers are still being built — and it is '
+      'saved so it is right when they arrive.';
+  @override
+  String get orderTypeRequiresAddress => 'Needs an address';
+  @override
+  String get orderTypeRequiresAddressHint => 'For delivery, and only delivery.';
+  @override
+  String get orderTypeOffered => 'Sold here';
+  @override
+  String get orderTypeOfferedHint =>
+      'Turning this off takes it off the till. Orders already taken keep it.';
+  @override
+  String get orderTypeNotOffered => 'not sold';
+  @override
+  String get orderTypeChipTable => 'TABLE';
+  @override
+  String get orderTypeChipCustomer => 'CUSTOMER';
+  @override
+  String get orderTypeChipAddress => 'ADDRESS';
+  @override
+  String get paneTaxes => 'Tax';
+  @override
+  String get paneTaxesHint => 'The rates this restaurant charges, and on what.';
+  @override
+  String get areaPeople => 'People';
+  @override
+  String get areaMenu => 'Menu';
+  @override
+  String get areaMoney => 'Money';
+  @override
+  String get areaBuying => 'Buying';
+  @override
+  String get areaCompliance => 'Compliance';
+  @override
+  String get areaSystem => 'System';
+  @override
+  String get manage => 'Manage';
+  @override
+  String get manageMenuTooltip => 'Open a back-office area';
+  @override
   String get backToTill => 'Back to the till';
   @override
   String get paneStaff => 'Staff';
@@ -3566,6 +4760,11 @@ final class EnStrings extends AppStrings {
   @override
   String get paneMenuBlurb => 'Categories, items and what they cost';
   @override
+  String get panePurchasing => 'Purchasing';
+  @override
+  String get panePurchasingBlurb =>
+      'Who you buy from, what you have ordered, and booking in what arrives.';
+  @override
   String get paneRoles => 'Roles';
   @override
   String get paneRolesBlurb => 'The permissions behind each job title';
@@ -3573,6 +4772,161 @@ final class EnStrings extends AppStrings {
   String get paneActivity => 'Activity';
   @override
   String get paneActivityBlurb => 'What was changed, by whom';
+  // ── Backup and restore ────────────────────────────────────────────
+  @override
+  String get paneBackup => 'Backup';
+  @override
+  String get paneBackupBlurb => 'Copies of this database, and putting one back';
+  @override
+  String get backupSameDiskWarning =>
+      'Copies are written to this machine\'s own disk. That survives a bad '
+      'edit or a dropped table. It does not survive the disk failing, the '
+      'machine being stolen, a fire, or software that encrypts every file this '
+      'account can write — which is the list of things that actually happen. '
+      'Copy the newest one to a USB drive regularly — "Copy to…" on any '
+      'verified copy — and keep the drive somewhere other than this machine.';
+  @override
+  String get backupToolsMissing =>
+      'PostgreSQL\'s command-line tools are not on this machine, so no backup '
+      'can be taken and none can be restored.';
+  @override
+  String get backupToolsMissingHelp =>
+      'Install the PostgreSQL client tools — pg_dump and pg_restore — from '
+      'postgresql.org, then open this screen again.';
+  @override
+  String get backupSearchedIn => 'Looked in';
+  @override
+  String get backupDestination => 'Where copies go';
+  @override
+  String get backupDestinationHint =>
+      'A folder on this machine. It is created if it is not there.';
+  @override
+  String get backupTakeNow => 'Back up now';
+  @override
+  String get backupTaking => 'Backing up…';
+  @override
+  String get backupAutomatic => 'Take one when the trading day is closed';
+  @override
+  String get backupAutomaticHint =>
+      'On by default. A backup nobody remembers to take is not a backup.';
+  @override
+  String get backupHistory => 'Copies taken';
+  @override
+  String get backupNoneYet => 'No copy of this database has ever been taken.';
+  @override
+  String get backupNoVerifiedCopy =>
+      'No copy has been verified. This restaurant does not have a backup.';
+  @override
+  String backupLastVerified(String when) => 'Last verified copy: $when';
+  @override
+  String backupStale(int days) => days == 1
+      ? 'The last verified copy is a day old.'
+      : 'The last verified copy is $days days old.';
+  @override
+  String get backupOutcomeVerified => 'Verified';
+  @override
+  String get backupOutcomeUnverified => 'Not a backup';
+  @override
+  String get backupOutcomeFailed => 'Failed';
+  @override
+  String get backupTriggerManual => 'By hand';
+  @override
+  String get backupTriggerDayClose => 'Day close';
+  @override
+  String get backupFailureToolsMissing =>
+      'pg_dump is not installed on this machine.';
+  @override
+  String get backupFailureDestinationUnwritable =>
+      'The folder could not be written to.';
+  @override
+  String get backupFailureDumpRefused =>
+      'PostgreSQL refused to produce the copy.';
+  @override
+  String get backupFailureArchiveUnreadable =>
+      'The file was written and could not be read back.';
+  @override
+  String get backupFailureArchiveIncomplete =>
+      'The file is missing tables the restaurant could not trade without.';
+  @override
+  String backupTablesFound(int count) =>
+      count == 1 ? '1 table' : '$count tables';
+  @override
+  String get backupRestoreAction => 'Restore…';
+  @override
+  String backupRestoreTitle(String when) =>
+      'Replace this database with the copy taken $when?';
+  @override
+  String get backupRestoreBlocked =>
+      'This cannot be restored while the till is still trading.';
+  @override
+  String restoreBlockerOpenShifts(int count) => count == 1
+      ? '1 till still has a shift open'
+      : '$count tills still have shifts open';
+  @override
+  String restoreBlockerOpenDay(int count) =>
+      'The trading day has not been closed';
+  @override
+  String backupRestoreOrdersLost(int count, String value) => count == 1
+      ? '1 order taken since then, worth $value, will be discarded.'
+      : '$count orders taken since then, worth $value, will be discarded.';
+  @override
+  String get backupRestoreEverythingElseLost =>
+      'So does everything else recorded since — shifts, cash movements, staff '
+      'changes and the audit trail.';
+  @override
+  String get backupRestoreNoWayBack =>
+      'There is no way back. Nothing here keeps a copy of what is about to be '
+      'replaced.';
+  @override
+  String get backupRestoreConfirm => 'Replace the database';
+  @override
+  String get backupRestoreKeep => 'Keep this database';
+  @override
+  String get backupRestoreDone =>
+      'The database was replaced. Close the app and start it again.';
+  @override
+  String backupRestoreFailed(String detail) =>
+      'The restore did not complete and nothing was changed. $detail';
+  @override
+  String get backupAccount => 'Backup account';
+  @override
+  String get backupAccountHint =>
+      'Backups sign in to PostgreSQL as pos_backup, a read-only account '
+      'created when PostgreSQL was installed. Enter its password once. It is '
+      'kept on this machine, so the backup at day close works with nobody '
+      'signed in here.';
+  @override
+  String get backupAccountStored => 'A password is saved on this machine.';
+  @override
+  String get backupAccountMissing => 'No password saved on this machine yet.';
+  @override
+  String get backupAccountSaved =>
+      'Saved. The next backup signs in with it.';
+  @override
+  String get backupCopyAction => 'Copy to…';
+  @override
+  String backupCopyDone(String path) =>
+      'Copied to $path and checked against the original.';
+  @override
+  String backupCopyFailed(String detail) => 'The copy was not made. $detail';
+  @override
+  String get backupRestoreFromFile => 'Restore from a file…';
+  @override
+  String get backupFileGone =>
+      'No longer on this machine — only the newest 14 copies are kept here.';
+  @override
+  String get backupOpenPane => 'Open Backup';
+  @override
+  String get backupDayCloseWorking => 'Closing the day and taking a backup…';
+  @override
+  String get backupDayCloseFailed =>
+      'The day is closed. The automatic backup did not succeed — open '
+      'Management, then Backup, to see why.';
+  @override
+  String get actBackupTaken => 'Took a backup';
+  @override
+  String get actBackupRestored => 'Restored the database from a backup';
+  // ── end of the backup block ────────────────────────────────────
   @override
   String get pinCannotOpenManagement => 'That PIN cannot open Management.';
   @override
@@ -3585,6 +4939,13 @@ final class EnStrings extends AppStrings {
   String cannotManageStaff(String name) => '$name cannot manage staff.';
   @override
   String get backOfficePassword => 'Back office password';
+  @override
+  String get backOfficeSignInHelp =>
+      "Sign in with the administrator's username and the back-office "
+      'password — the admin password set when XOrder POS was installed.';
+  @override
+  String get backOfficeSignInRefused =>
+      'That username and password cannot open Management.';
   @override
   String backOfficePasswordHelp(String name) =>
       'Signed in as $name. Changing staff, roles and the menu runs on a '
@@ -3617,6 +4978,122 @@ final class EnStrings extends AppStrings {
   String get notSaved => 'Not saved';
   @override
   String get close => 'Close';
+  @override
+  String get settingsOrders => 'Orders & invoices';
+  @override
+  String get settingsPrinter => 'Printer & cash drawer…';
+  @override
+  String get settingsAbout => 'About XOrder POS';
+  @override
+  String get printerSettingsTitle => 'Printer & cash drawer';
+  @override
+  String get printerNoneChosen =>
+      'No printer chosen. Find the printers on this network, then pick one.';
+  @override
+  String get aboutVersion => 'Version';
+  @override
+  String get aboutMode => 'Mode';
+  @override
+  String get aboutTerminalId => 'Terminal id';
+  @override
+  String get aboutDatabase => 'Database';
+  @override
+  String get receiptPreviewAction => 'Preview';
+  @override
+  String get receiptPreviewNote =>
+      'A preview only — nothing is printed and nothing is recorded.';
+  @override
+  String get areaInventory => 'Inventory';
+  @override
+  String get paneUnits => 'Units';
+  @override
+  String get paneUnitsBlurb => 'What stock is counted and bought in';
+  @override
+  String get unitNew => 'Add a unit';
+  @override
+  String get unitEdit => 'Edit unit';
+  @override
+  String get unitNameEn => 'Name';
+  @override
+  String get unitNameAr => 'Name in Arabic';
+  @override
+  String get unitCode => 'Code';
+  @override
+  String get unitCodeHelp =>
+      'Short, and fixed once saved — purchase lines store it. Lowercase '
+      'letters and digits: kg, tray, box6.';
+  @override
+  String get unitEtaCode => 'Tax authority unit code';
+  @override
+  String get unitEtaCodeHelp =>
+      'What e-receipts say the item was sold in: EA each, KGM kilogram, '
+      'LTR litre.';
+  @override
+  String get unitAllowsFraction => 'Can be part of one';
+  @override
+  String get unitAllowsFractionHelp =>
+      '12.5 kg is a real amount; 12.5 boxes is not.';
+  @override
+  String get unitFractionChip => 'fractions';
+  @override
+  String get unitActive => 'In use';
+  @override
+  String get unitRetired => 'Not in use';
+  @override
+  String get actUnitSaved => 'Saved a unit';
+  @override
+  String get paneItems => 'Stock items';
+  @override
+  String get paneItemsBlurb => 'What you buy and count — on the menu or not';
+  @override
+  String get itemNew => 'Add an item';
+  @override
+  String get itemEdit => 'Edit item';
+  @override
+  String get itemName => 'Name';
+  @override
+  String get itemNameAr => 'Name in Arabic';
+  @override
+  String get itemUnit => 'Counted in';
+  @override
+  String get itemOnMenu => 'On the menu';
+  @override
+  String get itemOnMenuHint =>
+      'Its name and price are set in Menu; only the unit it is counted in is '
+      'set here.';
+  @override
+  String get itemsEmpty =>
+      'Nothing is counted in stock yet. Add what you buy — chicken, oil, gas.';
+  @override
+  String get fieldTrackStock => 'Track stock';
+  @override
+  String get fieldTrackStockHint =>
+      'Count it when it is bought, and see how much is left.';
+  @override
+  String get actStockItemSaved => 'Saved a stock item';
+  @override
+  String get paneStock => 'Stock on hand';
+  @override
+  String get paneStockBlurb =>
+      'How much of each counted item this branch holds, and what it is worth';
+  @override
+  String get stockColumnItem => 'Item';
+  @override
+  String get stockColumnOnHand => 'On hand';
+  @override
+  String get stockColumnAvgCost => 'Average cost';
+  @override
+  String get stockColumnValue => 'Value';
+  @override
+  String stockTotalValue(String amount) => 'Stock value: $amount';
+  @override
+  String get stockEmpty =>
+      'Nothing is counted yet. Add what you buy in Stock items, then receive '
+      'a delivery.';
+  @override
+  String get purchaseUnit => 'Unit';
+  @override
+  String purchaseAddAsItem(String name) => 'Add “$name” as a new item';
   @override
   String get you => 'you';
   @override
@@ -3733,6 +5210,198 @@ final class EnStrings extends AppStrings {
   String get priceIsNotANumber => 'The price is not a number.';
   @override
   String get offerPriceIsNotANumber => 'The offer price is not a number.';
+
+  @override
+  String get extrasTitle => 'Extras library';
+  @override
+  String get extrasSubtitle =>
+      'Reusable option groups you can attach to any item. Editing one updates '
+      'it everywhere it is used.';
+  @override
+  String get extrasNew => 'Add extra';
+  @override
+  String get extrasEdit => 'Edit extra';
+  @override
+  String get extrasNone =>
+      'No shared extras yet. Create one to reuse across items.';
+  @override
+  String extrasUsedBy(int n) => '$n item(s)';
+  @override
+  String get extrasNotUsed => 'Not used yet';
+  @override
+  String extrasDeleteWarning(int n) =>
+      'Delete this extra? It will be removed from the $n item(s) currently '
+      'using it.';
+  @override
+  String extrasOptionsSummary(int n) => '$n option(s)';
+  @override
+  String get extrasApplyTo => 'Applies to';
+  @override
+  String get extrasScopeItems => 'Specific items';
+  @override
+  String get extrasScopeItemsHint =>
+      'Attach it to items from each item’s page.';
+  @override
+  String get extrasScopeCategories => 'Categories';
+  @override
+  String get extrasScopeAll => 'All items';
+  @override
+  String get extrasPickCategories => 'Choose categories';
+  @override
+  String extrasAppliesCategories(int n) => '$n categor(y/ies)';
+  @override
+  String get extrasLibraryNameEn => 'Name in your list (English)';
+  @override
+  String get extrasLibraryNameAr => 'Name in your list (Arabic)';
+  @override
+  String get extrasLibraryNameHint =>
+      'How you find this group here. Only you see it.';
+  @override
+  String get extrasMenuNameEn => 'Menu heading (English)';
+  @override
+  String get extrasMenuNameAr => 'Menu heading (Arabic)';
+  @override
+  String get extrasMenuNamePlaceholder => 'e.g. Choose your size';
+  @override
+  String get extrasMenuNameHint =>
+      'What diners read above the choices. Leave blank to use the name above.';
+  @override
+  String extrasShownAs(String name) => 'On the menu: $name';
+  @override
+  String get itemOptions => 'Options & add-ons';
+  @override
+  String get itemNoOptions =>
+      'No option groups. Add one for sizes, add-ons, or "without…".';
+  @override
+  String get itemAddGroup => 'Add group';
+  @override
+  String get itemGroupNameEn => 'Group name (e.g. Size)';
+  // Arabic in both languages: a placeholder is written in the language of
+  // the field it sits in, which is the cloud's choice too.
+  @override
+  String get itemGroupNameAr => 'اسم المجموعة';
+  @override
+  String get itemRequired => 'Required';
+  @override
+  String get itemVariant => 'Size / variant';
+  @override
+  String get itemVariantHint =>
+      'Each option sets the item price (small/medium/large). One choice '
+      'required, and the first size listed is the default the menu opens on.';
+  @override
+  String get itemPricedBySize =>
+      'Priced by its sizes below. The price above mirrors the default — the '
+      'first size listed — so edit that size to change it.';
+  @override
+  String get itemDefaultSize => 'Default';
+  @override
+  String get itemOptionDiscount => 'Sale';
+  @override
+  String get itemOptionDiscountHint =>
+      'Optional sale price for this size. Diners see it with the normal price '
+      'struck through. Must be lower than the price.';
+  @override
+  String get itemMaxSelect => 'Max select';
+  @override
+  String get itemOptionEn => 'Option (English)';
+  @override
+  String get itemOptionAr => 'الخيار';
+  @override
+  String get itemAddOption => 'Add option';
+  @override
+  String get itemAddFromLibrary => 'Add from library';
+  @override
+  String get itemFromLibrary => 'From library';
+  @override
+  String get itemLibraryEmpty =>
+      'No shared extras yet. Create them under Extras.';
+  @override
+  String get itemManageLibrary => 'Manage extras';
+  @override
+  String get deleteLabel => 'Delete';
+  @override
+  String get deleteConfirmGeneric => 'Are you sure you want to delete this?';
+  @override
+  String get savingLabel => 'Saving…';
+
+  @override
+  String get refusalGroupNameMissing =>
+      'An option group needs a name — it is how the group is found again.';
+  @override
+  String get refusalGroupScopeNeedsLibrary =>
+      'Only a library group can apply to whole categories or to every item.';
+  @override
+  String get refusalGroupCategoriesMissing =>
+      'A group for chosen categories needs at least one category.';
+  @override
+  String refusalGroupChoicesOutOfRange(int max) =>
+      'A group allows between 1 and $max choices.';
+  @override
+  String get refusalGroupNegativeCounts =>
+      'A group cannot need, or include, fewer than none.';
+  @override
+  String get refusalGroupNeedsMoreThanAllows =>
+      'A group cannot need more choices than it allows.';
+  @override
+  String refusalGroupTooManyOptions(int max) =>
+      'A group holds at most $max options.';
+  @override
+  String get refusalGroupRequiredButEmpty =>
+      'A required group needs at least one option, or the item it is on could '
+      'never be sold.';
+  @override
+  String get refusalOptionNameMissing => 'Every option needs a name.';
+  @override
+  String get refusalOptionTwice => 'The same option is in this group twice.';
+  @override
+  String get refusalOptionNegativePrice =>
+      'An option cannot cost less than nothing.';
+  @override
+  String get refusalOptionSaleNotBelowPrice =>
+      "A sale price has to be below the size's normal price.";
+  @override
+  String get refusalGroupTwice => 'The same group is on this item twice.';
+  @override
+  String get refusalGroupTypedOnAnotherItem =>
+      'That group was typed on another item. Put it in the library to use it '
+      'on more than one.';
+  @override
+  String refusalGroupNotInLibrary(String name) =>
+      '"$name" was typed on one item. Put it in the library to use it on more '
+      'than one.';
+  @override
+  String refusalGroupAlreadyReaches(String name) =>
+      '"$name" already reaches this item by itself, so it cannot also be '
+      'added to it.';
+  @override
+  String refusalGroupSecondSizes(int count, String names) =>
+      'An item has one set of sizes, and this would give it $count: $names. '
+      'Keep one.';
+  @override
+  String refusalGroupWouldGiveSecondSizes(String item) =>
+      '"$item" already has sizes. An item has one set, and this group would '
+      'give it a second — take the other off it first.';
+  @override
+  String get refusalGroupBelongsToOneItem =>
+      'That group belongs to one item. Change it on the item.';
+  @override
+  String get refusalGroupBelongsToLibrary =>
+      'That group is in the library. Change it there, and every item using it '
+      'follows.';
+  @override
+  String get refusalGroupForeignOption =>
+      'One of those options belongs to another group.';
+  @override
+  String get refusalGroupForeignCategory =>
+      'One of those categories is not on this menu.';
+
+  @override
+  String get refusalItemNameMissing => 'An item needs a name.';
+  @override
+  String get refusalOfferAbovePrice =>
+      'The offer price is higher than the normal price.';
+  @override
+  String get refusalCategoryNameMissing => 'A category needs a name.';
 }
 
 /// Arabic.
@@ -3964,6 +5633,50 @@ final class ArStrings extends AppStrings {
   @override
   String orderDetailApprovedBy(String name) => 'اعتمده $name';
   @override
+  String get orderColumnPayment => 'الدفع';
+  @override
+  String get orderHistoryEveryMethod => 'كل طرق الدفع';
+  @override
+  String get orderHistoryEveryTerminal => 'كل نقاط البيع';
+  @override
+  String get orderHistoryOwnSalesOnly => 'مبيعاتك فقط';
+  @override
+  String orderHistoryAttributionCaveat(String reliableFrom) =>
+      'اسم البائع المسجَّل على كل طلب موثوق ابتداءً من '
+      '\u2066$reliableFrom\u2069 فقط. '
+      'قبل ذلك كان رمز PIN المشترك بين شخصين ينسب كل مبيعاتهما إلى أحدهما، '
+      'لذا فأرقام كل كاشير في الأيام السابقة غير دقيقة.';
+  @override
+  String get orderDetailBusinessDay => 'يوم العمل';
+  @override
+  String get orderDetailTerminal => 'نقطة البيع';
+  @override
+  String get orderDetailActivity => 'السجل';
+  @override
+  String get saleEventPrinted => 'طُبعت الفاتورة';
+  @override
+  String get saleEventPrintPending => 'الفاتورة بانتظار الطابعة';
+  @override
+  String get saleEventReprinted => 'طُبعت نسخة';
+  @override
+  String get saleEventReprintPending => 'النسخة بانتظار الطابعة';
+  @override
+  String get saleEventReprintRequested => 'طُلبت نسخة';
+  @override
+  String get saleEventVoided => 'أُلغي الطلب';
+  @override
+  String get saleEventRefunded => 'استُرجع مبلغ';
+  @override
+  String get paymentStatusUnpaid => 'غير مدفوع';
+  @override
+  String get paymentStatusPartiallyPaid => 'مدفوع جزئيًا';
+  @override
+  String get paymentStatusPaid => 'مدفوع';
+  @override
+  String get paymentStatusPartiallyRefunded => 'مسترد جزئيًا';
+  @override
+  String get paymentStatusRefunded => 'مسترد بالكامل';
+  @override
   String get orderActionsComingWithRefunds =>
       'إعادة الطباعة والاسترجاع تأتيان مع مسار الاسترجاع.';
   @override
@@ -4106,7 +5819,6 @@ final class ArStrings extends AppStrings {
   @override
   String get receiptReprintConfirm => 'طباعة';
   @override
-  String get receiptReprintRecorded => 'أُرسلت إعادة الطباعة وسُجِّلت';
   @override
   String get receiptReprintNotPermitted =>
       'ليس لديك صلاحية لإعادة طباعة الفاتورة.';
@@ -4177,6 +5889,32 @@ final class ArStrings extends AppStrings {
   String get etaDueSoon => 'يقترب موعده';
   @override
   String get etaLate => 'متأخر';
+  @override
+  String etaProblemProfile(int count) => count == 1
+      ? 'لا يتم إرسال الإيصالات الإلكترونية: في ملف الإيصال أمر واحد يجب '
+            'إصلاحه.'
+      : 'لا يتم إرسال الإيصالات الإلكترونية: في ملف الإيصال $count أمور يجب '
+            'إصلاحها.';
+  @override
+  String etaProblemFailed(String detail) =>
+      'تعذّر إدراج الإيصالات الإلكترونية في قائمة الإرسال. $detail';
+  @override
+  String get etaReconcileNow => 'أرسل الإيصالات الناقصة الآن';
+  @override
+  String etaReconcileDone(int sales, int refunds, int waiting) {
+    if (sales + refunds + waiting == 0) return 'لم يكن هناك شيء ناقص.';
+    final parts = [
+      if (sales > 0) 'إيصالات بيع: $sales',
+      if (refunds > 0) 'إيصالات مرتجع: $refunds',
+    ];
+    final queued = parts.isEmpty ? '' : 'أُدرجت ${parts.join(' · ')}.';
+    final waits = waiting == 0
+        ? ''
+        : ' مرتجعات تنتظر إرسال فاتورة البيع أولاً: $waiting.';
+    return '$queued$waits'.trim();
+  }
+  @override
+  String get etaOpenPane => 'افتح الإيصالات الإلكترونية';
 
   @override
   String get paneReceipt => 'الإيصال';
@@ -4355,8 +6093,9 @@ final class ArStrings extends AppStrings {
   String dayBlockerOpenShifts(int count) =>
       count == 1 ? 'كاشير واحد ما زال درجه مفتوحًا' : '$count كاشيرات ما زالت أدراجها مفتوحة';
   @override
-  String dayBlockerParkedTables(int count) =>
-      count == 1 ? 'طاولة واحدة ما زالت مشغولة' : '$count طاولات ما زالت مشغولة';
+  String dayBlockerParkedTickets(int count) => count == 1
+      ? 'طلب واحد ما زال معلَّقًا'
+      : '$count طلبات ما زالت معلَّقة';
   @override
   String dayBlockerUnpaidOrders(int count) =>
       count == 1 ? 'طلب واحد لم يُدفع' : '$count طلبات لم تُدفع';
@@ -4492,6 +6231,9 @@ final class ArStrings extends AppStrings {
   @override
   String get noTableYet => 'لم تُحدَّد طاولة';
   @override
+  String get chooseTableFirst =>
+      'اختر طاولة أولاً — هذا الطلب يُقدَّم على طاولة.';
+  @override
   String seatedTable(String table, int? guests) =>
       guests == null ? table : '$table · $guests ضيف';
   @override
@@ -4527,6 +6269,22 @@ final class ArStrings extends AppStrings {
   String get parkKey => 'تعليق  F4';
   @override
   String get voidTicket => 'إلغاء الطلب';
+
+  @override
+  String get heldTickets => 'الطلبات المعلَّقة';
+  @override
+  String heldTicketsKey(int count) => 'المعلَّقة  $count';
+  @override
+  String get heldTicketsHelp =>
+      'طلبات معلَّقة بدون طاولة. اضغط على أحدها لاستعادته — وما هو على الشاشة '
+      'الآن يُعلَّق أولاً، فلا يضيع شيء.';
+  @override
+  String get noHeldTickets => 'لا توجد طلبات معلَّقة.';
+  @override
+  String heldTicketSummary(String orderType, int items) =>
+      items == 1 ? '$orderType · بند واحد' : '$orderType · $items بند';
+  @override
+  String get ticketParked => 'تم تعليق الطلب. تجده في «المعلَّقة».';
 
   @override
   String modifierGroupFull(String group, int max) =>
@@ -4609,7 +6367,28 @@ final class ArStrings extends AppStrings {
   @override
   String get printAndNew => 'طباعة وبيع جديد';
   @override
-  String get receiptQueuedToast => 'أُرسلت الفاتورة إلى الطابعة الافتراضية.';
+  String get receiptPrintedToast => 'تمت طباعة الفاتورة.';
+  @override
+  String get receiptQueuedToast =>
+      'الطابعة لم تستجب. الفاتورة في قائمة الانتظار وستُطبع مع المحاولة '
+      'التالية.';
+  @override
+  String get receiptNotPrintedToast =>
+      'لم تتم الطباعة ولم يمكن حفظها في قائمة الانتظار — راجع الطابعة والاتصال '
+      'بالفرع.';
+  @override
+  String get receiptNoPrinterToast =>
+      'لا توجد طابعة معدَّة على هذه الكاشير، فلم تتم أي طباعة.';
+  @override
+  String get printerPaperWidth => 'عرض الورق';
+  @override
+  String get printerPaper80 => 'رول 80 مم (576 نقطة)';
+  @override
+  String get printerPaper58 => 'رول 58 مم (384 نقطة)';
+  @override
+  String get printerPaperWidthHelp =>
+      'قِس الرول نفسه لا الطابعة. الفاتورة المبنية على عرض خاطئ تُقتص من الحافة '
+      'ولا تُصغَّر لتناسب الورق.';
 
   @override
   String get pickATable => 'اختر طاولة';
@@ -4646,6 +6425,8 @@ final class ArStrings extends AppStrings {
   String get wrongPin => 'رقم سري خاطئ — حاول مرة أخرى';
   @override
   String enterPinFor(String name) => '$name · أدخل الرقم السري';
+  @override
+  String get enterYourPin => 'أدخل رقمك السري';
 
   @override
   String get pointOfSale => 'نقطة بيع';
@@ -4686,9 +6467,15 @@ final class ArStrings extends AppStrings {
   @override
   String get signIn => 'تسجيل الدخول';
   @override
+  String get switchUser => 'تبديل المستخدم';
+  @override
+  String get wrongUsernameOrPin =>
+      'اسم المستخدم أو الرقم السري خاطئ — حاول مرة أخرى';
+  @override
   String get openTheDrawer => 'افتح الدرج';
   @override
-  String get signInHelp => 'أدخل رقمك السري. ستُفتح الوردية باسمك.';
+  String get signInHelp =>
+      'اسمك ورقمك السري. ستُفتح الوردية باسمك.';
   @override
   String countTheDrawerHelp(String name) =>
       '$name · اعدّ ما في الدرج قبل أن تبدأ.';
@@ -4721,6 +6508,9 @@ final class ArStrings extends AppStrings {
   String get countTheDrawer => 'اعدّ الدرج وأدخل الإجمالي.';
   @override
   String get signInBeforeClosing => 'سجّل دخولك قبل تقفيل الوردية.';
+  @override
+  String closeShiftNotYours(String openedBy) =>
+      'تقفيل درج فتحه $openedBy';
   @override
   String get countedInDrawer => 'المعدود في الدرج';
   @override
@@ -4914,6 +6704,42 @@ final class ArStrings extends AppStrings {
   @override
   String get stepConnectionBlurb => 'إلى أين يرسل هذا الجهاز مبيعاته؟';
   @override
+  String get stepMainDevice => 'الجهاز الرئيسي';
+  @override
+  String get stepMainDeviceBlurb =>
+      'يبيع هذا الجهاز اللوحي من خلال الجهاز الرئيسي للمطعم.';
+  @override
+  String get stepChildAccountBlurb =>
+      'اسم مستخدم ورمز PIN لمدير، من الجهاز الرئيسي.';
+  @override
+  String get mainDeviceHelp =>
+      'لا يُفعَّل ولا يُنشأ شيء على هذا الجهاز اللوحي. الترخيص والمطعم '
+      'والموظفون والمنيو كلها تأتي من الجهاز الرئيسي — أدخل عنوانه وكلمة '
+      'مرور قاعدة بيانات نقطة البيع التي أُعدّ بها.';
+  @override
+  String get mainDeviceAddress => 'عنوان الجهاز الرئيسي';
+  @override
+  String get mainDeviceAddressHelp =>
+      'عنوانه على شبكة المطعم، وتجده في الإعدادات على الجهاز الرئيسي. حجز '
+      'العنوان على الراوتر يمنعه من التغيّر.';
+  @override
+  String get mainDeviceIsThisTablet =>
+      'هذا العنوان هو هذا الجهاز اللوحي نفسه. أدخل عنوان الجهاز الرئيسي على '
+      'شبكة المطعم، مثل 192.168.1.20.';
+  @override
+  String get connectToMainDevice => 'الاتصال بالجهاز الرئيسي';
+  @override
+  String mainDeviceLinked(String tenant) =>
+      'متصل بالجهاز الرئيسي لـ $tenant. يستخدم هذا الجهاز اللوحي ترخيصه.';
+  @override
+  String get mainDeviceHasNoLicence =>
+      'لم يشارك الجهاز الرئيسي ترخيصه بعد. افتح XOrder POS على الجهاز '
+      'الرئيسي — يشارك الترخيص عند وصوله إلى شاشة البدء — ثم اتصل مرة أخرى.';
+  @override
+  String allTerminalsTaken(int max) =>
+      'يغطي الترخيص $max أجهزة وكلها مسجّلة. أوقف أحدها من الجهاز الرئيسي، '
+      'أو اطلب ترخيصاً بعدد أكبر.';
+  @override
   String get stepAccount => 'تسجيل الدخول';
   @override
   String get stepFirstAdministrator => 'أول مدير';
@@ -5097,6 +6923,11 @@ final class ArStrings extends AppStrings {
   String get schemaAlreadyCurrent => 'البنية كانت محدّثة بالفعل.';
   @override
   String migrationsApplied(int count) => 'طُبّقت $count ترحيلة.';
+  @override
+  String schemaUpgradeFailed(String error) =>
+      'قاعدة البيانات أقدم من هذا الإصدار من XOrder POS وتعذّر تحديثها، لذلك '
+      'قد تتعطل بعض الشاشات. خذ نسخة احتياطية واتصل بالدعم. رسالة قاعدة '
+      'البيانات: $error';
   @override
   String restaurantSeeded(String restaurant) =>
       '$restaurant وأول فرع له صارا على هذا الجهاز.';
@@ -5596,6 +7427,15 @@ final class ArStrings extends AppStrings {
       'تعذر التحقق من الوردية المفتوحة. تحقق من اتصال قاعدة البيانات وحاول مرة أخرى.';
   @override
   String get resetTerminalConfirm => 'إعادة الضبط وبدء الإعداد';
+  @override
+  String get resetTerminalHint =>
+      'لجهاز ينتقل إلى خادم فرع آخر، أو فُقدت كلمة مرور قاعدة بياناته. '
+      'يبدأ الإعداد من جديد، وتبقى المبيعات المسجلة في قاعدة البيانات. '
+      'غير متاح أثناء وجود وردية مفتوحة.';
+  @override
+  String get paneTerminal => 'الجهاز';
+  @override
+  String get paneTerminalBlurb => 'إعداد هذا الجهاز، وإعادته من البداية';
 
   @override
   String get terminalRejectedTitle => 'لم يعد هذا الجهاز معروفًا لدى المنصة';
@@ -5626,6 +7466,15 @@ final class ArStrings extends AppStrings {
       'يرسلها شيء بعد زوال بيانات الاعتماد.';
   @override
   String get forceResetConfirm => 'حذف وإعادة الإعداد';
+  @override
+  String get forceResetSignInTitle => 'من يعيد ضبط هذا الجهاز؟';
+  @override
+  String get forceResetSignInHelp =>
+      'حذف إعداد جهاز يعمل يحتاج إلى شخص مخوّل بإدارة الأجهزة: '
+      'اسم المستخدم وكلمة مرور الإدارة.';
+  @override
+  String get forceResetSignInRefused =>
+      'اسم المستخدم وكلمة المرور هذان لا يسمحان بإعادة ضبط هذا الجهاز.';
 
   @override
   String get settings => 'الإعدادات';
@@ -5644,6 +7493,9 @@ final class ArStrings extends AppStrings {
   String get capCatalogView => 'عرض المنيو';
   @override
   String get capCatalogManage => 'إضافة وتعديل أصناف المنيو والأسعار';
+  @override
+  String get capPurchaseManage =>
+      'طلب المخزون وتسجيل التوريدات وسداد المورّدين';
   @override
   String get capStaffManage => 'إضافة موظفين وتحديد الأدوار وإعادة ضبط الأكواد';
   @override
@@ -5752,6 +7604,75 @@ final class ArStrings extends AppStrings {
       'لا يمكنك منح $capabilities لأنك لا تملكها بنفسك. اطلب ذلك ممن يملكها.';
 
   @override
+  String refusalManagedByPlatform(String what) => switch (what) {
+    'staff' =>
+      'من يعمل هنا يُضبط على XOrder لا على هذه النقطة. أي تعديل هنا سيُلغى '
+      'مع أول مزامنة.',
+    'catalogue' =>
+      'المنيو يُضبط على XOrder لا على هذه النقطة. أي تعديل هنا سيُلغى مع أول '
+      'مزامنة.',
+    'floor' => 'مخطط الصالة يُضبط على XOrder لا على هذه النقطة.',
+    'money' => 'قواعد المال تُضبط على XOrder لا على هذه النقطة.',
+    _ => 'هذا يُضبط على XOrder لا على هذه النقطة.',
+  };
+
+  @override
+  String refusalOwnerAlreadyExists(String ownerName) =>
+      '$ownerName هو المالك بالفعل، وللمطعم مالك واحد فقط. لنقل الملكية، عطّل '
+      '$ownerName أولاً، ثم اختر دور المالك للشخص الجديد.';
+  @override
+  String get refusalOwnerIsFixed =>
+      'لا يمكن تغيير دور المالك ولا صلاحياته. المالك يملك كل الصلاحيات أصلاً، '
+      'وأي صلاحية تُسحب منه قد تمنع الجميع من الدخول. لنقل الملكية، عطّل المالك '
+      'ثم اجعل شخصاً آخر هو المالك.';
+  @override
+  String get refusalOwnerIsNotAnExtraRole =>
+      'لا يمكن أن يكون المالك دوراً إضافياً. لتجعل شخصاً ما هو المالك، اختر '
+      'المالك دوراً أساسياً له.';
+
+  @override
+  String get refusalPurchaseAlreadySent =>
+      'أُرسل هذا الطلب إلى المورّد بالفعل، فلا يمكن إرساله مرة أخرى ولا '
+      'تعديله.';
+  @override
+  String get refusalPurchaseGoodsArrived =>
+      'وصلت بضاعة على هذا الطلب بالفعل، فلا يمكن تعديله.';
+  @override
+  String get refusalPurchaseCancelled =>
+      'أُلغي هذا الطلب، والطلب الملغى لا يُعاد فتحه. اكتب طلباً جديداً.';
+  @override
+  String get refusalPurchaseHasNoLines =>
+      'لا يوجد شيء على هذا الطلب بعد. أضف ما تطلبه قبل إرساله.';
+  @override
+  String get refusalPurchaseQuantityNotPositive =>
+      'كل سطر يحتاج كمية أكبر من صفر.';
+  @override
+  String get refusalPurchaseCannotCancelArrived =>
+      'وصلت بضاعة على هذا الطلب بالفعل، فلا يمكن إلغاؤه — فهي في المخزن وهذا '
+      'الطلب سجلها. ويبقى مفتوحاً لما تبقّى.';
+  @override
+  String get refusalPurchaseAllArrived =>
+      'وصل كل ما في هذا الطلب، فلم يبقَ شيء لإلغائه.';
+  @override
+  String get refusalPurchaseFollowsTheGoods =>
+      'يصبح الطلب مستلَماً باستلام البضاعة، لا باختيار ذلك.';
+  @override
+  String refusalStockHeldInAnotherUnit(
+    String item,
+    String quantity,
+    String heldUnit,
+    String askedUnit,
+  ) =>
+      'في المخزن $quantity $heldUnit من $item. المخزون لا يُحوَّل من وحدة إلى '
+      'أخرى، فما دام منه شيء فلا يُعدّ ولا يُستلم إلا بوحدة $heldUnit، لا '
+      'بوحدة $askedUnit.';
+
+  @override
+  String get staffComesFromPlatform =>
+      'من يعمل هنا يأتي من XOrder. ويمكنك مع ذلك ضبط ما يفعله كلٌّ منهم — '
+      'الأدوار والصلاحيات تعيش على هذه النقطة.';
+
+  @override
   String get riskLow => 'منخفض';
   @override
   String get riskMedium => 'متوسط';
@@ -5800,6 +7721,10 @@ final class ArStrings extends AppStrings {
   @override
   String get tenderTypesHint =>
       'ما تعرضه نقطة البيع عند الدفع، وأيّها ينتهي في الدرج.';
+  @override
+  String get tenderTypesComeFromPlatform =>
+      'على هذا الجهاز تأتي طرق الدفع من XOrder. أضفها أو عدّلها من لوحة '
+      'التحكم، وتصل إلى هنا مع المزامنة التالية.';
   @override
   String get tenderNew => 'طريقة دفع جديدة';
   @override
@@ -5882,6 +7807,416 @@ final class ArStrings extends AppStrings {
   String get currencyEgp => 'ج.م';
 
   @override
+  String get suppliers => 'المورّدون';
+  @override
+  String get supplierNew => 'مورّد جديد';
+  @override
+  String get supplierEdit => 'المورّد';
+  @override
+  String get supplierName => 'الاسم';
+  @override
+  String get supplierContact => 'جهة الاتصال';
+  @override
+  String get supplierEmail => 'البريد الإلكتروني';
+  @override
+  String get supplierPaymentTerms => 'مدة السداد بالأيام';
+  @override
+  String get supplierTermsHint =>
+      'صفر تعني الدفع عند التسليم. هذه مدة استحقاق الفاتورة، لا حد لقيمتها.';
+  @override
+  String get supplierCode => 'الرمز الذي تعرفه به';
+  @override
+  String get supplierNotes => 'ملاحظات';
+  @override
+  String get supplierActive => 'ما زلت تشتري منه';
+  @override
+  String get supplierActiveHint =>
+      'إيقافه يحفظ السجل ويمنع ظهوره في الأوامر الجديدة.';
+  @override
+  String get supplierCashOnDelivery => 'دفع عند التسليم';
+  @override
+  String supplierTermDays(int days) => '$days يوم';
+  @override
+  String get purchaseOrders => 'أوامر الشراء';
+  @override
+  String get purchaseOrderNew => 'أمر جديد';
+  @override
+  String get purchaseOrderEdit => 'الأمر';
+  @override
+  String get purchaseNoOrdersYet => 'لم يُطلب شيء بعد.';
+  @override
+  String get purchaseNoSuppliersYet =>
+      'لا مورّدين بعد. أضف من تشتري منهم ثم تأتي الأوامر.';
+  @override
+  String get purchaseNeedsASupplier =>
+      'أضف مورّدًا أولًا — لا بد أن يكون الأمر موجهًا إلى أحد.';
+  @override
+  String get purchaseNeedsALine =>
+      'لا شيء لطلبه. يحتاج السطر إلى اسم وكمية وسعر وحدة.';
+  @override
+  String get purchaseItem => 'الصنف';
+  @override
+  String get purchaseQty => 'الكمية';
+  @override
+  String get purchaseUnitCost => 'سعر الوحدة';
+  @override
+  String get purchaseAddLine => 'أضف سطرًا';
+  @override
+  String purchaseLineCount(int count) => count == 1 ? 'سطر واحد' : '$count أسطر';
+  @override
+  String get purchaseSend => 'إرسال';
+  @override
+  String get purchaseReceive => 'استلام';
+  @override
+  String purchaseReceiveInto(String reference) => 'استلام على $reference';
+  @override
+  String get purchaseReceiveHint =>
+      'كل خانة تبدأ بما هو مستحق. عدّل ما وصل منه أقل.';
+  @override
+  String get purchaseOrdered => 'المطلوب';
+  @override
+  String get purchaseOutstanding => 'المتبقي';
+  @override
+  String get purchaseArrived => 'الواصل';
+  @override
+  String purchaseBookIn(int lines) =>
+      lines == 1 ? 'تسجيل سطر واحد' : 'تسجيل $lines أسطر';
+  @override
+  String get statusDraft => 'مسودة';
+  @override
+  String get statusSent => 'مُرسل';
+  @override
+  String get statusPartReceived => 'استلام جزئي';
+  @override
+  String get statusReceived => 'مستلم';
+  @override
+  String get statusCancelled => 'ملغى';
+
+  @override
+  String get supplierInvoices => 'الفواتير';
+  @override
+  String get invoiceNew => 'إدخال فاتورة';
+  @override
+  String get invoiceEdit => 'الفاتورة';
+  @override
+  String get invoiceHint =>
+      'أدخل الإجمالي والضريبة كما هما مطبوعان. يُحتسب الصافي تلقائيًا.';
+  @override
+  String get invoiceNumber => 'رقم فاتورتهم';
+  @override
+  String get invoiceTotal => 'إجمالي الفاتورة';
+  @override
+  String get invoiceTax => 'منها ضريبة القيمة المضافة';
+  @override
+  String get invoiceTaxFromRate => 'أو استخرجها بنسبة';
+  @override
+  String get invoiceIssued => 'تاريخ الفاتورة';
+  @override
+  String get invoiceDue => 'الاستحقاق';
+  @override
+  String invoiceDueOnTerms(int days) =>
+      days == 0 ? 'الاستحقاق · عند التسليم' : 'الاستحقاق · $days يوم';
+  @override
+  String get invoiceAgainstOrder => 'على أي أمر شراء';
+  @override
+  String get invoiceNoOrder => 'بدون أمر';
+  @override
+  String get invoiceAgreesWithDelivery => 'مطابقة لما وصل.';
+  @override
+  String get invoiceBilledMore =>
+      'أكثر مما وصل. يستحق مراجعة المورّد قبل السداد.';
+  @override
+  String get invoiceBilledLess =>
+      'أقل مما وصل — الباقي على الأرجح في فاتورة أخرى.';
+  @override
+  String invoiceDaysLate(int days) =>
+      days == 1 ? 'متأخرة يومًا' : 'متأخرة $days يوم';
+  @override
+  String get invoiceNoneOutstanding => 'لا مديونية. كل الفواتير مسدَّدة.';
+  @override
+  String get invoiceOutstanding => 'المتبقي';
+  @override
+  String get invoiceVoid => 'إلغاء';
+  @override
+  String get invoiceVoidWhy => 'ما سبب إلغاء هذه الفاتورة؟';
+  @override
+  String get invoicePay => 'سداد';
+  @override
+  String get notes => 'ملاحظات';
+  @override
+  String paymentTo(String supplier) => 'سداد إلى $supplier';
+  @override
+  String get paymentDoesNotTouchTheDrawer =>
+      'لا توجد وردية مفتوحة على هذا الجهاز، فلن يتغيّر درج الكاشير. يُسجَّل '
+      'المبلغ كأنه مدفوع من المكتب.';
+  @override
+  String get paymentFromTheDrawer => 'صرف المبلغ من درج الكاشير';
+  @override
+  String get paymentFromTheDrawerHint =>
+      'يُسجَّل صرفًا على الوردية المفتوحة، حتى لا يظهر الدرج ناقصًا عند '
+      'التقفيل. اترك المفتاح مغلقًا إذا كان المبلغ مدفوعًا من خزنة المكتب.';
+  @override
+  String get paymentAgainst => 'مقابل';
+  @override
+  String get paymentAmount => 'المبلغ';
+  @override
+  String get paymentMethod => 'طريقة السداد';
+  @override
+  String get methodCash => 'نقدًا';
+  @override
+  String get methodTransfer => 'تحويل';
+  @override
+  String get methodCheque => 'شيك';
+  @override
+  String get methodCard => 'بطاقة';
+  @override
+  String get methodOther => 'أخرى';
+  @override
+  String get paymentReference => 'المرجع';
+  @override
+  String get paymentOnAccount => 'على الحساب';
+  @override
+  String get paymentOnAccountHint =>
+      'مبلغ على الحساب الجاري، لا يُسدِّد فاتورة معيّنة.';
+  @override
+  String get paymentPay => 'تسجيل السداد';
+  @override
+  String get paymentNeedsAnAmount => 'كم المبلغ المسدَّد؟';
+  @override
+  String paymentMoreThanTheBill(String room) =>
+      'المتبقي على تلك الفاتورة $room فقط. ضع الباقي على الحساب.';
+  @override
+  String get paymentsList => 'المدفوعات';
+  @override
+  String get paymentNonePaidYet => 'لم يُسدَّد شيء بعد.';
+  @override
+  String get paymentVoid => 'عكس';
+  @override
+  String get paymentVoidWhy => 'ما سبب عكس هذه الدفعة؟';
+  @override
+  String get reasonListEmpty =>
+      'لا توجد أسباب مضبوطة لهذا. أضفها من الإعدادات أولًا.';
+
+  @override
+  String get actStaffCreated => 'إضافة موظف';
+  @override
+  String get actStaffUpdated => 'تعديل بيانات موظف';
+  @override
+  String get actStaffDisabled => 'إيقاف موظف';
+  @override
+  String get actStaffReactivated => 'إعادة تنشيط موظف';
+  @override
+  String get actStaffPinReset => 'إعادة ضبط رمز الدخول';
+  @override
+  String get actStaffRoleChanged => 'تغيير دور موظف';
+  @override
+  String get actStaffGrantsChanged => 'تغيير صلاحيات موظف';
+  @override
+  String get actRoleCreated => 'إنشاء دور';
+  @override
+  String get actRoleUpdated => 'تعديل دور';
+  @override
+  String get actRoleDeleted => 'حذف دور';
+  @override
+  String get actPermissionOverridden => 'اعتماد إجراء لموظف';
+  @override
+  String get actShiftOpened => 'بدء وردية';
+  @override
+  String get actShiftClosed => 'إغلاق وردية';
+  @override
+  String get actReceiptReprinted => 'إعادة طباعة فاتورة';
+  @override
+  String get actCategoryCreated => 'إضافة تصنيف';
+  @override
+  String get actCategoryUpdated => 'تعديل تصنيف';
+  @override
+  String get actCategoryArchived => 'أرشفة تصنيف';
+  @override
+  String get actCategoryRestored => 'استعادة تصنيف';
+  @override
+  String get actProductCreated => 'إضافة صنف';
+  @override
+  String get actProductUpdated => 'تعديل صنف';
+  @override
+  String get actProductArchived => 'أرشفة صنف';
+  @override
+  String get actProductRestored => 'استعادة صنف';
+  @override
+  String get actProductRepriced => 'تغيير سعر';
+  @override
+  String get actMoneyConfigChanged => 'تعديل قواعد الضريبة والتقريب';
+  @override
+  String get actReceiptProfileChanged => 'تعديل بيانات الفاتورة';
+  @override
+  String get actTableCreated => 'إضافة طاولة';
+  @override
+  String get actTableUpdated => 'تعديل طاولة';
+  @override
+  String get actTableArchived => 'أرشفة طاولة';
+  @override
+  String get actTableRestored => 'استعادة طاولة';
+  @override
+  String get actPurchaseOrderStatusChanged => 'تحديث حالة أمر شراء';
+  @override
+  String get actStockReceived => 'تسجيل توريد';
+  @override
+  String get actSupplierSaved => 'إضافة أو تعديل مورّد';
+  @override
+  String get actSupplierInvoiceSaved => 'إدخال فاتورة مورّد';
+  @override
+  String get actSupplierInvoiceVoided => 'إلغاء فاتورة مورّد';
+  @override
+  String get actSupplierPaid => 'سداد لمورّد';
+  @override
+  String get actSupplierPaymentVoided => 'عكس سداد لمورّد';
+  @override
+  String get actServiceChargeSaved => 'تعديل رسم خدمة';
+  @override
+  String get actTenderTypeSaved => 'تعديل طريقة سداد';
+  @override
+  String get actOrderTypeSaved => 'تعديل نوع طلب';
+  @override
+  String get actTaxGroupSaved => 'تعديل نسبة ضريبة';
+  @override
+  String get actProductOptionsChanged => 'تعديل أحجام أو إضافات صنف';
+  @override
+  String get actOptionGroupSaved => 'تعديل مجموعة أحجام أو إضافات';
+  @override
+  String get actOptionGroupRepriced => 'تغيير سعر حجم أو إضافة';
+  @override
+  String get actOptionGroupDeleted => 'حذف مجموعة أحجام أو إضافات';
+  @override
+  String get fieldYes => 'نعم';
+  @override
+  String get fieldNo => 'لا';
+  @override
+  String get unitEach => 'قطعة';
+  @override
+  String get unitKilogram => 'كجم';
+  @override
+  String get unitGram => 'جم';
+  @override
+  String get unitLitre => 'لتر';
+  @override
+  String get unitMillilitre => 'مل';
+  @override
+  String get unitBox => 'صندوق';
+  @override
+  String get unitPack => 'عبوة';
+  @override
+  String get supplierOwes => 'مستحق';
+  @override
+  String get supplierOverdue => 'متأخر';
+
+  @override
+  String get fieldTaxGroup => 'نسبة الضريبة';
+  @override
+  String get fieldTaxGroupHint =>
+      'اتركها على الافتراضية إلا إذا كان الصنف يخضع لنسبة مختلفة — زجاجة مياه '
+      'بنسبة صفر مثلًا.';
+  @override
+  String get fieldTaxGroupDefault => 'الافتراضية';
+  @override
+  String get taxGroups => 'النسب المسمّاة';
+  @override
+  String get taxGroupsHint =>
+      'نسبة لكل نوع مما تبيعه. يُحتسب على الصنف نسبة مجموعته، أو النسبة '
+      'الافتراضية أدناه إن لم يذكر مجموعة.';
+  @override
+  String get taxGroupsFallback =>
+      'لا توجد نسب مضبوطة — تُحتسب النسبة الواحدة أعلاه على كل الأصناف، بما فيها '
+      'ما تبيعه بنسبة صفر.';
+  @override
+  String get taxGroupNew => 'نسبة جديدة';
+  @override
+  String get taxGroupEdit => 'النسبة';
+  @override
+  String get taxGroupHint =>
+      'النسبة صفر والإعفاء كلاهما ٠٪ وهما مختلفان في الإقرار الضريبي، والاسم هو '
+      'المكان الوحيد الذي يظهر فيه هذا الفرق.';
+  @override
+  String get taxGroupName => 'الاسم كما يعرفه محاسبك';
+  @override
+  String get taxGroupNeedsAName => 'النسبة تحتاج اسمًا.';
+  @override
+  String get taxGroupRate => 'النسبة';
+  @override
+  String get taxGroupRateNotValid => 'النسبة رقم بين ٠ و ١٠٠.';
+  @override
+  String get taxGroupDefault => 'النسبة الافتراضية';
+  @override
+  String get taxGroupDefaultHint =>
+      'ما يُحتسب على الصنف الذي لا يذكر نسبة خاصة به. مجموعة واحدة فقط تكون '
+      'الافتراضية، وجعل هذه افتراضية يُلغيها عن الأخرى.';
+  @override
+  String get taxGroupIsDefault => 'الافتراضية';
+  @override
+  String get taxGroupActive => 'قيد الاستخدام';
+  @override
+  String get taxGroupActiveHint =>
+      'إيقافها يُخرجها من الخدمة، وتعود الأصناف التي عليها إلى النسبة '
+      'الافتراضية — فراجع ما عليها أولًا.';
+  @override
+  String get orderTypes => 'أنواع الطلبات';
+  @override
+  String get orderTypesHint => 'ما يحتاجه كل نوع من الطلبات قبل أن يُحاسب.';
+  @override
+  String get orderTypesComeFromPlatform =>
+      'هذه تأتي من XOrder على هذا الجهاز. يمكنك رؤيتها، والمنصة تضبطها.';
+  @override
+  String get orderTypeName => 'الاسم الذي تستخدمه';
+  @override
+  String get orderTypeNeedsAName => 'نوع الطلب يحتاج اسمًا.';
+  @override
+  String get orderTypeRequiresTable => 'له طاولة';
+  @override
+  String get orderTypeRequiresTableHint =>
+      'يفعّل مخطط الصالة لهذا النوع. شغّله لخدمة الحفلات التي تُجلس العملاء، أو '
+      'لمسارات السيارات المرقّمة.';
+  @override
+  String get orderTypeRequiresCustomer => 'يحتاج عميلًا';
+  @override
+  String get orderTypeRequiresCustomerHint =>
+      'لا شيء يطلبه بعد — ملف العملاء قيد الإنشاء — ويُحفظ الآن ليكون صحيحًا حين '
+      'يصل.';
+  @override
+  String get orderTypeRequiresAddress => 'يحتاج عنوانًا';
+  @override
+  String get orderTypeRequiresAddressHint => 'للدليفري، وللدليفري وحده.';
+  @override
+  String get orderTypeOffered => 'متاح هنا';
+  @override
+  String get orderTypeOfferedHint =>
+      'إيقافه يُخرجه من الكاشير. الطلبات السابقة تحتفظ به.';
+  @override
+  String get orderTypeNotOffered => 'غير متاح';
+  @override
+  String get orderTypeChipTable => 'طاولة';
+  @override
+  String get orderTypeChipCustomer => 'عميل';
+  @override
+  String get orderTypeChipAddress => 'عنوان';
+  @override
+  String get paneTaxes => 'الضريبة';
+  @override
+  String get paneTaxesHint => 'النسب التي يحتسبها المطعم، وعلى ماذا.';
+  @override
+  String get areaPeople => 'الأفراد';
+  @override
+  String get areaMenu => 'المنيو';
+  @override
+  String get areaMoney => 'المال';
+  @override
+  String get areaBuying => 'المشتريات';
+  @override
+  String get areaCompliance => 'الالتزام الضريبي';
+  @override
+  String get areaSystem => 'النظام';
+  @override
+  String get manage => 'الإدارة';
+  @override
+  String get manageMenuTooltip => 'افتح أحد أقسام الإدارة';
+  @override
   String get backToTill => 'رجوع إلى الكاشير';
   @override
   String get paneStaff => 'الموظفون';
@@ -5892,6 +8227,11 @@ final class ArStrings extends AppStrings {
   @override
   String get paneMenuBlurb => 'الأقسام والأصناف وأسعارها';
   @override
+  String get panePurchasing => 'المشتريات';
+  @override
+  String get panePurchasingBlurb =>
+      'من تشتري منهم، وما طلبته، وتسجيل ما يصل.';
+  @override
   String get paneRoles => 'الأدوار';
   @override
   String get paneRolesBlurb => 'الصلاحيات وراء كل مسمى وظيفي';
@@ -5899,6 +8239,154 @@ final class ArStrings extends AppStrings {
   String get paneActivity => 'السجل';
   @override
   String get paneActivityBlurb => 'ما الذي تغيّر، وعلى يد من';
+  // ── Backup and restore ────────────────────────────────────────────
+  @override
+  String get paneBackup => 'النسخ الاحتياطي';
+  @override
+  String get paneBackupBlurb => 'نسخ من قاعدة البيانات، واستعادة إحداها';
+  @override
+  String get backupSameDiskWarning =>
+      'تُحفظ النسخ على قرص هذا الجهاز نفسه. هذا ينجّيك من تعديل خاطئ أو جدول '
+      'محذوف، ولا ينجّيك من عطل القرص أو سرقة الجهاز أو حريق أو برنامج يشفّر كل '
+      'ملف يستطيع هذا الحساب الكتابة فيه — وهذه هي الأمور التي تحدث فعلاً. '
+      'انسخ أحدث نسخة إلى ذاكرة USB بانتظام — «انسخ إلى…» بجانب أي نسخة '
+      'موثّقة — واحتفظ بها في مكان غير هذا الجهاز.';
+  @override
+  String get backupToolsMissing =>
+      'أدوات PostgreSQL غير موجودة على هذا الجهاز، فلا يمكن أخذ نسخة احتياطية '
+      'ولا استعادة واحدة.';
+  @override
+  String get backupToolsMissingHelp =>
+      'ثبّت أدوات PostgreSQL — pg_dump و pg_restore — من postgresql.org ثم '
+      'افتح هذه الشاشة من جديد.';
+  @override
+  String get backupSearchedIn => 'تم البحث في';
+  @override
+  String get backupDestination => 'مكان حفظ النسخ';
+  @override
+  String get backupDestinationHint =>
+      'مجلد على هذا الجهاز. يُنشأ تلقائياً إن لم يكن موجوداً.';
+  @override
+  String get backupTakeNow => 'خذ نسخة الآن';
+  @override
+  String get backupTaking => 'جارٍ أخذ النسخة…';
+  @override
+  String get backupAutomatic => 'خذ نسخة عند إقفال يوم العمل';
+  @override
+  String get backupAutomaticHint =>
+      'مفعّل افتراضياً. النسخة التي لا يتذكّر أحد أخذها ليست نسخة احتياطية.';
+  @override
+  String get backupHistory => 'النسخ المأخوذة';
+  @override
+  String get backupNoneYet => 'لم تُؤخذ أي نسخة من قاعدة البيانات حتى الآن.';
+  @override
+  String get backupNoVerifiedCopy =>
+      'لا توجد نسخة تم التحقق منها. هذا المطعم بلا نسخة احتياطية.';
+  @override
+  String backupLastVerified(String when) => 'آخر نسخة موثّقة: $when';
+  @override
+  String backupStale(int days) => days == 1
+      ? 'مضى على آخر نسخة موثّقة يوم واحد.'
+      : 'مضى على آخر نسخة موثّقة $days يوماً.';
+  @override
+  String get backupOutcomeVerified => 'موثّقة';
+  @override
+  String get backupOutcomeUnverified => 'ليست نسخة احتياطية';
+  @override
+  String get backupOutcomeFailed => 'فشلت';
+  @override
+  String get backupTriggerManual => 'يدوي';
+  @override
+  String get backupTriggerDayClose => 'إقفال اليوم';
+  @override
+  String get backupFailureToolsMissing =>
+      'أداة pg_dump غير مثبّتة على هذا الجهاز.';
+  @override
+  String get backupFailureDestinationUnwritable =>
+      'تعذّرت الكتابة في المجلد.';
+  @override
+  String get backupFailureDumpRefused => 'رفضت PostgreSQL إنتاج النسخة.';
+  @override
+  String get backupFailureArchiveUnreadable =>
+      'كُتب الملف ولم تنجح قراءته مرة أخرى.';
+  @override
+  String get backupFailureArchiveIncomplete =>
+      'تنقص الملفَ جداولُ لا يستطيع المطعم العمل بدونها.';
+  @override
+  String backupTablesFound(int count) =>
+      count == 1 ? 'جدول واحد' : '$count جدولاً';
+  @override
+  String get backupRestoreAction => 'استعادة…';
+  @override
+  String backupRestoreTitle(String when) =>
+      'هل تستبدل قاعدة البيانات بالنسخة المأخوذة $when؟';
+  @override
+  String get backupRestoreBlocked => 'لا يمكن الاستعادة والكاشير ما زال يعمل.';
+  @override
+  String restoreBlockerOpenShifts(int count) => count == 1
+      ? 'كاشير واحد ما زالت ورديته مفتوحة'
+      : '$count كاشيرات ما زالت ورديّاتها مفتوحة';
+  @override
+  String restoreBlockerOpenDay(int count) => 'يوم العمل لم يُقفل بعد';
+  @override
+  String backupRestoreOrdersLost(int count, String value) => count == 1
+      ? 'سيضيع طلب واحد سُجّل بعد ذلك الوقت، بقيمة $value.'
+      : 'سيضيع $count طلباً سُجّلت بعد ذلك الوقت، بقيمة $value.';
+  @override
+  String get backupRestoreEverythingElseLost =>
+      'ويضيع معها كل ما سُجّل بعد ذلك — الورديات وحركات النقدية وتغييرات '
+      'الموظفين وسجل التدقيق.';
+  @override
+  String get backupRestoreNoWayBack =>
+      'لا رجوع بعدها. لا شيء هنا يحتفظ بنسخة مما سيُستبدل.';
+  @override
+  String get backupRestoreConfirm => 'استبدل قاعدة البيانات';
+  @override
+  String get backupRestoreKeep => 'أبقِ قاعدة البيانات';
+  @override
+  String get backupRestoreDone =>
+      'تم استبدال قاعدة البيانات. أغلق البرنامج ثم شغّله من جديد.';
+  @override
+  String backupRestoreFailed(String detail) =>
+      'لم تكتمل الاستعادة ولم يتغيّر شيء. $detail';
+  @override
+  String get backupAccount => 'حساب النسخ الاحتياطي';
+  @override
+  String get backupAccountHint =>
+      'يدخل النسخ الاحتياطي إلى PostgreSQL باسم pos_backup، وهو حساب للقراءة '
+      'فقط أُنشئ عند تثبيت PostgreSQL. أدخل كلمة مروره مرة واحدة؛ تُحفظ على '
+      'هذا الجهاز كي تعمل نسخة إقفال اليوم دون أن يكون أحد مسجّلاً هنا.';
+  @override
+  String get backupAccountStored => 'كلمة المرور محفوظة على هذا الجهاز.';
+  @override
+  String get backupAccountMissing => 'لم تُحفظ كلمة مرور على هذا الجهاز بعد.';
+  @override
+  String get backupAccountSaved => 'تم الحفظ. ستستخدمها النسخة القادمة.';
+  @override
+  String get backupCopyAction => 'انسخ إلى…';
+  @override
+  String backupCopyDone(String path) =>
+      'نُسخت إلى $path وتمت مطابقتها مع الأصل.';
+  @override
+  String backupCopyFailed(String detail) => 'لم تتم النسخ. $detail';
+  @override
+  String get backupRestoreFromFile => 'استعادة من ملف…';
+  @override
+  String get backupFileGone =>
+      'لم تعد على هذا الجهاز — يُحتفظ هنا بأحدث 14 نسخة فقط.';
+  @override
+  String get backupOpenPane => 'افتح النسخ الاحتياطي';
+  @override
+  String get backupDayCloseWorking => 'جارٍ إقفال اليوم وأخذ نسخة احتياطية…';
+  @override
+  String get backupDayCloseFailed =>
+      'تم إقفال اليوم. لم تنجح النسخة الاحتياطية التلقائية — افتح الإدارة ثم '
+      'النسخ الاحتياطي لمعرفة السبب.';
+  @override
+  String get actBackupTaken => 'أخذ نسخة احتياطية';
+  @override
+  String get actBackupRestored => 'استعاد قاعدة البيانات من نسخة احتياطية';
+  // ── end of the backup block ────────────────────────────────────
   @override
   String get pinCannotOpenManagement => 'هذا الكود لا يفتح الإدارة.';
   @override
@@ -5911,6 +8399,13 @@ final class ArStrings extends AppStrings {
       '$name غير مصرّح له بإدارة الموظفين.';
   @override
   String get backOfficePassword => 'كلمة مرور الإدارة';
+  @override
+  String get backOfficeSignInHelp =>
+      'سجّل الدخول باسم مستخدم المسؤول وكلمة مرور الإدارة — كلمة مرور المسؤول '
+      'التي حُددت عند تثبيت XOrder POS.';
+  @override
+  String get backOfficeSignInRefused =>
+      'اسم المستخدم وكلمة المرور هذان لا يفتحان الإدارة.';
   @override
   String backOfficePasswordHelp(String name) =>
       'أنت داخل باسم $name. تعديل الموظفين والأدوار والمنيو يعمل على حساب '
@@ -5941,6 +8436,119 @@ final class ArStrings extends AppStrings {
   String get notSaved => 'لم يُحفظ';
   @override
   String get close => 'إغلاق';
+  @override
+  String get settingsOrders => 'الطلبات والفواتير';
+  @override
+  String get settingsPrinter => 'الطابعة ودرج النقدية…';
+  @override
+  String get settingsAbout => 'حول XOrder POS';
+  @override
+  String get printerSettingsTitle => 'الطابعة ودرج النقدية';
+  @override
+  String get printerNoneChosen =>
+      'لم تُختر طابعة. ابحث عن الطابعات على هذه الشبكة ثم اختر واحدة.';
+  @override
+  String get aboutVersion => 'الإصدار';
+  @override
+  String get aboutMode => 'الوضع';
+  @override
+  String get aboutTerminalId => 'معرّف الجهاز';
+  @override
+  String get aboutDatabase => 'قاعدة البيانات';
+  @override
+  String get receiptPreviewAction => 'معاينة';
+  @override
+  String get receiptPreviewNote =>
+      'معاينة فقط — لا شيء يُطبع ولا شيء يُسجَّل.';
+  @override
+  String get areaInventory => 'المخزون';
+  @override
+  String get paneUnits => 'الوحدات';
+  @override
+  String get paneUnitsBlurb => 'الوحدات التي يُعدّ ويُشترى بها المخزون';
+  @override
+  String get unitNew => 'إضافة وحدة';
+  @override
+  String get unitEdit => 'تعديل الوحدة';
+  @override
+  String get unitNameEn => 'الاسم';
+  @override
+  String get unitNameAr => 'الاسم بالعربية';
+  @override
+  String get unitCode => 'الرمز';
+  @override
+  String get unitCodeHelp =>
+      'قصير، ولا يتغيّر بعد الحفظ — تحفظه سطور المشتريات. حروف إنجليزية صغيرة '
+      'وأرقام: kg، tray، box6.';
+  @override
+  String get unitEtaCode => 'رمز الوحدة لدى مصلحة الضرائب';
+  @override
+  String get unitEtaCodeHelp =>
+      'ما تذكره الإيصالات الإلكترونية كوحدة بيع: EA قطعة، KGM كيلوجرام، '
+      'LTR لتر.';
+  @override
+  String get unitAllowsFraction => 'تقبل الكسور';
+  @override
+  String get unitAllowsFractionHelp =>
+      '١٢٫٥ كيلوجرام كمية حقيقية؛ ١٢٫٥ علبة ليست كذلك.';
+  @override
+  String get unitFractionChip => 'كسور';
+  @override
+  String get unitActive => 'مستخدمة';
+  @override
+  String get unitRetired => 'غير مستخدمة';
+  @override
+  String get actUnitSaved => 'حفظ وحدة';
+  @override
+  String get paneItems => 'أصناف المخزون';
+  @override
+  String get paneItemsBlurb => 'ما تشتريه وتعدّه — على المنيو أو لا';
+  @override
+  String get itemNew => 'إضافة صنف';
+  @override
+  String get itemEdit => 'تعديل الصنف';
+  @override
+  String get itemName => 'الاسم';
+  @override
+  String get itemNameAr => 'الاسم بالعربية';
+  @override
+  String get itemUnit => 'يُعدّ بـ';
+  @override
+  String get itemOnMenu => 'على المنيو';
+  @override
+  String get itemOnMenuHint =>
+      'اسمه وسعره يُحدَّدان في المنيو؛ هنا تُحدَّد وحدة عدّه فقط.';
+  @override
+  String get itemsEmpty =>
+      'لا شيء يُعدّ في المخزون بعد. أضف ما تشتريه — فراخ، زيت، غاز.';
+  @override
+  String get fieldTrackStock => 'تتبّع المخزون';
+  @override
+  String get fieldTrackStockHint => 'يُعدّ عند الشراء وتعرف كم تبقّى منه.';
+  @override
+  String get actStockItemSaved => 'حفظ صنف مخزون';
+  @override
+  String get paneStock => 'المخزون المتاح';
+  @override
+  String get paneStockBlurb =>
+      'كم يوجد في هذا الفرع من كل صنف يُعدّ، وكم قيمته';
+  @override
+  String get stockColumnItem => 'الصنف';
+  @override
+  String get stockColumnOnHand => 'المتاح';
+  @override
+  String get stockColumnAvgCost => 'متوسط التكلفة';
+  @override
+  String get stockColumnValue => 'القيمة';
+  @override
+  String stockTotalValue(String amount) => 'قيمة المخزون: $amount';
+  @override
+  String get stockEmpty =>
+      'لا شيء يُعدّ بعد. أضف ما تشتريه في أصناف المخزون، ثم استلم توريدة.';
+  @override
+  String get purchaseUnit => 'الوحدة';
+  @override
+  String purchaseAddAsItem(String name) => 'إضافة «$name» كصنف جديد';
   @override
   String get you => 'أنت';
   @override
@@ -6055,6 +8663,192 @@ final class ArStrings extends AppStrings {
   String get priceIsNotANumber => 'السعر ليس رقماً.';
   @override
   String get offerPriceIsNotANumber => 'سعر العرض ليس رقماً.';
+
+  @override
+  String get extrasTitle => 'مكتبة الإضافات';
+  @override
+  String get extrasSubtitle =>
+      'مجموعات خيارات قابلة لإعادة الاستخدام يمكنك ربطها بأي صنف. تعديل أي '
+      'مجموعة يحدّثها في كل مكان تُستخدم فيه.';
+  @override
+  String get extrasNew => 'إضافة';
+  @override
+  String get extrasEdit => 'تعديل الإضافة';
+  @override
+  String get extrasNone =>
+      'لا توجد إضافات مشتركة بعد. أنشئ واحدة لإعادة استخدامها عبر الأصناف.';
+  @override
+  String extrasUsedBy(int n) => '$n صنف';
+  @override
+  String get extrasNotUsed => 'غير مستخدمة بعد';
+  @override
+  String extrasDeleteWarning(int n) =>
+      'حذف هذه الإضافة؟ ستتم إزالتها من $n صنف يستخدمها حالياً.';
+  @override
+  String extrasOptionsSummary(int n) => '$n خيار';
+  @override
+  String get extrasApplyTo => 'تنطبق على';
+  @override
+  String get extrasScopeItems => 'أصناف محددة';
+  @override
+  String get extrasScopeItemsHint => 'اربطها بالأصناف من صفحة كل صنف.';
+  @override
+  String get extrasScopeCategories => 'تصنيفات';
+  @override
+  String get extrasScopeAll => 'كل الأصناف';
+  @override
+  String get extrasPickCategories => 'اختر التصنيفات';
+  @override
+  String extrasAppliesCategories(int n) => '$n تصنيف';
+  @override
+  String get extrasLibraryNameEn => 'الاسم في قائمتك (إنجليزي)';
+  @override
+  String get extrasLibraryNameAr => 'الاسم في قائمتك (عربي)';
+  @override
+  String get extrasLibraryNameHint =>
+      'به تجد هذه المجموعة هنا. لا يراه إلا أنت.';
+  @override
+  String get extrasMenuNameEn => 'عنوان المنيو (إنجليزي)';
+  @override
+  String get extrasMenuNameAr => 'عنوان المنيو (عربي)';
+  @override
+  String get extrasMenuNamePlaceholder => 'مثال: اختر الحجم';
+  @override
+  String get extrasMenuNameHint =>
+      'ما يقرأه العميل فوق الاختيارات. اتركه فارغاً لاستخدام الاسم بالأعلى.';
+  @override
+  String extrasShownAs(String name) => 'في المنيو: $name';
+  @override
+  String get itemOptions => 'الخيارات والإضافات';
+  @override
+  String get itemNoOptions =>
+      'لا توجد مجموعات خيارات. أضف واحدة للأحجام أو الإضافات أو "بدون…".';
+  @override
+  String get itemAddGroup => 'إضافة مجموعة';
+  @override
+  String get itemGroupNameEn => 'اسم المجموعة (مثال: الحجم)';
+  @override
+  String get itemGroupNameAr => 'اسم المجموعة';
+  @override
+  String get itemRequired => 'مطلوب';
+  @override
+  String get itemVariant => 'الحجم / النوع';
+  @override
+  String get itemVariantHint =>
+      'كل خيار يحدد سعر الصنف (صغير/وسط/كبير). الاختيار مطلوب، وأول حجم في '
+      'القائمة هو الافتراضي الذي تفتح عليه القائمة.';
+  @override
+  String get itemPricedBySize =>
+      'سعر هذا الصنف يأتي من الأحجام بالأسفل. السعر بالأعلى يعكس الحجم '
+      'الافتراضي — أول حجم في القائمة — فعدّل ذلك الحجم لتغييره.';
+  @override
+  String get itemDefaultSize => 'افتراضي';
+  @override
+  String get itemOptionDiscount => 'عرض';
+  @override
+  String get itemOptionDiscountHint =>
+      'سعر عرض اختياري لهذا الحجم. يظهر للعميل مع شطب السعر الأصلي. يجب أن '
+      'يكون أقل من السعر.';
+  @override
+  String get itemMaxSelect => 'أقصى اختيار';
+  @override
+  String get itemOptionEn => 'الخيار (إنجليزي)';
+  @override
+  String get itemOptionAr => 'الخيار';
+  @override
+  String get itemAddOption => 'إضافة خيار';
+  @override
+  String get itemAddFromLibrary => 'إضافة من المكتبة';
+  @override
+  String get itemFromLibrary => 'من المكتبة';
+  @override
+  String get itemLibraryEmpty =>
+      'لا توجد إضافات مشتركة بعد. أنشئها من صفحة الإضافات.';
+  @override
+  String get itemManageLibrary => 'إدارة الإضافات';
+  @override
+  String get deleteLabel => 'حذف';
+  @override
+  String get deleteConfirmGeneric => 'هل أنت متأكد من الحذف؟';
+  @override
+  String get savingLabel => 'جارٍ الحفظ…';
+
+  @override
+  String get refusalGroupNameMissing =>
+      'مجموعة الخيارات تحتاج إلى اسم — به تجدها مرة أخرى.';
+  @override
+  String get refusalGroupScopeNeedsLibrary =>
+      'مجموعات المكتبة وحدها يمكن أن تنطبق على تصنيفات كاملة أو على كل '
+      'الأصناف.';
+  @override
+  String get refusalGroupCategoriesMissing =>
+      'المجموعة المخصصة لتصنيفات محددة تحتاج إلى تصنيف واحد على الأقل.';
+  @override
+  String refusalGroupChoicesOutOfRange(int max) =>
+      'تسمح المجموعة بعدد اختيارات من 1 إلى $max.';
+  @override
+  String get refusalGroupNegativeCounts =>
+      'لا يمكن أن يقل الحد الأدنى للاختيارات أو عدد الخيارات المجانية عن '
+      'صفر.';
+  @override
+  String get refusalGroupNeedsMoreThanAllows =>
+      'لا يمكن أن تطلب المجموعة اختيارات أكثر مما تسمح به.';
+  @override
+  String refusalGroupTooManyOptions(int max) =>
+      'تتسع المجموعة لـ $max خياراً على الأكثر.';
+  @override
+  String get refusalGroupRequiredButEmpty =>
+      'المجموعة المطلوبة تحتاج إلى خيار واحد على الأقل، وإلا فلن يمكن بيع '
+      'الصنف الذي هي عليه أبداً.';
+  @override
+  String get refusalOptionNameMissing => 'كل خيار يحتاج إلى اسم.';
+  @override
+  String get refusalOptionTwice => 'الخيار نفسه موجود في هذه المجموعة مرتين.';
+  @override
+  String get refusalOptionNegativePrice =>
+      'لا يمكن أن يكون سعر الخيار أقل من صفر.';
+  @override
+  String get refusalOptionSaleNotBelowPrice =>
+      'سعر العرض يجب أن يكون أقل من السعر العادي للحجم.';
+  @override
+  String get refusalGroupTwice => 'المجموعة نفسها موجودة على هذا الصنف مرتين.';
+  @override
+  String get refusalGroupTypedOnAnotherItem =>
+      'هذه المجموعة أُنشئت على صنف آخر. أضفها إلى المكتبة لاستخدامها على أكثر '
+      'من صنف.';
+  @override
+  String refusalGroupNotInLibrary(String name) =>
+      '«$name» أُنشئت على صنف واحد. أضفها إلى المكتبة لاستخدامها على أكثر من '
+      'صنف.';
+  @override
+  String refusalGroupAlreadyReaches(String name) =>
+      '«$name» تصل إلى هذا الصنف تلقائياً بالفعل، فلا يمكن إضافتها إليه مرة '
+      'أخرى.';
+  @override
+  String refusalGroupSecondSizes(int count, String names) =>
+      'للصنف مجموعة أحجام واحدة، وهذا سيعطيه $count: $names. أبقِ واحدة.';
+  @override
+  String refusalGroupWouldGiveSecondSizes(String item) =>
+      '«$item» لديه أحجام بالفعل. للصنف مجموعة أحجام واحدة، وهذه المجموعة '
+      'ستعطيه مجموعة ثانية — أزل الأخرى منه أولاً.';
+  @override
+  String get refusalGroupBelongsToOneItem =>
+      'هذه المجموعة تخص صنفاً واحداً. عدّلها من الصنف نفسه.';
+  @override
+  String get refusalGroupBelongsToLibrary =>
+      'هذه المجموعة في المكتبة. عدّلها هناك، وسيتبعها كل صنف يستخدمها.';
+  @override
+  String get refusalGroupForeignOption => 'أحد هذه الخيارات يخص مجموعة أخرى.';
+  @override
+  String get refusalGroupForeignCategory =>
+      'أحد هذه التصنيفات ليس في هذا المنيو.';
+
+  @override
+  String get refusalItemNameMissing => 'الصنف يحتاج إلى اسم.';
+  @override
+  String get refusalOfferAbovePrice => 'سعر العرض أعلى من السعر العادي.';
+  @override
+  String get refusalCategoryNameMissing => 'التصنيف يحتاج إلى اسم.';
 }
 
 /// Makes [AppStrings] reachable from a [BuildContext], and tells Flutter which

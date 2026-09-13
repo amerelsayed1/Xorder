@@ -15,6 +15,7 @@ import 'package:xorder_pos/domain/models/ticket.dart';
 import 'package:xorder_pos/domain/repositories/admin_repositories.dart';
 import 'package:xorder_pos/domain/repositories/repositories.dart';
 import 'package:xorder_pos/features/receipt/receipt_data.dart';
+import 'package:xorder_pos/features/receipt/receipt_printing.dart';
 import 'package:xorder_pos/features/receipt/reprint_dialog.dart';
 
 /// Reprinting a receipt.
@@ -91,7 +92,7 @@ void main() {
     view.resetDevicePixelRatio();
   });
 
-  Future<(FakeAuditRepository, bool? Function())> open(
+  Future<(FakeAuditRepository, PrintOutcome? Function())> open(
     WidgetTester tester, {
     OrderRecordDetail? on,
     List<Refund> refunds = const [],
@@ -99,7 +100,7 @@ void main() {
     String locale = 'en',
   }) async {
     final audit = FakeAuditRepository()..failWith = auditFailsWith;
-    bool? printed;
+    PrintOutcome? printed;
 
     await tester.pumpWidget(
       ProviderScope(
@@ -241,7 +242,10 @@ void main() {
       await tester.tap(find.text('Print'));
       await tester.pumpAndSettle();
 
-      expect(printed(), isTrue);
+      // No printer is configured in this harness, so the honest outcome is
+      // "nothing was printed" — which is the point of the change: the dialog
+      // used to answer `true` here and the caller said "Reprint sent".
+      expect(printed(), PrintOutcome.noPrinter);
       expect(audit.entries, hasLength(1));
 
       final row = audit.entries.single;
@@ -259,8 +263,9 @@ void main() {
       await tester.tap(find.text('Cancel'));
       await tester.pumpAndSettle();
 
-      expect(printed(), isFalse);
+      expect(printed(), isNull);
       expect(audit.entries, isEmpty);
+      expect(find.text('Print'), findsNothing, reason: 'the dialog closed');
     });
 
     testWidgets('an unwritable ledger means nothing prints', (tester) async {
@@ -274,7 +279,8 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(audit.entries, isEmpty);
-      expect(printed(), isNull, reason: 'the dialog is still open');
+      expect(printed(), isNull);
+      expect(find.text('Print'), findsOneWidget, reason: 'the dialog is still open');
       expect(
         find.textContaining('nothing was printed'),
         findsOneWidget,

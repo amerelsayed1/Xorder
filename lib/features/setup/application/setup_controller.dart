@@ -5,6 +5,7 @@ import 'package:uuid/uuid.dart';
 import '../../../app/labels.dart';
 import '../../../app/providers.dart';
 import '../../../core/config/deployment.dart';
+import '../../../core/config/printer_config.dart';
 import '../../../core/config/terminal_config.dart';
 import '../../../data/cloud/bootstrap_bundle.dart';
 import '../../../data/cloud/bootstrap_seeder.dart';
@@ -12,7 +13,10 @@ import '../../../data/postgres/local_bootstrap.dart';
 import '../../../domain/models/permissions.dart';
 import '../../../data/postgres/pos_database.dart';
 import '../../licensing/data/licence_service.dart';
+import '../../licensing/data/site_licence.dart';
 import '../../licensing/domain/license.dart';
+import '../../licensing/domain/license_verifier.dart'
+    show LicenseFile, LicenseVerifier;
 import '../domain/setup_state.dart';
 
 const _uuid = Uuid();
@@ -57,14 +61,43 @@ class SetupController extends Notifier<SetupDraft> {
     // a restart mid-setup from asking for a licence this machine already holds.
     Future.microtask(_restoreInstalledLicence);
 
-    final saved = ref.watch(terminalBootProvider).config;
+    // The seed, not the boot snapshot: a reset deletes `config.json` mid-process
+    // and the wizard must reopen as a fresh install, not as the terminal that
+    // was just cleared. Seeding from the dead config is what made a till refuse
+    // the next restaurant's licence for belonging to the wrong tenant.
+    final saved = ref.watch(terminalSeedProvider).config;
     if (saved == null) {
+      final profile = ref.read(terminalProfileProvider);
+      // Decided by the device, before the first screen — a tablet is a child
+      // of the main device and opens on finding it. See [TerminalRole].
+      final role = ref.read(deviceRoleProvider);
+      final child = role == TerminalRole.child;
+
       return SetupDraft(
-        installationId: ref.read(terminalProfileProvider).installationId,
+        step: child ? SetupStep.deployment : SetupStep.licence,
+        // Blank rather than localhost for a child: its database is never on
+        // the tablet, and a pre-filled `localhost` is an answer it must not
+        // be able to accept by pressing on.
+        deployment: DeploymentConfig.unconfigured.copyWith(
+          role: role,
+          databaseHost: child ? '' : null,
+        ),
+        // A reset keeps this machine's identity on purpose — the licence is
+        // pinned to it — and once the file is gone the profile is the only
+        // place still holding it. Minting a new one here would unpin the
+        // licence this till already has.
+        terminalId: profile.terminalId,
+        installationId: profile.installationId,
+        // Likewise the language: the screen is in Arabic because this terminal
+        // was set up in Arabic, and a wizard that quietly defaulted back to
+        // English would write English to disk at the end of a reconfiguration
+        // nobody asked to change the language of.
+        locale: ref.read(localeProvider).languageCode,
       );
     }
 
     return SetupDraft(
+      step: saved.deployment.isChild ? SetupStep.deployment : SetupStep.licence,
       locale: saved.languageCode,
       deployment: saved.deployment,
       branchId: saved.terminal.branchId,
@@ -90,7 +123,11 @@ class SetupController extends Notifier<SetupDraft> {
   /// in flight wins, because that is the newer intent. A machine with no
   /// licence installed lands here and changes nothing.
   Future<void> _restoreInstalledLicence() async {
-    if (_disposed || state.entitlement != null) return;
+    // A child holds no licence file; its licence is read from the main device
+    // once the tablet has found it.
+    if (_disposed || state.entitlement != null || state.deployment.isChild) {
+      return;
+    }
 
     final LicenceActivationResult result;
     try {
@@ -157,6 +194,10 @@ class SetupController extends Notifier<SetupDraft> {
     // finds out on the tile rather than two screens later.
     if (!state.licensedModes.contains(mode)) return;
 
+    // A child runs in its main device's mode, and has no mode screen to change
+    // it from. The DeploymentConfig built below would also drop its role.
+    if (state.deployment.isChild) return;
+
     // Re-choosing the mode already in force is a no-op, full stop. The reset
     // below exists for a genuine *switch*, where the old endpoint cannot
     // survive — but an operator tapping the already-selected tile on their way
@@ -208,8 +249,11 @@ class SetupController extends Notifier<SetupDraft> {
     clearError: true,
   );
 
+  // Every connection edit below forgets a child's link to its main device: the
+  // licence on the draft was read from the database as it was addressed then.
   void setDatabaseHost(String host) => state = state.copyWith(
     deployment: state.deployment.copyWith(databaseHost: host.trim()),
+    mainDeviceLinked: false,
     clearError: true,
   );
 
@@ -259,15 +303,18 @@ class SetupController extends Notifier<SetupDraft> {
 
   void setVerifyTls(bool verify) => state = state.copyWith(
     deployment: state.deployment.copyWith(verifyTls: verify),
+    mainDeviceLinked: false,
   );
 
   void setDatabaseName(String name) => state = state.copyWith(
     deployment: state.deployment.copyWith(databaseName: name.trim()),
+    mainDeviceLinked: false,
     clearError: true,
   );
 
   void setDatabaseUser(String user) => state = state.copyWith(
     deployment: state.deployment.copyWith(databaseUser: user.trim()),
+    mainDeviceLinked: false,
     clearError: true,
   );
 
@@ -276,12 +323,16 @@ class SetupController extends Notifier<SetupDraft> {
     if (parsed == null || parsed <= 0 || parsed > 65535) return;
     state = state.copyWith(
       deployment: state.deployment.copyWith(databasePort: parsed),
+      mainDeviceLinked: false,
     );
   }
 
   /// Held on the draft only until [publishCredentials] hands it to the store.
-  void setDatabasePassword(String password) =>
-      state = state.copyWith(databasePassword: password, clearError: true);
+  void setDatabasePassword(String password) => state = state.copyWith(
+    databasePassword: password,
+    mainDeviceLinked: false,
+    clearError: true,
+  );
 
   void setAdminDatabasePassword(String password) =>
       state = state.copyWith(adminDatabasePassword: password, clearError: true);
@@ -419,6 +470,8 @@ class SetupController extends Notifier<SetupDraft> {
       // The four payment methods (§40). Migration 23 seeds restaurants that
       // existed when it ran; this one did not.
       await bootstrap.seedTenderTypes(admin, restaurantId);
+      // And what each kind of order requires (§31).
+      await bootstrap.seedOrderTypes(admin, restaurantId);
 
       final ownerCreated = await bootstrap.seedOwner(
         admin,
@@ -538,6 +591,17 @@ class SetupController extends Notifier<SetupDraft> {
     branchCode: state.branchCode,
   );
 
+  /// The printer this wizard just pointed the till at.
+  ///
+  /// **The hardware step used to end here.** A printer picked in the scan was
+  /// held in the draft and never written anywhere, so the till came up the next
+  /// morning with no address to send a receipt to — the printing path had
+  /// nothing to be configured with, and setup had appeared to configure it.
+  PrinterConfig get printer => PrinterConfig(
+    name: state.printerName,
+    paperWidthDots: state.paperWidthDots,
+  );
+
   /// Finish setup: publish what the wizard gathered, then put it somewhere the
   /// next launch will find it.
   ///
@@ -576,6 +640,15 @@ class SetupController extends Notifier<SetupDraft> {
     try {
       publishCredentials();
       await ref.read(posDbCredentialsStoreProvider).save();
+      // The licence, carried in memory since the first screen. It goes down
+      // BEFORE the config file, because the config file is what makes this
+      // machine a configured terminal at the next boot, and a configured
+      // terminal that cannot find its licence opens on "Not licensed" with no
+      // way to explain itself. Null when the licence was restored from disk
+      // rather than activated — see [SetupDraft.licenceFile].
+      if (state.licenceFile case final licence?) {
+        await ref.read(licenceServiceProvider).store(licence);
+      }
       await ref
           .read(terminalConfigStoreProvider)
           .write(
@@ -583,6 +656,7 @@ class SetupController extends Notifier<SetupDraft> {
               deployment: state.deployment,
               terminal: profile,
               languageCode: state.locale,
+              printer: printer,
             ),
           );
     } on Exception catch (error) {
@@ -593,6 +667,13 @@ class SetupController extends Notifier<SetupDraft> {
 
     ref.read(localeProvider.notifier).apply(state.locale);
     ref.read(deploymentProvider.notifier).apply(state.deployment);
+    // The licence reached disk a moment ago, and the start screen this hands
+    // over to reads the INSTALLED one rather than the draft's copy.
+    ref.invalidate(licenceEntitlementProvider);
+    // In memory as well as on disk. Setup finishes without a restart, so a till
+    // that only wrote the file would take its first sale with no printer — the
+    // provider reads the boot config, and the boot config is last night's.
+    ref.read(printerConfigProvider.notifier).apply(printer);
     ref.read(terminalProfileProvider.notifier).apply(profile);
     ref.read(setupCompleteProvider.notifier).markComplete();
     return null;
@@ -654,6 +735,11 @@ class SetupController extends Notifier<SetupDraft> {
   );
 
   void setPrinter(String? name) => state = state.copyWith(printerName: name);
+
+  /// 576 dots for an 80mm roll, 384 for 58mm. See
+  /// [PrinterConfig.paperWidthDots] for why this is asked rather than guessed.
+  void setPaperWidth(int dots) =>
+      state = state.copyWith(paperWidthDots: dots);
   void setDrawer(bool attached) =>
       state = state.copyWith(drawerAttached: attached);
   void setScanner(bool attached) =>
@@ -705,17 +791,29 @@ class SetupController extends Notifier<SetupDraft> {
     ref.read(posDbCredentialsStoreProvider).set(state.databasePassword);
     final failure = await ref.read(posDatabaseProvider).probe(config);
 
+    // A database that does not exist yet is not a failure of THIS step. It is
+    // the ordinary state of a first install, and the very next step is what
+    // creates it — the message says exactly that, and said it in red, which
+    // taught the installer something was wrong at the moment nothing was. The
+    // only two outcomes that belong in red here are the ones that stop the
+    // wizard: an address that cannot be reached, or a login that is refused.
+    final expected = failure == PosDbFailure.missingDatabase;
+    final s = ref.read(stringsProvider);
+
     // Success used to be SILENT — the error bar cleared and nothing took its
     // place, so the only difference between "it worked" and "the button does
     // nothing" was the absence of red. A test whose good outcome is invisible
     // is a test nobody trusts.
     state = state.copyWith(
       busy: false,
-      error: _describe(failure, config),
-      notice: failure == null
-          ? ref.read(stringsProvider).connectionOk(config.databaseName)
-          : null,
-      clearNotice: failure != null,
+      error: expected ? null : _describe(failure, config),
+      clearError: expected || failure == null,
+      notice: switch (failure) {
+        null => s.connectionOk(config.databaseName),
+        _ when expected => s.missingDatabase(config.databaseName),
+        _ => null,
+      },
+      clearNotice: failure != null && !expected,
     );
     return failure == null;
   }
@@ -757,6 +855,9 @@ class SetupController extends Notifier<SetupDraft> {
   /// one the customer actually bought rather than on whatever the enum lists
   /// first.
   Future<void> activateLicence({String? fileContents}) async {
+    // A child activates nothing; see [connectToMainDevice].
+    if (state.deployment.isChild) return;
+
     state = state.copyWith(busy: true, clearError: true);
 
     // The API client resolves its address from `deploymentProvider`, and the
@@ -794,11 +895,21 @@ class SetupController extends Notifier<SetupDraft> {
               : state.deployment.copyWith(clearTenantSlug: true),
           key: state.licenceKey,
           fileContents: fileContents,
+          // Held, not installed. This is step one of ten, and a licence written
+          // here survives a wizard abandoned on any of the nine that follow —
+          // an owner trying a key to see what it covers, an installer who never
+          // gets past the database password. `complete()` writes it, once this
+          // terminal is a terminal.
+          persist: false,
         );
 
     final claims = result.claims;
     final adopted = claims == null ? state.deployment : _adopt(claims);
-    final entitlement = await _judgeOnCoveredMode(result.entitlement, adopted);
+    final entitlement = await _judgeOnCoveredMode(
+      result.entitlement,
+      adopted,
+      file: result.file,
+    );
 
     // `result.notice` speaks for the first verdict, and it is the only thing
     // that speaks at all when there was no verdict to give — an unrecognised
@@ -823,13 +934,15 @@ class SetupController extends Notifier<SetupDraft> {
       busy: false,
       entitlement: entitlement,
       claims: claims,
+      // Carried until `complete()`. A licence that refuses trade is carried
+      // too: setup may well be finished on one inside its grace window, and the
+      // terminal must end up holding the file its status screen describes.
+      licenceFile: result.file,
       deployment: claims == null ? null : adopted,
       error: notice?.text(ref.read(stringsProvider)),
       notice: modeChanged,
       clearNotice: modeChanged == null,
     );
-    // Anything reading the installed licence must see the new one immediately.
-    ref.invalidate(licenceEntitlementProvider);
   }
 
   /// Re-judge a licence against the mode it actually puts this terminal in.
@@ -850,18 +963,20 @@ class SetupController extends Notifier<SetupDraft> {
   /// itself, not of a question the wizard had not asked yet.
   Future<LicenseEntitlement?> _judgeOnCoveredMode(
     LicenseEntitlement? verdict,
-    DeploymentConfig adopted,
-  ) async {
+    DeploymentConfig adopted, {
+    LicenseFile? file,
+  }) async {
     if (verdict?.state != LicenseState.modeNotLicensed) return verdict;
 
     final service = ref.read(licenceServiceProvider);
-    // Sound because activation persists a licence even when it refuses trade —
-    // "the operator needs the status screen to show what they actually
-    // installed" — so the file backing this verdict is on disk either way.
-    final file = await service.installed();
-    if (file == null) return verdict;
+    // The file this verdict was given on. Activation hands it over directly,
+    // because the wizard no longer writes it at step one and there is nothing
+    // on disk to go back for; the restore path passes none, and is reading the
+    // installed one by definition.
+    final backing = file ?? await service.installed();
+    if (backing == null) return verdict;
 
-    return service.evaluate(file, adopted);
+    return service.evaluate(backing, adopted);
   }
 
   /// Fold what the licence knows into the deployment config.
@@ -908,6 +1023,88 @@ class SetupController extends Notifier<SetupDraft> {
 
     return s.licenceModeChanged(chosen.label(s), landed.label(s));
   }
+
+  /// A child tablet's whole connection step: reach the main device's database
+  /// with what is on screen, and adopt the licence it shares there.
+  ///
+  /// The shared licence does for a child what an activated one does for a main
+  /// device — it names the tenant and the mode, so the tablet is asked for
+  /// neither. It is judged `viaMainDevice` (see `LicenseVerifier`): signature,
+  /// tenant and dates as usual, and the main device's fingerprint pin not held
+  /// against a tablet that was never going to match it.
+  Future<void> connectToMainDevice() async {
+    final s = ref.read(stringsProvider);
+    if (!state.deployment.isChild) return;
+
+    // Said before trying, because trying would succeed against a PostgreSQL
+    // that happens to run on the tablet and the tablet would be its own child.
+    if (state.deployment.isLoopback) {
+      state = state.copyWith(error: s.mainDeviceIsThisTablet);
+      return;
+    }
+
+    state = state.copyWith(
+      busy: true,
+      mainDeviceLinked: false,
+      clearError: true,
+      clearNotice: true,
+    );
+    _publishDeployment();
+
+    final SiteLicence? site;
+    try {
+      site = await ref.read(siteLicenceSourceProvider)?.read();
+    } on PosDbException catch (error) {
+      // The same four causes the main device's own test names, because they
+      // are the same four things — an installer sent to open a firewall when
+      // the password is wrong will not fix it.
+      state = state.copyWith(
+        busy: false,
+        error: _describe(error.failure, state.deployment),
+      );
+      return;
+    }
+
+    final claims = site == null ? null : LicenseVerifier.claimsOf(site.file);
+    if (site == null || claims == null) {
+      state = state.copyWith(busy: false, error: s.mainDeviceHasNoLicence);
+      return;
+    }
+
+    final deployment = state.deployment.copyWith(
+      mode: site.mode,
+      tenantSlug: claims.tenantSlug,
+    );
+    // Published before judging, so the service that judges is the child's.
+    ref.read(deploymentProvider.notifier).apply(deployment);
+    final entitlement = await ref
+        .read(licenceServiceProvider)
+        .evaluate(site.file, deployment);
+
+    state = state.copyWith(
+      busy: false,
+      deployment: deployment,
+      claims: claims,
+      entitlement: entitlement,
+      mainDeviceLinked: true,
+      error: entitlement.canSell ? null : entitlement.notice?.text(s),
+      notice: entitlement.canSell
+          ? s.mainDeviceLinked(
+              claims.tenantName.isEmpty ? claims.tenantSlug : claims.tenantName,
+            )
+          : null,
+    );
+  }
+
+  /// Hold a licence that arrived from somewhere other than the licence step.
+  ///
+  /// The bootstrap bundle a cloud claim carries has one embedded, so a cloud
+  /// terminal is licensed without anyone typing a key. It is held rather than
+  /// installed for the reason every other licence here is — the claim happens
+  /// at step six of ten — and it supersedes whatever the operator activated,
+  /// because it is the platform's own current copy for this terminal.
+  void holdLicence(LicenseFile file) =>
+      state = state.copyWith(licenceFile: file);
 
   /// Verify the slug + admin credentials and pull the tenant's configuration
   /// (the owner's phase-1 cloud flow). Everything the following steps show —
@@ -1020,6 +1217,31 @@ class SetupController extends Notifier<SetupDraft> {
     state = state.copyWith(busy: true, clearError: true);
     _publishDeployment();
 
+    // A child is one more of the licence's terminals, and on a shared database
+    // that is a number it can check: every terminal row is in front of it.
+    // Checked here, where the seat is spent, rather than when the licence was
+    // read — the count can have moved while the installer picked a branch.
+    if (state.deployment.isChild && adopting == null) {
+      final s = ref.read(stringsProvider);
+      final SiteLicence? site;
+      try {
+        site = await ref.read(siteLicenceSourceProvider)?.read();
+      } on PosDbException catch (error) {
+        state = state.copyWith(
+          busy: false,
+          error: _describe(error.failure, state.deployment),
+        );
+        return;
+      }
+      if (site != null && site.terminalCount >= state.maxTerminals) {
+        state = state.copyWith(
+          busy: false,
+          error: s.allTerminalsTaken(state.maxTerminals),
+        );
+        return;
+      }
+    }
+
     final provisioning = ref.read(provisioningRepositoryProvider);
 
     // WHO is registering. Offline registration authenticates against
@@ -1032,9 +1254,17 @@ class SetupController extends Notifier<SetupDraft> {
     // path no longer has that step: it asks for the first administrator
     // instead. Reading them here sent an empty username to the till's own
     // database and was refused every time, on the last step of the wizard.
-    final offline = state.deployment.mode == DeploymentMode.offline;
-    final username = offline ? state.ownerUsername : state.operatorUsername;
-    final password = offline ? state.ownerPin : state.operatorPassword;
+    //
+    // A child is the exception: it built nothing and created nobody, so it
+    // registers as the manager it signed in as, whatever the main device's
+    // mode.
+    final firstInstall =
+        state.deployment.mode == DeploymentMode.offline &&
+        !state.deployment.isChild;
+    final username = firstInstall
+        ? state.ownerUsername
+        : state.operatorUsername;
+    final password = firstInstall ? state.ownerPin : state.operatorPassword;
 
     // Adopting takes the row the dashboard already created — its name, branch
     // and terminal id all come back from the server, exactly as they do on the
@@ -1129,6 +1359,9 @@ class SetupController extends Notifier<SetupDraft> {
     // Offline terminals have no platform to pull from — the local database is
     // the world, and reading it is the whole step.
     if (state.deployment.mode != DeploymentMode.cloud) return;
+    // Nor does a child of a cloud main device: the main device seeded the
+    // database this tablet reads, and the tablet holds no token to pull with.
+    if (state.deployment.isChild) return;
 
     final s = ref.read(stringsProvider);
     final api = ref.read(posCloudApiProvider);

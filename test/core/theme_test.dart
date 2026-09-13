@@ -58,6 +58,18 @@ void main() {
       const pairs = [
         ('ink on page', 'ink', 'page'),
         ('ink on surface', 'ink', 'surface'),
+        // The label of a primary button against its fill. `ink` is a dark
+        // colour in one palette and a near-white cream in the other, so what
+        // is written on top of it cannot be a literal — this pair is what
+        // holds the pale-slab button honest in both.
+        ('onInk on ink', 'onInk', 'ink'),
+        // And the confirm button. The dark palette lifts `ok` so it can be
+        // READ on a dark ground, which makes it a pale fill — white on it is
+        // the Take payment button at 2.1:1.
+        ('onOk on ok', 'onOk', 'ok'),
+        // The avatar initial. `accent` is the one colour that does not move
+        // between palettes, and white on it is 2.2:1.
+        ('onAccent on accent', 'onAccent', 'accent'),
         ('inkWarm on surface', 'inkWarm', 'surface'),
         ('body on page', 'body', 'page'),
         ('shellText on shell', 'shellText', 'shell'),
@@ -340,6 +352,17 @@ void main() {
       if (path.endsWith('receipt/receipt_dialog.dart')) continue;
       if (path.endsWith('receipt/receipt_paper.dart')) continue;
       if (path.endsWith('receipt/reprint_dialog.dart')) continue;
+      // The preview is the reprint's paper without the printing: the same
+      // slip on the same desk grey, and just as white in a dark room.
+      if (path.endsWith('receipt/receipt_preview_dialog.dart')) continue;
+      // And the fourth argues its case here, as required. `receipt_raster.dart`
+      // is not a screen: it paints the bitmap that goes down the wire to a
+      // thermal head, which has exactly two states — a dot is burned or it is
+      // not. Its black and white are not a palette choice that a theme could
+      // ever have an opinion about; they are the two values the packer
+      // thresholds against, and taking them from `context.pos` would make a
+      // receipt printed at night come out inverted.
+      if (path.endsWith('receipt/receipt_raster.dart')) continue;
 
       final lines = file.readAsLinesSync();
       for (var i = 0; i < lines.length; i++) {
@@ -365,6 +388,43 @@ void main() {
           '${offenders.join('\n')}',
     );
   });
+  test('nothing writes white on an ink fill', () {
+    // The bug that came back three times. `ink` is a near-white cream in the
+    // dark palette, so `background: ink` under `Colors.white` is white on cream
+    // at 1.06:1 — the primary action of a screen rendering as a pale blank slab
+    // that reads as disabled. It was right in the light palette, which is why
+    // it kept passing review.
+    //
+    // `onInk` is the colour that follows the theme. This is the guard that a
+    // fill and its label cannot drift apart again.
+    final offenders = <String>[];
+    final fill = RegExp(r'(background|color):\s*((context\.)?(palette|pos))\.ink,');
+
+    for (final file in _widgetLayerFiles()) {
+      final lines = file.readAsLinesSync();
+      for (var i = 0; i < lines.length; i++) {
+        if (!fill.hasMatch(lines[i])) continue;
+
+        // The label travels with the fill: the next line in every call site
+        // this product has, and the one after it where a key intervenes.
+        for (final j in [i + 1, i + 2]) {
+          if (j < lines.length && lines[j].contains('Colors.white')) {
+            offenders.add('${file.path}:${j + 1}  white on ink');
+            break;
+          }
+        }
+      }
+    }
+
+    expect(
+      offenders,
+      isEmpty,
+      reason:
+          'A fill from the palette needs a label from the palette:\n'
+          '${offenders.join('\n')}',
+    );
+  });
+
   test('nothing tints a control on hover', () {
     // A till is a touch surface first. On a touch screen there is no hover, so
     // a design that leans on it is invisible on the machine it was built for;
@@ -421,6 +481,10 @@ Iterable<File> _widgetLayerFiles() => ['lib/features', 'lib/core/ui']
 
 Color _token(PosPalette p, String name) => switch (name) {
   'ink' => p.ink,
+  'onInk' => p.onInk,
+  'onOk' => p.onOk,
+  'onAccent' => p.onAccent,
+  'accent' => p.accent,
   'inkWarm' => p.inkWarm,
   'body' => p.body,
   'muted' => p.muted,

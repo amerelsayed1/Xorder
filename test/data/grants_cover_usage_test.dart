@@ -72,14 +72,94 @@ void main() {
     'postgres_business_day_repository.dart',
     'postgres_cash_movements_repository.dart',
     'postgres_order_history_repository.dart',
+    'postgres_branch_sales_repository.dart',
     'postgres_eta_queue_repository.dart',
+    // Receipts the printer would not take. Written at the counter on the till's
+    // own credential, because a printer that is off is a till problem and not a
+    // back-office one.
+    'postgres_print_queue_repository.dart',
     'postgres_receipt_profile_repository.dart',
+    // Read at the till and written in the back office, so they are in both
+    // lists. A cashier takes a payment method and charges what the restaurant
+    // set; they do not invent either.
+    'postgres_tender_types_repository.dart',
+    'postgres_service_charges_repository.dart',
+    'postgres_order_types_repository.dart',
+    'postgres_units_repository.dart',
+    'postgres_stock_items_repository.dart',
+    // Written by the till at day close and read in the back office. It is on
+    // the till's list because the automatic copy is taken by a machine on which
+    // nobody has signed into Management — see `PostgresBackupRepository`.
+    'postgres_backup_repository.dart',
+    // Written by a main device when its licence changes and read by the
+    // tablets that sell through it — both at the till, on the till's
+    // credential. See `TerminalRole`.
+    'postgres_site_licence.dart',
   ];
 
-  test('every till repository named here exists', () {
-    // A renamed file would silently stop being checked, which is the failure
-    // mode of every list of filenames.
-    for (final name in tillRepositories) {
+  /// The repositories bound on the **administrator's** credential.
+  const adminRepositories = <String>[
+    'postgres_admin_repositories.dart',
+    'postgres_catalog_admin_repository.dart',
+    'postgres_receipt_profile_repository.dart',
+    'postgres_tender_types_repository.dart',
+    'postgres_service_charges_repository.dart',
+    'postgres_order_types_repository.dart',
+    'postgres_units_repository.dart',
+    'postgres_stock_items_repository.dart',
+    'postgres_suppliers_repository.dart',
+    'postgres_purchase_orders_repository.dart',
+    'postgres_receiving_repository.dart',
+    'postgres_supplier_invoices_repository.dart',
+    // Read only from the back office: the till holds no grant on stock levels.
+    'postgres_stock_levels_repository.dart',
+  ];
+
+  test('every repository is classified as one or the other', () {
+    // **The check that was missing, and the reason nine tables went ungranted.**
+    // Both lists above are hand-written, and the version of this test that
+    // shipped said so — "a renamed file would silently stop being checked" —
+    // and then went on to trust them. Wave D added five repositories that
+    // nobody added here, so the tables behind the payment methods, the service
+    // charges and the whole purchasing chain were checked against nothing.
+    //
+    // Enumerating the directory is what makes the omission loud. A new
+    // repository still has to be classified by hand, because which credential
+    // it runs on is a decision rather than something a glob can know — but now
+    // it fails until somebody makes it.
+    final files =
+        Directory('$root/lib/data/postgres')
+            .listSync()
+            .whereType<File>()
+            .map((f) => f.uri.pathSegments.last)
+            .where((n) => n.startsWith('postgres_') && n.endsWith('.dart'))
+            // Not a repository: the tenant resolver names no table it reads on
+            // either credential.
+            .where((n) => n != 'postgres_tenant.dart')
+            .toList()
+          ..sort();
+
+    final unclassified = [
+      for (final name in files)
+        if (!tillRepositories.contains(name) &&
+            !adminRepositories.contains(name))
+          name,
+    ];
+
+    expect(
+      unclassified,
+      isEmpty,
+      reason:
+          'These repositories are in neither list, so no grant check covers '
+          'the tables they use. Add each one to tillRepositories, to '
+          'adminRepositories, or to both.',
+    );
+  });
+
+  test('every repository named here exists', () {
+    // The other direction. A renamed file that stayed in the list would pass
+    // the classification check above by being absent from the directory.
+    for (final name in {...tillRepositories, ...adminRepositories}) {
       expect(
         File('$root/lib/data/postgres/$name').existsSync(),
         isTrue,
@@ -117,12 +197,6 @@ void main() {
     // catalogue-authoring hole was found: an administrator is given the till
     // list *and* the administrative one, and the till list REVOKEs the
     // catalogue writes on an offline install. Nothing put them back.
-    const adminRepositories = <String>[
-      'postgres_admin_repositories.dart',
-      'postgres_catalog_admin_repository.dart',
-      'postgres_receipt_profile_repository.dart',
-    ];
-
     final tables = allTables();
     final grants = grantSource(admin: true);
 
@@ -142,6 +216,42 @@ void main() {
       reason:
           'These tables are used on the administrator credential and appear '
           'in neither grant list.',
+    );
+  });
+
+  test('the grant list names no sequence that does not exist', () {
+    // **The mirror of the test below, and written because the sequence grants
+    // were added by hand and one of them was for a table with no sequence.**
+    // `pos_stock_levels` is keyed by (restaurant, branch, product), so
+    // `pos_stock_levels_id_seq` has never existed — and
+    // `GRANT ... ON SEQUENCE` on a missing sequence throws, taking the whole
+    // bootstrap down on a machine nobody is watching. Exactly the failure the
+    // table version of this test exists to stop, one noun over.
+    final source = read('lib/data/postgres/migrations.dart');
+    final owning = <String>{
+      for (final match in RegExp(
+        r'CREATE TABLE IF NOT EXISTS (\w+) \((.*?)\n\s*\)',
+        dotAll: true,
+      ).allMatches(source))
+        if (match.group(2)!.contains('serial')) '${match.group(1)!}_id_seq',
+    };
+
+    final named = <String>{};
+    for (final admin in [false, true]) {
+      final flat = grantSource(admin: admin)
+          .replaceAll(RegExp(r"'\s*\n\s*'"), '')
+          .replaceAll(RegExp(r'\s+'), ' ');
+      named.addAll(
+        RegExp(r'\b(\w+_seq)\b').allMatches(flat).map((m) => m.group(1)!),
+      );
+    }
+
+    expect(
+      named.difference(owning),
+      isEmpty,
+      reason:
+          'These sequences are granted and no migration creates them. A GRANT '
+          'on a missing sequence throws at install time.',
     );
   });
 

@@ -2312,6 +2312,1951 @@ const posMigrations = <PosMigration>[
     // The first row a restaurant writes is the moment it takes over, and the
     // Money pane says so.
   ]),
+  PosMigration(25, 'order types carry their own rules (§31)', [
+    '''
+    CREATE TABLE IF NOT EXISTS pos_order_types (
+      id                bigserial   PRIMARY KEY,
+      restaurant_id     bigint      NOT NULL REFERENCES pos_restaurants(id) ON DELETE CASCADE,
+      -- Matches `pos_orders.order_type` and `OrderType.wire`. The code is the
+      -- identity; the name is the restaurant's to change.
+      code              text        NOT NULL,
+      name_en           text        NOT NULL,
+      name_ar           text,
+      is_active         boolean     NOT NULL DEFAULT true,
+      -- The three rules that were hardcoded as `type == OrderType.dineIn`.
+      -- That comparison appears in the router, the cart panel and the ticket
+      -- engine, and in every one of them what it actually means is "does this
+      -- kind of order have a table".
+      requires_table    boolean     NOT NULL DEFAULT false,
+      requires_customer boolean     NOT NULL DEFAULT false,
+      requires_address  boolean     NOT NULL DEFAULT false,
+      sort_order        integer     NOT NULL DEFAULT 0,
+      updated_at        timestamptz NOT NULL DEFAULT now(),
+      updated_by        bigint      REFERENCES pos_staff(id) ON DELETE SET NULL,
+      CONSTRAINT pos_order_types_code_unique UNIQUE (restaurant_id, code)
+    )
+    ''',
+
+    // **Two columns from the plan are deliberately absent: `service_charge_id`
+    // and `price_list_id`.**
+    //
+    // Both relationships already exist, pointing the other way.
+    // `pos_service_charges.order_types` says which order types a charge
+    // applies to (§38), and `pos_product_prices.order_type` keys a price by
+    // channel (migration 17). Adding the reverse pointers would model each
+    // relationship twice, in opposite directions, with nothing keeping the two
+    // in step — and the first time they disagreed, a bill would be wrong and
+    // neither row would be obviously at fault.
+    //
+    // `receipt_template_id` is absent for a duller reason: receipt templates do
+    // not exist yet.
+
+    // The four the product ships with, for every restaurant that exists now.
+    // A restaurant created later is seeded by `LocalBootstrap.seedOrderTypes`
+    // — the same split, and the same reason, as the payment methods in
+    // migration 23.
+    '''
+    INSERT INTO pos_order_types
+      (restaurant_id, code, name_en, name_ar, requires_table,
+       requires_customer, requires_address, sort_order)
+    SELECT r.id, v.code, v.name_en, v.name_ar, v.tbl, v.cust, v.addr, v.sort
+      FROM pos_restaurants r
+      CROSS JOIN (VALUES
+        ('dine_in',    'Dine in',    'صالة',   true,  false, false, 1),
+        ('takeaway',   'Takeaway',   'تيك أواي', false, false, false, 2),
+        ('delivery',   'Delivery',   'دليفري',  false, true,  true,  3),
+        ('drive_thru', 'Drive-thru', 'سيارة',  false, false, false, 4)
+      ) AS v(code, name_en, name_ar, tbl, cust, addr, sort)
+    ON CONFLICT (restaurant_id, code) DO NOTHING
+    ''',
+  ]),
+  PosMigration(26, 'tax-inclusive pricing, and tax by category (§37)', [
+    // **Not `pos_taxes`.** The plan sketched a new table; `pos_tax_groups`
+    // (migration 16) already is one — named rates, per-product assignment, ETA
+    // codes, a default. A second would be a third tax model beside it and
+    // `pos_money_config`, with nothing keeping the three in step.
+    //
+    // What §37 actually adds over what exists is two things, and this is them.
+
+    // One. Whether menu prices already contain the tax.
+    //
+    // On the restaurant, not on each tax group. A restaurant is one or the
+    // other: Egypt prices exclusive, much of the Gulf and the UK inclusive.
+    // Per-tax inclusivity would let somebody say "food is inclusive, the levy
+    // is not", which is a receipt no customer can check.
+    '''
+    ALTER TABLE pos_restaurants
+      ADD COLUMN IF NOT EXISTS tax_mode text NOT NULL DEFAULT 'exclusive'
+    ''',
+    '''
+    ALTER TABLE pos_restaurants
+      DROP CONSTRAINT IF EXISTS pos_restaurants_tax_mode_known
+    ''',
+    '''
+    ALTER TABLE pos_restaurants
+      ADD CONSTRAINT pos_restaurants_tax_mode_known
+      CHECK (tax_mode IN ('exclusive', 'inclusive'))
+    ''',
+
+    // Two. A tax group on the category, which a product falls back to.
+    //
+    // This is the useful half of the plan's `pos_tax_targets`. The other half
+    // — targeting an order type — is left out: `pos_product_prices.order_type`
+    // already varies a price by channel, and a restaurant that needs delivery
+    // taxed differently is describing a different price rather than a
+    // different rate. Adding it would be a second way to say the same thing.
+    '''
+    ALTER TABLE pos_categories
+      ADD COLUMN IF NOT EXISTS tax_group_id bigint
+        REFERENCES pos_tax_groups(id) ON DELETE SET NULL
+    ''',
+  ]),
+  // ── Purchasing ─────────────────────────────────────────────────────────────
+  //
+  // The head of a chain the product has never had: purchases feed a cost
+  // price, a cost price feeds inventory valuation, valuation feeds COGS, COGS
+  // feeds profit. Every step above is a number somebody types until this
+  // exists — see `16-back-office-scope.md` §3.
+  PosMigration(27, 'suppliers — who the restaurant buys from', [
+    '''
+    CREATE TABLE IF NOT EXISTS pos_suppliers (
+      id                bigserial   PRIMARY KEY,
+      restaurant_id     bigint      NOT NULL REFERENCES pos_restaurants(id) ON DELETE CASCADE,
+      name_en           text        NOT NULL,
+      name_ar           text,
+      -- The restaurant's own reference — an account number with the supplier,
+      -- or whatever the bookkeeper already writes on the invoices. Blank for
+      -- most of them, so it is defaulted rather than required, and unique only
+      -- among the ones that have set it (see the partial index below).
+      code              text        NOT NULL DEFAULT '',
+      contact_name      text,
+      phone             text,
+      email             text,
+      address           text,
+      -- Off the supplier's invoice. A purchase invoice is the *input* side of
+      -- the same VAT the receipt reports, and a return claiming input tax has
+      -- to say whose.
+      tax_number        text,
+      -- Days after an invoice before payment is due. Zero is cash on delivery,
+      -- which is most of them.
+      payment_term_days integer     NOT NULL DEFAULT 0,
+      notes             text,
+      is_active         boolean     NOT NULL DEFAULT true,
+      created_at        timestamptz NOT NULL DEFAULT now(),
+      updated_at        timestamptz NOT NULL DEFAULT now(),
+      updated_by        bigint      REFERENCES pos_staff(id) ON DELETE SET NULL,
+      CONSTRAINT pos_suppliers_terms_sane CHECK (payment_term_days >= 0)
+    )
+    ''',
+    // Unique among suppliers that HAVE a code. A plain UNIQUE would let one
+    // restaurant have a single supplier with no code, because '' would collide
+    // with itself — and blank is the normal case.
+    '''
+    CREATE UNIQUE INDEX IF NOT EXISTS pos_suppliers_code_unique
+      ON pos_suppliers (restaurant_id, code) WHERE code <> ''
+    ''',
+    '''
+    CREATE INDEX IF NOT EXISTS pos_suppliers_active_idx
+      ON pos_suppliers (restaurant_id, is_active, name_en)
+    ''',
+
+    // **There is deliberately no balance column.** What a supplier is owed is
+    // invoices minus payments, and a stored total drifts the first time
+    // somebody voids an invoice inside a transaction that fails halfway. It is
+    // derived where it is shown, which costs one join and buys a number that
+    // cannot disagree with the rows underneath it — the same reasoning that
+    // keeps `pos_orders.refunded_minor` under a trigger rather than under the
+    // till's hand.
+
+    // The owner role holds the new capability, as migrations 13 and 15 did for
+    // theirs. Adding a key to `PosCapability.all` does not add it to a role
+    // that already exists, and an owner who could not reach the screen that
+    // grants permissions would have no way to grant themselves the one they
+    // are missing.
+    '''
+    UPDATE pos_roles
+       SET capabilities = ARRAY(
+             SELECT DISTINCT unnest(
+               capabilities || ARRAY['purchase.manage']::text[]))
+     WHERE code = 'owner'
+       AND NOT ('purchase.manage' = ANY(capabilities))
+    ''',
+    // And the manager role, which the seed gives everything a manager does.
+    // Not the supervisor or the cashier: buying is not a shift-floor act, and
+    // a till credential that could add a supplier could add one it then pays.
+    '''
+    UPDATE pos_roles
+       SET capabilities = ARRAY(
+             SELECT DISTINCT unnest(
+               capabilities || ARRAY['purchase.manage']::text[]))
+     WHERE code = 'manager'
+       AND NOT ('purchase.manage' = ANY(capabilities))
+    ''',
+  ]),
+  PosMigration(28, 'purchase orders — what was asked for', [
+    '''
+    CREATE TABLE IF NOT EXISTS pos_purchase_orders (
+      id             bigserial   PRIMARY KEY,
+      restaurant_id  bigint      NOT NULL REFERENCES pos_restaurants(id) ON DELETE CASCADE,
+      -- Where the goods go. A restaurant group orders per branch, and stock
+      -- that arrived at Downtown is not stock Maadi can sell.
+      branch_id      bigint      NOT NULL REFERENCES pos_branches(id) ON DELETE RESTRICT,
+      -- RESTRICT, not CASCADE: deleting a supplier somebody has ordered from
+      -- has to be refused and explained. The repository retires them instead.
+      supplier_id    bigint      NOT NULL REFERENCES pos_suppliers(id) ON DELETE RESTRICT,
+      -- Snapshotted beside the id, like a payment's label: a purchase history
+      -- has to still say who supplied something after a rename.
+      supplier_name  text        NOT NULL,
+      reference      text        NOT NULL,
+      status         text        NOT NULL DEFAULT 'draft',
+      currency       text        NOT NULL DEFAULT 'EGP',
+      exponent       smallint    NOT NULL DEFAULT 2,
+      -- Fixed when it is sent, and checked against the supplier's invoice.
+      -- Recomputing them from today's lines would let a cost change after the
+      -- fact alter what was agreed.
+      subtotal_minor bigint      NOT NULL DEFAULT 0,
+      tax_minor      bigint      NOT NULL DEFAULT 0,
+      total_minor    bigint      NOT NULL DEFAULT 0,
+      -- Null while it is a draft, which is what makes "sent" a fact about the
+      -- order rather than a flag somebody set.
+      ordered_at     timestamptz,
+      expected_at    timestamptz,
+      notes          text,
+      created_at     timestamptz NOT NULL DEFAULT now(),
+      created_by     bigint      REFERENCES pos_staff(id) ON DELETE SET NULL,
+      updated_at     timestamptz NOT NULL DEFAULT now(),
+      updated_by     bigint      REFERENCES pos_staff(id) ON DELETE SET NULL,
+      CONSTRAINT pos_purchase_orders_status_known CHECK (
+        status IN ('draft', 'sent', 'partially_received', 'received',
+                   'cancelled')
+      ),
+      CONSTRAINT pos_purchase_orders_sent_has_a_date CHECK (
+        status = 'draft' OR status = 'cancelled' OR ordered_at IS NOT NULL
+      ),
+      CONSTRAINT pos_purchase_orders_reference_unique
+        UNIQUE (restaurant_id, reference)
+    )
+    ''',
+    '''
+    CREATE INDEX IF NOT EXISTS pos_purchase_orders_open_idx
+      ON pos_purchase_orders (restaurant_id, branch_id, status)
+      WHERE status IN ('sent', 'partially_received')
+    ''',
+    '''
+    CREATE INDEX IF NOT EXISTS pos_purchase_orders_supplier_idx
+      ON pos_purchase_orders (supplier_id, ordered_at DESC)
+    ''',
+
+    '''
+    CREATE TABLE IF NOT EXISTS pos_purchase_order_lines (
+      id                bigserial PRIMARY KEY,
+      purchase_order_id bigint    NOT NULL REFERENCES pos_purchase_orders(id) ON DELETE CASCADE,
+      -- The menu item this stocks, when it is one. Null for the things a
+      -- restaurant buys and does not sell — cleaning supplies, packaging, gas
+      -- — which is most of a purchase order by line count. SET NULL rather
+      -- than RESTRICT: archiving a product must not lock last year's orders.
+      product_id        bigint    REFERENCES pos_products(id) ON DELETE SET NULL,
+      -- Snapshotted, like the supplier name and for the same reason.
+      description       text      NOT NULL,
+      sku               text,
+      -- **Thousandths, not a decimal and never a float.** A restaurant buys
+      -- 12.5 kg of chicken; `numeric` would be honest but every read would
+      -- arrive as a Dart `double` and sit directly upstream of every cost
+      -- price and margin. See `core/money/quantity.dart`.
+      ordered_milli     bigint    NOT NULL,
+      received_milli    bigint    NOT NULL DEFAULT 0,
+      unit              text      NOT NULL DEFAULT 'ea',
+      -- Per unit, before tax.
+      unit_cost_minor   bigint    NOT NULL,
+      -- Snapshotted: input VAT is reclaimable and the return needs the rate
+      -- that was charged, not today's.
+      tax_rate_bp       integer   NOT NULL DEFAULT 0,
+      sort_order        integer   NOT NULL DEFAULT 0,
+      CONSTRAINT pos_purchase_order_lines_ordered_positive
+        CHECK (ordered_milli > 0),
+      CONSTRAINT pos_purchase_order_lines_received_sane
+        CHECK (received_milli >= 0),
+      CONSTRAINT pos_purchase_order_lines_cost_sane
+        CHECK (unit_cost_minor >= 0),
+      CONSTRAINT pos_purchase_order_lines_tax_sane
+        CHECK (tax_rate_bp BETWEEN 0 AND 10000)
+    )
+    ''',
+    '''
+    CREATE INDEX IF NOT EXISTS pos_purchase_order_lines_order_idx
+      ON pos_purchase_order_lines (purchase_order_id, sort_order)
+    ''',
+    // "What is on order for this product" — the question stock control asks
+    // before it reorders, and the reason `product_id` is indexed separately.
+    '''
+    CREATE INDEX IF NOT EXISTS pos_purchase_order_lines_product_idx
+      ON pos_purchase_order_lines (product_id)
+      WHERE product_id IS NOT NULL
+    ''',
+
+    // The reference sequence, per restaurant per year — the same shape
+    // `pos_invoice_sequences` uses for sales, and deliberately a second table
+    // rather than a shared one: a purchase order and a receipt are numbered
+    // for different audiences, and one sequence serving both would make each
+    // one's numbering depend on the other's volume.
+    '''
+    CREATE TABLE IF NOT EXISTS pos_purchase_sequences (
+      restaurant_id bigint  NOT NULL REFERENCES pos_restaurants(id) ON DELETE CASCADE,
+      period        text    NOT NULL,
+      next_number   bigint  NOT NULL DEFAULT 1,
+      PRIMARY KEY (restaurant_id, period)
+    )
+    ''',
+  ]),
+  PosMigration(29, 'receiving stock, and what it cost (moving average)', [
+    // The ledger. Append-only, like the audit events: a movement is a claim
+    // about what physically happened, and a row somebody can edit afterwards
+    // is a stock figure nobody can defend.
+    '''
+    CREATE TABLE IF NOT EXISTS pos_stock_movements (
+      id                bigserial   PRIMARY KEY,
+      restaurant_id     bigint      NOT NULL REFERENCES pos_restaurants(id) ON DELETE CASCADE,
+      branch_id         bigint      NOT NULL REFERENCES pos_branches(id) ON DELETE RESTRICT,
+      product_id        bigint      NOT NULL REFERENCES pos_products(id) ON DELETE RESTRICT,
+      kind              text        NOT NULL,
+      -- Positive in, negative out. One signed column rather than two, because
+      -- every reader wants the net and a pair would make each of them decide
+      -- the sign themselves.
+      quantity_milli    bigint      NOT NULL,
+      unit              text        NOT NULL DEFAULT 'ea',
+      -- What this movement was priced at: the delivery cost on a receipt, the
+      -- carrying average on an issue.
+      unit_cost_minor   bigint      NOT NULL DEFAULT 0,
+      -- **The resulting position, recorded on the movement itself.**
+      -- A moving average is a fold, not a sum: it cannot be recomputed from a
+      -- filter the way a supplier balance can, only by replaying every
+      -- movement in order. Storing the answer beside the input is what makes
+      -- last March's cost auditable without replaying three years.
+      balance_milli     bigint      NOT NULL,
+      average_cost_minor bigint     NOT NULL,
+      purchase_order_id bigint      REFERENCES pos_purchase_orders(id) ON DELETE SET NULL,
+      order_id          bigint      REFERENCES pos_orders(id) ON DELETE SET NULL,
+      note              text,
+      occurred_at       timestamptz NOT NULL DEFAULT now(),
+      created_by        bigint      REFERENCES pos_staff(id) ON DELETE SET NULL,
+      CONSTRAINT pos_stock_movements_kind_known CHECK (
+        kind IN ('receipt', 'sale', 'waste', 'adjustment', 'opening',
+                 'transfer_in', 'transfer_out')
+      ),
+      CONSTRAINT pos_stock_movements_not_nothing CHECK (quantity_milli <> 0),
+      CONSTRAINT pos_stock_movements_cost_sane CHECK (unit_cost_minor >= 0)
+    )
+    ''',
+    // The ledger is read two ways: everything for one product in order (to
+    // replay or to show a history), and everything in a window (to value the
+    // stock at a date).
+    '''
+    CREATE INDEX IF NOT EXISTS pos_stock_movements_product_idx
+      ON pos_stock_movements (product_id, occurred_at, id)
+    ''',
+    '''
+    CREATE INDEX IF NOT EXISTS pos_stock_movements_branch_idx
+      ON pos_stock_movements (restaurant_id, branch_id, occurred_at)
+    ''',
+
+    // The current position, per product per branch.
+    //
+    // **A cache, and unlike the supplier balance it is a justified one.** A
+    // supplier balance is a sum — order-independent, so deriving it costs one
+    // aggregate and can never disagree. A moving average is a fold: it depends
+    // on the order arrivals happened in, so deriving it means replaying the
+    // whole ledger, and doing that on every screen that shows a cost would
+    // make the till slower every month it ran.
+    //
+    // It is written in the same transaction as the movement that changes it,
+    // and every movement records the resulting position, so a drift is
+    // detectable by replay rather than merely suspected.
+    '''
+    CREATE TABLE IF NOT EXISTS pos_stock_levels (
+      restaurant_id      bigint      NOT NULL REFERENCES pos_restaurants(id) ON DELETE CASCADE,
+      branch_id          bigint      NOT NULL REFERENCES pos_branches(id) ON DELETE CASCADE,
+      product_id         bigint      NOT NULL REFERENCES pos_products(id) ON DELETE CASCADE,
+      -- Signed. A restaurant that sells something the system never saw arrive
+      -- is telling the truth about the sale and the wrong thing about the
+      -- stock; clamping at zero would hide the second and fix neither.
+      quantity_milli     bigint      NOT NULL DEFAULT 0,
+      unit               text        NOT NULL DEFAULT 'ea',
+      average_cost_minor bigint      NOT NULL DEFAULT 0,
+      updated_at         timestamptz NOT NULL DEFAULT now(),
+      PRIMARY KEY (branch_id, product_id),
+      CONSTRAINT pos_stock_levels_cost_sane CHECK (average_cost_minor >= 0)
+    )
+    ''',
+
+    // How a product is bought, so a receipt knows what a unit means. Null for
+    // everything until somebody says otherwise, and read as `ea`.
+    '''
+    ALTER TABLE pos_products
+      ADD COLUMN IF NOT EXISTS stock_unit text
+    ''',
+    // Whether this product is stocked at all. Most of a menu is not: a
+    // restaurant tracks chicken and gas, not every assembled dish, and
+    // pretending otherwise would fill the ledger with movements nobody counts.
+    '''
+    ALTER TABLE pos_products
+      ADD COLUMN IF NOT EXISTS is_stocked boolean NOT NULL DEFAULT false
+    ''',
+  ]),
+  PosMigration(30, 'supplier invoices and payments — what is owed, and paid', [
+    // The debt. A purchase order is a request and a goods receipt is a fact
+    // about the store room; neither is money owed. This is.
+    //
+    // **No subtotal column and no balance column.** The subtotal is the total
+    // less the tax and what is outstanding is the total less the payments —
+    // both are one subtraction from rows that are already here, and a stored
+    // copy of either is a number that goes wrong the first time a payment is
+    // voided inside a transaction that fails halfway.
+    '''
+    CREATE TABLE IF NOT EXISTS pos_supplier_invoices (
+      id                bigserial   PRIMARY KEY,
+      restaurant_id     bigint      NOT NULL REFERENCES pos_restaurants(id) ON DELETE CASCADE,
+      branch_id         bigint      NOT NULL REFERENCES pos_branches(id) ON DELETE RESTRICT,
+      -- RESTRICT: deleting somebody the restaurant owes money to has to be
+      -- refused and explained. The repository retires them instead.
+      supplier_id       bigint      NOT NULL REFERENCES pos_suppliers(id) ON DELETE RESTRICT,
+      supplier_name     text        NOT NULL,
+      -- The order it bills, when there is one. Null for what arrives without
+      -- one — a repair, a delivery charge, the gas bottle somebody collected.
+      -- SET NULL rather than RESTRICT so archiving old purchasing cannot lock
+      -- the ledger, with the reference snapshotted beside it.
+      purchase_order_id bigint      REFERENCES pos_purchase_orders(id) ON DELETE SET NULL,
+      purchase_order_reference text,
+      -- **The supplier's number, off their paper.** The only string the two
+      -- businesses have in common, so it is what a phone call is conducted in.
+      number            text        NOT NULL,
+      currency          text        NOT NULL DEFAULT 'EGP',
+      exponent          smallint    NOT NULL DEFAULT 2,
+      total_minor       bigint      NOT NULL,
+      tax_minor         bigint      NOT NULL DEFAULT 0,
+      -- Off the paper, not `now()`. An invoice dated the 3rd and typed on the
+      -- 20th is due on the supplier's terms from the 3rd; defaulting this would
+      -- quietly hand the restaurant three weeks the supplier has not agreed to.
+      issued_at         timestamptz NOT NULL,
+      -- Stored rather than derived from the supplier's terms, because those can
+      -- change and this invoice's due date must not move when they do.
+      due_at            timestamptz NOT NULL,
+      note              text,
+      -- Cancelled, never deleted: the supplier's numbering is the evidence and
+      -- a gap in it is a question nobody can answer next year.
+      voided_at         timestamptz,
+      voided_by         bigint      REFERENCES pos_staff(id) ON DELETE SET NULL,
+      -- **A reference, not free text.** `pos_orders` voids the same way, and
+      -- the reason is that a restaurant which cannot count how many invoices it
+      -- cancelled for "entered twice" cannot find the process that keeps
+      -- producing them. RESTRICT: a reason somebody has used is retired, not
+      -- deleted from under the rows that cite it.
+      void_reason_id    bigint      REFERENCES pos_reason_codes(id) ON DELETE RESTRICT,
+      void_note         text,
+      created_at        timestamptz NOT NULL DEFAULT now(),
+      created_by        bigint      REFERENCES pos_staff(id) ON DELETE SET NULL,
+      updated_at        timestamptz NOT NULL DEFAULT now(),
+      updated_by        bigint      REFERENCES pos_staff(id) ON DELETE SET NULL,
+      CONSTRAINT pos_supplier_invoices_total_positive CHECK (total_minor > 0),
+      CONSTRAINT pos_supplier_invoices_tax_within_total
+        CHECK (tax_minor >= 0 AND tax_minor <= total_minor),
+      CONSTRAINT pos_supplier_invoices_due_after_issue CHECK (due_at >= issued_at),
+      -- A void has a reason or it is not a void. Two nullable columns that must
+      -- agree are two columns that will not, unless the database says so.
+      CONSTRAINT pos_supplier_invoices_void_has_a_reason
+        CHECK ((voided_at IS NULL) = (void_reason_id IS NULL)),
+      CONSTRAINT pos_supplier_invoices_number_not_blank
+        CHECK (length(btrim(number)) > 0)
+    )
+    ''',
+    // **Entering the same invoice twice is the commonest error in purchase
+    // bookkeeping**, and unlike most errors it is one a database can simply
+    // refuse. Partial, so that a genuine re-entry after a void is still
+    // possible — which is the reason the void exists.
+    '''
+    CREATE UNIQUE INDEX IF NOT EXISTS pos_supplier_invoices_number_unique
+      ON pos_supplier_invoices (restaurant_id, supplier_id, lower(btrim(number)))
+      WHERE voided_at IS NULL
+    ''',
+    '''
+    CREATE INDEX IF NOT EXISTS pos_supplier_invoices_supplier_idx
+      ON pos_supplier_invoices (supplier_id, issued_at DESC)
+    ''',
+    // "What is overdue" — the one question this table exists to answer quickly.
+    '''
+    CREATE INDEX IF NOT EXISTS pos_supplier_invoices_due_idx
+      ON pos_supplier_invoices (restaurant_id, branch_id, due_at)
+      WHERE voided_at IS NULL
+    ''',
+    '''
+    CREATE INDEX IF NOT EXISTS pos_supplier_invoices_order_idx
+      ON pos_supplier_invoices (purchase_order_id)
+      WHERE purchase_order_id IS NOT NULL
+    ''',
+
+    // What settles it.
+    '''
+    CREATE TABLE IF NOT EXISTS pos_supplier_payments (
+      id               bigserial   PRIMARY KEY,
+      restaurant_id    bigint      NOT NULL REFERENCES pos_restaurants(id) ON DELETE CASCADE,
+      branch_id        bigint      NOT NULL REFERENCES pos_branches(id) ON DELETE RESTRICT,
+      supplier_id      bigint      NOT NULL REFERENCES pos_suppliers(id) ON DELETE RESTRICT,
+      supplier_name    text        NOT NULL,
+      -- Null means paid **on account**: a restaurant hands the dairy man 2,000
+      -- on Friday against a running tab. RESTRICT, because deleting an invoice
+      -- money is allocated to would leave the money pointing at nothing.
+      invoice_id       bigint      REFERENCES pos_supplier_invoices(id) ON DELETE RESTRICT,
+      method           text        NOT NULL,
+      amount_minor     bigint      NOT NULL,
+      currency         text        NOT NULL DEFAULT 'EGP',
+      exponent         smallint    NOT NULL DEFAULT 2,
+      -- The cheque number, the transfer reference — what a bank would need.
+      reference        text,
+      paid_at          timestamptz NOT NULL DEFAULT now(),
+      note             text,
+      -- The drawer movement this money left through, when it left a till. Null
+      -- for everything the back office records, which is currently all of it: a
+      -- cash movement needs an open shift and a terminal and the office has
+      -- neither. Here now so that the day the till offers "pay a supplier" as a
+      -- pay-out reason, the two records can be tied together rather than the
+      -- same money being counted twice.
+      cash_movement_id bigint      REFERENCES pos_cash_movements(id) ON DELETE SET NULL,
+      voided_at        timestamptz,
+      voided_by        bigint      REFERENCES pos_staff(id) ON DELETE SET NULL,
+      void_reason_id   bigint      REFERENCES pos_reason_codes(id) ON DELETE RESTRICT,
+      void_note        text,
+      created_at       timestamptz NOT NULL DEFAULT now(),
+      created_by       bigint      REFERENCES pos_staff(id) ON DELETE SET NULL,
+      CONSTRAINT pos_supplier_payments_amount_positive CHECK (amount_minor > 0),
+      CONSTRAINT pos_supplier_payments_method_known CHECK (method IN (
+        'cash', 'bank_transfer', 'cheque', 'card', 'other')),
+      CONSTRAINT pos_supplier_payments_void_has_a_reason
+        CHECK ((voided_at IS NULL) = (void_reason_id IS NULL))
+    )
+    ''',
+    '''
+    CREATE INDEX IF NOT EXISTS pos_supplier_payments_supplier_idx
+      ON pos_supplier_payments (supplier_id, paid_at DESC)
+    ''',
+    '''
+    CREATE INDEX IF NOT EXISTS pos_supplier_payments_invoice_idx
+      ON pos_supplier_payments (invoice_id)
+      WHERE invoice_id IS NOT NULL
+    ''',
+    // Cheque numbers are how a payment is found again, so they are searched for.
+    '''
+    CREATE INDEX IF NOT EXISTS pos_supplier_payments_reference_idx
+      ON pos_supplier_payments (restaurant_id, reference)
+      WHERE reference IS NOT NULL
+    ''',
+
+    // ── The two invariants that cannot be a CHECK ────────────────────────
+    //
+    // Both are cross-row, so both are triggers — the same shape migration 12
+    // used for refunds, and for the same reason: a rule enforced only in Dart
+    // is a rule that holds until somebody writes the second writer.
+    '''
+    CREATE OR REPLACE FUNCTION pos_supplier_payment_allocation()
+      RETURNS trigger LANGUAGE plpgsql AS \$fn\$
+    DECLARE
+      bill      pos_supplier_invoices%ROWTYPE;
+      allocated bigint;
+    BEGIN
+      IF NEW.invoice_id IS NULL THEN
+        RETURN NEW;   -- on account: nothing to over-allocate.
+      END IF;
+
+      -- FOR UPDATE, so two bookkeepers paying the same invoice at once queue
+      -- rather than both reading the same stale total and both being allowed.
+      SELECT * INTO bill FROM pos_supplier_invoices
+        WHERE id = NEW.invoice_id FOR UPDATE;
+
+      IF bill.supplier_id <> NEW.supplier_id THEN
+        RAISE EXCEPTION
+          'payment is to supplier % but invoice % is from supplier %',
+          NEW.supplier_id, bill.id, bill.supplier_id;
+      END IF;
+
+      IF bill.restaurant_id <> NEW.restaurant_id THEN
+        RAISE EXCEPTION 'a payment and the invoice it settles belong to one restaurant';
+      END IF;
+
+      IF bill.voided_at IS NOT NULL THEN
+        RAISE EXCEPTION 'invoice % was voided, so there is nothing to pay', bill.id;
+      END IF;
+
+      -- Voided payments are excluded, which is what makes a mistyped payment
+      -- correctable: void it and the room it took comes back.
+      SELECT COALESCE(SUM(amount_minor), 0) INTO allocated
+        FROM pos_supplier_payments
+       WHERE invoice_id = NEW.invoice_id
+         AND voided_at IS NULL
+         AND id <> COALESCE(NEW.id, 0);
+
+      IF allocated + NEW.amount_minor > bill.total_minor THEN
+        RAISE EXCEPTION
+          'invoice % is for %, % is already paid against it, and % more would overpay it — money with nowhere to go belongs on account, not on a bill',
+          bill.id, bill.total_minor, allocated, NEW.amount_minor;
+      END IF;
+
+      RETURN NEW;
+    END \$fn\$
+    ''',
+    'DROP TRIGGER IF EXISTS pos_supplier_payments_allocate ON pos_supplier_payments',
+    '''
+    CREATE TRIGGER pos_supplier_payments_allocate
+      BEFORE INSERT OR UPDATE ON pos_supplier_payments
+      FOR EACH ROW EXECUTE FUNCTION pos_supplier_payment_allocation()
+    ''',
+
+    // Voiding an invoice money is allocated to would leave payments pointing at
+    // a bill that is no longer a bill, and a supplier balance that says the
+    // restaurant is in credit when it is not.
+    '''
+    CREATE OR REPLACE FUNCTION pos_supplier_invoice_void_is_clear()
+      RETURNS trigger LANGUAGE plpgsql AS \$fn\$
+    DECLARE
+      allocated bigint;
+    BEGIN
+      IF NEW.voided_at IS NULL OR OLD.voided_at IS NOT NULL THEN
+        RETURN NEW;
+      END IF;
+
+      SELECT COALESCE(SUM(amount_minor), 0) INTO allocated
+        FROM pos_supplier_payments
+       WHERE invoice_id = NEW.id AND voided_at IS NULL;
+
+      IF allocated > 0 THEN
+        RAISE EXCEPTION
+          'invoice % has % paid against it — void the payments first, or the money is allocated to a bill that no longer exists',
+          NEW.id, allocated;
+      END IF;
+
+      RETURN NEW;
+    END \$fn\$
+    ''',
+    'DROP TRIGGER IF EXISTS pos_supplier_invoices_void_clear ON pos_supplier_invoices',
+    '''
+    CREATE TRIGGER pos_supplier_invoices_void_clear
+      BEFORE UPDATE ON pos_supplier_invoices
+      FOR EACH ROW EXECUTE FUNCTION pos_supplier_invoice_void_is_clear()
+    ''',
+  ]),
+  PosMigration(31, 'why an invoice was cancelled, and why a payment was reversed', [
+    // Two new scopes. **Not folded into `void`**: a voided sale and a voided
+    // purchase invoice are asked about by different people for different
+    // reasons, and one list serving both would offer "Customer changed their
+    // mind" to a bookkeeper holding a duplicate from a dairy.
+    //
+    // The CHECK is rewritten rather than added to, because a CHECK cannot be
+    // extended in place. Dropped first so this is re-runnable.
+    '''
+    ALTER TABLE pos_reason_codes
+      DROP CONSTRAINT IF EXISTS pos_reason_codes_scope_known
+    ''',
+    '''
+    ALTER TABLE pos_reason_codes
+      ADD CONSTRAINT pos_reason_codes_scope_known CHECK (scope IN (
+        'void','refund','discount','price_override',
+        'pay_in','pay_out','waste','adjustment',
+        'invoice_void','payment_void'))
+    ''',
+
+    // Seeded like migration 12's, and only where the restaurant has none: a
+    // restaurant that has edited its list must not have this build's opinion
+    // pushed back over it.
+    '''
+    INSERT INTO pos_reason_codes (restaurant_id, scope, code, name_en, name_ar, requires_note, sort_order)
+    SELECT r.id, v.scope, v.code, v.name_en, v.name_ar, v.requires_note, v.sort_order
+      FROM pos_restaurants r
+     CROSS JOIN (VALUES
+       ('invoice_void', 'entered_twice',  'Entered twice',              'مُدخلة مرتين',        false, 1),
+       ('invoice_void', 'wrong_supplier', 'Wrong supplier',             'مورّد خطأ',           false, 2),
+       ('invoice_void', 'wrong_amount',   'Wrong amount',               'مبلغ خطأ',            false, 3),
+       ('invoice_void', 'credit_note',    'Cancelled by a credit note', 'أُلغيت بإشعار دائن',  false, 4),
+       ('invoice_void', 'goods_returned', 'Goods returned',             'مرتجع للمورّد',       false, 5),
+       ('invoice_void', 'other',          'Other — note required',      'أخرى — يلزم كتابة ملاحظة', true, 6)
+     ) AS v(scope, code, name_en, name_ar, requires_note, sort_order)
+     WHERE NOT EXISTS (
+       SELECT 1 FROM pos_reason_codes existing
+        WHERE existing.restaurant_id = r.id AND existing.scope = 'invoice_void')
+    ''',
+    '''
+    INSERT INTO pos_reason_codes (restaurant_id, scope, code, name_en, name_ar, requires_note, sort_order)
+    SELECT r.id, v.scope, v.code, v.name_en, v.name_ar, v.requires_note, v.sort_order
+      FROM pos_restaurants r
+     CROSS JOIN (VALUES
+       ('payment_void', 'wrong_amount',    'Wrong amount',                   'مبلغ خطأ',              false, 1),
+       ('payment_void', 'wrong_invoice',   'Paid against the wrong invoice', 'سُدِّدت على فاتورة خطأ', false, 2),
+       ('payment_void', 'wrong_supplier',  'Paid the wrong supplier',        'سُدِّدت لمورّد خطأ',     false, 3),
+       ('payment_void', 'cheque_bounced',  'Cheque returned',                'شيك مرتجع',             false, 4),
+       ('payment_void', 'entered_twice',   'Entered twice',                  'مُدخلة مرتين',          false, 5),
+       ('payment_void', 'other',           'Other — note required',          'أخرى — يلزم كتابة ملاحظة', true, 6)
+     ) AS v(scope, code, name_en, name_ar, requires_note, sort_order)
+     WHERE NOT EXISTS (
+       SELECT 1 FROM pos_reason_codes existing
+        WHERE existing.restaurant_id = r.id AND existing.scope = 'payment_void')
+    ''',
+  ]),
+  // A ticket with no table can be put down too.
+  //
+  // Migration 7 keyed this table on (restaurant_id, table_id) with the table
+  // NOT NULL, which was the right shape for the only caller there was — leaving
+  // a seated ticket for the floor. The consequence found later is that a
+  // takeaway or a delivery could not be parked **at all**, so it survived
+  // nothing: not a crash, not a restart, not a cashier who has to serve
+  // somebody else first. The Park button on the sale screen was wired to send a
+  // round, which is how it went unnoticed.
+  //
+  // A parked ticket therefore now has two possible identities and exactly one
+  // of them at a time: its table, or its own client transaction id. Both are
+  // unique indexes rather than Dart checks — the floor's one real invariant is
+  // that a table holds at most one open ticket, and that has to be true of the
+  // rows, not of the code that happens to write them.
+  //
+  // No trigger here: every rule in this migration is about a single row. The
+  // triggers in this file exist for the case this is not — `pos_refunds_apply`
+  // has to look at the order it refunds. A unique index and a CHECK say all of
+  // this more cheaply, and fail at the statement that broke them.
+  //
+  // **32, not 25**: this work was branched from a commit whose last migration
+  // was 24, and `main` has since shipped 25 to 31. A duplicate version is the
+  // one mistake this table cannot survive — `schema_migrations` records the
+  // number, not the statements, so the second 25 to reach a real till would be
+  // marked applied without ever running.
+  PosMigration(32, 'a parked ticket without a table (the Park button)', [
+    // `branch_id` because a held ticket has nothing else that can say which
+    // shop it belongs to. The day-close check reached the branch through
+    // `pos_dining_tables`, and a ticket with no table would have been invisible
+    // to it — an unpaid sale that vanishes at midnight, which is precisely the
+    // failure parking is supposed to prevent.
+    '''
+    ALTER TABLE pos_parked_tickets
+      ADD COLUMN IF NOT EXISTS branch_id bigint
+        REFERENCES pos_branches(id) ON DELETE CASCADE
+    ''',
+    '''
+    UPDATE pos_parked_tickets t SET branch_id = dt.branch_id
+      FROM pos_dining_tables dt
+     WHERE dt.id = t.table_id AND t.branch_id IS NULL
+    ''',
+    'ALTER TABLE pos_parked_tickets DROP CONSTRAINT IF EXISTS pos_parked_tickets_pkey',
+    'ALTER TABLE pos_parked_tickets ALTER COLUMN table_id DROP NOT NULL',
+    // NULLs are distinct in a unique index by default, which is exactly the
+    // behaviour wanted: one row per table, and any number of rows with no
+    // table. Spelled out because `NULLS NOT DISTINCT` exists and would break
+    // held tickets the moment somebody parked a second one.
+    '''
+    CREATE UNIQUE INDEX IF NOT EXISTS pos_parked_tickets_table_key
+      ON pos_parked_tickets (restaurant_id, table_id)
+    ''',
+    '''
+    CREATE UNIQUE INDEX IF NOT EXISTS pos_parked_tickets_held_key
+      ON pos_parked_tickets (restaurant_id, client_transaction_id)
+      WHERE table_id IS NULL
+    ''',
+    // Locatable, always. A row that names neither a table nor a branch is one
+    // no till would hydrate and no day close would count.
+    '''
+    ALTER TABLE pos_parked_tickets
+      ADD CONSTRAINT pos_parked_tickets_locatable
+      CHECK (table_id IS NOT NULL OR branch_id IS NOT NULL)
+    ''',
+  ]),
+  PosMigration(33, 'a supplier paid out of the till, tied to its drawer movement', [
+    // `cash_movement_id` has been on `pos_supplier_payments` since migration 30
+    // and written by nothing: the office had no open shift to attribute a
+    // movement to, so a restaurant paying its vegetable man 500 out of the till
+    // had a drawer 500 short at cash-up with nothing on the shift explaining it.
+    // The payment dialog can now say the cash came out of the drawer, and the
+    // repository writes both rows in one transaction.
+    //
+    // **One movement, one payment.** Two payments pointing at the same pay-out
+    // would each claim to have moved the same 500, and a statement built from
+    // them would say the supplier was paid twice out of a drawer that went down
+    // once. Partial, because almost every payment has no movement at all — money
+    // from the office safe, a transfer, a cheque.
+    '''
+    CREATE UNIQUE INDEX IF NOT EXISTS pos_supplier_payments_movement_unique
+      ON pos_supplier_payments (cash_movement_id)
+      WHERE cash_movement_id IS NOT NULL
+    ''',
+
+    // And the rest of it, which is cross-row and therefore a trigger — the same
+    // shape as `pos_supplier_payment_allocation` two migrations up, for the same
+    // reason: a rule enforced only in Dart holds until somebody writes the
+    // second writer.
+    //
+    // The three things a link has to be true about. A payment pointed at a
+    // `pay_in`, at another restaurant's drawer, or at a movement for a different
+    // amount is a payment whose drawer story is fiction — and every one of them
+    // is a plausible outcome of a half-finished transaction or a hand-written
+    // UPDATE, which is exactly when nobody is watching.
+    '''
+    CREATE OR REPLACE FUNCTION pos_supplier_payment_drawer_link()
+      RETURNS trigger LANGUAGE plpgsql AS \$fn\$
+    DECLARE
+      moved pos_cash_movements%ROWTYPE;
+    BEGIN
+      IF NEW.cash_movement_id IS NULL THEN
+        RETURN NEW;   -- paid from the office: no drawer to be wrong about.
+      END IF;
+
+      SELECT * INTO moved FROM pos_cash_movements
+        WHERE id = NEW.cash_movement_id;
+
+      IF NOT FOUND THEN
+        RAISE EXCEPTION
+          'payment names cash movement % and there is no such movement — record the payment without a drawer movement, or record the pay-out at the till first',
+          NEW.cash_movement_id;
+      END IF;
+
+      IF moved.kind <> 'pay_out' THEN
+        RAISE EXCEPTION
+          'cash movement % is a % — money paid to a supplier leaves the drawer, so only a pay_out can be what it left through',
+          moved.id, moved.kind;
+      END IF;
+
+      IF moved.restaurant_id <> NEW.restaurant_id THEN
+        RAISE EXCEPTION
+          'cash movement % belongs to restaurant % and the payment to restaurant % — a drawer and the ledger that spends out of it belong to one business',
+          moved.id, moved.restaurant_id, NEW.restaurant_id;
+      END IF;
+
+      -- Equal, not "at least". A pay-out of 500 against a payment of 400 leaves
+      -- 100 that left the drawer and is owed to nobody, which is a shortage
+      -- wearing a reference number.
+      IF moved.amount_minor <> NEW.amount_minor THEN
+        RAISE EXCEPTION
+          'payment is for % and cash movement % moved % — a part of a pay-out is not a payment; void this and record the two separately',
+          NEW.amount_minor, moved.id, moved.amount_minor;
+      END IF;
+
+      RETURN NEW;
+    END \$fn\$
+    ''',
+    'DROP TRIGGER IF EXISTS pos_supplier_payments_drawer ON pos_supplier_payments',
+    // UPDATE as well as INSERT. The office's UPDATE grant is column-scoped and
+    // does not include `cash_movement_id`, so this fires on a void and finds
+    // nothing wrong — which is the point: the invariant is checked by the
+    // database rather than trusted to the grant list staying as it is.
+    '''
+    CREATE TRIGGER pos_supplier_payments_drawer
+      BEFORE INSERT OR UPDATE ON pos_supplier_payments
+      FOR EACH ROW EXECUTE FUNCTION pos_supplier_payment_drawer_link()
+    ''',
+  ]),
+  PosMigration(34, 'the print queue — a receipt the printer refused is not lost', [
+    // **The receipt is stored as bytes, not as a receipt.**
+    //
+    // The alternative was to store the order id and re-render on retry, which
+    // is smaller and was rejected: re-rendering tomorrow prints today's sale
+    // through tomorrow's renderer, tomorrow's receipt profile and tomorrow's
+    // language — so the slip that finally comes out is not the one the customer
+    // was promised. It also cannot work for the one case the queue exists for,
+    // a till whose database is fine and whose printer is not: the bytes are
+    // already built and sending them again is the whole job.
+    //
+    // 40KB a receipt on an 80mm roll. A restaurant that printed nothing for a
+    // week would hold a few hundred megabytes, which is a housekeeping job
+    // somebody can write when there is evidence anybody needs it.
+    '''
+    CREATE TABLE IF NOT EXISTS pos_print_jobs (
+      id             bigserial   PRIMARY KEY,
+      restaurant_id  bigint      NOT NULL REFERENCES pos_restaurants(id) ON DELETE CASCADE,
+      branch_id      bigint      NOT NULL REFERENCES pos_branches(id) ON DELETE CASCADE,
+      -- The till that took the money. A receipt has to come out of the printer
+      -- at the counter the customer is standing at, so the drain is per
+      -- terminal and never picks up another till's paper.
+      terminal_id    text        NOT NULL,
+      -- What it is a receipt FOR. Nullable because a job can outlive its order
+      -- being cancelled, and because a reprint of an order that was purged is
+      -- still a job that has to print.
+      order_id       bigint      REFERENCES pos_orders(id) ON DELETE SET NULL,
+      invoice_number text,
+      printer_name   text        NOT NULL,
+      kind           text        NOT NULL DEFAULT 'receipt',
+      -- The ESC/POS job, complete: reset, picture, feed, drawer kick if the
+      -- tender wanted one, cut. Sent verbatim on retry.
+      payload        bytea       NOT NULL,
+      status         text        NOT NULL DEFAULT 'pending',
+      attempts       integer     NOT NULL DEFAULT 0,
+      last_attempt_at timestamptz,
+      last_error     text,
+      queued_at      timestamptz NOT NULL DEFAULT now(),
+      printed_at     timestamptz,
+      CONSTRAINT pos_print_jobs_status_known CHECK (
+        status IN ('pending', 'printed')
+      ),
+      CONSTRAINT pos_print_jobs_kind_known CHECK (
+        kind IN ('receipt', 'reprint')
+      ),
+      -- A printed job that cannot say when is a job nobody can investigate.
+      CONSTRAINT pos_print_jobs_printed_has_time CHECK (
+        status <> 'printed' OR printed_at IS NOT NULL
+      )
+    )
+    ''',
+    // The drain's query, and the only one: this till's outstanding paper, in
+    // the order the sales happened. Partial, because a printed job is history
+    // and the queue is only ever read for what is still owed.
+    '''
+    CREATE INDEX IF NOT EXISTS pos_print_jobs_outstanding_idx
+      ON pos_print_jobs (branch_id, terminal_id, id)
+      WHERE status = 'pending'
+    ''',
+    // **A receipt prints once.**
+    //
+    // The retry loop marks a job printed and stops considering it. That rule
+    // held for exactly as long as there was one writer — and the second writer
+    // is not hypothetical here, it is two tills sharing a printer, or the same
+    // till relaunched while a drain was in flight. A job put back to 'pending'
+    // after it printed is a second copy of a receipt for one sale, which is how
+    // a refund gets claimed twice.
+    //
+    // In the database rather than only in Dart, for the reason every rule in
+    // this file is: the grant list is column-scoped and can be widened, and a
+    // support engineer with psql is a writer nobody reviewed.
+    '''
+    CREATE OR REPLACE FUNCTION pos_print_job_prints_once()
+      RETURNS trigger LANGUAGE plpgsql AS \$fn\$
+    BEGIN
+      IF OLD.status = 'printed' THEN
+        RAISE EXCEPTION
+          'print job % already printed at % — a receipt that has been on paper cannot be queued again; issue a reprint, which is a new job and is recorded against whoever asked for it',
+          OLD.id, OLD.printed_at;
+      END IF;
+
+      -- Marking a job printed stamps the time, so 'printed' and "when" cannot
+      -- disagree. The CHECK constraint refuses the row that omits it; this is
+      -- what makes the ordinary write not have to think about it.
+      IF NEW.status = 'printed' AND NEW.printed_at IS NULL THEN
+        NEW.printed_at := now();
+      END IF;
+
+      RETURN NEW;
+    END \$fn\$
+    ''',
+    'DROP TRIGGER IF EXISTS pos_print_jobs_print_once ON pos_print_jobs',
+    '''
+    CREATE TRIGGER pos_print_jobs_print_once
+      BEFORE UPDATE ON pos_print_jobs
+      FOR EACH ROW EXECUTE FUNCTION pos_print_job_prints_once()
+    ''',
+  ]),
+  PosMigration(35, 'every sale, refund and shift knows its trading day', [
+    // **Nothing ever wrote `business_day_id`.** The column has been on orders,
+    // refunds and shifts for waves, and the day close totals by it alone — so
+    // every day closed recorded gross and net of 0, and the only readers that
+    // got the right answer were the ones that had quietly learned to fall back
+    // to the day's opening and closing times.
+    //
+    // A trigger rather than a parameter on each writer. There are two order
+    // inserts, a refund insert and a shift insert, and whichever one somebody
+    // writes next: a column that has to be remembered at every INSERT is the
+    // column that was forgotten at every INSERT. The database already holds the
+    // one fact needed — which day is open at this branch — and the unique index
+    // on open days guarantees there is at most one.
+    //
+    // Only when the writer left it NULL: a row that names its day keeps it. No
+    // open day leaves it NULL, which is the truth — the sale happened outside a
+    // trading day — and every reader already falls back to the day's window.
+    //
+    // The body is single-quoted rather than dollar-quoted so a `$` never has to
+    // survive a Dart string on its way here.
+    '''
+    CREATE OR REPLACE FUNCTION pos_stamp_business_day() RETURNS trigger
+    LANGUAGE plpgsql AS '
+    BEGIN
+      IF NEW.business_day_id IS NULL THEN
+        SELECT d.id INTO NEW.business_day_id
+          FROM pos_business_days d
+         WHERE d.branch_id = NEW.branch_id
+           AND d.closed_at IS NULL
+         LIMIT 1;
+      END IF;
+      RETURN NEW;
+    END
+    '
+    ''',
+    'DROP TRIGGER IF EXISTS pos_orders_business_day ON pos_orders',
+    '''
+    CREATE TRIGGER pos_orders_business_day BEFORE INSERT ON pos_orders
+      FOR EACH ROW EXECUTE FUNCTION pos_stamp_business_day()
+    ''',
+    'DROP TRIGGER IF EXISTS pos_refunds_business_day ON pos_refunds',
+    '''
+    CREATE TRIGGER pos_refunds_business_day BEFORE INSERT ON pos_refunds
+      FOR EACH ROW EXECUTE FUNCTION pos_stamp_business_day()
+    ''',
+    'DROP TRIGGER IF EXISTS pos_shifts_business_day ON pos_shifts',
+    '''
+    CREATE TRIGGER pos_shifts_business_day BEFORE INSERT ON pos_shifts
+      FOR EACH ROW EXECUTE FUNCTION pos_stamp_business_day()
+    ''',
+    // Every row written before this migration, filed under the day whose
+    // window contains it — the same rule the history screen and the branch
+    // view already use as their fallback, so nothing they show moves.
+    '''
+    UPDATE pos_orders o SET business_day_id = d.id
+      FROM pos_business_days d
+     WHERE o.business_day_id IS NULL
+       AND d.branch_id = o.branch_id
+       AND o.occurred_at >= d.opened_at
+       AND (d.closed_at IS NULL OR o.occurred_at < d.closed_at)
+    ''',
+    '''
+    UPDATE pos_refunds r SET business_day_id = d.id
+      FROM pos_business_days d
+     WHERE r.business_day_id IS NULL
+       AND d.branch_id = r.branch_id
+       AND r.occurred_at >= d.opened_at
+       AND (d.closed_at IS NULL OR r.occurred_at < d.closed_at)
+    ''',
+    '''
+    UPDATE pos_shifts s SET business_day_id = d.id
+      FROM pos_business_days d
+     WHERE s.business_day_id IS NULL
+       AND d.branch_id = s.branch_id
+       AND s.opened_at >= d.opened_at
+       AND (d.closed_at IS NULL OR s.opened_at < d.closed_at)
+    ''',
+    // **The closed days' figures, recomputed.** They are a SUMMARY the close
+    // wrote, not a money record, and they were written as 0 by the bug above.
+    // Recomputed with the close's own formula, and only for days that now have
+    // sales filed under them: a day with none keeps what it recorded.
+    '''
+    UPDATE pos_business_days d
+       SET gross_minor = t.gross, net_minor = t.net
+      FROM (
+        SELECT business_day_id,
+               coalesce(sum(total_minor), 0)::bigint AS gross,
+               coalesce(sum(total_minor - refunded_minor), 0)::bigint AS net
+          FROM pos_orders
+         WHERE business_day_id IS NOT NULL
+           AND status IN ('PAID', 'CLOSED', 'PARTIALLY_REFUNDED', 'REFUNDED')
+         GROUP BY business_day_id
+      ) t
+     WHERE d.id = t.business_day_id
+       AND d.closed_at IS NOT NULL
+    ''',
+  ]),
+  PosMigration(36, 'a row is filed under the day it happened in', [
+    // **Migration 35 stamped whichever day was open at the moment of writing.**
+    // For a sale rung up now that is the same day. But it was not the rule the
+    // backfill in 35, the history screen and the branch view all file by — the
+    // day whose window CONTAINS the moment — and a row dated into another day,
+    // written while today was open, was filed under today by the trigger and
+    // under its own day by every reader. The branch view's tests caught the two
+    // disagreeing by exactly one sale. One rule, everywhere.
+    //
+    // The time column differs by table — a shift's is `opened_at`, a sale's and
+    // a refund's `occurred_at` — so each trigger names it and the function reads
+    // it off the row, rather than the same six lines being written three times.
+    //
+    // A known edge, stated rather than hidden: on a branch whose tills share a
+    // database on another machine, a till whose clock runs behind the host can
+    // write a sale seconds "before" the day opened. It stays unfiled — NULL —
+    // which is exactly how every reader already treats it.
+    '''
+    CREATE OR REPLACE FUNCTION pos_stamp_business_day() RETURNS trigger
+    LANGUAGE plpgsql AS '
+    DECLARE
+      stamp_at timestamptz :=
+        coalesce((to_jsonb(NEW) ->> TG_ARGV[0])::timestamptz, now());
+    BEGIN
+      IF NEW.business_day_id IS NULL THEN
+        SELECT d.id INTO NEW.business_day_id
+          FROM pos_business_days d
+         WHERE d.branch_id = NEW.branch_id
+           AND d.opened_at <= stamp_at
+           AND (d.closed_at IS NULL OR stamp_at < d.closed_at)
+         ORDER BY d.opened_at DESC
+         LIMIT 1;
+      END IF;
+      RETURN NEW;
+    END
+    '
+    ''',
+    'DROP TRIGGER IF EXISTS pos_orders_business_day ON pos_orders',
+    '''
+    CREATE TRIGGER pos_orders_business_day BEFORE INSERT ON pos_orders
+      FOR EACH ROW EXECUTE FUNCTION pos_stamp_business_day('occurred_at')
+    ''',
+    'DROP TRIGGER IF EXISTS pos_refunds_business_day ON pos_refunds',
+    '''
+    CREATE TRIGGER pos_refunds_business_day BEFORE INSERT ON pos_refunds
+      FOR EACH ROW EXECUTE FUNCTION pos_stamp_business_day('occurred_at')
+    ''',
+    'DROP TRIGGER IF EXISTS pos_shifts_business_day ON pos_shifts',
+    '''
+    CREATE TRIGGER pos_shifts_business_day BEFORE INSERT ON pos_shifts
+      FOR EACH ROW EXECUTE FUNCTION pos_stamp_business_day('opened_at')
+    ''',
+  ]),
+  PosMigration(37, 'a record of every copy taken of this database', [
+    // The restaurant's own answer to "when did we last have a backup, and was
+    // it any good". Until this table there was none: `pg_dump` appeared nowhere
+    // in the product, `backup.manage` was a grantable permission with no screen
+    // behind it, and one failed disk was the whole trading history.
+    //
+    // **No foreign key on `restaurant_id`, exactly as `pos_audit_events` has
+    // none.** The first draft had `REFERENCES pos_restaurants ON DELETE
+    // CASCADE`, on the reasoning that a backup of a business this database no
+    // longer knows about is evidence of nothing. That is a contradiction with
+    // the append-only trigger below and the test found it immediately: a
+    // cascade IS a DELETE, the trigger refuses DELETE from every connection, so
+    // `DELETE FROM pos_restaurants` would have failed on any install that had
+    // ever taken a backup — including, quietly, the tear-down of half the
+    // database suites. A ledger cannot have rows that something else is allowed
+    // to remove on its behalf.
+    //
+    // **`trigger_kind`, not `trigger`.** TRIGGER is a reserved word, and a
+    // column that needs quoting forever is a column somebody eventually forgets
+    // to quote.
+    '''
+    CREATE TABLE IF NOT EXISTS pos_backups (
+      id             bigserial   PRIMARY KEY,
+      restaurant_id  bigint      NOT NULL,
+      branch_id      bigint,
+      terminal_id    uuid,
+      taken_at       timestamptz NOT NULL DEFAULT now(),
+      -- The staff row, and the name at the time. Denormalised for the same
+      -- reason the ledger does it: "who took the last backup" must still read
+      -- correctly after they have left.
+      taken_by       bigint,
+      taken_by_name  text        NOT NULL,
+      trigger_kind   text        NOT NULL,
+      outcome        text        NOT NULL,
+      -- Kept even for a failure. "We tried to write to D:\\backups and could
+      -- not" is the sentence that gets the disk looked at.
+      file_path      text        NOT NULL,
+      size_bytes     bigint      NOT NULL DEFAULT 0,
+      -- SHA-256, lower-case hex. Its job is one comparison: whether the file on
+      -- disk is still the file this row is about.
+      checksum       text,
+      tables_found   integer     NOT NULL DEFAULT 0,
+      failure        text,
+      detail         text,
+      CONSTRAINT pos_backups_outcome_known
+        CHECK (outcome IN ('verified', 'unverified', 'failed')),
+      CONSTRAINT pos_backups_trigger_known
+        CHECK (trigger_kind IN ('manual', 'day_close')),
+      CONSTRAINT pos_backups_counts_sane
+        CHECK (size_bytes >= 0 AND tables_found >= 0),
+      CONSTRAINT pos_backups_actor_present
+        CHECK (length(trim(taken_by_name)) > 0),
+      CONSTRAINT pos_backups_file_present
+        CHECK (length(trim(file_path)) > 0),
+      -- A verified row has to have something behind it. Without this, a row
+      -- claiming 'verified' with no file, no checksum and no tables would read
+      -- on screen as the backup that saves the restaurant.
+      CONSTRAINT pos_backups_verified_has_substance
+        CHECK (outcome <> 'verified'
+               OR (size_bytes > 0 AND checksum IS NOT NULL AND tables_found > 0)),
+      -- And the mirror: exactly the rows that are not verified carry a reason.
+      -- A failure with no reason is a row nobody can act on; a success with one
+      -- is a contradiction.
+      CONSTRAINT pos_backups_failure_explained
+        CHECK ((outcome = 'verified') = (failure IS NULL)),
+      CONSTRAINT pos_backups_checksum_shaped
+        CHECK (checksum IS NULL OR checksum ~ '^[0-9a-f]{64}\$')
+    )
+    ''',
+    '''
+    CREATE INDEX IF NOT EXISTS pos_backups_tenant_time_idx
+      ON pos_backups (restaurant_id, taken_at DESC)
+    ''',
+    // **One row per file, and this one is genuinely cross-row.** Two rows
+    // naming the same path means the older one's checksum and size describe a
+    // file that has since been overwritten — so the list would offer a restore
+    // from a February archive and hand back March. Partial, because a failed
+    // attempt wrote nothing: several failures against the same unwritable path
+    // in the same second are all true at once.
+    '''
+    CREATE UNIQUE INDEX IF NOT EXISTS pos_backups_file_unique
+      ON pos_backups (restaurant_id, file_path)
+      WHERE outcome <> 'failed'
+    ''',
+
+    // Append-only, held by the database and not by the interface having no
+    // update on it.
+    //
+    // The rule this protects is a human one. A pane showing "last night's
+    // backup could not be verified" is an uncomfortable row, and the shortest
+    // path to making it go away is one UPDATE — after which the restaurant
+    // believes it has a copy it does not have, which is strictly worse than
+    // knowing it has none. The message says what to do instead, because
+    // somebody reading it at that moment has a real problem and deserves a next
+    // step rather than a refusal.
+    r'''
+    CREATE OR REPLACE FUNCTION pos_backups_append_only() RETURNS trigger AS $$
+    BEGIN
+      RAISE EXCEPTION 'pos_backups is append-only; % is not permitted — a backup that failed is the record that it failed. Fix what it reports and take another one; the new row is what makes the warning go away.', TG_OP
+        USING ERRCODE = 'restrict_violation';
+    END;
+    $$ LANGUAGE plpgsql
+    ''',
+    'DROP TRIGGER IF EXISTS pos_backups_no_rewrite ON pos_backups',
+    '''
+    CREATE TRIGGER pos_backups_no_rewrite
+      BEFORE UPDATE OR DELETE ON pos_backups
+      FOR EACH ROW EXECUTE FUNCTION pos_backups_append_only()
+    ''',
+    // TRUNCATE fires no row trigger and is exactly how a table gets emptied by
+    // somebody who has just found out that DELETE is blocked.
+    'DROP TRIGGER IF EXISTS pos_backups_no_truncate ON pos_backups',
+    '''
+    CREATE TRIGGER pos_backups_no_truncate
+      BEFORE TRUNCATE ON pos_backups
+      FOR EACH STATEMENT EXECUTE FUNCTION pos_backups_append_only()
+    ''',
+  ]),
+  PosMigration(38, 'one receipt per sale, and one per refund', [
+    // The design leaned on `pos_eta_receipts_uuid_unique` to stop a sale being
+    // filed twice, and it cannot: a receipt's uuid is the hash of a document
+    // that names the receipt BEFORE it, so the same sale queued twice is two
+    // different documents with two different uuids, and the index lets both
+    // in. A replayed submission and the reconciler racing the settlement are
+    // both that. The guard has to be on what the receipt is ABOUT.
+    //
+    // Duplicates already written are cancelled, keeping the first — not
+    // deleted: a receipt row is part of a legal record even unsubmitted, and
+    // nothing has ever been submitted (there is no drain yet), so no
+    // cancelled one has reached the authority. The drain, when it comes, skips
+    // cancelled rows when it walks a chain.
+    """
+    UPDATE pos_eta_receipts r
+       SET status = 'cancelled',
+           error_message = 'Duplicate of receipt ' || keep.id
+             || ' for the same sale; never submitted.'
+      FROM (SELECT order_id, min(id) AS id FROM pos_eta_receipts
+             WHERE refund_id IS NULL AND status <> 'cancelled'
+             GROUP BY order_id) keep
+     WHERE r.refund_id IS NULL AND r.status IN ('pending', 'signed')
+       AND r.order_id = keep.order_id AND r.id <> keep.id
+    """,
+    """
+    UPDATE pos_eta_receipts r
+       SET status = 'cancelled',
+           error_message = 'Duplicate of receipt ' || keep.id
+             || ' for the same refund; never submitted.'
+      FROM (SELECT refund_id, min(id) AS id FROM pos_eta_receipts
+             WHERE refund_id IS NOT NULL AND status <> 'cancelled'
+             GROUP BY refund_id) keep
+     WHERE r.refund_id IS NOT NULL AND r.status IN ('pending', 'signed')
+       AND r.refund_id = keep.refund_id AND r.id <> keep.id
+    """,
+    // Partial on `cancelled`, so a receipt cancelled for a reason can be
+    // replaced by the one that should have been sent.
+    """
+    CREATE UNIQUE INDEX IF NOT EXISTS pos_eta_receipts_one_per_sale
+      ON pos_eta_receipts (order_id)
+      WHERE refund_id IS NULL AND status <> 'cancelled'
+    """,
+    """
+    CREATE UNIQUE INDEX IF NOT EXISTS pos_eta_receipts_one_per_refund
+      ON pos_eta_receipts (refund_id)
+      WHERE refund_id IS NOT NULL AND status <> 'cancelled'
+    """,
+  ]),
+  PosMigration(39, 'the units stock is counted and bought in', [
+    // A list the back office owns, where there was a closed set in code. The
+    // seven every restaurant starts with are seeded; a sack of rice or a tray
+    // of thirty eggs is the restaurant's to add.
+    //
+    // **The code is what the rest of the schema stores** — purchase lines and
+    // stock rows keep `unit text` and always have — so this table names codes
+    // rather than replacing them, and no existing row changes.
+    //
+    // `eta_unit_type` is what an e-receipt says the item was sold in. The
+    // seeded values are the UN/ECE codes the authority's list is built on
+    // (EA, KGM, GRM, LTR, MLT; BX and PK from the packaging list) — to be
+    // checked against the authority's published table before the first filing
+    // that uses anything but EA.
+    r'''
+    CREATE TABLE IF NOT EXISTS pos_units (
+      id              bigserial   PRIMARY KEY,
+      restaurant_id   bigint      NOT NULL REFERENCES pos_restaurants(id) ON DELETE CASCADE,
+      code            text        NOT NULL,
+      name_en         text        NOT NULL,
+      name_ar         text,
+      eta_unit_type   text        NOT NULL DEFAULT 'EA',
+      allows_fraction boolean     NOT NULL DEFAULT false,
+      is_active       boolean     NOT NULL DEFAULT true,
+      sort_order      integer     NOT NULL DEFAULT 0,
+      updated_at      timestamptz NOT NULL DEFAULT now(),
+      CONSTRAINT pos_units_code_shaped CHECK (code ~ '^[a-z][a-z0-9_]{0,15}$'),
+      CONSTRAINT pos_units_name_present CHECK (length(trim(name_en)) > 0),
+      CONSTRAINT pos_units_eta_shaped CHECK (eta_unit_type ~ '^[A-Z0-9]{1,6}$'),
+      CONSTRAINT pos_units_code_unique UNIQUE (restaurant_id, code)
+    )
+    ''',
+    r'''
+    CREATE OR REPLACE FUNCTION pos_seed_units(restaurant bigint) RETURNS void
+    LANGUAGE sql AS $$
+      INSERT INTO pos_units (restaurant_id, code, name_en, name_ar,
+                             eta_unit_type, allows_fraction, sort_order)
+      VALUES (restaurant, 'ea',   'Each',       'قطعة',     'EA',  false, 10),
+             (restaurant, 'kg',   'Kilogram',   'كيلوجرام', 'KGM', true,  20),
+             (restaurant, 'g',    'Gram',       'جرام',     'GRM', true,  30),
+             (restaurant, 'l',    'Litre',      'لتر',      'LTR', true,  40),
+             (restaurant, 'ml',   'Millilitre', 'مليلتر',   'MLT', true,  50),
+             (restaurant, 'box',  'Box',        'علبة',     'BX',  false, 60),
+             (restaurant, 'pack', 'Pack',       'عبوة',     'PK',  false, 70)
+      ON CONFLICT (restaurant_id, code) DO NOTHING
+    $$
+    ''',
+    // Every new restaurant gets them, by the database rather than by each of
+    // the three places that create one (the wizard, pos_migrate --seed, the
+    // cloud bootstrap) remembering to. SECURITY DEFINER so the account that
+    // inserts the restaurant needs no grant on the units for it to work.
+    r'''
+    CREATE OR REPLACE FUNCTION pos_restaurant_units() RETURNS trigger
+    LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+    BEGIN
+      PERFORM pos_seed_units(NEW.id);
+      RETURN NEW;
+    END;
+    $$
+    ''',
+    'DROP TRIGGER IF EXISTS pos_restaurants_seed_units ON pos_restaurants',
+    r'''
+    CREATE TRIGGER pos_restaurants_seed_units
+      AFTER INSERT ON pos_restaurants
+      FOR EACH ROW EXECUTE FUNCTION pos_restaurant_units()
+    ''',
+    'SELECT pos_seed_units(id) FROM pos_restaurants',
+  ]),
+  PosMigration(40, 'an item can be bought and counted without being sold', [
+    // Chicken, oil, a gas cylinder: bought, received, counted — and never on
+    // the menu. They are product rows, because receiving, stock movements and
+    // stock levels all key on pos_products.id and a second table would be a
+    // second ledger. What keeps one off the cashier's screen is having no
+    // category: the menu query joins categories, so it can never appear.
+    'ALTER TABLE pos_products ALTER COLUMN category_id DROP NOT NULL',
+    // And only a stocked item may be without one. An uncategorised product
+    // that is not counted either is a row nobody can find anywhere.
+    'ALTER TABLE pos_products '
+        'DROP CONSTRAINT IF EXISTS pos_products_uncategorised_is_stock',
+    '''
+    ALTER TABLE pos_products
+      ADD CONSTRAINT pos_products_uncategorised_is_stock
+      CHECK (category_id IS NOT NULL OR is_stocked)
+    ''',
+    '''
+    CREATE INDEX IF NOT EXISTS pos_products_stocked_idx
+      ON pos_products (restaurant_id)
+      WHERE is_stocked
+    ''',
+  ]),
+  PosMigration(41, 'a payment method remembers that the platform sent it', [
+    // A cloud till takes its payment methods from the bootstrap bundle
+    // (POS-BE-013), and until now sent the platform its OWN row ids — which the
+    // platform refused, or booked against whichever of its tenders shared the
+    // number.
+    //
+    // **The platform id is a column, not the primary key.** Products keep the
+    // platform id as their key; this table cannot. Its rows 1–4 were written by
+    // migration 23 and the installer before any bundle said anything, and a
+    // queued payment names its tender by exactly that local id. Had the seeder
+    // overwritten row 1 with the platform's tender 1, every sale still queued
+    // on the till's own Cash would have drained as whatever the platform calls
+    // tender 1 — the defect, relabelled. With the id in its own column a
+    // payment either names a row the platform sent, and the drain sends that
+    // row's platform id, or it does not, and the drain holds it for a person.
+    'ALTER TABLE pos_tender_types ADD COLUMN IF NOT EXISTS platform_id bigint',
+    // What the seeder's upsert is keyed on. NULLs are distinct, so every row a
+    // restaurant authored itself passes untouched.
+    '''
+    CREATE UNIQUE INDEX IF NOT EXISTS pos_tender_types_platform_unique
+      ON pos_tender_types (restaurant_id, platform_id)
+    ''',
+    // The code prefix below belongs to the seeder. Nothing can have written one
+    // yet, but a CHECK added over a row that breaks it fails this migration on
+    // a till in a restaurant — so anything that did is moved aside first.
+    '''
+    UPDATE pos_tender_types SET code = 'local-' || id || '-' || code
+     WHERE platform_id IS NULL AND code LIKE 'platform-%'
+    ''',
+    'ALTER TABLE pos_tender_types '
+        'DROP CONSTRAINT IF EXISTS pos_tender_types_platform_shape',
+    // Two promises, one constraint.
+    //
+    // The code: a platform row's is `platform-<id>` and nobody else may use the
+    // prefix, so the seeder's INSERT can never trip UNIQUE(restaurant_id, code)
+    // and roll back a whole bundle over a name.
+    //
+    // The id: a platform row never sits at 1–4. Those are the ids of
+    // `TenderMethod.seeded`, which the payment screen still offers while its
+    // list loads and whenever no row is active, and a payment taken on that
+    // fallback must read as "not the platform's". If the serial ever handed a
+    // platform tender id 1, the fallback Cash would drain as that tender. The
+    // seeder `setval`s past 4 before it inserts; this is what refuses it if it
+    // did not.
+    '''
+    ALTER TABLE pos_tender_types
+      ADD CONSTRAINT pos_tender_types_platform_shape CHECK (
+        (platform_id IS NULL AND code NOT LIKE 'platform-%')
+        OR (platform_id IS NOT NULL
+            AND code = 'platform-' || platform_id
+            AND id > 4)
+      )
+    ''',
+  ]),
+  PosMigration(42, 'a restaurant has one owner, and the owner is fixed', [
+    // Two rules, both cross-row, so both are triggers — the same shape as
+    // `pos_supplier_payment_allocation` in migration 30, and for the same
+    // reason: `PostgresStaffDirectoryRepository` checks them too, but it is one
+    // of four writers of `pos_staff`. The wizard's `seedOwner`, `pos_migrate
+    // --seed` and the cloud `BootstrapSeeder` all write it without going near
+    // the repository, and the first two write owners.
+    //
+    // **Counted among ACTIVE staff.** That is what keeps ownership
+    // transferable: disable the old owner, then appoint the new one. "One
+    // owner row, ever" would have made the installer's account the owner for
+    // the life of the restaurant, since nobody is ever deleted here.
+    //
+    // **Existing rows are not rewritten.** A branch server that ran an earlier
+    // build may already have two active owners, and which of them is the real
+    // one is the restaurant's question, not a migration's. Both keep working:
+    // the UPDATE trigger fires only when `role_id` or `is_active` actually
+    // changes, so renaming either of them, resetting a PIN or the repository's
+    // `role_id = coalesce(@role, role_id)` pass straight through. The rule
+    // bites the next time somebody is made owner or brought back as one.
+    //
+    // **SECURITY DEFINER**, and it is not decoration. The owner-role row is
+    // locked `FOR NO KEY UPDATE`, which needs UPDATE on `pos_roles`, and on a
+    // cloud till the seeder flips `is_active` over the till's own credential —
+    // which holds SELECT there and nothing more. As an ordinary trigger it
+    // would fail every bundle that touched an owner's row with "permission
+    // denied". Granting the till UPDATE on `pos_roles` to make a lock work
+    // would hand a recovered till credential the power to rewrite what the
+    // owner role holds. `search_path` is pinned, as it must be for any
+    // SECURITY DEFINER function.
+    //
+    // One interaction worth knowing: if the platform re-enables somebody who
+    // is on the owner role *locally* (roles are not in the bundle) while
+    // another local owner is active, this refuses the seeder's upsert and the
+    // bundle rolls back. That is the rule doing its job, loudly; the message
+    // says which person to disable.
+    r'''
+    CREATE OR REPLACE FUNCTION pos_staff_one_owner()
+      RETURNS trigger LANGUAGE plpgsql
+      SECURITY DEFINER SET search_path = public AS $fn$
+    DECLARE
+      owner_role bigint;
+      incumbent  text;
+    BEGIN
+      IF NEW.role_id IS NULL THEN
+        RETURN NEW;
+      END IF;
+
+      -- Locked, so two managers appointing an owner from two tills at once
+      -- queue on this row rather than each counting the other's uncommitted
+      -- appointment as nobody and both committing. NO KEY UPDATE rather than
+      -- UPDATE: it does not block the KEY SHARE lock every other staff row's
+      -- foreign key takes on its role.
+      SELECT id INTO owner_role FROM pos_roles
+       WHERE id = NEW.role_id AND code = 'owner'
+         FOR NO KEY UPDATE;
+      IF owner_role IS NULL THEN
+        RETURN NEW;
+      END IF;
+
+      -- Whoever is made the owner arrives with nothing extra. Extra roles and
+      -- exceptions mean nothing on somebody who holds everything, and a DENY
+      -- among them is how a restaurant locks itself out of the screen that
+      -- would take it off. The repository clears them in the same transaction;
+      -- this is for everybody else.
+      IF TG_OP = 'UPDATE' AND OLD.role_id IS DISTINCT FROM NEW.role_id AND (
+           EXISTS (SELECT 1 FROM pos_staff_roles WHERE staff_id = NEW.id)
+        OR EXISTS (SELECT 1 FROM pos_staff_permission_overrides
+                    WHERE staff_id = NEW.id)) THEN
+        RAISE EXCEPTION
+          '% still has extra roles or permission exceptions — clear them before making them the owner, who holds every permission already',
+          NEW.name;
+      END IF;
+
+      IF NOT NEW.is_active THEN
+        RETURN NEW;   -- a disabled owner is not counted, so a handover can be staged.
+      END IF;
+
+      -- The same-username exclusion is for `ON CONFLICT (restaurant_id,
+      -- username) DO NOTHING`, which the installer and `--seed` both use: a
+      -- BEFORE INSERT trigger fires before the conflict is found, so without
+      -- it every re-run of the wizard would be refused over its own owner.
+      -- A plain INSERT of that username still fails, on the unique constraint.
+      SELECT name INTO incumbent FROM pos_staff
+       WHERE restaurant_id = NEW.restaurant_id
+         AND role_id = owner_role
+         AND is_active
+         AND id <> NEW.id
+         AND NOT (TG_OP = 'INSERT' AND coalesce(username = NEW.username, false))
+       ORDER BY id
+       LIMIT 1;
+
+      IF incumbent IS NOT NULL THEN
+        RAISE EXCEPTION
+          '% is already the owner of this restaurant, and a restaurant has one — disable % first, then appoint the new owner',
+          incumbent, incumbent;
+      END IF;
+
+      RETURN NEW;
+    END $fn$
+    ''',
+    'DROP TRIGGER IF EXISTS pos_staff_one_owner_insert ON pos_staff',
+    '''
+    CREATE TRIGGER pos_staff_one_owner_insert
+      BEFORE INSERT ON pos_staff
+      FOR EACH ROW EXECUTE FUNCTION pos_staff_one_owner()
+    ''',
+    'DROP TRIGGER IF EXISTS pos_staff_one_owner_update ON pos_staff',
+    // WHEN, not `UPDATE OF role_id, is_active`. A column list fires whenever
+    // the column is in the SET list, and the repository's UPDATE always names
+    // `role_id` — so a rename of either of two legacy owners would be refused.
+    '''
+    CREATE TRIGGER pos_staff_one_owner_update
+      BEFORE UPDATE ON pos_staff
+      FOR EACH ROW
+      WHEN (OLD.role_id IS DISTINCT FROM NEW.role_id
+         OR OLD.is_active IS DISTINCT FROM NEW.is_active)
+      EXECUTE FUNCTION pos_staff_one_owner()
+    ''',
+
+    // Owner is somebody's job, never an extra role — and the owner is given
+    // no extra roles of their own. The first half holds even when there is no
+    // owner at the moment: an owner-as-extra-role would count as the owner for
+    // the rule above while the staff list said "Manager".
+    //
+    // `FOR SHARE` on the staff row, so that granting somebody an extra role and
+    // appointing them owner cannot both commit from two sessions: the UPDATE
+    // of `role_id` waits for this, and this waits for it.
+    r'''
+    CREATE OR REPLACE FUNCTION pos_staff_roles_not_owner()
+      RETURNS trigger LANGUAGE plpgsql
+      SECURITY DEFINER SET search_path = public AS $fn$
+    DECLARE
+      holder text;
+    BEGIN
+      IF EXISTS (SELECT 1 FROM pos_roles WHERE id = NEW.role_id AND code = 'owner') THEN
+        RAISE EXCEPTION
+          'the owner role cannot be an extra role — to make somebody the owner, set it as their role (pos_staff.role_id), after disabling the current owner';
+      END IF;
+
+      SELECT s.name INTO holder FROM pos_staff s
+        JOIN pos_roles r ON r.id = s.role_id
+       WHERE s.id = NEW.staff_id AND r.code = 'owner'
+         FOR SHARE OF s;
+      IF holder IS NOT NULL THEN
+        RAISE EXCEPTION
+          '% is the owner and already holds every permission, so the owner is given no extra roles',
+          holder;
+      END IF;
+
+      RETURN NEW;
+    END $fn$
+    ''',
+    'DROP TRIGGER IF EXISTS pos_staff_roles_no_owner ON pos_staff_roles',
+    '''
+    CREATE TRIGGER pos_staff_roles_no_owner
+      BEFORE INSERT OR UPDATE ON pos_staff_roles
+      FOR EACH ROW EXECUTE FUNCTION pos_staff_roles_not_owner()
+    ''',
+
+    // No exceptions for the owner. An ALLOW on somebody who holds everything
+    // says nothing; a DENY is a lock-out — `staff.manage` denied to the only
+    // owner leaves nobody able to open the screen that would remove it.
+    r'''
+    CREATE OR REPLACE FUNCTION pos_staff_overrides_not_owner()
+      RETURNS trigger LANGUAGE plpgsql
+      SECURITY DEFINER SET search_path = public AS $fn$
+    DECLARE
+      holder text;
+    BEGIN
+      SELECT s.name INTO holder FROM pos_staff s
+        JOIN pos_roles r ON r.id = s.role_id
+       WHERE s.id = NEW.staff_id AND r.code = 'owner'
+         FOR SHARE OF s;
+      IF holder IS NOT NULL THEN
+        RAISE EXCEPTION
+          '% is the owner — a permission exception on the owner means nothing if it allows and locks the restaurant out if it denies, so there is nothing to set here',
+          holder;
+      END IF;
+
+      RETURN NEW;
+    END $fn$
+    ''',
+    'DROP TRIGGER IF EXISTS pos_staff_overrides_no_owner '
+        'ON pos_staff_permission_overrides',
+    '''
+    CREATE TRIGGER pos_staff_overrides_no_owner
+      BEFORE INSERT OR UPDATE ON pos_staff_permission_overrides
+      FOR EACH ROW EXECUTE FUNCTION pos_staff_overrides_not_owner()
+    ''',
+  ]),
+  PosMigration(43, 'a main device shares its licence with its tablets', [
+    // A tablet is a child of the main device and activates nothing of its own
+    // (`TerminalRole`), so the licence has to reach it through the one thing
+    // they share. One row per restaurant, replaced on every renewal.
+    //
+    // Not a secret, and not trusted either: the row holds the signed licence
+    // exactly as issued, and a child verifies the signature against the key in
+    // its own binary. A row somebody edited is a licence that fails to verify.
+    '''
+    CREATE TABLE IF NOT EXISTS pos_site_licence (
+      restaurant_id bigint      PRIMARY KEY REFERENCES pos_restaurants(id) ON DELETE CASCADE,
+      payload       text        NOT NULL,
+      signature     text        NOT NULL,
+      key_id        text        NOT NULL,
+      -- The main device's mode, which its children run in.
+      mode          text        NOT NULL,
+      published_at  timestamptz NOT NULL DEFAULT now(),
+      CONSTRAINT pos_site_licence_mode_known CHECK (mode IN ('cloud', 'offline'))
+    )
+    ''',
+    // The till grant, for a database installed before this table existed:
+    // `LocalBootstrap.tillGrants` covers new installs, and nothing else would
+    // re-run it here. Named for the default role because that is the one every
+    // install the wizard made has; a hand-named role is re-granted with
+    // `pos_migrate --grant-to`, as for every table before it.
+    r'''
+    DO $grant$
+    BEGIN
+      IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'pos_till') THEN
+        GRANT SELECT, INSERT, UPDATE ON pos_site_licence TO pos_till;
+      END IF;
+    END $grant$
+    ''',
+  ]),
+  PosMigration(44, 'a purchase order only moves forward, and stock keeps its unit', [
+    // Three rules that were held by a button and an assert, and both failed.
+    // Each is cross-row or about history, so each is a trigger — the shape of
+    // `pos_supplier_payment_allocation` in migration 30, for its reason: the
+    // repositories check all three first and say them in words, but a rule
+    // held only in Dart holds until somebody writes the second writer.
+    //
+    // **No existing row is rewritten.** Each trigger fires on a change, so a
+    // branch that ran an earlier build keeps whatever it has — including stock
+    // already stored in a unit that disagrees with its item. Which figure is
+    // right there is a stock count's question, not a migration's.
+
+    // ── A purchase order moves forward only ──────────────────────────────
+    //
+    // draft → sent | cancelled; sent → partially_received | received |
+    // cancelled; partially_received → received. The same graph
+    // `PurchaseEngine` draws, plus the receipts' own moves.
+    //
+    // **partially_received → cancelled is the one that mattered.** Cancel was
+    // only hidden on a part-received order, and `setStatus` updated whatever
+    // it was given — so a receipt booked from another till between the pane
+    // drawing and the tap let an order be cancelled with its goods already in
+    // stock. The way out of a short delivery is to close the difference, which
+    // is not built; until it is, the order stays open.
+    //
+    // **received is not checked against the lines.** Receiving derives it
+    // from them, and short-closing (CB-09 D11) will need to write it with
+    // lines still short. A trigger that demanded every line full would have
+    // to be taken back by the migration that builds that.
+    //
+    // No lock is taken here: the UPDATE that fires this already holds the
+    // order's row, and every writer of its lines (`saveDraft`, receiving)
+    // locks that row first.
+    r'''
+    CREATE OR REPLACE FUNCTION pos_purchase_order_moves_forward()
+      RETURNS trigger LANGUAGE plpgsql AS $fn$
+    BEGIN
+      IF OLD.status IN ('received', 'cancelled') THEN
+        RAISE EXCEPTION
+          'purchase order % is %, and a closed order does not reopen — write a new order for anything more',
+          OLD.reference, OLD.status;
+      END IF;
+
+      IF OLD.status = 'partially_received' AND NEW.status = 'cancelled' THEN
+        RAISE EXCEPTION
+          'goods have already arrived against purchase order %, so it cannot be cancelled — they are in stock and this order is their record; leave it open for the rest',
+          OLD.reference;
+      END IF;
+
+      IF NOT (
+           (OLD.status = 'draft' AND NEW.status IN ('sent', 'cancelled'))
+        OR (OLD.status = 'sent'
+            AND NEW.status IN ('partially_received', 'received', 'cancelled'))
+        OR (OLD.status = 'partially_received' AND NEW.status = 'received')
+      ) THEN
+        RAISE EXCEPTION
+          'purchase order % cannot go from % to % — an order only moves forward: draft, then sent, then received or cancelled',
+          OLD.reference, OLD.status, NEW.status;
+      END IF;
+
+      IF NEW.status = 'sent' AND NOT EXISTS (
+           SELECT 1 FROM pos_purchase_order_lines
+            WHERE purchase_order_id = NEW.id) THEN
+        RAISE EXCEPTION
+          'purchase order % has no lines — add what is being ordered before sending it',
+          OLD.reference;
+      END IF;
+
+      RETURN NEW;
+    END $fn$
+    ''',
+    'DROP TRIGGER IF EXISTS pos_purchase_orders_move_forward ON pos_purchase_orders',
+    // WHEN, so the receipt's own "set it to what it already is" and every
+    // edit of a draft's supplier or notes pass without the function running.
+    '''
+    CREATE TRIGGER pos_purchase_orders_move_forward
+      BEFORE UPDATE ON pos_purchase_orders
+      FOR EACH ROW
+      WHEN (OLD.status IS DISTINCT FROM NEW.status)
+      EXECUTE FUNCTION pos_purchase_order_moves_forward()
+    ''',
+
+    // ── Stock held in a unit stays in it ─────────────────────────────────
+    //
+    // There is no conversion in this product, and a relabel is a conversion
+    // by 1. Receiving used to overwrite the level's unit with the delivery's,
+    // so 5 kg arriving on 10 boxes was stored as 15 kg — with an average cost
+    // blended across both. A level may take a new unit only when it holds
+    // nothing; negative counts as holding, since a debt in boxes is not
+    // settled in kilos.
+    //
+    // The receipt's upsert (`ON CONFLICT DO UPDATE`) fires this too, which is
+    // the case it exists for.
+    r'''
+    CREATE OR REPLACE FUNCTION pos_stock_level_keeps_unit()
+      RETURNS trigger LANGUAGE plpgsql AS $fn$
+    DECLARE
+      item text;
+    BEGIN
+      SELECT name_en INTO item FROM pos_products WHERE id = OLD.product_id;
+      RAISE EXCEPTION
+        '% is held in stock as % % at branch %, so it cannot be counted in % — nothing converts one unit into another; book it in as %, or wait until none is held',
+        coalesce(item, 'product ' || OLD.product_id),
+        round(OLD.quantity_milli::numeric / 1000, 3), OLD.unit,
+        OLD.branch_id, NEW.unit, OLD.unit;
+    END $fn$
+    ''',
+    'DROP TRIGGER IF EXISTS pos_stock_levels_keep_unit ON pos_stock_levels',
+    '''
+    CREATE TRIGGER pos_stock_levels_keep_unit
+      BEFORE UPDATE ON pos_stock_levels
+      FOR EACH ROW
+      WHEN (OLD.unit IS DISTINCT FROM NEW.unit AND OLD.quantity_milli <> 0)
+      EXECUTE FUNCTION pos_stock_level_keeps_unit()
+    ''',
+
+    // And the item's unit — which is what the next purchase line is written
+    // in — cannot move away from stock held in another. This is the door the
+    // 15 kg came through: change Chicken from box to kg with ten boxes on the
+    // shelf, and every order after it books kilos onto boxes. Blank reads as
+    // `ea`, as `QuantityUnit.fromWire` does.
+    //
+    // Only an actual change fires it, so renaming an item whose stock already
+    // disagrees with it (a branch that ran an earlier build) still works.
+    // Receiving takes FOR SHARE on the product row, so a receipt and this
+    // UPDATE queue; and a function's queries each see what is committed by
+    // the time they run, so the one that waits sees the other's stock.
+    r'''
+    CREATE OR REPLACE FUNCTION pos_product_unit_follows_stock()
+      RETURNS trigger LANGUAGE plpgsql AS $fn$
+    DECLARE
+      asked text := coalesce(nullif(trim(NEW.stock_unit), ''), 'ea');
+      held  pos_stock_levels%ROWTYPE;
+    BEGIN
+      SELECT * INTO held FROM pos_stock_levels
+       WHERE product_id = NEW.id AND quantity_milli <> 0 AND unit <> asked
+       ORDER BY branch_id
+       LIMIT 1;
+
+      IF FOUND THEN
+        RAISE EXCEPTION
+          '% has % % in stock at branch %, so its unit cannot change to % — nothing converts one unit into another; it can change once none is held in %',
+          NEW.name_en, round(held.quantity_milli::numeric / 1000, 3),
+          held.unit, held.branch_id, asked, held.unit;
+      END IF;
+
+      RETURN NEW;
+    END $fn$
+    ''',
+    'DROP TRIGGER IF EXISTS pos_products_unit_follows_stock ON pos_products',
+    r'''
+    CREATE TRIGGER pos_products_unit_follows_stock
+      BEFORE UPDATE ON pos_products
+      FOR EACH ROW
+      WHEN (coalesce(nullif(trim(OLD.stock_unit), ''), 'ea')
+            IS DISTINCT FROM coalesce(nullif(trim(NEW.stock_unit), ''), 'ea'))
+      EXECUTE FUNCTION pos_product_unit_follows_stock()
+    ''',
+  ]),
+  PosMigration(45, 'an option group can be shared, and a size can be on sale', [
+    // Sizes and extras authored the way the platform authors them, so an
+    // offline menu and a cloud one mean the same thing by the same words. A
+    // group is either typed on one item (inline) or kept in the restaurant's
+    // library (global), and a library group reaches items by link, by
+    // category, or everywhere.
+    'ALTER TABLE pos_modifier_groups ADD COLUMN IF NOT EXISTS is_global boolean NOT NULL DEFAULT false',
+    "ALTER TABLE pos_modifier_groups ADD COLUMN IF NOT EXISTS apply_scope text NOT NULL DEFAULT 'items'",
+    r'''
+    DO $$ BEGIN
+      ALTER TABLE pos_modifier_groups ADD CONSTRAINT pos_modifier_groups_scope_known
+        CHECK (apply_scope IN ('items', 'categories', 'all'));
+    EXCEPTION WHEN duplicate_object THEN NULL; END $$
+    ''',
+    // A group typed on one item reaching every item would be a library group
+    // nobody can find in the library.
+    r'''
+    DO $$ BEGIN
+      ALTER TABLE pos_modifier_groups ADD CONSTRAINT pos_modifier_groups_scope_is_global
+        CHECK (apply_scope = 'items' OR is_global);
+    EXCEPTION WHEN duplicate_object THEN NULL; END $$
+    ''',
+    // The heading on the sheet, when it should differ from the library name.
+    // Null means use the name — which is every group that existed before.
+    'ALTER TABLE pos_modifier_groups ADD COLUMN IF NOT EXISTS display_name_en text',
+    'ALTER TABLE pos_modifier_groups ADD COLUMN IF NOT EXISTS display_name_ar text',
+
+    // A size on offer. `price_delta_minor` stays the REGULAR price and this is
+    // what the customer is charged when set — the pair a strike-through needs.
+    // Strictly below, as the platform checks it: a "sale" at the full price is
+    // a strike-through that saves nothing.
+    //
+    // Only sizes use it, and that is not checked here. It is a rule across two
+    // tables, the catalogue read ignores it on an extra, and the one writer
+    // drops it there — so a stray value costs nobody anything.
+    //
+    // The cloud bundle seeds `price_delta_minor` with what a size charges and
+    // leaves this null, which stays correct: the charged price is
+    // `COALESCE(discounted_price_minor, price_delta_minor)` either way.
+    'ALTER TABLE pos_modifiers ADD COLUMN IF NOT EXISTS discounted_price_minor bigint',
+    r'''
+    DO $$ BEGIN
+      ALTER TABLE pos_modifiers ADD CONSTRAINT pos_modifiers_sale_price_sane
+        CHECK (discounted_price_minor IS NULL
+               OR (discounted_price_minor >= 0
+                   AND discounted_price_minor < price_delta_minor));
+    EXCEPTION WHEN duplicate_object THEN NULL; END $$
+    ''',
+
+    // The categories a category-wide group reaches. Current shape rather than
+    // history, so both sides cascade: a group or a category that goes takes
+    // its links with it, as the platform's pivot does.
+    '''
+    CREATE TABLE IF NOT EXISTS pos_modifier_group_categories (
+      group_id    bigint NOT NULL REFERENCES pos_modifier_groups(id) ON DELETE CASCADE,
+      category_id bigint NOT NULL REFERENCES pos_categories(id) ON DELETE CASCADE,
+      PRIMARY KEY (group_id, category_id)
+    )
+    ''',
+    '''
+    CREATE INDEX IF NOT EXISTS pos_modifier_group_categories_category_idx
+      ON pos_modifier_group_categories (category_id)
+    ''',
+
+    // **The groups that were already shared.** Before this, nothing here
+    // authored a group — `attachModifierGroups` only linked existing ones —
+    // so a group on two items, or on none, was shared in all but name. Left
+    // inline, the item editor would treat it as that item's own and delete it
+    // from under the other item the first time somebody removed it from one.
+    // Marked global, it appears in the library, which is where a manager will
+    // look for it. A group on exactly one item stays that item's.
+    //
+    // A cloud till's next bundle rewrites every group anyway, so this changes
+    // nothing there that lasts.
+    '''
+    UPDATE pos_modifier_groups g SET is_global = true
+     WHERE NOT g.is_global
+       AND (SELECT count(*) FROM pos_product_modifier_groups l
+             WHERE l.group_id = g.id) <> 1
+    ''',
+
+    // ── A group reaches its items through one path at a time ─────────────
+    //
+    // Linked one by one, through its categories, or everywhere — never two at
+    // once, because the platform clears the old path when the scope changes,
+    // and a till still holding the old links would offer the group on items
+    // the restaurant took it off. The repository clears them first and says
+    // so; these are for the writers that do not come through it.
+    //
+    // FOR SHARE on the group, so a link and a scope change on the same group
+    // queue rather than each seeing the other's row as it was: the link waits
+    // for the new scope and is refused by it, or the change waits for the
+    // link and then finds it.
+    r'''
+    CREATE OR REPLACE FUNCTION pos_modifier_group_link_follows_scope()
+      RETURNS trigger LANGUAGE plpgsql AS $fn$
+    DECLARE
+      g pos_modifier_groups%ROWTYPE;
+    BEGIN
+      SELECT * INTO g FROM pos_modifier_groups WHERE id = NEW.group_id FOR SHARE;
+      -- A missing group is the foreign key's to say, and it says it better.
+      IF NOT FOUND THEN
+        RETURN NEW;
+      END IF;
+
+      IF TG_TABLE_NAME = 'pos_product_modifier_groups' AND g.apply_scope <> 'items' THEN
+        RAISE EXCEPTION
+          'option group "%" already reaches % by itself, so it cannot also be linked to one item — set it back to chosen items first, or leave the item to pick it up',
+          g.name_en,
+          CASE g.apply_scope WHEN 'all' THEN 'every item' ELSE 'the items in its categories' END;
+      END IF;
+
+      IF TG_TABLE_NAME = 'pos_modifier_group_categories' AND g.apply_scope <> 'categories' THEN
+        RAISE EXCEPTION
+          'option group "%" applies to %, not to chosen categories — set it to categories before linking one',
+          g.name_en,
+          CASE g.apply_scope WHEN 'all' THEN 'every item' ELSE 'chosen items' END;
+      END IF;
+
+      RETURN NEW;
+    END $fn$
+    ''',
+    'DROP TRIGGER IF EXISTS pos_product_modifier_groups_follow_scope ON pos_product_modifier_groups',
+    '''
+    CREATE TRIGGER pos_product_modifier_groups_follow_scope
+      BEFORE INSERT OR UPDATE ON pos_product_modifier_groups
+      FOR EACH ROW
+      EXECUTE FUNCTION pos_modifier_group_link_follows_scope()
+    ''',
+    'DROP TRIGGER IF EXISTS pos_modifier_group_categories_follow_scope ON pos_modifier_group_categories',
+    '''
+    CREATE TRIGGER pos_modifier_group_categories_follow_scope
+      BEFORE INSERT OR UPDATE ON pos_modifier_group_categories
+      FOR EACH ROW
+      EXECUTE FUNCTION pos_modifier_group_link_follows_scope()
+    ''',
+    // And the other side: the scope cannot move while links of the old kind
+    // remain. Refused rather than cleaned up here, because a trigger that
+    // quietly deleted a restaurant's links is a trigger nobody would think to
+    // suspect when they went missing.
+    r'''
+    CREATE OR REPLACE FUNCTION pos_modifier_group_scope_leaves_no_links()
+      RETURNS trigger LANGUAGE plpgsql AS $fn$
+    BEGIN
+      IF NEW.apply_scope <> 'items' AND EXISTS (
+           SELECT 1 FROM pos_product_modifier_groups WHERE group_id = NEW.id) THEN
+        RAISE EXCEPTION
+          'option group "%" is still linked to items one by one, so it cannot start applying to % — remove those links first; a group reaches its items through one path at a time',
+          NEW.name_en, NEW.apply_scope;
+      END IF;
+
+      IF NEW.apply_scope <> 'categories' AND EXISTS (
+           SELECT 1 FROM pos_modifier_group_categories WHERE group_id = NEW.id) THEN
+        RAISE EXCEPTION
+          'option group "%" is still linked to categories, so it cannot start applying to % — remove those links first; a group reaches its items through one path at a time',
+          NEW.name_en, NEW.apply_scope;
+      END IF;
+
+      RETURN NEW;
+    END $fn$
+    ''',
+    'DROP TRIGGER IF EXISTS pos_modifier_groups_scope_leaves_no_links ON pos_modifier_groups',
+    '''
+    CREATE TRIGGER pos_modifier_groups_scope_leaves_no_links
+      BEFORE UPDATE ON pos_modifier_groups
+      FOR EACH ROW
+      WHEN (OLD.apply_scope IS DISTINCT FROM NEW.apply_scope)
+      EXECUTE FUNCTION pos_modifier_group_scope_leaves_no_links()
+    ''',
+  ]),
 ];
 
 /// Brings the branch database up to the current schema.

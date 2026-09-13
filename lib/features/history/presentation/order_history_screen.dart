@@ -11,11 +11,13 @@ import '../../../core/ui/theme.dart';
 import '../../../core/ui/tokens.dart';
 import '../../../core/ui/widgets/mono_amount.dart';
 import '../../../core/ui/widgets/pos_widgets.dart';
+import '../../../domain/models/business_day.dart';
 import '../../../domain/models/order_record.dart';
 import '../../../domain/models/ticket.dart';
-import '../../../domain/repositories/repositories.dart';
+import '../history_scope.dart';
 import 'order_detail_pane.dart';
 import 'order_status_chip.dart';
+import 'payment_status_chip.dart';
 
 /// How far back the list reaches.
 ///
@@ -32,19 +34,21 @@ extension on HistoryRange {
     HistoryRange.month => s.orderHistoryLast30Days,
   };
 
-  /// Whole local days, ending at the end of today.
+  /// Whole business dates, ending with [today]'s.
   ///
-  /// Local rather than UTC for the same reason [OrderHistoryQuery.today] is: a
-  /// day at a till in Cairo is the day the people standing at it are having.
-  (DateTime, DateTime) window(DateTime now) {
-    final endOfToday = DateTime(now.year, now.month, now.day)
+  /// [today] is the trading day, not the calendar one: at 1 a.m. with
+  /// yesterday's business day still open, "Today" is yesterday's date, and the
+  /// list shows the night that is still going rather than the hour since
+  /// midnight. See [OrderHistoryQuery.from] for how a sale finds its date.
+  (DateTime, DateTime) window(DateTime today) {
+    final end = DateTime(today.year, today.month, today.day)
         .add(const Duration(days: 1));
     final days = switch (this) {
       HistoryRange.today => 1,
       HistoryRange.week => 7,
       HistoryRange.month => 30,
     };
-    return (endOfToday.subtract(Duration(days: days)), endOfToday);
+    return (end.subtract(Duration(days: days)), end);
   }
 }
 
@@ -54,13 +58,29 @@ extension on HistoryRange {
 /// old order is a task somebody arrives at with a receipt in their hand, and
 /// routing it means it is reachable without a live ticket to put at risk.
 ///
-/// Read-only today. Reprint (A7) and refund (A5) attach to the detail pane,
-/// which is why the pane exists in its own file rather than as a private widget
-/// here — those two need somewhere to land.
+/// **Two statuses per row** (plan 17 §4): where the order is and where the
+/// money is. They are separate columns, not one chip, because they answer
+/// different people — the floor asks the first and the drawer the second.
+///
+/// **Whose sales** is decided by `HistoryScope` in the providers, not here.
+/// This screen only mirrors it: it hides the cashier picker from somebody who
+/// may not use it and says the list is theirs alone.
 class OrderHistoryScreen extends ConsumerStatefulWidget {
-  const OrderHistoryScreen({super.key, required this.onClose});
+  const OrderHistoryScreen({super.key, required this.onClose, this.openedAt});
 
   final VoidCallback onClose;
+
+  /// The clock, for a test that has to be about a particular date — the
+  /// attribution caveat depends on how far the window reaches back, and a test
+  /// that read the real clock would change its answer next week.
+  @visibleForTesting
+  final DateTime? openedAt;
+
+  static const staffFilterKey = ValueKey('history-filter-staff');
+  static const tenderFilterKey = ValueKey('history-filter-tender');
+  static const terminalFilterKey = ValueKey('history-filter-terminal');
+  static const attributionCaveatKey = ValueKey('history-attribution-caveat');
+  static const ownSalesKey = ValueKey('history-own-sales');
 
   @override
   ConsumerState<OrderHistoryScreen> createState() => _OrderHistoryScreenState();
@@ -74,6 +94,8 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
   Set<OrderStatus> _statuses = const {};
   Set<OrderType> _types = const {};
   int? _staffId;
+  int? _tenderId;
+  String? _terminalId;
   String _searchTerm = '';
   int? _selectedId;
 
@@ -84,7 +106,7 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
   /// Taken once rather than read per rebuild: a clock read inside `build` makes
   /// every rebuild a different query, which turns a keystroke into a fresh
   /// database read and makes the family provider leak a cache entry per frame.
-  late final DateTime _openedAt = DateTime.now();
+  late final DateTime _openedAt = widget.openedAt ?? DateTime.now();
 
   @override
   void dispose() {
@@ -94,14 +116,24 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
     super.dispose();
   }
 
-  OrderHistoryQuery get _query {
-    final (from, to) = _range.window(_openedAt);
+  /// The business date "Today" means: the open day's, when one is open, and
+  /// the calendar date otherwise — which is also the date a sale with no
+  /// business day is filed under, so the fallback agrees with itself.
+  DateTime _today(BusinessDay? day) {
+    if (day != null && day.isOpen) return day.date;
+    return DateTime(_openedAt.year, _openedAt.month, _openedAt.day);
+  }
+
+  OrderHistoryQuery _query(DateTime today) {
+    final (from, to) = _range.window(today);
     return OrderHistoryQuery(
       from: from,
       to: to,
       statuses: _statuses,
       orderTypes: _types,
       servedByStaffId: _staffId,
+      tenderTypeId: _tenderId,
+      terminalId: _terminalId,
       search: _searchTerm.isEmpty ? null : _searchTerm,
     );
   }
@@ -123,6 +155,8 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
       _statuses = const {};
       _types = const {};
       _staffId = null;
+      _tenderId = null;
+      _terminalId = null;
       _searchTerm = '';
     });
   }
@@ -130,7 +164,20 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
   @override
   Widget build(BuildContext context) {
     final strings = context.strings;
-    final orders = ref.watch(orderHistoryProvider(_query));
+    final day = ref.watch(businessDayProvider);
+    final seesEveryone = HistoryScope.seesEveryone(
+      ref.watch(signedInStaffProvider),
+    );
+
+    // The list waits for the business day rather than asking once with the
+    // calendar date and again when the day arrives — two reads, and a list
+    // that visibly changes its mind about what "today" is. A day that cannot
+    // be read falls back to the calendar, which is what "today" meant before
+    // there were business days at all.
+    final query = day.isLoading ? null : _query(_today(day.valueOrNull));
+    final orders = query == null
+        ? const AsyncValue<List<OrderRecord>>.loading()
+        : ref.watch(orderHistoryProvider(query));
 
     return Scaffold(
       backgroundColor: context.pos.page,
@@ -149,13 +196,16 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _header(context, strings, orders.valueOrNull),
-              _filters(context, strings),
+              _header(context, strings, orders.valueOrNull, seesEveryone),
+              _filters(context, strings, seesEveryone),
+              if (query?.from case final from?
+                  when from.isBefore(OrderRecord.servedByReliableFrom))
+                _attributionCaveat(context, strings),
               Expanded(
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Expanded(child: _list(context, strings, orders)),
+                    Expanded(child: _list(context, strings, orders, query)),
                     Container(
                       width: PosSize.historyDetail,
                       decoration: BoxDecoration(
@@ -178,8 +228,13 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
     BuildContext context,
     AppStrings strings,
     List<OrderRecord>? orders,
+    bool seesEveryone,
   ) {
     final pos = context.pos;
+    final slice = [
+      _range.label(strings),
+      if (orders != null) strings.orderHistoryCount(orders.length),
+    ].join(' · ');
     return Padding(
       padding: const EdgeInsets.fromLTRB(
         PosSpace.s18,
@@ -199,12 +254,23 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
                   style: PosText.screenTitle(color: pos.ink),
                 ),
                 const SizedBox(height: PosSpace.xs),
-                Text(
-                  orders == null
-                      ? _range.label(strings)
-                      : '${_range.label(strings)} · '
-                            '${strings.orderHistoryCount(orders.length)}',
-                  style: PosText.ui(size: 13.5, color: pos.muted),
+                Row(
+                  children: [
+                    Text(slice, style: PosText.ui(size: 13.5, color: pos.muted)),
+                    // Said, not only enforced. A cashier who sees four orders
+                    // on a busy night and is not told why concludes the
+                    // system lost the rest.
+                    if (!seesEveryone)
+                      Text(
+                        ' · ${strings.orderHistoryOwnSalesOnly}',
+                        key: OrderHistoryScreen.ownSalesKey,
+                        style: PosText.ui(
+                          size: 13.5,
+                          weight: FontWeight.w600,
+                          color: pos.inkWarm,
+                        ),
+                      ),
+                  ],
                 ),
               ],
             ),
@@ -219,9 +285,15 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
     );
   }
 
-  Widget _filters(BuildContext context, AppStrings strings) {
+  Widget _filters(BuildContext context, AppStrings strings, bool seesEveryone) {
     final pos = context.pos;
     final staff = ref.watch(staffDirectoryProvider).valueOrNull ?? const [];
+    // Every method the restaurant has ever had, retired ones included: a sale
+    // paid with a voucher scheme that ended in June is still a sale somebody
+    // may need to find by it.
+    final tenders = ref.watch(tenderTypesAllProvider).valueOrNull ?? const [];
+    final terminals =
+        ref.watch(historyTerminalsProvider).valueOrNull ?? const [];
 
     return Container(
       padding: const EdgeInsets.fromLTRB(
@@ -303,15 +375,74 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
                     : (Set.of(_types)..add(type));
               }),
             ),
-          if (staff.isNotEmpty) ...[
+          // Not drawn for somebody who only sees their own sales. The provider
+          // would overrule it anyway; a picker that changes nothing is a
+          // control that lies.
+          if (seesEveryone && staff.isNotEmpty) ...[
             _divider(pos),
-            _StaffFilter(
-              staff: staff,
-              selectedId: _staffId,
+            _PickFilter<int>(
+              key: OrderHistoryScreen.staffFilterKey,
+              everyone: strings.orderHistoryEveryone,
+              options: [for (final person in staff) (person.id, person.name)],
+              selected: _staffId,
               onChanged: (id) => setState(() => _staffId = id),
             ),
           ],
+          if (tenders.isNotEmpty)
+            _PickFilter<int>(
+              key: OrderHistoryScreen.tenderFilterKey,
+              everyone: strings.orderHistoryEveryMethod,
+              options: [
+                for (final tender in tenders) (tender.id, tender.label(strings)),
+              ],
+              selected: _tenderId,
+              onChanged: (id) => setState(() => _tenderId = id),
+            ),
+          // Only with a second till to tell apart. A branch with one terminal
+          // would get a picker whose every answer is the same list.
+          if (terminals.length > 1)
+            _PickFilter<String>(
+              key: OrderHistoryScreen.terminalFilterKey,
+              everyone: strings.orderHistoryEveryTerminal,
+              options: [
+                for (final till in terminals) (till.id, till.name ?? till.id),
+              ],
+              selected: _terminalId,
+              onChanged: (id) => setState(() => _terminalId = id),
+            ),
         ],
+      ),
+    );
+  }
+
+  /// Said whenever the window reaches back before `served_by` could be
+  /// trusted — the staff column is on screen for every range, so the caveat
+  /// is about what is being shown, not about whether a filter is set.
+  ///
+  /// It retires itself: thirty days after the fix, no window reaches that far.
+  Widget _attributionCaveat(BuildContext context, AppStrings strings) {
+    final pos = context.pos;
+    final from = OrderRecord.servedByReliableFrom;
+    final date =
+        '${from.year}-${from.month.toString().padLeft(2, '0')}-'
+        '${from.day.toString().padLeft(2, '0')}';
+    return Container(
+      key: OrderHistoryScreen.attributionCaveatKey,
+      width: double.infinity,
+      margin: const EdgeInsets.fromLTRB(
+        PosSpace.s18,
+        0,
+        PosSpace.s18,
+        PosSpace.md,
+      ),
+      padding: const EdgeInsets.all(PosSpace.sm),
+      decoration: BoxDecoration(
+        color: pos.warnSoft,
+        border: BorderDirectional(start: BorderSide(color: pos.warn, width: 2)),
+      ),
+      child: Text(
+        strings.orderHistoryAttributionCaveat(date),
+        style: PosText.ui(size: 12.5, color: pos.body),
       ),
     );
   }
@@ -323,6 +454,7 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
     BuildContext context,
     AppStrings strings,
     AsyncValue<List<OrderRecord>> orders,
+    OrderHistoryQuery? query,
   ) => orders.when(
     loading: () =>
         Center(child: CircularProgressIndicator(color: context.pos.accent)),
@@ -335,17 +467,19 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
       detail: '$error',
     ),
     data: (data) {
+      final filtered = query?.isFiltered ?? false;
       if (data.isEmpty) {
         return _message(
           context,
-          _query.isFiltered
+          filtered
               ? strings.orderHistoryEmptyFiltered
               : strings.orderHistoryEmpty,
-          action: _query.isFiltered
+          action: filtered
               ? (strings.orderHistoryClearFilters, _clearFilters)
               : null,
         );
       }
+      final limit = query?.limit ?? const OrderHistoryQuery().limit;
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -364,7 +498,7 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
               },
             ),
           ),
-          if (data.length >= _query.limit)
+          if (data.length >= limit)
             Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(
@@ -376,7 +510,7 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
                 border: BorderDirectional(top: context.pos.resting),
               ),
               child: Text(
-                strings.orderHistoryTruncated(_query.limit),
+                strings.orderHistoryTruncated(limit),
                 style: PosText.ui(size: 12.5, color: context.pos.warn),
               ),
             ),
@@ -450,6 +584,11 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
         ),
         const SizedBox(width: PosSpace.md),
         SizedBox(width: _Cols.status, child: MicroLabel(strings.orderColumnStatus)),
+        const SizedBox(width: PosSpace.sm),
+        SizedBox(
+          width: _Cols.payment,
+          child: MicroLabel(strings.orderColumnPayment),
+        ),
       ],
     ),
   );
@@ -463,6 +602,9 @@ abstract final class _Cols {
   static const table = 88.0;
   static const total = 104.0;
   static const status = 104.0;
+
+  /// Wide enough for PART REFUNDED in mono without an ellipsis.
+  static const payment = 112.0;
 }
 
 class _OrderRow extends StatelessWidget {
@@ -567,6 +709,14 @@ class _OrderRow extends StatelessWidget {
                   child: OrderStatusChip(order.status),
                 ),
               ),
+              const SizedBox(width: PosSpace.sm),
+              SizedBox(
+                width: _Cols.payment,
+                child: Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: PaymentStatusChip(order.paymentStatus),
+                ),
+              ),
             ],
           ),
         ),
@@ -633,42 +783,55 @@ class _FilterChip extends StatelessWidget {
   }
 }
 
-class _StaffFilter extends StatelessWidget {
-  const _StaffFilter({
-    required this.staff,
-    required this.selectedId,
+/// One of several values, or all of them — the cashier, the payment method and
+/// the till are the same control over different lists.
+///
+/// Generic rather than three near-copies: the staff picker was the only one
+/// when it was written, and the second copy is where the borders of the three
+/// would have started to disagree.
+class _PickFilter<T extends Object> extends StatelessWidget {
+  const _PickFilter({
+    super.key,
+    required this.everyone,
+    required this.options,
+    required this.selected,
     required this.onChanged,
   });
 
-  final List<PosStaff> staff;
-  final int? selectedId;
-  final ValueChanged<int?> onChanged;
+  /// The label for "no filter".
+  final String everyone;
+  final List<(T, String)> options;
+  final T? selected;
+  final ValueChanged<T?> onChanged;
 
   @override
   Widget build(BuildContext context) {
     final pos = context.pos;
+    // A selection that is no longer offered — a till deleted while the screen
+    // was open — is shown as "everyone" rather than handed to the dropdown,
+    // which asserts when its value is not among its items.
+    final value = options.any((option) => option.$1 == selected)
+        ? selected
+        : null;
     return Container(
       height: PosSize.filterChip,
       padding: const EdgeInsets.symmetric(horizontal: PosSpace.sm),
       decoration: BoxDecoration(
         border: Border.fromBorderSide(
-          selectedId == null ? pos.resting : pos.accentBorder,
+          value == null ? pos.resting : pos.accentBorder,
         ),
       ),
       child: DropdownButtonHideUnderline(
-        child: DropdownButton<int?>(
-          value: selectedId,
+        child: DropdownButton<T?>(
+          value: value,
           isDense: true,
           focusColor: Colors.transparent,
           borderRadius: BorderRadius.zero,
           style: PosText.ui(size: 12.5, color: pos.body),
           items: [
-            DropdownMenuItem(
-              value: null,
-              child: Text(context.strings.orderHistoryEveryone),
-            ),
-            for (final person in staff)
-              DropdownMenuItem(value: person.id, child: Text(person.name)),
+            DropdownMenuItem<T?>(value: null, child: Text(everyone)),
+            for (final (id, label) in options)
+              DropdownMenuItem<T?>(value: id, child: Text(label)),
           ],
           onChanged: onChanged,
         ),

@@ -1,5 +1,10 @@
 import '../../core/config/deployment.dart';
 import '../../core/money/money.dart';
+import '../../domain/models/backup.dart';
+import '../../domain/models/pos_unit.dart';
+import '../../core/money/quantity.dart';
+import '../../domain/models/stock_item.dart';
+import '../../domain/models/stock_level.dart';
 import '../../domain/models/catalog.dart';
 import '../../domain/models/dining_table.dart';
 import '../../domain/models/order_record.dart';
@@ -501,6 +506,17 @@ class FakeSessionRepository implements SessionRepository {
   Future<PosStaff?> signIn(String pin) async => pin == '1234'
       ? const PosStaff(id: 1, name: 'Rana A.', username: 'rana', role: cashier)
       : null;
+
+  @override
+  Future<PosStaff?> signInAs({
+    required String username,
+    required String pin,
+  }) async {
+    final staff = await signIn(pin);
+    return staff?.username?.toLowerCase() == username.trim().toLowerCase()
+        ? staff
+        : null;
+  }
 }
 
 /// Holds one shift in memory. Enough for a widget test to walk open → close
@@ -520,6 +536,7 @@ class FakeShiftRepository implements ShiftRepository {
     openedAt: DateTime(2026),
     openingFloat: openingFloat,
     openedByName: by.name,
+    openedById: by.id,
   );
 
   @override
@@ -828,6 +845,24 @@ class FakeHardwarePorts implements HardwarePorts {
     await Future<void>.delayed(const Duration(milliseconds: 500));
     return true;
   }
+
+  /// Every job this fake is handed, in order, so a widget test can ask what
+  /// actually went to the printer rather than whether a toast appeared.
+  final jobs = <List<int>>[];
+
+  /// Flip to make the printer stop answering, which is the interesting case:
+  /// the receipt has to queue and the sale has to complete anyway.
+  bool reachable = true;
+
+  @override
+  Future<bool> sendJob({
+    required String printerName,
+    required List<int> bytes,
+  }) async {
+    if (!reachable) return false;
+    jobs.add(bytes);
+    return true;
+  }
 }
 
 /// Roles, staff and the ledger, held in memory.
@@ -960,6 +995,12 @@ class FakeStaffDirectoryRepository implements StaffDirectoryRepository {
     if (staff.any((person) => person.username == username)) {
       return AdminResult.refused(UsernameTaken(username));
     }
+    if (_isOwnerRole(roleId)) {
+      final incumbent = _activeOwnerOtherThan(null);
+      if (incumbent != null) {
+        return AdminResult.refused(OwnerAlreadyExists(incumbent.name));
+      }
+    }
 
     final created = PosStaff(
       id: staff.length + 1,
@@ -989,13 +1030,34 @@ class FakeStaffDirectoryRepository implements StaffDirectoryRepository {
     final index = staff.indexWhere((person) => person.id == staffId);
     if (index < 0) return const AdminResult.refused(EditedElsewhere(0));
 
-    final updated = staff[index].copyWith(
+    // The same order and the same answers as the Postgres repository: the
+    // owner's own access first, then a second owner, then lock-out.
+    final before = staff[index];
+    final onOwnerRole = before.role?.code == SystemRoles.ownerCode;
+    final changingRole = roleId != null && roleId != before.role?.id;
+    if (onOwnerRole &&
+        (directGrants != null || (changingRole && before.isActive))) {
+      return const AdminResult.refused(OwnerIsFixed());
+    }
+    final appointing = changingRole && _isOwnerRole(roleId);
+    if (appointing && before.isActive) {
+      final incumbent = _activeOwnerOtherThan(staffId);
+      if (incumbent != null) {
+        return AdminResult.refused(OwnerAlreadyExists(incumbent.name));
+      }
+    }
+
+    final updated = before.copyWith(
       name: name,
       username: username,
       capabilities: directGrants,
       role: roleId == null
           ? null
           : roles.roles.firstWhere((r) => r.id == roleId),
+      // Appointing clears what means nothing on an owner, as the real one does.
+      extraRoles: appointing ? const [] : null,
+      overrides: appointing ? const [] : null,
+      limits: appointing ? const {} : null,
     );
     if (!_someoneCanManageStaff(replacing: updated)) {
       return const AdminResult.refused(
@@ -1018,7 +1080,17 @@ class FakeStaffDirectoryRepository implements StaffDirectoryRepository {
     final index = staff.indexWhere((person) => person.id == staffId);
     if (index < 0) return const AdminResult.refused(EditedElsewhere(0));
 
-    final updated = staff[index].copyWith(isActive: isActive);
+    final before = staff[index];
+    if (isActive &&
+        !before.isActive &&
+        before.role?.code == SystemRoles.ownerCode) {
+      final incumbent = _activeOwnerOtherThan(staffId);
+      if (incumbent != null) {
+        return AdminResult.refused(OwnerAlreadyExists(incumbent.name));
+      }
+    }
+
+    final updated = before.copyWith(isActive: isActive);
     if (!_someoneCanManageStaff(replacing: updated)) {
       return const AdminResult.refused(
         WouldLockEveryoneOut(PosCapability.staffManage),
@@ -1056,6 +1128,18 @@ class FakeStaffDirectoryRepository implements StaffDirectoryRepository {
     final index = staff.indexWhere((s) => s.id == staffId);
     if (index < 0) return const AdminResult.refused(EditedElsewhere(0));
 
+    if (staff[index].role?.code == SystemRoles.ownerCode) {
+      return const AdminResult.refused(OwnerIsFixed());
+    }
+    if (extraRoleIds.any(_isOwnerRole)) {
+      final incumbent = _activeOwnerOtherThan(staffId);
+      return AdminResult.refused(
+        incumbent == null
+            ? const OwnerIsNotAnExtraRole()
+            : OwnerAlreadyExists(incumbent.name),
+      );
+    }
+
     final updated = staff[index].copyWith(
       extraRoles: [
         for (final role in roles.roles)
@@ -1070,6 +1154,23 @@ class FakeStaffDirectoryRepository implements StaffDirectoryRepository {
     );
     staff[index] = updated;
     return AdminResult.done(updated);
+  }
+
+  bool _isOwnerRole(int roleId) => roles.roles.any(
+    (r) => r.id == roleId && r.code == SystemRoles.ownerCode,
+  );
+
+  /// The active owner who is not [excluding] — migration 42's count, in
+  /// memory.
+  PosStaff? _activeOwnerOtherThan(int? excluding) {
+    for (final person in staff) {
+      if (person.id != excluding &&
+          person.isActive &&
+          person.role?.code == SystemRoles.ownerCode) {
+        return person;
+      }
+    }
+    return null;
   }
 
   bool _someoneCanManageStaff({required PosStaff replacing}) => [
@@ -1134,6 +1235,47 @@ class FakeAuditRepository implements AuditRepository {
       .toList();
 }
 
+/// The list of copies taken, held in a list.
+///
+/// A test double only. The real one writes `pos_backups`, which is append-only
+/// in the database as well as in the interface — so this does not offer an
+/// edit either, because a fake that was more permissive than the thing it
+/// stands in for would let a screen pass a test it could not pass in a
+/// restaurant.
+class FakeBackupRepository implements BackupRepository {
+  FakeBackupRepository({List<BackupRecord> records = const []})
+    : records = [...records];
+
+  final List<BackupRecord> records;
+
+  @override
+  Future<List<BackupRecord>> recent({int limit = 50}) async =>
+      records.take(limit).toList();
+
+  @override
+  Future<BackupRecord> record(
+    BackupRecord entry, {
+    required PosStaff by,
+  }) async {
+    final stored = BackupRecord(
+      id: records.length + 1,
+      takenAt: entry.takenAt,
+      takenById: by.id,
+      takenByName: by.name,
+      trigger: entry.trigger,
+      outcome: entry.outcome,
+      filePath: entry.filePath,
+      sizeBytes: entry.sizeBytes,
+      checksum: entry.checksum,
+      tablesFound: entry.tablesFound,
+      failure: entry.failure,
+      detail: entry.detail,
+    );
+    records.insert(0, stored);
+    return stored;
+  }
+}
+
 /// Order history held in a list.
 ///
 /// A test double, like everything else in this file. It applies the same
@@ -1145,11 +1287,14 @@ class FakeOrderHistoryRepository implements OrderHistoryRepository {
   FakeOrderHistoryRepository({
     List<OrderRecord> orders = const [],
     Map<int, OrderRecordDetail> details = const {},
+    List<HistoryTerminal> terminals = const [],
   }) : orders = [...orders],
-       details = {...details};
+       details = {...details},
+       _terminals = [...terminals];
 
   final List<OrderRecord> orders;
   final Map<int, OrderRecordDetail> details;
+  final List<HistoryTerminal> _terminals;
 
   /// Every query this repository has been asked, in order. Lets a test assert
   /// that changing a filter actually reached the data layer rather than being
@@ -1161,11 +1306,25 @@ class FakeOrderHistoryRepository implements OrderHistoryRepository {
     queries.add(query);
     final term = query.search?.trim().toLowerCase();
 
+    DateTime dateOf(DateTime at) => DateTime(at.year, at.month, at.day);
+
     final matched = orders.where((order) {
-      if (query.from != null && order.occurredAt.isBefore(query.from!)) {
+      // The business date where the sale has one, the instant where it has
+      // not — the same CASE the real query runs, so a widget test about a
+      // night past midnight asserts what PostgreSQL would do.
+      final day = order.businessDate;
+      final from = query.from;
+      if (from != null &&
+          (day != null
+              ? day.isBefore(dateOf(from))
+              : order.occurredAt.isBefore(from))) {
         return false;
       }
-      if (query.to != null && !order.occurredAt.isBefore(query.to!)) {
+      final to = query.to;
+      if (to != null &&
+          (day != null
+              ? !day.isBefore(dateOf(to))
+              : !order.occurredAt.isBefore(to))) {
         return false;
       }
       if (query.statuses.isNotEmpty && !query.statuses.contains(order.status)) {
@@ -1177,6 +1336,18 @@ class FakeOrderHistoryRepository implements OrderHistoryRepository {
       }
       if (query.servedByStaffId != null &&
           order.servedByStaffId != query.servedByStaffId) {
+        return false;
+      }
+      // Any payment in the tender, as the real EXISTS does. Read off the
+      // detail's payments because that is where a fake order keeps them.
+      if (query.tenderTypeId != null &&
+          !(details[order.id]?.payments.any(
+                (p) => p.tenderTypeId == query.tenderTypeId,
+              ) ??
+              false)) {
+        return false;
+      }
+      if (query.terminalId != null && order.terminalId != query.terminalId) {
         return false;
       }
       if (term != null && term.isNotEmpty) {
@@ -1200,6 +1371,9 @@ class FakeOrderHistoryRepository implements OrderHistoryRepository {
     }
     return null;
   }
+
+  @override
+  Future<List<HistoryTerminal>> terminals() async => _terminals;
 }
 
 /// Refunds held in a list.
@@ -1280,4 +1454,147 @@ class FakeRefundsRepository implements RefundsRepository {
       replayed: false,
     );
   }
+}
+
+/// The units, held in a list: the seven every restaurant starts with.
+///
+/// A test double only — the real list is `pos_units`, seeded by migration 39.
+class FakeUnitsRepository implements UnitsRepository {
+  FakeUnitsRepository({List<PosUnit>? units})
+    : units = [...(units ?? _seeded)];
+
+  static const _seeded = [
+    PosUnit(id: 1, code: 'ea', nameEn: 'Each', nameAr: 'قطعة', sortOrder: 10),
+    PosUnit(
+      id: 2,
+      code: 'kg',
+      nameEn: 'Kilogram',
+      nameAr: 'كيلوجرام',
+      etaUnitType: 'KGM',
+      allowsFraction: true,
+      sortOrder: 20,
+    ),
+    PosUnit(
+      id: 3,
+      code: 'l',
+      nameEn: 'Litre',
+      nameAr: 'لتر',
+      etaUnitType: 'LTR',
+      allowsFraction: true,
+      sortOrder: 40,
+    ),
+    PosUnit(
+      id: 4,
+      code: 'box',
+      nameEn: 'Box',
+      nameAr: 'علبة',
+      etaUnitType: 'BX',
+      sortOrder: 60,
+    ),
+  ];
+
+  final List<PosUnit> units;
+
+  @override
+  Future<List<PosUnit>> all({bool includeInactive = false}) async => [
+    for (final unit in units)
+      if (includeInactive || unit.isActive) unit,
+  ];
+
+  @override
+  Future<AdminResult<PosUnit>> save(PosUnit unit, {required PosStaff by}) async {
+    if (unit.id == 0) {
+      if (units.any((u) => u.code == unit.code)) {
+        return AdminResult.refused(
+          CatalogInvalid('There is already a unit with the code "${unit.code}".'),
+        );
+      }
+      final created = unit.copyWith(id: units.length + 1);
+      units.add(created);
+      return AdminResult.done(created);
+    }
+    final at = units.indexWhere((u) => u.id == unit.id);
+    if (at < 0) return const AdminResult.refused(EditedElsewhere(0));
+    units[at] = unit;
+    return AdminResult.done(unit);
+  }
+}
+
+/// What is counted in stock, held in a list. A test double only.
+class FakeStockItemsRepository implements StockItemsRepository {
+  FakeStockItemsRepository({List<StockItem>? items})
+    : items = [...(items ?? _seeded)];
+
+  static const _seeded = [
+    StockItem(
+      id: 101,
+      nameEn: 'Chicken',
+      nameAr: 'فراخ',
+      unit: QuantityUnit.kilogram,
+    ),
+    StockItem(
+      id: 102,
+      nameEn: 'Cooking oil',
+      nameAr: 'زيت طبخ',
+      unit: QuantityUnit.litre,
+    ),
+    StockItem(id: 103, nameEn: 'Bottled water', onMenu: true),
+  ];
+
+  final List<StockItem> items;
+
+  @override
+  Future<List<StockItem>> all({bool includeInactive = false}) async => [
+    for (final item in items)
+      if (includeInactive || item.isActive) item,
+  ];
+
+  @override
+  Future<AdminResult<StockItem>> save(
+    StockItem item, {
+    required PosStaff by,
+  }) async {
+    if (item.id == 0) {
+      final created = item.copyWith(id: 1000 + items.length);
+      items.add(created);
+      return AdminResult.done(created);
+    }
+    final at = items.indexWhere((i) => i.id == item.id);
+    if (at < 0) return const AdminResult.refused(EditedElsewhere(0));
+    items[at] = item;
+    return AdminResult.done(item);
+  }
+}
+
+/// What each counted item stands at, held in a list. A test double only.
+class FakeStockLevelsRepository implements StockLevelsRepository {
+  FakeStockLevelsRepository({List<StockLevel>? levels})
+    : levels = [...(levels ?? _seeded)];
+
+  static const _seeded = [
+    StockLevel(
+      productId: 101,
+      nameEn: 'Chicken',
+      onHand: Quantity(12500, unit: QuantityUnit.kilogram),
+      unitCost: Money(9500),
+    ),
+    StockLevel(
+      productId: 102,
+      nameEn: 'Cooking oil',
+      onHand: Quantity(-2000, unit: QuantityUnit.litre),
+      unitCost: Money(6000),
+    ),
+    StockLevel(
+      productId: 103,
+      nameEn: 'Bottled water',
+      onHand: Quantity(48000),
+      unitCost: Money(500),
+      onMenu: true,
+    ),
+  ];
+
+  final List<StockLevel> levels;
+
+  @override
+  Future<List<StockLevel>> all() async => [...levels];
 }

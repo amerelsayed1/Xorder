@@ -247,7 +247,7 @@ class _ServiceChargeDialogState extends State<ServiceChargeDialog> {
                       key: const Key('charge-save'),
                       label: strings.save,
                       background: palette.ink,
-                      foreground: Colors.white,
+                      foreground: palette.onInk,
                       onPressed: _save,
                     ),
                   ),

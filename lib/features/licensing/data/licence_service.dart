@@ -58,9 +58,21 @@ class LicenceFetch {
 
 /// Outcome of an activation attempt, so both callers report failures the same way.
 class LicenceActivationResult {
-  const LicenceActivationResult({this.entitlement, this.claims, this.notice});
+  const LicenceActivationResult({
+    this.entitlement,
+    this.claims,
+    this.notice,
+    this.file,
+  });
 
   final LicenseEntitlement? entitlement;
+
+  /// The licence itself, so a caller that asked not to persist it has something
+  /// to persist later. Null when nothing was fetched or parsed.
+  ///
+  /// The setup wizard is that caller: it holds the file for the length of the
+  /// wizard and writes it only once the terminal is finished — see [activate].
+  final LicenseFile? file;
 
   /// The claims inside the file that was just installed.
   ///
@@ -114,10 +126,22 @@ extension LicenceActivation on LicenceService {
     );
   }
 
+  /// [persist] writes the licence to disk as part of activating it, which is
+  /// what a renewal wants: the operator is fixing a live till, and the file has
+  /// to be there for the next boot whatever they do next.
+  ///
+  /// **First-run setup passes false.** Activation is step ONE of ten, so
+  /// writing there installed a licence on any machine somebody merely tried a
+  /// key on — an owner seeing what a key covers, an installer who got no
+  /// further than the database password — and the file outlived the abandoned
+  /// wizard. The next person through was then judged against a licence for a
+  /// restaurant that terminal had never been set up for. The file is carried on
+  /// [LicenceActivationResult.file] instead, and written when setup finishes.
   Future<LicenceActivationResult> activate({
     required DeploymentConfig deployment,
     String? key,
     String? fileContents,
+    bool persist = true,
   }) async {
     if (fileContents == null && !canActivateOnline) {
       // Saying "that key was not recognised" here would send the operator
@@ -148,12 +172,15 @@ extension LicenceActivation on LicenceService {
     // Persist even a licence that does not permit trade: the operator needs the
     // status screen to show what they actually installed, and an expired
     // licence is still the record of what this terminal is entitled to.
-    await store(file);
+    if (persist) {
+      await store(file);
+    }
 
     return LicenceActivationResult(
       entitlement: entitlement,
       claims: LicenseVerifier.claimsOf(file),
       notice: entitlement.canOpenShift ? null : entitlement.notice,
+      file: file,
     );
   }
 }

@@ -252,7 +252,7 @@ class _StaffGrantsDialogState extends State<StaffGrantsDialog> {
                       key: const Key('grants-save'),
                       label: strings.save,
                       background: palette.ink,
-                      foreground: Colors.white,
+                      foreground: palette.onInk,
                       onPressed: _save,
                     ),
                   ),

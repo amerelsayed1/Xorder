@@ -1,8 +1,12 @@
+import 'package:collection/collection.dart';
+
 import '../../core/config/deployment.dart';
 import '../../core/money/money.dart';
 import '../../domain/models/order_record.dart';
 import '../../domain/models/ticket.dart';
+import '../../domain/repositories/admin_repositories.dart' show AuditAction;
 import '../../domain/repositories/repositories.dart';
+import '../../domain/services/payment_status.dart';
 import 'pos_database.dart';
 
 /// Reads settled orders back out of the branch database.
@@ -14,6 +18,11 @@ import 'pos_database.dart';
 /// Scoped to one restaurant and one branch. A till shows the orders taken at the
 /// counter it is standing on — the branch filter is not a convenience, it is
 /// what stops a terminal in one shop listing another shop's takings.
+///
+/// Whose sales within the branch is NOT decided here: a query arrives already
+/// narrowed by `HistoryScope`, in the provider every reader goes through. This
+/// class has no idea who is asking, which is what lets the DB suite read it
+/// without signing anybody in.
 class PostgresOrderHistoryRepository implements OrderHistoryRepository {
   const PostgresOrderHistoryRepository({
     required PosDatabase database,
@@ -40,13 +49,37 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
         exponent: rowExponent is int ? rowExponent : exponent,
       );
 
+  /// The payment status, in SQL — the twin of `paymentStatusFromSums`.
+  ///
+  /// Kept beside the Dart rule rather than in a view. A view was the plan's
+  /// first shape (§3 S1), and it would be the right home once reports (S3)
+  /// read it too; today the only reader is this class, and a view is a new
+  /// object every install needs a grant on — a grant that works for the
+  /// superuser in the test suite and fails on a real till until somebody
+  /// remembers `LocalBootstrap`. When S3 needs it, this expression moves into
+  /// a migration verbatim.
+  ///
+  /// Reads the lateral sums [_orderJoins] provides. `sales_history_test.dart`
+  /// runs it against the same cases as the Dart rule and requires the same
+  /// answer; edit one and that suite fails until the other agrees.
+  static const paymentStatusSql = '''
+        CASE
+          WHEN given_back.minor > 0 AND given_back.minor >= taken.minor
+            THEN 'REFUNDED'
+          WHEN given_back.minor > 0 THEN 'PARTIALLY_REFUNDED'
+          WHEN taken.minor >= o.total_minor THEN 'PAID'
+          WHEN taken.minor = 0 THEN 'UNPAID'
+          ELSE 'PARTIALLY_PAID'
+        END''';
+
   static const _orderColumns = '''
         o.id, o.client_transaction_id, o.invoice_number, o.status, o.order_type,
         o.occurred_at, o.subtotal_minor, o.discount_minor, o.service_minor,
         o.vat_minor, o.total_minor, o.currency, o.exponent,
         o.table_label, o.guest_count, o.voided_at, o.void_note,
         served.name, voider.name, reason.name_en, reason.name_ar,
-        o.served_by''';
+        o.served_by, taken.minor, given_back.minor, $paymentStatusSql,
+        trading.business_date, o.terminal_id::text, term.name''';
 
   /// The joins [_orderColumns] needs.
   ///
@@ -54,15 +87,52 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
   /// predates the reason table, must still appear. An `INNER` join here would
   /// make orders disappear from history as staff leave, which is the failure
   /// mode nobody notices until an audit.
+  ///
+  /// **The sums are lateral, not a `GROUP BY` over a join.** Joining payments
+  /// and refunds to the order in one go multiplies each by the other — a sale
+  /// paid in two tenders with one refund would count the refund twice. One
+  /// aggregate per table per order cannot.
+  ///
+  /// **The business day is found by window as well as by id.** Nothing in this
+  /// build stamps `pos_orders.business_day_id` — the column has existed since
+  /// migration 9 and no writer fills it — so an id-only join would file every
+  /// sale under no day at all. A sale belongs to the day whose open–close
+  /// window contains it; once a writer does stamp the id, the id wins, because
+  /// the `OR` only looks at windows when it is null. Ordered by `opened_at`
+  /// so the most recent day that covers it answers, should a force-closed day
+  /// and its successor ever overlap by a second.
   static const _orderJoins = '''
         LEFT JOIN pos_staff       AS served ON served.id = o.served_by
         LEFT JOIN pos_staff       AS voider ON voider.id = o.voided_by
-        LEFT JOIN pos_reason_codes AS reason ON reason.id = o.void_reason_id''';
+        LEFT JOIN pos_reason_codes AS reason ON reason.id = o.void_reason_id
+        LEFT JOIN pos_terminals   AS term   ON term.id = o.terminal_id
+        LEFT JOIN LATERAL (
+          SELECT coalesce(sum(p.amount_minor), 0)::bigint AS minor
+            FROM pos_order_payments AS p WHERE p.order_id = o.id
+        ) AS taken ON true
+        LEFT JOIN LATERAL (
+          SELECT coalesce(sum(r.total_minor), 0)::bigint AS minor
+            FROM pos_refunds AS r WHERE r.order_id = o.id
+        ) AS given_back ON true
+        LEFT JOIN LATERAL (
+          SELECT d.business_date
+            FROM pos_business_days AS d
+           WHERE d.restaurant_id = o.restaurant_id
+             AND d.branch_id = o.branch_id
+             AND (d.id = o.business_day_id
+                  OR (o.business_day_id IS NULL
+                      AND d.opened_at <= o.occurred_at
+                      AND (d.closed_at IS NULL
+                           OR o.occurred_at < d.closed_at)))
+           ORDER BY d.opened_at DESC
+           LIMIT 1
+        ) AS trading ON true''';
 
   OrderRecord _record(List<Object?> row) {
     final currencyCode = row[11];
     final rowExponent = row[12];
     Money money(Object? minor) => _rowMoney(minor, currencyCode, rowExponent);
+    final businessDate = row[25] as DateTime?;
 
     return OrderRecord(
       id: row[0] as int,
@@ -92,8 +162,32 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
       voidReason: row[19] as String?,
       voidReasonAr: row[20] as String?,
       servedByStaffId: row[21] as int?,
+      paidTotal: money(row[22]),
+      refundedTotal: money(row[23]),
+      // Null only if the SQL and the enum ever disagreed on a word — and then
+      // the record applies the Dart rule to the same sums, which is the same
+      // answer by a different road rather than no answer.
+      paymentStatus: PaymentStatus.fromWire(row[24] as String),
+      // A `date` arrives as UTC midnight. Rebuilt as local midnight so it
+      // compares with the dates the screen builds, which are local.
+      businessDate: businessDate == null
+          ? null
+          : DateTime(businessDate.year, businessDate.month, businessDate.day),
+      terminalId: row[26] as String?,
+      terminalName: row[27] as String?,
     );
   }
+
+  /// `YYYY-MM-DD`, for a `::date` parameter.
+  ///
+  /// Text rather than a `DateTime`: the driver sends a `DateTime` as a
+  /// timestamp, and comparing a `date` column to a timestamp casts the date to
+  /// midnight in the SERVER's zone — a branch server left on UTC would move
+  /// every boundary by two hours.
+  static String _day(DateTime at) =>
+      '${at.year.toString().padLeft(4, '0')}-'
+      '${at.month.toString().padLeft(2, '0')}-'
+      '${at.day.toString().padLeft(2, '0')}';
 
   @override
   Future<List<OrderRecord>> search(OrderHistoryQuery query) async {
@@ -107,13 +201,41 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
       'limit': query.limit,
     };
 
-    if (query.from != null) {
-      where.add('o.occurred_at >= @from');
-      parameters['from'] = query.from!.toUtc();
+    // Business date where a day covers the sale, calendar instant where none
+    // does — see [OrderHistoryQuery.from]. A CASE rather than an OR so each
+    // sale is judged by exactly one of the two, never whichever is kinder.
+    final from = query.from;
+    if (from != null) {
+      // The floor is what lets the index on `occurred_at` do the work. A
+      // business day opens on or after midnight of its own date, so no sale
+      // filed under a date at or after `from` can have been rung up before
+      // that midnight. A day of slack covers a day somebody opened early; the
+      // alternative, no floor, evaluates the day window for every sale the
+      // branch ever made to answer "today".
+      where.add('o.occurred_at >= @fromFloor');
+      parameters['fromFloor'] = from
+          .subtract(const Duration(days: 1))
+          .toUtc();
+      where.add(
+        '(CASE WHEN trading.business_date IS NOT NULL '
+        '      THEN trading.business_date >= @fromDay::date '
+        '      ELSE o.occurred_at >= @from END)',
+      );
+      parameters['fromDay'] = _day(from);
+      parameters['from'] = from.toUtc();
     }
-    if (query.to != null) {
-      where.add('o.occurred_at < @to');
-      parameters['to'] = query.to!.toUtc();
+    final to = query.to;
+    if (to != null) {
+      // No ceiling to match the floor. A day left open over a weekend files
+      // Sunday's sales under Friday, so a sale rung up well after `to` can
+      // still belong before it.
+      where.add(
+        '(CASE WHEN trading.business_date IS NOT NULL '
+        '      THEN trading.business_date < @toDay::date '
+        '      ELSE o.occurred_at < @to END)',
+      );
+      parameters['toDay'] = _day(to);
+      parameters['to'] = to.toUtc();
     }
     if (query.statuses.isNotEmpty) {
       where.add('o.status = ANY(@statuses)');
@@ -126,6 +248,24 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
     if (query.servedByStaffId != null) {
       where.add('o.served_by = @served');
       parameters['served'] = query.servedByStaffId;
+    }
+    if (query.tenderTypeId != null) {
+      // EXISTS, not a join: a sale paid in two tenders would otherwise come
+      // back twice, and a list with the same invoice on two rows is a list
+      // somebody totals wrong.
+      where.add(
+        'EXISTS (SELECT 1 FROM pos_order_payments AS tender '
+        '        WHERE tender.order_id = o.id '
+        '          AND tender.tender_type_id = @tender)',
+      );
+      parameters['tender'] = query.tenderTypeId;
+    }
+    if (query.terminalId != null) {
+      // Compared as text. The id came from [terminals], so it is a uuid — but
+      // a cast that throws on a malformed one would turn a stale filter into
+      // an error screen, where comparing text turns it into an empty list.
+      where.add('o.terminal_id::text = @terminal');
+      parameters['terminal'] = query.terminalId;
     }
 
     final search = query.search?.trim();
@@ -167,6 +307,27 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
     );
     if (rows.isEmpty) return null;
     return _record(rows.first.toList());
+  }
+
+  @override
+  Future<List<HistoryTerminal>> terminals() async {
+    // From `pos_terminals`, not `SELECT DISTINCT terminal_id FROM pos_orders`:
+    // the distinct scans every sale the branch ever made to list three tills.
+    // The cost is that a till whose row was deleted cannot be picked — its
+    // sales still list, under every till, which is the safe side to be wrong.
+    final rows = await _db.query(
+      config,
+      'SELECT id::text, name FROM pos_terminals '
+      'WHERE restaurant_id = @restaurant AND branch_id = @branch '
+      'ORDER BY name, id',
+      parameters: {'restaurant': restaurantId, 'branch': branchId},
+    );
+    return rows
+        .map((raw) {
+          final row = raw.toList();
+          return HistoryTerminal(id: row[0] as String, name: row[1] as String?);
+        })
+        .toList(growable: false);
   }
 
   @override
@@ -265,7 +426,120 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
           appliedAt: (row[5] as DateTime?)?.toLocal(),
         );
       }).toList(growable: false),
+      events: await _events(order, money),
     );
+  }
+
+  /// Everything that happened to [order] after it was rung up, oldest first.
+  ///
+  /// Three reads rather than one `UNION`: the four sources share no columns
+  /// worth the name, and a union padded with NULLs to make them line up is a
+  /// query nobody can change without counting commas.
+  Future<List<SaleEvent>> _events(
+    OrderRecord order,
+    Money Function(Object?) money,
+  ) async {
+    final events = <SaleEvent>[];
+
+    final printRows = await _db.query(
+      config,
+      'SELECT kind, status, queued_at, printed_at FROM pos_print_jobs '
+      'WHERE order_id = @order AND restaurant_id = @restaurant '
+      '  AND branch_id = @branch ORDER BY id',
+      parameters: {
+        'order': order.id,
+        'restaurant': restaurantId,
+        'branch': branchId,
+      },
+    );
+    for (final raw in printRows) {
+      final row = raw.toList();
+      // Two kinds and two states, both held by CHECK constraints in migration
+      // 34 — so `reprint` or not, `printed` or not, is the whole space.
+      final copy = row[0] == 'reprint';
+      final printedAt = row[3] as DateTime?;
+      final done = row[1] == 'printed' && printedAt != null;
+      events.add(
+        SaleEvent(
+          kind: switch ((copy, done)) {
+            (false, true) => SaleEventKind.printed,
+            (false, false) => SaleEventKind.printPending,
+            (true, true) => SaleEventKind.reprinted,
+            (true, false) => SaleEventKind.reprintPending,
+          },
+          at: (done ? printedAt : row[2] as DateTime).toLocal(),
+        ),
+      );
+    }
+
+    final auditRows = await _db.query(
+      config,
+      'SELECT action, actor_name, approved_by_name, occurred_at '
+      'FROM pos_audit_events '
+      'WHERE restaurant_id = @restaurant AND entity_type = @entity '
+      '  AND entity_id = @id '
+      'ORDER BY occurred_at, id',
+      parameters: {
+        'restaurant': restaurantId,
+        'entity': AuditAction.entityOrder,
+        'id': '${order.id}',
+      },
+    );
+    for (final raw in auditRows) {
+      final row = raw.toList();
+      final action = row[0] as String;
+      final reprint = action == AuditAction.receiptReprinted;
+      events.add(
+        SaleEvent(
+          kind: reprint ? SaleEventKind.reprintRequested : SaleEventKind.audit,
+          at: (row[3] as DateTime).toLocal(),
+          actorName: row[1] as String?,
+          approvedByName: row[2] as String?,
+          auditAction: reprint ? null : action,
+        ),
+      );
+    }
+
+    // The void is on the order itself — there is no audit row for it, the
+    // order's own `voided_by` and `voided_at` are the record.
+    final voidedAt = order.voidedAt;
+    if (voidedAt != null) {
+      events.add(
+        SaleEvent(
+          kind: SaleEventKind.voided,
+          at: voidedAt,
+          actorName: order.voidedByName,
+        ),
+      );
+    }
+
+    final refundRows = await _db.query(
+      config,
+      'SELECT r.occurred_at, issuer.name, approver.name, r.total_minor '
+      'FROM pos_refunds AS r '
+      'LEFT JOIN pos_staff AS issuer ON issuer.id = r.refunded_by '
+      'LEFT JOIN pos_staff AS approver ON approver.id = r.approved_by_id '
+      'WHERE r.order_id = @order AND r.restaurant_id = @restaurant '
+      'ORDER BY r.occurred_at, r.id',
+      parameters: {'order': order.id, 'restaurant': restaurantId},
+    );
+    for (final raw in refundRows) {
+      final row = raw.toList();
+      events.add(
+        SaleEvent(
+          kind: SaleEventKind.refunded,
+          at: (row[0] as DateTime).toLocal(),
+          actorName: row[1] as String?,
+          approvedByName: row[2] as String?,
+          amount: money(row[3]),
+        ),
+      );
+    }
+
+    // Stable, so two things in the same second keep the order their own table
+    // gave them — a reprint request stays ahead of the copy it produced.
+    mergeSort(events, compare: (a, b) => a.at.compareTo(b.at));
+    return events;
   }
 }
 
@@ -284,4 +558,7 @@ class UnconfiguredOrderHistoryRepository implements OrderHistoryRepository {
 
   @override
   Future<OrderRecord?> byInvoiceNumber(String invoiceNumber) async => null;
+
+  @override
+  Future<List<HistoryTerminal>> terminals() async => const [];
 }

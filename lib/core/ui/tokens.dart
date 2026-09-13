@@ -42,6 +42,10 @@ enum PosPalette {
     surface: Color(0xFFFFFFFF),
     inkWarm: Color(0xFF2A1E14),
     ink: Color(0xFF201E1D),
+    // White, which is what every dark-button call site already passed.
+    onInk: Color(0xFFFFFFFF),
+    onOk: Color(0xFFFFFFFF),
+    onAccent: Color(0xFF201E1D),
     body: Color(0xFF5A4D3D),
     muted: Color(0xFF8A7C68),
     line: Color(0xFFECE5D9),
@@ -103,6 +107,10 @@ enum PosPalette {
     surface: Color(0xFF1C1712),
     inkWarm: Color(0xFFEAE3D7),
     ink: Color(0xFFF2EDE4),
+    // The page, so a cream fill carries the darkest thing in the palette.
+    onInk: Color(0xFF14110E),
+    onOk: Color(0xFF14110E),
+    onAccent: Color(0xFF14110E),
     body: Color(0xFFC6BCAD),
     muted: Color(0xFF978B79),
     line: Color(0xFF2A231B),
@@ -145,6 +153,9 @@ enum PosPalette {
     required this.surface,
     required this.inkWarm,
     required this.ink,
+    required this.onInk,
+    required this.onOk,
+    required this.onAccent,
     required this.body,
     required this.muted,
     required this.line,
@@ -194,6 +205,34 @@ enum PosPalette {
 
   /// POS heading ink, 2px rules, dark buttons.
   final Color ink;
+
+  /// What goes ON an [accent] fill, where the text is small enough to need it.
+  ///
+  /// [accent] is the one colour that does NOT move between the palettes, so
+  /// this does not either. It is dark because white on #F89A06 measures 2.2:1,
+  /// which the handoff accepts on a large-format CTA and which nothing should
+  /// accept on a 16px initial in an avatar the size of a thumbnail.
+  final Color onAccent;
+
+  /// What goes ON an [ok] fill — the label of a confirm button.
+  ///
+  /// Same trap as [onInk], one colour along. The dark palette LIFTS its status
+  /// colours so they can be read *on* a dark ground, which makes `ok` a pale
+  /// green there — and a pale green filled behind white text is the payment
+  /// screen's Take payment button at 2.1:1, the largest and most-pressed
+  /// control in the product.
+  final Color onOk;
+
+  /// What goes ON an [ink] fill — the label of a primary button.
+  ///
+  /// It exists because "dark buttons" stops being true in the dark theme, where
+  /// [ink] is a near-white cream. Every such button was written as an ink fill
+  /// beneath `Colors.white`, which is right in the light palette and, in the
+  /// dark one, white on cream at 1.06:1 — the primary action on a screen
+  /// rendering as a pale blank slab that reads as disabled. A literal cannot
+  /// follow the theme; a token can, and the contrast table in `theme_test.dart`
+  /// holds this pair to AA in both.
+  final Color onInk;
 
   final Color body;
   final Color muted;
@@ -328,17 +367,30 @@ extension PosPaletteContext on BuildContext {
 /// `pubspec.yaml`, these names resolve to a platform substitute. Layout metrics
 /// are specified in logical pixels and do not depend on the substitution.
 abstract final class PosFonts {
-  static const ui = 'Archivo';
+  /// IBM Plex Sans Arabic, bundled in `assets/fonts/` — for Arabic AND
+  /// English. It carries a Latin set drawn to match its Arabic, so a line that
+  /// mixes the two (a dish name, then "EGP") is one voice rather than two
+  /// fonts taking turns. Chosen by the owner, 2026-09-11.
+  ///
+  /// Bundled, not assumed: the faces this replaced were named here and never
+  /// shipped, so every till drew itself in whatever the machine had — Segoe UI
+  /// on Windows, Helvetica on a Mac — and no two looked alike.
+  static const ui = 'IBM Plex Sans Arabic';
 
   /// Every number in the product renders in mono — prices, totals, codes,
-  /// times, SKUs, keypad digits — plus all-caps micro-labels.
+  /// times, SKUs, keypad digits — plus all-caps micro-labels. Same family as
+  /// [ui], so the figures and the words beside them belong together.
   static const mono = 'IBM Plex Mono';
-  static const arabic = 'Tajawal';
 
-  /// Fallbacks used until the real files land, so the app looks deliberate
-  /// rather than broken on a machine without them.
-  static const uiFallback = <String>['Helvetica Neue', 'Segoe UI', 'Roboto'];
+  /// The same face as [ui]: there is one family for both scripts now.
+  static const arabic = ui;
+
+  /// Only for a glyph the bundled faces lack.
+  static const uiFallback = <String>['Segoe UI', 'Helvetica Neue', 'Roboto'];
   static const monoFallback = <String>[
+    // First, so Arabic in a mono style — a label, a code beside a name — is
+    // drawn in the till's Arabic face rather than the system's.
+    'IBM Plex Sans Arabic',
     'SF Mono',
     'Consolas',
     'Menlo',

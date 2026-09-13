@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../app/providers.dart';
 import '../../../core/config/deployment.dart';
 import '../../../core/config/platform_endpoint.dart';
+import '../../../core/config/printer_config.dart';
 import '../../../app/labels.dart';
 import '../../../core/l10n/app_strings.dart';
 import '../../../core/ui/theme.dart';
@@ -325,6 +326,10 @@ class _DeploymentPane extends ConsumerWidget {
     final controller = ref.read(setupProvider.notifier);
     final config = draft.deployment;
 
+    // A tablet builds nothing and chooses nothing here: it finds its main
+    // device. See [TerminalRole].
+    if (config.isChild) return _MainDevicePane(draft: draft);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -440,7 +445,7 @@ class _DeploymentPane extends ConsumerWidget {
         // simply empty. Typing a password here will be accepted either way, so
         // the operator has to learn *now* that this one will not survive a
         // restart, rather than tomorrow morning when the wizard reappears.
-        if (ref.watch(terminalBootProvider).credentialStoreUnavailable) ...[
+        if (ref.watch(terminalSeedProvider).credentialStoreUnavailable) ...[
           Container(
             padding: const EdgeInsets.all(PosSpace.lg),
             decoration: BoxDecoration(
@@ -513,6 +518,101 @@ class _DeploymentPane extends ConsumerWidget {
   }
 }
 
+/// A child tablet's connection step: where the main device is, and the till
+/// password it was set up with. Connecting reads the licence it shares.
+class _MainDevicePane extends ConsumerWidget {
+  const _MainDevicePane({required this.draft});
+
+  final SetupDraft draft;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final s = context.strings;
+    final controller = ref.read(setupProvider.notifier);
+    final config = draft.deployment;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          s.mainDeviceHelp,
+          style: PosText.ui(size: 12.5, color: context.pos.muted, height: 1.5),
+        ),
+        const SizedBox(height: PosSpace.xl),
+        _Field(
+          label: s.mainDeviceAddress,
+          value: config.databaseHost,
+          mono: true,
+          hint: '192.168.1.20',
+          onChanged: controller.setDatabaseHost,
+          help: s.mainDeviceAddressHelp,
+        ),
+        if (config.isPrivateHost && !config.isSingleMachine) ...[
+          const SizedBox(height: PosSpace.lg),
+          _ChoiceTile(
+            title: s.trustWithoutCertificate,
+            blurb: s.trustWithoutCertificateBlurb,
+            selected: !config.verifyTls,
+            onTap: () => controller.setVerifyTls(!config.verifyTls),
+          ),
+        ],
+        const SizedBox(height: PosSpace.xl),
+        // Defaults every install the wizard made shares; shown because one set
+        // up by hand may not.
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              flex: 2,
+              child: _Field(
+                label: s.databaseName,
+                value: config.databaseName,
+                mono: true,
+                hint: 'xorder_pos',
+                onChanged: controller.setDatabaseName,
+              ),
+            ),
+            const SizedBox(width: PosSpace.lg),
+            Expanded(
+              child: _Field(
+                label: s.databasePort,
+                value: config.databasePort.toString(),
+                mono: true,
+                hint: '5432',
+                onChanged: controller.setDatabasePort,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: PosSpace.xl),
+        _PasswordField(
+          field: 'database',
+          label: s.databasePassword,
+          value: draft.databasePassword,
+          onChanged: controller.setDatabasePassword,
+          help: s.databasePasswordHelp,
+        ),
+        const SizedBox(height: PosSpace.xl),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: PosButton(
+            label: s.connectToMainDevice,
+            background: context.pos.ink,
+            foreground: context.pos.onInk,
+            padding: const EdgeInsets.symmetric(horizontal: PosSpace.xl),
+            onPressed:
+                draft.busy ||
+                    config.databaseHost.trim().isEmpty ||
+                    draft.databasePassword.isEmpty
+                ? null
+                : controller.connectToMainDevice,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _LicencePane extends ConsumerWidget {
   const _LicencePane({required this.draft});
 
@@ -568,7 +668,7 @@ class _LicencePane extends ConsumerWidget {
               PosButton(
                 label: s.activateOnline,
                 background: context.pos.ink,
-                foreground: Colors.white,
+                foreground: context.pos.onInk,
                 padding: const EdgeInsets.symmetric(horizontal: PosSpace.xl),
                 onPressed: draft.busy
                     ? null
@@ -580,7 +680,7 @@ class _LicencePane extends ConsumerWidget {
               label: s.activateFromFile,
               // Promoted to the primary action when it is the only action.
               background: online ? context.pos.surface : context.pos.ink,
-              foreground: online ? context.pos.ink : Colors.white,
+              foreground: online ? context.pos.ink : context.pos.onInk,
               border: online
                   ? Border.fromBorderSide(
                       BorderSide(color: context.pos.inkWarm),
@@ -768,6 +868,27 @@ class _AccountPane extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final controller = ref.read(setupProvider.notifier);
+
+    // A child signs in as a manager its main device already has. The
+    // restaurant came with the shared licence, so it is shown and not asked.
+    if (draft.deployment.isChild) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _Field(
+            label: context.strings.restaurant,
+            value: draft.tenantName ??
+                draft.claims?.tenantName ??
+                draft.deployment.tenantSlug ??
+                '',
+            readOnly: true,
+            onChanged: (_) {},
+          ),
+          const SizedBox(height: PosSpace.s28),
+          _ManualCredentialFields(draft: draft),
+        ],
+      );
+    }
 
     // An offline till has no platform to sign in to and no account to sign in
     // WITH — the first administrator does not exist anywhere yet. Asking for a
@@ -1347,7 +1468,28 @@ class _HardwarePaneState extends ConsumerState<_HardwarePane> {
           ),
           const SizedBox(height: PosSpace.md),
         ],
+        // Asked here because it is a fact about the roll in the machine, and
+        // the person holding the roll is standing at the till right now. A
+        // receipt built for 576 dots on a 58mm printer is not scaled down — the
+        // printer keeps the columns it has a head for and drops the rest, so
+        // the totals go over the edge and the till looks broken.
         const SizedBox(height: PosSpace.sm),
+        MicroLabel(s.printerPaperWidth),
+        const SizedBox(height: PosSpace.sm),
+        _ChoiceTile(
+          title: s.printerPaper80,
+          blurb: s.printerPaperWidthHelp,
+          selected: draft.paperWidthDots == PrinterConfig.width80mm,
+          onTap: () => controller.setPaperWidth(PrinterConfig.width80mm),
+        ),
+        const SizedBox(height: PosSpace.md),
+        _ChoiceTile(
+          title: s.printerPaper58,
+          blurb: s.printerPaperWidthHelp,
+          selected: draft.paperWidthDots == PrinterConfig.width58mm,
+          onTap: () => controller.setPaperWidth(PrinterConfig.width58mm),
+        ),
+        const SizedBox(height: PosSpace.lg),
         _ChoiceTile(
           title: s.cashDrawerAttached,
           blurb: s.cashDrawerAttachedBlurb,
@@ -1462,7 +1604,7 @@ class _CataloguePane extends ConsumerWidget {
                 ? (items == null ? s.downloadMenu : s.downloadAgain)
                 : (items == null ? s.readMenu : s.readMenuAgain),
             background: context.pos.ink,
-            foreground: Colors.white,
+            foreground: context.pos.onInk,
             padding: const EdgeInsets.symmetric(horizontal: PosSpace.xl),
             onPressed: draft.busy
                 ? null
@@ -1761,7 +1903,7 @@ class _FirstInstallFieldsState extends ConsumerState<_FirstInstallFields> {
           child: PosButton(
             label: draft.busy ? s.buildingDatabase : s.buildTheDatabase,
             background: context.pos.ink,
-            foreground: Colors.white,
+            foreground: context.pos.onInk,
             padding: const EdgeInsets.symmetric(horizontal: PosSpace.xl),
             onPressed: draft.busy ? null : controller.bootstrapDatabase,
           ),

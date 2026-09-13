@@ -12,9 +12,6 @@ import 'data/config/file_secret_store.dart';
 import 'data/config/terminal_config_store.dart';
 import 'data/postgres/pos_database.dart';
 
-/// A POS terminal is a fixed installation, not a phone. The window is given a
-/// minimum size that the three-pane shell actually fits in, so a cashier cannot
-/// drag the till into a layout the design never covered.
 const _minimumWindow = Size(1024, 700);
 const _initialWindow = Size(1440, 900);
 
@@ -37,12 +34,6 @@ Future<void> main() async {
     );
   }
 
-  // Read the terminal's own configuration before the first frame.
-  //
-  // Before `runApp` rather than inside a provider because the router decides
-  // where the first frame goes: a till that painted the setup wizard for one
-  // frame every morning before redirecting to the start screen would read as
-  // broken to the person opening the restaurant.
   final configStore = FileTerminalConfigStore();
   final saved = await configStore.read();
 

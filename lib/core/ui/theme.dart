@@ -121,6 +121,14 @@ ThemeData buildPosTheme([PosPalette palette = PosPalette.light]) {
         horizontal: PosSpace.md,
         vertical: PosSpace.md,
       ),
+      // Muted, and the body face: a placeholder in full ink reads as a value
+      // somebody already typed.
+      hintStyle: TextStyle(
+        fontFamily: PosFonts.ui,
+        fontFamilyFallback: PosFonts.uiFallback,
+        fontSize: 14,
+        color: palette.muted,
+      ),
     ),
     snackBarTheme: SnackBarThemeData(
       // The snack bar is a shell surface wherever it appears, so it takes the

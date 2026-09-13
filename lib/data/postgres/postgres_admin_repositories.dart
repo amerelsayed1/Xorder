@@ -339,6 +339,7 @@ class PostgresStaffDirectoryRepository implements StaffDirectoryRepository {
     PosDatabase? readDatabase,
     DeploymentConfig? readConfig,
     this.adminAvailable = true,
+    this.offline = true,
     int? branchId,
     String? terminalId,
   }) : _c = _AdminContext(
@@ -357,6 +358,21 @@ class PostgresStaffDirectoryRepository implements StaffDirectoryRepository {
          branchId: branchId,
          terminalId: terminalId,
        );
+
+  /// Whether this terminal owns its own staff records.
+  ///
+  /// **False on a cloud till, and it changes what may be written here — not
+  /// whether anything may be.** `BootstrapSeeder` upserts `pos_staff` from the
+  /// bundle and deactivates anybody the bundle does not name, so creating,
+  /// renaming, disabling or re-PINning somebody locally lasts until the next
+  /// sync and then silently does not.
+  ///
+  /// It does **not** seed `pos_roles`, `pos_staff.role_id`, `pos_staff_roles`,
+  /// the per-person overrides or the ceilings. Assigning a role and setting
+  /// somebody's permissions are local, permanent and correct on a cloud till —
+  /// which is why this refuses per *act* rather than closing the pane. Hiding
+  /// the whole thing would take away the half that works.
+  final bool offline;
 
   final _AdminContext _c;
 
@@ -422,6 +438,13 @@ class PostgresStaffDirectoryRepository implements StaffDirectoryRepository {
     int? branchId,
     Set<String> directGrants = const {},
   }) async {
+    // The bundle owns this record — see [offline].
+    if (!offline) {
+      return const AdminResult<PosStaff>.refused(
+        ManagedByPlatform(ManagedByPlatform.staffRecords),
+      );
+    }
+
     if (!adminAvailable) {
       return const AdminResult<PosStaff>.refused(
         AdministratorCredentialRequired(),
@@ -437,6 +460,20 @@ class PostgresStaffDirectoryRepository implements StaffDirectoryRepository {
     final grants = directGrants.toList()..sort();
 
     return _c.database.runTx(_c.config, (tx) async {
+      // One owner per restaurant — see [OwnerAlreadyExists]. Asked here so the
+      // manager gets a sentence naming the owner; migration 42 refuses the same
+      // insert with an exception if anything gets past this.
+      final ownerRole = await _lockOwnerRole(tx);
+      if (roleId == ownerRole) {
+        final incumbent = await _activeOwnerOtherThan(
+          tx,
+          ownerRoleId: ownerRole!,
+        );
+        if (incumbent != null) {
+          return AdminResult<PosStaff>.refused(OwnerAlreadyExists(incumbent));
+        }
+      }
+
       final rows = await tx.execute(
         Sql.named(
           'INSERT INTO pos_staff (restaurant_id, branch_id, name, username, pin_salt, '
@@ -490,6 +527,21 @@ class PostgresStaffDirectoryRepository implements StaffDirectoryRepository {
     Set<String>? directGrants,
     int? branchId,
   }) async {
+    // Per field, not per call. `role_id` is not in the bundle, so moving
+    // somebody between roles on a cloud till is permanent and correct — while
+    // renaming them, or changing their direct grants, is not. Refusing the
+    // whole method would take away the half that works.
+    final touchesPlatformOwned =
+        name != null ||
+        username != null ||
+        directGrants != null ||
+        branchId != null;
+    if (!offline && touchesPlatformOwned) {
+      return const AdminResult<PosStaff>.refused(
+        ManagedByPlatform(ManagedByPlatform.staffRecords),
+      );
+    }
+
     if (!adminAvailable) {
       return const AdminResult<PosStaff>.refused(
         AdministratorCredentialRequired(),
@@ -504,6 +556,42 @@ class PostgresStaffDirectoryRepository implements StaffDirectoryRepository {
       final before = await _readStaffOrNull(tx, staffId, lock: true);
       if (before == null) {
         return const AdminResult<PosStaff>.refused(EditedElsewhere(0));
+      }
+
+      // The owner's own access is fixed — see [OwnerIsFixed]. Asked before the
+      // lock-out rule because, for the owner, it is the whole answer: "this
+      // would lock everybody out" is sometimes also true, and it sends the
+      // manager off to fix the wrong thing.
+      //
+      // The role half applies to the ACTIVE owner only. A disabled former
+      // owner is not the owner, and has to be movable: otherwise the person
+      // who sold the restaurant could never come back as its manager, because
+      // re-enabling them on Owner is refused while the new owner is active.
+      // Their grants stay shut either way — they are still on the role that
+      // holds everything.
+      final onOwnerRole = before.role?.code == SystemRoles.ownerCode;
+      final changingRole = roleId != null && roleId != before.role?.id;
+      if (onOwnerRole &&
+          (directGrants != null || (changingRole && before.isActive))) {
+        return const AdminResult<PosStaff>.refused(OwnerIsFixed());
+      }
+
+      var appointing = false;
+      if (changingRole) {
+        final ownerRole = await _lockOwnerRole(tx);
+        appointing = roleId == ownerRole;
+        if (appointing && before.isActive) {
+          final incumbent = await _activeOwnerOtherThan(
+            tx,
+            ownerRoleId: ownerRole!,
+            excluding: staffId,
+          );
+          if (incumbent != null) {
+            return AdminResult<PosStaff>.refused(
+              OwnerAlreadyExists(incumbent),
+            );
+          }
+        }
       }
 
       final grants = directGrants?.toList()?..sort();
@@ -532,6 +620,15 @@ class PostgresStaffDirectoryRepository implements StaffDirectoryRepository {
           );
         }
       }
+
+      // Appointing an owner takes away their extra roles, exceptions and
+      // ceilings in the same transaction. All three mean nothing on somebody
+      // who holds everything, and a DENY among them is a lock-out waiting to
+      // happen. Refusing the appointment over them instead would send the
+      // manager into the permissions dialog to untick things by hand, for no
+      // gain. Before the UPDATE, because migration 42 refuses an owner who
+      // still has them.
+      final clearedExceptions = appointing && await _clearGrants(tx, staffId);
 
       final rows = await tx.execute(
         Sql.named(
@@ -568,7 +665,12 @@ class PostgresStaffDirectoryRepository implements StaffDirectoryRepository {
         entityType: AuditAction.entityStaff,
         entityId: '$staffId',
         before: _staffSnapshot(before),
-        after: _staffSnapshot(after),
+        after: {
+          ..._staffSnapshot(after),
+          // Said on the row, because "who took Nour's refund exception away"
+          // has an answer — her appointment — that is otherwise nowhere.
+          if (clearedExceptions) 'exceptions_cleared': true,
+        },
       );
       return AdminResult.done(after);
     });
@@ -580,6 +682,13 @@ class PostgresStaffDirectoryRepository implements StaffDirectoryRepository {
     required int staffId,
     required bool isActive,
   }) async {
+    // The bundle owns this record — see [offline].
+    if (!offline) {
+      return const AdminResult<PosStaff>.refused(
+        ManagedByPlatform(ManagedByPlatform.staffRecords),
+      );
+    }
+
     if (!adminAvailable) {
       return const AdminResult<PosStaff>.refused(
         AdministratorCredentialRequired(),
@@ -594,6 +703,23 @@ class PostgresStaffDirectoryRepository implements StaffDirectoryRepository {
       final before = await _readStaffOrNull(tx, staffId, lock: true);
       if (before == null) {
         return const AdminResult<PosStaff>.refused(EditedElsewhere(0));
+      }
+
+      // Bringing a former owner back while somebody else owns the restaurant
+      // would make two. Disabling the owner is not touched here — that is the
+      // lock-out rule's business, below, and it is how a handover starts.
+      if (isActive &&
+          !before.isActive &&
+          before.role?.code == SystemRoles.ownerCode) {
+        final ownerRole = await _lockOwnerRole(tx);
+        final incumbent = await _activeOwnerOtherThan(
+          tx,
+          ownerRoleId: ownerRole ?? before.role!.id,
+          excluding: staffId,
+        );
+        if (incumbent != null) {
+          return AdminResult<PosStaff>.refused(OwnerAlreadyExists(incumbent));
+        }
       }
 
       // Refused, not warned about: the screen that would put this back is the
@@ -639,6 +765,13 @@ class PostgresStaffDirectoryRepository implements StaffDirectoryRepository {
     required int staffId,
     required String pin,
   }) async {
+    // The bundle owns this record — see [offline].
+    if (!offline) {
+      return const AdminResult<void>.refused(
+        ManagedByPlatform(ManagedByPlatform.staffRecords),
+      );
+    }
+
     if (!adminAvailable) {
       return const AdminResult<void>.refused(AdministratorCredentialRequired());
     }
@@ -721,6 +854,29 @@ class PostgresStaffDirectoryRepository implements StaffDirectoryRepository {
     return _c.database.runTx(_c.config, (tx) async {
       final before = await _readStaffOrNull(tx, staffId, lock: true);
       if (before == null) return const AdminResult.refused(EditedElsewhere(0));
+
+      // Nothing here means anything on the owner, and a DENY is a lock-out —
+      // see [OwnerIsFixed]. Refused for anybody on the owner role, active or
+      // not: a former owner's grants are as meaningless as the owner's.
+      if (before.role?.code == SystemRoles.ownerCode) {
+        return const AdminResult<PosStaff>.refused(OwnerIsFixed());
+      }
+
+      // Owner as an extra role: a second owner if there is one already, and
+      // never a thing an extra role can be even if there is not.
+      final ownerRole = await _lockOwnerRole(tx);
+      if (ownerRole != null && extraRoleIds.contains(ownerRole)) {
+        final incumbent = await _activeOwnerOtherThan(
+          tx,
+          ownerRoleId: ownerRole,
+          excluding: staffId,
+        );
+        return AdminResult<PosStaff>.refused(
+          incumbent == null
+              ? const OwnerIsNotAnExtraRole()
+              : OwnerAlreadyExists(incumbent),
+        );
+      }
 
       await tx.execute(
         Sql.named('DELETE FROM pos_staff_roles WHERE staff_id = @s'),
@@ -851,6 +1007,65 @@ class PostgresStaffDirectoryRepository implements StaffDirectoryRepository {
       parameters: {'id': id, 'r': _c.restaurantId},
     );
     return rows.isEmpty ? null : roleFromRow(rows.first);
+  }
+
+  /// This restaurant's owner role, locked for the rest of the transaction —
+  /// or null when it has none.
+  ///
+  /// Locked so that two managers appointing an owner from two tills at once
+  /// queue here rather than each counting the other's uncommitted appointment
+  /// as nobody. Migration 42's trigger takes the same lock; taking it first is
+  /// what makes the refusal below the answer rather than the trigger's
+  /// exception. NO KEY UPDATE, so it does not block the KEY SHARE lock every
+  /// other staff insert's foreign key takes on its role.
+  Future<int?> _lockOwnerRole(TxSession tx) async {
+    final rows = await tx.execute(
+      Sql.named(
+        'SELECT id FROM pos_roles WHERE restaurant_id = @r AND code = @owner '
+        'FOR NO KEY UPDATE',
+      ),
+      parameters: {'r': _c.restaurantId, 'owner': SystemRoles.ownerCode},
+    );
+    return rows.isEmpty ? null : rows.first[0] as int;
+  }
+
+  /// The active owner who is not [excluding], by name — the count migration
+  /// 42 makes, asked first so the answer is a sentence.
+  Future<String?> _activeOwnerOtherThan(
+    TxSession tx, {
+    required int ownerRoleId,
+    int? excluding,
+  }) async {
+    final rows = await tx.execute(
+      Sql.named(
+        'SELECT name FROM pos_staff '
+        'WHERE restaurant_id = @r AND role_id = @role AND is_active '
+        '  AND (@id::bigint IS NULL OR id <> @id::bigint) '
+        'ORDER BY id LIMIT 1',
+      ),
+      parameters: {'r': _c.restaurantId, 'role': ownerRoleId, 'id': excluding},
+    );
+    return rows.isEmpty ? null : rows.first[0] as String;
+  }
+
+  /// Takes away somebody's extra roles, exceptions and ceilings. True when
+  /// there was anything to take.
+  Future<bool> _clearGrants(TxSession tx, int staffId) async {
+    var removed = 0;
+    for (final table in ['pos_staff_roles', 'pos_staff_permission_overrides']) {
+      removed += (await tx.execute(
+        Sql.named('DELETE FROM $table WHERE staff_id = @s'),
+        parameters: {'s': staffId},
+      )).affectedRows;
+    }
+    removed += (await tx.execute(
+      Sql.named(
+        "DELETE FROM pos_permission_limits WHERE restaurant_id = @r "
+        "  AND subject_type = 'staff' AND subject_id = @s",
+      ),
+      parameters: {'r': _c.restaurantId, 's': staffId},
+    )).affectedRows;
+    return removed > 0;
   }
 
   /// Whether anybody else active could still reach the Management screen.
