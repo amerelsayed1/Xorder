@@ -27,7 +27,12 @@ void main() {
   // builds at all.
   final desktop = TargetPlatformVariant.only(TargetPlatform.macOS);
 
-  Future<ProviderContainer> pumpApp(WidgetTester tester) async {
+  /// [offline] where a test is about Buying's own entries: the harness is a
+  /// cloud till, where the platform authors purchasing (CB-09).
+  Future<ProviderContainer> pumpApp(
+    WidgetTester tester, {
+    bool offline = false,
+  }) async {
     tester.view
       ..physicalSize = const Size(1440, 900)
       ..devicePixelRatio = 1.0;
@@ -36,6 +41,7 @@ void main() {
     final container = ProviderContainer(
       overrides: [
         ...fakeRepositoryOverrides(),
+        if (offline) offlineTerminal(),
       ],
     );
     addTearDown(container.dispose);
@@ -111,7 +117,9 @@ void main() {
   testWidgets('each area of the back office is its own word in the bar', (
     tester,
   ) async {
-    final container = await pumpApp(tester);
+    // Offline, because Buying's own entries are what this reads. The cloud
+    // bar's Buying is a single pointer — asserted below.
+    final container = await pumpApp(tester, offline: true);
 
     // Nobody signed in yet — and that is not the same as nobody permitted. The
     // management screen's own PIN pad is what signs somebody in, so hiding the
@@ -167,6 +175,51 @@ void main() {
     await tester.tap(find.text('Money'));
     await tester.pumpAndSettle();
     expect(find.text('Tax'), findsOneWidget);
+  }, variant: desktop);
+
+  testWidgets('on a cloud till Buying is one line, saying where it went', (
+    tester,
+  ) async {
+    // CB-09: the platform authors purchasing and stock on cloud. The word
+    // stays where a manager learned to look for it; what is under it is the
+    // answer, not four lists of rows the platform would never see.
+    final container = await pumpApp(tester);
+    container
+        .read(signedInStaffProvider.notifier)
+        .signIn(
+          const PosStaff(
+            id: 1,
+            name: 'Rana A.',
+            username: 'rana',
+            // Every capability, `purchase.manage` included — a local Owner
+            // role grants it even though no cloud bundle ever does.
+            role: PosRole(
+              id: 1,
+              code: 'owner',
+              nameEn: 'Owner',
+              capabilities: SystemRoles.owner,
+            ),
+          ),
+        );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Buying'), findsOneWidget);
+    expect(find.text('Inventory'), findsNothing);
+
+    await tester.tap(find.text('Buying'));
+    await tester.pumpAndSettle();
+    expect(find.text('Purchasing & stock — on xorder.io…'), findsOneWidget);
+    for (final entry in [
+      'Purchase orders',
+      'New order',
+      'Invoices',
+      'Enter an invoice',
+      'Payments',
+      'Suppliers',
+      'New supplier',
+    ]) {
+      expect(find.text(entry), findsNothing, reason: entry);
+    }
   }, variant: desktop);
 
   testWidgets('handing the till over is named for what it is', (tester) async {

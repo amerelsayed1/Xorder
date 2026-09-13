@@ -1,9 +1,11 @@
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:mocktail/mocktail.dart';
 import 'package:xorder_pos/app/providers.dart';
 import 'package:xorder_pos/core/config/terminal_config.dart';
 import 'package:xorder_pos/data/config/terminal_config_store.dart';
 import 'package:xorder_pos/data/fakes/fake_repositories.dart';
+import 'package:xorder_pos/domain/repositories/admin_repositories.dart';
 import 'package:xorder_pos/features/licensing/data/licence_service.dart';
 
 /// The `Fake…` repositories, bound explicitly.
@@ -79,6 +81,22 @@ List<Override> fakeRepositoryOverrides({bool english = true}) => [
       // test typing through it.
       adminDbCredentialProvider.overrideWith(_CredentialedAdminDb.new),
     ];
+
+/// An offline terminal: one that authors its own catalogue, and so its own
+/// buying and stock.
+///
+/// **Asked for by name, because the harness above is a cloud till.** It binds
+/// no [CatalogAdminRepository], which is exactly how a cloud terminal answers
+/// `catalogAdminRepositoryProvider` — and since CB-09 that hides Purchasing,
+/// Items, Stock and Units along with Menu and Floor. A test about those panes
+/// is a test about an offline till, and says so with this.
+///
+/// A bare mock: nothing that merely asks "does this till author?" calls it,
+/// and a test that does write through it binds a recording double instead.
+Override offlineTerminal() =>
+    catalogAdminRepositoryProvider.overrideWithValue(_OfflineCatalogueAdmin());
+
+class _OfflineCatalogueAdmin extends Mock implements CatalogAdminRepository {}
 
 /// An [AdminDbCredential] that starts supplied.
 class _CredentialedAdminDb extends AdminDbCredential {

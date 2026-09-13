@@ -1201,6 +1201,10 @@ sealed class AppStrings {
   String get areaInventory;
   String get paneUnits;
   String get paneUnitsBlurb;
+
+  // CB-09: on a cloud till the platform authors buying and stock.
+  String get purchasingComesFromPlatform;
+  String get purchasingOnPlatformEntry;
   String get unitNew;
   String get unitEdit;
   String get unitNameEn;
@@ -4744,6 +4748,13 @@ final class EnStrings extends AppStrings {
   @override
   String get paneUnitsBlurb => 'What stock is counted and bought in';
   @override
+  String get purchasingComesFromPlatform =>
+      'On this till, purchasing, suppliers, units and stock are managed on the '
+      'XOrder dashboard at xorder.io. Order, receive and pay suppliers there; '
+      'none of it comes to this till.';
+  @override
+  String get purchasingOnPlatformEntry => 'Purchasing & stock — on xorder.io…';
+  @override
   String get unitNew => 'Add a unit';
   @override
   String get unitEdit => 'Edit unit';
@@ -7888,6 +7899,13 @@ final class ArStrings extends AppStrings {
   String get paneUnits => 'الوحدات';
   @override
   String get paneUnitsBlurb => 'الوحدات التي يُعدّ ويُشترى بها المخزون';
+  @override
+  String get purchasingComesFromPlatform =>
+      'على هذا الجهاز تُدار المشتريات والموردون والوحدات والمخزون من لوحة '
+      'تحكم XOrder على xorder.io. اطلب البضاعة واستلمها وادفع للموردين من '
+      'هناك، ولا يصل شيء منها إلى هذا الجهاز.';
+  @override
+  String get purchasingOnPlatformEntry => 'المشتريات والمخزون — على xorder.io…';
   @override
   String get unitNew => 'إضافة وحدة';
   @override
