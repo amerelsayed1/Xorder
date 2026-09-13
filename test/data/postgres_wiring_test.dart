@@ -9,7 +9,9 @@ import 'package:xorder_pos/data/fakes/fake_repositories.dart';
 import 'package:xorder_pos/data/unconfigured/unconfigured_repositories.dart';
 import 'package:xorder_pos/data/postgres/migrations.dart';
 import 'package:xorder_pos/data/postgres/pos_database.dart';
+import 'package:xorder_pos/data/cloud/outbox_drain.dart';
 import 'package:xorder_pos/data/eta/filing_orders_repository.dart';
+import 'package:xorder_pos/data/postgres/postgres_orders_repository.dart';
 import 'package:xorder_pos/features/setup/application/setup_controller.dart';
 
 import '../support/fakes.dart';
@@ -50,9 +52,12 @@ void main() {
   DeploymentConfig cloudConfig() =>
       branchConfig.copyWith(mode: DeploymentMode.cloud, baseUrl: 'https://xorder.io');
 
-  ProviderContainer containerFor({required bool provisioned}) {
+  ProviderContainer containerFor({required bool provisioned, bool files = false}) {
     final container = ProviderContainer(
       overrides: [
+        // E-receipts are off in a default build (13 September 2026); a case
+        // about the filing layer turns them on.
+        etaFilingEnabledProvider.overrideWithValue(files),
         posDatabaseProvider.overrideWithValue(database),
         posDbCredentialsProvider
             .overrideWithValue(InMemoryPosDbCredentials(PgFixture.password)),
@@ -92,12 +97,21 @@ void main() {
 
   test('a provisioned terminal gets Postgres', () {
     final container = containerFor(provisioned: true);
+    // Bare: with e-receipts off there is no filing layer to wrap it in, and a
+    // branch till has no platform sync either.
+    expect(
+      container.read(ordersRepositoryProvider),
+      isA<PostgresOrdersRepository>(),
+    );
+  });
+
+  test('with e-receipts on, every sale is filed on top', () {
+    final container = containerFor(provisioned: true, files: true);
     // Wrapped, not bare. Every terminal with a database queues an e-receipt
     // for every sale, because the obligation is the restaurant's rather than
     // the deployment's — a branch that files nothing is one whose receipt
     // profile is blank, which the decorator checks per sale rather than at
-    // construction. Asserting the bare type here would be asserting the
-    // absence of the filing layer.
+    // construction.
     expect(
       container.read(ordersRepositoryProvider),
       isA<FilingOrdersRepository>(),
@@ -119,12 +133,11 @@ void main() {
     // the behaviour a cloud terminal is supposed to have — the write itself is
     // identical either way, PostgreSQL first and an outbox claim in the same
     // transaction.
-    // …and the filing layer sits over that in turn, so what comes back is the
-    // outermost wrapper. `SyncingOrdersRepository` is still in the stack; it
-    // is no longer the thing on top.
+    // With e-receipts off nothing sits over it, so what comes back is the
+    // sync kicker itself.
     expect(
       container.read(ordersRepositoryProvider),
-      isA<FilingOrdersRepository>(),
+      isA<SyncingOrdersRepository>(),
     );
   });
 

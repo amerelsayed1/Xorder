@@ -6,6 +6,7 @@ import '../../core/config/deployment.dart';
 import '../../core/money/money.dart';
 import '../../core/money/quantity.dart';
 import '../../domain/models/catalog.dart';
+import '../../domain/models/option_group.dart';
 import '../../domain/models/tax.dart';
 import '../../domain/models/order_type_config.dart';
 import '../../domain/models/dining_table.dart';
@@ -19,6 +20,11 @@ import '../../domain/services/authorization.dart';
 import 'money_config_codec.dart';
 import 'pos_database.dart';
 import 'stock_unit_guard.dart';
+
+/// A group as stored, and which side of the library line it is on — which
+/// the draft does not carry, because the editor knows it from where it
+/// opened the group.
+typedef _Stored = ({OptionGroupDraft group, bool isGlobal});
 
 /// Authoring the menu, on the till, against the branch database.
 ///
@@ -1101,18 +1107,335 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
     final blocked = _blocked(by);
     if (blocked != null) return AdminResult<void>.refused(blocked);
 
+    // **Routed through [setProductOptionGroups] rather than kept as a second
+    // writer of the same links.** It used to link whatever it was given, which
+    // since migration 45 includes a group typed on another item (quietly
+    // sharing it) and a second set of sizes. The item's own groups travel
+    // whole, so naming one here keeps it exactly as it is; duplicates
+    // collapse, as the old `ON CONFLICT DO NOTHING` collapsed them.
+    final own = {
+      for (final ref in await productOptionGroups(productId))
+        if (ref case InlineGroupRef(:final group)) group.id: group,
+    };
+    final result = await setProductOptionGroups(
+      productId,
+      [
+        for (final id in {...groupIds})
+          if (own[id] case final group?)
+            OptionGroupRef.inline(group)
+          else
+            OptionGroupRef.shared(id),
+      ],
+      by: by,
+    );
+    final refusal = result.refusal;
+    return refusal == null
+        ? const AdminResult<void>.done(null)
+        : AdminResult<void>.refused(refusal);
+  }
+
+  // ── sizes and extras ───────────────────────────────────────────────────────
+  //
+  // The platform's option groups, authored here with two of its behaviours
+  // left out on purpose — each explained where it is held:
+  //
+  //  * it recreates a group's options on every save, which reissues their ids
+  //    (see [_writeGroup]);
+  //  * it lets an item carry two size groups and then honours only the first
+  //    (see [setProductOptionGroups] and [_secondSizeFor]).
+
+  static const _twice = OptionGroupRefused(OptionGroupProblem.groupTwice);
+
+  @override
+  Future<List<LibraryGroup>> optionLibrary() => database.runTx(config, (
+    tx,
+  ) async {
+    final groups = await _groups(
+      tx,
+      where: 'g.is_global',
+      orderBy: 'g.name_en, g.name_ar, g.id',
+    );
+    if (groups.isEmpty) return const <LibraryGroup>[];
+
+    // By reach, not by link — see [LibraryGroup.itemCount].
+    final counts = await tx.execute(
+      Sql.named(
+        'SELECT g.id, CASE g.apply_scope '
+        "  WHEN 'all' THEN (SELECT count(*) FROM pos_products p "
+        '                    WHERE p.restaurant_id = g.restaurant_id) '
+        "  WHEN 'categories' THEN (SELECT count(*) FROM pos_products p "
+        '    JOIN pos_modifier_group_categories c '
+        '      ON c.category_id = p.category_id AND c.group_id = g.id) '
+        '  ELSE (SELECT count(*) FROM pos_product_modifier_groups l '
+        '         WHERE l.group_id = g.id) END '
+        'FROM pos_modifier_groups g '
+        'WHERE g.restaurant_id = @r AND g.is_global',
+      ),
+      parameters: {'r': restaurantId},
+    );
+    final reach = {for (final row in counts) row[0]! as int: row[1]! as int};
+
+    return [
+      for (final stored in groups)
+        LibraryGroup(
+          group: stored.group,
+          itemCount: reach[stored.group.id] ?? 0,
+        ),
+    ];
+  });
+
+  @override
+  Future<List<OptionGroupRef>> productOptionGroups(int productId) =>
+      database.runTx(config, (tx) => _productRefs(tx, productId));
+
+  @override
+  Future<AdminResult<OptionGroupDraft>> saveOptionGroup(
+    OptionGroupDraft draft, {
+    required PosStaff by,
+  }) async {
+    final blocked = _blocked(by);
+    if (blocked != null) return AdminResult.refused(blocked);
+
+    final group = draft.normalized();
+    final invalid = OptionGroupRules.refusal(group, inLibrary: true);
+    if (invalid != null) {
+      return AdminResult.refused(OptionGroupRefused(invalid));
+    }
+
     return database.runTx(config, (tx) async {
-      // Scoped delete: the product must belong to this restaurant, or a
-      // mistyped id could unpick somebody else's menu on a shared server.
-      final owned = await tx.execute(
+      OptionGroupDraft? before;
+      if (group.id != 0) {
+        final (stored, refusal) = await _lockForEdit(
+          tx,
+          id: group.id,
+          revision: group.revision,
+          global: true,
+        );
+        if (refusal != null) {
+          return AdminResult<OptionGroupDraft>.refused(refusal);
+        }
+        before = stored!.group;
+      }
+
+      final refusal =
+          _foreignOption(group, before) ??
+          await _categoriesAreOurs(tx, group.categoryIds);
+      if (refusal != null) {
+        return AdminResult<OptionGroupDraft>.refused(refusal);
+      }
+
+      final clash = await _secondSizeFor(tx, group);
+      if (clash != null) {
+        return AdminResult<OptionGroupDraft>.refused(
+          OptionGroupRefused(
+            OptionGroupProblem.wouldGiveSecondSizes,
+            names: [clash],
+          ),
+        );
+      }
+
+      return AdminResult.done(
+        await _writeGroup(tx, group, global: true, by: by, before: before),
+      );
+    });
+  }
+
+  @override
+  Future<AdminResult<void>> deleteOptionGroup(
+    OptionGroupDraft group, {
+    required PosStaff by,
+  }) async {
+    final blocked = _blocked(by);
+    if (blocked != null) return AdminResult<void>.refused(blocked);
+
+    return database.runTx(config, (tx) async {
+      final (stored, refusal) = await _lockForEdit(
+        tx,
+        id: group.id,
+        revision: group.revision,
+        global: true,
+      );
+      if (refusal != null) return AdminResult<void>.refused(refusal);
+
+      // Options, item links and category links cascade. No sale loses its
+      // record: an order line keeps its own summary of what was chosen.
+      await tx.execute(
         Sql.named(
-          'SELECT 1 FROM pos_products WHERE id = @id AND restaurant_id = @r',
+          'DELETE FROM pos_modifier_groups WHERE id = @id AND restaurant_id = @r',
+        ),
+        parameters: {'id': group.id, 'r': restaurantId},
+      );
+      await _audit(
+        tx,
+        by: by,
+        action: AuditAction.optionGroupDeleted,
+        entityType: AuditAction.entityOptionGroup,
+        entityId: '${group.id}',
+        before: _groupSummary(stored!.group, shared: true),
+      );
+      return const AdminResult<void>.done(null);
+    });
+  }
+
+  @override
+  Future<AdminResult<List<OptionGroupRef>>> setProductOptionGroups(
+    int productId,
+    List<OptionGroupRef> groups, {
+    required PosStaff by,
+  }) async {
+    final blocked = _blocked(by);
+    if (blocked != null) return AdminResult.refused(blocked);
+
+    // Everything that needs no database is settled before the transaction
+    // opens, and everything that does is settled before the first write — a
+    // refusal found halfway through would have to unwind what came before it,
+    // and returning one from inside `runTx` commits instead.
+    final refs = <OptionGroupRef>[];
+    final sharedIds = <int>[];
+    final inlineIds = <int>{};
+    for (final ref in groups) {
+      switch (ref) {
+        case SharedGroupRef(:final groupId):
+          if (sharedIds.contains(groupId)) return const AdminResult.refused(_twice);
+          sharedIds.add(groupId);
+          refs.add(ref);
+        case InlineGroupRef(:final group):
+          final normalized = group.normalized();
+          final invalid = OptionGroupRules.refusal(normalized, inLibrary: false);
+          if (invalid != null) {
+            return AdminResult.refused(OptionGroupRefused(invalid));
+          }
+          if (normalized.id != 0 && !inlineIds.add(normalized.id)) {
+            return const AdminResult.refused(_twice);
+          }
+          refs.add(OptionGroupRef.inline(normalized));
+      }
+    }
+
+    return database.runTx(config, (tx) async {
+      // Locked, so two tills arranging one item's groups queue rather than
+      // interleave their deletes and inserts.
+      final product = await tx.execute(
+        Sql.named(
+          'SELECT category_id FROM pos_products '
+          'WHERE id = @id AND restaurant_id = @r FOR UPDATE',
         ),
         parameters: {'id': productId, 'r': restaurantId},
       );
-      if (owned.isEmpty) {
-        return const AdminResult<void>.refused(EditedElsewhere(0));
+      if (product.isEmpty) {
+        return const AdminResult<List<OptionGroupRef>>.refused(
+          EditedElsewhere(0),
+        );
       }
+      final categoryId = product.first[0]! as int;
+
+      final before = await _productRefs(tx, productId);
+      final ownBefore = <int, OptionGroupDraft>{
+        for (final ref in before)
+          if (ref case InlineGroupRef(:final group)) group.id: group,
+      };
+
+      // The item's own groups being edited: still here, still its own, and
+      // unchanged since they were read.
+      final storedInline = <int, OptionGroupDraft>{};
+      final sizes = <String>[];
+      for (final ref in refs) {
+        if (ref is! InlineGroupRef) continue;
+        final group = ref.group;
+        if (group.isVariant) sizes.add(group.nameEn);
+
+        if (group.id == 0) {
+          final foreign = _foreignOption(group, null);
+          if (foreign != null) {
+            return AdminResult<List<OptionGroupRef>>.refused(foreign);
+          }
+          continue;
+        }
+        final (stored, refusal) = await _lockForEdit(
+          tx,
+          id: group.id,
+          revision: group.revision,
+          global: false,
+        );
+        if (refusal != null) {
+          return AdminResult<List<OptionGroupRef>>.refused(refusal);
+        }
+        if (!ownBefore.containsKey(group.id)) {
+          return const AdminResult<List<OptionGroupRef>>.refused(
+            OptionGroupRefused(OptionGroupProblem.typedOnAnotherItem),
+          );
+        }
+        final foreign = _foreignOption(group, stored!.group);
+        if (foreign != null) {
+          return AdminResult<List<OptionGroupRef>>.refused(foreign);
+        }
+        storedInline[group.id] = stored.group;
+      }
+
+      if (sharedIds.isNotEmpty) {
+        final rows = await tx.execute(
+          Sql.named(
+            'SELECT id, name_en, is_global, apply_scope, is_variant '
+            'FROM pos_modifier_groups '
+            'WHERE restaurant_id = @r AND id = ANY(@ids::bigint[])',
+          ),
+          parameters: {'r': restaurantId, 'ids': sharedIds},
+        );
+        final found = {for (final row in rows) row[0]! as int: row};
+        for (final id in sharedIds) {
+          final row = found[id];
+          if (row == null) {
+            return const AdminResult<List<OptionGroupRef>>.refused(
+              EditedElsewhere(0),
+            );
+          }
+          final name = row[1]! as String;
+          if (row[2] != true) {
+            return AdminResult<List<OptionGroupRef>>.refused(
+              OptionGroupRefused(
+                OptionGroupProblem.notInLibrary,
+                names: [name],
+              ),
+            );
+          }
+          if (row[3] != OptionGroupScope.items.wire) {
+            return AdminResult<List<OptionGroupRef>>.refused(
+              OptionGroupRefused(
+                OptionGroupProblem.alreadyReaches,
+                names: [name],
+              ),
+            );
+          }
+          if (row[4] == true) sizes.add(name);
+        }
+      }
+
+      // **One set of sizes per item.** The platform accepts two and then
+      // prices from whichever comes first, so the second is a set of sizes
+      // the sheet offers and the tile never quotes — and on this till, where
+      // the last size chosen prices the line, one the ticket would charge.
+      // Counted with the library groups that reach this item by themselves,
+      // because an item under an "every item" size group already has one.
+      final reaching = await tx.execute(
+        Sql.named(
+          'SELECT g.name_en FROM pos_modifier_groups g '
+          'WHERE g.restaurant_id = @r AND g.is_global AND g.is_variant '
+          "  AND (g.apply_scope = 'all' "
+          "       OR (g.apply_scope = 'categories' AND EXISTS ("
+          '         SELECT 1 FROM pos_modifier_group_categories c '
+          '          WHERE c.group_id = g.id AND c.category_id = @category))) '
+          'ORDER BY g.name_en, g.name_ar, g.id',
+        ),
+        parameters: {'r': restaurantId, 'category': categoryId},
+      );
+      sizes.addAll([for (final row in reaching) row[0]! as String]);
+      if (sizes.length > 1) {
+        return AdminResult<List<OptionGroupRef>>.refused(
+          OptionGroupRefused(OptionGroupProblem.secondSizes, names: sizes),
+        );
+      }
+
+      // ── nothing below refuses ──
 
       await tx.execute(
         Sql.named(
@@ -1121,33 +1444,553 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
         parameters: {'id': productId},
       );
 
-      for (var position = 0; position < groupIds.length; position++) {
+      // An item's own group that the list no longer names is gone, as it is
+      // on the platform — nothing else can reach it. Unless something does:
+      // migration 45 moved every group on more than one item into the library,
+      // so this guard only matters for a writer that went round it, and there
+      // the link is removed and the group left alone.
+      final kept = {
+        for (final ref in refs)
+          if (ref case InlineGroupRef(:final group) when group.id != 0)
+            group.id,
+      };
+      for (final dropped in ownBefore.values) {
+        if (kept.contains(dropped.id)) continue;
+        final gone = await tx.execute(
+          Sql.named(
+            'DELETE FROM pos_modifier_groups g '
+            'WHERE g.id = @id AND g.restaurant_id = @r AND NOT g.is_global '
+            '  AND NOT EXISTS (SELECT 1 FROM pos_product_modifier_groups l '
+            '                   WHERE l.group_id = g.id) '
+            'RETURNING g.id',
+          ),
+          parameters: {'id': dropped.id, 'r': restaurantId},
+        );
+        if (gone.isEmpty) continue;
+        await _audit(
+          tx,
+          by: by,
+          action: AuditAction.optionGroupDeleted,
+          entityType: AuditAction.entityOptionGroup,
+          entityId: '${dropped.id}',
+          before: _groupSummary(dropped, shared: false),
+          after: {'product_id': productId},
+        );
+      }
+
+      final after = <int>[];
+      for (final ref in refs) {
+        final groupId = switch (ref) {
+          SharedGroupRef(:final groupId) => groupId,
+          InlineGroupRef(:final group) => await _writeInline(
+            tx,
+            group,
+            by: by,
+            before: storedInline[group.id],
+          ),
+        };
         await tx.execute(
           Sql.named(
             'INSERT INTO pos_product_modifier_groups '
             '  (product_id, group_id, sort_order) '
-            'VALUES (@product, @group, @sort) '
-            'ON CONFLICT (product_id, group_id) DO NOTHING',
+            'VALUES (@product, @group, @sort)',
           ),
           parameters: {
             'product': productId,
-            'group': groupIds[position],
-            'sort': position,
+            'group': groupId,
+            'sort': after.length,
           },
         );
+        after.add(groupId);
       }
 
       await _audit(
         tx,
         by: by,
-        action: AuditAction.productUpdated,
+        action: AuditAction.productOptionsChanged,
         entityType: AuditAction.entityProduct,
         entityId: '$productId',
-        after: {'modifier_groups': groupIds},
+        before: {'option_groups': [for (final ref in before) _refId(ref)]},
+        after: {'option_groups': after},
       );
-      return const AdminResult<void>.done(null);
+
+      return AdminResult.done(await _productRefs(tx, productId));
     });
   }
+
+  /// One of the item's own groups, written only if it changed.
+  ///
+  /// Saving an item saves every group typed on it, and rewriting the ones
+  /// nobody touched would bump their revisions and put a row on the ledger
+  /// for each — a manager fixing a price would appear to have edited four
+  /// groups.
+  Future<int> _writeInline(
+    TxSession tx,
+    OptionGroupDraft group, {
+    required PosStaff by,
+    OptionGroupDraft? before,
+  }) async {
+    if (before != null &&
+        jsonEncode(_groupSummary(before, shared: false)) ==
+            jsonEncode(_groupSummary(group, shared: false))) {
+      return before.id;
+    }
+    final saved = await _writeGroup(
+      tx,
+      group,
+      global: false,
+      by: by,
+      before: before,
+    );
+    return saved.id;
+  }
+
+  /// Write [group] — normalised, checked and locked already — with its
+  /// options and, for a library group, its scope's links. Audited here, so a
+  /// group saved in the library and one saved with its item leave the same
+  /// kind of row.
+  Future<OptionGroupDraft> _writeGroup(
+    TxSession tx,
+    OptionGroupDraft group, {
+    required bool global,
+    required PosStaff by,
+    OptionGroupDraft? before,
+  }) async {
+    final parameters = <String, Object?>{
+      'r': restaurantId,
+      'nameEn': group.nameEn,
+      'nameAr': group.nameAr,
+      'displayEn': group.displayNameEn,
+      'displayAr': group.displayNameAr,
+      'required': group.isRequired,
+      'max': group.maxSelect,
+      'min': group.minSelect,
+      'free': group.freeOptions,
+      'variant': group.isVariant,
+      'scope': group.scope.wire,
+    };
+
+    final int id;
+    if (group.id == 0) {
+      final rows = await tx.execute(
+        Sql.named(
+          'INSERT INTO pos_modifier_groups (restaurant_id, name_en, name_ar, '
+          '  display_name_en, display_name_ar, is_required, max_select, '
+          '  min_select, free_options, is_variant, is_global, apply_scope) '
+          'VALUES (@r, @nameEn, @nameAr, @displayEn, @displayAr, @required, '
+          '        @max, @min, @free, @variant, @global, @scope) '
+          'RETURNING id',
+        ),
+        parameters: {...parameters, 'global': global},
+      );
+      id = rows.first[0]! as int;
+    } else {
+      id = group.id;
+      // The old path goes before the scope moves: migration 45 refuses a
+      // scope change while links of the old kind remain, and the platform's
+      // rule is that changing it clears them — a group reaches its items one
+      // way at a time.
+      if (group.scope != OptionGroupScope.items) {
+        await tx.execute(
+          Sql.named(
+            'DELETE FROM pos_product_modifier_groups WHERE group_id = @id',
+          ),
+          parameters: {'id': id},
+        );
+      }
+      if (group.scope != OptionGroupScope.categories) {
+        await tx.execute(
+          Sql.named(
+            'DELETE FROM pos_modifier_group_categories WHERE group_id = @id',
+          ),
+          parameters: {'id': id},
+        );
+      }
+      await tx.execute(
+        Sql.named(
+          'UPDATE pos_modifier_groups SET name_en = @nameEn, '
+          '  name_ar = @nameAr, display_name_en = @displayEn, '
+          '  display_name_ar = @displayAr, is_required = @required, '
+          '  max_select = @max, min_select = @min, free_options = @free, '
+          '  is_variant = @variant, apply_scope = @scope, '
+          '  revision = revision + 1, updated_at = now() '
+          'WHERE id = @id AND restaurant_id = @r',
+        ),
+        parameters: {...parameters, 'id': id},
+      );
+    }
+
+    if (group.scope == OptionGroupScope.categories) {
+      await tx.execute(
+        Sql.named(
+          'DELETE FROM pos_modifier_group_categories '
+          'WHERE group_id = @id AND NOT (category_id = ANY(@keep::bigint[]))',
+        ),
+        parameters: {'id': id, 'keep': group.categoryIds.toList()},
+      );
+      for (final category in group.categoryIds) {
+        await tx.execute(
+          Sql.named(
+            'INSERT INTO pos_modifier_group_categories (group_id, category_id) '
+            'VALUES (@id, @category) ON CONFLICT DO NOTHING',
+          ),
+          parameters: {'id': id, 'category': category},
+        );
+      }
+    }
+
+    // **Matched by id — updated in place, added, or removed — never wiped
+    // and recreated.** The platform deletes a group's options and inserts
+    // them again on every save, which gives each one a new id each time. Here
+    // the id is how a parked ticket and `pos_order_lines.modifier_ids` name
+    // what was chosen, so a Large that became a different number because
+    // somebody fixed a typo in "Small" is a Large nothing can find again.
+    await tx.execute(
+      Sql.named(
+        'DELETE FROM pos_modifiers '
+        'WHERE group_id = @id AND NOT (id = ANY(@keep::bigint[]))',
+      ),
+      parameters: {
+        'id': id,
+        'keep': [
+          for (final option in group.options)
+            if (option.id != 0) option.id,
+        ],
+      },
+    );
+    for (var position = 0; position < group.options.length; position++) {
+      final option = group.options[position];
+      final values = <String, Object?>{
+        'group': id,
+        'nameEn': option.nameEn,
+        'nameAr': option.nameAr,
+        'price': option.price.minor,
+        'sale': option.salePrice?.minor,
+        'available': option.isAvailable,
+        'sort': position,
+      };
+      if (option.id == 0) {
+        await tx.execute(
+          Sql.named(
+            'INSERT INTO pos_modifiers (group_id, name_en, name_ar, '
+            '  price_delta_minor, discounted_price_minor, is_available, '
+            '  sort_order) '
+            'VALUES (@group, @nameEn, @nameAr, @price, @sale, @available, '
+            '        @sort)',
+          ),
+          parameters: values,
+        );
+      } else {
+        await tx.execute(
+          Sql.named(
+            'UPDATE pos_modifiers SET name_en = @nameEn, name_ar = @nameAr, '
+            '  price_delta_minor = @price, discounted_price_minor = @sale, '
+            '  is_available = @available, sort_order = @sort, '
+            '  revision = revision + 1, updated_at = now() '
+            'WHERE id = @option AND group_id = @group',
+          ),
+          parameters: {...values, 'option': option.id},
+        );
+      }
+    }
+
+    final saved = (await _groups(
+      tx,
+      where: 'g.id = @id',
+      parameters: {'id': id},
+    )).single.group;
+
+    await _audit(
+      tx,
+      by: by,
+      action: _repriced(before, saved)
+          ? AuditAction.optionGroupRepriced
+          : AuditAction.optionGroupSaved,
+      entityType: AuditAction.entityOptionGroup,
+      entityId: '$id',
+      before: before == null ? null : _groupSummary(before, shared: global),
+      after: _groupSummary(saved, shared: global),
+    );
+    return saved;
+  }
+
+  /// Lock the group being edited and hand back what it says, or why it
+  /// cannot be edited from here.
+  ///
+  /// [global] is which side is asking: the library edits only library groups,
+  /// and an item edits only its own, because the same row edited from both
+  /// would be a library group whose options one item could change for all.
+  Future<(_Stored?, AdminRefusal?)> _lockForEdit(
+    TxSession tx, {
+    required int id,
+    required int revision,
+    required bool global,
+  }) async {
+    final locked = await tx.execute(
+      Sql.named(
+        'SELECT revision, is_global FROM pos_modifier_groups '
+        'WHERE id = @id AND restaurant_id = @r FOR UPDATE',
+      ),
+      parameters: {'id': id, 'r': restaurantId},
+    );
+    if (locked.isEmpty) return (null, const EditedElsewhere(0));
+
+    final current = locked.first[0]! as int;
+    final isGlobal = locked.first[1]! as bool;
+    if (isGlobal != global) {
+      return (
+        null,
+        OptionGroupRefused(
+          global
+              ? OptionGroupProblem.belongsToOneItem
+              : OptionGroupProblem.belongsToLibrary,
+        ),
+      );
+    }
+    if (current != revision) return (null, EditedElsewhere(current));
+
+    final stored = await _groups(tx, where: 'g.id = @id', parameters: {'id': id});
+    return (stored.single, null);
+  }
+
+  /// An option id [draft] names that is not one of [stored]'s — a new group
+  /// has none of its own. With the revision already matched, this is not a
+  /// race but a caller moving another group's option into this one, which
+  /// would take it from under the group it belongs to.
+  static AdminRefusal? _foreignOption(
+    OptionGroupDraft draft,
+    OptionGroupDraft? stored,
+  ) {
+    final own = {for (final option in stored?.options ?? const []) option.id};
+    for (final option in draft.options) {
+      if (option.id != 0 && !own.contains(option.id)) {
+        return const OptionGroupRefused(OptionGroupProblem.foreignOption);
+      }
+    }
+    return null;
+  }
+
+  Future<AdminRefusal?> _categoriesAreOurs(
+    TxSession tx,
+    Set<int> categoryIds,
+  ) async {
+    if (categoryIds.isEmpty) return null;
+    final rows = await tx.execute(
+      Sql.named(
+        'SELECT count(*) FROM pos_categories '
+        'WHERE restaurant_id = @r AND id = ANY(@ids::bigint[])',
+      ),
+      parameters: {'r': restaurantId, 'ids': categoryIds.toList()},
+    );
+    return (rows.first[0]! as int) == categoryIds.length
+        ? null
+        : const OptionGroupRefused(OptionGroupProblem.foreignCategory);
+  }
+
+  /// The first item [group] would give a second set of sizes, by what it is
+  /// about to reach, or null.
+  ///
+  /// The library side of the one-set-of-sizes rule: an "every item" size
+  /// group saved over a menu where one burger already has its own sizes would
+  /// otherwise do on every item at once what [setProductOptionGroups] refuses
+  /// on one.
+  Future<String?> _secondSizeFor(TxSession tx, OptionGroupDraft group) async {
+    if (!group.isVariant) return null;
+
+    final reach = switch (group.scope) {
+      OptionGroupScope.all => 'true',
+      OptionGroupScope.categories => 'p.category_id = ANY(@cats::bigint[])',
+      OptionGroupScope.items =>
+        'EXISTS (SELECT 1 FROM pos_product_modifier_groups l '
+            '        WHERE l.product_id = p.id AND l.group_id = @id)',
+    };
+    final rows = await tx.execute(
+      Sql.named(
+        'SELECT p.name_en FROM pos_products p '
+        'WHERE p.restaurant_id = @r AND $reach '
+        '  AND EXISTS (SELECT 1 FROM pos_modifier_groups g '
+        '    WHERE g.restaurant_id = @r AND g.is_variant AND g.id <> @id '
+        '      AND (EXISTS (SELECT 1 FROM pos_product_modifier_groups l '
+        '                    WHERE l.product_id = p.id AND l.group_id = g.id) '
+        "           OR (g.is_global AND g.apply_scope = 'all') "
+        "           OR (g.is_global AND g.apply_scope = 'categories' "
+        '               AND EXISTS (SELECT 1 FROM pos_modifier_group_categories c '
+        '                            WHERE c.group_id = g.id '
+        '                              AND c.category_id = p.category_id)))) '
+        'ORDER BY p.sort_order, p.id LIMIT 1',
+      ),
+      parameters: {
+        'r': restaurantId,
+        'id': group.id,
+        if (group.scope == OptionGroupScope.categories)
+          'cats': group.categoryIds.toList(),
+      },
+    );
+    return rows.isEmpty ? null : rows.first[0]! as String;
+  }
+
+  /// The groups an item carries itself, in its order.
+  Future<List<OptionGroupRef>> _productRefs(TxSession tx, int productId) async {
+    final links = await tx.execute(
+      Sql.named(
+        'SELECT l.group_id, g.is_global FROM pos_product_modifier_groups l '
+        'JOIN pos_modifier_groups g ON g.id = l.group_id '
+        'JOIN pos_products p ON p.id = l.product_id '
+        'WHERE l.product_id = @product AND p.restaurant_id = @r '
+        'ORDER BY l.sort_order, l.group_id',
+      ),
+      parameters: {'product': productId, 'r': restaurantId},
+    );
+    final ownIds = [
+      for (final row in links)
+        if (row[1] != true) row[0]! as int,
+    ];
+    final own = <int, OptionGroupDraft>{
+      if (ownIds.isNotEmpty)
+        for (final stored in await _groups(
+          tx,
+          where: 'g.id = ANY(@ids::bigint[])',
+          parameters: {'ids': ownIds},
+        ))
+          stored.group.id: stored.group,
+    };
+    return [
+      for (final row in links)
+        if (row[1] == true)
+          OptionGroupRef.shared(row[0]! as int)
+        else if (own[row[0]! as int] case final group?)
+          OptionGroupRef.inline(group),
+    ];
+  }
+
+  static const _groupColumns =
+      'g.id, g.revision, g.name_en, g.name_ar, g.display_name_en, '
+      'g.display_name_ar, g.is_variant, g.is_required, g.max_select, '
+      'g.min_select, g.free_options, g.apply_scope, g.is_global, '
+      'coalesce((SELECT array_agg(c.category_id ORDER BY c.category_id) '
+      '            FROM pos_modifier_group_categories c '
+      "           WHERE c.group_id = g.id), '{}')";
+
+  /// Groups of this restaurant matching [where], with their options, as the
+  /// editor holds them. [where] is always a constant in this file.
+  Future<List<_Stored>> _groups(
+    TxSession tx, {
+    required String where,
+    Map<String, Object?> parameters = const {},
+    String orderBy = 'g.id',
+  }) async {
+    final rows = await tx.execute(
+      Sql.named(
+        'SELECT $_groupColumns FROM pos_modifier_groups g '
+        'WHERE g.restaurant_id = @r AND ($where) ORDER BY $orderBy',
+      ),
+      parameters: {...parameters, 'r': restaurantId},
+    );
+    if (rows.isEmpty) return const [];
+
+    final optionRows = await tx.execute(
+      Sql.named(
+        'SELECT id, group_id, name_en, name_ar, price_delta_minor, '
+        '       discounted_price_minor, is_available '
+        'FROM pos_modifiers WHERE group_id = ANY(@ids::bigint[]) '
+        'ORDER BY sort_order, id',
+      ),
+      parameters: {
+        'ids': [for (final row in rows) row[0]! as int],
+      },
+    );
+    final options = <int, List<OptionDraft>>{};
+    for (final row in optionRows) {
+      options
+          .putIfAbsent(row[1]! as int, () => [])
+          .add(
+            OptionDraft(
+              id: row[0]! as int,
+              nameEn: row[2]! as String,
+              nameAr: row[3] as String?,
+              price: Money(row[4]! as int),
+              salePrice: row[5] == null ? null : Money(row[5]! as int),
+              isAvailable: row[6]! as bool,
+            ),
+          );
+    }
+
+    return [
+      for (final row in rows)
+        (
+          group: OptionGroupDraft(
+            id: row[0]! as int,
+            revision: row[1]! as int,
+            nameEn: row[2]! as String,
+            nameAr: row[3] as String?,
+            displayNameEn: row[4] as String?,
+            displayNameAr: row[5] as String?,
+            isVariant: row[6]! as bool,
+            isRequired: row[7]! as bool,
+            maxSelect: row[8]! as int,
+            minSelect: row[9]! as int,
+            freeOptions: row[10]! as int,
+            scope: OptionGroupScope.fromWire(row[11] as String?),
+            categoryIds: (row[13]! as List).whereType<int>().toSet(),
+            options: options[row[0]! as int] ?? const [],
+          ),
+          isGlobal: row[12]! as bool,
+        ),
+    ];
+  }
+
+  /// An option that was there before now costs something else. Adding one
+  /// or taking one away is an edit; the price of one that stayed changing is
+  /// a reprice.
+  static bool _repriced(OptionGroupDraft? before, OptionGroupDraft after) {
+    if (before == null) return false;
+    final was = {for (final option in before.options) option.id: option};
+    for (final option in after.options) {
+      final old = was[option.id];
+      if (old == null) continue;
+      if (old.price.minor != option.price.minor ||
+          old.salePrice?.minor != option.salePrice?.minor) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /// What the ledger says a group was. Every field, so the row answers "what
+  /// did this offer, at what price" after the group itself is gone.
+  static Map<String, Object?> _groupSummary(
+    OptionGroupDraft group, {
+    required bool shared,
+  }) => {
+    'name': group.nameEn,
+    'name_ar': group.nameAr,
+    'display_name_en': group.displayNameEn,
+    'display_name_ar': group.displayNameAr,
+    'shared': shared,
+    'is_variant': group.isVariant,
+    'is_required': group.isRequired,
+    'max_select': group.maxSelect,
+    'min_select': group.minSelect,
+    'free_options': group.freeOptions,
+    'scope': group.scope.wire,
+    'category_ids': (group.categoryIds.toList()..sort()),
+    'options': [
+      for (final option in group.options)
+        {
+          'id': option.id,
+          'name': option.nameEn,
+          'name_ar': option.nameAr,
+          'price_minor': option.price.minor,
+          'sale_price_minor': option.salePrice?.minor,
+          'is_available': option.isAvailable,
+        },
+    ],
+  };
+
+  static int _refId(OptionGroupRef ref) => switch (ref) {
+    SharedGroupRef(:final groupId) => groupId,
+    InlineGroupRef(:final group) => group.id,
+  };
 
   // ── plumbing ───────────────────────────────────────────────────────────────
 

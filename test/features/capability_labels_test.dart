@@ -249,6 +249,10 @@ const _actionsThisBuildWrites = <String>[
   AuditAction.tenderTypeSaved,
   AuditAction.orderTypeSaved,
   AuditAction.taxGroupSaved,
+  AuditAction.productOptionsChanged,
+  AuditAction.optionGroupSaved,
+  AuditAction.optionGroupRepriced,
+  AuditAction.optionGroupDeleted,
   AuditAction.backupTaken,
   AuditAction.backupRestored,
 ];

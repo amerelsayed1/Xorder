@@ -1,6 +1,7 @@
 import '../../../core/l10n/app_strings.dart';
 import '../../../core/money/quantity.dart';
 import '../../../domain/models/backup.dart';
+import '../../../domain/models/option_group.dart';
 import '../../../domain/models/purchase_order.dart';
 import '../../../domain/models/supplier_invoice.dart';
 import '../../../domain/models/permissions.dart';
@@ -110,6 +111,10 @@ abstract final class AdminText {
     AuditAction.tenderTypeSaved => s.actTenderTypeSaved,
     AuditAction.orderTypeSaved => s.actOrderTypeSaved,
     AuditAction.taxGroupSaved => s.actTaxGroupSaved,
+    AuditAction.productOptionsChanged => s.actProductOptionsChanged,
+    AuditAction.optionGroupSaved => s.actOptionGroupSaved,
+    AuditAction.optionGroupRepriced => s.actOptionGroupRepriced,
+    AuditAction.optionGroupDeleted => s.actOptionGroupDeleted,
     AuditAction.backupTaken => s.actBackupTaken,
     AuditAction.backupRestored => s.actBackupRestored,
     _ => action,
@@ -283,6 +288,11 @@ abstract final class AdminText {
         // The reason comes from the catalogue importer, which speaks for
         // itself; there is nothing here to translate it into.
         CatalogInvalid(:final reason) => reason,
+        OptionGroupRefused(:final problem, :final names) => optionGroupProblem(
+          s,
+          problem,
+          names,
+        ),
         AdministratorCredentialRequired() =>
           s.refusalAdministratorCredentialRequired,
         NoDatabaseConfigured() => s.refusalNoDatabaseConfigured,
@@ -296,6 +306,55 @@ abstract final class AdminText {
             unit(s, asked),
           ),
       };
+
+  /// Why a size or extra could not be saved.
+  ///
+  /// Keyed by the enum, so a reason the repository learns is a compile error
+  /// here rather than an English sentence on an Arabic back office — which is
+  /// exactly what these were while they travelled inside `CatalogInvalid`.
+  /// [names] is empty for every reason that names nothing; the ones that do
+  /// always receive at least one, and read an empty name rather than throwing
+  /// if a newer writer ever sends none.
+  static String optionGroupProblem(
+    AppStrings s,
+    OptionGroupProblem problem,
+    List<String> names,
+  ) {
+    final name = names.isEmpty ? '' : names.first;
+    return switch (problem) {
+      OptionGroupProblem.nameMissing => s.refusalGroupNameMissing,
+      OptionGroupProblem.scopeNeedsLibrary => s.refusalGroupScopeNeedsLibrary,
+      OptionGroupProblem.categoriesMissing => s.refusalGroupCategoriesMissing,
+      OptionGroupProblem.choicesOutOfRange => s.refusalGroupChoicesOutOfRange(
+        OptionGroupRules.maxChoices,
+      ),
+      OptionGroupProblem.negativeCounts => s.refusalGroupNegativeCounts,
+      OptionGroupProblem.needsMoreThanAllows =>
+        s.refusalGroupNeedsMoreThanAllows,
+      OptionGroupProblem.tooManyOptions => s.refusalGroupTooManyOptions(
+        OptionGroupRules.maxOptions,
+      ),
+      OptionGroupProblem.requiredButEmpty => s.refusalGroupRequiredButEmpty,
+      OptionGroupProblem.optionNameMissing => s.refusalOptionNameMissing,
+      OptionGroupProblem.optionTwice => s.refusalOptionTwice,
+      OptionGroupProblem.negativePrice => s.refusalOptionNegativePrice,
+      OptionGroupProblem.saleNotBelowPrice => s.refusalOptionSaleNotBelowPrice,
+      OptionGroupProblem.groupTwice => s.refusalGroupTwice,
+      OptionGroupProblem.typedOnAnotherItem => s.refusalGroupTypedOnAnotherItem,
+      OptionGroupProblem.notInLibrary => s.refusalGroupNotInLibrary(name),
+      OptionGroupProblem.alreadyReaches => s.refusalGroupAlreadyReaches(name),
+      OptionGroupProblem.secondSizes => s.refusalGroupSecondSizes(
+        names.length,
+        _list(s, names),
+      ),
+      OptionGroupProblem.wouldGiveSecondSizes =>
+        s.refusalGroupWouldGiveSecondSizes(name),
+      OptionGroupProblem.belongsToOneItem => s.refusalGroupBelongsToOneItem,
+      OptionGroupProblem.belongsToLibrary => s.refusalGroupBelongsToLibrary,
+      OptionGroupProblem.foreignOption => s.refusalGroupForeignOption,
+      OptionGroupProblem.foreignCategory => s.refusalGroupForeignCategory,
+    };
+  }
 
   /// Keyed by the refusal and then by the status it names — both sealed or
   /// enums — so a sixth status is a compile error here rather than a blank

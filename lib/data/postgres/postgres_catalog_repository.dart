@@ -100,15 +100,35 @@ class PostgresCatalogRepository implements CatalogRepository {
     final groups = await _db.query(
       _config,
       'SELECT id, name_en, name_ar, is_required, max_select, is_variant, '
-      '       min_select, free_options '
+      '       min_select, free_options, display_name_en, display_name_ar '
       'FROM pos_modifier_groups WHERE restaurant_id = @restaurant '
       'ORDER BY sort_order, id',
       parameters: {'restaurant': tenant.id},
     );
 
+    // Library groups that reach items with no link: every item, or every item
+    // in their categories (migration 45). They have no position on any one
+    // item, so they trail its own groups in the order the library lists them —
+    // by name, then id — which is the platform's order too, and so the order a
+    // diner's phone shows for the same item.
+    final autoGroups = await _db.query(
+      _config,
+      'SELECT g.id, g.apply_scope, '
+      '       coalesce(array_agg(c.category_id) '
+      "                FILTER (WHERE c.category_id IS NOT NULL), '{}') "
+      'FROM pos_modifier_groups g '
+      'LEFT JOIN pos_modifier_group_categories c ON c.group_id = g.id '
+      'WHERE g.restaurant_id = @restaurant AND g.is_global '
+      "  AND g.apply_scope <> 'items' "
+      'GROUP BY g.id '
+      'ORDER BY g.name_en, g.name_ar, g.id',
+      parameters: {'restaurant': tenant.id},
+    );
+
     final modifiers = await _db.query(
       _config,
-      'SELECT m.id, m.group_id, m.name_en, m.name_ar, m.price_delta_minor, m.is_available '
+      'SELECT m.id, m.group_id, m.name_en, m.name_ar, m.price_delta_minor, m.is_available, '
+      '       g.is_variant, m.discounted_price_minor, m.is_default '
       'FROM pos_modifiers m '
       'JOIN pos_modifier_groups g ON g.id = m.group_id '
       'WHERE g.restaurant_id = @restaurant '
@@ -117,8 +137,18 @@ class PostgresCatalogRepository implements CatalogRepository {
     );
 
     final byGroup = <int, List<Modifier>>{};
+    // Each size group's default — its first AVAILABLE option — as the regular
+    // price and the sale price. Out of stock is skipped because the sheet
+    // skips it: the default is what an untouched "add" charges, and nothing
+    // charges for a size that cannot be chosen.
+    final defaultSize = <int, ({int regular, int? sale})>{};
     for (final row in modifiers) {
       final groupId = row[1] as int;
+      final isVariant = row[6] as bool;
+      final regular = row[4] as int;
+      final sale = row[7] as int?;
+      final isAvailable = row[5] as bool;
+
       byGroup
           .putIfAbsent(groupId, () => [])
           .add(
@@ -127,15 +157,59 @@ class PostgresCatalogRepository implements CatalogRepository {
               groupId: groupId,
               nameEn: row[2] as String,
               nameAr: row[3] as String?,
-              priceDelta: _money(row[4] as int),
-              isAvailable: row[5] as bool,
+              // A size charges its sale price when it has one. An extra never
+              // does: only a size can be on sale, and an extra's stray value
+              // is ignored here rather than trusted.
+              priceDelta: _money(isVariant ? (sale ?? regular) : regular),
+              isAvailable: isAvailable,
+              isVariant: isVariant,
+              // Read at last: the column has existed since Wave M and the sheet
+              // honours it, but nothing ever selected it. Sizes ignore it — see
+              // `TicketEngine.defaultSelection`.
+              isDefault: row[8] as bool,
             ),
           );
+      if (isVariant && isAvailable) {
+        defaultSize.putIfAbsent(groupId, () => (regular: regular, sale: sale));
+      }
     }
+
+    final variantGroups = {
+      for (final row in groups)
+        if (row[5] as bool) row[0] as int,
+    };
 
     final groupIdsByProduct = <int, List<int>>{};
     for (final row in attachments) {
       groupIdsByProduct.putIfAbsent(row[0] as int, () => []).add(row[1] as int);
+    }
+
+    final autos = [
+      for (final row in autoGroups)
+        (
+          id: row[0]! as int,
+          everywhere: row[1] == 'all',
+          categories: (row[2]! as List).whereType<int>().toSet(),
+        ),
+    ];
+
+    /// An item's groups, in the order its sheet shows them: its own — typed
+    /// on it or linked from the library — by position, then the library groups
+    /// that reach it by themselves. `orderedOptionGroups()` on the platform.
+    ///
+    /// Once each. A group reaching an item by two paths is one group on the
+    /// sheet, at its own position; migration 45 refuses the second path, and
+    /// this holds for the rows written before it.
+    List<int> resolvedGroups(int productId, int categoryId) {
+      final ids = <int>[];
+      for (final id in groupIdsByProduct[productId] ?? const <int>[]) {
+        if (!ids.contains(id)) ids.add(id);
+      }
+      for (final auto in autos) {
+        if (!auto.everywhere && !auto.categories.contains(categoryId)) continue;
+        if (!ids.contains(auto.id)) ids.add(auto.id);
+      }
+      return ids;
     }
 
     // Combos, and the products they are built from. Three small reads rather
@@ -178,26 +252,73 @@ class PostgresCatalogRepository implements CatalogRepository {
 
     // Indexed once. A combo option names a product id, and looking each one
     // up by walking the list would be quadratic on a large menu.
-    final productsById = <int, Product>{
-      for (final row in products)
-        row[0]! as int: Product(
-          id: row[0]! as int,
-          categoryId: row[1]! as int,
-          nameEn: row[2]! as String,
-          nameAr: row[3] as String?,
-          price: _money(row[4]! as int),
-          discountedPrice: row[5] == null ? null : _money(row[5]! as int),
-          sku: row[6] as String?,
-          barcode: row[7] as String?,
-          isAvailable: row[8]! as bool,
-          taxGroupId: row[9] as int?,
-          modifierGroupIds: groupIdsByProduct[row[0]! as int] ?? const [],
-          isStocked: row[10]! as bool,
-          stockUnit: row[11] == null
-              ? null
-              : QuantityUnit.fromWire(row[11] as String),
-        ),
-    };
+    final productsById = <int, Product>{};
+    for (final row in products) {
+      final id = row[0]! as int;
+      final categoryId = row[1]! as int;
+      final groupIds = resolvedGroups(id, categoryId);
+
+      // **An item with sizes is priced by its default size, derived here on
+      // every read** — the first available option of its first size group, as
+      // the regular price and the sale price together. Never the pair from two
+      // sources: a size's price beside the item's own discount would draw a
+      // strike-through that no selection ever charges.
+      //
+      // Derived rather than stored, which is the platform's approach inverted
+      // on purpose. It copies the default size into the item's price columns
+      // on each write, and every writer that forgets leaves them wrong:
+      // deleting a shared size group, or importing items, leaves an item
+      // advertising a size it no longer has. Here nothing is copied, so there
+      // is nothing to go stale — delete the size group and the item is back on
+      // its own price at the next read.
+      //
+      // It wins over a branch override as well. The size is what the ticket
+      // charges (`priceWithOptions`), so a tile quoting the override would
+      // quote a figure the till then does not take.
+      int? sizeGroup;
+      for (final groupId in groupIds) {
+        if (variantGroups.contains(groupId)) {
+          sizeGroup = groupId;
+          break;
+        }
+      }
+      // A first size group with nothing available prices nothing, and the
+      // item falls back to its own price — the platform does the same, rather
+      // than reaching past it to a second size group it would not show first.
+      var size = sizeGroup == null ? null : defaultSize[sizeGroup];
+
+      final ownPrice = row[4]! as int;
+      final ownDiscount = row[5] as int?;
+      // …unless the item's own pair already charges what its default size
+      // does. That is every item the platform seeds: it sends the size's
+      // regular and sale price on the item, but only the charged figure on the
+      // option, so deriving from the option would turn "90 struck to 80" into a
+      // bare 80. The pair is kept when it agrees, and replaced when it has gone
+      // stale — which is the case the derivation exists for.
+      if (size != null && (ownDiscount ?? ownPrice) == (size.sale ?? size.regular)) {
+        size = null;
+      }
+
+      productsById[id] = Product(
+        id: id,
+        categoryId: categoryId,
+        nameEn: row[2]! as String,
+        nameAr: row[3] as String?,
+        price: _money(size?.regular ?? ownPrice),
+        discountedPrice: size != null
+            ? (size.sale == null ? null : _money(size.sale!))
+            : (ownDiscount == null ? null : _money(ownDiscount)),
+        sku: row[6] as String?,
+        barcode: row[7] as String?,
+        isAvailable: row[8]! as bool,
+        taxGroupId: row[9] as int?,
+        modifierGroupIds: groupIds,
+        isStocked: row[10]! as bool,
+        stockUnit: row[11] == null
+            ? null
+            : QuantityUnit.fromWire(row[11] as String),
+      );
+    }
 
     return Catalog(
       syncedAt: _now(),
@@ -225,6 +346,8 @@ class PostgresCatalogRepository implements CatalogRepository {
             modifiers: byGroup[row[0] as int] ?? const [],
             minSelect: row[6] as int? ?? 0,
             freeOptions: row[7] as int? ?? 0,
+            displayNameEn: row[8] as String?,
+            displayNameAr: row[9] as String?,
           ),
       ],
       combos: _combos(

@@ -254,6 +254,38 @@ void main() {
     expect(await refusalFor('SELECT 1 FROM pos_combo_options'), isNull);
   });
 
+  test('the till reads which items a library group reaches, and sets none',
+      () async {
+    // Migration 45's table is joined by the catalogue read, so without the
+    // SELECT an offline till could not load its menu at all. The probe
+    // started from the CLOUD set, which writes it for the seeder, so the
+    // refusals are the offline REVOKE doing its job.
+    expect(
+      await refusalFor('SELECT 1 FROM pos_modifier_group_categories'),
+      isNull,
+    );
+    expect(
+      await refusalFor(
+        'INSERT INTO pos_modifier_group_categories (group_id, category_id) '
+        'VALUES (1, 1)',
+      ),
+      '42501',
+    );
+    expect(
+      await refusalFor('DELETE FROM pos_modifier_group_categories'),
+      '42501',
+    );
+    expect(
+      await refusalFor('UPDATE pos_modifiers SET discounted_price_minor = 0'),
+      '42501',
+      reason: 'a size on sale is a price, and the till does not set prices',
+    );
+    expect(
+      await refusalFor("UPDATE pos_modifier_groups SET apply_scope = 'all'"),
+      '42501',
+    );
+  });
+
   test('the till may not change the tax rates it charges', () async {
     // Offline, this row IS the VAT rate on every receipt.
     expect(await refusalFor('UPDATE pos_tax_groups SET rate_bp = 0'), '42501');

@@ -10,10 +10,13 @@ import '../../../core/ui/theme.dart';
 import '../../../core/ui/tokens.dart';
 import '../../../core/ui/widgets/pos_widgets.dart';
 import '../../../domain/models/catalog.dart';
+import '../../../domain/models/option_group.dart';
 import '../../../domain/models/tax.dart';
 import '../../../domain/models/shift.dart';
 import '../../../domain/repositories/admin_repositories.dart';
 import 'admin_messages.dart';
+import 'management_extras_pane.dart' show groupName;
+import 'menu_editor_widgets.dart';
 import 'menu_import_dialog.dart';
 
 /// The menu, authored on the till.
@@ -27,9 +30,13 @@ import 'menu_import_dialog.dart';
 /// `pos_products.category_id` is `ON DELETE RESTRICT`, and an item is taken
 /// off sale because every past receipt still names its row.
 class ManagementMenuPane extends ConsumerStatefulWidget {
-  const ManagementMenuPane({required this.admin, super.key});
+  const ManagementMenuPane({required this.admin, this.onOpenExtras, super.key});
 
   final PosStaff admin;
+
+  /// Switch Management to the Extras library — the item editor's "Manage
+  /// extras" link. Null hides the link.
+  final VoidCallback? onOpenExtras;
 
   @override
   ConsumerState<ManagementMenuPane> createState() => _ManagementMenuPaneState();
@@ -196,17 +203,60 @@ class _ManagementMenuPaneState extends ConsumerState<ManagementMenuPane> {
     List<TaxGroup> taxGroups,
     List<PosUnit> units,
   ) async {
-    final edited = await showDialog<Product>(
+    // Read before the dialog opens rather than inside it. A failure here is
+    // an error, not an empty list: an editor that showed "no groups" for an
+    // item that has three would delete all three the first time somebody
+    // added a fourth.
+    final groups = existing == null
+        ? const <OptionGroupRef>[]
+        : await repository.productOptionGroups(existing.id);
+    final library = await repository.optionLibrary();
+    if (!mounted) return;
+
+    await showDialog<bool>(
       context: context,
       builder: (context) => _ProductDialog(
         product: existing,
         categoryId: categoryId,
         taxGroups: taxGroups,
         units: units,
+        groups: groups,
+        library: library,
+        onSave: (product, groups) => _saveProduct(repository, product, groups),
+        onManageExtras: widget.onOpenExtras,
       ),
     );
-    if (edited == null) return;
-    await _write(() => repository.saveProduct(edited, by: widget.admin));
+  }
+
+  /// The item, then its groups.
+  ///
+  /// **In that order because a new item has no id** until the first write
+  /// returns one, and its groups are linked by it. Two writes rather than one
+  /// transaction: they are two repository calls with their own checks, and a
+  /// refusal of the second leaves an item saved with its old groups — which
+  /// the dialog keeps open, holding the saved item so the retry updates it.
+  ///
+  /// Not through [_write]: its refusal is a snackbar behind the dialog's
+  /// barrier, after the dialog — and everything typed in it — has gone.
+  Future<_Saved> _saveProduct(
+    CatalogAdminRepository repository,
+    Product product,
+    List<OptionGroupRef>? groups,
+  ) async {
+    final saved = await repository.saveProduct(product, by: widget.admin);
+    final refusal = saved.refusal;
+    if (refusal != null) return (product: null, refusal: refusal);
+    final stored = saved.value!;
+    if (mounted) ref.invalidate(catalogProvider);
+    if (groups == null) return (product: stored, refusal: null);
+
+    final attached = await repository.setProductOptionGroups(
+      stored.id,
+      groups,
+      by: widget.admin,
+    );
+    if (mounted) ref.invalidate(catalogProvider);
+    return (product: stored, refusal: attached.refusal);
   }
 }
 
@@ -428,7 +478,7 @@ class _CategoryDialogState extends State<_CategoryDialog> {
   }
 
   @override
-  Widget build(BuildContext context) => _Dialog(
+  Widget build(BuildContext context) => MenuDialog(
     title: widget.category == null
         ? context.strings.newCategory
         : context.strings.renameCategory,
@@ -439,23 +489,60 @@ class _CategoryDialogState extends State<_CategoryDialog> {
       ),
     ),
     children: [
-      _Input(controller: _name, label: context.strings.fieldName),
+      MenuInput(controller: _name, label: context.strings.fieldName),
       const SizedBox(height: PosSpace.md),
-      _Input(
+      MenuInput(
         controller: _nameAr,
         label: context.strings.fieldNameArabic,
         optional: true,
+        arabic: true,
       ),
     ],
   );
+}
+
+/// What saving the item came to: the item as stored — kept by the dialog even
+/// when its groups were then refused, so the retry updates it rather than
+/// making a second one — and why it stopped, if it did.
+typedef _Saved = ({Product? product, AdminRefusal? refusal});
+
+/// One entry in the item's list of groups, as the editor holds it.
+///
+/// Sealed for the reason `OptionGroupRef` is: the cards and the save both
+/// switch over it, and a third kind has to fail to compile in both.
+sealed class _Entry {}
+
+/// A library group on this item: shown, never edited here.
+final class _SharedEntry extends _Entry {
+  _SharedEntry(this.groupId, this.snapshot);
+
+  final int groupId;
+
+  /// The library's copy, for the card and for mirroring a shared size's
+  /// price. Null only when the group left the library between the two reads;
+  /// the card then names its id and the save is refused for it.
+  final OptionGroupDraft? snapshot;
+
+  bool get isVariant => snapshot?.isVariant ?? false;
+}
+
+/// A group typed on this item alone.
+final class _InlineEntry extends _Entry {
+  _InlineEntry(this.group);
+
+  final EditableGroup group;
 }
 
 class _ProductDialog extends StatefulWidget {
   const _ProductDialog({
     required this.categoryId,
     required this.taxGroups,
+    required this.onSave,
     this.product,
     this.units = const [],
+    this.groups = const [],
+    this.library = const [],
+    this.onManageExtras,
   });
 
   final Product? product;
@@ -468,6 +555,18 @@ class _ProductDialog extends StatefulWidget {
   /// has configured none, in which case the picker is absent rather than
   /// offering a single choice that means nothing.
   final List<TaxGroup> taxGroups;
+
+  /// The groups the item carries itself, in its order. Empty for a new item.
+  final List<OptionGroupRef> groups;
+
+  /// The Extras library, for "Add from library" and for the shared cards.
+  final List<LibraryGroup> library;
+
+  final Future<_Saved> Function(Product product, List<OptionGroupRef>? groups)
+  onSave;
+
+  /// Off to the Extras pane. Null hides the link.
+  final VoidCallback? onManageExtras;
 
   @override
   State<_ProductDialog> createState() => _ProductDialogState();
@@ -495,7 +594,37 @@ class _ProductDialogState extends State<_ProductDialog> {
   late QuantityUnit _stockUnit =
       widget.product?.stockUnit ?? QuantityUnit.each;
 
+  late final List<_Entry> _entries = [
+    for (final ref in widget.groups)
+      switch (ref) {
+        SharedGroupRef(:final groupId) => _SharedEntry(
+          groupId,
+          _libraryGroup(groupId),
+        ),
+        InlineGroupRef(:final group) => _InlineEntry(EditableGroup.from(group)),
+      },
+  ];
+
+  /// Whether anything about the groups changed. Untouched, they are not
+  /// written: `setProductOptionGroups` puts a row on the ledger every time it
+  /// runs, and a manager correcting a price should not appear to have
+  /// rearranged the item's extras.
+  bool _groupsTouched = false;
+
+  /// The item as the first successful write returned it. See [_Saved].
+  Product? _saved;
+
+  bool _saving = false;
   String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    // Immediately, as the cloud's watcher is: an item whose stored price has
+    // drifted from its default size — a shared size repriced in the library
+    // since — opens quoting what it will actually charge.
+    _mirror();
+  }
 
   @override
   void dispose() {
@@ -504,260 +633,603 @@ class _ProductDialogState extends State<_ProductDialog> {
     _price.dispose();
     _offer.dispose();
     _sku.dispose();
+    for (final entry in _entries) {
+      if (entry is _InlineEntry) entry.group.dispose();
+    }
     super.dispose();
   }
 
-  void _save() {
+  OptionGroupDraft? _libraryGroup(int id) {
+    for (final entry in widget.library) {
+      if (entry.group.id == id) return entry.group;
+    }
+    return null;
+  }
+
+  static bool _isSizes(_Entry entry) => switch (entry) {
+    _SharedEntry() => entry.isVariant,
+    _InlineEntry(:final group) => group.isVariant,
+  };
+
+  /// The group that prices the item. The first, as on the platform — and the
+  /// only one, since a second is refused.
+  _Entry? get _sizes => _entries.where(_isSizes).firstOrNull;
+
+  /// Put the default size's price into the item's two price fields.
+  ///
+  /// **Why the item's price is written at all, when the size decides it.** The
+  /// till's tile, the reports and the platform's own menu card all quote the
+  /// item's row. The cloud keeps that row equal to the default size on every
+  /// save; nothing in this repository re-derives it, so this form is where it
+  /// happens. The default is the first *available* size, the one the till
+  /// opens the sheet on.
+  void _mirror() {
+    final sizes = _sizes;
+    switch (sizes) {
+      case null:
+        // No sizes: the item's own price stands, and stays where it was left.
+        return;
+      case _SharedEntry(:final snapshot):
+        final size = snapshot?.options.where((o) => o.isAvailable).firstOrNull;
+        if (size == null) return;
+        _price.text = size.price.format();
+        _offer.text = size.salePrice?.format() ?? '';
+      case _InlineEntry(:final group):
+        final size = group.defaultSize;
+        if (size == null) return;
+        // A blank price is saved as zero, so it is quoted as zero.
+        _price.text = _typed(size.price.text, blankIsZero: true);
+        _offer.text = _typed(size.sale.text, blankIsZero: false);
+    }
+  }
+
+  /// A typed amount as the price field should show it: formatted when it is
+  /// one, and left exactly as typed when it is not, so the refusal on save
+  /// quotes what the owner can see.
+  static String _typed(String text, {required bool blankIsZero}) {
+    final trimmed = text.trim();
+    if (trimmed.isEmpty) return blankIsZero ? Money.zero.format() : '';
+    return Money.tryParse(trimmed)?.format() ?? trimmed;
+  }
+
+  void _changed() => setState(() {
+    _groupsTouched = true;
+    _mirror();
+  });
+
+  /// Switch a typed group to sizes, or back.
+  ///
+  /// Turning sizes on hands the pricing to its options, so the price already
+  /// typed above is carried into the first size — otherwise it would vanish
+  /// the moment the field turned read-only. Only when that size has no price
+  /// of its own, so an owner switching back and forth loses nothing either
+  /// way.
+  void _toggleVariant(EditableGroup group, bool on) {
+    group.isVariant = on;
+    if (on) {
+      if (group.options.isEmpty) group.options.add(EditableOption.blank());
+      final first = group.options.first;
+      if (first.price.text.trim().isEmpty) {
+        first.price.text = _price.text;
+        first.sale.text = _offer.text;
+      }
+    }
+    _changed();
+  }
+
+  void _remove(_Entry entry) {
+    _entries.remove(entry);
+    _changed();
+    // After the frame: the card's fields still hold the controllers until the
+    // rebuild that removes them.
+    if (entry is _InlineEntry) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => entry.group.dispose());
+    }
+  }
+
+  Future<void> _save() async {
+    final strings = context.strings;
     // Through `Money.tryParse`, which reads a major-unit string WITHOUT going
     // via a double — 19.99 is 1999 minor units, never 1998.9999999999998.
     final price = Money.tryParse(_price.text);
     if (price == null) {
-      setState(() => _error = context.strings.priceIsNotANumber);
+      setState(() => _error = strings.priceIsNotANumber);
       return;
     }
 
     final offerText = _offer.text.trim();
     final offer = offerText.isEmpty ? null : Money.tryParse(offerText);
     if (offerText.isNotEmpty && offer == null) {
-      setState(() => _error = context.strings.offerPriceIsNotANumber);
+      setState(() => _error = strings.offerPriceIsNotANumber);
       return;
     }
 
+    List<OptionGroupRef>? groups;
+    if (_groupsTouched) {
+      groups = [];
+      for (final entry in _entries) {
+        switch (entry) {
+          case _SharedEntry(:final groupId):
+            groups.add(OptionGroupRef.shared(groupId));
+          case _InlineEntry(:final group):
+            final (:draft, :error) = group.toDraft(strings);
+            if (draft == null) {
+              setState(() => _error = error);
+              return;
+            }
+            groups.add(OptionGroupRef.inline(draft));
+        }
+      }
+    }
+
     final base =
+        _saved ??
         widget.product ??
         Product(id: 0, categoryId: widget.categoryId, nameEn: '', price: price);
+    final product = base.copyWith(
+      nameEn: _name.text,
+      nameAr: _nameAr.text,
+      price: price,
+      discountedPrice: offer,
+      // A cleared box means "no offer", which `copyWith` cannot infer from a
+      // null it also uses for "unchanged".
+      clearDiscount: offer == null,
+      sku: _sku.text,
+      taxGroupId: _taxGroupId,
+      // Same problem, same shape: "back to the default rate" is a null the
+      // caller means, not a null it omitted.
+      clearTaxGroup: _taxGroupId == null,
+      isStocked: _stocked,
+      stockUnit: _stockUnit,
+    );
 
-    Navigator.of(context).pop(
-      base.copyWith(
-        nameEn: _name.text,
-        nameAr: _nameAr.text,
-        price: price,
-        discountedPrice: offer,
-        // A cleared box means "no offer", which `copyWith` cannot infer from a
-        // null it also uses for "unchanged".
-        clearDiscount: offer == null,
-        sku: _sku.text,
-        taxGroupId: _taxGroupId,
-        // Same problem, same shape: "back to the default rate" is a null the
-        // caller means, not a null it omitted.
-        clearTaxGroup: _taxGroupId == null,
-        isStocked: _stocked,
-        stockUnit: _stockUnit,
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    final result = await widget.onSave(product, groups);
+    if (!mounted) return;
+    _saved = result.product ?? _saved;
+    final refusal = result.refusal;
+    if (refusal != null) {
+      setState(() {
+        _saving = false;
+        _error = AdminText.refusal(strings, refusal);
+      });
+      return;
+    }
+    Navigator.of(context).pop(true);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final pricedBySizes = _sizes != null;
+    return MenuDialog(
+      title: widget.product == null
+          ? context.strings.newItem
+          : context.strings.editItem,
+      error: _error,
+      saving: _saving,
+      maxWidth: 720,
+      onSave: _save,
+      children: [
+        MenuInput(controller: _name, label: context.strings.fieldName),
+        const SizedBox(height: PosSpace.md),
+        MenuInput(
+          controller: _nameAr,
+          label: context.strings.fieldNameArabic,
+          optional: true,
+          arabic: true,
+        ),
+        const SizedBox(height: PosSpace.md),
+        // Once the item has sizes these two are no longer the owner's to set:
+        // they mirror the default size, which is what the tile quotes and what
+        // an untouched add charges. See [_mirror].
+        MenuInput(
+          fieldKey: const Key('product-price'),
+          controller: _price,
+          label: context.strings.fieldPrice,
+          mono: true,
+          readOnly: pricedBySizes,
+        ),
+        const SizedBox(height: PosSpace.md),
+        MenuInput(
+          fieldKey: const Key('product-offer'),
+          controller: _offer,
+          label: context.strings.fieldOfferPrice,
+          mono: true,
+          optional: true,
+          readOnly: pricedBySizes,
+        ),
+        if (pricedBySizes) ...[
+          const SizedBox(height: PosSpace.xs),
+          Text(
+            context.strings.itemPricedBySize,
+            key: const Key('product-priced-by-sizes'),
+            style: PosText.ui(
+              size: 11.5,
+              color: context.pos.muted,
+              height: 1.4,
+            ),
+          ),
+        ],
+        const SizedBox(height: PosSpace.md),
+        MenuInput(
+          controller: _sku,
+          label: context.strings.fieldSku,
+          mono: true,
+          optional: true,
+        ),
+
+        // Counted in stock — the bottled water a restaurant also sells. Its
+        // purchases and sales then move a number somebody can check.
+        const SizedBox(height: PosSpace.md),
+        SwitchListTile(
+          key: const Key('product-track-stock'),
+          value: _stocked,
+          onChanged: (v) => setState(() => _stocked = v),
+          contentPadding: EdgeInsets.zero,
+          title: Text(
+            context.strings.fieldTrackStock,
+            style: PosText.ui(size: 13.5, color: context.pos.body),
+          ),
+          subtitle: Text(
+            context.strings.fieldTrackStockHint,
+            style: PosText.ui(size: 11.5, color: context.pos.muted),
+          ),
+        ),
+        if (_stocked && widget.units.isNotEmpty)
+          Wrap(
+            spacing: PosSpace.sm,
+            runSpacing: PosSpace.sm,
+            children: [
+              for (final unit in widget.units)
+                PosButton(
+                  key: Key('product-unit-${unit.code}'),
+                  label: unit.displayName(context.strings.languageCode),
+                  background: unit.unit == _stockUnit
+                      ? context.pos.ink
+                      : Colors.transparent,
+                  foreground: unit.unit == _stockUnit
+                      ? context.pos.onInk
+                      : null,
+                  border: Border.fromBorderSide(context.pos.resting),
+                  onPressed: () => setState(() => _stockUnit = unit.unit),
+                ),
+            ],
+          ),
+
+        // **The picker that made the named rates usable.** `tax_group_id` has
+        // been on this table since Wave M and read by the catalogue query ever
+        // since; nothing wrote it, so a restaurant could define a zero-rated
+        // group and had no way to put a bottle of water on it.
+        //
+        // Absent where no groups are configured: a picker whose only option is
+        // "the default" is a question with one answer.
+        if (widget.taxGroups.isNotEmpty) ...[
+          const SizedBox(height: PosSpace.md),
+          MicroLabel(context.strings.fieldTaxGroup),
+          const SizedBox(height: PosSpace.xs),
+          Text(
+            context.strings.fieldTaxGroupHint,
+            style: PosText.ui(
+              size: 11.5,
+              color: context.pos.muted,
+              height: 1.4,
+            ),
+          ),
+          const SizedBox(height: PosSpace.sm),
+          Wrap(
+            spacing: PosSpace.sm,
+            runSpacing: PosSpace.sm,
+            children: [
+              PosButton(
+                key: const Key('product-tax-default'),
+                label: context.strings.fieldTaxGroupDefault,
+                background: _taxGroupId == null
+                    ? context.pos.ink
+                    : Colors.transparent,
+                foreground: _taxGroupId == null ? Colors.white : null,
+                border: Border.fromBorderSide(context.pos.resting),
+                onPressed: () => setState(() => _taxGroupId = null),
+              ),
+              for (final group in widget.taxGroups)
+                PosButton(
+                  key: Key('product-tax-${group.id}'),
+                  label:
+                      '${group.displayName(context.strings.languageCode)} · '
+                      '${AdminText.rateBp(group.rateBp)}',
+                  background: _taxGroupId == group.id
+                      ? context.pos.ink
+                      : Colors.transparent,
+                  foreground: _taxGroupId == group.id ? Colors.white : null,
+                  border: Border.fromBorderSide(context.pos.resting),
+                  onPressed: () => setState(() => _taxGroupId = group.id),
+                ),
+            ],
+          ),
+        ],
+
+        ..._optionGroups(context),
+      ],
+    );
+  }
+
+  /// "Options & add-ons" — the cloud item form's second card.
+  ///
+  /// No reordering, as on the cloud: a group goes to the end of the list when
+  /// it is added, and that order is the one the till shows. A size group's
+  /// options are the exception that matters — their order picks the default —
+  /// and the "Default" pill is how the editor says so.
+  List<Widget> _optionGroups(BuildContext context) {
+    final s = context.strings;
+    final pos = context.pos;
+    final sizes = _sizes;
+
+    return [
+      const SizedBox(height: PosSpace.lg),
+      Container(height: 1, color: pos.line),
+      const SizedBox(height: PosSpace.lg),
+      Row(
+        children: [
+          Expanded(child: MicroLabel(s.itemOptions)),
+          _libraryPicker(s, pos),
+          const SizedBox(width: PosSpace.sm),
+          PosButton(
+            key: const Key('product-add-group'),
+            label: '+ ${s.itemAddGroup}',
+            height: 36,
+            border: Border.fromBorderSide(pos.resting),
+            onPressed: () {
+              _entries.add(_InlineEntry(EditableGroup.blank()));
+              _changed();
+            },
+          ),
+        ],
+      ),
+      const SizedBox(height: PosSpace.sm),
+      if (_entries.isEmpty)
+        Text(s.itemNoOptions, style: PosText.ui(size: 12, color: pos.muted)),
+      for (final (i, entry) in _entries.indexed)
+        Padding(
+          key: ObjectKey(entry),
+          padding: const EdgeInsets.only(bottom: PosSpace.md),
+          child: switch (entry) {
+            _SharedEntry() => _sharedCard(i, entry, s, pos),
+            _InlineEntry() => _inlineCard(
+              i,
+              entry,
+              s,
+              pos,
+              markDefault: identical(entry, sizes),
+            ),
+          },
+        ),
+      if (widget.onManageExtras case final open?)
+        Align(
+          alignment: AlignmentDirectional.centerStart,
+          child: GestureDetector(
+            key: const Key('product-manage-extras'),
+            // Leaving throws away what is typed here, as the cloud's link
+            // does; the library is a different page on both.
+            onTap: () {
+              Navigator.of(context).pop();
+              open();
+            },
+            child: Text(
+              '${s.itemManageLibrary} →',
+              style: PosText.ui(size: 12, color: pos.muted),
+            ),
+          ),
+        ),
+    ];
+  }
+
+  /// Library groups that can be put on an item by hand: those that reach
+  /// items one link at a time, and are not on this one already. A group that
+  /// applies by category or everywhere reaches the item by itself.
+  Widget _libraryPicker(AppStrings s, PosPalette pos) {
+    final attached = {
+      for (final entry in _entries)
+        if (entry is _SharedEntry) entry.groupId,
+    };
+    final linkable = [
+      for (final entry in widget.library)
+        if (entry.group.scope == OptionGroupScope.items) entry,
+    ];
+    final hasSizes = _sizes != null;
+
+    return PopupMenuButton<LibraryGroup>(
+      key: const Key('product-add-from-library'),
+      tooltip: '',
+      color: pos.surface,
+      shape: RoundedRectangleBorder(side: pos.resting),
+      onSelected: (entry) {
+        _entries.add(_SharedEntry(entry.group.id, entry.group));
+        _changed();
+      },
+      itemBuilder: (_) => [
+        if (linkable.isEmpty)
+          PopupMenuItem<LibraryGroup>(
+            enabled: false,
+            child: Text(s.itemLibraryEmpty),
+          ),
+        for (final entry in linkable)
+          if (!attached.contains(entry.group.id))
+            PopupMenuItem<LibraryGroup>(
+              key: Key('library-pick-${entry.group.id}'),
+              value: entry,
+              // **Offered, but not pickable, once the item has sizes.** The
+              // save refuses a second set; letting it be picked would only
+              // move that refusal to after everything else was arranged.
+              enabled: !(entry.group.isVariant && hasSizes),
+              child: Text(groupName(entry.group, s.languageCode)),
+            ),
+      ],
+      child: IgnorePointer(
+        child: PosButton(
+          label: '+ ${s.itemAddFromLibrary}',
+          height: 36,
+          border: Border.fromBorderSide(pos.resting),
+          onPressed: () {},
+        ),
       ),
     );
   }
 
-  @override
-  Widget build(BuildContext context) => _Dialog(
-    title: widget.product == null
-        ? context.strings.newItem
-        : context.strings.editItem,
-    error: _error,
-    onSave: _save,
-    children: [
-      _Input(controller: _name, label: context.strings.fieldName),
-      const SizedBox(height: PosSpace.md),
-      _Input(
-        controller: _nameAr,
-        label: context.strings.fieldNameArabic,
-        optional: true,
+  /// A library group on this item: read-only, edited in the library.
+  Widget _sharedCard(
+    int index,
+    _SharedEntry entry,
+    AppStrings s,
+    PosPalette pos,
+  ) {
+    final snapshot = entry.snapshot;
+    final lang = s.languageCode;
+    final options = [
+      for (final option in snapshot?.options ?? const <OptionDraft>[])
+        if (lang == 'ar' && (option.nameAr?.isNotEmpty ?? false))
+          option.nameAr!
+        else
+          option.nameEn,
+    ].where((name) => name.isNotEmpty);
+
+    return Container(
+      key: Key('product-group-$index'),
+      padding: const EdgeInsets.all(PosSpace.md),
+      decoration: BoxDecoration(
+        color: pos.accentSoft,
+        border: Border.all(color: pos.accent),
       ),
-      const SizedBox(height: PosSpace.md),
-      _Input(controller: _price, label: context.strings.fieldPrice, mono: true),
-      const SizedBox(height: PosSpace.md),
-      _Input(
-        controller: _offer,
-        label: context.strings.fieldOfferPrice,
-        mono: true,
-        optional: true,
-      ),
-      const SizedBox(height: PosSpace.md),
-      _Input(
-        controller: _sku,
-        label: context.strings.fieldSku,
-        mono: true,
-        optional: true,
-      ),
-
-      // Counted in stock — the bottled water a restaurant also sells. Its
-      // purchases and sales then move a number somebody can check.
-      const SizedBox(height: PosSpace.md),
-      SwitchListTile(
-        key: const Key('product-track-stock'),
-        value: _stocked,
-        onChanged: (v) => setState(() => _stocked = v),
-        contentPadding: EdgeInsets.zero,
-        title: Text(
-          context.strings.fieldTrackStock,
-          style: PosText.ui(size: 13.5, color: context.pos.body),
-        ),
-        subtitle: Text(
-          context.strings.fieldTrackStockHint,
-          style: PosText.ui(size: 11.5, color: context.pos.muted),
-        ),
-      ),
-      if (_stocked && widget.units.isNotEmpty)
-        Wrap(
-          spacing: PosSpace.sm,
-          runSpacing: PosSpace.sm,
-          children: [
-            for (final unit in widget.units)
-              PosButton(
-                key: Key('product-unit-${unit.code}'),
-                label: unit.displayName(context.strings.languageCode),
-                background: unit.unit == _stockUnit
-                    ? context.pos.ink
-                    : Colors.transparent,
-                foreground: unit.unit == _stockUnit ? context.pos.onInk : null,
-                border: Border.fromBorderSide(context.pos.resting),
-                onPressed: () => setState(() => _stockUnit = unit.unit),
-              ),
-          ],
-        ),
-
-      // **The picker that made the named rates usable.** `tax_group_id` has
-      // been on this table since Wave M and read by the catalogue query ever
-      // since; nothing wrote it, so a restaurant could define a zero-rated
-      // group and had no way to put a bottle of water on it.
-      //
-      // Absent where no groups are configured: a picker whose only option is
-      // "the default" is a question with one answer.
-      if (widget.taxGroups.isNotEmpty) ...[
-        const SizedBox(height: PosSpace.md),
-        MicroLabel(context.strings.fieldTaxGroup),
-        const SizedBox(height: PosSpace.xs),
-        Text(
-          context.strings.fieldTaxGroupHint,
-          style: PosText.ui(
-            size: 11.5,
-            color: context.pos.muted,
-            height: 1.4,
-          ),
-        ),
-        const SizedBox(height: PosSpace.sm),
-        Wrap(
-          spacing: PosSpace.sm,
-          runSpacing: PosSpace.sm,
-          children: [
-            PosButton(
-              key: const Key('product-tax-default'),
-              label: context.strings.fieldTaxGroupDefault,
-              background: _taxGroupId == null
-                  ? context.pos.ink
-                  : Colors.transparent,
-              foreground: _taxGroupId == null ? Colors.white : null,
-              border: Border.fromBorderSide(context.pos.resting),
-              onPressed: () => setState(() => _taxGroupId = null),
-            ),
-            for (final group in widget.taxGroups)
-              PosButton(
-                key: Key('product-tax-${group.id}'),
-                label:
-                    '${group.displayName(context.strings.languageCode)} · '
-                    '${AdminText.rateBp(group.rateBp)}',
-                background: _taxGroupId == group.id
-                    ? context.pos.ink
-                    : Colors.transparent,
-                foreground: _taxGroupId == group.id ? Colors.white : null,
-                border: Border.fromBorderSide(context.pos.resting),
-                onPressed: () => setState(() => _taxGroupId = group.id),
-              ),
-          ],
-        ),
-      ],
-    ],
-  );
-}
-
-class _Dialog extends StatelessWidget {
-  const _Dialog({
-    required this.title,
-    required this.onSave,
-    required this.children,
-    this.error,
-  });
-
-  final String title;
-  final VoidCallback onSave;
-  final List<Widget> children;
-  final String? error;
-
-  @override
-  Widget build(BuildContext context) => Dialog(
-    backgroundColor: context.pos.surface,
-    shape: RoundedRectangleBorder(side: context.pos.emphasis),
-    child: ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 460),
-      child: Padding(
-        padding: const EdgeInsets.all(PosSpace.xl),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(title, style: PosText.panelTitle(color: context.pos.ink)),
-            const SizedBox(height: PosSpace.lg),
-            ...children,
-            if (error != null) ...[
-              const SizedBox(height: PosSpace.md),
-              Text(
-                error!,
-                style: PosText.ui(size: 12.5, color: context.pos.danger),
-              ),
-            ],
-            const SizedBox(height: PosSpace.xl),
-            Row(
+      child: Row(
+        children: [
+          Icon(Icons.link, size: 15, color: pos.accent),
+          const SizedBox(width: PosSpace.sm),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: PosButton(
-                    label: context.strings.cancel,
-                    border: Border.fromBorderSide(context.pos.resting),
-                    onPressed: () => Navigator.of(context).pop(),
+                Text(
+                  snapshot == null
+                      ? '#${entry.groupId}'
+                      : groupName(snapshot, lang),
+                  style: PosText.ui(
+                    size: 14,
+                    weight: FontWeight.w600,
+                    color: pos.ink,
                   ),
                 ),
-                const SizedBox(width: PosSpace.md),
-                Expanded(
-                  child: PosButton(
-                    label: context.strings.save,
-                    background: context.pos.ink,
-                    foreground: context.pos.onInk,
-                    onPressed: onSave,
+                Text.rich(
+                  TextSpan(
+                    children: [
+                      TextSpan(
+                        text: s.itemFromLibrary,
+                        style: TextStyle(color: pos.accent),
+                      ),
+                      // The cloud joins with the Arabic comma in both
+                      // languages; so does this.
+                      TextSpan(text: '  ${options.join('، ')}'),
+                    ],
                   ),
+                  style: PosText.ui(size: 12, color: pos.muted),
                 ),
               ],
             ),
-          ],
-        ),
+          ),
+          if (entry.isVariant) MenuPill(s.itemVariant),
+          IconButton(
+            key: Key('group-$index-remove'),
+            icon: Icon(Icons.close, size: 16, color: pos.danger),
+            tooltip: s.deleteLabel,
+            onPressed: () => _remove(entry),
+          ),
+        ],
       ),
-    ),
-  );
-}
+    );
+  }
 
-class _Input extends StatelessWidget {
-  const _Input({
-    required this.controller,
-    required this.label,
-    this.mono = false,
-    this.optional = false,
-  });
+  /// A group typed on this item: names, rules and options, all editable.
+  Widget _inlineCard(
+    int index,
+    _InlineEntry entry,
+    AppStrings s,
+    PosPalette pos, {
+    required bool markDefault,
+  }) {
+    final group = entry.group;
+    final prefix = 'group-$index';
+    // **One set of sizes per item.** The switch is off-limits on every other
+    // group while one is sizes — the repository refuses a second set, and a
+    // switch that can be flipped only to be refused at Save is a trap.
+    final canBeSizes = group.isVariant || _sizes == null;
 
-  final TextEditingController controller;
-  final String label;
-  final bool mono;
-  final bool optional;
-
-  @override
-  Widget build(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      MicroLabel(optional ? context.strings.optionalField(label) : label),
-      const SizedBox(height: PosSpace.sm),
-      TextField(
-        controller: controller,
-        style: mono
-            ? PosText.mono(size: 14, color: context.pos.ink)
-            : PosText.ui(size: 14, color: context.pos.ink),
+    return Container(
+      key: Key('product-group-$index'),
+      padding: const EdgeInsets.all(PosSpace.md),
+      decoration: BoxDecoration(
+        color: pos.page,
+        border: Border.all(color: pos.line),
       ),
-    ],
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: _groupName(
+                  Key('$prefix-name'),
+                  group.nameEn,
+                  s.itemGroupNameEn,
+                ),
+              ),
+              const SizedBox(width: PosSpace.sm),
+              Expanded(
+                child: _groupName(
+                  Key('$prefix-name-ar'),
+                  group.nameAr,
+                  s.itemGroupNameAr,
+                  arabic: true,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: PosSpace.sm),
+          GroupRulesRow(
+            group: group,
+            keyPrefix: prefix,
+            onVariant: canBeSizes ? (on) => _toggleVariant(group, on) : null,
+            onChanged: _changed,
+            trailing: IconButton(
+              key: Key('$prefix-remove'),
+              icon: Icon(Icons.delete_outline, size: 16, color: pos.danger),
+              tooltip: s.deleteLabel,
+              onPressed: () => _remove(entry),
+            ),
+          ),
+          const SizedBox(height: PosSpace.sm),
+          OptionRows(
+            group: group,
+            keyPrefix: prefix,
+            onChanged: _changed,
+            markDefault: markDefault,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _groupName(
+    Key key,
+    TextEditingController controller,
+    String hint, {
+    bool arabic = false,
+  }) => TextField(
+    key: key,
+    controller: controller,
+    onChanged: (_) => _changed(),
+    textDirection: arabic ? TextDirection.rtl : null,
+    style: PosText.ui(size: 13.5, color: context.pos.ink),
+    decoration: InputDecoration(hintText: hint, isDense: true),
   );
 }
 

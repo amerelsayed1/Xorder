@@ -262,10 +262,7 @@ class TicketLine {
     final selection = combo;
     if (selection != null) return selection.unitPrice;
 
-    final gross = modifiers.fold(
-      product.effectivePrice,
-      (total, modifier) => total + modifier.priceDelta,
-    );
+    final gross = priceWithOptions(product, modifiers);
     // Guarded on zero rather than subtracted unconditionally. `Money.zero` is
     // EGP, and taking it off a Kuwaiti price trips the currency assertion —
     // which is the assertion doing its job: an allowance of nothing has no

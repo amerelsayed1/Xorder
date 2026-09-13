@@ -9,6 +9,7 @@ import 'package:xorder_pos/core/money/quantity.dart';
 import 'package:xorder_pos/core/ui/theme.dart';
 import 'package:xorder_pos/core/ui/tokens.dart';
 import 'package:xorder_pos/domain/models/catalog.dart';
+import 'package:xorder_pos/domain/models/option_group.dart';
 import 'package:xorder_pos/domain/models/permissions.dart';
 import 'package:xorder_pos/domain/models/shift.dart';
 import 'package:xorder_pos/domain/models/tax.dart';
@@ -202,6 +203,15 @@ class _Catalogue implements CatalogAdminRepository {
     saved = product;
     return AdminResult.done(product);
   }
+
+  // The editor reads the item's sizes and extras before it opens. None here:
+  // this suite is about the rate, and untouched groups are never written.
+  @override
+  Future<List<OptionGroupRef>> productOptionGroups(int productId) async =>
+      const [];
+
+  @override
+  Future<List<LibraryGroup>> optionLibrary() async => const [];
 
   @override
   dynamic noSuchMethod(Invocation invocation) =>
