@@ -78,6 +78,7 @@ for everything still `APPROVED`.**
 | POS-BE-026 | Site registration + `ServerId` | **APPROVED** |
 | POS-BE-027 | Three additive licence claims | **APPROVED** |
 | POS-BE-028 | Terminal rename decoupled from identity | **APPROVED** |
+| POS-BE-030 | Bundle withholds `purchase.manage`; cloud tills hide buying and stock | **READY** (platform half, CB-09 slice a) |
 
 Nothing is `BLOCKED`. Every open question from Agent 1's 2026-08-26/28 replies is
 answered below with a decision, not a discussion.
@@ -1901,6 +1902,29 @@ terminal object.
 
 ---
 
+## POS-BE-030 — purchasing and stock on cloud are platform-authored · **READY** (platform half)
+
+Agreed as filed in `POS_TO_BACKEND.md`; owner go 2026-09-13, "finish all phases"
+(CB-09).
+
+- **Bundle:** `PosBootstrapService::staff()` removes `purchase.manage` from
+  every `staff[].capabilities`, unconditionally. That includes the owner, and
+  it doesn't depend on whether the client has the `purchasing` feature.
+  `/api/auth/me` still returns it, because the capability is real on the
+  dashboard. Test: `tests/Feature/Pos/PosPurchaseCapabilityWithheldTest.php`.
+- **Authoring:** suppliers, units, stock items, purchase orders, receiving,
+  supplier invoices and supplier payments are written only through the
+  dashboard, under `feature:purchasing` + `can:purchase.manage` (CB-09 slices
+  a–c). `purchasing` is a plan feature of its own and does not require `pos`.
+- **Wire:** unchanged. The platform reads nothing from till purchasing.
+- **Where it lives:** `feat/cb-09-purchasing` in xorder-new (slice a `dd9a530`
+  and later). Not deployed; it follows Cloud Wave 1 to production.
+
+**Schema:** none for this contract. The purchasing tables are dashboard-only
+and are never sent to a till.
+
+---
+
 ## How this file is used from here
 
 `APPROVED` = contract final under the owner's 2026-09-02 instruction; either
@@ -1923,3 +1947,4 @@ today; everything else awaits the owner's go for implementation.
 | 2026-09-05 | **Tenant creation split from terminal creation** (owner decision). Creating a client now mints the client **and its POS licence in one transaction** — a licence failure rolls the whole tenant back, so there is no such thing as an unlicensed client created through the wizard. Creating a client still creates **no terminal of any kind**; terminals are provisioned one at a time afterwards, and a licensed tenant with zero terminals is a valid resting state. New platform-side routes under `/api/admin/restaurants/{restaurant}/terminals` (§023 amendment), new `pos_fleet.manage` capability. **No POS-facing wire contract changed.** |
 | 2026-09-11 | **CB-00 — the two repos' copies reconciled** (`xorder-cloud`, docs only). They had drifted in both directions. xorder-new (2026-09-05) alone had the §023 "Amendment, owner decision 2026-09-05 — the platform-side front door" (the four `/api/admin/restaurants/{restaurant}/terminals` routes and the "zero terminals is a normal state" note) and the 2026-09-05 "tenant creation split from terminal creation" change-log row. xorder-pos (2026-09-06) alone had the §022 "Amendment 2026-09-06 — 'catalog authored in the cloud only' now reads 'on a cloud terminal'" (which carried no change-log row of its own). Both are kept; they touch different passages, so nothing conflicted. Change-log rows re-sorted into date order (no row removed or reworded). No contract status changed (the two copies agreed on every status). Both copies are now byte-identical. |
 | 2026-09-11 | **POS-BE-013 amended: the tender-id defect is fixed** (owner go 2026-09-11, `xorder-cloud`). A cloud till had been paying with its own local tender ids (1–4), and the platform validates `tender_type_id` against its own tenant-scoped `tender_types`. Platform side: `PosProvisioningService::ensureDefaultTenders()` creates Cash + Card at a POS restaurant's first terminal (provision or register, with claim as the backstop) when the restaurant has no tender types. It is idempotent, scoped per tenant, and bumps `config_version`. The rules added to §013 are that `tender_type_id` MUST come from `money.tender_types`, the list is never empty, and null means "unspecified" (counted as cash) and is never a fallback. This is an amendment, not new surface, so there is no POS-BE-030, and POS-BE-013 stays `READY`. Tests: `tests/Feature/Pos/PosDefaultTendersTest.php` (11). No migration. Till side (`pos-dev`, in parallel): seed `pos_tender_types` from the bundle on cloud and pay with platform ids. Nothing committed or deployed. |
+| 2026-09-13 | **POS-BE-030 agreed; platform half `READY`** (CB-09; owner go "finish all phases"). `PosBootstrapService::staff()` withholds `purchase.manage` from every bundle, owner included, and `PosPurchaseCapabilityWithheldTest` covers it. Purchasing is authored only on the dashboard under `feature:purchasing` + `can:purchase.manage`, and `purchasing` does not require `pos`. No wire change. Built on `feat/cb-09-purchasing` in xorder-new, not deployed. The till half, hiding the panes by deployment, is on xorder-pos `feat/cb-09-slice-e` @ `1adb17f`, not merged. |

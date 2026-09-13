@@ -21,8 +21,8 @@ cloud story actually looks like open. This handoff answers it with a backlog.
 the offline product and are not changing. Your job is the cloud counterpart.
 
 **Status of every item: `PROPOSED`**, except CB-00 (`DONE` 2026-09-11),
-CB-01 (`DRAFTED — awaiting owner`, see §4a) and CB-09 (`IN PROGRESS — slice a`
-2026-09-12). Nothing here authorises implementation. Each `CB-xx` needs an
+CB-01 (`DRAFTED — awaiting owner`, see §4a) and CB-09 (`IN PROGRESS — slice c`
+2026-09-13). Nothing here authorises implementation. Each `CB-xx` needs an
 explicit owner go.
 
 ---
@@ -192,7 +192,7 @@ a ruling; the web side is the dashboard's existing login.
 till-local on both. Decide whether a cloud restaurant sets it once on the
 platform (the restaurant profile already carries `tax_registration_number`).
 
-### CB-09: Purchasing, suppliers, units, stock on cloud · L · **`IN PROGRESS — slice a`**
+### CB-09: Purchasing, suppliers, units, stock on cloud · L · **`IN PROGRESS — slice c`**
 
 > **Owner decisions 2026-09-12.** (1) On cloud the platform is the only author
 > of purchasing and receiving (D1). (2) `purchasing` is a **standalone** plan
@@ -203,9 +203,20 @@ platform (the restaurant profile already carries `tax_registration_number`).
 > "النشاط"/"العميل"). (3) One capability, `purchase.manage`, gates reads and
 > writes (D7). (4) Slices a, b and c are approved, built in that order with an
 > owner review between slices. Slice a (suppliers, units, the feature, the
-> capability, and the D8 bundle filter) is being built on the xorder-new
-> branch `feat/cb-09-purchasing`: uncommitted, not deployed. **No till work
-> and no contract:** slice e and POS-BE-030 are not approved.
+> capability, and the D8 bundle filter) is committed as `dd9a530` on the
+> xorder-new branch `feat/cb-09-purchasing`. Slice b (stock items, purchase
+> orders, receiving at the till's moving-average cost, the per-branch stock
+> ledger and "received to date", and their pages) is committed as `bcb092c`
+> (design §14). Neither is deployed. **2026-09-13, the owner: "finish all
+> phases".** Slice c is built on the same branch: supplier invoices, supplier
+> payments allocated to invoices (never above an invoice's total, enforced
+> under a row lock and proved concurrently on PostgreSQL), derived supplier
+> balances and the supplier account page. It is uncommitted and not deployed
+> (design §15). **D11 is decided and built on the platform:** a part-received
+> order can be closed short to `received`, marked closed short with a reason,
+> and stock is never touched. The offline till's own short-close is a
+> separate `pos-dev` item. Slice d follows in a separate run. Slice e (the
+> till side) is with `pos-dev`. POS-BE-030 is not filed from here.
 >
 > **Designed 2026-09-12 (`xorder-cloud`), after the owner's "go CB-09".** The
 > go was taken as design only: the design comes back for review before
