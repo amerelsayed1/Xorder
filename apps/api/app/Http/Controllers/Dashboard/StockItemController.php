@@ -61,21 +61,9 @@ class StockItemController extends Controller
             ->orderByDesc('id')
             ->paginate(50);
 
-        $page->getCollection()->transform(fn (StockMovement $m) => [
-            'id' => $m->id,
-            'branch_id' => $m->branch_id,
-            'kind' => $m->kind,
-            'quantity_milli' => $m->quantity_milli,
-            'unit_code' => $m->unit_code,
-            'unit_cost_minor' => $m->unit_cost_minor,
-            'balance_milli' => $m->balance_milli,
-            'average_cost_minor' => $m->average_cost_minor,
-            'purchase_order_id' => $m->purchase_order_id,
-            'purchase_order_reference' => $m->purchaseOrder?->reference,
-            'note' => $m->note,
-            'occurred_at' => $m->occurred_at?->toIso8601String(),
-            'created_by' => $m->createdBy?->name,
-        ]);
+        // Slice d adds `reason` (and `stock_item_id`) to each row; every
+        // slice-b key is unchanged.
+        $page->getCollection()->transform(fn (StockMovement $m) => $m->ledgerRow());
 
         return response()->json($page);
     }

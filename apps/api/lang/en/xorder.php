@@ -246,6 +246,10 @@ return [
         'payment_invoice' => 'Choose one of your invoices.',
         'payment_invoice_twice' => 'Allocate to each invoice only once.',
         'void_note_required' => 'Add a note when the reason is “Other”.',
+        'adjustment_quantity_positive' => 'Enter a quantity above zero.',
+        'adjustment_quantity_nonzero' => 'Enter a quantity to add or to take off. It can’t be zero.',
+        'adjustment_cost_not_for_issue' => 'Stock that leaves goes out at its average cost, so don’t enter a cost.',
+        'adjustment_reason' => 'Choose one of the reasons offered for this kind of entry.',
     ],
     // CB-09 purchasing refusals (App\Exceptions\PurchasingRefusal and the
     // purchasing services). Neutral "business" wording: purchasing is sold to
@@ -300,6 +304,13 @@ return [
         'drawer_other_branch' => 'That drawer pay-out was made at another branch.',
         'drawer_amount_differs' => 'That drawer pay-out was :moved. A payment linked to it must be for exactly that amount.',
         'drawer_already_linked' => 'That drawer pay-out is already linked to another payment.',
+        // ---- slice d: opening stock, waste, adjustments and counts
+        'adjustment_unit_differs' => 'The page showed ":item" in :asked, but it is counted in :item_unit now. Units are never converted, so nothing was recorded. Reload and enter it again.',
+        'opening_already_recorded' => 'This branch already has opening stock for ":item". Correct it with an adjustment instead.',
+        'unit_cost_required' => '":item" has no cost at this branch yet. Enter what one unit cost.',
+        'count_matches' => 'The count matches the recorded stock, so there is nothing to adjust.',
+        'reason_needs_increase' => 'This reason is for stock that was not recorded. Enter a quantity to add.',
+        'reason_needs_decrease' => 'This reason is for stock that left. Enter a quantity to take off.',
     ],
     // Human names for the fine-grained in-restaurant permissions
     // (App\Enums\TenantCapability). Keyed with underscores because the enum

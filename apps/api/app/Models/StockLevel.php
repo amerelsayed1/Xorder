@@ -10,11 +10,12 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 /**
  * CB-09 slice b: the position of one stock item in one branch. A cache of
  * the ledger (a moving average is a fold), written only by ReceivingService
- * in the same transaction as the movement, under a row lock. It always
- * equals the last movement's balance and average; StockLedger::replay
- * checks that.
+ * and StockAdjustmentService (slice d) in the same transaction as the
+ * movement, under a row lock. It always equals the last movement's balance
+ * and average; StockLedger::replay checks that.
  *
- * It is "received to date", not "on hand": tills don't deduct sales (D4).
+ * It is RECORDED stock (receipts, openings and adjustments, less waste), not
+ * "on hand": tills don't deduct sales (D4).
  */
 class StockLevel extends Model
 {

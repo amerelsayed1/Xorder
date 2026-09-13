@@ -13,7 +13,8 @@ import { formatMilli } from '../../../lib/quantity.js'
 
 // CB-09 slice b. One stock item's ledger, newest first. Append-only: each
 // row records the position that resulted from it, so this page is also how
-// anyone checks a "received to date" figure by eye.
+// anyone checks a "recorded stock" figure by eye. Since slice d it also
+// lists openings, waste, adjustments and counts, each with its reason.
 const { t, locale } = useI18n()
 const route = useRoute()
 const router = useRouter()
@@ -106,7 +107,12 @@ const showBranch = computed(() => !branchId.value && branches.value.length > 1)
                             <tr v-for="m in rows" :key="m.id" class="border-t" style="border-color:var(--line)">
                                 <td class="px-4 py-3 whitespace-nowrap" style="color:var(--body)">{{ fmtDate(m.occurred_at, locale, { time: true }) }}</td>
                                 <td v-if="showBranch" class="px-4 py-3" style="color:var(--body)">{{ branchName(m.branch_id) }}</td>
-                                <td class="px-4 py-3" style="color:var(--ink)">{{ t('purchasing.kinds.' + m.kind) }}</td>
+                                <td class="px-4 py-3" style="color:var(--ink)">
+                                    <div>{{ t('purchasing.kinds.' + m.kind) }}</div>
+                                    <!-- Slice d: an entry that is not a delivery says why, and any note. -->
+                                    <div v-if="m.reason" class="text-xs" style="color:var(--muted)">{{ t('purchasing.stock_reasons.' + m.reason) }}</div>
+                                    <div v-if="m.note && !m.purchase_order_id" class="text-xs max-w-[16rem] truncate" style="color:var(--muted)" :title="m.note">{{ m.note }}</div>
+                                </td>
                                 <td class="px-4 py-3 text-end"><span class="mono" dir="ltr">{{ signed(m) }}</span></td>
                                 <td class="px-4 py-3 text-end"><span class="mono" dir="ltr">{{ cost(m.unit_cost_minor) }}</span></td>
                                 <td class="px-4 py-3 text-end"><span class="mono" dir="ltr">{{ qty(m.balance_milli, m.unit_code) }}</span></td>

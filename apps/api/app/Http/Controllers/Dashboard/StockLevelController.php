@@ -9,15 +9,19 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 /**
- * CB-09 slice b: what each branch has RECEIVED TO DATE, valued at the
- * moving average.
+ * CB-09: each branch's RECORDED stock, valued at the moving average.
  *
- * Not "on hand". Tills don't deduct stock when they sell (D4), and slice b
- * writes only receipts, so this is everything booked in, never less. The
- * dashboard labels it that way in both languages.
+ * Slice b called it "received to date". Since slice d it is receipts plus
+ * opening stock plus adjustments and counts, less waste, and the dashboard
+ * heads it "Recorded stock". It is still not "on hand": tills don't deduct
+ * stock when they sell (D4), and the dashboard says so in both languages.
+ *
+ * `quantity_milli` is the figure. `received_milli` is the same number under
+ * its slice-b name, kept so nothing that read it breaks.
  *
  * Read-only. A level is a cache of the ledger, written only by
- * ReceivingService in the same transaction as its movement.
+ * ReceivingService and StockAdjustmentService, in the same transaction as
+ * the movement, under a lock on the level row.
  */
 class StockLevelController extends Controller
 {
@@ -41,6 +45,7 @@ class StockLevelController extends Controller
                 'sku' => $l->stockItem->sku, 'is_active' => $l->stockItem->is_active,
             ] : null,
             'unit_code' => $l->unit_code,
+            'quantity_milli' => $l->quantity_milli,
             'received_milli' => $l->quantity_milli,
             'average_cost_minor' => $l->average_cost_minor,
             'value_minor' => $l->valueMinor(),

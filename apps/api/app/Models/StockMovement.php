@@ -22,7 +22,11 @@ class StockMovement extends Model
 
     public const UPDATED_AT = null;
 
-    /** The till's seven kinds. Slice b writes only `receipt`. */
+    /**
+     * The till's seven kinds. Slice b writes `receipt`; slice d writes
+     * `opening`, `waste` and `adjustment` (a count is an adjustment with
+     * reason `stock_count`). `sale` and the transfers have no writer.
+     */
     public const KINDS = ['receipt', 'sale', 'waste', 'adjustment', 'opening', 'transfer_in', 'transfer_out'];
 
     protected $guarded = ['*'];
@@ -49,6 +53,34 @@ class StockMovement extends Model
             'purchase_order_id' => 'integer',
             'purchase_order_line_id' => 'integer',
             'occurred_at' => 'datetime',
+        ];
+    }
+
+    /**
+     * One row of the ledger as the dashboard reads it (the movements list and
+     * the slice-d create response). Load purchaseOrder / createdBy first to
+     * avoid a query per row.
+     *
+     * @return array<string,mixed>
+     */
+    public function ledgerRow(): array
+    {
+        return [
+            'id' => $this->id,
+            'branch_id' => $this->branch_id,
+            'stock_item_id' => $this->stock_item_id,
+            'kind' => $this->kind,
+            'quantity_milli' => $this->quantity_milli,
+            'unit_code' => $this->unit_code,
+            'unit_cost_minor' => $this->unit_cost_minor,
+            'balance_milli' => $this->balance_milli,
+            'average_cost_minor' => $this->average_cost_minor,
+            'purchase_order_id' => $this->purchase_order_id,
+            'purchase_order_reference' => $this->purchase_order_id ? $this->purchaseOrder?->reference : null,
+            'reason' => $this->reason,
+            'note' => $this->note,
+            'occurred_at' => $this->occurred_at?->toIso8601String(),
+            'created_by' => $this->createdBy?->name,
         ];
     }
 

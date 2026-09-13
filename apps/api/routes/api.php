@@ -43,6 +43,7 @@ use App\Http\Controllers\Dashboard\ReviewController;
 use App\Http\Controllers\Dashboard\RoleController;
 use App\Http\Controllers\Dashboard\StaffController;
 use App\Http\Controllers\Dashboard\StatsController;
+use App\Http\Controllers\Dashboard\StockAdjustmentController;
 use App\Http\Controllers\Dashboard\StockItemController;
 use App\Http\Controllers\Dashboard\StockLevelController;
 use App\Http\Controllers\Dashboard\PurchaseOrderController;
@@ -558,6 +559,11 @@ Route::prefix('dashboard')
         | and supplier balances (derived on every read, never stored). An
         | invoice's live allocations never exceed its total: enforced by
         | SupplierLedgerService under a lock on the invoice row, not here.
+        |
+        | Slice d (D12, owner 2026-09-13): opening stock, waste, adjustments
+        | and counts. Create only: each is one new movement in the same
+        | append-only ledger, written by StockAdjustmentService under the
+        | level-row lock receiving takes. It never touches a purchase order.
         */
         Route::middleware(['feature:purchasing', 'can:purchase.manage'])->group(function () {
             Route::get('units', [UnitController::class, 'index']);
@@ -579,7 +585,7 @@ Route::prefix('dashboard')
             Route::get('stock-items', [StockItemController::class, 'index']);
             Route::get('stock-items/{stockItem}', [StockItemController::class, 'show']);
             Route::get('stock-items/{stockItem}/movements', [StockItemController::class, 'movements']);
-            // "Received to date", not on hand: tills don't deduct sales (D4).
+            // Recorded stock, not on hand: tills don't deduct sales (D4).
             Route::get('stock-levels', [StockLevelController::class, 'index']);
             Route::get('purchase-orders', [PurchaseOrderController::class, 'index']);
             Route::get('purchase-orders/{purchaseOrder}', [PurchaseOrderController::class, 'show']);
@@ -601,6 +607,9 @@ Route::prefix('dashboard')
                 // Draft or sent only; refused once anything has arrived.
                 Route::post('purchase-orders/{purchaseOrder}/cancel', [PurchaseOrderController::class, 'cancel']);
                 Route::post('purchase-orders/{purchaseOrder}/receipts', [PurchaseOrderController::class, 'receive']);
+                // Slice d: {kind: opening|waste|adjustment|count, ...}. A new
+                // movement every time; a wrong one is corrected by another.
+                Route::post('stock-adjustments', [StockAdjustmentController::class, 'store']);
                 // D11 (owner, 2026-09-13): close a part delivery short. Only
                 // a partly received order; never touches stock.
                 Route::post('purchase-orders/{purchaseOrder}/close', [PurchaseOrderController::class, 'closeShort']);

@@ -13,10 +13,12 @@ use App\Support\StockCosting;
  * branch's movements for one item through StockCosting, in id order, and
  * reports every movement whose recorded balance or average disagrees with
  * the fold, plus whether the level matches the end of it. A drift found
- * here means something wrote stock outside ReceivingService.
+ * here means something wrote stock outside ReceivingService and
+ * StockAdjustmentService.
  *
  * Positive quantities are arrivals at their own cost; negative ones are
- * issues, which never move the average. Slice b writes only receipts.
+ * issues, which never move the average. That covers every kind written:
+ * receipts (slice b), and openings, waste, adjustments and counts (slice d).
  */
 class StockLedger
 {

@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Dialog from '@xorder/ui/Dialog.vue'
 import FormError from '@xorder/ui/FormError.vue'
@@ -28,6 +28,13 @@ const local = ref({})
 const needsNote = computed(() => reason.value === 'other')
 const shown = computed(() => ({ ...props.errors, ...local.value }))
 
+// Slice d: a stock entry swaps its reason list with its kind (waste, add,
+// take off...). Drop a choice that is no longer offered, and preselect the
+// only one when there is one (opening stock, a count).
+watch(() => props.reasons, (list) => {
+    if (!list.includes(reason.value)) reason.value = list.length === 1 ? list[0] : ''
+}, { immediate: true })
+
 function submit() {
     const e = {}
     if (!reason.value) e.reason = [t('purchasing.pick_reason')]
@@ -42,6 +49,8 @@ function submit() {
     <Dialog :title="title" :subtitle="subtitle" @close="emit('close')">
         <form class="space-y-4" @submit.prevent="submit">
             <p v-if="message" class="text-sm" style="color:var(--muted)">{{ message }}</p>
+            <!-- Slice d: a stock entry's own fields (item, quantity, cost). -->
+            <slot />
             <fieldset class="space-y-2">
                 <legend class="label">{{ t('purchasing.reason') }}</legend>
                 <label v-for="r in reasons" :key="r" class="flex items-center gap-2 text-sm cursor-pointer" style="color:var(--body)">

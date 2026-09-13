@@ -21,9 +21,9 @@ cloud story actually looks like open. This handoff answers it with a backlog.
 the offline product and are not changing. Your job is the cloud counterpart.
 
 **Status of every item: `PROPOSED`**, except CB-00 (`DONE` 2026-09-11),
-CB-01 (`DRAFTED — awaiting owner`, see §4a) and CB-09 (`IN PROGRESS — slice c`
-2026-09-13). Nothing here authorises implementation. Each `CB-xx` needs an
-explicit owner go.
+CB-01 (`DRAFTED — awaiting owner`, see §4a) and CB-09 (`BUILT — slices a–e;
+on feature branches, not merged to main, not deployed`, 2026-09-13). Nothing
+here authorises implementation. Each `CB-xx` needs an explicit owner go.
 
 ---
 
@@ -192,7 +192,7 @@ a ruling; the web side is the dashboard's existing login.
 till-local on both. Decide whether a cloud restaurant sets it once on the
 platform (the restaurant profile already carries `tax_registration_number`).
 
-### CB-09: Purchasing, suppliers, units, stock on cloud · L · **`IN PROGRESS — slice c`**
+### CB-09: Purchasing, suppliers, units, stock on cloud · L · **`BUILT — slices a–e; on feature branches, not merged to main, not deployed`**
 
 > **Owner decisions 2026-09-12.** (1) On cloud the platform is the only author
 > of purchasing and receiving (D1). (2) `purchasing` is a **standalone** plan
@@ -208,15 +208,24 @@ platform (the restaurant profile already carries `tax_registration_number`).
 > orders, receiving at the till's moving-average cost, the per-branch stock
 > ledger and "received to date", and their pages) is committed as `bcb092c`
 > (design §14). Neither is deployed. **2026-09-13, the owner: "finish all
-> phases".** Slice c is built on the same branch: supplier invoices, supplier
+> phases".** Slice c, committed as `3c4181e`, is supplier invoices, supplier
 > payments allocated to invoices (never above an invoice's total, enforced
 > under a row lock and proved concurrently on PostgreSQL), derived supplier
-> balances and the supplier account page. It is uncommitted and not deployed
-> (design §15). **D11 is decided and built on the platform:** a part-received
-> order can be closed short to `received`, marked closed short with a reason,
-> and stock is never touched. The offline till's own short-close is a
-> separate `pos-dev` item. Slice d follows in a separate run. Slice e (the
-> till side) is with `pos-dev`. POS-BE-030 is not filed from here.
+> balances and the supplier account page (design §15). **D11 is decided and
+> built on the platform:** a part-received order can be closed short to
+> `received`, marked closed short with a reason, and stock is never touched.
+> **D12 is decided and built on the platform (slice d, design §16), the last
+> platform slice:** opening stock, waste, adjustments up and down, and stock
+> counts, per branch. Each is one immutable movement in the same ledger,
+> carrying a reason code, a note and the actor, and it is audited. Openings
+> and rises enter at moving-average cost; waste and falls leave at the
+> average and may go below zero, as on the till. A count posts counted minus
+> recorded under the level lock, and a movement never converts units or
+> touches an order. The Stock page is now headed "Recorded stock". Slice d is
+> uncommitted and not deployed. Returns to a supplier are an open owner
+> question. The offline till's own short-close and stock entries are separate
+> `pos-dev` items. Slice e (the till side) is `pos-dev`'s. POS-BE-030 is not
+> filed from here.
 >
 > **Designed 2026-09-12 (`xorder-cloud`), after the owner's "go CB-09".** The
 > go was taken as design only: the design comes back for review before

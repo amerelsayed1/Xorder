@@ -1,15 +1,17 @@
 # CB-09: Purchasing, suppliers, units and stock on cloud (design)
 
-**Status: `IN PROGRESS — slice c`.** Written 2026-09-12 by `xorder-cloud`,
-on the owner's "go CB-09", and reviewed by the owner the same day. Slice a is
-committed on branch `feat/cb-09-purchasing` as `dd9a530` (§13) and slice b as
-`bcb092c` (§14); neither is deployed. On 2026-09-13 the owner said **"finish
-all phases"**. That is the go for slice c and it **decides D11**: build
-short-close on the platform. Slice c, including short-close, is built on the
-same branch: uncommitted, not deployed, for the coordinator to verify and
-commit (§15). Slice d follows in a separate run. Slice e (the till side) is
-with `pos-dev` in xorder-pos, and the offline till's own short-close is a
-separate item of theirs.
+**Status: `BUILT — slices a–e; on feature branches, not merged to main, not
+deployed`.** Written 2026-09-12 by `xorder-cloud`, on the owner's "go CB-09",
+and reviewed by the owner the same day. On branch `feat/cb-09-purchasing` in
+xorder-new: slice a is committed as `dd9a530` (§13), slice b as `bcb092c` (§14)
+and slice c as `3c4181e` (§15). On 2026-09-13 the owner said **"finish all
+phases"**. That was the go for slices c and d, and it **decides D11** (build
+short-close on the platform, §15) and **D12** (build stock adjustments on the
+platform now, §16). Slice d, the last platform slice, is built on the same
+branch: uncommitted, not deployed, for the coordinator to verify and commit
+(§16). Slice e (the till side) is `pos-dev`'s, in xorder-pos; its state is as
+the coordinator reports it and was not checked from here. The offline till's
+own short-close and stock entries are separate items of theirs.
 
 ### Owner decisions, 2026-09-12
 
@@ -53,7 +55,7 @@ line numbers may drift. Nothing was run.
 | D9 | Valuation | **The till's moving average**, ported to PHP line for line, integers only | 2.3 |
 | D10 | Cross-row invariants | **A service with a row lock, plus portable constraints.** No DB triggers | 5 |
 | D11 | Short-closing a part delivery | **Decided (owner, 2026-09-13: "finish all phases"): build it on the platform.** A part-received order is closed short: it becomes `received`, marked closed short with a reason code, and the rest is recorded as not coming. Stock is never touched. The offline till's own short-close is a separate item | 10, 15 |
-| D12 | Stock adjustments, counts, waste and openings | **Held.** They'd put the platform ahead of the till (slice d) | 9 |
+| D12 | Stock adjustments, counts, waste and openings | **Decided (owner, 2026-09-13: "finish all phases"): build them on the platform now**, ahead of the till. Opening stock, waste, adjustments up and down, and counts, each one immutable movement with a reason code, costed with the till's `StockCosting`. Built in slice d | 9, 16 |
 | D13 | Paying a supplier "out of the drawer" on cloud | **Optional link to a synced till pay-out**, with the rules of the till's migration 33 | 4.10 |
 | D14 | Dashboard placement | **Two sidebar groups, Purchasing and Inventory.** Operational pages, not settings, and not under "Point of sale & money"; no `pos` gate on either (follows from D6) | 7 |
 
@@ -635,7 +637,7 @@ inside it (D6): a client with `purchasing` and no `pos` passes the whole stack.
 | c | POST | `supplier-payments/{payment}/void` | `{reason, note?}` |
 | c | GET | `suppliers/{supplier}/account`, `suppliers/balances` | invoiced, paid, outstanding, overdue, on account, all derived |
 | c | GET | `purchasing/drawer-payouts?branch_id=&amount_minor=` | candidates for the drawer link (built under this path, inside the purchasing gate, §15) |
-| d | POST | `stock-adjustments` | **held (D12)**: `{branch_id, stock_item_id, kind: opening\|adjustment\|waste, quantity_milli, unit_cost_minor?, reason, note?}` |
+| d | POST | `stock-adjustments` | **D12, built in slice d** (§16): `{branch_id, stock_item_id, kind: opening\|waste\|adjustment\|count, quantity_milli \| counted_milli, unit_cost_minor?, unit_code?, reason?, note?, occurred_at?}` |
 
 Every write goes through `AuditLogger::record()`: send, cancel, receive,
 close, void and pay. The models use `Auditable`. Tests (per slice) cover:
@@ -707,8 +709,9 @@ Each is approvable alone: **D1–D14** above. **Decided 2026-09-12:** item 1
 (D1, option A; D2 follows), item 2 (D6, amended: standalone, no `pos`) and
 item 3 (D7, a single `purchase.manage`), plus the build order a → b → c.
 **Decided 2026-09-13** ("finish all phases"): item 4 (D11, build short-close
-on the platform; built in slice c, §15). **Still open:** items 5–7. Several of
-these need a real choice rather than a nod:
+on the platform; built in slice c, §15) and item 5 (D12, build stock
+adjustments on the platform now; built in slice d, §16). **Still open:**
+items 6 and 7. Several of these needed a real choice rather than a nod:
 
 1. **D1/D2.** The platform is the only author on cloud. Cloud tills lose
    their Purchasing, Units and Stock panes. Rows already there stay hidden and
@@ -722,8 +725,9 @@ these need a real choice rather than a nod:
    platform, ahead of the till, and have `pos-dev` add it to the till too.
    *Or* leave part deliveries `partially_received` forever, as the till's
    code does today.
-5. **D12.** Stock adjustments, opening balances, waste and counts: wait for
-   the till's inventory wave, *or* design them once for both now.
+5. **D12. Decided 2026-09-13: build them now,** on the platform. Stock
+   adjustments, opening balances, waste and counts, designed once so the
+   till can copy the shape (§16). *Or* wait for the till's inventory wave.
 6. **Plan placement.** Which plans get `purchasing`. The landing card changes
    the moment an active plan carries it.
 7. **Deploy prerequisite.** Every slice assumes Cloud Wave 1 is live on
@@ -738,14 +742,15 @@ these need a real choice rather than a nod:
 | **a. Foundations: suppliers and units** *(built, §13)* | `Feature::PURCHASING` (standalone, no `pos`); `TenantCapability::PURCHASE_MANAGE` + group + labels; `units` + `UnitCatalog::ensureDefaults`; `suppliers`; the two nav groups (Suppliers and Units live); `purchase.manage` withheld from the bundle (D8) | M | **No** | Migrations are additive and reversible. The feature is false for every existing tenant (test). `purchase.manage` is absent from the owner's bundle (test). Cross-tenant 404/422. Units are seeded once, idempotently; `code` is immutable; no delete route. Supplier tax number is nine digits; code is unique when set, and many suppliers can have none. EN and AR plus RTL checked; `pnpm --filter web build` clean; `php artisan test` green |
 | **b. Stock items, POs, receiving, cost** *(built, §14)* | `stock_items`, `purchase_orders`, `_lines`, `purchase_sequences`, `stock_movements`, `stock_levels`; `PurchaseOrderService`, `ReceivingService`, `StockCosting` (PHP); the PO list, detail and receive modal; read-only Stock and movements pages | L | **No** | A `StockCosting` parity table matches the till's (including a negative on-hand, and the half-up edge like 0.333 kg at 47.30). Send snapshots totals, with tax rounded per rate. Cancel is refused once anything arrived, with the status re-checked under the lock. Over-receipt is accepted. The status follows the lines. Lines with no item touch no ledger. A movement's balance and average equal the level's. Movements can't be updated or deleted. The unit is locked once movements exist. Two receipts on one item are serialised (reviewed on PG). References are gap-free per restaurant per year |
 | **c. Supplier invoices and payments** *(built, with D11 short-close, §15)* | `supplier_invoices`, `supplier_payments`; `SupplierLedgerService`; void reasons; derived balances and overdue; optional drawer link (D13) | M–L | **No** | Over-allocation is refused with the room named. Paying a voided invoice or another supplier's invoice is refused. An invoice with live payments can't be voided. A voided number can be re-entered and a live duplicate can't. On-account payments reduce the balance and not overdue (a test mirroring `supplier_invoice.dart:421-470`). The drawer link is refused unless it's an unlinked `out` movement of equal amount. No balance column exists anywhere |
-| **d. Stock adjustments** *(held, D12)* | `opening`, `adjustment`, `waste` movements with reasons; the adjustment modal | M | No, but the till would want the same kinds, so it's better designed together | Issue movements keep the average (`StockCosting::issue`). Openings set the cost when nothing is on hand. Every change is a movement with a reason, never an edit to a level |
+| **d. Stock adjustments** *(built, D12, §16)* | `opening`, `adjustment`, `waste` movements with reasons; the adjustment modal | M | No, but the till would want the same kinds, so it's better designed together | Issue movements keep the average (`StockCosting::issue`). Openings set the cost when nothing is on hand. Every change is a movement with a reason, never an edit to a level |
 | **e. Till integration** | File **POS-BE-030** (§3.6); `pos-dev` hides Purchasing, Stock and Units on cloud by deployment mode | S | **Yes** (small) | On a cloud till with `purchase.manage` granted locally, none of the four panes or their Manage-menu entries appear (test). Offline is unchanged. Existing local rows are untouched |
 | *f. Later, not proposed* | Receiving at the till; read-only stock on the till; sales deduction via recipes (derived server-side from synced orders, §3.3); transfers; cost in reports and COGS | — | yes, for the till parts | — |
 
 **Approved order (owner, 2026-09-12): a → b → c**, built one slice at a time
 with an owner review between slices. **e** is not approved: POS-BE-030 is not
 filed and the till is not changed (the D8 filter, built in slice a, already
-protects old builds). **d** waits for D12.
+protects old builds). **d** was built after the owner's 2026-09-13 ruling
+on D12 (§16).
 
 ---
 
@@ -833,7 +838,9 @@ Found while reading. None of it is fixed here, because xorder-pos belongs to
 
 - Sales deduction and recipes (D4).
 - Transfers between branches.
-- Stock counts, waste, adjustments and openings (D12).
+- *(Stock counts, waste, adjustments and openings were here until D12 was
+  decided; built in slice d, §16.)* Returns to a supplier as a stock
+  movement: an open owner question (§16).
 - Receiving at the till (option C, slice f).
 - Any bundle block.
 - Supplier credit notes as documents (voiding with reason `credit_note`
@@ -1326,3 +1333,269 @@ browser**: that needs a dashboard login.
 - The branch-delete guard already counts `stock_movements`.
 - `PurchasingRefusal` (with `details`) and `ReasonDialog.vue` are ready for
   adjustment reasons. The Stock page is where the adjustment action goes.
+
+---
+
+## 16. Slice d as built (2026-09-13)
+
+Branch `feat/cb-09-purchasing` in xorder-new, on top of `3c4181e`.
+Uncommitted and not deployed; the coordinator verifies and commits. This is
+the last platform slice.
+
+### D12, decided: stock adjustments on the platform now
+
+The owner's **"finish all phases"** (2026-09-13) is the go for slice d, and
+it settles **D12: build stock adjustments on the platform now**, ahead of
+the till. The till reserves the movement kinds `opening`, `waste` and
+`adjustment` (MIG `:2643`) and the reason scopes `waste` and `adjustment`
+(`reason_code.dart`, migration 31's CHECK), but writes none of them and
+seeds no reasons for either scope. On cloud the platform is the only author
+(D1), so nothing crosses the wire. When `pos-dev` builds the offline
+version, the shape below (kinds, reason codes, the count posted as a
+difference, one opening per branch) is the one to copy.
+
+### Built (API)
+
+- **No migration.** `stock_movements` already had `kind`, a signed
+  `quantity_milli`, `reason`, `note`, `occurred_at` and `created_by` (slice b,
+  §4.7). No table or column changes, so there is nothing to roll back.
+- `App\Enums\StockAdjustmentReason`: a fixed list, as in slice c. Reason
+  lists a business can edit stay out of scope.
+- `StoreStockAdjustmentRequest`, `StockAdjustmentService` (every write) and
+  `StockAdjustmentController`. The route `POST stock-adjustments` sits inside
+  the slice-a group: `role:` + `feature:purchasing` + `can:purchase.manage`,
+  plus `subscription.writable`. There is no `pos` anywhere in it.
+- `StockMovement::ledgerRow()`. The movements read gains `reason` and
+  `stock_item_id`. `stock-levels` gains `quantity_milli`, and
+  `received_milli` stays as the same number under its slice-b name. Every
+  existing key is unchanged.
+- Server strings in EN and AR: `xorder.purchasing.*` (the refusals) and
+  `xorder.validation.adjustment_*`.
+
+**The four entries.** Each is one new movement in the append-only ledger.
+The ledger never updates or deletes a movement: a correction is another
+movement (reason `entry_error`).
+
+| Request `kind` | Stored `kind` | Quantity | Cost it moves at | Reasons |
+|---|---|---|---|---|
+| `opening` | `opening` | `quantity_milli` > 0 | the typed `unit_cost_minor` (required), through `StockCosting::receive`, exactly like a receipt | `opening_balance` (implied) |
+| `waste` | `waste` | `quantity_milli` > 0, stored negative | the average held, through `StockCosting::issue` | `expired`, `spoiled`, `damaged`, `preparation_error`, `other` |
+| `adjustment` | `adjustment` | `quantity_milli` signed, never 0 | going up: the typed cost, or the average when none is typed (`receive`). Going down: the average (`issue`); a typed cost is refused | `entry_error` (either way), `found` (up only), `missing` and `internal_use` (down only), `other` (either way) |
+| `count` | `adjustment` | `counted_milli` ≥ 0. The movement is **counted − recorded**, read under the lock | as `adjustment`, by the difference's sign | `stock_count` (implied) |
+
+`other` needs a note. Every movement carries the reason code, the optional
+note and the actor (`created_by`), and every write is audited
+(`stock_movement.opening`, `.waste`, `.adjustment`, `.count`). The audit
+properties are the reason, note, quantity, counted quantity, unit, cost, the
+value that moved (for an issue this is the till's `costOfGoods`: the
+average before it) and the position before and after.
+
+**Refusals** (stable codes through `PurchasingRefusal`; everything is
+checked in the service, inside the transaction):
+
+| Code | When |
+|---|---|
+| `ADJUSTMENT_UNIT_DIFFERS` 409 | the `unit_code` the page showed is not the item's unit now: a stale page never books 2.5 g as 2.5 kg |
+| `STOCK_HELD_IN_ANOTHER_UNIT` 409 | the branch holds a non-zero quantity in another unit. **A movement never converts units** |
+| `FRACTION_NOT_ALLOWED` 422 | a fraction (or a fractional count) on a unit counted whole |
+| `OPENING_ALREADY_RECORDED` 409 | a second opening for the same branch and item; correct it with an adjustment |
+| `UNIT_COST_REQUIRED` 422 | stock coming in with no cost typed where the branch has no history for the item, so there is no average to use |
+| `COUNT_MATCHES` 422 | a count equal to the record. A movement is never 0 (§4.7), so nothing is written |
+| `REASON_NEEDS_INCREASE` / `_DECREASE` 422 | `found` taking stock off; `missing` or `internal_use` adding it |
+| field 422s | a reason not offered for the kind, `other` with no note, a cost on an issue, a zero or negative where a positive is required, another business's branch or item (body ids are 422; URL ids stay 404) |
+
+**Negative stock follows the till's semantics exactly** (`stock_costing.dart`):
+- Waste, an adjustment down or a count down may take the recorded quantity
+  **below zero**. The till's `issue` allows it (*"refusing the sale to protect
+  the number would be the wrong way round"*), and so does the platform. The
+  dialog warns, but nothing is refused.
+- An issue **never moves the average**, including on the way below zero.
+- The next arrival onto zero or a negative (a receipt, an opening, an
+  adjustment up or a count up) **takes its own cost**, not averaged against the
+  debt, and the quantity settles the debt.
+- A negative position **is valued negative** (quantity × average), on the
+  page and in the total, never clamped at zero.
+- A count cannot be negative.
+
+**Purchase orders are never touched.** An entry carries no order or line id
+and changes no order, line or status, so a closed-short order stays closed
+(a test snapshots every order and line around one entry of each kind).
+Short-close still never touches stock (§15).
+
+**The lock** is `ReceivingService`'s, for one item: a shared lock on the
+stock item (so a unit change waits), `insertOrIgnore` of the level row, then
+`lockForUpdate` on it, and the movement, the level and the audit entry in
+one transaction. Receipts and entries therefore serialise on the same
+`(branch, item)` row. **By hand, on PostgreSQL 16** (a disposable container
+on localhost, removed afterwards; the scripts were kept outside the
+repository):
+- 10 kg at 40.00 was recorded. A process received 5 kg at 50.00 inside a
+  transaction and held it open for 2 s. Half a second in, a second process
+  posted a count of 12 kg. The count **waited 2.06 s on the level row**, then
+  read the committed 15 kg and posted **−3 kg** (balance 12 kg, average 43.33).
+  Without the lock it would have read 10 kg and posted +2 kg, and the level
+  would have lost the delivery.
+- Eight processes were then released at the same instant: four receipts of
+  1 kg at 50.00 and four wastes of 0.5 kg. All eight committed, one after
+  another. The balance chain (each balance = previous + quantity) is
+  unbroken across all 11 movements, `StockLedger::replay` finds **no
+  drift**, and the level equals the fold (14 kg at 45.25).
+- On SQLite (the suite) the rule is proved under a stale read: a count posted
+  after a receipt that the page never saw takes its difference from the new
+  figure.
+
+### The Stock page's label: "Recorded stock"
+
+Slice b headed the figure **Received to date**. Once waste and adjustments
+can lower it, that is false, and it is still not **on hand** because tills
+don't deduct sales (D4). It is now **Recorded stock** / **المخزون المسجّل**
+(page heading, nav leaf, the column "Recorded" / "المسجّل", and "Recorded
+after" in the ledger). The note under the heading still says, in both
+languages, that sales are not deducted, so this is the recorded figure and
+not what is on the shelf, and that a stock count brings it back in line.
+*Why not the brief's "Stock (receipts and adjustments; sales are not
+deducted)":* that label is a sentence, it would be repeated in a table
+header and a nav leaf, and "Recorded" says the same thing in one word. The
+qualification stays in the note, where it can be a full sentence. The owner
+may prefer the longer form; it is one string in each language.
+
+### Built (web)
+
+- `inventory/StockAdjustDialog.vue`, built on `ReasonDialog.vue` (which
+  gains a default slot for an entry's own fields, and drops a reason no
+  longer offered when the kind changes). The kinds are Waste, Add, Take off
+  and Count, with opening stock as its own entry. The dialog has branch and
+  item pickers and shows the recorded position and average at that branch,
+  read fresh. It takes the quantity (or the counted quantity) and a cost
+  where one applies: required for an opening, and otherwise defaulting to
+  the average, which is shown. An integer preview shows the count's
+  difference, the value leaving at the average, the position after, and a
+  warning below zero. It always sends the unit it showed.
+- `inventory/StockView.vue`: **Opening stock** and **Adjust stock** buttons,
+  an Adjust action per row, the new label, negative figures in red, and an
+  opening-stock call to action in the empty state. The buttons show only to
+  someone who holds `purchase.manage` on a subscription that allows writes.
+- `inventory/StockMovementsView.vue`: each entry shows its reason and note
+  under its kind.
+- Every string is in EN and AR (`purchasing.adj_*`, `purchasing.stock_reasons.*`,
+  and the relabelled `stock_*` and `nav.stock`), in neutral wording. Numbers
+  sit in `.mono dir="ltr"` spans, and there are no floats: quantities go
+  through `lib/quantity.js` and money through `lib/money.js`. It has loading
+  (the position read), error (field errors, plus a refusal about the
+  position said in the dialog) and empty states. The page was built and its
+  keys checked (every key used exists in EN and AR) but **not clicked
+  through in a browser**, which needs a dashboard login.
+
+### Tests
+
+`tests/Unit/StockAdjustmentParityTest.php` (6) and
+`tests/Feature/StockAdjustmentsTest.php` (13): 19 new; **936 of 936** pass.
+The feature tests cover:
+- the gate stack: feature off → 403 even for the owner; no capability → 403;
+  `purchase.manage` alone works on a client with no `pos`; lapsed →
+  `subscription_inactive`, with reads still allowed;
+- cross-tenant: body ids → 422, the other business's ledger → 404, and a
+  `restaurant_id` in the body is ignored;
+- each kind and its rules, and negative stock;
+- a mixed history valued and replayed;
+- no unit conversion;
+- orders untouched, including a closed-short one;
+- a count against a receipt the page never saw.
+
+**Parity vectors**, all the till's own (`test/domain/stock_costing_test.dart`),
+read as the slice-d kind each one stands for:
+- **Opening in:**
+  - "nothing on hand takes the arriving price" (10 kg at 47.30);
+  - "the textbook case" as an opening after a receipt (10 at 40.00 + 10 at
+    50.00 → 45.00);
+  - "a fractional delivery" as an opening then a receipt (7.5 kg at 44.00 +
+    12.5 at 47.30 → 46.06).
+- **Waste out:**
+  - "does not move the cost" (10 kg at 45.00, 3 out → 7 kg at 45.00);
+  - COGS 135.00;
+  - a fractional write-off 0.333 × 33.33 = 11.10;
+  - "issuing nothing changes nothing".
+- **Negative:**
+  - "is allowed to go negative" (1 kg − 3 kg → −2 kg);
+  - "negative stock is worth a negative" (−90.00);
+  - "negative on hand takes it too, and the debt settles" (→ 8 kg at 47.30).
+- **The write-off's cost is not moved by a later arrival:** 135.00, the
+  till's "and not the average after a later delivery moved it".
+- **Valuation after a mix, composed** from the till's vectors: opening 7.5 kg
+  at 44.00, received 12.5 kg at 47.30 (46.06), waste 3 kg → 17 kg worth
+  783.02, and a count finding 16 kg → 736.96. This also runs through the
+  whole HTTP stack, and the ledger replays clean.
+- **Derived by hand** from `stock_costing.dart` and labelled so: an
+  adjustment up at the average keeps 40.00; 1 kg at 52.00 into 11.5 kg at
+  40.00 → 40.96; the post-issue receipt of 10 kg at 90.00 → 71.47.
+
+### Departures from the design, with reasons
+
+1. **Counts are built** (the D12 row names counts; §9's slice-d contents
+   didn't). A count is posted as the counted quantity, and the server takes
+   the difference under the lock, because a difference computed by the page
+   races every receipt. It is stored as kind `adjustment` with reason
+   `stock_count`: the till has no `count` kind, and a new kind would be a
+   wire hazard the day stock ever syncs. So the request's `kind` accepts
+   `count`, and its body has `counted_milli`, beyond §6's shape.
+2. **`unit_code` in the body** (optional; the dashboard always sends it), so
+   a page opened before a unit change is refused rather than booked in the
+   new unit.
+3. **One opening per branch and item.** The design was silent. An opening is
+   the first line of a branch's story; a second one would be an adjustment
+   with the wrong name.
+4. **An arrival with no cost typed enters at the average held.** A cost is
+   required only for an opening, or where the branch has no history for the
+   item (nothing to average). A found kilo is not repriced by a guess.
+5. **The reason lists are the platform's own**, because the till seeds no
+   rows for its `waste` and `adjustment` scopes. `found`, `missing` and
+   `internal_use` carry a direction.
+6. **A count equal to the record is refused** (`COUNT_MATCHES`), not
+   written, because a movement is never 0 (§4.7).
+7. **Retired items and branches can still be adjusted.** Writing off what a
+   retired item still holds is exactly when it is needed. The dialog offers a
+   retired item only when opened from its row.
+8. **No migration and no `StockService`**, as in slice b: the service writes
+   the movement and the level, and `StockLedger::replay` checks the fold,
+   now for every kind.
+9. **The label changed** to "Recorded stock" (above), and `stock-levels`
+   gained `quantity_milli`.
+10. `occurred_at` may be backdated, as for a receipt, but the ledger folds in
+    id order, so a backdated entry records when, not where, it sits.
+
+**A known limit, the count cut-off:** the difference is taken against the
+record at the moment the count is posted. Goods received after shelves were
+counted but booked before the count is posted would be counted out again. So
+post a count as soon as it is taken, or book the delivery after it. A count
+sheet with its own cut-off time is future work.
+
+### Open questions for the owner
+
+- **Returns to a supplier: does a return take stock out?** Not built: the
+  design's slice d doesn't include it. *Recommendation: yes.* A return
+  should be its own movement, issued at the moving average like waste (so
+  the fold rule stays one rule), and linked to the purchase order and
+  supplier. The difference between the price paid and the average then shows
+  in the audit rather than repricing stock. The money side stays as it is
+  (void the invoice with `goods_returned`, or a credit note later). It needs
+  a kind agreed with `pos-dev` (the till's seven have none) before either
+  side writes it. Until then a business can record a return as an
+  adjustment down with reason `other` and a note.
+- **The label.** "Recorded stock" (recommended, built) or the longer "Stock
+  (receipts and adjustments; sales are not deducted)".
+- Still open from §8: plan placement (item 6) and the deploy prerequisite
+  (item 7).
+
+### Deliberately not in slice d
+
+- Returns to a supplier (open, above); transfers between branches; sales
+  deduction (D4).
+- Reason lists a business can edit; a count sheet for many items at once
+  with a cut-off time.
+- A cross-item list or report of adjustments (the per-item ledger and the
+  audit trail carry them); `stock:verify` as an artisan command (`replay`
+  exists).
+- Editing or voiding an entry: a wrong entry is corrected by another.
+- Clicking through the pages in a browser (needs a dashboard login).
+- The offline till's stock entries, POS-BE-030 and any till change
+  (`pos-dev`).
