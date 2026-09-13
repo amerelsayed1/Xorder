@@ -191,6 +191,24 @@ class Category {
   );
 }
 
+/// Why an item or a category cannot be saved.
+///
+/// **A code, not a sentence**, for the same reason as `OptionGroupProblem`:
+/// these travelled as English inside `CatalogInvalid`, and the back office is
+/// used in Arabic. Enum-keyed so the switch that words them
+/// (`AdminText.catalogProblem`) is exhaustive — a reason added here without
+/// both languages fails to compile.
+enum CatalogProblem {
+  /// The English name is blank. It is the one the kitchen ticket prints.
+  itemNameMissing,
+
+  /// The offer price is above the normal price. The database checks both are
+  /// non-negative and cannot see this; the editor refuses it instead.
+  offerAbovePrice,
+
+  categoryNameMissing,
+}
+
 /// A modifier group — the server's `option_group`.
 class ModifierGroup {
   const ModifierGroup({

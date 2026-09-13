@@ -92,7 +92,7 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
 
     if (category.nameEn.trim().isEmpty) {
       return const AdminResult.refused(
-        CatalogInvalid('A category needs a name.'),
+        CatalogRefused(CatalogProblem.categoryNameMissing),
       );
     }
 
@@ -373,7 +373,9 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
     if (blocked != null) return AdminResult.refused(blocked);
 
     if (product.nameEn.trim().isEmpty) {
-      return const AdminResult.refused(CatalogInvalid('An item needs a name.'));
+      return const AdminResult.refused(
+        CatalogRefused(CatalogProblem.itemNameMissing),
+      );
     }
     // The database checks both prices are non-negative. It does NOT check that
     // a discount is below the full price — nothing stops `discounted > price`
@@ -381,7 +383,7 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
     final discounted = product.discountedPrice;
     if (discounted != null && discounted.minor > product.price.minor) {
       return const AdminResult.refused(
-        CatalogInvalid('The offer price is higher than the normal price.'),
+        CatalogRefused(CatalogProblem.offerAbovePrice),
       );
     }
 

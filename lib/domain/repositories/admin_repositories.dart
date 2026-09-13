@@ -163,13 +163,25 @@ class EditedElsewhere extends AdminRefusal {
 /// own credential holds SELECT and nothing more, deliberately.
 /// The values do not make sense, in a way the database cannot see.
 ///
-/// `price_minor >= 0` is a CHECK constraint; "the offer price is above the
-/// normal price" is not, and could not usefully be — so it is refused here,
-/// carrying the sentence to show rather than a code to look up.
+/// Carries the sentence to show rather than a code to look up — which is why
+/// items, categories and option groups no longer use it: see
+/// [CatalogRefused] and [OptionGroupRefused].
 class CatalogInvalid extends AdminRefusal {
   const CatalogInvalid(this.reason);
 
   final String reason;
+}
+
+/// An item or a category broke one of the rules the editor checks before the
+/// database is asked — [CatalogProblem] says which.
+///
+/// `price_minor >= 0` is a CHECK constraint; "the offer price is above the
+/// normal price" is not, and could not usefully be — so it is refused here,
+/// as a code the screen words in its own language.
+class CatalogRefused extends AdminRefusal {
+  const CatalogRefused(this.problem);
+
+  final CatalogProblem problem;
 }
 
 /// A size or extra, or an item's list of them, broke one of the option-group

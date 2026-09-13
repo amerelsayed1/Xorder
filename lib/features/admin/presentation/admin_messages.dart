@@ -1,6 +1,7 @@
 import '../../../core/l10n/app_strings.dart';
 import '../../../core/money/quantity.dart';
 import '../../../domain/models/backup.dart';
+import '../../../domain/models/catalog.dart';
 import '../../../domain/models/option_group.dart';
 import '../../../domain/models/purchase_order.dart';
 import '../../../domain/models/supplier_invoice.dart';
@@ -288,6 +289,7 @@ abstract final class AdminText {
         // The reason comes from the catalogue importer, which speaks for
         // itself; there is nothing here to translate it into.
         CatalogInvalid(:final reason) => reason,
+        CatalogRefused(:final problem) => catalogProblem(s, problem),
         OptionGroupRefused(:final problem, :final names) => optionGroupProblem(
           s,
           problem,
@@ -305,6 +307,15 @@ abstract final class AdminText {
             unit(s, held.unit),
             unit(s, asked),
           ),
+      };
+
+  /// Why an item or a category could not be saved. Keyed by the enum, like
+  /// [optionGroupProblem], so a new reason cannot reach the screen unworded.
+  static String catalogProblem(AppStrings s, CatalogProblem problem) =>
+      switch (problem) {
+        CatalogProblem.itemNameMissing => s.refusalItemNameMissing,
+        CatalogProblem.offerAbovePrice => s.refusalOfferAbovePrice,
+        CatalogProblem.categoryNameMissing => s.refusalCategoryNameMissing,
       };
 
   /// Why a size or extra could not be saved.

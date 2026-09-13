@@ -1438,6 +1438,11 @@ sealed class AppStrings {
   String get refusalGroupForeignOption;
   String get refusalGroupForeignCategory;
 
+  // Why an item or a category was refused. See `CatalogProblem`.
+  String get refusalItemNameMissing;
+  String get refusalOfferAbovePrice;
+  String get refusalCategoryNameMissing;
+
   // ── Reasons ───────────────────────────────────────────────────────────────
   // The chrome around the reason picker. The reasons THEMSELVES are rows in
   // `pos_reason_codes` and are named by the restaurant in both languages —
@@ -5400,6 +5405,14 @@ final class EnStrings extends AppStrings {
   @override
   String get refusalGroupForeignCategory =>
       'One of those categories is not on this menu.';
+
+  @override
+  String get refusalItemNameMissing => 'An item needs a name.';
+  @override
+  String get refusalOfferAbovePrice =>
+      'The offer price is higher than the normal price.';
+  @override
+  String get refusalCategoryNameMissing => 'A category needs a name.';
 }
 
 /// Arabic.
@@ -8847,6 +8860,13 @@ final class ArStrings extends AppStrings {
   @override
   String get refusalGroupForeignCategory =>
       'أحد هذه التصنيفات ليس في هذا المنيو.';
+
+  @override
+  String get refusalItemNameMissing => 'الصنف يحتاج إلى اسم.';
+  @override
+  String get refusalOfferAbovePrice => 'سعر العرض أعلى من السعر العادي.';
+  @override
+  String get refusalCategoryNameMissing => 'التصنيف يحتاج إلى اسم.';
 }
 
 /// Makes [AppStrings] reachable from a [BuildContext], and tells Flutter which
