@@ -134,7 +134,14 @@ void main() {
             ))
               pane,
         },
-        {ManagementPane.menu, ManagementPane.floor, ...platformAuthored},
+        // Extras with the menu: sizes and extras are part of the catalogue
+        // the platform authors, and the seeder rewrites them on a cloud till.
+        {
+          ManagementPane.menu,
+          ManagementPane.floor,
+          ManagementPane.extras,
+          ...platformAuthored,
+        },
       );
       for (final staff in buyers) {
         expect(
