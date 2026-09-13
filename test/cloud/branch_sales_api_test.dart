@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:xorder_pos/core/money/money.dart';
 import 'package:xorder_pos/data/cloud/branch_sales_api.dart';
 import 'package:xorder_pos/domain/models/branch_sales_source.dart';
+import 'package:xorder_pos/domain/models/tender_method.dart';
 
 /// POS-BE-029's client and the per-till branch view it feeds (§3a, C4).
 ///
@@ -51,7 +52,7 @@ void main() {
           'payments': [
             method('cash', 30000, cash: true, id: 1),
             method('card', 20000, id: 2),
-            method('account', 12345, id: 4),
+            method('other', 12345, id: 4),
           ],
           'last_received_at': '2026-09-10T20:00:00Z',
         },
@@ -63,7 +64,7 @@ void main() {
           'discount_minor': 1000,
           'refund_minor': 7000,
           'refund_count': 1,
-          'payments': [method('wallet', 30000, id: 3)],
+          'payments': [method('external', 30000, id: 3)],
         },
         {
           'terminal_id': 'pos-03',
@@ -131,11 +132,70 @@ void main() {
     ]);
     expect(sales.gross, const Money(98345));
     expect(sales.net, const Money(85345));
-    // Rule 3 over the wire: on account is its own figure, never takings.
-    expect(sales.onAccount, const Money(12345));
-    expect(sales.collected, const Money(80000));
+    // The platform's kinds are cash | card | external | other (POS-BE-013).
+    // It has no `account`, so nothing on this screen is owed rather than
+    // collected — and `other` is takings, beside vouchers.
+    expect(sales.onAccount, Money.zero);
+    expect(sales.otherTender, const Money(12345));
+    expect(sales.electronic, const Money(50000));
+    expect(sales.collected, const Money(92345));
     expect(sales.terminal('pos-02')!.refunds, const Money(7000));
     expect(reading.totalsMismatch, isFalse);
+  });
+
+  group("the platform's kinds, read the way the till seeds them", () {
+    Map<String, Object?> paidWith(List<Map<String, Object?>> payments) => {
+      'data': {
+        'branch_id': branch,
+        'business_day': '2026-09-10',
+        'currency': 'EGP',
+        'exponent': 2,
+        'terminals': [
+          {
+            'terminal_id': 'pos-01',
+            'orders': 1,
+            'gross_minor': 10000,
+            'discount_minor': 0,
+            'refund_minor': 0,
+            'refund_count': 0,
+            'payments': payments,
+          },
+        ],
+      },
+    };
+
+    test('external is electronic — what the bank terminal slip is held against', () async {
+      // The till files a platform `external` tender as card
+      // (`PlatformTenderKind.tillKind`). Reading the same payment back as
+      // other would leave this screen's electronic figure short of the slip
+      // by every one of them.
+      platform.answer(200, paidWith([method('external', 10000, id: 7)]));
+      final sales = (await source().summary(day)).sales!;
+
+      expect(sales.terminal('pos-01')!.payments.single.kind, TenderKind.card);
+      expect(sales.electronic, const Money(10000));
+      expect(sales.otherTender, Money.zero);
+    });
+
+    test('a kind this build has never heard of is other, and cash only by its flag', () async {
+      platform.answer(
+        200,
+        paidWith([
+          method('crypto', 6000, id: 8),
+          method('barter', 4000, cash: true, id: 9),
+        ]),
+      );
+      final sales = (await source().summary(day)).sales!;
+
+      expect(
+        sales.terminal('pos-01')!.payments.map((m) => m.kind),
+        everyElement(TenderKind.other),
+      );
+      expect(sales.otherTender, const Money(6000));
+      // Rule 3: cash is the payment's flag, whatever the kind says.
+      expect(sales.cash, const Money(4000));
+      expect(sales.electronic, Money.zero);
+    });
   });
 
   test('when it cannot refresh, it shows the last snapshot WITH its fetch time', () async {

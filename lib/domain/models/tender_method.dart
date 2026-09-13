@@ -211,11 +211,15 @@ class TenderMethod {
 
   /// Whether a tender of this **seeded** type puts money in the drawer.
   ///
-  /// Only correct for a till still on the seeded list, which is why nothing at
-  /// cash-up time uses it any more: a settled payment carries its own
-  /// `counts_as_cash`, snapshotted when the money moved. This remains for the
-  /// one caller that has no payment row to read — pricing a tender before it is
-  /// taken — and falls back to **false** for a type it does not know.
+  /// Only correct for a till still on the seeded list, which is why nothing
+  /// asks it about money moved today: a tender carries its own
+  /// `counts_as_cash`, snapshotted when the money moved. It remains only as the
+  /// fallback for records written before that snapshot existed — payment rows
+  /// from before the column (`ShiftTenderTotal.countsAsCash`) and tickets
+  /// parked before the key (`ParkedTicketCodec`) — and falls back to **false**
+  /// for a type it does not know, which includes every platform tender above
+  /// [seededIdCeiling]. A new caller that has a snapshot to read should read
+  /// it instead.
   static bool isCash(int? typeId) =>
       typeId != null && (byId(typeId)?.countsAsCash ?? false);
 

@@ -21,6 +21,18 @@ import '../models/tender_method.dart';
 import '../models/ticket.dart';
 import 'eta_receipt.dart';
 
+/// Whether this build files e-receipts at all. **Off, for now.**
+///
+/// Decided 13 September 2026: the restaurants this is being sold to do not
+/// need e-invoicing yet. Everything built for it stays built — the queue, the
+/// document, the pane — but nothing is queued, the reconciler never runs, and
+/// the screens that only matter to a filer are not shown. One switch rather
+/// than a deletion, because the mandate has not gone away and the seal and the
+/// submission client are the only pieces still missing.
+///
+/// A build turns it back on with `--dart-define=XORDER_ETA_FILING=true`.
+const etaFilingEnabled = bool.fromEnvironment('XORDER_ETA_FILING');
+
 /// Why a sale was not queued.
 sealed class EtaFilingSkipped {
   const EtaFilingSkipped();
@@ -137,9 +149,16 @@ abstract final class EtaFiling {
   ///
   /// A card and a wallet are both `V` — the authority's list distinguishes
   /// cash from everything electronic and does not care which app it was.
+  ///
+  /// Cash is the tender's own [Tender.countsAsCash], snapshotted when the
+  /// money was taken — the flag the reconciler files from on the payment row,
+  /// so a sale filed now and one caught up later say the same thing. Not
+  /// [TenderMethod.isCash], which asks whether the id is the seeded Cash: a
+  /// cloud till's cash is a platform row above [TenderMethod.seededIdCeiling],
+  /// and every cloud cash sale would have filed as `V`.
   static String paymentMethodFor(Iterable<Tender> tenders) =>
       paymentMethodFromCash([
-        for (final tender in tenders) TenderMethod.isCash(tender.typeId),
+        for (final tender in tenders) tender.countsAsCash,
       ]);
 
   /// The same answer from whether each tender counted as cash.
@@ -190,8 +209,9 @@ abstract final class EtaFiling {
         discount: totals.discount,
         total: totals.total,
         taxLines: totals.taxLines,
+        // The same flag as [paymentMethodFor], and for the same reason.
         cashTenders: [
-          for (final tender in ticket.tenders) TenderMethod.isCash(tender.typeId),
+          for (final tender in ticket.tenders) tender.countsAsCash,
         ],
       ),
       profile: profile,

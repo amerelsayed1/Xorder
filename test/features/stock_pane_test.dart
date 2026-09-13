@@ -26,6 +26,7 @@ void main() {
           theme: buildPosTheme(PosPalette.light),
           home: ManagementScreen(
             onClose: () {},
+            onReconfigure: () {},
             initialPane: ManagementPane.stock,
           ),
         ),
@@ -47,11 +48,9 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('it lives in Inventory, beside the units', (tester) async {
-    await open(tester);
-    expect(find.text('Management › Inventory'), findsOneWidget);
-    expect(find.byKey(const Key('management-tab-stock')), findsOneWidget);
-    expect(find.byKey(const Key('management-tab-units')), findsOneWidget);
+  test('it lives in Inventory, beside the units', () {
+    expect(areaOf(ManagementPane.stock), ManagementArea.inventory);
+    expect(areaOf(ManagementPane.units), ManagementArea.inventory);
   });
 
   testWidgets('each item on hand in its unit, and the whole worth', (

@@ -49,6 +49,7 @@ void main() {
   late PgFixture pg;
   late PosDatabase db;
   late int restaurantId;
+  late int branchId;
   late int categoryId;
   late PostgresCatalogAdminRepository menu;
   late PostgresStockItemsRepository stock;
@@ -72,7 +73,7 @@ void main() {
               parameters: {'slug': slug},
             )).first[0]!
             as int;
-    final branchId =
+    branchId =
         (await db.query(
               pg.config,
               "INSERT INTO pos_branches (restaurant_id, code, name) "
@@ -217,6 +218,138 @@ void main() {
       by: owner,
     );
     expect(clash.refusal, isA<CatalogInvalid>());
+  });
+
+  group('the unit, once stock is held in it', () {
+    // 10 kilos relabelled as boxes is 10 boxes nobody bought. There is no
+    // conversion, so while stock is held the unit it is held in is the unit.
+    Future<void> hold(int productId, int milli, QuantityUnit unit) => db.query(
+      pg.config,
+      'INSERT INTO pos_stock_levels (restaurant_id, branch_id, product_id, '
+      '  quantity_milli, unit, average_cost_minor) '
+      'VALUES (@r, @b, @p, @q, @u, 4000)',
+      parameters: {
+        'r': restaurantId,
+        'b': branchId,
+        'p': productId,
+        'q': milli,
+        'u': unit.wire,
+      },
+    );
+
+    Future<StockItem> chicken() async => (await stock.save(
+      const StockItem(id: 0, nameEn: 'Chicken', unit: QuantityUnit.kilogram),
+      by: owner,
+    )).value!;
+
+    test('an item holding stock keeps its unit', () async {
+      final item = await chicken();
+      await hold(item.id, 10000, QuantityUnit.kilogram);
+
+      final result = await stock.save(
+        StockItem(id: item.id, nameEn: 'Chicken', unit: QuantityUnit.box),
+        by: owner,
+      );
+      expect(
+        result.refusal,
+        isA<StockHeldInAnotherUnit>()
+            .having((r) => r.item, 'item', 'Chicken')
+            .having((r) => r.held.milli, 'held', 10000)
+            .having((r) => r.held.unit, 'held in', QuantityUnit.kilogram)
+            .having((r) => r.asked, 'asked', QuantityUnit.box),
+      );
+      expect((await stock.all()).single.unit, QuantityUnit.kilogram);
+    });
+
+    test('and renaming it is still allowed', () async {
+      final item = await chicken();
+      await hold(item.id, 10000, QuantityUnit.kilogram);
+
+      final result = await stock.save(
+        StockItem(
+          id: item.id,
+          nameEn: 'Chicken breast',
+          unit: QuantityUnit.kilogram,
+        ),
+        by: owner,
+      );
+      expect(result.succeeded, isTrue, reason: '${result.refusal}');
+    });
+
+    test('from the menu side too', () async {
+      // The Menu pane writes `stock_unit` as well — a second door to the same
+      // mistake.
+      final water = (await menu.saveProduct(
+        Product(
+          id: 0,
+          categoryId: categoryId,
+          nameEn: 'Bottled water',
+          price: const Money(1000),
+          isStocked: true,
+          stockUnit: QuantityUnit.each,
+        ),
+        by: owner,
+      )).value!;
+      await hold(water.id, 24000, QuantityUnit.each);
+
+      final fromStock = await stock.save(
+        StockItem(
+          id: water.id,
+          nameEn: 'Bottled water',
+          unit: QuantityUnit.pack,
+          onMenu: true,
+        ),
+        by: owner,
+      );
+      expect(fromStock.refusal, isA<StockHeldInAnotherUnit>());
+
+      final fromMenu = await menu.saveProduct(
+        water.copyWith(stockUnit: QuantityUnit.pack),
+        by: owner,
+      );
+      expect(fromMenu.refusal, isA<StockHeldInAnotherUnit>());
+
+      // A price change on the same item is not a unit change, and passes.
+      final repriced = await menu.saveProduct(
+        water.copyWith(price: const Money(1200)),
+        by: owner,
+      );
+      expect(repriced.succeeded, isTrue, reason: '${repriced.refusal}');
+      expect((await stock.all()).single.unit, QuantityUnit.each);
+    });
+
+    test('once none is held, it can change', () async {
+      final item = await chicken();
+      await hold(item.id, 0, QuantityUnit.kilogram);
+
+      final result = await stock.save(
+        StockItem(id: item.id, nameEn: 'Chicken', unit: QuantityUnit.box),
+        by: owner,
+      );
+      expect(result.succeeded, isTrue, reason: '${result.refusal}');
+      expect((await stock.all()).single.unit, QuantityUnit.box);
+    });
+
+    test('the database refuses it round the repository', () async {
+      final item = await chicken();
+      await hold(item.id, 10000, QuantityUnit.kilogram);
+
+      await expectLater(
+        db.query(
+          pg.config,
+          "UPDATE pos_products SET stock_unit = 'box' WHERE id = @id",
+          parameters: {'id': item.id},
+        ),
+        throwsA(
+          isA<PosDbException>().having(
+            (e) => '${e.raw}',
+            'message',
+            contains('unit cannot change'),
+          ),
+        ),
+      );
+      expect((await stock.all()).single.unit, QuantityUnit.kilogram);
+    });
   });
 
   test('every save is on the audit trail', () async {

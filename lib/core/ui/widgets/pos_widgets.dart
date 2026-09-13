@@ -548,7 +548,6 @@ class UsernameField extends StatelessWidget {
         cursorColor: context.pos.accent,
         decoration: shellInputDecoration(
           context.pos,
-          hintText: 'rana',
           hintStyle: PosText.mono(size: 16, color: context.pos.shellMuted),
         ),
       ),

@@ -205,7 +205,12 @@ void main() {
     test('cash is C', () {
       final sale = ticket(
         tenders: const [
-          Tender(typeId: 1, label: 'Cash', amount: Money(5130)),
+          Tender(
+            typeId: 1,
+            label: 'Cash',
+            amount: Money(5130),
+            countsAsCash: true,
+          ),
         ],
       );
       expect(input(sale)!.paymentMethod, 'C');
@@ -232,7 +237,12 @@ void main() {
     test('a split between the two is M', () {
       final sale = ticket(
         tenders: const [
-          Tender(typeId: 1, label: 'Cash', amount: Money(3000)),
+          Tender(
+            typeId: 1,
+            label: 'Cash',
+            amount: Money(3000),
+            countsAsCash: true,
+          ),
           Tender(typeId: 2, label: 'Card', amount: Money(2130)),
         ],
       );
@@ -242,6 +252,35 @@ void main() {
     test('no tender recorded files as cash, not as blank', () {
       // A till that took money and did not say how took it out of the drawer.
       expect(input(ticket())!.paymentMethod, 'C');
+    });
+
+    test('cash on a platform tender is C — the id is not what makes it cash', () {
+      // A cloud till pays on the platform's tenders, every one of them above
+      // the seeded four (migration 41). Asking "is this id 1" would file the
+      // restaurant's only cash drawer as electronic, every sale, every day.
+      final sale = ticket(
+        tenders: const [
+          Tender(
+            typeId: 7,
+            label: 'Cash',
+            amount: Money(5130),
+            countsAsCash: true,
+          ),
+        ],
+      );
+      expect(input(sale)!.paymentMethod, 'C');
+    });
+
+    test('the flag taken with the money wins over the seeded id', () {
+      // Somebody unticked "counts as cash" on the seeded Cash row. The payment
+      // says what it was when it was taken, and the reconciler files from that
+      // same flag on the payment row — the two must not disagree.
+      final sale = ticket(
+        tenders: const [
+          Tender(typeId: 1, label: 'Cash', amount: Money(5130)),
+        ],
+      );
+      expect(input(sale)!.paymentMethod, 'V');
     });
   });
 

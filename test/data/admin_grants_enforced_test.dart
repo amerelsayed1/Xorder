@@ -29,7 +29,10 @@ void main() {
     return;
   }
 
-  const role = 'pos_admin_grant_probe';
+  // Per checkout, for the till probe's reason: a role is cluster-wide, and one
+  // name shared by two worktrees meant each one's cleanup broke the other's
+  // run.
+  final role = PgFixture.roleFor('admin_grant_probe');
   const password = 'probe-only';
 
   late PgFixture pg;

@@ -288,6 +288,152 @@ void main() {
     });
   });
 
+  group('the unit the stock is held in', () {
+    // No conversion, ever: 10 boxes and 5 kilos are not 15 of anything. Stock
+    // already held in one unit is only ever added to in that unit.
+    Future<void> hold(int milli, String unit) => db.query(
+      pg.config,
+      'INSERT INTO pos_stock_levels (restaurant_id, branch_id, product_id, '
+      '  quantity_milli, unit, average_cost_minor) '
+      'VALUES (@r, @b, @p, @q, @u, 3000)',
+      parameters: {
+        'r': restaurantId,
+        'b': branchId,
+        'p': productId,
+        'q': milli,
+        'u': unit,
+      },
+    );
+
+    Future<int> movements() async => (await db.query(
+      pg.config,
+      'SELECT count(*) FROM pos_stock_movements',
+    )).first[0]! as int;
+
+    test('a delivery in kilos is refused into stock held in boxes', () async {
+      // How it happens: the item was counted in boxes, its unit was changed
+      // to kilos while ten boxes were on the shelf, and this order came after.
+      await hold(10000, 'box');
+      final order = await sentOrder(milli: 5000);
+
+      final result = await book(order, 5000);
+      expect(
+        result.refusal,
+        isA<StockHeldInAnotherUnit>()
+            .having((r) => r.item, 'item', 'Chicken')
+            .having((r) => r.held.milli, 'held', 10000)
+            .having((r) => r.held.unit, 'held in', QuantityUnit.box)
+            .having((r) => r.asked, 'asked', QuantityUnit.kilogram),
+      );
+
+      final position = (await receiving.positionFor(productId))!;
+      expect(position.onHand.milli, 10000, reason: 'not 15 of anything');
+      expect(position.onHand.unit, QuantityUnit.box);
+      final after = (await orders.byId(order.id))!;
+      expect(after.status, PurchaseStatus.sent);
+      expect(after.lines.single.received.milli, 0);
+      expect(await movements(), 0);
+    });
+
+    test('and a receipt refused on one line lands nothing on the others',
+        () async {
+      await hold(10000, 'box');
+      final draft = await orders.saveDraft(
+        PurchaseOrder(
+          id: 0,
+          supplierId: supplierId,
+          supplierName: 'Cairo Poultry',
+          reference: '',
+          status: PurchaseStatus.draft,
+          lines: [
+            // Booked first, and stocks nothing — so it is written before the
+            // chicken is refused, and has to be taken back.
+            const PurchaseOrderLine(
+              id: 0,
+              description: 'Gas cylinder',
+              ordered: Quantity.of(1),
+              unitCost: Money(20000),
+            ),
+            PurchaseOrderLine(
+              id: 0,
+              productId: productId,
+              description: 'Chicken',
+              ordered: const Quantity(5000, unit: QuantityUnit.kilogram),
+              unitCost: const Money(4000),
+            ),
+          ],
+        ),
+        by: buyer,
+      );
+      final sent = (await orders.setStatus(
+        draft.value!.id,
+        status: PurchaseStatus.sent,
+        by: buyer,
+        orderedAt: DateTime.utc(2026, 9, 9),
+      )).value!;
+
+      final result = await receiving.receive(
+        purchaseOrderId: sent.id,
+        byLine: {for (final line in sent.lines) line.id: line.ordered},
+        by: buyer,
+      );
+      expect(result.refusal, isA<StockHeldInAnotherUnit>());
+
+      final after = (await orders.byId(sent.id))!;
+      expect(
+        after.lines.map((l) => l.received.milli),
+        [0, 0],
+        reason: 'the gas was not booked in either',
+      );
+      expect(after.status, PurchaseStatus.sent);
+    });
+
+    test('stock that has run to nothing can start again in another unit',
+        () async {
+      await hold(0, 'box');
+      expect((await book(await sentOrder(milli: 5000), 5000)).succeeded, isTrue);
+
+      final position = (await receiving.positionFor(productId))!;
+      expect(position.onHand.milli, 5000);
+      expect(position.onHand.unit, QuantityUnit.kilogram);
+    });
+
+    test('the database refuses relabelling stock that is held', () async {
+      await hold(10000, 'box');
+      await expectLater(
+        db.query(
+          pg.config,
+          "UPDATE pos_stock_levels SET unit = 'kg' WHERE product_id = @p",
+          parameters: {'p': productId},
+        ),
+        throwsA(
+          isA<PosDbException>().having(
+            (e) => '${e.raw}',
+            'message',
+            contains('cannot be counted in kg'),
+          ),
+        ),
+      );
+    });
+
+    test('including by the upsert receiving used to do', () async {
+      await hold(10000, 'box');
+      await expectLater(
+        db.query(
+          pg.config,
+          'INSERT INTO pos_stock_levels (restaurant_id, branch_id, product_id, '
+          '  quantity_milli, unit, average_cost_minor) '
+          "VALUES (@r, @b, @p, 15000, 'kg', 4000) "
+          'ON CONFLICT (branch_id, product_id) DO UPDATE SET '
+          '  quantity_milli = excluded.quantity_milli, unit = excluded.unit',
+          parameters: {'r': restaurantId, 'b': branchId, 'p': productId},
+        ),
+        throwsA(isA<PosDbException>()),
+      );
+      expect((await receiving.positionFor(productId))!.onHand.milli, 10000);
+    });
+  });
+
   group('what is refused', () {
     test('booking in against a draft', () async {
       final draft = await orders.saveDraft(

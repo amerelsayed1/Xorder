@@ -133,6 +133,7 @@ sealed class AppStrings {
 
   // ── Cart ──────────────────────────────────────────────────────────────────
   String get noTableYet;
+  String get chooseTableFirst;
   String seatedTable(String table, int? guests);
   String walkIn(String orderType);
 
@@ -412,6 +413,20 @@ sealed class AppStrings {
   String get stepAccount;
   String get stepAccountBlurb;
 
+  // A child tablet's wizard: it finds the main device rather than building
+  // anything, and signs in with a manager the main device already has.
+  String get stepMainDevice;
+  String get stepMainDeviceBlurb;
+  String get stepChildAccountBlurb;
+  String get mainDeviceHelp;
+  String get mainDeviceAddress;
+  String get mainDeviceAddressHelp;
+  String get mainDeviceIsThisTablet;
+  String get connectToMainDevice;
+  String mainDeviceLinked(String tenant);
+  String get mainDeviceHasNoLicence;
+  String allTerminalsTaken(int max);
+
   /// The same step on an offline till, where it is a different question.
   /// There is no platform to sign in to and no account to sign in with — this
   /// is the screen that creates the first one.
@@ -515,6 +530,7 @@ sealed class AppStrings {
   String databaseAlreadyThere(String database);
   String get schemaAlreadyCurrent;
   String migrationsApplied(int count);
+  String schemaUpgradeFailed(String error);
   String restaurantSeeded(String restaurant);
   String get rolesAlreadyThere;
   String rolesCreated(int count);
@@ -751,6 +767,9 @@ sealed class AppStrings {
   String get resetTerminalShiftOpen;
   String get resetTerminalShiftUnknown;
   String get resetTerminalConfirm;
+  String get resetTerminalHint;
+  String get paneTerminal;
+  String get paneTerminalBlurb;
 
   // ── Terminal no longer recognised ─────────────────────────────────────────
   String get terminalRejectedTitle;
@@ -763,6 +782,9 @@ sealed class AppStrings {
   String get forceResetShiftOpen;
   String get forceResetQueued;
   String get forceResetConfirm;
+  String get forceResetSignInTitle;
+  String get forceResetSignInHelp;
+  String get forceResetSignInRefused;
 
   // ── Settings menu bar ─────────────────────────────────────────────────────
   String get settings;
@@ -838,6 +860,33 @@ sealed class AppStrings {
   String refusalCashiersAreNotAdministrators(String capabilities);
   String refusalCannotGrantWhatYouLack(String capabilities);
   String refusalManagedByPlatform(String what);
+
+  /// One owner per restaurant. Each says how ownership actually moves —
+  /// disable, then appoint — because a refusal that only says "no" is tried
+  /// again.
+  String refusalOwnerAlreadyExists(String ownerName);
+  String get refusalOwnerIsFixed;
+  String get refusalOwnerIsNotAnExtraRole;
+
+  /// Why a purchase order cannot move as asked. The button that was pressed
+  /// was showing, so each says what changed and what to do instead.
+  String get refusalPurchaseAlreadySent;
+  String get refusalPurchaseGoodsArrived;
+  String get refusalPurchaseCancelled;
+  String get refusalPurchaseHasNoLines;
+  String get refusalPurchaseQuantityNotPositive;
+  String get refusalPurchaseCannotCancelArrived;
+  String get refusalPurchaseAllArrived;
+  String get refusalPurchaseFollowsTheGoods;
+
+  /// Stock is never converted between units. [quantity] is already formatted,
+  /// in Latin digits.
+  String refusalStockHeldInAnotherUnit(
+    String item,
+    String quantity,
+    String heldUnit,
+    String askedUnit,
+  );
   String get staffComesFromPlatform;
 
   // §107 — risk levels, on the role editor's badges.
@@ -2571,6 +2620,9 @@ final class EnStrings extends AppStrings {
   @override
   String get noTableYet => 'No table yet';
   @override
+  String get chooseTableFirst =>
+      'Choose a table first — this order is served at one.';
+  @override
   String seatedTable(String table, int? guests) =>
       guests == null ? table : '$table · $guests guests';
   @override
@@ -3052,6 +3104,43 @@ final class EnStrings extends AppStrings {
   @override
   String get stepConnectionBlurb => 'Where does this terminal send its sales?';
   @override
+  String get stepMainDevice => 'Main device';
+  @override
+  String get stepMainDeviceBlurb =>
+      'This tablet sells through the restaurant\'s main device.';
+  @override
+  String get stepChildAccountBlurb =>
+      'A manager\'s username and PIN, from the main device.';
+  @override
+  String get mainDeviceHelp =>
+      'Nothing is activated or built on this tablet. The licence, the '
+      'restaurant, the staff and the menu all come from the main device — '
+      'give its address and the till database password it was set up with.';
+  @override
+  String get mainDeviceAddress => 'Main device address';
+  @override
+  String get mainDeviceAddressHelp =>
+      'Its address on the restaurant network. Settings on the main device '
+      'shows it; a reserved address on the router keeps it from changing.';
+  @override
+  String get mainDeviceIsThisTablet =>
+      'That address is this tablet itself. Enter the main device\'s address '
+      'on the restaurant network, such as 192.168.1.20.';
+  @override
+  String get connectToMainDevice => 'Connect to the main device';
+  @override
+  String mainDeviceLinked(String tenant) =>
+      'Connected to $tenant\'s main device. This tablet uses its licence.';
+  @override
+  String get mainDeviceHasNoLicence =>
+      'The main device has not shared its licence yet. Open XOrder POS on '
+      'the main device — it shares the licence when it reaches its start '
+      'screen — then connect again.';
+  @override
+  String allTerminalsTaken(int max) =>
+      'The licence covers $max terminals and all of them are registered. '
+      'Retire one on the main device, or ask for a licence with more.';
+  @override
   String get stepAccount => 'Sign in';
   @override
   String get stepFirstAdministrator => 'First administrator';
@@ -3244,6 +3333,11 @@ final class EnStrings extends AppStrings {
   String get schemaAlreadyCurrent => 'The schema was already current.';
   @override
   String migrationsApplied(int count) => 'Applied $count migration(s).';
+  @override
+  String schemaUpgradeFailed(String error) =>
+      'This database is older than this version of XOrder POS and could not '
+      'be brought up to date, so some screens may fail. Take a backup and '
+      'call support. The database said: $error';
   @override
   String restaurantSeeded(String restaurant) =>
       '$restaurant and its first branch are on this machine.';
@@ -3761,6 +3855,15 @@ final class EnStrings extends AppStrings {
       'Could not verify whether a shift is open. Check the database connection and try again.';
   @override
   String get resetTerminalConfirm => 'Reset and run setup';
+  @override
+  String get resetTerminalHint =>
+      'For a till moving to another branch server, or one whose database '
+      'password has been lost. Setup runs again; sales already recorded stay in '
+      'the database. Not while a shift is open.';
+  @override
+  String get paneTerminal => 'Terminal';
+  @override
+  String get paneTerminalBlurb => "This till's setup, and running it again";
 
   @override
   String get terminalRejectedTitle => 'This terminal is no longer recognised';
@@ -3792,6 +3895,15 @@ final class EnStrings extends AppStrings {
       'machine but nothing will send them once the credential is gone.';
   @override
   String get forceResetConfirm => 'Delete and set up again';
+  @override
+  String get forceResetSignInTitle => 'Who is resetting this terminal?';
+  @override
+  String get forceResetSignInHelp =>
+      "Deleting a working terminal's setup needs somebody who may manage "
+      'terminals: their username and the back-office password.';
+  @override
+  String get forceResetSignInRefused =>
+      'That username and password cannot reset this terminal.';
 
   @override
   String get settings => 'Settings';
@@ -3936,6 +4048,64 @@ final class EnStrings extends AppStrings {
     'money' => 'The money rules are set on XOrder, not on this till.',
     _ => 'This is set on XOrder, not on this till.',
   };
+
+  @override
+  String refusalOwnerAlreadyExists(String ownerName) =>
+      '$ownerName is already the owner, and a restaurant has one. To hand '
+      'ownership over, disable $ownerName first, then choose Owner for the new '
+      'person.';
+  @override
+  String get refusalOwnerIsFixed =>
+      "The owner's role and permissions cannot be changed. The owner already "
+      'holds every permission, and one taken away from them could lock '
+      'everybody out. To hand ownership over, disable the owner, then make '
+      'somebody else the owner.';
+  @override
+  String get refusalOwnerIsNotAnExtraRole =>
+      'Owner cannot be an extra role. To make somebody the owner, choose Owner '
+      'as their role instead.';
+
+  @override
+  String get refusalPurchaseAlreadySent =>
+      'That order has already gone to the supplier, so it cannot be sent '
+      'again or changed.';
+  @override
+  String get refusalPurchaseGoodsArrived =>
+      'Goods have already arrived against that order, so it cannot be '
+      'changed.';
+  @override
+  String get refusalPurchaseCancelled =>
+      'That order was cancelled, and a cancelled order does not reopen. Write '
+      'a new one.';
+  @override
+  String get refusalPurchaseHasNoLines =>
+      'There is nothing on this order yet. Add what you are ordering before '
+      'sending it.';
+  @override
+  String get refusalPurchaseQuantityNotPositive =>
+      'Every line needs a quantity above zero.';
+  @override
+  String get refusalPurchaseCannotCancelArrived =>
+      'Goods have already arrived against this order, so it cannot be '
+      'cancelled — they are in stock, and this order is their record. It '
+      'stays open for the rest.';
+  @override
+  String get refusalPurchaseAllArrived =>
+      'Everything on this order has arrived, so there is nothing left to '
+      'cancel.';
+  @override
+  String get refusalPurchaseFollowsTheGoods =>
+      'An order becomes received by booking the goods in, not by choosing it.';
+  @override
+  String refusalStockHeldInAnotherUnit(
+    String item,
+    String quantity,
+    String heldUnit,
+    String askedUnit,
+  ) =>
+      '$item has $quantity $heldUnit in stock. Stock is never converted from '
+      'one unit to another, so while any is held it is counted and booked in '
+      'as $heldUnit only, not $askedUnit.';
 
   @override
   String get staffComesFromPlatform =>
@@ -5774,6 +5944,9 @@ final class ArStrings extends AppStrings {
   @override
   String get noTableYet => 'لم تُحدَّد طاولة';
   @override
+  String get chooseTableFirst =>
+      'اختر طاولة أولاً — هذا الطلب يُقدَّم على طاولة.';
+  @override
   String seatedTable(String table, int? guests) =>
       guests == null ? table : '$table · $guests ضيف';
   @override
@@ -6244,6 +6417,42 @@ final class ArStrings extends AppStrings {
   @override
   String get stepConnectionBlurb => 'إلى أين يرسل هذا الجهاز مبيعاته؟';
   @override
+  String get stepMainDevice => 'الجهاز الرئيسي';
+  @override
+  String get stepMainDeviceBlurb =>
+      'يبيع هذا الجهاز اللوحي من خلال الجهاز الرئيسي للمطعم.';
+  @override
+  String get stepChildAccountBlurb =>
+      'اسم مستخدم ورمز PIN لمدير، من الجهاز الرئيسي.';
+  @override
+  String get mainDeviceHelp =>
+      'لا يُفعَّل ولا يُنشأ شيء على هذا الجهاز اللوحي. الترخيص والمطعم '
+      'والموظفون والمنيو كلها تأتي من الجهاز الرئيسي — أدخل عنوانه وكلمة '
+      'مرور قاعدة بيانات نقطة البيع التي أُعدّ بها.';
+  @override
+  String get mainDeviceAddress => 'عنوان الجهاز الرئيسي';
+  @override
+  String get mainDeviceAddressHelp =>
+      'عنوانه على شبكة المطعم، وتجده في الإعدادات على الجهاز الرئيسي. حجز '
+      'العنوان على الراوتر يمنعه من التغيّر.';
+  @override
+  String get mainDeviceIsThisTablet =>
+      'هذا العنوان هو هذا الجهاز اللوحي نفسه. أدخل عنوان الجهاز الرئيسي على '
+      'شبكة المطعم، مثل 192.168.1.20.';
+  @override
+  String get connectToMainDevice => 'الاتصال بالجهاز الرئيسي';
+  @override
+  String mainDeviceLinked(String tenant) =>
+      'متصل بالجهاز الرئيسي لـ $tenant. يستخدم هذا الجهاز اللوحي ترخيصه.';
+  @override
+  String get mainDeviceHasNoLicence =>
+      'لم يشارك الجهاز الرئيسي ترخيصه بعد. افتح XOrder POS على الجهاز '
+      'الرئيسي — يشارك الترخيص عند وصوله إلى شاشة البدء — ثم اتصل مرة أخرى.';
+  @override
+  String allTerminalsTaken(int max) =>
+      'يغطي الترخيص $max أجهزة وكلها مسجّلة. أوقف أحدها من الجهاز الرئيسي، '
+      'أو اطلب ترخيصاً بعدد أكبر.';
+  @override
   String get stepAccount => 'تسجيل الدخول';
   @override
   String get stepFirstAdministrator => 'أول مدير';
@@ -6427,6 +6636,11 @@ final class ArStrings extends AppStrings {
   String get schemaAlreadyCurrent => 'البنية كانت محدّثة بالفعل.';
   @override
   String migrationsApplied(int count) => 'طُبّقت $count ترحيلة.';
+  @override
+  String schemaUpgradeFailed(String error) =>
+      'قاعدة البيانات أقدم من هذا الإصدار من XOrder POS وتعذّر تحديثها، لذلك '
+      'قد تتعطل بعض الشاشات. خذ نسخة احتياطية واتصل بالدعم. رسالة قاعدة '
+      'البيانات: $error';
   @override
   String restaurantSeeded(String restaurant) =>
       '$restaurant وأول فرع له صارا على هذا الجهاز.';
@@ -6926,6 +7140,15 @@ final class ArStrings extends AppStrings {
       'تعذر التحقق من الوردية المفتوحة. تحقق من اتصال قاعدة البيانات وحاول مرة أخرى.';
   @override
   String get resetTerminalConfirm => 'إعادة الضبط وبدء الإعداد';
+  @override
+  String get resetTerminalHint =>
+      'لجهاز ينتقل إلى خادم فرع آخر، أو فُقدت كلمة مرور قاعدة بياناته. '
+      'يبدأ الإعداد من جديد، وتبقى المبيعات المسجلة في قاعدة البيانات. '
+      'غير متاح أثناء وجود وردية مفتوحة.';
+  @override
+  String get paneTerminal => 'الجهاز';
+  @override
+  String get paneTerminalBlurb => 'إعداد هذا الجهاز، وإعادته من البداية';
 
   @override
   String get terminalRejectedTitle => 'لم يعد هذا الجهاز معروفًا لدى المنصة';
@@ -6956,6 +7179,15 @@ final class ArStrings extends AppStrings {
       'يرسلها شيء بعد زوال بيانات الاعتماد.';
   @override
   String get forceResetConfirm => 'حذف وإعادة الإعداد';
+  @override
+  String get forceResetSignInTitle => 'من يعيد ضبط هذا الجهاز؟';
+  @override
+  String get forceResetSignInHelp =>
+      'حذف إعداد جهاز يعمل يحتاج إلى شخص مخوّل بإدارة الأجهزة: '
+      'اسم المستخدم وكلمة مرور الإدارة.';
+  @override
+  String get forceResetSignInRefused =>
+      'اسم المستخدم وكلمة المرور هذان لا يسمحان بإعادة ضبط هذا الجهاز.';
 
   @override
   String get settings => 'الإعدادات';
@@ -7096,6 +7328,57 @@ final class ArStrings extends AppStrings {
     'money' => 'قواعد المال تُضبط على XOrder لا على هذه النقطة.',
     _ => 'هذا يُضبط على XOrder لا على هذه النقطة.',
   };
+
+  @override
+  String refusalOwnerAlreadyExists(String ownerName) =>
+      '$ownerName هو المالك بالفعل، وللمطعم مالك واحد فقط. لنقل الملكية، عطّل '
+      '$ownerName أولاً، ثم اختر دور المالك للشخص الجديد.';
+  @override
+  String get refusalOwnerIsFixed =>
+      'لا يمكن تغيير دور المالك ولا صلاحياته. المالك يملك كل الصلاحيات أصلاً، '
+      'وأي صلاحية تُسحب منه قد تمنع الجميع من الدخول. لنقل الملكية، عطّل المالك '
+      'ثم اجعل شخصاً آخر هو المالك.';
+  @override
+  String get refusalOwnerIsNotAnExtraRole =>
+      'لا يمكن أن يكون المالك دوراً إضافياً. لتجعل شخصاً ما هو المالك، اختر '
+      'المالك دوراً أساسياً له.';
+
+  @override
+  String get refusalPurchaseAlreadySent =>
+      'أُرسل هذا الطلب إلى المورّد بالفعل، فلا يمكن إرساله مرة أخرى ولا '
+      'تعديله.';
+  @override
+  String get refusalPurchaseGoodsArrived =>
+      'وصلت بضاعة على هذا الطلب بالفعل، فلا يمكن تعديله.';
+  @override
+  String get refusalPurchaseCancelled =>
+      'أُلغي هذا الطلب، والطلب الملغى لا يُعاد فتحه. اكتب طلباً جديداً.';
+  @override
+  String get refusalPurchaseHasNoLines =>
+      'لا يوجد شيء على هذا الطلب بعد. أضف ما تطلبه قبل إرساله.';
+  @override
+  String get refusalPurchaseQuantityNotPositive =>
+      'كل سطر يحتاج كمية أكبر من صفر.';
+  @override
+  String get refusalPurchaseCannotCancelArrived =>
+      'وصلت بضاعة على هذا الطلب بالفعل، فلا يمكن إلغاؤه — فهي في المخزن وهذا '
+      'الطلب سجلها. ويبقى مفتوحاً لما تبقّى.';
+  @override
+  String get refusalPurchaseAllArrived =>
+      'وصل كل ما في هذا الطلب، فلم يبقَ شيء لإلغائه.';
+  @override
+  String get refusalPurchaseFollowsTheGoods =>
+      'يصبح الطلب مستلَماً باستلام البضاعة، لا باختيار ذلك.';
+  @override
+  String refusalStockHeldInAnotherUnit(
+    String item,
+    String quantity,
+    String heldUnit,
+    String askedUnit,
+  ) =>
+      'في المخزن $quantity $heldUnit من $item. المخزون لا يُحوَّل من وحدة إلى '
+      'أخرى، فما دام منه شيء فلا يُعدّ ولا يُستلم إلا بوحدة $heldUnit، لا '
+      'بوحدة $askedUnit.';
 
   @override
   String get staffComesFromPlatform =>

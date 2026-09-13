@@ -25,14 +25,31 @@ void main() {
     return;
   }
 
-  // Cluster-wide, so named for this suite and never for anything real.
-  const names = {
-    InstallRole.admin: 'xorder_test_install_admin',
-    InstallRole.till: 'xorder_test_install_till',
-    InstallRole.backup: 'xorder_test_install_backup',
+  // Cluster-wide, so named for this suite and never for anything real — and
+  // for this checkout, like the databases. With one fixed set, a worktree's
+  // setUpAll tried to drop the admin role while it still owned the other
+  // worktree's database, and neither run could clean up after itself.
+  final names = {
+    InstallRole.admin: PgFixture.roleFor('install_admin'),
+    InstallRole.till: PgFixture.roleFor('install_till'),
+    InstallRole.backup: PgFixture.roleFor('install_backup'),
   };
+  // By name, not by prefix: another checkout's roles match the prefix too,
+  // and its run creating one mid-test would change what "nothing changed" saw.
+  final ours = names.values.map((name) => "'$name'").join(', ');
   final apiDb = PgFixture.nameFor('install_api');
   final cliDb = PgFixture.nameFor('install_cli');
+
+  // Databases first: the admin role owns [apiDb], and the till's CONNECT is
+  // granted on it — the only things these roles hold anywhere — so once it is
+  // gone a plain DROP ROLE succeeds. No REASSIGN OWNED: it would hand a
+  // leftover to the superuser to linger rather than remove it, and anything
+  // it could find beyond [apiDb] would not be this suite's to touch.
+  List<String> cleanUp() => [
+    'DROP DATABASE IF EXISTS "$apiDb" WITH (FORCE)',
+    'DROP DATABASE IF EXISTS "$cliDb" WITH (FORCE)',
+    for (final name in names.values) 'DROP ROLE IF EXISTS "$name"',
+  ];
 
   DeploymentConfig configFor(String database, String user) => DeploymentConfig(
     mode: DeploymentMode.offline,
@@ -61,20 +78,9 @@ void main() {
     }
   }
 
-  setUpAll(() async {
-    await PgFixture.maintenance([
-      'DROP DATABASE IF EXISTS "$apiDb" WITH (FORCE)',
-      'DROP DATABASE IF EXISTS "$cliDb" WITH (FORCE)',
-      for (final name in names.values) 'DROP ROLE IF EXISTS "$name"',
-    ]);
-  });
+  setUpAll(() => PgFixture.maintenance(cleanUp()));
 
-  tearDownAll(() async {
-    await PgFixture.maintenance([
-      'DROP DATABASE IF EXISTS "$apiDb" WITH (FORCE)',
-      for (final name in names.values) 'DROP ROLE IF EXISTS "$name"',
-    ]);
-  });
+  tearDownAll(() => PgFixture.maintenance(cleanUp()));
 
   test('three accounts, each with only its own rights', () async {
     final created = await LocalBootstrap.createRoles(
@@ -93,7 +99,7 @@ void main() {
       'postgres',
       'SELECT rolname, rolsuper, rolcreaterole, rolcreatedb, rolcanlogin, '
       '  pg_has_role(rolname, \'pg_read_all_data\', \'MEMBER\') '
-      "FROM pg_roles WHERE rolname LIKE 'xorder_test_install_%' "
+      'FROM pg_roles WHERE rolname IN ($ours) '
       'ORDER BY rolname',
     );
     final byName = {for (final r in rows) r[0]: r.sublist(1)};
@@ -109,7 +115,7 @@ void main() {
     Future<List<List<Object?>>> secrets() => sql(
       'postgres',
       "SELECT rolname, rolpassword FROM pg_authid "
-      "WHERE rolname LIKE 'xorder_test_install_%' ORDER BY rolname",
+      'WHERE rolname IN ($ours) ORDER BY rolname',
     );
     final before = await secrets();
 

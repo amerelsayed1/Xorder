@@ -5,7 +5,6 @@ import '../../../app/providers.dart';
 import '../../../core/l10n/app_strings.dart';
 import '../../../core/ui/theme.dart';
 import '../../../core/ui/tokens.dart';
-import '../../../core/ui/widgets/mono_amount.dart';
 import '../../../domain/models/order_type_config.dart';
 import '../../../domain/models/shift.dart';
 import 'admin_messages.dart';
@@ -227,8 +226,6 @@ class _OrderTypeRow extends StatelessWidget {
                 value: config.isActive,
                 onChanged: onActive,
               ),
-              const SizedBox(width: PosSpace.sm),
-              MonoCode(config.type.wire, size: 11.5),
             ],
           ),
         ),

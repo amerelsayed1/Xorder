@@ -2,6 +2,7 @@ import '../../core/money/money.dart';
 import '../../domain/models/catalog.dart';
 import '../../domain/models/combo.dart';
 import '../../domain/models/discount.dart';
+import '../../domain/models/tender_method.dart';
 import '../../domain/models/ticket.dart';
 
 /// Serializes a parked [Ticket] for `pos_parked_tickets`, and rebuilds it.
@@ -115,6 +116,10 @@ abstract final class ParkedTicketCodec {
           'label': tender.label,
           'amount_minor': tender.amount.minor,
           'reference': tender.reference,
+          // A partly paid table that lost this overnight settles its cash as
+          // not-cash: the cash-up expects less in the drawer than is there,
+          // and ETA is told the guests paid by card.
+          'counts_as_cash': tender.countsAsCash,
         },
     ],
     // A parked ticket that lost its discount on a restart would hand the guests
@@ -223,6 +228,18 @@ abstract final class ParkedTicketCodec {
                 reference: raw['reference'] is String
                     ? raw['reference'] as String
                     : null,
+                // Payloads parked before the key existed fall back to the
+                // seeded list, as `ShiftTenderTotal.countsAsCash` does for payment
+                // rows of the same age. That only knows the seeded ids: a
+                // cloud till's platform tenders sit above
+                // [TenderMethod.seededIdCeiling], so an old parked wallet the
+                // restaurant counts as cash still comes back as not-cash. It
+                // cannot be recovered from anything the payload holds.
+                countsAsCash: raw['counts_as_cash'] is bool
+                    ? raw['counts_as_cash'] as bool
+                    : TenderMethod.isCash(
+                        raw['type_id'] is int ? raw['type_id'] as int : null,
+                      ),
               ),
       ],
       lineEvents: [

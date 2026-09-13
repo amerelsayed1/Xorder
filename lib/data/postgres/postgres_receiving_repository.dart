@@ -109,6 +109,67 @@ class PostgresReceivingRepository implements ReceivingRepository {
         final unitCost = Money(row[3]! as int);
         final arrived = Quantity(entry.value.milli, unit: unit);
 
+        // The position before anything is written, and in the unit it is
+        // STORED in. This used to read the quantity and label it with the
+        // line's unit, then overwrite the stored unit with the line's — so
+        // 5 kg arriving on 10 boxes was saved as 15 kg, and the assert meant to
+        // catch it compared the line's unit with itself.
+        StockPosition? before;
+        if (productId != null) {
+          // FOR SHARE on the item, so a unit change from the Items or Menu
+          // pane waits for this receipt instead of both reading "nothing held"
+          // and both committing. It also names the item for the refusal.
+          final product = await tx.execute(
+            Sql.named(
+              'SELECT name_en FROM pos_products WHERE id = @p FOR SHARE',
+            ),
+            parameters: {'p': productId},
+          );
+          final held = await tx.execute(
+            Sql.named(
+              'SELECT quantity_milli, average_cost_minor, unit '
+              'FROM pos_stock_levels '
+              'WHERE branch_id = @b AND product_id = @p FOR UPDATE',
+            ),
+            parameters: {'b': branchId, 'p': productId},
+          );
+
+          if (held.isEmpty) {
+            before = StockPosition(
+              onHand: Quantity(0, unit: unit),
+              unitCost: unitCost,
+            );
+          } else {
+            final onHand = Quantity(
+              held.first[0]! as int,
+              unit: QuantityUnit.fromWire(held.first[2] as String?),
+            );
+            // Refused, never converted: nothing here knows how many kilos are
+            // in a box. Negative stock counts as held — a debt in boxes is not
+            // settled in kilos.
+            if (!onHand.isZero && onHand.unit != unit) {
+              // Rolled back, not only returned. An earlier line of this same
+              // receipt may already be written, and `runTx` commits whatever
+              // the callback returns — so a plain return would keep half a
+              // delivery that the screen says was refused.
+              await tx.rollback();
+              return AdminResult<void>.refused(
+                StockHeldInAnotherUnit(
+                  item: product.isEmpty
+                      ? row[1]! as String
+                      : product.first[0]! as String,
+                  held: onHand,
+                  asked: unit,
+                ),
+              );
+            }
+            before = StockPosition(
+              onHand: onHand,
+              unitCost: Money(held.first[1]! as int),
+            );
+          }
+        }
+
         await tx.execute(
           Sql.named(
             'UPDATE pos_purchase_order_lines '
@@ -124,23 +185,8 @@ class PostgresReceivingRepository implements ReceivingRepository {
         // ledger with movements nobody counts.
         if (productId == null) continue;
 
-        final held = await tx.execute(
-          Sql.named(
-            'SELECT quantity_milli, average_cost_minor FROM pos_stock_levels '
-            'WHERE branch_id = @b AND product_id = @p FOR UPDATE',
-          ),
-          parameters: {'b': branchId, 'p': productId},
-        );
-
-        final before = held.isEmpty
-            ? StockPosition(onHand: Quantity(0, unit: unit), unitCost: unitCost)
-            : StockPosition(
-                onHand: Quantity(held.first[0]! as int, unit: unit),
-                unitCost: Money(held.first[1]! as int),
-              );
-
         final after = StockCosting.receive(
-          before,
+          before!,
           received: arrived,
           unitCost: unitCost,
         );
@@ -179,6 +225,8 @@ class PostgresReceivingRepository implements ReceivingRepository {
           ON CONFLICT (branch_id, product_id) DO UPDATE SET
             quantity_milli = excluded.quantity_milli,
             average_cost_minor = excluded.average_cost_minor,
+            -- Only ever a real change when nothing was held: the check above
+            -- refuses any other, and migration 44's trigger refuses it again.
             unit = excluded.unit,
             updated_at = now()
           '''),

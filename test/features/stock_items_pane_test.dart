@@ -42,6 +42,7 @@ void main() {
           theme: buildPosTheme(),
           home: ManagementScreen(
             onClose: () {},
+            onReconfigure: () {},
             initialPane: ManagementPane.items,
           ),
         ),
@@ -69,7 +70,7 @@ void main() {
   ) async {
     await open(tester);
 
-    expect(find.text('Management › Inventory'), findsOneWidget);
+    expect(areaOf(ManagementPane.items), ManagementArea.inventory);
     expect(find.text('Chicken'), findsOneWidget);
     expect(find.text('Kilogram'), findsOneWidget, reason: 'the unit by name');
     expect(

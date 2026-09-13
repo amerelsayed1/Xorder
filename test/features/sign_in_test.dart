@@ -22,6 +22,7 @@ void main() {
   Future<ProviderContainer> pumpLock(
     WidgetTester tester, {
     VoidCallback? onUnlocked,
+    VoidCallback? onBack,
   }) async {
     tester.view
       ..physicalSize = const Size(1440, 900)
@@ -36,7 +37,10 @@ void main() {
         container: container,
         child: MaterialApp(
           theme: buildPosTheme(),
-          home: LockScreen(onUnlocked: onUnlocked ?? () {}),
+          home: LockScreen(
+            onUnlocked: onUnlocked ?? () {},
+            onBack: onBack ?? () {},
+          ),
         ),
       ),
     );
@@ -83,6 +87,37 @@ void main() {
     // And that is what the bars and the receipts read.
     expect(container.read(operatorNameProvider), 'Rana A.');
     expect(container.read(operatorInitialsProvider), 'RA');
+  });
+
+  testWidgets('Back signs out on the way, so the shift is not handed over', (
+    tester,
+  ) async {
+    var back = 0;
+    final container = await pumpLock(tester, onBack: () => back++);
+
+    // Locking leaves whoever was at the till signed in. A way off this screen
+    // that kept them would let the next person resume their shift with Enter.
+    await typeUsername(tester, 'rana');
+    await typePin(tester, '1234');
+    expect(container.read(signedInStaffProvider), isNotNull);
+
+    await tester.tap(find.byKey(const Key('lock-back')));
+    await tester.pumpAndSettle();
+    expect(back, 1);
+    expect(container.read(signedInStaffProvider), isNull);
+  });
+
+  testWidgets('and Esc does the same, even from the username field', (
+    tester,
+  ) async {
+    var back = 0;
+    final container = await pumpLock(tester, onBack: () => back++);
+
+    await typeUsername(tester, 'ran');
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    expect(back, 1);
+    expect(container.read(signedInStaffProvider), isNull);
   });
 
   testWidgets('a wrong PIN signs nobody in and lets nobody through', (

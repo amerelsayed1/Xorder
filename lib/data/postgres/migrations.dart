@@ -3703,6 +3703,390 @@ const posMigrations = <PosMigration>[
       )
     ''',
   ]),
+  PosMigration(42, 'a restaurant has one owner, and the owner is fixed', [
+    // Two rules, both cross-row, so both are triggers — the same shape as
+    // `pos_supplier_payment_allocation` in migration 30, and for the same
+    // reason: `PostgresStaffDirectoryRepository` checks them too, but it is one
+    // of four writers of `pos_staff`. The wizard's `seedOwner`, `pos_migrate
+    // --seed` and the cloud `BootstrapSeeder` all write it without going near
+    // the repository, and the first two write owners.
+    //
+    // **Counted among ACTIVE staff.** That is what keeps ownership
+    // transferable: disable the old owner, then appoint the new one. "One
+    // owner row, ever" would have made the installer's account the owner for
+    // the life of the restaurant, since nobody is ever deleted here.
+    //
+    // **Existing rows are not rewritten.** A branch server that ran an earlier
+    // build may already have two active owners, and which of them is the real
+    // one is the restaurant's question, not a migration's. Both keep working:
+    // the UPDATE trigger fires only when `role_id` or `is_active` actually
+    // changes, so renaming either of them, resetting a PIN or the repository's
+    // `role_id = coalesce(@role, role_id)` pass straight through. The rule
+    // bites the next time somebody is made owner or brought back as one.
+    //
+    // **SECURITY DEFINER**, and it is not decoration. The owner-role row is
+    // locked `FOR NO KEY UPDATE`, which needs UPDATE on `pos_roles`, and on a
+    // cloud till the seeder flips `is_active` over the till's own credential —
+    // which holds SELECT there and nothing more. As an ordinary trigger it
+    // would fail every bundle that touched an owner's row with "permission
+    // denied". Granting the till UPDATE on `pos_roles` to make a lock work
+    // would hand a recovered till credential the power to rewrite what the
+    // owner role holds. `search_path` is pinned, as it must be for any
+    // SECURITY DEFINER function.
+    //
+    // One interaction worth knowing: if the platform re-enables somebody who
+    // is on the owner role *locally* (roles are not in the bundle) while
+    // another local owner is active, this refuses the seeder's upsert and the
+    // bundle rolls back. That is the rule doing its job, loudly; the message
+    // says which person to disable.
+    r'''
+    CREATE OR REPLACE FUNCTION pos_staff_one_owner()
+      RETURNS trigger LANGUAGE plpgsql
+      SECURITY DEFINER SET search_path = public AS $fn$
+    DECLARE
+      owner_role bigint;
+      incumbent  text;
+    BEGIN
+      IF NEW.role_id IS NULL THEN
+        RETURN NEW;
+      END IF;
+
+      -- Locked, so two managers appointing an owner from two tills at once
+      -- queue on this row rather than each counting the other's uncommitted
+      -- appointment as nobody and both committing. NO KEY UPDATE rather than
+      -- UPDATE: it does not block the KEY SHARE lock every other staff row's
+      -- foreign key takes on its role.
+      SELECT id INTO owner_role FROM pos_roles
+       WHERE id = NEW.role_id AND code = 'owner'
+         FOR NO KEY UPDATE;
+      IF owner_role IS NULL THEN
+        RETURN NEW;
+      END IF;
+
+      -- Whoever is made the owner arrives with nothing extra. Extra roles and
+      -- exceptions mean nothing on somebody who holds everything, and a DENY
+      -- among them is how a restaurant locks itself out of the screen that
+      -- would take it off. The repository clears them in the same transaction;
+      -- this is for everybody else.
+      IF TG_OP = 'UPDATE' AND OLD.role_id IS DISTINCT FROM NEW.role_id AND (
+           EXISTS (SELECT 1 FROM pos_staff_roles WHERE staff_id = NEW.id)
+        OR EXISTS (SELECT 1 FROM pos_staff_permission_overrides
+                    WHERE staff_id = NEW.id)) THEN
+        RAISE EXCEPTION
+          '% still has extra roles or permission exceptions — clear them before making them the owner, who holds every permission already',
+          NEW.name;
+      END IF;
+
+      IF NOT NEW.is_active THEN
+        RETURN NEW;   -- a disabled owner is not counted, so a handover can be staged.
+      END IF;
+
+      -- The same-username exclusion is for `ON CONFLICT (restaurant_id,
+      -- username) DO NOTHING`, which the installer and `--seed` both use: a
+      -- BEFORE INSERT trigger fires before the conflict is found, so without
+      -- it every re-run of the wizard would be refused over its own owner.
+      -- A plain INSERT of that username still fails, on the unique constraint.
+      SELECT name INTO incumbent FROM pos_staff
+       WHERE restaurant_id = NEW.restaurant_id
+         AND role_id = owner_role
+         AND is_active
+         AND id <> NEW.id
+         AND NOT (TG_OP = 'INSERT' AND coalesce(username = NEW.username, false))
+       ORDER BY id
+       LIMIT 1;
+
+      IF incumbent IS NOT NULL THEN
+        RAISE EXCEPTION
+          '% is already the owner of this restaurant, and a restaurant has one — disable % first, then appoint the new owner',
+          incumbent, incumbent;
+      END IF;
+
+      RETURN NEW;
+    END $fn$
+    ''',
+    'DROP TRIGGER IF EXISTS pos_staff_one_owner_insert ON pos_staff',
+    '''
+    CREATE TRIGGER pos_staff_one_owner_insert
+      BEFORE INSERT ON pos_staff
+      FOR EACH ROW EXECUTE FUNCTION pos_staff_one_owner()
+    ''',
+    'DROP TRIGGER IF EXISTS pos_staff_one_owner_update ON pos_staff',
+    // WHEN, not `UPDATE OF role_id, is_active`. A column list fires whenever
+    // the column is in the SET list, and the repository's UPDATE always names
+    // `role_id` — so a rename of either of two legacy owners would be refused.
+    '''
+    CREATE TRIGGER pos_staff_one_owner_update
+      BEFORE UPDATE ON pos_staff
+      FOR EACH ROW
+      WHEN (OLD.role_id IS DISTINCT FROM NEW.role_id
+         OR OLD.is_active IS DISTINCT FROM NEW.is_active)
+      EXECUTE FUNCTION pos_staff_one_owner()
+    ''',
+
+    // Owner is somebody's job, never an extra role — and the owner is given
+    // no extra roles of their own. The first half holds even when there is no
+    // owner at the moment: an owner-as-extra-role would count as the owner for
+    // the rule above while the staff list said "Manager".
+    //
+    // `FOR SHARE` on the staff row, so that granting somebody an extra role and
+    // appointing them owner cannot both commit from two sessions: the UPDATE
+    // of `role_id` waits for this, and this waits for it.
+    r'''
+    CREATE OR REPLACE FUNCTION pos_staff_roles_not_owner()
+      RETURNS trigger LANGUAGE plpgsql
+      SECURITY DEFINER SET search_path = public AS $fn$
+    DECLARE
+      holder text;
+    BEGIN
+      IF EXISTS (SELECT 1 FROM pos_roles WHERE id = NEW.role_id AND code = 'owner') THEN
+        RAISE EXCEPTION
+          'the owner role cannot be an extra role — to make somebody the owner, set it as their role (pos_staff.role_id), after disabling the current owner';
+      END IF;
+
+      SELECT s.name INTO holder FROM pos_staff s
+        JOIN pos_roles r ON r.id = s.role_id
+       WHERE s.id = NEW.staff_id AND r.code = 'owner'
+         FOR SHARE OF s;
+      IF holder IS NOT NULL THEN
+        RAISE EXCEPTION
+          '% is the owner and already holds every permission, so the owner is given no extra roles',
+          holder;
+      END IF;
+
+      RETURN NEW;
+    END $fn$
+    ''',
+    'DROP TRIGGER IF EXISTS pos_staff_roles_no_owner ON pos_staff_roles',
+    '''
+    CREATE TRIGGER pos_staff_roles_no_owner
+      BEFORE INSERT OR UPDATE ON pos_staff_roles
+      FOR EACH ROW EXECUTE FUNCTION pos_staff_roles_not_owner()
+    ''',
+
+    // No exceptions for the owner. An ALLOW on somebody who holds everything
+    // says nothing; a DENY is a lock-out — `staff.manage` denied to the only
+    // owner leaves nobody able to open the screen that would remove it.
+    r'''
+    CREATE OR REPLACE FUNCTION pos_staff_overrides_not_owner()
+      RETURNS trigger LANGUAGE plpgsql
+      SECURITY DEFINER SET search_path = public AS $fn$
+    DECLARE
+      holder text;
+    BEGIN
+      SELECT s.name INTO holder FROM pos_staff s
+        JOIN pos_roles r ON r.id = s.role_id
+       WHERE s.id = NEW.staff_id AND r.code = 'owner'
+         FOR SHARE OF s;
+      IF holder IS NOT NULL THEN
+        RAISE EXCEPTION
+          '% is the owner — a permission exception on the owner means nothing if it allows and locks the restaurant out if it denies, so there is nothing to set here',
+          holder;
+      END IF;
+
+      RETURN NEW;
+    END $fn$
+    ''',
+    'DROP TRIGGER IF EXISTS pos_staff_overrides_no_owner '
+        'ON pos_staff_permission_overrides',
+    '''
+    CREATE TRIGGER pos_staff_overrides_no_owner
+      BEFORE INSERT OR UPDATE ON pos_staff_permission_overrides
+      FOR EACH ROW EXECUTE FUNCTION pos_staff_overrides_not_owner()
+    ''',
+  ]),
+  PosMigration(43, 'a main device shares its licence with its tablets', [
+    // A tablet is a child of the main device and activates nothing of its own
+    // (`TerminalRole`), so the licence has to reach it through the one thing
+    // they share. One row per restaurant, replaced on every renewal.
+    //
+    // Not a secret, and not trusted either: the row holds the signed licence
+    // exactly as issued, and a child verifies the signature against the key in
+    // its own binary. A row somebody edited is a licence that fails to verify.
+    '''
+    CREATE TABLE IF NOT EXISTS pos_site_licence (
+      restaurant_id bigint      PRIMARY KEY REFERENCES pos_restaurants(id) ON DELETE CASCADE,
+      payload       text        NOT NULL,
+      signature     text        NOT NULL,
+      key_id        text        NOT NULL,
+      -- The main device's mode, which its children run in.
+      mode          text        NOT NULL,
+      published_at  timestamptz NOT NULL DEFAULT now(),
+      CONSTRAINT pos_site_licence_mode_known CHECK (mode IN ('cloud', 'offline'))
+    )
+    ''',
+    // The till grant, for a database installed before this table existed:
+    // `LocalBootstrap.tillGrants` covers new installs, and nothing else would
+    // re-run it here. Named for the default role because that is the one every
+    // install the wizard made has; a hand-named role is re-granted with
+    // `pos_migrate --grant-to`, as for every table before it.
+    r'''
+    DO $grant$
+    BEGIN
+      IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'pos_till') THEN
+        GRANT SELECT, INSERT, UPDATE ON pos_site_licence TO pos_till;
+      END IF;
+    END $grant$
+    ''',
+  ]),
+  PosMigration(44, 'a purchase order only moves forward, and stock keeps its unit', [
+    // Three rules that were held by a button and an assert, and both failed.
+    // Each is cross-row or about history, so each is a trigger — the shape of
+    // `pos_supplier_payment_allocation` in migration 30, for its reason: the
+    // repositories check all three first and say them in words, but a rule
+    // held only in Dart holds until somebody writes the second writer.
+    //
+    // **No existing row is rewritten.** Each trigger fires on a change, so a
+    // branch that ran an earlier build keeps whatever it has — including stock
+    // already stored in a unit that disagrees with its item. Which figure is
+    // right there is a stock count's question, not a migration's.
+
+    // ── A purchase order moves forward only ──────────────────────────────
+    //
+    // draft → sent | cancelled; sent → partially_received | received |
+    // cancelled; partially_received → received. The same graph
+    // `PurchaseEngine` draws, plus the receipts' own moves.
+    //
+    // **partially_received → cancelled is the one that mattered.** Cancel was
+    // only hidden on a part-received order, and `setStatus` updated whatever
+    // it was given — so a receipt booked from another till between the pane
+    // drawing and the tap let an order be cancelled with its goods already in
+    // stock. The way out of a short delivery is to close the difference, which
+    // is not built; until it is, the order stays open.
+    //
+    // **received is not checked against the lines.** Receiving derives it
+    // from them, and short-closing (CB-09 D11) will need to write it with
+    // lines still short. A trigger that demanded every line full would have
+    // to be taken back by the migration that builds that.
+    //
+    // No lock is taken here: the UPDATE that fires this already holds the
+    // order's row, and every writer of its lines (`saveDraft`, receiving)
+    // locks that row first.
+    r'''
+    CREATE OR REPLACE FUNCTION pos_purchase_order_moves_forward()
+      RETURNS trigger LANGUAGE plpgsql AS $fn$
+    BEGIN
+      IF OLD.status IN ('received', 'cancelled') THEN
+        RAISE EXCEPTION
+          'purchase order % is %, and a closed order does not reopen — write a new order for anything more',
+          OLD.reference, OLD.status;
+      END IF;
+
+      IF OLD.status = 'partially_received' AND NEW.status = 'cancelled' THEN
+        RAISE EXCEPTION
+          'goods have already arrived against purchase order %, so it cannot be cancelled — they are in stock and this order is their record; leave it open for the rest',
+          OLD.reference;
+      END IF;
+
+      IF NOT (
+           (OLD.status = 'draft' AND NEW.status IN ('sent', 'cancelled'))
+        OR (OLD.status = 'sent'
+            AND NEW.status IN ('partially_received', 'received', 'cancelled'))
+        OR (OLD.status = 'partially_received' AND NEW.status = 'received')
+      ) THEN
+        RAISE EXCEPTION
+          'purchase order % cannot go from % to % — an order only moves forward: draft, then sent, then received or cancelled',
+          OLD.reference, OLD.status, NEW.status;
+      END IF;
+
+      IF NEW.status = 'sent' AND NOT EXISTS (
+           SELECT 1 FROM pos_purchase_order_lines
+            WHERE purchase_order_id = NEW.id) THEN
+        RAISE EXCEPTION
+          'purchase order % has no lines — add what is being ordered before sending it',
+          OLD.reference;
+      END IF;
+
+      RETURN NEW;
+    END $fn$
+    ''',
+    'DROP TRIGGER IF EXISTS pos_purchase_orders_move_forward ON pos_purchase_orders',
+    // WHEN, so the receipt's own "set it to what it already is" and every
+    // edit of a draft's supplier or notes pass without the function running.
+    '''
+    CREATE TRIGGER pos_purchase_orders_move_forward
+      BEFORE UPDATE ON pos_purchase_orders
+      FOR EACH ROW
+      WHEN (OLD.status IS DISTINCT FROM NEW.status)
+      EXECUTE FUNCTION pos_purchase_order_moves_forward()
+    ''',
+
+    // ── Stock held in a unit stays in it ─────────────────────────────────
+    //
+    // There is no conversion in this product, and a relabel is a conversion
+    // by 1. Receiving used to overwrite the level's unit with the delivery's,
+    // so 5 kg arriving on 10 boxes was stored as 15 kg — with an average cost
+    // blended across both. A level may take a new unit only when it holds
+    // nothing; negative counts as holding, since a debt in boxes is not
+    // settled in kilos.
+    //
+    // The receipt's upsert (`ON CONFLICT DO UPDATE`) fires this too, which is
+    // the case it exists for.
+    r'''
+    CREATE OR REPLACE FUNCTION pos_stock_level_keeps_unit()
+      RETURNS trigger LANGUAGE plpgsql AS $fn$
+    DECLARE
+      item text;
+    BEGIN
+      SELECT name_en INTO item FROM pos_products WHERE id = OLD.product_id;
+      RAISE EXCEPTION
+        '% is held in stock as % % at branch %, so it cannot be counted in % — nothing converts one unit into another; book it in as %, or wait until none is held',
+        coalesce(item, 'product ' || OLD.product_id),
+        round(OLD.quantity_milli::numeric / 1000, 3), OLD.unit,
+        OLD.branch_id, NEW.unit, OLD.unit;
+    END $fn$
+    ''',
+    'DROP TRIGGER IF EXISTS pos_stock_levels_keep_unit ON pos_stock_levels',
+    '''
+    CREATE TRIGGER pos_stock_levels_keep_unit
+      BEFORE UPDATE ON pos_stock_levels
+      FOR EACH ROW
+      WHEN (OLD.unit IS DISTINCT FROM NEW.unit AND OLD.quantity_milli <> 0)
+      EXECUTE FUNCTION pos_stock_level_keeps_unit()
+    ''',
+
+    // And the item's unit — which is what the next purchase line is written
+    // in — cannot move away from stock held in another. This is the door the
+    // 15 kg came through: change Chicken from box to kg with ten boxes on the
+    // shelf, and every order after it books kilos onto boxes. Blank reads as
+    // `ea`, as `QuantityUnit.fromWire` does.
+    //
+    // Only an actual change fires it, so renaming an item whose stock already
+    // disagrees with it (a branch that ran an earlier build) still works.
+    // Receiving takes FOR SHARE on the product row, so a receipt and this
+    // UPDATE queue; and a function's queries each see what is committed by
+    // the time they run, so the one that waits sees the other's stock.
+    r'''
+    CREATE OR REPLACE FUNCTION pos_product_unit_follows_stock()
+      RETURNS trigger LANGUAGE plpgsql AS $fn$
+    DECLARE
+      asked text := coalesce(nullif(trim(NEW.stock_unit), ''), 'ea');
+      held  pos_stock_levels%ROWTYPE;
+    BEGIN
+      SELECT * INTO held FROM pos_stock_levels
+       WHERE product_id = NEW.id AND quantity_milli <> 0 AND unit <> asked
+       ORDER BY branch_id
+       LIMIT 1;
+
+      IF FOUND THEN
+        RAISE EXCEPTION
+          '% has % % in stock at branch %, so its unit cannot change to % — nothing converts one unit into another; it can change once none is held in %',
+          NEW.name_en, round(held.quantity_milli::numeric / 1000, 3),
+          held.unit, held.branch_id, asked, held.unit;
+      END IF;
+
+      RETURN NEW;
+    END $fn$
+    ''',
+    'DROP TRIGGER IF EXISTS pos_products_unit_follows_stock ON pos_products',
+    r'''
+    CREATE TRIGGER pos_products_unit_follows_stock
+      BEFORE UPDATE ON pos_products
+      FOR EACH ROW
+      WHEN (coalesce(nullif(trim(OLD.stock_unit), ''), 'ea')
+            IS DISTINCT FROM coalesce(nullif(trim(NEW.stock_unit), ''), 'ea'))
+      EXECUTE FUNCTION pos_product_unit_follows_stock()
+    ''',
+  ]),
 ];
 
 /// Brings the branch database up to the current schema.

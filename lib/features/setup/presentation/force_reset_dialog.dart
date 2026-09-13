@@ -6,15 +6,20 @@ import '../../../core/l10n/app_strings.dart';
 import '../../../core/ui/theme.dart';
 import '../../../core/ui/tokens.dart';
 import '../../../core/ui/widgets/pos_widgets.dart';
+import '../../../data/postgres/pos_database.dart' show PosDbFailure;
+import '../../../domain/models/permissions.dart';
 import '../../../domain/models/shift.dart';
+import '../../admin/presentation/management_screen.dart'
+    show checkBackOfficeSignIn;
 
 /// The deliberate escape hatch: wipe this machine's terminal setup and run the
 /// wizard again, from anywhere, including mid-shift.
 ///
-/// Why this exists separately from the start screen's "Reset terminal" link:
-/// that link REFUSES while a shift is open, and it is right to. The common
-/// case is an operator who does not realise the drawer is still open, and
-/// silently discarding a shift is not something a visible button should do.
+/// Why this exists separately from the back office's "Reset terminal"
+/// (System › Terminal): that one REFUSES while a shift is open, and it is right
+/// to. The common case is an operator who does not realise the drawer is still
+/// open, and silently discarding a shift is not something a visible button
+/// should do.
 ///
 /// But a till whose terminal has been deleted platform-side is stuck behind
 /// exactly that refusal — its shift can never be closed cleanly, because the
@@ -23,8 +28,28 @@ import '../../../domain/models/shift.dart';
 /// than a button so it is not found by accident, and states plainly what it is
 /// about to cost instead of either refusing or quietly destroying it.
 ///
+/// **On a till that is set up, it asks who first.** The shortcut used to be the
+/// only lock, and a cashier who had once watched an installer use it held the
+/// key to a till nobody could sell on until somebody with the database
+/// password arrived. See [_ForceResetSignIn] for the one case it still lets
+/// through without a name.
+///
 /// Nothing on the platform is touched. This deletes local setup only.
 Future<bool> showForceResetDialog(BuildContext context, WidgetRef ref) async {
+  // Nothing to protect on a till that was never set up, or is halfway through
+  // the wizard: there is no working setup to wipe and no database to ask.
+  if (ref.read(setupCompleteProvider)) {
+    final allowed = await showDialog<bool>(
+      context: context,
+      // Not dismissed by a stray tap while the database is being asked: the
+      // check reads providers through this dialog, which must still be there
+      // when the answer comes back.
+      barrierDismissible: false,
+      builder: (_) => const _ForceResetSignIn(),
+    );
+    if (allowed != true || !context.mounted) return false;
+  }
+
   final strings = context.strings;
 
   // Read both costs BEFORE asking, so the dialog can name them. A failure to
@@ -60,6 +85,170 @@ Future<bool> showForceResetDialog(BuildContext context, WidgetRef ref) async {
   await ref.read(terminalResetProvider).run();
 
   return true;
+}
+
+/// Who is wiping this till: a username and the back-office password, from
+/// somebody who holds `terminal.manage`.
+///
+/// **The one refusal that lets somebody through** is the database being
+/// unreachable altogether. A till in that state cannot sell, cannot open the
+/// back office, and cannot check anybody's password — and pointing it at a
+/// database it CAN reach is exactly what this reset is for. So it goes on to
+/// the dialog that names the cost, as it always did. A wrong password, or the
+/// right one from somebody who may not do this, stays refused.
+class _ForceResetSignIn extends ConsumerStatefulWidget {
+  const _ForceResetSignIn();
+
+  @override
+  ConsumerState<_ForceResetSignIn> createState() => _ForceResetSignInState();
+}
+
+class _ForceResetSignInState extends ConsumerState<_ForceResetSignIn> {
+  final _username = TextEditingController();
+  final _password = TextEditingController();
+  final _passwordFocus = FocusNode();
+  bool _busy = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _username.dispose();
+    _password.dispose();
+    _passwordFocus.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    final username = _username.text.trim();
+    final password = _password.text;
+    if (username.isEmpty || password.isEmpty || _busy) return;
+
+    final strings = context.strings;
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+
+    final (:staff, :failure) = await checkBackOfficeSignIn(
+      ref,
+      username: username,
+      password: password,
+      capability: PosCapability.terminalManage,
+    );
+    if (!mounted) return;
+
+    if (staff != null ||
+        failure == PosDbFailure.dns ||
+        failure == PosDbFailure.tcp) {
+      Navigator.of(context).pop(true);
+      return;
+    }
+
+    _password.clear();
+    setState(() {
+      _busy = false;
+      _error = failure == null || failure == PosDbFailure.auth
+          ? strings.forceResetSignInRefused
+          : strings.backOfficeRefused;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = context.strings;
+    final pos = context.pos;
+
+    return Dialog(
+      backgroundColor: pos.shell,
+      insetPadding: const EdgeInsets.all(PosSpace.s24),
+      shape: RoundedRectangleBorder(
+        side: pos.shellBorder,
+        borderRadius: PosBorders.radius,
+      ),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 420),
+        child: Padding(
+          padding: const EdgeInsets.all(PosSpace.xl),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                strings.forceResetSignInTitle,
+                style: PosText.panelTitle(color: pos.shellText),
+              ),
+              const SizedBox(height: PosSpace.sm),
+              Text(
+                strings.forceResetSignInHelp,
+                style: PosText.ui(size: 13, color: pos.shellMuted, height: 1.5),
+              ),
+              const SizedBox(height: PosSpace.lg),
+              UsernameField(
+                key: const Key('force-reset-username'),
+                controller: _username,
+                onSubmitted: _passwordFocus.requestFocus,
+              ),
+              const SizedBox(height: PosSpace.lg),
+              MicroLabel(strings.backOfficePassword),
+              const SizedBox(height: PosSpace.sm),
+              TextField(
+                key: const Key('force-reset-password'),
+                controller: _password,
+                focusNode: _passwordFocus,
+                obscureText: true,
+                enabled: !_busy,
+                onSubmitted: (_) => _submit(),
+                textAlign: TextAlign.center,
+                style: PosText.mono(size: 16, color: pos.shellText),
+                cursorColor: pos.accent,
+                decoration: shellInputDecoration(pos),
+              ),
+              // Reserved, not conditional, so the buttons do not jump under a
+              // finger already on its way to them.
+              const SizedBox(height: PosSpace.md),
+              SizedBox(
+                height: 36,
+                child: _error == null
+                    ? null
+                    : Text(
+                        _error!,
+                        textAlign: TextAlign.center,
+                        style: PosText.ui(size: 12.5, color: pos.danger),
+                      ),
+              ),
+              const SizedBox(height: PosSpace.sm),
+              Row(
+                children: [
+                  Expanded(
+                    child: PosButton(
+                      label: strings.cancel,
+                      foreground: pos.shellText,
+                      border: Border.fromBorderSide(pos.shellBorder),
+                      // Not while the database is being asked: the answer
+                      // lands on this dialog, which has to still be here.
+                      onPressed: _busy
+                          ? null
+                          : () => Navigator.of(context).pop(false),
+                    ),
+                  ),
+                  const SizedBox(width: PosSpace.md),
+                  Expanded(
+                    child: PosButton(
+                      key: const Key('force-reset-continue'),
+                      label: _busy ? strings.checking : strings.continueLabel,
+                      background: pos.accent,
+                      foreground: pos.onAccent,
+                      onPressed: _busy ? null : _submit,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _ForceResetDialog extends StatelessWidget {

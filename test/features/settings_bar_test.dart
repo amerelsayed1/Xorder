@@ -3,11 +3,39 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:xorder_pos/app/app.dart';
 import 'package:xorder_pos/app/providers.dart';
+import 'package:xorder_pos/app/router.dart';
 
 import 'package:xorder_pos/domain/models/permissions.dart';
 import 'package:xorder_pos/domain/repositories/repositories.dart';
 
 import '../support/fakes.dart';
+
+/// The owner's role, not a hand-picked capability: which areas appear is
+/// `managementAreasFor`'s answer, and it hides Buying from somebody who
+/// manages the rota but does not buy the stock.
+const _owner = PosStaff(
+  id: 1,
+  name: 'Rana A.',
+  username: 'rana',
+  role: PosRole(
+    id: 1,
+    code: 'owner',
+    nameEn: 'Owner',
+    capabilities: SystemRoles.owner,
+  ),
+);
+
+const _cashier = PosStaff(
+  id: 2,
+  name: 'Omar K.',
+  username: 'omar',
+  role: PosRole(
+    id: 2,
+    code: 'cashier',
+    nameEn: 'Cashier',
+    capabilities: SystemRoles.cashier,
+  ),
+);
 
 /// The Settings bar has to describe the till it is sitting on.
 ///
@@ -27,7 +55,12 @@ void main() {
   // builds at all.
   final desktop = TargetPlatformVariant.only(TargetPlatform.macOS);
 
-  Future<ProviderContainer> pumpApp(WidgetTester tester) async {
+  /// Signed in as [staff], because the bar is absent until somebody is.
+  Future<ProviderContainer> pumpApp(
+    WidgetTester tester, {
+    PosStaff? staff = _owner,
+    bool setUp = true,
+  }) async {
     tester.view
       ..physicalSize = const Size(1440, 900)
       ..devicePixelRatio = 1.0;
@@ -43,6 +76,7 @@ void main() {
     // English, asked for rather than assumed: the product's default is Arabic —
     // its restaurants are in Egypt — and these tests read English copy.
     container.read(localeProvider.notifier).apply('en');
+    if (setUp) container.read(setupCompleteProvider.notifier).markComplete();
 
     await tester.pumpWidget(
       UncontrolledProviderScope(
@@ -50,6 +84,11 @@ void main() {
         child: const XorderPosApp(),
       ),
     );
+    if (staff != null) {
+      container.read(signedInStaffProvider.notifier).signIn(staff);
+      // Off the front door: the start screen shows the bar to nobody.
+      container.read(routerProvider).go(PosRoutes.orders);
+    }
     await tester.pumpAndSettle();
     return container;
   }
@@ -63,6 +102,81 @@ void main() {
     await tester.tap(find.text(label));
     await tester.pumpAndSettle();
   }
+
+  testWidgets('nobody signed in: no bar at all', (tester) async {
+    final container = await pumpApp(tester, staff: null);
+
+    // Whoever walks up to a till on the start screen is not yet anybody, so
+    // the whole bar waits for a sign-in. F8 still reaches the back office's
+    // own sign-in without it.
+    expect(find.byType(MenuBar), findsNothing);
+    expect(find.text('Settings'), findsNothing);
+    expect(find.text('Management'), findsNothing);
+
+    // The bar arrives with a sign-in, past the front door, and leaves with the
+    // sign-out.
+    container.read(signedInStaffProvider.notifier).signIn(_owner);
+    container.read(routerProvider).go(PosRoutes.orders);
+    await tester.pumpAndSettle();
+    expect(find.byType(MenuBar), findsOneWidget);
+    expect(find.text('Settings'), findsOneWidget);
+
+    container.read(signedInStaffProvider.notifier).signOut();
+    await tester.pumpAndSettle();
+    expect(find.byType(MenuBar), findsNothing);
+    expect(find.text('Settings'), findsNothing);
+  }, variant: desktop);
+
+  testWidgets('and not on the start screen, even with somebody signed in', (
+    tester,
+  ) async {
+    final container = await pumpApp(tester, staff: null);
+
+    // Signed in by the back office's own door, then back out to the front:
+    // the start screen is where somebody signs in to sell, so it stays clean.
+    container.read(signedInStaffProvider.notifier).signIn(_owner);
+    await tester.pumpAndSettle();
+    expect(find.byType(MenuBar), findsNothing);
+    expect(find.text('Rana A.'), findsNothing, reason: 'no name strip either');
+
+    container.read(routerProvider).go(PosRoutes.orders);
+    await tester.pumpAndSettle();
+    expect(find.byType(MenuBar), findsOneWidget);
+
+    container.read(routerProvider).go(PosRoutes.start);
+    await tester.pumpAndSettle();
+    expect(find.byType(MenuBar), findsNothing);
+  }, variant: desktop);
+
+  testWidgets('but a till being set up keeps it, for the language switch', (
+    tester,
+  ) async {
+    await pumpApp(tester, staff: null, setUp: false);
+
+    // The wizard has no language step up front; this bar is how an installer
+    // facing a refusal they cannot read gets it in their language.
+    await openSettings(tester);
+    expect(find.text('العربية'), findsOneWidget);
+    // And only what nobody signed in may see.
+    expect(find.text('Printer & cash drawer…'), findsNothing);
+    expect(find.text('People'), findsNothing);
+  }, variant: desktop);
+
+  testWidgets('a cashier gets the till\'s settings and none of the back '
+      'office', (tester) async {
+    await pumpApp(tester, staff: _cashier);
+
+    for (final area in ['People', 'Money', 'Buying', 'Compliance', 'System']) {
+      expect(find.text(area), findsNothing, reason: area);
+    }
+
+    await openSettings(tester);
+    expect(find.text('Switch user'), findsOneWidget);
+    expect(find.text('Orders & invoices'), findsOneWidget);
+    // Configuring the machine is `terminal.manage`, which a cashier lacks.
+    expect(find.text('Printer & cash drawer…'), findsNothing);
+    expect(find.text('⇧⌘S'), findsNothing);
+  }, variant: desktop);
 
   testWidgets('the theme item names the theme the next tap would give', (
     tester,
@@ -111,38 +225,10 @@ void main() {
   testWidgets('each area of the back office is its own word in the bar', (
     tester,
   ) async {
-    final container = await pumpApp(tester);
+    await pumpApp(tester);
 
-    // Nobody signed in yet — and that is not the same as nobody permitted. The
-    // management screen's own PIN pad is what signs somebody in, so hiding the
-    // way to it would be a lock with its key inside. One door, under one word,
-    // because which areas an unknown person has is not a question the bar can
-    // answer.
-    expect(find.text('Management'), findsOneWidget);
-    expect(find.text('Buying'), findsNothing);
-
-    container
-        .read(signedInStaffProvider.notifier)
-        .signIn(
-          const PosStaff(
-            id: 1,
-            name: 'Rana A.',
-            username: 'rana',
-            // The owner's role, not a hand-picked capability: which areas
-            // appear is `managementAreasFor`'s answer, and it hides Buying from
-            // somebody who manages the rota but does not buy the stock.
-            role: PosRole(
-              id: 1,
-              code: 'owner',
-              nameEn: 'Owner',
-              capabilities: SystemRoles.owner,
-            ),
-          ),
-        );
-    await tester.pumpAndSettle();
-
-    // Now the areas themselves. "Where do I enter this invoice" is answered by
-    // Buying, in the bar, rather than by the fifth line of a scrolling list.
+    // "Where do I enter this invoice" is answered by Buying, in the bar,
+    // rather than by the fifth line of a scrolling list.
     expect(find.text('Management'), findsNothing);
     for (final area in ['People', 'Money', 'Buying', 'Compliance', 'System']) {
       expect(find.text(area), findsOneWidget, reason: area);
@@ -183,9 +269,9 @@ void main() {
   ) async {
     await pumpApp(tester);
 
-    // On the Management menu, beside the item it opens — not in Settings,
-    // where "Staff & accounts" and "Management" were the same door twice.
-    await openSettings(tester, label: 'Management');
+    // Beside Staff, the item F8 lands on — not in Settings, where "Staff &
+    // accounts" and "Management" were the same door twice.
+    await openSettings(tester, label: 'People');
     // Back-office work is something a manager does twenty times an evening
     // between orders, and a key nobody can guess is a key nobody uses.
     expect(find.text('F8'), findsOneWidget);
@@ -196,21 +282,6 @@ void main() {
   ) async {
     final container = await pumpApp(tester);
     container.read(localeProvider.notifier).apply('ar');
-    container
-        .read(signedInStaffProvider.notifier)
-        .signIn(
-          const PosStaff(
-            id: 1,
-            name: 'Rana A.',
-            username: 'rana',
-            role: PosRole(
-              id: 1,
-              code: 'owner',
-              nameEn: 'Owner',
-              capabilities: SystemRoles.owner,
-            ),
-          ),
-        );
     await tester.pumpAndSettle();
 
     expect(find.text('المال'), findsOneWidget);

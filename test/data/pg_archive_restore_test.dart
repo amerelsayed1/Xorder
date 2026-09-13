@@ -54,8 +54,10 @@ void main() {
     return;
   }
 
-  // Cluster-wide, so named for this suite and never for anything real.
-  const reader = 'xorder_test_backup_reader';
+  // Cluster-wide, so named for this suite and never for anything real — and
+  // for this checkout, because another worktree's run shares the server's
+  // roles even though it never shares these databases.
+  final reader = PgFixture.roleFor('backup_reader');
   const owner = 'pos_admin';
   const terminal = '55555555-5555-4555-8555-555555555555';
 
@@ -233,6 +235,11 @@ void main() {
     await pg.close();
     await targetDb.close();
     if (folder.existsSync()) await folder.delete(recursive: true);
+    // It holds a membership and nothing on either database, so no database
+    // has to go first. Dropped rather than kept for the next run: with a name
+    // per checkout, a deleted worktree's reader — a login role that can read
+    // everything — would otherwise stay on the server for good.
+    await PgFixture.maintenance(['DROP ROLE IF EXISTS $reader']);
   });
 
   test('taken by an account that can read everything and write nothing',
@@ -306,7 +313,13 @@ void main() {
     // does not have — exactly what restoring onto a machine that was never
     // given `pos_till` looks like. The GRANT comes after every table has been
     // dropped and refilled, so this fails as late as a restore can.
-    const ghost = 'xorder_test_backup_ghost';
+    //
+    // Per checkout, and not only for tidiness: this test needs the role to be
+    // missing when the restore runs. Under one shared name, another worktree
+    // creating its ghost at that moment would let the restore succeed, and
+    // that ghost's grant in the other source database would stop this run's
+    // DROP ROLE.
+    final ghost = PgFixture.roleFor('backup_ghost');
     await PgFixture.maintenance(['CREATE ROLE $ghost']);
     final File doomed;
     try {

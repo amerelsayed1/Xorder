@@ -326,6 +326,10 @@ class _DeploymentPane extends ConsumerWidget {
     final controller = ref.read(setupProvider.notifier);
     final config = draft.deployment;
 
+    // A tablet builds nothing and chooses nothing here: it finds its main
+    // device. See [TerminalRole].
+    if (config.isChild) return _MainDevicePane(draft: draft);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -509,6 +513,101 @@ class _DeploymentPane extends ConsumerWidget {
             style: PosText.ui(size: 12.5, color: context.pos.muted, height: 1.5),
           ),
         ],
+      ],
+    );
+  }
+}
+
+/// A child tablet's connection step: where the main device is, and the till
+/// password it was set up with. Connecting reads the licence it shares.
+class _MainDevicePane extends ConsumerWidget {
+  const _MainDevicePane({required this.draft});
+
+  final SetupDraft draft;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final s = context.strings;
+    final controller = ref.read(setupProvider.notifier);
+    final config = draft.deployment;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          s.mainDeviceHelp,
+          style: PosText.ui(size: 12.5, color: context.pos.muted, height: 1.5),
+        ),
+        const SizedBox(height: PosSpace.xl),
+        _Field(
+          label: s.mainDeviceAddress,
+          value: config.databaseHost,
+          mono: true,
+          hint: '192.168.1.20',
+          onChanged: controller.setDatabaseHost,
+          help: s.mainDeviceAddressHelp,
+        ),
+        if (config.isPrivateHost && !config.isSingleMachine) ...[
+          const SizedBox(height: PosSpace.lg),
+          _ChoiceTile(
+            title: s.trustWithoutCertificate,
+            blurb: s.trustWithoutCertificateBlurb,
+            selected: !config.verifyTls,
+            onTap: () => controller.setVerifyTls(!config.verifyTls),
+          ),
+        ],
+        const SizedBox(height: PosSpace.xl),
+        // Defaults every install the wizard made shares; shown because one set
+        // up by hand may not.
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              flex: 2,
+              child: _Field(
+                label: s.databaseName,
+                value: config.databaseName,
+                mono: true,
+                hint: 'xorder_pos',
+                onChanged: controller.setDatabaseName,
+              ),
+            ),
+            const SizedBox(width: PosSpace.lg),
+            Expanded(
+              child: _Field(
+                label: s.databasePort,
+                value: config.databasePort.toString(),
+                mono: true,
+                hint: '5432',
+                onChanged: controller.setDatabasePort,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: PosSpace.xl),
+        _PasswordField(
+          field: 'database',
+          label: s.databasePassword,
+          value: draft.databasePassword,
+          onChanged: controller.setDatabasePassword,
+          help: s.databasePasswordHelp,
+        ),
+        const SizedBox(height: PosSpace.xl),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: PosButton(
+            label: s.connectToMainDevice,
+            background: context.pos.ink,
+            foreground: context.pos.onInk,
+            padding: const EdgeInsets.symmetric(horizontal: PosSpace.xl),
+            onPressed:
+                draft.busy ||
+                    config.databaseHost.trim().isEmpty ||
+                    draft.databasePassword.isEmpty
+                ? null
+                : controller.connectToMainDevice,
+          ),
+        ),
       ],
     );
   }
@@ -769,6 +868,27 @@ class _AccountPane extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final controller = ref.read(setupProvider.notifier);
+
+    // A child signs in as a manager its main device already has. The
+    // restaurant came with the shared licence, so it is shown and not asked.
+    if (draft.deployment.isChild) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _Field(
+            label: context.strings.restaurant,
+            value: draft.tenantName ??
+                draft.claims?.tenantName ??
+                draft.deployment.tenantSlug ??
+                '',
+            readOnly: true,
+            onChanged: (_) {},
+          ),
+          const SizedBox(height: PosSpace.s28),
+          _ManualCredentialFields(draft: draft),
+        ],
+      );
+    }
 
     // An offline till has no platform to sign in to and no account to sign in
     // WITH — the first administrator does not exist anywhere yet. Asking for a

@@ -61,6 +61,15 @@ class PgFixture {
   /// The database [open] uses for [suite] in this checkout.
   static String nameFor(String suite) => 'xorder_pos_${suite}_$_checkout';
 
+  /// A role named [name] for this checkout alone.
+  ///
+  /// Roles are cluster-wide, so [nameFor] never reached them: two checkouts
+  /// both creating `xorder_test_install_admin` meant one's `DROP ROLE` failed
+  /// on the database the other had just given it — one checkout's cleanup
+  /// breaking on another's test. The tag keeps the result a plain lowercase
+  /// identifier, well inside PostgreSQL's 63 bytes for any suite-sized [name].
+  static String roleFor(String name) => 'xorder_test_${name}_$_checkout';
+
   /// Run [statements] against the maintenance database, one by one, outside
   /// any transaction — for what `CREATE` and `DROP DATABASE` need.
   static Future<void> maintenance(List<String> statements) async {

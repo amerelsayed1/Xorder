@@ -186,6 +186,30 @@ class LocalBootstrap {
   Future<List<int>> migrate(DeploymentConfig admin) =>
       PosMigrator(database).migrate(admin);
 
+  /// Bring an installed database up to this build: [migrate], then the same
+  /// grants the wizard gave, because a table a new migration created has none.
+  ///
+  /// The grants are re-applied only when something was migrated. They are all
+  /// GRANTs, so repeating them is harmless, but there is no reason to write to
+  /// the catalogue on every visit to the back office.
+  Future<List<int>> upgrade(
+    DeploymentConfig admin, {
+    required DeploymentConfig till,
+  }) async {
+    final applied = await migrate(admin);
+    if (applied.isNotEmpty) {
+      await applyGrants(admin, [
+        ...tillGrants(
+          database: till.databaseName,
+          role: till.databaseUser,
+          cloudSeeding: till.mode == DeploymentMode.cloud,
+        ),
+        ...administrativeGrants(role: till.adminDatabaseUser),
+      ]);
+    }
+    return applied;
+  }
+
   /// The restaurant row, matched on slug so a re-run adopts rather than
   /// duplicates.
   Future<int> seedRestaurant(
@@ -603,6 +627,12 @@ class LocalBootstrap {
     // Claiming a pairing code stamps `claimed_at`, and an installer with
     // no dashboard registers the terminal from the wizard.
     'GRANT SELECT, INSERT, UPDATE ON pos_terminals TO "$role"',
+    // The licence the main device shares with its children (migration 43). The
+    // main device writes it on the till credential — it renews at the till,
+    // with nobody in the back office — and a child reads it. UPDATE hands a
+    // stolen credential nothing: every licence is Ed25519-signed, so the most
+    // it can write is a licence that already existed.
+    'GRANT SELECT, INSERT, UPDATE ON pos_site_licence TO "$role"',
     // Shifts are opened and closed at the till by definition. No DELETE: a
     // cash-up somebody wants to disappear is exactly the row that must not.
     'GRANT SELECT, INSERT, UPDATE ON pos_shifts TO "$role"',

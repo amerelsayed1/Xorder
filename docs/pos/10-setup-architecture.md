@@ -602,6 +602,35 @@ This document adds migration 6 only (§6).
 
 ## 9. Main device and client terminal
 
+> ### Decision — owner, 2026-09-12: a tablet is always a child
+>
+> Built, for tablets. `TerminalRole` (`lib/core/config/deployment.dart`) is
+> chosen by the operating system before the first screen: Android and iOS are
+> `child`, desktops are `main`. It is persisted as `deployment.role`; an old
+> config without it reads as `main`.
+>
+> - **A child activates no licence.** The main device publishes its signed
+>   licence into `pos_site_licence` (migration 43) from its start screen and
+>   after every renewal. The child verifies it with the key in its own binary,
+>   `viaMainDevice`: signature, tenant, mode and dates are checked as usual. The
+>   main device's fingerprint pin is not held against the tablet. In its place,
+>   `max_terminals` is **enforced** when the tablet registers, by counting
+>   `pos_terminals` rows. This is the one place that count stops being advisory.
+> - **Its wizard is `SetupDraft.childSteps`:** main device → sign in (a manager
+>   who exists on the main device, username + PIN) → branch → terminal →
+>   hardware → catalogue → summary. It has no licence, mode, database build,
+>   first administrator or money step.
+> - **It runs in its main device's mode.** A child of a cloud main device holds
+>   no `baseUrl` and no device token. Its sales go into the shared database, and
+>   the main device's outbox drain carries them up.
+> - **Transport is direct SQL as `pos_till` (Topology A).** This is the
+>   "first non-desktop client" trigger recorded in `08-postgres-lan.md` §12. The
+>   owner accepted A at that trigger knowingly, rather than building the HTTP
+>   tier.
+>
+> Not built yet: the role choice on a **desktop** (a desktop child), and the
+> *Find the main device* sweep (§10).
+
 ### Say plainly what the role is
 
 Under Topology A there is **no bespoke local API tier for the POS, and none

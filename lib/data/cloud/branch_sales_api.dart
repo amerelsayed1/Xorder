@@ -320,9 +320,16 @@ class PlatformBranchSalesSource implements BranchSalesSource {
     return MethodTotal(
       tenderTypeId: _int(row['tender_type_id']),
       label: label,
-      // An unknown kind from a newer platform is `other` — still collected,
-      // never on account. Same tolerance as the tender list itself.
-      kind: TenderKind.fromWire(row['kind'] as String?),
+      // The platform's vocabulary, not the till's — `cash | card | external |
+      // other` (POS-BE-013) — through the same switch the seeder uses. Read
+      // with [TenderKind.fromWire], `external` fell to other: a card taken on
+      // the bank's own terminal was electronic when this till took it and
+      // other when this screen read it back, leaving electronic short of the
+      // settlement slip by every one. An unknown kind from a newer platform is
+      // `other` — still collected, never on account, cash only by its flag.
+      kind:
+          PlatformTenderKind.fromWire(row['kind'] as String?)?.tillKind ??
+          TenderKind.other,
       countsAsCash: cash,
       count: _require(row['count']),
       amount: money(row['amount_minor']),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/providers.dart';
@@ -10,6 +11,7 @@ import '../../../core/ui/widgets/pos_widgets.dart';
 import '../../../domain/models/permissions.dart';
 import '../../../domain/models/shift.dart';
 import '../../../domain/services/authorization.dart';
+import '../../../domain/services/eta_filing.dart' show etaFilingEnabled;
 import 'management_activity_pane.dart';
 import 'management_backup_pane.dart';
 import 'management_items_pane.dart';
@@ -26,6 +28,7 @@ import 'management_purchasing_pane.dart';
 import 'management_receipt_pane.dart';
 import 'management_roles_pane.dart';
 import 'management_staff_pane.dart';
+import 'management_terminal_pane.dart';
 
 /// The back office, inside the till.
 ///
@@ -42,6 +45,7 @@ import 'management_staff_pane.dart';
 class ManagementScreen extends ConsumerStatefulWidget {
   const ManagementScreen({
     required this.onClose,
+    required this.onReconfigure,
     this.initialPane = ManagementPane.staff,
     this.purchasingTab,
     this.create = false,
@@ -50,6 +54,12 @@ class ManagementScreen extends ConsumerStatefulWidget {
   });
 
   final VoidCallback onClose;
+
+  /// Off to the setup wizard, after the Terminal pane has cleared this till's
+  /// configuration. Required rather than defaulted: a back office that wiped
+  /// the setup and then stayed open would be standing on a till with no
+  /// database. See [ManagementTerminalPane].
+  final VoidCallback onReconfigure;
 
   /// Which pane to land on.
   ///
@@ -84,6 +94,7 @@ List<ManagementPane> managementPanesFor({
 }) => [
   for (final pane in ManagementPane.values)
     if ((!_authoringPanes.contains(pane) || authorsItsOwnCatalogue) &&
+        (pane != ManagementPane.eta || etaFilingEnabled) &&
         _permits(admin, pane))
       pane,
 ];
@@ -152,7 +163,9 @@ ManagementArea areaOf(ManagementPane pane) => switch (pane) {
   ManagementPane.orderTypes => ManagementArea.money,
   ManagementPane.purchasing => ManagementArea.buying,
   ManagementPane.receipt || ManagementPane.eta => ManagementArea.compliance,
-  ManagementPane.activity || ManagementPane.backup => ManagementArea.system,
+  ManagementPane.activity ||
+  ManagementPane.backup ||
+  ManagementPane.terminal => ManagementArea.system,
   ManagementPane.items ||
   ManagementPane.stock ||
   ManagementPane.units => ManagementArea.inventory,
@@ -297,6 +310,7 @@ ManagementDestination _purchasing(PurchasingTab tab, {bool create = false}) =>
       ManagementPane.items => (s.paneItems, s.paneItemsBlurb),
       ManagementPane.stock => (s.paneStock, s.paneStockBlurb),
       ManagementPane.units => (s.paneUnits, s.paneUnitsBlurb),
+      ManagementPane.terminal => (s.paneTerminal, s.paneTerminalBlurb),
     };
 
 /// The capability a pane needs beyond the `staffManage` that opened the screen.
@@ -310,8 +324,7 @@ String? _paneRequires(ManagementPane pane) => switch (pane) {
   ManagementPane.purchasing => PosCapability.purchaseManage,
   // The third capability that had no screen, and the one with the worst
   // consequences: `backup.manage` is critical-risk, held only by Owner, and
-  // deliberately outside supervisor override. `reports.view` and
-  // `terminal.manage` still have none.
+  // deliberately outside supervisor override. `reports.view` still has none.
   //
   // Unlike Purchasing, this pane's gate is not backed by a repository that
   // refuses — `pos_backups` is granted INSERT to the till so the automatic copy
@@ -319,6 +332,10 @@ String? _paneRequires(ManagementPane pane) => switch (pane) {
   // the gate protects is the two buttons: taking one on demand, and restoring.
   // Both go through `BackupService`, which is only ever reached from here.
   ManagementPane.backup => PosCapability.backupManage,
+  // Wiping this till's setup. Like Backup, nothing in the database refuses it
+  // — the configuration is a file on this machine — so what the gate protects
+  // is the one button, and the pane is the only place it is reached from.
+  ManagementPane.terminal => PosCapability.terminalManage,
   // Units exist for buying and counting stock: the buyer's.
   ManagementPane.items ||
   ManagementPane.stock ||
@@ -350,10 +367,43 @@ enum ManagementPane {
   items,
   stock,
   units,
+  terminal,
 }
 
 class _ManagementScreenState extends ConsumerState<ManagementScreen> {
   late ManagementPane _pane = widget.initialPane;
+
+  /// Where Esc is heard. Held rather than anonymous so a text field that took
+  /// the first Esc can hand focus back here, and the second one still arrives.
+  final _escapeFocus = FocusNode(debugLabel: 'management-escape');
+
+  @override
+  void dispose() {
+    _escapeFocus.dispose();
+    super.dispose();
+  }
+
+  /// Esc is "Back to the till", with one step in front of it.
+  ///
+  /// The panes keep no draft: leaving throws away whatever is half typed, and
+  /// the button already does exactly that. But a button is aimed at and Esc is
+  /// a reflex — a manager backing out of a dropdown or a mistyped name reaches
+  /// for it mid-form. So inside a field the first Esc only leaves the field,
+  /// and the second leaves the back office.
+  ///
+  /// Not at the door: a username and a password are nothing to lose, and
+  /// somebody who opened the wrong screen wants out in one key.
+  void _escape({required bool signingIn}) {
+    final typing =
+        FocusManager.instance.primaryFocus?.context
+            ?.findAncestorStateOfType<EditableTextState>() !=
+        null;
+    if (typing && !signingIn) {
+      _escapeFocus.requestFocus();
+      return;
+    }
+    widget.onClose();
+  }
 
   /// Follow the caller when it names a DIFFERENT pane.
   ///
@@ -381,6 +431,17 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final body = _body(context);
+    return CallbackShortcuts(
+      bindings: {
+        const SingleActivator(LogicalKeyboardKey.escape): () =>
+            _escape(signingIn: body is _BackOfficeSignIn),
+      },
+      child: Focus(focusNode: _escapeFocus, autofocus: true, child: body),
+    );
+  }
+
+  Widget _body(BuildContext context) {
     final admin = ref.watch(signedInStaffProvider);
 
     // One door: the administrator's username and the back-office password.
@@ -430,31 +491,21 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
           )
         : null;
 
-    // The panes of the area you are in — the tabs across the top.
-    final areaPanes = [
-      for (final (area, own) in areas)
-        if (area == areaOf(showing)) ...own,
-    ];
-
     return Scaffold(
       backgroundColor: context.pos.page,
       body: SafeArea(
         child: Column(
           children: [
+            // No tabs: every pane is a page of its own. The window's bar names
+            // every area and every pane, so a strip of the current area's
+            // neighbours across the top was the same navigation twice.
             _Header(
               admin: admin,
               onClose: widget.onClose,
-              area: areaOf(showing),
+              pane: showing,
             ),
-            // Tabs only where there is more than one pane. A single tab over a
-            // single pane is a heading dressed as a control, and the header
-            // already says where you are.
-            if (areaPanes.length > 1)
-              _AreaTabs(
-                panes: areaPanes,
-                current: showing,
-                onPick: (pane) => setState(() => _pane = pane),
-              ),
+            if (ref.watch(schemaUpgradeFailureProvider) case final failure?)
+              _SchemaNotice(text: context.strings.schemaUpgradeFailed(failure)),
             if (backupNotice != null)
               _BackupNotice(
                 text: backupNotice,
@@ -493,6 +544,10 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
                 ManagementPane.items => ManagementItemsPane(admin: admin),
                 ManagementPane.stock => const ManagementStockPane(),
                 ManagementPane.units => ManagementUnitsPane(admin: admin),
+                ManagementPane.terminal => ManagementTerminalPane(
+                  admin: admin,
+                  onReconfigure: widget.onReconfigure,
+                ),
               },
             ),
           ],
@@ -506,16 +561,16 @@ class _Header extends StatelessWidget {
   const _Header({
     required this.admin,
     required this.onClose,
-    required this.area,
+    required this.pane,
   });
 
   final PosStaff admin;
   final VoidCallback onClose;
 
-  /// Where you are. The rail used to say so by highlighting a row; with the
-  /// rail gone the header has to, or the bar's area and the pane's tabs are
-  /// two answers to a question nobody asked out loud.
-  final ManagementArea area;
+  /// Which page this is. With no rail and no tabs, the header is the one thing
+  /// on screen that says so — and the page, not its area, is what somebody
+  /// arriving from the bar needs confirmed.
+  final ManagementPane pane;
 
   @override
   Widget build(BuildContext context) {
@@ -531,7 +586,7 @@ class _Header extends StatelessWidget {
       child: Row(
         children: [
           Text(
-            '${strings.management} › ${managementAreaName(strings, area)}',
+            '${strings.management} › ${managementPaneLabel(strings, pane).$1}',
             style: PosText.screenTitle(color: context.pos.ink),
           ),
           const SizedBox(width: PosSpace.lg),
@@ -552,68 +607,68 @@ class _Header extends StatelessWidget {
   }
 }
 
-/// The panes of one area, as tabs across the top of the screen.
+/// Whether [username] and [password] get somebody holding [capability] through
+/// the back-office door — and when they do not, what the database said.
 ///
-/// **Replaces a rail that listed all thirteen.** The window's bar now names
-/// every area and every pane, so a second full index down the side of the
-/// screen was the same navigation twice, spending a quarter of the width on it.
-/// What is left to show here is only the neighbours of where you are — the
-/// other panes of the same area, which is what somebody switching between the
-/// VAT rate and the service charge actually wants one tap away.
-class _AreaTabs extends StatelessWidget {
-  const _AreaTabs({
-    required this.panes,
-    required this.current,
-    required this.onPick,
-  });
-
-  final List<ManagementPane> panes;
-  final ManagementPane current;
-  final ValueChanged<ManagementPane> onPick;
-
-  @override
-  Widget build(BuildContext context) {
-    final strings = context.strings;
-    final palette = context.pos;
-
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: PosSpace.xl,
-        vertical: PosSpace.md,
-      ),
-      decoration: BoxDecoration(
-        color: palette.surface,
-        border: Border(bottom: palette.hairline),
-      ),
-      // Scrollable rather than wrapping: a row of tabs that breaks onto a
-      // second line stops reading as one choice.
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          children: [
-            for (final pane in panes) ...[
-              // The sentence the rail used to carry, where it still helps: on
-              // a pointer that lingers.
-              Tooltip(
-                message: managementPaneLabel(strings, pane).$2,
-                waitDuration: const Duration(milliseconds: 600),
-                child: PosButton(
-                  key: Key('management-tab-${pane.name}'),
-                  label: managementPaneLabel(strings, pane).$1,
-                  background:
-                      pane == current ? palette.ink : Colors.transparent,
-                  foreground: pane == current ? palette.onInk : null,
-                  border: Border.fromBorderSide(palette.resting),
-                  onPressed: () => onPick(pane),
-                ),
-              ),
-              const SizedBox(width: PosSpace.sm),
-            ],
-          ],
-        ),
-      ),
-    );
+/// **One answer, shared.** The door asks it for `staff.manage`; the forced
+/// terminal reset asks it for `terminal.manage` before it wipes a working till.
+/// Two copies of "is this the back-office password" would be two rules the
+/// first time somebody changed one of them.
+///
+/// **Tried before it is kept.** A password that was merely stored would fail
+/// later, on the first save, after somebody had typed a whole staff record —
+/// so the first one in a session is probed against the database, and one that
+/// gets nobody in is forgotten again.
+///
+/// `failure` is null when the password was right. `staff` is null when nobody
+/// active by that name holds [capability], which the callers refuse exactly
+/// like a wrong password.
+Future<({PosStaff? staff, PosDbFailure? failure})> checkBackOfficeSignIn(
+  WidgetRef ref, {
+  required String username,
+  required String password,
+  required String capability,
+}) async {
+  final held = ref.read(adminDbCredentialProvider);
+  PosDbFailure? failure;
+  if (held != null) {
+    failure = held == password ? null : PosDbFailure.auth;
+  } else {
+    ref.read(adminDbCredentialProvider.notifier).set(password);
+    failure = await ref
+        .read(adminPosDatabaseProvider)
+        .probe(ref.read(adminDeploymentProvider));
   }
+  final staff = failure == null
+      ? await _activeHolder(ref, username, capability)
+      : null;
+  if (staff == null && held == null) {
+    ref.read(adminDbCredentialProvider.notifier).forget();
+  }
+  return (staff: staff, failure: failure);
+}
+
+/// The active staff member [username] names, if they hold [capability].
+Future<PosStaff?> _activeHolder(
+  WidgetRef ref,
+  String username,
+  String capability,
+) async {
+  try {
+    final everyone = await ref
+        .read(staffDirectoryRepositoryProvider)
+        .all(includeInactive: false);
+    for (final person in everyone) {
+      if (person.username?.toLowerCase() == username.toLowerCase() &&
+          Authorization.check(person, capability).isAllowed) {
+        return person;
+      }
+    }
+  } on Object {
+    // Unreadable is refused like unknown. The password check says whether the
+    // database is reachable at all.
+  }
+  return null;
 }
 
 /// The back office's one door: the administrator's username and the
@@ -654,23 +709,18 @@ class _BackOfficeSignInState extends ConsumerState<_BackOfficeSignIn> {
     super.dispose();
   }
 
-  /// The active staff member [username] names, if they may manage staff.
-  Future<PosStaff?> _manager(String username) async {
+  /// Whatever migrations this build carries and the database lacks. See
+  /// `schemaUpgraderProvider` for why here.
+  Future<void> _upgradeSchema() async {
+    final upgrade = ref.read(schemaUpgraderProvider);
+    if (upgrade == null) return;
+    final failures = ref.read(schemaUpgradeFailureProvider.notifier);
     try {
-      final everyone = await ref
-          .read(staffDirectoryRepositoryProvider)
-          .all(includeInactive: false);
-      for (final person in everyone) {
-        if (person.username?.toLowerCase() == username.toLowerCase() &&
-            Authorization.check(person, PosCapability.staffManage).isAllowed) {
-          return person;
-        }
-      }
-    } on Object {
-      // Unreadable is refused like unknown. The password check below says
-      // whether the database is reachable at all.
+      await upgrade();
+      failures.clear();
+    } on Object catch (error) {
+      failures.report('$error');
     }
-    return null;
   }
 
   Future<void> _submit() async {
@@ -684,29 +734,24 @@ class _BackOfficeSignInState extends ConsumerState<_BackOfficeSignIn> {
       _error = null;
     });
 
-    final held = ref.read(adminDbCredentialProvider);
-    PosDbFailure? failure;
-    if (held != null) {
-      failure = held == password ? null : PosDbFailure.auth;
-    } else {
-      // Tried before it is accepted: a password that was merely stored would
-      // fail later, on the first save, after somebody had typed a whole staff
-      // record.
-      ref.read(adminDbCredentialProvider.notifier).set(password);
-      failure = await ref
-          .read(adminPosDatabaseProvider)
-          .probe(ref.read(adminDeploymentProvider));
-    }
-    final staff = failure == null ? await _manager(username) : null;
+    final (:staff, :failure) = await checkBackOfficeSignIn(
+      ref,
+      username: username,
+      password: password,
+      capability: PosCapability.staffManage,
+    );
     if (!mounted) return;
 
     if (staff != null) {
+      // Before the panes, not after: a pane that loaded first would read a
+      // table the upgrade was about to create.
+      await _upgradeSchema();
+      if (!mounted) return;
       // The screen rebuilds on the far side of the door.
       ref.read(signedInStaffProvider.notifier).signIn(staff);
       return;
     }
 
-    if (held == null) ref.read(adminDbCredentialProvider.notifier).forget();
     _password.clear();
     setState(() {
       _busy = false;
@@ -806,6 +851,44 @@ class _BackOfficeSignInState extends ConsumerState<_BackOfficeSignIn> {
 }
 
 /// The back office's backup warning: what is wrong, and the way to it.
+/// The database is older than this build, and bringing it up to date failed.
+///
+/// Above every pane rather than inside whichever one reaches a missing table
+/// first, because it explains all of them at once.
+class _SchemaNotice extends StatelessWidget {
+  const _SchemaNotice({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final pos = context.pos;
+    return Container(
+      key: const Key('management-schema-notice'),
+      padding: const EdgeInsets.symmetric(
+        horizontal: PosSpace.xl,
+        vertical: PosSpace.sm,
+      ),
+      decoration: BoxDecoration(
+        color: pos.warnSoft,
+        border: Border(bottom: BorderSide(color: pos.danger)),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.error_outline, size: 18, color: pos.danger),
+          const SizedBox(width: PosSpace.sm),
+          Expanded(
+            child: Text(
+              text,
+              style: PosText.ui(size: 13, color: pos.ink, height: 1.4),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _BackupNotice extends StatelessWidget {
   const _BackupNotice({required this.text, required this.onOpen});
 

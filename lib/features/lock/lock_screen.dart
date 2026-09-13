@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/providers.dart';
@@ -14,9 +15,16 @@ import '../../core/security/pin_hash.dart';
 /// hash so it works offline; the shift stays open throughout, and every overlay
 /// is closed on lock.
 class LockScreen extends ConsumerStatefulWidget {
-  const LockScreen({super.key, required this.onUnlocked});
+  const LockScreen({
+    super.key,
+    required this.onUnlocked,
+    required this.onBack,
+  });
 
   final VoidCallback onUnlocked;
+
+  /// Leave for the start screen. Called after the screen has signed out.
+  final VoidCallback onBack;
 
   @override
   ConsumerState<LockScreen> createState() => _LockScreenState();
@@ -74,8 +82,26 @@ class _LockScreenState extends ConsumerState<LockScreen> {
     setState(() => _pin = _pin.substring(0, _pin.length - 1));
   }
 
+  /// Back to the start screen, signed out.
+  ///
+  /// Locking keeps whoever was at the till signed in — only closing the shift
+  /// signs anybody out — so a way off this screen that kept them would hand
+  /// the next person at the start screen their shift for one press of Enter.
+  /// Signed out, resuming comes straight back here for a name and a PIN.
+  void _back() {
+    ref.read(signedInStaffProvider.notifier).signOut();
+    widget.onBack();
+  }
+
+  // Esc from anywhere on the screen, the username field included: a half-typed
+  // name and PIN are nothing to lose.
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => CallbackShortcuts(
+    bindings: {const SingleActivator(LogicalKeyboardKey.escape): _back},
+    child: _screen(context),
+  );
+
+  Widget _screen(BuildContext context) {
     final strings = context.strings;
 
     return Scaffold(
@@ -105,10 +131,6 @@ class _LockScreenState extends ConsumerState<LockScreen> {
                 ),
               ),
               Text(
-                // Nobody is named here any more: this screen does not know who
-                // is coming back to the till, and naming the last person to
-                // stand at it invited the next one to type their own PIN under
-                // somebody else's name.
                 _error ? strings.wrongUsernameOrPin : strings.enterYourPin,
                 textAlign: TextAlign.center,
                 style: PosText.ui(
@@ -136,6 +158,14 @@ class _LockScreenState extends ConsumerState<LockScreen> {
                 onDigit: _push,
                 onBackspace: _backspace,
                 autofocus: false,
+              ),
+              const SizedBox(height: PosSpace.lg),
+              PosButton(
+                key: const Key('lock-back'),
+                label: strings.back,
+                foreground: context.pos.shellText,
+                border: Border.fromBorderSide(context.pos.shellBorder),
+                onPressed: _back,
               ),
             ],
           ),

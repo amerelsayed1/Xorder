@@ -141,6 +141,16 @@ class _SaleScreenState extends ConsumerState<SaleScreen> {
       posToast(context, context.strings.nothingToCharge);
       return;
     }
+    // An order type served at a table is not charged until it has one. A
+    // dine-in bill with no table on it is one the floor cannot show and the
+    // receipt cannot place, so the button and F9 both go to the floor instead,
+    // where choosing the table seats this ticket.
+    if (ticket.tableId == null &&
+        ref.read(orderTypeRulesProvider).requiresTable(ticket.orderType)) {
+      posToast(context, context.strings.chooseTableFirst);
+      widget.onTables();
+      return;
+    }
     final settled = await PaymentScreen.show(context);
     if (settled == null || !mounted) return;
 

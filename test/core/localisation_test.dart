@@ -891,6 +891,7 @@ Map<String, String> _sample(AppStrings s) => {
   'noDatabaseYet': s.noDatabaseYet,
   'installLicenceFirst': s.installLicenceFirst,
   'schemaAlreadyCurrent': s.schemaAlreadyCurrent,
+  'schemaUpgradeFailed': s.schemaUpgradeFailed('relation "pos_units"'),
   'missingBranch': s.missingBranch,
   'nothingRecordedYet': s.nothingRecordedYet,
   'noRolesYet': s.noRolesYet,

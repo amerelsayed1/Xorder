@@ -79,7 +79,6 @@ Future<ProviderContainer> _pump(
 Widget _startScreen() => StartScreen(
   onStart: () {},
   onManageLicence: () {},
-  onReconfigure: () {},
   onManage: (_) {},
 );
 
@@ -94,16 +93,19 @@ void main() {
   testWidgets('the start screen identity grid is Arabic', (tester) async {
     await _pump(tester, _startScreen, licenceKey: 'XORD-GOOD-1');
 
-    // The strap under the tenant name, and the three identity cells. The VALUES
+    // The strap under the tenant name, and the two identity cells. The VALUES
     // stay as the operator's own data — a branch is not translated.
     for (final arabic in [
       'نقطة بيع', // pointOfSale
       'الفرع', // branchCell
       'الجهاز', // terminalCell
-      'المنيو', // catalogCell
     ]) {
       expect(find.text(arabic), findsOneWidget, reason: 'missing: $arabic');
     }
+    // Not the menu: how many items are cached is nothing to act on here.
+    expect(find.text('المنيو'), findsNothing);
+    // XOrder's mark sits above the restaurant's name.
+    expect(find.byKey(const Key('start-xorder-logo')), findsOneWidget);
 
     // Not the restaurant: it is the heading above the grid, and a cell saying
     // it again was the same name twice.
@@ -136,13 +138,11 @@ void main() {
 
     expect(find.text('بدء الوردية'), findsOneWidget); // startShift
     expect(find.text('Start shift'), findsNothing);
-    // The help line under it, and the cached-catalogue cell, both of which
-    // carry a number: Arabic words, Western digits.
+    // The help line under it.
     expect(
       find.textContaining('سيُطلب منك رقمك السري'), // startShiftHelp
       findsOneWidget,
     );
-    expect(find.textContaining(RegExp(r'محفوظ · \d+ صنف')), findsOneWidget);
   });
 
   testWidgets('the start screen is Arabic when the licence blocks the shift', (

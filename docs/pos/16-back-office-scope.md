@@ -183,12 +183,27 @@ Two smaller ones, recorded because they will look like omissions:
 * **Five statuses, not two.** A restaurant almost never receives exactly what it
   ordered, and a model that knew only *ordered* and *received* would have to lie
   about the Tuesday when eight of ten crates turned up.
-* **Cancelling is refused once goods have arrived.** The way out of a part
-  delivery is to close the difference, not to pretend the order never happened.
+* **Cancelling is refused once goods have arrived.** Goods in the kitchen are
+  not cancellable, and pretending the order never happened would leave stock
+  with no record of where it came from. Until migration 44 this was held only
+  by hiding the Cancel button, which a receipt booked from another till could
+  get round; now `setStatus` re-reads the order under a lock and asks
+  `PurchaseEngine`, and a trigger refuses the same moves for any other writer.
 
-Still to build, in order: **receiving** — which is where a cost price first
-becomes real, and where the valuation method (last cost, moving average, FIFO)
-stops being deferrable — then supplier invoices and supplier payments.
+**Built since:** receiving (migration 29), with its four writes — line, ledger,
+position, status — in one transaction, and **moving average** as the valuation
+method (owner, 9 September 2026; the reasoning is in `stock_costing.dart`).
+Then supplier invoices and payments (migrations 30, 31 and 33). Receiving
+refuses stock held in a different unit rather than converting it, and an item
+cannot change its unit while any branch holds stock of it (migration 44).
+
+**Not built: short-closing a part delivery.** `PurchaseStatus.received` is
+documented as "all of it arrived, or somebody closed the difference", but
+nothing closes a difference. Receiving writes `received` only when every line
+is full, and the pane offers only Send and Cancel. So a short-delivered order
+stays `partially_received` until the rest arrives. Cancelling it is refused, so
+if the rest never comes, the order stays open for good. The platform design
+tracks this as CB-09 D11.
 
 ---
 

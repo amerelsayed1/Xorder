@@ -1,5 +1,7 @@
+import '../../core/money/quantity.dart';
 import '../models/backup.dart';
 import '../models/catalog.dart';
+import '../models/purchase_order.dart';
 import '../models/tax.dart';
 import '../models/order_type_config.dart';
 import '../services/menu_import.dart';
@@ -94,6 +96,46 @@ class WouldLockEveryoneOut extends AdminRefusal {
   final String capability;
 }
 
+/// A restaurant has one owner, and it already has one.
+///
+/// Counted among ACTIVE staff, which is what keeps ownership transferable:
+/// disable the current owner, then appoint the new one. Counting every row
+/// would have made the first owner the owner forever — nobody is ever deleted
+/// here — and the only way to sell the restaurant would be a psql prompt.
+///
+/// Named, like [RoleStillHeld], because "there is already an owner" sends a
+/// manager looking for them and the name is the row they are looking for.
+/// Migration 42 refuses the same thing in the database, for the writers that
+/// do not come through here.
+class OwnerAlreadyExists extends AdminRefusal {
+  const OwnerAlreadyExists(this.ownerName);
+
+  final String ownerName;
+}
+
+/// The owner's own role and permissions are not editable.
+///
+/// Extra roles and ALLOW overrides on somebody who already holds everything
+/// mean nothing, and a DENY override on them is how a restaurant locks itself
+/// out of the screen that would take it off. Moving the active owner to
+/// another role is refused for the second reason: it is ownership given away
+/// in a dropdown. Handing over is two deliberate acts — disable, appoint —
+/// and neither of them is this one.
+class OwnerIsFixed extends AdminRefusal {
+  const OwnerIsFixed();
+}
+
+/// Owner is somebody's job, never an extra role on top of another one.
+///
+/// Refused even when there is no owner at the moment. An extra role is a way
+/// of *adding* permissions, and owning the restaurant is not an addition —
+/// a manager-who-is-also-owner would count as the owner for the one-owner
+/// rule while the staff list said "Manager". Choosing Owner as their role says
+/// what it means.
+class OwnerIsNotAnExtraRole extends AdminRefusal {
+  const OwnerIsNotAnExtraRole();
+}
+
 /// Somebody else saved this record first.
 ///
 /// Two managers editing over the LAN is the normal case in a branch, not an
@@ -159,6 +201,45 @@ class ManagedByPlatform extends AdminRefusal {
   static const theCatalogue = 'catalogue';
   static const theFloor = 'floor';
   static const moneyRules = 'money';
+}
+
+/// The purchase order cannot move the way it was asked to, for one of
+/// `PurchaseEngine`'s reasons.
+///
+/// A wrapper, like [RoleNotAllowed], rather than a second copy of the reasons:
+/// the engine decides, the repository asks it again against the row it has
+/// just locked, and one set of reasons means one set of sentences. Asking the
+/// screen's copy of the order instead is what let a part-received order be
+/// cancelled — the Cancel button was drawn before the goods arrived.
+class PurchaseRefused extends AdminRefusal {
+  const PurchaseRefused(this.reason);
+
+  final PurchaseRefusal reason;
+}
+
+/// Stock of this item is held in one unit, and this would count it in another.
+///
+/// **Refused, never converted.** Nothing in this product knows how many kilos
+/// are in a box, and before this existed receiving added 5 kg to 10 boxes and
+/// stored 15 kg — a stock figure and an average cost that are both wrong, and
+/// wrong in a way no screen shows. Said by receiving, of a delivery in the
+/// other unit, and by both item editors, of a unit change while stock is held.
+/// Migration 44 refuses both in the database, for the writers that do not come
+/// through here.
+class StockHeldInAnotherUnit extends AdminRefusal {
+  const StockHeldInAnotherUnit({
+    required this.item,
+    required this.held,
+    required this.asked,
+  });
+
+  final String item;
+
+  /// How much is held, in the unit it is held in — which is the unit it has to
+  /// stay in until none is left.
+  final Quantity held;
+
+  final QuantityUnit asked;
 }
 
 /// The outcome of an administrative write.

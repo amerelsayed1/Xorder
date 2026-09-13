@@ -288,7 +288,9 @@ void main() {
       // The superuser needs no grant, so every other test here would pass on
       // an install where the seeder is refused. This one is refused if the
       // cloud grant list is missing anything the tenders need.
-      const role = 'pos_cloud_tender_probe';
+      // Per checkout: the role is cluster-wide even though the database is
+      // not, so a fixed name was shared with every other worktree's run.
+      final role = PgFixture.roleFor('cloud_tender_probe');
       const password = 'probe-only';
       await _dropRole(db, pg, role);
       addTearDown(() => _dropRole(db, pg, role));

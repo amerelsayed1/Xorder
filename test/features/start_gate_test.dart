@@ -66,7 +66,6 @@ Future<({ProviderContainer container, List<String> events})> _boot(
         home: StartScreen(
           onStart: () => events.add('start'),
           onManageLicence: () => events.add('licence'),
-          onReconfigure: () => events.add('reconfigure'),
           onManage: (_) => events.add('manage'),
         ),
       ),
@@ -266,5 +265,14 @@ void main() {
       find.text('No copy of this database has ever been taken.'),
       findsNothing,
     );
+  });
+
+  testWidgets('resetting the terminal is the back office\'s business, not the '
+      'start screen\'s', (tester) async {
+    // A cashier opens the till from here, and must not be one tap from wiping
+    // its setup. The reset is in Management › System › Terminal.
+    await _boot(tester, licenceKey: 'XORD-GOOD-1');
+
+    expect(find.text('Reset terminal'), findsNothing);
   });
 }

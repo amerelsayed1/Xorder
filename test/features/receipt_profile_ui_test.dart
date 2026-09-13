@@ -85,6 +85,7 @@ void main() {
       WidgetTester tester, {
       ReceiptProfile stored = const ReceiptProfile(branchId: 1),
       AdminRefusal? refuse,
+      bool files = true,
     }) async {
       final repository = _Profiles(stored, refuse: refuse);
       await tester.pumpWidget(
@@ -92,6 +93,9 @@ void main() {
           const ManagementReceiptPane(admin: admin),
           overrides: [
             receiptProfileRepositoryProvider.overrideWithValue(repository),
+            // On, so the filing half of the pane is exercised; the builds
+            // that ship with it off have their own case below.
+            etaFilingEnabledProvider.overrideWithValue(files),
           ],
         ),
       );
@@ -115,6 +119,24 @@ void main() {
       // "Not set up yet" is a much less alarming sentence on day one than
       // "seven problems", and it is the true one.
       expect(find.textContaining('Not set up yet'), findsOneWidget);
+    });
+
+    testWidgets('with e-receipts off, the paper is all it asks about', (
+      tester,
+    ) async {
+      await pump(
+        tester,
+        stored: const ReceiptProfile(branchId: 1, tradeName: 'Koshari'),
+        files: false,
+      );
+
+      // No banner, no activity or branch code, and no complaint about an
+      // address a restaurant that files nothing does not have to give.
+      expect(find.textContaining('Incomplete.'), findsNothing);
+      expect(find.textContaining('Not set up yet'), findsNothing);
+      expect(find.text('An activity code is four digits.'), findsNothing);
+      expect(find.text('A street is required.'), findsNothing);
+      expect(find.byType(TextField), findsNWidgets(14));
     });
 
     testWidgets('a complete profile says it can be filed', (tester) async {
@@ -185,6 +207,21 @@ void main() {
       expect(saved.tradeName, 'Koshari Downtown');
       expect(saved.registrationNumber, '123456789', reason: 'and the rest');
       expect(saved.address.street, 'Champollion');
+    });
+
+    testWidgets('the slip beside the form follows the typing', (tester) async {
+      // What the customer will be handed, while it is being written — not
+      // after a save, a sale and a test print.
+      final repository = await pump(tester, stored: complete);
+      expect(find.byKey(const Key('receipt-profile-preview')), findsOneWidget);
+      expect(find.text('KOSHARI ABOU TAREK'), findsOneWidget);
+
+      await tester.enterText(find.byType(TextField).first, 'Koshari Downtown');
+      await tester.pumpAndSettle();
+
+      expect(find.text('KOSHARI DOWNTOWN'), findsOneWidget);
+      expect(find.text('KOSHARI ABOU TAREK'), findsNothing);
+      expect(repository.saved, isEmpty, reason: 'previewed, not saved');
     });
 
     testWidgets('a second save carries the revision the first one returned', (

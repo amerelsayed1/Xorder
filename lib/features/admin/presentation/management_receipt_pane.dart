@@ -6,8 +6,14 @@ import '../../../core/l10n/app_strings.dart';
 import '../../../core/ui/theme.dart';
 import '../../../core/ui/tokens.dart';
 import '../../../core/ui/widgets/pos_widgets.dart';
+import '../../../domain/models/catalog.dart';
 import '../../../domain/models/receipt_profile.dart';
 import '../../../domain/models/shift.dart';
+import '../../../domain/models/tender_method.dart';
+import '../../../domain/models/ticket.dart';
+import '../../../domain/services/ticket_engine.dart';
+import '../../receipt/receipt_data.dart';
+import '../../receipt/receipt_paper.dart';
 import 'admin_messages.dart';
 
 /// Who the receipt says sold the food.
@@ -23,6 +29,11 @@ import 'admin_messages.dart';
 /// and rings the accountant about the activity code next week — so a form that
 /// demanded all fourteen fields before it would accept any of them would be a
 /// form that lost the first thirteen.
+///
+/// **The slip is beside the form**, drawn by the same `ReceiptPaper` a real
+/// receipt is, from what is in the boxes right now. A restaurant deciding how
+/// its name and address read on paper should not have to save, ring a sale and
+/// print one to find out.
 class ManagementReceiptPane extends ConsumerStatefulWidget {
   const ManagementReceiptPane({required this.admin, super.key});
 
@@ -179,13 +190,20 @@ class _ManagementReceiptPaneState extends ConsumerState<ManagementReceiptPane> {
   Widget _form(AppStrings strings, ReceiptProfile base) {
     final palette = context.pos;
     // Recomputed as the operator types, so the ETA block's warning appears and
-    // disappears under their hands rather than only after a save.
-    final filing = _edited(base).filingProblems;
+    // disappears under their hands rather than only after a save — and so
+    // does the slip beside the form.
+    final edited = _edited(base);
+    // With e-receipts off there is no authority to answer to: the paper's own
+    // rules, the registration number as an optional printed line, and none of
+    // the filing-only codes.
+    final files = ref.watch(etaFilingEnabledProvider);
+    final filing = files ? edited.filingProblems : edited.printProblems;
     final problemFor = <String, String>{
       for (final problem in filing) problem.field: problem.message,
     };
+    final session = ref.watch(sessionProvider).valueOrNull;
 
-    return ListView(
+    final form = ListView(
       padding: const EdgeInsets.all(PosSpace.xl),
       children: [
         Text(
@@ -205,44 +223,52 @@ class _ManagementReceiptPaneState extends ConsumerState<ManagementReceiptPane> {
         _Field(
           label: strings.receiptPhone,
           controller: _box('phone'),
+          onChanged: _rebuild,
           optional: true,
         ),
         _Field(
           label: strings.receiptHeaderNote,
           controller: _box('header_note'),
+          onChanged: _rebuild,
           optional: true,
         ),
         _Field(
           label: strings.receiptFooterNote,
           controller: _box('footer_note'),
+          onChanged: _rebuild,
           optional: true,
         ),
 
         const SizedBox(height: PosSpace.xl),
-        _EtaBanner(complete: filing.isEmpty, blank: base.isBlank),
-        const SizedBox(height: PosSpace.md),
+        if (files) ...[
+          _EtaBanner(complete: filing.isEmpty, blank: base.isBlank),
+          const SizedBox(height: PosSpace.md),
+        ],
 
         _Field(
           label: strings.receiptRegistrationNumber,
           controller: _box(ProfileField.registrationNumber),
           onChanged: _rebuild,
           mono: true,
+          optional: !files,
           problem: problemFor[ProfileField.registrationNumber],
         ),
-        _Field(
-          label: strings.receiptActivityCode,
-          controller: _box(ProfileField.activityCode),
-          onChanged: _rebuild,
-          mono: true,
-          problem: problemFor[ProfileField.activityCode],
-        ),
-        _Field(
-          label: strings.receiptBranchCode,
-          controller: _box(ProfileField.branchCode),
-          onChanged: _rebuild,
-          mono: true,
-          problem: problemFor[ProfileField.branchCode],
-        ),
+        if (files) ...[
+          _Field(
+            label: strings.receiptActivityCode,
+            controller: _box(ProfileField.activityCode),
+            onChanged: _rebuild,
+            mono: true,
+            problem: problemFor[ProfileField.activityCode],
+          ),
+          _Field(
+            label: strings.receiptBranchCode,
+            controller: _box(ProfileField.branchCode),
+            onChanged: _rebuild,
+            mono: true,
+            problem: problemFor[ProfileField.branchCode],
+          ),
+        ],
 
         const SizedBox(height: PosSpace.lg),
         MicroLabel(strings.receiptBranchAddress),
@@ -281,22 +307,26 @@ class _ManagementReceiptPaneState extends ConsumerState<ManagementReceiptPane> {
         _Field(
           label: strings.receiptPostalCode,
           controller: _box('postal_code'),
+          onChanged: _rebuild,
           optional: true,
           mono: true,
         ),
         _Field(
           label: strings.receiptFloor,
           controller: _box('floor'),
+          onChanged: _rebuild,
           optional: true,
         ),
         _Field(
           label: strings.receiptRoom,
           controller: _box('room'),
+          onChanged: _rebuild,
           optional: true,
         ),
         _Field(
           label: strings.receiptLandmark,
           controller: _box('landmark'),
+          onChanged: _rebuild,
           optional: true,
         ),
 
@@ -318,6 +348,60 @@ class _ManagementReceiptPaneState extends ConsumerState<ManagementReceiptPane> {
         ),
       ],
     );
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Expanded(child: form),
+        _Preview(
+          paper: ReceiptPaper(
+            data: _sample(ref.watch(catalogProvider).valueOrNull),
+            profile: edited,
+            tenantName: session?.tenantName ?? '',
+            terminalCode: session?.terminalCode ?? '',
+            cashierName: widget.admin.name,
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// A sale for the preview, from this restaurant's own menu.
+  ///
+  /// **Real items, not an invented one.** Two dishes the restaurant sells, at
+  /// their prices, taxed the way this till taxes — so the preview is a slip it
+  /// could actually print. With no menu to read, the slip shows the profile
+  /// and no lines, rather than a dish nobody here has ever sold.
+  ReceiptData _sample(Catalog? catalog) {
+    var ticket = Ticket(
+      id: 'receipt-profile-preview',
+      orderType: OrderType.takeaway,
+      taxConfig: ref.watch(taxConfigProvider),
+    );
+    final products = [
+      for (final product in catalog?.products ?? const <Product>[])
+        if (!product.isOpenPrice) product,
+    ].take(2);
+    for (final product in products) {
+      ticket =
+          TicketEngine.addLine(
+            ticket,
+            product,
+            groups: [
+              for (final group in catalog!.modifierGroups)
+                if (product.modifierGroupIds.contains(group.id)) group,
+            ],
+          ).ticket ??
+          ticket;
+    }
+    // Settled in cash, so the slip reads as a paid sale rather than one with
+    // nothing handed over.
+    final cash = TenderMethod.seeded.first;
+    ticket =
+        TicketEngine.addTender(ticket, typeId: cash.id, label: cash.nameEn)
+            .ticket ??
+        ticket;
+    return ReceiptData.fromTicket(ticket);
   }
 
   void _rebuild(String _) => setState(() {});
@@ -368,6 +452,50 @@ class _EtaBanner extends StatelessWidget {
             style: PosText.ui(size: 12.5, color: ink, height: 1.5),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// The slip as it will print, beside the form that writes it.
+///
+/// The paper is white in both themes — `ReceiptPaper` pins its own palette,
+/// because paper is white in a dark room too. The desk it lies on is part of
+/// this form, though, and follows the theme like the rest of it: the receipt
+/// dialogs' fixed desk grey is exempt in `theme_test.dart` only because those
+/// files draw nothing but the slip.
+class _Preview extends StatelessWidget {
+  const _Preview({required this.paper});
+
+  final Widget paper;
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = context.strings;
+
+    return Container(
+      key: const Key('receipt-profile-preview'),
+      width: 380,
+      decoration: BoxDecoration(
+        color: context.pos.chipBg,
+        border: BorderDirectional(start: context.pos.hairline),
+      ),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(PosSpace.lg),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            MicroLabel(strings.receiptPreviewAction),
+            const SizedBox(height: PosSpace.sm),
+            paper,
+            const SizedBox(height: PosSpace.md),
+            Text(
+              strings.receiptPreviewNote,
+              textAlign: TextAlign.center,
+              style: PosText.ui(size: 12, color: context.pos.muted),
+            ),
+          ],
+        ),
       ),
     );
   }

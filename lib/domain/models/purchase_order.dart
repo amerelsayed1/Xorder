@@ -325,6 +325,18 @@ class OrderAlreadyClosed extends PurchaseRefusal {
   final PurchaseStatus status;
 }
 
+/// Asked to set a status that only the goods may set.
+///
+/// `partially_received` and `received` are what receiving derives from the
+/// lines, and `draft` is where an order starts, not somewhere it goes back to.
+/// A caller that could set any of them would be an order that says something
+/// its own lines contradict. [status] is the one that was asked for.
+class StatusFollowsTheGoods extends PurchaseRefusal {
+  const StatusFollowsTheGoods(this.status);
+
+  final PurchaseStatus status;
+}
+
 /// The result of asking to change one.
 class PurchaseResult {
   const PurchaseResult.ok(PurchaseOrder this.order) : refusal = null;

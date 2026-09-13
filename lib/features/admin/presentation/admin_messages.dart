@@ -274,6 +274,11 @@ abstract final class AdminText {
         ),
         UsernameTaken(:final username) => s.refusalUsernameTaken(username),
         WouldLockEveryoneOut() => s.refusalWouldLockEveryoneOut,
+        OwnerAlreadyExists(:final ownerName) => s.refusalOwnerAlreadyExists(
+          ownerName,
+        ),
+        OwnerIsFixed() => s.refusalOwnerIsFixed,
+        OwnerIsNotAnExtraRole() => s.refusalOwnerIsNotAnExtraRole,
         EditedElsewhere() => s.refusalEditedElsewhere,
         // The reason comes from the catalogue importer, which speaks for
         // itself; there is nothing here to translate it into.
@@ -282,6 +287,40 @@ abstract final class AdminText {
           s.refusalAdministratorCredentialRequired,
         NoDatabaseConfigured() => s.refusalNoDatabaseConfigured,
         ManagedByPlatform(:final what) => s.refusalManagedByPlatform(what),
+        PurchaseRefused(:final reason) => _purchaseReason(s, reason),
+        StockHeldInAnotherUnit(:final item, :final held, :final asked) =>
+          s.refusalStockHeldInAnotherUnit(
+            item,
+            held.format(),
+            unit(s, held.unit),
+            unit(s, asked),
+          ),
+      };
+
+  /// Keyed by the refusal and then by the status it names — both sealed or
+  /// enums — so a sixth status is a compile error here rather than a blank
+  /// line on the Purchasing pane.
+  static String _purchaseReason(AppStrings s, PurchaseRefusal reason) =>
+      switch (reason) {
+        OrderNotEditable(:final status) => switch (status) {
+          PurchaseStatus.sent => s.refusalPurchaseAlreadySent,
+          PurchaseStatus.partiallyReceived ||
+          PurchaseStatus.received => s.refusalPurchaseGoodsArrived,
+          PurchaseStatus.cancelled => s.refusalPurchaseCancelled,
+          // A draft is editable by definition; only a stale screen gets here.
+          PurchaseStatus.draft => s.refusalEditedElsewhere,
+        },
+        OrderHasNoLines() => s.refusalPurchaseHasNoLines,
+        LineQuantityNotPositive() => s.refusalPurchaseQuantityNotPositive,
+        OrderAlreadyClosed(:final status) => switch (status) {
+          PurchaseStatus.partiallyReceived =>
+            s.refusalPurchaseCannotCancelArrived,
+          PurchaseStatus.received => s.refusalPurchaseAllArrived,
+          PurchaseStatus.cancelled => s.refusalPurchaseCancelled,
+          PurchaseStatus.draft ||
+          PurchaseStatus.sent => s.refusalEditedElsewhere,
+        },
+        StatusFollowsTheGoods() => s.refusalPurchaseFollowsTheGoods,
       };
 
   /// What a risk level is called on a badge.

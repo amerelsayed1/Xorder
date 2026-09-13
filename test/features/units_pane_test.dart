@@ -26,6 +26,7 @@ void main() {
           theme: buildPosTheme(),
           home: ManagementScreen(
             onClose: () {},
+            onReconfigure: () {},
             initialPane: ManagementPane.units,
           ),
         ),
@@ -55,7 +56,7 @@ void main() {
   ) async {
     await open(tester);
 
-    expect(find.text('Management › Inventory'), findsOneWidget);
+    expect(areaOf(ManagementPane.units), ManagementArea.inventory);
     expect(find.text('Kilogram'), findsOneWidget);
     expect(find.byKey(const Key('unit-row-kg')), findsOneWidget);
     // A kilo can be part of one; a box cannot.

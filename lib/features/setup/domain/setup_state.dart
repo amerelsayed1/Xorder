@@ -112,6 +112,7 @@ class SetupDraft {
     this.drawerAttached = false,
     this.scannerAttached = false,
     this.catalogueItems,
+    this.mainDeviceLinked = false,
     this.busy = false,
     this.error,
     this.notice,
@@ -223,7 +224,11 @@ class SetupDraft {
   ///
   /// [SetupStep.setupType] is the one step that can drop out, and only because
   /// the licence has answered it — see [asksSetupType].
-  List<SetupStep> get visibleSteps => [
+  ///
+  /// **A child tablet walks a different, shorter path** — see [childSteps].
+  List<SetupStep> get visibleSteps => deployment.isChild
+      ? childSteps
+      : [
     for (final candidate in SetupStep.values)
       if (candidate != SetupStep.setupType ||
           asksSetupType ||
@@ -232,6 +237,24 @@ class SetupDraft {
           // and `back()` count positions in this list.
           candidate == step)
         candidate,
+  ];
+
+  /// What a child tablet is asked (owner decision, 2026-09-12).
+  ///
+  /// This does not contradict the "no fork" rule on [SetupStep]: the fork is
+  /// decided by the device before the first screen, not by an answer halfway
+  /// through, so nobody is stranded on the wrong branch of it. What is left out
+  /// is everything the main device already owns — the licence and the mode (it
+  /// shares its own), the database and the first administrator (it built them),
+  /// and the money settings (the restaurant's, not the tablet's).
+  static const childSteps = [
+    SetupStep.deployment,
+    SetupStep.account,
+    SetupStep.branch,
+    SetupStep.terminal,
+    SetupStep.hardware,
+    SetupStep.catalogue,
+    SetupStep.summary,
   ];
 
   bool get isFirstStep => visibleSteps.first == step;
@@ -302,6 +325,13 @@ class SetupDraft {
   /// Items pulled in the first catalogue sync; null until it runs.
   final int? catalogueItems;
 
+  /// A child tablet only: true once the main device's licence has been read
+  /// from the database at the address on screen. Editing that address, or
+  /// anything else about the connection, sets it back to false — the licence
+  /// on the draft then belongs to a database the tablet is no longer pointing
+  /// at.
+  final bool mainDeviceLinked;
+
   final bool busy;
   final String? error;
 
@@ -317,6 +347,17 @@ class SetupDraft {
   /// must still finish setup — the receipt queues and the sale completes.
   /// Printing is never on the critical path of taking money.
   bool get canAdvance => switch (step) {
+    // A child tablet has reached its main device, and the licence found there
+    // lets it trade. Loopback is refused on principle: a child's database is
+    // by definition on another machine.
+    SetupStep.deployment when deployment.isChild =>
+      mainDeviceLinked &&
+          !deployment.isLoopback &&
+          databasePassword.isNotEmpty &&
+          (entitlement?.canSell ?? false),
+    // Signed in as a manager the main device already has. Never the offline
+    // rule below — a child builds no database, so it is never `bootstrapped`.
+    SetupStep.account when deployment.isChild => connected,
     // Either mode may go on, provided the licence covers it. `setMode` refuses
     // anything unlicensed, so a draft can only be sitting on a covered mode —
     // this re-states the rule rather than trusting that.
@@ -411,6 +452,7 @@ class SetupDraft {
     bool? drawerAttached,
     bool? scannerAttached,
     int? catalogueItems,
+    bool? mainDeviceLinked,
     bool? busy,
     String? error,
     String? notice,
@@ -465,6 +507,7 @@ class SetupDraft {
     drawerAttached: drawerAttached ?? this.drawerAttached,
     scannerAttached: scannerAttached ?? this.scannerAttached,
     catalogueItems: catalogueItems ?? this.catalogueItems,
+    mainDeviceLinked: mainDeviceLinked ?? this.mainDeviceLinked,
     busy: busy ?? this.busy,
     error: clearError ? null : (error ?? this.error),
     notice: clearNotice ? null : (notice ?? this.notice),

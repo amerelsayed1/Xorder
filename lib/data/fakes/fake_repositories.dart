@@ -995,6 +995,12 @@ class FakeStaffDirectoryRepository implements StaffDirectoryRepository {
     if (staff.any((person) => person.username == username)) {
       return AdminResult.refused(UsernameTaken(username));
     }
+    if (_isOwnerRole(roleId)) {
+      final incumbent = _activeOwnerOtherThan(null);
+      if (incumbent != null) {
+        return AdminResult.refused(OwnerAlreadyExists(incumbent.name));
+      }
+    }
 
     final created = PosStaff(
       id: staff.length + 1,
@@ -1024,13 +1030,34 @@ class FakeStaffDirectoryRepository implements StaffDirectoryRepository {
     final index = staff.indexWhere((person) => person.id == staffId);
     if (index < 0) return const AdminResult.refused(EditedElsewhere(0));
 
-    final updated = staff[index].copyWith(
+    // The same order and the same answers as the Postgres repository: the
+    // owner's own access first, then a second owner, then lock-out.
+    final before = staff[index];
+    final onOwnerRole = before.role?.code == SystemRoles.ownerCode;
+    final changingRole = roleId != null && roleId != before.role?.id;
+    if (onOwnerRole &&
+        (directGrants != null || (changingRole && before.isActive))) {
+      return const AdminResult.refused(OwnerIsFixed());
+    }
+    final appointing = changingRole && _isOwnerRole(roleId);
+    if (appointing && before.isActive) {
+      final incumbent = _activeOwnerOtherThan(staffId);
+      if (incumbent != null) {
+        return AdminResult.refused(OwnerAlreadyExists(incumbent.name));
+      }
+    }
+
+    final updated = before.copyWith(
       name: name,
       username: username,
       capabilities: directGrants,
       role: roleId == null
           ? null
           : roles.roles.firstWhere((r) => r.id == roleId),
+      // Appointing clears what means nothing on an owner, as the real one does.
+      extraRoles: appointing ? const [] : null,
+      overrides: appointing ? const [] : null,
+      limits: appointing ? const {} : null,
     );
     if (!_someoneCanManageStaff(replacing: updated)) {
       return const AdminResult.refused(
@@ -1053,7 +1080,17 @@ class FakeStaffDirectoryRepository implements StaffDirectoryRepository {
     final index = staff.indexWhere((person) => person.id == staffId);
     if (index < 0) return const AdminResult.refused(EditedElsewhere(0));
 
-    final updated = staff[index].copyWith(isActive: isActive);
+    final before = staff[index];
+    if (isActive &&
+        !before.isActive &&
+        before.role?.code == SystemRoles.ownerCode) {
+      final incumbent = _activeOwnerOtherThan(staffId);
+      if (incumbent != null) {
+        return AdminResult.refused(OwnerAlreadyExists(incumbent.name));
+      }
+    }
+
+    final updated = before.copyWith(isActive: isActive);
     if (!_someoneCanManageStaff(replacing: updated)) {
       return const AdminResult.refused(
         WouldLockEveryoneOut(PosCapability.staffManage),
@@ -1091,6 +1128,18 @@ class FakeStaffDirectoryRepository implements StaffDirectoryRepository {
     final index = staff.indexWhere((s) => s.id == staffId);
     if (index < 0) return const AdminResult.refused(EditedElsewhere(0));
 
+    if (staff[index].role?.code == SystemRoles.ownerCode) {
+      return const AdminResult.refused(OwnerIsFixed());
+    }
+    if (extraRoleIds.any(_isOwnerRole)) {
+      final incumbent = _activeOwnerOtherThan(staffId);
+      return AdminResult.refused(
+        incumbent == null
+            ? const OwnerIsNotAnExtraRole()
+            : OwnerAlreadyExists(incumbent.name),
+      );
+    }
+
     final updated = staff[index].copyWith(
       extraRoles: [
         for (final role in roles.roles)
@@ -1105,6 +1154,23 @@ class FakeStaffDirectoryRepository implements StaffDirectoryRepository {
     );
     staff[index] = updated;
     return AdminResult.done(updated);
+  }
+
+  bool _isOwnerRole(int roleId) => roles.roles.any(
+    (r) => r.id == roleId && r.code == SystemRoles.ownerCode,
+  );
+
+  /// The active owner who is not [excluding] — migration 42's count, in
+  /// memory.
+  PosStaff? _activeOwnerOtherThan(int? excluding) {
+    for (final person in staff) {
+      if (person.id != excluding &&
+          person.isActive &&
+          person.role?.code == SystemRoles.ownerCode) {
+        return person;
+      }
+    }
+    return null;
   }
 
   bool _someoneCanManageStaff({required PosStaff replacing}) => [

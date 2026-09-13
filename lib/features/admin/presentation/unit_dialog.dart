@@ -5,6 +5,7 @@ import '../../../core/ui/theme.dart';
 import '../../../core/ui/tokens.dart';
 import '../../../core/ui/widgets/pos_widgets.dart';
 import '../../../domain/models/pos_unit.dart';
+import '../../../domain/services/eta_filing.dart' show etaFilingEnabled;
 
 /// Adding or editing one unit.
 ///
@@ -116,13 +117,16 @@ class _UnitDialogState extends State<UnitDialog> {
                 optional: _isNew,
                 hint: strings.unitCodeHelp,
               ),
-              _Field(
-                name: 'eta',
-                label: strings.unitEtaCode,
-                controller: _eta,
-                mono: true,
-                hint: strings.unitEtaCodeHelp,
-              ),
+              // Kept, and saved as it was, while e-receipts are off: nothing
+              // else reads it.
+              if (etaFilingEnabled)
+                _Field(
+                  name: 'eta',
+                  label: strings.unitEtaCode,
+                  controller: _eta,
+                  mono: true,
+                  hint: strings.unitEtaCodeHelp,
+                ),
               SwitchListTile(
                 key: const Key('unit-fraction'),
                 value: _allowsFraction,

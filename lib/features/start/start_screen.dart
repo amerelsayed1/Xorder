@@ -26,7 +26,6 @@ class StartScreen extends ConsumerStatefulWidget {
     super.key,
     required this.onStart,
     required this.onManageLicence,
-    required this.onReconfigure,
     required this.onManage,
   });
 
@@ -37,11 +36,6 @@ class StartScreen extends ConsumerStatefulWidget {
   /// a filing problem. The way into the back office itself is the window's
   /// bar and F8, not this screen; backups are said inside it.
   final void Function(ManagementPane pane) onManage;
-
-  /// Back to the setup wizard, after the terminal's configuration has been
-  /// cleared. The router will not redirect there on its own once setup is
-  /// complete, so the screen that clears it has to say where to go.
-  final VoidCallback onReconfigure;
 
   @override
   ConsumerState<StartScreen> createState() => _StartScreenState();
@@ -56,43 +50,11 @@ class _StartScreenState extends ConsumerState<StartScreen> {
     // gate for opening a shift, so a renewal applied five minutes ago has to be
     // visible here without restarting the till.
     Future.microtask(() => ref.invalidate(licenceEntitlementProvider));
-  }
-
-  /// Clear this terminal's configuration and run setup again.
-  ///
-  /// Refused outright while a shift is open. The drawer has not been counted,
-  /// and a till that dropped its database address mid-shift would leave that
-  /// count with nowhere to go.
-  Future<void> _reconfigure() async {
-    final strings = context.strings;
-
-    PosShift? openShift;
-    try {
-      openShift = await ref.read(shiftRepositoryProvider).current();
-    } on Exception {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(strings.resetTerminalShiftUnknown)),
-      );
-      return;
-    }
-    if (!mounted) return;
-
-    if (openShift != null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(strings.resetTerminalShiftOpen)));
-      return;
-    }
-
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => _ResetTerminalDialog(strings: strings),
-    );
-    if (confirmed != true || !mounted) return;
-
-    await ref.read(terminalResetProvider).run();
-    if (mounted) widget.onReconfigure();
+    // On a main device, share the licence with its tablets. Here because this
+    // is where every main device arrives — after setup, after a renewal, and
+    // on the first boot of one installed before tablets could be children.
+    // A no-op on a child and on a one-terminal licence; never throws.
+    Future.microtask(() => ref.read(siteLicencePublisherProvider).publish());
   }
 
   /// Open a shift, then go selling.
@@ -117,7 +79,9 @@ class _StartScreenState extends ConsumerState<StartScreen> {
   @override
   Widget build(BuildContext context) {
     final session = ref.watch(sessionProvider);
-    final catalog = ref.watch(catalogProvider);
+    // Watched though no longer shown, so the menu is loading while the shift
+    // is opened rather than after the till is already on screen.
+    ref.watch(catalogProvider);
     // The one place the licence actually gates anything: opening a shift.
     // Never mid-service, and never cash-up — see LicenseEntitlement.
     final licence = ref.watch(licenceEntitlementProvider).valueOrNull;
@@ -149,7 +113,6 @@ class _StartScreenState extends ConsumerState<StartScreen> {
               autofocus: true,
               child: Column(
                 children: [
-                  _topBar(),
                   Expanded(
                     child: Center(
                       child: ConstrainedBox(
@@ -157,7 +120,6 @@ class _StartScreenState extends ConsumerState<StartScreen> {
                         child: _body(
                           context,
                           data,
-                          catalog.valueOrNull?.products.length,
                           licence,
                           terminal,
                           ref.watch(shiftProvider).valueOrNull,
@@ -174,61 +136,9 @@ class _StartScreenState extends ConsumerState<StartScreen> {
     );
   }
 
-  /// Who is signed in, when somebody is.
-  ///
-  /// The back office is not here: the window's own bar carries it, beside
-  /// Settings, and F8 opens it from anywhere. A second button for it on this
-  /// screen was the same door twice.
-  ///
-  /// Nothing at all before a PIN has been entered — this screen is where the
-  /// shift is opened, and opening it is what asks for one. See
-  /// `operatorNameProvider`.
-  Widget _topBar() {
-    final operator = ref.watch(operatorNameProvider);
-    if (operator.isEmpty) return const SizedBox.shrink();
-
-    return Container(
-      height: PosSize.topBar,
-      decoration: BoxDecoration(
-        color: context.pos.shell,
-        border: Border(bottom: context.pos.accentBorder),
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: PosSpace.s14),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.end,
-        children: [
-          Container(
-            width: 34,
-            height: 34,
-            alignment: Alignment.center,
-            color: context.pos.accent,
-            child: Text(
-              ref.watch(operatorInitialsProvider),
-              style: PosText.ui(
-                size: 16,
-                weight: FontWeight.w800,
-                color: context.pos.onAccent,
-              ),
-            ),
-          ),
-          const SizedBox(width: PosSpace.sm),
-          Text(
-            operator,
-            style: PosText.ui(
-              size: 13.5,
-              weight: FontWeight.w600,
-              color: context.pos.shellText,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _body(
     BuildContext context,
     PosSession session,
-    int? itemCount,
     LicenseEntitlement? licence,
     TerminalProfile terminal,
     PosShift? openShift,
@@ -243,6 +153,22 @@ class _StartScreenState extends ConsumerState<StartScreen> {
       mainAxisAlignment: MainAxisAlignment.center,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        // XOrder's mark above the restaurant's name. Orange on transparent, so
+        // the one asset carries both themes, as it does on the welcome screen.
+        // Centred because the column stretches, and a stretched image ignores
+        // its width.
+        Center(
+          child: Image.asset(
+            'assets/icons/xorder_logo_official.png',
+            key: const Key('start-xorder-logo'),
+            width: 180,
+            fit: BoxFit.contain,
+            // The restaurant's name is right below; a missing asset is better
+            // absent than a broken-image glyph.
+            errorBuilder: (context, error, stack) => const SizedBox.shrink(),
+          ),
+        ),
+        const SizedBox(height: PosSpace.s28),
         // The handoff specifies a 280px logo image. Until the tenant logo is
         // fetched from config it is rendered as the wordmark rather than a
         // placeholder box, which would read as a broken asset.
@@ -273,7 +199,7 @@ class _StartScreenState extends ConsumerState<StartScreen> {
             child: SizedBox(height: 2),
           ),
         ),
-        _identityGrid(strings, session, itemCount, terminal, pos: context.pos),
+        _identityGrid(strings, session, terminal, pos: context.pos),
         if (ref.watch(terminalRejectedProvider)) ...[
           const SizedBox(height: PosSpace.lg),
           _terminalRejectedBanner(pos: context.pos),
@@ -348,37 +274,25 @@ class _StartScreenState extends ConsumerState<StartScreen> {
           style: PosText.ui(size: 12, color: context.pos.shellMuted),
         ),
         const SizedBox(height: PosSpace.s28),
-        // Deliberately quiet, and deliberately present: an installer moving the
-        // till to another branch server needs it, and a cashier must never
-        // reach for it by accident.
-        Align(
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Ending the night. Here rather than on the sale screen because
-              // it is the last thing anybody does, and because a trading day
-              // is a property of the branch rather than of the till somebody
-              // happens to be standing at. Only shown while one is open.
-              if (ref.watch(businessDayProvider).valueOrNull != null)
-                PosButton(
-                  label: context.strings.dayCloseTitle,
-                  height: PosSize.minTouchTarget,
-                  foreground: context.pos.shellMuted,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  onPressed: _closeDay,
-                ),
-              PosButton(
-                label: context.strings.resetTerminal,
-                height: PosSize.minTouchTarget,
-                foreground: context.pos.shellMuted,
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                onPressed: _reconfigure,
-              ),
-            ],
+        // Ending the night. Here rather than on the sale screen because it is
+        // the last thing anybody does, and because a trading day is a property
+        // of the branch rather than of the till somebody happens to be standing
+        // at. Only shown while one is open.
+        //
+        // Resetting the terminal is not beside it: that is the back office's
+        // (System › Terminal, behind `terminal.manage`), because a cashier
+        // opens the till from here and must not be one tap from wiping it.
+        if (ref.watch(businessDayProvider).valueOrNull != null)
+          Align(
+            child: PosButton(
+              label: context.strings.dayCloseTitle,
+              height: PosSize.minTouchTarget,
+              foreground: context.pos.shellMuted,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              onPressed: _closeDay,
+            ),
           ),
-        ),
       ],
     );
   }
@@ -470,14 +384,14 @@ class _StartScreenState extends ConsumerState<StartScreen> {
     );
   }
 
-  /// Branch, till and menu: one row of cells on 1px shellLine gaps.
+  /// Branch and till: one row of cells on 1px shellLine gaps.
   ///
   /// Not the restaurant — it is the heading directly above, and a cell saying
-  /// it again under the heading was the same name twice.
+  /// it again under the heading was the same name twice. Not the menu either:
+  /// how many items are cached is nothing whoever opens the shift acts on.
   Widget _identityGrid(
     AppStrings strings,
     PosSession session,
-    int? itemCount,
     TerminalProfile terminal, {
     required PosPalette pos,
   }) => Container(
@@ -498,19 +412,6 @@ class _StartScreenState extends ConsumerState<StartScreen> {
             child: _cell(
               strings.terminalCell,
               terminal.terminalName ?? session.terminalCode,
-              pos: pos,
-            ),
-          ),
-          const SizedBox(width: 1),
-          Expanded(
-            child: _cell(
-              strings.catalogCell,
-              itemCount == null
-                  ? strings.catalogSyncing
-                  : strings.catalogCachedItems(itemCount),
-              valueColor: itemCount == null
-                  ? pos.shellMuted
-                  : pos.onlinePillText,
               pos: pos,
             ),
           ),
@@ -545,67 +446,6 @@ class _StartScreenState extends ConsumerState<StartScreen> {
           ),
         ),
       ],
-    ),
-  );
-}
-
-/// Confirms a terminal reset, and says plainly what it does and does not touch.
-///
-/// The fear this answers is "will I lose today's sales". The answer is no, and
-/// an operator standing at a till at nine in the morning should not have to
-/// take that on faith from a one-line dialog.
-class _ResetTerminalDialog extends StatelessWidget {
-  const _ResetTerminalDialog({required this.strings});
-
-  final AppStrings strings;
-
-  @override
-  Widget build(BuildContext context) => Dialog(
-    backgroundColor: context.pos.page,
-    insetPadding: const EdgeInsets.all(PosSpace.s24),
-    shape: RoundedRectangleBorder(
-      side: context.pos.emphasis,
-      borderRadius: PosBorders.radius,
-    ),
-    child: ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 460),
-      child: Padding(
-        padding: const EdgeInsets.all(PosSpace.xl),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(strings.resetTerminalTitle, style: PosText.panelTitle(color: context.pos.ink)),
-            const SizedBox(height: PosSpace.sm),
-            Text(
-              strings.resetTerminalBody,
-              style: PosText.ui(size: 13, color: context.pos.muted, height: 1.5),
-            ),
-            const SizedBox(height: PosSpace.lg),
-            Row(
-              children: [
-                Expanded(
-                  child: PosButton(
-                    label: strings.cancel,
-                    border: Border.all(color: context.pos.line),
-                    onPressed: () => Navigator.of(context).pop(false),
-                  ),
-                ),
-                const SizedBox(width: PosSpace.md),
-                Expanded(
-                  child: PosButton(
-                    label: strings.resetTerminalConfirm,
-                    background: context.pos.danger,
-                    foreground: Colors.white,
-                    fontWeight: FontWeight.w700,
-                    onPressed: () => Navigator.of(context).pop(true),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
     ),
   );
 }

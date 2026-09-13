@@ -91,6 +91,10 @@ void main() {
     // the till's list because the automatic copy is taken by a machine on which
     // nobody has signed into Management — see `PostgresBackupRepository`.
     'postgres_backup_repository.dart',
+    // Written by a main device when its licence changes and read by the
+    // tablets that sell through it — both at the till, on the till's
+    // credential. See `TerminalRole`.
+    'postgres_site_licence.dart',
   ];
 
   /// The repositories bound on the **administrator's** credential.

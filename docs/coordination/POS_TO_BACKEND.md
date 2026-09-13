@@ -4,7 +4,7 @@
 **Absolute path:** `~/Projects/Mobile Application/xorder-pos/docs/coordination/POS_TO_BACKEND.md`
 **Backend repo under analysis:** `~/Projects/Web Application/xorder-new` (`apps/api`)
 **Reply channel:** `./BACKEND_TO_POS.md`
-**Last updated:** 2026-09-11 (CB-00: both repos' copies reconciled — see change log)
+**Last updated:** 2026-09-11 (POS-BE-029 rule 3: payment kinds are the platform's — see change log)
 
 ---
 
@@ -57,6 +57,7 @@ in `BACKEND_TO_POS.md` — this file records the *request*.
 | POS-BE-026 | Site registration and `ServerId` | MEDIUM | NO | APPROVED |
 | POS-BE-027 | Licence claims: `max_offline_days`, `server_id`, `license_version` | MEDIUM | NO | APPROVED |
 | POS-BE-028 | Terminal display-name update, decoupled from identity | LOW | NO | APPROVED |
+| POS-BE-030 | Purchasing and stock on a cloud terminal are platform-authored | LOW | NO | APPROVED — built both sides, not merged or deployed |
 
 Three of the entries above are **amendments rather than new surface**:
 POS-BE-025 is a redacted projection of POS-BE-023's bundle, POS-BE-027 adds three
@@ -1447,7 +1448,7 @@ is worth finding in the trail.
 
 ## POS-BE-029
 
-**Status:** PROPOSED — filed 2026-09-10. Client built against this text and tested against a fake HTTP layer (`lib/data/cloud/branch_sales_api.dart`); no backend work exists.
+**Status:** PROPOSED — filed 2026-09-10. Client built against this text and tested against a fake HTTP layer (`lib/data/cloud/branch_sales_api.dart`); no backend work exists. **Amended 2026-09-11:** payment kinds are the platform's POS-BE-013 vocabulary (rule 3).
 **Feature:** The branch view on a cloud till — its own branch, every terminal summed and broken out
 
 **Description:** Two reads, both scoped to the branch of the terminal whose
@@ -1483,8 +1484,15 @@ cross-branch dashboard; that is C3's job, on the web.
    revoked terminal that took money that day. `last_received_at` is what lets
    a manager see a till that stopped syncing.
 3. Payments by method carry the tender's `kind` and the payment's
-   `counts_as_cash`. Cash = `counts_as_cash`; card / electronic = kinds `card`
-   and `wallet`; **`account` is neither** — money owed, never collected.
+   `counts_as_cash`. The kind is the **platform's** tender kind —
+   `cash | card | external | other`, the POS-BE-013 vocabulary a cloud till
+   seeds its tenders from — never the till's own. Cash = `counts_as_cash`,
+   whatever the kind. Otherwise card / electronic = `card` and `external` (a
+   card on the bank's own terminal: electronic is the figure held against the
+   bank's settlement slip); `other` is collected, beside vouchers. There is
+   **no `account` kind**, so nothing here is owed rather than collected.
+   Adding one — or any fifth kind — is a POS-BE-013 contract change first: a
+   client that has not heard of a kind reads it as `other`, i.e. as takings.
 4. A refund belongs to the terminal that **issued** it, in the business day it
    was issued — not the original sale's terminal or day.
 5. Net = gross − discounts − refunds, where gross is **before** discounts
@@ -1504,11 +1512,14 @@ Settled sales only: voided, cancelled and still-open orders are not sales.
         "orders": 2, "gross_minor": 67345, "discount_minor": 5000,
         "refund_minor": 0, "refund_count": 0, "net_minor": 62345,
         "last_received_at": "2026-09-10T20:58:11Z",
+        // tender_type_id is the platform's — what the till sent as
+        // payments[].tender_type_id (POS-BE-013).
         "payments": [
           { "tender_type_id": 1, "label": "Cash", "kind": "cash",
             "counts_as_cash": true, "count": 1, "amount_minor": 30000 },
-          { "tender_type_id": 4, "label": "On account", "kind": "account",
-            "counts_as_cash": false, "count": 1, "amount_minor": 12345 } ] },
+          { "tender_type_id": 3, "label": "Card (bank terminal)",
+            "kind": "external", "counts_as_cash": false, "count": 1,
+            "amount_minor": 12345 } ] },
       { "terminal_id": "uuid", "name": "POS-03",
         "orders": 0, "gross_minor": 0, "discount_minor": 0,
         "refund_minor": 0, "refund_count": 0, "net_minor": 0,
@@ -1558,6 +1569,57 @@ POS_CAPABILITY_MISSING / TERMINAL_REVOKED` · `404` terminal not in the
 requesting branch · `422 VALIDATION_FAILED` (malformed `business_day`).
 **Priority:** MEDIUM · **Blocking:** NO — shared-database branches need nothing
 from the platform; only per-till cloud branches wait on this.
+
+---
+
+## POS-BE-030
+
+**Status:** APPROVED — filed 2026-09-13; owner go "finish all phases" (CB-09). Built on both sides, neither merged nor deployed:
+- till side: `feat/cb-09-slice-e` @ `1adb17f` in xorder-pos, branched from `pos/offline-solid`;
+- platform side: CB-09 slice a, `dd9a530` on `feat/cb-09-purchasing` in xorder-new — the `PosBootstrapService::staff()` filter.
+
+**Feature:** Purchasing and stock on a cloud terminal are platform-authored
+
+**Description:** On a terminal whose deployment is `cloud`, the platform is the
+only author of suppliers, purchase orders, receiving, supplier invoices,
+supplier payments, units and stock items. The till does not show its
+Purchasing, Items, Stock or Units panes on cloud, **whatever capabilities the
+signed-in person holds** — including a grant from a till-local role or a direct
+grant. Offline terminals are unchanged.
+
+**Why it is worth an entry of its own.** Owner decision 2026-09-12 (CB-09 D1):
+one author per row. The panes are hidden by deployment mode rather than by
+capability, because roles are the till's own even on cloud (doc 16 §1). A local
+Owner or Manager role still grants `purchase.manage`, so a capability gate
+alone would leak exactly the panes this closes.
+
+**Bundle.** No new key. `staff[].capabilities` in a bundle **never contains
+`purchase.manage`**, even for the owner, even though the platform's
+TenantCapability of that name exists and is held on the dashboard. A till that
+finds it there anyway, from an older platform, ignores it on cloud under the
+rule above.
+
+**Existing rows.** Till-local purchasing, supplier, unit and stock rows already
+on a cloud terminal are not deleted, not imported and not synced. They remain
+in the till's backups.
+
+**Sync.** Nothing in POS-BE-006/009/021 changes. The platform derives nothing
+from till purchasing. A supplier payment made out of a cloud terminal's drawer
+is recorded at the till as a `pay_out` cash movement (POS-BE-009, unchanged).
+The dashboard may link a supplier payment to that synced movement; that is
+platform-side only, with no wire change.
+
+**Till behaviour (built).** The four panes join Menu and Floor in
+`_authoringPanes`, and the rail, the Manage menu (`managementBarFor`) and deep
+links all follow it. On cloud the bar keeps a Buying entry with one line
+pointing to the xorder.io dashboard. A deep link to any of the four lands on the
+back office's first pane with the same sentence, in EN and AR. Tested: a cloud
+till where `purchase.manage` comes from a local role or a direct grant shows
+none of the four.
+
+**Errors:** none. **Permissions:** none new.
+**Priority:** LOW · **Blocking:** NO — the platform's bundle filter already
+protects older till builds.
 
 ---
 
@@ -1828,3 +1890,5 @@ owner's explicit go to move `APPROVED → IN_PROGRESS`.
 | 2026-09-11 | **CB-00 — the two repos' copies reconciled** (`xorder-cloud`, docs only). The xorder-pos copy (2026-09-11) was a strict superset of the xorder-new copy (2026-09-04) except one passage: the "catalog stays authored in the cloud dashboard" bullet under the 2026-08-26 deployment consequences. xorder-new still had the original 2026-08-26 wording ("local catalog authoring on the till is now explicitly *out* of scope"); xorder-pos had the 2026-09-06 owner narrowing ("— on a CLOUD terminal", offline authors its own world). **The later-dated 2026-09-06 text is kept.** Carried into xorder-new: that narrowing, the whole POS-BE-029 entry and its summary row, and the 2026-09-06 and 2026-09-10 change-log rows. Change-log rows re-sorted into date order (no row removed or reworded). No request status changed. Both copies are now byte-identical. |
 | 2026-09-11 | **Defect: a cloud till paid with its own local tender ids.** The drain sent the till's local `tender_type_id` (the seeded 1–4) unchanged, and the platform validates that field against its own tenant-scoped `tender_types`. So a synced payment was refused with 422 "Unknown tender type", or it landed on a different platform tender that happened to share the id. The owner's go of 2026-09-11 was to fix it as a defect. It is conformance with POS-BE-013, as amended the same day in `BACKEND_TO_POS.md`, so no new request was raised. On a cloud terminal the till now seeds `pos_tender_types` from the bundle's `money.tender_types`, keyed by the platform id, and pays with those ids (`pos-dev`, in parallel with the platform change). It never falls back to null, because the shift report counts a null tender as cash. The platform now guarantees the list is never empty: Cash and Card are created at the restaurant's first terminal. |
 | 2026-09-11 | **POS-BE-013 tender types: how the client conforms** (`pos-dev`, same defect go). A cloud till now upserts each `money.tender_types` element into `pos_tender_types`, keyed on a new column `(restaurant_id, platform_id)` (migration 41). The till's own primary key is kept, so platform tender 1 never overwrites local row 1. The drain sends `platform_id` as `payments[].tender_type_id`. A database CHECK keeps platform rows at ids above 4, with code `platform-<id>`. Kind mapping: `cash→cash`, `card→card`, `external→card` (reconciled as electronic against the bank terminal's slip), `other→other`, unknown→`other` (never cash). Only `cash` counts as cash and opens the drawer. Tenders the bundle no longer names are deactivated, never deleted. An empty list changes nothing. **Refused on the client:** a payment on a tender the bundle didn't deliver (the seeded 1–4, or legacy queued sales) is never sent, with a guessed id or with null. The order is quarantined locally with code `TENDER_NOT_FROM_PLATFORM`, which the platform never returns. The Payment methods pane is read-only on cloud. **Relies on the platform to:** never deliver an empty list for a POS restaurant; keep tender ids stable (delete means deactivate); treat a new `kind` as a contract change. It should always deliver one active `cash` tender. **Consequences:** a cloud till no longer offers "On account", because the platform has no `account` kind. Upgraded dev tills must re-apply the cloud till grants (`pos_migrate --cloud-till` or the wizard) and force a reseed. |
+| 2026-09-11 | **POS-BE-029 amended: payment kinds are the platform's** (`pos-dev`, docs + client; status unchanged, PROPOSED). Rule 3 and the summary example named the till's kinds (`wallet`, `account`), which the platform cannot produce: since the POS-BE-013 conformance above, a cloud till's payments are on platform tenders whose kind is `cash \| card \| external \| other`. Rule 3 now reads that vocabulary: cash by `counts_as_cash`; `card` and `external` electronic; `other` collected; no `account`. The example's on-account row became an `external` card. The client now parses `kind` through `PlatformTenderKind.tillKind` — the seeder's own mapping — instead of the till's parser, which had read `external` as other and left electronic short of the bank's settlement slip. Unknown kinds read as `other`, so a new kind (`account` included) is a POS-BE-013 contract change before the platform sends it. Both repos' copies updated identically. |
+| 2026-09-13 | **POS-BE-030 raised and approved: purchasing and stock on a cloud terminal are platform-authored** (CB-09; owner go "finish all phases"). A cloud till hides its Purchasing, Items, Stock and Units panes whatever the person holds, and the rail, the Manage menu and deep links all agree. A pointer names the xorder.io dashboard, in EN and AR. Built on `feat/cb-09-slice-e` @ `1adb17f`: `flutter analyze` is clean, `flutter test` shows 1734 passed and 43 skipped, and `test/data` shows 876 passed and 1 skipped. Not merged: the main checkout carries other sessions' uncommitted edits to `app.dart` and `management_screen.dart`. The platform half, the bundle withholding `purchase.manage`, is CB-09 slice a. Rows already on a cloud till stay where they are, neither imported nor deleted. |

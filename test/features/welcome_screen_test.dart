@@ -131,6 +131,23 @@ void main() {
     expect(opened, isTrue);
   });
 
+  testWidgets('twelve taps on the mark open setup, for a till with no '
+      'keyboard', (tester) async {
+    var opened = false;
+    await pump(tester, onOpen: () => opened = true);
+
+    // Eleven is a child at the counter, not an installer.
+    for (var i = 0; i < 11; i++) {
+      await tester.tap(find.byType(Image));
+    }
+    await tester.pump();
+    expect(opened, isFalse);
+
+    await tester.tap(find.byType(Image));
+    await tester.pump();
+    expect(opened, isTrue);
+  });
+
   testWidgets('the plain key does nothing', (tester) async {
     var opened = false;
     await pump(tester, onOpen: () => opened = true);

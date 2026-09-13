@@ -1104,6 +1104,12 @@ Run alongside the waves, not after them.
 
 ## 16. Sequencing — revised 8 September 2026
 
+> **Superseded on 13 September 2026 for Wave N.** E-receipts are not needed
+> for the restaurants being sold to now, so filing is switched off
+> (`etaFilingEnabled`, see `14-progress.md`) and the two unbuilt pieces — the
+> e-seal and the submission client — are parked, not next. What Wave N built
+> stays in the tree, dormant. The rest of this section is kept as written.
+
 Waves A and B are shipped. The order below changes from the original for one
 reason, set out in [15-competitive-position.md](15-competitive-position.md):
 **Egypt's ETA e-receipt mandate has been in force since 15 September 2025**, and

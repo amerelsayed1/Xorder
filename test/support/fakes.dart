@@ -35,8 +35,17 @@ class EnglishTerminal extends TerminalLocaleController {
 /// [english] false leaves the language alone, for the handful of tests that are
 /// ABOUT it — a terminal opening in the language it was set up in, or a wizard
 /// keeping it across a reset. Everything else takes English.
-List<Override> fakeRepositoryOverrides({bool english = true}) => [
+///
+/// [schemaUpgrader] stands in for the migrations the back-office door applies.
+/// Absent by default: there is no database in a widget test, and the real
+/// upgrader would wait on a connection that never comes, so the door would
+/// never open.
+List<Override> fakeRepositoryOverrides({
+  bool english = true,
+  Future<List<int>> Function()? schemaUpgrader,
+}) => [
       if (english) localeProvider.overrideWith(EnglishTerminal.new),
+      schemaUpgraderProvider.overrideWithValue(schemaUpgrader),
       catalogRepositoryProvider.overrideWithValue(FakeCatalogRepository()),
       tablesRepositoryProvider.overrideWithValue(FakeTablesRepository()),
       sessionRepositoryProvider.overrideWithValue(FakeSessionRepository()),

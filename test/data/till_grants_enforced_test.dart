@@ -22,7 +22,12 @@ void main() {
     return;
   }
 
-  const role = 'pos_till_grant_probe';
+  // Per checkout, because roles are cluster-wide. With one fixed name, the
+  // other worktree's grants in its own database kept DROP ROLE from ever
+  // succeeding here, so the CREATE below failed on a role that "already
+  // exists" — and this run's DROP OWNED, which reaches grants on every
+  // database, took away the CONNECT the other run was using.
+  final role = PgFixture.roleFor('till_grant_probe');
   const password = 'probe-only';
 
   late PgFixture pg;

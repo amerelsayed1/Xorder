@@ -72,46 +72,81 @@ class PostgresPurchaseOrdersRepository implements PurchaseOrdersRepository {
     final ids = [for (final row in orders) row[0]! as int];
     final lines = await _db.query(
       config,
-      'SELECT purchase_order_id, id, product_id, description, sku, '
-      '       ordered_milli, received_milli, unit, unit_cost_minor, tax_rate_bp '
-      'FROM pos_purchase_order_lines '
+      'SELECT $_lineColumns FROM pos_purchase_order_lines '
       'WHERE purchase_order_id = ANY(@ids) ORDER BY sort_order, id',
       parameters: {'ids': ids},
     );
 
     final byOrder = <int, List<PurchaseOrderLine>>{};
     for (final row in lines) {
-      final unit = QuantityUnit.fromWire(row[7] as String?);
-      byOrder.putIfAbsent(row[0]! as int, () => []).add(
-        PurchaseOrderLine(
-          id: row[1]! as int,
-          productId: row[2] as int?,
-          description: row[3]! as String,
-          sku: row[4] as String?,
-          ordered: Quantity(row[5]! as int, unit: unit),
-          received: Quantity(row[6]! as int, unit: unit),
-          unitCost: Money(row[8]! as int),
-          taxRateBp: row[9]! as int,
-        ),
-      );
+      byOrder.putIfAbsent(row[0]! as int, () => []).add(_line(row));
     }
 
     return [
       for (final row in orders)
-        PurchaseOrder(
-          id: row[0]! as int,
-          supplierId: row[1]! as int,
-          supplierName: row[2] as String?,
-          reference: row[3]! as String,
-          status: PurchaseStatus.fromWire(row[4]! as String),
-          currency: row[5]! as String,
-          exponent: row[6]! as int,
-          orderedAt: (row[7] as DateTime?)?.toUtc(),
-          expectedAt: (row[8] as DateTime?)?.toUtc(),
-          notes: row[9] as String?,
-          lines: byOrder[row[0]! as int] ?? const [],
-        ),
+        _order(row, byOrder[row[0]! as int] ?? const []),
     ];
+  }
+
+  static const _lineColumns =
+      'purchase_order_id, id, product_id, description, sku, ordered_milli, '
+      'received_milli, unit, unit_cost_minor, tax_rate_bp';
+
+  static PurchaseOrderLine _line(List<Object?> row) {
+    final unit = QuantityUnit.fromWire(row[7] as String?);
+    return PurchaseOrderLine(
+      id: row[1]! as int,
+      productId: row[2] as int?,
+      description: row[3]! as String,
+      sku: row[4] as String?,
+      ordered: Quantity(row[5]! as int, unit: unit),
+      received: Quantity(row[6]! as int, unit: unit),
+      unitCost: Money(row[8]! as int),
+      taxRateBp: row[9]! as int,
+    );
+  }
+
+  /// [row] is [_orderColumns], in that order.
+  static PurchaseOrder _order(
+    List<Object?> row,
+    List<PurchaseOrderLine> lines,
+  ) => PurchaseOrder(
+    id: row[0]! as int,
+    supplierId: row[1]! as int,
+    supplierName: row[2] as String?,
+    reference: row[3]! as String,
+    status: PurchaseStatus.fromWire(row[4]! as String),
+    currency: row[5]! as String,
+    exponent: row[6]! as int,
+    orderedAt: (row[7] as DateTime?)?.toUtc(),
+    expectedAt: (row[8] as DateTime?)?.toUtc(),
+    notes: row[9] as String?,
+    lines: lines,
+  );
+
+  /// The order as it is now, with its lines, locked for the rest of [tx].
+  ///
+  /// Read on the transaction rather than through [byId], which opens its own
+  /// connection: that would read a snapshot the lock does not cover, and the
+  /// point of locking is that nothing moves between the read and the write.
+  Future<PurchaseOrder?> _locked(TxSession tx, int id) async {
+    final held = await tx.execute(
+      Sql.named(
+        'SELECT $_orderColumns FROM pos_purchase_orders '
+        'WHERE id = @id AND restaurant_id = @r FOR UPDATE',
+      ),
+      parameters: {'id': id, 'r': restaurantId},
+    );
+    if (held.isEmpty) return null;
+
+    final lines = await tx.execute(
+      Sql.named(
+        'SELECT $_lineColumns FROM pos_purchase_order_lines '
+        'WHERE purchase_order_id = @id ORDER BY sort_order, id',
+      ),
+      parameters: {'id': id},
+    );
+    return _order(held.first, [for (final row in lines) _line(row)]);
   }
 
   AdminRefusal? _blocked(PosStaff by) {
@@ -301,24 +336,52 @@ class PostgresPurchaseOrdersRepository implements PurchaseOrdersRepository {
     if (blocked != null) return AdminResult.refused(blocked);
 
     final written = await _db.runTx(config, (tx) async {
-      final rows = await tx.execute(
+      // Locked, then asked — and asked of the row, not of the screen. The
+      // pane's copy is whatever the order was when it last drew: Cancel shows
+      // on a sent order, and a receipt booked from another till since then
+      // does not redraw it. An UPDATE with no look at the current status let
+      // that tap cancel an order whose goods were already in the kitchen.
+      //
+      // The rules are `PurchaseEngine`'s, not restated here: a repository that
+      // enforced them itself would enforce them slightly differently from the
+      // engine its tests describe. Migration 44 holds the same line in the
+      // database, for writers that never come through this method.
+      final order = await _locked(tx, orderId);
+      if (order == null) {
+        return const AdminResult<int>.refused(EditedElsewhere(0));
+      }
+
+      final decided = switch (status) {
+        PurchaseStatus.sent => PurchaseEngine.send(
+          order,
+          at: (orderedAt ?? DateTime.now()).toUtc(),
+        ),
+        PurchaseStatus.cancelled => PurchaseEngine.cancel(order),
+        // Only receiving writes these, from the lines; and nothing goes back
+        // to draft.
+        PurchaseStatus.draft ||
+        PurchaseStatus.partiallyReceived ||
+        PurchaseStatus.received => PurchaseResult.refused(
+          StatusFollowsTheGoods(status),
+        ),
+      };
+      if (!decided.succeeded) {
+        return AdminResult<int>.refused(PurchaseRefused(decided.refusal!));
+      }
+
+      await tx.execute(
         Sql.named(
           'UPDATE pos_purchase_orders SET status = @status, '
-          '  ordered_at = COALESCE(@orderedAt, ordered_at), '
-          '  updated_at = now(), updated_by = @by '
-          'WHERE id = @id AND restaurant_id = @r RETURNING id',
+          '  ordered_at = @orderedAt, updated_at = now(), updated_by = @by '
+          'WHERE id = @id',
         ),
         parameters: {
           'id': orderId,
-          'r': restaurantId,
-          'status': status.wire,
-          'orderedAt': orderedAt,
+          'status': decided.order!.status.wire,
+          'orderedAt': decided.order!.orderedAt,
           'by': by.id == 0 ? null : by.id,
         },
       );
-      if (rows.isEmpty) {
-        return const AdminResult<int>.refused(EditedElsewhere(0));
-      }
 
       await tx.execute(
         Sql.named('''

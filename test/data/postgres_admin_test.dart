@@ -341,9 +341,20 @@ void main() {
     });
 
     test('moving the last manager to a cashier role is refused too', () async {
+      // Asked of a manager, not of the owner as it used to be. The owner's
+      // role is now fixed outright (`OwnerIsFixed`, one_owner_test.dart), so
+      // moving them is refused before lock-out is asked. A manager is the last
+      // who can manage staff once the owner has been disabled.
+      final hala = await hire(SystemRoles.managerCode, name: 'Hala', pin: '3333');
+      expect(
+        (await staff.setActive(by: owner, staffId: owner.id, isActive: false))
+            .succeeded,
+        isTrue,
+      );
+
       final refused = await staff.update(
-        by: owner,
-        staffId: owner.id,
+        by: hala,
+        staffId: hala.id,
         roleId: seeded[SystemRoles.cashierCode]!.id,
       );
       expect(refused.refusal, isA<WouldLockEveryoneOut>());

@@ -116,6 +116,7 @@ void main() {
           theme: buildPosTheme(),
           home: ManagementScreen(
             onClose: () {},
+            onReconfigure: () {},
             initialPane: pane,
           ),
         ),

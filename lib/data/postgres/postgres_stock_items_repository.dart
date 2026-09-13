@@ -11,6 +11,7 @@ import '../../domain/repositories/admin_repositories.dart';
 import '../../domain/repositories/repositories.dart';
 import '../../domain/services/authorization.dart';
 import 'pos_database.dart';
+import 'stock_unit_guard.dart';
 
 /// What the restaurant buys and counts: the stocked rows of `pos_products`.
 ///
@@ -92,6 +93,17 @@ class PostgresStockItemsRepository implements StockItemsRepository {
 
     try {
       return await _db.runTx(config, (tx) async {
+        // Before anything is written, so a refusal needs no rollback.
+        if (item.id != 0) {
+          final held = await StockUnitGuard.check(
+            tx,
+            restaurantId: restaurantId,
+            productId: item.id,
+            unit: item.unit,
+          );
+          if (held != null) return AdminResult<StockItem>.refused(held);
+        }
+
         final Result rows;
         if (item.id == 0) {
           rows = await tx.execute(

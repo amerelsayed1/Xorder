@@ -53,6 +53,8 @@ void main() {
 
   _priceOverrideTests();
 
+  _tenderCashTests();
+
   test('a parked ticket round-trips exactly — id, money and stages included', () {
     final original = _parked();
     final json = jsonDecode(jsonEncode(ParkedTicketCodec.encode(original)))
@@ -337,6 +339,77 @@ void _priceOverrideTests() {
       )!;
       expect(restored.lines.single.isRepriced, isFalse);
       expect(restored.lines.single.unitPrice.minor, 9500);
+    });
+  });
+}
+
+void _tenderCashTests() {
+  group('a part-payment keeps whether it is in the drawer', () {
+    /// The failure this guards against is not an exception. A partly paid
+    /// table whose cash came back as "not cash" settles with
+    /// `counts_as_cash = false`, so the cash-up expects less in the drawer than
+    /// is there, and ETA is told the sale was paid by card.
+    Ticket partlyPaid() {
+      var ticket = Ticket(id: 'txn-part', orderType: OrderType.dineIn);
+      ticket = TicketEngine.attachTable(ticket, 12, 'T12', guests: 2);
+      ticket = TicketEngine.addLine(
+        ticket,
+        _burger,
+        groups: const [_extras],
+        quantity: 2,
+      ).ticket!;
+      ticket = TicketEngine.addTender(
+        ticket,
+        typeId: 1,
+        label: 'Cash',
+        amount: const Money(5000),
+        countsAsCash: true,
+      ).ticket!;
+      // A cloud till's platform tender: an id above the seeded ones, which
+      // the restaurant has said counts as cash. No lookup can recover that.
+      ticket = TicketEngine.addTender(
+        ticket,
+        typeId: 17,
+        label: 'Vodafone Cash',
+        amount: const Money(3000),
+        countsAsCash: true,
+      ).ticket!;
+      return TicketEngine.addTender(
+        ticket,
+        typeId: 2,
+        label: 'Card',
+        amount: const Money(2000),
+        reference: 'AUTH-889',
+      ).ticket!;
+    }
+
+    test('each tender comes back with the flag it was taken with', () {
+      final restored = ParkedTicketCodec.decode(
+        (jsonDecode(jsonEncode(ParkedTicketCodec.encode(partlyPaid()))) as Map)
+            .cast<String, Object?>(),
+        _catalog,
+      )!;
+
+      expect(restored.tenders.map((t) => t.countsAsCash), [true, true, false]);
+      expect(restored.tenders.last.reference, 'AUTH-889');
+    });
+
+    test('a payload written before the flag existed falls back to the seeded '
+        'list', () {
+      // Every partly paid table already parked on a branch server when this
+      // shipped. Seeded Cash is still cash; anything the seeded list does not
+      // know is not — the one thing no fallback can get right.
+      final restored = ParkedTicketCodec.decode(const {
+        'client_transaction_id': 'txn-old',
+        'order_type': 'dine_in',
+        'tenders': [
+          {'type_id': 1, 'label': 'Cash', 'amount_minor': 5000},
+          {'type_id': 2, 'label': 'Card', 'amount_minor': 2000},
+          {'type_id': 17, 'label': 'Vodafone Cash', 'amount_minor': 3000},
+        ],
+      }, _catalog)!;
+
+      expect(restored.tenders.map((t) => t.countsAsCash), [true, false, false]);
     });
   });
 }

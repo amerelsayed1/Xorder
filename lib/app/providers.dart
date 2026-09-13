@@ -27,6 +27,7 @@ import '../data/config/pos_db_secret_store.dart';
 import '../data/config/terminal_config_store.dart';
 import '../data/hardware/network_printer_ports.dart';
 import '../data/postgres/pos_database.dart';
+import '../data/postgres/local_bootstrap.dart';
 import '../data/postgres/postgres_admin_repositories.dart';
 import '../data/postgres/postgres_backup_repository.dart';
 import '../data/postgres/postgres_catalog_admin_repository.dart';
@@ -64,6 +65,7 @@ import '../data/postgres/money_config_codec.dart';
 import '../data/postgres/postgres_parked_tickets.dart';
 import '../data/postgres/postgres_print_queue_repository.dart';
 import '../data/postgres/postgres_shift_repository.dart';
+import '../data/postgres/postgres_site_licence.dart';
 import '../data/unconfigured/unconfigured_repositories.dart';
 import '../features/history/history_scope.dart';
 import '../features/licensing/data/file_license_store.dart';
@@ -71,6 +73,7 @@ import '../features/licensing/data/licence_service.dart';
 import '../features/licensing/data/license_keys.dart';
 import '../features/licensing/data/license_store.dart';
 import '../features/licensing/data/platform_licence_api.dart';
+import '../features/licensing/data/site_licence.dart';
 import '../features/licensing/domain/license_verifier.dart';
 import '../features/licensing/domain/license.dart';
 import '../features/setup/application/setup_controller.dart';
@@ -517,7 +520,11 @@ final provisioningRepositoryProvider = Provider<ProvisioningRepository>((ref) {
   // device token (POS-BE-011 Option C), and seeds its local database from the
   // bootstrap bundle the claim carries. Offline terminals keep claiming
   // against the branch server's own PostgreSQL, as before.
-  if (config.mode == DeploymentMode.cloud) {
+  //
+  // A child tablet registers against its main device's PostgreSQL whatever
+  // mode that main device runs in: the platform has never heard of it, and it
+  // holds no device token to claim with.
+  if (config.mode == DeploymentMode.cloud && !config.isChild) {
     final api = ref.watch(posCloudApiProvider);
     if (api == null) return const UnconfiguredProvisioningRepository();
     return CloudProvisioningRepository(
@@ -564,7 +571,12 @@ final provisioningRepositoryProvider = Provider<ProvisioningRepository>((ref) {
 final posCloudApiProvider = Provider<PosCloudApi?>((ref) {
   final config = ref.watch(deploymentProvider);
   final base = config.baseUrl;
-  if (!config.mode.syncsSalesToPlatform || base == null || base.isEmpty) {
+  // A child of a cloud main device included: its sales reach the platform
+  // through the main device's outbox drain, and it has no token of its own.
+  if (!config.mode.syncsSalesToPlatform ||
+      config.isChild ||
+      base == null ||
+      base.isEmpty) {
     return null;
   }
   final vault = ref.watch(deviceTokenVaultProvider);
@@ -990,12 +1002,6 @@ final posUiProvider = NotifierProvider<PosUiController, PosUiState>(
   PosUiController.new,
 );
 
-/// The order types THIS branch actually offers (POS-BE-005).
-///
-/// The till must never show a type the branch does not support: the cashier
-/// would ring a whole ticket and only discover at settlement that the server
-/// refuses it. The rule is mirrored from `PosOrderService` exactly — an empty
-/// list on the branch means "everything allowed" there, so it means the same
 /// What each kind of order requires — tables, a customer, an address (§31).
 ///
 /// Falls back to the seeded four while the query is in flight or on a till
@@ -1040,19 +1046,41 @@ final orderTypesRepositoryProvider = Provider<OrderTypesRepository?>((ref) {
   );
 });
 
-/// here. An unknown wire value is dropped rather than throwing (rule 11).
+/// The order types THIS branch actually offers the cashier (POS-BE-005, §31).
+///
+/// Two filters, and both have to pass. The branch's own list from the platform:
+/// the till must never show a type the branch does not support, or the cashier
+/// rings a whole ticket and only discovers at settlement that the server
+/// refuses it. That rule is mirrored from `PosOrderService` exactly — an empty
+/// list on the branch means "everything allowed" there, so it means the same
+/// here, and an unknown wire value is dropped rather than thrown on (rule 11).
+///
+/// And the restaurant's own switch in the back office. Turning delivery off
+/// there used to change nothing on the till, because this read only the
+/// branch; `orderTypeConfigProvider` already hides the inactive rows, and it
+/// also supplies the order the restaurant sorted them into.
 final branchOrderTypesProvider = Provider<List<OrderType>>((ref) {
+  final active = ref.watch(orderTypeRulesProvider).active;
   final branchId = ref.watch(terminalProfileProvider).branchId;
   final branches = ref.watch(branchesProvider).valueOrNull;
-  if (branchId == null || branches == null) return OrderType.values;
 
-  final branch = branches.where((b) => b.id == branchId).firstOrNull;
-  final wire = branch?.supportedOrderTypes ?? const <String>[];
-  if (wire.isEmpty) return OrderType.values;
+  var supported = OrderType.values;
+  if (branchId != null && branches != null) {
+    final branch = branches.where((b) => b.id == branchId).firstOrNull;
+    final wire = branch?.supportedOrderTypes ?? const <String>[];
+    final parsed = [for (final value in wire) ?OrderType.fromWire(value)];
+    // A branch whose every value this build fails to parse still has to sell.
+    if (parsed.isNotEmpty) supported = parsed;
+  }
 
-  final supported = [for (final value in wire) ?OrderType.fromWire(value)];
-  // A branch whose every value this build fails to parse still has to sell.
-  return supported.isEmpty ? OrderType.values : supported;
+  final offered = [
+    for (final type in active)
+      if (supported.contains(type)) type,
+  ];
+  // Nothing in common — the back office turned on only what the platform
+  // refuses here — and a till with no order type cannot sell at all. The
+  // platform's list wins, because it is the one settlement enforces.
+  return offered.isEmpty ? supported : offered;
 });
 
 /// How much tax and service this till charges.
@@ -1197,9 +1225,25 @@ class TicketController extends Notifier<Ticket> {
       state = state.copyWith(taxConfig: next);
     });
 
+    // The back office can turn a kind of order off while this till is open,
+    // and the restaurant's rules arrive a beat after the first ticket does. An
+    // empty ticket left on a type nobody offers any more moves to the first one
+    // that is. A ticket with lines or a table keeps its type: switching it
+    // would detach a seated party's bill, and the cashier can see the bar.
+    ref.listen<List<OrderType>>(branchOrderTypesProvider, (_, offered) {
+      if (offered.contains(state.orderType)) return;
+      if (!state.isEmpty || state.tableId != null) return;
+      setOrderType(offered.first);
+    });
+
+    final offered = ref.read(branchOrderTypesProvider);
     return Ticket(
       id: _uuid.v4(),
-      orderType: OrderType.dineIn,
+      // Dine in when the till sells it, as it always has; otherwise whatever
+      // the restaurant sorted first. Never empty — see the provider.
+      orderType: offered.contains(OrderType.dineIn)
+          ? OrderType.dineIn
+          : offered.first,
       // The platform's rates when it has sent any; otherwise the read-only
       // device default, which every receipt then discloses. What must never
       // happen — and used to — is the till inventing a rate the platform does
@@ -1409,10 +1453,23 @@ final connectivityProbeProvider = Provider<ConnectivityProbe>(
 /// The fingerprint follows the terminal id — generated once on this machine and
 /// never reissued — so a licence can be pinned to a till. It is hashed, so what
 /// a licence carries says nothing about the machine or the person on it.
+///
+/// **A child tablet reads its main device's licence instead** — see
+/// [SiteLicenceService]. Same public key, same policy; the file simply lives in
+/// the database they share rather than on the tablet.
 final licenceServiceProvider = Provider<LicenceService>((ref) {
+  final verifier = LicenseVerifier(publicKeyBytes: LicenseKeys.current);
+  if (ref.watch(deploymentProvider).isChild) {
+    return SiteLicenceService(
+      source: ref.watch(siteLicenceSourceProvider) ?? InMemorySiteLicenceSource(),
+      verifySignature: verifier.verifySignature,
+      clock: DateTime.now,
+      restaurantId: ref.watch(terminalProfileProvider).restaurantId,
+    );
+  }
   final platform = ref.watch(platformLicenceApiProvider);
   return DefaultLicenceService(
-    verifier: LicenseVerifier(publicKeyBytes: LicenseKeys.current),
+    verifier: verifier,
     store_: ref.watch(licenseStoreProvider),
     fingerprint: TerminalIdFingerprint(
       ref.watch(terminalProfileProvider).installationId,
@@ -1456,6 +1513,113 @@ final platformLicenceApiProvider = Provider<PlatformLicenceApi>(
 final licenseStoreProvider = Provider<LicenseStore>(
   (ref) => FileLicenseStore(),
 );
+
+/// The role a FRESH install takes. A saved config keeps the role it was set
+/// up with; this only decides which wizard a new machine opens on.
+///
+/// A tablet is a child, always — see [TerminalRole]. Decided by the operating
+/// system rather than by screen size: a large Android tablet is still the
+/// device carried round the floor, and a small Windows till is still the one
+/// with the database on it.
+final deviceRoleProvider = Provider<TerminalRole>(
+  (ref) => Platform.isAndroid || Platform.isIOS
+      ? TerminalRole.child
+      : TerminalRole.main,
+);
+
+/// The licence a main device shares with its children, in their database.
+/// Null until there is a database to find it in.
+final siteLicenceSourceProvider = Provider<SiteLicenceSource?>((ref) {
+  final config = ref.watch(deploymentProvider);
+  if (PosDatabase.hostFor(config) == null) return null;
+  return _PostgresSiteLicenceSource(
+    PostgresSiteLicence(
+      database: ref.watch(posDatabaseProvider),
+      config: config,
+    ),
+  );
+});
+
+/// [PostgresSiteLicence]'s plain rows, as the licensing types.
+class _PostgresSiteLicenceSource implements SiteLicenceSource {
+  const _PostgresSiteLicenceSource(this._table);
+
+  final PostgresSiteLicence _table;
+
+  @override
+  Future<SiteLicence?> read({int? restaurantId}) async {
+    final row = await _table.read(restaurantId: restaurantId);
+    if (row == null) return null;
+    return SiteLicence(
+      file: LicenseFile(
+        payloadB64: row.payload,
+        signatureB64: row.signature,
+        keyId: row.keyId,
+      ),
+      restaurantId: row.restaurantId,
+      // The CHECK constraint admits only the two wire values, so the fallback
+      // is for a newer build's mode this one does not know.
+      mode: DeploymentMode.fromWire(row.mode) ?? DeploymentMode.offline,
+      terminalCount: row.terminalCount,
+    );
+  }
+
+  @override
+  Future<void> publish({
+    required int restaurantId,
+    required LicenseFile file,
+    required DeploymentMode mode,
+  }) => _table.publish(
+    SiteLicenceRow(
+      restaurantId: restaurantId,
+      payload: file.payloadB64,
+      signature: file.signatureB64,
+      keyId: file.keyId,
+      mode: mode.wire,
+    ),
+  );
+}
+
+final siteLicencePublisherProvider = Provider<SiteLicencePublisher>(
+  SiteLicencePublisher.new,
+);
+
+/// Shares this main device's licence with its children.
+///
+/// Run when the start screen opens and after a renewal — the two moments a
+/// main device's licence can have changed — rather than once at setup, so a
+/// main device installed before children existed shares its licence the next
+/// time anybody reaches its start screen, and a renewal reaches every tablet
+/// without anyone touching them.
+class SiteLicencePublisher {
+  SiteLicencePublisher(this._ref);
+
+  final Ref _ref;
+
+  /// Never throws. Sharing is for the children's benefit, and a main device
+  /// that could not write the row must still open its own shift.
+  Future<void> publish() async {
+    final config = _ref.read(deploymentProvider);
+    if (config.isChild) return;
+    final restaurantId = _ref.read(terminalProfileProvider).restaurantId;
+    final source = _ref.read(siteLicenceSourceProvider);
+    if (restaurantId == null || source == null) return;
+
+    try {
+      final file = await _ref.read(licenceServiceProvider).installed();
+      if (file == null) return;
+      // A one-terminal licence has nobody to share with.
+      if ((LicenseVerifier.claimsOf(file)?.maxTerminals ?? 1) <= 1) return;
+      await source.publish(
+        restaurantId: restaurantId,
+        file: file,
+        mode: config.mode,
+      );
+    } on Object catch (error) {
+      debugPrint('site licence not shared: $error');
+    }
+  }
+}
 
 /// The language this terminal is operated in.
 ///
@@ -1852,6 +2016,43 @@ final adminPosDatabaseProvider = Provider<PosDatabase>((ref) {
   return database;
 });
 
+/// Applies the migrations this build carries and the database lacks, as the
+/// back office's administrator.
+///
+/// **The only thing that upgrades an installed till.** The till's own role has
+/// no DDL, the wizard runs once, and `bin/pos_migrate.dart` is a command nobody
+/// at a restaurant runs — so a new version met a database a version behind it,
+/// and the first pane that read a new table said so in SQL. The back-office
+/// door is the one moment the app holds a credential that can change the
+/// schema, so that is where this runs.
+///
+/// Null where there is nothing this till may upgrade: no database, or a
+/// tablet, whose main device owns the schema and may be running an older build
+/// that has never heard of what a newer tablet would add.
+final schemaUpgraderProvider = Provider<Future<List<int>> Function()?>((ref) {
+  final config = ref.watch(deploymentProvider);
+  if (config.isChild || PosDatabase.hostFor(config) == null) return null;
+  return () => LocalBootstrap(
+    ref.read(adminPosDatabaseProvider),
+  ).upgrade(ref.read(adminDeploymentProvider), till: config);
+});
+
+/// Why the last upgrade at the back-office door failed, or null.
+///
+/// Held rather than thrown: a failed upgrade must not keep anybody out of the
+/// back office — Backup is in there — so it is said above the panes instead.
+class SchemaUpgradeFailure extends Notifier<String?> {
+  @override
+  String? build() => null;
+
+  void report(String message) => state = message;
+
+  void clear() => state = null;
+}
+
+final schemaUpgradeFailureProvider =
+    NotifierProvider<SchemaUpgradeFailure, String?>(SchemaUpgradeFailure.new);
+
 /// Roles, staff and the audit ledger, bound the same way as everything else:
 /// PostgreSQL when this terminal has a branch server, and an `Unconfigured…`
 /// binding that refuses out loud when it does not.
@@ -2121,12 +2322,20 @@ final tenderTypesAllProvider = FutureProvider<List<TenderMethod>>(
   (ref) => ref.watch(tenderTypesRepositoryProvider).all(includeInactive: true),
 );
 
+/// Whether e-receipts are filed on this build. See [etaFilingEnabled].
+///
+/// A provider so a test of the filing screens can turn it on.
+final etaFilingEnabledProvider = Provider<bool>((_) => etaFilingEnabled);
+
 /// The queue of receipts owed to Egypt's tax authority.
 ///
-/// Null where there is no database to queue into. Not null on a cloud till:
-/// the obligation is the restaurant's, not the deployment's, and a cloud
-/// terminal in Cairo owes the same receipts an offline one does.
+/// Null where there is no database to queue into, and wherever filing is off —
+/// which takes the filer, the reconciler and every warning they raise with it.
+/// Not null on a cloud till: the obligation is the restaurant's, not the
+/// deployment's, and a cloud terminal in Cairo owes the same receipts an
+/// offline one does.
 final etaQueueRepositoryProvider = Provider<EtaQueueRepository?>((ref) {
+  if (!ref.watch(etaFilingEnabledProvider)) return null;
   final config = ref.watch(deploymentProvider);
   final context = ref.watch(posWriteContextProvider);
   if (context == null || PosDatabase.hostFor(config) == null) return null;

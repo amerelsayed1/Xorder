@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:xorder_pos/app/providers.dart';
+import 'package:xorder_pos/core/config/deployment.dart';
+import 'package:xorder_pos/core/l10n/app_strings.dart';
 import 'package:xorder_pos/core/ui/theme.dart';
 import 'package:xorder_pos/core/ui/widgets/pos_widgets.dart';
 import 'package:xorder_pos/data/fakes/fake_repositories.dart';
@@ -25,13 +28,17 @@ void main() {
   Future<ProviderContainer> open(
     WidgetTester tester, {
     ManagementPane pane = ManagementPane.staff,
+    VoidCallback? onClose,
+    Future<List<int>> Function()? schemaUpgrader,
   }) async {
     tester.view
       ..physicalSize = const Size(1440, 900)
       ..devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
 
-    final container = ProviderContainer(overrides: fakeRepositoryOverrides());
+    final container = ProviderContainer(
+      overrides: fakeRepositoryOverrides(schemaUpgrader: schemaUpgrader),
+    );
     addTearDown(container.dispose);
 
     await tester.pumpWidget(
@@ -39,7 +46,11 @@ void main() {
         container: container,
         child: MaterialApp(
           theme: buildPosTheme(),
-          home: ManagementScreen(onClose: () {}, initialPane: pane),
+          home: ManagementScreen(
+            onClose: onClose ?? () {},
+            onReconfigure: () {},
+            initialPane: pane,
+          ),
         ),
       ),
     );
@@ -93,7 +104,7 @@ void main() {
         container: container,
         child: MaterialApp(
           theme: buildPosTheme(),
-          home: ManagementScreen(onClose: () {}),
+          home: ManagementScreen(onClose: () {}, onReconfigure: () {}),
         ),
       ),
     );
@@ -113,11 +124,127 @@ void main() {
 
     await enter(tester, 'amer'); // Amer, the owner.
 
-    // The header names the area, now that the rail that said so is gone.
-    expect(find.text('Management › People'), findsOneWidget);
+    // The header names the page: every pane stands alone.
+    expect(
+      find.text('Management › ${const EnStrings().paneStaff}'),
+      findsOneWidget,
+    );
     expect(find.text('Amer M.'), findsWidgets);
     expect(find.text('Rana A.'), findsOneWidget);
     expect(container.read(signedInStaffProvider)!.name, 'Amer M.');
+  });
+
+  testWidgets('Esc at the door goes back, even from a field', (tester) async {
+    var closed = 0;
+    await open(tester, onClose: () => closed++);
+
+    // A username and a password are nothing to lose: one key, not two.
+    await tester.tap(find.byKey(const Key('back-office-password')));
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    expect(closed, 1);
+  });
+
+  testWidgets('Esc goes back to the till from inside the back office', (
+    tester,
+  ) async {
+    var closed = 0;
+    await open(tester, onClose: () => closed++);
+    await enter(tester, 'amer');
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    expect(closed, 1);
+  });
+
+  testWidgets('but inside a field the first Esc only leaves the field', (
+    tester,
+  ) async {
+    var closed = 0;
+    await open(tester, pane: ManagementPane.units, onClose: () => closed++);
+    await enter(tester, 'amer');
+    // Inline on the pane, not a dialog: the field and the binding share a route.
+    await tester.tap(find.byKey(const Key('unit-new')));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('unit-name')));
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    expect(closed, 0, reason: 'a reflex mid-form must not throw the form away');
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    expect(closed, 1);
+  });
+
+  testWidgets('and in a dialog Esc closes the dialog, not the back office', (
+    tester,
+  ) async {
+    var closed = 0;
+    final container = await open(tester, onClose: () => closed++);
+    await enter(tester, 'amer');
+    // Hiring is an offline till's act; the harness starts unconfigured, which
+    // reads as cloud and shuts the button.
+    container
+        .read(deploymentProvider.notifier)
+        .apply(
+          DeploymentConfig.unconfigured.copyWith(mode: DeploymentMode.offline),
+        );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Add somebody'));
+    await tester.pumpAndSettle();
+    expect(find.byType(Dialog), findsOneWidget);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    expect(find.byType(Dialog), findsNothing);
+    expect(closed, 0);
+  });
+
+  testWidgets('the door brings the database up to date before a pane loads', (
+    tester,
+  ) async {
+    // Nothing else upgrades an installed till: a new version met a database a
+    // version behind it, and the Units pane said `relation "pos_units" does
+    // not exist`.
+    var upgrades = 0;
+    await open(
+      tester,
+      schemaUpgrader: () async {
+        upgrades++;
+        return const [39];
+      },
+    );
+    await enter(tester, 'amer');
+
+    expect(upgrades, 1);
+    expect(find.byKey(const Key('management-schema-notice')), findsNothing);
+    expect(
+      find.text('Management › ${const EnStrings().paneStaff}'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('an upgrade that fails is said, and the door still opens', (
+    tester,
+  ) async {
+    await open(
+      tester,
+      schemaUpgrader: () async =>
+          throw StateError('relation "pos_units" does not exist'),
+    );
+    await enter(tester, 'amer');
+
+    // Backup is in here, so a failed upgrade must not keep anybody out.
+    expect(
+      find.text('Management › ${const EnStrings().paneStaff}'),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('management-schema-notice')), findsOneWidget);
+    expect(find.textContaining('pos_units'), findsOneWidget);
   });
 
   testWidgets('a cashier gets no further than the door', (tester) async {
@@ -203,6 +330,7 @@ void main() {
           theme: buildPosTheme(),
           home: ManagementScreen(
             onClose: () {},
+            onReconfigure: () {},
             initialPane: ManagementPane.roles,
           ),
         ),
@@ -214,61 +342,27 @@ void main() {
     expect(find.byType(ManagementActivityPane), findsNothing);
   });
 
-  testWidgets('the panes of one area are tabs, and only those', (
+  testWidgets('every pane stands alone, and the header names it', (
     tester,
   ) async {
-    // The rail listed all thirteen; the window's bar does that now. What is
-    // left here is only the neighbours of where you are.
+    // The window's bar names every area and every pane. A strip of the
+    // current area's neighbours across the top was the same navigation twice,
+    // so the page is on its own and the header is what says which it is.
     await open(tester, pane: ManagementPane.taxes);
     await enter(tester, 'amer');
 
-    // Money's panes on this terminal. Order types is absent because the fake
-    // harness authors no catalogue — the same rule the bar applies.
-    for (final pane in [
-      ManagementPane.taxes,
-      ManagementPane.charges,
-      ManagementPane.tenders,
-    ]) {
-      expect(
-        find.byKey(Key('management-tab-${pane.name}')),
-        findsOneWidget,
-        reason: pane.name,
-      );
-    }
-    expect(find.byKey(const Key('management-tab-staff')), findsNothing);
-    expect(find.text('Management › Money'), findsOneWidget);
-  });
-
-  testWidgets('and a pane alone in its area gets no tab at all', (
-    tester,
-  ) async {
-    // A single tab over a single pane is a heading dressed as a control.
-    // Buying, because Purchasing is the one pane in it — System stopped being
-    // the example the day Backup joined Activity there.
-    await open(tester, pane: ManagementPane.purchasing);
-    await enter(tester, 'amer');
-
-    expect(find.byKey(const Key('management-tab-purchasing')), findsNothing);
-    expect(find.text('Management › Buying'), findsOneWidget);
-  });
-
-  testWidgets('a tab switches the pane', (tester) async {
-    await open(tester);
-    await enter(tester, 'amer');
-
-    await tester.tap(find.byKey(const Key('management-tab-roles')));
-    await tester.pumpAndSettle();
-
-    expect(find.byType(ManagementRolesPane), findsOneWidget);
+    expect(
+      find.text('Management › ${const EnStrings().paneTaxes}'),
+      findsOneWidget,
+    );
+    expect(find.byType(ManagementRolesPane), findsNothing);
+    expect(find.text(const EnStrings().serviceCharges), findsNothing);
   });
 
   testWidgets('the roles pane refuses to make a cashier an administrator',
       (tester) async {
-    await open(tester);
+    await open(tester, pane: ManagementPane.roles);
     await enter(tester, 'amer');
-
-    await tester.tap(find.text('Roles'));
-    await tester.pumpAndSettle();
 
     await tester.tap(find.text('Cashier').first);
     await tester.pumpAndSettle();
@@ -422,10 +516,9 @@ void main() {
     // fall-through so a capability from a newer build is shown rather than
     // hidden, and the effect on one from *this* build was the raw key on the
     // screen where a restaurant owner decides who may spend money.
-    final container = await open(tester);
+    final container = await open(tester, pane: ManagementPane.roles);
     await enter(tester, 'amer');
 
-    await tester.tap(find.text('Roles'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Manager').first);
     await tester.pumpAndSettle();
@@ -462,10 +555,9 @@ void main() {
   // one, so proving it here would prove only that the fake was written to
   // agree with the test.
   testWidgets('a permission taken off a role is saved', (tester) async {
-    final container = await open(tester);
+    final container = await open(tester, pane: ManagementPane.roles);
     await enter(tester, 'amer');
 
-    await tester.tap(find.text('Roles'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Supervisor').first);
     await tester.pumpAndSettle();
@@ -485,9 +577,8 @@ void main() {
     // §107 on screen: somebody ticking a box can see what they are handing
     // over before they hand it over. Only medium and above are badged — a
     // badge on every row would be a badge on no row.
-    await open(tester);
+    await open(tester, pane: ManagementPane.roles);
     await enter(tester, 'amer');
-    await tester.tap(find.text('Roles'));
     await tester.pumpAndSettle();
 
     // Above the fold: the money group's high-risk permissions.
@@ -516,9 +607,8 @@ void main() {
     // Otherwise somebody creating an accountant ticks boxes until the screen
     // stops complaining, which is how a role ends up holding whatever made the
     // error go away.
-    await open(tester);
+    await open(tester, pane: ManagementPane.roles);
     await enter(tester, 'amer');
-    await tester.tap(find.text('Roles'));
     await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(const Key('roles-new')));
@@ -530,9 +620,8 @@ void main() {
   });
 
   testWidgets('picking a template creates an ordinary role', (tester) async {
-    await open(tester);
+    await open(tester, pane: ManagementPane.roles);
     await enter(tester, 'amer');
-    await tester.tap(find.text('Roles'));
     await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(const Key('roles-new')));

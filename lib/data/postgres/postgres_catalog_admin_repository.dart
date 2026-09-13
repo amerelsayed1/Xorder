@@ -18,6 +18,7 @@ import '../../domain/services/menu_import.dart';
 import '../../domain/services/authorization.dart';
 import 'money_config_codec.dart';
 import 'pos_database.dart';
+import 'stock_unit_guard.dart';
 
 /// Authoring the menu, on the till, against the branch database.
 ///
@@ -416,6 +417,17 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
         return const AdminResult.refused(EditedElsewhere(0));
       }
       final before = _productFrom(existing.first);
+
+      // The Menu pane is the second writer of `stock_unit`, so it asks the
+      // same question the Items pane does. Without it, migration 44's trigger
+      // would still refuse — as an exception on a price edit, not a sentence.
+      final held = await StockUnitGuard.check(
+        tx,
+        restaurantId: restaurantId,
+        productId: product.id,
+        unit: product.stockUnit ?? QuantityUnit.each,
+      );
+      if (held != null) return AdminResult<Product>.refused(held);
 
       final rows = await tx.execute(
         Sql.named(

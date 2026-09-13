@@ -137,6 +137,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           return ManagementScreen(
             onClose: () =>
                 context.go(destination.returnTo ?? PosRoutes.start),
+            onReconfigure: () => context.go(PosRoutes.setup),
             initialPane: destination.pane,
             purchasingTab: destination.purchasingTab,
             create: destination.create,
@@ -154,7 +155,6 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => StartScreen(
           onStart: () => context.go(PosRoutes.floor),
           onManageLicence: () => context.go(PosRoutes.licence),
-          onReconfigure: () => context.go(PosRoutes.setup),
           onManage: (pane) =>
               context.go(PosRoutes.management, extra: pane),
         ),
@@ -165,6 +165,9 @@ final routerProvider = Provider<GoRouter>((ref) {
           // Unlocking returns to the sale screen: the shift stayed open and the
           // ticket is still in memory, so the cashier lands where they left off.
           onUnlocked: () => context.go(PosRoutes.sale),
+          // The screen signs out first, so resuming the shift from the start
+          // screen is sent straight back here for a name and a PIN.
+          onBack: () => context.go(PosRoutes.start),
         ),
       ),
       GoRoute(
