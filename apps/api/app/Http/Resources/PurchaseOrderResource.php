@@ -40,6 +40,14 @@ class PurchaseOrderResource extends JsonResource
             'is_editable' => $o->status->isEditable(),
             'is_open' => $o->status->isOpen(),
             'can_cancel' => $o->status->canCancel(),
+            // CB-09 D11: `received` because the rest was closed short, not
+            // because it all came. What was not coming is each line's
+            // outstanding quantity (`not_coming_milli`), frozen at the close.
+            'can_close_short' => $o->status->canCloseShort(),
+            'closed_short' => $o->isClosedShort(),
+            'closed_short_at' => $o->closed_short_at?->toIso8601String(),
+            'close_reason' => $o->close_reason?->value,
+            'close_note' => $o->close_note,
             'branch_id' => $o->branch_id,
             'branch' => $o->relationLoaded('branch') && $o->branch
                 ? ['id' => $o->branch->id, 'name_en' => $o->branch->name_en, 'name_ar' => $o->branch->name_ar]
@@ -53,6 +61,8 @@ class PurchaseOrderResource extends JsonResource
             'exponent' => $o->exponent,
             'totals' => $totals,
             'received_value_minor' => $lines !== null ? PurchaseOrderService::receivedValue($lines) : null,
+            // With tax per rate on what arrived: what a supplier invoice should say.
+            'received_total_minor' => $lines !== null ? PurchaseOrderService::receivedTotal($lines) : null,
             'ordered_at' => $o->ordered_at?->toIso8601String(),
             'expected_at' => $o->expected_at?->format('Y-m-d'),
             'notes' => $o->notes,
@@ -71,6 +81,7 @@ class PurchaseOrderResource extends JsonResource
                 'ordered_milli' => $l->ordered_milli,
                 'received_milli' => $l->received_milli,
                 'outstanding_milli' => $l->outstandingMilli(),
+                'not_coming_milli' => $o->isClosedShort() ? $l->outstandingMilli() : 0,
                 'unit_cost_minor' => $l->unit_cost_minor,
                 'tax_rate_bp' => $l->tax_rate_bp,
                 'line_total_minor' => $l->lineTotalMinor(),

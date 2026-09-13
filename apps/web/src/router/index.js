@@ -147,6 +147,15 @@ const restaurantRoutes = [
             { path: 'inventory/stock', name: 'dashboard.inventory.stock', component: () => import('../pages/dashboard/inventory/StockView.vue'), meta: { capability: 'purchase.manage' } },
             { path: 'inventory/stock/:itemId', name: 'dashboard.inventory.movements', component: () => import('../pages/dashboard/inventory/StockMovementsView.vue'), meta: { capability: 'purchase.manage' } },
             { path: 'inventory/items', name: 'dashboard.inventory.items', component: () => import('../pages/dashboard/inventory/StockItemsView.vue'), meta: { capability: 'purchase.manage' } },
+            // CB-09 slice c: supplier invoices, payments and the supplier account.
+            { path: 'purchasing/invoices', name: 'dashboard.purchasing.invoices', component: () => import('../pages/dashboard/purchasing/SupplierInvoicesView.vue'), meta: { capability: 'purchase.manage' } },
+            { path: 'purchasing/invoices/new', name: 'dashboard.purchasing.invoices.create', component: () => import('../pages/dashboard/purchasing/SupplierInvoiceForm.vue'), meta: { capability: 'purchase.manage' } },
+            { path: 'purchasing/invoices/:id', name: 'dashboard.purchasing.invoice', component: () => import('../pages/dashboard/purchasing/SupplierInvoiceView.vue'), meta: { capability: 'purchase.manage' } },
+            { path: 'purchasing/invoices/:id/edit', name: 'dashboard.purchasing.invoices.edit', component: () => import('../pages/dashboard/purchasing/SupplierInvoiceForm.vue'), meta: { capability: 'purchase.manage' } },
+            { path: 'purchasing/payments', name: 'dashboard.purchasing.payments', component: () => import('../pages/dashboard/purchasing/SupplierPaymentsView.vue'), meta: { capability: 'purchase.manage' } },
+            { path: 'purchasing/payments/new', name: 'dashboard.purchasing.payments.create', component: () => import('../pages/dashboard/purchasing/SupplierPaymentForm.vue'), meta: { capability: 'purchase.manage' } },
+            { path: 'purchasing/payments/:id', name: 'dashboard.purchasing.payment', component: () => import('../pages/dashboard/purchasing/SupplierPaymentView.vue'), meta: { capability: 'purchase.manage' } },
+            { path: 'purchasing/suppliers/:id', name: 'dashboard.purchasing.supplier', component: () => import('../pages/dashboard/purchasing/SupplierAccountView.vue'), meta: { capability: 'purchase.manage' } },
             // ------------------------------------------------------ settings
             // Five sections, one shell. The route *names* are the ones these
             // pages have always had, so every existing RouterLink keeps

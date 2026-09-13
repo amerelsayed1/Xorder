@@ -15,7 +15,8 @@ import FormError from '@xorder/ui/FormError.vue'
 import Icon from '@xorder/ui/Icon.vue'
 import { confirm } from '@xorder/ui/confirm.js'
 import { alert } from '@xorder/ui/alert.js'
-import { statusBadge, fmtDate, money, qty } from './format.js'
+import { statusBadge, fmtDate, money, qty, CLOSE_REASONS } from './format.js'
+import ReasonDialog from './ReasonDialog.vue'
 
 // CB-09 slice b. One purchase order: its lines, what arrived, and the
 // actions its status allows (edit a draft, send, cancel, receive goods).
@@ -78,6 +79,31 @@ async function transition(kind) {
         busy.value = false
     }
 }
+
+// ------------------------------------------------------------- close short
+// CB-09 D11. A part delivery whose rest is not coming is closed short: it
+// becomes `received`, marked closed short, and the rest is recorded as not
+// coming. Stock already booked in is never touched. The server allows it only
+// on a part-received order, re-checked under the order lock.
+const showClose = ref(false)
+const closeErrors = ref({})
+
+async function submitClose({ reason, note }) {
+    busy.value = true
+    closeErrors.value = {}
+    try {
+        const { data } = await api.post(`api/dashboard/purchase-orders/${order.value.id}/close`, { reason, note })
+        order.value = data.data
+        showClose.value = false
+    } catch (err) {
+        closeErrors.value = err.response?.data?.errors || {}
+        if (err.response?.status === 409) { showClose.value = false; alert(err.response.data.message); load() }
+        else if (!Object.keys(closeErrors.value).length) alert(err.response?.data?.message || t('common.error'))
+    } finally {
+        busy.value = false
+    }
+}
+const canInvoice = computed(() => order.value && order.value.status !== 'draft')
 
 // ----------------------------------------------------------------- receive
 const showReceive = ref(false)
@@ -166,12 +192,19 @@ async function submitReceive() {
                     </RouterLink>
                     <button v-if="canCancel" type="button" class="btn btn-ghost" :disabled="busy" @click="transition('cancel')">{{ t('purchasing.cancel_order') }}</button>
                     <button v-if="order.is_editable" type="button" class="btn btn-accent" :disabled="busy || !order.lines.length || supplierRetired" @click="transition('send')">{{ t('purchasing.send') }}</button>
+                    <button v-if="order.can_close_short" type="button" class="btn btn-ghost" :disabled="busy" @click="closeErrors = {}; showClose = true">{{ t('purchasing.close_short') }}</button>
+                    <RouterLink v-if="canInvoice" :to="{ name: 'dashboard.purchasing.invoices.create', query: { purchase_order_id: order.id } }" class="btn btn-ghost">{{ t('purchasing.record_invoice') }}</RouterLink>
                     <button v-if="order.is_open" type="button" class="btn btn-accent" :disabled="busy" @click="openReceive">{{ t('purchasing.receive') }}</button>
                 </div>
             </div>
+            <RouterLink v-if="canInvoice" :to="{ name: 'dashboard.purchasing.invoices', query: { purchase_order_id: order.id } }" class="text-sm underline" style="color:var(--muted)">{{ t('purchasing.view_invoices') }}</RouterLink>
 
             <div v-if="order.is_editable && supplierRetired" class="card p-3 text-sm" style="background:var(--amber-soft);color:var(--ink)">{{ t('purchasing.supplier_retired_note') }}</div>
             <div v-if="order.status === 'partially_received'" class="card p-3 text-sm" style="background:var(--amber-soft);color:var(--ink)">{{ t('purchasing.part_delivery_note') }}</div>
+            <div v-if="order.closed_short" class="card p-3 text-sm" style="background:var(--gray-soft);color:var(--ink)">
+                {{ t('purchasing.closed_short_note', { date: fmtDate(order.closed_short_at, locale), reason: t('purchasing.close_reasons.' + order.close_reason) }) }}
+                <span v-if="order.close_note"> {{ order.close_note }}</span>
+            </div>
 
             <div class="card p-5 grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
                 <div><div style="color:var(--muted)">{{ t('purchasing.created_on') }}</div><div style="color:var(--ink)">{{ fmtDate(order.created_at, locale) }}</div></div>
@@ -190,7 +223,7 @@ async function submitReceive() {
                                 <th class="px-4 py-3 text-start font-medium">{{ t('purchasing.line_description') }}</th>
                                 <th class="px-4 py-3 text-end font-medium">{{ t('purchasing.ordered') }}</th>
                                 <th class="px-4 py-3 text-end font-medium">{{ t('purchasing.received') }}</th>
-                                <th class="px-4 py-3 text-end font-medium">{{ t('purchasing.outstanding') }}</th>
+                                <th class="px-4 py-3 text-end font-medium">{{ order.closed_short ? t('purchasing.not_coming') : t('purchasing.outstanding') }}</th>
                                 <th class="px-4 py-3 text-end font-medium">{{ t('purchasing.unit_cost') }}</th>
                                 <th class="px-4 py-3 text-end font-medium">{{ t('purchasing.tax_rate') }}</th>
                                 <th class="px-4 py-3 text-end font-medium">{{ t('purchasing.line_total') }}</th>
@@ -211,7 +244,7 @@ async function submitReceive() {
                                     <span class="mono" dir="ltr">{{ qty(l.received_milli, l.unit_code) }}</span>
                                     <div v-if="l.received_milli > l.ordered_milli" class="text-xs" style="color:var(--amber)">{{ t('purchasing.over_received') }}</div>
                                 </td>
-                                <td class="px-4 py-3 text-end"><span class="mono" dir="ltr">{{ qty(l.outstanding_milli, l.unit_code) }}</span></td>
+                                <td class="px-4 py-3 text-end"><span class="mono" dir="ltr">{{ qty(order.closed_short ? l.not_coming_milli : l.outstanding_milli, l.unit_code) }}</span></td>
                                 <td class="px-4 py-3 text-end"><span class="mono" dir="ltr">{{ show(l.unit_cost_minor) }}</span></td>
                                 <td class="px-4 py-3 text-end"><span class="mono" dir="ltr">{{ bpToPercent(l.tax_rate_bp) }}%</span></td>
                                 <td class="px-4 py-3 text-end"><span class="mono" dir="ltr">{{ show(l.line_total_minor) }}</span></td>
@@ -227,6 +260,20 @@ async function submitReceive() {
             </div>
             <p v-if="order.is_open" class="text-xs" style="color:var(--muted)">{{ t('purchasing.cost_from_order') }}</p>
         </template>
+
+        <ReasonDialog
+            v-if="showClose"
+            :title="t('purchasing.close_short_title')"
+            :subtitle="order?.reference || ''"
+            :message="t('purchasing.close_short_message')"
+            :reasons="CLOSE_REASONS"
+            label-prefix="purchasing.close_reasons"
+            :confirm-text="t('purchasing.close_short')"
+            :busy="busy"
+            :errors="closeErrors"
+            @submit="submitClose"
+            @close="showClose = false"
+        />
 
         <Dialog v-if="showReceive" :title="t('purchasing.receive_title')" :subtitle="order?.reference || ''" @close="showReceive = false">
             <form class="space-y-4" @submit.prevent="submitReceive">

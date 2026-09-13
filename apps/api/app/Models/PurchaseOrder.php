@@ -36,7 +36,15 @@ class PurchaseOrder extends Model
             'total_minor' => 'integer',
             'ordered_at' => 'datetime',
             'expected_at' => 'date:Y-m-d',
+            'closed_short_at' => 'datetime',
+            'close_reason' => \App\Enums\PurchaseCloseReason::class,
         ];
+    }
+
+    /** CB-09 D11: `received` because somebody closed the difference, not because it all came. */
+    public function isClosedShort(): bool
+    {
+        return $this->closed_short_at !== null;
     }
 
     public function lines(): HasMany

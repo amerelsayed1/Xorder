@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\PurchaseCloseReason;
 use App\Enums\PurchaseStatus;
 use App\Exceptions\PurchasingRefusal;
 use App\Models\PurchaseOrder;
@@ -182,6 +183,93 @@ class PurchaseOrderService
 
             return $locked;
         });
+    }
+
+    /**
+     * CB-09 D11 (owner, 2026-09-13): close a part delivery short. The rest is
+     * recorded as not coming and the order is finished.
+     *
+     *   - Only a PARTIALLY RECEIVED order, re-read under the lock. A sent
+     *     order with nothing received is cancelled instead; a draft, a
+     *     received or a cancelled order has nothing to close.
+     *   - It becomes `received` (the till's five statuses have no other
+     *     honest value; its migration 44 allows partially_received →
+     *     received for exactly this), stamped closed_short_at/by with a
+     *     reason code and an optional note (required for `other`).
+     *   - What is not coming is each line's outstanding quantity now. It is
+     *     frozen from here: a received order takes no more receipts.
+     *   - It NEVER touches stock: no movement is written and no level
+     *     changes. What arrived stays booked in at the cost it arrived at.
+     */
+    public function closeShort(PurchaseOrder $order, PurchaseCloseReason $reason, ?string $note, User $by): PurchaseOrder
+    {
+        return DB::transaction(function () use ($order, $reason, $note, $by) {
+            $locked = $this->lock($order);
+
+            $lines = PurchaseOrderLine::withoutGlobalScopes()
+                ->where('purchase_order_id', $locked->id)
+                ->orderBy('id')
+                ->get(['id', 'ordered_milli', 'received_milli', 'unit_code']);
+            $short = $lines->filter(fn ($l) => $l->received_milli < $l->ordered_milli);
+
+            if (! $locked->status->canCloseShort() || $short->isEmpty()) {
+                throw PurchasingRefusal::conflict('PO_CANNOT_CLOSE_SHORT', 'cannot_close_short', ['status' => $this->statusLabel($locked->status)]);
+            }
+
+            $locked->forceFill([
+                'status' => PurchaseStatus::RECEIVED,
+                'closed_short_at' => now(),
+                'closed_short_by' => $by->id,
+                'close_reason' => $reason,
+                'close_note' => $note,
+                'updated_by' => $by->id,
+            ])->save();
+
+            AuditLogger::record('purchase_order.closed_short', [
+                'auditable' => $locked,
+                'description' => sprintf('Purchase order %s closed short (%s)', $locked->reference, $reason->value),
+                'properties' => [
+                    'from' => PurchaseStatus::PARTIALLY_RECEIVED->value,
+                    'reason' => $reason->value,
+                    'note' => $note,
+                    'not_coming' => $short->map(fn ($l) => [
+                        'line_id' => $l->id,
+                        'quantity_milli' => $l->ordered_milli - $l->received_milli,
+                        'unit_code' => $l->unit_code,
+                    ])->values()->all(),
+                ],
+            ]);
+
+            return $locked;
+        });
+    }
+
+    /**
+     * What has arrived WITH tax, rounded per rate on the received values: the
+     * till's PurchaseOrder.receivedTotal, "the figure a supplier's invoice
+     * should say". For comparison beside an invoice only (CB-09 slice c); it
+     * never reprices anything.
+     */
+    public static function receivedTotal(iterable $lines): int
+    {
+        $net = 0;
+        $bases = [];
+        foreach ($lines as $line) {
+            $amount = StockCosting::costAt((int) $line['received_milli'], (int) $line['unit_cost_minor']);
+            $net += $amount;
+            $bp = (int) $line['tax_rate_bp'];
+            if ($bp > 0) {
+                $bases[$bp] = ($bases[$bp] ?? 0) + $amount;
+            }
+        }
+
+        ksort($bases);
+        $tax = 0;
+        foreach ($bases as $bp => $base) {
+            $tax += StockCosting::percentBp($base, $bp);
+        }
+
+        return $net + $tax;
     }
 
     /**

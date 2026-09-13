@@ -14,6 +14,7 @@ import FormError from '@xorder/ui/FormError.vue'
 import Icon from '@xorder/ui/Icon.vue'
 import { confirm } from '@xorder/ui/confirm.js'
 import { alert } from '@xorder/ui/alert.js'
+import { money } from './format.js'
 
 // CB-09 slice a. One capability, purchase.manage, opens this page AND gates
 // every write; there is no view/create/update split, so useCaps() (which
@@ -29,13 +30,22 @@ const loading = ref(true)
 const failed = ref(false)
 const search = ref('')
 const showRetired = ref(false)
+// CB-09 slice c: what each supplier is owed, derived by the server from live
+// invoices and payments (never stored), keyed by supplier id.
+const balances = ref({})
+const balanceMeta = ref({ exponent: 2, currency: null })
 
 async function load() {
     loading.value = true
     failed.value = false
     try {
-        const { data } = await withMinDuration(api.get('api/dashboard/suppliers'))
-        rows.value = data.data
+        const [list, bal] = await withMinDuration(Promise.all([
+            api.get('api/dashboard/suppliers'),
+            api.get('api/dashboard/suppliers/balances'),
+        ]))
+        rows.value = list.data.data
+        balances.value = Object.fromEntries(bal.data.data.map((b) => [b.supplier_id, b]))
+        balanceMeta.value = bal.data.meta
     } catch {
         failed.value = true
     } finally {
@@ -57,6 +67,8 @@ const visible = computed(() => {
         .sort((a, b) => (b.is_active - a.is_active) || nameOf(a).localeCompare(nameOf(b), locale.value))
 })
 const retiredCount = computed(() => rows.value.filter((s) => !s.is_active).length)
+
+const showMoney = (minor) => money(minor, balanceMeta.value.exponent, balanceMeta.value.currency, locale.value)
 
 const termsLabel = (s) => (s.payment_term_days > 0
     ? t('purchasing.terms_days', { n: s.payment_term_days })
@@ -186,7 +198,13 @@ async function setActive(s, active) {
                                 <span v-if="s.phone" class="mono" dir="ltr">{{ s.phone }}</span><span v-if="s.phone"> · </span>
                                 {{ termsLabel(s) }}
                             </div>
+                            <div v-if="balances[s.id]" class="text-xs" style="color:var(--body)">
+                                <span v-if="balances[s.id].outstanding_minor < 0" class="mono" dir="ltr" style="color:var(--green)">{{ t('purchasing.in_credit_by', { amount: showMoney(-balances[s.id].outstanding_minor) }) }}</span>
+                                <span v-else class="mono" dir="ltr">{{ t('purchasing.owes', { amount: showMoney(balances[s.id].outstanding_minor) }) }}</span>
+                                <span v-if="balances[s.id].overdue_minor > 0" class="mono ms-2" dir="ltr" style="color:var(--red)">{{ t('purchasing.owes_overdue', { amount: showMoney(balances[s.id].overdue_minor) }) }}</span>
+                            </div>
                         </div>
+                        <RouterLink :to="{ name: 'dashboard.purchasing.supplier', params: { id: s.id } }" class="btn btn-ghost btn-sm">{{ t('purchasing.view_account') }}</RouterLink>
                         <StatusBadge :value="s.is_active" :label="s.is_active ? t('common.active') : t('purchasing.retired')" />
                         <button v-if="canWrite" type="button" class="icon-btn" :title="t('common.edit')" :aria-label="t('common.edit')" @click="openEdit(s)"><Icon name="edit" :size="17" /></button>
                         <button v-if="canWrite && s.is_active" type="button" class="btn btn-ghost btn-sm" @click="setActive(s, false)">{{ t('purchasing.retire') }}</button>

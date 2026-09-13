@@ -37,7 +37,8 @@ class PurchasingLookupController extends Controller
             'currency' => $restaurant->currency?->value,
             'exponent' => $restaurant->currency?->exponent() ?? 2,
             'branches' => Branch::orderBy('sort_order')->orderBy('id')->get(['id', 'name_en', 'name_ar', 'is_active']),
-            'suppliers' => Supplier::orderBy('id')->get(['id', 'name_en', 'name_ar', 'is_active']),
+            // payment_term_days: the invoice form's due-date default (slice c).
+            'suppliers' => Supplier::orderBy('id')->get(['id', 'name_en', 'name_ar', 'is_active', 'payment_term_days']),
             'units' => Unit::orderBy('sort_order')->orderBy('id')->get(['id', 'code', 'name_en', 'name_ar', 'allows_fraction', 'is_active']),
             'stock_items' => StockItem::orderBy('id')->get(['id', 'name_en', 'name_ar', 'sku', 'unit_code', 'menu_item_id', 'is_active']),
             'menu_items' => MenuItem::orderBy('id')->get(['id', 'name_en', 'name_ar']),

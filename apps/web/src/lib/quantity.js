@@ -77,6 +77,16 @@ export function percentBp(minor, bp) {
 }
 
 /**
+ * The tax ALREADY INSIDE a gross amount: the till's Money.taxWithinBp and
+ * StockCosting::taxWithinBp, roundHalfUp(gross × bp, 10000 + bp). 1,140.00
+ * holding 14% contains 140.00, not 159.60. For a supplier invoice typed as a
+ * total and a rate (CB-09 slice c). Preview only; the server recomputes.
+ */
+export function taxWithinBp(grossMinor, bp) {
+    return Number(roundHalfUp(BigInt(grossMinor) * BigInt(bp), 10000n + BigInt(bp)))
+}
+
+/**
  * An order's totals from its lines, tax rounded PER RATE (not per line, not
  * once at the end): the till's PurchaseOrder.totals and the server's
  * PurchaseOrderService::totals. Lines missing a number are skipped.

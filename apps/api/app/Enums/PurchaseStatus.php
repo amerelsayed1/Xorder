@@ -45,4 +45,15 @@ enum PurchaseStatus: string
     {
         return $this === self::DRAFT || $this === self::SENT;
     }
+
+    /**
+     * CB-09 D11: the way out of a part delivery is to close the difference,
+     * not to cancel. Only a partly received order can be closed short; it
+     * becomes `received` (the till's own meaning: "all of it arrived, or
+     * somebody closed the difference deliberately"), marked closed short.
+     */
+    public function canCloseShort(): bool
+    {
+        return $this === self::PARTIALLY_RECEIVED;
+    }
 }

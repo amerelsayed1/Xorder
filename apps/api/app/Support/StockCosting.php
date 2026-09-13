@@ -62,6 +62,17 @@ final class StockCosting
     }
 
     /**
+     * The tax ALREADY INSIDE a gross amount at a basis-point rate: the till's
+     * Money.taxWithinBp, roundHalfUp(gross × bp, 10000 + bp). 114.00 holding
+     * 14% contains 14.00, not 15.96. Used for a supplier invoice typed as a
+     * gross total and a rate (CB-09 slice c).
+     */
+    public static function taxWithinBp(int $grossMinor, int $basisPoints): int
+    {
+        return self::roundHalfUp(self::mul($grossMinor, $basisPoints), 10000 + $basisPoints);
+    }
+
+    /**
      * The position after $receivedMilli arrives at $unitCostMinor each.
      *
      * - Receiving nothing (or a negative) is a no-op.

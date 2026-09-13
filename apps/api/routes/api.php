@@ -48,6 +48,9 @@ use App\Http\Controllers\Dashboard\StockLevelController;
 use App\Http\Controllers\Dashboard\PurchaseOrderController;
 use App\Http\Controllers\Dashboard\PurchasingLookupController;
 use App\Http\Controllers\Dashboard\SupplierController;
+use App\Http\Controllers\Dashboard\SupplierAccountController;
+use App\Http\Controllers\Dashboard\SupplierInvoiceController;
+use App\Http\Controllers\Dashboard\SupplierPaymentController;
 use App\Http\Controllers\Dashboard\TableController;
 use App\Http\Controllers\Dashboard\TaxRuleController;
 use App\Http\Controllers\Dashboard\TenderTypeController;
@@ -546,15 +549,30 @@ Route::prefix('dashboard')
         | movements are append-only.
         |
         | Slice b: stock items, purchase orders, receiving, stock levels.
-        | Every PO transition (edit, send, cancel, receive) is a service call
-        | that locks the order row and re-reads its status under the lock, so
-        | the route decides only WHO may try, never whether the order allows it.
+        | Every PO transition (edit, send, cancel, receive, close short) is a
+        | service call that locks the order row and re-reads its status under
+        | the lock, so the route decides only WHO may try, never whether the
+        | order allows it.
+        |
+        | Slice c: supplier invoices, supplier payments and their allocations,
+        | and supplier balances (derived on every read, never stored). An
+        | invoice's live allocations never exceed its total: enforced by
+        | SupplierLedgerService under a lock on the invoice row, not here.
         */
         Route::middleware(['feature:purchasing', 'can:purchase.manage'])->group(function () {
             Route::get('units', [UnitController::class, 'index']);
             Route::get('units/{unit}', [UnitController::class, 'show']);
             Route::get('suppliers', [SupplierController::class, 'index']);
+            // Before suppliers/{supplier}, or the binding would swallow "balances".
+            Route::get('suppliers/balances', [SupplierAccountController::class, 'balances']);
             Route::get('suppliers/{supplier}', [SupplierController::class, 'show']);
+            Route::get('suppliers/{supplier}/account', [SupplierAccountController::class, 'account']);
+            Route::get('supplier-invoices', [SupplierInvoiceController::class, 'index']);
+            Route::get('supplier-invoices/{supplierInvoice}', [SupplierInvoiceController::class, 'show']);
+            Route::get('supplier-payments', [SupplierPaymentController::class, 'index']);
+            Route::get('supplier-payments/{supplierPayment}', [SupplierPaymentController::class, 'show']);
+            // Till pay-outs not yet linked to a payment (design D13). Read-only.
+            Route::get('purchasing/drawer-payouts', [SupplierPaymentController::class, 'drawerPayouts']);
             // Branch/supplier/unit/item/menu-item pickers under purchase.manage
             // alone (ids and names only), so a buyer needs no menu or branch grant.
             Route::get('purchasing/lookups', [PurchasingLookupController::class, 'index']);
@@ -583,8 +601,16 @@ Route::prefix('dashboard')
                 // Draft or sent only; refused once anything has arrived.
                 Route::post('purchase-orders/{purchaseOrder}/cancel', [PurchaseOrderController::class, 'cancel']);
                 Route::post('purchase-orders/{purchaseOrder}/receipts', [PurchaseOrderController::class, 'receive']);
-                // No `close` (short-close a part delivery): D11 is an open
-                // owner decision.
+                // D11 (owner, 2026-09-13): close a part delivery short. Only
+                // a partly received order; never touches stock.
+                Route::post('purchase-orders/{purchaseOrder}/close', [PurchaseOrderController::class, 'closeShort']);
+                // PUT only while live and nothing is allocated; void keeps it on record.
+                Route::post('supplier-invoices', [SupplierInvoiceController::class, 'store']);
+                Route::put('supplier-invoices/{supplierInvoice}', [SupplierInvoiceController::class, 'update']);
+                Route::post('supplier-invoices/{supplierInvoice}/void', [SupplierInvoiceController::class, 'void']);
+                // No update: a wrong payment is voided and entered again.
+                Route::post('supplier-payments', [SupplierPaymentController::class, 'store']);
+                Route::post('supplier-payments/{supplierPayment}/void', [SupplierPaymentController::class, 'void']);
             });
         });
 

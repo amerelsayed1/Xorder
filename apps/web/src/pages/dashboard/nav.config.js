@@ -58,6 +58,8 @@ export const DASHBOARD_NAV = [
         key: 'purchasing', labelKey: 'nav.group_purchasing', icon: 'pi pi-truck',
         children: [
             { key: 'purchasing.orders', labelKey: 'nav.purchase_orders', icon: 'pi pi-file-edit', to: { name: 'dashboard.purchasing.orders' }, feature: 'purchasing', capability: 'purchase.manage' },
+            { key: 'purchasing.invoices', labelKey: 'nav.supplier_invoices', icon: 'pi pi-file', to: { name: 'dashboard.purchasing.invoices' }, feature: 'purchasing', capability: 'purchase.manage' },
+            { key: 'purchasing.payments', labelKey: 'nav.supplier_payments', icon: 'pi pi-wallet', to: { name: 'dashboard.purchasing.payments' }, feature: 'purchasing', capability: 'purchase.manage' },
             { key: 'purchasing.suppliers', labelKey: 'nav.suppliers', icon: 'pi pi-briefcase', to: { name: 'dashboard.purchasing.suppliers' }, feature: 'purchasing', capability: 'purchase.manage' },
         ],
     },

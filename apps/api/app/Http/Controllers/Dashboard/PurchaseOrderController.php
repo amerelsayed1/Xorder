@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Dashboard;
 
 use App\Enums\PurchaseStatus;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Dashboard\ClosePurchaseOrderShortRequest;
 use App\Http\Requests\Dashboard\ReceivePurchaseOrderRequest;
 use App\Http\Requests\Dashboard\StorePurchaseOrderRequest;
 use App\Http\Requests\Dashboard\UpdatePurchaseOrderRequest;
@@ -86,6 +87,14 @@ class PurchaseOrderController extends Controller
             $request->validated('note'),
             $request->user(),
         );
+
+        return $this->present($order, __('xorder.messages.saved'));
+    }
+
+    /** CB-09 D11: close a part delivery short. Never touches stock. */
+    public function closeShort(ClosePurchaseOrderShortRequest $request, PurchaseOrder $purchaseOrder, PurchaseOrderService $orders): JsonResponse
+    {
+        $order = $orders->closeShort($purchaseOrder, $request->reason(), $request->validated('note'), $request->user());
 
         return $this->present($order, __('xorder.messages.saved'));
     }

@@ -9,6 +9,8 @@ use App\Http\Requests\Dashboard\UpdateBranchRequest;
 use App\Http\Resources\BranchResource;
 use App\Models\Branch;
 use App\Models\PurchaseOrder;
+use App\Models\SupplierInvoice;
+use App\Models\SupplierPayment;
 use App\Models\Restaurant;
 use App\Models\StockMovement;
 use App\Services\BranchEgressIpService;
@@ -104,12 +106,15 @@ class BranchController extends Controller
 
     public function destroy(Branch $branch): JsonResponse
     {
-        // CB-09: purchase orders and the stock ledger point at their branch
-        // with no cascade, on purpose (stock booked in at a branch is that
+        // CB-09: purchase orders, the stock ledger, supplier invoices and
+        // supplier payments point at their branch with no cascade, on purpose
+        // (what was bought, received, billed or paid at a branch is that
         // branch's history). Without this the FK would refuse the delete as
         // a 500; say why instead.
         if (PurchaseOrder::where('branch_id', $branch->id)->exists()
-            || StockMovement::where('branch_id', $branch->id)->exists()) {
+            || StockMovement::where('branch_id', $branch->id)->exists()
+            || SupplierInvoice::where('branch_id', $branch->id)->exists()
+            || SupplierPayment::where('branch_id', $branch->id)->exists()) {
             return response()->json(['message' => __('xorder.messages.branch_has_purchasing')], 409);
         }
 

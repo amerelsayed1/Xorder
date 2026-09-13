@@ -121,7 +121,10 @@ function open(o) {
                                 <td class="px-5 py-3"><span class="mono" dir="ltr" style="color:var(--ink)">{{ refOf(o) }}</span></td>
                                 <td class="px-5 py-3" style="color:var(--ink)">{{ o.supplier_name }}</td>
                                 <td v-if="branches.length > 1" class="px-5 py-3" style="color:var(--body)">{{ nameOf(o.branch) }}</td>
-                                <td class="px-5 py-3"><span class="badge" :class="statusBadge(o.status)">{{ t('purchasing.status.' + o.status) }}</span></td>
+                                <td class="px-5 py-3">
+                                    <span class="badge" :class="statusBadge(o.status)">{{ t('purchasing.status.' + o.status) }}</span>
+                                    <span v-if="o.closed_short" class="text-xs ms-1" style="color:var(--muted)">{{ t('purchasing.closed_short_tag') }}</span>
+                                </td>
                                 <td class="px-5 py-3 whitespace-nowrap" style="color:var(--body)">{{ fmtDate(o.ordered_at, locale) || '—' }}</td>
                                 <td class="px-5 py-3 text-end"><span class="mono" dir="ltr">{{ money(o.totals.total_minor, o.exponent, o.currency, locale) }}</span></td>
                             </tr>

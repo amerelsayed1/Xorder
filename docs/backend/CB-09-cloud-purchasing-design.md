@@ -1,13 +1,15 @@
 # CB-09: Purchasing, suppliers, units and stock on cloud (design)
 
-**Status: `IN PROGRESS — slice b`.** Written 2026-09-12 by `xorder-cloud`,
+**Status: `IN PROGRESS — slice c`.** Written 2026-09-12 by `xorder-cloud`,
 on the owner's "go CB-09", and reviewed by the owner the same day. Slice a is
-committed on branch `feat/cb-09-purchasing` as `dd9a530`, not deployed (§13).
-Slice b is built on the same branch after the owner's "go slice b"
-(2026-09-12): uncommitted, not deployed, awaiting owner review (§14).
-Slices b and c are approved **in order, one at a time, with an owner review
-between slices**. Nothing else is approved: slice d waits on D12, slice e
-(POS-BE-030 and the till change) is not approved, and D11 is still open.
+committed on branch `feat/cb-09-purchasing` as `dd9a530` (§13) and slice b as
+`bcb092c` (§14); neither is deployed. On 2026-09-13 the owner said **"finish
+all phases"**. That is the go for slice c and it **decides D11**: build
+short-close on the platform. Slice c, including short-close, is built on the
+same branch: uncommitted, not deployed, for the coordinator to verify and
+commit (§15). Slice d follows in a separate run. Slice e (the till side) is
+with `pos-dev` in xorder-pos, and the offline till's own short-close is a
+separate item of theirs.
 
 ### Owner decisions, 2026-09-12
 
@@ -50,7 +52,7 @@ line numbers may drift. Nothing was run.
 | D8 | What the till gets from the platform | **Nothing in v1**, apart from `purchase.manage` being withheld from the cloud bundle. The draft is POS-BE-030 | 3.6 |
 | D9 | Valuation | **The till's moving average**, ported to PHP line for line, integers only | 2.3 |
 | D10 | Cross-row invariants | **A service with a row lock, plus portable constraints.** No DB triggers | 5 |
-| D11 | Short-closing a part delivery | **Owner decision.** The till's doc promises it and its code can't do it (§10 C1) | 10 |
+| D11 | Short-closing a part delivery | **Decided (owner, 2026-09-13: "finish all phases"): build it on the platform.** A part-received order is closed short: it becomes `received`, marked closed short with a reason code, and the rest is recorded as not coming. Stock is never touched. The offline till's own short-close is a separate item | 10, 15 |
 | D12 | Stock adjustments, counts, waste and openings | **Held.** They'd put the platform ahead of the till (slice d) | 9 |
 | D13 | Paying a supplier "out of the drawer" on cloud | **Optional link to a synced till pay-out**, with the rules of the till's migration 33 | 4.10 |
 | D14 | Dashboard placement | **Two sidebar groups, Purchasing and Inventory.** Operational pages, not settings, and not under "Point of sale & money"; no `pos` gate on either (follows from D6) | 7 |
@@ -624,7 +626,7 @@ inside it (D6): a client with `purchasing` and no `pos` passes the whole stack.
 | b | POST | `purchase-orders/{po}/send` | snapshots totals, numbers it, sets `ordered_at` |
 | b | POST | `purchase-orders/{po}/cancel` | draft or sent only |
 | b | POST | `purchase-orders/{po}/receipts` | `{lines:[{line_id, quantity_milli}], occurred_at?, note?}`; open PO only |
-| b | POST | `purchase-orders/{po}/close` | **only if D11 is approved**: sets `received` on a partial order, with a reason |
+| c | POST | `purchase-orders/{po}/close` | **D11, built in slice c** (§15): part-received only; sets `received`, marked closed short, with a reason code; never touches stock |
 | b | GET | `stock-levels?branch_id=` | "received to date", value at the average |
 | b | GET | `stock-items/{stockItem}/movements?branch_id=` | the ledger, paginated |
 | c | GET / POST / PUT | `supplier-invoices`, `supplier-invoices/{invoice}` | PUT only while unallocated |
@@ -632,7 +634,7 @@ inside it (D6): a client with `purchasing` and no `pos` passes the whole stack.
 | c | GET / POST | `supplier-payments` | optional `supplier_invoice_id`, optional `pos_cash_movement_id` |
 | c | POST | `supplier-payments/{payment}/void` | `{reason, note?}` |
 | c | GET | `suppliers/{supplier}/account`, `suppliers/balances` | invoiced, paid, outstanding, overdue, on account, all derived |
-| c | GET | `pos-cash-movements?direction=out&unlinked=1&branch_id=` | candidates for the drawer link |
+| c | GET | `purchasing/drawer-payouts?branch_id=&amount_minor=` | candidates for the drawer link (built under this path, inside the purchasing gate, §15) |
 | d | POST | `stock-adjustments` | **held (D12)**: `{branch_id, stock_item_id, kind: opening\|adjustment\|waste, quantity_milli, unit_cost_minor?, reason, note?}` |
 
 Every write goes through `AuditLogger::record()`: send, cancel, receive,
@@ -704,8 +706,9 @@ Tables scroll in their own `overflow-x:auto`.
 Each is approvable alone: **D1–D14** above. **Decided 2026-09-12:** item 1
 (D1, option A; D2 follows), item 2 (D6, amended: standalone, no `pos`) and
 item 3 (D7, a single `purchase.manage`), plus the build order a → b → c.
-**Still open:** items 4–7. Several of these need a real choice rather than a
-nod:
+**Decided 2026-09-13** ("finish all phases"): item 4 (D11, build short-close
+on the platform; built in slice c, §15). **Still open:** items 5–7. Several of
+these need a real choice rather than a nod:
 
 1. **D1/D2.** The platform is the only author on cloud. Cloud tills lose
    their Purchasing, Units and Stock panes. Rows already there stay hidden and
@@ -715,9 +718,10 @@ nod:
    restaurant.
 3. **D7.** A single `purchase.manage` that gates reads too. *Or* a view split
    now.
-4. **D11.** Build short-close (`close`) on the platform, ahead of the till,
-   and have `pos-dev` add it to the till too. *Or* leave part deliveries
-   `partially_received` forever, as the till's code does today.
+4. **D11. Decided 2026-09-13: build it.** Build short-close (`close`) on the
+   platform, ahead of the till, and have `pos-dev` add it to the till too.
+   *Or* leave part deliveries `partially_received` forever, as the till's
+   code does today.
 5. **D12.** Stock adjustments, opening balances, waste and counts: wait for
    the till's inventory wave, *or* design them once for both now.
 6. **Plan placement.** Which plans get `purchasing`. The landing card changes
@@ -733,7 +737,7 @@ nod:
 |---|---|---|---|---|
 | **a. Foundations: suppliers and units** *(built, §13)* | `Feature::PURCHASING` (standalone, no `pos`); `TenantCapability::PURCHASE_MANAGE` + group + labels; `units` + `UnitCatalog::ensureDefaults`; `suppliers`; the two nav groups (Suppliers and Units live); `purchase.manage` withheld from the bundle (D8) | M | **No** | Migrations are additive and reversible. The feature is false for every existing tenant (test). `purchase.manage` is absent from the owner's bundle (test). Cross-tenant 404/422. Units are seeded once, idempotently; `code` is immutable; no delete route. Supplier tax number is nine digits; code is unique when set, and many suppliers can have none. EN and AR plus RTL checked; `pnpm --filter web build` clean; `php artisan test` green |
 | **b. Stock items, POs, receiving, cost** *(built, §14)* | `stock_items`, `purchase_orders`, `_lines`, `purchase_sequences`, `stock_movements`, `stock_levels`; `PurchaseOrderService`, `ReceivingService`, `StockCosting` (PHP); the PO list, detail and receive modal; read-only Stock and movements pages | L | **No** | A `StockCosting` parity table matches the till's (including a negative on-hand, and the half-up edge like 0.333 kg at 47.30). Send snapshots totals, with tax rounded per rate. Cancel is refused once anything arrived, with the status re-checked under the lock. Over-receipt is accepted. The status follows the lines. Lines with no item touch no ledger. A movement's balance and average equal the level's. Movements can't be updated or deleted. The unit is locked once movements exist. Two receipts on one item are serialised (reviewed on PG). References are gap-free per restaurant per year |
-| **c. Supplier invoices and payments** | `supplier_invoices`, `supplier_payments`; `SupplierLedgerService`; void reasons; derived balances and overdue; optional drawer link (D13) | M–L | **No** | Over-allocation is refused with the room named. Paying a voided invoice or another supplier's invoice is refused. An invoice with live payments can't be voided. A voided number can be re-entered and a live duplicate can't. On-account payments reduce the balance and not overdue (a test mirroring `supplier_invoice.dart:421-470`). The drawer link is refused unless it's an unlinked `out` movement of equal amount. No balance column exists anywhere |
+| **c. Supplier invoices and payments** *(built, with D11 short-close, §15)* | `supplier_invoices`, `supplier_payments`; `SupplierLedgerService`; void reasons; derived balances and overdue; optional drawer link (D13) | M–L | **No** | Over-allocation is refused with the room named. Paying a voided invoice or another supplier's invoice is refused. An invoice with live payments can't be voided. A voided number can be re-entered and a live duplicate can't. On-account payments reduce the balance and not overdue (a test mirroring `supplier_invoice.dart:421-470`). The drawer link is refused unless it's an unlinked `out` movement of equal amount. No balance column exists anywhere |
 | **d. Stock adjustments** *(held, D12)* | `opening`, `adjustment`, `waste` movements with reasons; the adjustment modal | M | No, but the till would want the same kinds, so it's better designed together | Issue movements keep the average (`StockCosting::issue`). Openings set the cost when nothing is on hand. Every change is a movement with a reason, never an edit to a level |
 | **e. Till integration** | File **POS-BE-030** (§3.6); `pos-dev` hides Purchasing, Stock and Units on cloud by deployment mode | S | **Yes** (small) | On a cloud till with `purchase.manage` granted locally, none of the four panes or their Manage-menu entries appear (test). Offline is unchanged. Existing local rows are untouched |
 | *f. Later, not proposed* | Receiving at the till; read-only stock on the till; sales deduction via recipes (derived server-side from synced orders, §3.3); transfers; cost in reports and COGS | — | yes, for the till parts | — |
@@ -758,7 +762,8 @@ Found while reading. None of it is fixed here, because xorder-pos belongs to
   (`management_purchasing_pane.dart:215-231`), and receiving derives
   `received` only when every line is full
   (`postgres_receiving_repository.dart:209-213`). **A short-delivered PO stays
-  `partially_received` forever.** That is D11.
+  `partially_received` forever.** That is D11. *Decided 2026-09-13 and built
+  on the platform (§15); the till's own short-close is `pos-dev`'s.*
 - **C2. "No cancelling once goods have arrived" is enforced only by the
   button.** `PurchaseEngine.cancel` refuses it (`purchase_order.dart:379-387`),
   but the pane never calls `PurchaseEngine`. It calls
@@ -912,7 +917,7 @@ to a plan that carries it. That's an owner call if wanted.
 ## 14. Slice b as built (2026-09-12)
 
 Branch `feat/cb-09-purchasing` in xorder-new, on top of `dd9a530`.
-Uncommitted and not deployed. Built on the owner's "go slice b". A first
+Committed as `bcb092c`; not deployed. Built on the owner's "go slice b". A first
 session started it and was cut off; this one reviewed its drafts, finished
 them and built the rest.
 
@@ -1066,3 +1071,258 @@ amounts and references sit in `.mono dir="ltr"` spans.
   payments.
 - The Purchasing nav group gets the Invoices and Payments leaves, and
   `/purchasing/suppliers/:id` the account view.
+
+---
+
+## 15. Slice c as built (2026-09-13)
+
+Branch `feat/cb-09-purchasing` in xorder-new, on top of `bcb092c`.
+Uncommitted and not deployed; the coordinator verifies and commits. Built on
+the owner's **"finish all phases"** (2026-09-13), which is also the owner's
+answer to **D11: build short-close on the platform.**
+
+### D11, decided: closing a part delivery short
+
+- **Representation.** The till's `PurchaseStatus` has five values and no
+  "closed short", and its `fromWire` **throws** on an unknown value. So a new
+  status would be a hazard the moment any purchasing ever crossed the wire.
+  The till already has the honest value: `received` is documented as *"all
+  of it arrived, **or somebody closed the difference deliberately**"*
+  (`purchase_order.dart:29`), and its migration 44 allows
+  `partially_received → received` with lines still short, with a comment
+  that short-closing will need exactly that. So a closed-short order is
+  `received` plus four new **nullable** columns on `purchase_orders`:
+  `closed_short_at`, `closed_short_by`, `close_reason` (a code) and
+  `close_note`. This is the smallest honest form.
+- **What is not coming** is each line's outstanding quantity at the close.
+  It is derived, not stored: a `received` order takes no more receipts, so the
+  figure is frozen. The resource returns it as `lines[].not_coming_milli`,
+  and the audit entry records it per line.
+- **Rules** (`PurchaseOrderService::closeShort`, under the order lock with
+  the status re-read): only a `partially_received` order that still has a
+  short line; anything else is `409 PO_CANNOT_CLOSE_SHORT`, including a stale
+  page whose order has since arrived in full. A sent order with nothing
+  received is cancelled, not closed. **It never touches stock**: no
+  movement, no level change, no `received_milli` change (tested against a
+  snapshot of all three). After a close, receiving is `409 PO_NOT_OPEN` and
+  cancelling is `409 PO_CANNOT_CANCEL`.
+- **Reason codes** (`App\Enums\PurchaseCloseReason`): `supplier_cannot_supply`,
+  `no_longer_needed`, `refused_on_delivery` and `other` (note required). The
+  till has no reason scope for this yet; the offline till's short-close is
+  `pos-dev`'s separate item, and this shape is the one to copy.
+- Audit: `purchase_order.closed_short` carries the reason, the note and the
+  not-coming quantity per line. Route: `POST purchase-orders/{po}/close`.
+
+### Built (API)
+
+- **Migrations** (all additive and reversible; `down()` verified by rollback
+  and re-migrate on both SQLite and PostgreSQL 16):
+  - `2026_09_13_000100_add_short_close_to_purchase_orders_table`: four
+    nullable columns on a slice-b table (not yet in production). Every
+    existing row reads as "not closed short".
+  - `…000200_create_supplier_invoices_tables`: `supplier_invoices` and
+    `supplier_invoice_lines`, both new.
+  - `…000300_create_supplier_payments_tables`: `supplier_payments` and
+    `supplier_payment_allocations`, both new.
+  - No existing column changes. There is no balance, paid or outstanding
+    column anywhere (a test asserts it), and no engine-specific SQL.
+- Enums `InvoiceVoidReason` and `PaymentVoidReason` (the till's six codes
+  each, verbatim), `SupplierPaymentMethod` (the till's five) and
+  `PurchaseCloseReason`. `PurchaseStatus::canCloseShort()`.
+- `App\Support\SupplierAccount`: the till's `SupplierAccount` and
+  `SupplierInvoice` arithmetic as pure functions (figures, outstanding,
+  settled, overdue as at a date, days late, and the statement with its
+  running balance). `StockCosting::taxWithinBp` (the till's
+  `Money.taxWithinBp`). `PurchaseOrderService::receivedTotal` (the till's
+  `receivedTotal`: tax per rate on what arrived).
+- `SupplierLedgerService` (every write) and `SupplierAccountService`
+  (derived reads). `PurchasingRefusal` gains an optional `details` payload,
+  rendered as `details`.
+- Controllers `SupplierInvoiceController`, `SupplierPaymentController`
+  (including `drawerPayouts`) and `SupplierAccountController`, plus
+  `PurchaseOrderController::closeShort`. Requests `Store/UpdateSupplierInvoiceRequest`,
+  `VoidSupplierInvoiceRequest`, `StoreSupplierPaymentRequest`,
+  `VoidSupplierPaymentRequest` and `ClosePurchaseOrderShortRequest`.
+  Resources `SupplierInvoiceResource` and `SupplierPaymentResource`.
+  `PurchaseOrderResource` gains `can_close_short`, `closed_short`,
+  `closed_short_at`, `close_reason`, `close_note`, `received_total_minor`
+  and `lines[].not_coming_milli`, all new keys.
+- Routes, inside the slice-a group (`feature:purchasing` +
+  `can:purchase.manage`, `subscription.writable` on writes, no `pos`):
+  `supplier-invoices` (GET, POST), `supplier-invoices/{id}` (GET, PUT),
+  `…/void`; `supplier-payments` (GET, POST), `supplier-payments/{id}` (GET),
+  `…/void`; `suppliers/balances` (declared before `suppliers/{supplier}`);
+  `suppliers/{supplier}/account`; `purchasing/drawer-payouts`;
+  `purchase-orders/{po}/close`.
+- `BranchController::destroy` also refuses (409) a branch with supplier
+  invoices or payments. `purchasing/lookups` returns suppliers'
+  `payment_term_days` for the due-date default.
+- Server strings EN and AR: `xorder.purchasing.*` (every refusal) and
+  `xorder.validation.invoice_*`, `payment_*` and `void_note_required`.
+
+**The rules, and where they are enforced.** Every one is in the service,
+inside the transaction, under a lock where it is cross-row:
+
+| Rule | Code | Lock |
+|---|---|---|
+| An invoice's live allocations never exceed its total; the refusal names the room | `PAYMENT_EXCEEDS_INVOICE` 409, `details.room_minor` | every invoice touched, `FOR UPDATE`, ascending id, then `SUM` of live allocations |
+| Allocations never exceed the payment | `ALLOCATIONS_EXCEED_PAYMENT` 422 | — |
+| Allocated invoice is the payment's supplier, branch and currency, and not voided | `PAYMENT_OTHER_SUPPLIER`/`_OTHER_BRANCH` 422, `CURRENCY_DIFFERS` 422, `PAYMENT_INVOICE_VOIDED` 409 | same |
+| An invoice with live allocations can't be voided or edited | `INVOICE_HAS_PAYMENTS` 409 | invoice row |
+| A voided invoice can't be edited, paid or voided again | `INVOICE_VOIDED`, `INVOICE_ALREADY_VOIDED` 409 | invoice row |
+| A payment is voided once, and its allocations stop counting | `PAYMENT_ALREADY_VOIDED` 409 | payment row |
+| A live number is unique per supplier (case and spaces folded); a voided one can be re-entered | `INVOICE_NUMBER_TAKEN` 422 | unique(`restaurant_id`,`supplier_id`,`active_number_key`), with a pre-check; a race is caught and still a 422 |
+| Linked order: same supplier and branch, not a draft | `INVOICE_PO_OTHER_SUPPLIER`/`_OTHER_BRANCH`/`_DRAFT` 422 | — |
+| Total > 0, 0 ≤ tax ≤ total, due ≥ issued, issued and paid not in the future | 422 | — |
+| Drawer link: cash only, an `out` movement, same branch, exactly equal amount, not linked to a live payment | `DRAWER_NEEDS_CASH`/`_NOT_PAY_OUT`/`_OTHER_BRANCH`/`_AMOUNT_DIFFERS` 422, `DRAWER_ALREADY_LINKED` 409 | movement row, backed by unique(`drawer_link_key`) |
+
+**The concurrent case, by hand, on PostgreSQL 16** (a disposable container on
+localhost, removed afterwards; script kept outside the repository): an
+invoice of 1,000.00, and eight processes released at the same instant, each
+paying 300.00 against it. **3 succeeded and 5 were refused**
+`PAYMENT_EXCEEDS_INVOICE` with room 100.00; 900.00 allocated. Then a process
+held a 900.00 payment's transaction open for 2 s while a second paid
+200.00 half a second later. The second **waited 1.88 s on the invoice row
+lock**, read the sum after the first committed, and was refused with room
+100.00. Without the lock it would have read 0 and allocated 1,100.00. On
+SQLite (the test suite) the same rule is proved under stale reads: a page
+that saw 1,000.00 outstanding is refused with the real room after another
+payment, and a stale void of an invoice paid meanwhile is refused.
+
+**Balances are derived and reconcile by construction.** `outstanding =
+Σ live invoices − Σ live payments`; `overdue` counts only what is
+*allocated* per invoice, so on-account money reduces the balance and not
+what is late (the till's rule); `on account = Σ (payment − its allocations)`.
+The statement's closing running balance equals `outstanding`, and so does
+`Σ open-invoice outstanding − on account`: the invariants above make that
+identity exact. The feature test asserts all three on a mixed history
+(voided invoice, voided payment, on-account money, a second branch).
+
+### Built (web)
+
+`purchasing/SupplierInvoicesView.vue` (list: branch, supplier and state
+filters, and a purchase-order filter from the order page),
+`SupplierInvoiceForm.vue` (create or edit; total-off-the-paper with the tax as
+an amount or the rate inside the total, or itemised lines; due date from the
+supplier's terms until typed; optional sent order with its received total and
+the difference beside the total), `SupplierInvoiceView.vue` (figures, lines,
+the order comparison, payments against it, edit, void, record payment),
+`SupplierPaymentsView.vue`, `SupplierPaymentForm.vue` (allocation to open
+invoices with "fill oldest first", the rest shown on account, the drawer
+pay-out picker for cash), `SupplierPaymentView.vue` (allocations, void),
+`SupplierAccountView.vue` (`/purchasing/suppliers/:id`: balance or credit,
+overdue, on account, invoiced, paid; statement with running balance, open
+invoices, payments; branch filter) and a shared `ReasonDialog.vue` (every
+void and the close-short). `PurchaseOrderView.vue` gains Close short, a
+closed-short banner, a "Not coming" column, Record invoice and Invoices;
+`PurchaseOrdersView.vue` tags closed-short orders; `SuppliersView.vue` shows
+each supplier's balance and overdue, and links to the account. Nav leaves
+Supplier invoices and Payments. `lib/quantity.js` gains `taxWithinBp`
+(BigInt). EN and AR for every string (`purchasing.*`, `nav.*`), neutral
+wording; amounts, numbers and references in `.mono dir="ltr"` spans; no float
+anywhere (amounts through `lib/money.js` digit strings, arithmetic on BigInt
+or safe integers). The pages were built and key-checked (every key used
+exists, EN and AR match with no duplicates) but **not clicked through in a
+browser**: that needs a dashboard login.
+
+### Tests
+
+`tests/Unit/SupplierLedgerParityTest.php` (18) and
+`tests/Feature/PurchasingInvoicesAndPaymentsTest.php` (25): 43 new;
+917 of 917 pass.
+
+**Parity vectors**, copied from the till's own tests:
+- `test/core/money_test.dart`: `roundHalfUp` 5, 15, 25, 4 and 14 over 10 →
+  1, 2, 3, 0, 1, **and the negative branch** −5, −15, −4 → −1, −2, 0 (§14
+  said the till had no test for it; `money_test.dart` does); `percentBp`
+  385.00 at 12% = 46.20, 0.01 at 14% = 0, 0.04 at 14% = 0.01.
+- `test/domain/supplier_invoice_test.dart`: 1,140.00 at 14% holds 140.00
+  (`taxWithinBp`); subtotal 1,000.00 − 122.81 = 877.19; outstanding 600.00;
+  an overpaid invoice outstanding 0 and settled; 999.99 of 1,000.00 not
+  settled; overdue as at a date, due today not late, settled and voided
+  never overdue, 7 days late; received total 10 at 100.00 + 14% = 1,140.00,
+  8 received = 912.00, variance 228.00, nothing received = 1,140.00; the
+  account: balance 700.00, voided invoice and voided payment excluded,
+  on-account 2,000.00 against a late 1,000.00 bill gives −1,000.00
+  outstanding, 1,000.00 overdue and 2,000.00 on account; allocated money
+  clears it; partly paid and late = 600.00 overdue; row order changes
+  nothing; an empty account is zero.
+- `test/domain/purchase_order_test.dart` for invoice lines: 12.5 kg at 47.30
+  = 591.25 with 82.78 tax; three lines of 33.33 at 14% = 14.00 tax, not
+  14.01; two rates = two roundings. The first two also run through the whole
+  HTTP stack as invoice lines.
+
+### Departures from §4 to §7, with reasons
+
+1. **A payment allocates to many invoices** through
+   `supplier_payment_allocations`, not a single `supplier_invoice_id` (§4.10,
+   and the till). Asked for in the brief. One invoice is one allocation row,
+   and no allocation at all is the till's "on account", so every till rule
+   carries over unchanged.
+2. **Invoices may carry lines** (`supplier_invoice_lines`), asked for in the
+   brief. The till's header-only entry stays the default. With lines, the
+   total and tax are **computed** (costAt per line, tax per rate) and a typed
+   total is ignored. Lines name no stock item and never touch stock.
+3. **Tax may be entered as the rate inside the total** (`tax_rate_bp` →
+   `taxWithinBp`), because supplier paper quotes a gross and a rate.
+4. **Stricter than the till's trigger:** an allocation must be to an invoice
+   of the payment's **branch** (so a branch statement adds up) and
+   **currency**. A drawer link must be a **cash** payment at the pay-out's
+   **branch**. The till checks neither.
+5. **The drawer link uses `drawer_link_key`** (the movement id while live,
+   NULL once voided, under a plain unique) as the portable form of the
+   till's partial unique index. `pos_cash_movement_id` stays on a voided row
+   as history, and the pay-out can then be linked to the corrected payment.
+6. **`paid_at` is a date** (the till's is a timestamp): a statement is by
+   day. Invoice and payment dates can't be in the future (the business's
+   own today).
+7. **An invoice can't bill a draft order** (nothing was asked of the
+   supplier yet). Sent, part-received, received and cancelled orders can be
+   billed; a cancelled one may still carry a charge.
+8. **The drawer candidates route is `purchasing/drawer-payouts`**, inside the
+   purchasing gate, not `pos-cash-movements` (which would read as a POS
+   resource). A client without `pos` gets an empty list.
+9. **Over-allocation is a 409** (the invoice's state decides, and a
+   concurrent payment is the usual cause), with the room in `details` and on
+   the field.
+10. The account read takes an optional `as_of` (overdue as at a date, the
+    till's own design); `suppliers/balances` lists only suppliers with any
+    invoice or payment.
+11. Invoice and payment models are not `Auditable`; the service writes
+    `supplier_invoice.created/updated/voided` and
+    `supplier_payment.recorded/voided`, as for purchase orders, so nothing is
+    logged twice.
+12. Short-close as described above: `received` plus four nullable columns,
+    a four-code reason list of the platform's own, and the not-coming
+    quantity derived rather than stored.
+
+### Deliberately not in slice c
+
+- Re-pointing money already on account at an invoice later. A payment is
+  never edited (the till's column-scoped grants); void it and enter it again.
+- Supplier credit notes as documents (void with `credit_note`, as on the
+  till); statement export or print; an opening balance or a date range on
+  the statement (it is the whole history, one query per list).
+- Restaurant-editable reason lists; multi-currency purchasing.
+- The offline till's short-close, POS-BE-030 and any till change (`pos-dev`).
+- Clicking through the new pages in a browser (needs a dashboard login).
+
+### What slice d builds on
+
+- **D12 is still recorded as held** in §0 and §9. The owner's "finish all
+  phases" is the likely go, but slice d's run should record it.
+- The ledger: `StockMovement` is append-only (model events throw), and
+  `StockCosting::issue` and `costOfGoods` are ported and unit-tested, unused
+  so far. Opening, adjustment and waste movements must use the same lock
+  pattern as `ReceivingService`: `insertOrIgnore` on the level row, then lock
+  levels in ascending item id, then append the movement with the resulting
+  balance and average. `StockLedger::replay` then checks the fold.
+- The unit lock (`StockItemService`): an adjustment in a unit other than the
+  one held must be refused, as receiving refuses it.
+- **Short-close never touches stock**, and adjustments must not reopen or
+  alter a closed order. A return to a supplier (the `goods_returned` void
+  reason on an invoice) moves no stock today. If the owner wants returns to
+  take stock out, that is a slice-d kind and an owner question.
+- The branch-delete guard already counts `stock_movements`.
+- `PurchasingRefusal` (with `details`) and `ReasonDialog.vue` are ready for
+  adjustment reasons. The Stock page is where the adjustment action goes.
