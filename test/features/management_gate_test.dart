@@ -25,11 +25,14 @@ import '../support/fakes.dart';
 /// screen that offers an action the data layer would reject, or worse, one that
 /// opens for somebody it should not.
 void main() {
+  /// [offline] for the tests about Purchasing: the harness is a cloud till,
+  /// and since CB-09 a cloud till has no Purchasing pane to test.
   Future<ProviderContainer> open(
     WidgetTester tester, {
     ManagementPane pane = ManagementPane.staff,
     VoidCallback? onClose,
     Future<List<int>> Function()? schemaUpgrader,
+    bool offline = false,
   }) async {
     tester.view
       ..physicalSize = const Size(1440, 900)
@@ -37,7 +40,10 @@ void main() {
     addTearDown(tester.view.reset);
 
     final container = ProviderContainer(
-      overrides: fakeRepositoryOverrides(schemaUpgrader: schemaUpgrader),
+      overrides: [
+        ...fakeRepositoryOverrides(schemaUpgrader: schemaUpgrader),
+        if (offline) offlineTerminal(),
+      ],
     );
     addTearDown(container.dispose);
 
@@ -162,7 +168,14 @@ void main() {
     tester,
   ) async {
     var closed = 0;
-    await open(tester, pane: ManagementPane.units, onClose: () => closed++);
+    // Offline: on a cloud till the platform authors units (CB-09), and the
+    // screen would land on Staff with no form to type into.
+    await open(
+      tester,
+      pane: ManagementPane.units,
+      onClose: () => closed++,
+      offline: true,
+    );
     await enter(tester, 'amer');
     // Inline on the pane, not a dialog: the field and the binding share a route.
     await tester.tap(find.byKey(const Key('unit-new')));
@@ -657,7 +670,7 @@ void main() {
     // A supervisor who manages the rota but does not order the stock is a real
     // job. Showing them a pane whose every button refuses would make the rail
     // a list of disappointments.
-    final container = await open(tester);
+    final container = await open(tester, offline: true);
     await enter(tester, 'amer');
 
     // Asked of the rule rather than of a rail that no longer exists. What
@@ -696,7 +709,11 @@ void main() {
     // `initialPane` comes from a menu item somebody may have had every right to
     // use last week. The rail hiding it while the body still rendered it would
     // be the gate saying no and the screen saying yes.
-    final container = await open(tester, pane: ManagementPane.purchasing);
+    final container = await open(
+      tester,
+      pane: ManagementPane.purchasing,
+      offline: true,
+    );
     await enter(tester, 'amer');
     expect(find.text('New order'), findsOneWidget);
 

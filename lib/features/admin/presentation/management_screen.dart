@@ -12,6 +12,7 @@ import '../../../domain/models/permissions.dart';
 import '../../../domain/models/shift.dart';
 import '../../../domain/services/authorization.dart';
 import '../../../domain/services/eta_filing.dart' show etaFilingEnabled;
+import 'admin_pane_bits.dart';
 import 'management_activity_pane.dart';
 import 'management_backup_pane.dart';
 import 'management_items_pane.dart';
@@ -108,13 +109,68 @@ List<ManagementPane> managementPanesFor({
 /// the payment methods and service charges Wave D put in the same pane are local
 /// on both deployments — so the pane gates its own top half rather than
 /// disappearing, and a cloud restaurant can still say how it takes money.
+///
+/// **Buying and inventory are here, whatever the person holds** (CB-09, owner
+/// decision 2026-09-12, POS-BE-030). On cloud the platform is the only author
+/// of suppliers, purchase orders, receiving, supplier invoices and payments,
+/// units and stock items, and none of it comes down to the till — so a
+/// Purchasing pane here would write rows nobody on the platform ever sees, a
+/// second author of the same business. Hidden by deployment rather than left
+/// to `_paneRequires`: the platform withholds `purchase.manage` from every
+/// bundle, but roles are the till's own even on cloud (doc 16 §1), so a local
+/// Owner or Manager role still grants it, and a capability gate alone would
+/// leak exactly the panes this is meant to close.
+///
+/// **What a cloud till already holds is left where it is.** Purchasing rows
+/// typed into one before this — orders, suppliers, units, stock — are not
+/// imported (one author means no merge path) and not deleted (they would be
+/// the only copy). They simply stop being reachable from here, and stay in the
+/// till's backups. The seeder touches none of the supplier, order, invoice,
+/// payment, unit or movement tables, so hiding the panes is the whole change —
+/// bought-only items aside, which are product rows and were already the
+/// seeder's to rewrite before any of this (the note below).
 // Stock items too: a bought-only item is a product row, and on a cloud till
 // the bootstrap seeder deletes every product and rewrites the platform's.
 const _authoringPanes = {
   ManagementPane.menu,
   ManagementPane.floor,
+  ManagementPane.purchasing,
   ManagementPane.items,
+  ManagementPane.stock,
+  ManagementPane.units,
 };
+
+/// What to tell somebody who asked for a pane this terminal does not author.
+///
+/// **A deep link is a promise somebody else made.** A bar entry, a habit from
+/// an offline till, a destination held across a sync that changed nothing on
+/// screen — any of them can name Purchasing on a cloud till. Landing silently
+/// on Staff would read as the pane having broken; landing on Purchasing is not
+/// possible, because it is not this terminal's to show. So the screen lands
+/// on its first pane and says where the thing they wanted lives.
+///
+/// Over the area rather than the pane, so a buying or inventory pane added
+/// later is covered without being remembered here. Menu and Floor answer null
+/// on purpose: nothing links to them on a cloud till, and each already says
+/// it comes from the platform inside its own pane.
+String? platformAuthoredPointer(AppStrings s, ManagementPane pane) =>
+    switch (areaOf(pane)) {
+      ManagementArea.buying ||
+      ManagementArea.inventory => s.purchasingComesFromPlatform,
+      ManagementArea.people ||
+      ManagementArea.menu ||
+      ManagementArea.money ||
+      ManagementArea.compliance ||
+      ManagementArea.system => null,
+    };
+
+/// Whether [pane] is absent because this terminal does not author it — as
+/// opposed to because this person may not open it, which is a different
+/// sentence and one the screen already answers by falling back.
+bool hiddenBecausePlatformAuthors(
+  ManagementPane pane, {
+  required bool authorsItsOwnCatalogue,
+}) => !authorsItsOwnCatalogue && _authoringPanes.contains(pane);
 
 /// The back office, in areas.
 ///
@@ -278,6 +334,79 @@ List<(String, ManagementDestination Function(), bool)> managementMenuEntries(
     ),
   ],
 };
+
+/// One line under an area in the window's bar.
+///
+/// [pane] is null for a line that is not a pane — the pointer a cloud till
+/// shows under Buying. [first] is the pane's own first line, which is where
+/// the bar prints F8 for Staff; [divider] is drawn above this line.
+typedef ManagementBarEntry = ({
+  ManagementPane? pane,
+  bool first,
+  String label,
+  ManagementDestination Function() open,
+  bool divider,
+});
+
+/// The back office as the window's bar offers it: one menu per area.
+///
+/// **Here rather than in the bar, so the two cannot drift.** The rail and the
+/// bar were already one answer through [managementAreasFor]; what the bar did
+/// on top of it — expanding panes into [managementMenuEntries] — lived in
+/// `app.dart`, where a test of the rule could not see it. Now the rule and its
+/// test sit beside each other, and the bar only draws.
+///
+/// **Buying stays a word in the bar on a cloud till**, holding one line that
+/// says where purchasing went. That is not a pane and opens none: it is a
+/// deep link to Purchasing, which the screen answers with
+/// [platformAuthoredPointer] above its first pane. Dropping the word instead
+/// would leave a manager who bought through this bar last month searching
+/// every menu for it — and a cloud till with no word for buying at all tells
+/// them nothing about where it went.
+List<(ManagementArea, List<ManagementBarEntry>)> managementBarFor(
+  AppStrings s, {
+  required PosStaff admin,
+  required bool authorsItsOwnCatalogue,
+}) {
+  final areas = {
+    for (final (area, panes) in managementAreasFor(
+      admin: admin,
+      authorsItsOwnCatalogue: authorsItsOwnCatalogue,
+    ))
+      area: panes,
+  };
+  return [
+    for (final area in ManagementArea.values)
+      if (<ManagementBarEntry>[
+        for (final pane in areas[area] ?? const <ManagementPane>[])
+          for (final (i, (label, open, groups))
+              in managementMenuEntries(s, pane).indexed)
+            (
+              pane: pane,
+              first: i == 0,
+              label: label,
+              open: open,
+              divider: groups && i > 0,
+            ),
+        if (area == ManagementArea.buying &&
+            hiddenBecausePlatformAuthors(
+              ManagementPane.purchasing,
+              authorsItsOwnCatalogue: authorsItsOwnCatalogue,
+            ))
+          (
+            pane: null,
+            first: true,
+            label: s.purchasingOnPlatformEntry,
+            open: () => ManagementDestination(
+              pane: ManagementPane.purchasing,
+              request: Object(),
+            ),
+            divider: false,
+          ),
+      ] case final entries when entries.isNotEmpty)
+        (area, entries),
+  ];
+}
 
 ManagementDestination _purchasing(PurchasingTab tab, {bool create = false}) =>
     ManagementDestination(
@@ -464,10 +593,10 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
       );
     }
 
+    final authors = ref.watch(catalogAdminRepositoryProvider) != null;
     final areas = managementAreasFor(
       admin: admin,
-      authorsItsOwnCatalogue:
-          ref.watch(catalogAdminRepositoryProvider) != null,
+      authorsItsOwnCatalogue: authors,
     );
     final panes = [for (final area in areas) ...area.$2];
 
@@ -475,6 +604,19 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
     // may render: `initialPane` is a deep link and a deep link can outlive the
     // permission that justified it.
     final showing = panes.contains(_pane) ? _pane : panes.first;
+
+    // …and when it is absent because the platform authors it, the fall-back
+    // says so. Keyed on `_pane`, the pane ASKED for, so it is said once, on
+    // arrival: the next request from the bar moves `_pane` (see
+    // `didUpdateWidget`) and the sentence goes with it.
+    final pointer =
+        !panes.contains(_pane) &&
+            hiddenBecausePlatformAuthors(
+              _pane,
+              authorsItsOwnCatalogue: authors,
+            )
+        ? platformAuthoredPointer(context.strings, _pane)
+        : null;
 
     // Backups are the back office's business, said here rather than on the
     // screen a cashier opens the till from: only somebody who can open the
@@ -510,6 +652,16 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
               _BackupNotice(
                 text: backupNotice,
                 onOpen: () => setState(() => _pane = ManagementPane.backup),
+              ),
+            // The platform-owned notice every other cloud pane uses, full
+            // width because it describes the screen rather than a section.
+            if (pointer != null)
+              SizedBox(
+                width: double.infinity,
+                child: PlatformOwnedNotice(
+                  key: const Key('management-platform-pointer'),
+                  text: pointer,
+                ),
               ),
             Expanded(
               child: switch (showing) {

@@ -56,10 +56,14 @@ void main() {
   final desktop = TargetPlatformVariant.only(TargetPlatform.macOS);
 
   /// Signed in as [staff], because the bar is absent until somebody is.
+  ///
+  /// [offline] where a test is about Buying's own entries: the harness is a
+  /// cloud till, where the platform authors purchasing (CB-09).
   Future<ProviderContainer> pumpApp(
     WidgetTester tester, {
     PosStaff? staff = _owner,
     bool setUp = true,
+    bool offline = false,
   }) async {
     tester.view
       ..physicalSize = const Size(1440, 900)
@@ -69,6 +73,7 @@ void main() {
     final container = ProviderContainer(
       overrides: [
         ...fakeRepositoryOverrides(),
+        if (offline) offlineTerminal(),
       ],
     );
     addTearDown(container.dispose);
@@ -225,7 +230,9 @@ void main() {
   testWidgets('each area of the back office is its own word in the bar', (
     tester,
   ) async {
-    await pumpApp(tester);
+    // Offline, because Buying's own entries are what this reads. The cloud
+    // bar's Buying is a single pointer — asserted below.
+    await pumpApp(tester, offline: true);
 
     // "Where do I enter this invoice" is answered by Buying, in the bar,
     // rather than by the fifth line of a scrolling list.
@@ -253,6 +260,36 @@ void main() {
     await tester.tap(find.text('Money'));
     await tester.pumpAndSettle();
     expect(find.text('Tax'), findsOneWidget);
+  }, variant: desktop);
+
+  testWidgets('on a cloud till Buying is one line, saying where it went', (
+    tester,
+  ) async {
+    // CB-09: the platform authors purchasing and stock on cloud. The word
+    // stays where a manager learned to look for it; what is under it is the
+    // answer, not four lists of rows the platform would never see.
+    //
+    // Signed in as `_owner`: every capability, `purchase.manage` included — a
+    // local Owner role grants it even though no cloud bundle ever does.
+    await pumpApp(tester);
+
+    expect(find.text('Buying'), findsOneWidget);
+    expect(find.text('Inventory'), findsNothing);
+
+    await tester.tap(find.text('Buying'));
+    await tester.pumpAndSettle();
+    expect(find.text('Purchasing & stock — on xorder.io…'), findsOneWidget);
+    for (final entry in [
+      'Purchase orders',
+      'New order',
+      'Invoices',
+      'Enter an invoice',
+      'Payments',
+      'Suppliers',
+      'New supplier',
+    ]) {
+      expect(find.text(entry), findsNothing, reason: entry);
+    }
   }, variant: desktop);
 
   testWidgets('handing the till over is named for what it is', (tester) async {

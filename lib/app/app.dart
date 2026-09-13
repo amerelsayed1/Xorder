@@ -276,7 +276,7 @@ class XorderPosApp extends ConsumerWidget {
                     // do I enter this invoice" — and the answer to that is
                     // Purchasing, which is now a word in the bar rather than the
                     // fifth line of a scrolling list.
-                    for (final (label, panes) in _managementMenus(ref, strings))
+                    for (final (label, entries) in _managementMenus(ref, strings))
                       BarButton(
                         text: Text(label),
                         submenu: SubMenu(
@@ -285,29 +285,29 @@ class XorderPosApp extends ConsumerWidget {
                             // things, each of them and the "new" that starts
                             // one. Under المشتريات that is orders, invoices,
                             // payments and suppliers, not one word that opens a
-                            // screen and makes you find them again.
-                            for (final pane in panes)
-                              for (final (i, (label, destination, groups))
-                                  in managementMenuEntries(strings, pane)
-                                      .indexed) ...[
-                                if (groups && i > 0) const MenuDivider(),
-                                MenuButton(
-                                  text: Text(label),
-                                  // Printed, not bound: the global binding is
-                                  // what fires, and it lands on Staff — so the
-                                  // key is named on the item it opens.
-                                  shortcutText:
-                                      pane == ManagementPane.staff && i == 0
-                                      ? 'F8'
-                                      : null,
-                                  onTap: () => ref
-                                      .read(routerProvider)
-                                      .go(
-                                        PosRoutes.management,
-                                        extra: destination(),
-                                      ),
-                                ),
-                              ],
+                            // screen and makes you find them again. On a cloud
+                            // till it is one line saying where they went —
+                            // `managementBarFor` decides which.
+                            for (final entry in entries) ...[
+                              if (entry.divider) const MenuDivider(),
+                              MenuButton(
+                                text: Text(entry.label),
+                                // Printed, not bound: the global binding is
+                                // what fires, and it lands on Staff — so the
+                                // key is named on the item it opens.
+                                shortcutText:
+                                    entry.pane == ManagementPane.staff &&
+                                        entry.first
+                                    ? 'F8'
+                                    : null,
+                                onTap: () => ref
+                                    .read(routerProvider)
+                                    .go(
+                                      PosRoutes.management,
+                                      extra: entry.open(),
+                                    ),
+                              ),
+                            ],
                           ],
                         ),
                       ),
@@ -438,12 +438,13 @@ class XorderPosApp extends ConsumerWidget {
   static bool _beforeTheTill(String path) =>
       path == PosRoutes.start || path == PosRoutes.lock;
 
-  /// The bar's back-office buttons: one per area, each with its own panes.
+  /// The bar's back-office buttons: one per area, each with its own lines.
   ///
-  /// Asks `managementAreasFor` rather than listing panes, for the reason that
-  /// function exists: a menu offering Purchasing to somebody the rail hides it
-  /// from would take them to a screen that refuses everything.
-  List<(String, List<ManagementPane>)> _managementMenus(
+  /// Asks `managementBarFor` rather than listing panes, for the reason
+  /// `managementAreasFor` exists beneath it: a menu offering Purchasing to
+  /// somebody the rail hides it from would take them to a screen that refuses
+  /// everything.
+  List<(String, List<ManagementBarEntry>)> _managementMenus(
     WidgetRef ref,
     AppStrings strings,
   ) {
@@ -454,19 +455,37 @@ class XorderPosApp extends ConsumerWidget {
     // a question this bar can answer, so it offers the one door under the one
     // word: Management, opening on Staff, which opens locked and asks.
     if (admin == null) {
-      return [(strings.management, const [ManagementPane.staff])];
+      return [
+        (
+          strings.management,
+          [
+            for (final (i, (label, open, _)) in managementMenuEntries(
+              strings,
+              ManagementPane.staff,
+            ).indexed)
+              (
+                pane: ManagementPane.staff,
+                first: i == 0,
+                label: label,
+                open: open,
+                divider: false,
+              ),
+          ],
+        ),
+      ];
     }
     if (!admin.can(PosCapability.staffManage)) {
       return const [];
     }
 
     return [
-      for (final (area, panes) in managementAreasFor(
+      for (final (area, entries) in managementBarFor(
+        strings,
         admin: admin,
         authorsItsOwnCatalogue:
             ref.watch(catalogAdminRepositoryProvider) != null,
       ))
-        (managementAreaName(strings, area), panes),
+        (managementAreaName(strings, area), entries),
     ];
   }
 

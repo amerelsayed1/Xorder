@@ -16,7 +16,10 @@ void main() {
       ..devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
 
-    final container = ProviderContainer(overrides: fakeRepositoryOverrides());
+    // Offline: on a cloud till the platform authors stock (CB-09).
+    final container = ProviderContainer(
+      overrides: [...fakeRepositoryOverrides(), offlineTerminal()],
+    );
     addTearDown(container.dispose);
 
     await tester.pumpWidget(
