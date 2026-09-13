@@ -309,7 +309,7 @@ void main() {
       expect(result.refusal, isA<NotPermitted>());
     });
 
-    test('an offer above the normal price is refused with a sentence', () async {
+    test('an offer above the normal price is refused, as a code', () async {
       // Valid SQL — `price_minor >= 0` holds for both — and wrong arithmetic,
       // so the database cannot catch this one.
       final result = await repository.saveProduct(
@@ -317,10 +317,10 @@ void main() {
         by: manager,
       );
 
-      expect(result.refusal, isA<CatalogInvalid>());
+      expect(result.refusal, isA<CatalogRefused>());
       expect(
-        (result.refusal! as CatalogInvalid).reason,
-        contains('higher than'),
+        (result.refusal! as CatalogRefused).problem,
+        CatalogProblem.offerAbovePrice,
       );
     });
 
@@ -344,7 +344,23 @@ void main() {
     test('a nameless item is refused', () async {
       final result =
           await repository.saveProduct(draft(name: '   '), by: manager);
-      expect(result.refusal, isA<CatalogInvalid>());
+      expect(result.refusal, isA<CatalogRefused>());
+      expect(
+        (result.refusal! as CatalogRefused).problem,
+        CatalogProblem.itemNameMissing,
+      );
+    });
+
+    test('a nameless category is refused, as a code', () async {
+      final result = await repository.saveCategory(
+        const Category(id: 0, nameEn: '  '),
+        by: manager,
+      );
+      expect(result.refusal, isA<CatalogRefused>());
+      expect(
+        (result.refusal! as CatalogRefused).problem,
+        CatalogProblem.categoryNameMissing,
+      );
     });
   });
 
