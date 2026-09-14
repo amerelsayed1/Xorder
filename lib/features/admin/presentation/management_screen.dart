@@ -1671,6 +1671,9 @@ class _Header extends StatelessWidget {
         Expanded(
           child: Text(
             title,
+            // The page's bare name, so the same word also sits in the
+            // sub-nav and the bar: tests find the header by this.
+            key: const Key('back-office-title'),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: PosText.screenTitle(color: context.pos.ink),

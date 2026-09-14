@@ -355,9 +355,10 @@ void main() {
       );
       const s = EnStrings();
       expect(find.text(s.close), findsNothing);
-      // "Orders" once, and that once is the sub-nav's word for the item —
-      // Sales has four since `pos/ia-screens` — not a title bar of its own.
-      expect(find.text(s.orderHistoryTitle), findsOneWidget);
+      // "Orders" twice — the header, which names the page alone since 15 Sep
+      // 2026, and the sub-nav's word for the item (Sales has four) — and no
+      // third: the history draws no title bar of its own in here.
+      expect(find.text(s.orderHistoryTitle), findsNWidgets(2));
       expect(
         find.descendant(
           of: find.byKey(const Key('back-office-subnav')),
@@ -369,7 +370,10 @@ void main() {
       // The map's word for the page in the header (14 Sep 2026) — Orders,
       // as the history calls itself — and the history's own title bar not
       // drawn at all.
-      expect(find.text(s.adminTitle(s.orderHistoryTitle)), findsOneWidget);
+      expect(
+        tester.widget<Text>(find.byKey(const Key('back-office-title'))).data,
+        s.adminTitle(s.orderHistoryTitle),
+      );
 
       await tester.tap(find.byType(TextField));
       await tester.pump();
@@ -475,7 +479,10 @@ void main() {
       expect(tester.takeException(), isNull);
 
       const s = ArStrings();
-      expect(find.text(s.adminTitle(s.orderHistoryTitle)), findsOneWidget);
+      expect(
+        tester.widget<Text>(find.byKey(const Key('back-office-title'))).data,
+        s.adminTitle(s.orderHistoryTitle),
+      );
       expect(find.byKey(OrderHistoryScreen.sidewaysKey), findsOneWidget);
       // The first rows in view, from the start edge — the right.
       final invoice = tester.getRect(find.text('NOUR-1'));

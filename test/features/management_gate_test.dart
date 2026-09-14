@@ -134,10 +134,10 @@ void main() {
 
     await enter(tester, 'amer'); // Amer, the owner.
 
-    // The header names the product, the mode and the page.
+    // The header names the page, and only the page.
     expect(
-      find.text('XOrder POS › Admin › ${const EnStrings().paneStaff}'),
-      findsOneWidget,
+      tester.widget<Text>(find.byKey(const Key('back-office-title'))).data,
+      const EnStrings().paneStaff,
     );
     expect(find.text('Amer M.'), findsWidgets);
     expect(find.text('Rana A.'), findsOneWidget);
@@ -245,8 +245,8 @@ void main() {
     expect(upgrades, 1);
     expect(find.byKey(const Key('management-schema-notice')), findsNothing);
     expect(
-      find.text('XOrder POS › Admin › ${const EnStrings().paneStaff}'),
-      findsOneWidget,
+      tester.widget<Text>(find.byKey(const Key('back-office-title'))).data,
+      const EnStrings().paneStaff,
     );
   });
 
@@ -262,8 +262,8 @@ void main() {
 
     // Backup is in here, so a failed upgrade must not keep anybody out.
     expect(
-      find.text('XOrder POS › Admin › ${const EnStrings().paneStaff}'),
-      findsOneWidget,
+      tester.widget<Text>(find.byKey(const Key('back-office-title'))).data,
+      const EnStrings().paneStaff,
     );
     expect(find.byKey(const Key('management-schema-notice')), findsOneWidget);
     expect(find.textContaining('pos_units'), findsOneWidget);
@@ -377,8 +377,8 @@ void main() {
     await enter(tester, 'amer');
 
     expect(
-      find.text('XOrder POS › Admin › ${const EnStrings().paneTaxes}'),
-      findsOneWidget,
+      tester.widget<Text>(find.byKey(const Key('back-office-title'))).data,
+      const EnStrings().paneTaxes,
     );
     expect(find.byType(ManagementRolesPane), findsNothing);
     expect(find.byKey(const Key('back-office-settings-nav')), findsOneWidget);

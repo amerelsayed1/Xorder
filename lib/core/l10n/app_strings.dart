@@ -1518,8 +1518,11 @@ sealed class AppStrings {
   //
   // The back office as a session: a hidden shortcut, a username and PIN, and
   // a lock when nobody has touched it for a while.
-  /// The header inside Admin Mode: the product, the mode, the page — so nobody
-  /// has to guess whether they are selling or administering.
+  /// The header inside Admin Mode: the page's own name, and nothing else.
+  ///
+  /// It was "XOrder POS › Admin › page" — the owner disliked it (15 Sep 2026):
+  /// the product is on the window, the tab strip and the Exit button already
+  /// say where you are, and "المسؤول" was a third word for the back office.
   String adminTitle(String pane);
   String get exitAdminMode;
   String get adminSignInTitle;
@@ -6117,7 +6120,7 @@ final class EnStrings extends AppStrings {
   @override
   String get actAdminRefused => 'Was refused Admin Mode';
   @override
-  String adminTitle(String pane) => 'XOrder POS › Admin › $pane';
+  String adminTitle(String pane) => pane;
   @override
   String get exitAdminMode => 'Exit Admin Mode';
   @override
@@ -10434,7 +10437,7 @@ final class ArStrings extends AppStrings {
   @override
   String get actAdminRefused => 'رُفض دخوله وضع المسؤول';
   @override
-  String adminTitle(String pane) => 'XOrder POS › المسؤول › $pane';
+  String adminTitle(String pane) => pane;
   @override
   String get exitAdminMode => 'الخروج من وضع المسؤول';
   @override

@@ -202,10 +202,8 @@ void main() {
         backOfficeTabsFor(admin: _owner, authorsItsOwnCatalogue: false),
       );
       expect(
-        find.text(
-          _strings.adminTitle(managementPaneLabel(_strings, landing).$1),
-        ),
-        findsOneWidget,
+        tester.widget<Text>(find.byKey(const Key('back-office-title'))).data,
+        _strings.adminTitle(managementPaneLabel(_strings, landing).$1),
       );
       expect(find.byKey(const Key('admin-exit')), findsOneWidget);
       expect(inside, findsOneWidget);
