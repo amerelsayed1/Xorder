@@ -170,7 +170,9 @@ class _ReprintDialogState extends ConsumerState<ReprintDialog> {
   }
 
   Future<void> _print() async {
-    final by = ref.read(signedInStaffProvider);
+    // The person acting — see `actingStaffProvider`. A copy printed from the
+    // back office is the administrator's, whoever is signed in at the till.
+    final by = ref.read(actingStaffProvider);
     if (by == null) return;
     setState(() => _busy = true);
 

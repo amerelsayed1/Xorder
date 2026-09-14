@@ -309,12 +309,15 @@ void main() {
       (tester) async {
     // Staff was the default while the back office was a list with Staff at
     // the top. With tabs it sits in the last one, so the door lands where the
-    // strip starts — on Home, once BO-4 builds it. On this cloud till that is
-    // System: Menu is the platform's, and Inventory and Purchasing only point
-    // there.
+    // strip starts — on Home, once BO-4 builds it. Until then that is Sales
+    // (BO-2): the first tab that holds a pane, on every till and for
+    // everybody past the door.
     await open(tester, pane: null);
     await enter(tester, 'amer');
-    expect(find.byType(ManagementActivityPane), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('back-office-pane-sales')),
+      findsOneWidget,
+    );
     expect(find.text('Add somebody'), findsNothing);
   });
 
@@ -722,10 +725,10 @@ void main() {
     await enter(tester, 'nour', pin: '2468');
 
     expect(find.text('New order'), findsNothing);
-    // Back to the door's landing — on an offline till, Menu — rather than to
+    // Back to the door's landing — Sales, since BO-2 — rather than to
     // anything the link named.
     expect(
-      find.byKey(const ValueKey('back-office-pane-menu')),
+      find.byKey(const ValueKey('back-office-pane-sales')),
       findsOneWidget,
       reason: 'falls back',
     );

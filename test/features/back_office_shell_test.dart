@@ -86,9 +86,9 @@ const _fixtures = <String, PosStaff>{
 };
 
 /// The tabs whose content is a later slice. None of them holds a pane yet.
+/// Sales left this list with BO-2.
 const _later = [
   BackOfficeTab.home,
-  BackOfficeTab.sales,
   BackOfficeTab.reports,
   BackOfficeTab.finance,
 ];
@@ -269,6 +269,18 @@ void main() {
               reason: '${tab.name} has no pane until its slice lands',
             );
           }
+          // Sales for everybody past the door (BO-2), holding the history
+          // and nothing else — whose sales is the rows' scope, not a gate.
+          expect(
+            [
+              for (final (t, own) in tabs)
+                if (t == BackOfficeTab.sales) own,
+            ],
+            [
+              [ManagementPane.sales],
+            ],
+            reason: '$name, $where',
+          );
 
           // The bar reaches nothing the tabs do not.
           for (final line in managementBarFor(
@@ -331,24 +343,50 @@ void main() {
   });
 
   group('where the door lands', () {
-    testWidgets('offline, the first tab: Menu', (tester) async {
-      await _open(tester, offline: true);
-      expect(_showing(tester), {ManagementPane.menu});
+    // Sales, since BO-2: the second tab and the first to hold a pane, with no
+    // gate beyond the door — so one place for everybody on both deployments,
+    // until Home (BO-4) takes it. Before, it was Menu offline and System on
+    // cloud, whichever tab happened to come first.
+    test('the rule, for every fixture on both deployments', () {
+      for (final MapEntry(key: name, value: admin) in _fixtures.entries) {
+        for (final authors in [true, false]) {
+          expect(
+            backOfficeLanding(
+              backOfficeTabsFor(
+                admin: admin,
+                authorsItsOwnCatalogue: authors,
+              ),
+            ),
+            ManagementPane.sales,
+            reason: '$name, ${authors ? 'offline' : 'cloud'}',
+          );
+        }
+      }
     });
 
-    testWidgets('on cloud, the first tab that holds a pane — not a pointer', (
-      tester,
-    ) async {
-      // Inventory is first on a cloud till and holds only a sentence;
-      // greeting the owner with "this is not here" on every entry would make
-      // the sentence a welcome.
-      await _open(tester);
-      expect(_showing(tester), {ManagementPane.activity});
-      expect(
-        find.byKey(const Key('management-platform-pointer')),
-        findsNothing,
-      );
-    });
+    for (final (name, username, pin) in [
+      ('the owner', 'amer', '4321'),
+      ('a supervisor who does not buy', 'nour', '2468'),
+    ]) {
+      for (final offline in [true, false]) {
+        final where = offline ? 'offline' : 'cloud';
+        testWidgets('$name, $where: Sales, and never a pointer', (
+          tester,
+        ) async {
+          await _open(
+            tester,
+            offline: offline,
+            username: username,
+            pin: pin,
+          );
+          expect(_showing(tester), {ManagementPane.sales});
+          expect(
+            find.byKey(const Key('management-platform-pointer')),
+            findsNothing,
+          );
+        });
+      }
+    }
   });
 
   testWidgets('on a cloud till Menu is absent, and Inventory and Purchasing '
@@ -442,7 +480,7 @@ void main() {
       testWidgets('all nine tabs fit without scrolling, in $language', (
         tester,
       ) async {
-        // All nine, though only five hold a pane today: the slice that adds
+        // All nine, though only six hold a pane today: the slice that adds
         // the ninth word should not be the one that finds out it does not fit.
         tester.view
           ..physicalSize = const Size(PosSize.wideShellMin, 800)

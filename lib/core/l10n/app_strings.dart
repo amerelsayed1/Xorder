@@ -1175,6 +1175,9 @@ sealed class AppStrings {
   String get backToTill;
   String get paneStaff;
   String get paneStaffBlurb;
+
+  /// The Sales tab's one pane: the order history, re-hosted (BO-2).
+  String get paneSalesBlurb;
   String get paneMenu;
   String get paneMenuBlurb;
   String get panePurchasing;
@@ -1669,6 +1672,13 @@ sealed class AppStrings {
 
   // Sales list and sale details (plan 17 S1).
   String get orderColumnPayment;
+
+  /// The methods a sale was paid in, every one of a split bill (BO-2) —
+  /// beside [orderColumnPayment], which says where the money stands.
+  String get orderColumnMethod;
+
+  /// The till that rang the sale up (BO-2).
+  String get orderColumnTerminal;
   String get orderHistoryEveryMethod;
   String get orderHistoryEveryTerminal;
 
@@ -2171,6 +2181,10 @@ final class EnStrings extends AppStrings {
   String orderDetailApprovedBy(String name) => 'Approved by $name';
   @override
   String get orderColumnPayment => 'Payment';
+  @override
+  String get orderColumnMethod => 'Paid with';
+  @override
+  String get orderColumnTerminal => 'Till';
   @override
   String get orderHistoryEveryMethod => 'Every payment method';
   @override
@@ -4865,6 +4879,9 @@ final class EnStrings extends AppStrings {
   @override
   String get paneStaffBlurb => 'Who works here, and what they may do';
   @override
+  String get paneSalesBlurb =>
+      'Every sale this branch has rung up, with its receipt and refunds';
+  @override
   String get paneMenu => 'Menu';
   @override
   String get paneMenuBlurb => 'Categories, items and what they cost';
@@ -5808,6 +5825,10 @@ final class ArStrings extends AppStrings {
   String orderDetailApprovedBy(String name) => 'اعتمده $name';
   @override
   String get orderColumnPayment => 'الدفع';
+  @override
+  String get orderColumnMethod => 'طريقة الدفع';
+  @override
+  String get orderColumnTerminal => 'نقطة البيع';
   @override
   String get orderHistoryEveryMethod => 'كل طرق الدفع';
   @override
@@ -8434,6 +8455,8 @@ final class ArStrings extends AppStrings {
   String get paneStaff => 'الموظفون';
   @override
   String get paneStaffBlurb => 'من يعمل هنا، وما المسموح له به';
+  @override
+  String get paneSalesBlurb => 'كل بيع سجّله هذا الفرع، بإيصاله ومرتجعاته';
   @override
   String get paneMenu => 'المنيو';
   @override

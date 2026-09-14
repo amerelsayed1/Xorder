@@ -67,6 +67,8 @@ import '../data/postgres/postgres_print_queue_repository.dart';
 import '../data/postgres/postgres_shift_repository.dart';
 import '../data/postgres/postgres_site_licence.dart';
 import '../data/unconfigured/unconfigured_repositories.dart';
+import '../features/admin/application/admin_session.dart'
+    show adminSessionProvider;
 import '../features/history/history_scope.dart';
 import '../features/licensing/data/file_license_store.dart';
 import '../features/licensing/data/licence_service.dart';
@@ -314,16 +316,26 @@ final orderHistoryRepositoryProvider = Provider<OrderHistoryRepository>((ref) {
 /// One slice of history. Keyed by the query, so changing a filter is a new
 /// read rather than a mutation of a list somebody is looking at.
 ///
-/// **Narrowed to what the person at the till may read** before it reaches the
+/// **Narrowed to what the person acting may read** before it reaches the
 /// repository — their own sales, without `order.view_all`. Here rather than
 /// in the screen because this is the one road to the data: a second screen
 /// built on this provider inherits the rule instead of having to remember it.
-/// See [HistoryScope].
-final orderHistoryProvider =
-    FutureProvider.family<List<OrderRecord>, OrderHistoryQuery>((ref, query) {
+/// `/orders` and the back office's Sales tab are two such screens, and they
+/// show the same rows for the same person because they read them here.
+/// See [HistoryScope] and [actingStaffProvider].
+///
+/// **Dropped when nobody is looking** (`autoDispose`, since BO-2). Every
+/// filter combination is its own entry, and each used to stay cached for the
+/// life of the app. And these now hang off the Admin Mode session through
+/// [actingStaffProvider]; that session ends just after the back office's
+/// widgets have gone, and a list still held then would be re-read for nobody
+/// — on a bare event-loop timer, because the widget tree that paced it is
+/// gone too.
+final orderHistoryProvider = FutureProvider.autoDispose
+    .family<List<OrderRecord>, OrderHistoryQuery>((ref, query) {
       final scoped = HistoryScope.scope(
         query,
-        ref.watch(signedInStaffProvider),
+        ref.watch(actingStaffProvider),
       );
       if (scoped == null) return const <OrderRecord>[];
       return ref.watch(orderHistoryRepositoryProvider).search(scoped);
@@ -331,11 +343,11 @@ final orderHistoryProvider =
 
 /// One order, opened from the list — or null when it is not the viewer's to
 /// open, which the pane already shows as "no longer there".
-final orderDetailProvider = FutureProvider.family<OrderRecordDetail?, int>((
-  ref,
-  orderId,
-) async {
-  final viewer = ref.watch(signedInStaffProvider);
+///
+/// `autoDispose` for the same reason as [orderHistoryProvider].
+final orderDetailProvider = FutureProvider.autoDispose
+    .family<OrderRecordDetail?, int>((ref, orderId) async {
+  final viewer = ref.watch(actingStaffProvider);
   final repository = ref.watch(orderHistoryRepositoryProvider);
   final detail = await repository.detail(orderId);
   if (detail == null || !HistoryScope.mayOpen(detail.order, viewer)) {
@@ -1434,6 +1446,38 @@ class SignedInStaffController extends Notifier<PosStaff?> {
   /// else's responsibility until they say otherwise.
   void signOut() => state = null;
 }
+
+/// Who is acting on this terminal right now: whoever came through Admin
+/// Mode's door while its session lasts, and the person signed in at the till
+/// the rest of the time.
+///
+/// **Two people can be signed in at once** — Admin Mode is separate from the
+/// till on purpose (`AdminSession`). That did not matter while nothing the
+/// till's operator does was reachable from inside the back office. With the
+/// order history there as the Sales tab (BO-2) it does: the owner's refund
+/// would be booked to the cashier still signed in at the till, and on a
+/// locked till — nobody signed in — the owner would see no sales and no
+/// Refund at all.
+///
+/// Never the two at once in practice: Admin Mode is a whole screen and its
+/// session ends when that screen goes (`ManagementScreen.dispose`), so no till
+/// flow runs while this answers with the administrator.
+///
+/// Rejected: overriding [signedInStaffProvider] in a nested `ProviderScope`
+/// around the Sales tab. Every provider derived from it would need
+/// `dependencies`, and the refund and reprint dialogs are built on the root
+/// navigator's overlay, outside that scope — each would have to carry the
+/// container by hand, and the one somebody forgot would quietly act as the
+/// till's cashier.
+///
+/// `autoDispose`, so it goes with the history lists that hold it: kept alive
+/// with nobody listening, the session ending after the back office's widgets
+/// had gone would still re-run it, for nothing.
+final actingStaffProvider = Provider.autoDispose<PosStaff?>(
+  (ref) =>
+      ref.watch(adminSessionProvider)?.staff ??
+      ref.watch(signedInStaffProvider),
+);
 
 /// The shift this terminal currently has open, if any.
 ///

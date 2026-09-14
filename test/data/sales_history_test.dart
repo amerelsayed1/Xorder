@@ -399,6 +399,111 @@ void main() {
     });
   });
 
+  group('the payment column (BO-2)', () {
+    // Aggregated by the search itself, one entry per method in the order it
+    // was first taken — so these ask `search`, not `detail`.
+    Future<List<(int, String)>> methodsOf(
+      String invoice, [
+      OrderHistoryQuery query = const OrderHistoryQuery(),
+    ]) async => [
+      for (final tender
+          in (await repository.search(query))
+              .singleWhere((o) => o.invoiceNumber == invoice)
+              .tenders)
+        (tender.tenderTypeId, tender.label),
+    ];
+
+    test('a split bill lists every method, in the order it was taken', () async {
+      final id = await insertOrder(
+        invoice: 'SPLIT',
+        occurredAt: DateTime(2026, 9, 10, 11),
+      );
+      await pay(id, 2, 6800);
+      await pay(id, 1, 20000);
+
+      expect(await methodsOf('SPLIT'), [(2, 'Card'), (1, 'Cash')]);
+    });
+
+    test('the same method taken twice is named once', () async {
+      final id = await insertOrder(
+        invoice: 'TWICE',
+        occurredAt: DateTime(2026, 9, 10, 11),
+      );
+      await pay(id, 1, 10000);
+      await pay(id, 2, 6800);
+      await pay(id, 1, 10000);
+
+      expect(await methodsOf('TWICE'), [(1, 'Cash'), (2, 'Card')]);
+    });
+
+    test('a method renamed between payments keeps each name it was taken '
+        'under', () async {
+      // Grouped on the label as well as the id: the receipt says what the
+      // payment row says, and the list must not say something else.
+      final id = await insertOrder(
+        invoice: 'RENAMED',
+        occurredAt: DateTime(2026, 9, 10, 11),
+      );
+      await pay(id, 2, 10000);
+      await db.query(
+        pg.config,
+        'INSERT INTO pos_order_payments (order_id, tender_type_id, label, '
+        "  amount_minor) VALUES (@o, 2, 'Visa', 16800)",
+        parameters: {'o': id},
+      );
+
+      expect(await methodsOf('RENAMED'), [(2, 'Card'), (2, 'Visa')]);
+    });
+
+    test('a sale that took no money names none, and still lists', () async {
+      await insertOrder(
+        invoice: 'VOIDED',
+        occurredAt: DateTime(2026, 9, 10, 11),
+        status: 'VOIDED',
+        voidedBy: samiId,
+      );
+
+      expect(await methodsOf('VOIDED'), isEmpty);
+    });
+
+    test('filtering by one method still names all of a split bill\'s', () async {
+      // The filter chooses rows; the column describes the row. A split bill
+      // found by "Card" that then said only "Card" would hide the cash half.
+      final id = await insertOrder(
+        invoice: 'SPLIT',
+        occurredAt: DateTime(2026, 9, 10, 11),
+      );
+      await pay(id, 1, 20000);
+      await pay(id, 2, 6800);
+
+      expect(
+        await methodsOf('SPLIT', const OrderHistoryQuery(tenderTypeId: 2)),
+        [(1, 'Cash'), (2, 'Card')],
+      );
+    });
+
+    test('the invoice lookup and the detail carry the same list', () async {
+      final id = await insertOrder(
+        invoice: 'SPLIT',
+        occurredAt: DateTime(2026, 9, 10, 11),
+      );
+      await pay(id, 1, 20000);
+      await pay(id, 2, 6800);
+
+      List<(int, String)> pairs(OrderRecord order) => [
+        for (final t in order.tenders) (t.tenderTypeId, t.label),
+      ];
+      expect(pairs((await repository.byInvoiceNumber('SPLIT'))!), [
+        (1, 'Cash'),
+        (2, 'Card'),
+      ]);
+      expect(pairs((await repository.detail(id))!.order), [
+        (1, 'Cash'),
+        (2, 'Card'),
+      ]);
+    });
+  });
+
   group('filters', () {
     late int cashAtCounter;
     late int splitAtCounter;
