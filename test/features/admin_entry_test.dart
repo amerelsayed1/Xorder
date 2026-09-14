@@ -196,8 +196,8 @@ void main() {
       await chord(tester, LogicalKeyboardKey.keyS);
       await signIn(tester, 'amer', '4321');
 
-      // The first tab that holds a pane — on this cloud till, System — and
-      // the header names the page it landed on.
+      // The first tab that holds a pane — Sales, since BO-2 — and the header
+      // names the page it landed on.
       final landing = backOfficeLanding(
         backOfficeTabsFor(admin: _owner, authorsItsOwnCatalogue: false),
       );

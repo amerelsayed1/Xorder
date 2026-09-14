@@ -53,8 +53,12 @@ Future<PermissionDecision> requestPermission(
   List<ReasonCode> reasons = const [],
   ReasonRequirement reasonRequirement = ReasonRequirement.disabled,
 }) async {
+  // The person ACTING, not only the till's: the back office's Sales tab
+  // reprints and refunds through here, and there the one asking is whoever
+  // came through Admin Mode's door. Everywhere else the two are the same
+  // person — see `actingStaffProvider`.
   final decision = Authorization.check(
-    ref.read(signedInStaffProvider),
+    ref.read(actingStaffProvider),
     capability,
   );
   if (decision is Allowed) return decision;
@@ -124,7 +128,7 @@ Future<void> recordApproval(
     .record(
       // The person who asked, not the person who approved. Both are on the
       // row; which is which is the entire point of recording it.
-      by: ref.read(signedInStaffProvider) ?? approver,
+      by: ref.read(actingStaffProvider) ?? approver,
       approvedBy: approver,
       action: AuditAction.permissionOverridden,
       entityType: entityType ?? AuditAction.entityOrder,
@@ -646,7 +650,7 @@ class _SupervisorOverrideDialogState
   /// Both names, on screen, before anybody walks away.
   Widget _approvedStrip(AppStrings strings, PosPalette palette) {
     final requester =
-        widget.requestedBy ?? ref.read(signedInStaffProvider)?.name ?? '—';
+        widget.requestedBy ?? ref.read(actingStaffProvider)?.name ?? '—';
 
     return Container(
       padding: const EdgeInsets.all(PosSpace.s14),

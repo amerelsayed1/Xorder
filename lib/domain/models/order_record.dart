@@ -174,6 +174,24 @@ class OrderRecordDiscount {
   final DateTime? appliedAt;
 }
 
+/// A method a sale was paid in, as its row in the list names it.
+///
+/// Not an [OrderRecordPayment]: that is one row of money with its amount,
+/// read when a sale is opened. This is once per method however many payments
+/// were taken in it, and carries no amount — a column that summed them would
+/// be a second, smaller copy of the detail pane, and the first to disagree
+/// with it.
+class OrderRecordTender {
+  const OrderRecordTender({required this.tenderTypeId, required this.label});
+
+  /// Kept beside the label so the name is translated the way every other
+  /// tender name is — by `tenderName`, which honours a renamed method.
+  final int tenderTypeId;
+
+  /// The label written on the payment when it was taken.
+  final String label;
+}
+
 /// One row in the history list.
 ///
 /// Everything a person scanning for an order needs, and nothing more. The lines
@@ -208,6 +226,7 @@ class OrderRecord {
     this.businessDate,
     this.terminalId,
     this.terminalName,
+    this.tenders = const [],
   });
 
   /// The day `served_by` became trustworthy.
@@ -280,6 +299,10 @@ class OrderRecord {
   /// for a terminal whose row is gone; the sale still appears.
   final String? terminalId;
   final String? terminalName;
+
+  /// Every method this sale was paid in, once each, in the order first taken
+  /// — a split bill lists both. Empty for a sale that took no money.
+  final List<OrderRecordTender> tenders;
 
   /// What is still with the restaurant.
   Money get netTotal => Money(

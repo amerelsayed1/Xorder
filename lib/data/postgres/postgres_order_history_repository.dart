@@ -79,7 +79,8 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
         o.table_label, o.guest_count, o.voided_at, o.void_note,
         served.name, voider.name, reason.name_en, reason.name_ar,
         o.served_by, taken.minor, given_back.minor, $paymentStatusSql,
-        trading.business_date, o.terminal_id::text, term.name''';
+        trading.business_date, o.terminal_id::text, term.name,
+        tenders.labels, tenders.type_ids''';
 
   /// The joins [_orderColumns] needs.
   ///
@@ -92,6 +93,15 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
   /// and refunds to the order in one go multiplies each by the other — a sale
   /// paid in two tenders with one refund would count the refund twice. One
   /// aggregate per table per order cannot.
+  ///
+  /// **The methods a sale was paid in are one lateral too** (BO-2's payment
+  /// column): one entry per method, in the order it was first taken, so a
+  /// split bill lists both and a card taken twice is one card. Grouped on the
+  /// label as well as the id, because a method renamed since keeps the name it
+  /// was taken under — a sale paid "Card" before it became "Visa" still says
+  /// Card, as its receipt does. Aggregated here rather than read from the
+  /// payments per row afterwards: two hundred rows would be two hundred more
+  /// round trips to draw one column.
   static final _orderJoins =
       '''
         LEFT JOIN pos_staff       AS served ON served.id = o.served_by
@@ -106,6 +116,16 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
           SELECT coalesce(sum(r.total_minor), 0)::bigint AS minor
             FROM pos_refunds AS r WHERE r.order_id = o.id
         ) AS given_back ON true
+        LEFT JOIN LATERAL (
+          SELECT coalesce(array_agg(used.label ORDER BY used.first_id),
+                          '{}') AS labels,
+                 coalesce(array_agg(used.tender_type_id ORDER BY used.first_id),
+                          '{}') AS type_ids
+            FROM (SELECT p.label, p.tender_type_id, min(p.id) AS first_id
+                    FROM pos_order_payments AS p
+                   WHERE p.order_id = o.id
+                   GROUP BY p.label, p.tender_type_id) AS used
+        ) AS tenders ON true
         ${tradingDayJoin('o')}''';
 
   /// The trading day the row [alias] belongs to, as `trading.business_date`.
@@ -188,6 +208,17 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
           : DateTime(businessDate.year, businessDate.month, businessDate.day),
       terminalId: row[26] as String?,
       terminalName: row[27] as String?,
+      // Two arrays in step rather than a jsonb of pairs: both columns are NOT
+      // NULL and aggregated under one ORDER BY, so position i of each is the
+      // same tender — and arrays arrive typed, where jsonb arrives as maps to
+      // be re-typed by hand.
+      tenders: [
+        for (final (i, label) in (row[28]! as List).indexed)
+          OrderRecordTender(
+            tenderTypeId: (row[29]! as List)[i] as int,
+            label: label as String,
+          ),
+      ],
     );
   }
 

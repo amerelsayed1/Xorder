@@ -556,15 +556,20 @@ class _Detail extends ConsumerWidget {
     List<Refund> refunds,
   ) {
     final pos = context.pos;
+    // Asked of the person ACTING, not `canProvider`'s till operator: inside
+    // the back office's Sales tab that is whoever came through Admin Mode's
+    // door, and the till behind it may be locked with nobody signed in. The
+    // same permissions as before — only the person they are asked of moved.
+    final by = ref.watch(actingStaffProvider);
     final mayRefund =
-        ref.watch(canProvider(PosCapability.orderRefund)) is! Denied;
+        Authorization.check(by, PosCapability.orderRefund) is! Denied;
     final anythingLeft =
         detail.order.status.tookMoney &&
         detail.order.total.minor >
             refunds.fold<int>(0, (sum, r) => sum + r.total.minor);
 
     final mayReprint =
-        ref.watch(canProvider(PosCapability.receiptReprint)) is! Denied;
+        Authorization.check(by, PosCapability.receiptReprint) is! Denied;
 
     return Container(
       padding: const EdgeInsets.all(PosSpace.md),

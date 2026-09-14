@@ -13,6 +13,7 @@ import '../../../domain/models/permissions.dart';
 import '../../../domain/models/shift.dart';
 import '../../../domain/services/authorization.dart';
 import '../../../domain/services/eta_filing.dart' show etaFilingEnabled;
+import '../../history/presentation/order_history_screen.dart';
 import '../application/admin_session.dart';
 import 'admin_activity_watch.dart';
 import 'admin_pane_bits.dart';
@@ -202,10 +203,10 @@ bool hiddenBecausePlatformAuthors(
 /// The back office, in tabs — the mockup's nine (plan 19 §1.1), with People
 /// under Settings as it is on the cloud.
 ///
-/// **Sales, Reports and Finance hold no pane yet**, so no fixture ever sees
-/// them: a tab with no visible pane is absent, and these three have none until
-/// their slices land (Sales BO-2, Reports BO-6, Finance BO-9). Home has had
-/// its pane since BO-4, and holds it for everybody past the door.
+/// **Reports and Finance hold no pane yet**, so no fixture ever sees them: a
+/// tab with no visible pane is absent, and these two have none until their
+/// slices land (Reports BO-6, Finance BO-9). Home has had its pane since BO-4
+/// and Sales the order history since BO-2, both for everybody past the door.
 /// They are members now rather than added then so that the order is decided
 /// once, here, and so that [backOfficeTabName] and the strip's width test
 /// already carry all nine — a tenth word arriving with a slice is how a strip
@@ -250,6 +251,7 @@ enum BackOfficeTab {
 /// compile rather than quietly vanishing from the strip.
 BackOfficeTab tabOf(ManagementPane pane) => switch (pane) {
   ManagementPane.home => BackOfficeTab.home,
+  ManagementPane.sales => BackOfficeTab.sales,
   ManagementPane.menu ||
   ManagementPane.extras ||
   ManagementPane.floor => BackOfficeTab.menu,
@@ -334,6 +336,7 @@ String settingsSectionName(AppStrings s, SettingsSection section) =>
   ManagementPane.orderTypes => (SettingsSection.pointOfSale, 3),
   ManagementPane.appearance => (SettingsSection.thisTerminal, 0),
   ManagementPane.home ||
+  ManagementPane.sales ||
   ManagementPane.menu ||
   ManagementPane.extras ||
   ManagementPane.floor ||
@@ -399,8 +402,8 @@ List<(BackOfficeTab, List<ManagementPane>)> backOfficeTabsFor({
 /// the owner on every entry with "this is not here" would make the sentence a
 /// welcome rather than an answer.
 ///
-/// Never empty: Home (and Staff) have no gate beyond the door, so everybody
-/// past it holds at least those panes.
+/// Never empty: Home, Sales and Staff have no gate beyond the door, so
+/// everybody past it holds at least those panes.
 ManagementPane backOfficeLanding(
   List<(BackOfficeTab, List<ManagementPane>)> tabs,
 ) => tabs.expand((tab) => tab.$2).first;
@@ -632,6 +635,9 @@ ManagementDestination _purchasing(PurchasingTab tab, {bool create = false}) =>
     switch (pane) {
       ManagementPane.home => (s.tabHome, s.paneHomeBlurb),
       ManagementPane.staff => (s.settingsUsers, s.paneStaffBlurb),
+      // The tab's word, as Staff takes its Settings name: one pane, one tab,
+      // and the header saying "Sales" under a strip saying "Sales".
+      ManagementPane.sales => (s.tabSales, s.paneSalesBlurb),
       ManagementPane.menu => (s.paneMenu, s.paneMenuBlurb),
       ManagementPane.extras => (s.extrasTitle, s.extrasSubtitle),
       ManagementPane.floor => (s.floorPlan, s.floorPlanHint),
@@ -682,6 +688,11 @@ String? _paneRequires(ManagementPane pane) => switch (pane) {
   ManagementPane.items ||
   ManagementPane.stock ||
   ManagementPane.units => PosCapability.purchaseManage,
+  // Anyone past the door (plan 19 §1.1). Whose sales they see is not a gate
+  // on the pane but a scope on its rows — `HistoryScope`, in the provider,
+  // exactly as `/orders` scopes them — so a cashier-grade administrator gets
+  // the tab and their own sales in it, rather than no tab.
+  ManagementPane.sales => null,
   _ => null,
 };
 
@@ -739,6 +750,9 @@ enum ManagementPane {
   /// other pane keeps the index it had; nothing stores one, but a deep link
   /// or a test naming panes by position is cheaper not to have to find.
   appearance,
+  /// The order history, as the Sales tab (BO-2). Last, so no other pane's
+  /// index moves; the strip orders tabs by [BackOfficeTab], not by this.
+  sales,
 }
 
 class _ManagementScreenState extends ConsumerState<ManagementScreen> {
@@ -1027,6 +1041,11 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
           ? () => _open(ManagementPane.backup)
           : null,
     ),
+    // `/orders`' own widget, not a second screen over the same rows (BO-2).
+    // No way out of its own: the back office's Exit and Esc are the way out.
+    // Whose sales it lists follows [admin] through `actingStaffProvider`, not
+    // the cashier who may still be signed in at the till behind this.
+    ManagementPane.sales => const OrderHistoryScreen(),
     // "Manage roles" opens Settings › Roles, as the cloud's Users page does.
     ManagementPane.staff => ManagementStaffPane(
       admin: admin,

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -16,6 +17,7 @@ import 'package:xorder_pos/domain/models/shift.dart';
 import 'package:xorder_pos/domain/models/tender_method.dart';
 import 'package:xorder_pos/domain/models/ticket.dart';
 import 'package:xorder_pos/domain/repositories/admin_repositories.dart';
+import 'package:xorder_pos/domain/services/authorization.dart';
 import 'package:xorder_pos/domain/services/payment_status.dart';
 import 'package:xorder_pos/features/admin/presentation/admin_messages.dart';
 import 'package:xorder_pos/features/history/presentation/order_detail_pane.dart';
@@ -53,6 +55,8 @@ void main() {
     int refunded = 0,
     DateTime? businessDate,
     String? terminal,
+    String? till,
+    List<OrderRecordTender> tenders = const [],
   }) => OrderRecord(
     id: id,
     clientTransactionId: 'txn-$id',
@@ -76,6 +80,8 @@ void main() {
     refundedTotal: Money(refunded),
     businessDate: businessDate,
     terminalId: terminal,
+    terminalName: till,
+    tenders: tenders,
   );
 
   setUp(() {
@@ -165,6 +171,31 @@ void main() {
       final first = tester.getTopLeft(find.text('HST-000482')).dy;
       final second = tester.getTopLeft(find.text('HST-000481')).dy;
       expect(first, lessThan(second));
+    });
+
+    testWidgets('at the narrowest window the table scrolls sideways rather '
+        'than overflowing', (tester) async {
+      // 1024 is the window's minimum (`main.dart`). Beside the 420 detail
+      // pane that leaves the list 604 wide, and its fixed columns alone need
+      // more — a Row that ran out of room and reported it on every frame.
+      // Found re-hosting this list as the back office's Sales tab (BO-2).
+      tester.view.physicalSize = const Size(1024, 700);
+      await pump(
+        tester,
+        orders: [
+          order(
+            id: 1,
+            invoice: 'HST-000481',
+            occurredAt: at(10),
+            table: 'T12',
+            servedBy: 'Nour Adel',
+            terminal: 't1',
+          ),
+        ],
+      );
+
+      expect(tester.takeException(), isNull);
+      expect(find.text('HST-000481'), findsOneWidget);
     });
 
     testWidgets('says which slice is on screen, and how many', (tester) async {
@@ -320,8 +351,10 @@ void main() {
         orders: [order(id: 1, invoice: 'OLD', occurredAt: at(10))],
       );
       expect(find.text('OLD'), findsOneWidget);
-      // Two em dashes: the staff column and the table column.
-      expect(find.text('—'), findsNWidgets(2));
+      // Four em dashes: the staff and table columns, and since BO-2 the
+      // payment method and till columns — each saying "not recorded" rather
+      // than guessing.
+      expect(find.text('—'), findsNWidgets(4));
     });
 
     testWidgets('says so when the cap was hit', (tester) async {
@@ -979,6 +1012,175 @@ void main() {
         findsOneWidget,
       );
       expect(find.text(AuditAction.permissionOverridden), findsNothing);
+    });
+  });
+
+  group('the payment and till columns (BO-2)', () {
+    const split = [
+      OrderRecordTender(tenderTypeId: 1, label: 'Cash'),
+      OrderRecordTender(tenderTypeId: 2, label: 'Card'),
+    ];
+
+    testWidgets('a split bill names every method it was paid in, and the '
+        'till is named', (tester) async {
+      await pump(
+        tester,
+        orders: [
+          order(
+            id: 1,
+            invoice: 'SPLIT',
+            occurredAt: at(10),
+            till: 'Upstairs',
+            tenders: split,
+          ),
+        ],
+      );
+
+      const s = EnStrings();
+      expect(find.text('${s.tenderCash} + ${s.tenderCard}'), findsOneWidget);
+      expect(find.text('Upstairs'), findsOneWidget);
+    });
+
+    testWidgets('a method the restaurant renamed reads as they named it', (
+      tester,
+    ) async {
+      await pump(
+        tester,
+        orders: [
+          order(
+            id: 1,
+            invoice: 'A',
+            occurredAt: at(10),
+            tenders: const [OrderRecordTender(tenderTypeId: 2, label: 'Visa')],
+          ),
+        ],
+      );
+      expect(find.text('Visa'), findsOneWidget);
+    });
+
+    testWidgets('in Arabic the methods are Arabic and the row reads from the '
+        'right', (tester) async {
+      await pump(
+        tester,
+        locale: 'ar',
+        orders: [
+          order(
+            id: 1,
+            invoice: 'HST-000481',
+            occurredAt: at(10),
+            till: 'Upstairs',
+            tenders: split,
+          ),
+        ],
+      );
+
+      const s = ArStrings();
+      final methods = find.text('${s.tenderCash} + ${s.tenderCard}');
+      expect(methods, findsOneWidget);
+      expect(
+        tester.getCenter(find.text('HST-000481')).dx,
+        greaterThan(tester.getCenter(methods).dx),
+        reason: 'the invoice at the start edge, which in Arabic is the right',
+      );
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('narrower than its columns, it scrolls sideways from its '
+        'start in Arabic too', (tester) async {
+      tester.view.physicalSize = const Size(1024, 700);
+      await pump(
+        tester,
+        locale: 'ar',
+        orders: [
+          order(
+            id: 1,
+            invoice: 'HST-000481',
+            occurredAt: at(10),
+            till: 'Upstairs',
+            tenders: split,
+          ),
+        ],
+      );
+
+      expect(tester.takeException(), isNull);
+      expect(find.byKey(OrderHistoryScreen.sidewaysKey), findsOneWidget);
+      // Opened at its start — the right, in Arabic, where the list is: the
+      // invoice is on screen, not scrolled off past the detail pane.
+      final invoice = tester.getRect(find.text('HST-000481'));
+      expect(invoice.left, greaterThanOrEqualTo(PosSize.historyDetail));
+      expect(invoice.right, lessThanOrEqualTo(1024));
+    });
+  });
+
+  group('/orders for a cashier, as it was before the back office held it', () {
+    final mine = order(
+      id: 1,
+      invoice: 'MINE',
+      occurredAt: at(10),
+      servedBy: 'Nour Adel',
+      servedById: _cashier.id,
+    );
+    final theirs = order(
+      id: 2,
+      invoice: 'THEIRS',
+      occurredAt: at(11),
+      servedBy: 'Hana Mostafa',
+      servedById: _supervisor.id,
+    );
+
+    testWidgets('own sales, its own title, Close and Esc, and the pane asking '
+        'the cashier', (tester) async {
+      // BO-2 moved whose sales these are from the till's operator to the
+      // person ACTING. Nobody is in Admin Mode here, so that is still the
+      // cashier — and everything a cashier met on /orders is where it was.
+      var closed = 0;
+      final repository = await pump(
+        tester,
+        viewer: _cashier,
+        staff: const [_cashier, _supervisor],
+        orders: [mine, theirs],
+        details: {
+          1: OrderRecordDetail(
+            order: mine,
+            lines: const [],
+            payments: const [],
+            discounts: const [],
+          ),
+        },
+        onClose: () => closed++,
+      );
+
+      const s = EnStrings();
+      expect(find.text('MINE'), findsOneWidget);
+      expect(find.text('THEIRS'), findsNothing);
+      expect(
+        repository.queries.map((q) => q.servedByStaffId),
+        everyElement(_cashier.id),
+      );
+      expect(find.byKey(OrderHistoryScreen.ownSalesKey), findsOneWidget);
+      expect(find.text(s.orderHistoryTitle), findsOneWidget);
+
+      await tester.tap(find.text('MINE'));
+      await tester.pumpAndSettle();
+      for (final (capability, label) in [
+        (PosCapability.orderRefund, s.refundAction),
+        (PosCapability.receiptReprint, s.receiptReprintAction),
+      ]) {
+        expect(
+          find.text(label),
+          Authorization.check(_cashier, capability) is Denied
+              ? findsNothing
+              : findsOneWidget,
+          reason: capability,
+        );
+      }
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+      expect(closed, 1, reason: 'Esc leaves /orders');
+      await tester.tap(find.text(s.close));
+      await tester.pumpAndSettle();
+      expect(closed, 2);
     });
   });
 

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -66,9 +67,17 @@ extension on HistoryRange {
 /// This screen only mirrors it: it hides the cashier picker from somebody who
 /// may not use it and says the list is theirs alone.
 class OrderHistoryScreen extends ConsumerStatefulWidget {
-  const OrderHistoryScreen({super.key, required this.onClose, this.openedAt});
+  const OrderHistoryScreen({super.key, this.onClose, this.openedAt});
 
-  final VoidCallback onClose;
+  /// The way out, from `/orders`.
+  ///
+  /// **Null inside the back office**, where this is the Sales tab (BO-2): the
+  /// same widget rather than a second screen over the same data, which is how
+  /// two lists that were meant to agree stop agreeing. There the back office
+  /// owns leaving — its Exit, and its Esc that leaves a field first — so this
+  /// draws no Close, binds no Esc and drops its own title under the back
+  /// office's header. Whose sales it lists is the same rule either way.
+  final VoidCallback? onClose;
 
   /// The clock, for a test that has to be about a particular date — the
   /// attribution caveat depends on how far the window reaches back, and a test
@@ -81,6 +90,11 @@ class OrderHistoryScreen extends ConsumerStatefulWidget {
   static const terminalFilterKey = ValueKey('history-filter-terminal');
   static const attributionCaveatKey = ValueKey('history-attribution-caveat');
   static const ownSalesKey = ValueKey('history-own-sales');
+
+  /// The sideways scroll the table falls back to when the list is narrower
+  /// than its columns — at the window's minimum, and in the back office at
+  /// its 1100 breakpoint.
+  static const sidewaysKey = ValueKey('history-sideways');
 
   @override
   ConsumerState<OrderHistoryScreen> createState() => _OrderHistoryScreenState();
@@ -101,6 +115,9 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
 
   Timer? _debounce;
 
+  /// Sideways, for [_table] when the list is narrower than its columns.
+  final _sideways = ScrollController();
+
   /// Fixed for the life of the screen.
   ///
   /// Taken once rather than read per rebuild: a clock read inside `build` makes
@@ -113,6 +130,7 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
     _debounce?.cancel();
     _search.dispose();
     _searchFocus.dispose();
+    _sideways.dispose();
     super.dispose();
   }
 
@@ -165,9 +183,12 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
   Widget build(BuildContext context) {
     final strings = context.strings;
     final day = ref.watch(businessDayProvider);
+    // The person acting, as the providers scope it — in the back office the
+    // one who came through Admin Mode's door. See `actingStaffProvider`.
     final seesEveryone = HistoryScope.seesEveryone(
-      ref.watch(signedInStaffProvider),
+      ref.watch(actingStaffProvider),
     );
+    final onClose = widget.onClose;
 
     // The list waits for the business day rather than asking once with the
     // calendar date and again when the day arrives — two reads, and a list
@@ -185,7 +206,9 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
         bindings: {
           // Escape leaves. On a read-only screen there is nothing to lose by
           // it, and a cashier who opened history mid-service wants out fast.
-          const SingleActivator(LogicalKeyboardKey.escape): widget.onClose,
+          // Unbound in the back office, so its own Esc is heard — the one
+          // that leaves a field first and the back office second.
+          const SingleActivator(LogicalKeyboardKey.escape): ?onClose,
           const SingleActivator(LogicalKeyboardKey.keyF, control: true):
               _searchFocus.requestFocus,
           const SingleActivator(LogicalKeyboardKey.keyF, meta: true):
@@ -249,11 +272,15 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  strings.orderHistoryTitle,
-                  style: PosText.screenTitle(color: pos.ink),
-                ),
-                const SizedBox(height: PosSpace.xs),
+                // Not in the back office, whose header already names the
+                // page — two titles stacked read as two screens.
+                if (widget.onClose != null) ...[
+                  Text(
+                    strings.orderHistoryTitle,
+                    style: PosText.screenTitle(color: pos.ink),
+                  ),
+                  const SizedBox(height: PosSpace.xs),
+                ],
                 Row(
                   children: [
                     Text(slice, style: PosText.ui(size: 13.5, color: pos.muted)),
@@ -275,11 +302,12 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
               ],
             ),
           ),
-          PosButton(
-            label: strings.close,
-            border: Border.fromBorderSide(pos.resting),
-            onPressed: widget.onClose,
-          ),
+          if (widget.onClose case final close?)
+            PosButton(
+              label: strings.close,
+              border: Border.fromBorderSide(pos.resting),
+              onPressed: close,
+            ),
         ],
       ),
     );
@@ -483,21 +511,7 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _columnHeadings(context, strings),
-          Expanded(
-            child: ListView.builder(
-              padding: EdgeInsets.zero,
-              itemCount: data.length,
-              itemBuilder: (context, index) {
-                final order = data[index];
-                return _OrderRow(
-                  order: order,
-                  selected: order.id == _selectedId,
-                  onTap: () => setState(() => _selectedId = order.id),
-                );
-              },
-            ),
-          ),
+          Expanded(child: _table(context, strings, data)),
           if (data.length >= limit)
             Container(
               width: double.infinity,
@@ -515,6 +529,64 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
               ),
             ),
         ],
+      );
+    },
+  );
+
+  /// The headings and the rows, as one block that scrolls sideways when the
+  /// list is too narrow for it rather than squeezing.
+  ///
+  /// At the window's minimum (1024, `main.dart`) the list beside the detail
+  /// pane is about 600 wide and its fixed columns alone are wider: a Row that
+  /// ran out of room, on `/orders` as much as in the back office. Rejected:
+  /// dropping columns below a width. The column somebody needs is the one
+  /// that was dropped, and a table whose columns come and go with the window
+  /// is two tables to learn.
+  Widget _table(
+    BuildContext context,
+    AppStrings strings,
+    List<OrderRecord> data,
+  ) => LayoutBuilder(
+    builder: (context, box) {
+      final width = math.max(box.maxWidth, _Cols.minTable);
+      final table = SizedBox(
+        width: width,
+        height: box.maxHeight,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _columnHeadings(context, strings),
+            Expanded(
+              child: ListView.builder(
+                padding: EdgeInsets.zero,
+                itemCount: data.length,
+                itemBuilder: (context, index) {
+                  final order = data[index];
+                  return _OrderRow(
+                    order: order,
+                    selected: order.id == _selectedId,
+                    onTap: () => setState(() => _selectedId = order.id),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      );
+      if (width <= box.maxWidth) return table;
+      // A bar that is always drawn, because a desktop scroll view shows none
+      // sideways of its own, and a table with columns past the edge and
+      // nothing saying so reads as a table with fewer columns.
+      return Scrollbar(
+        controller: _sideways,
+        thumbVisibility: true,
+        radius: Radius.zero,
+        child: SingleChildScrollView(
+          key: OrderHistoryScreen.sidewaysKey,
+          controller: _sideways,
+          scrollDirection: Axis.horizontal,
+          child: table,
+        ),
       );
     },
   );
@@ -575,6 +647,11 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
         SizedBox(width: _Cols.type, child: MicroLabel(strings.orderColumnType)),
         SizedBox(width: _Cols.table, child: MicroLabel(strings.orderColumnWhere)),
         Expanded(child: MicroLabel(strings.orderColumnStaff)),
+        const SizedBox(width: PosSpace.sm),
+        Expanded(child: MicroLabel(strings.orderColumnMethod)),
+        const SizedBox(width: PosSpace.sm),
+        Expanded(child: MicroLabel(strings.orderColumnTerminal)),
+        const SizedBox(width: PosSpace.sm),
         SizedBox(
           width: _Cols.total,
           child: Align(
@@ -605,6 +682,28 @@ abstract final class _Cols {
 
   /// Wide enough for PART REFUNDED in mono without an ellipsis.
   static const payment = 112.0;
+
+  /// The least each of the three columns sharing what is left — who sold
+  /// it, what it was paid with, which till — gets before the table scrolls
+  /// sideways instead.
+  static const shared = 72.0;
+
+  /// The whole row at its narrowest: every fixed column, the shared three at
+  /// [shared], and the padding and gaps between. Arithmetic over the widths
+  /// above rather than a number, so widening one cannot leave this stale.
+  static const minTable =
+      PosSpace.s18 +
+      invoice +
+      time +
+      type +
+      table +
+      3 * (shared + PosSpace.sm) +
+      total +
+      PosSpace.md +
+      status +
+      PosSpace.sm +
+      payment +
+      PosSpace.md;
 }
 
 class _OrderRow extends StatelessWidget {
@@ -683,6 +782,25 @@ class _OrderRow extends StatelessWidget {
                   style: PosText.ui(size: 12.5, color: pos.body),
                 ),
               ),
+              const SizedBox(width: PosSpace.sm),
+              Expanded(
+                child: Text(
+                  _methods(order, strings),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: PosText.ui(size: 12.5, color: pos.body),
+                ),
+              ),
+              const SizedBox(width: PosSpace.sm),
+              Expanded(
+                child: Text(
+                  order.terminalName ?? '—',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: PosText.ui(size: 12.5, color: pos.body),
+                ),
+              ),
+              const SizedBox(width: PosSpace.sm),
               SizedBox(
                 width: _Cols.total,
                 child: Align(
@@ -723,6 +841,16 @@ class _OrderRow extends StatelessWidget {
       ),
     );
   }
+
+  /// Every method, in the reader's language and the order they were taken —
+  /// "Cash + Card" for a split bill. Through `tenderName`, so a method the
+  /// restaurant renamed reads as they named it, as its receipt does.
+  static String _methods(OrderRecord order, AppStrings strings) =>
+      order.tenders.isEmpty
+      ? '—'
+      : order.tenders
+            .map((t) => tenderName(t.tenderTypeId, t.label, strings))
+            .join(' + ');
 
   /// 24-hour, zero-padded, mono. Not `TimeOfDay.format` — that follows the
   /// locale into 12-hour with an am/pm suffix, and a column of times that

@@ -590,7 +590,10 @@ class _RefundSheetState extends ConsumerState<RefundSheet> {
     // it on this refund, and refuses a second refund on it.
     var approval = decision.approval;
 
-    final by = ref.read(signedInStaffProvider);
+    // The person acting: in the back office's Sales tab, whoever came through
+    // Admin Mode's door — not the cashier still signed in at the till, who
+    // would otherwise be booked for the owner's refund.
+    final by = ref.read(actingStaffProvider);
     if (by == null) return;
 
     // Above the threshold a second person says yes, whoever is refunding. This

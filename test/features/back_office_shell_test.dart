@@ -87,9 +87,8 @@ const _fixtures = <String, PosStaff>{
 };
 
 /// The tabs whose content is a later slice. None of them holds a pane yet.
-/// Home left this list with BO-4.
+/// Home and Sales left this list with BO-4 and BO-2.
 const _later = [
-  BackOfficeTab.sales,
   BackOfficeTab.reports,
   BackOfficeTab.finance,
 ];
@@ -270,6 +269,18 @@ void main() {
               reason: '${tab.name} has no pane until its slice lands',
             );
           }
+          // Sales for everybody past the door (BO-2), holding the history
+          // and nothing else — whose sales is the rows' scope, not a gate.
+          expect(
+            [
+              for (final (t, own) in tabs)
+                if (t == BackOfficeTab.sales) own,
+            ],
+            [
+              [ManagementPane.sales],
+            ],
+            reason: '$name, $where',
+          );
 
           // Home is everybody's, and first — so the door lands on it.
           expect(tabs.first.$1, BackOfficeTab.home);
@@ -495,7 +506,7 @@ void main() {
       testWidgets('all nine tabs fit without scrolling, in $language', (
         tester,
       ) async {
-        // All nine, though only five hold a pane today: the slice that adds
+        // All nine, though only six hold a pane today: the slice that adds
         // the ninth word should not be the one that finds out it does not fit.
         tester.view
           ..physicalSize = const Size(PosSize.wideShellMin, 800)
