@@ -37,6 +37,19 @@ const _cashier = PosStaff(
   ),
 );
 
+/// Through the back office's door by a role, holding nothing that buys.
+const _rotaManager = PosStaff(
+  id: 3,
+  name: 'Nour S.',
+  username: 'nour',
+  role: PosRole(
+    id: 3,
+    code: 'rota',
+    nameEn: 'Rota manager',
+    capabilities: {PosCapability.operate, PosCapability.staffManage},
+  ),
+);
+
 /// The Settings bar has to describe the till it is sitting on.
 ///
 /// It did not. `MenuBarWidget` needs an Overlay ancestor, so the bar builds one
@@ -290,6 +303,19 @@ void main() {
     ]) {
       expect(find.text(entry), findsNothing, reason: entry);
     }
+  }, variant: desktop);
+
+  testWidgets('and somebody who does not buy has no Buying at all', (
+    tester,
+  ) async {
+    // The rota, not the stockroom. Offline they have no Purchasing pane and so
+    // no Buying word; on cloud the pointer was the one line under it, sending
+    // them to pages xorder-new's sidebar hides from them.
+    await pumpApp(tester, staff: _rotaManager);
+
+    expect(find.text('People'), findsOneWidget);
+    expect(find.text('Buying'), findsNothing);
+    expect(find.text('Purchasing & stock — on xorder.io…'), findsNothing);
   }, variant: desktop);
 
   testWidgets('handing the till over is named for what it is', (tester) async {

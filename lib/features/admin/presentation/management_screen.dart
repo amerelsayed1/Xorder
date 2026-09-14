@@ -368,7 +368,8 @@ typedef ManagementBarEntry = ({
 /// [platformAuthoredPointer] above its first pane. Dropping the word instead
 /// would leave a manager who bought through this bar last month searching
 /// every menu for it — and a cloud till with no word for buying at all tells
-/// them nothing about where it went.
+/// them nothing about where it went. Only for somebody who buys, though: to
+/// anyone else it is a word offline never showed them.
 List<(ManagementArea, List<ManagementBarEntry>)> managementBarFor(
   AppStrings s, {
   required PosStaff admin,
@@ -398,7 +399,8 @@ List<(ManagementArea, List<ManagementBarEntry>)> managementBarFor(
             hiddenBecausePlatformAuthors(
               ManagementPane.purchasing,
               authorsItsOwnCatalogue: authorsItsOwnCatalogue,
-            ))
+            ) &&
+            _wouldPermit(admin, ManagementPane.purchasing))
           (
             pane: null,
             first: true,
@@ -484,6 +486,18 @@ bool _permits(PosStaff admin, ManagementPane pane) {
   // `can` and not `capabilities`: the latter is the direct-grant set alone,
   // and an owner holds almost everything through their role.
   return needed == null || admin.can(needed);
+}
+
+/// Whether [admin] would have [pane] on a till that authors it.
+///
+/// **Who is told where a platform-authored pane went.** The pointer stands in
+/// for the pane, so it reaches the people the pane would have and nobody else:
+/// a rota manager has no Purchasing offline, and xorder-new's sidebar hides the
+/// Purchasing group from whoever lacks `purchase.manage` — sending them there
+/// would be a door to a refusal.
+bool _wouldPermit(PosStaff admin, ManagementPane pane) {
+  final needed = _paneRequires(pane);
+  return needed == null || Authorization.check(admin, needed).isAllowed;
 }
 
 enum ManagementPane {
@@ -622,7 +636,8 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
             hiddenBecausePlatformAuthors(
               _pane,
               authorsItsOwnCatalogue: authors,
-            )
+            ) &&
+            _wouldPermit(admin, _pane)
         ? platformAuthoredPointer(context.strings, _pane)
         : null;
 

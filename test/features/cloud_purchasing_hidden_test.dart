@@ -55,6 +55,18 @@ void main() {
     capabilities: {PosCapability.staffManage, PosCapability.purchaseManage},
   );
   const buyers = [owner, manager, granted];
+  // Through the back office's door by a role, holding nothing that buys.
+  const rota = PosStaff(
+    id: 4,
+    name: 'Salma R.',
+    username: 'salma',
+    role: PosRole(
+      id: 4,
+      code: 'rota',
+      nameEn: 'Rota manager',
+      capabilities: {PosCapability.operate, PosCapability.staffManage},
+    ),
+  );
 
   const platformAuthored = [
     ManagementPane.purchasing,
@@ -240,6 +252,29 @@ void main() {
         hasLength(1),
         reason: 'one pointer in the whole bar',
       );
+    });
+
+    test('and nobody who does not buy is pointed at buying', () {
+      // Offline they have no Purchasing pane; xorder-new's sidebar hides the
+      // Purchasing group from them. The pointer is for whoever it replaced.
+      expect(rota.can(PosCapability.purchaseManage), isFalse);
+      for (final authors in [false, true]) {
+        expect(lines(rota, authors: authors), isNotEmpty, reason: 'People');
+        expect(
+          [for (final (area, _) in managementBarFor(
+            s,
+            admin: rota,
+            authorsItsOwnCatalogue: authors,
+          )) area],
+          isNot(contains(ManagementArea.buying)),
+          reason: 'authors: $authors',
+        );
+        expect(
+          lines(rota, authors: authors).where((line) => line.pane == null),
+          isEmpty,
+          reason: 'authors: $authors',
+        );
+      }
     });
 
     test('offline, the bar is what it was: Buying\'s seven lines, no pointer',
@@ -428,6 +463,33 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(ManagementRolesPane), findsOneWidget);
+      expect(
+        find.byKey(const Key('management-platform-pointer')),
+        findsNothing,
+      );
+    });
+
+    testWidgets('somebody who does not buy is told nothing, as offline', (
+      tester,
+    ) async {
+      tester.view
+        ..physicalSize = const Size(1440, 900)
+        ..devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      final container = ProviderContainer(overrides: fakeRepositoryOverrides());
+      addTearDown(container.dispose);
+      container.read(deploymentProvider.notifier).apply(cloud);
+      // Signed in directly: the fake directory holds nobody like this, and the
+      // harness already supplies the back-office credential.
+      container.read(signedInStaffProvider.notifier).signIn(rota);
+
+      await tester.pumpWidget(
+        screen(container, pane: ManagementPane.purchasing),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(ManagementStaffPane), findsOneWidget);
       expect(
         find.byKey(const Key('management-platform-pointer')),
         findsNothing,
