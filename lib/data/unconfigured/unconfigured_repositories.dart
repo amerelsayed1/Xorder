@@ -99,6 +99,13 @@ class UnconfiguredShiftRepository implements ShiftRepository {
   @override
   Future<List<OpenDrawer>> openDrawers() async => const [];
 
+  /// None, and for the same reason: an empty list is the truth here, where
+  /// throwing would put an error on a back-office screen for a till that has
+  /// simply not been set up.
+  @override
+  Future<ShiftHistory> history(ShiftHistoryQuery query) async =>
+      ShiftHistory.empty;
+
   @override
   Future<ShiftClose> close({
     required PosShift shift,

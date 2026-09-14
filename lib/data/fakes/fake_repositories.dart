@@ -9,6 +9,7 @@ import '../../domain/models/catalog.dart';
 import '../../domain/models/dining_table.dart';
 import '../../domain/models/order_record.dart';
 import '../../domain/models/refund.dart';
+import '../../domain/models/refund_history.dart';
 import '../../domain/services/refund_engine.dart' show RefundQuote;
 import '../../domain/models/ticket.dart';
 import '../../domain/models/permissions.dart';
@@ -583,6 +584,47 @@ class FakeShiftRepository implements ShiftRepository {
           summary: await summarise(shift),
         ),
   ];
+
+  /// [earlier] and this till's own, by the query's dates on `openedAt` and
+  /// open ones whatever the dates, as the real repository lists them. No
+  /// cash-up figures: a [PosShift] carries none, and a test about those binds
+  /// a double that returns them.
+  @override
+  Future<ShiftHistory> history(ShiftHistoryQuery query) async {
+    final records = <ShiftRecord>[];
+    final tills = <String, String>{};
+    final staff = <int, String>{};
+    for (final shift in [...earlier, ?_open]) {
+      final inDates =
+          shift.isOpen ||
+          (!shift.openedAt.isBefore(query.from) &&
+              shift.openedAt.isBefore(query.to));
+      if (!inDates) continue;
+      final terminal = 'fake-terminal-${shift.id}';
+      tills[terminal] = terminal;
+      if (shift.openedById case final id?) staff[id] = shift.openedByName;
+      final record = ShiftRecord(
+        summary: await summarise(shift),
+        terminalId: terminal,
+      );
+      if (query.terminalId != null && query.terminalId != terminal) continue;
+      if (query.staffId != null && query.staffId != shift.openedById) continue;
+      if (query.statuses.isNotEmpty &&
+          !query.statuses.contains(record.status)) {
+        continue;
+      }
+      records.add(record);
+    }
+    records.sort((a, b) {
+      if (a.shift.isOpen != b.shift.isOpen) return a.shift.isOpen ? -1 : 1;
+      return b.shift.openedAt.compareTo(a.shift.openedAt);
+    });
+    return ShiftHistory(
+      shifts: records,
+      tills: [for (final e in tills.entries) (e.key, e.value)],
+      staff: [for (final e in staff.entries) (e.key, e.value)],
+    );
+  }
 
   @override
   Future<ShiftActivity> activity() async {
@@ -1388,13 +1430,21 @@ class FakeOrderHistoryRepository implements OrderHistoryRepository {
     List<OrderRecord> orders = const [],
     Map<int, OrderRecordDetail> details = const {},
     List<HistoryTerminal> terminals = const [],
+    List<RefundRecord> refunds = const [],
   }) : orders = [...orders],
        details = {...details},
-       _terminals = [...terminals];
+       _terminals = [...terminals],
+       refundRows = [...refunds];
 
   final List<OrderRecord> orders;
   final Map<int, OrderRecordDetail> details;
   final List<HistoryTerminal> _terminals;
+
+  /// Returns' rows. Named apart from [refunds], the method that lists them.
+  final List<RefundRecord> refundRows;
+
+  /// Every Returns query asked, list and strip alike.
+  final List<RefundHistoryQuery> refundQueries = [];
 
   /// Every query this repository has been asked, in order. Lets a test assert
   /// that changing a filter actually reached the data layer rather than being
@@ -1512,6 +1562,75 @@ class FakeOrderHistoryRepository implements OrderHistoryRepository {
 
   @override
   Future<List<HistoryTerminal>> terminals() async => _terminals;
+
+  /// Newest first, by id within an instant — `refunds`' ORDER BY.
+  static int _newestRefundFirst(RefundRecord a, RefundRecord b) {
+    final at = b.occurredAt.compareTo(a.occurredAt);
+    return at != 0 ? at : b.id.compareTo(a.id);
+  }
+
+  /// Every refund [query]'s filter admits: the refund's business date or
+  /// instant, the seller of its sale, and the invoice anywhere or the
+  /// refund's number exactly — the SQL's rules.
+  List<RefundRecord> _matchingRefunds(RefundHistoryQuery query) {
+    DateTime dateOf(DateTime at) => DateTime(at.year, at.month, at.day);
+    final term = query.search?.trim().toLowerCase();
+    final number = term != null && term.startsWith('#')
+        ? term.substring(1).trim()
+        : term;
+    return refundRows.where((refund) {
+      final day = refund.businessDate;
+      final from = query.from;
+      if (from != null &&
+          (day != null
+              ? day.isBefore(dateOf(from))
+              : refund.occurredAt.isBefore(from))) {
+        return false;
+      }
+      final to = query.to;
+      if (to != null &&
+          (day != null
+              ? !day.isBefore(dateOf(to))
+              : !refund.occurredAt.isBefore(to))) {
+        return false;
+      }
+      if (query.servedByStaffId != null &&
+          refund.servedByStaffId != query.servedByStaffId) {
+        return false;
+      }
+      if (term != null && term.isNotEmpty) {
+        if (!refund.invoiceNumber.toLowerCase().contains(term) &&
+            '${refund.id}' != number) {
+          return false;
+        }
+      }
+      return true;
+    }).toList()..sort(_newestRefundFirst);
+  }
+
+  @override
+  Future<List<RefundRecord>> refunds(RefundHistoryQuery query) async {
+    refundQueries.add(query);
+    var rows = _matchingRefunds(query);
+    if (query.afterRefundId case final after?) {
+      final cursor = refundRows.where((r) => r.id == after).firstOrNull;
+      rows = cursor == null
+          ? const []
+          : [
+              for (final row in rows)
+                if (_newestRefundFirst(row, cursor) > 0) row,
+            ];
+    }
+    return rows.take(query.limit).toList();
+  }
+
+  @override
+  Future<RefundHistorySummary> summariseRefunds(
+    RefundHistoryQuery query,
+  ) async {
+    refundQueries.add(query);
+    return RefundHistorySummary.of(_matchingRefunds(query));
+  }
 }
 
 /// Refunds held in a list.

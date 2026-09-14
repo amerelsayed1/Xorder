@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -16,6 +15,7 @@ import 'package:xorder_pos/features/admin/presentation/management_roles_pane.dar
 import 'package:xorder_pos/features/admin/presentation/management_screen.dart';
 
 import '../support/fakes.dart';
+import '../support/fonts.dart';
 
 /// Settings › Users (BO-7): the tiles, the filters, the last-shift column and
 /// the role matrix, each held to what it claims.
@@ -163,20 +163,7 @@ void main() {
     // measures the strip: the test font draws every glyph a full em wide, and
     // with Reports and Finance both in, the owner's nine tabs overflow 1100 px
     // in it while they fit in IBM Plex, which is what a restaurant sees.
-    setUpAll(() async {
-      final ui = FontLoader(PosFonts.ui);
-      for (final face in ['Regular', 'Medium', 'SemiBold', 'Bold']) {
-        ui.addFont(
-          rootBundle.load('assets/fonts/IBMPlexSansArabic-$face.ttf'),
-        );
-      }
-      await ui.load();
-      final mono = FontLoader(PosFonts.mono);
-      for (final face in ['Regular', 'Medium', 'SemiBold']) {
-        mono.addFont(rootBundle.load('assets/fonts/IBMPlexMono-$face.ttf'));
-      }
-      await mono.load();
-    });
+    setUpAll(loadPosFonts);
 
     Future<ProviderContainer> open(
       WidgetTester tester, {

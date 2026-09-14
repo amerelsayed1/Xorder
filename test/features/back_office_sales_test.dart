@@ -22,6 +22,7 @@ import 'package:xorder_pos/features/history/presentation/order_history_screen.da
 import 'package:xorder_pos/features/receipt/reprint_dialog.dart';
 
 import '../support/fakes.dart';
+import '../support/fonts.dart';
 
 // The two people who can come through the door in the fake session
 // repository, as it returns them — each holding what they hold through a
@@ -354,7 +355,16 @@ void main() {
       );
       const s = EnStrings();
       expect(find.text(s.close), findsNothing);
-      expect(find.text(s.orderHistoryTitle), findsNothing);
+      // "Orders" once, and that once is the sub-nav's word for the item —
+      // Sales has four since `pos/ia-screens` — not a title bar of its own.
+      expect(find.text(s.orderHistoryTitle), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('back-office-subnav')),
+          matching: find.text(s.orderHistoryTitle),
+        ),
+        findsOneWidget,
+      );
       expect(find.byKey(const Key('admin-exit')), findsOneWidget);
       // The map's word for the page in the header (14 Sep 2026) — Orders,
       // as the history calls itself — and the history's own title bar not
@@ -450,20 +460,7 @@ void main() {
     // cloud till seven Arabic words, at 14 px an em, came to 1,136 px — while
     // the same strip in IBM Plex Sans Arabic still fits, which is what a
     // restaurant sees.
-    setUpAll(() async {
-      final ui = FontLoader(PosFonts.ui);
-      for (final face in ['Regular', 'Medium', 'SemiBold', 'Bold']) {
-        ui.addFont(
-          rootBundle.load('assets/fonts/IBMPlexSansArabic-$face.ttf'),
-        );
-      }
-      await ui.load();
-      final mono = FontLoader(PosFonts.mono);
-      for (final face in ['Regular', 'Medium', 'SemiBold']) {
-        mono.addFont(rootBundle.load('assets/fonts/IBMPlexMono-$face.ttf'));
-      }
-      await mono.load();
-    });
+    setUpAll(loadPosFonts);
 
     testWidgets('right to left, Arabic words, and a table that scrolls '
         'sideways rather than overflowing', (tester) async {

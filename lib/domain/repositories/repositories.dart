@@ -25,6 +25,7 @@ import '../models/sales_report.dart';
 import '../models/finance_report.dart';
 import '../models/pos_settings.dart';
 import '../models/refund.dart';
+import '../models/refund_history.dart';
 import '../services/refund_engine.dart' show RefundQuote;
 import '../services/authorization.dart' show Approval;
 import '../models/shift.dart';
@@ -43,7 +44,12 @@ export '../models/shift.dart'
         ShiftTenderTotal,
         ShiftClose,
         OpenDrawer,
-        ShiftActivity;
+        ShiftActivity,
+        ShiftStatus,
+        ShiftHistoryQuery,
+        ShiftRecord,
+        ShiftHistory,
+        CashUpTotals;
 
 /// Repository contracts.
 ///
@@ -458,6 +464,18 @@ abstract interface class OrderHistoryRepository {
 
   /// The tills at this branch, for the terminal filter.
   Future<List<HistoryTerminal>> terminals();
+
+  /// One page of Returns: one row per refund, newest first, starting after
+  /// [RefundHistoryQuery.afterRefundId].
+  ///
+  /// Here and not on [RefundsRepository], whose doc says why: that one can
+  /// issue a refund, and a screen that only lists them must be handed
+  /// nothing that can.
+  Future<List<RefundRecord>> refunds(RefundHistoryQuery query);
+
+  /// The count and total over every row [refunds] pages through for [query]
+  /// — its filter only; the cursor and page size are ignored.
+  Future<RefundHistorySummary> summariseRefunds(RefundHistoryQuery query);
 }
 
 /// Wave G's read model — the figures behind the Reports tab (plan 19 BO-5).
@@ -761,6 +779,15 @@ abstract interface class ShiftRepository {
   /// own rule — so what Finance says a drawer should hold is what the cash-up
   /// will count it against (BO-10). Ordered by till name.
   Future<List<OpenDrawer>> openDrawers();
+
+  /// Every shift at this **branch** that [query] covers — open ones first,
+  /// then newest — each summarised by [summarise]'s own rule and carrying the
+  /// cash-up [close] stored. People › Shifts and Finance › Settlements both
+  /// read it, so the two cannot disagree about a drawer.
+  ///
+  /// At most [ShiftHistory.limit] rows; [ShiftHistory.cut] says when there
+  /// were more.
+  Future<ShiftHistory> history(ShiftHistoryQuery query);
 
   /// Count the drawer and close.
   ///

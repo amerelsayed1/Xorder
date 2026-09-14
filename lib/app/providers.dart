@@ -88,6 +88,7 @@ import '../domain/models/order_record.dart';
 import '../domain/models/business_day.dart';
 import '../domain/models/pos_settings.dart';
 import '../domain/models/refund.dart';
+import '../domain/models/refund_history.dart';
 import '../domain/models/reason_code.dart';
 import '../domain/models/eta_submission.dart';
 import '../domain/models/order_type_config.dart';
@@ -383,6 +384,35 @@ final orderDetailProvider = FutureProvider.autoDispose
 final historyTerminalsProvider = FutureProvider<List<HistoryTerminal>>(
   (ref) => ref.watch(orderHistoryRepositoryProvider).terminals(),
 );
+
+/// One page of Returns (المرتجعات), narrowed to what the person acting may
+/// read — the refunds against their own sales, without `order.view_all`.
+///
+/// The one road to the rows, as [orderHistoryProvider] is for sales, and
+/// scoped here for the same reason: a screen built on it later inherits the
+/// rule. `autoDispose` for the reason that one gives.
+final refundHistoryProvider = FutureProvider.autoDispose
+    .family<List<RefundRecord>, RefundHistoryQuery>((ref, query) {
+      final scoped = HistoryScope.scopeRefunds(
+        query,
+        ref.watch(actingStaffProvider),
+      );
+      if (scoped == null) return const <RefundRecord>[];
+      return ref.watch(orderHistoryRepositoryProvider).refunds(scoped);
+    });
+
+/// The strip over Returns, over every page of [refundHistoryProvider]'s
+/// filter, under the same scope. Keyed by [RefundHistoryQuery.unpaged] so a
+/// page turn is not a fresh total.
+final refundHistorySummaryProvider = FutureProvider.autoDispose
+    .family<RefundHistorySummary, RefundHistoryQuery>((ref, query) {
+      final scoped = HistoryScope.scopeRefunds(
+        query.unpaged,
+        ref.watch(actingStaffProvider),
+      );
+      if (scoped == null) return RefundHistorySummary.empty;
+      return ref.watch(orderHistoryRepositoryProvider).summariseRefunds(scoped);
+    });
 
 /// Money going back.
 ///

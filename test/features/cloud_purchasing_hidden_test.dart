@@ -375,7 +375,7 @@ void main() {
       }
     });
 
-    test('Settings\' lines are its three items, General first', () {
+    test('Settings\' lines are the map\'s six items, General first', () {
       final settings = managementBarFor(
         s,
         admin: owner,
@@ -383,11 +383,21 @@ void main() {
       ).firstWhere((menu) => menu.tab == BackOfficeTab.settings).lines;
       expect([for (final line in settings) line.label], [
         'Orders & invoices settings',
+        'Printer & cash drawer',
         'Language',
         'Appearance',
+        'User',
+        'About XOrder',
       ]);
       expect([for (final line in settings) line.divider], everyElement(false));
-      expect(settings.first.open().pane, ManagementPane.receipt);
+      expect([for (final line in settings) line.open().pane], [
+        ManagementPane.receipt,
+        ManagementPane.printer,
+        ManagementPane.language,
+        ManagementPane.appearance,
+        ManagementPane.user,
+        ManagementPane.about,
+      ]);
     });
 
     test('Purchasing lists its tabs in the map\'s order, each with its '

@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -14,7 +13,10 @@ import 'package:xorder_pos/data/cloud/cloud_provisioning_repository.dart'
 import 'package:xorder_pos/data/cloud/cloud_sync.dart';
 import 'package:xorder_pos/data/fakes/fake_repositories.dart';
 import 'package:xorder_pos/domain/models/option_group.dart';
+import 'package:xorder_pos/core/money/money.dart';
 import 'package:xorder_pos/domain/models/permissions.dart';
+import 'package:xorder_pos/domain/models/refund.dart';
+import 'package:xorder_pos/domain/models/refund_history.dart';
 import 'package:xorder_pos/domain/models/shift.dart';
 import 'package:xorder_pos/domain/repositories/admin_repositories.dart';
 import 'package:xorder_pos/domain/services/authorization.dart';
@@ -22,8 +24,11 @@ import 'package:xorder_pos/domain/services/eta_filing.dart' show etaFilingEnable
 import 'package:xorder_pos/features/admin/application/admin_session.dart';
 import 'package:xorder_pos/features/admin/presentation/management_home_pane.dart';
 import 'package:xorder_pos/features/admin/presentation/management_screen.dart';
+import 'package:xorder_pos/features/history/presentation/order_history_screen.dart';
+import 'package:xorder_pos/features/history/presentation/refund_detail_pane.dart';
 
 import '../support/fakes.dart';
+import '../support/fonts.dart';
 
 // Everybody who could be standing in the back office, each holding what they
 // hold through a ROLE where a real one would — `PosStaff.capabilities` is
@@ -94,13 +99,14 @@ const _fixtures = <String, PosStaff>{
 const _later = <BackOfficeTab>[];
 
 /// Finance's panes, in the order its sub-nav shows them: Overview and Revenue,
-/// then the owner's map's الخزينة، المصروفات، طرق الدفع، الضرائب, then Bills due
-/// and Transactions (BO-9, BO-10).
+/// then the owner's map's الخزينة، المصروفات، التسويات، طرق الدفع، الضرائب, in
+/// its order, then Bills due and Transactions (BO-9, BO-10, `pos/ia-screens`).
 const _finance = [
   ManagementPane.financeOverview,
   ManagementPane.financeRevenue,
   ManagementPane.financeDrawers,
   ManagementPane.financeExpenses,
+  ManagementPane.settlements,
   ManagementPane.financePayments,
   ManagementPane.financeTaxes,
   ManagementPane.financeBills,
@@ -159,6 +165,7 @@ Future<ProviderContainer> _open(
   String username = 'amer',
   String pin = '4321',
   List<Override> overrides = const [],
+  VoidCallback? onClose,
 }) async {
   tester.view
     ..physicalSize = Size(width, 900)
@@ -189,7 +196,7 @@ Future<ProviderContainer> _open(
         supportedLocales: AppLocalizations.supportedLocales,
         theme: buildPosTheme(),
         home: ManagementScreen(
-          onClose: () {},
+          onClose: onClose ?? () {},
           onReconfigure: () {},
           initialPane: pane,
         ),
@@ -243,18 +250,7 @@ void main() {
   // The bundled faces, not the test font. The test font draws every glyph a
   // full em wide, which is a measurement of nothing: "all tabs fit at 1100 px"
   // is a claim about IBM Plex Sans Arabic, in both of its scripts.
-  setUpAll(() async {
-    final ui = FontLoader(PosFonts.ui);
-    for (final face in ['Regular', 'Medium', 'SemiBold', 'Bold']) {
-      ui.addFont(rootBundle.load('assets/fonts/IBMPlexSansArabic-$face.ttf'));
-    }
-    await ui.load();
-    final mono = FontLoader(PosFonts.mono);
-    for (final face in ['Regular', 'Medium', 'SemiBold']) {
-      mono.addFont(rootBundle.load('assets/fonts/IBMPlexMono-$face.ttf'));
-    }
-    await mono.load();
-  });
+  setUpAll(loadPosFonts);
 
   group('the tabs reach exactly what the back office reached before', () {
     for (final MapEntry(key: name, value: admin) in _fixtures.entries) {
@@ -295,15 +291,21 @@ void main() {
               reason: '${tab.name} has no pane until its slice lands',
             );
           }
-          // Sales for everybody past the door (BO-2), holding the history
-          // and nothing else — whose sales is the rows' scope, not a gate.
+          // Sales for everybody past the door (BO-2): Orders, Invoices,
+          // Returns and Cancelled orders, in the map's order — whose sales is
+          // the rows' scope, not a gate.
           expect(
             [
               for (final (t, own) in tabs)
                 if (t == BackOfficeTab.sales) own,
             ],
             [
-              [ManagementPane.sales],
+              [
+                ManagementPane.sales,
+                ManagementPane.invoices,
+                ManagementPane.returns,
+                ManagementPane.voidedOrders,
+              ],
             ],
             reason: '$name, $where',
           );
@@ -316,6 +318,33 @@ void main() {
             admin,
             PosCapability.reportsView,
           ).isAllowed;
+
+          // The panes `pos/ia-screens` built, each behind exactly its own
+          // gate and no other: Shifts and Settlements are `reports.view`, as
+          // the panes' `requires` say, so whoever lacks it sees neither;
+          // Printer is `terminal.manage`, as the till's dialog is; the rest
+          // are everybody's past the door, on both deployments.
+          final machine = Authorization.check(
+            admin,
+            PosCapability.terminalManage,
+          ).isAllowed;
+          for (final (pane, allowed) in [
+            (ManagementPane.shifts, reads),
+            (ManagementPane.settlements, reads),
+            (ManagementPane.printer, machine),
+            (ManagementPane.invoices, true),
+            (ManagementPane.returns, true),
+            (ManagementPane.voidedOrders, true),
+            (ManagementPane.sync, true),
+            (ManagementPane.user, true),
+            (ManagementPane.about, true),
+          ]) {
+            expect(
+              reachable.contains(pane),
+              allowed,
+              reason: '${pane.name}, $name, $where',
+            );
+          }
           expect(
             [
               for (final (t, own) in tabs)
@@ -397,6 +426,29 @@ void main() {
               }
             }
           }
+
+          // …and the other way: every sub-nav item is a line of its menu,
+          // and the items hold every pane of the tab — Settings' side-nav
+          // panes through the item that holds them, Purchasing through its
+          // own lines. So the strip, the bar and `managementPanesFor` are one
+          // set, gates included.
+          for (final (tab, own) in tabs) {
+            if (own.isEmpty) continue;
+            final items = backOfficeItemsFor(const EnStrings(), tab, own);
+            expect(
+              {for (final item in items) ...item.holds},
+              own.toSet(),
+              reason: tab.name,
+            );
+            expect(
+              {
+                for (final line in bar.firstWhere((m) => m.tab == tab).lines)
+                  line.pane,
+              },
+              {for (final item in items) item.opens},
+              reason: tab.name,
+            );
+          }
         });
       }
     }
@@ -443,7 +495,7 @@ void main() {
     }
   });
 
-  testWidgets('Finance: eight panes under the sub-nav, in the map\'s '
+  testWidgets('Finance: nine panes under the sub-nav, in the map\'s '
       'order', (tester) async {
     await _open(tester, offline: true);
     await tester.tap(find.byKey(const Key('back-office-tab-finance')));
@@ -483,6 +535,82 @@ void main() {
       find.byKey(const Key('back-office-subnav-financeExpenses')),
       findsOneWidget,
     );
+  });
+
+  testWidgets('Returns\' "Open the sale" lands on Orders, open on that sale '
+      '— a fresh list for each, and the plain one from the sub-nav', (
+    tester,
+  ) async {
+    // Today, so both are in Returns' first window.
+    final now = DateTime.now();
+    RefundRecord refund(int id, int orderId) => RefundRecord(
+      id: id,
+      orderId: orderId,
+      invoiceNumber: 'INV-$orderId',
+      occurredAt: now,
+      total: const Money(2500),
+      kind: RefundKind.partial,
+      lineCount: 1,
+      refundedByName: 'Sami Farid',
+    );
+    await _open(
+      tester,
+      pane: ManagementPane.returns,
+      overrides: [
+        orderHistoryRepositoryProvider.overrideWithValue(
+          FakeOrderHistoryRepository(refunds: [refund(1, 11), refund(2, 12)]),
+        ),
+        refundsForOrderProvider.overrideWith(
+          (ref, orderId) async => const <Refund>[],
+        ),
+      ],
+    );
+
+    OrderHistoryScreen orders() =>
+        tester.widget<OrderHistoryScreen>(find.byType(OrderHistoryScreen));
+    Future<void> openSaleOf(String row) async {
+      await tester.tap(find.byKey(const Key('back-office-subnav-returns')));
+      await tester.pumpAndSettle();
+      expect(_showing(tester), {ManagementPane.returns});
+      await tester.tap(find.text(row));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(RefundDetailPane.openSaleKey));
+      await tester.pumpAndSettle();
+      expect(_showing(tester), {ManagementPane.sales}, reason: row);
+    }
+
+    await openSaleOf('#1');
+    const first = SaleToOpen(orderId: 11, invoiceNumber: 'INV-11');
+    expect(orders().openSale, first);
+    expect(orders().key, const ValueKey(first));
+
+    // The history reads `openSale` once; only a new key makes a second
+    // sale more than a new argument to a list already built for the first.
+    await openSaleOf('#2');
+    const second = SaleToOpen(orderId: 12, invoiceNumber: 'INV-12');
+    expect(orders().openSale, second);
+    expect(orders().key, const ValueKey(second));
+
+    await tester.tap(find.byKey(const Key('back-office-subnav-sales')));
+    await tester.pumpAndSettle();
+    expect(orders().openSale, isNull, reason: 'Orders, not the last sale');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Settings › User\'s Exit leaves the back office, as the '
+      'header\'s does', (tester) async {
+    var closed = 0;
+    final container = await _open(
+      tester,
+      pane: ManagementPane.user,
+      onClose: () => closed++,
+    );
+    expect(_showing(tester), {ManagementPane.user});
+
+    await tester.tap(find.byKey(const Key('user-exit')));
+    await tester.pumpAndSettle();
+    expect(container.read(adminSessionProvider), isNull);
+    expect(closed, 1);
   });
 
   group('where the door lands: Home', () {
@@ -602,8 +730,8 @@ void main() {
       );
     });
 
-    test('every tab\'s items, for the owner offline — the built ones, and '
-        'no placeholder for the rest', () {
+    test('every tab\'s items, for the owner offline — all of the map but '
+        'Reports\' breakdowns, and no placeholder for those', () {
       // Read off the bar, which is the sub-nav's items with Purchasing's own
       // tabs in place of its one: the map's words, in the map's order.
       const ar = ArStrings();
@@ -618,8 +746,12 @@ void main() {
         },
         {
           BackOfficeTab.home: ['الرئيسية'],
-          // Invoices, returns and cancelled orders: not built yet.
-          BackOfficeTab.sales: ['الطلبات'],
+          BackOfficeTab.sales: [
+            'الطلبات',
+            'الفواتير',
+            'المرتجعات',
+            'الطلبات الملغاة',
+          ],
           // Sales, items, payment methods, branches & devices, staff: not
           // built yet as pages of their own.
           BackOfficeTab.reports: ['ملخص الأعمال'],
@@ -638,32 +770,39 @@ void main() {
             ar.invoiceNew,
             'المدفوعات',
           ],
-          // Settlements: not built yet. Overview and Revenue lead; Bills due
-          // and Transactions follow.
+          // Overview and Revenue lead; Bills due and Transactions follow.
           BackOfficeTab.finance: [
             'نظرة عامة',
             'الإيرادات',
             'الخزينة',
             'المصروفات',
+            'التسويات',
             'طرق الدفع',
             'الضرائب',
             'الفواتير المستحقة',
             'الحركات',
           ],
-          // Shifts: not built yet.
-          BackOfficeTab.people: ['الموظفون', 'الأدوار والصلاحيات'],
-          // Sync: not built yet. ETA only while filing is on.
+          BackOfficeTab.people: [
+            'الموظفون',
+            'الأدوار والصلاحيات',
+            'الورديات',
+          ],
+          // ETA only while filing is on.
           BackOfficeTab.system: [
             'السجل',
             'النسخ الاحتياطي',
             'الأجهزة',
+            'المزامنة',
             if (etaFilingEnabled) ar.paneEta,
           ],
-          // Printer, user and about are the till's own Settings lines.
+          // All six of the map's, printer, user and about among them.
           BackOfficeTab.settings: [
             'إعدادات الطلبات والفواتير',
+            'الطابعة ودرج النقدية',
             'اللغة',
             'المظهر',
+            'المستخدم',
+            'حول XOrder',
           ],
         },
       );
@@ -709,7 +848,7 @@ void main() {
     });
 
     testWidgets('Orders & invoices settings has a side nav of its five; '
-        'Language and Appearance have none', (tester) async {
+        'the other five items have none', (tester) async {
       await _open(tester, pane: ManagementPane.receipt);
 
       final nav = find.byKey(const Key('back-office-settings-nav'));
@@ -727,17 +866,35 @@ void main() {
           reason: text,
         );
       }
-      for (final pane in [
+      // The owner's map's six, in its order.
+      const six = [
         ManagementPane.receipt,
+        ManagementPane.printer,
         ManagementPane.language,
         ManagementPane.appearance,
-      ]) {
-        expect(
-          find.byKey(Key('back-office-subnav-${pane.name}')),
-          findsOneWidget,
-          reason: 'Settings\' three items: ${pane.name}',
-        );
+        ManagementPane.user,
+        ManagementPane.about,
+      ];
+      final at = [
+        for (final pane in six)
+          tester.getRect(find.byKey(Key('back-office-subnav-${pane.name}'))),
+      ];
+      for (var i = 1; i < at.length; i++) {
+        expect(at[i].left, greaterThan(at[i - 1].left), reason: six[i].name);
       }
+
+      for (final pane in [
+        ManagementPane.printer,
+        ManagementPane.user,
+        ManagementPane.about,
+      ]) {
+        await tester.tap(find.byKey(Key('back-office-subnav-${pane.name}')));
+        await tester.pumpAndSettle();
+        expect(_showing(tester), {pane});
+        expect(nav, findsNothing, reason: pane.name);
+      }
+      await tester.tap(find.byKey(const Key('back-office-subnav-receipt')));
+      await tester.pumpAndSettle();
 
       await tester.tap(find.byKey(const Key('back-office-settings-charges')));
       await tester.pumpAndSettle();
@@ -842,21 +999,32 @@ void main() {
           );
         }
 
-        // Finance's eight words fit the sub-nav, the widest it gets: an
-        // offline owner, who has Bills due too (BO-10).
-        await tester.tap(find.byKey(const Key('back-office-tab-finance')));
-        await tester.pumpAndSettle();
-        expect(tester.takeException(), isNull);
-        for (final pane in _finance) {
-          final rect = tester.getRect(
-            find.byKey(Key('back-office-subnav-${pane.name}')),
-          );
-          expect(rect.left, greaterThanOrEqualTo(0), reason: pane.name);
-          expect(
-            rect.right,
-            lessThanOrEqualTo(PosSize.wideShellMin),
-            reason: pane.name,
-          );
+        // Every tab's sub-nav fits, as an offline owner has it — the most
+        // items anybody gets: Finance's nine with Bills due (BO-10) and
+        // Settlements the widest, then Settings' six. Measured tab by tab
+        // rather than Finance alone, because items make the sub-nav longer
+        // and any tab can be the one that stops fitting.
+        for (final (tab, own) in backOfficeTabsFor(
+          admin: admin,
+          authorsItsOwnCatalogue: true,
+        )) {
+          await tester.tap(find.byKey(Key('back-office-tab-${tab.name}')));
+          await tester.pumpAndSettle();
+          expect(tester.takeException(), isNull, reason: tab.name);
+          final items = backOfficeItemsFor(const EnStrings(), tab, own);
+          if (items.length < 2) continue;
+          for (final item in items) {
+            final rect = tester.getRect(
+              find.byKey(Key('back-office-subnav-${item.opens.name}')),
+            );
+            final where = '${tab.name} › ${item.opens.name}';
+            expect(rect.left, greaterThanOrEqualTo(0), reason: where);
+            expect(
+              rect.right,
+              lessThanOrEqualTo(PosSize.wideShellMin),
+              reason: where,
+            );
+          }
         }
 
         await tester.tap(find.byKey(const Key('back-office-tab-settings')));

@@ -1,5 +1,6 @@
 import '../../domain/models/order_record.dart';
 import '../../domain/models/permissions.dart';
+import '../../domain/models/refund_history.dart';
 import '../../domain/models/shift.dart';
 import '../../domain/services/authorization.dart';
 
@@ -37,6 +38,23 @@ abstract final class HistoryScope {
   /// to hide the picker, or restored from state saved under a manager — is
   /// narrowed to the viewer, never honoured.
   static OrderHistoryQuery? scope(OrderHistoryQuery query, PosStaff? viewer) {
+    if (viewer == null) return null;
+    if (seesEveryone(viewer)) return query;
+    return query.copyWith(servedByStaffId: viewer.id);
+  }
+
+  /// [query], narrowed the way [scope] narrows sales — or null for nobody.
+  ///
+  /// **By the seller of the sale refunded, not by who gave the money back.**
+  /// Returns is the other side of the same sales: a cashier sees the refunds
+  /// against the sales their own list shows, and every one of them opens in
+  /// that list. Scoped by `refunded_by` instead, a cashier who gave money
+  /// back on a colleague's sale under a supervisor's approval would be shown
+  /// a refund whose sale [mayOpen] then refuses them.
+  static RefundHistoryQuery? scopeRefunds(
+    RefundHistoryQuery query,
+    PosStaff? viewer,
+  ) {
     if (viewer == null) return null;
     if (seesEveryone(viewer)) return query;
     return query.copyWith(servedByStaffId: viewer.id);

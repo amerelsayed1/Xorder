@@ -18,6 +18,7 @@ import '../../receipt/receipt_printing.dart';
 import '../../receipt/receipt_preview_dialog.dart';
 import '../../receipt/reprint_dialog.dart';
 import '../../refund/presentation/refund_sheet.dart';
+import 'history_widgets.dart' show reasonInReaderLanguage;
 import 'order_status_chip.dart';
 import 'payment_status_chip.dart';
 
@@ -263,15 +264,12 @@ class _Detail extends ConsumerWidget {
   /// A restaurant that never filled in the Arabic name should still see the
   /// English on an Arabic till — a blank where a reason belongs looks like a
   /// void nobody gave a reason for, which is the opposite of the truth.
-  static String? _reasonFor(BuildContext context, OrderRecord order) {
-    final arabic = Directionality.of(context) == TextDirection.rtl;
-    final preferred = arabic ? order.voidReasonAr : order.voidReason;
-    final fallback = arabic ? order.voidReason : order.voidReasonAr;
-    final chosen = (preferred?.trim().isNotEmpty ?? false)
-        ? preferred
-        : fallback;
-    return (chosen?.trim().isNotEmpty ?? false) ? chosen : null;
-  }
+  static String? _reasonFor(BuildContext context, OrderRecord order) =>
+      reasonInReaderLanguage(
+        context,
+        english: order.voidReason,
+        arabic: order.voidReasonAr,
+      );
 
   Widget _line(BuildContext context, AppStrings strings, OrderRecordLine line) {
     final pos = context.pos;
@@ -532,15 +530,12 @@ class _Detail extends ConsumerWidget {
 
   /// The refund's reason in the reader's language, same fallback rule as a
   /// void's.
-  static String? _reasonOf(BuildContext context, Refund refund) {
-    final arabic = Directionality.of(context) == TextDirection.rtl;
-    final preferred = arabic ? refund.reasonNameAr : refund.reasonName;
-    final fallback = arabic ? refund.reasonName : refund.reasonNameAr;
-    final chosen = (preferred?.trim().isNotEmpty ?? false)
-        ? preferred
-        : fallback;
-    return (chosen?.trim().isNotEmpty ?? false) ? chosen : null;
-  }
+  static String? _reasonOf(BuildContext context, Refund refund) =>
+      reasonInReaderLanguage(
+        context,
+        english: refund.reasonName,
+        arabic: refund.reasonNameAr,
+      );
 
   /// What can still be done to this order.
   ///
@@ -670,6 +665,9 @@ class _Detail extends ConsumerWidget {
     // And the figures over it: a refund turns PAID into PART REFUNDED, and a
     // full one takes the sale out of the total.
     ref.invalidate(orderHistorySummaryProvider);
+    // And Returns, which has a row more.
+    ref.invalidate(refundHistoryProvider);
+    ref.invalidate(refundHistorySummaryProvider);
     posToast(context, context.strings.refundIssued(given.format(withCurrency: true)));
   }
 

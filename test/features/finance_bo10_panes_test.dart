@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -25,6 +24,7 @@ import 'package:xorder_pos/features/admin/presentation/management_purchasing_pan
 import 'package:xorder_pos/features/admin/presentation/management_screen.dart';
 
 import '../support/fakes.dart';
+import '../support/fonts.dart';
 
 // Who reads Finance, each holding what they hold through a ROLE —
 // `PosStaff.capabilities` is direct grants only.
@@ -423,18 +423,7 @@ void main() {
 
   // The bundled faces, not the test font, for the 1100 px claims below — as
   // `back_office_shell_test.dart` loads them.
-  setUpAll(() async {
-    final ui = FontLoader(PosFonts.ui);
-    for (final face in ['Regular', 'Medium', 'SemiBold', 'Bold']) {
-      ui.addFont(rootBundle.load('assets/fonts/IBMPlexSansArabic-$face.ttf'));
-    }
-    await ui.load();
-    final mono = FontLoader(PosFonts.mono);
-    for (final face in ['Regular', 'Medium', 'SemiBold']) {
-      mono.addFont(rootBundle.load('assets/fonts/IBMPlexMono-$face.ttf'));
-    }
-    await mono.load();
-  });
+  setUpAll(loadPosFonts);
 
   group('Expenses', () {
     testWidgets('pay-outs plus supplier payments not voided, the pay-out a '

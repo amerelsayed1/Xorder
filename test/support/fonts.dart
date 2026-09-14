@@ -3,7 +3,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:xorder_pos/core/ui/tokens.dart';
 
 /// The bundled faces, in place of the test font, for a test that draws the
-/// back office's tab strip.
+/// back office's tab strip — or claims anything else fits.
+///
+/// **The one copy.** Eight suites carried the face list inline and a second
+/// helper (`bundled_fonts.dart`, from `pos/ia-screens`) did the same load
+/// under another name; a face added to the app and to only some of them would
+/// have made "fits at 1100 px" true in one test and false in the next.
 ///
 /// **The test font is a measurement of nothing.** It draws every glyph a full
 /// em wide, so ten English tab words overflow a strip at 1440 px that the real

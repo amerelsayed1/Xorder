@@ -12,8 +12,10 @@ import 'package:xorder_pos/domain/models/permissions.dart';
 import 'package:xorder_pos/domain/repositories/repositories.dart';
 import 'package:xorder_pos/features/admin/application/admin_session.dart';
 import 'package:xorder_pos/features/admin/presentation/management_screen.dart';
+import 'package:xorder_pos/features/settings/printer_settings_dialog.dart';
 
 import '../support/fakes.dart';
+import '../support/fonts.dart';
 
 /// The owner's role, not a hand-picked capability: which tabs the bar's menus
 /// list is `backOfficeTabsFor`'s answer, and it hides Purchasing from somebody
@@ -63,18 +65,7 @@ void main() {
   // The bundled faces, not the test font, for the width test below: the test
   // font draws every glyph a full em wide, and "the owner's bar fits at
   // 1100 px" is a claim about IBM Plex Sans Arabic, in both of its scripts.
-  setUpAll(() async {
-    final ui = FontLoader(PosFonts.ui);
-    for (final face in ['Regular', 'Medium', 'SemiBold', 'Bold']) {
-      ui.addFont(rootBundle.load('assets/fonts/IBMPlexSansArabic-$face.ttf'));
-    }
-    await ui.load();
-    final mono = FontLoader(PosFonts.mono);
-    for (final face in ['Regular', 'Medium', 'SemiBold']) {
-      mono.addFont(rootBundle.load('assets/fonts/IBMPlexMono-$face.ttf'));
-    }
-    await mono.load();
-  });
+  setUpAll(loadPosFonts);
 
   // Every test here runs as macOS. The app mounts a native `PlatformMenuBar`
   // above this bar, and its About item exists only on the desktop platforms
@@ -349,7 +340,12 @@ void main() {
     }
 
     expect(await linesOf(tester, 'Home'), ['Home', 'Exit Admin Mode']);
-    expect(await linesOf(tester, 'Sales'), ['Orders']);
+    expect(await linesOf(tester, 'Sales'), [
+      'Orders',
+      'Invoices',
+      'Returns',
+      'Cancelled orders',
+    ]);
     expect(await linesOf(tester, 'Reports'), ['Business summary']);
     expect(await linesOf(tester, 'Menu'), [
       'Menu',
@@ -373,13 +369,23 @@ void main() {
       'Revenue',
       'Treasury',
       'Expenses',
+      'Settlements',
       'Payment methods',
       'Taxes',
       'Bills due',
       'Transactions',
     ]);
-    expect(await linesOf(tester, 'People'), ['Staff', 'Roles & permissions']);
-    expect(await linesOf(tester, 'System'), ['Activity', 'Backup', 'Devices']);
+    expect(await linesOf(tester, 'People'), [
+      'Staff',
+      'Roles & permissions',
+      'Shifts',
+    ]);
+    expect(await linesOf(tester, 'System'), [
+      'Activity',
+      'Backup',
+      'Devices',
+      'Sync',
+    ]);
   }, variant: desktop);
 
   // The drawn bar held to the rule, menu by menu, on both deployments.
@@ -409,12 +415,25 @@ void main() {
         ], reason: menu.label);
       }
       // Settings: everything it held before Admin Mode, in the same order,
-      // and then the back office's Settings items.
-      expect(await linesOf(tester, 'Settings'), [
-        ...till,
+      // less the till's own line for each place the back office now offers
+      // as a page — then the back office's Settings items. The owner holds
+      // `terminal.manage`, so both Printer and About are pages here.
+      final settings = [
         for (final menu in bar)
-          if (menu.tab == BackOfficeTab.settings)
-            for (final line in menu.lines) line.label,
+          if (menu.tab == BackOfficeTab.settings) ...menu.lines,
+      ];
+      final replaced = {
+        for (final line in settings)
+          if (line.pane == ManagementPane.printer)
+            'Printer & cash drawer…'
+          else if (line.pane == ManagementPane.about)
+            'About XOrder POS',
+      };
+      expect(replaced, hasLength(2));
+      expect(await linesOf(tester, 'Settings'), [
+        for (final line in till)
+          if (!replaced.contains(line)) line,
+        for (final line in settings) line.label,
       ]);
     }, variant: desktop);
   }
@@ -448,8 +467,8 @@ void main() {
     }
   }, variant: desktop);
 
-  testWidgets('Settings keeps the till\'s own lines on top, and gains the '
-      'back office\'s beneath them', (tester) async {
+  testWidgets('Settings keeps the till\'s own lines on top and gains the '
+      'map\'s six beneath them, each place said once', (tester) async {
     final container = await pumpApp(tester, offline: true);
 
     final till = await linesOf(tester, 'Settings');
@@ -467,18 +486,60 @@ void main() {
       'Orders & invoices settings',
       'Language',
       'Appearance',
+      'Printer & cash drawer',
+      'User',
+      'About XOrder',
       'Staff & accounts…',
     ]) {
       expect(till, isNot(contains(item)), reason: item);
     }
 
+    // In Admin Mode the till's Printer and About lines step aside for the
+    // pages of the same name, rather than the menu saying each twice — a
+    // dialog and a page. Switch user stays: it hands the till over, and is
+    // not the map's User.
     await intoAdminMode(tester, container);
     expect(await linesOf(tester, 'Settings'), [
-      ...till,
+      for (final line in till)
+        if (line != 'Printer & cash drawer…' && line != 'About XOrder POS')
+          line,
       'Orders & invoices settings',
+      'Printer & cash drawer',
       'Language',
       'Appearance',
+      'User',
+      'About XOrder',
     ]);
+
+    // And back the moment Admin Mode ends.
+    await tester.tap(barButton('Home'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(MenuItemButton, 'Exit Admin Mode'));
+    await tester.pumpAndSettle();
+    expect(await linesOf(tester, 'Settings'), till);
+  }, variant: desktop);
+
+  testWidgets('the till\'s printer dialog still opens from the till, outside '
+      'Admin Mode; inside it, the line is the page', (tester) async {
+    final container = await pumpApp(tester);
+
+    await openSettings(tester);
+    await tester.tap(find.text('Printer & cash drawer…'));
+    await tester.pumpAndSettle();
+    expect(find.byType(PrinterSettingsDialog), findsOneWidget);
+    Navigator.of(tester.element(find.byType(PrinterSettingsDialog))).pop();
+    await tester.pumpAndSettle();
+
+    await intoAdminMode(tester, container);
+    await openSettings(tester);
+    expect(find.text('Printer & cash drawer…'), findsNothing);
+    await tester.tap(find.widgetWithText(MenuItemButton, 'Printer & cash drawer'));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('back-office-pane-printer')),
+      findsOneWidget,
+    );
+    expect(find.byType(PrinterSettingsDialog), findsNothing);
   }, variant: desktop);
 
   testWidgets('a line opens its page, and Exit leaves Admin Mode as the '
@@ -490,6 +551,17 @@ void main() {
       ('People', 'Roles & permissions', ManagementPane.roles),
       ('Settings', 'Orders & invoices settings', ManagementPane.receipt),
       ('Settings', 'Language', ManagementPane.language),
+      // The items `pos/ia-screens` built, one per tab it touched and all
+      // three of Settings'.
+      ('Sales', 'Invoices', ManagementPane.invoices),
+      ('Sales', 'Returns', ManagementPane.returns),
+      ('Sales', 'Cancelled orders', ManagementPane.voidedOrders),
+      ('Finance', 'Settlements', ManagementPane.settlements),
+      ('People', 'Shifts', ManagementPane.shifts),
+      ('System', 'Sync', ManagementPane.sync),
+      ('Settings', 'Printer & cash drawer', ManagementPane.printer),
+      ('Settings', 'User', ManagementPane.user),
+      ('Settings', 'About XOrder', ManagementPane.about),
     ]) {
       await tester.tap(barButton(menu));
       await tester.pumpAndSettle();
@@ -507,14 +579,69 @@ void main() {
     await tester.tap(find.widgetWithText(MenuItemButton, 'Exit Admin Mode'));
     await tester.pumpAndSettle();
     expect(container.read(adminSessionProvider), isNull);
+    // Back to Orders, where Admin Mode began: twelve bar lines later, the
+    // way back is still the one it was entered by.
     expect(
       container.read(routerProvider).routerDelegate.currentConfiguration.uri
           .path,
-      PosRoutes.start,
-      reason: 'opened from the bar, which names no way back',
+      PosRoutes.orders,
     );
-    expect(find.byType(MenuBar), findsNothing);
+    expect(barLabels(tester), ['Settings'], reason: 'the till\'s bar again');
   }, variant: desktop);
+
+  // The way out is where the chord was pressed, however the back office was
+  // moved about in since. Every bar line used to name its pane and no way
+  // back, so the first line chosen from the bar replaced the route's memory
+  // of where Admin Mode was entered — and Exit, from the header or the bar,
+  // went to the start screen instead of the till the manager had come from.
+  for (final exitBy in ['the header', 'the bar']) {
+    testWidgets('entered by the chord from Orders, a pane chosen from the bar '
+        'still exits to Orders, by $exitBy', (tester) async {
+      final container = await pumpApp(tester);
+      String path() => container
+          .read(routerProvider)
+          .routerDelegate
+          .currentConfiguration
+          .uri
+          .path;
+      expect(path(), PosRoutes.orders);
+
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyS);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+      await tester.pumpAndSettle();
+      expect(path(), PosRoutes.management, reason: 'the chord opened it');
+      await intoAdminMode(tester, container);
+
+      // Two lines, so the second is chosen while already on a bar-opened
+      // pane: the memory has to survive being carried, not only made.
+      for (final (menu, line) in [
+        ('People', 'Roles & permissions'),
+        ('System', 'Activity'),
+      ]) {
+        await tester.tap(barButton(menu));
+        await tester.pumpAndSettle();
+        await tester.tap(find.widgetWithText(MenuItemButton, line));
+        await tester.pumpAndSettle();
+      }
+      expect(path(), PosRoutes.management);
+
+      if (exitBy == 'the header') {
+        await tester.tap(find.byKey(const Key('admin-exit')));
+      } else {
+        await tester.tap(barButton('Home'));
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.widgetWithText(MenuItemButton, 'Exit Admin Mode'),
+        );
+      }
+      await tester.pumpAndSettle();
+      expect(container.read(adminSessionProvider), isNull);
+      expect(path(), PosRoutes.orders, reason: 'where the chord was pressed');
+    }, variant: desktop);
+  }
 
   testWidgets('handing the till over is named for what it is', (tester) async {
     await pumpApp(tester);
@@ -564,7 +691,23 @@ void main() {
     expect(await linesOf(tester, 'الأفراد'), [
       'الموظفون',
       'الأدوار والصلاحيات',
+      'الورديات',
     ]);
+    // Each of the map's six once, in its words — no second printer or about
+    // line from the till's own.
+    final settings = await linesOf(tester, 'الإعدادات');
+    for (final item in [
+      'إعدادات الطلبات والفواتير',
+      'اللغة',
+      'المظهر',
+      'الطابعة ودرج النقدية',
+      'المستخدم',
+      'حول XOrder',
+    ]) {
+      expect(settings.where((l) => l == item), hasLength(1), reason: item);
+    }
+    expect(settings, isNot(contains('الطابعة ودرج النقدية…')));
+    expect(settings, isNot(contains('حول XOrder POS')));
     for (final menu in ['المخزون', 'المشتريات']) {
       expect(await linesOf(tester, menu), [
         const ArStrings().purchasingOnPlatformEntry,

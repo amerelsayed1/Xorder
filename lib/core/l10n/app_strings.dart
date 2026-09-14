@@ -1284,6 +1284,37 @@ sealed class AppStrings {
   String get financePaidOut;
   String get financeExpected;
   String get financeDrawersNote;
+
+  // ── People › Shifts and Finance › Settlements ─────────────────────────────
+  String get shiftsBlurb;
+  String get settlementsBlurb;
+  String get shiftsAllTills;
+  String get shiftsAllCashiers;
+  String get shiftsAllStatuses;
+  String get shiftStatusOpen;
+  String get shiftStatusClosed;
+  String get shiftStatusForceClosed;
+  String get shiftsCashier;
+  String get shiftsOpenedClosed;
+  String get shiftsOverShort;
+  String get shiftsClosedAt;
+  String get settlementsCountedBy;
+  String get settlementsNoteApproval;
+  String settlementsApprovedBy(String name);
+  String get settlementsKpiCount;
+  String get settlementsKpiOver;
+  String get settlementsKpiShort;
+  String get settlementsKpiNet;
+  String get shiftsNone;
+  String get settlementsNone;
+  String get shiftsNeedReports;
+  String shiftsCut(int limit);
+  String shiftStillOpenTitle(String reference);
+  String shiftReportSubtitle(String till, String openedBy);
+  String shiftReportCountedBy(String name);
+  String shiftReportNote(String note);
+  String get shiftsVarianceHidden;
+  String get shiftsExpectedNote;
   String get financeAsOf;
   String get financeBucketOverdue;
   String get financeBucketToday;
@@ -1531,6 +1562,48 @@ sealed class AppStrings {
   String get aboutMode;
   String get aboutTerminalId;
   String get aboutDatabase;
+
+  // Back office › System › Sync.
+  String get paneSync;
+  String get paneSyncBlurb;
+  String get syncLastConfig;
+  String get syncUnsent;
+  String get syncLastProblem;
+  String get syncNoProblem;
+  String get syncPassFailed;
+  String get syncPlatformSilent;
+  String syncHeld(int count);
+  String syncPassSent(int count);
+  String get syncOfflineTill;
+  String get syncBranchServer;
+
+  // Back office › Settings › Printer & cash drawer.
+  String get printerNotYours;
+  String get printerSaved;
+
+  // Back office › Settings › User.
+  String get paneUser;
+  String get paneUserBlurb;
+  String get userNameLabel;
+  String get userRole;
+  String get userNoRole;
+  String get userPermissions;
+  String get userSeeRoles;
+  String get userExitHint;
+
+  // Back office: the owner's map's items `pos/ia-screens` built, as the
+  // sub-nav, the header and the bar name them.
+  String get paneInvoices;
+  String get paneInvoicesBlurb;
+  String get paneReturns;
+  String get paneReturnsBlurb;
+  String get paneVoidedOrders;
+  String get paneVoidedOrdersBlurb;
+  String get paneShifts;
+  String get paneSettlements;
+  String get panePrinterBlurb;
+  String get paneAbout;
+  String get paneAboutBlurb;
   String get receiptPreviewAction;
   String get receiptPreviewNote;
   String get paneUnits;
@@ -1952,6 +2025,46 @@ sealed class AppStrings {
   /// `served_by` before [reliableFrom] credited shared-PIN sales to one person.
   /// [reliableFrom] is a Latin-digit date in both languages.
   String orderHistoryAttributionCaveat(String reliableFrom);
+
+  // Sales › Returns (المرتجعات): one row per refund. The refund's number and
+  // every figure are drawn apart from these words, in mono, so no number sits
+  // inside an Arabic sentence.
+  String get returnsSearchHint;
+  String returnsCount(int count);
+  String get returnsSummaryCount;
+  String get returnsSummaryTotal;
+  String get returnsSummaryTotalNote;
+  String get returnsEmpty;
+  String get returnsEmptyFiltered;
+  String get returnsUnavailable;
+  String get returnsPickARefund;
+  String get returnColumnRefund;
+  String get returnColumnInvoice;
+  String get returnColumnCashier;
+  String get returnColumnReason;
+  String get returnColumnLines;
+  String get returnColumnAmount;
+
+  /// The way from a refund to the sale it gave money back on, in Orders.
+  String get returnDetailOpenSale;
+
+  /// A refund that names no items — an amount against the bill as a whole.
+  String get returnDetailAmountOnly;
+  String get returnDetailReturnedTo;
+
+  /// `RefundKind`, by `refundKindLabel` — never the wire word.
+  String get refundKindFull;
+  String get refundKindPartial;
+
+  // Sales › Cancelled orders (الطلبات الملغاة): the list under
+  // `HistoryPreset.voided`, with who voided each sale, when and why.
+  String get orderColumnVoidReason;
+  String get orderColumnVoidedBy;
+  String get orderColumnVoidedAt;
+  String get voidedSummaryCount;
+  String get voidedSummaryTotal;
+  String get voidedSummaryTotalNote;
+  String get voidedOrdersEmpty;
   /// Followed by the date in mono, never interpolated: a date inside an
   /// Arabic sentence is one bidi run away from reading backwards.
   String get orderDetailBusinessDay;
@@ -2480,6 +2593,63 @@ final class EnStrings extends AppStrings {
       'Who sold each order is reliable only from $reliableFrom. Before that, '
       'a PIN shared by two people credited all their sales to one of them, so '
       'per-cashier figures for earlier days are not accurate.';
+  @override
+  String get returnsSearchHint => 'Refund no. or invoice';
+  @override
+  String returnsCount(int count) =>
+      count == 1 ? '1 refund' : '$count refunds';
+  @override
+  String get returnsSummaryCount => 'Refunds';
+  @override
+  String get returnsSummaryTotal => 'Total refunded';
+  @override
+  String get returnsSummaryTotalNote => 'Given back, in every method';
+  @override
+  String get returnsEmpty => 'No refunds in this period.';
+  @override
+  String get returnsEmptyFiltered => 'No refunds match this search.';
+  @override
+  String get returnsUnavailable =>
+      'Refunds could not be read from the branch database.';
+  @override
+  String get returnsPickARefund => 'Pick a refund to see it.';
+  @override
+  String get returnColumnRefund => 'Refund';
+  @override
+  String get returnColumnInvoice => 'Original invoice';
+  @override
+  String get returnColumnCashier => 'Refunded by';
+  @override
+  String get returnColumnReason => 'Reason';
+  @override
+  String get returnColumnLines => 'Items';
+  @override
+  String get returnColumnAmount => 'Amount';
+  @override
+  String get returnDetailOpenSale => 'Open the sale';
+  @override
+  String get returnDetailAmountOnly =>
+      'Given back against the whole bill, not particular items.';
+  @override
+  String get returnDetailReturnedTo => 'Returned to';
+  @override
+  String get refundKindFull => 'Full refund';
+  @override
+  String get refundKindPartial => 'Part refund';
+  @override
+  String get orderColumnVoidReason => 'Void reason';
+  @override
+  String get orderColumnVoidedBy => 'Voided by';
+  @override
+  String get orderColumnVoidedAt => 'Voided at';
+  @override
+  String get voidedSummaryCount => 'Voided orders';
+  @override
+  String get voidedSummaryTotal => 'Voided total';
+  @override
+  String get voidedSummaryTotalNote => 'Never taken, so not in sales';
+  @override
+  String get voidedOrdersEmpty => 'Nothing was voided in this period.';
   @override
   String get orderDetailBusinessDay => 'Business day';
   @override
@@ -5411,6 +5581,79 @@ final class EnStrings extends AppStrings {
       'float, plus cash taken, plus paid in, less paid out. Bank and wallet '
       'balances are not kept here.';
   @override
+  String get shiftsBlurb =>
+      'Every shift at this branch, open ones first. A row opens its Z report.';
+  @override
+  String get settlementsBlurb =>
+      'Each drawer as it was counted at the end of its shift, against what '
+      'the Z report expected it to hold. Nothing here changes a count.';
+  @override
+  String get shiftsAllTills => 'All tills';
+  @override
+  String get shiftsAllCashiers => 'All cashiers';
+  @override
+  String get shiftsAllStatuses => 'All statuses';
+  @override
+  String get shiftStatusOpen => 'Open';
+  @override
+  String get shiftStatusClosed => 'Closed';
+  @override
+  String get shiftStatusForceClosed => 'Force-closed';
+  @override
+  String get shiftsCashier => 'Cashier';
+  @override
+  String get shiftsOpenedClosed => 'Opened / closed';
+  @override
+  String get shiftsOverShort => 'Over / short';
+  @override
+  String get shiftsClosedAt => 'Closed';
+  @override
+  String get settlementsCountedBy => 'Counted by';
+  @override
+  String get settlementsNoteApproval => 'Note / approval';
+  @override
+  String settlementsApprovedBy(String name) => 'Approved by $name';
+  @override
+  String get settlementsKpiCount => 'Cash-ups';
+  @override
+  String get settlementsKpiOver => 'Total over';
+  @override
+  String get settlementsKpiShort => 'Total short';
+  @override
+  String get settlementsKpiNet => 'Net over / short';
+  @override
+  String get shiftsNone =>
+      'No shift was opened at this branch in these dates.';
+  @override
+  String get settlementsNone =>
+      'No drawer was counted at this branch in these dates.';
+  @override
+  String get shiftsNeedReports =>
+      'Shifts and cash-ups are shown to those who may view reports.';
+  @override
+  String shiftsCut(int limit) =>
+      'Showing the newest $limit. Narrow the dates or the filters to see the '
+      'rest.';
+  @override
+  String shiftStillOpenTitle(String reference) => '$reference — still open';
+  @override
+  String shiftReportSubtitle(String till, String openedBy) =>
+      '$till · opened by $openedBy';
+  @override
+  String shiftReportCountedBy(String name) => 'Counted by $name';
+  @override
+  String shiftReportNote(String note) => 'Note: $note';
+  @override
+  String get shiftsVarianceHidden =>
+      "Over and short are shown only to those who may see a drawer's "
+      'difference.';
+  @override
+  String get shiftsExpectedNote =>
+      "Expected is the Z report's figure: the float, plus cash taken, plus "
+      'paid in, less paid out. Once a drawer is counted, it is the figure the '
+      'count was judged against. Force-closed means somebody other than the '
+      "person who opened the drawer counted it, on a manager's approval.";
+  @override
   String get financeAsOf => 'As of business date';
   @override
   String get financeBucketOverdue => 'Overdue';
@@ -5921,6 +6164,84 @@ final class EnStrings extends AppStrings {
   String get aboutTerminalId => 'Terminal id';
   @override
   String get aboutDatabase => 'Database';
+  @override
+  String get paneSync => 'Sync';
+  @override
+  String get paneSyncBlurb =>
+      "Where this till's sales go, and whether they got there";
+  @override
+  String get syncLastConfig => 'Menu and settings last received';
+  @override
+  String get syncUnsent => 'Sales not yet sent';
+  @override
+  String get syncLastProblem => 'Last problem';
+  @override
+  String get syncNoProblem => 'None';
+  @override
+  String get syncPassFailed =>
+      'The sync could not run. The sales are still here, and it will try '
+      'again.';
+  @override
+  String get syncPlatformSilent =>
+      'The platform did not answer. Nothing is lost — the sales wait here '
+      'until it does.';
+  @override
+  String syncHeld(int count) =>
+      'Refused by the platform and held for a person: $count';
+  @override
+  String syncPassSent(int count) => 'Sent just now: $count';
+  @override
+  String get syncOfflineTill =>
+      'This till does not sync to the cloud. Its sales are kept on the branch '
+      'server below, and a backup is the copy that keeps them safe.';
+  @override
+  String get syncBranchServer => 'Branch server';
+  @override
+  String get printerNotYours =>
+      'Only somebody who may manage this terminal can change its printer.';
+  @override
+  String get printerSaved =>
+      'Saved. This till prints here now, and after a restart.';
+  @override
+  String get paneUser => 'User';
+  @override
+  String get paneUserBlurb => 'Who is in Admin Mode now';
+  @override
+  String get userNameLabel => 'Name';
+  @override
+  String get userRole => 'Role';
+  @override
+  String get userNoRole => 'No role — direct permissions only';
+  @override
+  String get userPermissions => 'Permissions held';
+  @override
+  String get userSeeRoles => 'See Roles';
+  @override
+  String get userExitHint =>
+      'Leaves the back office and hands the till back as it was.';
+  @override
+  String get paneInvoices => 'Invoices';
+  @override
+  String get paneInvoicesBlurb => 'Settled sales that carry an invoice';
+  @override
+  String get paneReturns => 'Returns';
+  @override
+  String get paneReturnsBlurb => 'Every refund the branch has given';
+  @override
+  String get paneVoidedOrders => 'Cancelled orders';
+  @override
+  String get paneVoidedOrdersBlurb =>
+      'Voided sales, with who voided them and why';
+  @override
+  String get paneShifts => 'Shifts';
+  @override
+  String get paneSettlements => 'Settlements';
+  @override
+  String get panePrinterBlurb => "This till's receipt printer and cash drawer";
+  @override
+  String get paneAbout => 'About XOrder';
+  @override
+  String get paneAboutBlurb => 'The version, this terminal and its database';
   @override
   String get receiptPreviewAction => 'Preview';
   @override
@@ -6642,6 +6963,63 @@ final class ArStrings extends AppStrings {
       '\u2066$reliableFrom\u2069 فقط. '
       'قبل ذلك كان رمز PIN المشترك بين شخصين ينسب كل مبيعاتهما إلى أحدهما، '
       'لذا فأرقام كل كاشير في الأيام السابقة غير دقيقة.';
+  @override
+  String get returnsSearchHint => 'رقم المرتجع أو الفاتورة';
+  @override
+  String returnsCount(int count) =>
+      count == 1 ? 'مرتجع واحد' : '$count مرتجعات';
+  @override
+  String get returnsSummaryCount => 'المرتجعات';
+  @override
+  String get returnsSummaryTotal => 'إجمالي المسترد';
+  @override
+  String get returnsSummaryTotalNote => 'ما أُعيد للعملاء بكل طرق الدفع';
+  @override
+  String get returnsEmpty => 'لا توجد مرتجعات في هذه الفترة.';
+  @override
+  String get returnsEmptyFiltered => 'لا توجد مرتجعات تطابق هذا البحث.';
+  @override
+  String get returnsUnavailable =>
+      'تعذّرت قراءة المرتجعات من قاعدة بيانات الفرع.';
+  @override
+  String get returnsPickARefund => 'اختر مرتجعًا لعرضه.';
+  @override
+  String get returnColumnRefund => 'المرتجع';
+  @override
+  String get returnColumnInvoice => 'الفاتورة الأصلية';
+  @override
+  String get returnColumnCashier => 'بواسطة';
+  @override
+  String get returnColumnReason => 'السبب';
+  @override
+  String get returnColumnLines => 'الأصناف';
+  @override
+  String get returnColumnAmount => 'المبلغ';
+  @override
+  String get returnDetailOpenSale => 'فتح الطلب الأصلي';
+  @override
+  String get returnDetailAmountOnly =>
+      'مبلغ أُعيد من إجمالي الفاتورة، لا من أصناف بعينها.';
+  @override
+  String get returnDetailReturnedTo => 'أُعيد إلى';
+  @override
+  String get refundKindFull => 'استرداد كامل';
+  @override
+  String get refundKindPartial => 'استرداد جزئي';
+  @override
+  String get orderColumnVoidReason => 'سبب الإلغاء';
+  @override
+  String get orderColumnVoidedBy => 'ألغاه';
+  @override
+  String get orderColumnVoidedAt => 'وقت الإلغاء';
+  @override
+  String get voidedSummaryCount => 'الطلبات الملغاة';
+  @override
+  String get voidedSummaryTotal => 'إجمالي الملغى';
+  @override
+  String get voidedSummaryTotalNote => 'لم يُحصَّل، فلا يدخل في المبيعات';
+  @override
+  String get voidedOrdersEmpty => 'لم يُلغَ أي طلب في هذه الفترة.';
   @override
   String get orderDetailBusinessDay => 'يوم العمل';
   @override
@@ -9487,6 +9865,78 @@ final class ArStrings extends AppStrings {
       'مضافاً إليه المحصَّل نقداً والنقد الداخل، مطروحاً منه النقد الخارج. '
       'أرصدة البنوك والمحافظ الإلكترونية لا تُحفظ هنا.';
   @override
+  String get shiftsBlurb =>
+      'كل ورديات هذا الفرع، والمفتوحة منها أولاً. اضغط على أي صف لعرض تقرير '
+      'Z الخاص بها.';
+  @override
+  String get settlementsBlurb =>
+      'جرد كل درج كما تم في نهاية ورديته، مقابل ما توقّع تقرير Z أن يحتويه. '
+      'لا شيء هنا يغيّر أي جرد.';
+  @override
+  String get shiftsAllTills => 'كل الأجهزة';
+  @override
+  String get shiftsAllCashiers => 'كل الكاشيرات';
+  @override
+  String get shiftsAllStatuses => 'كل الحالات';
+  @override
+  String get shiftStatusOpen => 'مفتوحة';
+  @override
+  String get shiftStatusClosed => 'مُقفلة';
+  @override
+  String get shiftStatusForceClosed => 'أُقفلت إجبارياً';
+  @override
+  String get shiftsCashier => 'الكاشير';
+  @override
+  String get shiftsOpenedClosed => 'الفتح / الإقفال';
+  @override
+  String get shiftsOverShort => 'زيادة / عجز';
+  @override
+  String get shiftsClosedAt => 'وقت الإقفال';
+  @override
+  String get settlementsCountedBy => 'جرده';
+  @override
+  String get settlementsNoteApproval => 'ملاحظة / موافقة';
+  @override
+  String settlementsApprovedBy(String name) => 'بموافقة $name';
+  @override
+  String get settlementsKpiCount => 'عمليات الجرد';
+  @override
+  String get settlementsKpiOver => 'إجمالي الزيادة';
+  @override
+  String get settlementsKpiShort => 'إجمالي العجز';
+  @override
+  String get settlementsKpiNet => 'صافي الزيادة / العجز';
+  @override
+  String get shiftsNone => 'لم تُفتح أي وردية في هذا الفرع خلال هذه التواريخ.';
+  @override
+  String get settlementsNone =>
+      'لم يُجرد أي درج في هذا الفرع خلال هذه التواريخ.';
+  @override
+  String get shiftsNeedReports =>
+      'تظهر الورديات وعمليات الجرد لمن لديه صلاحية عرض التقارير.';
+  @override
+  String shiftsCut(int limit) =>
+      'يُعرض أحدث $limit فقط. ضيّق التواريخ أو عوامل التصفية لرؤية الباقي.';
+  @override
+  String shiftStillOpenTitle(String reference) =>
+      '$reference — ما زالت مفتوحة';
+  @override
+  String shiftReportSubtitle(String till, String openedBy) =>
+      '$till · فتحها $openedBy';
+  @override
+  String shiftReportCountedBy(String name) => 'جرده $name';
+  @override
+  String shiftReportNote(String note) => 'ملاحظة: $note';
+  @override
+  String get shiftsVarianceHidden =>
+      'الزيادة والعجز يظهران فقط لمن يحق له رؤية فرق الدرج.';
+  @override
+  String get shiftsExpectedNote =>
+      'المتوقع هو رقم تقرير Z: رصيد البداية، مضافاً إليه المحصَّل نقداً '
+      'والنقد الداخل، مطروحاً منه النقد الخارج. بعد جرد الدرج يصبح هو الرقم '
+      'الذي حُكم على الجرد مقابله. «أُقفلت إجبارياً» تعني أن شخصاً غير من فتح '
+      'الدرج هو من جرده، بموافقة مدير.';
+  @override
   String get financeAsOf => 'حتى يوم العمل';
   @override
   String get financeBucketOverdue => 'متأخرة';
@@ -9979,6 +10429,78 @@ final class ArStrings extends AppStrings {
   String get aboutTerminalId => 'معرّف الجهاز';
   @override
   String get aboutDatabase => 'قاعدة البيانات';
+  @override
+  String get paneSync => 'المزامنة';
+  @override
+  String get paneSyncBlurb => 'أين تذهب مبيعات هذا الجهاز، وهل وصلت';
+  @override
+  String get syncLastConfig => 'آخر استلام للقائمة والإعدادات';
+  @override
+  String get syncUnsent => 'مبيعات لم تُرسل بعد';
+  @override
+  String get syncLastProblem => 'آخر مشكلة';
+  @override
+  String get syncNoProblem => 'لا شيء';
+  @override
+  String get syncPassFailed =>
+      'تعذّر تشغيل المزامنة. المبيعات ما زالت محفوظة هنا، وستُعاد المحاولة.';
+  @override
+  String get syncPlatformSilent =>
+      'لم تردّ المنصة. لم يُفقد شيء — تنتظر المبيعات هنا حتى تردّ.';
+  @override
+  String syncHeld(int count) => 'رفضتها المنصة وهي محتجزة لمراجعة شخص: $count';
+  @override
+  String syncPassSent(int count) => 'أُرسل الآن: $count';
+  @override
+  String get syncOfflineTill =>
+      'هذا الجهاز لا يُزامن مع السحابة. مبيعاته محفوظة على خادم الفرع أدناه، '
+      'والنسخة الاحتياطية هي ما يحفظها.';
+  @override
+  String get syncBranchServer => 'خادم الفرع';
+  @override
+  String get printerNotYours =>
+      'تغيير الطابعة لمن يملك صلاحية إدارة هذا الجهاز فقط.';
+  @override
+  String get printerSaved =>
+      'تم الحفظ. يطبع هذا الجهاز هنا الآن وبعد إعادة التشغيل.';
+  @override
+  String get paneUser => 'المستخدم';
+  @override
+  String get paneUserBlurb => 'من في وضع المسؤول الآن';
+  @override
+  String get userNameLabel => 'الاسم';
+  @override
+  String get userRole => 'الدور';
+  @override
+  String get userNoRole => 'بلا دور — صلاحيات مباشرة فقط';
+  @override
+  String get userPermissions => 'الصلاحيات الممنوحة';
+  @override
+  String get userSeeRoles => 'عرض الأدوار';
+  @override
+  String get userExitHint => 'يغلق المكتب الخلفي ويعيد الجهاز كما كان.';
+  @override
+  String get paneInvoices => 'الفواتير';
+  @override
+  String get paneInvoicesBlurb => 'المبيعات المسدَّدة التي تحمل فاتورة';
+  @override
+  String get paneReturns => 'المرتجعات';
+  @override
+  String get paneReturnsBlurb => 'كل مرتجع ردّه الفرع';
+  @override
+  String get paneVoidedOrders => 'الطلبات الملغاة';
+  @override
+  String get paneVoidedOrdersBlurb => 'المبيعات الملغاة، ومن ألغاها ولماذا';
+  @override
+  String get paneShifts => 'الورديات';
+  @override
+  String get paneSettlements => 'التسويات';
+  @override
+  String get panePrinterBlurb => 'طابعة الإيصالات ودرج النقدية في هذا الجهاز';
+  @override
+  String get paneAbout => 'حول XOrder';
+  @override
+  String get paneAboutBlurb => 'الإصدار وهذا الجهاز وقاعدة بياناته';
   @override
   String get receiptPreviewAction => 'معاينة';
   @override

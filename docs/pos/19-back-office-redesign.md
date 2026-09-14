@@ -131,11 +131,30 @@ It's out of scope.
 > Purchasing keeps its "new …" lines. Settings' items join the till's own
 > Settings menu after a divider rather than making a second الإعدادات.
 >
+> **Built since (merge of `pos/ia-screens`, 15 Sep 2026).** These are now
+> panes, in the sub-nav and the bar alike:
+>
+> * Sales › الفواتير، المرتجعات، الطلبات الملغاة. Invoices and Cancelled orders
+>   are the order history on a locked preset. Returns' "Open the sale" opens
+>   الطلبات on that sale.
+> * Finance › التسويات.
+> * People › الورديات.
+> * System › المزامنة.
+> * Settings › الطابعة ودرج النقدية، المستخدم، حول XOrder, after its first
+>   three items, so the sub-nav holds all six.
+>
+> Each item is gated exactly as its pane gates itself. Shifts and Settlements
+> need `reports.view`, Printer needs `terminal.manage`, and the rest need
+> nothing beyond the door. In the bar's الإعدادات, the till's own Printer and
+> About lines step aside while the back office offers those pages, so each
+> item is said once. They come back when Admin Mode ends, and outside Admin
+> Mode the till's dialogs are the only way to either. A pane opened from the
+> bar now keeps where the back office was entered from, so Exit goes back
+> there rather than to the start screen.
+>
 > An item of the map with no screen yet has no line and no sub-nav entry until
-> its slice lands. That covers Sales' invoices, returns and cancelled orders;
-> Reports' five breakdowns; Finance's settlements; People's shifts; and
-> System's sync. Settings' printer, user and about have no sub-nav entry either:
-> in the bar they are the till's own lines. On a cloud till Menu is absent, and
+> its slice lands. That is now only Reports' five breakdowns, which are being
+> built separately. On a cloud till Menu is absent, and
 > Inventory and Purchasing are each a one-line menu holding the platform
 > pointer, for whoever would have them offline. Visibility is unchanged. Both
 > the bar and the strip are measured at 1100 px with the bundled fonts, in

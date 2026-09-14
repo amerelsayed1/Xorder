@@ -253,6 +253,20 @@ class XorderPosApp extends ConsumerWidget {
                 for (final menu in menus)
                   if (menu.tab == BackOfficeTab.settings) ...menu.lines,
               ];
+              // **One line per place.** Printer and About are the till's own
+              // lines AND the back office's Settings items; offered both, the
+              // menu would say each twice, a dialog and a page. So while the
+              // back office offers the page, the till's line steps aside, and
+              // it is back the moment Admin Mode ends — the till's dialog is
+              // the only way to either outside it. Read off the lines, not
+              // off a capability: the page follows whoever is in Admin Mode,
+              // the till's line whoever is signed in at the till, and those
+              // can be two people.
+              final inBackOffice = {for (final line in settingsLines) line.pane};
+              final tillPrinter =
+                  managesTerminal &&
+                  !inBackOffice.contains(ManagementPane.printer);
+              final tillAbout = !inBackOffice.contains(ManagementPane.about);
               return _AfterEachRoute(
                 listenable: router.routerDelegate,
                 builder: (context) => MenuBarWidget(
@@ -347,7 +361,7 @@ class XorderPosApp extends ConsumerWidget {
                           ),
                           // Configuring the machine is not a cashier's job, and
                           // both of these reconfigure it.
-                          if (managesTerminal)
+                          if (tillPrinter)
                             MenuButton(
                               text: Text(strings.settingsPrinter),
                               icon: const Icon(Icons.print_outlined, size: 16),
@@ -400,15 +414,21 @@ class XorderPosApp extends ConsumerWidget {
                             onTap: () =>
                                 ref.read(routerProvider).go(PosRoutes.lock),
                           ),
-                          const MenuDivider(),
-                          MenuButton(
-                            text: Text(strings.settingsAbout),
-                            icon: const Icon(Icons.info_outline, size: 16),
-                            onTap: () {
-                              final context = rootNavigatorKey.currentContext;
-                              if (context != null) PosAboutDialog.show(context);
-                            },
-                          ),
+                          // Not above nothing: with About the back office's
+                          // and no reset to offer, the foot's own divider is
+                          // the next thing drawn.
+                          if (tillAbout || managesTerminal) const MenuDivider(),
+                          if (tillAbout)
+                            MenuButton(
+                              text: Text(strings.settingsAbout),
+                              icon: const Icon(Icons.info_outline, size: 16),
+                              onTap: () {
+                                final context = rootNavigatorKey.currentContext;
+                                if (context != null) {
+                                  PosAboutDialog.show(context);
+                                }
+                              },
+                            ),
                           if (managesTerminal)
                             MenuButton(
                               text: Text(strings.forceResetConfirm),
@@ -420,13 +440,15 @@ class XorderPosApp extends ConsumerWidget {
                               onTap: () => _forceReset(ref),
                             ),
                           // The back office's Settings items, in Admin Mode and
-                          // only those this person has, beneath the till's own
-                          // lines, which keep their places. Merged, rather than
-                          // the till's lines rearranged into the map's order:
-                          // printer, switch user and About already are the
-                          // map's printer, user and about, and they have to
-                          // stay reachable outside Admin Mode, where none of
-                          // the back office's items are.
+                          // only those this person has, in the map's order —
+                          // all six, printer and about among them, which is
+                          // why the till's two lines above step aside. Beneath
+                          // the till's own rather than woven into them: the
+                          // rest of the till's lines are acts (sync, switch
+                          // language, lock for somebody else) or `/orders`,
+                          // not places in the back office. Switch user is not
+                          // the map's User: it hands the till over; User is
+                          // who is in Admin Mode and the way out of it.
                           if (settingsLines.isNotEmpty) const MenuDivider(),
                           for (final entry in settingsLines) ...[
                             if (entry.divider) const MenuDivider(),
@@ -482,9 +504,31 @@ class XorderPosApp extends ConsumerWidget {
 
   /// A bar line, followed. Through the route, so somebody no longer in Admin
   /// Mode meets its door first, and lands on the pane the line named.
+  ///
+  /// **Carrying the way back.** A line names its pane and nothing else, and
+  /// the route's `extra` is the whole of what the back office remembers — so
+  /// going there with the line's destination alone forgot where the chord
+  /// was pressed, and Exit, from the header or from Home's menu, landed on
+  /// the start screen. Remembering it in the admin session instead was the
+  /// alternative, and would have been a second copy of the route's answer
+  /// that the start screen's door and the router's own builder never read.
   void _openFromBar(WidgetRef ref, ManagementBarEntry entry) => ref
       .read(routerProvider)
-      .go(PosRoutes.management, extra: entry.open());
+      .go(
+        PosRoutes.management,
+        extra: entry.open().returningTo(_cameFrom(ref)),
+      );
+
+  /// Where the back office goes back to: the route it was entered from, as
+  /// the destination that opened it recorded — or, from anywhere else, here.
+  String? _cameFrom(WidgetRef ref) {
+    final here = ref.read(routerProvider).routerDelegate.currentConfiguration;
+    if (here.uri.path != PosRoutes.management) return here.uri.path;
+    return switch (here.extra) {
+      final ManagementDestination d => d.returnTo,
+      _ => null,
+    };
+  }
 
   /// Exit Admin Mode from the bar: exactly the header's Exit — the session
   /// ended as `exited`, and back to wherever the back office was opened from.
@@ -493,13 +537,9 @@ class XorderPosApp extends ConsumerWidget {
   /// dispose, which would record it as `left`: the audit row says Exit because
   /// somebody chose Exit.
   void _exitAdmin(WidgetRef ref) {
-    final router = ref.read(routerProvider);
-    final returnTo = switch (router.routerDelegate.currentConfiguration.extra) {
-      final ManagementDestination d => d.returnTo,
-      _ => null,
-    };
+    final returnTo = _cameFrom(ref);
     ref.read(adminSessionProvider.notifier).end(AdminSessionEnd.exited);
-    router.go(returnTo ?? PosRoutes.start);
+    ref.read(routerProvider).go(returnTo ?? PosRoutes.start);
   }
 
   /// Into Admin Mode, from wherever the till is — and back there on the way

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -23,6 +22,7 @@ import 'package:xorder_pos/features/admin/presentation/management_receipt_pane.d
 import 'package:xorder_pos/features/admin/presentation/management_screen.dart';
 
 import '../support/fakes.dart';
+import '../support/fonts.dart';
 
 const _strings = EnStrings();
 
@@ -171,16 +171,7 @@ void main() {
     registerFallbackValue(const PosStaff(id: 0, name: ''));
     registerFallbackValue(BackupTrigger.manual);
 
-    final ui = FontLoader(PosFonts.ui);
-    for (final face in ['Regular', 'Medium', 'SemiBold', 'Bold']) {
-      ui.addFont(rootBundle.load('assets/fonts/IBMPlexSansArabic-$face.ttf'));
-    }
-    await ui.load();
-    final mono = FontLoader(PosFonts.mono);
-    for (final face in ['Regular', 'Medium', 'SemiBold']) {
-      mono.addFont(rootBundle.load('assets/fonts/IBMPlexMono-$face.ttf'));
-    }
-    await mono.load();
+    await loadPosFonts();
   });
 
   testWidgets('General is the company form, then appearance, then backup', (
