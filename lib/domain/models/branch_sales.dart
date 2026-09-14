@@ -12,7 +12,24 @@
 library;
 
 import '../../core/money/money.dart';
+import 'order_record.dart';
 import 'tender_method.dart';
+
+/// The sales every sales figure counts: money was taken, whatever happened
+/// after. A refunded sale is still a sale — its refund is counted where and
+/// when it was issued (rule 4), not by deleting the sale from the day it was
+/// made. Voided, cancelled and still-open orders took no money.
+///
+/// One set for the branch view, the reports and the day close alike. Three
+/// literal lists of four words each was the shape before, and a fifth status
+/// added to one of them would have been a figure that no longer matched its
+/// neighbour on the same screen.
+const settledStatuses = {
+  OrderStatus.paid,
+  OrderStatus.closed,
+  OrderStatus.partiallyRefunded,
+  OrderStatus.refunded,
+};
 
 /// Which of §3a's figures a payment lands in.
 enum PaymentBucket {
@@ -161,27 +178,19 @@ class TerminalSales {
       .fold(_zero, (sum, p) => sum + p.amount);
 }
 
-/// The branch for one business day: its terminals, and totals read off them.
-class BranchSales {
-  const BranchSales({
-    required this.branchId,
-    required this.businessDay,
-    required this.terminals,
-    this.currency = 'EGP',
-    this.exponent = 2,
-  });
-
-  final int branchId;
-
-  /// The date that NAMES the trading day — not a calendar window. A night that
-  /// runs to 2 a.m. is one business day (§0 rule 5).
-  final DateTime businessDay;
-
+/// Rule 1's arithmetic, for anything that is "terminals, and totals read off
+/// them".
+///
+/// Shared by [BranchSales] (one business day) and `SalesReport` (a range of
+/// them), so the two cannot come to disagree about what net or collected
+/// means. Copying these getters into the report was the alternative; the copy
+/// is the one that stops being updated, and the first sign would be Home and
+/// Reports showing two different "today" figures for the same day.
+mixin TerminalRollup {
   /// Every terminal of the branch, zeros included (rule 2).
-  final List<TerminalSales> terminals;
-
-  final String currency;
-  final int exponent;
+  List<TerminalSales> get terminals;
+  String get currency;
+  int get exponent;
 
   Money get _zero => Money(0, currency: currency, exponent: exponent);
 
@@ -229,6 +238,31 @@ class BranchSales {
     }
     return null;
   }
+}
+
+/// The branch for one business day: its terminals, and totals read off them.
+class BranchSales with TerminalRollup {
+  const BranchSales({
+    required this.branchId,
+    required this.businessDay,
+    required this.terminals,
+    this.currency = 'EGP',
+    this.exponent = 2,
+  });
+
+  final int branchId;
+
+  /// The date that NAMES the trading day — not a calendar window. A night that
+  /// runs to 2 a.m. is one business day (§0 rule 5).
+  final DateTime businessDay;
+
+  @override
+  final List<TerminalSales> terminals;
+
+  @override
+  final String currency;
+  @override
+  final int exponent;
 }
 
 /// One sale on another terminal, for drill-down on a per-till cloud branch.

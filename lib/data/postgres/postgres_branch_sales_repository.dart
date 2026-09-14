@@ -38,9 +38,48 @@ class PostgresBranchSalesRepository implements BranchSalesSource {
 
   /// Settled sales — the set the business-day close already totals
   /// (`postgres_business_day_repository.dart`), and the two must keep agreeing.
-  /// A refunded sale is still a sale: its refund is counted where and when it
-  /// was issued (rule 4), not by deleting the sale from the day it was made.
-  static const _settled = ['PAID', 'CLOSED', 'PARTIALLY_REFUNDED', 'REFUNDED'];
+  /// See [settledStatuses].
+  static final _settled = [for (final status in settledStatuses) status.wire];
+
+  /// Payments by terminal and method, over a `sales` CTE that has `id`,
+  /// `restaurant_id` and `terminal_id`.
+  ///
+  /// Public so the reports (`PostgresReportsRepository`) group tenders exactly
+  /// as the branch view does. The label, the snapshotted cash flag and the
+  /// unknown-kind rule below are three decisions, and a report that made any
+  /// of them differently would show a tender bar that does not match the
+  /// branch view's list for the same day.
+  ///
+  /// LEFT join onto the tender types for the KIND only: a payment carries its
+  /// own label and cash flag, and a retired tender must not take its takings
+  /// off the report with it. An unknown kind is read as `other`.
+  static const paymentTotalsCte = '''
+    payment_totals AS (
+      SELECT s.terminal_id, p.tender_type_id, p.label,
+             coalesce(tt.kind, 'other') AS kind, p.counts_as_cash,
+             count(*) AS payments, sum(p.amount_minor)::bigint AS amount
+      FROM pos_order_payments p
+      JOIN sales s ON s.id = p.order_id
+      LEFT JOIN pos_tender_types tt
+        ON tt.restaurant_id = s.restaurant_id AND tt.id = p.tender_type_id
+      GROUP BY s.terminal_id, p.tender_type_id, p.label, coalesce(tt.kind, 'other'),
+               p.counts_as_cash
+    )''';
+
+  /// One [paymentTotalsCte] row, read from its six method columns starting at
+  /// [at]: tender type, label, kind, cash flag, count, amount.
+  static MethodTotal readMethod(
+    List<Object?> row,
+    int at,
+    Money Function(Object?) money,
+  ) => MethodTotal(
+    tenderTypeId: row[at] as int?,
+    label: row[at + 1] as String,
+    kind: TenderKind.fromWire(row[at + 2] as String?),
+    countsAsCash: row[at + 3] as bool? ?? false,
+    count: row[at + 4] as int,
+    amount: money(row[at + 5]),
+  );
 
   /// The business day, by the date that names it. At most one row: the day is
   /// unique per branch and date.
@@ -106,20 +145,7 @@ class PostgresBranchSalesRepository implements BranchSalesSource {
         AND ${_inDay('r')}
       GROUP BY r.terminal_id
     ),
-    -- LEFT join onto the tender types for the KIND only: a payment carries its
-    -- own label and cash flag, and a retired tender must not take its takings
-    -- off the report with it. An unknown kind is read as `other`.
-    payment_totals AS (
-      SELECT s.terminal_id, p.tender_type_id, p.label,
-             coalesce(tt.kind, 'other') AS kind, p.counts_as_cash,
-             count(*) AS payments, sum(p.amount_minor)::bigint AS amount
-      FROM pos_order_payments p
-      JOIN sales s ON s.id = p.order_id
-      LEFT JOIN pos_tender_types tt
-        ON tt.restaurant_id = s.restaurant_id AND tt.id = p.tender_type_id
-      GROUP BY s.terminal_id, p.tender_type_id, p.label, coalesce(tt.kind, 'other'),
-               p.counts_as_cash
-    ),
+    $paymentTotalsCte,
     -- Rule 2, both halves: every registered terminal even with no sales, AND
     -- any terminal that took money here without being registered to the
     -- branch. Listing only registered terminals would drop a stranger's
@@ -172,18 +198,7 @@ class PostgresBranchSalesRepository implements BranchSalesSource {
         heads[id] = row;
         payments[id] = [];
       }
-      if (row[8] != null) {
-        payments[id]!.add(
-          MethodTotal(
-            tenderTypeId: row[7] as int?,
-            label: row[8] as String,
-            kind: TenderKind.fromWire(row[9] as String?),
-            countsAsCash: row[10] as bool? ?? false,
-            count: row[11] as int,
-            amount: _money(row[12]),
-          ),
-        );
-      }
+      if (row[8] != null) payments[id]!.add(readMethod(row, 7, _money));
     }
 
     final terminals = [

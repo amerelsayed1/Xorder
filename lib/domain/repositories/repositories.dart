@@ -21,6 +21,7 @@ import '../models/permissions.dart';
 import '../models/dining_table.dart';
 import '../models/business_day.dart';
 import '../models/order_record.dart';
+import '../models/sales_report.dart';
 import '../models/pos_settings.dart';
 import '../models/refund.dart';
 import '../services/refund_engine.dart' show RefundQuote;
@@ -429,6 +430,30 @@ abstract interface class OrderHistoryRepository {
 
   /// The tills at this branch, for the terminal filter.
   Future<List<HistoryTerminal>> terminals();
+}
+
+/// Wave G's read model — the figures behind the Reports tab (plan 19 BO-5).
+///
+/// Read-only, one branch, and it knows nothing of who is asking: the
+/// `reports.view` gate is applied in the provider every reader goes through,
+/// as history's scope is.
+///
+/// Two methods rather than one per figure. Plan 11 §9 sketched one method per
+/// report; the tiles, the trend and the terminal table are read in one
+/// snapshot instead, because three reads taken a second apart would each be
+/// right and could still disagree by the sale committed between them — and
+/// §3a rule 1 is that the total and its rows cannot disagree.
+abstract interface class ReportsRepository {
+  /// Period totals, the per-day series, per-terminal totals and tender shares
+  /// for [filter], read in one snapshot.
+  Future<SalesReport> sales(ReportFilter filter);
+
+  /// The best-selling products over [filter], ranked [by], at most [limit].
+  Future<List<ProductSales>> topProducts(
+    ReportFilter filter, {
+    required ProductRanking by,
+    int limit = 5,
+  });
 }
 
 /// The outcome of issuing a refund.
