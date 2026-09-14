@@ -8,6 +8,7 @@ import 'package:xorder_pos/core/l10n/app_strings.dart';
 import 'package:xorder_pos/core/ui/theme.dart';
 import 'package:xorder_pos/domain/models/permissions.dart';
 import 'package:xorder_pos/domain/models/shift.dart';
+import 'package:xorder_pos/domain/services/authorization.dart';
 import 'package:xorder_pos/domain/services/eta_filing.dart' show etaFilingEnabled;
 import 'package:xorder_pos/features/admin/application/admin_session.dart';
 import 'package:xorder_pos/features/admin/presentation/management_purchasing_pane.dart';
@@ -16,6 +17,7 @@ import 'package:xorder_pos/features/admin/presentation/management_screen.dart';
 import 'package:xorder_pos/features/admin/presentation/management_staff_pane.dart';
 
 import '../support/fakes.dart';
+import '../support/fonts.dart';
 
 /// CB-09 slice e: on a cloud till the platform authors buying and stock.
 ///
@@ -26,6 +28,10 @@ import '../support/fakes.dart';
 /// the panes are gone anyway; a test with nobody holding it would pass on the
 /// old capability gate and prove nothing.
 void main() {
+  // An offline owner's strip holds all ten of the map's words; measured in
+  // the bundled faces, not the test font's (see `loadPosFonts`).
+  setUpAll(loadPosFonts);
+
   const owner = PosStaff(
     id: 1,
     name: 'Amer M.',
@@ -166,8 +172,11 @@ void main() {
         // the platform authors, and the seeder rewrites them on a cloud till.
         // Finance's Bills due with the buying (BO-10): it reads nothing but
         // the supplier ledger, which is the platform's on a cloud till.
+        // Categories with the menu: the same pane, reached from the map's
+        // الأقسام line.
         {
           ManagementPane.menu,
+          ManagementPane.categories,
           ManagementPane.floor,
           ManagementPane.extras,
           ManagementPane.financeBills,
@@ -201,65 +210,217 @@ void main() {
     });
   });
 
-  group('the Back office menu agrees with the strip', () {
+  group("the bar's menus agree with the strip", () {
     const s = EnStrings();
 
     List<ManagementBarEntry> lines(
       PosStaff staff, {
       required bool authors,
-    }) => managementBarFor(s, admin: staff, authorsItsOwnCatalogue: authors);
+    }) => [
+      for (final menu in managementBarFor(
+        s,
+        admin: staff,
+        authorsItsOwnCatalogue: authors,
+      ))
+        ...menu.lines,
+    ];
 
-    test('on cloud, every line opens a pane the strip has, or is the pointer',
-        () {
-      for (final staff in buyers) {
-        final tabs = backOfficeTabsFor(
-          admin: staff,
-          authorsItsOwnCatalogue: false,
-        );
-        final strip = [for (final (_, own) in tabs) ...own];
-        for (final line in lines(staff, authors: false)) {
-          if (line.pane == null) continue;
-          expect(strip, contains(line.open().pane), reason: line.label);
-        }
-        // A line for each tab that holds a pane, and the pointer for the two
-        // that only point.
-        expect(
-          {for (final line in lines(staff, authors: false)) line.tab},
-          {
+    // Every fixture, on both deployments: the whole bar held against
+    // `managementPanesFor`, the rule the strip is held to.
+    for (final staff in [...buyers, rota]) {
+      for (final authors in [true, false]) {
+        final where = authors ? 'offline' : 'cloud';
+        test('${staff.name}, $where: a line per item, Purchasing\'s own, and '
+            'the pointer only where it points', () {
+          final menus = managementBarFor(
+            s,
+            admin: staff,
+            authorsItsOwnCatalogue: authors,
+          );
+          final tabs = backOfficeTabsFor(
+            admin: staff,
+            authorsItsOwnCatalogue: authors,
+          );
+          final panes = managementPanesFor(
+            admin: staff,
+            authorsItsOwnCatalogue: authors,
+          );
+          final all = lines(staff, authors: authors);
+
+          // A menu per visible tab, in the strip's order, named as the strip
+          // names it — the same ten words in both places.
+          expect(
+            [for (final menu in menus) menu.tab],
+            [for (final (tab, _) in tabs) tab],
+          );
+          for (final menu in menus) {
+            expect(menu.label, backOfficeTabName(s, menu.tab));
+            expect(menu.lines, isNotEmpty, reason: 'a word over a gap');
+            for (final line in menu.lines) {
+              expect(line.tab, menu.tab, reason: line.label);
+              expect(tabOf(line.open().pane!), menu.tab, reason: line.label);
+            }
+          }
+
+          // Each menu's lines are its tab's items — the sub-nav's words, in
+          // the sub-nav's order — with Purchasing's own lines in place of its
+          // one.
+          for (final (tab, own) in tabs) {
+            if (own.isEmpty) continue;
+            expect(
+              [
+                for (final menu in menus)
+                  if (menu.tab == tab)
+                    for (final line in menu.lines) line.label,
+              ],
+              [
+                for (final item in backOfficeItemsFor(s, tab, own))
+                  ...switch (managementMenuEntries(s, item.opens)) {
+                    final entries when entries.isNotEmpty => [
+                      for (final (label, _, _) in entries) label,
+                    ],
+                    _ => [item.label],
+                  },
+              ],
+              reason: tab.name,
+            );
+          }
+
+          // And what the lines reach, through their items, is exactly the
+          // panes the strip has.
+          List<ManagementPane> holdsOf(ManagementBarEntry line) => [
             for (final (tab, own) in tabs)
-              if (own.isNotEmpty) tab,
-            BackOfficeTab.purchasing,
-          },
-          reason: staff.name,
-        );
+              if (tab == line.tab)
+                for (final item in backOfficeItemsFor(s, tab, own))
+                  if (item.opens == line.pane) ...item.holds,
+          ];
+          expect(
+            {
+              for (final line in all)
+                if (line.pane != null) ...holdsOf(line),
+            },
+            panes.toSet(),
+          );
+
+          // The pointer: under Inventory and Purchasing on a cloud till, for
+          // whoever would buy offline, and for nobody else anywhere.
+          final buys = Authorization.check(
+            staff,
+            PosCapability.purchaseManage,
+          ).isAllowed;
+          expect(
+            {
+              for (final line in all)
+                if (line.pane == null) line.tab,
+            },
+            !authors && buys
+                ? {BackOfficeTab.inventory, BackOfficeTab.purchasing}
+                : isEmpty,
+          );
+          for (final menu in menus) {
+            if (!menu.lines.any((line) => line.pane == null)) continue;
+            expect(menu.lines, hasLength(1), reason: menu.label);
+            expect(menu.lines.single.label, s.purchasingOnPlatformEntry);
+            final landing = menu.lines.single.open().pane!;
+            expect(
+              hiddenBecausePlatformAuthors(
+                landing,
+                authorsItsOwnCatalogue: false,
+              ),
+              isTrue,
+              reason: 'the screen shows the tab and says why, not a refusal',
+            );
+            expect(
+              platformAuthoredPointer(s, landing),
+              s.purchasingComesFromPlatform,
+            );
+          }
+          if (!authors) {
+            expect(
+              [for (final menu in menus) menu.tab],
+              isNot(contains(BackOfficeTab.menu)),
+            );
+          }
+        });
+      }
+    }
+
+    test('no two menus the bar draws share a label, in either language', () {
+      // Settings is folded into the till's own Settings menu, because the two
+      // would otherwise be the same word twice.
+      for (final strings in const <AppStrings>[EnStrings(), ArStrings()]) {
         expect(
-          [for (final line in lines(staff, authors: false)) line.tab],
-          isNot(contains(BackOfficeTab.inventory)),
-          reason: 'the pointer names stock too; a second line would repeat it',
+          backOfficeTabName(strings, BackOfficeTab.settings),
+          strings.settings,
+          reason: 'the premise of the fold',
         );
+        for (final staff in [...buyers, rota]) {
+          for (final authors in [true, false]) {
+            final drawn = [
+              for (final menu in managementBarFor(
+                strings,
+                admin: staff,
+                authorsItsOwnCatalogue: authors,
+              ))
+                if (menu.tab != BackOfficeTab.settings) menu.label,
+              strings.settings,
+            ];
+            expect(
+              drawn.toSet(),
+              hasLength(drawn.length),
+              reason: '${staff.name}, authors: $authors, $drawn',
+            );
+          }
+        }
       }
     });
 
-    test('and the pointer is one line, which lands on the notice', () {
-      final pointers = [
-        for (final line in lines(owner, authors: false))
-          if (line.pane == null) line,
-      ];
-      expect(pointers, hasLength(1), reason: 'one pointer in the whole bar');
-      expect(pointers.single.label, s.purchasingOnPlatformEntry);
+    test('Settings\' lines are its three items, General first', () {
+      final settings = managementBarFor(
+        s,
+        admin: owner,
+        authorsItsOwnCatalogue: true,
+      ).firstWhere((menu) => menu.tab == BackOfficeTab.settings).lines;
+      expect([for (final line in settings) line.label], [
+        'Orders & invoices settings',
+        'Language',
+        'Appearance',
+      ]);
+      expect([for (final line in settings) line.divider], everyElement(false));
+      expect(settings.first.open().pane, ManagementPane.receipt);
+    });
 
-      final landing = pointers.single.open().pane!;
+    test('Purchasing lists its tabs in the map\'s order, each with its '
+        '"new"', () {
+      final purchasing = managementBarFor(
+        s,
+        admin: owner,
+        authorsItsOwnCatalogue: true,
+      ).firstWhere((menu) => menu.tab == BackOfficeTab.purchasing).lines;
+      expect([for (final line in purchasing) line.label], [
+        'Purchase orders',
+        'New order',
+        'Suppliers',
+        'New supplier',
+        'Invoices',
+        'Enter an invoice',
+        'Payments',
+      ]);
       expect(
-        hiddenBecausePlatformAuthors(
-          landing,
-          authorsItsOwnCatalogue: false,
-        ),
-        isTrue,
-        reason: 'the screen shows the tab and says why, rather than refusing',
+        [for (final line in purchasing) line.open().purchasingTab],
+        [
+          PurchasingTab.orders,
+          PurchasingTab.orders,
+          PurchasingTab.suppliers,
+          PurchasingTab.suppliers,
+          PurchasingTab.invoices,
+          PurchasingTab.invoices,
+          PurchasingTab.payments,
+        ],
       );
       expect(
-        platformAuthoredPointer(s, landing),
-        s.purchasingComesFromPlatform,
+        [for (final line in purchasing) line.divider],
+        [false, false, true, false, true, false, false],
       );
     });
 
@@ -276,7 +437,7 @@ void main() {
           ))
             tab,
         ];
-        expect(tabs, contains(BackOfficeTab.settings), reason: 'Users');
+        expect(tabs, contains(BackOfficeTab.people), reason: 'Staff');
         expect(
           tabs,
           isNot(contains(BackOfficeTab.purchasing)),
@@ -292,36 +453,6 @@ void main() {
           isEmpty,
           reason: 'authors: $authors',
         );
-      }
-    });
-
-    test('offline, Purchasing\'s seven lines, no pointer, one line per tab',
-        () {
-      final bar = lines(owner, authors: true);
-      expect(bar.where((line) => line.pane == null), isEmpty);
-      expect(
-        [
-          for (final line in bar)
-            if (line.tab == BackOfficeTab.purchasing) line.label,
-        ],
-        [
-          for (final (label, _, _)
-              in managementMenuEntries(s, ManagementPane.purchasing))
-            label,
-        ],
-      );
-      for (final (tab, own) in backOfficeTabsFor(
-        admin: owner,
-        authorsItsOwnCatalogue: true,
-      )) {
-        if (tab == BackOfficeTab.purchasing) continue;
-        final mine = [
-          for (final line in bar)
-            if (line.tab == tab) line,
-        ];
-        expect(mine, hasLength(1), reason: tab.name);
-        expect(mine.single.label, backOfficeTabName(s, tab));
-        expect(mine.single.open().pane, own.first, reason: tab.name);
       }
     });
   });

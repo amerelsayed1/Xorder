@@ -121,6 +121,26 @@ It's out of scope.
   F8. The shell lives *inside* that door and lands on Home once BO-4 exists (the
   first visible tab until then).
 
+> **Reversed by the owner, 14 Sep 2026: the owner's map.** The single "Back
+> office / الإدارة" menu above is gone. The strip and the bar carry the same ten
+> words in the same order — الرئيسية، المبيعات، التقارير، المنيو، المخزون،
+> المشتريات، المالية، الأفراد، النظام، الإعدادات — with People back as a tab of
+> its own. Each bar menu lists its tab's items, which are also that tab's
+> sub-nav (`backOfficeItemsFor`, read off `backOfficeTabsFor`, so the two
+> cannot disagree about who sees what). Home's menu adds Exit Admin Mode, and
+> Purchasing keeps its "new …" lines. Settings' items join the till's own
+> Settings menu after a divider rather than making a second الإعدادات.
+>
+> An item of the map with no screen yet has no line and no sub-nav entry until
+> its slice lands. That covers Sales' invoices, returns and cancelled orders;
+> Reports' five breakdowns; Finance's settlements; People's shifts; and
+> System's sync. Settings' printer, user and about have no sub-nav entry either:
+> in the bar they are the till's own lines. On a cloud till Menu is absent, and
+> Inventory and Purchasing are each a one-line menu holding the platform
+> pointer, for whoever would have them offline. Visibility is unchanged. Both
+> the bar and the strip are measured at 1100 px with the bundled fonts, in
+> `settings_bar_test.dart` and `back_office_shell_test.dart`.
+
 ---
 
 ## 2. Mapping — every mockup element to a source

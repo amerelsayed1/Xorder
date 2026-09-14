@@ -224,11 +224,18 @@ void main() {
       await pumpApp(tester, atTheTill: _cashier);
       await chord(tester, LogicalKeyboardKey.keyS);
       await signIn(tester, 'amer', '4321');
-      expect(find.text(_strings.backOffice), findsWidgets);
+      // The bar's first menu is the strip's first word since the owner's map
+      // (14 Sep 2026) — Home, asked of the bar rather than of the screen,
+      // where the strip says it too.
+      final home = find.descendant(
+        of: find.byType(MenuBar),
+        matching: find.text(_strings.tabHome),
+      );
+      expect(home, findsOneWidget);
 
       await tester.tap(find.byKey(const Key('admin-exit')));
       await tester.pumpAndSettle();
-      expect(find.text(_strings.backOffice), findsNothing);
+      expect(home, findsNothing);
     }, variant: desktop);
 
     testWidgets('Exit returns to where the till was, and forgets everything', (

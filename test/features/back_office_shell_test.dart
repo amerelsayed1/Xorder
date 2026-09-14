@@ -18,6 +18,7 @@ import 'package:xorder_pos/domain/models/permissions.dart';
 import 'package:xorder_pos/domain/models/shift.dart';
 import 'package:xorder_pos/domain/repositories/admin_repositories.dart';
 import 'package:xorder_pos/domain/services/authorization.dart';
+import 'package:xorder_pos/domain/services/eta_filing.dart' show etaFilingEnabled;
 import 'package:xorder_pos/features/admin/application/admin_session.dart';
 import 'package:xorder_pos/features/admin/presentation/management_home_pane.dart';
 import 'package:xorder_pos/features/admin/presentation/management_screen.dart';
@@ -92,16 +93,17 @@ const _fixtures = <String, PosStaff>{
 /// BO-9.
 const _later = <BackOfficeTab>[];
 
-/// Finance's panes, in the order its sub-nav shows them — the mockup's
-/// (BO-9, BO-10).
+/// Finance's panes, in the order its sub-nav shows them: Overview and Revenue,
+/// then the owner's map's الخزينة، المصروفات، طرق الدفع، الضرائب, then Bills due
+/// and Transactions (BO-9, BO-10).
 const _finance = [
   ManagementPane.financeOverview,
   ManagementPane.financeRevenue,
-  ManagementPane.financeExpenses,
   ManagementPane.financeDrawers,
+  ManagementPane.financeExpenses,
   ManagementPane.financePayments,
-  ManagementPane.financeBills,
   ManagementPane.financeTaxes,
+  ManagementPane.financeBills,
   ManagementPane.financeTransactions,
 ];
 
@@ -228,7 +230,8 @@ Future<Set<ManagementPane>> _walk(WidgetTester tester) async {
 }
 
 /// The back office's shell (BO-1): nine tabs, sub-nav, Settings' side nav, a
-/// status bar and one bar menu — and not one pane more or less than before.
+/// status bar and a bar menu per tab — and not one pane more or less than
+/// before.
 ///
 /// **Re-hosting, so the claim is equality.** Every pane a person could open
 /// through the old flat bar they can open through the tabs, and nothing
@@ -365,24 +368,33 @@ void main() {
             reachable.contains(ManagementPane.staff),
           );
 
-          // The bar reaches nothing the tabs do not.
-          for (final line in managementBarFor(
+          // The bar is the strip read one level deeper: a menu per tab, in
+          // the same order, and no line reaching what the tabs do not.
+          final bar = managementBarFor(
             const EnStrings(),
             admin: admin,
             authorsItsOwnCatalogue: authors,
-          )) {
-            final to = line.open().pane!;
-            if (line.pane == null) {
-              expect(
-                hiddenBecausePlatformAuthors(
-                  to,
-                  authorsItsOwnCatalogue: authors,
-                ),
-                isTrue,
-                reason: line.label,
-              );
-            } else {
-              expect(reachable, contains(to), reason: line.label);
+          );
+          expect(
+            [for (final menu in bar) menu.tab],
+            [for (final (tab, _) in tabs) tab],
+          );
+          for (final menu in bar) {
+            for (final line in menu.lines) {
+              final to = line.open().pane!;
+              expect(tabOf(to), menu.tab, reason: line.label);
+              if (line.pane == null) {
+                expect(
+                  hiddenBecausePlatformAuthors(
+                    to,
+                    authorsItsOwnCatalogue: authors,
+                  ),
+                  isTrue,
+                  reason: line.label,
+                );
+              } else {
+                expect(reachable, contains(to), reason: line.label);
+              }
             }
           }
         });
@@ -431,7 +443,7 @@ void main() {
     }
   });
 
-  testWidgets('Finance: eight panes under the sub-nav, in the mockup\'s '
+  testWidgets('Finance: eight panes under the sub-nav, in the map\'s '
       'order', (tester) async {
     await _open(tester, offline: true);
     await tester.tap(find.byKey(const Key('back-office-tab-finance')));
@@ -556,47 +568,139 @@ void main() {
     }
   });
 
-  group('Settings', () {
-    test('every Settings pane has a place in the side nav, and only those', () {
+  group("the owner's map (14 Sep 2026)", () {
+    test('ten tabs, in its order, in its words', () {
+      expect(BackOfficeTab.values, [
+        BackOfficeTab.home,
+        BackOfficeTab.sales,
+        BackOfficeTab.reports,
+        BackOfficeTab.menu,
+        BackOfficeTab.inventory,
+        BackOfficeTab.purchasing,
+        BackOfficeTab.finance,
+        BackOfficeTab.people,
+        BackOfficeTab.system,
+        BackOfficeTab.settings,
+      ]);
+      expect(
+        [
+          for (final tab in BackOfficeTab.values)
+            backOfficeTabName(const ArStrings(), tab),
+        ],
+        [
+          'الرئيسية',
+          'المبيعات',
+          'التقارير',
+          'المنيو',
+          'المخزون',
+          'المشتريات',
+          'المالية',
+          'الأفراد',
+          'النظام',
+          'الإعدادات',
+        ],
+      );
+    });
+
+    test('every tab\'s items, for the owner offline — the built ones, and '
+        'no placeholder for the rest', () {
+      // Read off the bar, which is the sub-nav's items with Purchasing's own
+      // tabs in place of its one: the map's words, in the map's order.
+      const ar = ArStrings();
+      expect(
+        {
+          for (final menu in managementBarFor(
+            ar,
+            admin: _owner,
+            authorsItsOwnCatalogue: true,
+          ))
+            menu.tab: [for (final line in menu.lines) line.label],
+        },
+        {
+          BackOfficeTab.home: ['الرئيسية'],
+          // Invoices, returns and cancelled orders: not built yet.
+          BackOfficeTab.sales: ['الطلبات'],
+          // Sales, items, payment methods, branches & devices, staff: not
+          // built yet as pages of their own.
+          BackOfficeTab.reports: ['ملخص الأعمال'],
+          BackOfficeTab.menu: ['المنيو', 'الأقسام', 'مكتبة الإضافات', 'الصالة'],
+          BackOfficeTab.inventory: [
+            'أصناف المخزون',
+            'المخزون المتاح',
+            'الوحدات',
+          ],
+          BackOfficeTab.purchasing: [
+            'أوامر الشراء',
+            ar.purchaseOrderNew,
+            'المورّدون',
+            ar.supplierNew,
+            'فواتير الشراء',
+            ar.invoiceNew,
+            'المدفوعات',
+          ],
+          // Settlements: not built yet. Overview and Revenue lead; Bills due
+          // and Transactions follow.
+          BackOfficeTab.finance: [
+            'نظرة عامة',
+            'الإيرادات',
+            'الخزينة',
+            'المصروفات',
+            'طرق الدفع',
+            'الضرائب',
+            'الفواتير المستحقة',
+            'الحركات',
+          ],
+          // Shifts: not built yet.
+          BackOfficeTab.people: ['الموظفون', 'الأدوار والصلاحيات'],
+          // Sync: not built yet. ETA only while filing is on.
+          BackOfficeTab.system: [
+            'السجل',
+            'النسخ الاحتياطي',
+            'الأجهزة',
+            if (etaFilingEnabled) ar.paneEta,
+          ],
+          // Printer, user and about are the till's own Settings lines.
+          BackOfficeTab.settings: [
+            'إعدادات الطلبات والفواتير',
+            'اللغة',
+            'المظهر',
+          ],
+        },
+      );
+    });
+
+    test('every Settings pane sits under one of Settings\' items, and only '
+        'those', () {
       for (final pane in ManagementPane.values) {
         expect(
-          settingsPlaceOf(pane) != null,
+          settingsSectionOf(pane) != null,
           tabOf(pane) == BackOfficeTab.settings,
           reason: pane.name,
         );
       }
-      final places = [
-        for (final pane in ManagementPane.values) ?settingsPlaceOf(pane),
-      ];
-      expect(places.toSet(), hasLength(places.length), reason: 'no two alike');
-    });
-
-    test('Staff and Roles are Users and Roles under Account; no People tab',
-        () {
-      const s = EnStrings();
-      for (final pane in [ManagementPane.staff, ManagementPane.roles]) {
-        expect(tabOf(pane), BackOfficeTab.settings);
-        expect(settingsPlaceOf(pane)!.$1, SettingsSection.account);
-      }
-      expect(managementPaneLabel(s, ManagementPane.staff).$1, s.settingsUsers);
       expect(
-        [for (final tab in BackOfficeTab.values) tab.name],
-        isNot(contains('people')),
+        {
+          for (final pane in ManagementPane.values)
+            if (settingsSectionOf(pane) == SettingsSection.ordersAndInvoices)
+              pane,
+        },
+        {
+          ManagementPane.receipt,
+          ManagementPane.orderTypes,
+          ManagementPane.taxes,
+          ManagementPane.charges,
+          ManagementPane.tenders,
+        },
       );
     });
 
-    test('Money is Settings, Receipt is General, ETA is System', () {
+    test('People is a tab again, holding Staff and Roles; ETA is System', () {
       const s = EnStrings();
-      for (final pane in [
-        ManagementPane.taxes,
-        ManagementPane.charges,
-        ManagementPane.tenders,
-        ManagementPane.orderTypes,
-      ]) {
-        expect(tabOf(pane), BackOfficeTab.settings, reason: pane.name);
-        expect(settingsPlaceOf(pane)!.$1, SettingsSection.pointOfSale);
+      for (final pane in [ManagementPane.staff, ManagementPane.roles]) {
+        expect(tabOf(pane), BackOfficeTab.people, reason: pane.name);
+        expect(settingsSectionOf(pane), isNull, reason: pane.name);
       }
-      expect(tabOf(ManagementPane.receipt), BackOfficeTab.settings);
+      expect(managementPaneLabel(s, ManagementPane.staff).$1, s.paneStaff);
       expect(
         managementPaneLabel(s, ManagementPane.receipt).$1,
         s.settingsGeneral,
@@ -604,34 +708,55 @@ void main() {
       expect(tabOf(ManagementPane.eta), BackOfficeTab.system);
     });
 
-    testWidgets('the side nav is grouped, and holds Users and Roles', (
-      tester,
-    ) async {
-      await _open(tester, pane: ManagementPane.staff);
+    testWidgets('Orders & invoices settings has a side nav of its five; '
+        'Language and Appearance have none', (tester) async {
+      await _open(tester, pane: ManagementPane.receipt);
 
       final nav = find.byKey(const Key('back-office-settings-nav'));
       expect(tester.getSize(nav).width, PosSize.settingsNav);
-      for (final text in ['ACCOUNT', 'POINT OF SALE', 'General', 'Users']) {
+      for (final text in [
+        'General',
+        'Order types',
+        'Tax',
+        'Service charges',
+        'Payment methods',
+      ]) {
         expect(
           find.descendant(of: nav, matching: find.text(text)),
           findsOneWidget,
           reason: text,
         );
       }
-      await tester.tap(find.byKey(const Key('back-office-settings-roles')));
+      for (final pane in [
+        ManagementPane.receipt,
+        ManagementPane.language,
+        ManagementPane.appearance,
+      ]) {
+        expect(
+          find.byKey(Key('back-office-subnav-${pane.name}')),
+          findsOneWidget,
+          reason: 'Settings\' three items: ${pane.name}',
+        );
+      }
+
+      await tester.tap(find.byKey(const Key('back-office-settings-charges')));
       await tester.pumpAndSettle();
-      expect(_showing(tester), {ManagementPane.roles});
-      expect(find.text('People'), findsNothing);
+      expect(_showing(tester), {ManagementPane.charges});
+
+      await tester.tap(find.byKey(const Key('back-office-subnav-language')));
+      await tester.pumpAndSettle();
+      expect(_showing(tester), {ManagementPane.language});
+      expect(nav, findsNothing, reason: 'one page, so no side nav');
     });
   });
 
   group('at 1100 px', () {
     for (final language in ['en', 'ar']) {
-      testWidgets('all nine tabs fit without scrolling, in $language', (
+      testWidgets('all ten tabs fit without scrolling, in $language', (
         tester,
       ) async {
-        // All nine, though only six hold a pane today: the slice that adds
-        // the ninth word should not be the one that finds out it does not fit.
+        // All ten, whoever holds them: the owner's map is the widest the
+        // strip gets, and People and المالية are the words it added.
         tester.view
           ..physicalSize = const Size(PosSize.wideShellMin, 800)
           ..devicePixelRatio = 1.0;

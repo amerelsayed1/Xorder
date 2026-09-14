@@ -413,33 +413,24 @@ void main() {
     });
   });
 
-  testWidgets('This terminal is a group of its own, holding Language & '
-      'appearance', (tester) async {
+  testWidgets('Language and Appearance are Settings items of their own, each '
+      'one half of the card', (tester) async {
+    // The owner's map (14 Sep 2026): General's card stays whole, and each
+    // half has an item somebody can find by its name.
     await _open(tester);
+    expect(find.byKey(const Key('appearance-language-ar')), findsOneWidget);
 
-    final nav = find.byKey(const Key('back-office-settings-nav'));
-    for (final text in [
-      'ACCOUNT',
-      'POINT OF SALE',
-      'THIS TERMINAL',
-      'Language & appearance',
-    ]) {
-      expect(
-        find.descendant(of: nav, matching: find.text(text)),
-        findsOneWidget,
-        reason: text,
-      );
-    }
-    // Last: the restaurant's settings first, this machine's after them.
-    expect(
-      tester.getTopLeft(find.text('THIS TERMINAL')).dy,
-      greaterThan(tester.getTopLeft(find.text('POINT OF SALE')).dy),
-    );
-
-    await tester.tap(find.byKey(const Key('back-office-settings-appearance')));
+    await tester.tap(find.byKey(const Key('back-office-subnav-language')));
     await tester.pumpAndSettle();
     expect(find.byType(ManagementAppearancePane), findsOneWidget);
-    expect(find.byType(TerminalAppearanceCard), findsOneWidget);
+    expect(find.byKey(const Key('appearance-language-ar')), findsOneWidget);
+    expect(find.byKey(const Key('appearance-theme-dark')), findsNothing);
+
+    await tester.tap(find.byKey(const Key('back-office-subnav-appearance')));
+    await tester.pumpAndSettle();
+    expect(find.byType(ManagementAppearancePane), findsOneWidget);
+    expect(find.byKey(const Key('appearance-theme-dark')), findsOneWidget);
+    expect(find.byKey(const Key('appearance-language-ar')), findsNothing);
   });
 
   group('at 1100 px', () {
@@ -458,13 +449,16 @@ void main() {
         final nav = find.byKey(const Key('back-office-settings-nav'));
         expect(tester.getSize(nav).width, PosSize.settingsNav);
         // Every word in the nav whole: a row cut to an ellipsis is a row
-        // somebody has to guess at. Read off the paragraphs, so a heading
-        // counts as much as a row.
+        // somebody has to guess at. Read off the paragraphs.
         final paragraphs = find.descendant(
           of: nav,
           matching: find.byType(RichText),
         );
-        expect(paragraphs, findsAtLeastNWidgets(11), reason: '3 + 8');
+        expect(
+          paragraphs,
+          findsAtLeastNWidgets(5),
+          reason: 'Orders & invoices settings: five rows',
+        );
         for (final element in paragraphs.evaluate()) {
           final paragraph = element.renderObject! as RenderParagraph;
           expect(

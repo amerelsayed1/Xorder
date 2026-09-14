@@ -149,6 +149,8 @@ List<ManagementPane> managementPanesFor({
 // the bootstrap seeder deletes every product and rewrites the platform's.
 const _authoringPanes = {
   ManagementPane.menu,
+  // The menu pane again, reached from its Categories line.
+  ManagementPane.categories,
   // The library is the menu's too: a group made here would be erased by the
   // next sync on a cloud till, where the platform's Extras page is the author.
   ManagementPane.extras,
@@ -196,6 +198,7 @@ bool _pointsToPlatform(BackOfficeTab tab) => switch (tab) {
   BackOfficeTab.reports ||
   BackOfficeTab.menu ||
   BackOfficeTab.finance ||
+  BackOfficeTab.people ||
   BackOfficeTab.system ||
   BackOfficeTab.settings => false,
 };
@@ -208,22 +211,23 @@ bool hiddenBecausePlatformAuthors(
   required bool authorsItsOwnCatalogue,
 }) => !authorsItsOwnCatalogue && _authoringPanes.contains(pane);
 
-/// The back office, in tabs — the mockup's nine (plan 19 §1.1), with People
-/// under Settings as it is on the cloud.
+/// The back office, in tabs — the owner's map of 14 Sep 2026: ten words, in
+/// this order, in the strip and the window's bar alike.
 ///
-/// **Every tab holds a pane now.** Home has had its pane since BO-4 and Sales
-/// the order history since BO-2, both for everybody past the door; Reports
-/// has had its one pane since BO-6 and Finance four since BO-9, both for
-/// whoever holds `reports.view`. They were members before their slices,
-/// rather than added with them, so that the order is decided once, here, and
-/// so that [backOfficeTabName] and the strip's width test already carry all
-/// nine — a tenth word arriving with a slice is how a strip that fitted at
-/// 1100 px stops fitting without anybody measuring it.
+/// **Every tab holds a pane.** Home has had its pane since BO-4 and Sales the
+/// order history since BO-2, both for everybody past the door; Reports has had
+/// its one pane since BO-6 and Finance its panes since BO-9, both for whoever
+/// holds `reports.view`. They were members before their slices, rather than
+/// added with them, so that the order is decided once, here, and so that
+/// [backOfficeTabName] and the strip's width test carry every word — a word
+/// arriving with a slice is how a strip that fitted at 1100 px stops fitting
+/// without anybody measuring it.
 ///
 /// Replaces the seven areas of the flat bar. Money went to Settings (rules
-/// about money are configuration; *Finance* is money that moved), Compliance
-/// dissolved into Settings › General and System, and People became Settings ›
-/// Users and › Roles.
+/// about money are configuration; *Finance* is money that moved) and
+/// Compliance dissolved into Settings and System. **People is a tab again**:
+/// BO-1 filed Users and Roles under Settings, as the cloud does; the owner's
+/// map gives them a tab of their own, which Shifts joins when it is built.
 enum BackOfficeTab {
   /// The landing page (BO-4): this till, today's takings, the way onward.
   home,
@@ -246,6 +250,9 @@ enum BackOfficeTab {
   /// Money that moved, read-only (BO-9, BO-10).
   finance,
 
+  /// Who works here, and what each of them may do.
+  people,
+
   /// How this till behaves, what it keeps, and what happened on it.
   system,
 
@@ -262,6 +269,7 @@ BackOfficeTab tabOf(ManagementPane pane) => switch (pane) {
   ManagementPane.sales => BackOfficeTab.sales,
   ManagementPane.reports => BackOfficeTab.reports,
   ManagementPane.menu ||
+  ManagementPane.categories ||
   ManagementPane.extras ||
   ManagementPane.floor => BackOfficeTab.menu,
   ManagementPane.items ||
@@ -283,13 +291,13 @@ BackOfficeTab tabOf(ManagementPane pane) => switch (pane) {
   ManagementPane.backup ||
   ManagementPane.terminal ||
   ManagementPane.eta => BackOfficeTab.system,
+  ManagementPane.staff || ManagementPane.roles => BackOfficeTab.people,
   ManagementPane.receipt ||
-  ManagementPane.staff ||
-  ManagementPane.roles ||
   ManagementPane.taxes ||
   ManagementPane.charges ||
   ManagementPane.tenders ||
   ManagementPane.orderTypes ||
+  ManagementPane.language ||
   ManagementPane.appearance => BackOfficeTab.settings,
 };
 
@@ -301,6 +309,7 @@ String backOfficeTabName(AppStrings s, BackOfficeTab tab) => switch (tab) {
   BackOfficeTab.inventory => s.tabInventory,
   BackOfficeTab.purchasing => s.tabPurchasing,
   BackOfficeTab.finance => s.tabFinance,
+  BackOfficeTab.people => s.tabPeople,
   BackOfficeTab.system => s.tabSystem,
   BackOfficeTab.settings => s.tabSettings,
 };
@@ -313,53 +322,62 @@ IconData backOfficeTabIcon(BackOfficeTab tab) => switch (tab) {
   BackOfficeTab.inventory => Icons.inventory_2_outlined,
   BackOfficeTab.purchasing => Icons.shopping_cart_outlined,
   BackOfficeTab.finance => Icons.account_balance_wallet_outlined,
+  BackOfficeTab.people => Icons.people_outline,
   BackOfficeTab.system => Icons.dns_outlined,
   BackOfficeTab.settings => Icons.settings_outlined,
 };
 
-/// The groups of Settings' side nav, as the cloud groups its own settings
-/// (`settings.config.js`: *account*, *pos*), plus the plan's third.
+/// Settings' own items, in the owner's map's order: each is an entry in the
+/// tab's sub-nav and a line in the bar's Settings menu.
 ///
-/// *This terminal* is the one group that is not the restaurant's: what it
-/// holds is written to this machine's config file, not the branch database, so
-/// changing it here changes nothing on the till beside it. Its own heading is
-/// what says so — under *Account* a language switch would read as the
-/// restaurant's language. BO-1 left it out while it had no pane; BO-8 gave it
-/// Language & appearance. The bar's Settings menu keeps its two lines too,
-/// over the same providers, because it is reachable without Admin Mode.
-enum SettingsSection { account, pointOfSale, thisTerminal }
+/// **Orders & invoices settings holds five panes behind a side nav**: the
+/// restaurant's General profile — the name on every slip — and the rules an
+/// order and its invoice follow: order types, tax, service charges, payment
+/// methods. One word for them in the sub-nav rather than five, because the
+/// map names one place; the side nav inside is where the five are told apart.
+///
+/// **Language and Appearance are this terminal's**, not the restaurant's: what
+/// they hold is written to this machine's config file, not the branch
+/// database. They are one card split in two (`ManagementAppearancePane`), and
+/// the till's own Settings menu keeps its two quick toggles over the same
+/// providers, because it is reachable without Admin Mode.
+///
+/// The map's other Settings items — printer & cash drawer, user, about — are
+/// the till's own lines in the same bar menu, and have no pane here.
+enum SettingsSection { ordersAndInvoices, language, appearance }
 
 String settingsSectionName(AppStrings s, SettingsSection section) =>
     switch (section) {
-      SettingsSection.account => s.settingsSectionAccount,
-      SettingsSection.pointOfSale => s.settingsSectionPointOfSale,
-      SettingsSection.thisTerminal => s.settingsSectionThisTerminal,
+      SettingsSection.ordersAndInvoices => s.settingsOrdersInvoices,
+      SettingsSection.language => s.settingsLanguage,
+      SettingsSection.appearance => s.settingsLook,
     };
 
-/// Where a Settings pane sits in the side nav: its group, and its place in it.
+/// Which of Settings' items a Settings pane sits under.
 ///
-/// Total over the panes, so a pane given the Settings tab without a place here
+/// Total over the panes, so a pane given the Settings tab without an item here
 /// is caught by `back_office_shell_test.dart` rather than rendering nowhere —
 /// and a pane taken OUT of Settings has to be taken out here too, or the same
 /// test says so. Null for every pane in another tab.
-(SettingsSection, int)? settingsPlaceOf(ManagementPane pane) => switch (pane) {
-  // General first: it is the company — the name on every slip.
-  ManagementPane.receipt => (SettingsSection.account, 0),
-  ManagementPane.staff => (SettingsSection.account, 1),
-  ManagementPane.roles => (SettingsSection.account, 2),
-  ManagementPane.taxes => (SettingsSection.pointOfSale, 0),
-  ManagementPane.charges => (SettingsSection.pointOfSale, 1),
-  ManagementPane.tenders => (SettingsSection.pointOfSale, 2),
-  ManagementPane.orderTypes => (SettingsSection.pointOfSale, 3),
-  ManagementPane.appearance => (SettingsSection.thisTerminal, 0),
+SettingsSection? settingsSectionOf(ManagementPane pane) => switch (pane) {
+  ManagementPane.receipt ||
+  ManagementPane.orderTypes ||
+  ManagementPane.taxes ||
+  ManagementPane.charges ||
+  ManagementPane.tenders => SettingsSection.ordersAndInvoices,
+  ManagementPane.language => SettingsSection.language,
+  ManagementPane.appearance => SettingsSection.appearance,
   ManagementPane.home ||
   ManagementPane.sales ||
   ManagementPane.reports ||
   ManagementPane.menu ||
+  ManagementPane.categories ||
   ManagementPane.extras ||
   ManagementPane.floor ||
   ManagementPane.purchasing ||
   ManagementPane.eta ||
+  ManagementPane.staff ||
+  ManagementPane.roles ||
   ManagementPane.activity ||
   ManagementPane.backup ||
   ManagementPane.items ||
@@ -376,38 +394,59 @@ String settingsSectionName(AppStrings s, SettingsSection section) =>
   ManagementPane.financeTransactions => null,
 };
 
-/// Order within a tab: Settings by its side nav, Finance by the mockup's
-/// sub-tabs, every other tab by the enum.
+/// A pane's place in its tab: the order the owner's map lists them in, which
+/// the sub-nav, Settings' side nav and the bar's menus all follow.
 ///
-/// Only ever compared between panes of the same tab, so the scales never
-/// meet — a Settings place is never weighed against an enum index.
-int _rankInTab(ManagementPane pane) => switch (settingsPlaceOf(pane)) {
-  (final section, final place)? =>
-    section.index * ManagementPane.values.length + place,
-  null => switch (_financeOrder.indexOf(pane)) {
-    -1 => pane.index,
-    final place => place,
-  },
+/// **A total switch rather than a list**, so a pane added without a place
+/// fails to compile rather than sorting to wherever an absent index lands.
+/// Only ever compared between panes of the same tab.
+int _placeInTab(ManagementPane pane) => switch (pane) {
+  ManagementPane.home => 0,
+  ManagementPane.sales => 0,
+  ManagementPane.reports => 0,
+  // المنيو، الأقسام، مكتبة الإضافات، الصالة
+  ManagementPane.menu => 0,
+  ManagementPane.categories => 1,
+  ManagementPane.extras => 2,
+  ManagementPane.floor => 3,
+  // أصناف المخزون، المخزون المتاح، الوحدات
+  ManagementPane.items => 0,
+  ManagementPane.stock => 1,
+  ManagementPane.units => 2,
+  ManagementPane.purchasing => 0,
+  // Overview and Revenue lead, ahead of the map's الخزينة، المصروفات، طرق
+  // الدفع، الضرائب. The map has no word for either; they are this tab's own
+  // summary, first as the mockup's sub-tabs had them. Folding them into
+  // Reports' Business summary was the alternative, and would have made one
+  // page of two reads (BO-6's and BO-9's) that disagree about what a period
+  // is. Bills due and Transactions follow the map's words, kept reachable
+  // until the map places them.
+  ManagementPane.financeOverview => 0,
+  ManagementPane.financeRevenue => 1,
+  ManagementPane.financeDrawers => 2,
+  ManagementPane.financeExpenses => 3,
+  ManagementPane.financePayments => 4,
+  ManagementPane.financeTaxes => 5,
+  ManagementPane.financeBills => 6,
+  ManagementPane.financeTransactions => 7,
+  // الموظفون، الأدوار والصلاحيات
+  ManagementPane.staff => 0,
+  ManagementPane.roles => 1,
+  // السجل، النسخ الاحتياطي، الأجهزة — and ETA, hidden while filing is off.
+  ManagementPane.activity => 0,
+  ManagementPane.backup => 1,
+  ManagementPane.terminal => 2,
+  ManagementPane.eta => 3,
+  // General first: it is the company — the name on every slip. Then the
+  // rules in the order an order meets them.
+  ManagementPane.receipt => 0,
+  ManagementPane.orderTypes => 1,
+  ManagementPane.taxes => 2,
+  ManagementPane.charges => 3,
+  ManagementPane.tenders => 4,
+  ManagementPane.language => 5,
+  ManagementPane.appearance => 6,
 };
-
-/// Finance's sub-nav, in the mockup's order (plan 19 §2.4) less what has no
-/// source — settlements — and with Transactions, the mockup's "view all", as
-/// the last word.
-///
-/// **A list here rather than the enum's order**, because BO-10's panes had to
-/// go on the end of the enum — nothing stores an index, but a test naming
-/// panes by position is cheaper not to have to find — and the mockup puts
-/// Expenses and Drawers between Revenue and Payments.
-const _financeOrder = [
-  ManagementPane.financeOverview,
-  ManagementPane.financeRevenue,
-  ManagementPane.financeExpenses,
-  ManagementPane.financeDrawers,
-  ManagementPane.financePayments,
-  ManagementPane.financeBills,
-  ManagementPane.financeTaxes,
-  ManagementPane.financeTransactions,
-];
 
 /// The visible tabs, each with its visible panes in the order it shows them.
 ///
@@ -430,7 +469,7 @@ List<(BackOfficeTab, List<ManagementPane>)> backOfficeTabsFor({
   return [
     for (final tab in BackOfficeTab.values)
       if ([for (final p in panes) if (tabOf(p) == tab) p]
-            ..sort((a, b) => _rankInTab(a) - _rankInTab(b))
+            ..sort((a, b) => _placeInTab(a) - _placeInTab(b))
           case final own
           when own.isNotEmpty ||
               (!authorsItsOwnCatalogue &&
@@ -439,6 +478,59 @@ List<(BackOfficeTab, List<ManagementPane>)> backOfficeTabsFor({
         (tab, own),
   ];
 }
+
+/// One item of a tab: a word in its sub-nav, and a line in its bar menu.
+///
+/// [opens] is the pane it lands on; [holds] every pane that counts as being
+/// on it — more than one only for Settings' Orders & invoices settings, whose
+/// five panes sit behind a side nav of their own.
+typedef BackOfficeItem = ({
+  String label,
+  ManagementPane opens,
+  List<ManagementPane> holds,
+});
+
+/// A tab's items, in its order: a pane each, bar Settings, whose items are its
+/// [SettingsSection]s.
+///
+/// **One function for the sub-nav and the bar**, so the two say the same
+/// words in the same order — and read off [panes], which is what
+/// [backOfficeTabsFor] allowed, so nobody is offered an item they may not
+/// open.
+///
+/// **An item of the owner's map with no screen yet is not here** — not as a
+/// placeholder, not as a greyed word: Sales' invoices, returns and cancelled
+/// orders; Finance's settlements; People's shifts; System's sync. Each arrives
+/// as a pane with the slice that builds it. Reports' five breakdowns are the
+/// same, though four are sections of Business summary already: the period is
+/// that page's own state, so four entries over it would each open it back on
+/// Today, and the header would name a page the screen does not have.
+List<BackOfficeItem> backOfficeItemsFor(
+  AppStrings s,
+  BackOfficeTab tab,
+  List<ManagementPane> panes,
+) => tab == BackOfficeTab.settings
+    ? [
+        for (final section in SettingsSection.values)
+          if ([
+                for (final p in panes)
+                  if (settingsSectionOf(p) == section) p,
+              ]
+              case final own when own.isNotEmpty)
+            (
+              label: settingsSectionName(s, section),
+              opens: own.first,
+              holds: own,
+            ),
+      ]
+    : [
+        for (final pane in panes)
+          (
+            label: managementPaneLabel(s, pane).$1,
+            opens: pane,
+            holds: [pane],
+          ),
+      ];
 
 /// Where the door lands: the first pane of the first tab that holds one —
 /// which, since BO-4, is Home for everybody.
@@ -480,7 +572,7 @@ List<(HomeQuickAction, ManagementPane)> homeQuickActionsFor(
       if (switch (action) {
             HomeQuickAction.salesReports => firstOf(BackOfficeTab.reports),
             HomeQuickAction.products => firstOf(BackOfficeTab.menu),
-            // Users under Settings › Account, which is Staff by another name.
+            // Staff, under People.
             HomeQuickAction.employees =>
               reachable.contains(ManagementPane.staff)
                   ? ManagementPane.staff
@@ -525,15 +617,15 @@ class ManagementDestination {
   final Object? request;
 }
 
-/// The lines a pane adds to the window's bar, in place of its tab's own line.
+/// The lines a pane shows in the window's bar, in place of its own one line.
 ///
-/// Only Purchasing has any. It is really four things — orders, the invoices
-/// that arrive against them, the payments that settle those, and the
-/// suppliers behind all three — and "where do I enter this invoice" is
-/// answered by an invoice, not by a tab that holds a list of them. So it lists
-/// each, with the "new" that starts one beside the list it belongs to. The
-/// strip and the pane's own tabs can take somebody to the list; only the bar
-/// takes them straight to an empty invoice.
+/// Only Purchasing has any. It is really four things — orders, the suppliers
+/// they go to, the invoices that arrive against them and the payments that
+/// settle those, in the owner's map's order — and "where do I enter this
+/// invoice" is answered by an invoice, not by a tab that holds a list of them.
+/// So it lists each, with the "new" that starts one beside the list it belongs
+/// to. The pane's own tabs can take somebody to the list; only the bar takes
+/// them straight to an empty invoice.
 ///
 /// A FACTORY per entry rather than a destination: each tap has to be a fresh
 /// request, or asking for "New order" twice would be answered once. The bool
@@ -549,6 +641,12 @@ List<(String, ManagementDestination Function(), bool)> managementMenuEntries(
       () => _purchasing(PurchasingTab.orders, create: true),
       false,
     ),
+    (s.suppliers, () => _purchasing(PurchasingTab.suppliers), true),
+    (
+      s.supplierNew,
+      () => _purchasing(PurchasingTab.suppliers, create: true),
+      false,
+    ),
     (s.supplierInvoices, () => _purchasing(PurchasingTab.invoices), true),
     (
       s.invoiceNew,
@@ -556,21 +654,15 @@ List<(String, ManagementDestination Function(), bool)> managementMenuEntries(
       false,
     ),
     (s.paymentsList, () => _purchasing(PurchasingTab.payments), false),
-    (s.suppliers, () => _purchasing(PurchasingTab.suppliers), true),
-    (
-      s.supplierNew,
-      () => _purchasing(PurchasingTab.suppliers, create: true),
-      false,
-    ),
   ],
   _ => const [],
 };
 
-/// One line of the Back office menu in the window's bar.
+/// One line of a back-office menu in the window's bar.
 ///
 /// [pane] is what the line opens, null for a line that is not a pane — the
-/// pointer a cloud till shows in place of Inventory and Purchasing. [divider]
-/// is drawn above this line.
+/// pointer a cloud till shows under Inventory and Purchasing. [divider] is
+/// drawn above this line.
 typedef ManagementBarEntry = ({
   BackOfficeTab tab,
   ManagementPane? pane,
@@ -579,87 +671,107 @@ typedef ManagementBarEntry = ({
   bool divider,
 });
 
-/// The back office as the window's bar offers it: one menu, one line per tab.
+/// One menu of the window's bar: a tab's word, and its lines.
+typedef ManagementBarMenu = ({
+  BackOfficeTab tab,
+  String label,
+  List<ManagementBarEntry> lines,
+});
+
+/// The back office as the window's bar offers it: a menu per visible tab, in
+/// the strip's order and under the strip's word, listing that tab's items.
 ///
-/// **One menu now, not one per area (BO-1).** The tabs are back on screen, and
-/// seven words in the bar above a strip of the same tabs would be the same
-/// navigation twice — the exact reason the tabs were once taken away. What the
-/// bar still does that the strip cannot is the shortcut: Purchasing keeps its
-/// "new order / new invoice / new supplier" lines.
+/// **The owner's map, 14 Sep 2026.** BO-1 folded the bar into one Back office
+/// menu with a line per tab, arguing that seven words in the bar above a strip
+/// of the same tabs was the same navigation twice. The owner reversed that,
+/// then drew the whole back office as one map — ten words, each with its
+/// items — for the strip and the bar alike. So the two are the same list read
+/// at two depths: the strip and its sub-nav on screen, the bar one gesture
+/// away from anywhere, both from [backOfficeTabsFor] and [backOfficeItemsFor].
+///
+/// **The first menu is Home**, named as the strip names it, so the ten words
+/// are the same ten in both places. It holds the Home line, and the bar adds
+/// Exit Admin Mode under it: that is an act on the session, not a destination,
+/// so it is not a line here. "Back office" was the other candidate for the
+/// word, and would have made the bar the one place the first word differs.
+///
+/// **Settings is returned like any other tab, and the bar does not draw it as
+/// a menu of its own.** The till already has a Settings menu, and two menus
+/// both called الإعدادات side by side would leave somebody to learn which is
+/// which by opening both. `app.dart` folds these lines into the till's own,
+/// beneath everything it already held.
+///
+/// **On a cloud till Inventory and Purchasing are each a menu of one line**,
+/// the pointer that names both ("Purchasing & stock — on xorder.io…"), opening
+/// the tab that says the same thing at length. Only for whoever would have
+/// those tabs offline: [backOfficeTabsFor] keeps a pointer tab for nobody
+/// else.
 ///
 /// **Here rather than in the bar, so the two cannot drift.** The rule and its
-/// test sit beside each other in this file, and `app.dart` only draws.
-///
-/// **On a cloud till Inventory and Purchasing share one line**, the pointer
-/// that names both ("Purchasing & stock — on xorder.io…"). It opens the
-/// Purchasing tab, which says the same thing at length. Two lines leading to
-/// one sentence would be a menu padded with the same answer.
-List<ManagementBarEntry> managementBarFor(
+/// test sit beside each other, and `app.dart` only draws.
+List<ManagementBarMenu> managementBarFor(
   AppStrings s, {
   required PosStaff admin,
   required bool authorsItsOwnCatalogue,
-}) {
-  final lines = <ManagementBarEntry>[];
-  var pointed = false;
-  var previousWasGroup = false;
+}) => [
   for (final (tab, panes) in backOfficeTabsFor(
     admin: admin,
     authorsItsOwnCatalogue: authorsItsOwnCatalogue,
-  )) {
-    final block = <ManagementBarEntry>[
-      if (panes.isEmpty && !pointed)
-        (
-          tab: BackOfficeTab.purchasing,
-          pane: null,
-          label: s.purchasingOnPlatformEntry,
-          open: () => ManagementDestination(
-            pane: ManagementPane.purchasing,
-            request: Object(),
+  ))
+    (
+      tab: tab,
+      label: backOfficeTabName(s, tab),
+      lines: panes.isEmpty
+          ? [_platformPointerLine(s, tab)]
+          : _tabLines(s, tab, panes),
+    ),
+];
+
+/// A tab's lines: one per item, in the tab's order — Purchasing's own lines
+/// in place of its one, set off in groups by the dividers they carry.
+List<ManagementBarEntry> _tabLines(
+  AppStrings s,
+  BackOfficeTab tab,
+  List<ManagementPane> panes,
+) => [
+  for (final item in backOfficeItemsFor(s, tab, panes))
+    ...switch (managementMenuEntries(s, item.opens)) {
+      final own when own.isNotEmpty => <ManagementBarEntry>[
+        for (final (i, (label, open, groups)) in own.indexed)
+          (
+            tab: tab,
+            pane: item.opens,
+            label: label,
+            open: open,
+            divider: groups && i > 0,
           ),
+      ],
+      _ => <ManagementBarEntry>[
+        (
+          tab: tab,
+          pane: item.opens,
+          label: item.label,
+          open: () => ManagementDestination(pane: item.opens, request: Object()),
           divider: false,
-        )
-      else
-        for (final pane in panes)
-          for (final (i, (label, open, groups))
-              in managementMenuEntries(s, pane).indexed)
-            (
-              tab: tab,
-              pane: pane,
-              label: label,
-              open: open,
-              divider: groups && i > 0,
-            ),
-    ];
-    if (panes.isEmpty) {
-      if (pointed) continue;
-      pointed = true;
-    }
-    if (block.isEmpty) {
-      block.add((
-        tab: tab,
-        pane: panes.first,
-        label: backOfficeTabName(s, tab),
-        open: () => ManagementDestination(pane: panes.first, request: Object()),
-        divider: false,
-      ));
-    }
-    // A run of Purchasing's lines is set off from its single-line neighbours
-    // on both sides; single lines sit together, as the strip's words do.
-    final group = block.length > 1;
-    if (lines.isNotEmpty && (group || previousWasGroup)) {
-      final first = block.first;
-      block[0] = (
-        tab: first.tab,
-        pane: first.pane,
-        label: first.label,
-        open: first.open,
-        divider: true,
-      );
-    }
-    previousWasGroup = group;
-    lines.addAll(block);
-  }
-  return lines;
+        ),
+      ],
+    },
+];
+
+/// The one line of a tab a cloud till keeps only as a pointer.
+///
+/// Opens the tab's first pane by the enum, as the strip's word does
+/// (`_openTab`): the screen answers a pane the platform authors with the tab
+/// and the sentence, not with the pane.
+ManagementBarEntry _platformPointerLine(AppStrings s, BackOfficeTab tab) {
+  final pane = ManagementPane.values.firstWhere((p) => tabOf(p) == tab);
+  return (
+    tab: tab,
+    pane: null,
+    label: s.purchasingOnPlatformEntry,
+    open: () => ManagementDestination(pane: pane, request: Object()),
+    divider: false,
+  );
 }
 
 ManagementDestination _purchasing(PurchasingTab tab, {bool create = false}) =>
@@ -676,19 +788,21 @@ ManagementDestination _purchasing(PurchasingTab tab, {bool create = false}) =>
 /// that names every pane, so it is the one place a pane added without an Arabic
 /// label has to fail to compile.
 ///
-/// Staff and Receipt answer with their Settings names, Users and General, so
-/// the side nav, the header and the bar say one word for one place. The plan
-/// names them that way (§1.1, §2.6) and the cloud does too; the panes' own
-/// headings inside still say what they list.
+/// Every pane answers with the owner's map's word for it (14 Sep 2026) —
+/// Orders, Business summary, Roles & permissions, Devices, Treasury — so the
+/// sub-nav, the header and the bar say one word for one place. The panes' own
+/// headings inside still say what they list. Receipt answers General, its
+/// name in Settings' side nav.
 (String, String) managementPaneLabel(AppStrings s, ManagementPane pane) =>
     switch (pane) {
       ManagementPane.home => (s.tabHome, s.paneHomeBlurb),
-      ManagementPane.staff => (s.settingsUsers, s.paneStaffBlurb),
-      // The tab's word, as Staff takes its Settings name: one pane, one tab,
-      // and the header saying "Sales" under a strip saying "Sales".
-      ManagementPane.sales => (s.tabSales, s.paneSalesBlurb),
-      ManagementPane.reports => (s.tabReports, s.paneReportsBlurb),
+      ManagementPane.staff => (s.paneStaff, s.paneStaffBlurb),
+      // Orders, as `/orders` calls the same list: the first of Sales' items,
+      // the only one built.
+      ManagementPane.sales => (s.orderHistoryTitle, s.paneSalesBlurb),
+      ManagementPane.reports => (s.reportsSummary, s.paneReportsBlurb),
       ManagementPane.menu => (s.paneMenu, s.paneMenuBlurb),
+      ManagementPane.categories => (s.categories, s.paneMenuBlurb),
       ManagementPane.extras => (s.extrasTitle, s.extrasSubtitle),
       ManagementPane.floor => (s.floorPlan, s.floorPlanHint),
       ManagementPane.taxes => (s.paneTaxes, s.paneTaxesHint),
@@ -698,17 +812,15 @@ ManagementDestination _purchasing(PurchasingTab tab, {bool create = false}) =>
       ManagementPane.purchasing => (s.panePurchasing, s.panePurchasingBlurb),
       ManagementPane.receipt => (s.settingsGeneral, s.paneReceiptBlurb),
       ManagementPane.eta => (s.paneEta, s.paneEtaBlurb),
-      ManagementPane.roles => (s.paneRoles, s.paneRolesBlurb),
+      ManagementPane.roles => (s.rolesAndPermissions, s.paneRolesBlurb),
       ManagementPane.activity => (s.paneActivity, s.paneActivityBlurb),
       ManagementPane.backup => (s.paneBackup, s.paneBackupBlurb),
       ManagementPane.items => (s.paneItems, s.paneItemsBlurb),
       ManagementPane.stock => (s.paneStock, s.paneStockBlurb),
       ManagementPane.units => (s.paneUnits, s.paneUnitsBlurb),
-      ManagementPane.terminal => (s.paneTerminal, s.paneTerminalBlurb),
-      ManagementPane.appearance => (
-        s.settingsAppearance,
-        s.paneAppearanceBlurb,
-      ),
+      ManagementPane.terminal => (s.paneDevices, s.paneTerminalBlurb),
+      ManagementPane.language => (s.settingsLanguage, s.paneAppearanceBlurb),
+      ManagementPane.appearance => (s.settingsLook, s.paneAppearanceBlurb),
       ManagementPane.financeOverview => (
         s.financeOverview,
         s.financeOverviewBlurb,
@@ -837,9 +949,11 @@ enum ManagementPane {
   units,
   terminal,
 
-  /// Settings › This terminal › Language & appearance (BO-8). Last, so every
-  /// other pane keeps the index it had; nothing stores one, but a deep link
-  /// or a test naming panes by position is cheaper not to have to find.
+  /// Settings › Appearance: the theme half of BO-8's Language & appearance,
+  /// since the owner's map gave language an item of its own ([language]).
+  /// Last when it was added, so every other pane kept the index it had;
+  /// nothing stores one, but a deep link or a test naming panes by position
+  /// is cheaper not to have to find.
   appearance,
   /// The order history, as the Sales tab (BO-2). Last, so no other pane's
   /// index moves; the strip orders tabs by [BackOfficeTab], not by this.
@@ -860,6 +974,17 @@ enum ManagementPane {
   financeDrawers,
   financeBills,
   financeTransactions,
+
+  /// Menu › Categories (the owner's map): the menu pane again. It has no
+  /// categories-only mode — its categories are the list down its start side,
+  /// where they are added, renamed and archived — so this item opens the same
+  /// pane, under the word somebody looking for a category reaches for. Last,
+  /// for the same reason as [sales].
+  categories,
+
+  /// Settings › Language (the owner's map): the language half of the card
+  /// [appearance] shows the other half of. Last, for the same reason.
+  language,
 }
 
 class _ManagementScreenState extends ConsumerState<ManagementScreen> {
@@ -1067,6 +1192,10 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
         : backOfficeLanding(tabs);
     final tab = showing != null ? tabOf(showing) : tabOf(asked!);
     final tabPanes = tabs.firstWhere((t) => t.$1 == tab).$2;
+    // The tab's items — the sub-nav's words, which the bar's menu lists too —
+    // and the one the page on screen belongs to.
+    final items = backOfficeItemsFor(strings, tab, tabPanes);
+    final item = items.where((i) => i.holds.contains(showing)).firstOrNull;
 
     // …and when it is absent because the platform authors it, the screen says
     // so. Keyed on `_pane`, the pane ASKED for, so it goes the moment anything
@@ -1122,19 +1251,19 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
             ),
             // Tabs again (BO-1, plan 19 §1.1). Until then there were none:
             // the window's bar named every area and every pane, and a strip of
-            // the current area's neighbours was the same navigation twice. The
-            // reversal kept that reasoning and moved the other half — the bar
-            // shrank to one Back office menu, so the strip is now the one place
-            // that names every tab, and it is always on screen, which a bar
-            // menu closed by default is not.
+            // the current area's neighbours was the same navigation twice. BO-1
+            // shrank the bar to one Back office menu to make room for this; the
+            // owner put the bar's menu per area back on 14 Sep 2026 and kept
+            // the strip too, because it is always on screen, which a bar menu
+            // closed by default is not. Both read `backOfficeTabsFor`.
             BackOfficeTabStrip(
               tabs: [for (final (t, _) in tabs) t],
               selected: tab,
               onSelect: (t) =>
                   _openTab(t, tabs.firstWhere((e) => e.$1 == t).$2),
             ),
-            if (tab != BackOfficeTab.settings && tabPanes.length > 1)
-              _SubNav(panes: tabPanes, selected: showing, onSelect: _open),
+            if (items.length > 1)
+              _SubNav(items: items, selected: item, onSelect: _open),
             if (ref.watch(schemaUpgradeFailureProvider) case final failure?)
               _SchemaNotice(text: strings.schemaUpgradeFailed(failure)),
             if (backupNotice != null)
@@ -1153,11 +1282,13 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
                 ),
               ),
             Expanded(
-              child: tab == BackOfficeTab.settings && showing != null
+              // Settings' side nav, for the one item that holds more than a
+              // page: Orders & invoices settings.
+              child: showing != null && item != null && item.holds.length > 1
                   ? Row(
                       children: [
                         _SettingsNav(
-                          panes: tabPanes,
+                          panes: item.holds,
                           selected: showing,
                           onSelect: _open,
                         ),
@@ -1204,7 +1335,8 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
     // Whose figures follows [admin] through `actingStaffProvider`, as the
     // Sales list's rows do — see `reportsAllowedProvider`.
     ManagementPane.reports => const ManagementReportsPane(),
-    // "Manage roles" opens Settings › Roles, as the cloud's Users page does.
+    // "Manage roles" opens People › Roles & permissions, as the cloud's Users
+    // page opens its roles.
     ManagementPane.staff => ManagementStaffPane(
       admin: admin,
       onManageRoles: () => _open(ManagementPane.roles),
@@ -1212,7 +1344,7 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
     // The item editor's "Manage extras" link. Moved here rather than through
     // the router: this screen already owns which pane is showing, as the
     // backup notice's button does.
-    ManagementPane.menu => ManagementMenuPane(
+    ManagementPane.menu || ManagementPane.categories => ManagementMenuPane(
       admin: admin,
       onOpenExtras: () => _open(ManagementPane.extras),
     ),
@@ -1244,7 +1376,12 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
         ),
       ],
     ),
-    ManagementPane.appearance => const ManagementAppearancePane(),
+    ManagementPane.language => const ManagementAppearancePane(
+      part: AppearancePart.language,
+    ),
+    ManagementPane.appearance => const ManagementAppearancePane(
+      part: AppearancePart.theme,
+    ),
     ManagementPane.eta => const ManagementEtaPane(),
     ManagementPane.roles => ManagementRolesPane(admin: admin),
     ManagementPane.activity => const ManagementActivityPane(),
@@ -1398,26 +1535,29 @@ class BackOfficeTabStrip extends StatelessWidget {
   }
 }
 
-/// The second row, for a tab with two or more panes (Menu, Inventory, System).
+/// The second row, for a tab with two or more items: the owner's map's words
+/// for that tab, which its bar menu lists too ([backOfficeItemsFor]).
 ///
 /// Text only and quieter than the strip above it, with the same kind of
 /// underline in ink rather than accent: two accent underlines stacked read as
 /// two equal choices, and the upper one is the bigger decision.
+///
+/// Keyed by the pane an item opens, so a test or a tap names the page it
+/// lands on — Settings' Orders & invoices settings is `receipt`, its first.
 class _SubNav extends StatelessWidget {
   const _SubNav({
-    required this.panes,
+    required this.items,
     required this.selected,
     required this.onSelect,
   });
 
-  final List<ManagementPane> panes;
-  final ManagementPane? selected;
+  final List<BackOfficeItem> items;
+  final BackOfficeItem? selected;
   final ValueChanged<ManagementPane> onSelect;
 
   @override
   Widget build(BuildContext context) {
     final pos = context.pos;
-    final strings = context.strings;
     return Container(
       key: const Key('back-office-subnav'),
       height: PosSize.filterChip,
@@ -1428,17 +1568,17 @@ class _SubNav extends StatelessWidget {
       ),
       child: Row(
         children: [
-          for (final pane in panes)
+          for (final item in items)
             GestureDetector(
-              key: Key('back-office-subnav-${pane.name}'),
+              key: Key('back-office-subnav-${item.opens.name}'),
               behavior: HitTestBehavior.opaque,
-              onTap: () => onSelect(pane),
+              onTap: () => onSelect(item.opens),
               child: Container(
                 alignment: Alignment.center,
                 padding: const EdgeInsets.symmetric(horizontal: PosSpace.md),
                 decoration: BoxDecoration(
                   border: Border(
-                    bottom: pane == selected
+                    bottom: item.opens == selected?.opens
                         ? pos.emphasis
                         : const BorderSide(
                             color: Colors.transparent,
@@ -1447,14 +1587,14 @@ class _SubNav extends StatelessWidget {
                   ),
                 ),
                 child: Text(
-                  managementPaneLabel(strings, pane).$1,
+                  item.label,
                   maxLines: 1,
                   style: PosText.ui(
                     size: 13,
-                    weight: pane == selected
+                    weight: item.opens == selected?.opens
                         ? FontWeight.w700
                         : FontWeight.w500,
-                    color: pane == selected ? pos.ink : pos.body,
+                    color: item.opens == selected?.opens ? pos.ink : pos.body,
                   ),
                 ),
               ),
@@ -1465,13 +1605,14 @@ class _SubNav extends StatelessWidget {
   }
 }
 
-/// Settings' side nav: on the start side, grouped as the cloud groups it.
+/// Settings' side nav, for Orders & invoices settings: its five panes, on the
+/// start side.
 ///
-/// A column rather than a second row because Settings holds eight panes in
-/// three groups since BO-8 added This terminal, and BO-7's Users grows a
-/// matrix; a row of eight under a strip of nine is the scrolling strip by
-/// another name. At
-/// [PosSize.settingsNav] it leaves 868 px for a pane at the 1100 breakpoint.
+/// A column rather than a third row: the sub-nav above already names
+/// Settings' items, and a row of five forms under it would be three stacked
+/// rows of words. At [PosSize.settingsNav] it leaves 868 px for a pane at the
+/// 1100 breakpoint. No headings since the owner's map: the sub-nav names the
+/// item, and five rows need no grouping.
 ///
 /// `BorderDirectional` and `EdgeInsetsDirectional` throughout, so Arabic puts
 /// the nav on the right with its selection bar on the right edge — mirrored,
@@ -1501,63 +1642,42 @@ class _SettingsNav extends StatelessWidget {
       child: ListView(
         padding: const EdgeInsets.symmetric(vertical: PosSpace.md),
         children: [
-          for (final section in SettingsSection.values)
-            if ([
-                  for (final p in panes)
-                    if (settingsPlaceOf(p)?.$1 == section) p,
-                ]
-                case final own when own.isNotEmpty) ...[
-              Padding(
-                padding: const EdgeInsetsDirectional.fromSTEB(
-                  PosSpace.lg,
-                  PosSpace.md,
-                  PosSpace.lg,
-                  PosSpace.xs,
+          for (final pane in panes)
+            GestureDetector(
+              key: Key('back-office-settings-${pane.name}'),
+              behavior: HitTestBehavior.opaque,
+              onTap: () => onSelect(pane),
+              child: Container(
+                height: PosSize.settingsNavRow,
+                alignment: AlignmentDirectional.centerStart,
+                padding: const EdgeInsetsDirectional.only(
+                  start: PosSpace.lg - 2,
+                  end: PosSpace.lg,
                 ),
-                child: Text(
-                  // Upper case is a Latin idea; Arabic has none, and
-                  // `toUpperCase` leaves it as it is.
-                  settingsSectionName(strings, section).toUpperCase(),
-                  style: PosText.microLabel(color: pos.muted),
-                ),
-              ),
-              for (final pane in own)
-                GestureDetector(
-                  key: Key('back-office-settings-${pane.name}'),
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () => onSelect(pane),
-                  child: Container(
-                    height: PosSize.settingsNavRow,
-                    alignment: AlignmentDirectional.centerStart,
-                    padding: const EdgeInsetsDirectional.only(
-                      start: PosSpace.lg - 2,
-                      end: PosSpace.lg,
-                    ),
-                    decoration: BoxDecoration(
-                      border: BorderDirectional(
-                        start: pane == selected
-                            ? pos.accentBorder
-                            : const BorderSide(
-                                color: Colors.transparent,
-                                width: 2,
-                              ),
-                      ),
-                    ),
-                    child: Text(
-                      managementPaneLabel(strings, pane).$1,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: PosText.ui(
-                        size: 13.5,
-                        weight: pane == selected
-                            ? FontWeight.w700
-                            : FontWeight.w500,
-                        color: pane == selected ? pos.ink : pos.body,
-                      ),
-                    ),
+                decoration: BoxDecoration(
+                  border: BorderDirectional(
+                    start: pane == selected
+                        ? pos.accentBorder
+                        : const BorderSide(
+                            color: Colors.transparent,
+                            width: 2,
+                          ),
                   ),
                 ),
-            ],
+                child: Text(
+                  managementPaneLabel(strings, pane).$1,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: PosText.ui(
+                    size: 13.5,
+                    weight: pane == selected
+                        ? FontWeight.w700
+                        : FontWeight.w500,
+                    color: pane == selected ? pos.ink : pos.body,
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );

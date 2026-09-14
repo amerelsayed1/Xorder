@@ -224,9 +224,10 @@ class XorderPosApp extends ConsumerWidget {
               //
               // **Somebody in Admin Mode is somebody signed in.** Admin Mode
               // is not the till, so it can be entered with nobody signed in
-              // there — and its Back office menu holds the shortcuts the tabs
-              // do not, "New invoice" among them. Hiding the bar would take
-              // those away from exactly the person they are for.
+              // there — and its menus hold every pane a gesture away, and the
+              // shortcuts the tabs do not, "New invoice" among them. Hiding
+              // the bar would take those away from exactly the person they are
+              // for.
               //
               // Except while the till is not set up yet: the wizard has no
               // language step up front and relies on Settings' language
@@ -246,6 +247,12 @@ class XorderPosApp extends ConsumerWidget {
               // till. Listened to through the router because this sits above
               // it and no route rebuilds it.
               final router = ref.watch(routerProvider);
+
+              final menus = _managementMenus(ref, strings);
+              final settingsLines = [
+                for (final menu in menus)
+                  if (menu.tab == BackOfficeTab.settings) ...menu.lines,
+              ];
               return _AfterEachRoute(
                 listenable: router.routerDelegate,
                 builder: (context) => MenuBarWidget(
@@ -254,46 +261,54 @@ class XorderPosApp extends ConsumerWidget {
                         router.routerDelegate.currentConfiguration.uri.path,
                       ),
                   barButtons: [
-                    // **The back office, in the window's own bar: one menu.**
+                    // **The back office, in the window's own bar: the owner's
+                    // map (14 Sep 2026), one menu per tab.**
                     //
                     // Inside Admin Mode only. The till's bar and the start
                     // screen each had a Management button too — the same door
                     // twice, three times on the start screen counting this bar —
                     // and both are gone.
                     //
-                    // One word, not one per area (BO-1). The back office has
-                    // its tabs back, and seven words here above a strip of the
-                    // same tabs was the same navigation twice. What is left is
-                    // one line per tab and the shortcuts the strip cannot be:
-                    // under المشتريات, "new order", "enter an invoice" and "new
-                    // supplier" start one straight away. On a cloud till one
-                    // line says where buying and stock went —
-                    // `managementBarFor` decides which.
+                    // The strip's ten words, in its order, each listing that
+                    // tab's items as its sub-nav does. BO-1 had folded these
+                    // into one Back office menu, a line per tab; the owner
+                    // reversed that and drew one map for both. Home comes
+                    // first and holds the way out; under المشتريات, "new
+                    // order", "enter an invoice" and "new supplier" still start
+                    // one straight away; on a cloud till Inventory and
+                    // Purchasing each hold one line saying where they went.
+                    // `managementBarFor` decides all of it, and Settings' items
+                    // join the till's own Settings menu below rather than
+                    // making a second menu of the same name.
                     //
                     // Absent entirely for somebody who cannot open the back
                     // office: a greyed-out menu is a permanent advertisement for
                     // a door they will never be given.
-                    if (_managementMenu(ref, strings) case final entries
-                        when entries.isNotEmpty)
-                      BarButton(
-                        text: Text(strings.backOffice),
-                        submenu: SubMenu(
-                          menuItems: [
-                            for (final entry in entries) ...[
-                              if (entry.divider) const MenuDivider(),
-                              MenuButton(
-                                text: Text(entry.label),
-                                onTap: () => ref
-                                    .read(routerProvider)
-                                    .go(
-                                      PosRoutes.management,
-                                      extra: entry.open(),
-                                    ),
-                              ),
+                    for (final menu in menus)
+                      if (menu.tab != BackOfficeTab.settings)
+                        BarButton(
+                          text: Text(menu.label),
+                          submenu: SubMenu(
+                            menuItems: [
+                              for (final entry in menu.lines) ...[
+                                if (entry.divider) const MenuDivider(),
+                                MenuButton(
+                                  text: Text(entry.label),
+                                  onTap: () => _openFromBar(ref, entry),
+                                ),
+                              ],
+                              // Only ever drawn in Admin Mode, since no menu
+                              // of the back office exists outside it.
+                              if (menu.tab == BackOfficeTab.home) ...[
+                                const MenuDivider(),
+                                MenuButton(
+                                  text: Text(strings.exitAdminMode),
+                                  onTap: () => _exitAdmin(ref),
+                                ),
+                              ],
                             ],
-                          ],
+                          ),
                         ),
-                      ),
                     BarButton(
                       text: Text(strings.settings),
                       submenu: SubMenu(
@@ -309,9 +324,11 @@ class XorderPosApp extends ConsumerWidget {
                               icon: const Icon(Icons.sync, size: 16),
                               onTap: cloud.kick,
                             ),
-                          // Not the back office: the bar's own Management menu
-                          // opens it, and "Staff & accounts" and "Management"
-                          // here were the same door twice more.
+                          // No door to the back office here: the hidden chord
+                          // is the way in, and "Staff & accounts" and
+                          // "Management" here were once the same door twice
+                          // more. Inside Admin Mode, the back office's Settings
+                          // items are listed at the foot of this menu instead.
                           //
                           // Every sale and its receipt, from wherever the till is
                           // — and back there on close, not to the sale screen.
@@ -402,6 +419,22 @@ class XorderPosApp extends ConsumerWidget {
                               shortcutText: '⇧⌘R',
                               onTap: () => _forceReset(ref),
                             ),
+                          // The back office's Settings items, in Admin Mode and
+                          // only those this person has, beneath the till's own
+                          // lines, which keep their places. Merged, rather than
+                          // the till's lines rearranged into the map's order:
+                          // printer, switch user and About already are the
+                          // map's printer, user and about, and they have to
+                          // stay reachable outside Admin Mode, where none of
+                          // the back office's items are.
+                          if (settingsLines.isNotEmpty) const MenuDivider(),
+                          for (final entry in settingsLines) ...[
+                            if (entry.divider) const MenuDivider(),
+                            MenuButton(
+                              text: Text(entry.label),
+                              onTap: () => _openFromBar(ref, entry),
+                            ),
+                          ],
                         ],
                       ),
                     ),
@@ -421,13 +454,13 @@ class XorderPosApp extends ConsumerWidget {
   static bool _beforeTheTill(String path) =>
       path == PosRoutes.start || path == PosRoutes.lock;
 
-  /// The lines of the bar's Back office menu.
+  /// The bar's back-office menus.
   ///
   /// Asks `managementBarFor` rather than listing panes, for the reason
   /// `backOfficeTabsFor` exists beneath it: a menu offering Purchasing to
   /// somebody the strip hides it from would take them to a screen that refuses
   /// everything.
-  List<ManagementBarEntry> _managementMenu(
+  List<ManagementBarMenu> _managementMenus(
     WidgetRef ref,
     AppStrings strings,
   ) {
@@ -445,6 +478,28 @@ class XorderPosApp extends ConsumerWidget {
       admin: admin,
       authorsItsOwnCatalogue: ref.watch(catalogAdminRepositoryProvider) != null,
     );
+  }
+
+  /// A bar line, followed. Through the route, so somebody no longer in Admin
+  /// Mode meets its door first, and lands on the pane the line named.
+  void _openFromBar(WidgetRef ref, ManagementBarEntry entry) => ref
+      .read(routerProvider)
+      .go(PosRoutes.management, extra: entry.open());
+
+  /// Exit Admin Mode from the bar: exactly the header's Exit — the session
+  /// ended as `exited`, and back to wherever the back office was opened from.
+  ///
+  /// The session is ended before the route moves, not left to the screen's
+  /// dispose, which would record it as `left`: the audit row says Exit because
+  /// somebody chose Exit.
+  void _exitAdmin(WidgetRef ref) {
+    final router = ref.read(routerProvider);
+    final returnTo = switch (router.routerDelegate.currentConfiguration.extra) {
+      final ManagementDestination d => d.returnTo,
+      _ => null,
+    };
+    ref.read(adminSessionProvider.notifier).end(AdminSessionEnd.exited);
+    router.go(returnTo ?? PosRoutes.start);
   }
 
   /// Into Admin Mode, from wherever the till is — and back there on the way

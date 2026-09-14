@@ -10,9 +10,14 @@ import 'package:xorder_pos/domain/repositories/admin_repositories.dart';
 import 'package:xorder_pos/features/admin/presentation/management_screen.dart';
 
 import '../support/fakes.dart';
+import '../support/fonts.dart';
 
 /// The Stock items pane: what the restaurant buys and counts.
 void main() {
+  // An offline owner's strip holds all ten of the map's words; measured in
+  // the bundled faces, not the test font's (see `loadPosFonts`).
+  setUpAll(loadPosFonts);
+
   Future<ProviderContainer> open(
     WidgetTester tester, {
     bool authorsItsOwnMenu = true,

@@ -21,6 +21,7 @@ import 'package:xorder_pos/features/admin/presentation/management_roles_pane.dar
 import 'package:xorder_pos/features/admin/presentation/management_screen.dart';
 
 import '../support/fakes.dart';
+import '../support/fonts.dart';
 
 /// The door to the back office.
 ///
@@ -30,6 +31,10 @@ import '../support/fakes.dart';
 /// screen that offers an action the data layer would reject, or worse, one that
 /// opens for somebody it should not.
 void main() {
+  // An offline owner's strip holds all ten of the map's words; measured in
+  // the bundled faces, not the test font's (see `loadPosFonts`).
+  setUpAll(loadPosFonts);
+
   /// [offline] for the tests about Purchasing: the harness is a cloud till,
   /// and since CB-09 a cloud till has no Purchasing pane to test.
   Future<ProviderContainer> open(
@@ -131,7 +136,7 @@ void main() {
 
     // The header names the product, the mode and the page.
     expect(
-      find.text('XOrder POS › Admin › ${const EnStrings().settingsUsers}'),
+      find.text('XOrder POS › Admin › ${const EnStrings().paneStaff}'),
       findsOneWidget,
     );
     expect(find.text('Amer M.'), findsWidgets);
@@ -240,7 +245,7 @@ void main() {
     expect(upgrades, 1);
     expect(find.byKey(const Key('management-schema-notice')), findsNothing);
     expect(
-      find.text('XOrder POS › Admin › ${const EnStrings().settingsUsers}'),
+      find.text('XOrder POS › Admin › ${const EnStrings().paneStaff}'),
       findsOneWidget,
     );
   });
@@ -257,7 +262,7 @@ void main() {
 
     // Backup is in here, so a failed upgrade must not keep anybody out.
     expect(
-      find.text('XOrder POS › Admin › ${const EnStrings().settingsUsers}'),
+      find.text('XOrder POS › Admin › ${const EnStrings().paneStaff}'),
       findsOneWidget,
     );
     expect(find.byKey(const Key('management-schema-notice')), findsOneWidget);

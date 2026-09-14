@@ -356,8 +356,10 @@ void main() {
       expect(find.text(s.close), findsNothing);
       expect(find.text(s.orderHistoryTitle), findsNothing);
       expect(find.byKey(const Key('admin-exit')), findsOneWidget);
-      // The tab's word in the header, not the history's own title.
-      expect(find.text(s.adminTitle(s.tabSales)), findsOneWidget);
+      // The map's word for the page in the header (14 Sep 2026) — Orders,
+      // as the history calls itself — and the history's own title bar not
+      // drawn at all.
+      expect(find.text(s.adminTitle(s.orderHistoryTitle)), findsOneWidget);
 
       await tester.tap(find.byType(TextField));
       await tester.pump();
@@ -476,7 +478,7 @@ void main() {
       expect(tester.takeException(), isNull);
 
       const s = ArStrings();
-      expect(find.text(s.adminTitle(s.tabSales)), findsOneWidget);
+      expect(find.text(s.adminTitle(s.orderHistoryTitle)), findsOneWidget);
       expect(find.byKey(OrderHistoryScreen.sidewaysKey), findsOneWidget);
       // The first rows in view, from the start edge — the right.
       final invoice = tester.getRect(find.text('NOUR-1'));

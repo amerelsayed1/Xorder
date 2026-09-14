@@ -1156,7 +1156,7 @@ sealed class AppStrings {
   String get paneTaxes;
   String get paneTaxesHint;
 
-  // BO-1: the back office's tabs, its one bar menu, and Settings' side nav.
+  // BO-1: the back office's tabs, and Settings' side nav.
   String get backOffice;
   String get tabHome;
   String get tabSales;
@@ -1167,6 +1167,15 @@ sealed class AppStrings {
   String get tabFinance;
   String get tabSystem;
   String get tabSettings;
+  // The owner's map (14 Sep 2026): People as a tab again, and the map's words
+  // for the items it names differently from the panes' own headings.
+  String get tabPeople;
+  String get reportsSummary;
+  String get rolesAndPermissions;
+  String get paneDevices;
+  String get settingsOrdersInvoices;
+  String get settingsLanguage;
+  String get settingsLook;
   // BO-4: Home — the landing page's cards, tiles and quick actions.
   String get paneHomeBlurb;
   String homeWelcome(String name);
@@ -1305,12 +1314,8 @@ sealed class AppStrings {
   String get financeNoTransactions;
   String financeTransactionsTruncated(int count);
   String get financeTransactionsNote;
-  String get settingsSectionAccount;
-  String get settingsSectionPointOfSale;
   String get settingsGeneral;
-  String get settingsUsers;
-  // Settings › General's two cards and the This terminal group (BO-8).
-  String get settingsSectionThisTerminal;
+  // Settings › General's two cards, and Language and Appearance (BO-8).
   String get settingsAppearance;
   String get paneAppearanceBlurb;
   String get appearanceThisTerminal;
@@ -5142,6 +5147,20 @@ final class EnStrings extends AppStrings {
   @override
   String get tabSettings => 'Settings';
   @override
+  String get tabPeople => 'People';
+  @override
+  String get reportsSummary => 'Business summary';
+  @override
+  String get rolesAndPermissions => 'Roles & permissions';
+  @override
+  String get paneDevices => 'Devices';
+  @override
+  String get settingsOrdersInvoices => 'Orders & invoices settings';
+  @override
+  String get settingsLanguage => 'Language';
+  @override
+  String get settingsLook => 'Appearance';
+  @override
   String get paneHomeBlurb =>
       'This till, how today is going, and the way to the rest.';
   @override
@@ -5206,12 +5225,12 @@ final class EnStrings extends AppStrings {
       'Sales, discounts and refunds by business day — the same figures as '
       'Reports.';
   @override
-  String get financePayments => 'Payments';
+  String get financePayments => 'Payment methods';
   @override
   String get financePaymentsBlurb =>
       "Every payment taken on the period's sales, one row each.";
   @override
-  String get financeTaxes => 'Taxes collected';
+  String get financeTaxes => 'Taxes';
   @override
   String get financeTaxesBlurb =>
       'Tax charged by rate, less what refunds gave back.';
@@ -5317,7 +5336,7 @@ final class EnStrings extends AppStrings {
   String get financeExpensesBlurb =>
       'Money paid out of the drawers, and paid to suppliers.';
   @override
-  String get financeDrawers => 'Drawers';
+  String get financeDrawers => 'Treasury';
   @override
   String get financeDrawersBlurb =>
       'The cash each open drawer should hold right now.';
@@ -5459,15 +5478,7 @@ final class EnStrings extends AppStrings {
       'A supplier invoice is a bill, not money that moved; paying it is a row '
       'of its own. The sales listed are the ones the Sales tab shows you.';
   @override
-  String get settingsSectionAccount => 'Account';
-  @override
-  String get settingsSectionPointOfSale => 'Point of sale';
-  @override
   String get settingsGeneral => 'General';
-  @override
-  String get settingsUsers => 'Users';
-  @override
-  String get settingsSectionThisTerminal => 'This terminal';
   @override
   String get settingsAppearance => 'Language & appearance';
   @override
@@ -8902,7 +8913,7 @@ final class ArStrings extends AppStrings {
   String get statusCancelled => 'ملغى';
 
   @override
-  String get supplierInvoices => 'الفواتير';
+  String get supplierInvoices => 'فواتير الشراء';
   @override
   String get invoiceNew => 'إدخال فاتورة';
   @override
@@ -9224,11 +9235,25 @@ final class ArStrings extends AppStrings {
   @override
   String get tabPurchasing => 'المشتريات';
   @override
-  String get tabFinance => 'المال';
+  String get tabFinance => 'المالية';
   @override
   String get tabSystem => 'النظام';
   @override
   String get tabSettings => 'الإعدادات';
+  @override
+  String get tabPeople => 'الأفراد';
+  @override
+  String get reportsSummary => 'ملخص الأعمال';
+  @override
+  String get rolesAndPermissions => 'الأدوار والصلاحيات';
+  @override
+  String get paneDevices => 'الأجهزة';
+  @override
+  String get settingsOrdersInvoices => 'إعدادات الطلبات والفواتير';
+  @override
+  String get settingsLanguage => 'اللغة';
+  @override
+  String get settingsLook => 'المظهر';
   @override
   String get paneHomeBlurb => 'هذا الجهاز، وسير اليوم، والطريق إلى بقية الأقسام.';
   @override
@@ -9285,11 +9310,11 @@ final class ArStrings extends AppStrings {
   String get financeRevenueBlurb =>
       'المبيعات والخصومات والمرتجعات لكل يوم عمل، بأرقام التقارير نفسها.';
   @override
-  String get financePayments => 'المدفوعات';
+  String get financePayments => 'طرق الدفع';
   @override
   String get financePaymentsBlurb => 'كل دفعة على مبيعات الفترة، كلٌّ في سطر.';
   @override
-  String get financeTaxes => 'الضرائب المحصَّلة';
+  String get financeTaxes => 'الضرائب';
   @override
   String get financeTaxesBlurb =>
       'الضريبة المحصَّلة لكل نسبة، مخصوماً منها ما رُدّ مع المرتجعات.';
@@ -9393,7 +9418,7 @@ final class ArStrings extends AppStrings {
   String get financeExpensesBlurb =>
       'ما خرج من الأدراج نقداً، وما دُفع للموردين.';
   @override
-  String get financeDrawers => 'الأدراج';
+  String get financeDrawers => 'الخزينة';
   @override
   String get financeDrawersBlurb =>
       'النقد الذي يجب أن يكون في كل درج مفتوح الآن.';
@@ -9528,15 +9553,7 @@ final class ArStrings extends AppStrings {
       'فاتورة المورد مطالبة وليست مالاً تحرّك، وسدادها سطر مستقل. المبيعات '
       'المعروضة هي التي يعرضها لك تبويب المبيعات.';
   @override
-  String get settingsSectionAccount => 'الحساب';
-  @override
-  String get settingsSectionPointOfSale => 'نقطة البيع';
-  @override
   String get settingsGeneral => 'عام';
-  @override
-  String get settingsUsers => 'المستخدمون';
-  @override
-  String get settingsSectionThisTerminal => 'هذا الجهاز';
   @override
   String get settingsAppearance => 'اللغة والمظهر';
   @override

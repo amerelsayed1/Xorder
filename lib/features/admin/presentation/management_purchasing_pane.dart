@@ -59,7 +59,7 @@ class ManagementPurchasingPane extends ConsumerStatefulWidget {
 }
 
 /// The four halves of buying. Public so a menu can open the one it means.
-enum PurchasingTab { orders, invoices, payments, suppliers }
+enum PurchasingTab { orders, suppliers, invoices, payments }
 
 class _ManagementPurchasingPaneState
     extends ConsumerState<ManagementPurchasingPane> {
@@ -403,6 +403,20 @@ class _ManagementPurchasingPaneState
                 border: Border.fromBorderSide(palette.resting),
                 onPressed: () => setState(() => _tab = PurchasingTab.orders),
               ),
+              // The owner's map orders these (14 Sep 2026): orders, who they
+              // go to, what arrives against them, and what settles that. The
+              // bar's Purchasing menu lists them in the same order.
+              const SizedBox(width: PosSpace.sm),
+              PosButton(
+                key: const Key('purchasing-suppliers'),
+                label: strings.suppliers,
+                background: _tab == PurchasingTab.suppliers
+                    ? palette.ink
+                    : Colors.transparent,
+                foreground: _tab == PurchasingTab.suppliers ? palette.onInk : null,
+                border: Border.fromBorderSide(palette.resting),
+                onPressed: () => setState(() => _tab = PurchasingTab.suppliers),
+              ),
               const SizedBox(width: PosSpace.sm),
               PosButton(
                 key: const Key('purchasing-invoices'),
@@ -424,17 +438,6 @@ class _ManagementPurchasingPaneState
                 foreground: _tab == PurchasingTab.payments ? palette.onInk : null,
                 border: Border.fromBorderSide(palette.resting),
                 onPressed: () => setState(() => _tab = PurchasingTab.payments),
-              ),
-              const SizedBox(width: PosSpace.sm),
-              PosButton(
-                key: const Key('purchasing-suppliers'),
-                label: strings.suppliers,
-                background: _tab == PurchasingTab.suppliers
-                    ? palette.ink
-                    : Colors.transparent,
-                foreground: _tab == PurchasingTab.suppliers ? palette.onInk : null,
-                border: Border.fromBorderSide(palette.resting),
-                onPressed: () => setState(() => _tab = PurchasingTab.suppliers),
               ),
               const Spacer(),
               PosButton(

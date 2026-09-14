@@ -7,9 +7,14 @@ import 'package:xorder_pos/data/fakes/fake_repositories.dart';
 import 'package:xorder_pos/features/admin/presentation/management_screen.dart';
 
 import '../support/fakes.dart';
+import '../support/fonts.dart';
 
 /// The Units pane: the list stock is counted in, and adding to it.
 void main() {
+  // An offline owner's strip holds all ten of the map's words; measured in
+  // the bundled faces, not the test font's (see `loadPosFonts`).
+  setUpAll(loadPosFonts);
+
   Future<ProviderContainer> open(WidgetTester tester) async {
     tester.view
       ..physicalSize = const Size(1440, 1000)

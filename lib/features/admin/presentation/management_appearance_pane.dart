@@ -8,20 +8,27 @@ import '../../../core/ui/tokens.dart';
 import '../../../core/ui/widgets/pos_widgets.dart';
 import 'admin_pane_bits.dart';
 
-/// Settings › This terminal › Language & appearance.
+/// Which half of this terminal's appearance a pane shows.
+enum AppearancePart { language, theme }
+
+/// Settings › Language, and Settings › Appearance.
 ///
-/// **The card General shows, on its own.** Two ways to one control rather
-/// than the control moved: plan 19 puts appearance on General (the mockup's
-/// card) and in a side-nav row of its own (the cloud's grouping). Somebody who
-/// looks for the language under a heading that names it should find it there,
-/// not be sent to General to scroll past the restaurant's address.
+/// **The card General shows, one half at a time.** Two ways to one control
+/// rather than the control moved: plan 19 puts appearance on General (the
+/// mockup's card), and the owner's map (14 Sep 2026) gives language and
+/// appearance an item each. Somebody who looks for the language under the
+/// word that names it should find it there — not be sent to General to scroll
+/// past the restaurant's address, nor meet the theme first and wonder whether
+/// they chose the wrong line.
 class ManagementAppearancePane extends StatelessWidget {
-  const ManagementAppearancePane({super.key});
+  const ManagementAppearancePane({required this.part, super.key});
+
+  final AppearancePart part;
 
   @override
   Widget build(BuildContext context) => ListView(
     padding: const EdgeInsets.all(PosSpace.xl),
-    children: const [TerminalAppearanceCard()],
+    children: [TerminalAppearanceCard(only: part)],
   );
 }
 
@@ -43,7 +50,11 @@ class ManagementAppearancePane extends StatelessWidget {
 /// a capability to do the same thing one screen deeper would be a lock on an
 /// open door.
 class TerminalAppearanceCard extends ConsumerWidget {
-  const TerminalAppearanceCard({super.key});
+  const TerminalAppearanceCard({this.only, super.key});
+
+  /// One half, as Settings › Language and › Appearance each show it. Null for
+  /// both, as General shows them.
+  final AppearancePart? only;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -53,50 +64,59 @@ class TerminalAppearanceCard extends ConsumerWidget {
 
     return SettingsCard(
       key: const Key('general-appearance'),
-      title: strings.settingsAppearance,
+      title: switch (only) {
+        null => strings.settingsAppearance,
+        AppearancePart.language => strings.settingsLanguage,
+        AppearancePart.theme => strings.settingsLook,
+      },
       hint: strings.appearanceThisTerminal,
       children: [
-        MicroLabel(strings.appearanceLanguage),
-        const SizedBox(height: PosSpace.xs),
-        _Choices(
-          children: [
-            // Each language named in itself, as the bar names them: somebody
-            // who cannot read the one on screen still finds their own.
-            for (final (code, name) in [
-              ('en', const EnStrings().languageName),
-              ('ar', const ArStrings().languageName),
-            ])
-              _Choice(
-                key: Key('appearance-language-$code'),
-                label: name,
-                selected: language == code,
-                onTap: () => ref.read(localeProvider.notifier).apply(code),
-              ),
-          ],
-        ),
-        const SizedBox(height: PosSpace.lg),
-        MicroLabel(strings.appearanceTheme),
-        const SizedBox(height: PosSpace.xs),
-        _Choices(
-          children: [
-            for (final (name, choice, label) in <(String, Brightness?, String)>[
-              ('system', null, strings.themeSystem),
-              ('light', Brightness.light, strings.themeLight),
-              ('dark', Brightness.dark, strings.themeDark),
-            ])
-              _Choice(
-                key: Key('appearance-theme-$name'),
-                label: label,
-                selected: brightness == choice,
-                onTap: () => ref.read(brightnessProvider.notifier).apply(choice),
-              ),
-          ],
-        ),
-        const SizedBox(height: PosSpace.sm),
-        Text(
-          strings.themeSystemHint,
-          style: PosText.ui(size: 12, color: context.pos.muted, height: 1.5),
-        ),
+        if (only != AppearancePart.theme) ...[
+          MicroLabel(strings.appearanceLanguage),
+          const SizedBox(height: PosSpace.xs),
+          _Choices(
+            children: [
+              // Each language named in itself, as the bar names them: somebody
+              // who cannot read the one on screen still finds their own.
+              for (final (code, name) in [
+                ('en', const EnStrings().languageName),
+                ('ar', const ArStrings().languageName),
+              ])
+                _Choice(
+                  key: Key('appearance-language-$code'),
+                  label: name,
+                  selected: language == code,
+                  onTap: () => ref.read(localeProvider.notifier).apply(code),
+                ),
+            ],
+          ),
+        ],
+        if (only == null) const SizedBox(height: PosSpace.lg),
+        if (only != AppearancePart.language) ...[
+          MicroLabel(strings.appearanceTheme),
+          const SizedBox(height: PosSpace.xs),
+          _Choices(
+            children: [
+              for (final (name, choice, label) in <(String, Brightness?, String)>[
+                ('system', null, strings.themeSystem),
+                ('light', Brightness.light, strings.themeLight),
+                ('dark', Brightness.dark, strings.themeDark),
+              ])
+                _Choice(
+                  key: Key('appearance-theme-$name'),
+                  label: label,
+                  selected: brightness == choice,
+                  onTap: () =>
+                      ref.read(brightnessProvider.notifier).apply(choice),
+                ),
+            ],
+          ),
+          const SizedBox(height: PosSpace.sm),
+          Text(
+            strings.themeSystemHint,
+            style: PosText.ui(size: 12, color: context.pos.muted, height: 1.5),
+          ),
+        ],
       ],
     );
   }

@@ -58,7 +58,13 @@ class _ManagementStaffPaneState extends ConsumerState<ManagementStaffPane> {
   /// the longer language — plus a name worth reading, next to a matrix that
   /// holds a column per role. That is a 1920 screen. On a 1366 or 1440 one,
   /// beside would leave the name column an ellipsis.
-  static const _matrixBesideFrom = 1400.0;
+  ///
+  /// **1600 since the owner's map (14 Sep 2026) moved Users to People**, where
+  /// no side nav stands beside it. 1400 was chosen under Settings, whose
+  /// 232 px nav left a 1440 screen's pane at about 1208; with the whole width,
+  /// the same 1440 screen crossed 1400 and put the matrix beside after all.
+  /// The rule is the screens, not the number: beside on 1920, under on 1440.
+  static const _matrixBesideFrom = 1600.0;
   static const _matrixWidth = 380.0;
 
   @override
