@@ -4,7 +4,9 @@ import '../../core/config/deployment.dart';
 import '../../core/money/money.dart';
 import '../../domain/models/business_day.dart' show CashMovementKind;
 import '../../domain/models/permissions.dart';
+import '../../domain/models/finance_report.dart';
 import '../../domain/models/reason_code.dart' show ReasonScope;
+import '../../domain/models/sales_report.dart';
 import '../../domain/models/supplier.dart';
 import '../../domain/models/supplier_invoice.dart';
 import '../../domain/repositories/admin_repositories.dart';
@@ -12,6 +14,7 @@ import '../../domain/repositories/repositories.dart';
 import '../../domain/services/authorization.dart';
 import 'pos_database.dart';
 import 'postgres_cash_movements_repository.dart' show CashMovementWrite;
+import 'postgres_order_history_repository.dart';
 
 /// Reads and writes `pos_supplier_invoices` and `pos_supplier_payments`.
 ///
@@ -139,6 +142,65 @@ class PostgresSupplierInvoicesRepository implements SupplierInvoicesRepository {
       parameters: {'r': restaurantId, 's': ?supplierId},
     );
     return [for (final row in rows) _readInvoice(row)];
+  }
+
+  @override
+  Future<SupplierSpending> spending(ReportFilter filter) async {
+    if (!adminAvailable) return SupplierSpending.none;
+
+    // Local midnights, as the sales list compares a row no business day
+    // covers. Neither table has a business day: an invoice is dated off the
+    // paper, and a payment on the day the bookkeeper says it was made.
+    final window = <String, Object?>{
+      'r': restaurantId,
+      'from': filter.from.toUtc(),
+      'to': filter.to.toUtc(),
+    };
+    // Which drawer pay-outs in the range are a supplier payment's own. The
+    // movement is filed by the drawer's rule — the business day, as the till's
+    // range read files it — so this set and that list are cut from the same
+    // dates and meet exactly.
+    final drawers = PostgresOrderHistoryRepository.businessDateRange(
+      from: filter.from,
+      to: filter.to,
+      alias: 'm',
+    );
+
+    return _db.runTx(config, (tx) async {
+      final invoices = await tx.execute(
+        Sql.named(
+          'SELECT $_invoiceColumns FROM pos_supplier_invoices i '
+          'WHERE i.restaurant_id = @r '
+          '  AND i.issued_at >= @from AND i.issued_at < @to '
+          'ORDER BY i.issued_at DESC, i.id DESC',
+        ),
+        parameters: window,
+      );
+      final payments = await tx.execute(
+        Sql.named(
+          'SELECT $_paymentColumns FROM pos_supplier_payments y '
+          'WHERE y.restaurant_id = @r '
+          '  AND y.paid_at >= @from AND y.paid_at < @to '
+          'ORDER BY y.paid_at DESC, y.id DESC',
+        ),
+        parameters: window,
+      );
+      final linked = await tx.execute(
+        Sql.named(
+          'SELECT y.cash_movement_id FROM pos_supplier_payments y '
+          'JOIN pos_cash_movements AS m ON m.id = y.cash_movement_id '
+          '${PostgresOrderHistoryRepository.tradingDayJoin('m')} '
+          'WHERE y.restaurant_id = @r AND m.branch_id = @b '
+          '  AND ${drawers.where.join(' AND ')}',
+        ),
+        parameters: {'r': restaurantId, 'b': branchId, ...drawers.parameters},
+      );
+      return SupplierSpending(
+        invoices: [for (final row in invoices) _readInvoice(row)],
+        payments: [for (final row in payments) _readPayment(row)],
+        drawerMovementIds: {for (final row in linked) row[0]! as int},
+      );
+    });
   }
 
   @override
@@ -1034,6 +1096,10 @@ class UnconfiguredSupplierInvoicesRepository
 
   @override
   Future<List<SupplierInvoice>> unpaid({int? supplierId}) async => const [];
+
+  @override
+  Future<SupplierSpending> spending(ReportFilter filter) async =>
+      SupplierSpending.none;
 
   @override
   Future<List<SupplierInvoice>> all({int? supplierId, int limit = 200}) async =>

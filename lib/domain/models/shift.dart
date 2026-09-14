@@ -322,6 +322,33 @@ class ShiftSummary {
   Money varianceAgainst(Money counted) => counted - expectedCash;
 }
 
+/// A drawer open at this branch right now, and what it should hold (BO-10).
+///
+/// **The expected figure is the Z report's, not a second sum.** [summary] is
+/// built by the same `summarise` the cash-up closes against, so the Finance
+/// tab and the cash-up cannot disagree about a drawer — an "expected in
+/// drawers" worked out separately would be the number a manager holds up
+/// against the Z report at midnight and finds 40 piastres off.
+class OpenDrawer {
+  const OpenDrawer({
+    required this.terminalId,
+    required this.summary,
+    this.terminalName,
+  });
+
+  /// `pos_shifts.terminal_id` as text.
+  final String terminalId;
+
+  /// Null for a till whose row is gone; the drawer is still listed, by id.
+  final String? terminalName;
+
+  final ShiftSummary summary;
+
+  PosShift get shift => summary.shift;
+
+  Money get expectedCash => summary.expectedCash;
+}
+
 /// The outcome of counting the drawer.
 class ShiftClose {
   const ShiftClose({

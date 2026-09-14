@@ -95,6 +95,10 @@ class UnconfiguredShiftRepository implements ShiftRepository {
   @override
   Future<ShiftActivity> activity() async => ShiftActivity.empty;
 
+  /// None, for the same reason again.
+  @override
+  Future<List<OpenDrawer>> openDrawers() async => const [];
+
   @override
   Future<ShiftClose> close({
     required PosShift shift,

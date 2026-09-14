@@ -92,12 +92,28 @@ const _fixtures = <String, PosStaff>{
 /// BO-9.
 const _later = <BackOfficeTab>[];
 
-/// Finance's panes, in the order its sub-nav shows them (BO-9).
+/// Finance's panes, in the order its sub-nav shows them — the mockup's
+/// (BO-9, BO-10).
 const _finance = [
   ManagementPane.financeOverview,
   ManagementPane.financeRevenue,
+  ManagementPane.financeExpenses,
+  ManagementPane.financeDrawers,
   ManagementPane.financePayments,
+  ManagementPane.financeBills,
   ManagementPane.financeTaxes,
+  ManagementPane.financeTransactions,
+];
+
+/// What [admin] has of [_finance]: all of it where the supplier ledger is
+/// theirs to read here — offline, with `purchase.manage` — and all but Bills
+/// due otherwise (BO-10).
+List<ManagementPane> _financeFor(PosStaff admin, {required bool authors}) => [
+  for (final pane in _finance)
+    if (pane != ManagementPane.financeBills ||
+        (authors &&
+            Authorization.check(admin, PosCapability.purchaseManage).isAllowed))
+      pane,
 ];
 
 class _Sync extends Mock implements CloudSync {}
@@ -311,15 +327,17 @@ void main() {
           );
 
           // Finance for whoever holds `reports.view` — through the role or
-          // directly, asked the one way — on both deployments, with all four
-          // panes; absent for everybody else (BO-9).
+          // directly, asked the one way — on both deployments; absent for
+          // everybody else (BO-9). Bills due only offline and with
+          // `purchase.manage` as well (BO-10): the direct-grant fixture holds
+          // purchasing and not the reports, so it has no Finance at all.
           expect(
             [
               for (final (t, own) in tabs)
                 if (t == BackOfficeTab.finance) own,
             ],
             Authorization.check(admin, PosCapability.reportsView).isAllowed
-                ? [_finance]
+                ? [_financeFor(admin, authors: authors)]
                 : isEmpty,
             reason: '$name, $where',
           );
@@ -413,10 +431,9 @@ void main() {
     }
   });
 
-  testWidgets('Finance: four panes under the sub-nav, in the mockup\'s order', (
-    tester,
-  ) async {
-    await _open(tester);
+  testWidgets('Finance: eight panes under the sub-nav, in the mockup\'s '
+      'order', (tester) async {
+    await _open(tester, offline: true);
     await tester.tap(find.byKey(const Key('back-office-tab-finance')));
     await tester.pumpAndSettle();
 
@@ -432,6 +449,28 @@ void main() {
     await tester.pumpAndSettle();
     expect(_showing(tester), {ManagementPane.financeTaxes});
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('on a cloud till Finance has no Bills due, and a deep link to '
+      'it lands on Home', (tester) async {
+    await _open(tester, pane: ManagementPane.financeBills);
+    expect(_showing(tester), {ManagementPane.home});
+    // Not the platform pointer either: Finance is not a tab that points.
+    expect(
+      find.byKey(const Key('management-platform-pointer')),
+      findsNothing,
+    );
+
+    await tester.tap(find.byKey(const Key('back-office-tab-finance')));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const Key('back-office-subnav-financeBills')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const Key('back-office-subnav-financeExpenses')),
+      findsOneWidget,
+    );
   });
 
   group('where the door lands: Home', () {
@@ -675,6 +714,23 @@ void main() {
             rect.right,
             lessThanOrEqualTo(PosSize.wideShellMin),
             reason: tab.name,
+          );
+        }
+
+        // Finance's eight words fit the sub-nav, the widest it gets: an
+        // offline owner, who has Bills due too (BO-10).
+        await tester.tap(find.byKey(const Key('back-office-tab-finance')));
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+        for (final pane in _finance) {
+          final rect = tester.getRect(
+            find.byKey(Key('back-office-subnav-${pane.name}')),
+          );
+          expect(rect.left, greaterThanOrEqualTo(0), reason: pane.name);
+          expect(
+            rect.right,
+            lessThanOrEqualTo(PosSize.wideShellMin),
+            reason: pane.name,
           );
         }
 

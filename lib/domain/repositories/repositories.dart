@@ -42,6 +42,7 @@ export '../models/shift.dart'
         ShiftSummary,
         ShiftTenderTotal,
         ShiftClose,
+        OpenDrawer,
         ShiftActivity;
 
 /// Repository contracts.
@@ -261,6 +262,16 @@ abstract interface class SupplierInvoicesRepository {
   /// Everything with money still on it, oldest due date first — which is the
   /// order somebody pays in.
   Future<List<SupplierInvoice>> unpaid({int? supplierId});
+
+  /// What [filter]'s dates hold of the supplier ledger, for Finance (BO-10):
+  /// invoices issued and payments made in the range, voided ones included and
+  /// marked, and which drawer pay-outs are a supplier payment's own — see
+  /// [SupplierSpending]. Read in one snapshot.
+  ///
+  /// The ledger is the restaurant's, as [unpaid] and the Purchasing pane list
+  /// it. Dates are local calendar dates of `issued_at` and `paid_at`: neither
+  /// row belongs to a business day, and both carry the date off the paper.
+  Future<SupplierSpending> spending(ReportFilter filter);
 
   Future<List<SupplierInvoice>> all({int? supplierId, int limit = 200});
 
@@ -612,6 +623,19 @@ abstract interface class CashMovementsRepository {
 
   /// Everything that happened to one shift's drawer, oldest first.
   Future<List<CashMovement>> forShift(int shiftId);
+
+  /// Every movement of [kinds] at this branch filed under [filter]'s business
+  /// dates, newest first, each carrying its till's name (Finance, BO-10).
+  ///
+  /// Filed by the sales list's rule — the business day that covers the row,
+  /// or its local calendar date where none does — so a pay-out sits on the
+  /// same date as the sales of the night it was paid in. Honours
+  /// [ReportFilter.terminalId]; the staff and order-type filters do not apply
+  /// to a drawer movement and are ignored.
+  Future<List<CashMovement>> between(
+    ReportFilter filter, {
+    Set<CashMovementKind> kinds = const {CashMovementKind.payOut},
+  });
 }
 
 /// A signed-in cashier and the terminal they are working.
@@ -732,6 +756,11 @@ abstract interface class ShiftRepository {
   /// Branch-wide where [current] is per terminal: the back office is asking
   /// how many drawers are out in the restaurant, not whether this one is.
   Future<ShiftActivity> activity();
+
+  /// Every drawer open at this **branch**, each summarised by [summarise]'s
+  /// own rule — so what Finance says a drawer should hold is what the cash-up
+  /// will count it against (BO-10). Ordered by till name.
+  Future<List<OpenDrawer>> openDrawers();
 
   /// Count the drawer and close.
   ///

@@ -571,6 +571,19 @@ class FakeShiftRepository implements ShiftRepository {
   @override
   Future<PosShift?> current() async => _open;
 
+  /// The open drawers among [earlier] and this till's own, each summarised
+  /// by [summarise] as the real repository summarises by its own — so a
+  /// double's drawer is expected to hold its float and nothing else.
+  @override
+  Future<List<OpenDrawer>> openDrawers() async => [
+    for (final shift in [...earlier, ?_open])
+      if (shift.isOpen)
+        OpenDrawer(
+          terminalId: 'fake-terminal-${shift.id}',
+          summary: await summarise(shift),
+        ),
+  ];
+
   @override
   Future<ShiftActivity> activity() async {
     var open = 0;

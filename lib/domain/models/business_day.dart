@@ -122,6 +122,7 @@ class CashMovement {
     this.note,
     this.staffName,
     this.approvedByName,
+    this.terminalName,
   });
 
   final int id;
@@ -136,6 +137,11 @@ class CashMovement {
   final String? note;
   final String? staffName;
   final String? approvedByName;
+
+  /// The till whose drawer it was. Filled by the branch-wide range read
+  /// (Finance, BO-10) and left null by the per-shift one, where every row is
+  /// the same till's and saying so on each would be noise.
+  final String? terminalName;
 
   /// What this did to the drawer: positive in, negative out, zero for an
   /// opening. The one place the sign is applied, so no caller has to remember

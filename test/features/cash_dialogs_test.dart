@@ -11,6 +11,7 @@ import 'package:xorder_pos/domain/models/business_day.dart';
 import 'package:xorder_pos/domain/models/permissions.dart';
 import 'package:xorder_pos/domain/models/pos_settings.dart';
 import 'package:xorder_pos/domain/models/reason_code.dart';
+import 'package:xorder_pos/domain/models/sales_report.dart';
 import 'package:xorder_pos/domain/repositories/repositories.dart';
 import 'package:xorder_pos/features/cash/presentation/cash_dialogs.dart';
 import 'package:xorder_pos/features/cash/presentation/day_close_dialog.dart';
@@ -389,6 +390,12 @@ class FakeCash implements CashMovementsRepository {
 
   @override
   Future<List<CashMovement>> forShift(int shiftId) async => const [];
+
+  @override
+  Future<List<CashMovement>> between(
+    ReportFilter filter, {
+    Set<CashMovementKind> kinds = const {CashMovementKind.payOut},
+  }) async => const [];
 
   @override
   Future<CashMovement> record({
