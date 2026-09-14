@@ -107,6 +107,33 @@ class PaneSection extends StatelessWidget {
   );
 }
 
+/// A label and its value on one ruled line — the About dialog's shape, for the
+/// panes that state facts rather than edit them (Sync, User).
+///
+/// The value is a widget, not a string, because half of them are codes that
+/// must be mono and left to right in Arabic too, and the other half are
+/// sentences that must not be.
+class PaneFact extends StatelessWidget {
+  const PaneFact({required this.label, required this.child, super.key});
+
+  final String label;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(vertical: PosSpace.sm),
+    decoration: BoxDecoration(border: Border(bottom: context.pos.hairline)),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(width: 180, child: MicroLabel(label)),
+        const SizedBox(width: PosSpace.md),
+        Expanded(child: child),
+      ],
+    ),
+  );
+}
+
 /// One section of Settings › General under the company form: a heading, a
 /// sentence, and its controls, framed (BO-8).
 ///
