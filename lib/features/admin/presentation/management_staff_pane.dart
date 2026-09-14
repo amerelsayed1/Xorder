@@ -10,25 +10,72 @@ import '../../../core/ui/widgets/pos_widgets.dart';
 import '../../../domain/models/permissions.dart';
 import '../../../domain/models/shift.dart';
 import '../../../domain/repositories/admin_repositories.dart';
+import '../application/users_overview.dart';
 import 'admin_messages.dart';
 import 'staff_grants_dialog.dart';
 import '../../../core/security/pin_hash.dart';
 
-/// Who works here.
+/// Who works here — Settings › Users.
 ///
 /// Nobody is ever deleted. A member of staff who left is still the person named
 /// on last March's shifts and on the audit rows for everything they changed, so
 /// the only thing this screen can do is disable them — which stops the PIN
 /// working and leaves the history intact.
-class ManagementStaffPane extends ConsumerWidget {
-  const ManagementStaffPane({required this.admin, super.key});
+///
+/// BO-7 laid the cloud's Users page over it: four tiles, filters, a last-shift
+/// column and a matrix of what each role grants. Every action the pane had
+/// before — add, permissions, PIN, disable, role — is on the same row, under
+/// the same keys, because the owner rules in `owner_rule_test.dart` are
+/// pinned to them.
+class ManagementStaffPane extends ConsumerStatefulWidget {
+  const ManagementStaffPane({
+    required this.admin,
+    this.onManageRoles,
+    super.key,
+  });
 
   final PosStaff admin;
 
+  /// Opens Settings › Roles. Null hides the button, for a host with no Roles
+  /// pane to open.
+  final VoidCallback? onManageRoles;
+
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ManagementStaffPane> createState() =>
+      _ManagementStaffPaneState();
+}
+
+class _ManagementStaffPaneState extends ConsumerState<ManagementStaffPane> {
+  var _filter = const StaffFilter();
+  final _search = TextEditingController();
+
+  PosStaff get admin => widget.admin;
+
+  /// From this pane width the matrix sits beside the table, as the mockup
+  /// draws it; below, it goes under the table.
+  ///
+  /// Beside needs the table's fixed columns — the buttons sized for Arabic,
+  /// the longer language — plus a name worth reading, next to a matrix that
+  /// holds a column per role. That is a 1920 screen. On a 1366 or 1440 one,
+  /// beside would leave the name column an ellipsis.
+  static const _matrixBesideFrom = 1400.0;
+  static const _matrixWidth = 380.0;
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final staff = ref.watch(staffDirectoryProvider);
     final roles = ref.watch(rolesProvider);
+    // Read beside the directory, not before it: the shift facts are two
+    // columns and a tile, and a branch server slow to answer them must not
+    // hold the list of people — and every action on it — behind a spinner.
+    // Until they arrive, or if they never do, they read "—".
+    final activity = ref.watch(shiftActivityProvider).valueOrNull;
 
     return staff.when(
       loading: () => Center(
@@ -38,70 +85,173 @@ class ManagementStaffPane extends ConsumerWidget {
         ),
       ),
       error: (error, _) => _Centred(text: '$error'),
-      data: (people) => Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // On a cloud till the bundle owns who works here — see
-          // `PostgresStaffDirectoryRepository.offline`. Said once at the top
-          // rather than as four identical refusals: a manager who reads this
-          // knows where to go, and the half that still works (roles and
-          // permissions) is named in the same sentence.
-          if (ref.watch(deploymentProvider).mode != DeploymentMode.offline)
-            Container(
-              padding: const EdgeInsets.all(PosSpace.lg),
-              color: context.pos.warnSoft,
-              child: Text(
-                context.strings.staffComesFromPlatform,
-                style: PosText.ui(
-                  size: 12.5,
-                  color: context.pos.warn,
-                  height: 1.5,
-                ),
-              ),
-            ),
+      data: (people) => _body(context, people, roles.valueOrNull, activity),
+    );
+  }
+
+  Widget _body(
+    BuildContext context,
+    List<PosStaff> people,
+    List<PosRole>? roles,
+    ShiftActivity? activity,
+  ) {
+    // A role deleted while its filter was chosen: the dropdown already shows
+    // "all roles" for a value it no longer offers, so the table must too, or
+    // the two would disagree and the table would read as empty for no reason.
+    final filter =
+        _filter.roleId != null &&
+            !(roles ?? const <PosRole>[]).any((r) => r.id == _filter.roleId)
+        ? _filter.copyWith(roleId: () => null)
+        : _filter;
+    final shown = filter.apply(people);
+    final ownerTaken = _hasActiveOwner(people);
+
+    final table = _StaffTable(
+      filtered: shown.length != people.length,
+      rows: [
+        for (final person in shown)
+          _StaffRow(
+            staff: person,
+            isSelf: person.id == admin.id,
+            admin: admin,
+            roles: roles ?? const [],
+            ownerTaken: ownerTaken,
+            activity: activity,
+            onAction: (action) => _act(context, ref, person, action),
+          ),
+      ],
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // On a cloud till the bundle owns who works here — see
+        // `PostgresStaffDirectoryRepository.offline`. Said once at the top
+        // rather than as four identical refusals: a manager who reads this
+        // knows where to go, and the half that still works (roles and
+        // permissions) is named in the same sentence.
+        if (ref.watch(deploymentProvider).mode != DeploymentMode.offline)
           Container(
-            padding: const EdgeInsets.all(PosSpace.xl),
-            decoration: BoxDecoration(
-              border: Border(bottom: context.pos.hairline),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    _seatLine(context, ref, people),
-                    style: PosText.ui(size: 13, color: context.pos.muted),
-                  ),
-                ),
-                PosButton(
-                  label: context.strings.addSomebody,
-                  background: context.pos.accent,
-                  foreground: Colors.white,
-                  fontWeight: FontWeight.w700,
-                  onPressed:
-                      roles.valueOrNull == null ||
-                          ref.watch(deploymentProvider).mode !=
-                              DeploymentMode.offline
-                      ? null
-                      : () => _add(context, ref, roles.value!, people),
-                ),
-              ],
-            ),
-          ),
-          Expanded(
-            child: ListView.builder(
-              itemCount: people.length,
-              itemBuilder: (context, index) => _StaffRow(
-                staff: people[index],
-                isSelf: people[index].id == admin.id,
-                admin: admin,
-                roles: roles.valueOrNull ?? const [],
-                ownerTaken: _hasActiveOwner(people),
-                onAction: (action) => _act(context, ref, people[index], action),
+            padding: const EdgeInsets.all(PosSpace.lg),
+            color: context.pos.warnSoft,
+            child: Text(
+              context.strings.staffComesFromPlatform,
+              style: PosText.ui(
+                size: 12.5,
+                color: context.pos.warn,
+                height: 1.5,
               ),
             ),
           ),
-        ],
-      ),
+        Container(
+          padding: const EdgeInsets.all(PosSpace.xl),
+          decoration: BoxDecoration(
+            border: Border(bottom: context.pos.hairline),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  _seatLine(context, ref, people),
+                  style: PosText.ui(size: 13, color: context.pos.muted),
+                ),
+              ),
+              if (widget.onManageRoles case final open?) ...[
+                PosButton(
+                  key: const Key('users-manage-roles'),
+                  label: context.strings.manageRoles,
+                  border: Border.fromBorderSide(context.pos.resting),
+                  onPressed: open,
+                ),
+                const SizedBox(width: PosSpace.sm),
+              ],
+              PosButton(
+                label: context.strings.addSomebody,
+                background: context.pos.accent,
+                foreground: Colors.white,
+                fontWeight: FontWeight.w700,
+                onPressed:
+                    roles == null ||
+                        ref.watch(deploymentProvider).mode !=
+                            DeploymentMode.offline
+                    ? null
+                    : () => _add(context, ref, roles, people),
+              ),
+            ],
+          ),
+        ),
+        _KpiStrip(
+          kpis: UsersKpis.of(
+            people: people,
+            roles: roles ?? const [],
+            activity: activity ?? ShiftActivity.empty,
+          ),
+          rolesKnown: roles != null,
+          shiftsKnown: activity != null,
+        ),
+        _FilterBar(
+          filter: filter,
+          roles: roles ?? const [],
+          search: _search,
+          onChanged: (next) => setState(() => _filter = next),
+        ),
+        Expanded(
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final matrix = roles == null || roles.isEmpty
+                  ? null
+                  : _RoleMatrixPanel(matrix: RoleMatrix(roles));
+
+              if (matrix != null &&
+                  constraints.maxWidth >= _matrixBesideFrom) {
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(child: SingleChildScrollView(child: table)),
+                    Container(
+                      width: _matrixWidth,
+                      decoration: BoxDecoration(
+                        border: BorderDirectional(
+                          start: context.pos.hairline,
+                        ),
+                      ),
+                      child: SingleChildScrollView(child: matrix),
+                    ),
+                  ],
+                );
+              }
+
+              // Under the table, in the same scroll, rather than pinned below
+              // it: pinned, the matrix would take a quarter of the height
+              // away from the list on every visit, to answer a question asked
+              // once in a while.
+              return SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    table,
+                    if (matrix != null)
+                      DecoratedBox(
+                        decoration: BoxDecoration(
+                          border: Border(top: context.pos.hairline),
+                        ),
+                        child: Align(
+                          alignment: AlignmentDirectional.centerStart,
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(
+                              maxWidth: _matrixWidth * 1.5,
+                            ),
+                            child: matrix,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 
@@ -283,7 +433,15 @@ class _ResetPin extends _StaffAction {
   final String pin;
 }
 
-class _StaffRow extends StatelessWidget {
+/// One person's line in the table.
+///
+/// A [TableRow] rather than a widget of its own, so that every column — the
+/// buttons included — is as wide as its widest cell on any row, and the header
+/// sits over what it names. The first cut was a `Row` per person with the
+/// buttons in a fixed-width slot: the slot overflowed the moment the labels
+/// were longer than guessed, and without it "Disable" against "Enable" moved
+/// every column after them by the difference.
+class _StaffRow {
   const _StaffRow({
     required this.staff,
     required this.isSelf,
@@ -291,6 +449,7 @@ class _StaffRow extends StatelessWidget {
     required this.onAction,
     required this.admin,
     required this.ownerTaken,
+    required this.activity,
   });
 
   final PosStaff staff;
@@ -314,109 +473,205 @@ class _StaffRow extends StatelessWidget {
   /// something the editor lacks is granting a permission they do not hold.
   final PosStaff admin;
 
-  @override
-  Widget build(BuildContext context) {
-    final strings = context.strings;
+  /// The branch's shift facts; null until they load, or if they cannot.
+  final ShiftActivity? activity;
 
-    return Opacity(
+  TableRow build(BuildContext context) {
+    final strings = context.strings;
+    final pos = context.pos;
+
+    // Faded rather than hidden: a disabled account is still the name on its
+    // shifts, and still one button from working again.
+    Widget cell(
+      Widget child, {
+      EdgeInsetsGeometry padding = const EdgeInsets.symmetric(
+        horizontal: PosSpace.sm,
+        vertical: PosSpace.lg,
+      ),
+    }) => Opacity(
       opacity: staff.isActive ? 1 : 0.5,
-      child: Container(
-        padding: const EdgeInsets.all(PosSpace.lg),
-        decoration: BoxDecoration(
-          border: Border(bottom: context.pos.hairline),
+      child: Padding(padding: padding, child: child),
+    );
+
+    return TableRow(
+      key: ValueKey('staff-row-${staff.id}'),
+      decoration: BoxDecoration(
+        border: Border(bottom: pos.hairline),
+      ),
+      children: [
+        cell(
+          _Initials(name: staff.name),
+          padding: const EdgeInsetsDirectional.fromSTEB(
+            PosSpace.lg,
+            PosSpace.lg,
+            PosSpace.sm,
+            PosSpace.lg,
+          ),
         ),
-        child: Row(
-          children: [
-            Expanded(
-              flex: 3,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+        cell(
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
                 children: [
-                  Row(
-                    children: [
-                      Text(
-                        staff.name,
-                        style: PosText.ui(color: context.pos.inkWarm, size: 14, weight: FontWeight.w600),
-                      ),
-                      if (isSelf) ...[
-                        const SizedBox(width: PosSpace.sm),
-                        Text(strings.you, style: PosText.microLabel(color: context.pos.muted)),
-                      ],
-                    ],
+                  Flexible(
+                    child: Text(
+                      staff.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: PosText.ui(color: pos.inkWarm, size: 14, weight: FontWeight.w600),
+                    ),
                   ),
-                  const SizedBox(height: PosSpace.xs),
-                  Text(
-                    staff.username ?? '—',
-                    style: PosText.mono(size: 11.5, color: context.pos.muted),
-                  ),
+                  if (isSelf) ...[
+                    const SizedBox(width: PosSpace.sm),
+                    Text(strings.you, style: PosText.microLabel(color: pos.muted)),
+                  ],
                 ],
               ),
-            ),
-            Expanded(flex: 3, child: _rolePicker(strings, pos: context.pos)),
-            Expanded(
-              flex: 2,
-              child: Text(
-                // The extra grants a person has beyond their role. Shown as a
-                // count with the detail on hover: the common case is zero, and
-                // a column that is empty for everybody teaches nothing.
-                staff.capabilities.isEmpty
-                    ? ''
-                    : strings.extraCapabilities(staff.capabilities.length),
-                style: PosText.ui(size: 12, color: context.pos.warn),
+              const SizedBox(height: PosSpace.xs),
+              // `@username`, as the cloud prints it. Set LTR: a username is
+              // Latin, and in Arabic an "@" that drifts to the far end of the
+              // word reads as a typo.
+              Text(
+                staff.username == null ? '—' : '@${staff.username}',
+                textDirection: TextDirection.ltr,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: PosText.mono(size: 11.5, color: pos.muted),
               ),
-            ),
-            PosButton(
-              key: Key('grants-${staff.id}'),
-              label: strings.grantsAction,
-              border: Border.fromBorderSide(context.pos.resting),
-              // Shut on the owner rather than left to refuse: extra roles and
-              // exceptions on somebody who holds everything mean nothing, and
-              // a DENY is a lock-out.
-              onPressed: _onOwnerRole
-                  ? null
-                  : () async {
-                final grants = await StaffGrantsDialog.show(
-                  context,
-                  person: staff,
-                  // Owner is never an extra role — see [OwnerIsNotAnExtraRole].
-                  roles: [
-                    for (final role in roles)
-                      if (role.code != SystemRoles.ownerCode) role,
-                  ],
-                  admin: admin,
-                );
-                if (grants != null) onAction(_SetGrants(grants));
-              },
-            ),
-            const SizedBox(width: PosSpace.sm),
-            PosButton(
-              key: Key('reset-pin-${staff.id}'),
-              label: strings.resetPin,
-              border: Border.fromBorderSide(context.pos.resting),
-              // Shut on the owner's row for everybody but the owner — see
-              // [OwnerPinIsTheirs]. Shut rather than left to refuse, as Grants
-              // is: a button whose only answer is no is a button that gets
-              // pressed again.
-              onPressed: _onOwnerRole && !isSelf
-                  ? null
-                  : () async {
-                final pin = await PinPromptDialog.show(
-                  context,
-                  title: strings.newPinFor(staff.name),
-                );
-                if (pin != null) onAction(_ResetPin(pin));
-              },
-            ),
-            const SizedBox(width: PosSpace.sm),
-            PosButton(
-              label: staff.isActive ? strings.disable : strings.enable,
-              foreground: staff.isActive ? context.pos.danger : context.pos.ok,
-              border: Border.fromBorderSide(context.pos.resting),
-              onPressed: () => onAction(_SetActive(!staff.isActive)),
-            ),
-          ],
+              // The extra grants a person has beyond their role, as a count:
+              // the common case is zero, and a column that is empty for
+              // everybody teaches nothing.
+              if (staff.capabilities.isNotEmpty) ...[
+                const SizedBox(height: PosSpace.xs),
+                Text(
+                  strings.extraCapabilities(staff.capabilities.length),
+                  style: PosText.ui(size: 12, color: pos.warn),
+                ),
+              ],
+            ],
+          ),
         ),
-      ),
+        cell(_rolePicker(strings, pos: pos)),
+        cell(
+          Text(
+            AdminText.staffStatus(
+              strings,
+              staff.isActive
+                  ? StaffStatusFilter.active
+                  : StaffStatusFilter.disabled,
+            ),
+            key: Key('status-${staff.id}'),
+            style: PosText.ui(
+              size: 12.5,
+              weight: FontWeight.w600,
+              color: staff.isActive ? pos.ok : pos.muted,
+            ),
+          ),
+        ),
+        cell(
+          Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: _lastShift(strings, pos),
+          ),
+        ),
+        cell(
+          padding: const EdgeInsetsDirectional.fromSTEB(
+            PosSpace.sm,
+            PosSpace.lg,
+            PosSpace.lg,
+            PosSpace.lg,
+          ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              PosButton(
+                key: Key('grants-${staff.id}'),
+                label: strings.grantsAction,
+                border: Border.fromBorderSide(pos.resting),
+                // Shut on the owner rather than left to refuse: extra roles
+                // and exceptions on somebody who holds everything mean
+                // nothing, and a DENY is a lock-out.
+                onPressed: _onOwnerRole
+                    ? null
+                    : () async {
+                  final grants = await StaffGrantsDialog.show(
+                    context,
+                    person: staff,
+                    // Owner is never an extra role — see
+                    // [OwnerIsNotAnExtraRole].
+                    roles: [
+                      for (final role in roles)
+                        if (role.code != SystemRoles.ownerCode) role,
+                    ],
+                    admin: admin,
+                  );
+                  if (grants != null) onAction(_SetGrants(grants));
+                },
+              ),
+              const SizedBox(width: PosSpace.sm),
+              PosButton(
+                key: Key('reset-pin-${staff.id}'),
+                label: strings.resetPin,
+                border: Border.fromBorderSide(pos.resting),
+                // Shut on the owner's row for everybody but the owner — see
+                // [OwnerPinIsTheirs]. Shut rather than left to refuse, as
+                // Grants is: a button whose only answer is no is a button
+                // that gets pressed again.
+                onPressed: _onOwnerRole && !isSelf
+                    ? null
+                    : () async {
+                  final pin = await PinPromptDialog.show(
+                    context,
+                    title: strings.newPinFor(staff.name),
+                  );
+                  if (pin != null) onAction(_ResetPin(pin));
+                },
+              ),
+              const SizedBox(width: PosSpace.sm),
+              PosButton(
+                label: staff.isActive ? strings.disable : strings.enable,
+                foreground: staff.isActive ? pos.danger : pos.ok,
+                border: Border.fromBorderSide(pos.resting),
+                onPressed: () => onAction(_SetActive(!staff.isActive)),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// The last shift this person opened at the branch, or that one is open.
+  ///
+  /// "Never" and "—" are different answers on purpose: never is a fact read
+  /// from `pos_shifts`, and the dash is a read that has not come back.
+  Widget _lastShift(AppStrings strings, PosPalette pos) {
+    final key = Key('last-shift-${staff.id}');
+    final known = activity;
+    if (known == null) {
+      return Text('—', key: key, style: PosText.mono(size: 12, color: pos.muted));
+    }
+    if (known.onShift.contains(staff.id)) {
+      return Text(
+        strings.usersOnShiftNow,
+        key: key,
+        style: PosText.ui(size: 12.5, weight: FontWeight.w600, color: pos.ok),
+      );
+    }
+    final at = known.lastOpenedAt[staff.id];
+    if (at == null) {
+      return Text(
+        strings.usersNeverOnShift,
+        key: key,
+        style: PosText.ui(size: 12.5, color: pos.muted),
+      );
+    }
+    return Text(
+      _stamp(at),
+      key: key,
+      textDirection: TextDirection.ltr,
+      style: PosText.mono(size: 12, color: pos.body),
     );
   }
 
@@ -445,6 +700,9 @@ class _StaffRow extends StatelessWidget {
           style: PosText.ui(size: 13, color: pos.muted),
         ),
         underline: const SizedBox.shrink(),
+        // Expanded to its column: a long role name must ellipsise rather
+        // than push the row off the screen.
+        isExpanded: true,
         style: PosText.ui(color: pos.inkWarm, size: 13),
         items: [
           for (final role in roles)
@@ -467,6 +725,569 @@ class _StaffRow extends StatelessWidget {
             : (id) {
                 if (id != null && id != staff.role?.id) onAction(_SetRole(id));
               },
+      ),
+    );
+  }
+}
+
+const _avatarWidth = 32.0;
+
+/// The narrowest the name and role columns go; past it the table scrolls
+/// sideways instead. Any narrower and the role picker has no room for its own
+/// arrow.
+const _nameFloor = 120.0;
+
+/// The same shape the backup pane stamps its copies with: year first, 24-hour,
+/// in the terminal's own time. Latin digits in both languages.
+String _stamp(DateTime at) {
+  final local = at.toLocal();
+  String two(int value) => value.toString().padLeft(2, '0');
+  return '${local.year}-${two(local.month)}-${two(local.day)} '
+      '${two(local.hour)}:${two(local.minute)}';
+}
+
+/// The header and the rows — or, when the filters leave nobody, a sentence
+/// saying so rather than a blank that reads as a failure to load.
+///
+/// Not lazily built: a restaurant has tens of staff, and a [Table] is what
+/// keeps every column the width of its widest cell. See [_StaffRow].
+class _StaffTable extends StatelessWidget {
+  const _StaffTable({required this.rows, required this.filtered});
+
+  final List<_StaffRow> rows;
+  final bool filtered;
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = context.strings;
+    final pos = context.pos;
+
+    Widget head(String text, {Key? key}) => Padding(
+      padding: const EdgeInsets.symmetric(
+        horizontal: PosSpace.sm,
+        vertical: PosSpace.sm,
+      ),
+      child: MicroLabel(text, key: key),
+    );
+
+    final table = Table(
+      columnWidths: const {
+        0: FixedColumnWidth(_avatarWidth + PosSpace.lg + PosSpace.sm),
+        1: MaxColumnWidth(FlexColumnWidth(3), FixedColumnWidth(_nameFloor)),
+        2: MaxColumnWidth(FlexColumnWidth(3), FixedColumnWidth(_nameFloor)),
+        3: IntrinsicColumnWidth(),
+        4: IntrinsicColumnWidth(),
+        5: IntrinsicColumnWidth(),
+      },
+      defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+      children: [
+        TableRow(
+          decoration: BoxDecoration(
+            border: Border(bottom: pos.hairline),
+          ),
+          children: [
+            const SizedBox.shrink(),
+            head(strings.fieldName),
+            head(strings.fieldRole),
+            head(strings.usersColumnStatus),
+            head(
+              strings.usersColumnLastShift,
+              key: const Key('users-column-last-shift'),
+            ),
+            const SizedBox.shrink(),
+          ],
+        ),
+        for (final row in rows) row.build(context),
+      ],
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // At least as wide as the pane, and wider only when its columns need
+        // it — then it scrolls sideways. A table squeezed to the pane instead
+        // would take the whole squeeze out of the names, because the buttons
+        // and the fixed columns do not shrink. A guessed floor width was the
+        // alternative, and it is wrong in whichever language it was not
+        // guessed in.
+        LayoutBuilder(
+          builder: (context, constraints) => SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minWidth: constraints.maxWidth),
+              child: table,
+            ),
+          ),
+        ),
+        if (rows.isEmpty && filtered) _Centred(text: strings.usersNoneMatch),
+      ],
+    );
+  }
+}
+
+/// The four figures over the table.
+///
+/// Flat and bordered, not the mockup's tinted cards: a pastel tile is the one
+/// thing the design system rules out by name, and a figure reads as well on
+/// the surface colour as on a wash.
+class _KpiStrip extends StatelessWidget {
+  const _KpiStrip({
+    required this.kpis,
+    required this.rolesKnown,
+    required this.shiftsKnown,
+  });
+
+  final UsersKpis kpis;
+  final bool rolesKnown;
+  final bool shiftsKnown;
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = context.strings;
+    final percent = kpis.activePercent;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        PosSpace.xl,
+        PosSpace.lg,
+        PosSpace.xl,
+        0,
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: _KpiTile(
+              valueKey: const Key('users-kpi-staff'),
+              label: strings.usersKpiStaff,
+              value: '${kpis.total}',
+            ),
+          ),
+          const SizedBox(width: PosSpace.md),
+          Expanded(
+            child: _KpiTile(
+              valueKey: const Key('users-kpi-active'),
+              label: strings.usersKpiActive,
+              value: '${kpis.active}',
+              note: percent == null ? null : strings.usersActiveShare(percent),
+            ),
+          ),
+          const SizedBox(width: PosSpace.md),
+          Expanded(
+            child: _KpiTile(
+              valueKey: const Key('users-kpi-shifts'),
+              label: strings.usersKpiShifts,
+              value: shiftsKnown ? '${kpis.openShifts}' : '—',
+              note: strings.usersKpiShiftsNote,
+            ),
+          ),
+          const SizedBox(width: PosSpace.md),
+          Expanded(
+            child: _KpiTile(
+              valueKey: const Key('users-kpi-roles'),
+              label: strings.usersKpiRoles,
+              value: rolesKnown ? '${kpis.roles}' : '—',
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _KpiTile extends StatelessWidget {
+  const _KpiTile({
+    required this.valueKey,
+    required this.label,
+    required this.value,
+    this.note,
+  });
+
+  final Key valueKey;
+  final String label;
+  final String value;
+  final String? note;
+
+  @override
+  Widget build(BuildContext context) {
+    final pos = context.pos;
+
+    return Container(
+      padding: const EdgeInsets.all(PosSpace.lg),
+      decoration: BoxDecoration(
+        color: pos.surface,
+        border: Border.fromBorderSide(pos.resting),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          MicroLabel(label),
+          const SizedBox(height: PosSpace.sm),
+          Text(
+            value,
+            key: valueKey,
+            textDirection: TextDirection.ltr,
+            style: PosText.mono(
+              size: 26,
+              weight: FontWeight.w600,
+              color: pos.ink,
+              height: 1,
+            ),
+          ),
+          const SizedBox(height: PosSpace.xs),
+          // Always a line, empty when there is nothing to say, so the four
+          // tiles stay one height and their figures one baseline.
+          Text(
+            note ?? '',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: PosText.ui(size: 12, color: pos.muted),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Status, role and search, over the table.
+class _FilterBar extends StatelessWidget {
+  const _FilterBar({
+    required this.filter,
+    required this.roles,
+    required this.search,
+    required this.onChanged,
+  });
+
+  final StaffFilter filter;
+  final List<PosRole> roles;
+  final TextEditingController search;
+  final ValueChanged<StaffFilter> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = context.strings;
+    final pos = context.pos;
+
+    return Container(
+      padding: const EdgeInsets.all(PosSpace.lg),
+      decoration: BoxDecoration(
+        border: Border(bottom: pos.hairline),
+      ),
+      child: Wrap(
+        spacing: PosSpace.sm,
+        runSpacing: PosSpace.sm,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          for (final status in StaffStatusFilter.values)
+            _FilterChip(
+              key: Key('users-status-${status.name}'),
+              label: AdminText.staffStatus(strings, status),
+              selected: filter.status == status,
+              onTap: () => onChanged(filter.copyWith(status: status)),
+            ),
+          _RoleFilter(
+            everyone: strings.usersAllRoles,
+            options: [
+              for (final role in roles)
+                (role.id, role.displayName(strings.languageCode)),
+            ],
+            selected: filter.roleId,
+            onChanged: (id) => onChanged(filter.copyWith(roleId: () => id)),
+          ),
+          SizedBox(
+            width: 240,
+            height: PosSize.filterChip,
+            child: TextField(
+              key: const Key('users-search'),
+              controller: search,
+              onChanged: (text) => onChanged(filter.copyWith(search: text)),
+              style: PosText.ui(size: 13, color: pos.ink),
+              decoration: InputDecoration(
+                isDense: true,
+                hintText: strings.usersSearchHint,
+                hintStyle: PosText.ui(size: 13, color: pos.muted),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: PosSpace.sm,
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.zero,
+                  borderSide: pos.resting,
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.zero,
+                  borderSide: pos.resting,
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.zero,
+                  borderSide: pos.accentBorder,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The order history's filter chip, in the same shape: selection is a border.
+class _FilterChip extends StatelessWidget {
+  const _FilterChip({
+    super.key,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final pos = context.pos;
+    return Material(
+      color: selected ? pos.accentSoft : Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Container(
+          height: PosSize.filterChip,
+          padding: const EdgeInsets.symmetric(horizontal: PosSpace.md),
+          decoration: BoxDecoration(
+            border: Border.fromBorderSide(
+              selected ? pos.accentBorder : pos.resting,
+            ),
+          ),
+          // Sized to its label — a Container with an alignment fills the
+          // Wrap's whole line; see the history screen's chip.
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                label,
+                style: PosText.ui(
+                  size: 12.5,
+                  weight: selected ? FontWeight.w600 : FontWeight.w500,
+                  color: selected ? pos.inkWarm : pos.body,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// One role, or all of them — the history screen's pick filter, for roles.
+class _RoleFilter extends StatelessWidget {
+  const _RoleFilter({
+    required this.everyone,
+    required this.options,
+    required this.selected,
+    required this.onChanged,
+  });
+
+  final String everyone;
+  final List<(int, String)> options;
+  final int? selected;
+  final ValueChanged<int?> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final pos = context.pos;
+    // A role no longer offered is shown as "all roles" rather than handed to
+    // the dropdown, which asserts when its value is not among its items.
+    final value = options.any((option) => option.$1 == selected)
+        ? selected
+        : null;
+    return Container(
+      height: PosSize.filterChip,
+      padding: const EdgeInsets.symmetric(horizontal: PosSpace.sm),
+      decoration: BoxDecoration(
+        border: Border.fromBorderSide(
+          value == null ? pos.resting : pos.accentBorder,
+        ),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<int?>(
+          key: const Key('users-role-filter'),
+          value: value,
+          isDense: true,
+          focusColor: Colors.transparent,
+          borderRadius: BorderRadius.zero,
+          style: PosText.ui(size: 12.5, color: pos.body),
+          items: [
+            DropdownMenuItem<int?>(value: null, child: Text(everyone)),
+            for (final (id, label) in options)
+              DropdownMenuItem<int?>(value: id, child: Text(label)),
+          ],
+          onChanged: onChanged,
+        ),
+      ),
+    );
+  }
+}
+
+/// What each role grants, group by group — see [RoleMatrix].
+///
+/// Read-only. It is edited in Settings › Roles, which the header's "Manage
+/// roles" opens; two places to tick the same box would be two places for them
+/// to disagree.
+class _RoleMatrixPanel extends StatelessWidget {
+  const _RoleMatrixPanel({required this.matrix});
+
+  final RoleMatrix matrix;
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = context.strings;
+    final pos = context.pos;
+
+    return Padding(
+      padding: const EdgeInsets.all(PosSpace.lg),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            strings.roleMatrixTitle,
+            style: PosText.ui(
+              size: 14,
+              weight: FontWeight.w700,
+              color: pos.inkWarm,
+            ),
+          ),
+          const SizedBox(height: PosSpace.md),
+          Table(
+            key: const Key('role-matrix'),
+            columnWidths: const {0: FlexColumnWidth(1.6)},
+            defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+            border: TableBorder(
+              top: pos.hairline,
+              bottom: pos.hairline,
+              horizontalInside: pos.hairline,
+            ),
+            children: [
+              TableRow(
+                children: [
+                  const SizedBox.shrink(),
+                  for (final role in matrix.roles)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                        vertical: PosSpace.sm,
+                        horizontal: PosSpace.xs,
+                      ),
+                      child: Text(
+                        role.displayName(strings.languageCode),
+                        textAlign: TextAlign.center,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: PosText.ui(
+                          size: 11,
+                          weight: FontWeight.w600,
+                          color: pos.muted,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              for (final group in RoleMatrix.groups)
+                TableRow(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                        vertical: PosSpace.sm,
+                      ),
+                      child: Text(
+                        AdminText.group(strings, group),
+                        style: PosText.ui(size: 12.5, color: pos.body),
+                      ),
+                    ),
+                    for (final role in matrix.roles)
+                      _MatrixCell(
+                        key: Key('matrix-${group.name}-${role.id}'),
+                        held: matrix.held(group, role),
+                        of: RoleMatrix.size(group),
+                      ),
+                  ],
+                ),
+            ],
+          ),
+          const SizedBox(height: PosSpace.md),
+          Text(
+            strings.roleMatrixNote,
+            style: PosText.ui(size: 11.5, color: pos.muted, height: 1.5),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// "3/8": how many of a group's permissions a role grants.
+///
+/// A count rather than a tick, because the groups are what a role is edited
+/// in and a partial group is the common case — a tick would round "may
+/// discount but not refund" to one answer or the other.
+class _MatrixCell extends StatelessWidget {
+  const _MatrixCell({super.key, required this.held, required this.of});
+
+  final int held;
+  final int of;
+
+  @override
+  Widget build(BuildContext context) {
+    final pos = context.pos;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: PosSpace.sm),
+      child: Text(
+        '$held/$of',
+        textAlign: TextAlign.center,
+        textDirection: TextDirection.ltr,
+        style: PosText.mono(
+          size: 12,
+          weight: held == of ? FontWeight.w600 : FontWeight.w400,
+          color: held == 0
+              ? pos.muted
+              : held == of
+              ? pos.inkWarm
+              : pos.body,
+        ),
+      ),
+    );
+  }
+}
+
+/// A person's initials, square, as the cloud's list shows them.
+class _Initials extends StatelessWidget {
+  const _Initials({required this.name});
+
+  final String name;
+
+  String get _letters {
+    final parts = name.trim().split(RegExp(r'\s+'));
+    String first(String s) => s.isEmpty ? '' : s.substring(0, 1).toUpperCase();
+    return parts.length == 1
+        ? first(parts.first)
+        : '${first(parts.first)}${first(parts[1])}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final pos = context.pos;
+    return Container(
+      width: _avatarWidth,
+      height: _avatarWidth,
+      alignment: Alignment.center,
+      color: pos.chipBg,
+      child: Text(
+        _letters,
+        style: PosText.ui(
+          size: 12,
+          weight: FontWeight.w700,
+          color: pos.chipText,
+        ),
       ),
     );
   }

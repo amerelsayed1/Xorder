@@ -34,7 +34,13 @@ import '../models/ticket.dart';
 export '../services/authorization.dart' show Approval;
 
 export '../models/shift.dart'
-    show PosStaff, PosShift, ShiftSummary, ShiftTenderTotal, ShiftClose;
+    show
+        PosStaff,
+        PosShift,
+        ShiftSummary,
+        ShiftTenderTotal,
+        ShiftClose,
+        ShiftActivity;
 
 /// Repository contracts.
 ///
@@ -667,6 +673,13 @@ abstract interface class ShiftRepository {
 
   /// Everything the shift took, for the Z report and the expected drawer total.
   Future<ShiftSummary> summarise(PosShift shift);
+
+  /// Open shifts across the whole **branch**, and the last shift each person
+  /// opened here — see [ShiftActivity].
+  ///
+  /// Branch-wide where [current] is per terminal: the back office is asking
+  /// how many drawers are out in the restaurant, not whether this one is.
+  Future<ShiftActivity> activity();
 
   /// Count the drawer and close.
   ///

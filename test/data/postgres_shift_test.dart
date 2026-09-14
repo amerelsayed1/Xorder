@@ -437,6 +437,106 @@ void main() {
     });
   });
 
+  group('activity across the branch (Settings › Users)', () {
+    Future<String> terminal(String name, {int? branch}) async {
+      final row = await db.query(
+        pg.config,
+        'INSERT INTO pos_terminals (id, restaurant_id, branch_id, name) '
+        'VALUES (gen_random_uuid(), @r, @b, @n) RETURNING id::text',
+        parameters: {'r': restaurantId, 'b': branch ?? branchId, 'n': name},
+      );
+      return row.first[0] as String;
+    }
+
+    PostgresShiftRepository on(String terminalId, {int? branch}) =>
+        PostgresShiftRepository(
+          database: db,
+          config: pg.config,
+          restaurantId: restaurantId,
+          branchId: branch ?? branchId,
+          terminalId: terminalId,
+        );
+
+    Future<int> openRowsForBranch() async => (await db.query(
+      pg.config,
+      'SELECT count(*) FROM pos_shifts '
+      'WHERE branch_id = @b AND closed_at IS NULL',
+      parameters: {'b': branchId},
+    )).first[0] as int;
+
+    Future<DateTime> lastOpenedBy(PosStaff who) async => (await db.query(
+      pg.config,
+      'SELECT max(opened_at) FROM pos_shifts '
+      'WHERE branch_id = @b AND opened_by = @s',
+      parameters: {'b': branchId, 's': who.id},
+    )).first[0] as DateTime;
+
+    test('"current shifts" is the open pos_shifts rows for the branch — every '
+        'till, and no other branch', () async {
+      final second = await terminal('Counter 2');
+      final third = await terminal('Counter 3');
+
+      // Omar's earlier drawer on Counter 3, counted and closed.
+      final earlier = await on(third).open(by: omar, openingFloat: Money.zero);
+      await on(third).close(shift: earlier, by: omar, countedCash: Money.zero);
+
+      // Two drawers out now, on two different tills.
+      await shifts().open(by: sara, openingFloat: Money(20000));
+      await on(second).open(by: omar, openingFloat: Money.zero);
+
+      // A drawer at another branch of the same restaurant, opened LATER than
+      // anything here — so a query that forgot the branch would both count
+      // it and move Sara's last shift onto it.
+      final elsewhere = (await db.query(
+        pg.config,
+        "INSERT INTO pos_branches (restaurant_id, code, name) "
+        "VALUES (@r, 'OTH', 'Other') RETURNING id",
+        parameters: {'r': restaurantId},
+      )).first[0] as int;
+      await db.query(
+        pg.config,
+        'INSERT INTO pos_shifts (restaurant_id, branch_id, terminal_id, '
+        '  opened_by, opened_at) '
+        "VALUES (@r, @b, @t, @s, now() + interval '1 hour')",
+        parameters: {
+          'r': restaurantId,
+          'b': elsewhere,
+          't': await terminal('Other 1', branch: elsewhere),
+          's': sara.id,
+        },
+      );
+
+      // Read from any till of the branch: the answer is the branch's, not the
+      // asking terminal's.
+      final activity = await on(third).activity();
+
+      expect(activity.openShifts, await openRowsForBranch());
+      expect(activity.openShifts, 2);
+      expect(activity.onShift, {sara.id, omar.id});
+      expect(activity.lastOpenedAt[sara.id], await lastOpenedBy(sara));
+      expect(activity.lastOpenedAt[omar.id], await lastOpenedBy(omar));
+    });
+
+    test('closing a drawer takes it off the count and leaves the last shift',
+        () async {
+      final shift = await shifts().open(by: sara, openingFloat: Money.zero);
+      expect((await shifts().activity()).openShifts, 1);
+
+      await shifts().close(shift: shift, by: sara, countedCash: Money.zero);
+      final after = await shifts().activity();
+
+      expect(after.openShifts, await openRowsForBranch());
+      expect(after.openShifts, 0);
+      expect(after.onShift, isEmpty);
+      expect(after.lastOpenedAt[sara.id], await lastOpenedBy(sara));
+      expect(
+        after.lastOpenedAt.containsKey(omar.id),
+        isFalse,
+        reason: 'never opened one here, so "never" rather than a date',
+      );
+    });
+  });
+
   test('a sale is stamped with the shift that was open when it was rung up', () async {
     final shift = await shifts().open(by: sara, openingFloat: Money.zero);
     await sell(shift, priceMinor: 10000);

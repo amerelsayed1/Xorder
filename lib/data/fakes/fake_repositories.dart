@@ -560,10 +560,36 @@ class FakeSessionRepository implements SessionRepository {
 /// Holds one shift in memory. Enough for a widget test to walk open → close
 /// without a database, and deliberately not enough for anything else.
 class FakeShiftRepository implements ShiftRepository {
+  FakeShiftRepository();
+
+  /// Shifts from before the test began — other tills' drawers, open or closed
+  /// — for a test about what [activity] reports. Public and mutable, as
+  /// [FakeStaffDirectoryRepository.staff] is: a test seeds it by hand.
+  final earlier = <PosShift>[];
   PosShift? _open;
 
   @override
   Future<PosShift?> current() async => _open;
+
+  @override
+  Future<ShiftActivity> activity() async {
+    var open = 0;
+    final last = <int, DateTime>{};
+    final onShift = <int>{};
+    for (final shift in [...earlier, ?_open]) {
+      final by = shift.openedById;
+      if (by == null) continue;
+      final seen = last[by];
+      if (seen == null || shift.openedAt.isAfter(seen)) {
+        last[by] = shift.openedAt;
+      }
+      if (shift.isOpen) {
+        open++;
+        onShift.add(by);
+      }
+    }
+    return ShiftActivity(openShifts: open, lastOpenedAt: last, onShift: onShift);
+  }
 
   @override
   Future<PosShift> open({

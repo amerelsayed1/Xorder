@@ -7,6 +7,7 @@ import 'package:xorder_pos/domain/models/permissions.dart';
 import 'package:xorder_pos/domain/models/purchase_order.dart';
 import 'package:xorder_pos/domain/models/supplier_invoice.dart';
 import 'package:xorder_pos/domain/repositories/admin_repositories.dart';
+import 'package:xorder_pos/features/admin/application/users_overview.dart';
 import 'package:xorder_pos/features/admin/presentation/admin_messages.dart';
 
 /// Every key this build shows a person is a sentence, not a wire value.
@@ -121,6 +122,18 @@ void main() {
             reason: method.name,
           );
         }
+      });
+
+      test('every staff status the Users filter offers is named', () {
+        // Enum-keyed like the two above, so this can only catch an empty
+        // translation — and three distinct words, because two filter chips
+        // reading the same would be two buttons nobody can tell apart.
+        final labels = [
+          for (final status in StaffStatusFilter.values)
+            AdminText.staffStatus(strings, status).trim(),
+        ];
+        expect(labels, everyElement(isNotEmpty));
+        expect(labels.toSet(), hasLength(labels.length));
       });
     });
   }
