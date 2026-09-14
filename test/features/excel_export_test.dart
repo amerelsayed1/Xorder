@@ -251,8 +251,12 @@ class _Fixed implements ReportsRepository {
   Future<List<ProductSales>> topProducts(
     ReportFilter filter, {
     required ProductRanking by,
-    int limit = 5,
+    int? limit = 5,
   }) async => _topFive;
+
+  @override
+  Future<StaffSalesReport> staffSales(ReportFilter filter) =>
+      throw UnimplementedError('the summary writes no staff');
 
   // Finance's (BO-9); neither export asks for them.
   @override

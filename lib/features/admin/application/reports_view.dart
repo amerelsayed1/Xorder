@@ -9,13 +9,86 @@
 /// from the Sales list that is meant to explain them.
 library;
 
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../../../domain/models/branch_sales.dart';
 import '../../../domain/models/home_sales.dart' show deltaBp;
 import '../../../domain/models/sales_report.dart';
+import 'admin_session.dart';
 
 /// What the period chips offer. An enum and a total switch for the words, so
 /// a fifth chip without an Arabic label fails to compile.
 enum ReportPeriod { today, week, month, custom }
+
+/// The period chosen, and the dates of a custom one — inclusive at both ends,
+/// as the picker returns them. The custom range is kept when another chip is
+/// pressed, so pressing Custom again offers the same dates back.
+typedef ReportPeriodChoice = ({
+  ReportPeriod period,
+  ({DateTime first, DateTime last})? custom,
+});
+
+/// The period all six Reports items are drawn over — Business summary and the
+/// five breakdowns alike.
+///
+/// **Here, and not inside a page.** It lived in the summary's own state until
+/// the breakdowns became pages of their own; there, switching from the
+/// summary's This month to Items would have opened Items on Today, and every
+/// switch back again. One provider is what makes the six one report read six
+/// ways rather than six reports.
+///
+/// **As long as the Admin Mode session, and no longer.** Not auto-disposed —
+/// each item is a pane that goes when another is chosen, and the period has to
+/// outlive it — but put back to Today when the session changes, so whoever
+/// comes through the door next starts on Today rather than on the last
+/// person's March. The session's start rather than the session itself, so
+/// nothing that touches it mid-session resets anybody's choice.
+///
+/// **Listened to, not watched.** Watching the session made this provider one
+/// Riverpod rebuilds on a scheduled task when the session ends — and the back
+/// office ends it from its own `dispose`, so every close left a rebuild
+/// pending for a screen that was gone (the shell's tests caught it as a timer
+/// outliving the tree). Setting the state from a listener does the same reset
+/// with nothing scheduled.
+///
+/// What the chosen period MEANS — which Saturday begins the week — is still
+/// worked out on each page from the day that is open (`reportFilterFor`): the
+/// choice is shared, the arithmetic is not stored.
+class ReportPeriodController extends Notifier<ReportPeriodChoice> {
+  static const ReportPeriodChoice _today = (
+    period: ReportPeriod.today,
+    custom: null,
+  );
+
+  @override
+  ReportPeriodChoice build() {
+    ref.listen(
+      adminSessionProvider.select((session) => session?.startedAt),
+      (previous, next) => state = _today,
+    );
+    return _today;
+  }
+
+  /// One of the fixed periods. Custom goes through [pickCustom], which has
+  /// the dates it needs.
+  void select(ReportPeriod period) {
+    if (period == ReportPeriod.custom && state.custom == null) {
+      throw ArgumentError('A custom period needs its dates: use pickCustom.');
+    }
+    state = (period: period, custom: state.custom);
+  }
+
+  void pickCustom({required DateTime first, required DateTime last}) =>
+      state = (
+        period: ReportPeriod.custom,
+        custom: (first: first, last: last),
+      );
+}
+
+final reportPeriodProvider =
+    NotifierProvider<ReportPeriodController, ReportPeriodChoice>(
+      ReportPeriodController.new,
+    );
 
 /// The trend line's three readings of a day (plan 19 §2.3: net, orders,
 /// average).

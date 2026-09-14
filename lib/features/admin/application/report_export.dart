@@ -22,12 +22,15 @@ import '../../../domain/models/branch_sales.dart' show businessDayWire;
 import '../../../domain/models/home_sales.dart' show deltaBp;
 import '../../../domain/models/sales_report.dart';
 
-/// `report-2026-09-01-2026-09-10.xlsx`, or one date for one day.
-String reportFileName(ReportFilter filter) {
+/// `report-2026-09-01-2026-09-10.xlsx`, or one date for one day — and
+/// `report-items-…` for a breakdown's own file, so a folder of them says which
+/// is which without opening any.
+String reportFileName(ReportFilter filter, {String? section}) {
+  final name = section == null ? 'report' : 'report-$section';
   final last = DateTime(filter.to.year, filter.to.month, filter.to.day - 1);
   return filter.dates.length == 1
-      ? 'report-${businessDayWire(filter.from)}.xlsx'
-      : 'report-${businessDayWire(filter.from)}-${businessDayWire(last)}.xlsx';
+      ? '$name-${businessDayWire(filter.from)}.xlsx'
+      : '$name-${businessDayWire(filter.from)}-${businessDayWire(last)}.xlsx';
 }
 
 /// [report] as the tab shows it: the tiles against [previous], the days the
@@ -128,37 +131,7 @@ Uint8List reportWorkbook({
     money(average),
   ]);
 
-  // Every till, zeros included, and the report's own rollup under them —
-  // the tab's bottom line, not a sum this file did.
-  final tills = book.sheet(s.reportTerminals)
-    ..header([
-      s.orderColumnTerminal,
-      s.homeKpiOrders,
-      amount(s.dayGross),
-      amount(s.orderDetailDiscounts),
-      amount(s.reportKpiRefunds),
-      amount(s.homeKpiNetSales),
-      s.exportColumnNote,
-    ]);
-  for (final till in report.terminals) {
-    tills.row([
-      TextCell(till.name ?? till.terminalId),
-      CountCell(till.orders),
-      MoneyCell(till.gross),
-      MoneyCell(till.discounts),
-      MoneyCell(till.refunds),
-      MoneyCell(till.net),
-      till.name == null ? TextCell(s.reportUnregistered) : null,
-    ]);
-  }
-  tills.row([
-    TextCell(s.reportBranchTotal),
-    CountCell(report.orders),
-    MoneyCell(report.gross),
-    MoneyCell(report.discounts),
-    MoneyCell(report.refunds),
-    MoneyCell(report.net),
-  ]);
+  _tills(book.sheet(s.reportTerminals), report, s);
 
   // What was collected, with BO-5's shares; on account on its own row and
   // with no share, because it is owed and not taken (§3a rule 3).
@@ -205,5 +178,268 @@ Uint8List reportWorkbook({
     ..blank()
     ..row([TextCell(s.reportTopProductsNote)]);
 
+  return book.encode();
+}
+
+/// Every till, zeros included, and the report's own rollup under them — the
+/// tab's bottom line, not a sum this file did. The summary's till sheet and
+/// Branches & devices' file are this one sheet, so the two cannot differ.
+void _tills(WorkbookSheet tills, SalesReport report, AppStrings s) {
+  String amount(String label) => '$label (${report.currency})';
+  tills.header([
+    s.orderColumnTerminal,
+    s.homeKpiOrders,
+    amount(s.dayGross),
+    amount(s.orderDetailDiscounts),
+    amount(s.reportKpiRefunds),
+    amount(s.homeKpiNetSales),
+    s.exportColumnNote,
+  ]);
+  for (final till in report.terminals) {
+    tills.row([
+      TextCell(till.name ?? till.terminalId),
+      CountCell(till.orders),
+      MoneyCell(till.gross),
+      MoneyCell(till.discounts),
+      MoneyCell(till.refunds),
+      MoneyCell(till.net),
+      till.name == null ? TextCell(s.reportUnregistered) : null,
+    ]);
+  }
+  tills.row([
+    TextCell(s.reportBranchTotal),
+    CountCell(report.orders),
+    MoneyCell(report.gross),
+    MoneyCell(report.discounts),
+    MoneyCell(report.refunds),
+    MoneyCell(report.net),
+  ]);
+}
+
+// ── The breakdowns (the owner's map) ────────────────────────────────────────
+//
+// One sheet each, the page's own table and nothing more, with the period it
+// covers above it — a breakdown's file is opened on its own, away from the
+// page that said which week it was. The summary's file is unchanged: it is
+// still the whole tab, and a breakdown's file is that page, not a second copy
+// of the summary.
+
+/// The period a breakdown's sheet covers, above its table.
+WorkbookSheet _breakdownSheet(
+  WorkbookWriter book,
+  String name,
+  ReportFilter filter,
+  String currency,
+  AppStrings s,
+) {
+  final last = DateTime(filter.to.year, filter.to.month, filter.to.day - 1);
+  return book.sheet(name)
+    ..row([TextCell(s.exportPeriodFrom), DateCell(filter.from)])
+    ..row([TextCell(s.exportPeriodTo), DateCell(last)])
+    ..row([TextCell(s.currency), TextCell(currency)])
+    ..blank();
+}
+
+/// Reports › Sales: every day of the period, in the page's column order, and
+/// the report's rollup under them.
+Uint8List salesDaysWorkbook({
+  required SalesReport report,
+  required AppStrings strings,
+  required bool rightToLeft,
+}) {
+  final s = strings;
+  final book = WorkbookWriter(rightToLeft: rightToLeft);
+  String amount(String label) => '$label (${report.currency})';
+  WorkbookCell? money(Money? value) => value == null ? null : MoneyCell(value);
+  final days =
+      _breakdownSheet(book, s.reportsSales, report.filter, report.currency, s)
+        ..header([
+          s.exportColumnDate,
+          s.homeKpiOrders,
+          amount(s.dayGross),
+          amount(s.orderDetailDiscounts),
+          amount(s.homeKpiNetSales),
+          amount(s.reportKpiRefunds),
+          amount(s.homeKpiAverage),
+        ]);
+  for (final day in report.days) {
+    days.row([
+      DateCell(day.date),
+      CountCell(day.orders),
+      MoneyCell(day.gross),
+      MoneyCell(day.discounts),
+      MoneyCell(day.net),
+      MoneyCell(day.refunds),
+      money(day.averageOrder),
+    ]);
+  }
+  days.row([
+    TextCell(s.reportBranchTotal),
+    CountCell(report.orders),
+    MoneyCell(report.gross),
+    MoneyCell(report.discounts),
+    MoneyCell(report.net),
+    MoneyCell(report.refunds),
+    money(report.averageOrder),
+  ]);
+  return book.encode();
+}
+
+/// Reports › Items: every product, in the ranking on screen, the rows' total,
+/// and the page's sentence on what that total is not.
+Uint8List itemsWorkbook({
+  required ReportFilter filter,
+  required List<ProductSales> products,
+  required AppStrings strings,
+  required bool rightToLeft,
+}) {
+  final s = strings;
+  final book = WorkbookWriter(rightToLeft: rightToLeft);
+  final totals = productTotals(products);
+  final currency = totals.amount.currency;
+  final items = _breakdownSheet(book, s.reportsItems, filter, currency, s)
+    ..header([
+      s.exportColumnRank,
+      s.exportColumnProduct,
+      s.reportColumnQuantity,
+      '${s.reportColumnAmount} ($currency)',
+    ]);
+  for (final (i, product) in products.indexed) {
+    items.row([
+      CountCell(i + 1),
+      TextCell(product.name),
+      CountCell(product.quantity),
+      MoneyCell(product.amount),
+    ]);
+  }
+  items
+    ..row([
+      null,
+      TextCell(s.reportAllItems),
+      CountCell(totals.quantity),
+      MoneyCell(totals.amount),
+    ])
+    ..blank()
+    ..row([TextCell(s.reportItemsNote)]);
+  return book.encode();
+}
+
+/// Reports › Payment methods: BO-5's shares with their counts, the collected
+/// total, and on account on its own row with no share (§3a rule 3).
+Uint8List paymentsWorkbook({
+  required SalesReport report,
+  required AppStrings strings,
+  required bool rightToLeft,
+}) {
+  final s = strings;
+  final book = WorkbookWriter(rightToLeft: rightToLeft);
+  final shares = report.tenderShares;
+  final methods =
+      _breakdownSheet(
+          book,
+          s.reportsPaymentMethods,
+          report.filter,
+          report.currency,
+          s,
+        )
+        ..header([
+          s.orderColumnMethod,
+          s.reportColumnPayments,
+          '${s.reportColumnAmount} (${report.currency})',
+          s.exportColumnShare,
+        ]);
+  for (final share in shares) {
+    methods.row([
+      TextCell(share.method.label),
+      CountCell(share.method.count),
+      MoneyCell(share.method.amount),
+      BasisPointsCell(share.basisPoints),
+    ]);
+  }
+  methods.row([
+    TextCell(s.financeKpiCollected),
+    CountCell(report.collectedPayments),
+    MoneyCell(report.collected),
+    BasisPointsCell(shares.fold(0, (sum, share) => sum + share.basisPoints)),
+  ]);
+  if (!report.onAccount.isZero) {
+    methods.row([
+      TextCell(s.reportOnAccount),
+      CountCell(report.onAccountPayments),
+      MoneyCell(report.onAccount),
+    ]);
+  }
+  return book.encode();
+}
+
+/// Reports › Branches & devices: the summary's till sheet, on its own.
+Uint8List terminalsWorkbook({
+  required SalesReport report,
+  required AppStrings strings,
+  required bool rightToLeft,
+}) {
+  final book = WorkbookWriter(rightToLeft: rightToLeft);
+  _tills(
+    _breakdownSheet(
+      book,
+      strings.reportsBranches,
+      report.filter,
+      report.currency,
+      strings,
+    ),
+    report,
+    strings,
+  );
+  return book.encode();
+}
+
+/// Reports › Employees: each person, the rows' rollup, and the rule for whose
+/// figure is whose.
+Uint8List staffWorkbook({
+  required StaffSalesReport report,
+  required AppStrings strings,
+  required bool rightToLeft,
+}) {
+  final s = strings;
+  final book = WorkbookWriter(rightToLeft: rightToLeft);
+  String amount(String label) => '$label (${report.currency})';
+  WorkbookCell? money(Money? value) => value == null ? null : MoneyCell(value);
+  final people =
+      _breakdownSheet(
+          book,
+          s.reportsEmployees,
+          report.filter,
+          report.currency,
+          s,
+        )
+        ..header([
+          s.reportColumnSeller,
+          s.homeKpiOrders,
+          amount(s.homeKpiNetSales),
+          amount(s.homeKpiAverage),
+          amount(s.reportKpiRefunds),
+          s.reportColumnVoids,
+        ]);
+  for (final person in report.people) {
+    people.row([
+      TextCell(person.name ?? s.reportSellerNotRecorded),
+      CountCell(person.orders),
+      MoneyCell(person.net),
+      money(person.averageOrder),
+      MoneyCell(person.refunds),
+      CountCell(person.voids),
+    ]);
+  }
+  people
+    ..row([
+      TextCell(s.reportBranchTotal),
+      CountCell(report.orders),
+      MoneyCell(report.net),
+      money(report.averageOrder),
+      MoneyCell(report.refunds),
+      CountCell(report.voids),
+    ])
+    ..blank()
+    ..row([TextCell(s.reportStaffNote)]);
   return book.encode();
 }

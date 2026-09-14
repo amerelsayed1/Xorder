@@ -91,3 +91,32 @@ final topProductsProvider =
       if (repository == null) return const [];
       return repository.topProducts(query.filter, by: query.by);
     });
+
+/// Every product sold, ranked one way — Reports › Items. BO-5's top list
+/// without its limit, so the Items page and the summary's five are one query
+/// and the five are always the head of the page. Empty without
+/// `reports.view`.
+final allProductsProvider =
+    FutureProvider.autoDispose.family<List<ProductSales>, TopProductsQuery>((
+      ref,
+      query,
+    ) async {
+      if (!ref.watch(reportsAllowedProvider)) return const [];
+      final repository = ref.watch(reportsRepositoryProvider);
+      if (repository == null) return const [];
+      return repository.topProducts(query.filter, by: query.by, limit: null);
+    });
+
+/// Reports › Employees. Null without `reports.view`, or with nothing to read
+/// — as [salesReportProvider], and for its reason: an empty list would read as
+/// a period in which nobody sold anything.
+final staffSalesProvider =
+    FutureProvider.autoDispose.family<StaffSalesReport?, ReportFilter>((
+      ref,
+      filter,
+    ) async {
+      if (!ref.watch(reportsAllowedProvider)) return null;
+      final repository = ref.watch(reportsRepositoryProvider);
+      if (repository == null) return null;
+      return repository.staffSales(filter);
+    });

@@ -11,6 +11,7 @@ import 'package:xorder_pos/data/postgres/pos_database.dart';
 import 'package:xorder_pos/data/postgres/postgres_branch_sales_repository.dart';
 import 'package:xorder_pos/data/postgres/postgres_order_history_repository.dart';
 import 'package:xorder_pos/data/postgres/postgres_reports_repository.dart';
+import 'package:xorder_pos/domain/models/branch_sales.dart' show TerminalSales;
 import 'package:xorder_pos/domain/models/order_record.dart';
 import 'package:xorder_pos/domain/models/sales_report.dart';
 import 'package:xorder_pos/domain/models/ticket.dart' show OrderType;
@@ -682,6 +683,162 @@ void main() {
     );
   });
 
+  // ── Reports' breakdowns (the owner's map) ──────────────────────────────
+
+  test('Employees: sales by who rang them up, refunds by who issued them, '
+      'voids by who voided', () async {
+    final staff = await reports.staffSales(range);
+
+    expect(
+      staff.people.map(
+        (p) => (
+          p.staffId,
+          p.name,
+          p.orders,
+          p.gross,
+          p.discounts,
+          p.refunds,
+          p.refundCount,
+          p.voids,
+        ),
+      ),
+      [
+        // y1, o1, o2; R2 (R3 is the 12th's); the voided grill.
+        (nour, 'Nour Adel', 3, const Money(87345), const Money(5000),
+            const Money(2000), 1, 1),
+        // o3, o4; R1 — against Nour's sale, issued by Hana.
+        (hana, 'Hana Mostafa', 2, const Money(35000), const Money(1000),
+            const Money(15000), 1, 0),
+      ],
+      reason: 'highest net first; the open order is nobody\'s sale',
+    );
+    expect(staff.people.first.net, const Money(80345));
+    expect(staff.people.first.averageOrder, const Money(26782),
+        reason: '80,345 over 3, half up, once');
+  });
+
+  test("Employees: the rows sum to the period's net, under every filter", () async {
+    final filters = [
+      range,
+      for (final day in range.dates) ReportFilter.day(day),
+      ReportFilter(from: range.from, to: range.to, terminalId: pos02),
+      ReportFilter(from: range.from, to: range.to, servedByStaffId: hana),
+      ReportFilter(
+        from: range.from,
+        to: range.to,
+        orderTypes: {OrderType.takeaway},
+      ),
+      ReportFilter.day(DateTime(2026, 9, 12)),
+    ];
+    for (final filter in filters) {
+      final report = await reports.sales(filter);
+      final staff = await reports.staffSales(filter);
+      final reason = '${filter.from}–${filter.to} ${filter.terminalId} '
+          '${filter.servedByStaffId} ${filter.orderTypes}';
+      // Added up here, from the rows, not read off the rollup: the claim is
+      // about the rows.
+      expect(
+        staff.people.fold(Money.zero, (sum, p) => sum + p.net),
+        report.net,
+        reason: reason,
+      );
+      expect(
+        (staff.orders, staff.gross, staff.discounts, staff.refunds),
+        (report.orders, report.gross, report.discounts, report.refunds),
+        reason: reason,
+      );
+    }
+  });
+
+  test('Employees: a sale that records nobody is a row of its own, so the '
+      'column still adds up', () async {
+    await db.query(
+      pg.config,
+      'UPDATE pos_orders SET served_by = NULL WHERE id = @id',
+      parameters: {'id': orders['o4']},
+    );
+    final report = await reports.sales(range);
+    final staff = await reports.staffSales(range);
+
+    final nobody = staff.people.singleWhere((p) => p.staffId == null);
+    expect((nobody.name, nobody.orders, nobody.gross), (
+      null,
+      1,
+      const Money(4000),
+    ));
+    expect(staff.people.last, same(nobody), reason: 'named people first');
+    expect(staff.net, report.net);
+  });
+
+  test('Items: every product, and the list sums to net sales before '
+      'order-level discounts', () async {
+    final every = await reports.topProducts(
+      range,
+      by: ProductRanking.amount,
+      limit: null,
+    );
+    expect(every.map((p) => p.name), [
+      'Koshari',
+      'Mixed grill',
+      'Falafel',
+      'Tea',
+    ]);
+    final report = await reports.sales(range);
+    final totals = productTotals(every);
+
+    // Net sales with the order discounts (6,000) put back: what the lines
+    // sold for. Plus R2's 2,000, the one refund here that gave money back and
+    // took no unit — a lineless refund has no product to come off. There is
+    // no service or VAT in this fixture, which is what lets the lines meet the
+    // gross at all; on a till that charges service they will not.
+    expect(
+      totals.amount,
+      report.net + report.discounts + const Money(2000),
+    );
+    expect(totals.amount, const Money(107345));
+    expect(totals.quantity, 4 + 3 + 2 + 1);
+
+    // The summary's five are the head of this list.
+    final top = await reports.topProducts(range, by: ProductRanking.amount, limit: 2);
+    expect(top.map((p) => p.name), every.take(2).map((p) => p.name));
+  });
+
+  test('Branches & devices: every column of the tills sums to the branch, to '
+      'the piastre', () async {
+    for (final filter in [range, ...range.dates.map(ReportFilter.day)]) {
+      final report = await reports.sales(filter);
+      final tills = report.terminals;
+      expect(tills.map((t) => t.name), ['POS-01', 'POS-02', 'POS-03'],
+          reason: 'the idle till listed, every day');
+      Money sum(Money Function(TerminalSales) figure) =>
+          tills.fold(Money.zero, (total, t) => total + figure(t));
+      expect(
+        (
+          tills.fold(0, (n, t) => n + t.orders),
+          sum((t) => t.gross),
+          sum((t) => t.discounts),
+          sum((t) => t.refunds),
+          sum((t) => t.net),
+        ),
+        (report.orders, report.gross, report.discounts, report.refunds,
+            report.net),
+        reason: '${filter.from}',
+      );
+      // And the per-day series the Sales page lists, the same way.
+      final days = report.days;
+      expect(
+        (
+          days.fold(0, (n, d) => n + d.orders),
+          days.fold(Money.zero, (m, d) => m + d.gross),
+          days.fold(Money.zero, (m, d) => m + d.discounts),
+          days.fold(Money.zero, (m, d) => m + d.refunds),
+        ),
+        (report.orders, report.gross, report.discounts, report.refunds),
+        reason: '${filter.from}',
+      );
+    }
+  });
+
   test("the till's own credential can run every report", () async {
     // Every suite here runs as a role that needs no grant, which is how six
     // tables once went ungranted with every test green. This one does not.
@@ -729,6 +886,16 @@ void main() {
         await asTill.topProducts(range, by: ProductRanking.quantity),
         hasLength(4),
       );
+      expect(
+        await asTill.topProducts(
+          range,
+          by: ProductRanking.amount,
+          limit: null,
+        ),
+        hasLength(4),
+      );
+      // Employees reads `pos_staff` for the names, on the till's grant.
+      expect((await asTill.staffSales(range)).net, const Money(99345));
     } finally {
       await probe.close();
       await dropRole();

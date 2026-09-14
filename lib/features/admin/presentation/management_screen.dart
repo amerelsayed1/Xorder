@@ -48,6 +48,7 @@ import 'management_staff_pane.dart';
 import 'management_sync_pane.dart';
 import 'management_terminal_pane.dart';
 import 'management_user_pane.dart';
+import 'report_breakdown_panes.dart';
 
 /// The back office, inside the till.
 ///
@@ -278,7 +279,12 @@ BackOfficeTab tabOf(ManagementPane pane) => switch (pane) {
   ManagementPane.invoices ||
   ManagementPane.returns ||
   ManagementPane.voidedOrders => BackOfficeTab.sales,
-  ManagementPane.reports => BackOfficeTab.reports,
+  ManagementPane.reports ||
+  ManagementPane.reportsSales ||
+  ManagementPane.reportsItems ||
+  ManagementPane.reportsPayments ||
+  ManagementPane.reportsBranches ||
+  ManagementPane.reportsEmployees => BackOfficeTab.reports,
   ManagementPane.menu ||
   ManagementPane.categories ||
   ManagementPane.extras ||
@@ -412,6 +418,11 @@ SettingsSection? settingsSectionOf(ManagementPane pane) => switch (pane) {
   ManagementPane.settlements ||
   ManagementPane.sync ||
   ManagementPane.reports ||
+  ManagementPane.reportsSales ||
+  ManagementPane.reportsItems ||
+  ManagementPane.reportsPayments ||
+  ManagementPane.reportsBranches ||
+  ManagementPane.reportsEmployees ||
   ManagementPane.menu ||
   ManagementPane.categories ||
   ManagementPane.extras ||
@@ -449,7 +460,13 @@ int _placeInTab(ManagementPane pane) => switch (pane) {
   ManagementPane.invoices => 1,
   ManagementPane.returns => 2,
   ManagementPane.voidedOrders => 3,
+  // ملخص الأعمال، المبيعات، الأصناف، طرق الدفع، الفروع والأجهزة، الموظفين
   ManagementPane.reports => 0,
+  ManagementPane.reportsSales => 1,
+  ManagementPane.reportsItems => 2,
+  ManagementPane.reportsPayments => 3,
+  ManagementPane.reportsBranches => 4,
+  ManagementPane.reportsEmployees => 5,
   // المنيو، الأقسام، مكتبة الإضافات، الصالة
   ManagementPane.menu => 0,
   ManagementPane.categories => 1,
@@ -554,11 +571,12 @@ typedef BackOfficeItem = ({
 /// open.
 ///
 /// **An item of the owner's map with no screen yet is not here** — not as a
-/// placeholder, not as a greyed word. Since `pos/ia-screens` that is only
-/// Reports' five breakdowns, four of them sections of Business summary
-/// already: the period is that page's own state, so four entries over it
-/// would each open it back on Today, and the header would name a page the
-/// screen does not have. Each arrives as a pane with the slice that builds it.
+/// placeholder, not as a greyed word: Sales' invoices, returns and cancelled
+/// orders; Finance's settlements; People's shifts; System's sync. Each arrives
+/// as a pane with the slice that builds it. Reports' five breakdowns arrived
+/// as panes of their own once the period moved out of Business summary into
+/// `reportPeriodProvider`: entries into sections of that page would each have
+/// opened it back on Today.
 List<BackOfficeItem> backOfficeItemsFor(
   AppStrings s,
   BackOfficeTab tab,
@@ -881,6 +899,20 @@ ManagementDestination _purchasing(PurchasingTab tab, {bool create = false}) =>
       ManagementPane.user => (s.paneUser, s.paneUserBlurb),
       ManagementPane.about => (s.paneAbout, s.paneAboutBlurb),
       ManagementPane.reports => (s.reportsSummary, s.paneReportsBlurb),
+      ManagementPane.reportsSales => (s.reportsSales, s.reportsSalesBlurb),
+      ManagementPane.reportsItems => (s.reportsItems, s.reportsItemsBlurb),
+      ManagementPane.reportsPayments => (
+        s.reportsPaymentMethods,
+        s.reportsPaymentMethodsBlurb,
+      ),
+      ManagementPane.reportsBranches => (
+        s.reportsBranches,
+        s.reportsBranchesBlurb,
+      ),
+      ManagementPane.reportsEmployees => (
+        s.reportsEmployees,
+        s.reportsEmployeesBlurb,
+      ),
       ManagementPane.menu => (s.paneMenu, s.paneMenuBlurb),
       ManagementPane.categories => (s.categories, s.paneMenuBlurb),
       ManagementPane.extras => (s.extrasTitle, s.extrasSubtitle),
@@ -966,7 +998,14 @@ Set<String> _paneRequires(ManagementPane pane) => switch (pane) {
   // The branch's takings (BO-6). Not the only guard: `salesReportProvider`
   // asks the same capability of the person acting before it reads a row, so
   // a screen built on the figures later without this gate still shows none.
-  ManagementPane.reports => const {PosCapability.reportsView},
+  // Reports' five breakdowns, the same gate on the same figures: each reads
+  // through `reportsAllowedProvider` too.
+  ManagementPane.reports ||
+  ManagementPane.reportsSales ||
+  ManagementPane.reportsItems ||
+  ManagementPane.reportsPayments ||
+  ManagementPane.reportsBranches ||
+  ManagementPane.reportsEmployees => const {PosCapability.reportsView},
   // Finance (BO-9, BO-10). Backed where it counts: every figure is read
   // through `reportsAllowedProvider`, which answers no without
   // `reports.view`, so a pane reached round the strip still draws nothing.
@@ -1122,6 +1161,15 @@ enum ManagementPane {
   printer,
   user,
   about,
+
+  /// Reports' five breakdowns (the owner's map): Business summary's figures,
+  /// each as a page of its own over the period all six share. Last, for the
+  /// same reason as [sales]; `_placeInTab` puts them in the map's order.
+  reportsSales,
+  reportsItems,
+  reportsPayments,
+  reportsBranches,
+  reportsEmployees,
 }
 
 class _ManagementScreenState extends ConsumerState<ManagementScreen> {
@@ -1520,6 +1568,11 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
     // Whose figures follows [admin] through `actingStaffProvider`, as the
     // Sales list's rows do — see `reportsAllowedProvider`.
     ManagementPane.reports => const ManagementReportsPane(),
+    ManagementPane.reportsSales => const ReportSalesPane(),
+    ManagementPane.reportsItems => const ReportItemsPane(),
+    ManagementPane.reportsPayments => const ReportPaymentsPane(),
+    ManagementPane.reportsBranches => const ReportBranchesPane(),
+    ManagementPane.reportsEmployees => const ReportEmployeesPane(),
     // "Manage roles" opens People › Roles & permissions, as the cloud's Users
     // page opens its roles.
     ManagementPane.staff => ManagementStaffPane(

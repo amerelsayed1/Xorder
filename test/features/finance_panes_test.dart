@@ -160,8 +160,12 @@ class _Books implements ReportsRepository {
   Future<List<ProductSales>> topProducts(
     ReportFilter filter, {
     required ProductRanking by,
-    int limit = 5,
+    int? limit = 5,
   }) async => const [];
+
+  @override
+  Future<StaffSalesReport> staffSales(ReportFilter filter) =>
+      throw UnimplementedError('Finance draws no staff');
 
   @override
   Future<TaxReport> taxes(ReportFilter filter) async {

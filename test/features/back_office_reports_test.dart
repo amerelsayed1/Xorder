@@ -204,7 +204,7 @@ class _Fixed implements ReportsRepository {
   Future<List<ProductSales>> topProducts(
     ReportFilter filter, {
     required ProductRanking by,
-    int limit = 5,
+    int? limit = 5,
   }) async {
     ranked.add(by);
     return switch (by) {
@@ -212,6 +212,11 @@ class _Fixed implements ReportsRepository {
       ProductRanking.amount => _byAmount,
     };
   }
+
+  // Employees' own page asks for this; the summary never does.
+  @override
+  Future<StaffSalesReport> staffSales(ReportFilter filter) =>
+      throw UnimplementedError('the summary draws no staff');
 
   // Finance's (BO-9); the Reports tab never asks for them.
   @override

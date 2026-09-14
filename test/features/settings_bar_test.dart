@@ -346,7 +346,14 @@ void main() {
       'Returns',
       'Cancelled orders',
     ]);
-    expect(await linesOf(tester, 'Reports'), ['Business summary']);
+    expect(await linesOf(tester, 'Reports'), [
+      'Business summary',
+      'Sales',
+      'Items',
+      'Payment methods',
+      'Branches & devices',
+      'Employees',
+    ]);
     expect(await linesOf(tester, 'Menu'), [
       'Menu',
       'Categories',
