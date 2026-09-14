@@ -441,6 +441,28 @@ void main() {
   });
 
   group('Arabic, at the 1100 breakpoint', () {
+    // The bundled faces, not the test font, as `back_office_shell_test.dart`
+    // measures the strip: the test font draws every glyph a full em wide, so
+    // "nothing overflows at 1100 px" was a claim about a font no till ships.
+    // It stopped holding when BO-6 gave the owner one more tab — on this
+    // cloud till seven Arabic words, at 14 px an em, came to 1,136 px — while
+    // the same strip in IBM Plex Sans Arabic still fits, which is what a
+    // restaurant sees.
+    setUpAll(() async {
+      final ui = FontLoader(PosFonts.ui);
+      for (final face in ['Regular', 'Medium', 'SemiBold', 'Bold']) {
+        ui.addFont(
+          rootBundle.load('assets/fonts/IBMPlexSansArabic-$face.ttf'),
+        );
+      }
+      await ui.load();
+      final mono = FontLoader(PosFonts.mono);
+      for (final face in ['Regular', 'Medium', 'SemiBold']) {
+        mono.addFont(rootBundle.load('assets/fonts/IBMPlexMono-$face.ttf'));
+      }
+      await mono.load();
+    });
+
     testWidgets('right to left, Arabic words, and a table that scrolls '
         'sideways rather than overflowing', (tester) async {
       await _salesTab(

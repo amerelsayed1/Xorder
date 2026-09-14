@@ -6,6 +6,7 @@ import 'package:xorder_pos/core/money/money.dart';
 import 'package:xorder_pos/domain/models/permissions.dart';
 import 'package:xorder_pos/domain/models/sales_report.dart';
 import 'package:xorder_pos/domain/repositories/repositories.dart';
+import 'package:xorder_pos/features/admin/application/admin_session.dart';
 
 /// `reports.view` gates the figures, on the provider every reader goes
 /// through — so BO-6's tab inherits it instead of having to remember it.
@@ -40,11 +41,17 @@ void main() {
   final filter = ReportFilter.day(DateTime(2026, 9, 10));
   const topQuery = (by: ProductRanking.quantity);
 
-  ProviderContainer containerFor(PosStaff? viewer, _Recording repository) {
+  ProviderContainer containerFor(
+    PosStaff? viewer,
+    _Recording repository, {
+    PosStaff? admin,
+  }) {
     final container = ProviderContainer(
       overrides: [
         reportsRepositoryProvider.overrideWithValue(repository),
         signedInStaffProvider.overrideWith(() => _Viewer(viewer)),
+        if (admin != null)
+          adminSessionProvider.overrideWith(() => _InAdminMode(admin)),
       ],
     );
     addTearDown(container.dispose);
@@ -88,6 +95,27 @@ void main() {
     // the drill-down, not the totals.
     expect(repository.filters.single.servedByStaffId, isNull);
   });
+
+  // The Reports tab is inside Admin Mode, where the person reading is whoever
+  // came through its door — not whoever is signed in at the till behind it.
+  // The gate read the till's operator, so an owner who entered with a cashier
+  // still on the till, or with nobody on it, was shown no report at all.
+  test('in Admin Mode it is the administrator who is asked, not the till', () async {
+    final repository = _Recording();
+    final container = containerFor(cashier, repository, admin: stockKeeper);
+
+    expect(await container.read(salesReportProvider(filter).future), isNotNull);
+    expect(repository.calls, 1);
+  });
+
+  test('and an administrator without reports.view reads none, whoever is '
+      'on the till', () async {
+    final repository = _Recording();
+    final container = containerFor(stockKeeper, repository, admin: cashier);
+
+    expect(await container.read(salesReportProvider(filter).future), isNull);
+    expect(repository.calls, 0);
+  });
 }
 
 class _Viewer extends SignedInStaffController {
@@ -97,6 +125,16 @@ class _Viewer extends SignedInStaffController {
 
   @override
   PosStaff? build() => staff;
+}
+
+class _InAdminMode extends AdminSessionController {
+  _InAdminMode(this.staff);
+
+  final PosStaff staff;
+
+  @override
+  AdminSession? build() =>
+      AdminSession(staff: staff, startedAt: DateTime(2026, 9, 10, 9));
 }
 
 /// A test double. Never a default binding.

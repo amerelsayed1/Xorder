@@ -5,10 +5,13 @@ import 'package:xorder_pos/core/l10n/app_strings.dart';
 import 'package:xorder_pos/core/money/quantity.dart';
 import 'package:xorder_pos/domain/models/permissions.dart';
 import 'package:xorder_pos/domain/models/purchase_order.dart';
+import 'package:xorder_pos/domain/models/sales_report.dart';
 import 'package:xorder_pos/domain/models/supplier_invoice.dart';
 import 'package:xorder_pos/domain/repositories/admin_repositories.dart';
+import 'package:xorder_pos/features/admin/application/reports_view.dart';
 import 'package:xorder_pos/features/admin/application/users_overview.dart';
 import 'package:xorder_pos/features/admin/presentation/admin_messages.dart';
+import 'package:xorder_pos/features/admin/presentation/management_reports_pane.dart';
 
 /// Every key this build shows a person is a sentence, not a wire value.
 ///
@@ -134,6 +137,26 @@ void main() {
         ];
         expect(labels, everyElement(isNotEmpty));
         expect(labels.toSet(), hasLength(labels.length));
+      });
+
+      test("every choice on the Reports tab is named, and no two alike", () {
+        // Enum-keyed, so only an empty or a repeated word is left to catch:
+        // two period chips that read the same are two buttons nobody can
+        // tell apart, and the same for the trend's and the ranking's.
+        for (final labels in [
+          [for (final p in ReportPeriod.values) reportPeriodLabel(strings, p)],
+          [
+            for (final m in ReportTrendMetric.values)
+              reportTrendMetricLabel(strings, m),
+          ],
+          [
+            for (final r in ProductRanking.values)
+              productRankingLabel(strings, r),
+          ],
+        ]) {
+          expect(labels.map((l) => l.trim()), everyElement(isNotEmpty));
+          expect(labels.toSet(), hasLength(labels.length), reason: '$labels');
+        }
       });
     });
   }

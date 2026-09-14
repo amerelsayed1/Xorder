@@ -1214,6 +1214,41 @@ sealed class AppStrings {
 
   /// The Sales tab's one pane: the order history, re-hosted (BO-2).
   String get paneSalesBlurb;
+
+  // BO-6: the Reports tab — period, tiles, charts, terminals and insights.
+  // Net sales, orders and the average are Home's words (`homeKpi…`), and the
+  // table's gross, discounts and till are the day close's and the history's:
+  // one figure, one word, on every tab that shows it.
+  String get paneReportsBlurb;
+  String get reportPeriodToday;
+  String get reportPeriodWeek;
+  String get reportPeriodMonth;
+  String get reportPeriodCustom;
+  String get reportVsPrevious;
+  String get reportNoComparison;
+  String get reportKpiRefunds;
+  String reportRefundCount(int count);
+  String get reportTrend;
+  String get reportTopProducts;
+  String get reportTopProductsNote;
+  String get reportRankQuantity;
+  String get reportRankAmount;
+  String get reportColumnQuantity;
+  String get reportColumnAmount;
+  String get reportNoProducts;
+  String get reportPayments;
+  String get reportOnAccount;
+  String get reportNoPayments;
+  String get reportTerminals;
+  String get reportBranchTotal;
+  String get reportUnregistered;
+  String get reportInsights;
+  String get reportInsightBestDay;
+  String get reportInsightTopTerminal;
+  String get reportInsightGrowth;
+  String get reportInsightsNone;
+  String get reportUnavailable;
+  String get reportNoDatabase;
   String get paneMenu;
   String get paneMenuBlurb;
   String get panePurchasing;
@@ -5028,6 +5063,76 @@ final class EnStrings extends AppStrings {
   String get paneSalesBlurb =>
       'Every sale this branch has rung up, with its receipt and refunds';
   @override
+  String get paneReportsBlurb =>
+      'What this branch sold over a period, and how it compares with the one '
+      'before';
+  @override
+  String get reportPeriodToday => 'Today';
+  @override
+  String get reportPeriodWeek => 'This week';
+  @override
+  String get reportPeriodMonth => 'This month';
+  @override
+  String get reportPeriodCustom => 'Custom range';
+  @override
+  String get reportVsPrevious => 'vs the previous period of the same length';
+  @override
+  String get reportNoComparison =>
+      'Nothing in the previous period to compare with';
+  @override
+  String get reportKpiRefunds => 'Refunds';
+  @override
+  String reportRefundCount(int count) =>
+      count == 1 ? '1 refund' : '$count refunds';
+  @override
+  String get reportTrend => 'Sales by business day';
+  @override
+  String get reportTopProducts => 'Top products';
+  @override
+  String get reportTopProductsNote =>
+      'Units kept after refunds and voids, at the price sold — before '
+      'discounts';
+  @override
+  String get reportRankQuantity => 'By quantity';
+  @override
+  String get reportRankAmount => 'By amount';
+  @override
+  String get reportColumnQuantity => 'Qty';
+  @override
+  String get reportColumnAmount => 'Amount';
+  @override
+  String get reportNoProducts => 'Nothing was sold in this period.';
+  @override
+  String get reportPayments => 'Payment methods';
+  @override
+  String get reportOnAccount => 'On account — owed, not collected';
+  @override
+  String get reportNoPayments => 'Nothing was collected in this period.';
+  @override
+  String get reportTerminals => 'By till';
+  @override
+  String get reportBranchTotal => 'Branch total';
+  @override
+  String get reportUnregistered => 'Not registered to this branch';
+  @override
+  String get reportInsights => 'Key insights';
+  @override
+  String get reportInsightBestDay => 'Best day';
+  @override
+  String get reportInsightTopTerminal => 'Busiest till';
+  @override
+  String get reportInsightGrowth => 'Net sales vs the previous period';
+  @override
+  String get reportInsightsNone =>
+      'Not enough sales in this period to point anything out.';
+  @override
+  String get reportUnavailable =>
+      'The report could not be read from the database.';
+  @override
+  String get reportNoDatabase =>
+      'Reports read this branch\'s database, and this terminal is not '
+      'connected to one yet.';
+  @override
   String get paneMenu => 'Menu';
   @override
   String get paneMenuBlurb => 'Categories, items and what they cost';
@@ -8718,6 +8823,71 @@ final class ArStrings extends AppStrings {
   String get paneStaffBlurb => 'من يعمل هنا، وما المسموح له به';
   @override
   String get paneSalesBlurb => 'كل بيع سجّله هذا الفرع، بإيصاله ومرتجعاته';
+  @override
+  String get paneReportsBlurb =>
+      'ما باعه هذا الفرع خلال فترة، ومقارنته بالفترة التي قبلها';
+  @override
+  String get reportPeriodToday => 'اليوم';
+  @override
+  String get reportPeriodWeek => 'هذا الأسبوع';
+  @override
+  String get reportPeriodMonth => 'هذا الشهر';
+  @override
+  String get reportPeriodCustom => 'فترة مخصصة';
+  @override
+  String get reportVsPrevious => 'مقارنة بالفترة السابقة بنفس الطول';
+  @override
+  String get reportNoComparison => 'لا شيء في الفترة السابقة للمقارنة';
+  @override
+  String get reportKpiRefunds => 'المرتجعات';
+  @override
+  String reportRefundCount(int count) => 'عدد المرتجعات: $count';
+  @override
+  String get reportTrend => 'المبيعات حسب يوم العمل';
+  @override
+  String get reportTopProducts => 'الأصناف الأكثر مبيعاً';
+  @override
+  String get reportTopProductsNote =>
+      'الوحدات التي بقيت مباعة بعد المرتجعات والإلغاء، بسعر بيعها — قبل '
+      'الخصومات';
+  @override
+  String get reportRankQuantity => 'حسب الكمية';
+  @override
+  String get reportRankAmount => 'حسب القيمة';
+  @override
+  String get reportColumnQuantity => 'الكمية';
+  @override
+  String get reportColumnAmount => 'القيمة';
+  @override
+  String get reportNoProducts => 'لم يُبع أي صنف في هذه الفترة.';
+  @override
+  String get reportPayments => 'طرق الدفع';
+  @override
+  String get reportOnAccount => 'على الحساب — مبلغ مستحق لم يُحصَّل';
+  @override
+  String get reportNoPayments => 'لم يُحصَّل أي مبلغ في هذه الفترة.';
+  @override
+  String get reportTerminals => 'حسب نقطة البيع';
+  @override
+  String get reportBranchTotal => 'إجمالي الفرع';
+  @override
+  String get reportUnregistered => 'غير مسجّلة في هذا الفرع';
+  @override
+  String get reportInsights => 'أبرز الملاحظات';
+  @override
+  String get reportInsightBestDay => 'أفضل يوم';
+  @override
+  String get reportInsightTopTerminal => 'نقطة البيع الأعلى مبيعاً';
+  @override
+  String get reportInsightGrowth => 'صافي المبيعات مقارنة بالفترة السابقة';
+  @override
+  String get reportInsightsNone =>
+      'لا توجد مبيعات كافية في هذه الفترة لاستخلاص ملاحظات.';
+  @override
+  String get reportUnavailable => 'تعذّرت قراءة التقرير من قاعدة البيانات.';
+  @override
+  String get reportNoDatabase =>
+      'تُقرأ التقارير من قاعدة بيانات الفرع، وهذا الجهاز غير متصل بها بعد.';
   @override
   String get paneMenu => 'المنيو';
   @override
