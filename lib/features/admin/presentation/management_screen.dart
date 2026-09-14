@@ -11,6 +11,7 @@ import '../../../data/cloud/cloud_provisioning_repository.dart'
     show posAppVersion;
 import '../../../domain/models/permissions.dart';
 import '../../../domain/models/shift.dart';
+import '../../../domain/services/authorization.dart';
 import '../../../domain/services/eta_filing.dart' show etaFilingEnabled;
 import '../application/admin_session.dart';
 import 'admin_activity_watch.dart';
@@ -369,7 +370,9 @@ List<(BackOfficeTab, List<ManagementPane>)> backOfficeTabsFor({
             ..sort((a, b) => _rankInTab(a) - _rankInTab(b))
           case final own
           when own.isNotEmpty ||
-              (!authorsItsOwnCatalogue && _pointsToPlatform(tab)))
+              (!authorsItsOwnCatalogue &&
+                  _pointsToPlatform(tab) &&
+                  _wouldPermitTab(admin, tab)))
         (tab, own),
   ];
 }
@@ -635,6 +638,24 @@ bool _permits(PosStaff admin, ManagementPane pane) {
   return needed == null || admin.can(needed);
 }
 
+/// Whether [admin] would have [pane] on a till that authors it.
+///
+/// **Who is told where a platform-authored pane went.** The pointer stands in
+/// for the pane, so it reaches the people the pane would have and nobody else:
+/// a rota manager has no Purchasing offline, and xorder-new's sidebar hides the
+/// Purchasing group from whoever lacks `purchase.manage` — sending them there
+/// would be a door to a refusal.
+bool _wouldPermit(PosStaff admin, ManagementPane pane) {
+  final needed = _paneRequires(pane);
+  return needed == null || Authorization.check(admin, needed).isAllowed;
+}
+
+/// Whether [admin] would have any pane of [tab] on a till that authors it —
+/// the same rule as [_wouldPermit], for a tab kept only as a pointer.
+bool _wouldPermitTab(PosStaff admin, BackOfficeTab tab) => ManagementPane
+    .values
+    .any((pane) => tabOf(pane) == tab && _wouldPermit(admin, pane));
+
 enum ManagementPane {
   staff,
   menu,
@@ -820,6 +841,7 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
     final pointer =
         asked != null &&
             !panes.contains(asked) &&
+            _wouldPermit(admin, asked) &&
             hiddenBecausePlatformAuthors(
               asked,
               authorsItsOwnCatalogue: authors,

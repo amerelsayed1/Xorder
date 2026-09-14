@@ -56,6 +56,22 @@ void main() {
     capabilities: {PosCapability.staffManage, PosCapability.purchaseManage},
   );
   const buyers = [owner, manager, granted];
+  // Through the back office's door by a role, holding nothing that buys.
+  const rota = PosStaff(
+    id: 4,
+    name: 'Salma R.',
+    username: 'salma',
+    role: PosRole(
+      id: 4,
+      code: 'rota',
+      nameEn: 'Rota manager',
+      capabilities: {
+        PosCapability.operate,
+        PosCapability.staffManage,
+        PosCapability.adminEnter,
+      },
+    ),
+  );
 
   const platformAuthored = [
     ManagementPane.purchasing,
@@ -244,6 +260,38 @@ void main() {
       );
     });
 
+    test('and nobody who does not buy is pointed at buying', () {
+      // Offline they have no Purchasing or Inventory tab; xorder-new's sidebar
+      // hides the Purchasing group from them. The pointer is for whoever it
+      // replaced.
+      expect(rota.can(PosCapability.purchaseManage), isFalse);
+      for (final authors in [false, true]) {
+        final tabs = [
+          for (final (tab, _) in backOfficeTabsFor(
+            admin: rota,
+            authorsItsOwnCatalogue: authors,
+          ))
+            tab,
+        ];
+        expect(tabs, contains(BackOfficeTab.settings), reason: 'Users');
+        expect(
+          tabs,
+          isNot(contains(BackOfficeTab.purchasing)),
+          reason: 'authors: $authors',
+        );
+        expect(
+          tabs,
+          isNot(contains(BackOfficeTab.inventory)),
+          reason: 'authors: $authors',
+        );
+        expect(
+          lines(rota, authors: authors).where((line) => line.pane == null),
+          isEmpty,
+          reason: 'authors: $authors',
+        );
+      }
+    });
+
     test('offline, Purchasing\'s seven lines, no pointer, one line per tab',
         () {
       final bar = lines(owner, authors: true);
@@ -330,6 +378,8 @@ void main() {
       required ManagementPane pane,
       String language = 'en',
       bool offline = false,
+      String username = 'amer',
+      String pin = '4321',
     }) async {
       tester.view
         ..physicalSize = const Size(1440, 900)
@@ -348,9 +398,9 @@ void main() {
       await tester.pumpWidget(screen(container, pane: pane, language: language));
       await tester.pumpAndSettle();
 
-      // Through Admin Mode's door as Amer, the owner — every capability,
-      // purchasing's included.
-      await enterAdminMode(tester);
+      // Through Admin Mode's door — as Amer, the owner, unless a test says
+      // otherwise: every capability, purchasing's included.
+      await enterAdminMode(tester, username: username, pin: pin);
       return container;
     }
 
@@ -416,6 +466,28 @@ void main() {
         find.byKey(const Key('management-platform-pointer')),
         findsNothing,
       );
+    });
+
+    testWidgets('somebody who does not buy is told nothing, as offline', (
+      tester,
+    ) async {
+      // Nour, the fake directory's trusted supervisor: through the door, and
+      // the rota's, but not the stockroom's.
+      await open(
+        tester,
+        pane: ManagementPane.purchasing,
+        username: 'nour',
+        pin: '2468',
+      );
+
+      // The door's landing, as for any pane they do not have — not the
+      // Purchasing tab with a sentence sending them somewhere they cannot go.
+      expect(
+        find.byKey(const Key('management-platform-pointer')),
+        findsNothing,
+      );
+      expect(find.byType(ManagementPurchasingPane), findsNothing);
+      expect(find.byType(ManagementScreen), findsOneWidget);
     });
 
     testWidgets('offline, the same link opens Purchasing and says nothing', (
