@@ -24,7 +24,6 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:xorder_pos/core/config/deployment.dart';
-import 'package:xorder_pos/core/security/pin_hash.dart';
 import 'package:xorder_pos/data/postgres/local_bootstrap.dart';
 import 'package:xorder_pos/data/postgres/migrations.dart';
 import 'package:xorder_pos/data/postgres/pos_database.dart';
@@ -268,11 +267,6 @@ Future<void> _seed(PosDatabase database, Options options) async {
         : 'branch ${options.branchCode} already exists — reusing it.',
   );
 
-  // PBKDF2 at the same work factor the till verifies with, so the hash this
-  // writes is the hash the lock screen checks.
-  final salt = PinHash.newSalt();
-  final hash = await PinHash.hash(options.pin!, salt);
-
   final roles = await _seedRoles(database, options, restaurantId);
 
   // On the owner role, with no direct grants of their own.
@@ -282,27 +276,50 @@ Future<void> _seed(PosDatabase database, Options options) async {
   // out permissions — and it is the *role* that carries them, because the whole
   // point of the model is that a person's permissions are legible as a job
   // title rather than as an array somebody typed once at install time.
-  final staffRows = await database.query(
+  //
+  // Through `seedOwner`, not an INSERT of its own. This used to be a second
+  // copy of that statement — and so a second writer of owners for migration 42
+  // to refuse without warning: pointed at a restaurant that already had one,
+  // the command died on a driver error. One implementation is one answer, the
+  // wizard's, and all this has to do is put it into words.
+  final seeded = await LocalBootstrap(database).seedOwner(
     options.config,
-    'INSERT INTO pos_staff (restaurant_id, branch_id, name, username, pin_salt, pin_hash, role_id) '
-    'VALUES (@restaurant, @branch, @name, @username, @salt, @hash, @role) '
-    'ON CONFLICT (restaurant_id, username) DO NOTHING '
-    'RETURNING id',
-    parameters: {
-      'restaurant': restaurantId,
-      'branch': branchId,
-      'name': options.staffName,
-      'username': options.staffUsername,
-      'salt': salt,
-      'hash': hash,
-      'role': roles[SystemRoles.ownerCode],
-    },
+    restaurantId: restaurantId,
+    branchId: branchId,
+    roleId: roles[SystemRoles.ownerCode]!,
+    name: options.staffName,
+    username: options.staffUsername,
+    pin: options.pin!,
   );
-  stdout.writeln(
-    staffRows.isNotEmpty
-        ? 'created ${options.staffName} (${options.staffUsername}) with the PIN you gave.'
-        : 'staff ${options.staffUsername} already exists — PIN left unchanged.',
-  );
+  switch (seeded) {
+    case OwnerCreated():
+      stdout.writeln(
+        'created ${options.staffName} (${options.staffUsername}) with the PIN you gave.',
+      );
+    case OwnerAlreadyHere():
+      stdout.writeln(
+        'staff ${options.staffUsername} already exists — PIN left unchanged.',
+      );
+    case AnotherOwnerActive(:final name, :final username):
+      stderr
+        ..writeln(
+          'Not creating ${options.staffName} (${options.staffUsername}) as the '
+          'owner: $name is already the owner of $slug, and a restaurant has one.',
+        )
+        ..writeln(
+          '  To set this till up as $name, re-run with --staff-username '
+          '$username — their PIN is left as it is.',
+        )
+        ..writeln(
+          '  If $slug has a new owner, disable $name first — in Management, on '
+          'a till that is already running — then re-run.',
+        );
+      // EX_DATAERR, not 1. Every connection failure exits 1, and a script that
+      // wraps this should be able to tell "the database is down" from "a
+      // person has a decision to make". Before the terminal, too: a setup code
+      // is no use to a till whose first person was never created.
+      exit(65);
+  }
 
   // The terminal row before the machine: the till claims this code at setup,
   // which is what makes an offline terminal trackable at all.

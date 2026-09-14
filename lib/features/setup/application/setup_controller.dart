@@ -473,7 +473,7 @@ class SetupController extends Notifier<SetupDraft> {
       // And what each kind of order requires (§31).
       await bootstrap.seedOrderTypes(admin, restaurantId);
 
-      final ownerCreated = await bootstrap.seedOwner(
+      final owner = await bootstrap.seedOwner(
         admin,
         restaurantId: restaurantId,
         branchId: branchId,
@@ -482,11 +482,23 @@ class SetupController extends Notifier<SetupDraft> {
         username: state.ownerUsername.trim(),
         pin: state.ownerPin,
       );
-      done.add(
-        ownerCreated
-            ? s.ownerCreated(state.ownerName.trim())
-            : s.ownerAlreadyHere(state.ownerUsername.trim()),
-      );
+      switch (owner) {
+        case OwnerCreated():
+          done.add(s.ownerCreated(state.ownerName.trim()));
+        case OwnerAlreadyHere():
+          done.add(s.ownerAlreadyHere(state.ownerUsername.trim()));
+        case AnotherOwnerActive(:final name, :final username):
+          // Stopped here, before the grants, and not reported as built: the
+          // person typed into this form does not exist, and a green report
+          // would send the installer on to a till they cannot sign in to as
+          // themselves. Every step above is an upsert, so building again once
+          // the username is theirs repeats nothing.
+          state = state.copyWith(
+            busy: false,
+            error: s.ownerAlreadyExists(name, username),
+          );
+          return;
+      }
 
       await bootstrap.applyGrants(admin, [
         ...LocalBootstrap.tillGrants(
@@ -640,6 +652,16 @@ class SetupController extends Notifier<SetupDraft> {
     try {
       publishCredentials();
       await ref.read(posDbCredentialsStoreProvider).save();
+      // The back office's database password, when this wizard was given one —
+      // an offline install builds its database with it. Kept so Admin Mode can
+      // be a username and a PIN; see [adminDbSecretStoreProvider] for what that
+      // costs and why it was chosen. A wizard that was not given one leaves
+      // Admin Mode to ask for it once, the first time.
+      if (state.adminDatabasePassword.isNotEmpty) {
+        await ref
+            .read(adminDbSecretStoreProvider)
+            .write(state.adminDatabasePassword);
+      }
       // The licence, carried in memory since the first screen. It goes down
       // BEFORE the config file, because the config file is what makes this
       // machine a configured terminal at the next boot, and a configured

@@ -36,19 +36,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.enterText(
-      find.descendant(
-        of: find.byKey(const Key('back-office-username')),
-        matching: find.byType(TextField),
-      ),
-      'amer',
-    );
-    await tester.enterText(
-      find.byKey(const Key('back-office-password')),
-      'test-credential',
-    );
-    await tester.tap(find.byKey(const Key('back-office-open')));
-    await tester.pumpAndSettle();
+    await enterAdminMode(tester);
   }
 
   test('it lives in Inventory, beside the units', () {

@@ -65,7 +65,7 @@ void main() {
           name: 'Amer',
           username: 'owner',
           pin: '4321'),
-      isTrue,
+      isA<OwnerCreated>(),
     );
 
     // Re-running is safe: every step is an upsert, and the PIN is NOT reset.
@@ -81,7 +81,7 @@ void main() {
           name: 'Someone Else',
           username: 'owner',
           pin: '9999'),
-      isFalse,
+      isA<OwnerAlreadyHere>(),
       reason: 'a re-run must never silently reset a PIN',
     );
 

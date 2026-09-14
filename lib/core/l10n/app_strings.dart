@@ -536,6 +536,11 @@ sealed class AppStrings {
   String rolesCreated(int count);
   String ownerCreated(String name);
   String ownerAlreadyHere(String username);
+
+  /// Somebody else is already this restaurant's owner, so the person typed
+  /// into the form was not made one. Names them by username as well as name,
+  /// because the first way forward is to type that username into this form.
+  String ownerAlreadyExists(String name, String username);
   String grantsApplied(String tillRole, String adminRole);
   String bootstrapAuthFailed(String user);
   String bootstrapUnreachable(String host, int port);
@@ -832,6 +837,15 @@ sealed class AppStrings {
   String get capCashMovement;
   String get capReportsView;
   String get capBackupManage;
+  String get capAdminEnter;
+  String get capPaymentRemove;
+
+  /// Taking a payment back off an unsettled bill: the act, in words, for the
+  /// supervisor prompt; its button; and what the screen says if it is still
+  /// refused.
+  String removePaymentTitle(String what);
+  String get removePaymentAction;
+  String get removePaymentRefused;
 
   String get capGroupSelling;
   String get capGroupMoney;
@@ -867,6 +881,9 @@ sealed class AppStrings {
   String refusalOwnerAlreadyExists(String ownerName);
   String get refusalOwnerIsFixed;
   String get refusalOwnerIsNotAnExtraRole;
+
+  /// Says who CAN, so the manager asking knows the owner is the one to ask.
+  String get refusalOwnerPinIsTheirs;
 
   /// Why a purchase order cannot move as asked. The button that was pressed
   /// was showing, so each says what changed and what to do instead.
@@ -1215,6 +1232,46 @@ sealed class AppStrings {
   String get backupDayCloseFailed;
   String get actBackupTaken;
   String get actBackupRestored;
+  String get actAdminEntered;
+  String get actAdminExited;
+  String get actAdminTimedOut;
+  String get actAdminRefused;
+  String get actAdminLockedOut;
+
+  // ── Admin Mode ────────────────────────────────────────────────────────────
+  //
+  // The back office as a session: a hidden shortcut, a username and PIN, and
+  // a lock when nobody has touched it for a while.
+  /// The header inside Admin Mode: the product, the mode, the page — so nobody
+  /// has to guess whether they are selling or administering.
+  String adminTitle(String pane);
+  String get exitAdminMode;
+  String get adminSignInTitle;
+  String adminSignInHelp(int minutes);
+  String get yourPin;
+  String get openAdminMode;
+
+  /// One refusal for every way of being wrong — an unknown username, a wrong
+  /// PIN, and the right PIN from somebody without `admin.enter` all read the
+  /// same, so the form is no way of finding out who may get in.
+  String get adminSignInRefused;
+
+  /// The same refusal, and how many more tries this terminal allows before
+  /// the door shuts for a while — the shape the supervisor's keypad uses.
+  String adminSignInAttemptsLeft(int attempts);
+
+  /// Too many wrong tries: nothing is checked until the wait is over.
+  String adminSignInLockedOut(int seconds);
+
+  /// Asked once per till, and only of somebody whose username and PIN already
+  /// got them in: installs from before Admin Mode never kept this password.
+  String get adminDatabasePasswordNeeded;
+  String get adminDatabasePasswordRefused;
+  String adminLockedAfter(int minutes);
+  String get adminModeSettingsHint;
+  String get adminLockAfter;
+  String adminMinutes(int minutes);
+  String get adminShortcut;
   // ── end of the backup block ────────────────────────────────────
   String get pinCannotOpenManagement;
   String get managementPinHelp;
@@ -3442,6 +3499,14 @@ final class EnStrings extends AppStrings {
   String ownerAlreadyHere(String username) =>
       '$username was already here — the PIN was left as it was.';
   @override
+  String ownerAlreadyExists(String name, String username) =>
+      '$name is already the owner of this restaurant, and a restaurant has '
+      'one — so nobody new was made the owner. To set this till up as $name, '
+      'put their username, $username, in the username field and build the '
+      'database again; their PIN is left as it is. If the restaurant has a new '
+      'owner, disable $name first — in Management, on a till that is already '
+      'running — then build it again.';
+  @override
   String grantsApplied(String tillRole, String adminRole) =>
       'Granted $tillRole and $adminRole what each one needs.';
   @override
@@ -3991,7 +4056,7 @@ final class EnStrings extends AppStrings {
   @override
   String get forceResetSignInHelp =>
       "Deleting a working terminal's setup needs somebody who may manage "
-      'terminals: their username and the back-office password.';
+      'terminals: their username and PIN.';
   @override
   String get forceResetSignInRefused =>
       'That username and password cannot reset this terminal.';
@@ -4060,6 +4125,17 @@ final class EnStrings extends AppStrings {
   String get capReportsView => 'See reports';
   @override
   String get capBackupManage => 'Back up and restore the database';
+  @override
+  String get capAdminEnter => 'Open Admin Mode';
+  @override
+  String get capPaymentRemove => 'Take a payment off an unsettled bill';
+  @override
+  String removePaymentTitle(String what) => 'Take $what off this bill';
+  @override
+  String get removePaymentAction => 'Take it off';
+  @override
+  String get removePaymentRefused =>
+      'That payment stays on the bill: taking it off needs a supervisor.';
 
   @override
   String get capGroupSelling => 'Selling';
@@ -4151,6 +4227,10 @@ final class EnStrings extends AppStrings {
       'holds every permission, and one taken away from them could lock '
       'everybody out. To hand ownership over, disable the owner, then make '
       'somebody else the owner.';
+  @override
+  String get refusalOwnerPinIsTheirs =>
+      "Only the owner can change the owner's PIN. It opens everything, so "
+      'nobody else may set it — the owner changes it from their own row here.';
   @override
   String get refusalOwnerIsNotAnExtraRole =>
       'Owner cannot be an extra role. To make somebody the owner, choose Owner '
@@ -4930,6 +5010,66 @@ final class EnStrings extends AppStrings {
   String get actBackupTaken => 'Took a backup';
   @override
   String get actBackupRestored => 'Restored the database from a backup';
+  @override
+  String get actAdminEntered => 'Opened Admin Mode';
+  @override
+  String get actAdminExited => 'Left Admin Mode';
+  @override
+  String get actAdminTimedOut => 'Admin Mode locked itself for inactivity';
+  @override
+  String get actAdminLockedOut =>
+      'Admin Mode shut its door after repeated wrong PINs for this username';
+  @override
+  String get actAdminRefused => 'Was refused Admin Mode';
+  @override
+  String adminTitle(String pane) => 'XOrder POS › Admin › $pane';
+  @override
+  String get exitAdminMode => 'Exit Admin Mode';
+  @override
+  String get adminSignInTitle => 'Admin Mode';
+  @override
+  String adminSignInHelp(int minutes) =>
+      'Your username and PIN. Admin Mode locks itself after $minutes minutes '
+      'without a tap or a key press.';
+  @override
+  String get yourPin => 'Your PIN';
+  @override
+  String get openAdminMode => 'Open Admin Mode';
+  @override
+  String get adminSignInRefused =>
+      'That username and PIN cannot open Admin Mode.';
+  @override
+  String adminSignInAttemptsLeft(int attempts) => attempts == 1
+      ? '$adminSignInRefused One attempt left.'
+      : '$adminSignInRefused $attempts attempts left.';
+  @override
+  String adminSignInLockedOut(int seconds) => seconds < 60
+      ? 'Too many wrong attempts. Admin Mode can be tried again in $seconds '
+            '${seconds == 1 ? 'second' : 'seconds'}.'
+      : 'Too many wrong attempts. Admin Mode can be tried again in '
+            '${(seconds + 59) ~/ 60} '
+            '${(seconds + 59) ~/ 60 == 1 ? 'minute' : 'minutes'}.';
+  @override
+  String get adminDatabasePasswordNeeded =>
+      'The first time on this till, Admin Mode also needs the back-office '
+      'database password — once. It is kept on this machine from then on.';
+  @override
+  String get adminDatabasePasswordRefused =>
+      'PostgreSQL did not accept that back-office password.';
+  @override
+  String adminLockedAfter(int minutes) =>
+      'Admin Mode locked itself after $minutes minutes without activity. Sign '
+      'in again to carry on.';
+  @override
+  String get adminModeSettingsHint =>
+      'How this till lets somebody into Admin Mode. The shortcut is only a '
+      'hidden way in — the username and PIN are the lock.';
+  @override
+  String get adminLockAfter => 'Lock after';
+  @override
+  String adminMinutes(int minutes) => '$minutes min';
+  @override
+  String get adminShortcut => 'Shortcut';
   // ── end of the backup block ────────────────────────────────────
   @override
   String get pinCannotOpenManagement => 'That PIN cannot open Management.';
@@ -6952,6 +7092,13 @@ final class ArStrings extends AppStrings {
   String ownerAlreadyHere(String username) =>
       '$username كان موجوداً — وتُرك الكود كما هو.';
   @override
+  String ownerAlreadyExists(String name, String username) =>
+      '$name هو مالك هذا المطعم بالفعل، وللمطعم مالك واحد فقط — لذلك لم '
+      'يُعيَّن مالك جديد. لإعداد هذا الجهاز باسم $name، اكتب اسم المستخدم '
+      'الخاص به، $username، في خانة اسم المستخدم ثم ابنِ قاعدة البيانات مرة '
+      'أخرى؛ ويبقى الكود كما هو. وإن كان للمطعم مالك جديد، فعطّل $name أولاً — '
+      'من الإدارة، على جهاز يعمل بالفعل — ثم ابنِها مرة أخرى.';
+  @override
   String grantsApplied(String tillRole, String adminRole) =>
       'مُنح $tillRole و$adminRole ما يحتاجه كل منهما.';
   @override
@@ -7482,7 +7629,7 @@ final class ArStrings extends AppStrings {
   @override
   String get forceResetSignInHelp =>
       'حذف إعداد جهاز يعمل يحتاج إلى شخص مخوّل بإدارة الأجهزة: '
-      'اسم المستخدم وكلمة مرور الإدارة.';
+      'اسم المستخدم والكود الخاص به.';
   @override
   String get forceResetSignInRefused =>
       'اسم المستخدم وكلمة المرور هذان لا يسمحان بإعادة ضبط هذا الجهاز.';
@@ -7550,6 +7697,17 @@ final class ArStrings extends AppStrings {
   String get capReportsView => 'عرض التقارير';
   @override
   String get capBackupManage => 'أخذ نسخة احتياطية واستعادتها';
+  @override
+  String get capAdminEnter => 'فتح وضع المسؤول';
+  @override
+  String get capPaymentRemove => 'حذف دفعة من فاتورة لم تُسدَّد بعد';
+  @override
+  String removePaymentTitle(String what) => 'حذف $what من هذه الفاتورة';
+  @override
+  String get removePaymentAction => 'احذفها';
+  @override
+  String get removePaymentRefused =>
+      'تبقى هذه الدفعة على الفاتورة: حذفها يحتاج إلى مشرف.';
 
   @override
   String get capGroupSelling => 'البيع';
@@ -7636,6 +7794,10 @@ final class ArStrings extends AppStrings {
       'لا يمكن تغيير دور المالك ولا صلاحياته. المالك يملك كل الصلاحيات أصلاً، '
       'وأي صلاحية تُسحب منه قد تمنع الجميع من الدخول. لنقل الملكية، عطّل المالك '
       'ثم اجعل شخصاً آخر هو المالك.';
+  @override
+  String get refusalOwnerPinIsTheirs =>
+      'لا يغيّر كود المالك إلا المالك نفسه. هذا الكود يفتح كل شيء، لذلك لا يحق '
+      'لأحد غيره تعيينه — يغيّره المالك من السطر الخاص به هنا.';
   @override
   String get refusalOwnerIsNotAnExtraRole =>
       'لا يمكن أن يكون المالك دوراً إضافياً. لتجعل شخصاً ما هو المالك، اختر '
@@ -8397,6 +8559,65 @@ final class ArStrings extends AppStrings {
   String get actBackupTaken => 'أخذ نسخة احتياطية';
   @override
   String get actBackupRestored => 'استعاد قاعدة البيانات من نسخة احتياطية';
+  @override
+  String get actAdminEntered => 'فتح وضع المسؤول';
+  @override
+  String get actAdminExited => 'خرج من وضع المسؤول';
+  @override
+  String get actAdminTimedOut => 'أُقفل وضع المسؤول لعدم النشاط';
+  @override
+  String get actAdminLockedOut =>
+      'أُغلق باب وضع المسؤول بعد أكواد خاطئة متكررة لاسم المستخدم هذا';
+  @override
+  String get actAdminRefused => 'رُفض دخوله وضع المسؤول';
+  @override
+  String adminTitle(String pane) => 'XOrder POS › المسؤول › $pane';
+  @override
+  String get exitAdminMode => 'الخروج من وضع المسؤول';
+  @override
+  String get adminSignInTitle => 'وضع المسؤول';
+  @override
+  String adminSignInHelp(int minutes) =>
+      'اسم المستخدم والكود الخاص بك. يُقفل وضع المسؤول نفسه بعد $minutes '
+      'دقيقة دون لمس أو ضغط مفتاح.';
+  @override
+  String get yourPin => 'الكود الخاص بك';
+  @override
+  String get openAdminMode => 'فتح وضع المسؤول';
+  @override
+  String get adminSignInRefused =>
+      'اسم المستخدم والكود هذان لا يفتحان وضع المسؤول.';
+  @override
+  String adminSignInAttemptsLeft(int attempts) => attempts == 1
+      ? '$adminSignInRefused بقيت محاولة واحدة.'
+      : '$adminSignInRefused بقيت $attempts محاولات.';
+  @override
+  String adminSignInLockedOut(int seconds) => seconds < 60
+      ? 'محاولات خاطئة كثيرة. يمكن تجربة وضع المسؤول مرة أخرى بعد $seconds '
+            'ثانية.'
+      : 'محاولات خاطئة كثيرة. يمكن تجربة وضع المسؤول مرة أخرى بعد '
+            '${(seconds + 59) ~/ 60} دقيقة.';
+  @override
+  String get adminDatabasePasswordNeeded =>
+      'في المرة الأولى على هذا الجهاز، يحتاج وضع المسؤول أيضاً إلى كلمة مرور '
+      'قاعدة بيانات الإدارة — مرة واحدة فقط. وتُحفظ على هذا الجهاز بعد ذلك.';
+  @override
+  String get adminDatabasePasswordRefused =>
+      'لم تقبل PostgreSQL كلمة مرور الإدارة هذه.';
+  @override
+  String adminLockedAfter(int minutes) =>
+      'أقفل وضع المسؤول نفسه بعد $minutes دقيقة دون نشاط. سجّل الدخول مرة '
+      'أخرى للمتابعة.';
+  @override
+  String get adminModeSettingsHint =>
+      'كيف يسمح هذا الجهاز بالدخول إلى وضع المسؤول. الاختصار مجرد مدخل مخفي — '
+      'اسم المستخدم والكود هما القفل.';
+  @override
+  String get adminLockAfter => 'الإقفال بعد';
+  @override
+  String adminMinutes(int minutes) => '$minutes دقيقة';
+  @override
+  String get adminShortcut => 'الاختصار';
   // ── end of the backup block ────────────────────────────────────
   @override
   String get pinCannotOpenManagement => 'هذا الكود لا يفتح الإدارة.';

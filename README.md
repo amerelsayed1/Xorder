@@ -335,7 +335,9 @@ POS_PG_PASSWORD=… dart run bin/pos_migrate.dart --host 192.168.1.20 \
 ```
 
 It prints a single-use setup code; type it at the wizard's *Sign in* step. Run it
-again with a different `--terminal` for each additional till.
+again with a different `--terminal` for each additional till — and the same
+`--staff-username`, because a restaurant has one owner. Pointed at a restaurant
+whose owner is somebody else, `--seed` names them, creates nobody and exits 65.
 
 The menu is yours to insert. Categories first, then products, then any option
 groups:

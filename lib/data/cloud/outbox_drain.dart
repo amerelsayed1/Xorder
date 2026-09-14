@@ -419,7 +419,7 @@ class SyncingOrdersRepository implements OrdersRepository {
     required PosStaff by,
     int? reasonId,
     String? note,
-    PosStaff? approvedBy,
+    Approval? approval,
     PosStaff? servedBy,
   }) async {
     final result = await _inner.voidOrder(
@@ -427,7 +427,7 @@ class SyncingOrdersRepository implements OrdersRepository {
       by: by,
       reasonId: reasonId,
       note: note,
-      approvedBy: approvedBy,
+      approval: approval,
       servedBy: servedBy,
     );
     _kick();

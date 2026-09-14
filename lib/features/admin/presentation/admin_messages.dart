@@ -50,6 +50,8 @@ abstract final class AdminText {
         PosCapability.cashMovement => s.capCashMovement,
         PosCapability.reportsView => s.capReportsView,
         PosCapability.backupManage => s.capBackupManage,
+        PosCapability.adminEnter => s.capAdminEnter,
+        PosCapability.paymentRemove => s.capPaymentRemove,
         // A capability from a newer build. Shown rather than hidden: a manager
         // seeing a permission they do not recognise is better informed than one
         // looking at a list that quietly omits it. Untranslated of course —
@@ -118,6 +120,11 @@ abstract final class AdminText {
     AuditAction.optionGroupDeleted => s.actOptionGroupDeleted,
     AuditAction.backupTaken => s.actBackupTaken,
     AuditAction.backupRestored => s.actBackupRestored,
+    AuditAction.adminEntered => s.actAdminEntered,
+    AuditAction.adminExited => s.actAdminExited,
+    AuditAction.adminTimedOut => s.actAdminTimedOut,
+    AuditAction.adminRefused => s.actAdminRefused,
+    AuditAction.adminLockedOut => s.actAdminLockedOut,
     _ => action,
   };
 
@@ -285,6 +292,7 @@ abstract final class AdminText {
         ),
         OwnerIsFixed() => s.refusalOwnerIsFixed,
         OwnerIsNotAnExtraRole() => s.refusalOwnerIsNotAnExtraRole,
+        OwnerPinIsTheirs() => s.refusalOwnerPinIsTheirs,
         EditedElsewhere() => s.refusalEditedElsewhere,
         // The reason comes from the catalogue importer, which speaks for
         // itself; there is nothing here to translate it into.

@@ -137,6 +137,21 @@ class OwnerIsNotAnExtraRole extends AdminRefusal {
   const OwnerIsNotAnExtraRole();
 }
 
+/// Only the owner sets the owner's PIN.
+///
+/// Whoever holds that PIN holds the restaurant: it opens Admin Mode, and every
+/// permission the owner has comes with it. A manager able to reset it could
+/// set one, sign in as the owner, and act under their name — so `staff.manage`
+/// reaches everybody's PIN but this one. Applies to anybody on the owner role,
+/// active or not: otherwise disable, reset, re-enable would be the way round.
+///
+/// Held in the repository, not a trigger, because the database cannot tell
+/// who is asking. The installer and the cloud seeder write the owner's PIN
+/// legitimately, and neither is a person.
+class OwnerPinIsTheirs extends AdminRefusal {
+  const OwnerPinIsTheirs();
+}
+
 /// Somebody else saved this record first.
 ///
 /// Two managers editing over the LAN is the normal case in a branch, not an
@@ -481,6 +496,25 @@ abstract final class AuditAction {
   /// see `BackupService.restore`, which explains why and what that costs.
   static const backupRestored = 'backup.restored';
 
+  /// Admin Mode entered, left, locked by the inactivity timer, or refused.
+  ///
+  /// All four, because Admin Mode is a door, and a door's log that recorded
+  /// only the openings could not say who tried it or who walked away from it
+  /// open. A refusal is written only when the username and PIN were right and
+  /// the person lacks `admin.enter` — a wrong PIN names nobody to write it
+  /// against.
+  static const adminEntered = 'admin.entered';
+  static const adminExited = 'admin.exited';
+  static const adminTimedOut = 'admin.timed_out';
+  static const adminRefused = 'admin.refused';
+
+  /// The door shut after too many wrong PINs in a row at one terminal. Written
+  /// against the member of staff whose username was being tried, when it
+  /// names one: a guessed-at account is what an owner reading this wants to
+  /// know about.
+  static const adminLockedOut = 'admin.locked_out';
+
+  static const entityAdminSession = 'admin_session';
   static const entityTable = 'table';
   static const entityReceiptProfile = 'receipt_profile';
   static const entityBackup = 'backup';

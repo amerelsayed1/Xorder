@@ -1339,8 +1339,21 @@ class TicketController extends Notifier<Ticket> {
     ),
   );
 
-  void removeTenderAt(int index) =>
-      state = TicketEngine.removeTenderAt(state, index);
+  /// Null when the payment came off; the refusal when it did not.
+  TicketRefusal? removeTenderAt(
+    int index, {
+    required PosStaff? by,
+    Approval? approval,
+  }) {
+    final result = TicketEngine.removeTenderAt(
+      state,
+      index,
+      by: by,
+      approval: approval,
+    );
+    if (result.ticket case final ticket?) state = ticket;
+    return result.refusal;
+  }
 
   /// Take over a parked ticket wholesale — resuming a table from the floor.
   /// The id comes with it: the parked ticket IS the transaction, and minting
@@ -1849,6 +1862,10 @@ class TerminalReset {
     // operator just asked for.
     await _ref.read(terminalConfigStoreProvider).clear();
     await _ref.read(posDbCredentialsStoreProvider).forget();
+    // And the back office's. A till moved onto another restaurant's database
+    // must not arrive holding the last one's administrator password.
+    await _ref.read(adminDbSecretStoreProvider).clear();
+    _ref.read(adminDbCredentialProvider.notifier).forget();
 
     // Then the snapshot the process booted from, which now describes a file
     // that is gone. Without this the wizard reopens seeded from the terminal
@@ -1972,17 +1989,20 @@ final posWriteContextProvider = Provider<PosWriteContext?>((ref) {
 // Administration
 // ---------------------------------------------------------------------------
 
-/// The administrator database password, for this session only.
+/// The administrator database password, for the length of an Admin Mode
+/// session.
 ///
-/// Null until somebody opening Management supplies it. Deliberately NOT
-/// persisted: `bin/pos_migrate.dart` refuses to grant the till role and the
-/// administrator role to the same name, and says why — the till credential
-/// sits on a machine in a public room, often with its password in a file
-/// beside it. Writing the administrator's password to that same disk would
-/// hand back everything the split was protecting.
+/// Null outside Admin Mode. Entering loads it from [adminDbSecretStoreProvider]
+/// and leaving — by Exit, by the inactivity timer, by the till being locked —
+/// forgets it, so nothing that writes through [adminPosDatabaseProvider] works
+/// for anybody who is not in. It used to be held from the first time anybody
+/// typed it until the app quit, which is how a locked till opened the back
+/// office.
 ///
-/// Lost on exit, by design. A manager entering the back office types it; a
-/// cashier at the counter never sees it.
+/// `bin/pos_migrate.dart` still refuses to grant the till role and the
+/// administrator role to the same name: the split between the two credentials
+/// stands even now both are kept on this machine — see
+/// [adminDbSecretStoreProvider] for what keeping this one costs.
 class AdminDbCredential extends Notifier<String?> {
   @override
   String? build() => null;
@@ -2015,6 +2035,29 @@ final adminPosDatabaseProvider = Provider<PosDatabase>((ref) {
   ref.onDispose(database.close);
   return database;
 });
+
+/// Whether [password] gets the administrator role into the branch database.
+///
+/// A pool of its own, opened for the question and closed after it — not
+/// [adminPosDatabaseProvider], which is built from the password already held.
+/// Trying a password on that pool meant holding it first, and a held password
+/// is what opens Management: the back office opened on one nobody had checked,
+/// for as long as the check took. See `AdminSessionController.signIn`. A
+/// function, so a test can answer the question without a server.
+final adminPasswordProbeProvider =
+    Provider<Future<PosDbFailure?> Function(String password)>((ref) {
+      final config = ref.watch(adminDeploymentProvider);
+      return (password) async {
+        final database = PosDatabase(
+          credentials: InMemoryPosDbCredentials(password),
+        );
+        try {
+          return await database.probe(config);
+        } finally {
+          await database.close();
+        }
+      };
+    });
 
 /// Applies the migrations this build carries and the database lacks, as the
 /// back office's administrator.
@@ -2650,6 +2693,26 @@ final backupFileExistsProvider = Provider<bool Function(String path)>(
 /// would not be for the administrator's.
 final backupPasswordStoreProvider = Provider<PosDbSecretStore>(
   (ref) => FileSecretStore(key: FileSecretStore.backupPasswordKey),
+);
+
+/// The back office's database password, kept on this machine.
+///
+/// **This reverses a rule, deliberately.** Until 12 September 2026 the
+/// administrator's password was never kept anywhere: it was typed at the
+/// back-office door and held in memory. The owner chose Admin Mode to be a
+/// username and a PIN and nothing else (owner decision, 12 Sep 2026), which
+/// leaves no field to type it into — so the setup wizard keeps it here, beside
+/// the till's, and Admin Mode loads it into [adminDbCredentialProvider] only
+/// for the length of a session. An install from before that asks for it once.
+///
+/// What that costs, stated rather than implied: `secrets.json` is readable by
+/// the till's own OS account (see [FileSecretStore]), so anybody who has that
+/// account's files has the administrator's rights to the branch database
+/// without a PIN. What still holds: nobody at the till's screen gets a pane
+/// without a username and PIN holding `admin.enter`, and every write still goes
+/// through the repositories' own permission checks.
+final adminDbSecretStoreProvider = Provider<PosDbSecretStore>(
+  (ref) => FileSecretStore(key: FileSecretStore.adminPasswordKey),
 );
 
 /// The backup account's password, or null when none has been entered.

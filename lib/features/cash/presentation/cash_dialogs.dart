@@ -25,17 +25,26 @@ import '../../admin/presentation/supervisor_override.dart';
 /// in colour, in title, in the word on the button and in the direction of the
 /// sign beside the amount, rather than in a small toggle somewhere.
 class CashMovementDialog extends ConsumerStatefulWidget {
-  const CashMovementDialog({super.key, required this.kind});
+  const CashMovementDialog({super.key, required this.kind, this.approval});
 
   final CashMovementKind kind;
+
+  /// The supervisor's approval that let a cashier open this, when one did.
+  ///
+  /// Carried to the write rather than left behind at the prompt. It used to be
+  /// dropped here — the prompt approved, and the movement went down under the
+  /// cashier's name alone — and now that the repository asks, dropping it
+  /// would refuse every pay-out a supervisor had just said yes to.
+  final Approval? approval;
 
   /// Returns the amount recorded, or null if nothing was.
   static Future<Money?> show(
     BuildContext context, {
     required CashMovementKind kind,
+    Approval? approval,
   }) => showDialog<Money>(
     context: context,
-    builder: (_) => CashMovementDialog(kind: kind),
+    builder: (_) => CashMovementDialog(kind: kind, approval: approval),
   );
 
   @override
@@ -307,6 +316,7 @@ class _CashMovementDialogState extends ConsumerState<CashMovementDialog> {
             kind: widget.kind,
             amount: amount,
             by: by,
+            approval: widget.approval,
             shiftId: shift.id,
             reasonId: _reason?.id,
             note: _note.trim().isEmpty ? null : _note.trim(),
@@ -379,7 +389,7 @@ abstract final class DrawerOpenFlow {
             kind: CashMovementKind.drawerOpen,
             amount: Money.zero,
             by: by,
-            approvedBy: decision.approvedBy,
+            approval: decision.approval,
             shiftId: shift.id,
             businessDayId: ref.read(businessDayProvider).valueOrNull?.id,
           );

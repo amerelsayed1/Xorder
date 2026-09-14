@@ -13,6 +13,8 @@ import '../core/ui/tokens.dart';
 import '../features/settings/about_dialog.dart';
 import '../features/settings/printer_settings_dialog.dart';
 import '../features/setup/presentation/force_reset_dialog.dart';
+import '../features/admin/application/admin_session.dart';
+import '../features/admin/presentation/admin_shortcut.dart';
 import 'providers.dart';
 import '../features/admin/presentation/management_screen.dart';
 import 'router.dart';
@@ -29,6 +31,7 @@ class XorderPosApp extends ConsumerWidget {
     // without this, the background sync only started once somebody visited
     // the sale screen, which is exactly backwards.
     ref.watch(cloudSyncProvider);
+    final adminShortcut = ref.watch(adminModeSettingsProvider).shortcut;
 
     return MaterialApp.router(
       title: 'XOrder POS',
@@ -48,52 +51,42 @@ class XorderPosApp extends ConsumerWidget {
         null => ThemeMode.system,
       },
       routerConfig: ref.watch(routerProvider),
-      // Cmd+Shift+S — delete this machine's terminal setup and run the
-      // wizard again. Registered at the ROOT, above the router, for two
-      // reasons: it has to work on every screen (a till that needs
-      // re-pairing is usually parked somewhere with no reset link), and it
-      // has to survive the redirect that sends an unconfigured terminal
-      // back to the wizard.
+      // Two hidden chords, registered at the ROOT, above the router, so they
+      // work on every screen and survive the redirect that sends an
+      // unconfigured terminal back to the wizard.
       //
-      // A shortcut rather than a button, deliberately. This can discard an
-      // open shift, so it should be reachable by someone who knows it
-      // exists and not by someone hunting around the screen. The dialog
-      // states what it will cost before anything is deleted.
+      // **Admin Mode** — Ctrl+Shift+S unless this till was set otherwise
+      // (System › Terminal). A hidden way in and nothing more: what it opens
+      // is a username and PIN, and no pane renders before them. F8 used to
+      // open the back office from anywhere, ungated, on the strength of the
+      // screen "gating itself" — which it did only until a manager had used it
+      // once, after which a locked till opened the staff pane for anybody.
       //
-      // Knowing it is no longer enough, though: on a till that is set up,
-      // `showForceResetDialog` asks for somebody holding `terminal.manage`
-      // before it shows that cost.
+      // **The forced reset** — Ctrl+Shift+R. It owned Ctrl+Shift+S until Admin
+      // Mode took it (owner decision, 12 Sep 2026), and stays a chord rather
+      // than a button for the reason it always was one: it can discard an open
+      // shift, so it is for somebody who knows it exists. On a till that is set
+      // up it asks for a username and PIN holding `terminal.manage` first.
       builder: (context, child) => _menuBar(
         AppStrings.of(ref.watch(localeProvider)),
         CallbackShortcuts(
           bindings: {
+            for (final activator in adminShortcutActivators(adminShortcut))
+              activator: () => _openAdmin(ref),
             // Both chords, matching the welcome screen's existing convention:
             // Ctrl for the Windows tills this ships to, Cmd for macOS.
             const SingleActivator(
-              LogicalKeyboardKey.keyS,
+              LogicalKeyboardKey.keyR,
               control: true,
               shift: true,
             ): () =>
                 _forceReset(ref),
             const SingleActivator(
-              LogicalKeyboardKey.keyS,
+              LogicalKeyboardKey.keyR,
               meta: true,
               shift: true,
             ): () =>
                 _forceReset(ref),
-            // The back office, from anywhere — the till, the start screen, a
-            // floor plan, a pane already open. An F-key rather than a chord
-            // because that is the vocabulary of the rest of this product's
-            // keyboard (F2 search, F7 open orders, F10 drawer) and of the
-            // keyboards it ships on, and because back-office work is something
-            // a manager does twenty times an evening between orders.
-            //
-            // Safe to bind globally and ungated: the screen it opens gates
-            // itself, asking for a username and the back-office password
-            // before any pane shows, and leaving out the panes the person who
-            // came through may not see.
-            const SingleActivator(LogicalKeyboardKey.f8): () =>
-                ref.read(routerProvider).go(PosRoutes.management),
           },
           // Root focus so the binding receives keys wherever focus currently
           // sits — key events bubble up to here from any focused field.
@@ -225,10 +218,15 @@ class XorderPosApp extends ConsumerWidget {
               //
               // A till parked on the start or lock screen is in front of
               // whoever walks up to it, so the whole bar — Settings and the
-              // back-office menus alike — waits for a sign-in. The back office
-              // is still reachable signed out through F8 (fn+F8 on a Mac), and
-              // the screen behind it asks for a username and the back-office
-              // password itself.
+              // back-office menus alike — waits for a sign-in, and the back
+              // office is not on this bar at all until somebody is in Admin
+              // Mode. The way in is a hidden chord and a username and PIN.
+              //
+              // **Somebody in Admin Mode is somebody signed in.** Admin Mode
+              // is not the till, so it can be entered with nobody signed in
+              // there — and the back office has no rail: this bar is how it
+              // gets from one pane to the next. Hiding it would leave the
+              // owner on Staff with no way to Money.
               //
               // Except while the till is not set up yet: the wizard has no
               // language step up front and relies on Settings' language
@@ -238,13 +236,15 @@ class XorderPosApp extends ConsumerWidget {
               // bare: that keeps the tree's shape, so signing in or out never
               // reparents the router's Navigator underneath it.
               final visible =
-                  staff != null || !ref.watch(setupCompleteProvider);
+                  staff != null ||
+                  ref.watch(adminSessionProvider) != null ||
+                  !ref.watch(setupCompleteProvider);
 
               // **And not in front of the till.** The start and lock screens are
               // where somebody signs in to sell, so they stay clean even with a
-              // name left over from the back office's own sign-in; the bar
-              // arrives with the till. Listened to through the router because
-              // this sits above it and no route rebuilds it.
+              // name still signed in behind them; the bar arrives with the
+              // till. Listened to through the router because this sits above
+              // it and no route rebuilds it.
               final router = ref.watch(routerProvider);
               return _AfterEachRoute(
                 listenable: router.routerDelegate,
@@ -256,7 +256,7 @@ class XorderPosApp extends ConsumerWidget {
                   barButtons: [
                     // **The back office, in the window's own bar.**
                     //
-                    // The only door, with F8. The till's bar and the start
+                    // Inside Admin Mode only. The till's bar and the start
                     // screen each had a Management button too — the same door
                     // twice, three times on the start screen counting this bar —
                     // and both are gone. A menu bar is the one surface that is
@@ -292,14 +292,6 @@ class XorderPosApp extends ConsumerWidget {
                               if (entry.divider) const MenuDivider(),
                               MenuButton(
                                 text: Text(entry.label),
-                                // Printed, not bound: the global binding is
-                                // what fires, and it lands on Staff — so the
-                                // key is named on the item it opens.
-                                shortcutText:
-                                    entry.pane == ManagementPane.staff &&
-                                        entry.first
-                                    ? 'F8'
-                                    : null,
                                 onTap: () => ref
                                     .read(routerProvider)
                                     .go(
@@ -416,7 +408,7 @@ class XorderPosApp extends ConsumerWidget {
                               // Printed, not bound: the chord above is what fires.
                               // Showing it here is how an installer discovers a
                               // shortcut nobody would guess.
-                              shortcutText: '⇧⌘S',
+                              shortcutText: '⇧⌘R',
                               onTap: () => _forceReset(ref),
                             ),
                         ],
@@ -448,35 +440,14 @@ class XorderPosApp extends ConsumerWidget {
     WidgetRef ref,
     AppStrings strings,
   ) {
-    final admin = ref.watch(signedInStaffProvider);
-
-    // Only reached while the till is being set up: once it is, the bar is
-    // hidden until somebody signs in. Which areas an unknown person has is not
-    // a question this bar can answer, so it offers the one door under the one
-    // word: Management, opening on Staff, which opens locked and asks.
-    if (admin == null) {
-      return [
-        (
-          strings.management,
-          [
-            for (final (i, (label, open, _)) in managementMenuEntries(
-              strings,
-              ManagementPane.staff,
-            ).indexed)
-              (
-                pane: ManagementPane.staff,
-                first: i == 0,
-                label: label,
-                open: open,
-                divider: false,
-              ),
-          ],
-        ),
-      ];
-    }
-    if (!admin.can(PosCapability.staffManage)) {
-      return const [];
-    }
+    // Only inside Admin Mode, and for whoever is in it. Outside, the bar offers
+    // no back office at all — not a door, not a greyed word: the way in is the
+    // hidden shortcut, and a menu item leading to it would be a second, visible
+    // one. That includes a till being set up, which once offered Management
+    // here: there is nobody to sign in and nothing yet to administer. Inside,
+    // the areas are the admin's, not the till operator's.
+    final admin = ref.watch(adminSessionProvider)?.staff;
+    if (admin == null) return const [];
 
     return [
       for (final (area, entries) in managementBarFor(
@@ -489,7 +460,24 @@ class XorderPosApp extends ConsumerWidget {
     ];
   }
 
-  /// Guarded so a second Cmd+Shift+S while the dialog is open cannot stack a
+  /// Into Admin Mode, from wherever the till is — and back there on the way
+  /// out.
+  ///
+  /// Not on a till that is not set up: there is nobody to sign in and nothing
+  /// to administer, and the welcome screen owns Ctrl+Shift+S there (it opens
+  /// the wizard). Not twice: the chord inside Admin Mode is not a second door.
+  void _openAdmin(WidgetRef ref) {
+    if (!ref.read(setupCompleteProvider)) return;
+    final router = ref.read(routerProvider);
+    final here = router.routerDelegate.currentConfiguration.uri.path;
+    if (here == PosRoutes.management) return;
+    router.go(
+      PosRoutes.management,
+      extra: ManagementDestination(pane: ManagementPane.staff, returnTo: here),
+    );
+  }
+
+  /// Guarded so a second Cmd+Shift+R while the dialog is open cannot stack a
   /// second one on top of it.
   static bool _resetting = false;
 

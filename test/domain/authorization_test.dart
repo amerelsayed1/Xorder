@@ -108,6 +108,220 @@ void main() {
       );
       expect(decision, isA<NeedsOverride>());
     });
+
+    test('a manager\'s PIN never opens Admin Mode', () {
+      // Approval is for one act at the till. The back office is not an act,
+      // and a PIN that could lend it would be a second, unlogged way in.
+      expect(
+        Authorization.approve(
+          approver: onRole(SystemRoles.ownerCode),
+          capability: PosCapability.adminEnter,
+        ),
+        isA<Denied>(),
+      );
+    });
+
+    test('an approval is a record of one act: what, who, and for what', () {
+      final sara = onRole(SystemRoles.supervisorCode);
+      final approval = (Authorization.approve(
+        approver: sara,
+        capability: PosCapability.orderRefund,
+        subject: 'order:42',
+      ) as Allowed).approval!;
+
+      expect(approval.capability, PosCapability.orderRefund);
+      expect(approval.approver, sara);
+      expect(approval.subject, 'order:42');
+    });
+  });
+
+  group('authorize — what a repository asks before it writes', () {
+    Approval approvalFor(
+      String capability, {
+      String? subject,
+      PosStaff? approver,
+    }) => (Authorization.approve(
+      approver: approver ?? onRole(SystemRoles.supervisorCode),
+      capability: capability,
+      subject: subject,
+    ) as Allowed).approval!;
+
+    test('somebody who holds it needs no approval', () {
+      expect(
+        Authorization.authorize(
+          onRole(SystemRoles.supervisorCode),
+          PosCapability.orderRefund,
+        ),
+        isA<Allowed>(),
+      );
+    });
+
+    test('somebody who lacks it, with nothing to show, is refused', () {
+      // The screen asked first; reaching the repository without an approval
+      // means something went round the screen.
+      expect(
+        Authorization.authorize(
+          onRole(SystemRoles.cashierCode),
+          PosCapability.orderRefund,
+        ),
+        isNot(isA<Allowed>()),
+      );
+    });
+
+    test('an approval for this act lets them, and names the approver', () {
+      final approval = approvalFor(PosCapability.orderRefund, subject: 'order:42');
+      final decision = Authorization.authorize(
+        onRole(SystemRoles.cashierCode),
+        PosCapability.orderRefund,
+        approval: approval,
+        subject: 'order:42',
+      );
+      expect((decision as Allowed).approvedBy!.name, 'Rana');
+    });
+
+    test('an approval for a different act is not this one', () {
+      final approval = approvalFor(PosCapability.cashOpenWithoutSale);
+      expect(
+        Authorization.authorize(
+          onRole(SystemRoles.cashierCode),
+          PosCapability.orderRefund,
+          approval: approval,
+        ),
+        isNot(isA<Allowed>()),
+      );
+    });
+
+    test('an approval for a different order is not this one', () {
+      final approval = approvalFor(PosCapability.orderRefund, subject: 'order:42');
+      expect(
+        Authorization.authorize(
+          onRole(SystemRoles.cashierCode),
+          PosCapability.orderRefund,
+          approval: approval,
+          subject: 'order:43',
+        ),
+        isNot(isA<Allowed>()),
+      );
+    });
+
+    test('an approval is spent by the act it allows', () {
+      // Once. A flow that kept hold of yesterday's approval — or passed the
+      // same one to two refunds — must not get a second act out of it.
+      final approval = approvalFor(PosCapability.orderRefund);
+      final cashier = onRole(SystemRoles.cashierCode);
+
+      expect(
+        Authorization.authorize(
+          cashier,
+          PosCapability.orderRefund,
+          approval: approval,
+        ),
+        isA<Allowed>(),
+      );
+      expect(
+        Authorization.authorize(
+          cashier,
+          PosCapability.orderRefund,
+          approval: approval,
+        ),
+        isNot(isA<Allowed>()),
+      );
+    });
+
+    test('an approval is not spent on somebody who did not need it', () {
+      final approval = approvalFor(PosCapability.orderRefund);
+      Authorization.authorize(
+        onRole(SystemRoles.supervisorCode),
+        PosCapability.orderRefund,
+        approval: approval,
+      );
+      expect(approval.isSpent, isFalse);
+    });
+
+    test('an act that needs a second person needs the approval, even from '
+        'somebody who holds the permission', () {
+      // A refund above the restaurant's threshold: the supervisor may refund,
+      // and still needs somebody else to say yes to this one.
+      final supervisor = onRole(SystemRoles.supervisorCode);
+      expect(
+        Authorization.authorize(
+          supervisor,
+          PosCapability.orderRefund,
+          approvalRequired: true,
+        ),
+        isNot(isA<Allowed>()),
+      );
+
+      final manager = PosStaff(
+        id: 7,
+        name: 'Hana',
+        role: PosRole(
+          id: 3,
+          code: SystemRoles.managerCode,
+          nameEn: 'Manager',
+          capabilities: SystemRoles.manager,
+        ),
+      );
+      final approval = approvalFor(PosCapability.orderRefund, approver: manager);
+      final decision = Authorization.authorize(
+        supervisor,
+        PosCapability.orderRefund,
+        approval: approval,
+        approvalRequired: true,
+      );
+      expect((decision as Allowed).approvedBy!.name, 'Hana');
+      expect(approval.isSpent, isTrue);
+    });
+
+    test('and the second person cannot be the first one', () {
+      // Otherwise "a second person approved it" is a supervisor typing their
+      // own PIN twice.
+      final supervisor = onRole(SystemRoles.supervisorCode);
+      final own = approvalFor(PosCapability.orderRefund, approver: supervisor);
+      expect(
+        Authorization.authorize(
+          supervisor,
+          PosCapability.orderRefund,
+          approval: own,
+          approvalRequired: true,
+        ),
+        isNot(isA<Allowed>()),
+      );
+    });
+
+    test('nothing lends what cannot be lent, whatever is shown', () {
+      final approval = approvalFor(PosCapability.orderRefund);
+      expect(
+        Authorization.authorize(
+          onRole(SystemRoles.cashierCode),
+          PosCapability.backupManage,
+          approval: approval,
+        ),
+        isA<Denied>(),
+      );
+    });
+  });
+
+  group('taking a payment off the bill (§ cancel payment)', () {
+    test('a cashier needs a manager for it', () {
+      expect(
+        Authorization.check(
+          onRole(SystemRoles.cashierCode),
+          PosCapability.paymentRemove,
+        ),
+        isA<NeedsOverride>(),
+      );
+    });
+
+    test('a supervisor and a manager may, as they could before', () {
+      for (final code in [SystemRoles.supervisorCode, SystemRoles.managerCode]) {
+        expect(
+          Authorization.check(onRole(code), PosCapability.paymentRemove),
+          isA<Allowed>(),
+          reason: code,
+        );
+      }
+    });
   });
 
   group('validateRole', () {

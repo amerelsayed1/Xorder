@@ -4,7 +4,10 @@ import '../../core/money/money.dart';
 import '../models/catalog.dart';
 import '../models/combo.dart';
 import '../models/discount.dart';
+import '../models/permissions.dart';
+import '../models/shift.dart';
 import '../models/ticket.dart';
+import 'authorization.dart';
 
 /// Why an operation was refused. The UI turns these into toasts; keeping them
 /// as data rather than strings means the engine stays testable and translatable.
@@ -155,6 +158,16 @@ class AlreadyDiscounted extends TicketRefusal {
   const AlreadyDiscounted(this.existing);
 
   final AppliedDiscount existing;
+}
+
+/// Somebody tried an act at the till they may not do, and nobody lent it.
+///
+/// Refused by the engine as well as by the screen, because the engine is what
+/// the screen calls: a control that forgot to ask would otherwise still work.
+class NotPermittedHere extends TicketRefusal {
+  const NotPermittedHere(this.capability);
+
+  final String capability;
 }
 
 /// The discount is larger than the person may give without approval.
@@ -572,11 +585,35 @@ abstract final class TicketEngine {
     );
   }
 
-  static Ticket removeTenderAt(Ticket ticket, int index) {
-    if (index < 0 || index >= ticket.tenders.length) return ticket;
+  /// Take a payment back off a bill that has not been settled.
+  ///
+  /// Asked here, not only on the payment screen. Tender by card, take it off,
+  /// keep the cash is the whole of a card-for-cash swap, and it had no check
+  /// at all. [by] may do it on their own with `payment.remove`; anybody else
+  /// needs [approval] — a supervisor's, for this ticket, spent by this.
+  static TicketResult removeTenderAt(
+    Ticket ticket,
+    int index, {
+    required PosStaff? by,
+    Approval? approval,
+  }) {
+    if (index < 0 || index >= ticket.tenders.length) {
+      return TicketResult.ok(ticket);
+    }
+    final decision = Authorization.authorize(
+      by,
+      PosCapability.paymentRemove,
+      approval: approval,
+      subject: ticket.id,
+    );
+    if (!decision.isAllowed) {
+      return const TicketResult.refused(
+        NotPermittedHere(PosCapability.paymentRemove),
+      );
+    }
 
     final tenders = [...ticket.tenders]..removeAt(index);
-    return ticket.copyWith(tenders: tenders);
+    return TicketResult.ok(ticket.copyWith(tenders: tenders));
   }
 
   // ── Discounts ─────────────────────────────────────────────────────────────

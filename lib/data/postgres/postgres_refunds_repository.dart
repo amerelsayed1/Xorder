@@ -3,8 +3,10 @@ import 'package:postgres/postgres.dart';
 import '../../core/config/deployment.dart';
 import '../../core/money/money.dart';
 import '../../domain/models/order_record.dart';
+import '../../domain/models/permissions.dart';
 import '../../domain/models/refund.dart';
 import '../../domain/repositories/repositories.dart';
+import '../../domain/services/authorization.dart';
 import '../../domain/services/refund_engine.dart' show RefundQuote;
 import 'pos_database.dart';
 import 'postgres_orders_repository.dart' show PosWriteContext;
@@ -58,10 +60,21 @@ class PostgresRefundsRepository implements RefundsRepository {
     required PosStaff by,
     required List<RefundTender> tenders,
     required String clientRefundId,
-    PosStaff? approvedBy,
+    Approval? approval,
     int? reasonId,
     String? note,
   }) async {
+    // Asked before the transaction rather than inside it: `runTx` turns
+    // anything thrown in there into a database failure, and "you may not" is
+    // not one. The sheet asked first; this is what holds when something goes
+    // round the sheet.
+    final approvedBy = Authorization.require(
+      by,
+      PosCapability.orderRefund,
+      approval: approval,
+      subject: '${order.id}',
+      approvalRequired: quote.requiresApproval,
+    ).approvedBy;
     final occurredAt = DateTime.now().toUtc();
 
     return _db.runTx(config, (tx) async {
@@ -301,7 +314,7 @@ class UnconfiguredRefundsRepository implements RefundsRepository {
     required PosStaff by,
     required List<RefundTender> tenders,
     required String clientRefundId,
-    PosStaff? approvedBy,
+    Approval? approval,
     int? reasonId,
     String? note,
   }) async => throw StateError(

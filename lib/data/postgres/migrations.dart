@@ -4257,6 +4257,54 @@ const posMigrations = <PosMigration>[
       EXECUTE FUNCTION pos_modifier_group_scope_leaves_no_links()
     ''',
   ]),
+  // `admin.enter` — who may open Admin Mode. The owner role holds every
+  // capability (migration 13), and a key added after a role exists reaches it
+  // only by a migration saying so: the seed runs for new restaurants alone.
+  // Without this every existing owner is refused at their own back office.
+  //
+  // **Owner only.** Managers opened the back office before this; now they do
+  // not until the owner gives the Manager role this key in Roles — the owner's
+  // decision (12 Sep 2026), made once and deliberately rather than inherited
+  // by accident.
+  //
+  // **46, not 44.** Admin Mode was first written as 44 on a branch that was
+  // lost before it merged; by the time it was recovered, main had shipped a
+  // different 44 (purchase orders) and 45 (shared option groups). Reusing a
+  // shipped number would cost every branch server that already ran it this
+  // migration, silently: the migrator skips a version it has recorded.
+  //
+  // Same shape as 13 and 15: additive union, idempotent, owner only.
+  PosMigration(46, 'the owner role may enter Admin Mode', [
+    '''
+    UPDATE pos_roles
+       SET capabilities = ARRAY(
+             SELECT DISTINCT unnest(
+               capabilities || ARRAY['admin.enter']::text[]))
+     WHERE code = 'owner'
+       AND NOT (capabilities @> ARRAY['admin.enter']::text[])
+    ''',
+  ]),
+  // `payment.remove` — taking a payment back off a bill not yet settled. It
+  // had no key, so anybody at the payment screen could do it. Now it has one,
+  // and the roles that did it before keep doing it: the owner (who holds
+  // everything), the manager and the supervisor. A cashier reaches it through
+  // a supervisor's PIN, which is the point of giving it a key.
+  //
+  // The seeded roles by code only, and additively. A restaurant's own roles
+  // are the restaurant's to decide about in Roles — and the people on them now
+  // need a supervisor for it, which is the safe direction to be wrong in.
+  //
+  // 47 rather than 45 for the reason 46 gives.
+  PosMigration(47, 'the roles that took payments off bills keep it', [
+    '''
+    UPDATE pos_roles
+       SET capabilities = ARRAY(
+             SELECT DISTINCT unnest(
+               capabilities || ARRAY['payment.remove']::text[]))
+     WHERE code IN ('owner', 'manager', 'supervisor')
+       AND NOT (capabilities @> ARRAY['payment.remove']::text[])
+    ''',
+  ]),
 ];
 
 /// Brings the branch database up to the current schema.

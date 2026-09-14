@@ -37,7 +37,7 @@ class FilingRefundsRepository implements RefundsRepository {
     required PosStaff by,
     required List<RefundTender> tenders,
     required String clientRefundId,
-    PosStaff? approvedBy,
+    Approval? approval,
     int? reasonId,
     String? note,
   }) async {
@@ -47,7 +47,7 @@ class FilingRefundsRepository implements RefundsRepository {
       by: by,
       tenders: tenders,
       clientRefundId: clientRefundId,
-      approvedBy: approvedBy,
+      approval: approval,
       reasonId: reasonId,
       note: note,
     );

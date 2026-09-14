@@ -784,6 +784,22 @@ class PostgresStaffDirectoryRepository implements StaffDirectoryRepository {
     final hash = await PinHash.hash(pin, salt);
 
     return _c.database.runTx(_c.config, (tx) async {
+      // Only the owner sets the owner's PIN — see [OwnerPinIsTheirs]. Read and
+      // locked in the same transaction as the write, so a role change landing
+      // between the two cannot slip a reset past it.
+      //
+      // Here and not in a trigger: the database sees a role, not a person, and
+      // the installer and the cloud seeder both write the owner's PIN. A
+      // trigger would refuse them, or trust a session setting that anybody at
+      // a psql prompt can set — a guard that only stops honest writers.
+      final target = await _readStaffOrNull(tx, staffId, lock: true);
+      if (target == null) {
+        return const AdminResult<void>.refused(EditedElsewhere(0));
+      }
+      if (target.role?.code == SystemRoles.ownerCode && target.id != by.id) {
+        return const AdminResult<void>.refused(OwnerPinIsTheirs());
+      }
+
       final rows = await tx.execute(
         Sql.named(
           'UPDATE pos_staff SET pin_salt = @salt, pin_hash = @hash '

@@ -85,14 +85,14 @@ class FilingOrdersRepository implements OrdersRepository {
     required PosStaff by,
     int? reasonId,
     String? note,
-    PosStaff? approvedBy,
+    Approval? approval,
     PosStaff? servedBy,
   }) => _inner.voidOrder(
     ticket,
     by: by,
     reasonId: reasonId,
     note: note,
-    approvedBy: approvedBy,
+    approval: approval,
     servedBy: servedBy,
   );
 }

@@ -7,6 +7,7 @@ import 'package:xorder_pos/app/router.dart';
 
 import 'package:xorder_pos/domain/models/permissions.dart';
 import 'package:xorder_pos/domain/repositories/repositories.dart';
+import 'package:xorder_pos/features/admin/application/admin_session.dart';
 
 import '../support/fakes.dart';
 
@@ -112,8 +113,9 @@ void main() {
     final container = await pumpApp(tester, staff: null);
 
     // Whoever walks up to a till on the start screen is not yet anybody, so
-    // the whole bar waits for a sign-in. F8 still reaches the back office's
-    // own sign-in without it.
+    // the whole bar waits for a sign-in. And the bar is no way into the back
+    // office: that is a hidden chord and a username and PIN, and a word here
+    // would be a second, visible door.
     expect(find.byType(MenuBar), findsNothing);
     expect(find.text('Settings'), findsNothing);
     expect(find.text('Management'), findsNothing);
@@ -125,6 +127,12 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(MenuBar), findsOneWidget);
     expect(find.text('Settings'), findsOneWidget);
+    expect(
+      find.text('People'),
+      findsNothing,
+      reason: 'the owner signed in at the till is not in Admin Mode',
+    );
+    expect(find.text('Management'), findsNothing);
 
     container.read(signedInStaffProvider.notifier).signOut();
     await tester.pumpAndSettle();
@@ -137,8 +145,8 @@ void main() {
   ) async {
     final container = await pumpApp(tester, staff: null);
 
-    // Signed in by the back office's own door, then back out to the front:
-    // the start screen is where somebody signs in to sell, so it stays clean.
+    // Signed in while still on the front door: the start screen is where
+    // somebody signs in to sell, so it stays clean.
     container.read(signedInStaffProvider.notifier).signIn(_owner);
     await tester.pumpAndSettle();
     expect(find.byType(MenuBar), findsNothing);
@@ -232,7 +240,11 @@ void main() {
   ) async {
     // Offline, because Buying's own entries are what this reads. The cloud
     // bar's Buying is a single pointer — asserted below.
-    await pumpApp(tester, offline: true);
+    final container = await pumpApp(tester, offline: true);
+    await container
+        .read(adminSessionProvider.notifier)
+        .signIn(username: 'amer', pin: '4321');
+    await tester.pumpAndSettle();
 
     // "Where do I enter this invoice" is answered by Buying, in the bar,
     // rather than by the fifth line of a scrolling list.
@@ -269,9 +281,14 @@ void main() {
     // stays where a manager learned to look for it; what is under it is the
     // answer, not four lists of rows the platform would never see.
     //
-    // Signed in as `_owner`: every capability, `purchase.manage` included — a
-    // local Owner role grants it even though no cloud bundle ever does.
-    await pumpApp(tester);
+    // In Admin Mode as the owner: every capability, `purchase.manage`
+    // included — a local Owner role grants it even though no cloud bundle ever
+    // does.
+    final container = await pumpApp(tester);
+    await container
+        .read(adminSessionProvider.notifier)
+        .signIn(username: 'amer', pin: '4321');
+    await tester.pumpAndSettle();
 
     expect(find.text('Buying'), findsOneWidget);
     expect(find.text('Inventory'), findsNothing);
@@ -301,23 +318,27 @@ void main() {
     expect(find.text('Switch user'), findsOneWidget);
   }, variant: desktop);
 
-  testWidgets('the back office has a key, and the menu says which', (
+  testWidgets('the reset names its chord, and nothing names Admin Mode\'s', (
     tester,
   ) async {
     await pumpApp(tester);
+    await openSettings(tester);
 
-    // Beside Staff, the item F8 lands on — not in Settings, where "Staff &
-    // accounts" and "Management" were the same door twice.
-    await openSettings(tester, label: 'People');
-    // Back-office work is something a manager does twenty times an evening
-    // between orders, and a key nobody can guess is a key nobody uses.
-    expect(find.text('F8'), findsOneWidget);
+    // Printed, so an installer can discover a reset nobody would guess.
+    expect(find.text('⇧⌘R'), findsOneWidget);
+    // Admin Mode's chord is printed nowhere: a hidden way in that the menu
+    // advertises is not hidden. F8, which used to be, is gone.
+    expect(find.text('⇧⌘S'), findsNothing);
+    expect(find.text('F8'), findsNothing);
   }, variant: desktop);
 
   testWidgets('and the same in Arabic, where the bar is mirrored', (
     tester,
   ) async {
     final container = await pumpApp(tester);
+    await container
+        .read(adminSessionProvider.notifier)
+        .signIn(username: 'amer', pin: '4321');
     container.read(localeProvider.notifier).apply('ar');
     await tester.pumpAndSettle();
 

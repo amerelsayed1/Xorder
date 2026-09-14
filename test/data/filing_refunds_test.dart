@@ -67,7 +67,7 @@ class _Refunds implements RefundsRepository {
     required PosStaff by,
     required List<RefundTender> tenders,
     required String clientRefundId,
-    PosStaff? approvedBy,
+    Approval? approval,
     int? reasonId,
     String? note,
   }) async => RefundResult(

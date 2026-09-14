@@ -1,5 +1,6 @@
 import 'dart:ui' show Brightness;
 
+import 'admin_mode_settings.dart';
 import 'deployment.dart';
 import 'printer_config.dart';
 import 'terminal_profile.dart';
@@ -25,6 +26,7 @@ class SavedTerminalConfig {
     this.printer = PrinterConfig.none,
     this.brightness,
     this.setupComplete = true,
+    this.adminMode = AdminModeSettings.standard,
   });
 
   /// Bumped when a field's meaning changes rather than when one is added.
@@ -62,6 +64,10 @@ class SavedTerminalConfig {
   /// present itself as a configured till.
   final bool setupComplete;
 
+  /// Which chord opens Admin Mode on this till, and how long it stays open
+  /// with nobody touching it.
+  final AdminModeSettings adminMode;
+
   Map<String, Object?> toJson() => {
     'version': currentVersion,
     'setup_complete': setupComplete,
@@ -70,6 +76,7 @@ class SavedTerminalConfig {
     'deployment': deployment.toJson(),
     'terminal': terminal.toJson(),
     'printer': printer.toJson(),
+    'admin_mode': adminMode.toJson(),
   };
 
   static SavedTerminalConfig fromJson(Map<String, Object?> json) =>
@@ -96,6 +103,9 @@ class SavedTerminalConfig {
           _ => null,
         },
         setupComplete: json['setup_complete'] as bool? ?? false,
+        adminMode: AdminModeSettings.fromJson(
+          (json['admin_mode'] as Map?)?.cast<String, Object?>() ?? const {},
+        ),
       );
 
   /// True when this config can actually open a till.
@@ -116,6 +126,7 @@ class SavedTerminalConfig {
     String? languageCode,
     Object? brightness = _unset,
     PrinterConfig? printer,
+    AdminModeSettings? adminMode,
   }) => SavedTerminalConfig(
     deployment: deployment,
     terminal: terminal,
@@ -125,6 +136,7 @@ class SavedTerminalConfig {
         ? this.brightness
         : brightness as Brightness?,
     setupComplete: setupComplete,
+    adminMode: adminMode ?? this.adminMode,
   );
 }
 

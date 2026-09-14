@@ -1,7 +1,10 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:xorder_pos/core/money/money.dart';
 import 'package:xorder_pos/domain/models/catalog.dart';
+import 'package:xorder_pos/domain/models/permissions.dart';
+import 'package:xorder_pos/domain/models/shift.dart';
 import 'package:xorder_pos/domain/models/ticket.dart';
+import 'package:xorder_pos/domain/services/authorization.dart';
 import 'package:xorder_pos/domain/services/ticket_engine.dart';
 
 const _doneness = ModifierGroup(
@@ -294,6 +297,70 @@ void main() {
     test('refuses to tender against an empty ticket', () {
       final result = TicketEngine.addTender(_ticket(), typeId: 1, label: 'Cash');
       expect(result.refusal, isA<NothingToTender>());
+    });
+
+    // Taking a payment back off the bill. It had no key and no check at all —
+    // the act a card-for-cash swap is made of — so the engine asks now, not
+    // only the payment screen.
+    PosStaff on(String code, {int id = 1}) => PosStaff(
+      id: id,
+      name: code,
+      role: PosRole(
+        id: id,
+        code: code,
+        nameEn: code,
+        capabilities: SystemRoles.seeded[code]!.capabilities,
+      ),
+    );
+
+    Ticket paidByCard() => TicketEngine.addTender(
+      seeded(),
+      typeId: 2,
+      label: 'Card',
+    ).ticket!;
+
+    test('a cashier cannot take a payment off on their own', () {
+      final result = TicketEngine.removeTenderAt(
+        paidByCard(),
+        0,
+        by: on(SystemRoles.cashierCode),
+      );
+      expect(result.refusal, isA<NotPermittedHere>());
+    });
+
+    test('a supervisor can', () {
+      final result = TicketEngine.removeTenderAt(
+        paidByCard(),
+        0,
+        by: on(SystemRoles.supervisorCode),
+      );
+      expect(result.ticket!.tenders, isEmpty);
+    });
+
+    test('a cashier can on a supervisor\'s approval for this ticket — once', () {
+      final ticket = paidByCard();
+      final approval = (Authorization.approve(
+        approver: on(SystemRoles.supervisorCode, id: 2),
+        capability: PosCapability.paymentRemove,
+        subject: ticket.id,
+      ) as Allowed).approval!;
+      final cashier = on(SystemRoles.cashierCode);
+
+      final first = TicketEngine.removeTenderAt(
+        ticket,
+        0,
+        by: cashier,
+        approval: approval,
+      );
+      expect(first.ticket!.tenders, isEmpty);
+
+      final again = TicketEngine.removeTenderAt(
+        ticket,
+        0,
+        by: cashier,
+        approval: approval,
+      );
+      expect(again.refusal, isA<NotPermittedHere>());
     });
   });
 

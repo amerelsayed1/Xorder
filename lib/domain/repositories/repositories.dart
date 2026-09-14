@@ -24,8 +24,14 @@ import '../models/order_record.dart';
 import '../models/pos_settings.dart';
 import '../models/refund.dart';
 import '../services/refund_engine.dart' show RefundQuote;
+import '../services/authorization.dart' show Approval;
 import '../models/shift.dart';
 import '../models/ticket.dart';
+
+// Every implementation of the till's writes is handed one, so every
+// implementation — the database, the fakes, the decorators that file and sync —
+// needs the name without also needing the rules that make one.
+export '../services/authorization.dart' show Approval;
 
 export '../models/shift.dart'
     show PosStaff, PosShift, ShiftSummary, ShiftTenderTotal, ShiftClose;
@@ -383,12 +389,16 @@ abstract interface class OrdersRepository {
   /// answer, and a voided entry is one anybody can.
   ///
   /// Idempotent on `ticket.id`, exactly as [submit] is.
+  ///
+  /// Refused with `PermissionRefused` unless [by] holds `order.void` or
+  /// [approval] is a supervisor's for this ticket — asked here as well as on
+  /// the screen, so nothing that goes round the screen voids a sale.
   Future<SubmitOrderResult> voidOrder(
     Ticket ticket, {
     required PosStaff by,
     int? reasonId,
     String? note,
-    PosStaff? approvedBy,
+    Approval? approval,
     PosStaff? servedBy,
   });
 }
@@ -453,13 +463,18 @@ abstract interface class RefundsRepository {
   ///
   /// Idempotent on [clientRefundId], exactly as an order is on its transaction
   /// id. Pass the same id to retry a call that timed out.
+  ///
+  /// Refused with `PermissionRefused` unless [by] holds `order.refund` or
+  /// [approval] is a supervisor's for this order — and, when the quote is above
+  /// the restaurant's threshold, unless [approval] is somebody else's whoever
+  /// [by] is. The approval is spent on this refund.
   Future<RefundResult> issue({
     required OrderRecord order,
     required RefundQuote quote,
     required PosStaff by,
     required List<RefundTender> tenders,
     required String clientRefundId,
-    PosStaff? approvedBy,
+    Approval? approval,
     int? reasonId,
     String? note,
   });
@@ -522,6 +537,10 @@ abstract interface class BusinessDayRepository {
 /// Money into and out of the drawer that is not a sale.
 abstract interface class CashMovementsRepository {
   /// Record one. The amount is always positive — see [CashMovementKind].
+  ///
+  /// Refused with `PermissionRefused` unless [by] holds the act's own
+  /// permission — `cash.open_without_sale` for a drawer opening, `cash.movement`
+  /// for money in or out — or [approval] is a supervisor's for it.
   Future<CashMovement> record({
     required CashMovementKind kind,
     required Money amount,
@@ -529,7 +548,7 @@ abstract interface class CashMovementsRepository {
     required int shiftId,
     int? reasonId,
     String? note,
-    PosStaff? approvedBy,
+    Approval? approval,
     int? businessDayId,
   });
 
@@ -654,11 +673,17 @@ abstract interface class ShiftRepository {
   /// The variance is computed and **stored** rather than derived later: it is
   /// the number a manager argues about, and recomputing it from rows that may
   /// have moved on would quietly rewrite history.
+  ///
+  /// **The drawer is its opener's.** Refused with `PermissionRefused` unless
+  /// [by] holds `shift.close` — and, when [by] did not open it, unless
+  /// [approval] is a manager's for this shift. The close dialog has asked for
+  /// that PIN for a long time; nothing below it did.
   Future<ShiftClose> close({
     required PosShift shift,
     required PosStaff by,
     required Money countedCash,
     String? note,
+    Approval? approval,
   });
 }
 

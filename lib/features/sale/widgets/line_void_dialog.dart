@@ -253,7 +253,6 @@ abstract final class OrderVoidFlow {
     if (!context.mounted) return null;
 
     final decision = Authorization.check(staff, PosCapability.orderVoid);
-    PosStaff? approver;
 
     if (decision is! Allowed) {
       final lent = await requestPermission(
@@ -272,17 +271,18 @@ abstract final class OrderVoidFlow {
         ),
       );
       if (lent is! Allowed || lent.approvedBy == null) return null;
-      approver = lent.approvedBy;
 
       if (!context.mounted) return null;
       return _write(
         context,
         ref,
         ticket: ticket,
-        by: staff ?? approver!,
+        by: staff ?? lent.approvedBy!,
         reasonId: lent.reason?.reasonId,
         note: lent.reason?.note,
-        approvedBy: approver,
+        // The approval, which the repository spends on this ticket and no
+        // other — not only the supervisor's name.
+        approval: lent.approval,
       );
     }
 
@@ -328,7 +328,7 @@ abstract final class OrderVoidFlow {
     required PosStaff by,
     int? reasonId,
     String? note,
-    PosStaff? approvedBy,
+    Approval? approval,
   }) async {
     try {
       final result = await ref
@@ -338,7 +338,7 @@ abstract final class OrderVoidFlow {
             by: by,
             reasonId: reasonId,
             note: note,
-            approvedBy: approvedBy,
+            approval: approval,
           );
       return OrderVoidOutcome.recorded(result.invoiceNumber);
     } on Object catch (error) {

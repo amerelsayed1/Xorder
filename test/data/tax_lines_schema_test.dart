@@ -9,6 +9,7 @@ import 'package:xorder_pos/data/postgres/pos_database.dart';
 import 'package:xorder_pos/data/postgres/postgres_catalog_repository.dart';
 import 'package:xorder_pos/data/postgres/postgres_orders_repository.dart';
 import 'package:xorder_pos/domain/models/catalog.dart';
+import 'package:xorder_pos/domain/models/permissions.dart';
 import 'package:xorder_pos/domain/models/tax.dart';
 import 'package:xorder_pos/domain/models/ticket.dart';
 import 'package:xorder_pos/domain/repositories/repositories.dart';
@@ -360,7 +361,17 @@ void main() {
 
       final result = await orders().voidOrder(
         ticket,
-        by: PosStaff(id: staffId, name: 'Nour'),
+        // A supervisor: the repository asks for `order.void`.
+        by: PosStaff(
+          id: staffId,
+          name: 'Nour',
+          role: const PosRole(
+            id: 1,
+            code: SystemRoles.supervisorCode,
+            nameEn: 'Supervisor',
+            capabilities: SystemRoles.supervisor,
+          ),
+        ),
       );
 
       final rows = await db.query(

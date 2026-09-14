@@ -51,6 +51,15 @@ abstract final class PosCapability {
   static const orderRefund = 'order.refund';
   static const receiptReprint = 'receipt.reprint';
 
+  /// Take a payment back off a bill that has not been settled yet.
+  ///
+  /// It had no key at all: anybody at the payment screen could tap a tender
+  /// off. It is the act a card-for-cash swap is made of — tender by card, take
+  /// it off, keep the cash — so it has one now. Overridable, because a cashier
+  /// who keyed the wrong amount is corrected with a supervisor watching; and
+  /// seeded to the supervisor and the manager, who could do it before.
+  static const paymentRemove = 'payment.remove';
+
   static const shiftOpen = 'shift.open';
   static const shiftClose = 'shift.close';
   static const cashMovement = 'cash.movement';
@@ -93,6 +102,17 @@ abstract final class PosCapability {
   static const reportsView = 'reports.view';
   static const backupManage = 'backup.manage';
 
+  /// Enter Admin Mode: the back office, behind a hidden shortcut and a
+  /// username and PIN.
+  ///
+  /// Its own key rather than [staffManage], which is what used to open the back
+  /// office. Managing staff is one job inside it; being let in at all is a
+  /// different question, and the owner decides who else is asked it (owner
+  /// decision, 12 Sep 2026): the Owner holds it, no other role is seeded with
+  /// it, and Roles is where it is handed out. Critical, so it is never lent —
+  /// a manager's PIN approves one refund and never opens the back office.
+  static const adminEnter = 'admin.enter';
+
   /// Every capability the product defines, in the order the role editor shows
   /// them. A role holding a string that is not in here is not an error — it is
   /// a capability from a newer build that this till has not been updated to
@@ -112,6 +132,7 @@ abstract final class PosCapability {
     orderItemVoid,
     orderRefund,
     receiptReprint,
+    paymentRemove,
     shiftOpen,
     shiftClose,
     cashMovement,
@@ -123,6 +144,7 @@ abstract final class PosCapability {
     purchaseManage,
     reportsView,
     backupManage,
+    adminEnter,
   ];
 
   /// Capabilities a supervisor can lend for one action.
@@ -142,6 +164,7 @@ abstract final class PosCapability {
     orderItemVoid,
     orderRefund,
     receiptReprint,
+    paymentRemove,
     shiftClose,
     cashMovement,
     // A supervisor standing at the till can allow one drawer opening. They
@@ -164,6 +187,7 @@ abstract final class PosCapability {
     terminalManage,
     settingsManage,
     backupManage,
+    adminEnter,
   };
 
   /// What the first build shipped, mapped onto what the strings are now.
@@ -225,6 +249,7 @@ abstract final class PosCapability {
     priceOverride: PermissionRisk.high,
     orderVoid: PermissionRisk.high,
     orderRefund: PermissionRisk.high,
+    paymentRemove: PermissionRisk.high,
     cashOpenWithoutSale: PermissionRisk.high,
     shiftViewExpectedCash: PermissionRisk.high,
     cashVarianceView: PermissionRisk.high,
@@ -241,6 +266,8 @@ abstract final class PosCapability {
     terminalManage: PermissionRisk.critical,
     settingsManage: PermissionRisk.critical,
     backupManage: PermissionRisk.critical,
+    // The door to all of the above at once.
+    adminEnter: PermissionRisk.critical,
   };
 
   /// The risk level of [capability]. Unknown keys are [PermissionRisk.high] —
@@ -424,6 +451,7 @@ enum CapabilityGroup {
     PosCapability.orderItemVoid,
     PosCapability.orderRefund,
     PosCapability.receiptReprint,
+    PosCapability.paymentRemove,
   ]),
   drawer([
     PosCapability.shiftOpen,
@@ -436,6 +464,7 @@ enum CapabilityGroup {
     PosCapability.dayForceClose,
   ]),
   backOffice([
+    PosCapability.adminEnter,
     PosCapability.catalogManage,
     PosCapability.purchaseManage,
     PosCapability.staffManage,
@@ -533,6 +562,7 @@ abstract final class SystemRoles {
     PosCapability.orderItemVoid,
     PosCapability.orderRefund,
     PosCapability.receiptReprint,
+    PosCapability.paymentRemove,
     PosCapability.shiftOpen,
     PosCapability.shiftClose,
     PosCapability.cashMovement,
@@ -557,6 +587,7 @@ abstract final class SystemRoles {
     PosCapability.orderItemVoid,
     PosCapability.orderRefund,
     PosCapability.receiptReprint,
+    PosCapability.paymentRemove,
     PosCapability.shiftOpen,
     PosCapability.shiftClose,
     PosCapability.cashMovement,

@@ -81,37 +81,64 @@ Future<PermissionDecision> requestPermission(
   );
   if (outcome == null) return decision;
 
+  // [entityId] names what the approval is for, so the repository can tell an
+  // approval for this order from one for the order before it.
   final approved = Authorization.approve(
     approver: outcome.approver,
     capability: capability,
     reason: outcome.reason,
+    subject: entityId,
   );
   if (approved is! Allowed) return approved;
 
-  await ref
-      .read(auditRepositoryProvider)
-      .record(
-        // The person who asked, not the person who approved. Both are on the
-        // row; which is which is the entire point of recording it.
-        by: ref.read(signedInStaffProvider) ?? outcome.approver,
-        approvedBy: outcome.approver,
-        action: AuditAction.permissionOverridden,
-        entityType: entityType ?? AuditAction.entityOrder,
-        entityId: entityId,
-        // [auditAction], not [action]: the row is read back months later,
-        // often by somebody who does not run the till in the language it was
-        // written on. What was approved should not depend on that.
-        reason: outcome.reason?.note,
-        after: {
-          'capability': capability,
-          'for': auditAction,
-          if (outcome.reason?.reasonId != null)
-            'reason_id': outcome.reason!.reasonId,
-        },
-      );
+  await recordApproval(
+    ref,
+    approver: outcome.approver,
+    capability: capability,
+    auditAction: auditAction,
+    entityType: entityType,
+    entityId: entityId,
+    reason: outcome.reason,
+  );
 
   return approved;
 }
+
+/// Put an approval on the ledger: who asked, who said yes, and to what.
+///
+/// Public because not every approval arrives through [requestPermission]. A
+/// discount above the cashier's limit, a refund above the threshold and
+/// somebody else's drawer each bring a supervisor over in their own words —
+/// and the first and the last of those used to approve with no row at all,
+/// which is the one outcome this exists to make impossible.
+Future<void> recordApproval(
+  WidgetRef ref, {
+  required PosStaff approver,
+  required String capability,
+  required String auditAction,
+  String? entityType,
+  String? entityId,
+  ReasonSelection? reason,
+}) => ref
+    .read(auditRepositoryProvider)
+    .record(
+      // The person who asked, not the person who approved. Both are on the
+      // row; which is which is the entire point of recording it.
+      by: ref.read(signedInStaffProvider) ?? approver,
+      approvedBy: approver,
+      action: AuditAction.permissionOverridden,
+      entityType: entityType ?? AuditAction.entityOrder,
+      entityId: entityId,
+      // [auditAction], not the words the supervisor read: the row is read back
+      // months later, often by somebody who does not run the till in the
+      // language it was written in.
+      reason: reason?.note,
+      after: {
+        'capability': capability,
+        'for': auditAction,
+        if (reason?.reasonId != null) 'reason_id': reason!.reasonId,
+      },
+    );
 
 /// What the approval flow came back with.
 class ApprovalOutcome {

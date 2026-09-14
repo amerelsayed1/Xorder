@@ -9,6 +9,39 @@ import '../../domain/models/reason_code.dart';
 import 'migrations.dart';
 import 'pos_database.dart';
 
+/// What [LocalBootstrap.seedOwner] did, or why it did not.
+///
+/// Data, not an exception — the same reasoning as `AdminRefusal`. Pointing an
+/// installer at a restaurant that already has an owner is an ordinary thing to
+/// do — a second till, a reinstall — and both callers have to put the answer
+/// into words, the wizard in two languages. Left to migration 42's trigger, the
+/// CLI died on a driver error and the wizard showed that error, in English.
+sealed class OwnerSeed {
+  const OwnerSeed();
+}
+
+/// The account was created.
+class OwnerCreated extends OwnerSeed {
+  const OwnerCreated();
+}
+
+/// The username was already there and was left alone — PIN included.
+class OwnerAlreadyHere extends OwnerSeed {
+  const OwnerAlreadyHere();
+}
+
+/// Somebody else is this restaurant's active owner, so nobody was created.
+///
+/// Carries their username as well as their name, because the first way
+/// forward is to seed under that username — which is signing in as them. The
+/// other is to disable them first, which is the handover migration 42 allows.
+class AnotherOwnerActive extends OwnerSeed {
+  const AnotherOwnerActive({required this.name, required this.username});
+
+  final String name;
+  final String username;
+}
+
 /// Preparing an empty PostgreSQL for a till, in one place.
 ///
 /// This used to live only in `bin/pos_migrate.dart`, which meant an offline
@@ -433,8 +466,19 @@ class LocalBootstrap {
   /// with, which is why [PinHash] is pure Dart. `DO NOTHING` on conflict, so a
   /// re-run never silently resets somebody's PIN.
   ///
-  /// @return true when this call created the account.
-  Future<bool> seedOwner(
+  /// **It asks before it inserts** whether somebody else is the active owner,
+  /// and answers [AnotherOwnerActive] rather than letting migration 42's
+  /// trigger throw. Catching the trigger's exception instead would have meant
+  /// reading the owner's name back out of an English sentence under SQLSTATE
+  /// P0001, which every RAISE in the schema shares. The question is asked the
+  /// way the trigger asks it — the owner role's row locked `FOR NO KEY UPDATE`,
+  /// in the same transaction as the INSERT — so two installers pointed at one
+  /// restaurant queue rather than each counting nobody. The trigger still
+  /// holds the rule; this is what lets an installer say it.
+  ///
+  /// A row with the *same* username is not another owner: that is the re-run,
+  /// excluded here for the reason the trigger excludes it.
+  Future<OwnerSeed> seedOwner(
     DeploymentConfig admin, {
     required int restaurantId,
     required int branchId,
@@ -443,29 +487,58 @@ class LocalBootstrap {
     required String username,
     required String pin,
   }) async {
+    // Hashed before the transaction, not inside it: PBKDF2 is slow on purpose,
+    // and the lock below should be held for two statements, not for that.
     final salt = PinHash.newSalt();
     final hash = await PinHash.hash(pin, salt);
 
-    final rows = await database.query(
-      admin,
-      'INSERT INTO pos_staff (restaurant_id, branch_id, name, username, '
-      'pin_salt, pin_hash, role_id, capabilities) '
-      // No direct grants: the ROLE carries the permissions, so changing what
-      // an owner may do is one edit in one place.
-      "VALUES (@restaurant, @branch, @name, @username, @salt, @hash, @role, '{}') "
-      'ON CONFLICT (restaurant_id, username) DO NOTHING RETURNING id',
-      parameters: {
-        'restaurant': restaurantId,
-        'branch': branchId,
-        'name': name,
-        'username': username,
-        'salt': salt,
-        'hash': hash,
-        'role': roleId,
-      },
-    );
+    return database.runTx<OwnerSeed>(admin, (tx) async {
+      await tx.execute(
+        Sql.named('SELECT 1 FROM pos_roles WHERE id = @role FOR NO KEY UPDATE'),
+        parameters: {'role': roleId},
+      );
+      final incumbent = await tx.execute(
+        Sql.named(
+          'SELECT s.name, s.username FROM pos_staff s '
+          'JOIN pos_roles r ON r.id = s.role_id '
+          'WHERE s.restaurant_id = @restaurant AND r.code = @owner '
+          '  AND s.is_active AND s.username <> @username '
+          'ORDER BY s.id LIMIT 1',
+        ),
+        parameters: {
+          'restaurant': restaurantId,
+          'owner': SystemRoles.ownerCode,
+          'username': username,
+        },
+      );
+      if (incumbent.isNotEmpty) {
+        return AnotherOwnerActive(
+          name: incumbent.first[0]! as String,
+          username: incumbent.first[1]! as String,
+        );
+      }
 
-    return rows.isNotEmpty;
+      final rows = await tx.execute(
+        Sql.named(
+          'INSERT INTO pos_staff (restaurant_id, branch_id, name, username, '
+          'pin_salt, pin_hash, role_id, capabilities) '
+          // No direct grants: the ROLE carries the permissions, so changing
+          // what an owner may do is one edit in one place.
+          "VALUES (@restaurant, @branch, @name, @username, @salt, @hash, @role, '{}') "
+          'ON CONFLICT (restaurant_id, username) DO NOTHING RETURNING id',
+        ),
+        parameters: {
+          'restaurant': restaurantId,
+          'branch': branchId,
+          'name': name,
+          'username': username,
+          'salt': salt,
+          'hash': hash,
+          'role': roleId,
+        },
+      );
+      return rows.isEmpty ? const OwnerAlreadyHere() : const OwnerCreated();
+    });
   }
 
   /// Grant a database role exactly what its job needs.

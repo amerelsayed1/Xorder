@@ -11,10 +11,20 @@ import 'package:xorder_pos/data/postgres/postgres_orders_repository.dart'
     show PosWriteContext;
 import 'package:xorder_pos/data/postgres/postgres_settings_repository.dart';
 import 'package:xorder_pos/domain/models/business_day.dart';
+import 'package:xorder_pos/domain/models/permissions.dart';
 import 'package:xorder_pos/domain/models/pos_settings.dart';
 import 'package:xorder_pos/domain/repositories/repositories.dart';
+import 'package:xorder_pos/domain/services/authorization.dart';
 
 import 'pg_fixture.dart';
+
+/// A cashier: no cash movement of their own, a supervisor's PIN for one.
+const _cashier = PosRole(
+  id: 2,
+  code: SystemRoles.cashierCode,
+  nameEn: 'Cashier',
+  capabilities: SystemRoles.cashier,
+);
 
 /// Wave B's three repositories, against a real database.
 void main() {
@@ -74,7 +84,18 @@ void main() {
                 ))
                 .first[0]
             as int;
-    nour = PosStaff(id: staffId, name: 'Nour Adel');
+    // A manager: the cash repository asks now, and a fixture holding nothing
+    // would be refused at the first pay-out.
+    nour = PosStaff(
+      id: staffId,
+      name: 'Nour Adel',
+      role: const PosRole(
+        id: 1,
+        code: SystemRoles.managerCode,
+        nameEn: 'Manager',
+        capabilities: SystemRoles.manager,
+      ),
+    );
 
     await db.query(
       pg.config,
@@ -430,12 +451,16 @@ void main() {
 
   group('cash movements', () {
     test('a pay-out is recorded positive, with both names', () async {
-      final approver = PosStaff(id: staffId, name: 'Nour Adel');
+      // A cashier, on the manager's approval.
+      final approval = (Authorization.approve(
+        approver: nour,
+        capability: PosCapability.cashMovement,
+      ) as Allowed).approval!;
       final movement = await cash.record(
         kind: CashMovementKind.payOut,
         amount: const Money(5000),
-        by: nour,
-        approvedBy: approver,
+        by: PosStaff(id: staffId, name: 'Nour Adel', role: _cashier),
+        approval: approval,
         shiftId: shiftId,
         note: 'Bread supplier',
       );
@@ -463,6 +488,52 @@ void main() {
         parameters: {'id': movement.id},
       );
       expect(rows.first[0], 0);
+    });
+
+    Future<int> movements() async => (await db.query(
+      pg.config,
+      'SELECT count(*) FROM pos_cash_movements',
+    )).first[0]! as int;
+
+    test('a pay-out by somebody without the permission is refused, and nothing '
+        'is written', () async {
+      await expectLater(
+        cash.record(
+          kind: CashMovementKind.payOut,
+          amount: const Money(5000),
+          by: PosStaff(id: staffId, name: 'Nour Adel', role: _cashier),
+          shiftId: shiftId,
+        ),
+        throwsA(isA<PermissionRefused>()),
+      );
+      expect(await movements(), 0);
+    });
+
+    test('opening the drawer is asked of its own permission, not of moving cash',
+        () async {
+      // The one drawer act that moves no money is the one a dishonest cashier
+      // wants most, which is why it has a key of its own — and a key of its
+      // own is only worth something if the write asks for it.
+      final mover = PosStaff(
+        id: staffId,
+        name: 'Nour Adel',
+        role: const PosRole(
+          id: 3,
+          code: 'mover',
+          nameEn: 'Mover',
+          capabilities: {PosCapability.operate, PosCapability.cashMovement},
+        ),
+      );
+      await expectLater(
+        cash.record(
+          kind: CashMovementKind.drawerOpen,
+          amount: Money.zero,
+          by: mover,
+          shiftId: shiftId,
+        ),
+        throwsA(isA<PermissionRefused>()),
+      );
+      expect(await movements(), 0);
     });
 
     test('a movement of nothing is refused before the database', () async {

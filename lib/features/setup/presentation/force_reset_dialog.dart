@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/providers.dart';
@@ -6,11 +7,10 @@ import '../../../core/l10n/app_strings.dart';
 import '../../../core/ui/theme.dart';
 import '../../../core/ui/tokens.dart';
 import '../../../core/ui/widgets/pos_widgets.dart';
-import '../../../data/postgres/pos_database.dart' show PosDbFailure;
 import '../../../domain/models/permissions.dart';
 import '../../../domain/models/shift.dart';
-import '../../admin/presentation/management_screen.dart'
-    show checkBackOfficeSignIn;
+import '../../admin/application/admin_session.dart'
+    show StaffRefused, StaffUnreachable, StaffVerified, checkStaffPin;
 
 /// The deliberate escape hatch: wipe this machine's terminal setup and run the
 /// wizard again, from anywhere, including mid-shift.
@@ -30,9 +30,11 @@ import '../../admin/presentation/management_screen.dart'
 ///
 /// **On a till that is set up, it asks who first.** The shortcut used to be the
 /// only lock, and a cashier who had once watched an installer use it held the
-/// key to a till nobody could sell on until somebody with the database
-/// password arrived. See [_ForceResetSignIn] for the one case it still lets
-/// through without a name.
+/// key to a till nobody could sell on until somebody who may manage terminals
+/// arrived. See [_ForceResetSignIn] for the one case it still lets through
+/// without a name.
+///
+/// Ctrl/Cmd+Shift+R. It was Ctrl+Shift+S until Admin Mode took that chord.
 ///
 /// Nothing on the platform is touched. This deletes local setup only.
 Future<bool> showForceResetDialog(BuildContext context, WidgetRef ref) async {
@@ -87,15 +89,16 @@ Future<bool> showForceResetDialog(BuildContext context, WidgetRef ref) async {
   return true;
 }
 
-/// Who is wiping this till: a username and the back-office password, from
-/// somebody who holds `terminal.manage`.
+/// Who is wiping this till: a username and PIN, from somebody who holds
+/// `terminal.manage` — the same question Admin Mode asks, through the same
+/// [checkStaffPin].
 ///
 /// **The one refusal that lets somebody through** is the database being
 /// unreachable altogether. A till in that state cannot sell, cannot open the
-/// back office, and cannot check anybody's password — and pointing it at a
-/// database it CAN reach is exactly what this reset is for. So it goes on to
-/// the dialog that names the cost, as it always did. A wrong password, or the
-/// right one from somebody who may not do this, stays refused.
+/// back office, and cannot check anybody's PIN — and pointing it at a database
+/// it CAN reach is exactly what this reset is for. So it goes on to the dialog
+/// that names the cost, as it always did. A wrong PIN, or the right one from
+/// somebody who may not do this, stays refused.
 class _ForceResetSignIn extends ConsumerStatefulWidget {
   const _ForceResetSignIn();
 
@@ -105,52 +108,50 @@ class _ForceResetSignIn extends ConsumerStatefulWidget {
 
 class _ForceResetSignInState extends ConsumerState<_ForceResetSignIn> {
   final _username = TextEditingController();
-  final _password = TextEditingController();
-  final _passwordFocus = FocusNode();
+  final _pin = TextEditingController();
+  final _pinFocus = FocusNode();
   bool _busy = false;
   String? _error;
 
   @override
   void dispose() {
     _username.dispose();
-    _password.dispose();
-    _passwordFocus.dispose();
+    _pin.dispose();
+    _pinFocus.dispose();
     super.dispose();
   }
 
   Future<void> _submit() async {
     final username = _username.text.trim();
-    final password = _password.text;
-    if (username.isEmpty || password.isEmpty || _busy) return;
+    final pin = _pin.text;
+    if (username.isEmpty || pin.isEmpty || _busy) return;
 
     final strings = context.strings;
+    // Before the await, for the reason [checkStaffPin] takes a repository.
+    final sessions = ref.read(sessionRepositoryProvider);
     setState(() {
       _busy = true;
       _error = null;
     });
 
-    final (:staff, :failure) = await checkBackOfficeSignIn(
-      ref,
+    final check = await checkStaffPin(
+      sessions,
       username: username,
-      password: password,
+      pin: pin,
       capability: PosCapability.terminalManage,
     );
     if (!mounted) return;
 
-    if (staff != null ||
-        failure == PosDbFailure.dns ||
-        failure == PosDbFailure.tcp) {
-      Navigator.of(context).pop(true);
-      return;
+    switch (check) {
+      case StaffVerified() || StaffUnreachable():
+        Navigator.of(context).pop(true);
+      case StaffRefused():
+        _pin.clear();
+        setState(() {
+          _busy = false;
+          _error = strings.forceResetSignInRefused;
+        });
     }
-
-    _password.clear();
-    setState(() {
-      _busy = false;
-      _error = failure == null || failure == PosDbFailure.auth
-          ? strings.forceResetSignInRefused
-          : strings.backOfficeRefused;
-    });
   }
 
   @override
@@ -186,17 +187,19 @@ class _ForceResetSignInState extends ConsumerState<_ForceResetSignIn> {
               UsernameField(
                 key: const Key('force-reset-username'),
                 controller: _username,
-                onSubmitted: _passwordFocus.requestFocus,
+                onSubmitted: _pinFocus.requestFocus,
               ),
               const SizedBox(height: PosSpace.lg),
-              MicroLabel(strings.backOfficePassword),
+              MicroLabel(strings.yourPin),
               const SizedBox(height: PosSpace.sm),
               TextField(
-                key: const Key('force-reset-password'),
-                controller: _password,
-                focusNode: _passwordFocus,
+                key: const Key('force-reset-pin'),
+                controller: _pin,
+                focusNode: _pinFocus,
                 obscureText: true,
                 enabled: !_busy,
+                keyboardType: TextInputType.number,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                 onSubmitted: (_) => _submit(),
                 textAlign: TextAlign.center,
                 style: PosText.mono(size: 16, color: pos.shellText),

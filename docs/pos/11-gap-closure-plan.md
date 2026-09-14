@@ -702,6 +702,73 @@ and `pos_permission_limits` and takes the tighter. Reading only the new table
 would silently lift every ceiling already configured; reading only the old column
 would make the new table decorative.
 
+### Admin Mode — 12 September 2026, and three departures it made
+
+The back office became **Admin Mode**: a session with a person, a start and an end,
+entered by a hidden chord and a username + PIN, separate from whoever is signed in
+at the till. It replaced a door that was a state the till drifted into —
+Management opened for the till's operator once the `pos_admin` password was held,
+and nothing ever forgot it, so after a manager had used it once, F8 at a locked till
+opened the staff pane for anybody (`test/features/admin_entry_test.dart` was written
+red against exactly that). What it departs from, all owner decisions:
+
+1. **The administrator's database password is now kept on the machine.** It used
+   to be typed at the door and never persisted. The owner chose a username and PIN
+   and nothing else, which leaves no field to type it into, so the wizard writes it
+   to `secrets.json` (`FileSecretStore.adminPasswordKey`) and Admin Mode loads it
+   into memory only for a session. **The cost:** anybody with the till OS account's
+   files has administrator rights to the branch database without a PIN. Installs
+   from before this ask for it once, after a username and PIN have already got
+   somebody in. `pos_migrate` still refuses to grant one role both credentials.
+2. **`admin.enter`, critical, Owner only** (migration 44). The back office is no
+   longer opened by `staff.manage`: managers who used it lose it until the owner
+   gives the Manager role the key in Roles. Critical, so no manager PIN ever lends it.
+3. **The chords moved.** Ctrl/Cmd+Shift+S opens Admin Mode (configurable per
+   terminal, System › Terminal, from a fixed list that avoids the sale screen's
+   F-keys); the forced reset moved to Ctrl/Cmd+Shift+R and now asks for a
+   username + PIN holding `terminal.manage` rather than the database password;
+   F8 is retired. The inactivity timeout is per terminal, 1–30 minutes, with no
+   "never" — an Admin Mode that does not lock is a back office left open in a
+   public room.
+
+### Manager approval — Phase 2 of the same request
+
+The till's approvals were checked on the screen and nowhere below it: every
+till repository took `approvedBy: PosStaff?` and wrote whatever it was handed.
+
+* **An approval is a single-use record now** (`Approval`, from
+  `Authorization.approve`): the capability, the approver, and what it was for —
+  an order, a ticket, a shift. `Authorization.authorize` is what a write asks:
+  the person's own permission, or an approval for this capability and this
+  thing, from somebody who may still give it, not yet spent. It is spent there.
+* **Enforced in the writes**, PostgreSQL and fakes alike: refund, cash movement
+  (a drawer opening asks `cash.open_without_sale`, not `cash.movement`), order
+  void, shift close. A refusal there is a `PermissionRefused` exception rather
+  than data — deliberately: every screen asks first, so reaching the repository
+  without authority means something went round a screen.
+* **Two acts need a second person whoever does them** (`approvalRequired`): a
+  refund above the restaurant's threshold, and somebody else's drawer. The
+  approver may not be the requester.
+* **The approver's ceiling binds**, not no ceiling: discounts and price
+  overrides retried after an approval used `limit: null`.
+* **`payment.remove`** (migration 45) — taking a payment off an unsettled bill
+  had no key and no check. Owner, manager and supervisor keep it; a cashier
+  needs a supervisor's PIN. The ticket engine asks as well as the screen.
+* **Audit rows** for the approvals that wrote none: a discount above the limit,
+  somebody else's drawer, a refund above the threshold; a reprint's row now
+  names its approver.
+
+Found on the way, and fixed with it: a supervisor's refund above the threshold
+was never shown to a second person (`requestPermission` answers "allowed" at
+once for a holder); a cashier over their own price-override limit was retried
+with no ceiling for the same reason; a supervisor's approval for a cashier's
+pay-out was dropped before the write; and the shift repository let anybody
+close anybody's drawer, which the close dialog had stopped allowing long ago.
+
+Not done: the approver on a voided order is on the audit row and not on
+`pos_orders` (no column); `LimitKey.refund` and `LimitKey.cashPayOut` are still
+unread, as they were before; day close is unchanged.
+
 ---
 
 ## 6. Wave D — Settings & configuration surface

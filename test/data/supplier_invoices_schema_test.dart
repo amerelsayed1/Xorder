@@ -69,7 +69,13 @@ void main() {
     id: 3,
     code: 'manager',
     nameEn: 'Manager',
-    capabilities: {PosCapability.purchaseManage, PosCapability.cashMovement},
+    // `shift.close` too: these tests count the drawer they opened, and the
+    // shift repository asks for it now rather than trusting whoever calls.
+    capabilities: {
+      PosCapability.purchaseManage,
+      PosCapability.cashMovement,
+      PosCapability.shiftClose,
+    },
   );
   const bookkeeperRole = PosRole(
     id: 4,

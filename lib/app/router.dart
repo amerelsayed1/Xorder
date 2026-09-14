@@ -54,9 +54,10 @@ bool needsSignIn({
 /// Only whole-screen transitions live here. Modifier sheets, payment and the
 /// receipt are dialogs over the sale screen — they are steps in one task, and
 /// routing them would put the cashier's ticket at the mercy of a back gesture.
-/// The root navigator, exposed so the app-level Cmd/Ctrl+Shift+S binding can
-/// show its dialog. That shortcut is registered ABOVE the router (it must work
-/// on every screen), and a context from up there has no Navigator in it — the
+/// The root navigator, exposed so the app-level chords (the forced reset's
+/// Cmd/Ctrl+Shift+R) can show their dialogs. They are registered ABOVE the
+/// router (they must work on every screen), and a context from up there has no
+/// Navigator in it — the
 /// first attempt threw "Navigator operation requested with a context that does
 /// not include a Navigator" and the dialog never appeared.
 final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();

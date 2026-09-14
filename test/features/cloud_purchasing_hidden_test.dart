@@ -9,6 +9,7 @@ import 'package:xorder_pos/core/ui/theme.dart';
 import 'package:xorder_pos/domain/models/permissions.dart';
 import 'package:xorder_pos/domain/models/shift.dart';
 import 'package:xorder_pos/domain/services/eta_filing.dart' show etaFilingEnabled;
+import 'package:xorder_pos/features/admin/application/admin_session.dart';
 import 'package:xorder_pos/features/admin/presentation/management_purchasing_pane.dart';
 import 'package:xorder_pos/features/admin/presentation/management_roles_pane.dart';
 import 'package:xorder_pos/features/admin/presentation/management_screen.dart';
@@ -359,21 +360,9 @@ void main() {
       await tester.pumpWidget(screen(container, pane: pane, language: language));
       await tester.pumpAndSettle();
 
-      // Through the door as Amer, the owner — every capability, purchasing's
-      // included.
-      await tester.enterText(
-        find.descendant(
-          of: find.byKey(const Key('back-office-username')),
-          matching: find.byType(TextField),
-        ),
-        'amer',
-      );
-      await tester.enterText(
-        find.byKey(const Key('back-office-password')),
-        'test-credential',
-      );
-      await tester.tap(find.byKey(const Key('back-office-open')));
-      await tester.pumpAndSettle();
+      // Through Admin Mode's door as Amer, the owner — every capability,
+      // purchasing's included.
+      await enterAdminMode(tester);
       return container;
     }
 
@@ -384,7 +373,10 @@ void main() {
 
       expect(container.read(catalogAdminRepositoryProvider), isNull);
       expect(
-        container.read(signedInStaffProvider)!.can(PosCapability.purchaseManage),
+        container
+            .read(adminSessionProvider)!
+            .staff
+            .can(PosCapability.purchaseManage),
         isTrue,
       );
 

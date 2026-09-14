@@ -46,9 +46,16 @@ class FileSecretStore implements PosDbSecretStore {
   /// The read-only backup account's password (`pos_backup`).
   ///
   /// Kept here, beside the till's, because it can do no more than the till's
-  /// file already can: it reads every row and writes none. The administrator's
-  /// password is never kept anywhere — see `adminDbCredentialProvider`.
+  /// file already can: it reads every row and writes none.
   static const backupPasswordKey = 'pos_backup_database_password';
+
+  /// The back office's database password (`pos_admin`).
+  ///
+  /// **Unlike the two above, this one can do more than the till's file.** It
+  /// was never kept anywhere until Admin Mode became a username and a PIN
+  /// (owner decision, 12 Sep 2026) — see `adminDbSecretStoreProvider` for what
+  /// keeping it here costs, and why that was accepted.
+  static const adminPasswordKey = 'pos_admin_database_password';
 
   final Future<Directory> Function() _directory;
 

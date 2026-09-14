@@ -5,14 +5,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../app/providers.dart';
 import '../../../core/l10n/app_strings.dart';
 import '../../../core/ui/theme.dart';
-import '../../../data/postgres/pos_database.dart';
 import '../../../core/ui/tokens.dart';
 import '../../../core/ui/widgets/pos_widgets.dart';
 import '../../../domain/models/permissions.dart';
 import '../../../domain/models/shift.dart';
-import '../../../domain/services/authorization.dart';
 import '../../../domain/services/eta_filing.dart' show etaFilingEnabled;
+import '../application/admin_session.dart';
+import 'admin_activity_watch.dart';
 import 'admin_pane_bits.dart';
+import 'admin_sign_in.dart';
 import 'management_activity_pane.dart';
 import 'management_backup_pane.dart';
 import 'management_items_pane.dart';
@@ -344,8 +345,8 @@ List<(String, ManagementDestination Function(), bool)> managementMenuEntries(
 /// One line under an area in the window's bar.
 ///
 /// [pane] is null for a line that is not a pane — the pointer a cloud till
-/// shows under Buying. [first] is the pane's own first line, which is where
-/// the bar prints F8 for Staff; [divider] is drawn above this line.
+/// shows under Buying. [first] is the pane's own first line; [divider] is
+/// drawn above this line.
 typedef ManagementBarEntry = ({
   ManagementPane? pane,
   bool first,
@@ -514,10 +515,43 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
   /// the first Esc can hand focus back here, and the second one still arrives.
   final _escapeFocus = FocusNode(debugLabel: 'management-escape');
 
+  late final AdminSessionController _admin;
+
+  /// Set when the inactivity timer ended the session, so the door can say why
+  /// it is showing again.
+  int? _lockedAfter;
+
+  @override
+  void initState() {
+    super.initState();
+    _admin = ref.read(adminSessionProvider.notifier);
+  }
+
+  /// Leaving Admin Mode by any route — the till locked, another screen chosen
+  /// from the bar — ends it, exactly as Exit does. A session that outlived its
+  /// screen is how a locked till came to open the staff pane.
+  ///
+  /// After this frame rather than now: the tree is being torn down, and a
+  /// provider changed in the middle of that is one its other listeners hear
+  /// about mid-teardown.
   @override
   void dispose() {
+    final admin = _admin;
+    Future.microtask(() => admin.end(AdminSessionEnd.left));
     _escapeFocus.dispose();
     super.dispose();
+  }
+
+  void _exit() {
+    _admin.end(AdminSessionEnd.exited);
+    widget.onClose();
+  }
+
+  void _lock() {
+    setState(
+      () => _lockedAfter = ref.read(adminModeSettingsProvider).timeoutMinutes,
+    );
+    _admin.end(AdminSessionEnd.timedOut);
   }
 
   /// Esc is "Back to the till", with one step in front of it.
@@ -528,7 +562,7 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
   /// for it mid-form. So inside a field the first Esc only leaves the field,
   /// and the second leaves the back office.
   ///
-  /// Not at the door: a username and a password are nothing to lose, and
+  /// Not at the door: a username and a PIN are nothing to lose, and
   /// somebody who opened the wrong screen wants out in one key.
   void _escape({required bool signingIn}) {
     final typing =
@@ -572,32 +606,25 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
     return CallbackShortcuts(
       bindings: {
         const SingleActivator(LogicalKeyboardKey.escape): () =>
-            _escape(signingIn: body is _BackOfficeSignIn),
+            _escape(signingIn: body is AdminSignInView),
       },
       child: Focus(focusNode: _escapeFocus, autofocus: true, child: body),
     );
   }
 
   Widget _body(BuildContext context) {
-    final admin = ref.watch(signedInStaffProvider);
+    // Whoever signed in to ADMIN MODE — not whoever is signed in at the till.
+    // Entering used to replace the till's operator with the manager who came
+    // through the door, and leaving never gave the till back.
+    final admin = ref.watch(adminSessionProvider)?.staff;
 
-    // One door: the administrator's username and the back-office password.
-    //
-    // **The password is the database's, not a person's.** The till credential
-    // holds SELECT and nothing more, deliberately, so nothing here can save
-    // until the back office's own password is supplied — and it is held for
-    // the session and never written to disk: on the same machine as the till's
-    // password it would hand back everything the split protects.
-    //
-    // Watched rather than read once: a manager whose role is changed from
-    // another till mid-session loses the screen on the next frame, which is
-    // the same answer the database would give the next time they saved.
-    if (admin == null ||
-        !admin.can(PosCapability.staffManage) ||
-        ref.watch(adminDbCredentialProvider) == null) {
-      return _BackOfficeSignIn(
+    // Nothing of the back office renders before somebody is in: not a pane,
+    // not a count, not the bar's areas. The shortcut that led here is a hidden
+    // way in, not a lock; this is the lock.
+    if (admin == null) {
+      return AdminSignInView(
         onClose: widget.onClose,
-        username: admin?.username,
+        lockedAfterMinutes: _lockedAfter,
       );
     }
 
@@ -641,7 +668,7 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
           )
         : null;
 
-    return Scaffold(
+    final screen = Scaffold(
       backgroundColor: context.pos.page,
       body: SafeArea(
         child: Column(
@@ -651,7 +678,7 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
             // neighbours across the top was the same navigation twice.
             _Header(
               admin: admin,
-              onClose: widget.onClose,
+              onClose: _exit,
               pane: showing,
             ),
             if (ref.watch(schemaUpgradeFailureProvider) case final failure?)
@@ -722,6 +749,8 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
         ),
       ),
     );
+
+    return AdminActivityWatch(onIdle: _lock, child: screen);
   }
 }
 
@@ -754,7 +783,7 @@ class _Header extends StatelessWidget {
       child: Row(
         children: [
           Text(
-            '${strings.management} › ${managementPaneLabel(strings, pane).$1}',
+            strings.adminTitle(managementPaneLabel(strings, pane).$1),
             style: PosText.screenTitle(color: context.pos.ink),
           ),
           const SizedBox(width: PosSpace.lg),
@@ -765,254 +794,12 @@ class _Header extends StatelessWidget {
           ),
           const Spacer(),
           PosButton(
-            label: strings.backToTill,
+            key: const Key('admin-exit'),
+            label: strings.exitAdminMode,
             border: Border.fromBorderSide(context.pos.resting),
             onPressed: onClose,
           ),
         ],
-      ),
-    );
-  }
-}
-
-/// Whether [username] and [password] get somebody holding [capability] through
-/// the back-office door — and when they do not, what the database said.
-///
-/// **One answer, shared.** The door asks it for `staff.manage`; the forced
-/// terminal reset asks it for `terminal.manage` before it wipes a working till.
-/// Two copies of "is this the back-office password" would be two rules the
-/// first time somebody changed one of them.
-///
-/// **Tried before it is kept.** A password that was merely stored would fail
-/// later, on the first save, after somebody had typed a whole staff record —
-/// so the first one in a session is probed against the database, and one that
-/// gets nobody in is forgotten again.
-///
-/// `failure` is null when the password was right. `staff` is null when nobody
-/// active by that name holds [capability], which the callers refuse exactly
-/// like a wrong password.
-Future<({PosStaff? staff, PosDbFailure? failure})> checkBackOfficeSignIn(
-  WidgetRef ref, {
-  required String username,
-  required String password,
-  required String capability,
-}) async {
-  final held = ref.read(adminDbCredentialProvider);
-  PosDbFailure? failure;
-  if (held != null) {
-    failure = held == password ? null : PosDbFailure.auth;
-  } else {
-    ref.read(adminDbCredentialProvider.notifier).set(password);
-    failure = await ref
-        .read(adminPosDatabaseProvider)
-        .probe(ref.read(adminDeploymentProvider));
-  }
-  final staff = failure == null
-      ? await _activeHolder(ref, username, capability)
-      : null;
-  if (staff == null && held == null) {
-    ref.read(adminDbCredentialProvider.notifier).forget();
-  }
-  return (staff: staff, failure: failure);
-}
-
-/// The active staff member [username] names, if they hold [capability].
-Future<PosStaff?> _activeHolder(
-  WidgetRef ref,
-  String username,
-  String capability,
-) async {
-  try {
-    final everyone = await ref
-        .read(staffDirectoryRepositoryProvider)
-        .all(includeInactive: false);
-    for (final person in everyone) {
-      if (person.username?.toLowerCase() == username.toLowerCase() &&
-          Authorization.check(person, capability).isAllowed) {
-        return person;
-      }
-    }
-  } on Object {
-    // Unreadable is refused like unknown. The password check says whether the
-    // database is reachable at all.
-  }
-  return null;
-}
-
-/// The back office's one door: the administrator's username and the
-/// back-office password — the database administrator password set when this
-/// install was made. No PIN: PINs are for the till.
-///
-/// **Checked against the database the first time in a session**, then against
-/// the password already held — so a second manager signing in after the first
-/// is not another round trip, and a wrong one is refused all the same.
-///
-/// One refusal for every way in being wrong: an unknown username, a cashier's,
-/// and a wrong password all read the same, so the form is no way of finding
-/// out who the managers are.
-class _BackOfficeSignIn extends ConsumerStatefulWidget {
-  const _BackOfficeSignIn({required this.onClose, this.username});
-
-  final VoidCallback onClose;
-
-  /// Whoever is signed in at the till, offered as the name to sign in under.
-  final String? username;
-
-  @override
-  ConsumerState<_BackOfficeSignIn> createState() => _BackOfficeSignInState();
-}
-
-class _BackOfficeSignInState extends ConsumerState<_BackOfficeSignIn> {
-  late final _username = TextEditingController(text: widget.username ?? '');
-  final _password = TextEditingController();
-  final _passwordFocus = FocusNode();
-  bool _busy = false;
-  String? _error;
-
-  @override
-  void dispose() {
-    _username.dispose();
-    _password.dispose();
-    _passwordFocus.dispose();
-    super.dispose();
-  }
-
-  /// Whatever migrations this build carries and the database lacks. See
-  /// `schemaUpgraderProvider` for why here.
-  Future<void> _upgradeSchema() async {
-    final upgrade = ref.read(schemaUpgraderProvider);
-    if (upgrade == null) return;
-    final failures = ref.read(schemaUpgradeFailureProvider.notifier);
-    try {
-      await upgrade();
-      failures.clear();
-    } on Object catch (error) {
-      failures.report('$error');
-    }
-  }
-
-  Future<void> _submit() async {
-    final username = _username.text.trim();
-    final password = _password.text;
-    if (username.isEmpty || password.isEmpty || _busy) return;
-
-    final strings = context.strings;
-    setState(() {
-      _busy = true;
-      _error = null;
-    });
-
-    final (:staff, :failure) = await checkBackOfficeSignIn(
-      ref,
-      username: username,
-      password: password,
-      capability: PosCapability.staffManage,
-    );
-    if (!mounted) return;
-
-    if (staff != null) {
-      // Before the panes, not after: a pane that loaded first would read a
-      // table the upgrade was about to create.
-      await _upgradeSchema();
-      if (!mounted) return;
-      // The screen rebuilds on the far side of the door.
-      ref.read(signedInStaffProvider.notifier).signIn(staff);
-      return;
-    }
-
-    _password.clear();
-    setState(() {
-      _busy = false;
-      _error = switch (failure) {
-        PosDbFailure.dns || PosDbFailure.tcp => strings.backOfficeUnreachable,
-        null || PosDbFailure.auth => strings.backOfficeSignInRefused,
-        _ => strings.backOfficeRefused,
-      };
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final strings = context.strings;
-    final pos = context.pos;
-
-    return Scaffold(
-      backgroundColor: pos.shell,
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 420),
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(PosSpace.xl),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  strings.management,
-                  style: PosText.screenTitle(color: pos.shellText),
-                ),
-                const SizedBox(height: PosSpace.sm),
-                Text(
-                  strings.backOfficeSignInHelp,
-                  style: PosText.ui(
-                    size: 13,
-                    color: pos.shellMuted,
-                    height: 1.5,
-                  ),
-                ),
-                const SizedBox(height: PosSpace.xl),
-                UsernameField(
-                  key: const Key('back-office-username'),
-                  controller: _username,
-                  onSubmitted: _passwordFocus.requestFocus,
-                ),
-                const SizedBox(height: PosSpace.lg),
-                MicroLabel(strings.backOfficePassword),
-                const SizedBox(height: PosSpace.sm),
-                TextField(
-                  key: const Key('back-office-password'),
-                  controller: _password,
-                  focusNode: _passwordFocus,
-                  obscureText: true,
-                  enabled: !_busy,
-                  onSubmitted: (_) => _submit(),
-                  textAlign: TextAlign.center,
-                  style: PosText.mono(size: 16, color: pos.shellText),
-                  cursorColor: pos.accent,
-                  decoration: shellInputDecoration(pos),
-                ),
-                // Reserved, not conditional, so the button does not jump
-                // under a finger already on its way to it.
-                const SizedBox(height: PosSpace.md),
-                SizedBox(
-                  height: 36,
-                  child: _error == null
-                      ? null
-                      : Text(
-                          _error!,
-                          textAlign: TextAlign.center,
-                          style: PosText.ui(size: 12.5, color: pos.danger),
-                        ),
-                ),
-                const SizedBox(height: PosSpace.sm),
-                PosButton(
-                  key: const Key('back-office-open'),
-                  label: _busy ? strings.checking : strings.openManagement,
-                  background: pos.accent,
-                  foreground: pos.onAccent,
-                  onPressed: _busy ? null : _submit,
-                ),
-                const SizedBox(height: PosSpace.md),
-                PosButton(
-                  label: strings.backToTill,
-                  foreground: pos.shellText,
-                  border: Border.fromBorderSide(pos.shellBorder),
-                  onPressed: widget.onClose,
-                ),
-              ],
-            ),
-          ),
-        ),
       ),
     );
   }

@@ -398,7 +398,7 @@ class FakeCash implements CashMovementsRepository {
     required int shiftId,
     int? reasonId,
     String? note,
-    PosStaff? approvedBy,
+    Approval? approval,
     int? businessDayId,
   }) async {
     final failure = failWith;

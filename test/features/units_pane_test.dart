@@ -37,20 +37,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // Through the back office's door, as the owner.
-    await tester.enterText(
-      find.descendant(
-        of: find.byKey(const Key('back-office-username')),
-        matching: find.byType(TextField),
-      ),
-      'amer',
-    );
-    await tester.enterText(
-      find.byKey(const Key('back-office-password')),
-      'test-credential',
-    );
-    await tester.tap(find.byKey(const Key('back-office-open')));
-    await tester.pumpAndSettle();
+    // Through Admin Mode's door, as the owner.
+    await enterAdminMode(tester);
     return container;
   }
 

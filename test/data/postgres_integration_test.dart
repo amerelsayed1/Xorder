@@ -9,8 +9,10 @@ import 'package:xorder_pos/data/postgres/pos_database.dart';
 import 'package:xorder_pos/data/postgres/postgres_orders_repository.dart';
 import 'package:xorder_pos/domain/models/catalog.dart';
 import 'package:xorder_pos/domain/models/discount.dart';
+import 'package:xorder_pos/domain/models/permissions.dart';
 import 'package:xorder_pos/domain/models/shift.dart';
 import 'package:xorder_pos/domain/models/ticket.dart';
+import 'package:xorder_pos/domain/services/authorization.dart';
 import 'package:xorder_pos/domain/services/ticket_engine.dart';
 
 import 'pg_fixture.dart';
@@ -425,7 +427,68 @@ void main() {
       ],
     );
 
-    PosStaff staff() => PosStaff(id: staffId, name: 'Nour Adel');
+    // A supervisor: the repository asks for `order.void` now.
+    PosStaff staff() => PosStaff(
+      id: staffId,
+      name: 'Nour Adel',
+      role: const PosRole(
+        id: 1,
+        code: SystemRoles.supervisorCode,
+        nameEn: 'Supervisor',
+        capabilities: SystemRoles.supervisor,
+      ),
+    );
+
+    PosStaff cashier() => PosStaff(
+      id: staffId,
+      name: 'Nour Adel',
+      role: const PosRole(
+        id: 2,
+        code: SystemRoles.cashierCode,
+        nameEn: 'Cashier',
+        capabilities: SystemRoles.cashier,
+      ),
+    );
+
+    Future<int> voided() async => (await db.query(
+      pg.config,
+      "SELECT count(*) FROM pos_orders WHERE status = 'VOIDED'",
+    )).first[0]! as int;
+
+    test('somebody without order.void is refused, and nothing is written',
+        () async {
+      await expectLater(
+        repository().voidOrder(
+          sentTicket('dddddddd-dddd-4ddd-8ddd-dddddddddddd'),
+          by: cashier(),
+        ),
+        throwsA(isA<PermissionRefused>()),
+      );
+      expect(await voided(), 0);
+    });
+
+    test('a supervisor\'s approval for this ticket lets a cashier void it',
+        () async {
+      const id = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+      final approval = (Authorization.approve(
+        approver: staff(),
+        capability: PosCapability.orderVoid,
+        subject: id,
+      ) as Allowed).approval!;
+
+      await repository().voidOrder(sentTicket(id), by: cashier(), approval: approval);
+      expect(await voided(), 1);
+
+      // And not a second, different ticket on the same approval.
+      await expectLater(
+        repository().voidOrder(
+          sentTicket('ffffffff-ffff-4fff-8fff-ffffffffffff'),
+          by: cashier(),
+          approval: approval,
+        ),
+        throwsA(isA<PermissionRefused>()),
+      );
+    });
 
     test('is written with its real totals, not zeroed', () async {
       await repository().voidOrder(

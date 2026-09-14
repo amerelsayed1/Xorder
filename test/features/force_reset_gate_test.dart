@@ -2,15 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:xorder_pos/app/providers.dart';
-import 'package:xorder_pos/core/config/deployment.dart';
 import 'package:xorder_pos/core/l10n/app_strings.dart';
 import 'package:xorder_pos/core/ui/theme.dart';
 import 'package:xorder_pos/data/postgres/pos_database.dart';
+import 'package:xorder_pos/domain/repositories/repositories.dart';
 import 'package:xorder_pos/features/setup/presentation/force_reset_dialog.dart';
 
 import '../support/fakes.dart';
 
-/// The forced reset — Ctrl/Cmd+Shift+S, and the menu item that prints it — and
+/// The forced reset — Ctrl/Cmd+Shift+R, and the menu item that prints it — and
 /// who it asks for.
 ///
 /// It used to ask for nobody: knowing the chord was the whole lock. These tests
@@ -33,12 +33,10 @@ void main() {
     final container = ProviderContainer(
       overrides: [
         ...fakeRepositoryOverrides(),
-        if (!reachable) ...[
-          // No password held yet, so the check has to ask the database — and
-          // nothing is listening where it asks.
-          adminDbCredentialProvider,
-          adminPosDatabaseProvider.overrideWithValue(_Unreachable()),
-        ],
+        if (!reachable)
+          // The check asks the database who this is — and nothing is
+          // listening where it asks.
+          sessionRepositoryProvider.overrideWithValue(const _Unreachable()),
       ],
     );
     addTearDown(container.dispose);
@@ -76,7 +74,7 @@ void main() {
   Future<void> signIn(
     WidgetTester tester,
     String username,
-    String password,
+    String pin,
   ) async {
     await tester.enterText(
       find.descendant(
@@ -85,10 +83,7 @@ void main() {
       ),
       username,
     );
-    await tester.enterText(
-      find.byKey(const Key('force-reset-password')),
-      password,
-    );
+    await tester.enterText(find.byKey(const Key('force-reset-pin')), pin);
     await tester.tap(find.byKey(const Key('force-reset-continue')));
     await tester.pumpAndSettle();
   }
@@ -105,7 +100,7 @@ void main() {
       'setup', (tester) async {
     final app = await open(tester);
 
-    await signIn(tester, 'amer', 'test-credential');
+    await signIn(tester, 'amer', '4321');
     expect(find.text(strings.forceResetTitle), findsOneWidget);
 
     await tester.tap(find.text(strings.forceResetConfirm));
@@ -115,26 +110,26 @@ void main() {
     expect(app.results, [true]);
   });
 
-  testWidgets('a wrong password is refused, and nothing is wiped', (
+  testWidgets('a wrong PIN is refused, and nothing is wiped', (
     tester,
   ) async {
     final app = await open(tester);
 
-    await signIn(tester, 'amer', 'not-it');
+    await signIn(tester, 'amer', '0000');
 
     expect(find.text(strings.forceResetSignInRefused), findsOneWidget);
     expect(find.text(strings.forceResetTitle), findsNothing);
     expect(app.container.read(setupCompleteProvider), isTrue);
   });
 
-  testWidgets('a cashier with the right password is refused all the same', (
+  testWidgets('a cashier with their right PIN is refused all the same', (
     tester,
   ) async {
-    // The password is the database's, not a person's, so knowing it proves
-    // nothing about who is standing there. The name has to hold the right.
+    // Being somebody who works here is not being somebody who may wipe the
+    // till. The name has to hold the right.
     final app = await open(tester);
 
-    await signIn(tester, 'rana', 'test-credential');
+    await signIn(tester, 'rana', '1234');
 
     expect(find.text(strings.forceResetSignInRefused), findsOneWidget);
     expect(find.text(strings.forceResetTitle), findsNothing);
@@ -157,7 +152,7 @@ void main() {
     // a database it can reach is what this reset is for.
     await open(tester, reachable: false);
 
-    await signIn(tester, 'anyone', 'anything');
+    await signIn(tester, 'anyone', '9999');
 
     expect(find.text(strings.forceResetTitle), findsOneWidget);
   });
@@ -172,10 +167,21 @@ void main() {
 }
 
 /// A branch server nothing is listening for.
-class _Unreachable extends PosDatabase {
-  _Unreachable() : super(credentials: MutablePosDbCredentials());
+class _Unreachable implements SessionRepository {
+  const _Unreachable();
+
+  static final _refused = PosDbException(PosDbFailure.tcp, 'connection refused');
 
   @override
-  Future<PosDbFailure?> probe(DeploymentConfig config) async =>
-      PosDbFailure.tcp;
+  Future<PosSession> current() => throw _refused;
+
+  @override
+  Future<bool> verifyPin(String pin) => throw _refused;
+
+  @override
+  Future<PosStaff?> signIn(String pin) => throw _refused;
+
+  @override
+  Future<PosStaff?> signInAs({required String username, required String pin}) =>
+      throw _refused;
 }

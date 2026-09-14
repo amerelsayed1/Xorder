@@ -3,7 +3,9 @@ import 'package:postgres/postgres.dart';
 import '../../core/config/deployment.dart';
 import '../../core/money/money.dart';
 import '../../domain/models/business_day.dart';
+import '../../domain/models/permissions.dart';
 import '../../domain/repositories/repositories.dart';
+import '../../domain/services/authorization.dart';
 import 'pos_database.dart';
 
 /// Shifts on the branch server.
@@ -97,7 +99,20 @@ class PostgresShiftRepository implements ShiftRepository {
     required PosStaff by,
     required Money countedCash,
     String? note,
+    Approval? approval,
   }) async {
+    // The drawer is its opener's. Anybody else closes it on a manager's
+    // approval for this shift — which the close dialog has asked for since the
+    // count stopped being signable by whoever held the capability, and which
+    // nothing below the dialog checked until now.
+    Authorization.require(
+      by,
+      PosCapability.shiftClose,
+      approval: approval,
+      subject: '${shift.id}',
+      approvalRequired: !shift.openedBy(by.id),
+    );
+
     // The refusal below is raised *outside* the transaction on purpose.
     // `runTx` translates anything thrown inside it into a `PosDbException`,
     // which would turn "this shift is already closed" — a thing the person at

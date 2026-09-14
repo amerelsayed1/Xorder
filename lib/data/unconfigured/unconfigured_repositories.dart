@@ -96,6 +96,7 @@ class UnconfiguredShiftRepository implements ShiftRepository {
     required PosStaff by,
     required Money countedCash,
     String? note,
+    Approval? approval,
   }) async => throw _noDatabase;
 }
 
@@ -177,7 +178,7 @@ class UnconfiguredOrdersRepository implements OrdersRepository {
     required PosStaff by,
     int? reasonId,
     String? note,
-    PosStaff? approvedBy,
+    Approval? approval,
     PosStaff? servedBy,
   }) async => throw StateError(
     'This terminal has nowhere to record a void. It is not connected to a '

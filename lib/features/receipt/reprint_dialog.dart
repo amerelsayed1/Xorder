@@ -10,6 +10,7 @@ import '../../core/ui/widgets/pos_widgets.dart';
 import '../../domain/models/order_record.dart';
 import '../../domain/models/permissions.dart';
 import '../../domain/models/refund.dart';
+import '../../domain/models/shift.dart';
 import '../../domain/repositories/admin_repositories.dart';
 import '../../domain/services/authorization.dart';
 import '../admin/presentation/supervisor_override.dart';
@@ -34,9 +35,15 @@ class ReprintDialog extends ConsumerStatefulWidget {
     super.key,
     required this.detail,
     required this.refunds,
+    this.approvedBy,
   });
 
   final OrderRecordDetail detail;
+
+  /// The supervisor who let a cashier reprint, when one did. On the ledger
+  /// row with the cashier: the row used to name only the cashier, so a
+  /// reprint a supervisor had approved read as one nobody had.
+  final PosStaff? approvedBy;
 
   /// What has since gone back. Printed on the slip so it cannot be used to
   /// claim a refund that has already been given.
@@ -53,10 +60,15 @@ class ReprintDialog extends ConsumerStatefulWidget {
     BuildContext context, {
     required OrderRecordDetail detail,
     required List<Refund> refunds,
+    PosStaff? approvedBy,
   }) => showDialog<PrintOutcome>(
     context: context,
     barrierColor: context.pos.scrimHeavy,
-    builder: (_) => ReprintDialog(detail: detail, refunds: refunds),
+    builder: (_) => ReprintDialog(
+      detail: detail,
+      refunds: refunds,
+      approvedBy: approvedBy,
+    ),
   );
 
   @override
@@ -168,6 +180,7 @@ class _ReprintDialogState extends ConsumerState<ReprintDialog> {
           .read(auditRepositoryProvider)
           .record(
             by: by,
+            approvedBy: widget.approvedBy,
             action: AuditAction.receiptReprinted,
             entityType: 'order',
             entityId: '${order.id}',
@@ -248,6 +261,11 @@ abstract final class ReprintFlow {
     );
     if (!context.mounted || decision is! Allowed) return null;
 
-    return ReprintDialog.show(context, detail: detail, refunds: refunds);
+    return ReprintDialog.show(
+      context,
+      detail: detail,
+      refunds: refunds,
+      approvedBy: decision.approvedBy,
+    );
   }
 }

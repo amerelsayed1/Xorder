@@ -255,4 +255,9 @@ const _actionsThisBuildWrites = <String>[
   AuditAction.optionGroupDeleted,
   AuditAction.backupTaken,
   AuditAction.backupRestored,
+  AuditAction.adminEntered,
+  AuditAction.adminExited,
+  AuditAction.adminTimedOut,
+  AuditAction.adminRefused,
+  AuditAction.adminLockedOut,
 ];

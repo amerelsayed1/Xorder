@@ -408,6 +408,7 @@ abstract final class PriceOverrideFlow {
       return restored.ticket;
     }
 
+    final discounts = ref.read(discountsRepositoryProvider);
     var approver = decision.approvedBy;
     var result = _apply(
       ticket,
@@ -415,8 +416,9 @@ abstract final class PriceOverrideFlow {
       price: price,
       by: by,
       approver: approver,
-      // Already lent for the act, so the reduction is theirs to allow too.
-      limit: approver == null ? limit : null,
+      // Lent for the act, so the reduction is the lender's to allow — up to
+      // THEIR ceiling, not without one.
+      limit: approver == null ? limit : await discounts.limitFor(approver),
       // The reason the cashier gave in the dialog, not whatever the permission
       // prompt happened to collect. They are different questions.
       reason: choice.reason,
@@ -426,16 +428,18 @@ abstract final class PriceOverrideFlow {
       final refusal = result.refusal! as PriceBelowLimit;
       if (!context.mounted) return null;
 
-      final lent = await requestPermission(
+      // Straight to a supervisor, not through `requestPermission`. That answers
+      // "allowed" at once for a cashier who holds the permission — which is
+      // every cashier who reaches this line, since the limit is what refused
+      // them — and the retry then ran with no ceiling at all. The cashier's
+      // own limit was undone by the prompt meant to enforce it.
+      final outcome = await SupervisorOverrideDialog.show(
         context,
-        ref,
-        PosCapability.priceOverride,
+        capability: PosCapability.priceOverride,
         action: strings.priceOverrideTitle(
           line.product.displayName(strings.languageCode),
         ),
-        auditAction: 'price.overridden.above_limit',
-        entityType: 'order_line',
-        entityId: line.key,
+        requestedBy: by.name,
         subjectLabel: strings.priceOverrideNewPrice,
         subject: price.format(withCurrency: true),
         limitNote: strings.priceOverrideAboveLimit(
@@ -444,19 +448,29 @@ abstract final class PriceOverrideFlow {
         ),
         approveLabel: strings.priceOverrideAction,
       );
-      if (!context.mounted || lent is! Allowed) return null;
+      if (!context.mounted || outcome == null) return null;
 
-      approver = lent.approvedBy;
-      // Retried with no ceiling: a supervisor has just looked at this exact
-      // reduction and said yes, and re-checking it against the cashier's limit
-      // would refuse what was approved.
+      await recordApproval(
+        ref,
+        approver: outcome.approver,
+        capability: PosCapability.priceOverride,
+        auditAction: 'price.overridden.above_limit',
+        entityType: 'order_line',
+        entityId: line.key,
+        reason: outcome.reason,
+      );
+      approver = outcome.approver;
+      // Retried under the approver's ceiling: they have looked at this exact
+      // reduction and said yes, as far as they themselves may go.
+      final approverLimit = await discounts.limitFor(outcome.approver);
+      if (!context.mounted) return null;
       result = _apply(
         ticket,
         line: line,
         price: price,
         by: by,
         approver: approver,
-        limit: null,
+        limit: approverLimit,
         reason: choice.reason,
       );
     }

@@ -1,8 +1,10 @@
 import 'package:postgres/postgres.dart';
 
 import '../../core/config/deployment.dart';
+import '../../domain/models/permissions.dart';
 import '../../domain/models/ticket.dart';
 import '../../domain/repositories/repositories.dart';
+import '../../domain/services/authorization.dart';
 import 'pos_database.dart';
 
 /// Identifies which terminal and tenant a write belongs to.
@@ -186,9 +188,19 @@ class PostgresOrdersRepository implements OrdersRepository {
     required PosStaff by,
     int? reasonId,
     String? note,
-    PosStaff? approvedBy,
+    Approval? approval,
     PosStaff? servedBy,
   }) async {
+    // Before the transaction, for the reason the refund's is: `runTx` would
+    // turn "you may not" into a database failure. The approver is not written
+    // on the order — `pos_orders` has no column for one — and is on the audit
+    // row the approval prompt wrote.
+    Authorization.require(
+      by,
+      PosCapability.orderVoid,
+      approval: approval,
+      subject: ticket.id,
+    );
     final totals = ticket.totals;
     final occurredAt = _now().toUtc();
 

@@ -258,7 +258,12 @@ class _SaleScreenState extends ConsumerState<SaleScreen> {
     );
     if (!mounted || decision is! Allowed) return;
 
-    final amount = await CashMovementDialog.show(context, kind: kind);
+    final amount = await CashMovementDialog.show(
+      context,
+      kind: kind,
+      // The supervisor's approval, when one lent this: the repository asks.
+      approval: decision.approval,
+    );
     if (amount == null || !mounted) return;
     posToast(context, context.strings.cashRecorded);
   }

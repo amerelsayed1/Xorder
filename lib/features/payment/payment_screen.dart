@@ -8,9 +8,12 @@ import '../../core/l10n/app_strings.dart';
 import '../../core/ui/theme.dart';
 import '../../core/ui/tokens.dart';
 import '../../core/ui/widgets/pos_widgets.dart';
+import '../../domain/models/permissions.dart';
 import '../../domain/models/tender_method.dart';
 import '../../domain/models/ticket.dart';
 import '../../domain/repositories/repositories.dart' show SubmitOrderResult;
+import '../../domain/services/authorization.dart';
+import '../admin/presentation/supervisor_override.dart';
 
 /// A payment method offered at the till.
 ///
@@ -308,6 +311,38 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
     ),
   );
 
+  /// Take a payment back off, on the person's own permission or a
+  /// supervisor's. It used to be a tap with no question behind it.
+  Future<void> _removeTender(Ticket ticket, int index) async {
+    final strings = context.strings;
+    final tender = ticket.tenders[index];
+
+    final decision = await requestPermission(
+      context,
+      ref,
+      PosCapability.paymentRemove,
+      action: strings.removePaymentTitle(
+        '${tenderName(tender.typeId, tender.label, strings)} · '
+        '${tender.amount.format(withCurrency: true)}',
+      ),
+      auditAction: 'payment.removed',
+      entityId: ticket.id,
+      approveLabel: strings.removePaymentAction,
+    );
+    if (!mounted || decision is! Allowed) return;
+
+    final refused = ref
+        .read(ticketProvider.notifier)
+        .removeTenderAt(
+          index,
+          by: ref.read(signedInStaffProvider),
+          approval: decision.approval,
+        );
+    if (refused != null && mounted) {
+      posToast(context, strings.removePaymentRefused);
+    }
+  }
+
   Widget _tenderRow(AppStrings strings, Ticket ticket, int index) {
     final tender = ticket.tenders[index];
 
@@ -328,8 +363,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
           Text(tender.amount.format(), style: PosText.mono(color: context.pos.inkWarm, size: 15)),
           const SizedBox(width: PosSpace.md),
           InkWell(
-            onTap: () =>
-                ref.read(ticketProvider.notifier).removeTenderAt(index),
+            onTap: () => _removeTender(ticket, index),
             child: Container(
               width: 32,
               height: 32,

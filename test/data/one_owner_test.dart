@@ -350,6 +350,79 @@ void main() {
       expect(await count('pos_permission_limits', owner.id), 0);
     });
 
+    Future<String> storedPin(int staffId) async => (await db.query(
+      pg.config,
+      'SELECT pin_hash FROM pos_staff WHERE id = @id',
+      parameters: {'id': staffId},
+    )).first[0]! as String;
+
+    test('nor their PIN, by anybody else', () async {
+      final hala = await hire(SystemRoles.managerCode, 'Hala');
+      final before = await storedPin(owner.id);
+
+      final result = await staff.resetPin(
+        by: hala,
+        staffId: owner.id,
+        pin: '9999',
+      );
+
+      expect(result.refusal, isA<OwnerPinIsTheirs>());
+      expect(await storedPin(owner.id), before);
+    });
+
+    test('not even with the owner disabled — that would be the way round', () async {
+      // Disable, reset, re-enable: the owner back on a PIN the manager chose.
+      final hala = await hire(SystemRoles.managerCode, 'Hala');
+      final disabled = await staff.setActive(
+        by: hala,
+        staffId: owner.id,
+        isActive: false,
+      );
+      expect(disabled.succeeded, isTrue, reason: '${disabled.refusal}');
+
+      final result = await staff.resetPin(
+        by: hala,
+        staffId: owner.id,
+        pin: '9999',
+      );
+      expect(result.refusal, isA<OwnerPinIsTheirs>());
+    });
+
+    test("but the owner may reset their own, and a manager everybody else's",
+        () async {
+      final hala = await hire(SystemRoles.managerCode, 'Hala');
+      final rana = await hire(SystemRoles.cashierCode, 'Rana');
+      final before = await storedPin(owner.id);
+
+      final own = await staff.resetPin(
+        by: owner,
+        staffId: owner.id,
+        pin: '9999',
+      );
+      expect(own.succeeded, isTrue, reason: '${own.refusal}');
+      expect(await storedPin(owner.id), isNot(before));
+
+      final theirs = await staff.resetPin(
+        by: hala,
+        staffId: rana.id,
+        pin: '8642',
+      );
+      expect(theirs.succeeded, isTrue, reason: '${theirs.refusal}');
+    });
+
+    test("and in SQL it is not refused: the installer and the seeder set it",
+        () async {
+      // Pinned, so nobody completes the rule with a trigger. The database sees
+      // a role, not a person; a trigger would refuse the cloud seeder's upsert
+      // of the owner's PIN and the installer's re-run, and stop nobody who
+      // holds the administrator password anyway.
+      await sql(
+        'UPDATE pos_staff SET pin_salt = @s, pin_hash = @h WHERE id = @id',
+        {'s': 'salt', 'h': 'seeded', 'id': owner.id},
+      );
+      expect(await storedPin(owner.id), 'seeded');
+    });
+
     test('but renaming them works', () async {
       final result = await staff.update(
         by: owner,
@@ -577,26 +650,31 @@ void main() {
         username: 'amer',
         pin: '9999',
       );
-      expect(created, isFalse);
+      expect(created, isA<OwnerAlreadyHere>());
       expect(await owners(), {'Amer': true});
     });
 
     test('but seeding a second owner under another username is refused', () async {
       // The one path the installer and `pos_migrate --seed` had to a second
       // owner: pointed at a restaurant that already has one, with a different
-      // username. It used to succeed silently.
-      await expectLater(
-        LocalBootstrap(db).seedOwner(
-          pg.config,
-          restaurantId: restaurantId,
-          branchId: branchId,
-          roleId: roleId(SystemRoles.ownerCode),
-          name: 'Nour',
-          username: 'nour',
-          pin: '9999',
-        ),
-        refusedSaying('is already the owner'),
+      // username. It used to succeed silently. `seedOwner` now asks first and
+      // answers with data both callers put into words — see
+      // `installer_owner_test.dart`; the trigger is still what refuses the
+      // same INSERT from anybody else, as the group above shows.
+      final seeded = await LocalBootstrap(db).seedOwner(
+        pg.config,
+        restaurantId: restaurantId,
+        branchId: branchId,
+        roleId: roleId(SystemRoles.ownerCode),
+        name: 'Nour',
+        username: 'nour',
+        pin: '9999',
       );
+      expect(
+        seeded,
+        isA<AnotherOwnerActive>().having((r) => r.name, 'name', 'Amer'),
+      );
+      expect(await owners(), {'Amer': true});
     });
   });
 }

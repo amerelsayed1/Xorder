@@ -10,9 +10,11 @@ import 'package:xorder_pos/data/postgres/postgres_orders_repository.dart'
     show PosWriteContext;
 import 'package:xorder_pos/data/postgres/postgres_refunds_repository.dart';
 import 'package:xorder_pos/domain/models/order_record.dart';
+import 'package:xorder_pos/domain/models/permissions.dart';
 import 'package:xorder_pos/domain/models/refund.dart';
 import 'package:xorder_pos/domain/models/ticket.dart';
 import 'package:xorder_pos/domain/repositories/repositories.dart';
+import 'package:xorder_pos/domain/services/authorization.dart';
 import 'package:xorder_pos/domain/services/refund_engine.dart';
 
 import 'pg_fixture.dart';
@@ -41,7 +43,32 @@ void main() {
 
   const terminal = '11111111-1111-4111-8111-111111111111';
 
-  const nour = PosStaff(id: 0, name: 'Nour Adel', capabilities: {});
+  /// Somebody who may give money back on their own: a supervisor. The
+  /// repository asks, so a fixture holding nothing would now be refused — and
+  /// a fixture holding a hand-picked grant would test a shape no restaurant
+  /// has.
+  const refunder = PosRole(
+    id: 1,
+    code: SystemRoles.supervisorCode,
+    nameEn: 'Supervisor',
+    capabilities: SystemRoles.supervisor,
+  );
+
+  /// Somebody who may not, without a supervisor's approval.
+  const counter = PosRole(
+    id: 2,
+    code: SystemRoles.cashierCode,
+    nameEn: 'Cashier',
+    capabilities: SystemRoles.cashier,
+  );
+
+  /// Hana's approval for one refund of [orderId], as the till's PIN prompt
+  /// produces it.
+  Approval approvalFor(int orderId) => (Authorization.approve(
+    approver: PosStaff(id: approverId, name: 'Hana Mostafa', role: refunder),
+    capability: PosCapability.orderRefund,
+    subject: '$orderId',
+  ) as Allowed).approval!;
 
   Future<int> insertOrder({
     String invoice = 'INV-1',
@@ -573,6 +600,7 @@ void main() {
       int total = 6270,
       List<RefundLineSelection> lines = const [],
       RefundKind kind = RefundKind.partial,
+      bool requiresApproval = false,
     }) => RefundQuote(
       subtotal: Money(subtotal),
       discount: Money.zero,
@@ -581,7 +609,7 @@ void main() {
       total: Money(total),
       kind: kind,
       lines: lines,
-      requiresApproval: false,
+      requiresApproval: requiresApproval,
     );
 
     test('writes the refund, its lines and its tender in one go', () async {
@@ -600,7 +628,7 @@ void main() {
             ),
           ],
         ),
-        by: PosStaff(id: staffId, name: 'Nour Adel', capabilities: nour.capabilities),
+        by: PosStaff(id: staffId, name: 'Nour Adel', role: refunder),
         tenders: const [
           RefundTender(tenderTypeId: 1, label: 'Cash', amount: Money(6270)),
         ],
@@ -630,7 +658,7 @@ void main() {
       final first = await repository.issue(
         order: record(orderId),
         quote: quote(),
-        by: PosStaff(id: staffId, name: 'Nour Adel', capabilities: const {}),
+        by: PosStaff(id: staffId, name: 'Nour Adel', role: refunder),
         tenders: const [
           RefundTender(tenderTypeId: 1, label: 'Cash', amount: Money(6270)),
         ],
@@ -639,7 +667,7 @@ void main() {
       final replay = await repository.issue(
         order: record(orderId),
         quote: quote(),
-        by: PosStaff(id: staffId, name: 'Nour Adel', capabilities: const {}),
+        by: PosStaff(id: staffId, name: 'Nour Adel', role: refunder),
         tenders: const [
           RefundTender(tenderTypeId: 1, label: 'Cash', amount: Money(6270)),
         ],
@@ -668,12 +696,10 @@ void main() {
             ),
           ],
         ),
-        by: PosStaff(id: staffId, name: 'Nour Adel', capabilities: const {}),
-        approvedBy: PosStaff(
-          id: approverId,
-          name: 'Hana Mostafa',
-          capabilities: const {},
-        ),
+        // A cashier, on Hana's approval for this order: both names, because
+        // both people answer for it.
+        by: PosStaff(id: staffId, name: 'Nour Adel', role: counter),
+        approval: approvalFor(orderId),
         tenders: const [
           RefundTender(
             tenderTypeId: 2,
@@ -710,7 +736,7 @@ void main() {
         repository.issue(
           order: record(orderId),
           quote: quote(),
-          by: PosStaff(id: staffId, name: 'Nour Adel', capabilities: const {}),
+          by: PosStaff(id: staffId, name: 'Nour Adel', role: refunder),
           tenders: const [
             RefundTender(tenderTypeId: 1, label: 'Cash', amount: Money(1000)),
           ],
@@ -738,7 +764,7 @@ void main() {
         await repository.issue(
           order: record(orderId, total: 20000),
           quote: quote(subtotal: 1000, service: 0, vat: 0, total: 1000),
-          by: PosStaff(id: staffId, name: 'Nour Adel', capabilities: const {}),
+          by: PosStaff(id: staffId, name: 'Nour Adel', role: refunder),
           tenders: const [
             RefundTender(tenderTypeId: 1, label: 'Cash', amount: Money(1000)),
           ],
@@ -750,6 +776,114 @@ void main() {
       expect(refunds, hasLength(3));
       expect(refunds.first.id, lessThan(refunds.last.id));
       expect(await orderInt(orderId, 'refunded_minor'), 3000);
+    });
+
+    // ── Who may give money back ─────────────────────────────────────────────
+    //
+    // Asked by the repository, not only by the refund sheet. The sheet asks
+    // first and brings a supervisor over; these are what holds when something
+    // goes round the sheet.
+
+    const cash = [
+      RefundTender(tenderTypeId: 1, label: 'Cash', amount: Money(6270)),
+    ];
+
+    test('a cashier on their own is refused, and nothing is written', () async {
+      final orderId = await insertOrder();
+
+      await expectLater(
+        repository.issue(
+          order: record(orderId),
+          quote: quote(),
+          by: PosStaff(id: staffId, name: 'Nour Adel', role: counter),
+          tenders: cash,
+          clientRefundId: '33333333-3333-4333-8333-000000000001',
+        ),
+        throwsA(isA<PermissionRefused>()),
+      );
+      expect(await orderInt(orderId, 'refunded_minor'), 0);
+      expect(await repository.forOrder(orderId), isEmpty);
+    });
+
+    test('an approval given for another order is not an approval for this one',
+        () async {
+      final orderId = await insertOrder();
+      final elsewhere = await insertOrder(invoice: 'INV-2');
+
+      await expectLater(
+        repository.issue(
+          order: record(orderId),
+          quote: quote(),
+          by: PosStaff(id: staffId, name: 'Nour Adel', role: counter),
+          approval: approvalFor(elsewhere),
+          tenders: cash,
+          clientRefundId: '33333333-3333-4333-8333-000000000002',
+        ),
+        throwsA(isA<PermissionRefused>()),
+      );
+      expect(await repository.forOrder(orderId), isEmpty);
+    });
+
+    test('one approval gives back money once', () async {
+      // A second refund under a new id is a second act, and needs its own yes.
+      final orderId = await insertOrder(total: 20000);
+      final approval = approvalFor(orderId);
+      final cashier = PosStaff(id: staffId, name: 'Nour Adel', role: counter);
+
+      await repository.issue(
+        order: record(orderId, total: 20000),
+        quote: quote(subtotal: 1000, service: 0, vat: 0, total: 1000),
+        by: cashier,
+        approval: approval,
+        tenders: const [
+          RefundTender(tenderTypeId: 1, label: 'Cash', amount: Money(1000)),
+        ],
+        clientRefundId: '33333333-3333-4333-8333-000000000003',
+      );
+      await expectLater(
+        repository.issue(
+          order: record(orderId, total: 20000),
+          quote: quote(subtotal: 1000, service: 0, vat: 0, total: 1000),
+          by: cashier,
+          approval: approval,
+          tenders: const [
+            RefundTender(tenderTypeId: 1, label: 'Cash', amount: Money(1000)),
+          ],
+          clientRefundId: '33333333-3333-4333-8333-000000000004',
+        ),
+        throwsA(isA<PermissionRefused>()),
+      );
+      expect(await orderInt(orderId, 'refunded_minor'), 1000);
+    });
+
+    test('above the threshold even a supervisor needs a second person',
+        () async {
+      final orderId = await insertOrder();
+      final supervisor = PosStaff(id: staffId, name: 'Nour Adel', role: refunder);
+
+      await expectLater(
+        repository.issue(
+          order: record(orderId),
+          quote: quote(requiresApproval: true),
+          by: supervisor,
+          tenders: cash,
+          clientRefundId: '33333333-3333-4333-8333-000000000005',
+        ),
+        throwsA(isA<PermissionRefused>()),
+      );
+
+      await repository.issue(
+        order: record(orderId),
+        quote: quote(requiresApproval: true),
+        by: supervisor,
+        approval: approvalFor(orderId),
+        tenders: cash,
+        clientRefundId: '33333333-3333-4333-8333-000000000006',
+      );
+      expect(
+        (await repository.forOrder(orderId)).single.approvedByName,
+        'Hana Mostafa',
+      );
     });
   });
 }

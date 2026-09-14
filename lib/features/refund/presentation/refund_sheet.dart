@@ -586,29 +586,52 @@ class _RefundSheetState extends ConsumerState<RefundSheet> {
     if (!mounted) return;
     if (decision is! Allowed) return;
 
-    var approver = decision.approvedBy;
+    // The approval itself, not only a name: the repository asks for it, spends
+    // it on this refund, and refuses a second refund on it.
+    var approval = decision.approval;
 
-    if (quote.requiresApproval && approver == null) {
-      final lent = await requestPermission(
+    final by = ref.read(signedInStaffProvider);
+    if (by == null) return;
+
+    // Above the threshold a second person says yes, whoever is refunding. This
+    // used to go through [requestPermission], which answers "allowed" at once
+    // for somebody who holds the permission — so a supervisor's large refund
+    // was never shown to anybody, and went on the books with no approver.
+    if (quote.requiresApproval && approval == null) {
+      final outcome = await SupervisorOverrideDialog.show(
         context,
-        ref,
-        PosCapability.orderRefund,
+        capability: PosCapability.orderRefund,
         action: strings.refundTitle(_order.invoiceNumber),
-        auditAction: 'refund.above_threshold',
-        entityType: 'order',
-        entityId: '${_order.id}',
+        requestedBy: by.name,
         subjectLabel: strings.refundTotal,
         subject: quote.total.format(withCurrency: true),
         limitNote: strings.refundNeedsApproval,
         approveLabel: strings.refundAction,
       );
-      if (!mounted) return;
+      if (!mounted || outcome == null) return;
+      // A second person is a second person: the repository refuses a refunder
+      // approving their own, so the sheet says so rather than failing later.
+      if (outcome.approver.id == by.id) {
+        setState(() => _message = strings.refundNeedsApproval);
+        return;
+      }
+      final lent = Authorization.approve(
+        approver: outcome.approver,
+        capability: PosCapability.orderRefund,
+        subject: '${_order.id}',
+      );
       if (lent is! Allowed) return;
-      approver = lent.approvedBy;
+      approval = lent.approval;
+      await recordApproval(
+        ref,
+        approver: outcome.approver,
+        capability: PosCapability.orderRefund,
+        auditAction: 'refund.above_threshold',
+        entityType: 'order',
+        entityId: '${_order.id}',
+      );
+      if (!mounted) return;
     }
-
-    final by = ref.read(signedInStaffProvider);
-    if (by == null) return;
 
     setState(() {
       _busy = true;
@@ -622,7 +645,7 @@ class _RefundSheetState extends ConsumerState<RefundSheet> {
             order: _order,
             quote: quote,
             by: by,
-            approvedBy: approver,
+            approval: approval,
             reasonId: _reason?.id,
             note: _note.trim().isEmpty ? null : _note.trim(),
             tenders: [

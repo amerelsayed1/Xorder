@@ -144,10 +144,14 @@ class _DiscountSheetState extends ConsumerState<DiscountSheet> {
 
     final staff = ref.read(signedInStaffProvider);
     final approver = widget.preApprovedBy;
+    final discounts = ref.read(discountsRepositoryProvider);
 
-    // Already approved at the door, so no ceiling and no second prompt.
+    // Whoever answers for the amount: the supervisor who let the cashier in,
+    // when one did — otherwise the cashier. Never nobody. This used to read
+    // "approved at the door, so no ceiling", which let a supervisor capped at
+    // 20% approve 50% by approving the act before the amount was typed.
     final limit = approver != null
-        ? null
+        ? await discounts.limitFor(approver)
         : await ref.read(discountLimitProvider.future);
     if (!mounted) return;
 
@@ -166,10 +170,24 @@ class _DiscountSheetState extends ConsumerState<DiscountSheet> {
         setState(() => _busy = false);
         return;
       }
-      // Retried with **no ceiling at all** — that is what "lent for this one
-      // action" means — and carrying the approver onto the record.
+      // On the ledger. This approval came through the dialog directly rather
+      // than through `requestPermission`, and so used to leave no row at all.
+      await recordApproval(
+        ref,
+        approver: approved.approver,
+        capability: PosCapability.discountApply,
+        auditAction: 'discount.above_limit',
+        entityId: widget.ticket.id,
+        reason: approved.reason,
+      );
+      // Retried under the **approver's** ceiling, not none. The act is done on
+      // their authority, so it is their limit that binds it: a supervisor
+      // capped at 20% does not approve 50% by standing beside a cashier capped
+      // at 10%. Above even that, the refusal stands and is shown.
+      final approverLimit = await discounts.limitFor(approved.approver);
+      if (!mounted) return;
       result = _attempt(
-        limit: null,
+        limit: approverLimit,
         appliedBy: staff?.id ?? 0,
         approvedByName: approved.approver.name,
         approvedByStaffId: approved.approver.id,

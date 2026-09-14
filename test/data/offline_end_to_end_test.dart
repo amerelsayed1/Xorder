@@ -126,7 +126,7 @@ void main() {
         username: 'owner',
         pin: '4321',
       ),
-      isTrue,
+      isA<OwnerCreated>(),
       reason: 'somebody has to be able to sign in',
     );
 

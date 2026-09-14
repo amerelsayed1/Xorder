@@ -390,9 +390,16 @@ class _StaffRow extends StatelessWidget {
             ),
             const SizedBox(width: PosSpace.sm),
             PosButton(
+              key: Key('reset-pin-${staff.id}'),
               label: strings.resetPin,
               border: Border.fromBorderSide(context.pos.resting),
-              onPressed: () async {
+              // Shut on the owner's row for everybody but the owner — see
+              // [OwnerPinIsTheirs]. Shut rather than left to refuse, as Grants
+              // is: a button whose only answer is no is a button that gets
+              // pressed again.
+              onPressed: _onOwnerRole && !isSelf
+                  ? null
+                  : () async {
                 final pin = await PinPromptDialog.show(
                   context,
                   title: strings.newPinFor(staff.name),

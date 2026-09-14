@@ -29,7 +29,11 @@ import '../support/fakes.dart';
 void main() {
   const strings = EnStrings();
 
-  Future<ProviderContainer> open(WidgetTester tester) async {
+  Future<ProviderContainer> open(
+    WidgetTester tester, {
+    String username = 'amer',
+    String pin = '4321',
+  }) async {
     tester.view
       ..physicalSize = const Size(1440, 900)
       ..devicePixelRatio = 1.0;
@@ -53,19 +57,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.enterText(
-      find.descendant(
-        of: find.byKey(const Key('back-office-username')),
-        matching: find.byType(TextField),
-      ),
-      'amer',
-    );
-    await tester.enterText(
-      find.byKey(const Key('back-office-password')),
-      'test-credential',
-    );
-    await tester.tap(find.byKey(const Key('back-office-open')));
-    await tester.pumpAndSettle();
+    await enterAdminMode(tester, username: username, pin: pin);
     return container;
   }
 
@@ -90,6 +82,26 @@ void main() {
       .onTap;
 
   group('the Staff pane', () {
+    testWidgets("only the owner is offered the owner's PIN", (tester) async {
+      // Nour: a supervisor the owner let into Admin Mode, who manages staff.
+      await open(tester, username: 'nour', pin: '2468');
+      expect(
+        tapOf(tester, const Key('reset-pin-1')),
+        isNull,
+        reason: "the owner's row",
+      );
+      expect(
+        tapOf(tester, const Key('reset-pin-2')),
+        isNotNull,
+        reason: "a cashier's row is still staff.manage's",
+      );
+    });
+
+    testWidgets('and the owner is, on their own row', (tester) async {
+      await open(tester);
+      expect(tapOf(tester, const Key('reset-pin-1')), isNotNull);
+    });
+
     testWidgets("the owner's row has no role to pick and no permissions to edit",
         (tester) async {
       await open(tester);
@@ -239,6 +251,7 @@ void main() {
         OwnerAlreadyExists('Amer M.'),
         OwnerIsFixed(),
         OwnerIsNotAnExtraRole(),
+        OwnerPinIsTheirs(),
       ]) {
         final arabic = AdminText.refusal(ar, refusal);
         expect(arabic, isNot(AdminText.refusal(strings, refusal)));
@@ -261,6 +274,35 @@ void main() {
       directory = FakeStaffDirectoryRepository(roles: FakeRolesRepository());
       amer = directory.staff.first;
       ownerRole = roleIdOf(directory, SystemRoles.ownerCode);
+    });
+
+    test("the owner's PIN, by anybody but the owner", () async {
+      final manager = PosStaff(
+        id: 3,
+        name: 'Nour S.',
+        username: 'nour',
+        role: directory.roles.roles.firstWhere(
+          (r) => r.code == SystemRoles.managerCode,
+        ),
+      );
+
+      final refused = await directory.resetPin(
+        by: manager,
+        staffId: 1,
+        pin: '9999',
+      );
+      expect(refused.refusal, isA<OwnerPinIsTheirs>());
+      expect(directory.pins, isNot(containsPair('9999', 1)));
+
+      final own = await directory.resetPin(by: amer, staffId: 1, pin: '9999');
+      expect(own.succeeded, isTrue);
+
+      final rana = await directory.resetPin(
+        by: manager,
+        staffId: 2,
+        pin: '8888',
+      );
+      expect(rana.succeeded, isTrue, reason: "everybody else's is still theirs");
     });
 
     test('a second owner, by hiring, moving or extra role', () async {

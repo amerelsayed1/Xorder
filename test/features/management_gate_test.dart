@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,9 +10,11 @@ import 'package:xorder_pos/core/l10n/app_strings.dart';
 import 'package:xorder_pos/core/ui/theme.dart';
 import 'package:xorder_pos/core/ui/widgets/pos_widgets.dart';
 import 'package:xorder_pos/data/fakes/fake_repositories.dart';
+import 'package:xorder_pos/data/postgres/pos_database.dart';
 import 'package:xorder_pos/domain/models/permissions.dart';
 import 'package:xorder_pos/domain/models/shift.dart';
 import 'package:xorder_pos/domain/repositories/admin_repositories.dart';
+import 'package:xorder_pos/features/admin/application/admin_session.dart';
 import 'package:xorder_pos/features/admin/presentation/management_activity_pane.dart';
 import 'package:xorder_pos/features/admin/presentation/management_roles_pane.dart';
 import 'package:xorder_pos/features/admin/presentation/management_screen.dart';
@@ -64,45 +68,37 @@ void main() {
     return container;
   }
 
-  /// The door: the administrator's username and the back-office password.
-  /// The shared harness holds 'test-credential' as that password.
+  /// The door: a username and PIN. Amer is the owner, and his PIN in the fake
+  /// session repository is 4321; the harness keeps the back-office database
+  /// password as the setup wizard would.
   Future<void> enter(
     WidgetTester tester,
     String username, {
-    String password = 'test-credential',
+    String pin = '4321',
   }) async {
     await tester.enterText(
       find.descendant(
-        of: find.byKey(const Key('back-office-username')),
+        of: find.byKey(const Key('admin-username')),
         matching: find.byType(TextField),
       ),
       username,
     );
-    await tester.enterText(find.byKey(const Key('back-office-password')), password);
-    await tester.tap(find.byKey(const Key('back-office-open')));
+    await tester.enterText(find.byKey(const Key('admin-pin')), pin);
+    await tester.tap(find.byKey(const Key('admin-open')));
     await tester.pumpAndSettle();
   }
 
-  testWidgets('asks for the back-office password before it opens', (
+  testWidgets('asks for a username and PIN before it opens', (
     tester,
   ) async {
-    // The till credential holds SELECT and nothing more, on purpose. Without
-    // an administrator password nothing on this screen could save, so it asks
-    // BEFORE showing panes rather than letting a manager type a whole staff
-    // record and then refusing it.
+    // Nothing of the back office renders before somebody is in — not even for
+    // a till whose back-office password is kept, which is every till now.
     tester.view
       ..physicalSize = const Size(1440, 900)
       ..devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
 
-    final container = ProviderContainer(
-      overrides: [
-        ...fakeRepositoryOverrides(),
-        // Back to the real, unsupplied credential — the shared harness starts
-        // past this gate so every other test need not type through it.
-        adminDbCredentialProvider,
-      ],
-    );
+    final container = ProviderContainer(overrides: fakeRepositoryOverrides());
     addTearDown(container.dispose);
 
     await tester.pumpWidget(
@@ -116,9 +112,11 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const Key('back-office-username')), findsOneWidget);
-    expect(find.text('BACK OFFICE PASSWORD'), findsOneWidget);
-    expect(find.byType(PinPad), findsNothing, reason: 'PINs are for the till');
+    expect(find.byKey(const Key('admin-username')), findsOneWidget);
+    expect(find.byKey(const Key('admin-pin')), findsOneWidget);
+    // Typed, not tapped: a PIN pad on a back-office door is a PIN anybody
+    // behind the counter can read off the screen.
+    expect(find.byType(PinPad), findsNothing);
     // And none of the panes are reachable behind it.
     expect(find.text('Staff'), findsNothing);
     expect(find.text('Roles'), findsNothing);
@@ -130,22 +128,27 @@ void main() {
 
     await enter(tester, 'amer'); // Amer, the owner.
 
-    // The header names the page: every pane stands alone.
+    // The header names the product, the mode and the page.
     expect(
-      find.text('Management › ${const EnStrings().paneStaff}'),
+      find.text('XOrder POS › Admin › ${const EnStrings().paneStaff}'),
       findsOneWidget,
     );
     expect(find.text('Amer M.'), findsWidgets);
     expect(find.text('Rana A.'), findsOneWidget);
-    expect(container.read(signedInStaffProvider)!.name, 'Amer M.');
+    expect(container.read(adminSessionProvider)!.staff.name, 'Amer M.');
+    expect(
+      container.read(signedInStaffProvider),
+      isNull,
+      reason: 'Admin Mode is not the till: nobody was signed in there',
+    );
   });
 
   testWidgets('Esc at the door goes back, even from a field', (tester) async {
     var closed = 0;
     await open(tester, onClose: () => closed++);
 
-    // A username and a password are nothing to lose: one key, not two.
-    await tester.tap(find.byKey(const Key('back-office-password')));
+    // A username and a PIN are nothing to lose: one key, not two.
+    await tester.tap(find.byKey(const Key('admin-pin')));
     await tester.pump();
     await tester.sendKeyEvent(LogicalKeyboardKey.escape);
     await tester.pumpAndSettle();
@@ -236,7 +239,7 @@ void main() {
     expect(upgrades, 1);
     expect(find.byKey(const Key('management-schema-notice')), findsNothing);
     expect(
-      find.text('Management › ${const EnStrings().paneStaff}'),
+      find.text('XOrder POS › Admin › ${const EnStrings().paneStaff}'),
       findsOneWidget,
     );
   });
@@ -253,7 +256,7 @@ void main() {
 
     // Backup is in here, so a failed upgrade must not keep anybody out.
     expect(
-      find.text('Management › ${const EnStrings().paneStaff}'),
+      find.text('XOrder POS › Admin › ${const EnStrings().paneStaff}'),
       findsOneWidget,
     );
     expect(find.byKey(const Key('management-schema-notice')), findsOneWidget);
@@ -263,43 +266,43 @@ void main() {
   testWidgets('a cashier gets no further than the door', (tester) async {
     final container = await open(tester);
 
-    await enter(tester, 'rana'); // Rana, a cashier.
+    await enter(tester, 'rana', pin: '1234'); // Rana, a cashier.
 
-    expect(find.text('That username and password cannot open Management.'), findsOneWidget);
+    expect(find.text('That username and PIN cannot open Admin Mode. 4 attempts left.'), findsOneWidget);
     expect(find.text('Rana A.'), findsNothing, reason: 'the staff list must not render');
     expect(
-      container.read(signedInStaffProvider),
+      container.read(adminSessionProvider),
       isNull,
-      reason: 'a refused PIN must not sign anybody in',
+      reason: 'a refused PIN must not let anybody in',
     );
   });
 
-  testWidgets('a wrong password is refused in the same words, and opens nothing',
+  testWidgets('a wrong PIN is refused in the same words, and opens nothing',
       (tester) async {
     final container = await open(tester);
-    await enter(tester, 'amer', password: 'not-it');
+    await enter(tester, 'amer', pin: '0000');
 
     expect(
-      find.text('That username and password cannot open Management.'),
+      find.text('That username and PIN cannot open Admin Mode. 4 attempts left.'),
       findsOneWidget,
     );
-    expect(container.read(signedInStaffProvider), isNull);
+    expect(container.read(adminSessionProvider), isNull);
     expect(
       tester
-          .widget<TextField>(find.byKey(const Key('back-office-password')))
+          .widget<TextField>(find.byKey(const Key('admin-pin')))
           .controller!
           .text,
       isEmpty,
-      reason: 'a refused password is not left sitting in the box',
+      reason: 'a refused PIN is not left sitting in the box',
     );
   });
 
   testWidgets('an unknown username is refused in the same words as a cashier', (tester) async {
-    // Identical messages on purpose. Telling them apart would turn the keypad
-    // into a way of finding out who the managers are.
+    // Identical messages on purpose. Telling them apart would turn the door
+    // into a way of finding out who may pass it.
     await open(tester);
     await enter(tester, 'nobody');
-    expect(find.text('That username and password cannot open Management.'), findsOneWidget);
+    expect(find.text('That username and PIN cannot open Admin Mode. 4 attempts left.'), findsOneWidget);
   });
 
   testWidgets('opens on staff by default, as it always did', (tester) async {
@@ -365,7 +368,7 @@ void main() {
     await enter(tester, 'amer');
 
     expect(
-      find.text('Management › ${const EnStrings().paneTaxes}'),
+      find.text('XOrder POS › Admin › ${const EnStrings().paneTaxes}'),
       findsOneWidget,
     );
     expect(find.byType(ManagementRolesPane), findsNothing);
@@ -678,27 +681,17 @@ void main() {
     // tabs, and to a deep link — is `managementAreasFor`, so that is asked.
     bool offersPurchasing() =>
         managementAreasFor(
-          admin: container.read(signedInStaffProvider)!,
+          admin: container.read(adminSessionProvider)!.staff,
           authorsItsOwnCatalogue:
               container.read(catalogAdminRepositoryProvider) != null,
         ).expand((area) => area.$2).contains(ManagementPane.purchasing);
 
     expect(offersPurchasing(), isTrue, reason: 'the owner buys');
 
-    container.read(signedInStaffProvider.notifier).signIn(
-      const PosStaff(
-        id: 9,
-        name: 'Nour S.',
-        username: 'nour',
-        role: PosRole(
-          id: 9,
-          code: 'supervisor',
-          nameEn: 'Supervisor',
-          capabilities: {PosCapability.staffManage},
-        ),
-      ),
-    );
+    // Nour: a supervisor the owner let into Admin Mode, who does not buy.
+    await tester.tap(find.byKey(const Key('admin-exit')));
     await tester.pumpAndSettle();
+    await enter(tester, 'nour', pin: '2468');
 
     expect(offersPurchasing(), isFalse);
   });
@@ -709,28 +702,14 @@ void main() {
     // `initialPane` comes from a menu item somebody may have had every right to
     // use last week. The rail hiding it while the body still rendered it would
     // be the gate saying no and the screen saying yes.
-    final container = await open(
-      tester,
-      pane: ManagementPane.purchasing,
-      offline: true,
-    );
+    await open(tester, pane: ManagementPane.purchasing, offline: true);
     await enter(tester, 'amer');
     expect(find.text('New order'), findsOneWidget);
 
-    container.read(signedInStaffProvider.notifier).signIn(
-      const PosStaff(
-        id: 9,
-        name: 'Nour S.',
-        username: 'nour',
-        role: PosRole(
-          id: 9,
-          code: 'supervisor',
-          nameEn: 'Supervisor',
-          capabilities: {PosCapability.staffManage},
-        ),
-      ),
-    );
+    // The same deep link, and somebody else through the door.
+    await tester.tap(find.byKey(const Key('admin-exit')));
     await tester.pumpAndSettle();
+    await enter(tester, 'nour', pin: '2468');
 
     expect(find.text('New order'), findsNothing);
     expect(find.text('Add somebody'), findsOneWidget, reason: 'falls back');
@@ -764,6 +743,101 @@ void main() {
     expect(find.text('taken away'), findsNothing);
   });
 
+  group('while the database is being asked', () {
+    // The case that crashed once: the door's answer arriving after the screen
+    // had already moved on. Management used to hold the password first and
+    // try it second, which opened the panes mid-check, disposed the form, and
+    // left the check reading a `ref` that no longer existed. These hold the
+    // database's answer back and look at the screen in between — with the
+    // owner signed in at the till, where it went wrong.
+    Future<({ProviderContainer container, Completer<PosDbFailure?> answer})>
+    atTheDoor(WidgetTester tester) async {
+      tester.view
+        ..physicalSize = const Size(1440, 900)
+        ..devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      final answer = Completer<PosDbFailure?>();
+      final container = ProviderContainer(
+        overrides: [
+          ...fakeRepositoryOverrides(),
+          adminPasswordProbeProvider.overrideWithValue((_) => answer.future),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final amer = (await container
+              .read(staffDirectoryRepositoryProvider)
+              .all(includeInactive: false))
+          .firstWhere((person) => person.username == 'amer');
+      container.read(signedInStaffProvider.notifier).signIn(amer);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            theme: buildPosTheme(),
+            home: ManagementScreen(onClose: () {}, onReconfigure: () {}),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Add somebody'), findsNothing, reason: 'the door is shut');
+      return (container: container, answer: answer);
+    }
+
+    Future<void> submit(WidgetTester tester) async {
+      await tester.enterText(
+        find.descendant(
+          of: find.byKey(const Key('admin-username')),
+          matching: find.byType(TextField),
+        ),
+        'amer',
+      );
+      await tester.enterText(find.byKey(const Key('admin-pin')), '4321');
+      await tester.tap(find.byKey(const Key('admin-open')));
+      // One frame, not settle: the database has not answered yet.
+      await tester.pump();
+    }
+
+    testWidgets('nothing opens before the answer, and the screen survives it', (
+      tester,
+    ) async {
+      final door = await atTheDoor(tester);
+      await submit(tester);
+
+      expect(
+        find.text('Add somebody'),
+        findsNothing,
+        reason: 'nothing opens on a password nobody has tried yet',
+      );
+      expect(door.container.read(adminDbCredentialProvider), isNull);
+
+      door.answer.complete(null);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Add somebody'), findsOneWidget);
+      expect(door.container.read(adminDbCredentialProvider), 'test-credential');
+      expect(door.container.read(adminSessionProvider)!.staff.username, 'amer');
+    });
+
+    testWidgets('a kept password the database now refuses is asked for again, '
+        'and nothing is held', (tester) async {
+      final door = await atTheDoor(tester);
+      await submit(tester);
+
+      door.answer.complete(PosDbFailure.auth);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('admin-db-password')), findsOneWidget);
+      expect(find.text('Add somebody'), findsNothing);
+      expect(
+        door.container.read(adminDbCredentialProvider),
+        isNull,
+        reason: 'a password that got nobody in is not held for the session',
+      );
+    });
+  });
 }
 
 /// The labels the roles pane renders, so a test taps the same string a manager

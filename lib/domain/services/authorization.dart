@@ -16,7 +16,11 @@ sealed class PermissionDecision {
 }
 
 class Allowed extends PermissionDecision {
-  const Allowed({this.approvedBy, this.reason, this.limit});
+  const Allowed({this.approvedBy, this.reason, this.limit, this.approval});
+
+  /// The record of the one act a supervisor approved, when one did. What a
+  /// repository is shown before it writes — see [Authorization.authorize].
+  final Approval? approval;
 
   /// The ceiling that came with the permission, when there is one.
   ///
@@ -38,6 +42,59 @@ class Allowed extends PermissionDecision {
   final ReasonSelection? reason;
 
   bool get wasOverridden => approvedBy != null;
+}
+
+/// One act a supervisor approved at the till: what, by whom, and for what.
+///
+/// **A record, and a spent one once used.** An approval used to be a name the
+/// screen carried to the write. Nothing said which act it was for, and nothing
+/// stopped the same name being carried to a second one. Now it states the
+/// capability and — where the screen knows it — the thing it was for (an
+/// order, a ticket, a shift), and [Authorization.authorize] spends it the first
+/// time it lets somebody do what they could not do on their own.
+///
+/// In-process, so not a cryptographic token: code inside the app could build
+/// one without anybody's PIN, through [Authorization.approve]. What it stops is
+/// the flow mistake — an approval kept from an earlier act, or one approval
+/// stretched over two refunds — and what it keeps is who answered for the act.
+class Approval {
+  Approval._({
+    required this.capability,
+    required this.approver,
+    this.subject,
+    this.reason,
+  });
+
+  final String capability;
+  final PosStaff approver;
+
+  /// What it was given for, in the caller's words — an order id, a ticket id,
+  /// a shift id. Null when the act has no single thing (opening the drawer).
+  final String? subject;
+  final ReasonSelection? reason;
+
+  bool _spent = false;
+
+  /// Whether an act has already been allowed on it.
+  bool get isSpent => _spent;
+}
+
+/// A repository was asked to write something the person may not do.
+///
+/// **An exception, where refusals in this codebase are usually data** — and
+/// deliberately. Every screen asks [Authorization] first and turns "no" into
+/// words or a supervisor prompt. A write that still arrives without authority
+/// has gone round a screen, which is a defect to surface loudly rather than an
+/// ordinary outcome to render.
+class PermissionRefused implements Exception {
+  const PermissionRefused(this.capability, this.decision);
+
+  final String capability;
+  final PermissionDecision decision;
+
+  @override
+  String toString() =>
+      'PermissionRefused: $capability (${decision.runtimeType})';
 }
 
 /// The person lacks [capability], but somebody who holds it may approve this
@@ -162,10 +219,13 @@ abstract final class Authorization {
   /// An approver who does not hold the capability is refused rather than
   /// treated as absent — the alternative is a supervisor discovering that their
   /// PIN "worked" for something they were never granted.
+  ///
+  /// [subject] is what the approval is for — see [Approval.subject].
   static PermissionDecision approve({
     required PosStaff? approver,
     required String capability,
     ReasonSelection? reason,
+    String? subject,
   }) {
     final wanted = PosCapability.canonical(capability);
     if (!PosCapability.mayBeLent(wanted)) return Denied(wanted);
@@ -180,8 +240,95 @@ abstract final class Authorization {
       approvedBy: approver,
       reason: reason,
       limit: approver.limitFor(_limitKeyFor(wanted)),
+      approval: Approval._(
+        capability: wanted,
+        approver: approver,
+        subject: subject,
+        reason: reason,
+      ),
     );
   }
+
+  /// What a repository asks before it writes: may [by] do this, on their own
+  /// authority or on [approval]'s?
+  ///
+  /// The screens ask first and bring a supervisor over; this is the backstop
+  /// that holds when something goes round a screen. [approval] counts only if
+  /// it was given for [capability] — and for [subject], when both name one —
+  /// by somebody who may still give it, and has not been spent. It is spent
+  /// here, and only when it was needed: shown by somebody who holds the
+  /// permission anyway, it stays unspent.
+  ///
+  /// [approvalRequired] is for the acts that need a **second person** whoever
+  /// is doing them: a refund above the restaurant's threshold, somebody else's
+  /// drawer. Holding the permission is then not enough, and the approver may
+  /// not be the person asking — otherwise "a second person approved it" is a
+  /// supervisor typing their own PIN twice.
+  static PermissionDecision authorize(
+    PosStaff? by,
+    String capability, {
+    Approval? approval,
+    String? subject,
+    bool approvalRequired = false,
+  }) {
+    final own = check(by, capability);
+    if (own is Allowed && !approvalRequired) return own;
+
+    final wanted = PosCapability.canonical(capability);
+    // What to answer when the approval does not stand up: the person's own
+    // answer, or — when they hold it but a second person was needed — the
+    // prompt that brings one over.
+    final refused = own is Allowed ? NeedsOverride(wanted) : own;
+
+    if (approval == null) return refused;
+    if (approval.isSpent || approval.capability != wanted) return refused;
+    if (approval.subject != null &&
+        subject != null &&
+        approval.subject != subject) {
+      return refused;
+    }
+    if (approvalRequired && by != null && approval.approver.id == by.id) {
+      return refused;
+    }
+
+    // Re-asked of the approver, not trusted from when it was given: somebody
+    // disabled, or moved off a role, between the PIN and the write no longer
+    // answers for anything.
+    final lent = approve(
+      approver: approval.approver,
+      capability: wanted,
+      reason: approval.reason,
+      subject: approval.subject,
+    );
+    if (lent is! Allowed) return refused;
+
+    approval._spent = true;
+    return Allowed(
+      approvedBy: approval.approver,
+      reason: approval.reason,
+      limit: lent.limit,
+      approval: approval,
+    );
+  }
+
+  /// [authorize], for a repository: the decision when it allows, and a
+  /// [PermissionRefused] when it does not.
+  static Allowed require(
+    PosStaff? by,
+    String capability, {
+    Approval? approval,
+    String? subject,
+    bool approvalRequired = false,
+  }) => switch (authorize(
+    by,
+    capability,
+    approval: approval,
+    subject: subject,
+    approvalRequired: approvalRequired,
+  )) {
+    final Allowed allowed => allowed,
+    final refused => throw PermissionRefused(capability, refused),
+  };
 
   /// Why a role cannot be saved as written, or null if it can.
   ///

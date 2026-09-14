@@ -71,6 +71,7 @@ void main() {
     WidgetTester tester, {
     List<Discount> offered = const [],
     DiscountLimit limit = DiscountLimit.unlimited,
+    DiscountLimit approverLimit = DiscountLimit.unlimited,
     PosStaff? preApprovedBy,
     Ticket? on,
     String locale = 'en',
@@ -82,7 +83,12 @@ void main() {
       ProviderScope(
         overrides: [
           discountsRepositoryProvider.overrideWithValue(
-            _Discounts(offered, limit),
+            _Discounts(
+              offered,
+              limit,
+              approverId: supervisor.id,
+              approverLimit: approverLimit,
+            ),
           ),
           reasonsRepositoryProvider.overrideWithValue(const _Reasons()),
           staffDirectoryRepositoryProvider.overrideWithValue(
@@ -428,6 +434,39 @@ void main() {
       expect(applied.amount.minor, 3000);
       expect(applied.approvedByStaffId, supervisor.id);
     });
+
+    testWidgets('an approval goes no further than the approver\'s own ceiling', (
+      tester,
+    ) async {
+      // It used to retry with no ceiling at all. A supervisor capped at 20%
+      // then approved 30% by standing beside a cashier capped at 10% — the
+      // approval was wider than the authority of the person who gave it.
+      await open(
+        tester,
+        limit: const DiscountLimit(maxBp: 1000),
+        approverLimit: const DiscountLimit(maxBp: 2000),
+      );
+
+      await typeAmount(tester, '30');
+      await tester.tap(find.text('Apply discount'));
+      await tester.pumpAndSettle();
+
+      for (final digit in '9999'.split('')) {
+        await tester.tap(find.widgetWithText(InkWell, digit).first);
+        await tester.pump();
+      }
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Wrong item made'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Apply discount').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Done'));
+      await tester.pumpAndSettle();
+
+      // Still open, nothing applied: the cashier can try a smaller figure, or
+      // find somebody who may give more.
+      expect(isOpen(), isTrue);
+    });
   });
 
   group('refusals a cashier can act on', () {
@@ -494,17 +533,31 @@ void main() {
   });
 }
 
+/// Each person's own ceiling, as the real repository answers it.
+///
+/// This used to hand everybody the same limit, which was harmless while an
+/// approval retried with no ceiling at all. It retries under the APPROVER'S
+/// ceiling now, and a fake that gave the supervisor the cashier's 10% would
+/// test a restaurant where nobody can approve anything.
 class _Discounts implements DiscountsRepository {
-  const _Discounts(this._offered, this._limit);
+  const _Discounts(
+    this._offered,
+    this._limit, {
+    required this.approverId,
+    this.approverLimit = DiscountLimit.unlimited,
+  });
 
   final List<Discount> _offered;
   final DiscountLimit _limit;
+  final int approverId;
+  final DiscountLimit approverLimit;
 
   @override
   Future<List<Discount>> all() async => _offered;
 
   @override
-  Future<DiscountLimit> limitFor(PosStaff? staff) async => _limit;
+  Future<DiscountLimit> limitFor(PosStaff? staff) async =>
+      staff?.id == approverId ? approverLimit : _limit;
 }
 
 class _Reasons implements ReasonsRepository {

@@ -327,15 +327,34 @@ class _CloseShiftDialogState extends ConsumerState<CloseShiftDialog> {
     // never be cashed up is worse than one cashed up under supervision. Anybody
     // else needs a manager to put their PIN in HERE, in front of the drawer,
     // and both names go on the audit row.
-    ApprovalOutcome? handover;
+    Approval? handover;
     if (!widget.shift.openedBy(by.id)) {
-      handover = await SupervisorOverrideDialog.show(
+      final outcome = await SupervisorOverrideDialog.show(
         context,
         capability: PosCapability.shiftClose,
         action: strings.closeShiftNotYours(widget.shift.openedByName),
         requestedBy: by.name,
       );
-      if (handover == null) return;
+      if (outcome == null) return;
+      if (!mounted) return;
+      final lent = Authorization.approve(
+        approver: outcome.approver,
+        capability: PosCapability.shiftClose,
+        subject: '${widget.shift.id}',
+      );
+      if (lent is! Allowed) return;
+      handover = lent.approval;
+      // On the ledger in its own right. It used to have no row of its own:
+      // the close's row named the manager, and nothing said they had released
+      // somebody else's drawer rather than simply approved a count.
+      await recordApproval(
+        ref,
+        approver: outcome.approver,
+        capability: PosCapability.shiftClose,
+        auditAction: 'shift.close.handover',
+        entityType: AuditAction.entityShift,
+        entityId: '${widget.shift.id}',
+      );
       if (!mounted) return;
     }
 
@@ -363,7 +382,15 @@ class _CloseShiftDialogState extends ConsumerState<CloseShiftDialog> {
     try {
       final closed = await ref
           .read(shiftRepositoryProvider)
-          .close(shift: widget.shift, by: by, countedCash: counted);
+          .close(
+            shift: widget.shift,
+            by: by,
+            countedCash: counted,
+            // The handover, when there was one: it is what lets somebody who
+            // did not open this drawer close it, and it covers the permission
+            // too.
+            approval: handover ?? decision.approval,
+          );
       // The variance is on the ledger as well as on the shift. It is the number
       // a manager argues about, and the argument is easier when the row also
       // says who counted and who approved them counting.

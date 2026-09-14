@@ -1,7 +1,9 @@
 import '../../core/config/deployment.dart';
 import '../../core/money/money.dart';
 import '../../domain/models/business_day.dart';
+import '../../domain/models/permissions.dart';
 import '../../domain/repositories/repositories.dart';
+import '../../domain/services/authorization.dart';
 import 'pos_database.dart';
 import 'postgres_orders_repository.dart' show PosWriteContext;
 
@@ -127,9 +129,20 @@ class PostgresCashMovementsRepository implements CashMovementsRepository {
     required int shiftId,
     int? reasonId,
     String? note,
-    PosStaff? approvedBy,
+    Approval? approval,
     int? businessDayId,
   }) async {
+    // A drawer opening asks its own key, not `cash.movement`: it is the one
+    // drawer act that moves no money, which is why a dishonest cashier wants
+    // it most — and a key of its own is only worth something if the write
+    // asks for it.
+    final approvedBy = Authorization.require(
+      by,
+      kind == CashMovementKind.drawerOpen
+          ? PosCapability.cashOpenWithoutSale
+          : PosCapability.cashMovement,
+      approval: approval,
+    ).approvedBy;
     final stored = CashMovementWrite.normalise(kind, amount);
     CashMovementWrite.refuseNothing(kind, stored);
 
@@ -191,7 +204,7 @@ class UnconfiguredCashMovementsRepository implements CashMovementsRepository {
     required int shiftId,
     int? reasonId,
     String? note,
-    PosStaff? approvedBy,
+    Approval? approval,
     int? businessDayId,
   }) async => throw StateError(
     'This terminal has nowhere to record a cash movement. It is not connected '

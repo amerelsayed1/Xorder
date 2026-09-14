@@ -1,10 +1,13 @@
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:xorder_pos/app/providers.dart';
 import 'package:xorder_pos/core/config/terminal_config.dart';
+import 'package:xorder_pos/data/config/pos_db_secret_store.dart';
 import 'package:xorder_pos/data/config/terminal_config_store.dart';
 import 'package:xorder_pos/data/fakes/fake_repositories.dart';
+import 'package:xorder_pos/data/postgres/pos_database.dart';
 import 'package:xorder_pos/domain/repositories/admin_repositories.dart';
 import 'package:xorder_pos/features/licensing/data/licence_service.dart';
 
@@ -83,12 +86,18 @@ List<Override> fakeRepositoryOverrides({
       // and could not anyway, since `path_provider` has no implementation in
       // the test harness.
       terminalConfigStoreProvider.overrideWithValue(InMemoryTerminalConfigStore()),
-      // Past the back-office credential gate. Management asks for the
-      // administrator database password before it opens, and a widget test
-      // driving the fake repositories has no database to ask about — so the
-      // container starts on the far side of that question rather than every
-      // test typing through it.
-      adminDbCredentialProvider.overrideWith(_CredentialedAdminDb.new),
+      // Admin Mode's database password, kept as the setup wizard keeps it, and
+      // a database that accepts it. A widget test has no PostgreSQL to ask; a
+      // test about the first-time question empties the store itself. Nobody is
+      // IN Admin Mode at the start — that takes a username and PIN, which is
+      // the point of it.
+      adminDbSecretStoreProvider.overrideWithValue(
+        MemorySecretStore('test-credential'),
+      ),
+      adminPasswordProbeProvider.overrideWithValue(
+        (password) async =>
+            password == 'test-credential' ? null : PosDbFailure.auth,
+      ),
     ];
 
 /// An offline terminal: one that authors its own catalogue, and so its own
@@ -107,10 +116,45 @@ Override offlineTerminal() =>
 
 class _OfflineCatalogueAdmin extends Mock implements CatalogAdminRepository {}
 
-/// An [AdminDbCredential] that starts supplied.
-class _CredentialedAdminDb extends AdminDbCredential {
+/// Through Admin Mode's door as the owner, for a test about what is behind it.
+///
+/// Typed, not injected: the door is the one way in, and a harness that could
+/// put somebody past it would be a way round it that nothing tests. Amer's PIN
+/// in [FakeSessionRepository] is 4321.
+Future<void> enterAdminMode(
+  WidgetTester tester, {
+  String username = 'amer',
+  String pin = '4321',
+}) async {
+  await tester.enterText(
+    find.descendant(
+      of: find.byKey(const Key('admin-username')),
+      matching: find.byType(TextField),
+    ),
+    username,
+  );
+  await tester.enterText(find.byKey(const Key('admin-pin')), pin);
+  await tester.tap(find.byKey(const Key('admin-open')));
+  await tester.pumpAndSettle();
+}
+
+/// A secret store in memory: what `secrets.json` holds, without the file.
+class MemorySecretStore implements PosDbSecretStore {
+  MemorySecretStore([this.value]);
+
+  String? value;
+
   @override
-  String? build() => 'test-credential';
+  Object? get lastFailure => null;
+
+  @override
+  Future<String?> read() async => value;
+
+  @override
+  Future<void> write(String value) async => this.value = value;
+
+  @override
+  Future<void> clear() async => value = null;
 }
 
 /// The saved terminal configuration, held in memory for the length of a test.

@@ -164,7 +164,7 @@ class _Orders implements OrdersRepository {
     required PosStaff by,
     int? reasonId,
     String? note,
-    PosStaff? approvedBy,
+    Approval? approval,
     PosStaff? servedBy,
   }) async {
     voided.add(ticket);

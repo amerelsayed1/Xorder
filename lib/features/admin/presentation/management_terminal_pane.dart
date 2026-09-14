@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/providers.dart';
+import '../../../core/config/admin_mode_settings.dart';
 import '../../../core/l10n/app_strings.dart';
 import '../../../core/ui/theme.dart';
 import '../../../core/ui/tokens.dart';
@@ -9,7 +10,9 @@ import '../../../core/ui/widgets/pos_widgets.dart';
 import '../../../domain/models/permissions.dart';
 import '../../../domain/models/shift.dart';
 import '../../../domain/services/authorization.dart';
+import '../application/admin_session.dart';
 import 'admin_pane_bits.dart';
+import 'admin_shortcut.dart';
 
 /// This till's own setup, and running it again.
 ///
@@ -132,6 +135,105 @@ class _ManagementTerminalPaneState
             style: PosText.ui(size: 12.5, color: palette.danger, height: 1.5),
           ),
         ],
+        const SizedBox(height: PosSpace.xl),
+        MicroLabel(strings.adminSignInTitle),
+        const SizedBox(height: PosSpace.xs),
+        Text(
+          strings.adminModeSettingsHint,
+          style: PosText.ui(size: 12.5, color: palette.muted, height: 1.5),
+        ),
+        const SizedBox(height: PosSpace.md),
+        _AdminModeSettings(enabled: _mayManage),
+      ],
+    );
+  }
+}
+
+/// Which chord opens Admin Mode on this till, and how long it stays open with
+/// nobody touching it.
+///
+/// Here, beside the reset, because both are facts about this machine rather
+/// than the restaurant — and behind the same `terminal.manage`, so the person
+/// who may wipe the till is the person who may change how its back office is
+/// reached.
+class _AdminModeSettings extends ConsumerWidget {
+  const _AdminModeSettings({required this.enabled});
+
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final strings = context.strings;
+    final palette = context.pos;
+    final settings = ref.watch(adminModeSettingsProvider);
+    final controller = ref.read(adminModeSettingsProvider.notifier);
+    final label = PosText.ui(size: 13, color: palette.muted);
+    final choice = PosText.ui(color: palette.inkWarm, size: 13);
+
+    return Wrap(
+      spacing: PosSpace.xl,
+      runSpacing: PosSpace.md,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(strings.adminLockAfter, style: label),
+            const SizedBox(width: PosSpace.sm),
+            DropdownButton<int>(
+              key: const Key('admin-timeout'),
+              value: settings.timeoutMinutes,
+              underline: const SizedBox.shrink(),
+              style: choice,
+              items: [
+                for (final minutes in AdminModeSettings.timeoutChoices)
+                  DropdownMenuItem(
+                    value: minutes,
+                    child: Text(strings.adminMinutes(minutes)),
+                  ),
+              ],
+              onChanged: enabled
+                  ? (minutes) {
+                      if (minutes == null) return;
+                      controller.save(
+                        settings.copyWith(timeoutMinutes: minutes),
+                      );
+                    }
+                  : null,
+            ),
+          ],
+        ),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(strings.adminShortcut, style: label),
+            const SizedBox(width: PosSpace.sm),
+            DropdownButton<AdminShortcut>(
+              key: const Key('admin-shortcut'),
+              value: settings.shortcut,
+              underline: const SizedBox.shrink(),
+              style: choice,
+              items: [
+                for (final shortcut in AdminShortcut.values)
+                  DropdownMenuItem(
+                    value: shortcut,
+                    // Key names, not words: the same on every keyboard, in
+                    // either language, and always left to right.
+                    child: Directionality(
+                      textDirection: TextDirection.ltr,
+                      child: Text(adminShortcutLabel(shortcut)),
+                    ),
+                  ),
+              ],
+              onChanged: enabled
+                  ? (shortcut) {
+                      if (shortcut == null) return;
+                      controller.save(settings.copyWith(shortcut: shortcut));
+                    }
+                  : null,
+            ),
+          ],
+        ),
       ],
     );
   }

@@ -507,15 +507,53 @@ class FakeSessionRepository implements SessionRepository {
       ? const PosStaff(id: 1, name: 'Rana A.', username: 'rana', role: cashier)
       : null;
 
+  /// The owner, for the doors that ask for a name and a PIN — Admin Mode and
+  /// the forced reset. The same Amer, with the same id, as
+  /// [FakeStaffDirectoryRepository]'s, so a pane comparing whoever is in Admin
+  /// Mode with a staff row finds the same somebody.
+  static const owner = PosRole(
+    id: 1,
+    code: SystemRoles.ownerCode,
+    nameEn: 'Owner',
+    nameAr: 'المالك',
+    capabilities: SystemRoles.owner,
+    isSystem: true,
+  );
+
+  /// A supervisor the owner has let into Admin Mode — and not into buying.
+  /// What "controlled by the owner in Roles" looks like once somebody has used
+  /// it.
+  static const trustedSupervisor = PosRole(
+    id: 3,
+    code: SystemRoles.supervisorCode,
+    nameEn: 'Supervisor',
+    capabilities: {PosCapability.staffManage, PosCapability.adminEnter},
+    isSystem: true,
+  );
+
   @override
   Future<PosStaff?> signInAs({
     required String username,
     required String pin,
   }) async {
+    final wanted = username.trim().toLowerCase();
     final staff = await signIn(pin);
-    return staff?.username?.toLowerCase() == username.trim().toLowerCase()
-        ? staff
-        : null;
+    if (staff != null && staff.username?.toLowerCase() == wanted) return staff;
+    return switch ((wanted, pin)) {
+      ('amer', '4321') => const PosStaff(
+        id: 1,
+        name: 'Amer M.',
+        username: 'amer',
+        role: owner,
+      ),
+      ('nour', '2468') => const PosStaff(
+        id: 3,
+        name: 'Nour S.',
+        username: 'nour',
+        role: trustedSupervisor,
+      ),
+      _ => null,
+    };
   }
 }
 
@@ -553,7 +591,17 @@ class FakeShiftRepository implements ShiftRepository {
     required PosStaff by,
     required Money countedCash,
     String? note,
+    Approval? approval,
   }) async {
+    // The same question the real repository asks, so a widget test cannot
+    // pass on a close the database layer would refuse.
+    Authorization.require(
+      by,
+      PosCapability.shiftClose,
+      approval: approval,
+      subject: '${shift.id}',
+      approvalRequired: !shift.openedBy(by.id),
+    );
     final summary = await summarise(shift);
     _open = null;
     return ShiftClose(
@@ -611,9 +659,15 @@ class FakeOrdersRepository implements OrdersRepository {
     required PosStaff by,
     int? reasonId,
     String? note,
-    PosStaff? approvedBy,
+    Approval? approval,
     PosStaff? servedBy,
   }) async {
+    Authorization.require(
+      by,
+      PosCapability.orderVoid,
+      approval: approval,
+      subject: ticket.id,
+    );
     final existing = voided.indexWhere((t) => t.id == ticket.id);
     if (existing < 0) {
       voided.add(ticket);
@@ -1109,6 +1163,13 @@ class FakeStaffDirectoryRepository implements StaffDirectoryRepository {
     if (!Authorization.check(by, PosCapability.staffManage).isAllowed) {
       return const AdminResult.refused(NotPermitted(PosCapability.staffManage));
     }
+    // The same rule as the Postgres repository — see [OwnerPinIsTheirs].
+    final index = staff.indexWhere((person) => person.id == staffId);
+    if (index >= 0 &&
+        staff[index].role?.code == SystemRoles.ownerCode &&
+        staffId != by.id) {
+      return const AdminResult.refused(OwnerPinIsTheirs());
+    }
     pins.removeWhere((_, id) => id == staffId);
     pins[pin] = staffId;
     return const AdminResult.done(null);
@@ -1403,12 +1464,21 @@ class FakeRefundsRepository implements RefundsRepository {
     required PosStaff by,
     required List<RefundTender> tenders,
     required String clientRefundId,
-    PosStaff? approvedBy,
+    Approval? approval,
     int? reasonId,
     String? note,
   }) async {
     final failure = failWith;
     if (failure != null) throw failure;
+
+    final allowed = Authorization.require(
+      by,
+      PosCapability.orderRefund,
+      approval: approval,
+      subject: '${order.id}',
+      approvalRequired: quote.requiresApproval,
+    );
+    final approvedBy = allowed.approvedBy;
 
     for (final refund in issued) {
       if (refund.clientRefundId == clientRefundId) {

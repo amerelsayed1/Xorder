@@ -10,9 +10,11 @@ import 'package:xorder_pos/data/postgres/pos_database.dart';
 import 'package:xorder_pos/data/postgres/postgres_orders_repository.dart';
 import 'package:xorder_pos/data/postgres/postgres_shift_repository.dart';
 import 'package:xorder_pos/domain/models/catalog.dart';
+import 'package:xorder_pos/domain/models/permissions.dart';
 import 'package:xorder_pos/domain/models/shift.dart';
 import 'package:xorder_pos/domain/models/tender_method.dart';
 import 'package:xorder_pos/domain/models/ticket.dart';
+import 'package:xorder_pos/domain/services/authorization.dart';
 import 'package:xorder_pos/domain/services/ticket_engine.dart';
 
 import 'pg_fixture.dart';
@@ -85,7 +87,18 @@ void main() {
           'h': await PinHash.hash(pin, salt),
         },
       );
-      return PosStaff(id: row.first[0] as int, name: name);
+      // Cashiers: each may close the drawer they opened, and the repository
+      // now asks.
+      return PosStaff(
+        id: row.first[0] as int,
+        name: name,
+        role: const PosRole(
+          id: 1,
+          code: SystemRoles.cashierCode,
+          nameEn: 'Cashier',
+          capabilities: SystemRoles.cashier,
+        ),
+      );
     }
 
     sara = await staff('Sara M.', 'sara', '1111');
@@ -352,11 +365,41 @@ void main() {
       expect(closed.variance.minor, 250);
     });
 
-    test('whoever counts the drawer signs for it, not whoever opened', () async {
+    test('somebody else\'s drawer is closed only on a manager\'s approval',
+        () async {
+      // This test used to say the opposite — "a manager cashing up at the end
+      // of the night is the normal case" — and the close dialog stopped
+      // believing it long ago: the drawer is the opener's, and anybody else
+      // needs a manager's PIN in front of it. Only the dialog held that. Now
+      // the repository does too.
       final shift = await shifts().open(by: sara, openingFloat: Money.zero);
 
-      // A manager cashing up at the end of the night is the normal case.
-      await shifts().close(shift: shift, by: omar, countedCash: Money.zero);
+      await expectLater(
+        shifts().close(shift: shift, by: omar, countedCash: Money.zero),
+        throwsA(isA<PermissionRefused>()),
+      );
+      expect(await shifts().current(), isNotNull, reason: 'still open');
+
+      final approval = (Authorization.approve(
+        approver: const PosStaff(
+          id: 99,
+          name: 'Hana M.',
+          role: PosRole(
+            id: 2,
+            code: SystemRoles.managerCode,
+            nameEn: 'Manager',
+            capabilities: SystemRoles.manager,
+          ),
+        ),
+        capability: PosCapability.shiftClose,
+        subject: '${shift.id}',
+      ) as Allowed).approval!;
+      await shifts().close(
+        shift: shift,
+        by: omar,
+        countedCash: Money.zero,
+        approval: approval,
+      );
 
       final stored = await db.query(
         pg.config,
@@ -364,7 +407,7 @@ void main() {
         parameters: {'id': shift.id},
       );
       expect(stored.first[0], sara.id);
-      expect(stored.first[1], omar.id);
+      expect(stored.first[1], omar.id, reason: 'whoever counted signs for it');
     });
 
     test('a second cash-up cannot overwrite the first', () async {
@@ -372,7 +415,7 @@ void main() {
       await shifts().close(shift: shift, by: sara, countedCash: Money(10000));
 
       await expectLater(
-        shifts().close(shift: shift, by: omar, countedCash: Money(999)),
+        shifts().close(shift: shift, by: sara, countedCash: Money(999)),
         throwsA(isA<StateError>()),
       );
 
