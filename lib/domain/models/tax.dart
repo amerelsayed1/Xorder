@@ -230,4 +230,44 @@ abstract final class TaxEngine {
 
   static Money totalOf(List<TaxLine> lines, {Money zero = Money.zero}) =>
       lines.fold(zero, (sum, line) => sum + line.amount);
+
+  /// A refund's tax, split across the rates its sale was taxed at, in minor
+  /// units — one figure per entry of [saleAmounts], in the same order.
+  ///
+  /// **The one place a refund's tax is given a rate.** A refund row carries
+  /// its VAT as one figure (`pos_refunds.vat_minor`); the sale carries it by
+  /// rate (`pos_order_taxes`). Both the ETA credit note and the Finance tab's
+  /// taxes need the refund by rate, and two copies of this arithmetic would be
+  /// a credit note and a tax report that disagree by a piastre about the same
+  /// refund — the discrepancy an accountant finds on the one day it matters.
+  ///
+  /// Each rate but the last takes its share of [refundVat] in proportion to
+  /// what it was on the sale, floored; the last takes what is left, so the
+  /// parts always sum to exactly [refundVat]. The order is the caller's, and
+  /// both callers read `pos_order_taxes` by `id`. Largest remainder was the
+  /// alternative, and would move a piastre between rates on credit notes
+  /// already queued for filing under this rule.
+  ///
+  /// A sale that recorded no VAT gives every rate but the last nothing: a
+  /// proportion of zero is not a proportion.
+  static List<int> refundShares({
+    required List<int> saleAmounts,
+    required int saleVat,
+    required int refundVat,
+  }) {
+    if (saleAmounts.isEmpty) return const [];
+    var left = refundVat;
+    return [
+      for (var i = 0; i < saleAmounts.length; i++)
+        () {
+          final share = i == saleAmounts.length - 1
+              ? left
+              : saleVat == 0
+              ? 0
+              : saleAmounts[i] * refundVat ~/ saleVat;
+          left -= share;
+          return share;
+        }(),
+    ];
+  }
 }

@@ -22,6 +22,7 @@ import '../models/dining_table.dart';
 import '../models/business_day.dart';
 import '../models/order_record.dart';
 import '../models/sales_report.dart';
+import '../models/finance_report.dart';
 import '../models/pos_settings.dart';
 import '../models/refund.dart';
 import '../services/refund_engine.dart' show RefundQuote;
@@ -460,6 +461,14 @@ abstract interface class ReportsRepository {
     required ProductRanking by,
     int limit = 5,
   });
+
+  /// Tax on [filter]'s sales by rate, and the tax of the refunds issued in it,
+  /// split across their sales' rates (BO-9). Read in one snapshot.
+  Future<TaxReport> taxes(ReportFilter filter);
+
+  /// One row per payment on [filter]'s sales, newest first, at most [limit]
+  /// (BO-9, plan 17 S2).
+  Future<PaymentLedger> payments(ReportFilter filter, {int limit = 500});
 }
 
 /// The outcome of issuing a refund.

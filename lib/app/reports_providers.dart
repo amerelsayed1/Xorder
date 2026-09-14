@@ -6,11 +6,19 @@ import '../domain/models/permissions.dart';
 import '../domain/models/sales_report.dart';
 import '../domain/repositories/repositories.dart';
 import '../domain/services/authorization.dart';
+import '../features/admin/application/admin_session.dart';
 import 'providers.dart';
 
 /// The reports' sources (plan 19 BO-5). Kept out of `providers.dart`, as the
 /// branch view's are, so the feature lands — and could be taken out — as one
-/// file. No screen reads these yet; BO-6 draws them.
+/// file. Finance (BO-9) draws them; BO-6's Reports tab will.
+///
+/// **`autoDispose`, the gate and every report alike.** A report is a
+/// snapshot of money still moving: kept for the life of the app, the tab left
+/// at 10:00 and reopened at 14:00 showed 10:00's takings as today's. And the
+/// gate watches the Admin Mode session, which ends as the back office is torn
+/// down; a gate still alive then, with nothing left to draw, would be asked
+/// again for nobody.
 
 /// The shared-database reports. Null on a terminal that has not finished
 /// setup — the same rule the branch view's binding follows. There is no
@@ -28,9 +36,17 @@ final reportsRepositoryProvider = Provider<ReportsRepository?>((ref) {
   );
 });
 
-/// Whether the signed-in operator may read the reports: `reports.view`,
-/// through [Authorization.check] — never `capabilities.contains`, which is
-/// direct grants only and would refuse a manager whose role carries it.
+/// Whether the person reading may read the reports: `reports.view`, through
+/// [Authorization.check] — never `capabilities.contains`, which is direct
+/// grants only and would refuse a manager whose role carries it.
+///
+/// **The administrator in Admin Mode first, the till's operator only
+/// outside it** — `actingStaffProvider`'s rule, restated here because that
+/// provider is `autoDispose` and this one is not. The reports are drawn only
+/// inside the back office, which is entered from a locked till or over a
+/// cashier's shift; asking the till's operator showed the owner nothing in
+/// the first case and would have shown a cashier-grade administrator a
+/// manager's figures in the second.
 ///
 /// **The figures are the branch's; `order.view_all` does not narrow them.**
 /// That is §3a's rule for the branch view, which these extend to a range:
@@ -39,9 +55,9 @@ final reportsRepositoryProvider = Provider<ReportsRepository?>((ref) {
 /// their own sales. Narrowing the figures as well was the alternative, and
 /// would make a manager whose role lacks `order.view_all` see a branch that
 /// sold only what they rang up.
-final reportsAllowedProvider = Provider<bool>(
+final reportsAllowedProvider = Provider.autoDispose<bool>(
   (ref) => Authorization.check(
-    ref.watch(signedInStaffProvider),
+    ref.watch(adminSessionProvider)?.staff ?? ref.watch(signedInStaffProvider),
     PosCapability.reportsView,
   ).isAllowed,
 );
@@ -51,7 +67,8 @@ final reportsAllowedProvider = Provider<bool>(
 /// The gate is here, on the one road to the data, and not in the tab that
 /// will draw it: a hidden tab is not a rule, and the next screen built on
 /// this provider inherits the check instead of having to remember it.
-final salesReportProvider = FutureProvider.family<SalesReport?, ReportFilter>(
+final salesReportProvider =
+    FutureProvider.autoDispose.family<SalesReport?, ReportFilter>(
   (ref, filter) async {
     if (!ref.watch(reportsAllowedProvider)) return null;
     final repository = ref.watch(reportsRepositoryProvider);
@@ -65,7 +82,7 @@ typedef TopProductsQuery = ({ReportFilter filter, ProductRanking by});
 
 /// The top five, ranked one way. Empty without `reports.view`.
 final topProductsProvider =
-    FutureProvider.family<List<ProductSales>, TopProductsQuery>((
+    FutureProvider.autoDispose.family<List<ProductSales>, TopProductsQuery>((
       ref,
       query,
     ) async {

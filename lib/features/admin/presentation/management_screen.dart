@@ -28,6 +28,7 @@ import 'management_floor_pane.dart';
 import 'management_menu_pane.dart';
 import 'management_eta_pane.dart';
 import 'management_extras_pane.dart';
+import 'management_finance_panes.dart';
 import 'management_home_pane.dart';
 import 'management_charges_pane.dart';
 import 'management_order_types_pane.dart';
@@ -203,9 +204,9 @@ bool hiddenBecausePlatformAuthors(
 /// The back office, in tabs — the mockup's nine (plan 19 §1.1), with People
 /// under Settings as it is on the cloud.
 ///
-/// **Reports and Finance hold no pane yet**, so no fixture ever sees them: a
-/// tab with no visible pane is absent, and these two have none until their
-/// slices land (Reports BO-6, Finance BO-9). Home has had its pane since BO-4
+/// **Reports holds no pane yet**, so no fixture ever sees it: a tab with no
+/// visible pane is absent, and it has none until BO-6 lands. Finance has held
+/// four since BO-9, for whoever holds `reports.view`. Home has had its pane since BO-4
 /// and Sales the order history since BO-2, both for everybody past the door.
 /// They are members now rather than added then so that the order is decided
 /// once, here, and so that [backOfficeTabName] and the strip's width test
@@ -259,6 +260,10 @@ BackOfficeTab tabOf(ManagementPane pane) => switch (pane) {
   ManagementPane.stock ||
   ManagementPane.units => BackOfficeTab.inventory,
   ManagementPane.purchasing => BackOfficeTab.purchasing,
+  ManagementPane.financeOverview ||
+  ManagementPane.financeRevenue ||
+  ManagementPane.financePayments ||
+  ManagementPane.financeTaxes => BackOfficeTab.finance,
   // Terminal beside Backup and the log rather than in Settings: it wipes the
   // machine, and Settings is where somebody goes to change a tax rate.
   // ETA here too, still hidden while `etaFilingEnabled` is false.
@@ -347,7 +352,11 @@ String settingsSectionName(AppStrings s, SettingsSection section) =>
   ManagementPane.items ||
   ManagementPane.stock ||
   ManagementPane.units ||
-  ManagementPane.terminal => null,
+  ManagementPane.terminal ||
+  ManagementPane.financeOverview ||
+  ManagementPane.financeRevenue ||
+  ManagementPane.financePayments ||
+  ManagementPane.financeTaxes => null,
 };
 
 /// Order within a tab: Settings by its side nav, every other tab by the enum.
@@ -659,6 +668,16 @@ ManagementDestination _purchasing(PurchasingTab tab, {bool create = false}) =>
         s.settingsAppearance,
         s.paneAppearanceBlurb,
       ),
+      ManagementPane.financeOverview => (
+        s.financeOverview,
+        s.financeOverviewBlurb,
+      ),
+      ManagementPane.financeRevenue => (s.financeRevenue, s.financeRevenueBlurb),
+      ManagementPane.financePayments => (
+        s.financePayments,
+        s.financePaymentsBlurb,
+      ),
+      ManagementPane.financeTaxes => (s.financeTaxes, s.financeTaxesBlurb),
     };
 
 /// The capability a pane needs beyond the `staffManage` that opened the screen.
@@ -672,7 +691,7 @@ String? _paneRequires(ManagementPane pane) => switch (pane) {
   ManagementPane.purchasing => PosCapability.purchaseManage,
   // The third capability that had no screen, and the one with the worst
   // consequences: `backup.manage` is critical-risk, held only by Owner, and
-  // deliberately outside supervisor override. `reports.view` still has none.
+  // deliberately outside supervisor override.
   //
   // Unlike Purchasing, this pane's gate is not backed by a repository that
   // refuses — `pos_backups` is granted INSERT to the till so the automatic copy
@@ -693,6 +712,13 @@ String? _paneRequires(ManagementPane pane) => switch (pane) {
   // exactly as `/orders` scopes them — so a cashier-grade administrator gets
   // the tab and their own sales in it, rather than no tab.
   ManagementPane.sales => null,
+  // Finance (BO-9). Backed where it counts: every figure is read through
+  // `reportsAllowedProvider`, which answers no without `reports.view`, so a
+  // pane reached round the strip still draws nothing.
+  ManagementPane.financeOverview ||
+  ManagementPane.financeRevenue ||
+  ManagementPane.financePayments ||
+  ManagementPane.financeTaxes => PosCapability.reportsView,
   _ => null,
 };
 
@@ -753,6 +779,13 @@ enum ManagementPane {
   /// The order history, as the Sales tab (BO-2). Last, so no other pane's
   /// index moves; the strip orders tabs by [BackOfficeTab], not by this.
   sales,
+
+  /// Finance (BO-9), in the order its sub-nav shows them — the mockup's,
+  /// less what BO-10 brings and what has no source (plan 19 §2.4).
+  financeOverview,
+  financeRevenue,
+  financePayments,
+  financeTaxes,
 }
 
 class _ManagementScreenState extends ConsumerState<ManagementScreen> {
@@ -1098,6 +1131,10 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
       admin: admin,
       onReconfigure: widget.onReconfigure,
     ),
+    ManagementPane.financeOverview => const FinanceOverviewPane(),
+    ManagementPane.financeRevenue => const FinanceRevenuePane(),
+    ManagementPane.financePayments => const FinancePaymentsPane(),
+    ManagementPane.financeTaxes => const FinanceTaxesPane(),
   };
 }
 
