@@ -70,6 +70,13 @@ by moving them out of Money when Wave D's settings navigation lands.
 
 Five substantially done, three partial, seven absent.
 
+> **Updated 14 September 2026.** Since this table was written, Purchases and
+> Suppliers (orders, receiving, supplier invoices and payments — §6) and
+> Inventory (stock items, levels, movements, units) are built, and Backup has a
+> pane with a directory and back-up-at-day-close settings (`pos_backups`,
+> `backup.on_day_close`). Still absent: Dashboard, Reports beyond X/Z,
+> Customers, Accounting lite.
+
 ---
 
 ## 3. Why the absences are one absence
