@@ -27,6 +27,7 @@ import 'management_floor_pane.dart';
 import 'management_menu_pane.dart';
 import 'management_eta_pane.dart';
 import 'management_extras_pane.dart';
+import 'management_home_pane.dart';
 import 'management_charges_pane.dart';
 import 'management_order_types_pane.dart';
 import 'management_taxes_pane.dart';
@@ -75,10 +76,10 @@ class ManagementScreen extends ConsumerStatefulWidget {
   /// they should not have to learn that accounts live behind the first word to
   /// find them.
   ///
-  /// Null is the door's own landing: the first tab that holds a pane (see
-  /// [backOfficeLanding]). Staff used to be the default, which was right while
-  /// the back office was a list with Staff at the top; with tabs, landing three
-  /// tabs in from the start would be the one screen that opens in the middle.
+  /// Null is the door's own landing: Home (see [backOfficeLanding]). Staff used
+  /// to be the default, which was right while the back office was a list with
+  /// Staff at the top; with tabs, landing three tabs in from the start would be
+  /// the one screen that opens in the middle.
   final ManagementPane? initialPane;
 
   /// Passed through to Purchasing — see [ManagementDestination].
@@ -93,7 +94,7 @@ class ManagementScreen extends ConsumerStatefulWidget {
 /// Which panes this terminal and this person actually have.
 ///
 /// **Public, and the only answer.** The tab strip asks this, and so do the
-/// window's bar and — once BO-4 lands — Home's quick actions. Two lists that
+/// window's bar and Home's quick actions ([homeQuickActionsFor]). Two lists that
 /// were meant to agree are two lists that will not: a menu offering Purchasing
 /// to somebody the strip hides it from would take them to a screen that
 /// refuses everything.
@@ -201,9 +202,10 @@ bool hiddenBecausePlatformAuthors(
 /// The back office, in tabs — the mockup's nine (plan 19 §1.1), with People
 /// under Settings as it is on the cloud.
 ///
-/// **Home, Sales, Reports and Finance hold no pane yet**, so no fixture ever
-/// sees them: a tab with no visible pane is absent, and these four have none
-/// until their slices land (Home BO-4, Sales BO-2, Reports BO-6, Finance BO-9).
+/// **Sales, Reports and Finance hold no pane yet**, so no fixture ever sees
+/// them: a tab with no visible pane is absent, and these three have none until
+/// their slices land (Sales BO-2, Reports BO-6, Finance BO-9). Home has had
+/// its pane since BO-4, and holds it for everybody past the door.
 /// They are members now rather than added then so that the order is decided
 /// once, here, and so that [backOfficeTabName] and the strip's width test
 /// already carry all nine — a tenth word arriving with a slice is how a strip
@@ -214,7 +216,7 @@ bool hiddenBecausePlatformAuthors(
 /// dissolved into Settings › General and System, and People became Settings ›
 /// Users and › Roles.
 enum BackOfficeTab {
-  /// The landing page, once BO-4 builds it.
+  /// The landing page (BO-4): this till, today's takings, the way onward.
   home,
 
   /// The order history, re-hosted by BO-2.
@@ -247,6 +249,7 @@ enum BackOfficeTab {
 /// A total function over the enum, so a pane added without a tab fails to
 /// compile rather than quietly vanishing from the strip.
 BackOfficeTab tabOf(ManagementPane pane) => switch (pane) {
+  ManagementPane.home => BackOfficeTab.home,
   ManagementPane.menu ||
   ManagementPane.extras ||
   ManagementPane.floor => BackOfficeTab.menu,
@@ -330,6 +333,7 @@ String settingsSectionName(AppStrings s, SettingsSection section) =>
   ManagementPane.tenders => (SettingsSection.pointOfSale, 2),
   ManagementPane.orderTypes => (SettingsSection.pointOfSale, 3),
   ManagementPane.appearance => (SettingsSection.thisTerminal, 0),
+  ManagementPane.home ||
   ManagementPane.menu ||
   ManagementPane.extras ||
   ManagementPane.floor ||
@@ -384,18 +388,56 @@ List<(BackOfficeTab, List<ManagementPane>)> backOfficeTabsFor({
   ];
 }
 
-/// Where the door lands: the first pane of the first tab that holds one.
+/// Where the door lands: the first pane of the first tab that holds one —
+/// which, since BO-4, is Home for everybody.
 ///
-/// Home is where it lands once BO-4 exists; until then this is the first
-/// visible tab. **A tab that only points at the platform is passed over** — on
-/// a cloud till that is Inventory, and greeting the owner on every entry with
-/// "this is not here" would make the sentence a welcome rather than an answer.
+/// Home is first in the strip and has no gate beyond the door, so this rule
+/// needed no change to land there; it is kept as the rule rather than written
+/// as "Home" so that a Home ever gated or hidden hands the landing to the next
+/// tab instead of to a pane that is not there. **A tab that only points at the
+/// platform is passed over** — on a cloud till that is Inventory, and greeting
+/// the owner on every entry with "this is not here" would make the sentence a
+/// welcome rather than an answer.
 ///
-/// Never empty: Staff has no gate beyond the door, so everybody past it holds
-/// at least that pane.
+/// Never empty: Home (and Staff) have no gate beyond the door, so everybody
+/// past it holds at least those panes.
 ManagementPane backOfficeLanding(
   List<(BackOfficeTab, List<ManagementPane>)> tabs,
 ) => tabs.expand((tab) => tab.$2).first;
+
+/// Home's shortcuts, each to the first pane it names — and absent when that
+/// pane is.
+///
+/// **Read off the same tabs as the strip and the bar**, so a shortcut can
+/// never lead where the strip would not: no Product management on a cloud
+/// till, where Menu is the platform's; no Sales reports until the Reports tab
+/// has a pane to open (BO-6), and then only for whoever holds it.
+List<(HomeQuickAction, ManagementPane)> homeQuickActionsFor(
+  List<(BackOfficeTab, List<ManagementPane>)> tabs,
+) {
+  ManagementPane? firstOf(BackOfficeTab tab) {
+    for (final (t, panes) in tabs) {
+      if (t == tab && panes.isNotEmpty) return panes.first;
+    }
+    return null;
+  }
+
+  final reachable = [for (final (_, panes) in tabs) ...panes];
+  return [
+    for (final action in HomeQuickAction.values)
+      if (switch (action) {
+            HomeQuickAction.salesReports => firstOf(BackOfficeTab.reports),
+            HomeQuickAction.products => firstOf(BackOfficeTab.menu),
+            // Users under Settings › Account, which is Staff by another name.
+            HomeQuickAction.employees =>
+              reachable.contains(ManagementPane.staff)
+                  ? ManagementPane.staff
+                  : null,
+          }
+          case final pane?)
+        (action, pane),
+  ];
+}
 
 /// Where the caller was, and which pane they asked for.
 ///
@@ -588,6 +630,7 @@ ManagementDestination _purchasing(PurchasingTab tab, {bool create = false}) =>
 /// headings inside still say what they list.
 (String, String) managementPaneLabel(AppStrings s, ManagementPane pane) =>
     switch (pane) {
+      ManagementPane.home => (s.tabHome, s.paneHomeBlurb),
       ManagementPane.staff => (s.settingsUsers, s.paneStaffBlurb),
       ManagementPane.menu => (s.paneMenu, s.paneMenuBlurb),
       ManagementPane.extras => (s.extrasTitle, s.extrasSubtitle),
@@ -668,6 +711,11 @@ bool _wouldPermitTab(PosStaff admin, BackOfficeTab tab) => ManagementPane
     .any((pane) => tabOf(pane) == tab && _wouldPermit(admin, pane));
 
 enum ManagementPane {
+  /// The landing page. A pane like the others rather than a special case in
+  /// the shell, so it is in [managementPanesFor] — and so the strip, the bar
+  /// and the table-driven test in `back_office_shell_test.dart` see it as they
+  /// see every other page. No gate: it shows each person only what they hold.
+  home,
   staff,
   menu,
   extras,
@@ -887,7 +935,7 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
         ? const SizedBox.expand()
         : KeyedSubtree(
             key: ValueKey('back-office-pane-${showing.name}'),
-            child: _paneBody(admin, showing, panes),
+            child: _paneBody(admin, showing, panes, tabs),
           );
 
     final screen = Scaffold(
@@ -962,7 +1010,23 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
     PosStaff admin,
     ManagementPane pane,
     List<ManagementPane> panes,
+    List<(BackOfficeTab, List<ManagementPane>)> tabs,
   ) => switch (pane) {
+    // Every way onward from Home is a pane this person already has — the
+    // cards lead to Terminal and Backup only for whoever can open them.
+    ManagementPane.home => ManagementHomePane(
+      admin: admin,
+      actions: [
+        for (final (action, target) in homeQuickActionsFor(tabs))
+          (action, () => _open(target)),
+      ],
+      onOpenTerminal: panes.contains(ManagementPane.terminal)
+          ? () => _open(ManagementPane.terminal)
+          : null,
+      onOpenBackup: panes.contains(ManagementPane.backup)
+          ? () => _open(ManagementPane.backup)
+          : null,
+    ),
     ManagementPane.staff => ManagementStaffPane(admin: admin),
     // The item editor's "Manage extras" link. Moved here rather than through
     // the router: this screen already owns which pane is showing, as the
@@ -1058,7 +1122,7 @@ class _Header extends StatelessWidget {
 /// scroll hides half the product (plan 19 §1.2), so this is a plain [Row]: at
 /// [PosSize.wideShellMin] all nine words fit in both languages, and
 /// `back_office_shell_test.dart` measures that with all nine present — not
-/// only the five that have panes today — so the slice that adds the ninth
+/// only the six that have panes today — so the slice that adds the ninth
 /// cannot be the one that finds out.
 ///
 /// Selection is the accent underline and nothing else: no tint, no radius, no
@@ -1337,33 +1401,8 @@ class _StatusBar extends ConsumerWidget {
       ),
       child: Row(
         children: [
-          // Which pill, and why, is the till's top bar's decision; see it.
-          if (ref.watch(cloudSyncProvider) case final cloud?)
-            Builder(
-              builder: (context) {
-                final sync = ref.watch(pendingSyncCountProvider);
-                return SyncPill(
-                  online: ref.watch(posUiProvider).online,
-                  queued: sync.valueOrNull,
-                  hasError: sync.hasError,
-                  onTap: () {
-                    cloud.kick();
-                    posToast(context, strings.syncingWithPlatform);
-                  },
-                );
-              },
-            )
-          else
-            Builder(
-              builder: (context) {
-                final probe = ref.watch(branchDatabaseProvider);
-                return BranchServerPill(
-                  checking: probe.isLoading,
-                  reachable: probe.hasValue && probe.value == null,
-                  onTap: () => ref.invalidate(branchDatabaseProvider),
-                );
-              },
-            ),
+          // Shared with Home's connection card, so the two cannot disagree.
+          const BackOfficeConnectionPill(),
           if (branch != null && branch.isNotEmpty) ...[
             const SizedBox(width: PosSpace.lg),
             Icon(Icons.storefront_outlined, size: 16, color: pos.muted),

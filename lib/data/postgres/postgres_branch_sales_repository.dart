@@ -129,6 +129,7 @@ class PostgresBranchSalesRepository implements BranchSalesSource {
       WHERE o.restaurant_id = @restaurant AND o.branch_id = @branch
         AND o.status = ANY(@statuses)
         AND ${_inDay('o')}
+        AND (@until::timestamptz IS NULL OR o.occurred_at < @until::timestamptz)
     ),
     sale_totals AS (
       SELECT terminal_id, count(*) AS orders,
@@ -143,6 +144,7 @@ class PostgresBranchSalesRepository implements BranchSalesSource {
       FROM pos_refunds r
       WHERE r.restaurant_id = @restaurant AND r.branch_id = @branch
         AND ${_inDay('r')}
+        AND (@until::timestamptz IS NULL OR r.occurred_at < @until::timestamptz)
       GROUP BY r.terminal_id
     ),
     $paymentTotalsCte,
@@ -171,8 +173,23 @@ class PostgresBranchSalesRepository implements BranchSalesSource {
   Money _money(Object? minor) =>
       Money(minor is int ? minor : 0, currency: currency, exponent: exponent);
 
+  /// [until], when given, keeps only what happened before that instant — the
+  /// back office's Home compares today with the previous day cut at the same
+  /// time since it opened (plan 19 §2.1), because a whole-day comparison reads
+  /// as a collapse every morning.
+  ///
+  /// **The same statement with one more bound, not a second query.** Sales
+  /// and refunds are both cut, and payments follow their sale, so a cut day
+  /// is still a [BranchSales] whose branch figures are its rows. A separate
+  /// "so far" query would be a second definition of a day's takings, and the
+  /// two would drift the first time either changed. On the platform's source
+  /// there is no cut: POS-BE-029 answers whole days only, which is why this
+  /// is a parameter here and not on [BranchSalesSource].
   @override
-  Future<BranchSalesReading> summary(DateTime businessDay) async {
+  Future<BranchSalesReading> summary(
+    DateTime businessDay, {
+    DateTime? until,
+  }) async {
     final rows = await _db.query(
       config,
       _summarySql,
@@ -181,6 +198,7 @@ class PostgresBranchSalesRepository implements BranchSalesSource {
         'branch': branchId,
         'date': businessDayWire(businessDay),
         'statuses': _settled,
+        'until': until?.toUtc(),
       },
     );
 

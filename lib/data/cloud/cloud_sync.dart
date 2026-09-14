@@ -125,6 +125,29 @@ class CloudSync {
     }
   }
 
+  /// When the platform's bundle — menu, staff, floor, money rules — was last
+  /// written into this till. Null when it never has been, or the read failed.
+  ///
+  /// The back office's Home shows it as "last sync". Not the time of the last
+  /// sales drain, which nothing records: the pending count beside it is the
+  /// honest answer to "has my money gone up", and a timestamp of a pass that
+  /// sent nothing would say a till was fine while it held a day of sales.
+  Future<DateTime?> lastSyncedAt() async {
+    final restaurantId = profile.restaurantId;
+    if (restaurantId == null) return null;
+    try {
+      final rows = await _db.query(
+        config,
+        'SELECT bootstrap_synced_at FROM pos_cloud_state '
+        'WHERE restaurant_id = @restaurant',
+        parameters: {'restaurant': restaurantId},
+      );
+      return rows.isEmpty ? null : (rows.first[0] as DateTime?)?.toLocal();
+    } on Object {
+      return null;
+    }
+  }
+
   Future<int> _localConfigVersion() async {
     final restaurantId = profile.restaurantId;
     if (restaurantId == null) return -1;

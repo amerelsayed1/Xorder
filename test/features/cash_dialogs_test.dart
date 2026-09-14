@@ -434,6 +434,9 @@ class _FakeDays implements BusinessDayRepository {
   Future<BusinessDay?> current() async => _day;
 
   @override
+  Future<BusinessDay?> lastClosed({DateTime? before}) async => null;
+
+  @override
   Future<DayCloseCheck> check() async =>
       DayCloseCheck(day: _day, blockers: blockers);
 

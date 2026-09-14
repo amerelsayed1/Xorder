@@ -1166,6 +1166,29 @@ sealed class AppStrings {
   String get tabFinance;
   String get tabSystem;
   String get tabSettings;
+  // BO-4: Home — the landing page's cards, tiles and quick actions.
+  String get paneHomeBlurb;
+  String homeWelcome(String name);
+  String get homeCardConnection;
+  String get homeCardLastSync;
+  String get homeCardLastBackup;
+  String get homeNotSet;
+  String get homeNever;
+  String homeSalesWaiting(int count);
+  String get homeToday;
+  String homeDayOpen(String date, String time);
+  String homeDayClosed(String date);
+  String get homeNoDayYet;
+  String get homeSalesUnavailable;
+  String get homeKpiNetSales;
+  String get homeKpiOrders;
+  String get homeKpiAverage;
+  String get homeVsPreviousDay;
+  String get homeNoComparison;
+  String get homeQuickActions;
+  String get homeActionReports;
+  String get homeActionProducts;
+  String get homeActionEmployees;
   String get settingsSectionAccount;
   String get settingsSectionPointOfSale;
   String get settingsGeneral;
@@ -4860,6 +4883,59 @@ final class EnStrings extends AppStrings {
   @override
   String get tabSettings => 'Settings';
   @override
+  String get paneHomeBlurb =>
+      'This till, how today is going, and the way to the rest.';
+  @override
+  String homeWelcome(String name) => 'Welcome, $name';
+  @override
+  String get homeCardConnection => 'Connection';
+  @override
+  String get homeCardLastSync => 'Last sync';
+  @override
+  String get homeCardLastBackup => 'Last backup';
+  @override
+  String get homeNotSet => 'Not set';
+  @override
+  String get homeNever => 'Never';
+  @override
+  String homeSalesWaiting(int count) => count == 1
+      ? '1 sale waiting to send'
+      : '$count sales waiting to send';
+  @override
+  String get homeToday => 'Today';
+  @override
+  String homeDayOpen(String date, String time) =>
+      'Business day $date · open since $time';
+  @override
+  String homeDayClosed(String date) =>
+      'No business day is open. These are the figures for $date, the last '
+      'day closed.';
+  @override
+  String get homeNoDayYet =>
+      'No business day has been opened yet, so there are no sales to show.';
+  @override
+  String get homeSalesUnavailable =>
+      'Today\'s figures could not be read from the database.';
+  @override
+  String get homeKpiNetSales => 'Net sales';
+  @override
+  String get homeKpiOrders => 'Orders';
+  @override
+  String get homeKpiAverage => 'Average order';
+  @override
+  String get homeVsPreviousDay =>
+      'vs the previous day, same time since opening';
+  @override
+  String get homeNoComparison => 'No earlier day to compare with';
+  @override
+  String get homeQuickActions => 'Quick actions';
+  @override
+  String get homeActionReports => 'Sales reports';
+  @override
+  String get homeActionProducts => 'Product management';
+  @override
+  String get homeActionEmployees => 'Employees';
+  @override
   String get settingsSectionAccount => 'Account';
   @override
   String get settingsSectionPointOfSale => 'Point of sale';
@@ -8457,6 +8533,52 @@ final class ArStrings extends AppStrings {
   String get tabSystem => 'النظام';
   @override
   String get tabSettings => 'الإعدادات';
+  @override
+  String get paneHomeBlurb => 'هذا الجهاز، وسير اليوم، والطريق إلى بقية الأقسام.';
+  @override
+  String homeWelcome(String name) => 'أهلاً، $name';
+  @override
+  String get homeCardConnection => 'الاتصال';
+  @override
+  String get homeCardLastSync => 'آخر مزامنة';
+  @override
+  String get homeCardLastBackup => 'آخر نسخة احتياطية';
+  @override
+  String get homeNotSet => 'غير محدد';
+  @override
+  String get homeNever => 'لم يحدث بعد';
+  @override
+  String homeSalesWaiting(int count) => 'مبيعات بانتظار الإرسال: $count';
+  @override
+  String get homeToday => 'اليوم';
+  @override
+  String homeDayOpen(String date, String time) =>
+      'يوم العمل $date · مفتوح منذ $time';
+  @override
+  String homeDayClosed(String date) =>
+      'لا يوجد يوم عمل مفتوح. هذه أرقام يوم $date، آخر يوم أُغلق.';
+  @override
+  String get homeNoDayYet => 'لم يُفتح أي يوم عمل بعد، فلا توجد مبيعات لعرضها.';
+  @override
+  String get homeSalesUnavailable => 'تعذّرت قراءة أرقام اليوم من قاعدة البيانات.';
+  @override
+  String get homeKpiNetSales => 'صافي المبيعات';
+  @override
+  String get homeKpiOrders => 'الطلبات';
+  @override
+  String get homeKpiAverage => 'متوسط الطلب';
+  @override
+  String get homeVsPreviousDay => 'مقارنة باليوم السابق، بنفس المدة منذ الفتح';
+  @override
+  String get homeNoComparison => 'لا يوجد يوم سابق للمقارنة';
+  @override
+  String get homeQuickActions => 'إجراءات سريعة';
+  @override
+  String get homeActionReports => 'تقارير المبيعات';
+  @override
+  String get homeActionProducts => 'إدارة المنتجات';
+  @override
+  String get homeActionEmployees => 'الموظفون';
   @override
   String get settingsSectionAccount => 'الحساب';
   @override
