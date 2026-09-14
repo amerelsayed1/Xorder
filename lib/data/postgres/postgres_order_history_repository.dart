@@ -3,6 +3,8 @@ import 'package:collection/collection.dart';
 import '../../core/config/deployment.dart';
 import '../../core/money/money.dart';
 import '../../domain/models/order_record.dart';
+import '../../domain/models/refund.dart' show RefundKind;
+import '../../domain/models/refund_history.dart';
 import '../../domain/models/ticket.dart';
 import '../../domain/repositories/admin_repositories.dart' show AuditAction;
 import '../../domain/repositories/repositories.dart';
@@ -439,7 +441,9 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
       '         ::bigint, '
       '       coalesce(sum(listed.total - listed.taken) '
       '                FILTER (WHERE NOT listed.dead '
-      '                          AND listed.money = ANY(@owing)), 0)::bigint '
+      '                          AND listed.money = ANY(@owing)), 0)::bigint, '
+      '       coalesce(sum(listed.total) FILTER (WHERE listed.dead), 0)'
+      '         ::bigint '
       'FROM (SELECT o.status = ANY(@deadStatuses) AS dead, '
       '             o.total_minor AS total, taken.minor AS taken, '
       '             $paymentStatusSql AS money '
@@ -466,6 +470,7 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
       total: money(row[2]),
       paid: money(row[3]),
       outstanding: money(row[4]),
+      deadTotal: money(row[5]),
     );
   }
 
@@ -515,6 +520,183 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
           return HistoryTerminal(id: row[0] as String, name: row[1] as String?);
         })
         .toList(growable: false);
+  }
+
+  /// A Returns row: the refund, the sale it is against, and the names.
+  ///
+  /// The sale's currency, not the terminal's: a refund gives back in what it
+  /// was paid in, and `pos_refunds` carries no currency of its own.
+  static const _refundColumns = '''
+        r.id, r.order_id, o.invoice_number, r.occurred_at, r.total_minor,
+        o.currency, o.exponent, r.kind, issuer.name, approver.name,
+        reason.name_en, reason.name_ar, r.note, counted.lines,
+        r.terminal_id::text, term.name, o.served_by, trading.business_date''';
+
+  /// The joins [_refundColumns] needs.
+  ///
+  /// The sale by `JOIN`, every name by `LEFT JOIN`. `order_id` is NOT NULL
+  /// with `ON DELETE RESTRICT`, so the inner join drops no refund; a name
+  /// joined inner would drop the refund of somebody who has since left.
+  ///
+  /// The lines are counted in a lateral, not joined and grouped: one refund
+  /// row per refund is the list's whole promise, and a join to its lines is
+  /// one row per line until something groups it back — the step a later
+  /// edit forgets, and the strip starts counting items as refunds.
+  static final _refundJoins =
+      '''
+        JOIN pos_orders AS o ON o.id = r.order_id
+        LEFT JOIN pos_staff        AS issuer   ON issuer.id = r.refunded_by
+        LEFT JOIN pos_staff        AS approver ON approver.id = r.approved_by_id
+        LEFT JOIN pos_reason_codes AS reason   ON reason.id = r.reason_id
+        LEFT JOIN pos_terminals    AS term     ON term.id = r.terminal_id
+        LEFT JOIN LATERAL (
+          SELECT count(*)::bigint AS lines
+            FROM pos_refund_lines AS l WHERE l.refund_id = r.id
+        ) AS counted ON true
+        ${tradingDayJoin('r')}''';
+
+  /// The WHERE clauses and parameters Returns runs [query] with, over
+  /// `pos_refunds AS r JOIN pos_orders AS o` with [tradingDayJoin] on `r`.
+  ///
+  /// Shared by [refunds] and [summariseRefunds] for the reason [filterFor]
+  /// is shared: a figure over a list is only its figure while both read one
+  /// WHERE.
+  ///
+  /// The date is the refund's own trading day, not its sale's —
+  /// [businessDateRange] on `r`, as the reports file refunds. A refund on
+  /// Tuesday for Saturday's sale is Tuesday's money leaving the drawer.
+  static ({List<String> where, Map<String, Object?> parameters})
+  refundFilterFor(
+    RefundHistoryQuery query, {
+    required int restaurantId,
+    required int branchId,
+  }) {
+    final range = businessDateRange(
+      from: query.from,
+      to: query.to,
+      alias: 'r',
+    );
+    final where = <String>[
+      'r.restaurant_id = @restaurant',
+      'r.branch_id = @branch',
+      ...range.where,
+    ];
+    final parameters = <String, Object?>{
+      'restaurant': restaurantId,
+      'branch': branchId,
+      ...range.parameters,
+    };
+    if (query.servedByStaffId != null) {
+      where.add('o.served_by = @served');
+      parameters['served'] = query.servedByStaffId;
+    }
+    final search = query.search?.trim();
+    if (search != null && search.isNotEmpty) {
+      // The refund's number exactly, with or without the `#` it is shown
+      // with; the invoice anywhere, for the tail read off a receipt.
+      where.add(
+        '(o.invoice_number ILIKE @search OR r.id::text = @refundNumber)',
+      );
+      parameters['search'] = '%$search%';
+      parameters['refundNumber'] = search.startsWith('#')
+          ? search.substring(1).trim()
+          : search;
+    }
+    return (where: where, parameters: parameters);
+  }
+
+  @override
+  Future<List<RefundRecord>> refunds(RefundHistoryQuery query) async {
+    final filter = refundFilterFor(
+      query,
+      restaurantId: restaurantId,
+      branchId: branchId,
+    );
+    final where = [...filter.where];
+    final parameters = <String, Object?>{
+      ...filter.parameters,
+      'limit': query.limit,
+    };
+    if (query.afterRefundId case final after?) {
+      // The sales list's keyset, on `pos_refunds_history_idx` — see [search]
+      // for why the looser bound comes first.
+      where
+        ..add(
+          'r.occurred_at <= (SELECT a.occurred_at FROM pos_refunds AS a '
+          '                   WHERE a.id = @after)',
+        )
+        ..add(
+          '(r.occurred_at, r.id) < (SELECT a.occurred_at, a.id '
+          '                           FROM pos_refunds AS a WHERE a.id = @after)',
+        );
+      parameters['after'] = after;
+    }
+    final rows = await _db.query(
+      config,
+      'SELECT $_refundColumns FROM pos_refunds AS r $_refundJoins '
+      'WHERE ${where.join(' AND ')} '
+      'ORDER BY r.occurred_at DESC, r.id DESC LIMIT @limit',
+      parameters: parameters,
+    );
+    return rows
+        .map((raw) {
+          final row = raw.toList();
+          final businessDate = row[17] as DateTime?;
+          return RefundRecord(
+            id: row[0] as int,
+            orderId: row[1] as int,
+            invoiceNumber: row[2] as String,
+            occurredAt: (row[3] as DateTime).toLocal(),
+            total: _rowMoney(row[4], row[5], row[6]),
+            // The CHECK in migration 12 allows two words. One this build does
+            // not know is shown as the kind that claims less.
+            kind: RefundKind.fromWire(row[7] as String) ?? RefundKind.partial,
+            refundedByName: row[8] as String?,
+            approvedByName: row[9] as String?,
+            reasonName: row[10] as String?,
+            reasonNameAr: row[11] as String?,
+            note: row[12] as String?,
+            lineCount: row[13] as int,
+            terminalId: row[14] as String?,
+            terminalName: row[15] as String?,
+            servedByStaffId: row[16] as int?,
+            businessDate: businessDate == null
+                ? null
+                : DateTime(
+                    businessDate.year,
+                    businessDate.month,
+                    businessDate.day,
+                  ),
+          );
+        })
+        .toList(growable: false);
+  }
+
+  /// Without the names and the line count: a total has no use for them, and
+  /// every join a figure does not need is one more way for it to multiply a
+  /// row.
+  @override
+  Future<RefundHistorySummary> summariseRefunds(
+    RefundHistoryQuery query,
+  ) async {
+    final filter = refundFilterFor(
+      query,
+      restaurantId: restaurantId,
+      branchId: branchId,
+    );
+    final rows = await _db.query(
+      config,
+      'SELECT count(*)::bigint, coalesce(sum(r.total_minor), 0)::bigint '
+      'FROM pos_refunds AS r JOIN pos_orders AS o ON o.id = r.order_id '
+      '${tradingDayJoin('r')} '
+      'WHERE ${filter.where.join(' AND ')}',
+      parameters: filter.parameters,
+    );
+    final row = rows.first.toList();
+    return RefundHistorySummary(
+      count: row[0] as int,
+      total: Money(row[1] as int, currency: currency, exponent: exponent),
+    );
   }
 
   @override
@@ -752,4 +934,13 @@ class UnconfiguredOrderHistoryRepository implements OrderHistoryRepository {
 
   @override
   Future<List<HistoryTerminal>> terminals() async => const [];
+
+  @override
+  Future<List<RefundRecord>> refunds(RefundHistoryQuery query) async =>
+      const [];
+
+  @override
+  Future<RefundHistorySummary> summariseRefunds(
+    RefundHistoryQuery query,
+  ) async => RefundHistorySummary.empty;
 }

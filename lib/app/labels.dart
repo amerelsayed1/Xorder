@@ -1,6 +1,7 @@
 import '../core/config/deployment.dart';
 import '../core/l10n/app_strings.dart';
 import '../domain/models/dining_table.dart';
+import '../domain/models/refund.dart';
 import '../domain/models/tender_method.dart';
 import '../domain/models/ticket.dart';
 import '../features/licensing/domain/license.dart';
@@ -276,3 +277,13 @@ extension TenderMethodLabel on TenderMethod {
     return tenderName(id, wireLabel, s);
   }
 }
+
+/// A refund's kind, as Returns names it — never the wire word `partial`.
+///
+/// Over the enum, so a third kind is a compile error here rather than a raw
+/// key on a restaurant's screen; `capability_labels_test.dart` holds both
+/// languages to it.
+String refundKindLabel(AppStrings s, RefundKind kind) => switch (kind) {
+  RefundKind.full => s.refundKindFull,
+  RefundKind.partial => s.refundKindPartial,
+};

@@ -1,7 +1,9 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:xorder_pos/app/labels.dart';
 import 'package:xorder_pos/core/l10n/app_strings.dart';
+import 'package:xorder_pos/domain/models/refund.dart';
 import 'package:xorder_pos/core/money/quantity.dart';
 import 'package:xorder_pos/domain/models/finance_report.dart';
 import 'package:xorder_pos/domain/models/permissions.dart';
@@ -193,6 +195,18 @@ void main() {
           expect(labels.map((l) => l.trim()), everyElement(isNotEmpty));
           expect(labels.toSet(), hasLength(labels.length), reason: '$labels');
         }
+      });
+
+      test('every refund kind Returns shows is named, not its wire word, '
+          'and the two differ', () {
+        final labels = [
+          for (final kind in RefundKind.values) refundKindLabel(strings, kind),
+        ];
+        expect(labels.map((l) => l.trim()), everyElement(isNotEmpty));
+        for (final kind in RefundKind.values) {
+          expect(refundKindLabel(strings, kind), isNot(kind.wire));
+        }
+        expect(labels.toSet(), hasLength(labels.length), reason: '$labels');
       });
     });
   }

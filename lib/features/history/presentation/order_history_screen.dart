@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -14,46 +13,31 @@ import '../../../core/ui/theme.dart';
 import '../../../core/ui/tokens.dart';
 import '../../../core/ui/widgets/mono_amount.dart';
 import '../../../core/ui/widgets/pos_widgets.dart';
-import '../../../domain/models/business_day.dart';
 import '../../../domain/models/order_record.dart';
 import '../../../domain/models/ticket.dart';
 import '../history_scope.dart';
 import '../sales_export.dart';
+import 'history_widgets.dart';
 import 'order_detail_pane.dart';
 import 'order_status_chip.dart';
 import 'payment_status_chip.dart';
 
-/// How far back the list reaches.
-///
-/// Three fixed windows rather than a date picker. The question at a counter is
-/// almost always "earlier today" and occasionally "last week"; a two-field date
-/// range makes the common case slower to serve the rare one. An arbitrary range
-/// belongs in Reports (Wave G), where somebody is sitting down.
-enum HistoryRange { today, week, month }
+/// A sale to open Orders on, from somewhere that names one — Returns' "Open
+/// the sale".
+class SaleToOpen {
+  const SaleToOpen({required this.orderId, required this.invoiceNumber});
 
-extension on HistoryRange {
-  String label(AppStrings s) => switch (this) {
-    HistoryRange.today => s.orderHistoryToday,
-    HistoryRange.week => s.orderHistoryLast7Days,
-    HistoryRange.month => s.orderHistoryLast30Days,
-  };
+  final int orderId;
+  final String invoiceNumber;
 
-  /// Whole business dates, ending with [today]'s.
-  ///
-  /// [today] is the trading day, not the calendar one: at 1 a.m. with
-  /// yesterday's business day still open, "Today" is yesterday's date, and the
-  /// list shows the night that is still going rather than the hour since
-  /// midnight. See [OrderHistoryQuery.from] for how a sale finds its date.
-  (DateTime, DateTime) window(DateTime today) {
-    final end = DateTime(today.year, today.month, today.day)
-        .add(const Duration(days: 1));
-    final days = switch (this) {
-      HistoryRange.today => 1,
-      HistoryRange.week => 7,
-      HistoryRange.month => 30,
-    };
-    return (end.subtract(Duration(days: days)), end);
-  }
+  @override
+  bool operator ==(Object other) =>
+      other is SaleToOpen &&
+      other.orderId == orderId &&
+      other.invoiceNumber == invoiceNumber;
+
+  @override
+  int get hashCode => Object.hash(orderId, invoiceNumber);
 }
 
 /// Orders — the list of everything this branch has rung up.
@@ -69,8 +53,17 @@ extension on HistoryRange {
 /// **Whose sales** is decided by `HistoryScope` in the providers, not here.
 /// This screen only mirrors it: it hides the cashier picker from somebody who
 /// may not use it and says the list is theirs alone.
+///
+/// **Also Invoices and Cancelled orders** ([preset]): the same list with a
+/// status filter locked on, not two more screens.
 class OrderHistoryScreen extends ConsumerStatefulWidget {
-  const OrderHistoryScreen({super.key, this.onClose, this.openedAt});
+  const OrderHistoryScreen({
+    super.key,
+    this.onClose,
+    this.openedAt,
+    this.preset = HistoryPreset.all,
+    this.openSale,
+  });
 
   /// The way out, from `/orders`.
   ///
@@ -88,6 +81,24 @@ class OrderHistoryScreen extends ConsumerStatefulWidget {
   @visibleForTesting
   final DateTime? openedAt;
 
+  /// Which of Sales' lists this is: every sale (Orders, and `/orders`),
+  /// Invoices, or Cancelled orders.
+  ///
+  /// A preset's statuses replace the status chips rather than sitting beside
+  /// them — a "Voided" chip on the Invoices list could only ever empty it —
+  /// and Cancelled orders swaps the money columns for who voided the sale,
+  /// when and why. The window, the scope, the pages and the strip's SQL are
+  /// the list's own under every preset.
+  final HistoryPreset preset;
+
+  /// A sale to open on: its invoice in the search, the widest window, and
+  /// the sale itself in the detail pane — which reads it by id, so it shows
+  /// even when it is older than the window reaches.
+  ///
+  /// Read once, when the screen is built. To open a second sale, give the
+  /// screen a new key.
+  final SaleToOpen? openSale;
+
   static const staffFilterKey = ValueKey('history-filter-staff');
   static const tenderFilterKey = ValueKey('history-filter-tender');
   static const terminalFilterKey = ValueKey('history-filter-terminal');
@@ -104,12 +115,15 @@ class OrderHistoryScreen extends ConsumerStatefulWidget {
   static const summaryCountKey = ValueKey('history-summary-count');
   static const summaryPaidKey = ValueKey('history-summary-paid');
   static const summaryOutstandingKey = ValueKey('history-summary-outstanding');
-  static const pagerKey = ValueKey('history-pager');
-  static const pagerRangeKey = ValueKey('history-pager-range');
-  static const pagerTotalKey = ValueKey('history-pager-total');
-  static const pagerPageKey = ValueKey('history-pager-page');
-  static const previousPageKey = ValueKey('history-page-previous');
-  static const nextPageKey = ValueKey('history-page-next');
+
+  /// Cancelled orders' second figure: what the voided sales came to.
+  static const summaryVoidedKey = ValueKey('history-summary-voided');
+  static const pagerKey = HistoryPager.barKey;
+  static const pagerRangeKey = HistoryPager.rangeKey;
+  static const pagerTotalKey = HistoryPager.totalKey;
+  static const pagerPageKey = HistoryPager.pageKey;
+  static const previousPageKey = HistoryPager.previousKey;
+  static const nextPageKey = HistoryPager.nextKey;
 
   @override
   ConsumerState<OrderHistoryScreen> createState() => _OrderHistoryScreenState();
@@ -153,6 +167,19 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
   late final DateTime _openedAt = widget.openedAt ?? DateTime.now();
 
   @override
+  void initState() {
+    super.initState();
+    if (widget.openSale case final sale?) {
+      // Month, the widest window: a refund is usually days after its sale,
+      // and a sale the window does not reach is still open in the pane.
+      _range = HistoryRange.month;
+      _search.text = sale.invoiceNumber;
+      _searchTerm = sale.invoiceNumber;
+      _selectedId = sale.orderId;
+    }
+  }
+
+  @override
   void dispose() {
     _debounce?.cancel();
     _search.dispose();
@@ -161,26 +188,30 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
     super.dispose();
   }
 
-  /// The business date "Today" means: the open day's, when one is open, and
-  /// the calendar date otherwise — which is also the date a sale with no
-  /// business day is filed under, so the fallback agrees with itself.
-  DateTime _today(BusinessDay? day) {
-    if (day != null && day.isOpen) return day.date;
-    return DateTime(_openedAt.year, _openedAt.month, _openedAt.day);
-  }
-
   OrderHistoryQuery _query(DateTime today) {
     final (from, to) = _range.window(today);
-    return OrderHistoryQuery(
-      from: from,
-      to: to,
-      statuses: _statuses,
-      orderTypes: _types,
-      servedByStaffId: _staffId,
-      tenderTypeId: _tenderId,
-      terminalId: _terminalId,
-      search: _searchTerm.isEmpty ? null : _searchTerm,
+    return widget.preset.apply(
+      OrderHistoryQuery(
+        from: from,
+        to: to,
+        statuses: _statuses,
+        orderTypes: _types,
+        servedByStaffId: _staffId,
+        tenderTypeId: _tenderId,
+        terminalId: _terminalId,
+        search: _searchTerm.isEmpty ? null : _searchTerm,
+      ),
     );
+  }
+
+  /// Whether the person narrowed [query]. A preset's statuses are not theirs
+  /// to clear, so a list that is only its preset is not "filtered" and is not
+  /// offered a Clear that would change nothing.
+  bool _filtered(OrderHistoryQuery? query) {
+    if (query == null) return false;
+    return widget.preset.statuses == null
+        ? query.isFiltered
+        : query.copyWith(statuses: const {}).isFiltered;
   }
 
   void _onSearchChanged(String value) {
@@ -222,7 +253,9 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
     // that visibly changes its mind about what "today" is. A day that cannot
     // be read falls back to the calendar, which is what "today" meant before
     // there were business days at all.
-    final base = day.isLoading ? null : _query(_today(day.valueOrNull));
+    final base = day.isLoading
+        ? null
+        : _query(historyToday(day.valueOrNull, _openedAt));
     // Pages belong to the filter they were turned under. Compared here rather
     // than reset in each handler that changes a filter: there are eight of
     // them, a business day opening changes "today" through none, and the one
@@ -286,7 +319,10 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          _SummaryStrip(summary: summary),
+                          _SummaryStrip(
+                            summary: summary,
+                            preset: widget.preset,
+                          ),
                           Expanded(
                             child: _list(
                               context,
@@ -409,7 +445,6 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
   }
 
   Widget _filters(BuildContext context, AppStrings strings, bool seesEveryone) {
-    final pos = context.pos;
     final staff = ref.watch(staffDirectoryProvider).valueOrNull ?? const [];
     // Every method the restaurant has ever had, retired ones included: a sale
     // paid with a voucher scheme that ended in June is still a sale somebody
@@ -431,65 +466,43 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
           for (final range in HistoryRange.values)
-            _FilterChip(
+            HistoryFilterChip(
               label: range.label(strings),
               selected: _range == range,
               onTap: () => setState(() => _range = range),
             ),
-          _divider(pos),
-          SizedBox(
-            width: 220,
-            height: PosSize.filterChip,
-            child: TextField(
-              controller: _search,
-              focusNode: _searchFocus,
-              onChanged: _onSearchChanged,
-              style: PosText.mono(size: 13, color: pos.ink),
-              decoration: InputDecoration(
-                isDense: true,
-                hintText: strings.orderHistorySearchHint,
-                hintStyle: PosText.ui(size: 13, color: pos.muted),
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: PosSpace.sm,
-                ),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.zero,
-                  borderSide: pos.resting,
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.zero,
-                  borderSide: pos.resting,
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.zero,
-                  borderSide: pos.accentBorder,
-                ),
-              ),
-            ),
+          const HistoryFilterDivider(),
+          HistorySearchField(
+            controller: _search,
+            focusNode: _searchFocus,
+            onChanged: _onSearchChanged,
+            hint: strings.orderHistorySearchHint,
           ),
-          _divider(pos),
           // Only the statuses a till actually writes. Listing all ten would
           // offer four filters that can never match anything until the KDS
           // lands, and a filter that always returns nothing teaches people the
-          // list is broken.
-          for (final status in const [
-            OrderStatus.paid,
-            OrderStatus.voided,
-            OrderStatus.refunded,
-            OrderStatus.partiallyRefunded,
-          ])
-            _FilterChip(
-              label: status.label(strings),
-              selected: _statuses.contains(status),
-              onTap: () => setState(() {
-                _statuses = _statuses.contains(status)
-                    ? (Set.of(_statuses)..remove(status))
-                    : (Set.of(_statuses)..add(status));
-              }),
-            ),
-          _divider(pos),
+          // list is broken. None under a preset, whose statuses are locked.
+          if (widget.preset.statuses == null) ...[
+            const HistoryFilterDivider(),
+            for (final status in const [
+              OrderStatus.paid,
+              OrderStatus.voided,
+              OrderStatus.refunded,
+              OrderStatus.partiallyRefunded,
+            ])
+              HistoryFilterChip(
+                label: status.label(strings),
+                selected: _statuses.contains(status),
+                onTap: () => setState(() {
+                  _statuses = _statuses.contains(status)
+                      ? (Set.of(_statuses)..remove(status))
+                      : (Set.of(_statuses)..add(status));
+                }),
+              ),
+          ],
+          const HistoryFilterDivider(),
           for (final type in ref.watch(branchOrderTypesProvider))
-            _FilterChip(
+            HistoryFilterChip(
               label: type.label(strings),
               selected: _types.contains(type),
               onTap: () => setState(() {
@@ -502,7 +515,7 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
           // would overrule it anyway; a picker that changes nothing is a
           // control that lies.
           if (seesEveryone && staff.isNotEmpty) ...[
-            _divider(pos),
+            const HistoryFilterDivider(),
             _PickFilter<int>(
               key: OrderHistoryScreen.staffFilterKey,
               everyone: strings.orderHistoryEveryone,
@@ -570,9 +583,6 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
     );
   }
 
-  Widget _divider(PosPalette pos) =>
-      Container(width: 1, height: PosSize.filterChip - 12, color: pos.line);
-
   /// Turns to the page after [cursors]' last, under [base]'s filter.
   void _turn(OrderHistoryQuery base, List<int> cursors) => setState(() {
     _pagedFor = base;
@@ -589,25 +599,24 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
   ) => orders.when(
     loading: () =>
         Center(child: CircularProgressIndicator(color: context.pos.accent)),
-    // The error itself, not a generic apology. "History could not be read" with
-    // the reason underneath is what lets somebody tell a dead network apart
-    // from a permissions problem without opening a log.
-    error: (error, _) => _message(
-      context,
-      strings.orderHistoryUnavailable,
+    error: (error, _) => HistoryMessage(
+      message: strings.orderHistoryUnavailable,
       detail: '$error',
     ),
     data: (data) {
-      final filtered = query?.isFiltered ?? false;
+      final filtered = _filtered(query);
       // Empty on page one is an empty filter. Past it, the rows ahead went
       // away while somebody read — a day's sales voided, say — and the pager
       // stays, because it is the way back.
       if (data.isEmpty && cursors.isEmpty) {
-        return _message(
-          context,
-          filtered
+        return HistoryMessage(
+          message: filtered
               ? strings.orderHistoryEmptyFiltered
-              : strings.orderHistoryEmpty,
+              : switch (widget.preset) {
+                  HistoryPreset.all ||
+                  HistoryPreset.invoices => strings.orderHistoryEmpty,
+                  HistoryPreset.voided => strings.voidedOrdersEmpty,
+                },
           action: filtered
               ? (strings.orderHistoryClearFilters, _clearFilters)
               : null,
@@ -617,22 +626,22 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
       final limit = query?.limit ?? OrderHistoryQuery.pageSize;
       final offset = cursors.length * limit;
       final total = summary?.count;
-      // A short page is the last whatever the count says. A full one is the
-      // last when the count says so; with no count yet, Next is offered and
-      // an empty page after it is the honest answer.
-      final hasNext =
-          data.length >= limit &&
-          (total == null || offset + data.length < total);
+      final hasNext = HistoryPager.hasNext(
+        length: data.length,
+        limit: limit,
+        offset: offset,
+        total: total,
+      );
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Expanded(child: _table(context, strings, data, query?.afterOrderId)),
-          _Pager(
+          HistoryPager(
             first: data.isEmpty ? offset : offset + 1,
             last: offset + data.length,
             total: total,
             page: cursors.length + 1,
-            pages: total == null ? null : math.max(1, (total + limit - 1) ~/ limit),
+            pages: HistoryPager.pagesOf(total, limit),
             onPrevious: base == null || cursors.isEmpty
                 ? null
                 : () => _turn(base, cursors.sublist(0, cursors.length - 1)),
@@ -645,16 +654,6 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
     },
   );
 
-  /// The headings and the rows, as one block that scrolls sideways when the
-  /// list is too narrow for it rather than squeezing.
-  ///
-  /// At the window's minimum (1024, `main.dart`) the list beside the detail
-  /// pane is about 600 wide and its fixed columns alone are wider: a Row that
-  /// ran out of room, on `/orders` as much as in the back office. Rejected:
-  /// dropping columns below a width. The column somebody needs is the one
-  /// that was dropped, and a table whose columns come and go with the window
-  /// is two tables to learn.
-  ///
   /// [page] keys the rows, so a page turned to opens at its top rather than
   /// scrolled as far down as the page before it was.
   Widget _table(
@@ -662,102 +661,59 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
     AppStrings strings,
     List<OrderRecord> data,
     int? page,
-  ) => LayoutBuilder(
-    builder: (context, box) {
-      final width = math.max(box.maxWidth, _Cols.minTable);
-      final table = SizedBox(
-        width: width,
-        height: box.maxHeight,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _columnHeadings(context, strings),
-            Expanded(
-              child: ListView.builder(
-                key: ValueKey(('history-rows', page)),
-                padding: EdgeInsets.zero,
-                itemCount: data.length,
-                itemBuilder: (context, index) {
-                  final order = data[index];
-                  return _OrderRow(
-                    order: order,
-                    selected: order.id == _selectedId,
-                    onTap: () => setState(() => _selectedId = order.id),
-                  );
-                },
-              ),
-            ),
-          ],
-        ),
-      );
-      if (width <= box.maxWidth) return table;
-      // A bar that is always drawn, because a desktop scroll view shows none
-      // sideways of its own, and a table with columns past the edge and
-      // nothing saying so reads as a table with fewer columns.
-      return Scrollbar(
-        controller: _sideways,
-        thumbVisibility: true,
-        radius: Radius.zero,
-        child: SingleChildScrollView(
-          key: OrderHistoryScreen.sidewaysKey,
-          controller: _sideways,
-          scrollDirection: Axis.horizontal,
-          child: table,
-        ),
-      );
-    },
+  ) => HistoryTable(
+    minWidth: _Cols.minFor(widget.preset),
+    sideways: _sideways,
+    sidewaysKey: OrderHistoryScreen.sidewaysKey,
+    headings: _columnHeadings(strings),
+    rows: ListView.builder(
+      key: ValueKey(('history-rows', page)),
+      padding: EdgeInsets.zero,
+      itemCount: data.length,
+      itemBuilder: (context, index) {
+        final order = data[index];
+        return _OrderRow(
+          order: order,
+          preset: widget.preset,
+          selected: order.id == _selectedId,
+          onTap: () => setState(() => _selectedId = order.id),
+        );
+      },
+    ),
   );
 
-  Widget _message(
-    BuildContext context,
-    String message, {
-    String? detail,
-    (String, VoidCallback)? action,
-  }) => Center(
-    child: Padding(
-      padding: const EdgeInsets.all(PosSpace.xl),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            message,
-            textAlign: TextAlign.center,
-            style: PosText.ui(size: 14, color: context.pos.muted),
+  Widget _columnHeadings(AppStrings strings) {
+    // The two shared columns after the seller, and what follows the total.
+    // Over the preset, so a fourth list is a compile error here rather than a
+    // table whose headings stand over the wrong columns.
+    final (second, third, tail) = switch (widget.preset) {
+      HistoryPreset.all || HistoryPreset.invoices => (
+        strings.orderColumnMethod,
+        strings.orderColumnTerminal,
+        <Widget>[
+          SizedBox(
+            width: _Cols.status,
+            child: MicroLabel(strings.orderColumnStatus),
           ),
-          if (detail != null) ...[
-            const SizedBox(height: PosSpace.sm),
-            Text(
-              detail,
-              textAlign: TextAlign.center,
-              style: PosText.ui(size: 12.5, color: context.pos.muted),
-            ),
-          ],
-          if (action != null) ...[
-            const SizedBox(height: PosSpace.md),
-            PosButton(
-              label: action.$1,
-              border: Border.fromBorderSide(context.pos.resting),
-              onPressed: action.$2,
-            ),
-          ],
+          const SizedBox(width: PosSpace.sm),
+          SizedBox(
+            width: _Cols.payment,
+            child: MicroLabel(strings.orderColumnPayment),
+          ),
         ],
       ),
-    ),
-  );
-
-  Widget _columnHeadings(BuildContext context, AppStrings strings) => Container(
-    height: 28,
-    padding: const EdgeInsetsDirectional.only(
-      start: PosSpace.s18,
-      end: PosSpace.md,
-    ),
-    decoration: BoxDecoration(
-      border: BorderDirectional(
-        top: context.pos.hairline,
-        bottom: context.pos.hairline,
+      HistoryPreset.voided => (
+        strings.orderColumnVoidReason,
+        strings.orderColumnVoidedBy,
+        <Widget>[
+          SizedBox(
+            width: _Cols.voidedAt,
+            child: MicroLabel(strings.orderColumnVoidedAt),
+          ),
+        ],
       ),
-    ),
-    child: Row(
+    };
+    return HistoryHeadings(
       children: [
         SizedBox(width: _Cols.invoice, child: MicroLabel(strings.orderColumnInvoice)),
         SizedBox(width: _Cols.time, child: MicroLabel(strings.orderColumnTime)),
@@ -765,9 +721,9 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
         SizedBox(width: _Cols.table, child: MicroLabel(strings.orderColumnWhere)),
         Expanded(child: MicroLabel(strings.orderColumnStaff)),
         const SizedBox(width: PosSpace.sm),
-        Expanded(child: MicroLabel(strings.orderColumnMethod)),
+        Expanded(child: MicroLabel(second)),
         const SizedBox(width: PosSpace.sm),
-        Expanded(child: MicroLabel(strings.orderColumnTerminal)),
+        Expanded(child: MicroLabel(third)),
         const SizedBox(width: PosSpace.sm),
         SizedBox(
           width: _Cols.total,
@@ -777,15 +733,10 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
           ),
         ),
         const SizedBox(width: PosSpace.md),
-        SizedBox(width: _Cols.status, child: MicroLabel(strings.orderColumnStatus)),
-        const SizedBox(width: PosSpace.sm),
-        SizedBox(
-          width: _Cols.payment,
-          child: MicroLabel(strings.orderColumnPayment),
-        ),
+        ...tail,
       ],
-    ),
-  );
+    );
+  }
 }
 
 /// Column widths, in one place so the headings and the rows cannot drift.
@@ -800,15 +751,16 @@ abstract final class _Cols {
   /// Wide enough for PART REFUNDED in mono without an ellipsis.
   static const payment = 112.0;
 
+  /// `2026-09-14 13:05` in 12 px mono.
+  static const voidedAt = 124.0;
+
   /// The least each of the three columns sharing what is left — who sold
   /// it, what it was paid with, which till — gets before the table scrolls
   /// sideways instead.
   static const shared = 72.0;
 
-  /// The whole row at its narrowest: every fixed column, the shared three at
-  /// [shared], and the padding and gaps between. Arithmetic over the widths
-  /// above rather than a number, so widening one cannot leave this stale.
-  static const minTable =
+  /// Everything up to and including the total, which every preset draws.
+  static const _common =
       PosSpace.s18 +
       invoice +
       time +
@@ -816,27 +768,34 @@ abstract final class _Cols {
       table +
       3 * (shared + PosSpace.sm) +
       total +
-      PosSpace.md +
-      status +
-      PosSpace.sm +
-      payment +
       PosSpace.md;
+
+  /// The whole row at its narrowest: every fixed column, the shared three at
+  /// [shared], and the padding and gaps between. Arithmetic over the widths
+  /// above rather than a number, so widening one cannot leave this stale.
+  static const minTable =
+      _common + status + PosSpace.sm + payment + PosSpace.md;
+
+  static const minVoided = _common + voidedAt + PosSpace.md;
+
+  static double minFor(HistoryPreset preset) => switch (preset) {
+    HistoryPreset.all || HistoryPreset.invoices => minTable,
+    HistoryPreset.voided => minVoided,
+  };
 }
 
-/// Total sales, invoices, paid and outstanding, over every page (BO-3).
+/// The figures over every page (BO-3): total sales, invoices, paid and
+/// outstanding — or, for Cancelled orders, how many were voided and what
+/// they came to.
 ///
-/// Flat and bordered, not the mockup's tinted cards — the design system rules
-/// pastel tiles out by name — and in the shape of the Users section's strip,
-/// smaller: this sits over a list somebody at a counter is scanning, and the
-/// figures are its caption, not the page.
-///
-/// A figure not yet read, or not readable, is a dash. The list under it says
-/// why when it cannot be read; the strip repeating it four times would not
-/// help.
+/// Cancelled orders has two figures rather than the four with zeros in: every
+/// row there is struck through, so "Total sales" and "Paid" would read 0.00
+/// over a list of voids, which is true and says nothing.
 class _SummaryStrip extends StatelessWidget {
-  const _SummaryStrip({required this.summary});
+  const _SummaryStrip({required this.summary, required this.preset});
 
   final AsyncValue<OrderHistorySummary> summary;
+  final HistoryPreset preset;
 
   @override
   Widget build(BuildContext context) {
@@ -858,8 +817,60 @@ class _SummaryStrip extends StatelessWidget {
                 ? pos.warn
                 : pos.ink,
           ),
-          null => _dash(pos, key),
+          null => HistorySummaryTile.dash(pos, key),
         };
+
+    final count = figures == null
+        ? HistorySummaryTile.dash(pos, OrderHistoryScreen.summaryCountKey)
+        : HistorySummaryTile.count(
+            pos,
+            OrderHistoryScreen.summaryCountKey,
+            figures.count,
+          );
+
+    final tiles = switch (preset) {
+      HistoryPreset.all || HistoryPreset.invoices => [
+        HistorySummaryTile(
+          label: strings.orderSummaryTotal,
+          value: amount(OrderHistoryScreen.summaryTotalKey, (s) => s.total),
+          note: strings.orderSummaryTotalNote,
+        ),
+        HistorySummaryTile(
+          label: strings.orderSummaryCount,
+          value: count,
+          // The count is every row, struck-through ones too, because it
+          // is what the pager counts. Said, when there are any, or it
+          // reads as disagreeing with the total beside it.
+          note: figures != null && figures.dead > 0
+              ? strings.orderSummaryCountDead(figures.dead)
+              : null,
+        ),
+        HistorySummaryTile(
+          label: strings.orderSummaryPaid,
+          value: amount(OrderHistoryScreen.summaryPaidKey, (s) => s.paid),
+          note: strings.orderSummaryPaidNote,
+        ),
+        HistorySummaryTile(
+          label: strings.orderSummaryOutstanding,
+          value: amount(
+            OrderHistoryScreen.summaryOutstandingKey,
+            (s) => s.outstanding,
+          ),
+          note: strings.orderSummaryOutstandingNote,
+        ),
+      ],
+      HistoryPreset.voided => [
+        HistorySummaryTile(label: strings.voidedSummaryCount, value: count),
+        HistorySummaryTile(
+          label: strings.voidedSummaryTotal,
+          value: amount(
+            OrderHistoryScreen.summaryVoidedKey,
+            (s) => s.deadTotal,
+          ),
+          note: strings.voidedSummaryTotalNote,
+        ),
+      ],
+    };
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(
@@ -870,203 +881,9 @@ class _SummaryStrip extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Expanded(
-            child: _SummaryTile(
-              label: strings.orderSummaryTotal,
-              value: amount(OrderHistoryScreen.summaryTotalKey, (s) => s.total),
-              note: strings.orderSummaryTotalNote,
-            ),
-          ),
-          const SizedBox(width: PosSpace.sm),
-          Expanded(
-            child: _SummaryTile(
-              label: strings.orderSummaryCount,
-              value: figures == null
-                  ? _dash(pos, OrderHistoryScreen.summaryCountKey)
-                  : Text(
-                      '${figures.count}',
-                      key: OrderHistoryScreen.summaryCountKey,
-                      textDirection: TextDirection.ltr,
-                      style: PosText.mono(
-                        size: 20,
-                        weight: FontWeight.w600,
-                        color: pos.ink,
-                        height: 1,
-                      ),
-                    ),
-              // The count is every row, struck-through ones too, because it
-              // is what the pager counts. Said, when there are any, or it
-              // reads as disagreeing with the total beside it.
-              note: figures != null && figures.dead > 0
-                  ? strings.orderSummaryCountDead(figures.dead)
-                  : null,
-            ),
-          ),
-          const SizedBox(width: PosSpace.sm),
-          Expanded(
-            child: _SummaryTile(
-              label: strings.orderSummaryPaid,
-              value: amount(OrderHistoryScreen.summaryPaidKey, (s) => s.paid),
-              note: strings.orderSummaryPaidNote,
-            ),
-          ),
-          const SizedBox(width: PosSpace.sm),
-          Expanded(
-            child: _SummaryTile(
-              label: strings.orderSummaryOutstanding,
-              value: amount(
-                OrderHistoryScreen.summaryOutstandingKey,
-                (s) => s.outstanding,
-              ),
-              note: strings.orderSummaryOutstandingNote,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  static Widget _dash(PosPalette pos, Key key) => Text(
-    '—',
-    key: key,
-    style: PosText.mono(size: 20, color: pos.muted, height: 1),
-  );
-}
-
-class _SummaryTile extends StatelessWidget {
-  const _SummaryTile({required this.label, required this.value, this.note});
-
-  final String label;
-  final Widget value;
-  final String? note;
-
-  @override
-  Widget build(BuildContext context) {
-    final pos = context.pos;
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: PosSpace.md,
-        vertical: PosSpace.sm,
-      ),
-      decoration: BoxDecoration(
-        color: pos.surface,
-        border: Border.fromBorderSide(pos.resting),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          MicroLabel(label),
-          const SizedBox(height: PosSpace.xs),
-          // Shrunk to fit rather than cut. At 1100 a tile is about 160 wide
-          // and a seven-figure amount in 20pt mono is wider; an ellipsis on a
-          // sum of money hides the digits that matter.
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            alignment: AlignmentDirectional.centerStart,
-            child: value,
-          ),
-          const SizedBox(height: PosSpace.xs),
-          // Always a line, empty when there is nothing to say, so the four
-          // tiles stay one height and their figures one baseline.
-          Text(
-            note ?? '',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: PosText.ui(size: 11.5, color: pos.muted),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// "Showing 51–100 of 213", and Previous and Next when there is more than one
-/// page — the cloud's pager (`OrdersView.vue`), over keyset pages.
-///
-/// Words and figures are separate widgets, never one interpolated sentence:
-/// each figure is its own left-to-right run, so in Arabic the line reads
-/// عرض 51–100 من 213 from the right with every number the right way round.
-class _Pager extends StatelessWidget {
-  const _Pager({
-    required this.first,
-    required this.last,
-    required this.total,
-    required this.page,
-    required this.pages,
-    required this.onPrevious,
-    required this.onNext,
-  });
-
-  final int first;
-  final int last;
-
-  /// Null until the summary is read.
-  final int? total;
-  final int page;
-  final int? pages;
-  final VoidCallback? onPrevious;
-  final VoidCallback? onNext;
-
-  @override
-  Widget build(BuildContext context) {
-    final pos = context.pos;
-    final strings = context.strings;
-    final words = PosText.ui(size: 12.5, color: pos.muted);
-    final figure = PosText.mono(
-      size: 12.5,
-      weight: FontWeight.w600,
-      color: pos.ink,
-    );
-    Widget mono(Key key, String text) =>
-        Text(text, key: key, textDirection: TextDirection.ltr, style: figure);
-
-    return Container(
-      key: OrderHistoryScreen.pagerKey,
-      height: PosSize.filterChip + PosSpace.md,
-      padding: const EdgeInsetsDirectional.only(
-        start: PosSpace.s18,
-        end: PosSpace.md,
-      ),
-      decoration: BoxDecoration(
-        color: pos.surface,
-        border: BorderDirectional(top: pos.resting),
-      ),
-      child: Row(
-        children: [
-          Text(strings.orderPagerShowing, style: words),
-          const SizedBox(width: PosSpace.xs),
-          mono(
-            OrderHistoryScreen.pagerRangeKey,
-            last == 0 ? '0' : '$first–$last',
-          ),
-          const SizedBox(width: PosSpace.xs),
-          Text(strings.orderPagerOf, style: words),
-          const SizedBox(width: PosSpace.xs),
-          mono(OrderHistoryScreen.pagerTotalKey, total == null ? '—' : '$total'),
-          const Spacer(),
-          // Only with somewhere to go, as on the cloud. Two dead buttons
-          // under a list of twelve read as a list that failed to load more.
-          if (onPrevious != null || onNext != null) ...[
-            PosButton(
-              key: OrderHistoryScreen.previousPageKey,
-              label: strings.orderPagerPrevious,
-              height: PosSize.filterChip,
-              border: Border.fromBorderSide(pos.resting),
-              onPressed: onPrevious,
-            ),
-            const SizedBox(width: PosSpace.sm),
-            mono(
-              OrderHistoryScreen.pagerPageKey,
-              pages == null ? '$page' : '$page / $pages',
-            ),
-            const SizedBox(width: PosSpace.sm),
-            PosButton(
-              key: OrderHistoryScreen.nextPageKey,
-              label: strings.orderPagerNext,
-              height: PosSize.filterChip,
-              border: Border.fromBorderSide(pos.resting),
-              onPressed: onNext,
-            ),
+          for (final (index, tile) in tiles.indexed) ...[
+            if (index > 0) const SizedBox(width: PosSpace.sm),
+            Expanded(child: tile),
           ],
         ],
       ),
@@ -1077,11 +894,13 @@ class _Pager extends StatelessWidget {
 class _OrderRow extends StatelessWidget {
   const _OrderRow({
     required this.order,
+    required this.preset,
     required this.selected,
     required this.onTap,
   });
 
   final OrderRecord order;
+  final HistoryPreset preset;
   final bool selected;
   final VoidCallback onTap;
 
@@ -1095,176 +914,125 @@ class _OrderRow extends StatelessWidget {
     // being scanned for a total, that second statement is the one that matters.
     final dead = order.status.isDead;
 
-    return Material(
-      color: selected ? pos.accentSoft : Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        child: Container(
-          height: PosSize.reportRow,
-          padding: const EdgeInsetsDirectional.only(
-            start: PosSpace.s18,
-            end: PosSpace.md,
-          ),
-          decoration: BoxDecoration(
-            border: BorderDirectional(
-              bottom: pos.hairline,
-              start: selected
-                  ? BorderSide(color: pos.accent, width: 2)
-                  : BorderSide.none,
-            ),
-          ),
-          child: Row(
-            children: [
-              SizedBox(
-                width: _Cols.invoice,
-                child: MonoCode(
-                  order.invoiceNumber,
-                  size: 12.5,
-                  color: dead ? pos.muted : pos.ink,
-                ),
-              ),
-              SizedBox(
-                width: _Cols.time,
-                child: MonoCode(_time(order.occurredAt), size: 12),
-              ),
-              SizedBox(
-                width: _Cols.type,
-                child: Text(
-                  order.orderType.label(strings),
-                  overflow: TextOverflow.ellipsis,
-                  style: PosText.ui(size: 12.5, color: pos.body),
-                ),
-              ),
-              SizedBox(
-                width: _Cols.table,
-                child: Text(
-                  order.tableLabel ?? '—',
-                  overflow: TextOverflow.ellipsis,
-                  style: PosText.ui(size: 12.5, color: pos.body),
-                ),
-              ),
-              Expanded(
-                child: Text(
-                  order.servedByName ?? '—',
-                  overflow: TextOverflow.ellipsis,
-                  style: PosText.ui(size: 12.5, color: pos.body),
-                ),
-              ),
-              const SizedBox(width: PosSpace.sm),
-              Expanded(
-                child: Text(
-                  paidWith(order, strings),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: PosText.ui(size: 12.5, color: pos.body),
-                ),
-              ),
-              const SizedBox(width: PosSpace.sm),
-              Expanded(
-                child: Text(
-                  order.terminalName ?? '—',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: PosText.ui(size: 12.5, color: pos.body),
-                ),
-              ),
-              const SizedBox(width: PosSpace.sm),
-              SizedBox(
-                width: _Cols.total,
-                child: Align(
-                  alignment: AlignmentDirectional.centerEnd,
-                  child: DefaultTextStyle.merge(
-                    style: TextStyle(
-                      decoration: dead ? TextDecoration.lineThrough : null,
-                      decorationColor: pos.danger,
-                    ),
-                    child: MonoAmount(
-                      order.total,
-                      size: 13,
-                      weight: FontWeight.w600,
-                      color: dead ? pos.muted : pos.ink,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: PosSpace.md),
-              SizedBox(
-                width: _Cols.status,
-                child: Align(
-                  alignment: AlignmentDirectional.centerStart,
-                  child: OrderStatusChip(order.status),
-                ),
-              ),
-              const SizedBox(width: PosSpace.sm),
-              SizedBox(
-                width: _Cols.payment,
-                child: Align(
-                  alignment: AlignmentDirectional.centerStart,
-                  child: PaymentStatusChip(order.paymentStatus),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
+    Widget words(String text) => Text(
+      text,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: PosText.ui(size: 12.5, color: pos.body),
     );
-  }
 
-  /// 24-hour, zero-padded, mono. Not `TimeOfDay.format` — that follows the
-  /// locale into 12-hour with an am/pm suffix, and a column of times that
-  /// changes width row by row cannot be scanned.
-  static String _time(DateTime at) =>
-      '${at.hour.toString().padLeft(2, '0')}:'
-      '${at.minute.toString().padLeft(2, '0')}';
-}
-
-class _FilterChip extends StatelessWidget {
-  const _FilterChip({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final pos = context.pos;
-    return Material(
-      color: selected ? pos.accentSoft : Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        child: Container(
-          height: PosSize.filterChip,
-          padding: const EdgeInsets.symmetric(horizontal: PosSpace.md),
-          decoration: BoxDecoration(
-            border: Border.fromBorderSide(
-              selected ? pos.accentBorder : pos.resting,
+    final (second, third, tail) = switch (preset) {
+      HistoryPreset.all || HistoryPreset.invoices => (
+        words(paidWith(order, strings)),
+        words(order.terminalName ?? '—'),
+        <Widget>[
+          SizedBox(
+            width: _Cols.status,
+            child: Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: OrderStatusChip(order.status),
             ),
           ),
-          // A `Row` sized to its child, not `alignment: Alignment.center`. A
-          // `Container` with an alignment expands to fill whatever it is given,
-          // and inside a `Wrap` that is the full line width — every chip taking
-          // a row of its own, and a filter bar 600px tall squeezing the list it
-          // is meant to filter down to nothing. The first widget test written
-          // against this screen caught it.
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                label,
-                style: PosText.ui(
-                  size: 12.5,
-                  weight: selected ? FontWeight.w600 : FontWeight.w500,
-                  color: selected ? pos.inkWarm : pos.body,
-                ),
-              ),
-            ],
+          const SizedBox(width: PosSpace.sm),
+          SizedBox(
+            width: _Cols.payment,
+            child: Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: PaymentStatusChip(order.paymentStatus),
+            ),
+          ),
+        ],
+      ),
+      HistoryPreset.voided => (
+        words(
+          reasonInReaderLanguage(
+                context,
+                english: order.voidReason,
+                arabic: order.voidReasonAr,
+              ) ??
+              '—',
+        ),
+        words(order.voidedByName ?? '—'),
+        <Widget>[
+          SizedBox(
+            width: _Cols.voidedAt,
+            child: MonoCode(
+              switch (order.voidedAt) {
+                final at? => historyStamp(at),
+                null => '—',
+              },
+              size: 12,
+            ),
+          ),
+        ],
+      ),
+    };
+
+    return HistoryListRow(
+      selected: selected,
+      onTap: onTap,
+      children: [
+        SizedBox(
+          width: _Cols.invoice,
+          child: MonoCode(
+            order.invoiceNumber,
+            size: 12.5,
+            color: dead ? pos.muted : pos.ink,
           ),
         ),
-      ),
+        SizedBox(
+          width: _Cols.time,
+          child: MonoCode(historyTime(order.occurredAt), size: 12),
+        ),
+        SizedBox(
+          width: _Cols.type,
+          child: Text(
+            order.orderType.label(strings),
+            overflow: TextOverflow.ellipsis,
+            style: PosText.ui(size: 12.5, color: pos.body),
+          ),
+        ),
+        SizedBox(
+          width: _Cols.table,
+          child: Text(
+            order.tableLabel ?? '—',
+            overflow: TextOverflow.ellipsis,
+            style: PosText.ui(size: 12.5, color: pos.body),
+          ),
+        ),
+        Expanded(
+          child: Text(
+            order.servedByName ?? '—',
+            overflow: TextOverflow.ellipsis,
+            style: PosText.ui(size: 12.5, color: pos.body),
+          ),
+        ),
+        const SizedBox(width: PosSpace.sm),
+        Expanded(child: second),
+        const SizedBox(width: PosSpace.sm),
+        Expanded(child: third),
+        const SizedBox(width: PosSpace.sm),
+        SizedBox(
+          width: _Cols.total,
+          child: Align(
+            alignment: AlignmentDirectional.centerEnd,
+            child: DefaultTextStyle.merge(
+              style: TextStyle(
+                decoration: dead ? TextDecoration.lineThrough : null,
+                decorationColor: pos.danger,
+              ),
+              child: MonoAmount(
+                order.total,
+                size: 13,
+                weight: FontWeight.w600,
+                color: dead ? pos.muted : pos.ink,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: PosSpace.md),
+        ...tail,
+      ],
     );
   }
 }

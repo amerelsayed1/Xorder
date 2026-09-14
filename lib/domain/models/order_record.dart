@@ -598,6 +598,47 @@ class OrderHistoryQuery {
   }
 }
 
+/// Which of the Sales tab's lists a history screen is (plan 19's Sales ›
+/// Orders, Invoices and Cancelled orders).
+///
+/// **A status filter the person cannot take off, and nothing else.** Invoices
+/// and Cancelled orders are the one list of sales with a preset on it, not
+/// two more screens over the same table: a second list is where the rows and
+/// the figures above them start to disagree with the first. So a preset
+/// changes the query's statuses and the columns drawn, and every other rule
+/// — the window, the scope, the pages, the strip's SQL — is the list's own.
+enum HistoryPreset {
+  /// Every sale: الطلبات, and `/orders`.
+  all,
+
+  /// Settled sales carrying an invoice: paid, or refunded in part. Not voids,
+  /// which took nothing, and not full refunds, which gave it all back.
+  invoices,
+
+  /// Voided sales (الطلبات الملغاة), with who voided them, when and why.
+  voided;
+
+  /// The statuses the preset locks the list to; null when it locks nothing.
+  ///
+  /// Invoices is [OrderStatus.tookMoney] rather than a list of its own: that
+  /// is the set a refund may be issued against and a Z report totals, and a
+  /// status that joins it joins this list with it.
+  Set<OrderStatus>? get statuses => switch (this) {
+    HistoryPreset.all => null,
+    HistoryPreset.invoices => {
+      for (final status in OrderStatus.values)
+        if (status.tookMoney) status,
+    },
+    HistoryPreset.voided => const {OrderStatus.voided},
+  };
+
+  /// [query] with the preset's statuses in place of the person's own.
+  OrderHistoryQuery apply(OrderHistoryQuery query) => switch (statuses) {
+    final locked? => query.copyWith(statuses: locked),
+    null => query,
+  };
+}
+
 /// The four figures over the sales list (BO-3): what the listed sales came
 /// to, how many invoices there are, what was taken and what is still owed.
 ///
@@ -614,6 +655,7 @@ class OrderHistorySummary {
     required this.total,
     required this.paid,
     required this.outstanding,
+    required this.deadTotal,
   });
 
   /// What a viewer who may read nothing is told, and what a terminal with no
@@ -624,6 +666,7 @@ class OrderHistorySummary {
     total: Money(0),
     paid: Money(0),
     outstanding: Money(0),
+    deadTotal: Money(0),
   );
 
   /// Every row the list holds, struck-through ones included, because they
@@ -651,6 +694,15 @@ class OrderHistorySummary {
   /// money anybody owes.
   final Money outstanding;
 
+  /// What the [dead] rows came to — the struck-through totals [total] leaves
+  /// out. Cancelled orders' strip: under [HistoryPreset.voided] every row is
+  /// dead, so this is the voided total and [total] is zero.
+  ///
+  /// A figure of the summary rather than a second query for that one list,
+  /// so it is summed over the rows the list pages through by the same
+  /// statement that sums the others.
+  final Money deadTotal;
+
   /// The rule, over rows already read.
   ///
   /// In the rows' own currency. One branch trades in one, and summing two
@@ -661,12 +713,14 @@ class OrderHistorySummary {
     var total = 0;
     var paid = 0;
     var outstanding = 0;
+    var deadTotal = 0;
     Money? unit;
     for (final row in rows) {
       unit ??= row.total;
       count++;
       if (row.status.isDead) {
         dead++;
+        deadTotal += row.total.minor;
         continue;
       }
       total += row.total.minor;
@@ -690,6 +744,7 @@ class OrderHistorySummary {
       total: money(total),
       paid: money(paid),
       outstanding: money(outstanding),
+      deadTotal: money(deadTotal),
     );
   }
 
@@ -700,15 +755,17 @@ class OrderHistorySummary {
       other.dead == dead &&
       other.total == total &&
       other.paid == paid &&
-      other.outstanding == outstanding;
+      other.outstanding == outstanding &&
+      other.deadTotal == deadTotal;
 
   @override
-  int get hashCode => Object.hash(count, dead, total, paid, outstanding);
+  int get hashCode =>
+      Object.hash(count, dead, total, paid, outstanding, deadTotal);
 
   /// Minor units, for a failing test's message.
   @override
   String toString() =>
       'OrderHistorySummary(count: $count, dead: $dead, '
       'total: ${total.minor}, paid: ${paid.minor}, '
-      'outstanding: ${outstanding.minor})';
+      'outstanding: ${outstanding.minor}, deadTotal: ${deadTotal.minor})';
 }

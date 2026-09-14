@@ -1947,6 +1947,46 @@ sealed class AppStrings {
   /// `served_by` before [reliableFrom] credited shared-PIN sales to one person.
   /// [reliableFrom] is a Latin-digit date in both languages.
   String orderHistoryAttributionCaveat(String reliableFrom);
+
+  // Sales › Returns (المرتجعات): one row per refund. The refund's number and
+  // every figure are drawn apart from these words, in mono, so no number sits
+  // inside an Arabic sentence.
+  String get returnsSearchHint;
+  String returnsCount(int count);
+  String get returnsSummaryCount;
+  String get returnsSummaryTotal;
+  String get returnsSummaryTotalNote;
+  String get returnsEmpty;
+  String get returnsEmptyFiltered;
+  String get returnsUnavailable;
+  String get returnsPickARefund;
+  String get returnColumnRefund;
+  String get returnColumnInvoice;
+  String get returnColumnCashier;
+  String get returnColumnReason;
+  String get returnColumnLines;
+  String get returnColumnAmount;
+
+  /// The way from a refund to the sale it gave money back on, in Orders.
+  String get returnDetailOpenSale;
+
+  /// A refund that names no items — an amount against the bill as a whole.
+  String get returnDetailAmountOnly;
+  String get returnDetailReturnedTo;
+
+  /// `RefundKind`, by `refundKindLabel` — never the wire word.
+  String get refundKindFull;
+  String get refundKindPartial;
+
+  // Sales › Cancelled orders (الطلبات الملغاة): the list under
+  // `HistoryPreset.voided`, with who voided each sale, when and why.
+  String get orderColumnVoidReason;
+  String get orderColumnVoidedBy;
+  String get orderColumnVoidedAt;
+  String get voidedSummaryCount;
+  String get voidedSummaryTotal;
+  String get voidedSummaryTotalNote;
+  String get voidedOrdersEmpty;
   /// Followed by the date in mono, never interpolated: a date inside an
   /// Arabic sentence is one bidi run away from reading backwards.
   String get orderDetailBusinessDay;
@@ -2475,6 +2515,63 @@ final class EnStrings extends AppStrings {
       'Who sold each order is reliable only from $reliableFrom. Before that, '
       'a PIN shared by two people credited all their sales to one of them, so '
       'per-cashier figures for earlier days are not accurate.';
+  @override
+  String get returnsSearchHint => 'Refund no. or invoice';
+  @override
+  String returnsCount(int count) =>
+      count == 1 ? '1 refund' : '$count refunds';
+  @override
+  String get returnsSummaryCount => 'Refunds';
+  @override
+  String get returnsSummaryTotal => 'Total refunded';
+  @override
+  String get returnsSummaryTotalNote => 'Given back, in every method';
+  @override
+  String get returnsEmpty => 'No refunds in this period.';
+  @override
+  String get returnsEmptyFiltered => 'No refunds match this search.';
+  @override
+  String get returnsUnavailable =>
+      'Refunds could not be read from the branch database.';
+  @override
+  String get returnsPickARefund => 'Pick a refund to see it.';
+  @override
+  String get returnColumnRefund => 'Refund';
+  @override
+  String get returnColumnInvoice => 'Original invoice';
+  @override
+  String get returnColumnCashier => 'Refunded by';
+  @override
+  String get returnColumnReason => 'Reason';
+  @override
+  String get returnColumnLines => 'Items';
+  @override
+  String get returnColumnAmount => 'Amount';
+  @override
+  String get returnDetailOpenSale => 'Open the sale';
+  @override
+  String get returnDetailAmountOnly =>
+      'Given back against the whole bill, not particular items.';
+  @override
+  String get returnDetailReturnedTo => 'Returned to';
+  @override
+  String get refundKindFull => 'Full refund';
+  @override
+  String get refundKindPartial => 'Part refund';
+  @override
+  String get orderColumnVoidReason => 'Void reason';
+  @override
+  String get orderColumnVoidedBy => 'Voided by';
+  @override
+  String get orderColumnVoidedAt => 'Voided at';
+  @override
+  String get voidedSummaryCount => 'Voided orders';
+  @override
+  String get voidedSummaryTotal => 'Voided total';
+  @override
+  String get voidedSummaryTotalNote => 'Never taken, so not in sales';
+  @override
+  String get voidedOrdersEmpty => 'Nothing was voided in this period.';
   @override
   String get orderDetailBusinessDay => 'Business day';
   @override
@@ -6631,6 +6728,63 @@ final class ArStrings extends AppStrings {
       '\u2066$reliableFrom\u2069 فقط. '
       'قبل ذلك كان رمز PIN المشترك بين شخصين ينسب كل مبيعاتهما إلى أحدهما، '
       'لذا فأرقام كل كاشير في الأيام السابقة غير دقيقة.';
+  @override
+  String get returnsSearchHint => 'رقم المرتجع أو الفاتورة';
+  @override
+  String returnsCount(int count) =>
+      count == 1 ? 'مرتجع واحد' : '$count مرتجعات';
+  @override
+  String get returnsSummaryCount => 'المرتجعات';
+  @override
+  String get returnsSummaryTotal => 'إجمالي المسترد';
+  @override
+  String get returnsSummaryTotalNote => 'ما أُعيد للعملاء بكل طرق الدفع';
+  @override
+  String get returnsEmpty => 'لا توجد مرتجعات في هذه الفترة.';
+  @override
+  String get returnsEmptyFiltered => 'لا توجد مرتجعات تطابق هذا البحث.';
+  @override
+  String get returnsUnavailable =>
+      'تعذّرت قراءة المرتجعات من قاعدة بيانات الفرع.';
+  @override
+  String get returnsPickARefund => 'اختر مرتجعًا لعرضه.';
+  @override
+  String get returnColumnRefund => 'المرتجع';
+  @override
+  String get returnColumnInvoice => 'الفاتورة الأصلية';
+  @override
+  String get returnColumnCashier => 'بواسطة';
+  @override
+  String get returnColumnReason => 'السبب';
+  @override
+  String get returnColumnLines => 'الأصناف';
+  @override
+  String get returnColumnAmount => 'المبلغ';
+  @override
+  String get returnDetailOpenSale => 'فتح الطلب الأصلي';
+  @override
+  String get returnDetailAmountOnly =>
+      'مبلغ أُعيد من إجمالي الفاتورة، لا من أصناف بعينها.';
+  @override
+  String get returnDetailReturnedTo => 'أُعيد إلى';
+  @override
+  String get refundKindFull => 'استرداد كامل';
+  @override
+  String get refundKindPartial => 'استرداد جزئي';
+  @override
+  String get orderColumnVoidReason => 'سبب الإلغاء';
+  @override
+  String get orderColumnVoidedBy => 'ألغاه';
+  @override
+  String get orderColumnVoidedAt => 'وقت الإلغاء';
+  @override
+  String get voidedSummaryCount => 'الطلبات الملغاة';
+  @override
+  String get voidedSummaryTotal => 'إجمالي الملغى';
+  @override
+  String get voidedSummaryTotalNote => 'لم يُحصَّل، فلا يدخل في المبيعات';
+  @override
+  String get voidedOrdersEmpty => 'لم يُلغَ أي طلب في هذه الفترة.';
   @override
   String get orderDetailBusinessDay => 'يوم العمل';
   @override
