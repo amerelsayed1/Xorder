@@ -157,10 +157,28 @@ Future<StaffCheck> checkStaffPin(
   }
   if (staff == null) return const StaffRefused();
 
-  return Authorization.check(staff, capability).isAllowed
+  return Authorization.check(staff, capability).isAllowed ||
+          _ownerBeforeTheGrant(staff, capability)
       ? StaffVerified(staff)
       : StaffRefused(identified: staff);
 }
+
+/// **The owner is let into Admin Mode before their role says so.**
+///
+/// Migration 46 is what gives the owner role `admin.enter`, and migrations run
+/// at this door, after a sign-in — so on a database from before Admin Mode the
+/// one person meant to hold the key could never turn it: refused for lacking
+/// the grant, and the grant waiting on them getting in. Every existing install
+/// met that wall on its first upgrade.
+///
+/// Only for this key and only for the owner: migration 42 fixes who the owner
+/// is, and 46 grants them exactly this and nothing more. Once it has run the
+/// role holds it and this is never the reason. Any other capability is asked
+/// of the role as it stands.
+bool _ownerBeforeTheGrant(PosStaff staff, String capability) =>
+    PosCapability.canonical(capability) == PosCapability.adminEnter &&
+    staff.isActive &&
+    staff.role?.code == SystemRoles.ownerCode;
 
 /// The clock Admin Mode's timeout is measured with. A provider so a test can
 /// move it instead of waiting five minutes.

@@ -363,6 +363,93 @@ void main() {
       );
     });
 
+    // A database from before Admin Mode: migration 46, which gives the owner
+    // role `admin.enter`, runs at this door — after a sign-in. Found on a real
+    // till on 14 Sep 2026: the owner's right PIN was refused, twice, for want
+    // of a grant only their getting in could make.
+    test('the owner gets in before migration 46 has given their role the key',
+        () async {
+      const owner = PosStaff(
+        id: 1,
+        name: 'Amer M.',
+        username: 'amer',
+        role: PosRole(
+          id: 1,
+          code: SystemRoles.ownerCode,
+          nameEn: 'Owner',
+          capabilities: {PosCapability.staffManage},
+        ),
+      );
+      expect(owner.can(PosCapability.adminEnter), isFalse, reason: 'premise');
+      expect(
+        await checkStaffPin(
+          const _Returns(owner),
+          username: 'amer',
+          pin: '1234',
+          capability: PosCapability.adminEnter,
+        ),
+        isA<StaffVerified>(),
+      );
+      // Only that key: anything else is asked of the role as it stands.
+      expect(
+        await checkStaffPin(
+          const _Returns(owner),
+          username: 'amer',
+          pin: '1234',
+          capability: PosCapability.terminalManage,
+        ),
+        isA<StaffRefused>(),
+      );
+    });
+
+    test('and nobody else does, whatever else they hold', () async {
+      for (final code in [SystemRoles.managerCode, SystemRoles.supervisorCode]) {
+        final staff = PosStaff(
+          id: 2,
+          name: 'Nour S.',
+          username: 'nour',
+          role: PosRole(
+            id: 2,
+            code: code,
+            nameEn: code,
+            capabilities: const {PosCapability.staffManage},
+          ),
+        );
+        expect(
+          await checkStaffPin(
+            _Returns(staff),
+            username: 'nour',
+            pin: '2468',
+            capability: PosCapability.adminEnter,
+          ),
+          isA<StaffRefused>(),
+          reason: code,
+        );
+      }
+      // Nor an owner whose account has been switched off.
+      const retired = PosStaff(
+        id: 1,
+        name: 'Amer M.',
+        username: 'amer',
+        isActive: false,
+        role: PosRole(
+          id: 1,
+          code: SystemRoles.ownerCode,
+          nameEn: 'Owner',
+          capabilities: {PosCapability.staffManage},
+        ),
+      );
+      expect(
+        await checkStaffPin(
+          const _Returns(retired),
+          username: 'amer',
+          pin: '1234',
+          capability: PosCapability.adminEnter,
+        ),
+        isA<StaffRefused>(),
+      );
+    });
+
     test('says unreachable rather than refused when nothing answers', () async {
       expect(
         await checkStaffPin(
@@ -409,4 +496,27 @@ class _Unreachable implements SessionRepository {
   @override
   Future<PosStaff?> signInAs({required String username, required String pin}) =>
       throw _refused;
+}
+
+/// A directory holding one person, found by any username and PIN — the
+/// question under test is what their ROLE lets them do, not who they are.
+class _Returns implements SessionRepository {
+  const _Returns(this.staff);
+
+  final PosStaff staff;
+
+  @override
+  Future<PosSession> current() => throw UnimplementedError();
+
+  @override
+  Future<bool> verifyPin(String pin) async => true;
+
+  @override
+  Future<PosStaff?> signIn(String pin) async => staff;
+
+  @override
+  Future<PosStaff?> signInAs({
+    required String username,
+    required String pin,
+  }) async => staff;
 }
