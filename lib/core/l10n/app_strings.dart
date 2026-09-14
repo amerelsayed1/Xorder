@@ -1526,6 +1526,34 @@ sealed class AppStrings {
   String get aboutMode;
   String get aboutTerminalId;
   String get aboutDatabase;
+
+  // Back office › System › Sync.
+  String get paneSync;
+  String get paneSyncBlurb;
+  String get syncLastConfig;
+  String get syncUnsent;
+  String get syncLastProblem;
+  String get syncNoProblem;
+  String get syncPassFailed;
+  String get syncPlatformSilent;
+  String syncHeld(int count);
+  String syncPassSent(int count);
+  String get syncOfflineTill;
+  String get syncBranchServer;
+
+  // Back office › Settings › Printer & cash drawer.
+  String get printerNotYours;
+  String get printerSaved;
+
+  // Back office › Settings › User.
+  String get paneUser;
+  String get paneUserBlurb;
+  String get userNameLabel;
+  String get userRole;
+  String get userNoRole;
+  String get userPermissions;
+  String get userSeeRoles;
+  String get userExitHint;
   String get receiptPreviewAction;
   String get receiptPreviewNote;
   String get paneUnits;
@@ -5911,6 +5939,61 @@ final class EnStrings extends AppStrings {
   @override
   String get aboutDatabase => 'Database';
   @override
+  String get paneSync => 'Sync';
+  @override
+  String get paneSyncBlurb =>
+      "Where this till's sales go, and whether they got there";
+  @override
+  String get syncLastConfig => 'Menu and settings last received';
+  @override
+  String get syncUnsent => 'Sales not yet sent';
+  @override
+  String get syncLastProblem => 'Last problem';
+  @override
+  String get syncNoProblem => 'None';
+  @override
+  String get syncPassFailed =>
+      'The sync could not run. The sales are still here, and it will try '
+      'again.';
+  @override
+  String get syncPlatformSilent =>
+      'The platform did not answer. Nothing is lost — the sales wait here '
+      'until it does.';
+  @override
+  String syncHeld(int count) =>
+      'Refused by the platform and held for a person: $count';
+  @override
+  String syncPassSent(int count) => 'Sent just now: $count';
+  @override
+  String get syncOfflineTill =>
+      'This till does not sync to the cloud. Its sales are kept on the branch '
+      'server below, and a backup is the copy that keeps them safe.';
+  @override
+  String get syncBranchServer => 'Branch server';
+  @override
+  String get printerNotYours =>
+      'Only somebody who may manage this terminal can change its printer.';
+  @override
+  String get printerSaved =>
+      'Saved. This till prints here now, and after a restart.';
+  @override
+  String get paneUser => 'User';
+  @override
+  String get paneUserBlurb => 'Who is in Admin Mode now';
+  @override
+  String get userNameLabel => 'Name';
+  @override
+  String get userRole => 'Role';
+  @override
+  String get userNoRole => 'No role — direct permissions only';
+  @override
+  String get userPermissions => 'Permissions held';
+  @override
+  String get userSeeRoles => 'See Roles';
+  @override
+  String get userExitHint =>
+      'Leaves the back office and hands the till back as it was.';
+  @override
   String get receiptPreviewAction => 'Preview';
   @override
   String get receiptPreviewNote =>
@@ -9962,6 +10045,56 @@ final class ArStrings extends AppStrings {
   String get aboutTerminalId => 'معرّف الجهاز';
   @override
   String get aboutDatabase => 'قاعدة البيانات';
+  @override
+  String get paneSync => 'المزامنة';
+  @override
+  String get paneSyncBlurb => 'أين تذهب مبيعات هذا الجهاز، وهل وصلت';
+  @override
+  String get syncLastConfig => 'آخر استلام للقائمة والإعدادات';
+  @override
+  String get syncUnsent => 'مبيعات لم تُرسل بعد';
+  @override
+  String get syncLastProblem => 'آخر مشكلة';
+  @override
+  String get syncNoProblem => 'لا شيء';
+  @override
+  String get syncPassFailed =>
+      'تعذّر تشغيل المزامنة. المبيعات ما زالت محفوظة هنا، وستُعاد المحاولة.';
+  @override
+  String get syncPlatformSilent =>
+      'لم تردّ المنصة. لم يُفقد شيء — تنتظر المبيعات هنا حتى تردّ.';
+  @override
+  String syncHeld(int count) => 'رفضتها المنصة وهي محتجزة لمراجعة شخص: $count';
+  @override
+  String syncPassSent(int count) => 'أُرسل الآن: $count';
+  @override
+  String get syncOfflineTill =>
+      'هذا الجهاز لا يُزامن مع السحابة. مبيعاته محفوظة على خادم الفرع أدناه، '
+      'والنسخة الاحتياطية هي ما يحفظها.';
+  @override
+  String get syncBranchServer => 'خادم الفرع';
+  @override
+  String get printerNotYours =>
+      'تغيير الطابعة لمن يملك صلاحية إدارة هذا الجهاز فقط.';
+  @override
+  String get printerSaved =>
+      'تم الحفظ. يطبع هذا الجهاز هنا الآن وبعد إعادة التشغيل.';
+  @override
+  String get paneUser => 'المستخدم';
+  @override
+  String get paneUserBlurb => 'من في وضع المسؤول الآن';
+  @override
+  String get userNameLabel => 'الاسم';
+  @override
+  String get userRole => 'الدور';
+  @override
+  String get userNoRole => 'بلا دور — صلاحيات مباشرة فقط';
+  @override
+  String get userPermissions => 'الصلاحيات الممنوحة';
+  @override
+  String get userSeeRoles => 'عرض الأدوار';
+  @override
+  String get userExitHint => 'يغلق المكتب الخلفي ويعيد الجهاز كما كان.';
   @override
   String get receiptPreviewAction => 'معاينة';
   @override

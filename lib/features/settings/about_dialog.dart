@@ -12,15 +12,51 @@ import '../../data/postgres/pos_database.dart';
 
 /// What support asks for first: which version, which till, which database.
 ///
-/// Read off the screen over the phone, so every value is mono and left to
-/// right in both languages — they are codes, not words.
-class PosAboutDialog extends ConsumerWidget {
+/// The till's Settings menu opens this; the back office hosts the same
+/// [PosAboutDetails] as Settings › About.
+class PosAboutDialog extends StatelessWidget {
   const PosAboutDialog({super.key});
 
   static Future<void> show(BuildContext context) => showDialog<void>(
     context: context,
     builder: (_) => const PosAboutDialog(),
   );
+
+  @override
+  Widget build(BuildContext context) => Dialog(
+    shape: const RoundedRectangleBorder(borderRadius: PosBorders.radius),
+    child: ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 440),
+      child: Padding(
+        padding: const EdgeInsets.all(PosSpace.xl),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const PosAboutDetails(),
+            const SizedBox(height: PosSpace.xl),
+            PosButton(
+              label: context.strings.close,
+              border: Border.fromBorderSide(context.pos.resting),
+              onPressed: () => Navigator.of(context).pop(),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+/// The About dialog's content, without the dialog.
+///
+/// **One list for two hosts**, so the version support reads off the back
+/// office is the version the till's own menu would have said — a second copy
+/// would be the one that forgot the terminal id.
+///
+/// Read off the screen over the phone, so every value is mono and left to
+/// right in both languages — they are codes, not words.
+class PosAboutDetails extends ConsumerWidget {
+  const PosAboutDetails({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -51,51 +87,36 @@ class PosAboutDialog extends ConsumerWidget {
         ),
     ];
 
-    return Dialog(
-      shape: const RoundedRectangleBorder(borderRadius: PosBorders.radius),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 440),
-        child: Padding(
-          padding: const EdgeInsets.all(PosSpace.xl),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                'XOrder POS',
-                style: PosText.ui(size: 20, weight: FontWeight.w800, color: pos.ink),
-              ),
-              const SizedBox(height: PosSpace.lg),
-              for (final (label, value) in rows)
-                Container(
-                  padding: const EdgeInsets.symmetric(vertical: PosSpace.sm),
-                  decoration: BoxDecoration(
-                    border: Border(bottom: pos.hairline),
-                  ),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      SizedBox(width: 130, child: MicroLabel(label)),
-                      Expanded(
-                        child: SelectableText(
-                          value,
-                          textDirection: TextDirection.ltr,
-                          style: PosText.mono(size: 13, color: pos.ink),
-                        ),
-                      ),
-                    ],
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          'XOrder POS',
+          style: PosText.ui(size: 20, weight: FontWeight.w800, color: pos.ink),
+        ),
+        const SizedBox(height: PosSpace.lg),
+        for (final (label, value) in rows)
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: PosSpace.sm),
+            decoration: BoxDecoration(
+              border: Border(bottom: pos.hairline),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(width: 130, child: MicroLabel(label)),
+                Expanded(
+                  child: SelectableText(
+                    value,
+                    textDirection: TextDirection.ltr,
+                    style: PosText.mono(size: 13, color: pos.ink),
                   ),
                 ),
-              const SizedBox(height: PosSpace.xl),
-              PosButton(
-                label: strings.close,
-                border: Border.fromBorderSide(pos.resting),
-                onPressed: () => Navigator.of(context).pop(),
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
-      ),
+      ],
     );
   }
 }
