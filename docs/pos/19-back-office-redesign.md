@@ -191,7 +191,7 @@ branch.
 | Element | Verdict | Where |
 |---|---|---|
 | Period today / week / month / custom | Q | business-day ranges; week start from `intl` for the locale, not hard-coded |
-| Export Excel | Q — BO-11 | `excel` is in `pubspec.yaml`; export the rows the screen shows. **New capability `report.export`** (owner, 14 Sep; plan 17 §5, `11` §9) — not yet in `PosCapability.all` (`permissions.dart:100`) |
+| Export Excel | Q — BO-11 | `excel` is in `pubspec.yaml`; export the rows the screen shows. **New capability `report.export`** (owner, 14 Sep; plan 17 §5, `11` §9) — in `PosCapability.all` since BO-11, critical and not lendable; migration 48 grants it to existing owner roles |
 | Export PDF | ✗ deferred | no PDF package in `pubspec.yaml`, and none is to be added (owner, 14 Sep) |
 | KPI total sales, average order | Q | Wave G `ReportsRepository` over `pos_orders`/`pos_refunds` |
 | KPI net profit | ✗ | as Home |

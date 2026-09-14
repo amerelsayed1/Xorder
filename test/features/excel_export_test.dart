@@ -18,6 +18,7 @@ import 'package:xorder_pos/domain/models/business_day.dart';
 import 'package:xorder_pos/domain/models/order_record.dart';
 import 'package:xorder_pos/domain/models/permissions.dart';
 import 'package:xorder_pos/domain/models/refund.dart';
+import 'package:xorder_pos/domain/models/finance_report.dart';
 import 'package:xorder_pos/domain/models/sales_report.dart';
 import 'package:xorder_pos/domain/models/tender_method.dart';
 import 'package:xorder_pos/domain/models/ticket.dart';
@@ -252,6 +253,15 @@ class _Fixed implements ReportsRepository {
     required ProductRanking by,
     int limit = 5,
   }) async => _topFive;
+
+  // Finance's (BO-9); neither export asks for them.
+  @override
+  Future<TaxReport> taxes(ReportFilter filter) =>
+      throw UnimplementedError('the exports write no taxes');
+
+  @override
+  Future<PaymentLedger> payments(ReportFilter filter, {int limit = 500}) =>
+      throw UnimplementedError('the exports write no payment ledger');
 }
 
 class _InAdminMode extends AdminSessionController {
