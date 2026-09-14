@@ -4305,6 +4305,27 @@ const posMigrations = <PosMigration>[
        AND NOT (capabilities @> ARRAY['payment.remove']::text[])
     ''',
   ]),
+  // `report.export` — taking the Reports tab or the Sales list away as an
+  // Excel file (BO-11). New, so it reaches an existing owner role only by a
+  // migration saying so; without this the owner of every install from before
+  // it could not export, and `RolesRepository.save` would refuse to save the
+  // owner role at all, because the owner must hold every capability.
+  //
+  // **Owner only**, as 46 is and for the same reason: nobody exported before,
+  // so there is nobody to keep it for, and who else may is the owner's to
+  // decide in Roles (owner decision, 14 Sep 2026).
+  //
+  // Same shape as 46: additive union, idempotent, owner only.
+  PosMigration(48, 'the owner role may export to Excel', [
+    '''
+    UPDATE pos_roles
+       SET capabilities = ARRAY(
+             SELECT DISTINCT unnest(
+               capabilities || ARRAY['report.export']::text[]))
+     WHERE code = 'owner'
+       AND NOT (capabilities @> ARRAY['report.export']::text[])
+    ''',
+  ]),
 ];
 
 /// Brings the branch database up to the current schema.

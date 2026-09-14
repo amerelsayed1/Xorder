@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../app/excel_export.dart';
 import '../../../app/labels.dart';
 import '../../../app/providers.dart';
 import '../../../core/l10n/app_strings.dart';
@@ -17,6 +18,7 @@ import '../../../domain/models/business_day.dart';
 import '../../../domain/models/order_record.dart';
 import '../../../domain/models/ticket.dart';
 import '../history_scope.dart';
+import '../sales_export.dart';
 import 'order_detail_pane.dart';
 import 'order_status_chip.dart';
 import 'payment_status_chip.dart';
@@ -264,6 +266,7 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
                 strings,
                 summary.valueOrNull?.count,
                 seesEveryone,
+                base,
               ),
               _filters(context, strings, seesEveryone),
               if (query?.from case final from?
@@ -320,6 +323,7 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
     AppStrings strings,
     int? count,
     bool seesEveryone,
+    OrderHistoryQuery? base,
   ) {
     final pos = context.pos;
     // Every page's count, not this page's: "Today · 50 orders" on a day of
@@ -372,12 +376,33 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
               ],
             ),
           ),
-          if (widget.onClose case final close?)
+          // BO-11: every page of the filter above, not the one in view, and
+          // the strip's figures under them — see `sales_export.dart`. Read
+          // through the list's own road and scope, as the person acting.
+          if (base != null)
+            Flexible(
+              child: ExcelExportButton(
+                fileName: salesFileName(base),
+                build: (strings, rightToLeft) async => salesWorkbook(
+                  rows: await ordersToExport(
+                    ref.read(orderHistoryRepositoryProvider),
+                    base,
+                    viewer: ref.read(actingStaffProvider),
+                  ),
+                  query: base,
+                  strings: strings,
+                  rightToLeft: rightToLeft,
+                ),
+              ),
+            ),
+          if (widget.onClose case final close?) ...[
+            const SizedBox(width: PosSpace.sm),
             PosButton(
               label: strings.close,
               border: Border.fromBorderSide(pos.resting),
               onPressed: close,
             ),
+          ],
         ],
       ),
     );
@@ -1128,7 +1153,7 @@ class _OrderRow extends StatelessWidget {
               const SizedBox(width: PosSpace.sm),
               Expanded(
                 child: Text(
-                  _methods(order, strings),
+                  paidWith(order, strings),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: PosText.ui(size: 12.5, color: pos.body),
@@ -1184,16 +1209,6 @@ class _OrderRow extends StatelessWidget {
       ),
     );
   }
-
-  /// Every method, in the reader's language and the order they were taken —
-  /// "Cash + Card" for a split bill. Through `tenderName`, so a method the
-  /// restaurant renamed reads as they named it, as its receipt does.
-  static String _methods(OrderRecord order, AppStrings strings) =>
-      order.tenders.isEmpty
-      ? '—'
-      : order.tenders
-            .map((t) => tenderName(t.tenderTypeId, t.label, strings))
-            .join(' + ');
 
   /// 24-hour, zero-padded, mono. Not `TimeOfDay.format` — that follows the
   /// locale into 12-hour with an am/pm suffix, and a column of times that

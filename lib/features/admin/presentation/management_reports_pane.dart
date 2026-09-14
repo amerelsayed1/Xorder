@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../app/excel_export.dart';
 import '../../../app/providers.dart';
 import '../../../app/reports_providers.dart';
 import '../../../core/l10n/app_strings.dart';
@@ -13,6 +14,7 @@ import '../../../domain/models/branch_sales.dart';
 import '../../../domain/models/business_day.dart';
 import '../../../domain/models/home_sales.dart' show deltaBp;
 import '../../../domain/models/sales_report.dart';
+import '../application/report_export.dart';
 import '../application/reports_view.dart';
 import 'management_home_pane.dart' show formatDeltaBp;
 import 'report_charts.dart';
@@ -150,6 +152,41 @@ class _ManagementReportsPaneState extends ConsumerState<ManagementReportsPane> {
               ? _pickRange(today)
               : setState(() => _period = period),
         ),
+        // BO-11, on a line of its own under the period rather than at the
+        // end of its row, where BO-6 left room for it: at the back office's
+        // 1100, "This month" in English leaves 130 pixels beside its range
+        // and the button needs about 240, before the note saying where the
+        // file went. Squeezing the range instead would ellipsise the dates,
+        // which are the one thing on that row that says which week this is.
+        //
+        // Only with figures on screen — a file of a report not yet read, or
+        // with no database to read, would be zeros that look like a week
+        // with no sales — and only for `report.export`, so nobody without it
+        // is left an empty line.
+        if (report case AsyncData(value: final figures?)
+            when ref.watch(reportExportAllowedProvider)) ...[
+          const SizedBox(height: PosSpace.sm),
+          Align(
+            alignment: AlignmentDirectional.centerEnd,
+            child: ExcelExportButton(
+              fileName: reportFileName(filter),
+              build: (strings, rightToLeft) async => reportWorkbook(
+                report: figures,
+                previous: previous,
+                // The five on screen, ranked as they are on screen — the
+                // list's own read, which it is still watching.
+                products: await ref.read(
+                  topProductsProvider((
+                    filter: figures.filter,
+                    by: _ranking,
+                  )).future,
+                ),
+                strings: strings,
+                rightToLeft: rightToLeft,
+              ),
+            ),
+          ),
+        ],
         const SizedBox(height: PosSpace.s24),
         ...switch (report) {
           AsyncData(value: final figures?) => _figures(
@@ -344,8 +381,6 @@ class _PeriodBar extends StatelessWidget {
             style: PosText.mono(size: 13, color: pos.body),
           ),
         ),
-        // BO-11's Excel button takes the end of this row, beside the range it
-        // exports — not added here, and not stubbed.
       ],
     );
   }

@@ -100,6 +100,24 @@ abstract final class PosCapability {
   static const purchaseManage = 'purchase.manage';
 
   static const reportsView = 'reports.view';
+
+  /// Take the Reports tab or the Sales list away as an Excel file (BO-11).
+  ///
+  /// Its own key rather than part of [reportsView], because reading a figure
+  /// on a screen and carrying every sale of a month out of the building on a
+  /// USB stick are different acts: the second leaves no trace this till can
+  /// see and cannot be taken back. The owner holds it and no other role is
+  /// seeded with it (owner decision, 14 Sep 2026) — Roles is where it is
+  /// handed out.
+  ///
+  /// Critical, as [backupManage] is, for the same reason: it is a copy of the
+  /// data. So it is never lent — a supervisor watching a refund is not
+  /// watching a spreadsheet leave — and the button is not drawn for somebody
+  /// without it. Rejected: `high` beside [reportsView]'s `medium`, which
+  /// would have made it a greyed button and a key a manager's PIN could lend
+  /// if somebody later added it to [overridable].
+  static const reportExport = 'report.export';
+
   static const backupManage = 'backup.manage';
 
   /// Enter Admin Mode: the back office, behind a hidden shortcut and a
@@ -143,6 +161,7 @@ abstract final class PosCapability {
     dayForceClose,
     purchaseManage,
     reportsView,
+    reportExport,
     backupManage,
     adminEnter,
   ];
@@ -188,6 +207,9 @@ abstract final class PosCapability {
     settingsManage,
     backupManage,
     adminEnter,
+    // A month of the branch's sales on a stick, from a login that sits on a
+    // machine in a public room.
+    reportExport,
   };
 
   /// What the first build shipped, mapped onto what the strings are now.
@@ -268,6 +290,8 @@ abstract final class PosCapability {
     backupManage: PermissionRisk.critical,
     // The door to all of the above at once.
     adminEnter: PermissionRisk.critical,
+    // A copy of the data, like a backup. See [reportExport].
+    reportExport: PermissionRisk.critical,
   };
 
   /// The risk level of [capability]. Unknown keys are [PermissionRisk.high] —
@@ -471,6 +495,7 @@ enum CapabilityGroup {
     PosCapability.terminalManage,
     PosCapability.settingsManage,
     PosCapability.reportsView,
+    PosCapability.reportExport,
     PosCapability.backupManage,
   ]);
 

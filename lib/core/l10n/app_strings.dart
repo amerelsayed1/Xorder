@@ -839,6 +839,7 @@ sealed class AppStrings {
   String get capBackupManage;
   String get capAdminEnter;
   String get capPaymentRemove;
+  String get capReportExport;
 
   /// Taking a payment back off an unsettled bill: the act, in words, for the
   /// supervisor prompt; its button; and what the screen says if it is still
@@ -1301,6 +1302,26 @@ sealed class AppStrings {
   String get reportInsightsNone;
   String get reportUnavailable;
   String get reportNoDatabase;
+
+  // ── Excel export (BO-11) ──────────────────────────────────────────
+  // The button on Reports and on the Sales list, and the words inside the
+  // file. The file's headings are the screen's own words wherever the screen
+  // has one; these are only what a sheet needs that a screen does not say.
+  String get exportExcel;
+  String get exportExcelDialogTitle;
+  String exportExcelSaved(String path);
+  String exportExcelFailed(String reason);
+  String get exportSheetSummary;
+  String get exportPeriodFrom;
+  String get exportPeriodTo;
+  String get exportColumnFigure;
+  String get exportColumnValue;
+  String get exportColumnNote;
+  String get exportColumnDate;
+  String get exportColumnOccurredAt;
+  String get exportColumnShare;
+  String get exportColumnRank;
+  String get exportColumnProduct;
   String get paneMenu;
   String get paneMenuBlurb;
   String get panePurchasing;
@@ -4348,6 +4369,8 @@ final class EnStrings extends AppStrings {
   @override
   String get capPaymentRemove => 'Take a payment off an unsettled bill';
   @override
+  String get capReportExport => 'Export reports and sales to Excel';
+  @override
   String removePaymentTitle(String what) => 'Take $what off this bill';
   @override
   String get removePaymentAction => 'Take it off';
@@ -5344,6 +5367,37 @@ final class EnStrings extends AppStrings {
   String get reportNoDatabase =>
       'Reports read this branch\'s database, and this terminal is not '
       'connected to one yet.';
+  @override
+  String get exportExcel => 'Export to Excel';
+  @override
+  String get exportExcelDialogTitle => 'Save the Excel file';
+  @override
+  String exportExcelSaved(String path) => 'Saved to $path';
+  @override
+  String exportExcelFailed(String reason) =>
+      'The Excel file could not be written: $reason';
+  @override
+  String get exportSheetSummary => 'Summary';
+  @override
+  String get exportPeriodFrom => 'From';
+  @override
+  String get exportPeriodTo => 'To';
+  @override
+  String get exportColumnFigure => 'Figure';
+  @override
+  String get exportColumnValue => 'Value';
+  @override
+  String get exportColumnNote => 'Note';
+  @override
+  String get exportColumnDate => 'Date';
+  @override
+  String get exportColumnOccurredAt => 'Date and time';
+  @override
+  String get exportColumnShare => 'Share';
+  @override
+  String get exportColumnRank => 'Rank';
+  @override
+  String get exportColumnProduct => 'Product';
   @override
   String get paneMenu => 'Menu';
   @override
@@ -8272,6 +8326,8 @@ final class ArStrings extends AppStrings {
   @override
   String get capPaymentRemove => 'حذف دفعة من فاتورة لم تُسدَّد بعد';
   @override
+  String get capReportExport => 'تصدير التقارير والمبيعات إلى Excel';
+  @override
   String removePaymentTitle(String what) => 'حذف $what من هذه الفاتورة';
   @override
   String get removePaymentAction => 'احذفها';
@@ -9234,6 +9290,36 @@ final class ArStrings extends AppStrings {
   @override
   String get reportNoDatabase =>
       'تُقرأ التقارير من قاعدة بيانات الفرع، وهذا الجهاز غير متصل بها بعد.';
+  @override
+  String get exportExcel => 'تصدير إلى Excel';
+  @override
+  String get exportExcelDialogTitle => 'حفظ ملف Excel';
+  @override
+  String exportExcelSaved(String path) => 'حُفظ الملف في $path';
+  @override
+  String exportExcelFailed(String reason) => 'تعذّرت كتابة ملف Excel: $reason';
+  @override
+  String get exportSheetSummary => 'الملخص';
+  @override
+  String get exportPeriodFrom => 'من';
+  @override
+  String get exportPeriodTo => 'إلى';
+  @override
+  String get exportColumnFigure => 'البند';
+  @override
+  String get exportColumnValue => 'القيمة';
+  @override
+  String get exportColumnNote => 'ملاحظة';
+  @override
+  String get exportColumnDate => 'التاريخ';
+  @override
+  String get exportColumnOccurredAt => 'التاريخ والوقت';
+  @override
+  String get exportColumnShare => 'النسبة';
+  @override
+  String get exportColumnRank => 'الترتيب';
+  @override
+  String get exportColumnProduct => 'الصنف';
   @override
   String get paneMenu => 'المنيو';
   @override
