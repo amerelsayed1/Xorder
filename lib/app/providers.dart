@@ -1443,6 +1443,16 @@ final shiftProvider = FutureProvider<PosShift?>(
   (ref) => ref.watch(shiftRepositoryProvider).current(),
 );
 
+/// Open drawers across the branch, and each person's last shift — the Users
+/// section's tile and column.
+///
+/// Auto-disposed, where [shiftProvider] is not: shifts open and close at the
+/// counter while the back office is shut, so a figure cached from the last
+/// visit would be a count of drawers that may since have been cashed up.
+final shiftActivityProvider = FutureProvider.autoDispose<ShiftActivity>(
+  (ref) => ref.watch(shiftRepositoryProvider).activity(),
+);
+
 /// Endpoint probe. Swapped for a real HTTP HEAD against `/api/health` once a
 /// backend contract exists to point at.
 final connectivityProbeProvider = Provider<ConnectivityProbe>(

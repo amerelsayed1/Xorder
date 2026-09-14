@@ -1027,7 +1027,11 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
           ? () => _open(ManagementPane.backup)
           : null,
     ),
-    ManagementPane.staff => ManagementStaffPane(admin: admin),
+    // "Manage roles" opens Settings › Roles, as the cloud's Users page does.
+    ManagementPane.staff => ManagementStaffPane(
+      admin: admin,
+      onManageRoles: () => _open(ManagementPane.roles),
+    ),
     // The item editor's "Manage extras" link. Moved here rather than through
     // the router: this screen already owns which pane is showing, as the
     // backup notice's button does.

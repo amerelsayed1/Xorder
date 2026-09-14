@@ -152,6 +152,37 @@ class PosShift {
   String get reference => 'SHIFT #${id.toString().padLeft(4, '0')}';
 }
 
+/// Who has held a drawer at this branch — the Users section's two shift facts.
+///
+/// **Last shift, not last login.** No sign-in is stored anywhere: there is no
+/// `last_login_at` on `pos_staff` and no sign-in audit action. The last shift
+/// somebody opened is the nearest thing that is recorded, and it is labelled
+/// as what it is rather than passed off as the thing the mockup asked for.
+///
+/// Both halves come from one read of `pos_shifts`, so the "current shifts"
+/// tile and the "on shift now" rows cannot disagree with each other — two
+/// reads a second apart could, and a manager counting rows against the tile
+/// would find the screen contradicting itself.
+class ShiftActivity {
+  const ShiftActivity({
+    required this.openShifts,
+    required this.lastOpenedAt,
+    this.onShift = const {},
+  });
+
+  /// Nothing recorded, or nowhere to read it from.
+  static const empty = ShiftActivity(openShifts: 0, lastOpenedAt: {});
+
+  /// Open drawers across every terminal of the branch, not just this one.
+  final int openShifts;
+
+  /// Staff id to the newest `opened_at` of any shift they opened here.
+  final Map<int, DateTime> lastOpenedAt;
+
+  /// Staff ids with a shift open right now.
+  final Set<int> onShift;
+}
+
 /// One tender type's contribution to a shift.
 class ShiftTenderTotal {
   const ShiftTenderTotal({

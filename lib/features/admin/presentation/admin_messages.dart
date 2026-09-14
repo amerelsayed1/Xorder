@@ -8,6 +8,7 @@ import '../../../domain/models/supplier_invoice.dart';
 import '../../../domain/models/permissions.dart';
 import '../../../domain/repositories/admin_repositories.dart';
 import '../../../domain/services/authorization.dart';
+import '../application/users_overview.dart';
 
 /// Where the Management section's domain values become words.
 ///
@@ -267,6 +268,14 @@ abstract final class AdminText {
     CapabilityGroup.drawer => s.capGroupDrawer,
     CapabilityGroup.backOffice => s.capGroupBackOffice,
   };
+
+  /// The Users table's status filter. Enum-keyed, as [purchaseStatus] is.
+  static String staffStatus(AppStrings s, StaffStatusFilter status) =>
+      switch (status) {
+        StaffStatusFilter.all => s.staffStatusAll,
+        StaffStatusFilter.active => s.staffStatusActive,
+        StaffStatusFilter.disabled => s.staffStatusDisabled,
+      };
 
   /// Why a write did not happen, in a sentence that says what to do next.
   ///

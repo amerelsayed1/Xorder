@@ -90,6 +90,11 @@ class UnconfiguredShiftRepository implements ShiftRepository {
   @override
   Future<ShiftSummary> summarise(PosShift shift) async => throw _noDatabase;
 
+  /// Nothing, for the same reason [current] is null: no shift can have been
+  /// opened on a till with nowhere to record one, so "none" is the truth.
+  @override
+  Future<ShiftActivity> activity() async => ShiftActivity.empty;
+
   @override
   Future<ShiftClose> close({
     required PosShift shift,

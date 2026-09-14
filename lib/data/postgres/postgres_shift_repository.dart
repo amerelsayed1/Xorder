@@ -94,6 +94,38 @@ class PostgresShiftRepository implements ShiftRepository {
       _db.runTx(_config, (tx) => _summarise(tx, shift));
 
   @override
+  Future<ShiftActivity> activity() async {
+    // One grouped read rather than "count the open ones" plus "newest per
+    // person": the tile and the column are then the same rows at the same
+    // instant. Served by `pos_shifts_branch_opened_idx`, so it needs no new
+    // index — and no migration.
+    //
+    // On the till's credential, which already reads `pos_shifts` to find its
+    // own drawer; `grants_cover_usage_test.dart` holds that.
+    final rows = await _db.query(
+      _config,
+      'SELECT opened_by, max(opened_at), '
+      '       count(*) FILTER (WHERE closed_at IS NULL) '
+      'FROM pos_shifts '
+      'WHERE restaurant_id = @restaurant AND branch_id = @branch '
+      'GROUP BY opened_by',
+      parameters: {'restaurant': _restaurantId, 'branch': _branchId},
+    );
+
+    var open = 0;
+    final last = <int, DateTime>{};
+    final onShift = <int>{};
+    for (final row in rows) {
+      final staff = row[0]! as int;
+      final openHere = row[2]! as int;
+      last[staff] = row[1]! as DateTime;
+      open += openHere;
+      if (openHere > 0) onShift.add(staff);
+    }
+    return ShiftActivity(openShifts: open, lastOpenedAt: last, onShift: onShift);
+  }
+
+  @override
   Future<ShiftClose> close({
     required PosShift shift,
     required PosStaff by,

@@ -1408,6 +1408,35 @@ sealed class AppStrings {
   String get fieldUsername;
   String get fieldPin;
   String get fieldRole;
+
+  // BO-7: Settings › Users — tiles, filters, table and the role matrix.
+  String get usersKpiStaff;
+  String get usersKpiActive;
+
+  /// Under the active count: its share of every account, disabled included.
+  String usersActiveShare(int percent);
+  String get usersKpiShifts;
+  String get usersKpiShiftsNote;
+  String get usersKpiRoles;
+  String get staffStatusAll;
+  String get staffStatusActive;
+  String get staffStatusDisabled;
+  String get usersAllRoles;
+  String get usersSearchHint;
+  String get usersColumnStatus;
+
+  /// "Last shift", never "last login": no sign-in is recorded, and a column
+  /// that says login and shows shifts would be wrong about every cashier who
+  /// signed in and sold without opening a drawer.
+  String get usersColumnLastShift;
+  String get usersOnShiftNow;
+  String get usersNeverOnShift;
+  String get usersNoneMatch;
+  String get manageRoles;
+  String get roleMatrixTitle;
+
+  /// Under the matrix: it counts role grants, not what one person may do.
+  String get roleMatrixNote;
   String get add;
   String get setPin;
   String get nameAndUsernameRequired;
@@ -5408,6 +5437,47 @@ final class EnStrings extends AppStrings {
   @override
   String get fieldRole => 'Role';
   @override
+  String get usersKpiStaff => 'Staff';
+  @override
+  String get usersKpiActive => 'Active';
+  @override
+  String usersActiveShare(int percent) => '$percent% of all accounts';
+  @override
+  String get usersKpiShifts => 'Current shifts';
+  @override
+  String get usersKpiShiftsNote => "Open drawers on this branch's tills";
+  @override
+  String get usersKpiRoles => 'Roles';
+  @override
+  String get staffStatusAll => 'All';
+  @override
+  String get staffStatusActive => 'Active';
+  @override
+  String get staffStatusDisabled => 'Disabled';
+  @override
+  String get usersAllRoles => 'All roles';
+  @override
+  String get usersSearchHint => 'Name or username';
+  @override
+  String get usersColumnStatus => 'Status';
+  @override
+  String get usersColumnLastShift => 'Last shift';
+  @override
+  String get usersOnShiftNow => 'On shift now';
+  @override
+  String get usersNeverOnShift => 'Never';
+  @override
+  String get usersNoneMatch =>
+      'Nobody matches these filters. Clear the search or pick another role.';
+  @override
+  String get manageRoles => 'Manage roles';
+  @override
+  String get roleMatrixTitle => 'What each role may do';
+  @override
+  String get roleMatrixNote =>
+      'Permissions each role grants. A person’s own exceptions are not '
+      'counted here — open their Permissions to see those.';
+  @override
   String get add => 'Add';
   @override
   String get setPin => 'Set PIN';
@@ -9038,6 +9108,47 @@ final class ArStrings extends AppStrings {
   String get fieldPin => 'الكود';
   @override
   String get fieldRole => 'الدور';
+  @override
+  String get usersKpiStaff => 'الموظفون';
+  @override
+  String get usersKpiActive => 'النشطون';
+  @override
+  String usersActiveShare(int percent) => '$percent% من كل الحسابات';
+  @override
+  String get usersKpiShifts => 'الورديات الحالية';
+  @override
+  String get usersKpiShiftsNote => 'أدراج مفتوحة على أجهزة هذا الفرع';
+  @override
+  String get usersKpiRoles => 'الأدوار';
+  @override
+  String get staffStatusAll => 'الكل';
+  @override
+  String get staffStatusActive => 'نشط';
+  @override
+  String get staffStatusDisabled => 'موقوف';
+  @override
+  String get usersAllRoles => 'كل الأدوار';
+  @override
+  String get usersSearchHint => 'الاسم أو اسم المستخدم';
+  @override
+  String get usersColumnStatus => 'الحالة';
+  @override
+  String get usersColumnLastShift => 'آخر وردية';
+  @override
+  String get usersOnShiftNow => 'في وردية الآن';
+  @override
+  String get usersNeverOnShift => 'لم يفتح وردية';
+  @override
+  String get usersNoneMatch =>
+      'لا أحد يطابق هذه التصفية. امسح البحث أو اختر دوراً آخر.';
+  @override
+  String get manageRoles => 'إدارة الأدوار';
+  @override
+  String get roleMatrixTitle => 'ما يسمح به كل دور';
+  @override
+  String get roleMatrixNote =>
+      'الصلاحيات التي يمنحها كل دور. استثناءات الشخص نفسه غير محسوبة هنا — '
+      'افتح صلاحياته لتراها.';
   @override
   String get add => 'إضافة';
   @override
