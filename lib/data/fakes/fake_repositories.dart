@@ -584,6 +584,47 @@ class FakeShiftRepository implements ShiftRepository {
         ),
   ];
 
+  /// [earlier] and this till's own, by the query's dates on `openedAt` and
+  /// open ones whatever the dates, as the real repository lists them. No
+  /// cash-up figures: a [PosShift] carries none, and a test about those binds
+  /// a double that returns them.
+  @override
+  Future<ShiftHistory> history(ShiftHistoryQuery query) async {
+    final records = <ShiftRecord>[];
+    final tills = <String, String>{};
+    final staff = <int, String>{};
+    for (final shift in [...earlier, ?_open]) {
+      final inDates =
+          shift.isOpen ||
+          (!shift.openedAt.isBefore(query.from) &&
+              shift.openedAt.isBefore(query.to));
+      if (!inDates) continue;
+      final terminal = 'fake-terminal-${shift.id}';
+      tills[terminal] = terminal;
+      if (shift.openedById case final id?) staff[id] = shift.openedByName;
+      final record = ShiftRecord(
+        summary: await summarise(shift),
+        terminalId: terminal,
+      );
+      if (query.terminalId != null && query.terminalId != terminal) continue;
+      if (query.staffId != null && query.staffId != shift.openedById) continue;
+      if (query.statuses.isNotEmpty &&
+          !query.statuses.contains(record.status)) {
+        continue;
+      }
+      records.add(record);
+    }
+    records.sort((a, b) {
+      if (a.shift.isOpen != b.shift.isOpen) return a.shift.isOpen ? -1 : 1;
+      return b.shift.openedAt.compareTo(a.shift.openedAt);
+    });
+    return ShiftHistory(
+      shifts: records,
+      tills: [for (final e in tills.entries) (e.key, e.value)],
+      staff: [for (final e in staff.entries) (e.key, e.value)],
+    );
+  }
+
   @override
   Future<ShiftActivity> activity() async {
     var open = 0;

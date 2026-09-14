@@ -43,7 +43,12 @@ export '../models/shift.dart'
         ShiftTenderTotal,
         ShiftClose,
         OpenDrawer,
-        ShiftActivity;
+        ShiftActivity,
+        ShiftStatus,
+        ShiftHistoryQuery,
+        ShiftRecord,
+        ShiftHistory,
+        CashUpTotals;
 
 /// Repository contracts.
 ///
@@ -761,6 +766,15 @@ abstract interface class ShiftRepository {
   /// own rule — so what Finance says a drawer should hold is what the cash-up
   /// will count it against (BO-10). Ordered by till name.
   Future<List<OpenDrawer>> openDrawers();
+
+  /// Every shift at this **branch** that [query] covers — open ones first,
+  /// then newest — each summarised by [summarise]'s own rule and carrying the
+  /// cash-up [close] stored. People › Shifts and Finance › Settlements both
+  /// read it, so the two cannot disagree about a drawer.
+  ///
+  /// At most [ShiftHistory.limit] rows; [ShiftHistory.cut] says when there
+  /// were more.
+  Future<ShiftHistory> history(ShiftHistoryQuery query);
 
   /// Count the drawer and close.
   ///
