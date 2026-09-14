@@ -2,9 +2,11 @@ import '../../core/config/deployment.dart';
 import '../../core/money/money.dart';
 import '../../domain/models/business_day.dart';
 import '../../domain/models/permissions.dart';
+import '../../domain/models/sales_report.dart';
 import '../../domain/repositories/repositories.dart';
 import '../../domain/services/authorization.dart';
 import 'pos_database.dart';
+import 'postgres_order_history_repository.dart';
 import 'postgres_orders_repository.dart' show PosWriteContext;
 
 /// The one INSERT that puts a row in `pos_cash_movements`.
@@ -119,6 +121,8 @@ class PostgresCashMovementsRepository implements CashMovementsRepository {
     reasonNameAr: row[6] as String?,
     staffName: row[7] as String?,
     approvedByName: row[8] as String?,
+    // Only [between] selects it.
+    terminalName: row.length > 9 ? row[9] as String? : null,
   );
 
   @override
@@ -187,6 +191,57 @@ class PostgresCashMovementsRepository implements CashMovementsRepository {
         .map((raw) => _movement(raw.toList()))
         .toList(growable: false);
   }
+
+  /// The range read Finance's expenses are made of (BO-10).
+  ///
+  /// **Filed by the sales list's rule, through the sales list's own SQL** —
+  /// `tradingDayJoin` and `businessDateRange`, which `pos_cash_movements`
+  /// can take because it carries the four columns they read. A pay-out and
+  /// the sales of the night it was paid in then sit on one business date,
+  /// and a date rule written a second time here would be the one that
+  /// disagreed about the pay-out at 1 a.m.
+  ///
+  /// On the till's credential, which has read this table since migration 14.
+  /// Deliberately nothing of the supplier ledger: that is the back office's,
+  /// and whether a pay-out is also a supplier payment is answered there.
+  @override
+  Future<List<CashMovement>> between(
+    ReportFilter filter, {
+    Set<CashMovementKind> kinds = const {CashMovementKind.payOut},
+  }) async {
+    if (kinds.isEmpty) return const [];
+    final range = PostgresOrderHistoryRepository.businessDateRange(
+      from: filter.from,
+      to: filter.to,
+      alias: 'm',
+    );
+    final terminal = filter.terminalId;
+    final where = [
+      'm.restaurant_id = @restaurant',
+      'm.branch_id = @branch',
+      'm.kind = ANY(@kinds)',
+      ...range.where,
+      if (terminal != null) 'm.terminal_id::text = @terminal',
+    ];
+    final rows = await _db.query(
+      config,
+      'SELECT $_columns, term.name FROM pos_cash_movements AS m $_joins '
+      'LEFT JOIN pos_terminals AS term ON term.id = m.terminal_id '
+      '${PostgresOrderHistoryRepository.tradingDayJoin('m')} '
+      'WHERE ${where.join(' AND ')} '
+      'ORDER BY m.occurred_at DESC, m.id DESC',
+      parameters: {
+        'restaurant': context.restaurantId,
+        'branch': context.branchId,
+        'kinds': [for (final kind in kinds) kind.wire],
+        ...range.parameters,
+        'terminal': ?terminal,
+      },
+    );
+    return rows
+        .map((raw) => _movement(raw.toList()))
+        .toList(growable: false);
+  }
 }
 
 /// What a terminal with no branch database answers with.
@@ -195,6 +250,12 @@ class UnconfiguredCashMovementsRepository implements CashMovementsRepository {
 
   @override
   Future<List<CashMovement>> forShift(int shiftId) async => const [];
+
+  @override
+  Future<List<CashMovement>> between(
+    ReportFilter filter, {
+    Set<CashMovementKind> kinds = const {CashMovementKind.payOut},
+  }) async => const [];
 
   @override
   Future<CashMovement> record({

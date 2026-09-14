@@ -126,6 +126,43 @@ class PostgresShiftRepository implements ShiftRepository {
   }
 
   @override
+  Future<List<OpenDrawer>> openDrawers() => _db.runTx(_config, (tx) async {
+    // `activity`'s "open at this branch", with the rows rather than a count:
+    // the same WHERE, so the Users tile and Finance's drawers count the same
+    // drawers.
+    final rows = await tx.execute(
+      Sql.named('''
+        SELECT s.id, s.opened_at, s.opening_float_minor, st.name, s.closed_at,
+               s.opened_by, s.terminal_id::text, term.name
+          FROM pos_shifts s
+          JOIN pos_staff st ON st.id = s.opened_by
+          LEFT JOIN pos_terminals term ON term.id = s.terminal_id
+         WHERE s.restaurant_id = @restaurant AND s.branch_id = @branch
+           AND s.closed_at IS NULL
+         ORDER BY term.name NULLS LAST, s.opened_at, s.id
+      '''),
+      parameters: {'restaurant': _restaurantId, 'branch': _branchId},
+    );
+
+    // **Each drawer by `_summarise`, the function `close` stores the
+    // expected cash from** — not a branch-wide sum written for this screen.
+    // One query per drawer is four statements a till, and a branch has a
+    // handful; a grouped query would be faster and would be the second
+    // definition of "expected" that the cash-up does not use.
+    final drawers = <OpenDrawer>[];
+    for (final row in rows) {
+      drawers.add(
+        OpenDrawer(
+          terminalId: row[6]! as String,
+          terminalName: row[7] as String?,
+          summary: await _summarise(tx, _shift(row)),
+        ),
+      );
+    }
+    return drawers;
+  });
+
+  @override
   Future<ShiftClose> close({
     required PosShift shift,
     required PosStaff by,

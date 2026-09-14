@@ -157,6 +157,12 @@ const _authoringPanes = {
   ManagementPane.items,
   ManagementPane.stock,
   ManagementPane.units,
+  // Not an authoring pane — Bills due only reads — but it reads the supplier
+  // ledger, which on a cloud till is the platform's and never comes down
+  // (BO-10). Hidden by the same rule as Purchasing for the same reason: a
+  // local Owner role still holds `purchase.manage` there, so the capability
+  // alone would show a card of whatever rows this till kept from before.
+  ManagementPane.financeBills,
 };
 
 /// What to tell somebody who asked for a pane this terminal does not author.
@@ -265,7 +271,11 @@ BackOfficeTab tabOf(ManagementPane pane) => switch (pane) {
   ManagementPane.financeOverview ||
   ManagementPane.financeRevenue ||
   ManagementPane.financePayments ||
-  ManagementPane.financeTaxes => BackOfficeTab.finance,
+  ManagementPane.financeTaxes ||
+  ManagementPane.financeExpenses ||
+  ManagementPane.financeDrawers ||
+  ManagementPane.financeBills ||
+  ManagementPane.financeTransactions => BackOfficeTab.finance,
   // Terminal beside Backup and the log rather than in Settings: it wipes the
   // machine, and Settings is where somebody goes to change a tax rate.
   // ETA here too, still hidden while `etaFilingEnabled` is false.
@@ -359,18 +369,45 @@ String settingsSectionName(AppStrings s, SettingsSection section) =>
   ManagementPane.financeOverview ||
   ManagementPane.financeRevenue ||
   ManagementPane.financePayments ||
-  ManagementPane.financeTaxes => null,
+  ManagementPane.financeTaxes ||
+  ManagementPane.financeExpenses ||
+  ManagementPane.financeDrawers ||
+  ManagementPane.financeBills ||
+  ManagementPane.financeTransactions => null,
 };
 
-/// Order within a tab: Settings by its side nav, every other tab by the enum.
+/// Order within a tab: Settings by its side nav, Finance by the mockup's
+/// sub-tabs, every other tab by the enum.
 ///
-/// Only ever compared between panes of the same tab, so the two scales never
+/// Only ever compared between panes of the same tab, so the scales never
 /// meet — a Settings place is never weighed against an enum index.
 int _rankInTab(ManagementPane pane) => switch (settingsPlaceOf(pane)) {
   (final section, final place)? =>
     section.index * ManagementPane.values.length + place,
-  null => pane.index,
+  null => switch (_financeOrder.indexOf(pane)) {
+    -1 => pane.index,
+    final place => place,
+  },
 };
+
+/// Finance's sub-nav, in the mockup's order (plan 19 §2.4) less what has no
+/// source — settlements — and with Transactions, the mockup's "view all", as
+/// the last word.
+///
+/// **A list here rather than the enum's order**, because BO-10's panes had to
+/// go on the end of the enum — nothing stores an index, but a test naming
+/// panes by position is cheaper not to have to find — and the mockup puts
+/// Expenses and Drawers between Revenue and Payments.
+const _financeOrder = [
+  ManagementPane.financeOverview,
+  ManagementPane.financeRevenue,
+  ManagementPane.financeExpenses,
+  ManagementPane.financeDrawers,
+  ManagementPane.financePayments,
+  ManagementPane.financeBills,
+  ManagementPane.financeTaxes,
+  ManagementPane.financeTransactions,
+];
 
 /// The visible tabs, each with its visible panes in the order it shows them.
 ///
@@ -682,17 +719,30 @@ ManagementDestination _purchasing(PurchasingTab tab, {bool create = false}) =>
         s.financePaymentsBlurb,
       ),
       ManagementPane.financeTaxes => (s.financeTaxes, s.financeTaxesBlurb),
+      ManagementPane.financeExpenses => (
+        s.financeExpenses,
+        s.financeExpensesBlurb,
+      ),
+      ManagementPane.financeDrawers => (s.financeDrawers, s.financeDrawersBlurb),
+      ManagementPane.financeBills => (s.financeBills, s.financeBillsBlurb),
+      ManagementPane.financeTransactions => (
+        s.financeTransactions,
+        s.financeTransactionsBlurb,
+      ),
     };
 
-/// The capability a pane needs beyond the `staffManage` that opened the screen.
+/// The capabilities a pane needs beyond the door that opened the screen — all
+/// of them. A set since BO-10, whose Bills due is a Finance figure and a
+/// supplier-ledger read at once; a second function for "and also" would be a
+/// gate `_wouldPermit` could be written without.
 ///
 /// **Only the panes whose repositories actually enforce one appear here.**
 /// Hiding a pane on a capability nothing checks would be a claim the database
 /// does not back — the strip would say no while a direct write said yes. So
 /// Purchasing is gated (its three repositories all demand `purchase.manage`)
 /// and the others are not, until each one's writes are gated too.
-String? _paneRequires(ManagementPane pane) => switch (pane) {
-  ManagementPane.purchasing => PosCapability.purchaseManage,
+Set<String> _paneRequires(ManagementPane pane) => switch (pane) {
+  ManagementPane.purchasing => const {PosCapability.purchaseManage},
   // The third capability that had no screen, and the one with the worst
   // consequences: `backup.manage` is critical-risk, held only by Owner, and
   // deliberately outside supervisor override.
@@ -702,40 +752,48 @@ String? _paneRequires(ManagementPane pane) => switch (pane) {
   // at day close can be recorded without anybody being in the back office. What
   // the gate protects is the two buttons: taking one on demand, and restoring.
   // Both go through `BackupService`, which is only ever reached from here.
-  ManagementPane.backup => PosCapability.backupManage,
+  ManagementPane.backup => const {PosCapability.backupManage},
   // Wiping this till's setup. Like Backup, nothing in the database refuses it
   // — the configuration is a file on this machine — so what the gate protects
   // is the one button, and the pane is the only place it is reached from.
-  ManagementPane.terminal => PosCapability.terminalManage,
+  ManagementPane.terminal => const {PosCapability.terminalManage},
   // Units exist for buying and counting stock: the buyer's.
   ManagementPane.items ||
   ManagementPane.stock ||
-  ManagementPane.units => PosCapability.purchaseManage,
+  ManagementPane.units => const {PosCapability.purchaseManage},
   // Anyone past the door (plan 19 §1.1). Whose sales they see is not a gate
   // on the pane but a scope on its rows — `HistoryScope`, in the provider,
   // exactly as `/orders` scopes them — so a cashier-grade administrator gets
   // the tab and their own sales in it, rather than no tab.
-  ManagementPane.sales => null,
+  ManagementPane.sales => const {},
   // The branch's takings (BO-6). Not the only guard: `salesReportProvider`
   // asks the same capability of the person acting before it reads a row, so
   // a screen built on the figures later without this gate still shows none.
-  ManagementPane.reports => PosCapability.reportsView,
-  // Finance (BO-9). Backed where it counts: every figure is read through
-  // `reportsAllowedProvider`, which answers no without `reports.view`, so a
-  // pane reached round the strip still draws nothing.
+  ManagementPane.reports => const {PosCapability.reportsView},
+  // Finance (BO-9, BO-10). Backed where it counts: every figure is read
+  // through `reportsAllowedProvider`, which answers no without
+  // `reports.view`, so a pane reached round the strip still draws nothing.
   ManagementPane.financeOverview ||
   ManagementPane.financeRevenue ||
   ManagementPane.financePayments ||
-  ManagementPane.financeTaxes => PosCapability.reportsView,
-  _ => null,
+  ManagementPane.financeTaxes ||
+  ManagementPane.financeExpenses ||
+  ManagementPane.financeDrawers ||
+  ManagementPane.financeTransactions => const {PosCapability.reportsView},
+  // Both: a Finance figure, and made of the supplier ledger that is
+  // Purchasing's. Backed by `billsDueProvider`, which asks both of the
+  // person acting — and, through `_authoringPanes`, absent on a cloud till.
+  ManagementPane.financeBills => const {
+    PosCapability.reportsView,
+    PosCapability.purchaseManage,
+  },
+  _ => const {},
 };
 
-bool _permits(PosStaff admin, ManagementPane pane) {
-  final needed = _paneRequires(pane);
-  // `can` and not `capabilities`: the latter is the direct-grant set alone,
-  // and an owner holds almost everything through their role.
-  return needed == null || admin.can(needed);
-}
+bool _permits(PosStaff admin, ManagementPane pane) =>
+    // `can` and not `capabilities`: the latter is the direct-grant set alone,
+    // and an owner holds almost everything through their role.
+    _paneRequires(pane).every(admin.can);
 
 /// Whether [admin] would have [pane] on a till that authors it.
 ///
@@ -744,10 +802,9 @@ bool _permits(PosStaff admin, ManagementPane pane) {
 /// a rota manager has no Purchasing offline, and xorder-new's sidebar hides the
 /// Purchasing group from whoever lacks `purchase.manage` — sending them there
 /// would be a door to a refusal.
-bool _wouldPermit(PosStaff admin, ManagementPane pane) {
-  final needed = _paneRequires(pane);
-  return needed == null || Authorization.check(admin, needed).isAllowed;
-}
+bool _wouldPermit(PosStaff admin, ManagementPane pane) => _paneRequires(
+  pane,
+).every((needed) => Authorization.check(admin, needed).isAllowed);
 
 /// Whether [admin] would have any pane of [tab] on a till that authors it —
 /// the same rule as [_wouldPermit], for a tab kept only as a pointer.
@@ -791,12 +848,18 @@ enum ManagementPane {
   /// BO-5's figures, drawn as the Reports tab (BO-6). Last, for the same
   /// reason as [sales].
   reports,
-  /// Finance (BO-9), in the order its sub-nav shows them — the mockup's,
-  /// less what BO-10 brings and what has no source (plan 19 §2.4).
+  /// Finance (BO-9). The sub-nav orders these and BO-10's by `_financeOrder`,
+  /// the mockup's order, not by their places here.
   financeOverview,
   financeRevenue,
   financePayments,
   financeTaxes,
+
+  /// Finance (BO-10). Last, for the same reason as [sales].
+  financeExpenses,
+  financeDrawers,
+  financeBills,
+  financeTransactions,
 }
 
 class _ManagementScreenState extends ConsumerState<ManagementScreen> {
@@ -805,6 +868,12 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
   /// actually shown is worked out from this at every build, because a request
   /// can outlive the permission or the deployment that justified it.
   late ManagementPane? _pane = widget.initialPane;
+
+  /// Which of Purchasing's tabs a Finance row asked for — its invoices for a
+  /// supplier invoice, its payments for a payment. Null otherwise, and cleared
+  /// by every other way of choosing a pane, so the Purchasing tab chosen from
+  /// the strip later opens where it always has.
+  PurchasingTab? _purchasingTab;
 
   /// Where Esc is heard. Held rather than anonymous so a text field that took
   /// the first Esc can hand focus back here, and the second one still arrives.
@@ -891,19 +960,61 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
     // still has to be followed.
     if (widget.initialPane != old.initialPane ||
         !identical(widget.request, old.request)) {
-      setState(() => _pane = widget.initialPane);
+      setState(() {
+        _pane = widget.initialPane;
+        _purchasingTab = null;
+      });
     }
   }
 
   /// A tab from the strip: its first pane, or — for a tab that only points at
   /// the platform — any pane of it, which the build answers with the pointer.
-  void _openTab(BackOfficeTab tab, List<ManagementPane> panes) => setState(
-    () => _pane = panes.isNotEmpty
+  void _openTab(BackOfficeTab tab, List<ManagementPane> panes) => setState(() {
+    _pane = panes.isNotEmpty
         ? panes.first
-        : ManagementPane.values.firstWhere((p) => tabOf(p) == tab),
-  );
+        : ManagementPane.values.firstWhere((p) => tabOf(p) == tab);
+    _purchasingTab = null;
+  });
 
-  void _open(ManagementPane pane) => setState(() => _pane = pane);
+  void _open(ManagementPane pane) => setState(() {
+    _pane = pane;
+    _purchasingTab = null;
+  });
+
+  /// Where a Finance row or card leads, or null when that place is not one of
+  /// [panes] — and the pane then draws no link, rather than one to a pane the
+  /// strip hides, which would land on Home and read as a broken link.
+  ///
+  /// **The pane, not the row.** A sale opens the Sales tab and a supplier
+  /// payment Purchasing's payments; neither lands on the one row. That would
+  /// need the history and Purchasing to take a row to open from outside —
+  /// the history has no such way in, and a search typed on somebody's behalf
+  /// would be a filter they then have to find to clear.
+  VoidCallback? _financeLink(
+    FinanceTarget target,
+    List<ManagementPane> panes,
+  ) {
+    final (pane, purchasingTab) = switch (target) {
+      FinanceTarget.sales => (ManagementPane.sales, null),
+      FinanceTarget.supplierInvoices => (
+        ManagementPane.purchasing,
+        PurchasingTab.invoices,
+      ),
+      FinanceTarget.supplierPayments => (
+        ManagementPane.purchasing,
+        PurchasingTab.payments,
+      ),
+      FinanceTarget.expenses => (ManagementPane.financeExpenses, null),
+      FinanceTarget.drawers => (ManagementPane.financeDrawers, null),
+      FinanceTarget.bills => (ManagementPane.financeBills, null),
+      FinanceTarget.transactions => (ManagementPane.financeTransactions, null),
+    };
+    if (!panes.contains(pane)) return null;
+    return () => setState(() {
+      _pane = pane;
+      _purchasingTab = purchasingTab;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1113,7 +1224,7 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
     ManagementPane.orderTypes => ManagementOrderTypesPane(admin: admin),
     ManagementPane.purchasing => ManagementPurchasingPane(
       admin: admin,
-      initialTab: widget.purchasingTab ?? PurchasingTab.orders,
+      initialTab: _purchasingTab ?? widget.purchasingTab ?? PurchasingTab.orders,
       create: widget.create,
       request: widget.request,
     ),
@@ -1145,10 +1256,22 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
       admin: admin,
       onReconfigure: widget.onReconfigure,
     ),
-    ManagementPane.financeOverview => const FinanceOverviewPane(),
+    ManagementPane.financeOverview => FinanceOverviewPane(
+      links: (target) => _financeLink(target, panes),
+    ),
     ManagementPane.financeRevenue => const FinanceRevenuePane(),
     ManagementPane.financePayments => const FinancePaymentsPane(),
     ManagementPane.financeTaxes => const FinanceTaxesPane(),
+    ManagementPane.financeExpenses => FinanceExpensesPane(
+      links: (target) => _financeLink(target, panes),
+    ),
+    ManagementPane.financeDrawers => const FinanceDrawersPane(),
+    ManagementPane.financeBills => FinanceBillsPane(
+      links: (target) => _financeLink(target, panes),
+    ),
+    ManagementPane.financeTransactions => FinanceTransactionsPane(
+      links: (target) => _financeLink(target, panes),
+    ),
   };
 }
 

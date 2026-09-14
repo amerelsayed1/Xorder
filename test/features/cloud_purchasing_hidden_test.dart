@@ -164,10 +164,13 @@ void main() {
         },
         // Extras with the menu: sizes and extras are part of the catalogue
         // the platform authors, and the seeder rewrites them on a cloud till.
+        // Finance's Bills due with the buying (BO-10): it reads nothing but
+        // the supplier ledger, which is the platform's on a cloud till.
         {
           ManagementPane.menu,
           ManagementPane.floor,
           ManagementPane.extras,
+          ManagementPane.financeBills,
           ...platformAuthored,
         },
       );

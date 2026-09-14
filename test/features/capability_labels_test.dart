@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:xorder_pos/core/l10n/app_strings.dart';
 import 'package:xorder_pos/core/money/quantity.dart';
+import 'package:xorder_pos/domain/models/finance_report.dart';
 import 'package:xorder_pos/domain/models/permissions.dart';
 import 'package:xorder_pos/domain/models/purchase_order.dart';
 import 'package:xorder_pos/domain/models/sales_report.dart';
@@ -11,6 +12,7 @@ import 'package:xorder_pos/domain/repositories/admin_repositories.dart';
 import 'package:xorder_pos/features/admin/application/reports_view.dart';
 import 'package:xorder_pos/features/admin/application/users_overview.dart';
 import 'package:xorder_pos/features/admin/presentation/admin_messages.dart';
+import 'package:xorder_pos/features/admin/presentation/management_finance_panes.dart';
 import 'package:xorder_pos/features/admin/presentation/management_reports_pane.dart';
 
 /// Every key this build shows a person is a sentence, not a wire value.
@@ -152,6 +154,40 @@ void main() {
           [
             for (final r in ProductRanking.values)
               productRankingLabel(strings, r),
+          ],
+        ]) {
+          expect(labels.map((l) => l.trim()), everyElement(isNotEmpty));
+          expect(labels.toSet(), hasLength(labels.length), reason: '$labels');
+        }
+      });
+
+      test('every word Finance puts on a row, a group or a figure is named, '
+          'and no two alike', () {
+        // Enum-keyed like the Reports tab's (BO-10): the transactions table's
+        // kinds and states, the bills-due groups, and the sentence under an
+        // expenses figure for each reason the supplier ledger is or is not
+        // in it. Two states reading the same would be a table that cannot
+        // tell paid from recorded.
+        for (final labels in [
+          [
+            for (final p in FinancePeriod.values)
+              financePeriodLabel(strings, p),
+          ],
+          [
+            for (final k in FinanceTransactionKind.values)
+              financeKindLabel(strings, k),
+          ],
+          [
+            for (final st in FinanceTransactionStatus.values)
+              financeStatusLabel(strings, st),
+          ],
+          [
+            for (final b in BillsDueBucket.values)
+              billsDueBucketLabel(strings, b),
+          ],
+          [
+            for (final f in SupplierFigures.values)
+              supplierFiguresNote(strings, f),
           ],
         ]) {
           expect(labels.map((l) => l.trim()), everyElement(isNotEmpty));

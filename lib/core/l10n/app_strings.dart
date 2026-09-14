@@ -1241,6 +1241,69 @@ sealed class AppStrings {
   String get financeNoTaxes;
   String get financeUnavailable;
   String get financeNoFigures;
+  // BO-10: Finance — expenses, drawers, bills due and transactions.
+  String get financeExpenses;
+  String get financeExpensesBlurb;
+  String get financeDrawers;
+  String get financeDrawersBlurb;
+  String get financeBills;
+  String get financeBillsBlurb;
+  String get financeTransactions;
+  String get financeTransactionsBlurb;
+  String get financeKpiExpenses;
+  String get financeExpensesWithSuppliers;
+  String get financeExpensesPayOutsOnly;
+  String get financeSuppliersOnPlatform;
+  String get financeSuppliersNotPermitted;
+  String get financeCountedOnce;
+  String get financePayOuts;
+  String get financeSupplierPayments;
+  String get financeNoExpenses;
+  String get financeRecentExpenses;
+  String get financeViewAll;
+  String get financeType;
+  String get financeDetails;
+  String get financeKpiDrawers;
+  String financeOpenDrawerCount(int count);
+  String get financeNoOpenDrawers;
+  String get financeOpenedBy;
+  String get financeOpenedAt;
+  String get financeFloat;
+  String get financeCashTaken;
+  String get financePaidIn;
+  String get financePaidOut;
+  String get financeExpected;
+  String get financeDrawersNote;
+  String get financeAsOf;
+  String get financeBucketOverdue;
+  String get financeBucketToday;
+  String get financeBucketWeek;
+  String get financeBucketLater;
+  String get financeTotalOwed;
+  String get financeSupplier;
+  String get financeDueDate;
+  String get financePaid;
+  String get financeOutstanding;
+  String get financeNoBills;
+  String get financeBillsNote;
+  String get financeRecentTransactions;
+  String get financeReference;
+  String get financeStatus;
+  String get financeKindSale;
+  String get financeKindPayOut;
+  String get financeKindSupplierInvoice;
+  String get financeKindSupplierPayment;
+  String get financeStatusPaid;
+  String get financeStatusPartlyPaid;
+  String get financeStatusUnpaid;
+  String get financeStatusPartlyRefunded;
+  String get financeStatusRefunded;
+  String get financeStatusOpen;
+  String get financeStatusVoided;
+  String get financeStatusRecorded;
+  String get financeNoTransactions;
+  String financeTransactionsTruncated(int count);
+  String get financeTransactionsNote;
   String get settingsSectionAccount;
   String get settingsSectionPointOfSale;
   String get settingsGeneral;
@@ -5226,6 +5289,153 @@ final class EnStrings extends AppStrings {
   String get financeNoFigures =>
       'This till has no branch database to read figures from yet.';
   @override
+  String get financeExpenses => 'Expenses';
+  @override
+  String get financeExpensesBlurb =>
+      'Money paid out of the drawers, and paid to suppliers.';
+  @override
+  String get financeDrawers => 'Drawers';
+  @override
+  String get financeDrawersBlurb =>
+      'The cash each open drawer should hold right now.';
+  @override
+  String get financeBills => 'Bills due';
+  @override
+  String get financeBillsBlurb =>
+      'What is owed to suppliers, by when it falls due.';
+  @override
+  String get financeTransactions => 'Transactions';
+  @override
+  String get financeTransactionsBlurb =>
+      'Sales, pay-outs, supplier invoices and supplier payments, newest '
+      'first.';
+  @override
+  String get financeKpiExpenses => 'Expenses';
+  @override
+  String get financeExpensesWithSuppliers =>
+      'Drawer pay-outs plus supplier payments that were not voided.';
+  @override
+  String get financeExpensesPayOutsOnly => 'Drawer pay-outs only.';
+  @override
+  String get financeSuppliersOnPlatform =>
+      'Supplier payments are kept on the platform for this restaurant, so '
+      'they are not counted here.';
+  @override
+  String get financeSuppliersNotPermitted =>
+      'Supplier payments are not counted: reading them needs the purchasing '
+      'permission.';
+  @override
+  String get financeCountedOnce =>
+      'A supplier paid out of a till drawer is counted once, as the supplier '
+      'payment.';
+  @override
+  String get financePayOuts => 'Drawer pay-outs';
+  @override
+  String get financeSupplierPayments => 'Supplier payments';
+  @override
+  String get financeNoExpenses => 'Nothing was paid out in this period.';
+  @override
+  String get financeRecentExpenses => 'Recent expenses';
+  @override
+  String get financeViewAll => 'View all';
+  @override
+  String get financeType => 'Type';
+  @override
+  String get financeDetails => 'Details';
+  @override
+  String get financeKpiDrawers => 'Cash expected in open drawers';
+  @override
+  String financeOpenDrawerCount(int count) =>
+      count == 1 ? '1 drawer open' : '$count drawers open';
+  @override
+  String get financeNoOpenDrawers => 'No drawer is open at this branch.';
+  @override
+  String get financeOpenedBy => 'Opened by';
+  @override
+  String get financeOpenedAt => 'Opened';
+  @override
+  String get financeFloat => 'Float';
+  @override
+  String get financeCashTaken => 'Cash taken';
+  @override
+  String get financePaidIn => 'Paid in';
+  @override
+  String get financePaidOut => 'Paid out';
+  @override
+  String get financeExpected => 'Expected';
+  @override
+  String get financeDrawersNote =>
+      'Expected is the figure the Z report counts the drawer against: the '
+      'float, plus cash taken, plus paid in, less paid out. Bank and wallet '
+      'balances are not kept here.';
+  @override
+  String get financeAsOf => 'As of business date';
+  @override
+  String get financeBucketOverdue => 'Overdue';
+  @override
+  String get financeBucketToday => 'Due today';
+  @override
+  String get financeBucketWeek => 'Due in the next 7 days';
+  @override
+  String get financeBucketLater => 'Due later';
+  @override
+  String get financeTotalOwed => 'Total owed';
+  @override
+  String get financeSupplier => 'Supplier';
+  @override
+  String get financeDueDate => 'Due';
+  @override
+  String get financePaid => 'Paid';
+  @override
+  String get financeOutstanding => 'Outstanding';
+  @override
+  String get financeNoBills => 'Nothing is owed to suppliers.';
+  @override
+  String get financeBillsNote =>
+      'Each unpaid invoice is in exactly one group, by its due date against '
+      'the business date. Money paid on account lowers what a supplier is '
+      'owed but clears no particular bill, so it is not taken off here.';
+  @override
+  String get financeRecentTransactions => 'Recent transactions';
+  @override
+  String get financeReference => 'Reference';
+  @override
+  String get financeStatus => 'Status';
+  @override
+  String get financeKindSale => 'Sale';
+  @override
+  String get financeKindPayOut => 'Pay-out';
+  @override
+  String get financeKindSupplierInvoice => 'Supplier invoice';
+  @override
+  String get financeKindSupplierPayment => 'Supplier payment';
+  @override
+  String get financeStatusPaid => 'Paid';
+  @override
+  String get financeStatusPartlyPaid => 'Part paid';
+  @override
+  String get financeStatusUnpaid => 'Unpaid';
+  @override
+  String get financeStatusPartlyRefunded => 'Part refunded';
+  @override
+  String get financeStatusRefunded => 'Refunded';
+  @override
+  String get financeStatusOpen => 'Open';
+  @override
+  String get financeStatusVoided => 'Void';
+  @override
+  String get financeStatusRecorded => 'Recorded';
+  @override
+  String get financeNoTransactions => 'Nothing moved in this period.';
+  @override
+  String financeTransactionsTruncated(int count) =>
+      'Only the newest $count are listed. Choose a shorter period to see '
+      'older ones.';
+  @override
+  String get financeTransactionsNote =>
+      'A supplier invoice is a bill, not money that moved; paying it is a row '
+      'of its own. The sales listed are the ones the Sales tab shows you.';
+  @override
   String get settingsSectionAccount => 'Account';
   @override
   String get settingsSectionPointOfSale => 'Point of sale';
@@ -9121,6 +9331,146 @@ final class ArStrings extends AppStrings {
   @override
   String get financeNoFigures =>
       'لا توجد لهذا الجهاز بعدُ قاعدة بيانات فرع يقرأ منها الأرقام.';
+  @override
+  String get financeExpenses => 'المصروفات';
+  @override
+  String get financeExpensesBlurb =>
+      'ما خرج من الأدراج نقداً، وما دُفع للموردين.';
+  @override
+  String get financeDrawers => 'الأدراج';
+  @override
+  String get financeDrawersBlurb =>
+      'النقد الذي يجب أن يكون في كل درج مفتوح الآن.';
+  @override
+  String get financeBills => 'الفواتير المستحقة';
+  @override
+  String get financeBillsBlurb => 'ما على المطعم للموردين، حسب موعد استحقاقه.';
+  @override
+  String get financeTransactions => 'الحركات';
+  @override
+  String get financeTransactionsBlurb =>
+      'المبيعات وإخراج النقد وفواتير الموردين ومدفوعاتهم، الأحدث أولاً.';
+  @override
+  String get financeKpiExpenses => 'المصروفات';
+  @override
+  String get financeExpensesWithSuppliers =>
+      'النقد الخارج من الأدراج، مضافاً إليه مدفوعات الموردين غير الملغاة.';
+  @override
+  String get financeExpensesPayOutsOnly => 'النقد الخارج من الأدراج فقط.';
+  @override
+  String get financeSuppliersOnPlatform =>
+      'مدفوعات الموردين لهذا المطعم تُسجَّل على المنصة، فلا تُحتسب هنا.';
+  @override
+  String get financeSuppliersNotPermitted =>
+      'مدفوعات الموردين غير محتسبة: قراءتها تتطلب صلاحية المشتريات.';
+  @override
+  String get financeCountedOnce =>
+      'المورد الذي دُفع له من درج الكاشير يُحتسب مرة واحدة، كدفعة مورد.';
+  @override
+  String get financePayOuts => 'النقد الخارج من الأدراج';
+  @override
+  String get financeSupplierPayments => 'مدفوعات الموردين';
+  @override
+  String get financeNoExpenses => 'لم يُصرف شيء في هذه الفترة.';
+  @override
+  String get financeRecentExpenses => 'أحدث المصروفات';
+  @override
+  String get financeViewAll => 'عرض الكل';
+  @override
+  String get financeType => 'النوع';
+  @override
+  String get financeDetails => 'التفاصيل';
+  @override
+  String get financeKpiDrawers => 'النقد المتوقع في الأدراج المفتوحة';
+  @override
+  String financeOpenDrawerCount(int count) => 'الأدراج المفتوحة: $count';
+  @override
+  String get financeNoOpenDrawers => 'لا يوجد درج مفتوح في هذا الفرع.';
+  @override
+  String get financeOpenedBy => 'فتحه';
+  @override
+  String get financeOpenedAt => 'وقت الفتح';
+  @override
+  String get financeFloat => 'رصيد البداية';
+  @override
+  String get financeCashTaken => 'المحصَّل نقداً';
+  @override
+  String get financePaidIn => 'نقد داخل';
+  @override
+  String get financePaidOut => 'نقد خارج';
+  @override
+  String get financeExpected => 'المتوقع في الدرج';
+  @override
+  String get financeDrawersNote =>
+      'المتوقع هو الرقم الذي يُطابَق عليه الدرج في تقرير Z: رصيد البداية، '
+      'مضافاً إليه المحصَّل نقداً والنقد الداخل، مطروحاً منه النقد الخارج. '
+      'أرصدة البنوك والمحافظ الإلكترونية لا تُحفظ هنا.';
+  @override
+  String get financeAsOf => 'حتى يوم العمل';
+  @override
+  String get financeBucketOverdue => 'متأخرة';
+  @override
+  String get financeBucketToday => 'مستحقة اليوم';
+  @override
+  String get financeBucketWeek => 'مستحقة خلال 7 أيام';
+  @override
+  String get financeBucketLater => 'مستحقة لاحقاً';
+  @override
+  String get financeTotalOwed => 'إجمالي المستحق';
+  @override
+  String get financeSupplier => 'المورد';
+  @override
+  String get financeDueDate => 'الاستحقاق';
+  @override
+  String get financePaid => 'المدفوع';
+  @override
+  String get financeOutstanding => 'المتبقي';
+  @override
+  String get financeNoBills => 'لا شيء مستحق للموردين.';
+  @override
+  String get financeBillsNote =>
+      'كل فاتورة غير مسدَّدة في مجموعة واحدة فقط، حسب تاريخ استحقاقها '
+      'مقارنةً بيوم العمل. المبالغ المدفوعة على الحساب تُنقص ما للمورد لكنها '
+      'لا تسدِّد فاتورة بعينها، فلا تُخصم هنا.';
+  @override
+  String get financeRecentTransactions => 'أحدث الحركات';
+  @override
+  String get financeReference => 'المرجع';
+  @override
+  String get financeStatus => 'الحالة';
+  @override
+  String get financeKindSale => 'بيع';
+  @override
+  String get financeKindPayOut => 'إخراج نقد';
+  @override
+  String get financeKindSupplierInvoice => 'فاتورة مورد';
+  @override
+  String get financeKindSupplierPayment => 'دفعة مورد';
+  @override
+  String get financeStatusPaid => 'مدفوع';
+  @override
+  String get financeStatusPartlyPaid => 'مدفوع جزئياً';
+  @override
+  String get financeStatusUnpaid => 'غير مدفوع';
+  @override
+  String get financeStatusPartlyRefunded => 'مسترد جزئياً';
+  @override
+  String get financeStatusRefunded => 'مسترد';
+  @override
+  String get financeStatusOpen => 'مفتوح';
+  @override
+  String get financeStatusVoided => 'ملغى';
+  @override
+  String get financeStatusRecorded => 'مسجَّل';
+  @override
+  String get financeNoTransactions => 'لم تتحرك أموال في هذه الفترة.';
+  @override
+  String financeTransactionsTruncated(int count) =>
+      'تُعرض أحدث $count حركة فقط. اختر فترة أقصر لرؤية الأقدم.';
+  @override
+  String get financeTransactionsNote =>
+      'فاتورة المورد مطالبة وليست مالاً تحرّك، وسدادها سطر مستقل. المبيعات '
+      'المعروضة هي التي يعرضها لك تبويب المبيعات.';
   @override
   String get settingsSectionAccount => 'الحساب';
   @override
