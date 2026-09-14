@@ -92,16 +92,8 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
   /// and refunds to the order in one go multiplies each by the other — a sale
   /// paid in two tenders with one refund would count the refund twice. One
   /// aggregate per table per order cannot.
-  ///
-  /// **The business day is found by window as well as by id.** Nothing in this
-  /// build stamps `pos_orders.business_day_id` — the column has existed since
-  /// migration 9 and no writer fills it — so an id-only join would file every
-  /// sale under no day at all. A sale belongs to the day whose open–close
-  /// window contains it; once a writer does stamp the id, the id wins, because
-  /// the `OR` only looks at windows when it is null. Ordered by `opened_at`
-  /// so the most recent day that covers it answers, should a force-closed day
-  /// and its successor ever overlap by a second.
-  static const _orderJoins = '''
+  static final _orderJoins =
+      '''
         LEFT JOIN pos_staff       AS served ON served.id = o.served_by
         LEFT JOIN pos_staff       AS voider ON voider.id = o.voided_by
         LEFT JOIN pos_reason_codes AS reason ON reason.id = o.void_reason_id
@@ -114,16 +106,37 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
           SELECT coalesce(sum(r.total_minor), 0)::bigint AS minor
             FROM pos_refunds AS r WHERE r.order_id = o.id
         ) AS given_back ON true
+        ${tradingDayJoin('o')}''';
+
+  /// The trading day the row [alias] belongs to, as `trading.business_date`.
+  ///
+  /// [alias] is a `pos_orders` or a `pos_refunds` row — both carry the four
+  /// columns this reads. Public because the reports
+  /// (`PostgresReportsRepository`) file sales and refunds under their day by
+  /// this rule and no other; a second copy of it would be one edit away from a
+  /// Reports tile that does not match the sales list it drills into.
+  ///
+  /// **The business day is found by window as well as by id.** Migrations
+  /// 35–36 stamp `business_day_id` by trigger and backfilled every row written
+  /// before them, so the id answers for nearly everything. The window is kept
+  /// for the row the trigger could not stamp — written while no day was open
+  /// — which it files the same way every reader always has, and because it
+  /// costs nothing once the id is there: the `OR` only looks at windows when
+  /// the id is null. Ordered by `opened_at` so the most recent day that covers
+  /// it answers, should a force-closed day and its successor ever overlap by a
+  /// second.
+  static String tradingDayJoin(String alias) =>
+      '''
         LEFT JOIN LATERAL (
           SELECT d.business_date
             FROM pos_business_days AS d
-           WHERE d.restaurant_id = o.restaurant_id
-             AND d.branch_id = o.branch_id
-             AND (d.id = o.business_day_id
-                  OR (o.business_day_id IS NULL
-                      AND d.opened_at <= o.occurred_at
+           WHERE d.restaurant_id = $alias.restaurant_id
+             AND d.branch_id = $alias.branch_id
+             AND (d.id = $alias.business_day_id
+                  OR ($alias.business_day_id IS NULL
+                      AND d.opened_at <= $alias.occurred_at
                       AND (d.closed_at IS NULL
-                           OR o.occurred_at < d.closed_at)))
+                           OR $alias.occurred_at < d.closed_at)))
            ORDER BY d.opened_at DESC
            LIMIT 1
         ) AS trading ON true''';
@@ -189,22 +202,17 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
       '${at.month.toString().padLeft(2, '0')}-'
       '${at.day.toString().padLeft(2, '0')}';
 
-  @override
-  Future<List<OrderRecord>> search(OrderHistoryQuery query) async {
-    final where = <String>[
-      'o.restaurant_id = @restaurant',
-      'o.branch_id = @branch',
-    ];
-    final parameters = <String, Object?>{
-      'restaurant': restaurantId,
-      'branch': branchId,
-      'limit': query.limit,
-    };
+  /// [from] ≤ business date < [to], for the row [alias] under
+  /// [tradingDayJoin] — see [OrderHistoryQuery.from] for what the two dates
+  /// mean. Shared with the reports' refunds, which are filed by the same rule.
+  static ({List<String> where, Map<String, Object?> parameters})
+  businessDateRange({DateTime? from, DateTime? to, String alias = 'o'}) {
+    final where = <String>[];
+    final parameters = <String, Object?>{};
 
-    // Business date where a day covers the sale, calendar instant where none
-    // does — see [OrderHistoryQuery.from]. A CASE rather than an OR so each
-    // sale is judged by exactly one of the two, never whichever is kinder.
-    final from = query.from;
+    // Business date where a day covers the row, calendar instant where none
+    // does. A CASE rather than an OR so each row is judged by exactly one of
+    // the two, never whichever is kinder.
     if (from != null) {
       // The floor is what lets the index on `occurred_at` do the work. A
       // business day opens on or after midnight of its own date, so no sale
@@ -212,19 +220,18 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
       // that midnight. A day of slack covers a day somebody opened early; the
       // alternative, no floor, evaluates the day window for every sale the
       // branch ever made to answer "today".
-      where.add('o.occurred_at >= @fromFloor');
+      where.add('$alias.occurred_at >= @fromFloor');
       parameters['fromFloor'] = from
           .subtract(const Duration(days: 1))
           .toUtc();
       where.add(
         '(CASE WHEN trading.business_date IS NOT NULL '
         '      THEN trading.business_date >= @fromDay::date '
-        '      ELSE o.occurred_at >= @from END)',
+        '      ELSE $alias.occurred_at >= @from END)',
       );
       parameters['fromDay'] = _day(from);
       parameters['from'] = from.toUtc();
     }
-    final to = query.to;
     if (to != null) {
       // No ceiling to match the floor. A day left open over a weekend files
       // Sunday's sales under Friday, so a sale rung up well after `to` can
@@ -232,11 +239,40 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
       where.add(
         '(CASE WHEN trading.business_date IS NOT NULL '
         '      THEN trading.business_date < @toDay::date '
-        '      ELSE o.occurred_at < @to END)',
+        '      ELSE $alias.occurred_at < @to END)',
       );
       parameters['toDay'] = _day(to);
       parameters['to'] = to.toUtc();
     }
+    return (where: where, parameters: parameters);
+  }
+
+  /// The WHERE clauses and parameters [search] runs [query] with, over
+  /// `pos_orders AS o` with [tradingDayJoin] on `o` in the FROM.
+  ///
+  /// Public and static because a figure that summarises this list has to be
+  /// computed over exactly these rows. The reports build their sales from it
+  /// (plan 17 S3: every figure equals the rows its drill-down lists), and so
+  /// should BO-3's summary strip. Handing them the rule, rather than asking
+  /// them to restate it, is what keeps that true after somebody changes a
+  /// filter here.
+  static ({List<String> where, Map<String, Object?> parameters}) filterFor(
+    OrderHistoryQuery query, {
+    required int restaurantId,
+    required int branchId,
+  }) {
+    final range = businessDateRange(from: query.from, to: query.to);
+    final where = <String>[
+      'o.restaurant_id = @restaurant',
+      'o.branch_id = @branch',
+      ...range.where,
+    ];
+    final parameters = <String, Object?>{
+      'restaurant': restaurantId,
+      'branch': branchId,
+      ...range.parameters,
+    };
+
     if (query.statuses.isNotEmpty) {
       where.add('o.status = ANY(@statuses)');
       parameters['statuses'] = query.statuses.map((s) => s.wire).toList();
@@ -280,13 +316,22 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
       );
       parameters['search'] = '%$search%';
     }
+    return (where: where, parameters: parameters);
+  }
 
+  @override
+  Future<List<OrderRecord>> search(OrderHistoryQuery query) async {
+    final filter = filterFor(
+      query,
+      restaurantId: restaurantId,
+      branchId: branchId,
+    );
     final rows = await _db.query(
       config,
       'SELECT $_orderColumns FROM pos_orders AS o $_orderJoins '
-      'WHERE ${where.join(' AND ')} '
+      'WHERE ${filter.where.join(' AND ')} '
       'ORDER BY o.occurred_at DESC, o.id DESC LIMIT @limit',
-      parameters: parameters,
+      parameters: {...filter.parameters, 'limit': query.limit},
     );
 
     return rows.map((row) => _record(row.toList())).toList(growable: false);
