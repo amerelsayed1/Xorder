@@ -372,6 +372,10 @@ to the stamped id as soon as one is written. The day close has no such
 fallback: its totals (`postgres_business_day_repository.dart:176`) are summed
 by `business_day_id` alone, so they record zero. Not fixed here.
 
+> **Fixed since (migrations 35–36).** A trigger now stamps `business_day_id`
+> on orders, refunds and shifts: the day whose window contains the moment
+> (`migrations.dart:3247`; `test/data/business_day_stamping_test.dart`).
+
 ### C5 — Sync health
 
 A per-business-day comparison of counts and sums between the till and the
