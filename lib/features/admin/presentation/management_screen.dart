@@ -35,6 +35,7 @@ import 'management_taxes_pane.dart';
 import 'management_tenders_pane.dart';
 import 'management_purchasing_pane.dart';
 import 'management_receipt_pane.dart';
+import 'management_reports_pane.dart';
 import 'management_roles_pane.dart';
 import 'management_staff_pane.dart';
 import 'management_terminal_pane.dart';
@@ -203,14 +204,15 @@ bool hiddenBecausePlatformAuthors(
 /// The back office, in tabs — the mockup's nine (plan 19 §1.1), with People
 /// under Settings as it is on the cloud.
 ///
-/// **Reports and Finance hold no pane yet**, so no fixture ever sees them: a
-/// tab with no visible pane is absent, and these two have none until their
-/// slices land (Reports BO-6, Finance BO-9). Home has had its pane since BO-4
-/// and Sales the order history since BO-2, both for everybody past the door.
-/// They are members now rather than added then so that the order is decided
-/// once, here, and so that [backOfficeTabName] and the strip's width test
-/// already carry all nine — a tenth word arriving with a slice is how a strip
-/// that fitted at 1100 px stops fitting without anybody measuring it.
+/// **Finance holds no pane yet**, so no fixture ever sees it: a tab with no
+/// visible pane is absent, and it has none until BO-9 lands. Home has had its
+/// pane since BO-4 and Sales the order history since BO-2, both for everybody
+/// past the door; Reports has had its one pane since BO-6, for whoever holds
+/// `reports.view`. They were members before their slices, rather than added
+/// with them, so that the order is decided once, here, and so that
+/// [backOfficeTabName] and the strip's width test already carry all nine — a
+/// tenth word arriving with a slice is how a strip that fitted at 1100 px
+/// stops fitting without anybody measuring it.
 ///
 /// Replaces the seven areas of the flat bar. Money went to Settings (rules
 /// about money are configuration; *Finance* is money that moved), Compliance
@@ -252,6 +254,7 @@ enum BackOfficeTab {
 BackOfficeTab tabOf(ManagementPane pane) => switch (pane) {
   ManagementPane.home => BackOfficeTab.home,
   ManagementPane.sales => BackOfficeTab.sales,
+  ManagementPane.reports => BackOfficeTab.reports,
   ManagementPane.menu ||
   ManagementPane.extras ||
   ManagementPane.floor => BackOfficeTab.menu,
@@ -337,6 +340,7 @@ String settingsSectionName(AppStrings s, SettingsSection section) =>
   ManagementPane.appearance => (SettingsSection.thisTerminal, 0),
   ManagementPane.home ||
   ManagementPane.sales ||
+  ManagementPane.reports ||
   ManagementPane.menu ||
   ManagementPane.extras ||
   ManagementPane.floor ||
@@ -413,8 +417,8 @@ ManagementPane backOfficeLanding(
 ///
 /// **Read off the same tabs as the strip and the bar**, so a shortcut can
 /// never lead where the strip would not: no Product management on a cloud
-/// till, where Menu is the platform's; no Sales reports until the Reports tab
-/// has a pane to open (BO-6), and then only for whoever holds it.
+/// till, where Menu is the platform's; no Sales reports for whoever lacks
+/// `reports.view`, which is the gate on the one pane Reports holds.
 List<(HomeQuickAction, ManagementPane)> homeQuickActionsFor(
   List<(BackOfficeTab, List<ManagementPane>)> tabs,
 ) {
@@ -638,6 +642,7 @@ ManagementDestination _purchasing(PurchasingTab tab, {bool create = false}) =>
       // The tab's word, as Staff takes its Settings name: one pane, one tab,
       // and the header saying "Sales" under a strip saying "Sales".
       ManagementPane.sales => (s.tabSales, s.paneSalesBlurb),
+      ManagementPane.reports => (s.tabReports, s.paneReportsBlurb),
       ManagementPane.menu => (s.paneMenu, s.paneMenuBlurb),
       ManagementPane.extras => (s.extrasTitle, s.extrasSubtitle),
       ManagementPane.floor => (s.floorPlan, s.floorPlanHint),
@@ -672,7 +677,7 @@ String? _paneRequires(ManagementPane pane) => switch (pane) {
   ManagementPane.purchasing => PosCapability.purchaseManage,
   // The third capability that had no screen, and the one with the worst
   // consequences: `backup.manage` is critical-risk, held only by Owner, and
-  // deliberately outside supervisor override. `reports.view` still has none.
+  // deliberately outside supervisor override.
   //
   // Unlike Purchasing, this pane's gate is not backed by a repository that
   // refuses — `pos_backups` is granted INSERT to the till so the automatic copy
@@ -693,6 +698,10 @@ String? _paneRequires(ManagementPane pane) => switch (pane) {
   // exactly as `/orders` scopes them — so a cashier-grade administrator gets
   // the tab and their own sales in it, rather than no tab.
   ManagementPane.sales => null,
+  // The branch's takings (BO-6). Not the only guard: `salesReportProvider`
+  // asks the same capability of the person acting before it reads a row, so
+  // a screen built on the figures later without this gate still shows none.
+  ManagementPane.reports => PosCapability.reportsView,
   _ => null,
 };
 
@@ -753,6 +762,10 @@ enum ManagementPane {
   /// The order history, as the Sales tab (BO-2). Last, so no other pane's
   /// index moves; the strip orders tabs by [BackOfficeTab], not by this.
   sales,
+
+  /// BO-5's figures, drawn as the Reports tab (BO-6). Last, for the same
+  /// reason as [sales].
+  reports,
 }
 
 class _ManagementScreenState extends ConsumerState<ManagementScreen> {
@@ -1046,6 +1059,9 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
     // Whose sales it lists follows [admin] through `actingStaffProvider`, not
     // the cashier who may still be signed in at the till behind this.
     ManagementPane.sales => const OrderHistoryScreen(),
+    // Whose figures follows [admin] through `actingStaffProvider`, as the
+    // Sales list's rows do — see `reportsAllowedProvider`.
+    ManagementPane.reports => const ManagementReportsPane(),
     // "Manage roles" opens Settings › Roles, as the cloud's Users page does.
     ManagementPane.staff => ManagementStaffPane(
       admin: admin,

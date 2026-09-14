@@ -169,6 +169,16 @@ class ReportDay {
 
   /// §3a rule 5.
   Money get net => gross - discounts - refunds;
+
+  /// This date's net per order — the trend's third line (plan 19 §2.3).
+  ///
+  /// [SalesReport.averageOrder]'s rule, one day wide: net, rounded half-up
+  /// once, here. A getter on the day rather than a division in the chart, so
+  /// the line and the tile above it cannot come to round differently. Null
+  /// with no orders: a day the restaurant was shut is a gap in the average,
+  /// where drawing zero would read as a day of free food.
+  Money? get averageOrder =>
+      orders == 0 ? null : net.copyWith(minor: roundHalfUp(net.minor, orders));
 }
 
 /// Which way the top-products list is ranked.

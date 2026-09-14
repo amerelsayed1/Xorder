@@ -17,6 +17,7 @@ import 'package:xorder_pos/domain/models/option_group.dart';
 import 'package:xorder_pos/domain/models/permissions.dart';
 import 'package:xorder_pos/domain/models/shift.dart';
 import 'package:xorder_pos/domain/repositories/admin_repositories.dart';
+import 'package:xorder_pos/domain/services/authorization.dart';
 import 'package:xorder_pos/features/admin/application/admin_session.dart';
 import 'package:xorder_pos/features/admin/presentation/management_home_pane.dart';
 import 'package:xorder_pos/features/admin/presentation/management_screen.dart';
@@ -87,9 +88,8 @@ const _fixtures = <String, PosStaff>{
 };
 
 /// The tabs whose content is a later slice. None of them holds a pane yet.
-/// Home and Sales left this list with BO-4 and BO-2.
+/// Home, Sales and Reports left this list with BO-4, BO-2 and BO-6.
 const _later = [
-  BackOfficeTab.reports,
   BackOfficeTab.finance,
 ];
 
@@ -282,13 +282,34 @@ void main() {
             reason: '$name, $where',
           );
 
+          // Reports for whoever holds `reports.view` — the owner and the
+          // manager through their roles, nobody else here — holding its one
+          // pane (BO-6), on both deployments: the figures are the branch's
+          // own rows, not the platform's.
+          final reads = Authorization.check(
+            admin,
+            PosCapability.reportsView,
+          ).isAllowed;
+          expect(
+            [
+              for (final (t, own) in tabs)
+                if (t == BackOfficeTab.reports) own,
+            ],
+            reads
+                ? [
+                    [ManagementPane.reports],
+                  ]
+                : isEmpty,
+            reason: '$name, $where',
+          );
+
           // Home is everybody's, and first — so the door lands on it.
           expect(tabs.first.$1, BackOfficeTab.home);
           expect(tabs.first.$2, [ManagementPane.home]);
           expect(backOfficeLanding(tabs), ManagementPane.home);
 
           // Home's shortcuts reach nothing the tabs do not: none for Menu on
-          // a cloud till, none for Reports until it has a pane (BO-6).
+          // a cloud till, none for Reports without `reports.view`.
           final shortcuts = homeQuickActionsFor(tabs);
           for (final (action, pane) in shortcuts) {
             expect(reachable, contains(pane), reason: action.name);
@@ -299,7 +320,7 @@ void main() {
             authors,
             reason: 'Product management only where this till authors Menu',
           );
-          expect(offered, isNot(contains(HomeQuickAction.salesReports)));
+          expect(offered.contains(HomeQuickAction.salesReports), reads);
           expect(
             offered.contains(HomeQuickAction.employees),
             reachable.contains(ManagementPane.staff),
@@ -411,7 +432,23 @@ void main() {
       await _open(tester);
       expect(find.byKey(const Key('home-action-products')), findsNothing);
       expect(find.byKey(const Key('home-action-employees')), findsOneWidget);
+    });
+
+    testWidgets('Sales reports opens Reports, now that it has a pane', (
+      tester,
+    ) async {
+      await _open(tester);
+      await tester.tap(find.byKey(const Key('home-action-salesReports')));
+      await tester.pumpAndSettle();
+      expect(_showing(tester), {ManagementPane.reports});
+      expect(find.byKey(const Key('back-office-tab-reports')), findsOneWidget);
+    });
+
+    testWidgets('and neither the shortcut nor the tab for somebody without '
+        'reports.view', (tester) async {
+      await _open(tester, username: 'nour', pin: '2468');
       expect(find.byKey(const Key('home-action-salesReports')), findsNothing);
+      expect(find.byKey(const Key('back-office-tab-reports')), findsNothing);
     });
   });
 

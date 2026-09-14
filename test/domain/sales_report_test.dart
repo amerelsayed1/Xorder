@@ -161,6 +161,26 @@ void main() {
       expect(report().averageOrder, isNull);
     });
 
+    test("a day's average is the same rule as the period's, rounded once", () {
+      ReportDay day({required int orders, int gross = 0, int refunds = 0}) =>
+          ReportDay(
+            date: DateTime(2026, 9, 10),
+            orders: orders,
+            gross: Money(gross),
+            discounts: const Money(100),
+            refunds: Money(refunds),
+            refundCount: refunds > 0 ? 1 : 0,
+          );
+      // (1101 − 100) ÷ 2 = 500.5 → 501, as the period rounds it.
+      expect(day(orders: 2, gross: 1101).averageOrder, const Money(501));
+      expect(
+        day(orders: 2, gross: 1100, refunds: 2001).averageOrder,
+        const Money(-501),
+      );
+      // A shut day is a gap in the average line, not a dip to zero.
+      expect(day(orders: 0).averageOrder, isNull);
+    });
+
     test('on account is owed, so it has no slice of the tender bar', () {
       final shares = report(
         orders: 3,
