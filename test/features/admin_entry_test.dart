@@ -123,10 +123,11 @@ void main() {
   ];
 
   final door = find.byKey(const Key('admin-username'));
-  // Past the door: the tab strip, which is drawn for nobody who is not. Not a
+  // Past the door: the status bar, which is drawn for nobody who is not. It
+  // was the tab strip until the owner took that away (15 Sep 2026). Not a
   // pane's contents — the door lands on the first tab that holds a pane, and
   // which that is depends on the till and the person.
-  final inside = find.byKey(const Key('back-office-tabs'));
+  final inside = find.byKey(const Key('back-office-status-bar'));
 
   group('the way in', () {
     testWidgets('F8 no longer opens the back office from a locked till', (
@@ -222,9 +223,8 @@ void main() {
       await pumpApp(tester, atTheTill: _cashier);
       await chord(tester, LogicalKeyboardKey.keyS);
       await signIn(tester, 'amer', '4321');
-      // The bar's first menu is the strip's first word since the owner's map
-      // (14 Sep 2026) — Home, asked of the bar rather than of the screen,
-      // where the strip says it too.
+      // The bar's first menu is the map's first word (14 Sep 2026) — Home —
+      // and the bar is the only place it is said: the screen has no strip.
       final home = find.descendant(
         of: find.byType(MenuBar),
         matching: find.text(_strings.tabHome),
@@ -333,8 +333,22 @@ void main() {
       await signIn(tester, 'nour', '2468');
 
       expect(inside, findsOneWidget);
-      expect(find.byKey(const Key('back-office-tab-purchasing')), findsNothing);
-      expect(find.byKey(const Key('back-office-tab-inventory')), findsNothing);
+      // Asked of the bar, the only place the tabs are drawn.
+      for (final word in [_strings.tabPurchasing, _strings.tabInventory]) {
+        expect(
+          find.descendant(of: find.byType(MenuBar), matching: find.text(word)),
+          findsNothing,
+          reason: word,
+        );
+      }
+      expect(
+        find.descendant(
+          of: find.byType(MenuBar),
+          matching: find.text(_strings.tabPeople),
+        ),
+        findsOneWidget,
+        reason: 'the bar is there, with what Nour does hold',
+      );
     }, variant: desktop);
   });
 

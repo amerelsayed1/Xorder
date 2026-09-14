@@ -355,17 +355,10 @@ void main() {
       );
       const s = EnStrings();
       expect(find.text(s.close), findsNothing);
-      // "Orders" twice — the header, which names the page alone since 15 Sep
-      // 2026, and the sub-nav's word for the item (Sales has four) — and no
-      // third: the history draws no title bar of its own in here.
-      expect(find.text(s.orderHistoryTitle), findsNWidgets(2));
-      expect(
-        find.descendant(
-          of: find.byKey(const Key('back-office-subnav')),
-          matching: find.text(s.orderHistoryTitle),
-        ),
-        findsOneWidget,
-      );
+      // "Orders" once — the header, which names the page alone — and no
+      // second: the history draws no title bar of its own in here, and since
+      // 15 Sep 2026 no sub-nav under the header says the item's word again.
+      expect(find.text(s.orderHistoryTitle), findsOneWidget);
       expect(find.byKey(const Key('admin-exit')), findsOneWidget);
       // The map's word for the page in the header (14 Sep 2026) — Orders,
       // as the history calls itself — and the history's own title bar not
@@ -457,13 +450,11 @@ void main() {
   });
 
   group('Arabic, at the 1100 breakpoint', () {
-    // The bundled faces, not the test font, as `back_office_shell_test.dart`
-    // measures the strip: the test font draws every glyph a full em wide, so
-    // "nothing overflows at 1100 px" was a claim about a font no till ships.
-    // It stopped holding when BO-6 gave the owner one more tab — on this
-    // cloud till seven Arabic words, at 14 px an em, came to 1,136 px — while
-    // the same strip in IBM Plex Sans Arabic still fits, which is what a
-    // restaurant sees.
+    // The bundled faces, not the test font: the test font draws every glyph
+    // a full em wide, so "nothing overflows at 1100 px" would be a claim about
+    // a font no till ships. It first bit on the back office's tab strip, which
+    // the owner has since taken away (15 Sep 2026); the table and the filters
+    // are what this measures now.
     setUpAll(loadPosFonts);
 
     testWidgets('right to left, Arabic words, and a table that scrolls '

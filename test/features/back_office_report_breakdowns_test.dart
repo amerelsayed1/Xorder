@@ -27,6 +27,7 @@ import 'package:xorder_pos/features/admin/presentation/management_screen.dart';
 import 'package:xorder_pos/features/admin/presentation/report_breakdown_panes.dart';
 import 'package:xorder_pos/features/admin/presentation/report_charts.dart';
 
+import '../support/back_office.dart';
 import '../support/fakes.dart';
 import '../support/fonts.dart';
 
@@ -594,6 +595,9 @@ void main() {
 
   testWidgets('the period survives switching items, and every item asks for '
       'it', (tester) async {
+    // Items switched as the bar's التقارير menu switches them, the only way
+    // between them since the owner took the sub-nav away (15 Sep 2026).
+    final bar = BarRoute(ManagementPane.reports);
     tester.view
       ..physicalSize = const Size(1440, 1600)
       ..devicePixelRatio = 1.0;
@@ -615,11 +619,7 @@ void main() {
           localizationsDelegates: _localizations,
           supportedLocales: AppLocalizations.supportedLocales,
           theme: buildPosTheme(),
-          home: ManagementScreen(
-            onClose: () {},
-            onReconfigure: () {},
-            initialPane: ManagementPane.reports,
-          ),
+          home: bar.screen(),
         ),
       ),
     );
@@ -638,8 +638,7 @@ void main() {
       (ManagementPane.reportsEmployees, 'reports-staff-total'),
       (ManagementPane.reports, 'reports-tile-net'),
     ]) {
-      await tester.tap(find.byKey(Key('back-office-subnav-${pane.name}')));
-      await tester.pumpAndSettle();
+      await bar.open(tester, pane);
       expect(find.byKey(Key(key)), findsOneWidget, reason: pane.name);
       expect(
         _texts(tester, 'reports-range'),
@@ -662,16 +661,12 @@ void main() {
     );
 
     // A custom range too: chosen on one item, kept on the next.
-    await tester.tap(find.byKey(const Key('back-office-subnav-reportsItems')));
-    await tester.pumpAndSettle();
+    await bar.open(tester, ManagementPane.reportsItems);
     container
         .read(reportPeriodProvider.notifier)
         .pickCustom(first: DateTime(2026, 8, 3), last: DateTime(2026, 8, 9));
     await tester.pumpAndSettle();
-    await tester.tap(
-      find.byKey(const Key('back-office-subnav-reportsEmployees')),
-    );
-    await tester.pumpAndSettle();
+    await bar.open(tester, ManagementPane.reportsEmployees);
     expect(_texts(tester, 'reports-range'), ['2026-08-03 → 2026-08-09']);
     expect(tester.takeException(), isNull);
   });

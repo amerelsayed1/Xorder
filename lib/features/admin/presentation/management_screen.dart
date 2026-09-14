@@ -90,8 +90,8 @@ class ManagementScreen extends ConsumerStatefulWidget {
   ///
   /// Null is the door's own landing: Home (see [backOfficeLanding]). Staff used
   /// to be the default, which was right while the back office was a list with
-  /// Staff at the top; with tabs, landing three tabs in from the start would be
-  /// the one screen that opens in the middle.
+  /// Staff at the top; under the owner's map it sits in People, eight menus
+  /// along, and landing there would be the one entry that opens in the middle.
   final ManagementPane? initialPane;
 
   /// Passed through to Purchasing — see [ManagementDestination].
@@ -105,11 +105,13 @@ class ManagementScreen extends ConsumerStatefulWidget {
 
 /// Which panes this terminal and this person actually have.
 ///
-/// **Public, and the only answer.** The tab strip asks this, and so do the
-/// window's bar and Home's quick actions ([homeQuickActionsFor]). Two lists that
-/// were meant to agree are two lists that will not: a menu offering Purchasing
-/// to somebody the strip hides it from would take them to a screen that
-/// refuses everything.
+/// **Public, and the only answer.** The window's bar asks this — the only way
+/// round the back office since the owner took the on-screen strip away (15 Sep
+/// 2026) — and so do Home's quick actions ([homeQuickActionsFor]) and the
+/// screen, when it decides what a deep link may show. Two lists that were
+/// meant to agree are two lists that will not: a shortcut offering Purchasing
+/// to somebody the bar hides it from would take them to a screen that refuses
+/// everything.
 ///
 /// [ManagementPane.receipt] is deliberately outside the authoring set: every
 /// terminal prints a slip with the restaurant's name and address on it, cloud
@@ -183,7 +185,7 @@ const _authoringPanes = {
 /// screen — any of them can name Purchasing on a cloud till. Landing silently
 /// somewhere else would read as the pane having broken; landing on Purchasing
 /// itself is not possible, because it is not this terminal's to show. So the
-/// screen shows the tab and says where the thing they wanted lives.
+/// screen names the tab and says where the thing they wanted lives.
 ///
 /// Over the tab rather than the pane, so a buying or inventory pane added
 /// later is covered without being remembered here. Menu answers null on
@@ -196,7 +198,7 @@ String? platformAuthoredPointer(AppStrings s, ManagementPane pane) =>
 ///
 /// **Inventory and Purchasing stay on a cloud till**, each saying where it
 /// went. Dropping them would leave a manager who bought through this back
-/// office last month searching every tab for it — and a cloud till with no
+/// office last month searching every menu for it — and a cloud till with no
 /// word for buying tells them nothing about where it went. Menu is not kept:
 /// its absence on cloud is as old as the cloud till, and the platform's menu
 /// is the first thing its owner learns.
@@ -221,15 +223,25 @@ bool hiddenBecausePlatformAuthors(
 }) => !authorsItsOwnCatalogue && _authoringPanes.contains(pane);
 
 /// The back office, in tabs — the owner's map of 14 Sep 2026: ten words, in
-/// this order, in the strip and the window's bar alike.
+/// this order, each a menu of the window's bar.
+///
+/// **A model, no longer drawn on screen.** A strip of these words ran across
+/// the top of the back office, with a row of the chosen tab's items under it,
+/// until the owner took both away on 15 Sep 2026 ("no need for this, use same
+/// design only on the top menu"): the bar already said the same list one
+/// level deeper, and two navigations saying one thing are two to keep in step.
+/// Keeping the strip because it is always on screen, which a closed menu is
+/// not, was the argument for it; the header's page name is what answers
+/// "where am I" now. The tabs remain what the bar is built from, what a deep
+/// link is checked against, and the header's word for a pointer tab.
 ///
 /// **Every tab holds a pane.** Home has had its pane since BO-4 and Sales the
 /// order history since BO-2, both for everybody past the door; Reports has had
 /// its one pane since BO-6 and Finance its panes since BO-9, both for whoever
 /// holds `reports.view`. They were members before their slices, rather than
 /// added with them, so that the order is decided once, here, and so that
-/// [backOfficeTabName] and the strip's width test carry every word — a word
-/// arriving with a slice is how a strip that fitted at 1100 px stops fitting
+/// [backOfficeTabName] and the bar's width test carry every word — a word
+/// arriving with a slice is how a bar that fitted at 1100 px stops fitting
 /// without anybody measuring it.
 ///
 /// Replaces the seven areas of the flat bar. Money went to Settings (rules
@@ -272,7 +284,7 @@ enum BackOfficeTab {
 /// Which tab a pane belongs to.
 ///
 /// A total function over the enum, so a pane added without a tab fails to
-/// compile rather than quietly vanishing from the strip.
+/// compile rather than quietly vanishing from the bar.
 BackOfficeTab tabOf(ManagementPane pane) => switch (pane) {
   ManagementPane.home => BackOfficeTab.home,
   ManagementPane.sales ||
@@ -338,27 +350,14 @@ String backOfficeTabName(AppStrings s, BackOfficeTab tab) => switch (tab) {
   BackOfficeTab.settings => s.tabSettings,
 };
 
-IconData backOfficeTabIcon(BackOfficeTab tab) => switch (tab) {
-  BackOfficeTab.home => Icons.home_outlined,
-  BackOfficeTab.sales => Icons.receipt_long_outlined,
-  BackOfficeTab.reports => Icons.bar_chart_outlined,
-  BackOfficeTab.menu => Icons.restaurant_menu_outlined,
-  BackOfficeTab.inventory => Icons.inventory_2_outlined,
-  BackOfficeTab.purchasing => Icons.shopping_cart_outlined,
-  BackOfficeTab.finance => Icons.account_balance_wallet_outlined,
-  BackOfficeTab.people => Icons.people_outline,
-  BackOfficeTab.system => Icons.dns_outlined,
-  BackOfficeTab.settings => Icons.settings_outlined,
-};
-
-/// Settings' own items, in the owner's map's order: each is an entry in the
-/// tab's sub-nav and a line in the bar's Settings menu.
+/// Settings' own items, in the owner's map's order: each is a line in the
+/// bar's Settings menu.
 ///
 /// **Orders & invoices settings holds five panes behind a side nav**: the
 /// restaurant's General profile — the name on every slip — and the rules an
 /// order and its invoice follow: order types, tax, service charges, payment
-/// methods. One word for them in the sub-nav rather than five, because the
-/// map names one place; the side nav inside is where the five are told apart.
+/// methods. One line for them in the bar rather than five, because the map
+/// names one place; the side nav on the page is where the five are told apart.
 ///
 /// **Language and Appearance are this terminal's**, not the restaurant's: what
 /// they hold is written to this machine's config file, not the branch
@@ -372,7 +371,7 @@ IconData backOfficeTabIcon(BackOfficeTab tab) => switch (tab) {
 /// lines rather than sitting beneath them: one word per place in one menu.
 /// Outside Admin Mode the till's two lines are back, opening their dialogs,
 /// because none of this is reachable there (`app.dart`).
-/// In the owner's map's order: the sub-nav and the bar both read it.
+/// In the owner's map's order, which the bar reads.
 enum SettingsSection {
   ordersAndInvoices,
   printer,
@@ -448,7 +447,7 @@ SettingsSection? settingsSectionOf(ManagementPane pane) => switch (pane) {
 };
 
 /// A pane's place in its tab: the order the owner's map lists them in, which
-/// the sub-nav, Settings' side nav and the bar's menus all follow.
+/// the bar's menus and Settings' side nav follow.
 ///
 /// **A total switch rather than a list**, so a pane added without a place
 /// fails to compile rather than sorting to wherever an absent index lands.
@@ -523,7 +522,7 @@ int _placeInTab(ManagementPane pane) => switch (pane) {
 /// The visible tabs, each with its visible panes in the order it shows them.
 ///
 /// **A tab with no visible pane is absent**, as an empty area was before it:
-/// a word over a gap reads as a tab that failed to load. The one exception is
+/// a menu with no lines reads as one that failed to load. The one exception is
 /// a tab [_pointsToPlatform] keeps on a cloud till, which comes back with no
 /// panes at all and shows the sentence saying where they went.
 ///
@@ -551,7 +550,7 @@ List<(BackOfficeTab, List<ManagementPane>)> backOfficeTabsFor({
   ];
 }
 
-/// One item of a tab: a word in its sub-nav, and a line in its bar menu.
+/// One item of a tab: a line in its bar menu.
 ///
 /// [opens] is the pane it lands on; [holds] every pane that counts as being
 /// on it — more than one only for Settings' Orders & invoices settings, whose
@@ -565,10 +564,10 @@ typedef BackOfficeItem = ({
 /// A tab's items, in its order: a pane each, bar Settings, whose items are its
 /// [SettingsSection]s.
 ///
-/// **One function for the sub-nav and the bar**, so the two say the same
-/// words in the same order — and read off [panes], which is what
-/// [backOfficeTabsFor] allowed, so nobody is offered an item they may not
-/// open.
+/// **Read by the bar, and by the screen** to find which item the page on show
+/// belongs to — which is how it knows to draw Settings' side nav. Read off
+/// [panes], which is what [backOfficeTabsFor] allowed, so nobody is offered an
+/// item they may not open.
 ///
 /// **An item of the owner's map with no screen yet is not here** — not as a
 /// placeholder, not as a greyed word: Sales' invoices, returns and cancelled
@@ -607,7 +606,7 @@ List<BackOfficeItem> backOfficeItemsFor(
 /// Where the door lands: the first pane of the first tab that holds one —
 /// which, since BO-4, is Home for everybody.
 ///
-/// Home is first in the strip and has no gate beyond the door, so this rule
+/// Home is the bar's first menu and has no gate beyond the door, so this rule
 /// needed no change to land there; it is kept as the rule rather than written
 /// as "Home" so that a Home ever gated or hidden hands the landing to the next
 /// tab instead of to a pane that is not there. **A tab that only points at the
@@ -624,8 +623,8 @@ ManagementPane backOfficeLanding(
 /// Home's shortcuts, each to the first pane it names — and absent when that
 /// pane is.
 ///
-/// **Read off the same tabs as the strip and the bar**, so a shortcut can
-/// never lead where the strip would not: no Product management on a cloud
+/// **Read off the same tabs as the bar**, so a shortcut can never lead where
+/// the bar would not: no Product management on a cloud
 /// till, where Menu is the platform's; no Sales reports for whoever lacks
 /// `reports.view`, which is the gate on the one pane Reports holds.
 List<(HomeQuickAction, ManagementPane)> homeQuickActionsFor(
@@ -765,21 +764,27 @@ typedef ManagementBarMenu = ({
 });
 
 /// The back office as the window's bar offers it: a menu per visible tab, in
-/// the strip's order and under the strip's word, listing that tab's items.
+/// the map's order and under the map's word, listing that tab's items.
 ///
 /// **The owner's map, 14 Sep 2026.** BO-1 folded the bar into one Back office
 /// menu with a line per tab, arguing that seven words in the bar above a strip
 /// of the same tabs was the same navigation twice. The owner reversed that,
 /// then drew the whole back office as one map — ten words, each with its
-/// items — for the strip and the bar alike. So the two are the same list read
-/// at two depths: the strip and its sub-nav on screen, the bar one gesture
-/// away from anywhere, both from [backOfficeTabsFor] and [backOfficeItemsFor].
+/// items — for the strip and the bar alike.
 ///
-/// **The first menu is Home**, named as the strip names it, so the ten words
-/// are the same ten in both places. It holds the Home line, and the bar adds
-/// Exit Admin Mode under it: that is an act on the session, not a destination,
-/// so it is not a line here. "Back office" was the other candidate for the
-/// word, and would have made the bar the one place the first word differs.
+/// **The only navigation there is (15 Sep 2026).** The owner then took the
+/// strip and its sub-nav off the screen, keeping this. So every page a person
+/// holds is a line here or a row of Settings' side nav, and a page that is
+/// neither is a page nobody can reach — `back_office_shell_test.dart` follows
+/// every line to prove the first, and `managementPanesFor` is what it is held
+/// to.
+///
+/// **The first menu is Home**, in the map's word for it. It holds the Home
+/// line — the one way back to the landing, now that no strip starts with it —
+/// and the bar adds Exit Admin Mode under it: that is an act on the session,
+/// not a destination, so it is not a line here. "Back office" was the other
+/// candidate for the word, and would have made the bar the one place the
+/// map's first word is not said.
 ///
 /// **Settings is returned like any other tab, and the bar does not draw it as
 /// a menu of its own.** The till already has a Settings menu, and two menus
@@ -846,9 +851,8 @@ List<ManagementBarEntry> _tabLines(
 
 /// The one line of a tab a cloud till keeps only as a pointer.
 ///
-/// Opens the tab's first pane by the enum, as the strip's word does
-/// (`_openTab`): the screen answers a pane the platform authors with the tab
-/// and the sentence, not with the pane.
+/// Opens the tab's first pane by the enum: the screen answers a pane the
+/// platform authors with the tab's name and the sentence, not with the pane.
 ManagementBarEntry _platformPointerLine(AppStrings s, BackOfficeTab tab) {
   final pane = ManagementPane.values.firstWhere((p) => tabOf(p) == tab);
   return (
@@ -876,7 +880,7 @@ ManagementDestination _purchasing(PurchasingTab tab, {bool create = false}) =>
 ///
 /// Every pane answers with the owner's map's word for it (14 Sep 2026) —
 /// Orders, Business summary, Roles & permissions, Devices, Treasury — so the
-/// sub-nav, the header and the bar say one word for one place. The panes' own
+/// header and the bar say one word for one place. The panes' own
 /// headings inside still say what they list. Receipt answers General, its
 /// name in Settings' side nav.
 (String, String) managementPaneLabel(AppStrings s, ManagementPane pane) =>
@@ -962,7 +966,7 @@ ManagementDestination _purchasing(PurchasingTab tab, {bool create = false}) =>
 ///
 /// **Only the panes whose repositories actually enforce one appear here.**
 /// Hiding a pane on a capability nothing checks would be a claim the database
-/// does not back — the strip would say no while a direct write said yes. So
+/// does not back — the bar would say no while a direct write said yes. So
 /// Purchasing is gated (its three repositories all demand `purchase.manage`)
 /// and the others are not, until each one's writes are gated too.
 Set<String> _paneRequires(ManagementPane pane) => switch (pane) {
@@ -1008,7 +1012,7 @@ Set<String> _paneRequires(ManagementPane pane) => switch (pane) {
   ManagementPane.reportsEmployees => const {PosCapability.reportsView},
   // Finance (BO-9, BO-10). Backed where it counts: every figure is read
   // through `reportsAllowedProvider`, which answers no without
-  // `reports.view`, so a pane reached round the strip still draws nothing.
+  // `reports.view`, so a pane reached round the bar still draws nothing.
   ManagementPane.financeOverview ||
   ManagementPane.financeRevenue ||
   ManagementPane.financePayments ||
@@ -1023,7 +1027,7 @@ Set<String> _paneRequires(ManagementPane pane) => switch (pane) {
     PosCapability.reportsView,
     PosCapability.purchaseManage,
   },
-  // Read off the panes themselves, so the strip can never ask less than the
+  // Read off the panes themselves, so the bar can never ask less than the
   // pane does. Backed by `shiftHistoryProvider`, which asks `reports.view` of
   // the person acting before it reads a shift.
   ManagementPane.shifts => ManagementShiftsPane.requires,
@@ -1081,8 +1085,8 @@ bool _wouldPermitTab(PosStaff admin, BackOfficeTab tab) => ManagementPane
 
 enum ManagementPane {
   /// The landing page. A pane like the others rather than a special case in
-  /// the shell, so it is in [managementPanesFor] — and so the strip, the bar
-  /// and the table-driven test in `back_office_shell_test.dart` see it as they
+  /// the shell, so it is in [managementPanesFor] — and so the bar and the
+  /// table-driven test in `back_office_shell_test.dart` see it as they
   /// see every other page. No gate: it shows each person only what they hold.
   home,
   staff,
@@ -1111,14 +1115,14 @@ enum ManagementPane {
   /// is cheaper not to have to find.
   appearance,
   /// The order history, as the Sales tab (BO-2). Last, so no other pane's
-  /// index moves; the strip orders tabs by [BackOfficeTab], not by this.
+  /// index moves; the bar orders tabs by [BackOfficeTab], not by this.
   sales,
 
   /// BO-5's figures, drawn as the Reports tab (BO-6). Last, for the same
   /// reason as [sales].
   reports,
-  /// Finance (BO-9). The sub-nav orders these and BO-10's by `_financeOrder`,
-  /// the mockup's order, not by their places here.
+  /// Finance (BO-9). The bar orders these and BO-10's by `_placeInTab`, the
+  /// map's order, not by their places here.
   financeOverview,
   financeRevenue,
   financePayments,
@@ -1173,21 +1177,22 @@ enum ManagementPane {
 }
 
 class _ManagementScreenState extends ConsumerState<ManagementScreen> {
-  /// The pane ASKED for — by the caller, the strip, the sub-nav or a notice.
-  /// Null until something asks, which is the door's own landing. What is
+  /// The pane ASKED for — by the caller (the bar, through the route), a link
+  /// inside a pane, or a notice. Null until something asks, which is the
+  /// door's own landing. What is
   /// actually shown is worked out from this at every build, because a request
   /// can outlive the permission or the deployment that justified it.
   late ManagementPane? _pane = widget.initialPane;
 
   /// Which of Purchasing's tabs a Finance row asked for — its invoices for a
   /// supplier invoice, its payments for a payment. Null otherwise, and cleared
-  /// by every other way of choosing a pane, so the Purchasing tab chosen from
-  /// the strip later opens where it always has.
+  /// by every other way of choosing a pane, so Purchasing asked for later
+  /// opens where that request says, not where the row did.
   PurchasingTab? _purchasingTab;
 
   /// The sale Returns asked Orders to open on. Cleared by every other way of
-  /// choosing a pane, as [_purchasingTab] is, so Orders picked from the
-  /// sub-nav afterwards is the plain list and not the last refund's sale.
+  /// choosing a pane, as [_purchasingTab] is, so Orders picked from the bar
+  /// afterwards is the plain list and not the last refund's sale.
   SaleToOpen? _openSale;
 
   /// Where Esc is heard. Held rather than anonymous so a text field that took
@@ -1264,9 +1269,10 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
   /// built a fresh screen — which is why the menu bar appeared to work until
   /// somebody used it twice.
   ///
-  /// Guarded on the OLD value rather than on `_pane`, so a manager who picked a
-  /// pane from the strip and is then rebuilt for any other reason stays where
-  /// they put themselves. Only a caller changing its mind moves them.
+  /// Guarded on the OLD value rather than on `_pane`, so a manager who followed
+  /// a link inside a pane — Home's shortcuts, a Finance row — and is then
+  /// rebuilt for any other reason stays where they put themselves. Only a
+  /// caller changing its mind moves them.
   @override
   void didUpdateWidget(ManagementScreen old) {
     super.didUpdateWidget(old);
@@ -1283,16 +1289,9 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
     }
   }
 
-  /// A tab from the strip: its first pane, or — for a tab that only points at
-  /// the platform — any pane of it, which the build answers with the pointer.
-  void _openTab(BackOfficeTab tab, List<ManagementPane> panes) => setState(() {
-    _pane = panes.isNotEmpty
-        ? panes.first
-        : ManagementPane.values.firstWhere((p) => tabOf(p) == tab);
-    _purchasingTab = null;
-    _openSale = null;
-  });
-
+  /// A pane, from inside the screen: Home's shortcuts, a notice, a link one
+  /// pane holds to another, Settings' side nav. Everything else arrives from
+  /// the bar, through the route and [didUpdateWidget].
   void _open(ManagementPane pane) => setState(() {
     _pane = pane;
     _purchasingTab = null;
@@ -1301,7 +1300,7 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
 
   /// Where a Finance row or card leads, or null when that place is not one of
   /// [panes] — and the pane then draws no link, rather than one to a pane the
-  /// strip hides, which would land on Home and read as a broken link.
+  /// bar hides, which would land on Home and read as a broken link.
   ///
   /// **The pane, not the row.** A sale opens the Sales tab and a supplier
   /// payment Purchasing's payments; neither lands on the one row. That would
@@ -1386,10 +1385,13 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
         : backOfficeLanding(tabs);
     final tab = showing != null ? tabOf(showing) : tabOf(asked!);
     final tabPanes = tabs.firstWhere((t) => t.$1 == tab).$2;
-    // The tab's items — the sub-nav's words, which the bar's menu lists too —
-    // and the one the page on screen belongs to.
-    final items = backOfficeItemsFor(strings, tab, tabPanes);
-    final item = items.where((i) => i.holds.contains(showing)).firstOrNull;
+    // The item of the tab's bar menu that the page on screen belongs to: an
+    // item holding more than one page is what earns a side nav below.
+    final item = backOfficeItemsFor(
+      strings,
+      tab,
+      tabPanes,
+    ).where((i) => i.holds.contains(showing)).firstOrNull;
 
     // …and when it is absent because the platform authors it, the screen says
     // so. Keyed on `_pane`, the pane ASKED for, so it goes the moment anything
@@ -1443,21 +1445,14 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
               ),
               onClose: _exit,
             ),
-            // Tabs again (BO-1, plan 19 §1.1). Until then there were none:
-            // the window's bar named every area and every pane, and a strip of
-            // the current area's neighbours was the same navigation twice. BO-1
-            // shrank the bar to one Back office menu to make room for this; the
-            // owner put the bar's menu per area back on 14 Sep 2026 and kept
-            // the strip too, because it is always on screen, which a bar menu
-            // closed by default is not. Both read `backOfficeTabsFor`.
-            BackOfficeTabStrip(
-              tabs: [for (final (t, _) in tabs) t],
-              selected: tab,
-              onSelect: (t) =>
-                  _openTab(t, tabs.firstWhere((e) => e.$1 == t).$2),
-            ),
-            if (items.length > 1)
-              _SubNav(items: items, selected: item, onSelect: _open),
+            // No tabs and no sub-nav under the header: the owner took both
+            // away on 15 Sep 2026 ("no need for this, use same design only on
+            // the top menu"). BO-1 had put the strip here and the owner's map
+            // kept it beside the bar's menus, for being always on screen,
+            // which a closed menu is not — but it was the bar's own list drawn
+            // a second time, and the header's page name says where somebody
+            // is. The window's bar is the way between pages now, and
+            // `app.dart` keeps it up for as long as Admin Mode lasts.
             if (ref.watch(schemaUpgradeFailureProvider) case final failure?)
               _SchemaNotice(text: strings.schemaUpgradeFailed(failure)),
             if (backupNotice != null)
@@ -1477,7 +1472,10 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
               ),
             Expanded(
               // Settings' side nav, for the one item that holds more than a
-              // page: Orders & invoices settings.
+              // page: Orders & invoices settings. The page's own navigation,
+              // not the back office's, so it outlived the strip: the bar has
+              // one line for the five, and without this four of them would be
+              // reachable by nothing at all.
               child: showing != null && item != null && item.holds.length > 1
                   ? Row(
                       children: [
@@ -1601,7 +1599,7 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
     // Settings › General (BO-8): the company form, and under it this
     // terminal's appearance and the backup summary. The card's way to System
     // › Backup is offered only to somebody who has that pane — a link to a
-    // pane the strip hides would be a door to the landing.
+    // pane the bar hides would be a door to the landing.
     ManagementPane.receipt => ManagementReceiptPane(
       admin: admin,
       sections: [
@@ -1653,8 +1651,9 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
 class _Header extends StatelessWidget {
   const _Header({required this.title, required this.onClose});
 
-  /// Which page this is, by the pane's name — the strip says which tab, and
-  /// somebody arriving from the bar needs the page confirmed, not the tab.
+  /// Which page this is, by the pane's name. With no strip under it, this is
+  /// the one thing on screen saying where somebody is — and somebody arriving
+  /// from the bar needs the page confirmed, not the menu they chose it from.
   final String title;
   final VoidCallback onClose;
 
@@ -1671,8 +1670,8 @@ class _Header extends StatelessWidget {
         Expanded(
           child: Text(
             title,
-            // The page's bare name, so the same word also sits in the
-            // sub-nav and the bar: tests find the header by this.
+            // The page's bare name, so the same word also sits in the bar:
+            // tests find the header by this.
             key: const Key('back-office-title'),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
@@ -1691,169 +1690,18 @@ class _Header extends StatelessWidget {
   );
 }
 
-/// The back office's tabs, across the top.
-///
-/// **Every tab at its own width, and never a scroll.** A strip you have to
-/// scroll hides half the product (plan 19 §1.2), so this is a plain [Row]: at
-/// [PosSize.wideShellMin] all nine words fit in both languages, and
-/// `back_office_shell_test.dart` measures that with all nine present — not
-/// only the six that have panes today — so the slice that adds the ninth
-/// cannot be the one that finds out.
-///
-/// Selection is the accent underline and nothing else: no tint, no radius, no
-/// hover (`07-design-system.md` §1). Public so that test can draw the strip
-/// with tabs no fixture reaches yet.
-class BackOfficeTabStrip extends StatelessWidget {
-  const BackOfficeTabStrip({
-    required this.tabs,
-    required this.selected,
-    required this.onSelect,
-    super.key,
-  });
-
-  final List<BackOfficeTab> tabs;
-  final BackOfficeTab selected;
-  final ValueChanged<BackOfficeTab> onSelect;
-
-  @override
-  Widget build(BuildContext context) {
-    final pos = context.pos;
-    final strings = context.strings;
-    return Container(
-      key: const Key('back-office-tabs'),
-      height: 48,
-      padding: const EdgeInsets.symmetric(horizontal: PosSpace.sm),
-      decoration: BoxDecoration(
-        color: pos.surface,
-        border: Border(bottom: pos.resting),
-      ),
-      child: Row(
-        children: [
-          for (final tab in tabs)
-            GestureDetector(
-              key: Key('back-office-tab-${tab.name}'),
-              behavior: HitTestBehavior.opaque,
-              onTap: () => onSelect(tab),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: PosSpace.md),
-                decoration: BoxDecoration(
-                  border: Border(
-                    bottom: tab == selected
-                        ? pos.accentBorder
-                        : const BorderSide(
-                            color: Colors.transparent,
-                            width: 2,
-                          ),
-                  ),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      backOfficeTabIcon(tab),
-                      size: 18,
-                      color: tab == selected ? pos.ink : pos.muted,
-                    ),
-                    const SizedBox(width: PosSpace.sm),
-                    Text(
-                      backOfficeTabName(strings, tab),
-                      maxLines: 1,
-                      style: PosText.ui(
-                        size: 14,
-                        weight: tab == selected
-                            ? FontWeight.w700
-                            : FontWeight.w500,
-                        color: tab == selected ? pos.ink : pos.body,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-/// The second row, for a tab with two or more items: the owner's map's words
-/// for that tab, which its bar menu lists too ([backOfficeItemsFor]).
-///
-/// Text only and quieter than the strip above it, with the same kind of
-/// underline in ink rather than accent: two accent underlines stacked read as
-/// two equal choices, and the upper one is the bigger decision.
-///
-/// Keyed by the pane an item opens, so a test or a tap names the page it
-/// lands on — Settings' Orders & invoices settings is `receipt`, its first.
-class _SubNav extends StatelessWidget {
-  const _SubNav({
-    required this.items,
-    required this.selected,
-    required this.onSelect,
-  });
-
-  final List<BackOfficeItem> items;
-  final BackOfficeItem? selected;
-  final ValueChanged<ManagementPane> onSelect;
-
-  @override
-  Widget build(BuildContext context) {
-    final pos = context.pos;
-    return Container(
-      key: const Key('back-office-subnav'),
-      height: PosSize.filterChip,
-      padding: const EdgeInsets.symmetric(horizontal: PosSpace.sm),
-      decoration: BoxDecoration(
-        color: pos.surface,
-        border: Border(bottom: pos.hairline),
-      ),
-      child: Row(
-        children: [
-          for (final item in items)
-            GestureDetector(
-              key: Key('back-office-subnav-${item.opens.name}'),
-              behavior: HitTestBehavior.opaque,
-              onTap: () => onSelect(item.opens),
-              child: Container(
-                alignment: Alignment.center,
-                padding: const EdgeInsets.symmetric(horizontal: PosSpace.md),
-                decoration: BoxDecoration(
-                  border: Border(
-                    bottom: item.opens == selected?.opens
-                        ? pos.emphasis
-                        : const BorderSide(
-                            color: Colors.transparent,
-                            width: 2,
-                          ),
-                  ),
-                ),
-                child: Text(
-                  item.label,
-                  maxLines: 1,
-                  style: PosText.ui(
-                    size: 13,
-                    weight: item.opens == selected?.opens
-                        ? FontWeight.w700
-                        : FontWeight.w500,
-                    color: item.opens == selected?.opens ? pos.ink : pos.body,
-                  ),
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
 /// Settings' side nav, for Orders & invoices settings: its five panes, on the
 /// start side.
 ///
-/// A column rather than a third row: the sub-nav above already names
-/// Settings' items, and a row of five forms under it would be three stacked
-/// rows of words. At [PosSize.settingsNav] it leaves 868 px for a pane at the
-/// 1100 breakpoint. No headings since the owner's map: the sub-nav names the
-/// item, and five rows need no grouping.
+/// **The page's own navigation, not the back office's.** The bar gives the
+/// group one line, for the one place the owner's map names, so this is where
+/// its five are told apart — which is why it stayed when the strip and sub-nav
+/// went (15 Sep 2026). Five lines in the bar instead was the alternative, and
+/// would have made Settings' menu the one that no longer reads as the map.
+///
+/// A column, at [PosSize.settingsNav]: it leaves 868 px for a pane at the 1100
+/// breakpoint. No headings: the header names the page, and five rows need no
+/// grouping.
 ///
 /// `BorderDirectional` and `EdgeInsetsDirectional` throughout, so Arabic puts
 /// the nav on the right with its selection bar on the right edge — mirrored,
@@ -1925,7 +1773,7 @@ class _SettingsNav extends StatelessWidget {
   }
 }
 
-/// The bottom line of every tab: connection, branch, version, who is in.
+/// The bottom line of every page: connection, branch, version, who is in.
 ///
 /// **The till's own sources, not new ones** (plan 19 §1.3). The connection is
 /// the same pill the till's top bar draws from the same providers — a sync

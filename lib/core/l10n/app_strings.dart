@@ -1521,8 +1521,10 @@ sealed class AppStrings {
   /// The header inside Admin Mode: the page's own name, and nothing else.
   ///
   /// It was "XOrder POS › Admin › page" — the owner disliked it (15 Sep 2026):
-  /// the product is on the window, the tab strip and the Exit button already
-  /// say where you are, and "المسؤول" was a third word for the back office.
+  /// the product is on the window, the bar's menus and the Exit button
+  /// already say where you are, and "المسؤول" was a third word for the back
+  /// office. The tab strip that also said so went the same day, which leaves
+  /// this the one thing on the screen naming the page.
   String adminTitle(String pane);
   String get exitAdminMode;
   String get adminSignInTitle;
@@ -1615,7 +1617,7 @@ sealed class AppStrings {
   String get userExitHint;
 
   // Back office: the owner's map's items `pos/ia-screens` built, as the
-  // sub-nav, the header and the bar name them.
+  // header and the bar name them.
   String get paneInvoices;
   String get paneInvoicesBlurb;
   String get paneReturns;

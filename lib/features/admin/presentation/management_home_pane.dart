@@ -51,9 +51,9 @@ String formatDeltaBp(int bp) {
 ///
 /// **Takes callbacks, not panes.** Which shortcuts exist, and whether the
 /// terminal and backup cards lead anywhere, is the shell's decision, made from
-/// the same pane list the strip and the bar use (`homeQuickActionsFor`). A
-/// Home that worked its own list out would be the third list meant to agree
-/// with the other two, and the first to offer Menu on a cloud till.
+/// the same pane list the bar uses (`homeQuickActionsFor`). A Home that
+/// worked its own list out would be a second list meant to agree with it, and
+/// the first to offer Menu on a cloud till.
 ///
 /// **A desktop-only page.** The cloud's Home shows menu counts and a setup
 /// guide, not sales; an offline install has no other dashboard (plan 17 §2),

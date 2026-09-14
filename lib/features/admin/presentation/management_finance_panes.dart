@@ -21,11 +21,13 @@ import 'admin_messages.dart';
 /// Finance (BO-9, BO-10; plan 19 §2.4): money that moved, read-only, over
 /// ledgers that already exist.
 ///
-/// **Four panes, not one pane with tabs of its own.** The shell's sub-nav
-/// already draws a second row for a tab with more than one pane, and the
-/// table-driven shell test already holds every pane to `managementPanesFor`;
-/// tabs inside one pane (Purchasing's shape) would be a second navigation the
-/// shell knows nothing about, and a gate the shell test could not see.
+/// **Four panes, not one pane with tabs of its own.** The window's bar
+/// already lists a line per pane under المالية — the only navigation between
+/// pages since the owner took the strip and sub-nav away (15 Sep 2026) — and
+/// the table-driven shell test already holds every pane to
+/// `managementPanesFor`; tabs inside one pane (Purchasing's shape) would be a
+/// second navigation the shell knows nothing about, and a gate the shell test
+/// could not see.
 ///
 /// **What is not here, and why.** Net profit (no cost price), bank and
 /// e-wallet balances and settlements (no accounting model), rent and salaries

@@ -28,8 +28,8 @@ import '../support/fonts.dart';
 /// the panes are gone anyway; a test with nobody holding it would pass on the
 /// old capability gate and prove nothing.
 void main() {
-  // An offline owner's strip holds all ten of the map's words; measured in
-  // the bundled faces, not the test font's (see `loadPosFonts`).
+  // The bundled faces, not the test font's, so what fits here is what a till
+  // shows (see `loadPosFonts`).
   setUpAll(loadPosFonts);
 
   const owner = PosStaff(
@@ -562,11 +562,12 @@ void main() {
       );
 
       expect(find.byType(ManagementPurchasingPane), findsNothing);
-      // The tab they asked for, not a silent fall-back to another one.
+      // The tab they asked for, not a silent fall-back to another one: its
+      // word in the header, since there is no page of it to name.
       expect(find.byType(ManagementStaffPane), findsNothing);
       expect(
-        find.byKey(const Key('back-office-tab-purchasing')),
-        findsOneWidget,
+        tester.widget<Text>(find.byKey(const Key('back-office-title'))).data,
+        const EnStrings().tabPurchasing,
       );
       expect(
         find.byKey(const Key('management-platform-pointer')),

@@ -224,10 +224,10 @@ class XorderPosApp extends ConsumerWidget {
               //
               // **Somebody in Admin Mode is somebody signed in.** Admin Mode
               // is not the till, so it can be entered with nobody signed in
-              // there — and its menus hold every pane a gesture away, and the
-              // shortcuts the tabs do not, "New invoice" among them. Hiding
-              // the bar would take those away from exactly the person they are
-              // for.
+              // there — and since 15 Sep 2026 its menus are the only way
+              // between the back office's pages: the owner took away the
+              // on-screen strip that also was. Hiding the bar here would leave
+              // whoever is in Admin Mode on one page with nothing but Exit.
               //
               // Except while the till is not set up yet: the wizard has no
               // language step up front and relies on Settings' language
@@ -283,11 +283,15 @@ class XorderPosApp extends ConsumerWidget {
                     // twice, three times on the start screen counting this bar —
                     // and both are gone.
                     //
-                    // The strip's ten words, in its order, each listing that
-                    // tab's items as its sub-nav does. BO-1 had folded these
-                    // into one Back office menu, a line per tab; the owner
-                    // reversed that and drew one map for both. Home comes
-                    // first and holds the way out; under المشتريات, "new
+                    // The map's ten words, in its order, each listing that
+                    // tab's items. BO-1 had folded these into one Back office
+                    // menu, a line per tab; the owner reversed that, then on
+                    // 15 Sep 2026 took away the on-screen strip and sub-nav
+                    // that said the same — so these menus are the back
+                    // office's only navigation, and every page anybody holds
+                    // is a line here, bar the four behind Settings' side nav.
+                    // Home comes first and holds the landing and the way out;
+                    // under المشتريات, "new
                     // order", "enter an invoice" and "new supplier" still start
                     // one straight away; on a cloud till Inventory and
                     // Purchasing each hold one line saying where they went.
@@ -479,9 +483,9 @@ class XorderPosApp extends ConsumerWidget {
   /// The bar's back-office menus.
   ///
   /// Asks `managementBarFor` rather than listing panes, for the reason
-  /// `backOfficeTabsFor` exists beneath it: a menu offering Purchasing to
-  /// somebody the strip hides it from would take them to a screen that refuses
-  /// everything.
+  /// `backOfficeTabsFor` exists beneath it: the screen checks every request
+  /// against that rule, so a menu offering Purchasing to somebody it hides
+  /// Purchasing from would open on Home instead, and read as a broken menu.
   List<ManagementBarMenu> _managementMenus(
     WidgetRef ref,
     AppStrings strings,

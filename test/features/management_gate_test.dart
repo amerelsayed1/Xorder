@@ -31,8 +31,8 @@ import '../support/fonts.dart';
 /// screen that offers an action the data layer would reject, or worse, one that
 /// opens for somebody it should not.
 void main() {
-  // An offline owner's strip holds all ten of the map's words; measured in
-  // the bundled faces, not the test font's (see `loadPosFonts`).
+  // The bundled faces, not the test font's, so what fits here is what a till
+  // shows (see `loadPosFonts`).
   setUpAll(loadPosFonts);
 
   /// [offline] for the tests about Purchasing: the harness is a cloud till,
@@ -313,8 +313,8 @@ void main() {
 
   testWidgets('asked for nothing, it opens on Home', (tester) async {
     // Staff was the default while the back office was a list with Staff at
-    // the top. With tabs it sits in the last one, so the door lands where the
-    // strip starts: Home, which everybody past the door holds (BO-4).
+    // the top. Under the owner's map it sits in People, so the door lands
+    // where the bar starts: Home, which everybody past the door holds (BO-4).
     await open(tester, pane: null);
     await enter(tester, 'amer');
     expect(find.byType(ManagementHomePane), findsOneWidget);
@@ -329,8 +329,8 @@ void main() {
     await open(tester, pane: ManagementPane.activity);
     await enter(tester, 'amer');
 
-    // The pane itself, not its name: Activity's name is in System's sub-nav
-    // whichever of its panes is showing.
+    // The pane itself, not its name: a name can be on screen without its
+    // pane — the header's, a card's link to it.
     expect(find.byType(ManagementActivityPane), findsOneWidget);
     expect(find.text('Add somebody'), findsNothing);
   });
@@ -689,9 +689,9 @@ void main() {
     final container = await open(tester, offline: true);
     await enter(tester, 'amer');
 
-    // Asked of the rule rather than of the strip. What decides whether
-    // Purchasing is offered — in the window's bar, in the tabs, and to a deep
-    // link — is `backOfficeTabsFor`, so that is asked.
+    // Asked of the rule rather than of the bar. What decides whether
+    // Purchasing is offered — in the window's bar, to Home's shortcuts, and
+    // to a deep link — is `backOfficeTabsFor`, so that is asked.
     bool offersPurchasing() =>
         backOfficeTabsFor(
           admin: container.read(adminSessionProvider)!.staff,

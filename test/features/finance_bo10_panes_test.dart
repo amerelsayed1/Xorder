@@ -23,6 +23,7 @@ import 'package:xorder_pos/features/admin/presentation/management_finance_panes.
 import 'package:xorder_pos/features/admin/presentation/management_purchasing_pane.dart';
 import 'package:xorder_pos/features/admin/presentation/management_screen.dart';
 
+import '../support/back_office.dart';
 import '../support/fakes.dart';
 import '../support/fonts.dart';
 
@@ -746,6 +747,7 @@ void main() {
 
     testWidgets('a sale opens Sales; a supplier payment opens Purchasing on '
         'its payments', (tester) async {
+      final bar = BarRoute(ManagementPane.financeTransactions);
       tester.view
         ..physicalSize = const Size(1440, 1400)
         ..devicePixelRatio = 1.0;
@@ -769,11 +771,7 @@ void main() {
             ],
             supportedLocales: AppLocalizations.supportedLocales,
             theme: buildPosTheme(),
-            home: ManagementScreen(
-              onClose: () {},
-              onReconfigure: () {},
-              initialPane: ManagementPane.financeTransactions,
-            ),
+            home: bar.screen(),
           ),
         ),
       );
@@ -785,12 +783,8 @@ void main() {
       await tester.pumpAndSettle();
       expect(showing(), {ManagementPane.sales});
 
-      await tester.tap(find.byKey(const Key('back-office-tab-finance')));
-      await tester.pumpAndSettle();
-      await tester.tap(
-        find.byKey(const Key('back-office-subnav-financeTransactions')),
-      );
-      await tester.pumpAndSettle();
+      // Back to Transactions by the bar's المالية › الحركات.
+      await bar.open(tester, ManagementPane.financeTransactions);
       await tester.tap(
         find.byKey(const Key('finance-transaction-supplierPayment-11')),
       );
@@ -805,12 +799,11 @@ void main() {
         PurchasingTab.payments,
       );
 
-      // And the strip's Purchasing, chosen afterwards, opens where it always
-      // has — the row's choice of tab does not stick.
-      await tester.tap(find.byKey(const Key('back-office-tab-finance')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key('back-office-tab-purchasing')));
-      await tester.pumpAndSettle();
+      // And Purchasing asked for afterwards without a tab — a deep link, as
+      // the strip's word was before the owner took it away — opens where it
+      // always has: the row's choice of tab does not stick.
+      await bar.open(tester, ManagementPane.financeOverview);
+      await bar.open(tester, ManagementPane.purchasing);
       expect(
         tester
             .widget<ManagementPurchasingPane>(

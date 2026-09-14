@@ -11,8 +11,8 @@ import '../support/fonts.dart';
 
 /// Stock on hand: how much of each counted item is here, and its worth.
 void main() {
-  // An offline owner's strip holds all ten of the map's words; measured in
-  // the bundled faces, not the test font's (see `loadPosFonts`).
+  // The bundled faces, not the test font's, so what fits here is what a till
+  // shows (see `loadPosFonts`).
   setUpAll(loadPosFonts);
 
   Future<void> open(WidgetTester tester) async {

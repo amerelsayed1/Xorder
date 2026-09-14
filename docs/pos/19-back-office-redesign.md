@@ -160,6 +160,33 @@ It's out of scope.
 > the bar and the strip are measured at 1100 px with the bundled fonts, in
 > `settings_bar_test.dart` and `back_office_shell_test.dart`.
 
+> **The strip and the sub-nav removed by the owner, 15 Sep 2026** ("no need
+> for this, use same design only on the top menu"). The back office screen is
+> now the header (the page's name and Exit), the notices, the page and the
+> status bar. The window's bar is the only navigation between pages, so §1.2's
+> strip, secondary row and "all visible tabs fit" rule, and §1.4's argument
+> for keeping the strip, no longer apply. `BackOfficeTab`, `tabOf`,
+> `backOfficeTabsFor` and `backOfficeItemsFor` stay as the model the bar is
+> built from and deep links are checked against.
+>
+> * **In-page navigation stays.** Orders & invoices settings keeps its side
+>   nav of five (General, order types, tax, service charges, payment methods),
+>   because the bar has one line for the group. Purchasing keeps its own tabs.
+>   Links between panes keep working: Home's shortcuts and cards, Finance's
+>   rows, Returns' "Open the sale", Staff's and User's way to Roles, the menu
+>   editor's way to Extras, and the backup notice.
+> * **Home is the first line of the bar's الرئيسية menu**, above Exit Admin
+>   Mode. It is the only way back to the landing, since no strip starts with
+>   it.
+> * **The bar is up for as long as Admin Mode lasts**, including on a till
+>   with nobody signed in. It is still never on the start or lock screen, never
+>   at Admin Mode's door, and never signed out. The strip gave no keyboard
+>   access (no focus, no shortcuts), so nothing is lost there.
+> * The bar is still measured at 1100 px (`settings_bar_test.dart`). The
+>   strip's own width test is gone, replaced by one asserting there is no strip
+>   and no sub-nav, and every bar line is followed and laid out at 1100 px in
+>   `back_office_shell_test.dart`.
+
 ---
 
 ## 2. Mapping — every mockup element to a source

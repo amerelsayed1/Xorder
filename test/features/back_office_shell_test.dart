@@ -27,6 +27,7 @@ import 'package:xorder_pos/features/admin/presentation/management_screen.dart';
 import 'package:xorder_pos/features/history/presentation/order_history_screen.dart';
 import 'package:xorder_pos/features/history/presentation/refund_detail_pane.dart';
 
+import '../support/back_office.dart';
 import '../support/fakes.dart';
 import '../support/fonts.dart';
 
@@ -98,7 +99,7 @@ const _fixtures = <String, PosStaff>{
 /// BO-9.
 const _later = <BackOfficeTab>[];
 
-/// Finance's panes, in the order its sub-nav shows them: Overview and Revenue,
+/// Finance's panes, in the order its bar menu lists them: Overview and Revenue,
 /// then the owner's map's الخزينة، المصروفات، التسويات، طرق الدفع، الضرائب, in
 /// its order, then Bills due and Transactions (BO-9, BO-10, `pos/ia-screens`).
 const _finance = [
@@ -113,7 +114,7 @@ const _finance = [
   ManagementPane.financeTransactions,
 ];
 
-/// Reports' panes, in the order its sub-nav shows them: Business summary and
+/// Reports' panes, in the order its bar menu lists them: Business summary and
 /// the owner's map's five breakdowns.
 const _reports = [
   ManagementPane.reports,
@@ -166,8 +167,10 @@ Set<ManagementPane> _showing(WidgetTester tester) => {
     ),
 };
 
-/// The back office through its door, in [language], at [width].
-Future<ProviderContainer> _open(
+/// The back office through its door, in [language], at [width] — and the
+/// route the bar would move it along, since that is the only way between its
+/// pages.
+Future<(ProviderContainer, BarRoute)> _open(
   WidgetTester tester, {
   ManagementPane? pane,
   bool offline = false,
@@ -193,6 +196,7 @@ Future<ProviderContainer> _open(
   );
   addTearDown(container.dispose);
 
+  final bar = BarRoute(pane);
   await tester.pumpWidget(
     UncontrolledProviderScope(
       container: container,
@@ -206,40 +210,49 @@ Future<ProviderContainer> _open(
         ],
         supportedLocales: AppLocalizations.supportedLocales,
         theme: buildPosTheme(),
-        home: ManagementScreen(
-          onClose: onClose ?? () {},
-          onReconfigure: () {},
-          initialPane: pane,
-        ),
+        home: bar.screen(onClose: onClose),
       ),
     ),
   );
   await tester.pumpAndSettle();
   await enterAdminMode(tester, username: username, pin: pin);
-  return container;
+  return (container, bar);
 }
 
-/// Every tab in the strip, and every row of every sub-nav and side nav under
-/// it — what a person can reach by pointing, collected as they reach it.
-Future<Set<ManagementPane>> _walk(WidgetTester tester) async {
-  final seen = <ManagementPane>{..._showing(tester)};
-  Future<void> tap(Finder target) async {
-    await tester.tap(target);
-    await tester.pumpAndSettle();
-    seen.addAll(_showing(tester));
-  }
+/// The bar's menus as whoever is in Admin Mode has them, on this till.
+List<ManagementBarMenu> _barOf(ProviderContainer container) =>
+    managementBarFor(
+      const EnStrings(),
+      admin: container.read(adminSessionProvider)!.staff,
+      authorsItsOwnCatalogue:
+          container.read(catalogAdminRepositoryProvider) != null,
+    );
 
-  for (final tab in BackOfficeTab.values) {
-    final word = find.byKey(Key('back-office-tab-${tab.name}'));
-    if (word.evaluate().isEmpty) continue;
-    await tap(word);
-    for (final pane in ManagementPane.values) {
-      for (final row in [
-        'back-office-subnav-${pane.name}',
-        'back-office-settings-${pane.name}',
-      ]) {
-        if (find.byKey(Key(row)).evaluate().isNotEmpty) {
-          await tap(find.byKey(Key(row)));
+/// Every line of the window's bar, followed as the bar follows it, and every
+/// row of Settings' side nav under the page it lands on — what a person can
+/// reach by pointing, collected as they reach it.
+///
+/// A line that starts something new — Purchasing's "New order" and its kin —
+/// is passed over: it opens the same pane as the list line beside it, with a
+/// form over it the walk would then have to close.
+Future<Set<ManagementPane>> _walk(
+  WidgetTester tester,
+  ProviderContainer container,
+  BarRoute bar,
+) async {
+  final seen = <ManagementPane>{..._showing(tester)};
+  for (final menu in _barOf(container)) {
+    for (final line in menu.lines) {
+      final to = line.open();
+      if (to.create) continue;
+      await bar.go(tester, to);
+      seen.addAll(_showing(tester));
+      for (final pane in ManagementPane.values) {
+        final row = find.byKey(Key('back-office-settings-${pane.name}'));
+        if (row.evaluate().isNotEmpty) {
+          await tester.tap(row);
+          await tester.pumpAndSettle();
+          seen.addAll(_showing(tester));
         }
       }
     }
@@ -247,20 +260,25 @@ Future<Set<ManagementPane>> _walk(WidgetTester tester) async {
   return seen;
 }
 
-/// The back office's shell (BO-1): nine tabs, sub-nav, Settings' side nav, a
-/// status bar and a bar menu per tab — and not one pane more or less than
+/// The back office's shell: the owner's ten tabs as the window's bar draws
+/// them, Settings' side nav, a status bar — and not one pane more or less than
 /// before.
 ///
 /// **Re-hosting, so the claim is equality.** Every pane a person could open
-/// through the old flat bar they can open through the tabs, and nothing
-/// else; `managementPanesFor` is the rule that was there before this slice
+/// through the old flat bar they can open through the tabs' menus, and
+/// nothing else; `managementPanesFor` is the rule that was there before BO-1
 /// and is unchanged by it, so it is what the tabs are held to.
+///
+/// **No strip and no sub-nav since 15 Sep 2026** — the owner's words: "no
+/// need for this, use same design only on the top menu". So "reachable by
+/// pointing" means reachable through the bar's lines and Settings' side nav,
+/// and that is what [_walk] points at.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   // The bundled faces, not the test font. The test font draws every glyph a
-  // full em wide, which is a measurement of nothing: "all tabs fit at 1100 px"
-  // is a claim about IBM Plex Sans Arabic, in both of its scripts.
+  // full em wide, which is a measurement of nothing: "every page lays out at
+  // 1100 px" is a claim about IBM Plex Sans Arabic, in both of its scripts.
   setUpAll(loadPosFonts);
 
   group('the tabs reach exactly what the back office reached before', () {
@@ -405,8 +423,8 @@ void main() {
             reachable.contains(ManagementPane.staff),
           );
 
-          // The bar is the strip read one level deeper: a menu per tab, in
-          // the same order, and no line reaching what the tabs do not.
+          // The bar: a menu per tab, in the same order, and no line reaching
+          // what the tabs do not.
           final bar = managementBarFor(
             const EnStrings(),
             admin: admin,
@@ -435,11 +453,12 @@ void main() {
             }
           }
 
-          // …and the other way: every sub-nav item is a line of its menu,
-          // and the items hold every pane of the tab — Settings' side-nav
-          // panes through the item that holds them, Purchasing through its
-          // own lines. So the strip, the bar and `managementPanesFor` are one
-          // set, gates included.
+          // …and the other way: every item is a line of its menu, and the
+          // items hold every pane of the tab — Settings' side-nav panes
+          // through the item that holds them, Purchasing through its own
+          // lines. So the bar and `managementPanesFor` are one set, gates
+          // included — which, with no strip, is what makes every pane
+          // reachable at all.
           for (final (tab, own) in tabs) {
             if (own.isEmpty) continue;
             final items = backOfficeItemsFor(const EnStrings(), tab, own);
@@ -470,7 +489,7 @@ void main() {
       for (final offline in [true, false]) {
         final where = offline ? 'offline' : 'cloud';
         testWidgets('$name, $where', (tester) async {
-          final container = await _open(
+          final (container, bar) = await _open(
             tester,
             offline: offline,
             username: username,
@@ -479,23 +498,19 @@ void main() {
           final admin = container.read(adminSessionProvider)!.staff;
 
           expect(
-            await _walk(tester),
+            await _walk(tester, container, bar),
             managementPanesFor(
               admin: admin,
               authorsItsOwnCatalogue: offline,
             ).toSet(),
           );
+          final menus = [for (final menu in _barOf(container)) menu.tab];
           for (final tab in _later) {
-            expect(
-              find.byKey(Key('back-office-tab-${tab.name}')),
-              findsNothing,
-            );
+            expect(menus, isNot(contains(tab)), reason: tab.name);
           }
           expect(
-            find.byKey(const Key('back-office-tab-finance')),
-            Authorization.check(admin, PosCapability.reportsView).isAllowed
-                ? findsOneWidget
-                : findsNothing,
+            menus.contains(BackOfficeTab.finance),
+            Authorization.check(admin, PosCapability.reportsView).isAllowed,
           );
           expect(tester.takeException(), isNull);
         });
@@ -503,29 +518,27 @@ void main() {
     }
   });
 
-  testWidgets('Finance: nine panes under the sub-nav, in the map\'s '
-      'order', (tester) async {
-    await _open(tester, offline: true);
-    await tester.tap(find.byKey(const Key('back-office-tab-finance')));
-    await tester.pumpAndSettle();
+  testWidgets('Finance: nine lines of its bar menu, in the map\'s order, each '
+      'opening its own page', (tester) async {
+    final (container, bar) = await _open(tester, offline: true);
+    final finance = _barOf(
+      container,
+    ).firstWhere((menu) => menu.tab == BackOfficeTab.finance);
 
-    expect(_showing(tester), {ManagementPane.financeOverview});
-    final nav = [
-      for (final pane in _finance)
-        tester.getRect(find.byKey(Key('back-office-subnav-${pane.name}'))),
-    ];
-    for (var i = 1; i < nav.length; i++) {
-      expect(nav[i].left, greaterThan(nav[i - 1].left));
+    expect([for (final line in finance.lines) line.pane], _finance);
+    for (final line in finance.lines) {
+      await bar.go(tester, line.open());
+      expect(_showing(tester), {line.pane}, reason: line.label);
     }
-    await tester.tap(find.byKey(const Key('back-office-subnav-financeTaxes')));
-    await tester.pumpAndSettle();
-    expect(_showing(tester), {ManagementPane.financeTaxes});
     expect(tester.takeException(), isNull);
   });
 
   testWidgets('on a cloud till Finance has no Bills due, and a deep link to '
       'it lands on Home', (tester) async {
-    await _open(tester, pane: ManagementPane.financeBills);
+    final (container, bar) = await _open(
+      tester,
+      pane: ManagementPane.financeBills,
+    );
     expect(_showing(tester), {ManagementPane.home});
     // Not the platform pointer either: Finance is not a tab that points.
     expect(
@@ -533,20 +546,18 @@ void main() {
       findsNothing,
     );
 
-    await tester.tap(find.byKey(const Key('back-office-tab-finance')));
-    await tester.pumpAndSettle();
-    expect(
-      find.byKey(const Key('back-office-subnav-financeBills')),
-      findsNothing,
-    );
-    expect(
-      find.byKey(const Key('back-office-subnav-financeExpenses')),
-      findsOneWidget,
-    );
+    final finance = _barOf(
+      container,
+    ).firstWhere((menu) => menu.tab == BackOfficeTab.finance);
+    final lines = [for (final line in finance.lines) line.pane];
+    expect(lines, isNot(contains(ManagementPane.financeBills)));
+    expect(lines, contains(ManagementPane.financeExpenses));
+    await bar.open(tester, ManagementPane.financeExpenses);
+    expect(_showing(tester), {ManagementPane.financeExpenses});
   });
 
   testWidgets('Returns\' "Open the sale" lands on Orders, open on that sale '
-      '— a fresh list for each, and the plain one from the sub-nav', (
+      '— a fresh list for each, and the plain one from the bar', (
     tester,
   ) async {
     // Today, so both are in Returns' first window.
@@ -561,7 +572,7 @@ void main() {
       lineCount: 1,
       refundedByName: 'Sami Farid',
     );
-    await _open(
+    final (_, bar) = await _open(
       tester,
       pane: ManagementPane.returns,
       overrides: [
@@ -577,8 +588,7 @@ void main() {
     OrderHistoryScreen orders() =>
         tester.widget<OrderHistoryScreen>(find.byType(OrderHistoryScreen));
     Future<void> openSaleOf(String row) async {
-      await tester.tap(find.byKey(const Key('back-office-subnav-returns')));
-      await tester.pumpAndSettle();
+      await bar.open(tester, ManagementPane.returns);
       expect(_showing(tester), {ManagementPane.returns});
       await tester.tap(find.text(row));
       await tester.pumpAndSettle();
@@ -599,8 +609,7 @@ void main() {
     expect(orders().openSale, second);
     expect(orders().key, const ValueKey(second));
 
-    await tester.tap(find.byKey(const Key('back-office-subnav-sales')));
-    await tester.pumpAndSettle();
+    await bar.open(tester, ManagementPane.sales);
     expect(orders().openSale, isNull, reason: 'Orders, not the last sale');
     expect(tester.takeException(), isNull);
   });
@@ -608,7 +617,7 @@ void main() {
   testWidgets('Settings › User\'s Exit leaves the back office, as the '
       'header\'s does', (tester) async {
     var closed = 0;
-    final container = await _open(
+    final (container, _) = await _open(
       tester,
       pane: ManagementPane.user,
       onClose: () => closed++,
@@ -650,14 +659,14 @@ void main() {
 
   group("Home's shortcuts open what they name", () {
     testWidgets('offline: Product management and Employees', (tester) async {
-      await _open(tester, offline: true);
+      final (_, bar) = await _open(tester, offline: true);
 
       await tester.tap(find.byKey(const Key('home-action-products')));
       await tester.pumpAndSettle();
       expect(_showing(tester), {ManagementPane.menu});
 
-      await tester.tap(find.byKey(const Key('back-office-tab-home')));
-      await tester.pumpAndSettle();
+      // Back to Home by the bar's الرئيسية › الرئيسية, its first line.
+      await bar.open(tester, ManagementPane.home);
       await tester.tap(find.byKey(const Key('home-action-employees')));
       await tester.pumpAndSettle();
       expect(_showing(tester), {ManagementPane.staff});
@@ -676,31 +685,48 @@ void main() {
       await tester.tap(find.byKey(const Key('home-action-salesReports')));
       await tester.pumpAndSettle();
       expect(_showing(tester), {ManagementPane.reports});
-      expect(find.byKey(const Key('back-office-tab-reports')), findsOneWidget);
+      expect(
+        tester.widget<Text>(find.byKey(const Key('back-office-title'))).data,
+        const EnStrings().reportsSummary,
+      );
     });
 
-    testWidgets('and neither the shortcut nor the tab for somebody without '
+    testWidgets('and neither the shortcut nor the menu for somebody without '
         'reports.view', (tester) async {
-      await _open(tester, username: 'nour', pin: '2468');
+      final (container, _) = await _open(tester, username: 'nour', pin: '2468');
       expect(find.byKey(const Key('home-action-salesReports')), findsNothing);
-      expect(find.byKey(const Key('back-office-tab-reports')), findsNothing);
+      expect(
+        [for (final menu in _barOf(container)) menu.tab],
+        isNot(contains(BackOfficeTab.reports)),
+      );
     });
   });
 
   testWidgets('on a cloud till Menu is absent, and Inventory and Purchasing '
       'point at the platform', (tester) async {
-    await _open(tester);
+    final (container, bar) = await _open(tester);
+    final menus = _barOf(container);
 
-    expect(find.byKey(const Key('back-office-tab-menu')), findsNothing);
+    expect(
+      [for (final menu in menus) menu.tab],
+      isNot(contains(BackOfficeTab.menu)),
+    );
+    const s = EnStrings();
     for (final tab in [BackOfficeTab.inventory, BackOfficeTab.purchasing]) {
-      await tester.tap(find.byKey(Key('back-office-tab-${tab.name}')));
-      await tester.pumpAndSettle();
+      final line = menus.firstWhere((menu) => menu.tab == tab).lines.single;
+      expect(line.pane, isNull, reason: 'the pointer, not a pane');
+      await bar.go(tester, line.open());
       expect(
-        find.text(const EnStrings().purchasingComesFromPlatform),
+        find.text(s.purchasingComesFromPlatform),
         findsOneWidget,
         reason: tab.name,
       );
       expect(_showing(tester), isEmpty, reason: 'a sentence, not a pane');
+      // The tab's word in the header, since there is no page to name.
+      expect(
+        tester.widget<Text>(find.byKey(const Key('back-office-title'))).data,
+        backOfficeTabName(s, tab),
+      );
     }
   });
 
@@ -740,8 +766,8 @@ void main() {
 
     test('every tab\'s items, for the owner offline — all of the map but '
         'Reports\' breakdowns, and no placeholder for those', () {
-      // Read off the bar, which is the sub-nav's items with Purchasing's own
-      // tabs in place of its one: the map's words, in the map's order.
+      // Read off the bar: each tab's items, with Purchasing's own tabs in
+      // place of its one — the map's words, in the map's order.
       const ar = ArStrings();
       expect(
         {
@@ -860,9 +886,10 @@ void main() {
       expect(tabOf(ManagementPane.eta), BackOfficeTab.system);
     });
 
-    testWidgets('Orders & invoices settings has a side nav of its five; '
-        'the other five items have none', (tester) async {
-      await _open(tester, pane: ManagementPane.receipt);
+    testWidgets('Orders & invoices settings has a side nav of its five — '
+        'the page\'s own, since the bar has one line for them; the other '
+        'five items have none', (tester) async {
+      final (_, bar) = await _open(tester, pane: ManagementPane.receipt);
 
       final nav = find.byKey(const Key('back-office-settings-nav'));
       expect(tester.getSize(nav).width, PosSize.settingsNav);
@@ -879,116 +906,90 @@ void main() {
           reason: text,
         );
       }
-      // The owner's map's six, in its order.
-      const six = [
-        ManagementPane.receipt,
-        ManagementPane.printer,
-        ManagementPane.language,
-        ManagementPane.appearance,
-        ManagementPane.user,
-        ManagementPane.about,
-      ];
-      final at = [
-        for (final pane in six)
-          tester.getRect(find.byKey(Key('back-office-subnav-${pane.name}'))),
-      ];
-      for (var i = 1; i < at.length; i++) {
-        expect(at[i].left, greaterThan(at[i - 1].left), reason: six[i].name);
-      }
-
+      // The other five of Settings' items are a page each, so no side nav.
+      // Their order is the bar's, asserted with the map's words above.
       for (final pane in [
         ManagementPane.printer,
         ManagementPane.user,
         ManagementPane.about,
       ]) {
-        await tester.tap(find.byKey(Key('back-office-subnav-${pane.name}')));
-        await tester.pumpAndSettle();
+        await bar.open(tester, pane);
         expect(_showing(tester), {pane});
         expect(nav, findsNothing, reason: pane.name);
       }
-      await tester.tap(find.byKey(const Key('back-office-subnav-receipt')));
-      await tester.pumpAndSettle();
+      await bar.open(tester, ManagementPane.receipt);
 
       await tester.tap(find.byKey(const Key('back-office-settings-charges')));
       await tester.pumpAndSettle();
       expect(_showing(tester), {ManagementPane.charges});
 
-      await tester.tap(find.byKey(const Key('back-office-subnav-language')));
-      await tester.pumpAndSettle();
+      await bar.open(tester, ManagementPane.language);
       expect(_showing(tester), {ManagementPane.language});
       expect(nav, findsNothing, reason: 'one page, so no side nav');
     });
   });
 
+  // The owner, 15 Sep 2026: "no need for this, use same design only on the
+  // top menu". Replaces the test that measured the strip at 1100 px; the bar
+  // is measured there instead, in `settings_bar_test.dart`.
+  testWidgets('no tab strip and no sub-nav: the page under its name, and the '
+      'bar is the way round', (tester) async {
+    final (_, bar) = await _open(tester, offline: true);
+    const s = EnStrings();
+
+    List<String> strayKeys() => [
+      for (final element in find
+          .byWidgetPredicate((w) => w.key is ValueKey<String>)
+          .evaluate())
+        if ((element.widget.key! as ValueKey<String>).value case final key
+            when key == 'back-office-tabs' ||
+                key == 'back-office-subnav' ||
+                key.startsWith('back-office-tab-') ||
+                key.startsWith('back-office-subnav-'))
+          key,
+    ];
+
+    // One page of every tab with more than one — where the sub-nav was drawn
+    // — and Home, where the strip began, and General, which keeps its side
+    // nav.
+    for (final pane in [
+      ManagementPane.home,
+      ManagementPane.sales,
+      ManagementPane.reportsItems,
+      ManagementPane.categories,
+      ManagementPane.stock,
+      ManagementPane.purchasing,
+      ManagementPane.financeDrawers,
+      ManagementPane.roles,
+      ManagementPane.backup,
+      ManagementPane.receipt,
+      ManagementPane.language,
+    ]) {
+      await bar.open(tester, pane);
+      expect(_showing(tester), {pane});
+      expect(strayKeys(), isEmpty, reason: pane.name);
+      // The header, the page and the status bar, and nothing between.
+      expect(
+        tester.widget<Text>(find.byKey(const Key('back-office-title'))).data,
+        managementPaneLabel(s, pane).$1,
+        reason: pane.name,
+      );
+      expect(find.byKey(const Key('admin-exit')), findsOneWidget);
+      expect(find.byKey(const Key('back-office-status-bar')), findsOneWidget);
+      expect(
+        find.byKey(const Key('back-office-settings-nav')),
+        pane == ManagementPane.receipt ? findsOneWidget : findsNothing,
+        reason: pane.name,
+      );
+    }
+    expect(tester.takeException(), isNull);
+  });
+
   group('at 1100 px', () {
     for (final language in ['en', 'ar']) {
-      testWidgets('all ten tabs fit without scrolling, in $language', (
-        tester,
-      ) async {
-        // All ten, whoever holds them: the owner's map is the widest the
-        // strip gets, and People and المالية are the words it added.
-        tester.view
-          ..physicalSize = const Size(PosSize.wideShellMin, 800)
-          ..devicePixelRatio = 1.0;
-        addTearDown(tester.view.reset);
-
-        await tester.pumpWidget(
-          MaterialApp(
-            locale: Locale(language),
-            localizationsDelegates: const [
-              AppLocalizations(),
-              GlobalMaterialLocalizations.delegate,
-              GlobalWidgetsLocalizations.delegate,
-              GlobalCupertinoLocalizations.delegate,
-            ],
-            supportedLocales: AppLocalizations.supportedLocales,
-            theme: buildPosTheme(),
-            home: Scaffold(
-              body: Column(
-                children: [
-                  BackOfficeTabStrip(
-                    tabs: BackOfficeTab.values,
-                    // The widest state a word can be in: selected is bold.
-                    selected: BackOfficeTab.purchasing,
-                    onSelect: (_) {},
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-        await tester.pumpAndSettle();
-
-        // A Row that runs out of room reports an overflow, and this is where
-        // that report would surface.
-        expect(tester.takeException(), isNull);
-        final rects = [
-          for (final tab in BackOfficeTab.values)
-            tester.getRect(find.byKey(Key('back-office-tab-${tab.name}'))),
-        ];
-        for (final (i, rect) in rects.indexed) {
-          final name = BackOfficeTab.values[i].name;
-          expect(rect.left, greaterThanOrEqualTo(0), reason: name);
-          expect(
-            rect.right,
-            lessThanOrEqualTo(PosSize.wideShellMin),
-            reason: name,
-          );
-        }
-        // Home at the start edge: the right, in Arabic.
-        final home = rects.first;
-        final settings = rects.last;
-        expect(
-          language == 'ar'
-              ? home.left > settings.left
-              : home.left < settings.left,
-          isTrue,
-        );
-      });
-
-      testWidgets('the back office itself, in $language: tabs, side nav and '
-          'direction', (tester) async {
-        await _open(
+      testWidgets('every page the bar reaches lays out, in $language, and '
+          'the side nav is on the start side', (tester) async {
+        final (container, bar) = await _open(
           tester,
           offline: true,
           language: language,
@@ -996,70 +997,20 @@ void main() {
         );
         expect(tester.takeException(), isNull);
 
-        final admin = _owner;
-        for (final (tab, _) in backOfficeTabsFor(
-          admin: admin,
-          authorsItsOwnCatalogue: true,
-        )) {
-          final rect = tester.getRect(
-            find.byKey(Key('back-office-tab-${tab.name}')),
-          );
-          expect(rect.left, greaterThanOrEqualTo(0), reason: tab.name);
-          expect(
-            rect.right,
-            lessThanOrEqualTo(PosSize.wideShellMin),
-            reason: tab.name,
-          );
-        }
-
-        // Every tab's sub-nav fits, as an offline owner has it — the most
-        // items anybody gets: Finance's nine with Bills due (BO-10) and
-        // Settlements the widest, then Settings' six. Measured tab by tab
-        // rather than Finance alone, because items make the sub-nav longer
-        // and any tab can be the one that stops fitting.
-        for (final (tab, own) in backOfficeTabsFor(
-          admin: admin,
-          authorsItsOwnCatalogue: true,
-        )) {
-          await tester.tap(find.byKey(Key('back-office-tab-${tab.name}')));
-          await tester.pumpAndSettle();
-          expect(tester.takeException(), isNull, reason: tab.name);
-          final items = backOfficeItemsFor(const EnStrings(), tab, own);
-          if (items.length < 2) continue;
-          for (final item in items) {
-            final rect = tester.getRect(
-              find.byKey(Key('back-office-subnav-${item.opens.name}')),
-            );
-            final where = '${tab.name} › ${item.opens.name}';
-            expect(rect.left, greaterThanOrEqualTo(0), reason: where);
-            expect(
-              rect.right,
-              lessThanOrEqualTo(PosSize.wideShellMin),
-              reason: where,
-            );
+        // Every line, as an offline owner has them — the most pages anybody
+        // gets — with no header, notice or page overflowing. Lines that start
+        // something new are the list beside them with a form on top.
+        for (final menu in _barOf(container)) {
+          for (final line in menu.lines) {
+            final to = line.open();
+            if (to.create) continue;
+            await bar.go(tester, to);
+            expect(_showing(tester), {line.pane}, reason: line.label);
+            expect(tester.takeException(), isNull, reason: line.label);
           }
         }
 
-        // Reports' six words too, each landing on its own page.
-        await tester.tap(find.byKey(const Key('back-office-tab-reports')));
-        await tester.pumpAndSettle();
-        for (final pane in _reports) {
-          final item = find.byKey(Key('back-office-subnav-${pane.name}'));
-          final rect = tester.getRect(item);
-          expect(rect.left, greaterThanOrEqualTo(0), reason: pane.name);
-          expect(
-            rect.right,
-            lessThanOrEqualTo(PosSize.wideShellMin),
-            reason: pane.name,
-          );
-          await tester.tap(item);
-          await tester.pumpAndSettle();
-          expect(_showing(tester), {pane});
-          expect(tester.takeException(), isNull, reason: pane.name);
-        }
-
-        await tester.tap(find.byKey(const Key('back-office-tab-settings')));
-        await tester.pumpAndSettle();
+        await bar.open(tester, ManagementPane.receipt);
         expect(tester.takeException(), isNull);
 
         // The side nav on the start side — the right, in Arabic.
@@ -1079,7 +1030,7 @@ void main() {
   group('the status bar', () {
     testWidgets('an offline-style till: the branch server, the branch, the '
         'version and who is in', (tester) async {
-      final container = await _open(tester);
+      final (container, _) = await _open(tester);
       container
           .read(terminalProfileProvider.notifier)
           .apply(const TerminalProfile(branchName: 'Maadi'));

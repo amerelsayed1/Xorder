@@ -17,8 +17,8 @@
 /// the drill-down's own WHERE. Nothing here adds up money but the Items
 /// total, which is the rows' sum and is labelled as the thing it is.
 ///
-/// **One pane per item**, so the strip, the sub-nav and the bar reach each by
-/// its own `ManagementPane`, and the header names the page on screen.
+/// **One pane per item**, so the bar reaches each by its own `ManagementPane`,
+/// and the header names the page on screen.
 library;
 
 import 'package:flutter/material.dart';

@@ -238,6 +238,72 @@ void main() {
     expect(find.byType(MenuBar), findsNothing);
   }, variant: desktop);
 
+  testWidgets('Admin Mode with nobody signed in at the till still has the '
+      'bar, and the back office\'s menus on it', (tester) async {
+    // Since 15 Sep 2026 the bar is the only way between the back office's
+    // pages: the owner took the on-screen strip away. So "no bar until
+    // somebody signs in" has to count Admin Mode as a sign-in, or a manager
+    // who entered it on a till nobody had opened would be left on Home with
+    // nothing but Exit.
+    final container = await pumpApp(tester, staff: null);
+    String path() => container
+        .read(routerProvider)
+        .routerDelegate
+        .currentConfiguration
+        .uri
+        .path;
+
+    // Where the chord would take them: `_openAdmin`'s own destination.
+    container
+        .read(routerProvider)
+        .go(
+          PosRoutes.management,
+          extra: const ManagementDestination(returnTo: PosRoutes.start),
+        );
+    await tester.pumpAndSettle();
+    expect(path(), PosRoutes.management);
+    expect(
+      find.byType(MenuBar),
+      findsNothing,
+      reason: 'the door is not the back office, and nobody is in yet',
+    );
+
+    await intoAdminMode(tester, container);
+    expect(container.read(signedInStaffProvider), isNull, reason: 'the till');
+    expect(barLabels(tester), [
+      'Home',
+      'Sales',
+      'Reports',
+      'Inventory',
+      'Purchasing',
+      'Finance',
+      'People',
+      'System',
+      'Settings',
+    ]);
+
+    // And it moves them: a line, then Home again by its first line.
+    await tester.tap(barButton('People'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(MenuItemButton, 'Roles & permissions'));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('back-office-pane-roles')),
+      findsOneWidget,
+    );
+    await tester.tap(barButton('Home'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(MenuItemButton, 'Home'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('back-office-pane-home')), findsOneWidget);
+
+    // Out of Admin Mode, back on the start screen: no bar again.
+    await tester.tap(find.byKey(const Key('admin-exit')));
+    await tester.pumpAndSettle();
+    expect(path(), PosRoutes.start);
+    expect(find.byType(MenuBar), findsNothing);
+  }, variant: desktop);
+
   testWidgets('but a till being set up keeps it, for the language switch', (
     tester,
   ) async {
@@ -314,7 +380,7 @@ void main() {
   }, variant: desktop);
 
   testWidgets('the back office is the owner\'s map: a menu per tab, in the '
-      'strip\'s order, listing its items', (tester) async {
+      'map\'s order, listing its items', (tester) async {
     // Offline, because Purchasing's own lines are what this reads. The cloud
     // bar's pointers are asserted below.
     final container = await pumpApp(tester, offline: true);
@@ -360,8 +426,8 @@ void main() {
       'Extras library',
       'Floor',
     ]);
-    // Each thing buying is, with the "new" that starts one: the shortcuts the
-    // strip cannot be.
+    // Each thing buying is, with the "new" that starts one: shortcuts no
+    // pane's own tabs can be.
     expect(await linesOf(tester, 'Purchasing'), [
       'Purchase orders',
       'New order',
@@ -751,7 +817,7 @@ void main() {
           );
         }
         // Home at the start edge — the right, in Arabic — and each menu
-        // after it further along, as the strip below runs.
+        // after it further along, in the map's order.
         for (var i = 1; i < rects.length; i++) {
           expect(
             language == 'ar'

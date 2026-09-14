@@ -21,6 +21,7 @@ import 'package:xorder_pos/features/admin/presentation/management_backup_pane.da
 import 'package:xorder_pos/features/admin/presentation/management_receipt_pane.dart';
 import 'package:xorder_pos/features/admin/presentation/management_screen.dart';
 
+import '../support/back_office.dart';
 import '../support/fakes.dart';
 import '../support/fonts.dart';
 
@@ -95,6 +96,7 @@ Future<ProviderContainer> _open(
   FakeBackupRepository? backups,
   ReceiptProfileRepository? profiles,
   List<Override> overrides = const [],
+  BarRoute? bar,
 }) async {
   tester.view
     ..physicalSize = size
@@ -132,11 +134,7 @@ Future<ProviderContainer> _open(
         ],
         supportedLocales: AppLocalizations.supportedLocales,
         theme: buildPosTheme(),
-        home: ManagementScreen(
-          onClose: () {},
-          onReconfigure: () {},
-          initialPane: ManagementPane.receipt,
-        ),
+        home: (bar ?? BarRoute(ManagementPane.receipt)).screen(),
       ),
     ),
   );
@@ -408,17 +406,17 @@ void main() {
       'one half of the card', (tester) async {
     // The owner's map (14 Sep 2026): General's card stays whole, and each
     // half has an item somebody can find by its name.
-    await _open(tester);
+    final bar = BarRoute(ManagementPane.receipt);
+    await _open(tester, bar: bar);
     expect(find.byKey(const Key('appearance-language-ar')), findsOneWidget);
 
-    await tester.tap(find.byKey(const Key('back-office-subnav-language')));
-    await tester.pumpAndSettle();
+    // Each by its line in the bar's الإعدادات.
+    await bar.open(tester, ManagementPane.language);
     expect(find.byType(ManagementAppearancePane), findsOneWidget);
     expect(find.byKey(const Key('appearance-language-ar')), findsOneWidget);
     expect(find.byKey(const Key('appearance-theme-dark')), findsNothing);
 
-    await tester.tap(find.byKey(const Key('back-office-subnav-appearance')));
-    await tester.pumpAndSettle();
+    await bar.open(tester, ManagementPane.appearance);
     expect(find.byType(ManagementAppearancePane), findsOneWidget);
     expect(find.byKey(const Key('appearance-theme-dark')), findsOneWidget);
     expect(find.byKey(const Key('appearance-language-ar')), findsNothing);
