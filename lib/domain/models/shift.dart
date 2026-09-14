@@ -365,3 +365,211 @@ class ShiftClose {
 
   bool get balances => variance.minor == 0;
 }
+
+// ── People › Shifts and Finance › Settlements ──────────────────────────────
+
+/// What became of a shift, as the back office names it.
+///
+/// **Force-closed is a handover, because nothing else is recorded.**
+/// `pos_shifts` has no forced flag, and a forced *day* close leaves its
+/// shifts open rather than closing them. What the till does record is a drawer
+/// counted by somebody other than the person who opened it — which the
+/// repository allows only on a manager's approval for that shift. That is the
+/// close a manager wants picked out, so it is the one this names. Inventing a
+/// column for it would have needed migration 50 and a writer nothing calls.
+///
+/// An enum and a total switch for the words (`shiftStatusLabel`), so a fourth
+/// state cannot reach the list unlabelled.
+enum ShiftStatus { open, closed, forceClosed }
+
+/// Which shifts the Shifts and Settlements lists ask for.
+///
+/// [from] inclusive, [to] exclusive, both **business dates**, filed by the rule
+/// the sales list files a sale by — so "this week" is the same seven trading
+/// days on every tab. **An open shift is listed whatever the dates**: a drawer
+/// still out is today's question however long ago it was opened, and a range
+/// that hid last night's unclosed drawer would hide the one row that matters.
+///
+/// A family key, so it has value equality.
+class ShiftHistoryQuery {
+  ShiftHistoryQuery({
+    required DateTime from,
+    required DateTime to,
+    this.terminalId,
+    this.staffId,
+    this.statuses = const {},
+  }) : from = DateTime(from.year, from.month, from.day),
+       to = DateTime(to.year, to.month, to.day);
+
+  final DateTime from;
+  final DateTime to;
+
+  /// `pos_terminals.id` as text.
+  final String? terminalId;
+
+  /// Who opened the shift — the drawer's owner, not whoever counted it.
+  final int? staffId;
+
+  /// Empty means every state.
+  final Set<ShiftStatus> statuses;
+
+  @override
+  bool operator ==(Object other) =>
+      other is ShiftHistoryQuery &&
+      other.from == from &&
+      other.to == to &&
+      other.terminalId == terminalId &&
+      other.staffId == staffId &&
+      other.statuses.length == statuses.length &&
+      other.statuses.containsAll(statuses);
+
+  @override
+  int get hashCode => Object.hash(
+    from,
+    to,
+    terminalId,
+    staffId,
+    Object.hashAllUnordered(statuses),
+  );
+}
+
+/// One shift, its Z report, and its cash-up once there is one.
+class ShiftRecord {
+  const ShiftRecord({
+    required this.summary,
+    required this.terminalId,
+    this.terminalName,
+    this.closedById,
+    this.closedByName,
+    this.countedCash,
+    this.recordedExpected,
+    this.recordedVariance,
+    this.note,
+    this.approvedByName,
+  });
+
+  /// By `summarise` — the Z report's own rule, the one `close` stored its
+  /// expected figure from and Finance's drawers read.
+  final ShiftSummary summary;
+
+  final String terminalId;
+
+  /// Null for a till whose row is gone; the shift is still listed, by id.
+  final String? terminalName;
+
+  final int? closedById;
+  final String? closedByName;
+
+  /// `counted_cash_minor`, `expected_cash_minor` and `variance_minor` as the
+  /// cash-up stored them. Null while the shift is open.
+  final Money? countedCash;
+  final Money? recordedExpected;
+  final Money? recordedVariance;
+
+  /// `closing_note`.
+  final String? note;
+
+  /// The manager on the shift's `shift.closed` ledger row, when the count was
+  /// approved — the handover, or a cashier who could not close alone.
+  final String? approvedByName;
+
+  PosShift get shift => summary.shift;
+
+  ShiftStatus get status => switch (shift.closedAt) {
+    null => ShiftStatus.open,
+    // Compared by id, as `PosShift.openedBy` compares: two Ahmeds are two
+    // people. An owner read by an older build is unknown, and unknown is not
+    // somebody else.
+    _ when closedById != null &&
+        shift.openedById != null &&
+        closedById != shift.openedById =>
+      ShiftStatus.forceClosed,
+    _ => ShiftStatus.closed,
+  };
+
+  /// What the drawer should hold.
+  ///
+  /// **The stored figure once counted, the live one while open.** The stored
+  /// one is what the count was judged against, and it was computed by the same
+  /// `summarise` in the same transaction as the close. Recomputing it here
+  /// would be right on every shift where nothing moved since, and would
+  /// quietly rewrite the one where something did — which is the shift a
+  /// manager is investigating.
+  Money get expectedCash => recordedExpected ?? summary.expectedCash;
+
+  /// Counted less expected, as stored. Positive is over. Null while open.
+  Money? get overShort => recordedVariance;
+}
+
+/// The shifts a query found, and the tills and people that appear across its
+/// dates — for the filters, which must offer what the dates hold rather than
+/// what the current filter left.
+class ShiftHistory {
+  const ShiftHistory({
+    required this.shifts,
+    this.tills = const [],
+    this.staff = const [],
+    this.cut = false,
+  });
+
+  static const empty = ShiftHistory(shifts: []);
+
+  /// Each row is summarised by the Z report's rule, four statements a shift,
+  /// in one transaction — so a month of a busy branch is capped rather than
+  /// left to take as long as it takes. Newest kept; [cut] says so.
+  static const limit = 200;
+
+  /// Open first, then newest first.
+  final List<ShiftRecord> shifts;
+
+  /// `(terminal id, name)`. The name falls back to the id for a till whose row
+  /// is gone.
+  final List<(String, String)> tills;
+
+  /// `(staff id, name)` of whoever opened a shift in the dates.
+  final List<(int, String)> staff;
+
+  /// More shifts matched than [limit].
+  final bool cut;
+}
+
+/// The Settlements strip: the cash-ups among [ShiftRecord]s, summed.
+///
+/// **Made from the rows, not asked of the database separately**, so the strip
+/// is the table under it by construction — a second query could be read a
+/// moment later and include a drawer the table does not.
+class CashUpTotals {
+  const CashUpTotals({
+    required this.count,
+    required this.over,
+    required this.short,
+  });
+
+  factory CashUpTotals.of(Iterable<ShiftRecord> records) {
+    var count = 0;
+    var over = Money.zero;
+    var short = Money.zero;
+    for (final record in records) {
+      final variance = record.overShort;
+      if (variance == null) continue;
+      count++;
+      if (variance.isNegative) {
+        short += variance;
+      } else {
+        over += variance;
+      }
+    }
+    return CashUpTotals(count: count, over: over, short: short);
+  }
+
+  final int count;
+
+  /// Every drawer that held more than expected, summed. Zero or positive.
+  final Money over;
+
+  /// Every drawer that held less, summed — **negative**, as the variances
+  /// are, so it reads as money missing and draws in the danger colour.
+  final Money short;
+
+  Money get net => over + short;
+}

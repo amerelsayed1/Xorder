@@ -1275,6 +1275,37 @@ sealed class AppStrings {
   String get financePaidOut;
   String get financeExpected;
   String get financeDrawersNote;
+
+  // ── People › Shifts and Finance › Settlements ─────────────────────────────
+  String get shiftsBlurb;
+  String get settlementsBlurb;
+  String get shiftsAllTills;
+  String get shiftsAllCashiers;
+  String get shiftsAllStatuses;
+  String get shiftStatusOpen;
+  String get shiftStatusClosed;
+  String get shiftStatusForceClosed;
+  String get shiftsCashier;
+  String get shiftsOpenedClosed;
+  String get shiftsOverShort;
+  String get shiftsClosedAt;
+  String get settlementsCountedBy;
+  String get settlementsNoteApproval;
+  String settlementsApprovedBy(String name);
+  String get settlementsKpiCount;
+  String get settlementsKpiOver;
+  String get settlementsKpiShort;
+  String get settlementsKpiNet;
+  String get shiftsNone;
+  String get settlementsNone;
+  String get shiftsNeedReports;
+  String shiftsCut(int limit);
+  String shiftStillOpenTitle(String reference);
+  String shiftReportSubtitle(String till, String openedBy);
+  String shiftReportCountedBy(String name);
+  String shiftReportNote(String note);
+  String get shiftsVarianceHidden;
+  String get shiftsExpectedNote;
   String get financeAsOf;
   String get financeBucketOverdue;
   String get financeBucketToday;
@@ -5489,6 +5520,79 @@ final class EnStrings extends AppStrings {
       'float, plus cash taken, plus paid in, less paid out. Bank and wallet '
       'balances are not kept here.';
   @override
+  String get shiftsBlurb =>
+      'Every shift at this branch, open ones first. A row opens its Z report.';
+  @override
+  String get settlementsBlurb =>
+      'Each drawer as it was counted at the end of its shift, against what '
+      'the Z report expected it to hold. Nothing here changes a count.';
+  @override
+  String get shiftsAllTills => 'All tills';
+  @override
+  String get shiftsAllCashiers => 'All cashiers';
+  @override
+  String get shiftsAllStatuses => 'All statuses';
+  @override
+  String get shiftStatusOpen => 'Open';
+  @override
+  String get shiftStatusClosed => 'Closed';
+  @override
+  String get shiftStatusForceClosed => 'Force-closed';
+  @override
+  String get shiftsCashier => 'Cashier';
+  @override
+  String get shiftsOpenedClosed => 'Opened / closed';
+  @override
+  String get shiftsOverShort => 'Over / short';
+  @override
+  String get shiftsClosedAt => 'Closed';
+  @override
+  String get settlementsCountedBy => 'Counted by';
+  @override
+  String get settlementsNoteApproval => 'Note / approval';
+  @override
+  String settlementsApprovedBy(String name) => 'Approved by $name';
+  @override
+  String get settlementsKpiCount => 'Cash-ups';
+  @override
+  String get settlementsKpiOver => 'Total over';
+  @override
+  String get settlementsKpiShort => 'Total short';
+  @override
+  String get settlementsKpiNet => 'Net over / short';
+  @override
+  String get shiftsNone =>
+      'No shift was opened at this branch in these dates.';
+  @override
+  String get settlementsNone =>
+      'No drawer was counted at this branch in these dates.';
+  @override
+  String get shiftsNeedReports =>
+      'Shifts and cash-ups are shown to those who may view reports.';
+  @override
+  String shiftsCut(int limit) =>
+      'Showing the newest $limit. Narrow the dates or the filters to see the '
+      'rest.';
+  @override
+  String shiftStillOpenTitle(String reference) => '$reference — still open';
+  @override
+  String shiftReportSubtitle(String till, String openedBy) =>
+      '$till · opened by $openedBy';
+  @override
+  String shiftReportCountedBy(String name) => 'Counted by $name';
+  @override
+  String shiftReportNote(String note) => 'Note: $note';
+  @override
+  String get shiftsVarianceHidden =>
+      "Over and short are shown only to those who may see a drawer's "
+      'difference.';
+  @override
+  String get shiftsExpectedNote =>
+      "Expected is the Z report's figure: the float, plus cash taken, plus "
+      'paid in, less paid out. Once a drawer is counted, it is the figure the '
+      'count was judged against. Force-closed means somebody other than the '
+      "person who opened the drawer counted it, on a manager's approval.";
+  @override
   String get financeAsOf => 'As of business date';
   @override
   String get financeBucketOverdue => 'Overdue';
@@ -9615,6 +9719,78 @@ final class ArStrings extends AppStrings {
       'المتوقع هو الرقم الذي يُطابَق عليه الدرج في تقرير Z: رصيد البداية، '
       'مضافاً إليه المحصَّل نقداً والنقد الداخل، مطروحاً منه النقد الخارج. '
       'أرصدة البنوك والمحافظ الإلكترونية لا تُحفظ هنا.';
+  @override
+  String get shiftsBlurb =>
+      'كل ورديات هذا الفرع، والمفتوحة منها أولاً. اضغط على أي صف لعرض تقرير '
+      'Z الخاص بها.';
+  @override
+  String get settlementsBlurb =>
+      'جرد كل درج كما تم في نهاية ورديته، مقابل ما توقّع تقرير Z أن يحتويه. '
+      'لا شيء هنا يغيّر أي جرد.';
+  @override
+  String get shiftsAllTills => 'كل الأجهزة';
+  @override
+  String get shiftsAllCashiers => 'كل الكاشيرات';
+  @override
+  String get shiftsAllStatuses => 'كل الحالات';
+  @override
+  String get shiftStatusOpen => 'مفتوحة';
+  @override
+  String get shiftStatusClosed => 'مُقفلة';
+  @override
+  String get shiftStatusForceClosed => 'أُقفلت إجبارياً';
+  @override
+  String get shiftsCashier => 'الكاشير';
+  @override
+  String get shiftsOpenedClosed => 'الفتح / الإقفال';
+  @override
+  String get shiftsOverShort => 'زيادة / عجز';
+  @override
+  String get shiftsClosedAt => 'وقت الإقفال';
+  @override
+  String get settlementsCountedBy => 'جرده';
+  @override
+  String get settlementsNoteApproval => 'ملاحظة / موافقة';
+  @override
+  String settlementsApprovedBy(String name) => 'بموافقة $name';
+  @override
+  String get settlementsKpiCount => 'عمليات الجرد';
+  @override
+  String get settlementsKpiOver => 'إجمالي الزيادة';
+  @override
+  String get settlementsKpiShort => 'إجمالي العجز';
+  @override
+  String get settlementsKpiNet => 'صافي الزيادة / العجز';
+  @override
+  String get shiftsNone => 'لم تُفتح أي وردية في هذا الفرع خلال هذه التواريخ.';
+  @override
+  String get settlementsNone =>
+      'لم يُجرد أي درج في هذا الفرع خلال هذه التواريخ.';
+  @override
+  String get shiftsNeedReports =>
+      'تظهر الورديات وعمليات الجرد لمن لديه صلاحية عرض التقارير.';
+  @override
+  String shiftsCut(int limit) =>
+      'يُعرض أحدث $limit فقط. ضيّق التواريخ أو عوامل التصفية لرؤية الباقي.';
+  @override
+  String shiftStillOpenTitle(String reference) =>
+      '$reference — ما زالت مفتوحة';
+  @override
+  String shiftReportSubtitle(String till, String openedBy) =>
+      '$till · فتحها $openedBy';
+  @override
+  String shiftReportCountedBy(String name) => 'جرده $name';
+  @override
+  String shiftReportNote(String note) => 'ملاحظة: $note';
+  @override
+  String get shiftsVarianceHidden =>
+      'الزيادة والعجز يظهران فقط لمن يحق له رؤية فرق الدرج.';
+  @override
+  String get shiftsExpectedNote =>
+      'المتوقع هو رقم تقرير Z: رصيد البداية، مضافاً إليه المحصَّل نقداً '
+      'والنقد الداخل، مطروحاً منه النقد الخارج. بعد جرد الدرج يصبح هو الرقم '
+      'الذي حُكم على الجرد مقابله. «أُقفلت إجبارياً» تعني أن شخصاً غير من فتح '
+      'الدرج هو من جرده، بموافقة مدير.';
   @override
   String get financeAsOf => 'حتى يوم العمل';
   @override

@@ -464,7 +464,7 @@ class _CloseShiftDialogState extends ConsumerState<CloseShiftDialog> {
                 // live difference are hidden from anybody who may not see
                 // them, so the count is a count rather than a reconciliation
                 // to a number already on screen.
-                _ZReport(summary: summary, blind: _blind),
+                ZReportView(summary: summary, blind: _blind),
                 const SizedBox(height: PosSpace.lg),
                 MicroLabel(strings.countedInDrawer),
                 const SizedBox(height: PosSpace.sm),
@@ -557,7 +557,7 @@ class _CloseShiftDialogState extends ConsumerState<CloseShiftDialog> {
       // A cashier who counted blind still learns whether they were right —
       // from a supervisor, not from the screen — which is the whole reason
       // these are two capabilities rather than one.
-      child: _ZReport(
+      child: ZReportView(
         summary: closed.summary,
         counted: closed.countedCash,
         blind: !ref.read(canProvider(PosCapability.cashVarianceView)).isAllowed,
@@ -567,15 +567,30 @@ class _CloseShiftDialogState extends ConsumerState<CloseShiftDialog> {
 }
 
 /// The Z report, in the order somebody standing at a drawer reads it.
-class _ZReport extends StatelessWidget {
-  const _ZReport({
+///
+/// Public since People › Shifts reads a shift's report back in the back
+/// office: one widget, so the report a manager opens there is laid out as the
+/// cashier saw it at the drawer rather than as a second copy that drifts.
+class ZReportView extends StatelessWidget {
+  const ZReportView({
+    super.key,
     required this.summary,
     this.counted,
+    this.expected,
     this.blind = false,
   });
 
   final ShiftSummary summary;
   final Money? counted;
+
+  /// The expected figure the cash-up **stored**, for a shift already counted.
+  ///
+  /// Null at the drawer, where [summary] was read in the close's own
+  /// transaction and is that figure. Read back later, the rows under
+  /// [summary] may have moved; the count was judged against what was stored,
+  /// and a difference recomputed from today's rows would be a different
+  /// difference from the one on the list beside it.
+  final Money? expected;
 
   /// Hide the expected figure and the live difference (§25).
   ///
@@ -588,9 +603,8 @@ class _ZReport extends StatelessWidget {
   Widget build(BuildContext context) {
     final strings = context.strings;
     final palette = context.pos;
-    final variance = counted == null
-        ? null
-        : summary.varianceAgainst(counted!);
+    final expected = this.expected ?? summary.expectedCash;
+    final variance = counted == null ? null : counted! - expected;
 
     return Container(
       decoration: BoxDecoration(
@@ -671,7 +685,7 @@ class _ZReport extends StatelessWidget {
             label: blind
                 ? strings.zHiddenUntilCounted
                 : strings.zExpectedInDrawer,
-            value: summary.expectedCash,
+            value: expected,
             emphasis: true,
             masked: blind,
           ),
@@ -716,6 +730,84 @@ class _ZReport extends StatelessWidget {
       ],
     ),
   );
+}
+
+/// One shift's Z report, read back from the back office (People › Shifts).
+///
+/// The close dialog's report inside the close dialog's chrome, and nothing
+/// else: no count box and no button but Close, because nothing in the back
+/// office writes a shift. A drawer is counted at the drawer.
+class ShiftReportDialog extends StatelessWidget {
+  const ShiftReportDialog({super.key, required this.record, this.blind = false});
+
+  final ShiftRecord record;
+
+  /// Hide the expected figure and the difference — see [ZReportView.blind].
+  final bool blind;
+
+  static Future<void> show(
+    BuildContext context, {
+    required ShiftRecord record,
+    bool blind = false,
+  }) => showDialog<void>(
+    context: context,
+    barrierColor: context.pos.scrimHeavy,
+    builder: (_) => ShiftReportDialog(
+      key: const Key('shift-report'),
+      record: record,
+      blind: blind,
+    ),
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = context.strings;
+    final pos = context.pos;
+    final shift = record.shift;
+    Widget line(String text) => Padding(
+      padding: const EdgeInsets.only(top: PosSpace.sm),
+      child: Text(
+        text,
+        style: PosText.ui(size: 12.5, color: pos.body, height: 1.5),
+      ),
+    );
+
+    return _ShiftDialogShell(
+      title: shift.isOpen
+          ? strings.shiftStillOpenTitle(shift.reference)
+          : strings.shiftClosedTitle(shift.reference),
+      subtitle: strings.shiftReportSubtitle(
+        record.terminalName ?? record.terminalId,
+        shift.openedByName,
+      ),
+      busy: false,
+      onCancel: null,
+      action: PosButton(
+        label: strings.close,
+        height: 48,
+        border: Border.fromBorderSide(pos.resting),
+        onPressed: () => Navigator.of(context).pop(),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ZReportView(
+            summary: record.summary,
+            counted: record.countedCash,
+            expected: record.recordedExpected,
+            blind: blind,
+          ),
+          if (record.closedByName case final name?)
+            line(strings.shiftReportCountedBy(name)),
+          if (record.approvedByName case final name?)
+            line(strings.settlementsApprovedBy(name)),
+          if (record.note case final note? when note.trim().isNotEmpty)
+            line(strings.shiftReportNote(note)),
+        ],
+      ),
+    );
+  }
 }
 
 /// Shared chrome, so opening and closing a shift look like two halves of one

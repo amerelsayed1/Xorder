@@ -4,9 +4,11 @@ import '../../core/config/deployment.dart';
 import '../../core/money/money.dart';
 import '../../domain/models/business_day.dart';
 import '../../domain/models/permissions.dart';
+import '../../domain/repositories/admin_repositories.dart' show AuditAction;
 import '../../domain/repositories/repositories.dart';
 import '../../domain/services/authorization.dart';
 import 'pos_database.dart';
+import 'postgres_order_history_repository.dart';
 
 /// Shifts on the branch server.
 ///
@@ -161,6 +163,155 @@ class PostgresShiftRepository implements ShiftRepository {
     }
     return drawers;
   });
+
+  /// The shifts a range covers, as `occurred_at` so the sales list's own
+  /// business-date rule can file them — [PostgresOrderHistoryRepository
+  /// .businessDateRange] and `tradingDayJoin` read `pos_business_days` against
+  /// that column and no other. Aliasing it here is one line; a copy of the rule
+  /// written for `opened_at` would be the second definition of "this week"
+  /// that Finance and Sales then disagree by.
+  static const _shiftsAsDated =
+      '(SELECT *, opened_at AS occurred_at FROM pos_shifts) AS s';
+
+  /// Enum-keyed, so a fourth state fails to compile here rather than falling
+  /// through to "every shift". Each clause is [ShiftRecord.status]'s rule in
+  /// SQL — closed by the opener, or by somebody else on an approval.
+  static String _statusSql(ShiftStatus status) => switch (status) {
+    ShiftStatus.open => 's.closed_at IS NULL',
+    ShiftStatus.closed =>
+      '(s.closed_at IS NOT NULL AND s.closed_by = s.opened_by)',
+    ShiftStatus.forceClosed =>
+      '(s.closed_at IS NOT NULL AND s.closed_by <> s.opened_by)',
+  };
+
+  @override
+  Future<ShiftHistory> history(ShiftHistoryQuery query) =>
+      _db.runTx(_config, (tx) async {
+        final range = PostgresOrderHistoryRepository.businessDateRange(
+          from: query.from,
+          to: query.to,
+          alias: 's',
+        );
+        // An open shift whatever the dates — see [ShiftHistoryQuery].
+        final dated = [
+          's.restaurant_id = @restaurant',
+          's.branch_id = @branch',
+          '(s.closed_at IS NULL OR (${range.where.join(' AND ')}))',
+        ];
+        final parameters = <String, Object?>{
+          'restaurant': _restaurantId,
+          'branch': _branchId,
+          ...range.parameters,
+        };
+
+        // The filters' choices: every till and opener in the dates, before the
+        // filters narrow them. Offering only what the current filter left
+        // would make a chosen till the only till there is to choose.
+        final facets = await tx.execute(
+          Sql.named('''
+            SELECT DISTINCT s.terminal_id::text, term.name, s.opened_by, st.name
+              FROM $_shiftsAsDated
+              JOIN pos_staff st ON st.id = s.opened_by
+              LEFT JOIN pos_terminals term ON term.id = s.terminal_id
+              ${PostgresOrderHistoryRepository.tradingDayJoin('s')}
+             WHERE ${dated.join(' AND ')}
+          '''),
+          parameters: parameters,
+        );
+
+        final terminal = query.terminalId;
+        final staff = query.staffId;
+        final where = [
+          ...dated,
+          if (terminal != null) 's.terminal_id::text = @terminal',
+          if (staff != null) 's.opened_by = @staff',
+          if (query.statuses.isNotEmpty)
+            '(${[for (final st in ShiftStatus.values)
+                if (query.statuses.contains(st)) _statusSql(st)].join(' OR ')})',
+        ];
+
+        // The approval is read off the close's own ledger row, because that is
+        // where `CloseShiftDialog` puts it: `pos_shifts` has a column for the
+        // manager who allowed an *opening* and none for a close. Served by
+        // `pos_audit_events_entity_idx`, which is keyed exactly so.
+        final rows = await tx.execute(
+          Sql.named('''
+            SELECT s.id, s.opened_at, s.opening_float_minor, st.name,
+                   s.closed_at, s.opened_by,
+                   s.terminal_id::text, term.name, s.closed_by, closer.name,
+                   s.counted_cash_minor, s.expected_cash_minor,
+                   s.variance_minor, s.closing_note, approval.approved_by_name
+              FROM $_shiftsAsDated
+              JOIN pos_staff st ON st.id = s.opened_by
+              LEFT JOIN pos_staff closer ON closer.id = s.closed_by
+              LEFT JOIN pos_terminals term ON term.id = s.terminal_id
+              ${PostgresOrderHistoryRepository.tradingDayJoin('s')}
+              LEFT JOIN LATERAL (
+                SELECT a.approved_by_name
+                  FROM pos_audit_events a
+                 WHERE a.restaurant_id = s.restaurant_id
+                   AND a.entity_type = @entity
+                   AND a.entity_id = s.id::text
+                   AND a.action = @closed
+                   AND a.approved_by_name IS NOT NULL
+                 ORDER BY a.occurred_at DESC
+                 LIMIT 1
+              ) AS approval ON true
+             WHERE ${where.join(' AND ')}
+             ORDER BY (s.closed_at IS NULL) DESC, s.opened_at DESC, s.id DESC
+             LIMIT @limit
+          '''),
+          parameters: {
+            ...parameters,
+            'terminal': ?terminal,
+            'staff': ?staff,
+            'entity': AuditAction.entityShift,
+            'closed': AuditAction.shiftClosed,
+            // One over, to know there were more without counting them all.
+            'limit': ShiftHistory.limit + 1,
+          },
+        );
+
+        Money? money(Object? minor) => minor == null ? null : Money(minor as int);
+
+        // **Each row by `_summarise`**, as [openDrawers] does and for its
+        // reason: a grouped query over the range would be faster and would be
+        // the second definition of "expected" that the cash-up does not use.
+        final records = <ShiftRecord>[];
+        for (final row in rows.take(ShiftHistory.limit)) {
+          records.add(
+            ShiftRecord(
+              summary: await _summarise(tx, _shift(row)),
+              terminalId: row[6]! as String,
+              terminalName: row[7] as String?,
+              closedById: row[8] as int?,
+              closedByName: row[9] as String?,
+              countedCash: money(row[10]),
+              recordedExpected: money(row[11]),
+              recordedVariance: money(row[12]),
+              note: row[13] as String?,
+              approvedByName: row[14] as String?,
+            ),
+          );
+        }
+
+        final tills = <String, String>{};
+        final people = <int, String>{};
+        for (final row in facets) {
+          final id = row[0]! as String;
+          tills[id] = (row[1] as String?) ?? id;
+          people[row[2]! as int] = row[3]! as String;
+        }
+        int byName<T>((T, String) a, (T, String) b) => a.$2.compareTo(b.$2);
+        return ShiftHistory(
+          shifts: records,
+          tills: [for (final e in tills.entries) (e.key, e.value)]
+            ..sort(byName),
+          staff: [for (final e in people.entries) (e.key, e.value)]
+            ..sort(byName),
+          cut: rows.length > ShiftHistory.limit,
+        );
+      });
 
   @override
   Future<ShiftClose> close({

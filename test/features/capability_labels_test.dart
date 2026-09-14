@@ -9,6 +9,7 @@ import 'package:xorder_pos/domain/models/finance_report.dart';
 import 'package:xorder_pos/domain/models/permissions.dart';
 import 'package:xorder_pos/domain/models/purchase_order.dart';
 import 'package:xorder_pos/domain/models/sales_report.dart';
+import 'package:xorder_pos/domain/models/shift.dart' show ShiftStatus;
 import 'package:xorder_pos/domain/models/supplier_invoice.dart';
 import 'package:xorder_pos/domain/repositories/admin_repositories.dart';
 import 'package:xorder_pos/features/admin/application/reports_view.dart';
@@ -16,6 +17,7 @@ import 'package:xorder_pos/features/admin/application/users_overview.dart';
 import 'package:xorder_pos/features/admin/presentation/admin_messages.dart';
 import 'package:xorder_pos/features/admin/presentation/management_finance_panes.dart';
 import 'package:xorder_pos/features/admin/presentation/management_reports_pane.dart';
+import 'package:xorder_pos/features/admin/presentation/shift_history_bits.dart';
 
 /// Every key this build shows a person is a sentence, not a wire value.
 ///
@@ -206,6 +208,19 @@ void main() {
         for (final kind in RefundKind.values) {
           expect(refundKindLabel(strings, kind), isNot(kind.wire));
         }
+        expect(labels.toSet(), hasLength(labels.length), reason: '$labels');
+      });
+
+      test('every state a shift is listed in is named, and no two alike', () {
+        // People › Shifts and Finance › Settlements. Enum-keyed, so only an
+        // empty or a repeated word is left to catch — and "closed" reading
+        // the same as "force-closed" would hide the one close a manager is
+        // looking for.
+        final labels = [
+          for (final status in ShiftStatus.values)
+            shiftStatusLabel(strings, status).trim(),
+        ];
+        expect(labels, everyElement(isNotEmpty));
         expect(labels.toSet(), hasLength(labels.length), reason: '$labels');
       });
     });
