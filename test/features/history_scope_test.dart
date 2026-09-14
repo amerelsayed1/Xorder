@@ -134,6 +134,37 @@ void main() {
       expect(orders, isNotEmpty);
     });
 
+    test('a cashier\'s figures are their own sales\' (BO-3)', () async {
+      // The strip is a second road to the same rows, and the scope is on the
+      // road: a total of the branch over a list of one person's sales would
+      // tell the cashier what the list may not.
+      final container = containerFor(cashier);
+      final summary = await container.read(
+        orderHistorySummaryProvider(const OrderHistoryQuery()).future,
+      );
+      expect(summary.count, 1);
+      expect(summary.total.minor, 1000);
+    });
+
+    test('a supervisor\'s figures are the branch\'s', () async {
+      final container = containerFor(supervisor);
+      final summary = await container.read(
+        orderHistorySummaryProvider(const OrderHistoryQuery()).future,
+      );
+      expect(summary.count, 2);
+      expect(summary.total.minor, 2000);
+    });
+
+    test('an unattended till is told nothing, not zero of something', () async {
+      final container = containerFor(null);
+      expect(
+        await container.read(
+          orderHistorySummaryProvider(const OrderHistoryQuery()).future,
+        ),
+        OrderHistorySummary.empty,
+      );
+    });
+
     test('a supervisor\'s list holds everybody\'s', () async {
       final container = containerFor(supervisor);
       final orders = await container.read(

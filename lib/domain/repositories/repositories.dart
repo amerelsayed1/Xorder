@@ -418,8 +418,18 @@ abstract interface class OrdersRepository {
 /// built on. Keeping them apart means a screen that merely *looks* at history
 /// cannot be handed something that can settle a sale.
 abstract interface class OrderHistoryRepository {
-  /// Newest first, capped at [OrderHistoryQuery.limit].
+  /// One page: newest first, [OrderHistoryQuery.limit] rows, starting after
+  /// [OrderHistoryQuery.afterOrderId].
+  ///
+  /// Two sales on the same instant are ordered by id, so every row has
+  /// exactly one place in the list and a page boundary between them can
+  /// neither repeat nor skip either.
   Future<List<OrderRecord>> search(OrderHistoryQuery query);
+
+  /// The figures over every row [search] pages through for [query] — its
+  /// filter and nothing else: the cursor and the page size are ignored. See
+  /// [OrderHistorySummary] for what each figure counts.
+  Future<OrderHistorySummary> summarise(OrderHistoryQuery query);
 
   /// One order with its lines, payments and discounts.
   ///

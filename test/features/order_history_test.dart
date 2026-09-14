@@ -8,6 +8,7 @@ import 'package:xorder_pos/core/l10n/app_strings.dart';
 import 'package:xorder_pos/core/money/money.dart';
 import 'package:xorder_pos/core/ui/theme.dart';
 import 'package:xorder_pos/core/ui/tokens.dart';
+import 'package:xorder_pos/core/ui/widgets/pos_widgets.dart';
 import 'package:xorder_pos/data/fakes/fake_repositories.dart';
 import 'package:xorder_pos/domain/models/business_day.dart';
 import 'package:xorder_pos/domain/models/order_record.dart';
@@ -357,20 +358,281 @@ void main() {
       expect(find.text('—'), findsNWidgets(4));
     });
 
-    testWidgets('says so when the cap was hit', (tester) async {
-      // A short list and a truncated one look identical, and only one of them
-      // means "look further back".
+    // "Says so when the cap was hit" lived here. There is no cap since BO-3:
+    // the list pages, and the pager says how many there are in all — see
+    // the group below, which keeps its point (a short list and a cut one
+    // must not look alike).
+  });
+
+  group('the summary strip and the pager (BO-3)', () {
+    /// What a figure reads — the keyed widget's own text, or its text's.
+    String figure(WidgetTester tester, Key key) => tester
+        .widget<Text>(
+          find
+              .descendant(
+                of: find.byKey(key),
+                matching: find.byType(Text),
+                matchRoot: true,
+              )
+              .first,
+        )
+        .data!;
+
+    /// The invoices on screen, top to bottom.
+    List<String> listed(WidgetTester tester) => [
+      for (final text in tester.widgetList<Text>(
+        find.byWidgetPredicate(
+          (w) => w is Text && (w.data?.startsWith('INV-') ?? false),
+        ),
+      ))
+        text.data!,
+    ];
+
+    String name(int id) => 'INV-${id.toString().padLeft(3, '0')}';
+
+    testWidgets('the four figures are the listed rows\' own sums', (
+      tester,
+    ) async {
+      final repository = await pump(
+        tester,
+        orders: [
+          order(id: 1, invoice: 'PAID', occurredAt: at(9)),
+          order(
+            id: 2,
+            invoice: 'VOID',
+            occurredAt: at(10),
+            status: OrderStatus.voided,
+            total: 10000,
+            voidedBy: 'Sami Farid',
+          ),
+          order(
+            id: 3,
+            invoice: 'PART',
+            occurredAt: at(11),
+            total: 50000,
+            paid: 20000,
+          ),
+          order(
+            id: 4,
+            invoice: 'BACK',
+            occurredAt: at(12),
+            status: OrderStatus.partiallyRefunded,
+            total: 30000,
+            refunded: 10000,
+          ),
+          order(
+            id: 5,
+            invoice: 'GONE',
+            occurredAt: at(13),
+            status: OrderStatus.refunded,
+            total: 15000,
+            refunded: 15000,
+          ),
+        ],
+      );
+
+      // 268.00 + 500.00 + 300.00. The void and the full refund are struck
+      // through on the list, and a total that added them back would disagree
+      // with the rows under it.
+      expect(figure(tester, OrderHistoryScreen.summaryTotalKey), '1,068.00');
+      expect(figure(tester, OrderHistoryScreen.summaryCountKey), '5');
+      expect(find.text('Of which 2 voided or refunded'), findsOneWidget);
+      // Taken, before refunds: 268.00 + 200.00 + 300.00.
+      expect(figure(tester, OrderHistoryScreen.summaryPaidKey), '768.00');
+      // Only the part-paid sale owes. The void reads UNPAID too, and owes
+      // nothing to anybody.
+      expect(
+        figure(tester, OrderHistoryScreen.summaryOutstandingKey),
+        '300.00',
+      );
+      // Asked of the data layer with the list's own filter.
+      expect(repository.summaries.last, repository.queries.last.unpaged);
+    });
+
+    testWidgets('a cashier\'s figures are their own sales\', not the '
+        'branch\'s', (tester) async {
+      // Through the role (`_cashier`), as every fixture here.
+      final repository = await pump(
+        tester,
+        viewer: _cashier,
+        orders: [
+          order(
+            id: 1,
+            invoice: 'MINE',
+            occurredAt: at(9),
+            servedById: 4,
+            total: 10000,
+          ),
+          order(
+            id: 2,
+            invoice: 'THEIRS',
+            occurredAt: at(10),
+            servedById: 9,
+            total: 99900,
+          ),
+        ],
+      );
+
+      expect(figure(tester, OrderHistoryScreen.summaryTotalKey), '100.00');
+      expect(figure(tester, OrderHistoryScreen.summaryCountKey), '1');
+      expect(repository.summaries, isNotEmpty);
+      expect(
+        repository.summaries.map((q) => q.servedByStaffId),
+        everyElement(4),
+      );
+      // /orders is still the cashier's screen: its title and its way out.
+      expect(find.text('Orders'), findsOneWidget);
+      expect(find.text('Close'), findsOneWidget);
+    });
+
+    testWidgets('pages through every row exactly once, across a tie', (
+      tester,
+    ) async {
+      // Tall enough that a whole page is built, so what is on screen is the
+      // page and not the part of it the viewport reached.
+      tester.view.physicalSize = const Size(1440, 2600);
+      // Newest first: 45 sales after one o'clock, then fifteen on one
+      // instant at noon — the fiftieth row is in the middle of them — then
+      // sixty in the morning.
+      final repository = await pump(
+        tester,
+        orders: [
+          for (var i = 1; i <= 120; i++)
+            order(
+              id: i,
+              invoice: name(i),
+              occurredAt: i <= 45
+                  ? at(13).add(Duration(minutes: i))
+                  : i <= 60
+                  ? at(12)
+                  : at(8).add(Duration(minutes: i)),
+            ),
+        ],
+      );
+      final expected = [
+        for (var i = 45; i >= 1; i--) name(i),
+        // One instant, told apart by id — the ORDER BY's tie-break.
+        for (var i = 60; i >= 46; i--) name(i),
+        for (var i = 120; i >= 61; i--) name(i),
+      ];
+
+      final seen = [...listed(tester)];
+      expect(figure(tester, OrderHistoryScreen.pagerRangeKey), '1–50');
+      expect(figure(tester, OrderHistoryScreen.pagerTotalKey), '120');
+      expect(figure(tester, OrderHistoryScreen.pagerPageKey), '1 / 3');
+      expect(find.text('Today · 120 orders'), findsOneWidget);
+      final summaries = repository.summaries.length;
+
+      await tester.tap(find.byKey(OrderHistoryScreen.nextPageKey));
+      await tester.pumpAndSettle();
+      seen.addAll(listed(tester));
+      expect(figure(tester, OrderHistoryScreen.pagerRangeKey), '51–100');
+      expect(figure(tester, OrderHistoryScreen.pagerPageKey), '2 / 3');
+
+      await tester.tap(find.byKey(OrderHistoryScreen.nextPageKey));
+      await tester.pumpAndSettle();
+      seen.addAll(listed(tester));
+      expect(figure(tester, OrderHistoryScreen.pagerRangeKey), '101–120');
+      expect(
+        tester
+            .widget<PosButton>(find.byKey(OrderHistoryScreen.nextPageKey))
+            .onPressed,
+        isNull,
+      );
+
+      // Every row once, in list order: nothing repeated at a page boundary,
+      // nothing skipped in the tie across the first.
+      expect(seen, expected);
+      expect(
+        repository.summaries.length,
+        summaries,
+        reason: 'turning a page re-reads the rows, not the totals',
+      );
+
+      await tester.tap(find.byKey(OrderHistoryScreen.previousPageKey));
+      await tester.pumpAndSettle();
+      expect(listed(tester), expected.sublist(50, 100));
+    });
+
+    testWidgets('a new filter starts again at page one', (tester) async {
       await pump(
         tester,
         orders: [
-          for (var i = 0; i < 200; i++)
-            order(id: i, invoice: 'INV-$i', occurredAt: at(10)),
+          for (var i = 1; i <= 60; i++)
+            order(
+              id: i,
+              invoice: name(i),
+              occurredAt: at(8).add(Duration(minutes: i)),
+            ),
         ],
       );
-      expect(
-        find.textContaining('Showing the newest 200'),
-        findsOneWidget,
+      await tester.tap(find.byKey(OrderHistoryScreen.nextPageKey));
+      await tester.pumpAndSettle();
+      expect(figure(tester, OrderHistoryScreen.pagerRangeKey), '51–60');
+
+      await tester.tap(find.text('Last 7 days'));
+      await tester.pumpAndSettle();
+      expect(figure(tester, OrderHistoryScreen.pagerRangeKey), '1–50');
+      expect(figure(tester, OrderHistoryScreen.pagerPageKey), '1 / 2');
+    });
+
+    testWidgets('one page says how many, and offers nowhere to go', (
+      tester,
+    ) async {
+      await pump(
+        tester,
+        orders: [
+          order(id: 1, invoice: name(1), occurredAt: at(9)),
+          order(id: 2, invoice: name(2), occurredAt: at(10)),
+        ],
       );
+      expect(figure(tester, OrderHistoryScreen.pagerRangeKey), '1–2');
+      expect(figure(tester, OrderHistoryScreen.pagerTotalKey), '2');
+      expect(find.byKey(OrderHistoryScreen.nextPageKey), findsNothing);
+      expect(find.byKey(OrderHistoryScreen.previousPageKey), findsNothing);
+    });
+
+    testWidgets('in Arabic the words are Arabic and every figure reads left '
+        'to right', (tester) async {
+      await pump(
+        tester,
+        locale: 'ar',
+        orders: [
+          for (var i = 1; i <= 60; i++)
+            order(
+              id: i,
+              invoice: name(i),
+              occurredAt: at(8).add(Duration(minutes: i)),
+            ),
+        ],
+      );
+
+      expect(find.text('إجمالي المبيعات'), findsOneWidget);
+      expect(find.text('الفواتير'), findsOneWidget);
+      expect(find.text('المدفوع'), findsOneWidget);
+      expect(find.text('المتبقي'), findsOneWidget);
+      expect(find.text('عرض'), findsOneWidget);
+      expect(find.text('التالي'), findsOneWidget);
+      expect(find.text('السابق'), findsOneWidget);
+      expect(figure(tester, OrderHistoryScreen.pagerRangeKey), '1–50');
+      for (final key in [
+        OrderHistoryScreen.pagerRangeKey,
+        OrderHistoryScreen.pagerTotalKey,
+        OrderHistoryScreen.pagerPageKey,
+        OrderHistoryScreen.summaryCountKey,
+      ]) {
+        expect(tester.widget<Text>(find.byKey(key)).textDirection,
+            TextDirection.ltr);
+      }
+      // Read from the right: "عرض" before the range, the range before "من".
+      final words = tester.getCenter(find.text('عرض')).dx;
+      final range = tester.getCenter(
+        find.byKey(OrderHistoryScreen.pagerRangeKey),
+      ).dx;
+      final of = tester.getCenter(find.text('من')).dx;
+      expect(words, greaterThan(range));
+      expect(range, greaterThan(of));
+      expect(tester.takeException(), isNull);
     });
   });
 
@@ -551,10 +813,18 @@ void main() {
       expect(find.text('666.40'), findsOneWidget);
       expect(find.text('-66.64'), findsOneWidget);
       expect(find.text('59.98'), findsOneWidget);
-      // Twice: the list row's total and the pane's. They agree because both
-      // read the same written number.
+      // The list row's total and the pane's, which agree because both read
+      // the same written number — and the strip's twice more (BO-3), as the
+      // total and, this sale having taken nothing, as what is outstanding.
       expect(find.text('93.30'), findsOneWidget);
-      expect(find.text('753.04'), findsNWidgets(2));
+      expect(find.text('753.04'), findsNWidgets(4));
+      expect(
+        find.descendant(
+          of: find.byType(OrderDetailPane),
+          matching: find.text('753.04'),
+        ),
+        findsOneWidget,
+      );
     });
   });
 

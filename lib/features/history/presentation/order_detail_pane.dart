@@ -667,6 +667,9 @@ class _Detail extends ConsumerWidget {
     // row still reading PAID next to an order that has just been refunded is
     // the kind of stale that gets refunded twice.
     ref.invalidate(orderHistoryProvider);
+    // And the figures over it: a refund turns PAID into PART REFUNDED, and a
+    // full one takes the sale out of the total.
+    ref.invalidate(orderHistorySummaryProvider);
     posToast(context, context.strings.refundIssued(given.format(withCurrency: true)));
   }
 

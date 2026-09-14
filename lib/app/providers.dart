@@ -341,6 +341,29 @@ final orderHistoryProvider = FutureProvider.autoDispose
       return ref.watch(orderHistoryRepositoryProvider).search(scoped);
     });
 
+/// The strip over the list (BO-3): the figures for every page of
+/// [orderHistoryProvider]'s filter.
+///
+/// **The same scope, applied the same way.** A cashier's totals are their own
+/// sales' totals for the reason their list is their own list: this is a
+/// road to the same rows, and a figure that summed the branch over a list of
+/// one person's sales would say more than the list may.
+///
+/// Keyed by [OrderHistoryQuery.unpaged], so turning a page does not re-read
+/// the totals. Read apart from the page rather than in one snapshot with it:
+/// a sale committed between the two reads shows in the strip before the list
+/// is next read, and the price of one snapshot would be summing every sale in
+/// the window on every page turn.
+final orderHistorySummaryProvider = FutureProvider.autoDispose
+    .family<OrderHistorySummary, OrderHistoryQuery>((ref, query) {
+      final scoped = HistoryScope.scope(
+        query.unpaged,
+        ref.watch(actingStaffProvider),
+      );
+      if (scoped == null) return OrderHistorySummary.empty;
+      return ref.watch(orderHistoryRepositoryProvider).summarise(scoped);
+    });
+
 /// One order, opened from the list — or null when it is not the viewer's to
 /// open, which the pane already shows as "no longer there".
 ///

@@ -429,8 +429,17 @@ class OrderHistoryQuery {
     this.tenderTypeId,
     this.terminalId,
     this.search,
-    this.limit = 200,
+    this.afterOrderId,
+    this.limit = pageSize,
   });
+
+  /// Rows per page (BO-3).
+  ///
+  /// Fixed, with no picker, as on the cloud (`OrdersView.vue`). Fifty rather
+  /// than the two hundred this used to cap at: the cap was there because a
+  /// list with no pager had to hold everything it showed, and a page is only
+  /// what somebody reads before they narrow the filter or press Next.
+  static const pageSize = 50;
 
   /// Inclusive lower bound, as a **business date** — local midnight of the
   /// trading day. Null means "as far back as there is".
@@ -467,10 +476,31 @@ class OrderHistoryQuery {
   /// only at the start.
   final String? search;
 
-  /// A hard ceiling, always applied. Not a page size — a till that tried to
-  /// hold a year of orders in memory would fail slowly and confusingly, and
-  /// "narrow the dates" is a better answer than a spinner that never ends.
+  /// The page begins after this order: the id of the last row of the page
+  /// before. Null is the first page.
+  ///
+  /// **Keyset, not an offset.** `OFFSET 100` counts rows at the moment it is
+  /// asked, so a sale rung up while somebody reads page two pushes a row from
+  /// page two onto page three, where they see it again — and one voided off
+  /// the top hides one they never saw. A position named by a row cannot move.
+  ///
+  /// An id rather than an (instant, id) pair, and the repository looks the
+  /// instant up. A timestamp carried out to Dart and back is only as exact as
+  /// every conversion on the way; the row it came from is exact by definition.
+  ///
+  /// Narrows `search` only. `summarise` ignores it, and [limit], because a
+  /// total is over every page.
+  final int? afterOrderId;
+
+  /// Rows per page, always applied — a till that tried to hold a year of
+  /// orders in memory would fail slowly and confusingly.
   final int limit;
+
+  /// The same filter from its first page: what the summary is keyed by, so
+  /// turning a page is not a fresh read of the totals.
+  OrderHistoryQuery get unpaged => afterOrderId == null && limit == pageSize
+      ? this
+      : copyWith(clearAfter: true, limit: pageSize);
 
   bool get isFiltered =>
       statuses.isNotEmpty ||
@@ -494,6 +524,8 @@ class OrderHistoryQuery {
     String? terminalId,
     bool clearTerminal = false,
     String? search,
+    int? afterOrderId,
+    bool clearAfter = false,
     int? limit,
   }) => OrderHistoryQuery(
     from: clearFrom ? null : (from ?? this.from),
@@ -506,6 +538,7 @@ class OrderHistoryQuery {
     tenderTypeId: clearTenderType ? null : (tenderTypeId ?? this.tenderTypeId),
     terminalId: clearTerminal ? null : (terminalId ?? this.terminalId),
     search: search ?? this.search,
+    afterOrderId: clearAfter ? null : (afterOrderId ?? this.afterOrderId),
     limit: limit ?? this.limit,
   );
 
@@ -529,6 +562,7 @@ class OrderHistoryQuery {
       other.tenderTypeId == tenderTypeId &&
       other.terminalId == terminalId &&
       other.search == search &&
+      other.afterOrderId == afterOrderId &&
       other.limit == limit &&
       const SetEquality<OrderStatus>().equals(other.statuses, statuses) &&
       const SetEquality<OrderType>().equals(other.orderTypes, orderTypes);
@@ -541,6 +575,7 @@ class OrderHistoryQuery {
     tenderTypeId,
     terminalId,
     search,
+    afterOrderId,
     limit,
     const SetEquality<OrderStatus>().hash(statuses),
     const SetEquality<OrderType>().hash(orderTypes),
@@ -561,4 +596,119 @@ class OrderHistoryQuery {
       to: start.add(const Duration(days: 1)),
     );
   }
+}
+
+/// The four figures over the sales list (BO-3): what the listed sales came
+/// to, how many invoices there are, what was taken and what is still owed.
+///
+/// **Over exactly the rows the list pages through**, never a figure of its
+/// own. `summarise` runs `search`'s WHERE, and [of] is the rule that turns
+/// those rows into four numbers. `PostgresOrderHistoryRepository.summarise`
+/// is its SQL twin, and `test/data/order_history_paging_test.dart` holds the
+/// two to one answer for every combination of filters: the Dart rule applied
+/// to every page of `search` must equal what the database summed.
+class OrderHistorySummary {
+  const OrderHistorySummary({
+    required this.count,
+    required this.dead,
+    required this.total,
+    required this.paid,
+    required this.outstanding,
+  });
+
+  /// What a viewer who may read nothing is told, and what a terminal with no
+  /// database answers.
+  static const empty = OrderHistorySummary(
+    count: 0,
+    dead: 0,
+    total: Money(0),
+    paid: Money(0),
+    outstanding: Money(0),
+  );
+
+  /// Every row the list holds, struck-through ones included, because they
+  /// are rows somebody pages past. It is the pager's "of".
+  final int count;
+
+  /// How many of [count] are struck through on the list — voided, cancelled
+  /// or refunded in full ([OrderStatus.isDead]).
+  final int dead;
+
+  /// The listed sales' totals, **except** the struck-through ones. The list
+  /// draws a dead row's total with a line through it because it is not
+  /// money, and a figure above that list which added it back would disagree
+  /// with the rows under it. A part refund stays in at its full total, as its
+  /// row does: what went back is on the sale, not taken off the bill.
+  final Money total;
+
+  /// What was taken against the live sales, before refunds — the payment
+  /// rows, which record what was applied to the bill and never what was
+  /// tendered.
+  final Money paid;
+
+  /// Total less taken, over the live sales whose money is unpaid or part paid
+  /// (plan 19 §2.2). Live sales only: a void is UNPAID too, and a void is not
+  /// money anybody owes.
+  final Money outstanding;
+
+  /// The rule, over rows already read.
+  ///
+  /// In the rows' own currency. One branch trades in one, and summing two
+  /// would be meaningless whichever label the answer carried.
+  static OrderHistorySummary of(Iterable<OrderRecord> rows) {
+    var count = 0;
+    var dead = 0;
+    var total = 0;
+    var paid = 0;
+    var outstanding = 0;
+    Money? unit;
+    for (final row in rows) {
+      unit ??= row.total;
+      count++;
+      if (row.status.isDead) {
+        dead++;
+        continue;
+      }
+      total += row.total.minor;
+      paid += row.paidTotal.minor;
+      // Over the enum, so a sixth payment status is a compile error here
+      // rather than a sale that silently stops being owed.
+      outstanding += switch (row.paymentStatus) {
+        PaymentStatus.unpaid ||
+        PaymentStatus.partiallyPaid => row.total.minor - row.paidTotal.minor,
+        PaymentStatus.paid ||
+        PaymentStatus.partiallyRefunded ||
+        PaymentStatus.refunded => 0,
+      };
+    }
+    Money money(int minor) => unit == null
+        ? Money(minor)
+        : Money(minor, currency: unit.currency, exponent: unit.exponent);
+    return OrderHistorySummary(
+      count: count,
+      dead: dead,
+      total: money(total),
+      paid: money(paid),
+      outstanding: money(outstanding),
+    );
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is OrderHistorySummary &&
+      other.count == count &&
+      other.dead == dead &&
+      other.total == total &&
+      other.paid == paid &&
+      other.outstanding == outstanding;
+
+  @override
+  int get hashCode => Object.hash(count, dead, total, paid, outstanding);
+
+  /// Minor units, for a failing test's message.
+  @override
+  String toString() =>
+      'OrderHistorySummary(count: $count, dead: $dead, '
+      'total: ${total.minor}, paid: ${paid.minor}, '
+      'outstanding: ${outstanding.minor})';
 }

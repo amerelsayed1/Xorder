@@ -1388,9 +1388,47 @@ class FakeOrderHistoryRepository implements OrderHistoryRepository {
   /// applied on top of a list the screen already had.
   final List<OrderHistoryQuery> queries = [];
 
+  /// Every query the summary strip asked, kept apart from [queries] so a test
+  /// counting list reads is not also counting the strip's.
+  final List<OrderHistoryQuery> summaries = [];
+
+  /// Newest first, and by id within one instant — the real ORDER BY, so a
+  /// widget test that pages across a tie sees what PostgreSQL would page.
+  static int _newestFirst(OrderRecord a, OrderRecord b) {
+    final at = b.occurredAt.compareTo(a.occurredAt);
+    return at != 0 ? at : b.id.compareTo(a.id);
+  }
+
   @override
   Future<List<OrderRecord>> search(OrderHistoryQuery query) async {
     queries.add(query);
+    var rows = _matching(query);
+    final after = query.afterOrderId;
+    if (after != null) {
+      OrderRecord? cursor;
+      for (final order in orders) {
+        if (order.id == after) cursor = order;
+      }
+      // A cursor that names nothing is an empty page, as the real row
+      // comparison against a NULL is.
+      rows = cursor == null
+          ? const []
+          : [
+              for (final row in rows)
+                if (_newestFirst(row, cursor) > 0) row,
+            ];
+    }
+    return rows.take(query.limit).toList();
+  }
+
+  @override
+  Future<OrderHistorySummary> summarise(OrderHistoryQuery query) async {
+    summaries.add(query);
+    return OrderHistorySummary.of(_matching(query));
+  }
+
+  /// Every row [query]'s filter admits, in list order — no page.
+  List<OrderRecord> _matching(OrderHistoryQuery query) {
     final term = query.search?.trim().toLowerCase();
 
     DateTime dateOf(DateTime at) => DateTime(at.year, at.month, at.day);
@@ -1443,9 +1481,9 @@ class FakeOrderHistoryRepository implements OrderHistoryRepository {
         if (!invoice.contains(term) && !table.contains(term)) return false;
       }
       return true;
-    }).toList()..sort((a, b) => b.occurredAt.compareTo(a.occurredAt));
+    }).toList()..sort(_newestFirst);
 
-    return matched.take(query.limit).toList();
+    return matched;
   }
 
   @override

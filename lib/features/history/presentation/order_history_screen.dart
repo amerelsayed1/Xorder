@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../app/labels.dart';
 import '../../../app/providers.dart';
 import '../../../core/l10n/app_strings.dart';
+import '../../../core/money/money.dart';
 import '../../../core/ui/theme.dart';
 import '../../../core/ui/tokens.dart';
 import '../../../core/ui/widgets/mono_amount.dart';
@@ -96,6 +97,18 @@ class OrderHistoryScreen extends ConsumerStatefulWidget {
   /// its 1100 breakpoint.
   static const sidewaysKey = ValueKey('history-sideways');
 
+  // The strip's four figures and the pager (BO-3).
+  static const summaryTotalKey = ValueKey('history-summary-total');
+  static const summaryCountKey = ValueKey('history-summary-count');
+  static const summaryPaidKey = ValueKey('history-summary-paid');
+  static const summaryOutstandingKey = ValueKey('history-summary-outstanding');
+  static const pagerKey = ValueKey('history-pager');
+  static const pagerRangeKey = ValueKey('history-pager-range');
+  static const pagerTotalKey = ValueKey('history-pager-total');
+  static const pagerPageKey = ValueKey('history-pager-page');
+  static const previousPageKey = ValueKey('history-page-previous');
+  static const nextPageKey = ValueKey('history-page-next');
+
   @override
   ConsumerState<OrderHistoryScreen> createState() => _OrderHistoryScreenState();
 }
@@ -112,6 +125,18 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
   String? _terminalId;
   String _searchTerm = '';
   int? _selectedId;
+
+  /// The pages turned so far: the last row id of each page before this one,
+  /// oldest first. Empty is page one; Previous drops the last.
+  ///
+  /// A stack rather than a page number, because a keyset page has no number
+  /// the database can seek to — only "after this row". Walking back means
+  /// asking for the page after the cursor before, which is the page that was
+  /// on screen.
+  List<int> _cursors = const [];
+
+  /// The filter [_cursors] were turned under. See `build`.
+  OrderHistoryQuery? _pagedFor;
 
   Timer? _debounce;
 
@@ -195,10 +220,25 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
     // that visibly changes its mind about what "today" is. A day that cannot
     // be read falls back to the calendar, which is what "today" meant before
     // there were business days at all.
-    final query = day.isLoading ? null : _query(_today(day.valueOrNull));
+    final base = day.isLoading ? null : _query(_today(day.valueOrNull));
+    // Pages belong to the filter they were turned under. Compared here rather
+    // than reset in each handler that changes a filter: there are eight of
+    // them, a business day opening changes "today" through none, and the one
+    // that forgot would open a new filter on page three of the old one.
+    final cursors = base != null && base == _pagedFor
+        ? _cursors
+        : const <int>[];
+    final query = cursors.isEmpty
+        ? base
+        : base!.copyWith(afterOrderId: cursors.last);
     final orders = query == null
         ? const AsyncValue<List<OrderRecord>>.loading()
         : ref.watch(orderHistoryProvider(query));
+    // Keyed by the first page's query, so Next re-reads the rows and not the
+    // totals.
+    final summary = base == null
+        ? const AsyncValue<OrderHistorySummary>.loading()
+        : ref.watch(orderHistorySummaryProvider(base));
 
     return Scaffold(
       backgroundColor: context.pos.page,
@@ -219,7 +259,12 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _header(context, strings, orders.valueOrNull, seesEveryone),
+              _header(
+                context,
+                strings,
+                summary.valueOrNull?.count,
+                seesEveryone,
+              ),
               _filters(context, strings, seesEveryone),
               if (query?.from case final from?
                   when from.isBefore(OrderRecord.servedByReliableFrom))
@@ -228,7 +273,30 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Expanded(child: _list(context, strings, orders, query)),
+                    // Over the list, not across the window. Full width was
+                    // tried first and took its height from the detail pane
+                    // too, which is where the refund button and a sale's
+                    // activity live; the activity test caught its last row
+                    // gone below the fold. The strip is about the list, so it
+                    // costs the list.
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _SummaryStrip(summary: summary),
+                          Expanded(
+                            child: _list(
+                              context,
+                              strings,
+                              orders,
+                              query,
+                              cursors,
+                              summary.valueOrNull,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                     Container(
                       width: PosSize.historyDetail,
                       decoration: BoxDecoration(
@@ -250,13 +318,15 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
   Widget _header(
     BuildContext context,
     AppStrings strings,
-    List<OrderRecord>? orders,
+    int? count,
     bool seesEveryone,
   ) {
     final pos = context.pos;
+    // Every page's count, not this page's: "Today · 50 orders" on a day of
+    // two hundred is the list telling somebody the rest do not exist.
     final slice = [
       _range.label(strings),
-      if (orders != null) strings.orderHistoryCount(orders.length),
+      if (count != null) strings.orderHistoryCount(count),
     ].join(' · ');
     return Padding(
       padding: const EdgeInsets.fromLTRB(
@@ -478,11 +548,19 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
   Widget _divider(PosPalette pos) =>
       Container(width: 1, height: PosSize.filterChip - 12, color: pos.line);
 
+  /// Turns to the page after [cursors]' last, under [base]'s filter.
+  void _turn(OrderHistoryQuery base, List<int> cursors) => setState(() {
+    _pagedFor = base;
+    _cursors = cursors;
+  });
+
   Widget _list(
     BuildContext context,
     AppStrings strings,
     AsyncValue<List<OrderRecord>> orders,
     OrderHistoryQuery? query,
+    List<int> cursors,
+    OrderHistorySummary? summary,
   ) => orders.when(
     loading: () =>
         Center(child: CircularProgressIndicator(color: context.pos.accent)),
@@ -496,7 +574,10 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
     ),
     data: (data) {
       final filtered = query?.isFiltered ?? false;
-      if (data.isEmpty) {
+      // Empty on page one is an empty filter. Past it, the rows ahead went
+      // away while somebody read — a day's sales voided, say — and the pager
+      // stays, because it is the way back.
+      if (data.isEmpty && cursors.isEmpty) {
         return _message(
           context,
           filtered
@@ -507,27 +588,33 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
               : null,
         );
       }
-      final limit = query?.limit ?? const OrderHistoryQuery().limit;
+      final base = query?.unpaged;
+      final limit = query?.limit ?? OrderHistoryQuery.pageSize;
+      final offset = cursors.length * limit;
+      final total = summary?.count;
+      // A short page is the last whatever the count says. A full one is the
+      // last when the count says so; with no count yet, Next is offered and
+      // an empty page after it is the honest answer.
+      final hasNext =
+          data.length >= limit &&
+          (total == null || offset + data.length < total);
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(child: _table(context, strings, data)),
-          if (data.length >= limit)
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(
-                horizontal: PosSpace.s18,
-                vertical: PosSpace.sm,
-              ),
-              decoration: BoxDecoration(
-                color: context.pos.warnSoft,
-                border: BorderDirectional(top: context.pos.resting),
-              ),
-              child: Text(
-                strings.orderHistoryTruncated(limit),
-                style: PosText.ui(size: 12.5, color: context.pos.warn),
-              ),
-            ),
+          Expanded(child: _table(context, strings, data, query?.afterOrderId)),
+          _Pager(
+            first: data.isEmpty ? offset : offset + 1,
+            last: offset + data.length,
+            total: total,
+            page: cursors.length + 1,
+            pages: total == null ? null : math.max(1, (total + limit - 1) ~/ limit),
+            onPrevious: base == null || cursors.isEmpty
+                ? null
+                : () => _turn(base, cursors.sublist(0, cursors.length - 1)),
+            onNext: base == null || !hasNext
+                ? null
+                : () => _turn(base, [...cursors, data.last.id]),
+          ),
         ],
       );
     },
@@ -542,10 +629,14 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
   /// dropping columns below a width. The column somebody needs is the one
   /// that was dropped, and a table whose columns come and go with the window
   /// is two tables to learn.
+  ///
+  /// [page] keys the rows, so a page turned to opens at its top rather than
+  /// scrolled as far down as the page before it was.
   Widget _table(
     BuildContext context,
     AppStrings strings,
     List<OrderRecord> data,
+    int? page,
   ) => LayoutBuilder(
     builder: (context, box) {
       final width = math.max(box.maxWidth, _Cols.minTable);
@@ -558,6 +649,7 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
             _columnHeadings(context, strings),
             Expanded(
               child: ListView.builder(
+                key: ValueKey(('history-rows', page)),
                 padding: EdgeInsets.zero,
                 itemCount: data.length,
                 itemBuilder: (context, index) {
@@ -704,6 +796,257 @@ abstract final class _Cols {
       PosSpace.sm +
       payment +
       PosSpace.md;
+}
+
+/// Total sales, invoices, paid and outstanding, over every page (BO-3).
+///
+/// Flat and bordered, not the mockup's tinted cards — the design system rules
+/// pastel tiles out by name — and in the shape of the Users section's strip,
+/// smaller: this sits over a list somebody at a counter is scanning, and the
+/// figures are its caption, not the page.
+///
+/// A figure not yet read, or not readable, is a dash. The list under it says
+/// why when it cannot be read; the strip repeating it four times would not
+/// help.
+class _SummaryStrip extends StatelessWidget {
+  const _SummaryStrip({required this.summary});
+
+  final AsyncValue<OrderHistorySummary> summary;
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = context.strings;
+    final pos = context.pos;
+    final figures = summary.valueOrNull;
+
+    Widget amount(Key key, Money Function(OrderHistorySummary) of) =>
+        switch (figures) {
+          final known? => MonoAmount(
+            of(known),
+            key: key,
+            size: 20,
+            weight: FontWeight.w600,
+            // Owed money in the warning colour, on the figure and never the
+            // tile, and only when there is some: a zero is not a warning.
+            color: key == OrderHistoryScreen.summaryOutstandingKey &&
+                    of(known).minor > 0
+                ? pos.warn
+                : pos.ink,
+          ),
+          null => _dash(pos, key),
+        };
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        PosSpace.s18,
+        0,
+        PosSpace.s18,
+        PosSpace.md,
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: _SummaryTile(
+              label: strings.orderSummaryTotal,
+              value: amount(OrderHistoryScreen.summaryTotalKey, (s) => s.total),
+              note: strings.orderSummaryTotalNote,
+            ),
+          ),
+          const SizedBox(width: PosSpace.sm),
+          Expanded(
+            child: _SummaryTile(
+              label: strings.orderSummaryCount,
+              value: figures == null
+                  ? _dash(pos, OrderHistoryScreen.summaryCountKey)
+                  : Text(
+                      '${figures.count}',
+                      key: OrderHistoryScreen.summaryCountKey,
+                      textDirection: TextDirection.ltr,
+                      style: PosText.mono(
+                        size: 20,
+                        weight: FontWeight.w600,
+                        color: pos.ink,
+                        height: 1,
+                      ),
+                    ),
+              // The count is every row, struck-through ones too, because it
+              // is what the pager counts. Said, when there are any, or it
+              // reads as disagreeing with the total beside it.
+              note: figures != null && figures.dead > 0
+                  ? strings.orderSummaryCountDead(figures.dead)
+                  : null,
+            ),
+          ),
+          const SizedBox(width: PosSpace.sm),
+          Expanded(
+            child: _SummaryTile(
+              label: strings.orderSummaryPaid,
+              value: amount(OrderHistoryScreen.summaryPaidKey, (s) => s.paid),
+              note: strings.orderSummaryPaidNote,
+            ),
+          ),
+          const SizedBox(width: PosSpace.sm),
+          Expanded(
+            child: _SummaryTile(
+              label: strings.orderSummaryOutstanding,
+              value: amount(
+                OrderHistoryScreen.summaryOutstandingKey,
+                (s) => s.outstanding,
+              ),
+              note: strings.orderSummaryOutstandingNote,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static Widget _dash(PosPalette pos, Key key) => Text(
+    '—',
+    key: key,
+    style: PosText.mono(size: 20, color: pos.muted, height: 1),
+  );
+}
+
+class _SummaryTile extends StatelessWidget {
+  const _SummaryTile({required this.label, required this.value, this.note});
+
+  final String label;
+  final Widget value;
+  final String? note;
+
+  @override
+  Widget build(BuildContext context) {
+    final pos = context.pos;
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: PosSpace.md,
+        vertical: PosSpace.sm,
+      ),
+      decoration: BoxDecoration(
+        color: pos.surface,
+        border: Border.fromBorderSide(pos.resting),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          MicroLabel(label),
+          const SizedBox(height: PosSpace.xs),
+          // Shrunk to fit rather than cut. At 1100 a tile is about 160 wide
+          // and a seven-figure amount in 20pt mono is wider; an ellipsis on a
+          // sum of money hides the digits that matter.
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: AlignmentDirectional.centerStart,
+            child: value,
+          ),
+          const SizedBox(height: PosSpace.xs),
+          // Always a line, empty when there is nothing to say, so the four
+          // tiles stay one height and their figures one baseline.
+          Text(
+            note ?? '',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: PosText.ui(size: 11.5, color: pos.muted),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// "Showing 51–100 of 213", and Previous and Next when there is more than one
+/// page — the cloud's pager (`OrdersView.vue`), over keyset pages.
+///
+/// Words and figures are separate widgets, never one interpolated sentence:
+/// each figure is its own left-to-right run, so in Arabic the line reads
+/// عرض 51–100 من 213 from the right with every number the right way round.
+class _Pager extends StatelessWidget {
+  const _Pager({
+    required this.first,
+    required this.last,
+    required this.total,
+    required this.page,
+    required this.pages,
+    required this.onPrevious,
+    required this.onNext,
+  });
+
+  final int first;
+  final int last;
+
+  /// Null until the summary is read.
+  final int? total;
+  final int page;
+  final int? pages;
+  final VoidCallback? onPrevious;
+  final VoidCallback? onNext;
+
+  @override
+  Widget build(BuildContext context) {
+    final pos = context.pos;
+    final strings = context.strings;
+    final words = PosText.ui(size: 12.5, color: pos.muted);
+    final figure = PosText.mono(
+      size: 12.5,
+      weight: FontWeight.w600,
+      color: pos.ink,
+    );
+    Widget mono(Key key, String text) =>
+        Text(text, key: key, textDirection: TextDirection.ltr, style: figure);
+
+    return Container(
+      key: OrderHistoryScreen.pagerKey,
+      height: PosSize.filterChip + PosSpace.md,
+      padding: const EdgeInsetsDirectional.only(
+        start: PosSpace.s18,
+        end: PosSpace.md,
+      ),
+      decoration: BoxDecoration(
+        color: pos.surface,
+        border: BorderDirectional(top: pos.resting),
+      ),
+      child: Row(
+        children: [
+          Text(strings.orderPagerShowing, style: words),
+          const SizedBox(width: PosSpace.xs),
+          mono(
+            OrderHistoryScreen.pagerRangeKey,
+            last == 0 ? '0' : '$first–$last',
+          ),
+          const SizedBox(width: PosSpace.xs),
+          Text(strings.orderPagerOf, style: words),
+          const SizedBox(width: PosSpace.xs),
+          mono(OrderHistoryScreen.pagerTotalKey, total == null ? '—' : '$total'),
+          const Spacer(),
+          // Only with somewhere to go, as on the cloud. Two dead buttons
+          // under a list of twelve read as a list that failed to load more.
+          if (onPrevious != null || onNext != null) ...[
+            PosButton(
+              key: OrderHistoryScreen.previousPageKey,
+              label: strings.orderPagerPrevious,
+              height: PosSize.filterChip,
+              border: Border.fromBorderSide(pos.resting),
+              onPressed: onPrevious,
+            ),
+            const SizedBox(width: PosSpace.sm),
+            mono(
+              OrderHistoryScreen.pagerPageKey,
+              pages == null ? '$page' : '$page / $pages',
+            ),
+            const SizedBox(width: PosSpace.sm),
+            PosButton(
+              key: OrderHistoryScreen.nextPageKey,
+              label: strings.orderPagerNext,
+              height: PosSize.filterChip,
+              border: Border.fromBorderSide(pos.resting),
+              onPressed: onNext,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
 }
 
 class _OrderRow extends StatelessWidget {

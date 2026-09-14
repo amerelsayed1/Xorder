@@ -227,5 +227,88 @@ void main() {
       // copyWith that did not mention staff would silently drop the filter.
       expect(query.copyWith().servedByStaffId, 7);
     });
+
+    test('a page cursor is part of the key, and not a filter', () {
+      // Part of equality, or page two would be served page one's cached rows;
+      // not a filter, or turning a page would offer "clear filters".
+      const second = OrderHistoryQuery(afterOrderId: 40);
+      expect(second, isNot(const OrderHistoryQuery()));
+      expect(second.isFiltered, isFalse);
+    });
+
+    test('unpaged is the first page of the same filter', () {
+      final paged = OrderHistoryQuery(
+        from: DateTime(2026, 9, 7),
+        servedByStaffId: 4,
+        afterOrderId: 40,
+        limit: 3,
+      );
+      expect(
+        paged.unpaged,
+        OrderHistoryQuery(from: DateTime(2026, 9, 7), servedByStaffId: 4),
+      );
+      const first = OrderHistoryQuery(servedByStaffId: 4);
+      expect(identical(first.unpaged, first), isTrue);
+    });
+  });
+
+  group('OrderHistorySummary.of', () {
+    OrderRecord row(
+      int id, {
+      OrderStatus status = OrderStatus.paid,
+      required int total,
+      int paid = 0,
+      int refunded = 0,
+    }) => OrderRecord(
+      id: id,
+      clientTransactionId: 'txn-$id',
+      invoiceNumber: 'INV-$id',
+      status: status,
+      orderType: OrderType.takeaway,
+      occurredAt: DateTime(2026, 9, 7, 13),
+      subtotal: Money(total),
+      discount: Money.zero,
+      service: Money.zero,
+      vat: Money.zero,
+      total: Money(total),
+      paidTotal: Money(paid),
+      refundedTotal: Money(refunded),
+    );
+
+    test('struck-through rows are counted and not summed', () {
+      final summary = OrderHistorySummary.of([
+        row(1, total: 10000, paid: 10000),
+        row(2, status: OrderStatus.voided, total: 5000),
+        row(3, status: OrderStatus.refunded, total: 9000, paid: 9000,
+            refunded: 9000),
+        row(4, status: OrderStatus.cancelled, total: 700),
+      ]);
+      expect(summary.count, 4);
+      expect(summary.dead, 3);
+      expect(summary.total.minor, 10000);
+      expect(summary.paid.minor, 10000);
+      // The void and the cancellation read UNPAID, and owe nothing.
+      expect(summary.outstanding.minor, 0);
+    });
+
+    test('outstanding is what the unpaid and part-paid sales still owe', () {
+      final summary = OrderHistorySummary.of([
+        row(1, total: 8000),
+        row(2, total: 12000, paid: 4000),
+        // Part refunded after being paid in full: PARTIALLY_REFUNDED, owing
+        // nothing, and its full total and full payment still counted.
+        row(3, status: OrderStatus.partiallyRefunded, total: 15000,
+            paid: 15000, refunded: 5000),
+        // A comp: nothing owed and nothing taken reads PAID.
+        row(4, total: 0),
+      ]);
+      expect(summary.total.minor, 35000);
+      expect(summary.paid.minor, 19000);
+      expect(summary.outstanding.minor, 16000);
+    });
+
+    test('no rows is the empty summary', () {
+      expect(OrderHistorySummary.of(const []), OrderHistorySummary.empty);
+    });
   });
 }

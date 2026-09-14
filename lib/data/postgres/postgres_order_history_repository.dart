@@ -108,14 +108,7 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
         LEFT JOIN pos_staff       AS voider ON voider.id = o.voided_by
         LEFT JOIN pos_reason_codes AS reason ON reason.id = o.void_reason_id
         LEFT JOIN pos_terminals   AS term   ON term.id = o.terminal_id
-        LEFT JOIN LATERAL (
-          SELECT coalesce(sum(p.amount_minor), 0)::bigint AS minor
-            FROM pos_order_payments AS p WHERE p.order_id = o.id
-        ) AS taken ON true
-        LEFT JOIN LATERAL (
-          SELECT coalesce(sum(r.total_minor), 0)::bigint AS minor
-            FROM pos_refunds AS r WHERE r.order_id = o.id
-        ) AS given_back ON true
+        $_moneyJoins
         LEFT JOIN LATERAL (
           SELECT coalesce(array_agg(used.label ORDER BY used.first_id),
                           '{}') AS labels,
@@ -127,6 +120,23 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
                    GROUP BY p.label, p.tender_type_id) AS used
         ) AS tenders ON true
         ${tradingDayJoin('o')}''';
+
+  /// What was taken and what went back, per order, as `taken.minor` and
+  /// `given_back.minor` — the sums [paymentStatusSql] reads.
+  ///
+  /// Apart from [_orderJoins] so [summarise] sums the very laterals the rows
+  /// are drawn from, without the name and tender joins a total has no use
+  /// for. A second copy of these two sums is where "paid" on the strip would
+  /// start disagreeing with PAID on the row.
+  static const _moneyJoins = '''
+        LEFT JOIN LATERAL (
+          SELECT coalesce(sum(p.amount_minor), 0)::bigint AS minor
+            FROM pos_order_payments AS p WHERE p.order_id = o.id
+        ) AS taken ON true
+        LEFT JOIN LATERAL (
+          SELECT coalesce(sum(r.total_minor), 0)::bigint AS minor
+            FROM pos_refunds AS r WHERE r.order_id = o.id
+        ) AS given_back ON true''';
 
   /// The trading day the row [alias] belongs to, as `trading.business_date`.
   ///
@@ -357,16 +367,117 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
       restaurantId: restaurantId,
       branchId: branchId,
     );
+    // The cursor is added here and not in [filterFor]: the filter is what the
+    // reports and [summarise] share, and a total is over every page.
+    final where = [...filter.where];
+    final parameters = <String, Object?>{
+      ...filter.parameters,
+      'limit': query.limit,
+    };
+    if (query.afterOrderId case final after?) {
+      // Strictly after the cursor row in the ORDER BY below, compared as a
+      // pair: two sales on one instant are told apart by id, so a page
+      // boundary between them can neither repeat the one nor skip the other.
+      //
+      // The first clause says less than the second and is there for the
+      // index. `pos_orders_history_idx` is (restaurant, branch, occurred_at
+      // DESC); a pair ending in `id` is not a range on it, while `occurred_at
+      // <=` is, so page forty starts at its cursor instead of walking the
+      // thirty-nine before it. That is also why BO-3 needs no migration 48:
+      // the index serves the order and the bound, and the ties left for the
+      // sort are the few sales that share a microsecond.
+      where
+        ..add(
+          'o.occurred_at <= (SELECT a.occurred_at FROM pos_orders AS a '
+          '                   WHERE a.id = @after)',
+        )
+        ..add(
+          '(o.occurred_at, o.id) < (SELECT a.occurred_at, a.id '
+          '                           FROM pos_orders AS a WHERE a.id = @after)',
+        );
+      parameters['after'] = after;
+    }
     final rows = await _db.query(
       config,
       'SELECT $_orderColumns FROM pos_orders AS o $_orderJoins '
-      'WHERE ${filter.where.join(' AND ')} '
+      'WHERE ${where.join(' AND ')} '
       'ORDER BY o.occurred_at DESC, o.id DESC LIMIT @limit',
-      parameters: {...filter.parameters, 'limit': query.limit},
+      parameters: parameters,
     );
 
     return rows.map((row) => _record(row.toList())).toList(growable: false);
   }
+
+  /// The strip's figures, in one statement over [filterFor] — the rows
+  /// [search] pages through and no others.
+  ///
+  /// [OrderHistorySummary.of] is the rule and this is its twin: which rows
+  /// are struck through comes from [OrderStatus.isDead] and which are owed
+  /// from [PaymentStatus], handed in as parameters rather than spelled out,
+  /// so a status added to either enum moves both. The payment status is
+  /// [paymentStatusSql] itself, over [_moneyJoins] itself.
+  ///
+  /// Rejected: fetching every row and applying the Dart rule. It is one
+  /// answer either way, but "Last 30 days" at a busy branch is thousands of
+  /// rows carried across the wire to make four numbers.
+  @override
+  Future<OrderHistorySummary> summarise(OrderHistoryQuery query) async {
+    final filter = filterFor(
+      query,
+      restaurantId: restaurantId,
+      branchId: branchId,
+    );
+    final rows = await _db.query(
+      config,
+      // `::bigint` on every sum: sum() over bigint is numeric in PostgreSQL,
+      // which arrives as a string.
+      'SELECT count(*)::bigint, '
+      '       count(*) FILTER (WHERE listed.dead)::bigint, '
+      '       coalesce(sum(listed.total) FILTER (WHERE NOT listed.dead), 0)'
+      '         ::bigint, '
+      '       coalesce(sum(listed.taken) FILTER (WHERE NOT listed.dead), 0)'
+      '         ::bigint, '
+      '       coalesce(sum(listed.total - listed.taken) '
+      '                FILTER (WHERE NOT listed.dead '
+      '                          AND listed.money = ANY(@owing)), 0)::bigint '
+      'FROM (SELECT o.status = ANY(@deadStatuses) AS dead, '
+      '             o.total_minor AS total, taken.minor AS taken, '
+      '             $paymentStatusSql AS money '
+      '        FROM pos_orders AS o $_moneyJoins ${tradingDayJoin('o')} '
+      '       WHERE ${filter.where.join(' AND ')}) AS listed',
+      parameters: {
+        ...filter.parameters,
+        'deadStatuses': [
+          for (final status in OrderStatus.values)
+            if (status.isDead) status.wire,
+        ],
+        'owing': [
+          for (final status in PaymentStatus.values)
+            if (_owes(status)) status.wire,
+        ],
+      },
+    );
+    final row = rows.first.toList();
+    Money money(Object? minor) =>
+        Money(minor as int, currency: currency, exponent: exponent);
+    return OrderHistorySummary(
+      count: row[0] as int,
+      dead: row[1] as int,
+      total: money(row[2]),
+      paid: money(row[3]),
+      outstanding: money(row[4]),
+    );
+  }
+
+  /// Whether a sale in [status] still has money owed on it — the SQL side of
+  /// the switch in [OrderHistorySummary.of], and exhaustive for the same
+  /// reason.
+  static bool _owes(PaymentStatus status) => switch (status) {
+    PaymentStatus.unpaid || PaymentStatus.partiallyPaid => true,
+    PaymentStatus.paid ||
+    PaymentStatus.partiallyRefunded ||
+    PaymentStatus.refunded => false,
+  };
 
   @override
   Future<OrderRecord?> byInvoiceNumber(String invoiceNumber) async {
@@ -628,6 +739,10 @@ class UnconfiguredOrderHistoryRepository implements OrderHistoryRepository {
 
   @override
   Future<List<OrderRecord>> search(OrderHistoryQuery query) async => const [];
+
+  @override
+  Future<OrderHistorySummary> summarise(OrderHistoryQuery query) async =>
+      OrderHistorySummary.empty;
 
   @override
   Future<OrderRecordDetail?> detail(int orderId) async => null;

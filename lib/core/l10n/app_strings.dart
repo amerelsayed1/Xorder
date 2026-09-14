@@ -1695,9 +1695,30 @@ sealed class AppStrings {
   String get orderHistoryEveryone;
   String orderHistoryCount(int count);
 
-  /// The cap was hit, so what is on screen is not all there is. Saying so is
-  /// the difference between a short list and a wrong one.
-  String orderHistoryTruncated(int limit);
+  // The strip over the list (BO-3). Each figure carries a line saying what it
+  // leaves out, because four numbers that do not add up to each other are
+  // otherwise a report somebody rings about.
+  String get orderSummaryTotal;
+
+  /// Voided and fully refunded sales are struck through on the list and left
+  /// out of the total.
+  String get orderSummaryTotalNote;
+  String get orderSummaryCount;
+
+  /// How many of the invoices counted are struck through. [count] > 0.
+  String orderSummaryCountDead(int count);
+  String get orderSummaryPaid;
+  String get orderSummaryPaidNote;
+  String get orderSummaryOutstanding;
+  String get orderSummaryOutstandingNote;
+
+  // The pager under the list: "Showing 51–100 of 213". Words and figures are
+  // separate pieces, never one interpolated sentence, so each figure is its
+  // own left-to-right run inside an Arabic line.
+  String get orderPagerShowing;
+  String get orderPagerOf;
+  String get orderPagerPrevious;
+  String get orderPagerNext;
   String get orderHistoryEmpty;
   String get orderHistoryEmptyFiltered;
   String get orderHistoryClearFilters;
@@ -2184,8 +2205,30 @@ final class EnStrings extends AppStrings {
   String orderHistoryCount(int count) =>
       count == 1 ? '1 order' : '$count orders';
   @override
-  String orderHistoryTruncated(int limit) =>
-      'Showing the newest $limit. Narrow the dates to see further back.';
+  String get orderSummaryTotal => 'Total sales';
+  @override
+  String get orderSummaryTotalNote => 'Voided and refunded left out';
+  @override
+  String get orderSummaryCount => 'Invoices';
+  @override
+  String orderSummaryCountDead(int count) =>
+      'Of which $count voided or refunded';
+  @override
+  String get orderSummaryPaid => 'Paid';
+  @override
+  String get orderSummaryPaidNote => 'Taken, before refunds';
+  @override
+  String get orderSummaryOutstanding => 'Outstanding';
+  @override
+  String get orderSummaryOutstandingNote => 'Owed on unpaid and part-paid sales';
+  @override
+  String get orderPagerShowing => 'Showing';
+  @override
+  String get orderPagerOf => 'of';
+  @override
+  String get orderPagerPrevious => 'Previous';
+  @override
+  String get orderPagerNext => 'Next';
   @override
   String get orderHistoryEmpty => 'No orders yet in this period.';
   @override
@@ -5951,8 +5994,30 @@ final class ArStrings extends AppStrings {
   String orderHistoryCount(int count) =>
       count == 1 ? 'طلب واحد' : '$count طلبات';
   @override
-  String orderHistoryTruncated(int limit) =>
-      'يُعرض أحدث $limit طلبًا. ضيّق نطاق التاريخ للرجوع أبعد.';
+  String get orderSummaryTotal => 'إجمالي المبيعات';
+  @override
+  String get orderSummaryTotalNote => 'دون الملغاة والمستردة بالكامل';
+  @override
+  String get orderSummaryCount => 'الفواتير';
+  @override
+  String orderSummaryCountDead(int count) => 'منها $count ملغاة أو مستردة';
+  @override
+  String get orderSummaryPaid => 'المدفوع';
+  @override
+  String get orderSummaryPaidNote => 'المحصَّل قبل المرتجعات';
+  @override
+  String get orderSummaryOutstanding => 'المتبقي';
+  @override
+  String get orderSummaryOutstandingNote =>
+      'المستحق على المبيعات غير المدفوعة أو المدفوعة جزئيًا';
+  @override
+  String get orderPagerShowing => 'عرض';
+  @override
+  String get orderPagerOf => 'من';
+  @override
+  String get orderPagerPrevious => 'السابق';
+  @override
+  String get orderPagerNext => 'التالي';
   @override
   String get orderHistoryEmpty => 'لا توجد طلبات في هذه الفترة.';
   @override
