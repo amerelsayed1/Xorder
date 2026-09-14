@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -158,6 +159,25 @@ void main() {
   });
 
   group('the Users section', () {
+    // The bundled faces, not the test font, as `back_office_shell_test.dart`
+    // measures the strip: the test font draws every glyph a full em wide, and
+    // with Reports and Finance both in, the owner's nine tabs overflow 1100 px
+    // in it while they fit in IBM Plex, which is what a restaurant sees.
+    setUpAll(() async {
+      final ui = FontLoader(PosFonts.ui);
+      for (final face in ['Regular', 'Medium', 'SemiBold', 'Bold']) {
+        ui.addFont(
+          rootBundle.load('assets/fonts/IBMPlexSansArabic-$face.ttf'),
+        );
+      }
+      await ui.load();
+      final mono = FontLoader(PosFonts.mono);
+      for (final face in ['Regular', 'Medium', 'SemiBold']) {
+        mono.addFont(rootBundle.load('assets/fonts/IBMPlexMono-$face.ttf'));
+      }
+      await mono.load();
+    });
+
     Future<ProviderContainer> open(
       WidgetTester tester, {
       Size size = const Size(1440, 900),

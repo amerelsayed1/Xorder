@@ -325,17 +325,18 @@ class EtaFiler implements EtaFilingPort {
     required Money refundVat,
   }) {
     if (sale.isEmpty) return const [];
-    var left = refundVat.minor;
+    // The Finance tab's taxes split refunds by the same function, so what a
+    // credit note files and what the tax report shows cannot drift apart.
+    final shares = TaxEngine.refundShares(
+      saleAmounts: [for (final line in sale) line.amount.minor],
+      saleVat: saleVat.minor,
+      refundVat: refundVat.minor,
+    );
     return [
       for (var i = 0; i < sale.length; i++)
         () {
           final line = sale[i];
-          final amount = i == sale.length - 1
-              ? left
-              : saleVat.minor == 0
-              ? 0
-              : line.amount.minor * refundVat.minor ~/ saleVat.minor;
-          left -= amount;
+          final amount = shares[i];
           return TaxLine(
             name: line.name,
             rateBp: line.rateBp,

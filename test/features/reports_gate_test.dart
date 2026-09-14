@@ -1,8 +1,10 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:xorder_pos/app/finance_providers.dart';
 import 'package:xorder_pos/app/providers.dart';
 import 'package:xorder_pos/app/reports_providers.dart';
 import 'package:xorder_pos/core/money/money.dart';
+import 'package:xorder_pos/domain/models/finance_report.dart';
 import 'package:xorder_pos/domain/models/permissions.dart';
 import 'package:xorder_pos/domain/models/sales_report.dart';
 import 'package:xorder_pos/domain/repositories/repositories.dart';
@@ -58,13 +60,26 @@ void main() {
     return container;
   }
 
+  /// A report's value, read the way a screen reads it: while listened to.
+  /// The providers are `autoDispose`, and a bare `read` of one nobody listens
+  /// to may be disposed before its future settles.
+  Future<T> value<T>(
+    ProviderContainer container,
+    ProviderListenable<Future<T>> provider,
+  ) {
+    final subscription = container.listen(provider, (previous, next) {});
+    addTearDown(subscription.close);
+    return subscription.read();
+  }
+
   test('nobody signed in reads no report, and the database is not asked', () async {
     final repository = _Recording();
     final container = containerFor(null, repository);
 
-    expect(await container.read(salesReportProvider(filter).future), isNull);
+    expect(await value(container, salesReportProvider(filter).future), isNull);
     expect(
-      await container.read(
+      await value(
+        container,
         topProductsProvider((filter: filter, by: topQuery.by)).future,
       ),
       isEmpty,
@@ -76,17 +91,44 @@ void main() {
     final repository = _Recording();
     final container = containerFor(cashier, repository);
 
-    expect(await container.read(salesReportProvider(filter).future), isNull);
+    expect(await value(container, salesReportProvider(filter).future), isNull);
     expect(repository.calls, 0);
+  });
+
+  test("Finance's taxes and payments ask the same gate (BO-9)", () async {
+    final refused = _Recording();
+    final cashierSees = containerFor(cashier, refused);
+    expect(await value(cashierSees, taxReportProvider(filter).future), isNull);
+    expect(
+      await value(cashierSees, paymentLedgerProvider(filter).future),
+      isNull,
+    );
+    expect(refused.calls, 0);
+
+    final allowed = _Recording();
+    final keeperSees = containerFor(stockKeeper, allowed);
+    expect(
+      await value(keeperSees, taxReportProvider(filter).future),
+      isNotNull,
+    );
+    expect(
+      await value(keeperSees, paymentLedgerProvider(filter).future),
+      isNotNull,
+    );
+    expect(allowed.calls, 2);
   });
 
   test('reports.view through a role is enough, and the figures are not narrowed', () async {
     final repository = _Recording();
     final container = containerFor(stockKeeper, repository);
 
-    expect(await container.read(salesReportProvider(filter).future), isNotNull);
     expect(
-      await container.read(
+      await value(container, salesReportProvider(filter).future),
+      isNotNull,
+    );
+    expect(
+      await value(
+        container,
         topProductsProvider((filter: filter, by: topQuery.by)).future,
       ),
       hasLength(1),
@@ -164,5 +206,23 @@ class _Recording implements ReportsRepository {
         amount: Money(46000),
       ),
     ];
+  }
+
+  @override
+  Future<TaxReport> taxes(ReportFilter filter) async {
+    calls++;
+    filters.add(filter);
+    return TaxReport(
+      filter: filter,
+      rates: const [],
+      unattributedRefunds: Money.zero,
+    );
+  }
+
+  @override
+  Future<PaymentLedger> payments(ReportFilter filter, {int limit = 500}) async {
+    calls++;
+    filters.add(filter);
+    return PaymentLedger(filter: filter, entries: const [], truncated: false);
   }
 }

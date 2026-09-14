@@ -88,9 +88,16 @@ const _fixtures = <String, PosStaff>{
 };
 
 /// The tabs whose content is a later slice. None of them holds a pane yet.
-/// Home, Sales and Reports left this list with BO-4, BO-2 and BO-6.
-const _later = [
-  BackOfficeTab.finance,
+/// Home, Sales, Reports and Finance left this list with BO-4, BO-2, BO-6 and
+/// BO-9.
+const _later = <BackOfficeTab>[];
+
+/// Finance's panes, in the order its sub-nav shows them (BO-9).
+const _finance = [
+  ManagementPane.financeOverview,
+  ManagementPane.financeRevenue,
+  ManagementPane.financePayments,
+  ManagementPane.financeTaxes,
 ];
 
 class _Sync extends Mock implements CloudSync {}
@@ -303,6 +310,20 @@ void main() {
             reason: '$name, $where',
           );
 
+          // Finance for whoever holds `reports.view` — through the role or
+          // directly, asked the one way — on both deployments, with all four
+          // panes; absent for everybody else (BO-9).
+          expect(
+            [
+              for (final (t, own) in tabs)
+                if (t == BackOfficeTab.finance) own,
+            ],
+            Authorization.check(admin, PosCapability.reportsView).isAllowed
+                ? [_finance]
+                : isEmpty,
+            reason: '$name, $where',
+          );
+
           // Home is everybody's, and first — so the door lands on it.
           expect(tabs.first.$1, BackOfficeTab.home);
           expect(tabs.first.$2, [ManagementPane.home]);
@@ -380,10 +401,37 @@ void main() {
               findsNothing,
             );
           }
+          expect(
+            find.byKey(const Key('back-office-tab-finance')),
+            Authorization.check(admin, PosCapability.reportsView).isAllowed
+                ? findsOneWidget
+                : findsNothing,
+          );
           expect(tester.takeException(), isNull);
         });
       }
     }
+  });
+
+  testWidgets('Finance: four panes under the sub-nav, in the mockup\'s order', (
+    tester,
+  ) async {
+    await _open(tester);
+    await tester.tap(find.byKey(const Key('back-office-tab-finance')));
+    await tester.pumpAndSettle();
+
+    expect(_showing(tester), {ManagementPane.financeOverview});
+    final nav = [
+      for (final pane in _finance)
+        tester.getRect(find.byKey(Key('back-office-subnav-${pane.name}'))),
+    ];
+    for (var i = 1; i < nav.length; i++) {
+      expect(nav[i].left, greaterThan(nav[i - 1].left));
+    }
+    await tester.tap(find.byKey(const Key('back-office-subnav-financeTaxes')));
+    await tester.pumpAndSettle();
+    expect(_showing(tester), {ManagementPane.financeTaxes});
+    expect(tester.takeException(), isNull);
   });
 
   group('where the door lands: Home', () {

@@ -10,7 +10,7 @@ import 'providers.dart';
 
 /// The reports' sources (plan 19 BO-5). Kept out of `providers.dart`, as the
 /// branch view's are, so the feature lands — and could be taken out — as one
-/// file. The Reports tab (BO-6) draws them.
+/// file. The Reports tab (BO-6) and Finance (BO-9) draw them.
 
 /// The shared-database reports. Null on a terminal that has not finished
 /// setup — the same rule the branch view's binding follows. There is no

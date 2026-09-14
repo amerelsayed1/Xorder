@@ -1189,6 +1189,58 @@ sealed class AppStrings {
   String get homeActionReports;
   String get homeActionProducts;
   String get homeActionEmployees;
+  // BO-9: Finance — overview, revenue, payments and taxes, read-only.
+  String get financeOverview;
+  String get financeOverviewBlurb;
+  String get financeRevenue;
+  String get financeRevenueBlurb;
+  String get financePayments;
+  String get financePaymentsBlurb;
+  String get financeTaxes;
+  String get financeTaxesBlurb;
+  String get financePeriodToday;
+  String get financePeriodThisWeek;
+  String get financePeriodThisMonth;
+  String get financePeriodLastMonth;
+  String get financeBusinessDates;
+  String get financeKpiRevenue;
+  String get financeKpiCollected;
+  String get financeKpiOnAccount;
+  String get financeKpiTax;
+  String get financeTendersTitle;
+  String get financeOnAccountNote;
+  String get financeNothingCollected;
+  String get financeGross;
+  String get financeDiscounts;
+  String get financeRefunds;
+  String get financeNet;
+  String get financeOrders;
+  String get financeAverage;
+  String get financeDate;
+  String get financeTotal;
+  String get financeRefundsNote;
+  String get financeByMethod;
+  String get financeMethod;
+  String get financePaymentCount;
+  String get financeAmount;
+  String get financeShare;
+  String get financeLedgerTitle;
+  String get financeInvoice;
+  String get financeTime;
+  String get financeLedgerTotal;
+  String financeLedgerTruncated(int count);
+  String get financeNoPayments;
+  String get financeTaxName;
+  String get financeTaxRate;
+  String get financeTaxBase;
+  String get financeTaxCharged;
+  String get financeTaxRefunded;
+  String get financeTaxNet;
+  String get financeTaxUnattributed;
+  String get financeTaxNote;
+  String get financeNoTaxes;
+  String get financeUnavailable;
+  String get financeNoFigures;
   String get settingsSectionAccount;
   String get settingsSectionPointOfSale;
   String get settingsGeneral;
@@ -5057,6 +5109,123 @@ final class EnStrings extends AppStrings {
   @override
   String get homeActionEmployees => 'Employees';
   @override
+  String get financeOverview => 'Overview';
+  @override
+  String get financeOverviewBlurb =>
+      'What the period took in, and how it was paid.';
+  @override
+  String get financeRevenue => 'Revenue';
+  @override
+  String get financeRevenueBlurb =>
+      'Sales, discounts and refunds by business day — the same figures as '
+      'Reports.';
+  @override
+  String get financePayments => 'Payments';
+  @override
+  String get financePaymentsBlurb =>
+      "Every payment taken on the period's sales, one row each.";
+  @override
+  String get financeTaxes => 'Taxes collected';
+  @override
+  String get financeTaxesBlurb =>
+      'Tax charged by rate, less what refunds gave back.';
+  @override
+  String get financePeriodToday => 'Today';
+  @override
+  String get financePeriodThisWeek => 'This week';
+  @override
+  String get financePeriodThisMonth => 'This month';
+  @override
+  String get financePeriodLastMonth => 'Last month';
+  @override
+  String get financeBusinessDates => 'Business dates';
+  @override
+  String get financeKpiRevenue => 'Revenue (net sales)';
+  @override
+  String get financeKpiCollected => 'Collected';
+  @override
+  String get financeKpiOnAccount => 'On account';
+  @override
+  String get financeKpiTax => 'Tax, net of refunds';
+  @override
+  String get financeTendersTitle => 'Collected by payment method';
+  @override
+  String get financeOnAccountNote =>
+      'On account is owed, not collected, so it has no share of the bar.';
+  @override
+  String get financeNothingCollected => 'Nothing was collected in this period.';
+  @override
+  String get financeGross => 'Gross sales';
+  @override
+  String get financeDiscounts => 'Discounts';
+  @override
+  String get financeRefunds => 'Refunds';
+  @override
+  String get financeNet => 'Net sales';
+  @override
+  String get financeOrders => 'Sales';
+  @override
+  String get financeAverage => 'Average sale';
+  @override
+  String get financeDate => 'Business date';
+  @override
+  String get financeTotal => 'Total';
+  @override
+  String get financeRefundsNote =>
+      'A refund is counted on the day it was given, whatever day the sale was.';
+  @override
+  String get financeByMethod => 'By payment method';
+  @override
+  String get financeMethod => 'Method';
+  @override
+  String get financePaymentCount => 'Payments';
+  @override
+  String get financeAmount => 'Amount';
+  @override
+  String get financeShare => 'Share';
+  @override
+  String get financeLedgerTitle => 'Payments, newest first';
+  @override
+  String get financeInvoice => 'Invoice';
+  @override
+  String get financeTime => 'Time';
+  @override
+  String get financeLedgerTotal => 'Total of the payments listed';
+  @override
+  String financeLedgerTruncated(int count) =>
+      'Only the newest $count payments are listed. The totals by method cover '
+      'the whole period.';
+  @override
+  String get financeNoPayments => 'No payments were taken in this period.';
+  @override
+  String get financeTaxName => 'Tax';
+  @override
+  String get financeTaxRate => 'Rate';
+  @override
+  String get financeTaxBase => 'Taxable sales';
+  @override
+  String get financeTaxCharged => 'Charged';
+  @override
+  String get financeTaxRefunded => 'Refunded';
+  @override
+  String get financeTaxNet => 'Net';
+  @override
+  String get financeTaxUnattributed => 'Refunded on sales that recorded no rate';
+  @override
+  String get financeTaxNote =>
+      "Charged is filed under the sale's business date; refunded under the "
+      "day the refund was given, split across the sale's rates as its credit "
+      'note splits it. Taxable sales are before refunds.';
+  @override
+  String get financeNoTaxes =>
+      'No tax was charged or refunded in this period.';
+  @override
+  String get financeUnavailable =>
+      'The figures could not be read from the branch database.';
+  @override
+  String get financeNoFigures =>
+      'This till has no branch database to read figures from yet.';
+  @override
   String get settingsSectionAccount => 'Account';
   @override
   String get settingsSectionPointOfSale => 'Point of sale';
@@ -8840,6 +9009,118 @@ final class ArStrings extends AppStrings {
   String get homeActionProducts => 'إدارة المنتجات';
   @override
   String get homeActionEmployees => 'الموظفون';
+  @override
+  String get financeOverview => 'نظرة عامة';
+  @override
+  String get financeOverviewBlurb => 'ما دخل خلال الفترة، وكيف دُفع.';
+  @override
+  String get financeRevenue => 'الإيرادات';
+  @override
+  String get financeRevenueBlurb =>
+      'المبيعات والخصومات والمرتجعات لكل يوم عمل، بأرقام التقارير نفسها.';
+  @override
+  String get financePayments => 'المدفوعات';
+  @override
+  String get financePaymentsBlurb => 'كل دفعة على مبيعات الفترة، كلٌّ في سطر.';
+  @override
+  String get financeTaxes => 'الضرائب المحصَّلة';
+  @override
+  String get financeTaxesBlurb =>
+      'الضريبة المحصَّلة لكل نسبة، مخصوماً منها ما رُدّ مع المرتجعات.';
+  @override
+  String get financePeriodToday => 'اليوم';
+  @override
+  String get financePeriodThisWeek => 'هذا الأسبوع';
+  @override
+  String get financePeriodThisMonth => 'هذا الشهر';
+  @override
+  String get financePeriodLastMonth => 'الشهر الماضي';
+  @override
+  String get financeBusinessDates => 'أيام العمل';
+  @override
+  String get financeKpiRevenue => 'الإيرادات (صافي المبيعات)';
+  @override
+  String get financeKpiCollected => 'المحصَّل';
+  @override
+  String get financeKpiOnAccount => 'على الحساب';
+  @override
+  String get financeKpiTax => 'الضريبة بعد المرتجعات';
+  @override
+  String get financeTendersTitle => 'المحصَّل حسب طريقة الدفع';
+  @override
+  String get financeOnAccountNote =>
+      'المبلغ على الحساب دَين لم يُحصَّل بعد، فلا نصيب له في الشريط.';
+  @override
+  String get financeNothingCollected => 'لم يُحصَّل شيء في هذه الفترة.';
+  @override
+  String get financeGross => 'إجمالي المبيعات';
+  @override
+  String get financeDiscounts => 'الخصومات';
+  @override
+  String get financeRefunds => 'المرتجعات';
+  @override
+  String get financeNet => 'صافي المبيعات';
+  @override
+  String get financeOrders => 'عدد المبيعات';
+  @override
+  String get financeAverage => 'متوسط البيع';
+  @override
+  String get financeDate => 'يوم العمل';
+  @override
+  String get financeTotal => 'الإجمالي';
+  @override
+  String get financeRefundsNote =>
+      'يُحتسب المرتجع في يوم ردّه، أياً كان يوم البيع.';
+  @override
+  String get financeByMethod => 'حسب طريقة الدفع';
+  @override
+  String get financeMethod => 'الطريقة';
+  @override
+  String get financePaymentCount => 'الدفعات';
+  @override
+  String get financeAmount => 'المبلغ';
+  @override
+  String get financeShare => 'الحصة';
+  @override
+  String get financeLedgerTitle => 'الدفعات، الأحدث أولاً';
+  @override
+  String get financeInvoice => 'الفاتورة';
+  @override
+  String get financeTime => 'الوقت';
+  @override
+  String get financeLedgerTotal => 'إجمالي الدفعات المعروضة';
+  @override
+  String financeLedgerTruncated(int count) =>
+      'تُعرض أحدث $count دفعة فقط، أما الإجماليات حسب الطريقة فتشمل الفترة '
+      'كلها.';
+  @override
+  String get financeNoPayments => 'لم تُسجَّل دفعات في هذه الفترة.';
+  @override
+  String get financeTaxName => 'الضريبة';
+  @override
+  String get financeTaxRate => 'النسبة';
+  @override
+  String get financeTaxBase => 'المبيعات الخاضعة';
+  @override
+  String get financeTaxCharged => 'المحصَّلة';
+  @override
+  String get financeTaxRefunded => 'المردودة';
+  @override
+  String get financeTaxNet => 'الصافي';
+  @override
+  String get financeTaxUnattributed => 'مردودة على مبيعات لم تُسجَّل لها نسبة';
+  @override
+  String get financeTaxNote =>
+      'تُحتسب الضريبة المحصَّلة في يوم عمل البيع، والمردودة في يوم الرد، '
+      'موزعةً على نسب البيع كما يوزعها الإشعار الدائن. المبيعات الخاضعة قبل '
+      'المرتجعات.';
+  @override
+  String get financeNoTaxes => 'لم تُحصَّل أو تُردّ أي ضريبة في هذه الفترة.';
+  @override
+  String get financeUnavailable => 'تعذّرت قراءة الأرقام من قاعدة بيانات الفرع.';
+  @override
+  String get financeNoFigures =>
+      'لا توجد لهذا الجهاز بعدُ قاعدة بيانات فرع يقرأ منها الأرقام.';
   @override
   String get settingsSectionAccount => 'الحساب';
   @override

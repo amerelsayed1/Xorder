@@ -3,7 +3,10 @@ import 'package:postgres/postgres.dart' show Result, Sql;
 import '../../core/config/deployment.dart';
 import '../../core/money/money.dart';
 import '../../domain/models/branch_sales.dart';
+import '../../domain/models/finance_report.dart';
 import '../../domain/models/sales_report.dart';
+import '../../domain/models/tax.dart';
+import '../../domain/models/tender_method.dart';
 import '../../domain/repositories/repositories.dart';
 import 'pos_database.dart';
 import 'postgres_branch_sales_repository.dart';
@@ -112,9 +115,14 @@ class PostgresReportsRepository implements ReportsRepository {
   /// `served`, `types` and the range — and carry the same values, because
   /// both are read off one filter. Distinct names would let the two drift
   /// onto different values without anything noticing.
+  ///
+  /// [columns] replaces the select list; the default is the sales cells'.
+  /// The WHERE is the same whatever is selected, which is the point: the
+  /// taxes' refunds (BO-9) are the refunds the refunds tile counts.
   ({String sql, Map<String, Object?> parameters}) _refunds(
-    ReportFilter filter,
-  ) {
+    ReportFilter filter, {
+    String? columns,
+  }) {
     final range = PostgresOrderHistoryRepository.businessDateRange(
       from: filter.from,
       to: filter.to,
@@ -146,7 +154,8 @@ class PostgresReportsRepository implements ReportsRepository {
     }
     return (
       sql:
-          'SELECT r.terminal_id, r.total_minor, ${_filed('r')} AS filed '
+          'SELECT '
+          '${columns ?? 'r.terminal_id, r.total_minor, ${_filed('r')} AS filed'} '
           'FROM pos_refunds AS r '
           'JOIN pos_orders AS sold ON sold.id = r.order_id '
           '${PostgresOrderHistoryRepository.tradingDayJoin('r')} '
@@ -386,6 +395,194 @@ class PostgresReportsRepository implements ReportsRepository {
         ),
     ];
   }
+
+  @override
+  Future<TaxReport> taxes(ReportFilter filter) {
+    final sold = _sales(filter, 'o.id');
+    // `sold` is `_refunds`' own join to the sale, there for the order type.
+    // The sale's `vat_minor` is what the ETA credit note scales by, so the
+    // split below is the one a credit note would file.
+    final refunded = _refunds(
+      filter,
+      columns: 'r.id, r.order_id, r.vat_minor, sold.vat_minor AS sale_vat',
+    );
+
+    // Charged: the sales' own rows, summed per rate and name — the key the
+    // table is unique on, so a rate renamed mid-range is two rows, as the
+    // receipts were.
+    final chargedSql =
+        '''
+      WITH sales AS (${sold.sql})
+      SELECT t.rate_bp, t.name_snapshot, count(*),
+             sum(t.base_minor)::bigint, sum(t.amount_minor)::bigint
+        FROM pos_order_taxes AS t
+        JOIN sales AS s ON s.id = t.order_id
+       GROUP BY t.rate_bp, t.name_snapshot
+      ''';
+
+    // Refunded: each refund with its sale's rates, in `id` order — the order
+    // `TaxEngine.refundShares` is given by the ETA filer too. LEFT JOIN so a
+    // refund whose sale has no rate still arrives, and is counted as such
+    // rather than lost.
+    final refundedSql =
+        '''
+      WITH refunds AS (${refunded.sql})
+      SELECT f.id, f.vat_minor, f.sale_vat, t.rate_bp, t.name_snapshot,
+             t.amount_minor
+        FROM refunds AS f
+        LEFT JOIN pos_order_taxes AS t ON t.order_id = f.order_id
+       WHERE f.vat_minor > 0
+       ORDER BY f.id, t.id
+      ''';
+
+    // One snapshot, for the reason `sales` takes one: a refund committed
+    // between the two reads would otherwise be in the refunded column of a
+    // report whose charged column never saw its sale.
+    return _db.runTx(config, (tx) async {
+      await tx.execute(
+        'SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY',
+      );
+      final charged = await tx.execute(
+        Sql.named(chargedSql),
+        parameters: sold.parameters,
+      );
+      final refunds = await tx.execute(
+        Sql.named(refundedSql),
+        parameters: refunded.parameters,
+      );
+      return _assembleTaxes(filter, charged, refunds);
+    });
+  }
+
+  TaxReport _assembleTaxes(ReportFilter filter, Result charged, Result refunds) {
+    final byRate = <(int, String), _TaxTally>{};
+    for (final raw in charged) {
+      final row = raw.toList();
+      byRate[(row[0]! as int, row[1]! as String)] = _TaxTally()
+        ..orders = row[2]! as int
+        ..base = row[3]! as int
+        ..charged = row[4]! as int;
+    }
+
+    // Rows arrive grouped by refund. Each group is split once, whole — the
+    // split is of one refund's VAT, and splitting row by row would round each
+    // rate against a different remainder.
+    var unattributed = 0;
+    final groups = <int, List<List<Object?>>>{};
+    for (final raw in refunds) {
+      final row = raw.toList();
+      groups.putIfAbsent(row[0]! as int, () => []).add(row);
+    }
+    for (final rows in groups.values) {
+      final vat = rows.first[1]! as int;
+      if (rows.first[3] == null) {
+        unattributed += vat;
+        continue;
+      }
+      final shares = TaxEngine.refundShares(
+        saleAmounts: [for (final row in rows) row[5]! as int],
+        saleVat: rows.first[2]! as int,
+        refundVat: vat,
+      );
+      for (final (i, row) in rows.indexed) {
+        byRate
+                .putIfAbsent((row[3]! as int, row[4]! as String), _TaxTally.new)
+                .refunded +=
+            shares[i];
+      }
+    }
+
+    final keys = byRate.keys.toList()
+      ..sort((a, b) {
+        final byBp = b.$1.compareTo(a.$1);
+        return byBp != 0 ? byBp : a.$2.compareTo(b.$2);
+      });
+    return TaxReport(
+      filter: filter,
+      rates: List.unmodifiable([
+        for (final key in keys)
+          TaxCollected(
+            rateBp: key.$1,
+            name: key.$2,
+            orders: byRate[key]!.orders,
+            base: _money(byRate[key]!.base),
+            charged: _money(byRate[key]!.charged),
+            refunded: _money(byRate[key]!.refunded),
+          ),
+      ]),
+      unattributedRefunds: _money(unattributed),
+      currency: currency,
+      exponent: exponent,
+    );
+  }
+
+  @override
+  Future<PaymentLedger> payments(
+    ReportFilter filter, {
+    int limit = 500,
+  }) async {
+    if (limit < 1) {
+      throw ArgumentError.value(limit, 'limit', 'A ledger lists something.');
+    }
+    final paid = _sales(
+      filter,
+      'o.id, o.restaurant_id, o.terminal_id, o.invoice_number',
+    );
+
+    // The tender kind by the branch view's own rule (`paymentTotalsCte`):
+    // the payment's cash flag, and the tender type's kind or `other`. A row
+    // here and a slice of the bar are then the same money in the same bucket.
+    // One more than asked, to know whether there were more.
+    final rows = await _db.query(
+      config,
+      '''
+      WITH sales AS (${paid.sql})
+      SELECT p.id, s.id, s.invoice_number, p.occurred_at, s.terminal_id::text,
+             term.name, p.tender_type_id, p.label,
+             coalesce(tt.kind, 'other'), p.counts_as_cash, p.amount_minor
+        FROM pos_order_payments AS p
+        JOIN sales AS s ON s.id = p.order_id
+        LEFT JOIN pos_tender_types AS tt
+          ON tt.restaurant_id = s.restaurant_id AND tt.id = p.tender_type_id
+        LEFT JOIN pos_terminals AS term ON term.id = s.terminal_id
+       ORDER BY p.occurred_at DESC, p.id DESC
+       LIMIT @limit
+      ''',
+      parameters: {...paid.parameters, 'limit': limit + 1},
+    );
+
+    final entries = [
+      for (final raw in rows.take(limit))
+        PaymentEntry(
+          paymentId: raw[0]! as int,
+          orderId: raw[1]! as int,
+          invoiceNumber: raw[2]! as String,
+          occurredAt: (raw[3]! as DateTime).toLocal(),
+          terminalId: raw[4]! as String,
+          terminalName: raw[5] as String?,
+          tenderTypeId: raw[6] as int?,
+          label: raw[7]! as String,
+          kind: TenderKind.fromWire(raw[8] as String?),
+          countsAsCash: raw[9] as bool? ?? false,
+          amount: _money(raw[10]),
+        ),
+    ];
+    return PaymentLedger(
+      filter: filter,
+      entries: List.unmodifiable(entries),
+      truncated: rows.length > limit,
+      currency: currency,
+      exponent: exponent,
+    );
+  }
+}
+
+/// One rate's figures while they are being summed, in minor units.
+class _TaxTally {
+  int orders = 0;
+  int base = 0;
+  int charged = 0;
+  int refunded = 0;
 }
 
 /// One cell's figures while they are being summed, in minor units.

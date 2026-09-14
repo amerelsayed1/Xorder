@@ -10,6 +10,7 @@ import 'package:xorder_pos/core/ui/theme.dart';
 import 'package:xorder_pos/data/fakes/fake_repositories.dart';
 import 'package:xorder_pos/domain/models/branch_sales.dart';
 import 'package:xorder_pos/domain/models/business_day.dart';
+import 'package:xorder_pos/domain/models/finance_report.dart';
 import 'package:xorder_pos/domain/models/home_sales.dart' show deltaBp;
 import 'package:xorder_pos/domain/models/sales_report.dart';
 import 'package:xorder_pos/domain/models/tender_method.dart';
@@ -211,6 +212,15 @@ class _Fixed implements ReportsRepository {
       ProductRanking.amount => _byAmount,
     };
   }
+
+  // Finance's (BO-9); the Reports tab never asks for them.
+  @override
+  Future<TaxReport> taxes(ReportFilter filter) =>
+      throw UnimplementedError('Reports draws no taxes');
+
+  @override
+  Future<PaymentLedger> payments(ReportFilter filter, {int limit = 500}) =>
+      throw UnimplementedError('Reports draws no payment ledger');
 }
 
 class _InAdminMode extends AdminSessionController {
