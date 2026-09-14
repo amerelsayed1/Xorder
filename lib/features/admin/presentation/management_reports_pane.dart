@@ -80,39 +80,15 @@ class ManagementReportsPane extends ConsumerStatefulWidget {
 }
 
 class _ManagementReportsPaneState extends ConsumerState<ManagementReportsPane> {
-  ReportPeriod _period = ReportPeriod.today;
-  ({DateTime first, DateTime last})? _custom;
+  // The period is not here: it is `reportPeriodProvider`'s, shared with the
+  // five breakdowns. The trend's metric and the list's ranking stay: they are
+  // choices about this page's two charts, and no other page draws them.
   ReportTrendMetric _metric = ReportTrendMetric.net;
   ProductRanking _ranking = ProductRanking.quantity;
 
   /// Read once, as the Sales list reads it: a clock read in `build` makes
   /// every rebuild a new filter, and every new filter a new database read.
   late final DateTime _openedAt = widget.openedAt ?? DateTime.now();
-
-  /// The Sales list's rule for "today": the open day's date while one is
-  /// open, the calendar's otherwise. One definition, so Today here and Today
-  /// there are the same rows.
-  DateTime _today(BusinessDay? day) {
-    if (day != null && day.isOpen) return day.date;
-    return DateTime(_openedAt.year, _openedAt.month, _openedAt.day);
-  }
-
-  Future<void> _pickRange(DateTime today) async {
-    final custom = _custom;
-    final picked = await showDateRangePicker(
-      context: context,
-      firstDate: DateTime(2020),
-      lastDate: today,
-      initialDateRange: custom == null
-          ? null
-          : DateTimeRange(start: custom.first, end: custom.last),
-    );
-    if (picked == null || !mounted) return;
-    setState(() {
-      _custom = (first: picked.start, last: picked.end);
-      _period = ReportPeriod.custom;
-    });
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -124,14 +100,11 @@ class _ManagementReportsPaneState extends ConsumerState<ManagementReportsPane> {
     if (day.isLoading) {
       return Center(child: CircularProgressIndicator(color: pos.accent));
     }
-    final today = _today(day.valueOrNull);
-    final filter = reportFilterFor(
-      _period,
-      today: today,
-      firstDayOfWeekIndex: MaterialLocalizations.of(
-        context,
-      ).firstDayOfWeekIndex,
-      custom: _custom,
+    final today = reportToday(day.valueOrNull, _openedAt);
+    final filter = reportFilterIn(
+      context,
+      ref.watch(reportPeriodProvider),
+      today,
     );
     final report = ref.watch(salesReportProvider(filter));
     // Beside the report, not after it: the tiles draw as soon as the period
@@ -145,13 +118,7 @@ class _ManagementReportsPaneState extends ConsumerState<ManagementReportsPane> {
       key: const Key('reports-pane'),
       padding: const EdgeInsets.all(PosSpace.s24),
       children: [
-        _PeriodBar(
-          period: _period,
-          filter: filter,
-          onSelect: (period) => period == ReportPeriod.custom
-              ? _pickRange(today)
-              : setState(() => _period = period),
-        ),
+        ReportPeriodBar(filter: filter, today: today),
         // BO-11, on a line of its own under the period rather than at the
         // end of its row, where BO-6 left room for it: at the back office's
         // 1100, "This month" in English leaves 130 pixels beside its range
@@ -196,8 +163,8 @@ class _ManagementReportsPaneState extends ConsumerState<ManagementReportsPane> {
           ),
           // No database behind this till yet. Said, not drawn as zeros: an
           // empty report reads as a week with no sales.
-          AsyncData(value: null) => [_Note(strings.reportNoDatabase)],
-          AsyncError() => [_Note(strings.reportUnavailable, danger: true)],
+          AsyncData(value: null) => [ReportNote(strings.reportNoDatabase)],
+          AsyncError() => [ReportNote(strings.reportUnavailable, danger: true)],
           _ => [
             SizedBox(
               height: 240,
@@ -268,12 +235,12 @@ class _ManagementReportsPaneState extends ConsumerState<ManagementReportsPane> {
         children: [
           Expanded(
             flex: 3,
-            child: _Section(
+            child: ReportSection(
               key: const Key('reports-trend'),
               title: strings.reportTrend,
               trailing: [
                 for (final metric in ReportTrendMetric.values)
-                  _Chip(
+                  ReportChip(
                     key: Key('reports-metric-${metric.name}'),
                     label: reportTrendMetricLabel(strings, metric),
                     selected: metric == _metric,
@@ -286,7 +253,7 @@ class _ManagementReportsPaneState extends ConsumerState<ManagementReportsPane> {
           const SizedBox(width: PosSpace.md),
           Expanded(
             flex: 2,
-            child: _Section(
+            child: ReportSection(
               key: const Key('reports-payments'),
               title: strings.reportPayments,
               child: _Payments(report: report),
@@ -299,12 +266,12 @@ class _ManagementReportsPaneState extends ConsumerState<ManagementReportsPane> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Expanded(
-            child: _Section(
+            child: ReportSection(
               key: const Key('reports-top-products'),
               title: strings.reportTopProducts,
               trailing: [
                 for (final ranking in ProductRanking.values)
-                  _Chip(
+                  ReportChip(
                     key: Key('reports-rank-${ranking.name}'),
                     label: productRankingLabel(strings, ranking),
                     selected: ranking == _ranking,
@@ -316,7 +283,7 @@ class _ManagementReportsPaneState extends ConsumerState<ManagementReportsPane> {
           ),
           const SizedBox(width: PosSpace.md),
           Expanded(
-            child: _Section(
+            child: ReportSection(
               key: const Key('reports-insights'),
               title: strings.reportInsights,
               child: _Insights(
@@ -327,41 +294,83 @@ class _ManagementReportsPaneState extends ConsumerState<ManagementReportsPane> {
         ],
       ),
       const SizedBox(height: PosSpace.md),
-      _Section(
+      ReportSection(
         key: const Key('reports-terminals'),
         title: strings.reportTerminals,
-        child: _TerminalTable(report: report),
+        child: ReportTerminalTable(report: report),
       ),
     ];
   }
 }
 
-/// The period chips, and the dates they came to.
+/// The Sales list's rule for "today": the open day's date while one is open,
+/// the calendar's (as of [openedAt]) otherwise. One definition, so Today on
+/// every Reports item and Today on the Sales list are the same rows.
+DateTime reportToday(BusinessDay? day, DateTime openedAt) {
+  if (day != null && day.isOpen) return day.date;
+  return DateTime(openedAt.year, openedAt.month, openedAt.day);
+}
+
+/// The shared period ([reportPeriodProvider]) as the dates it comes to here —
+/// the locale's first day of the week, ending with [today].
+ReportFilter reportFilterIn(
+  BuildContext context,
+  ReportPeriodChoice choice,
+  DateTime today,
+) => reportFilterFor(
+  choice.period,
+  today: today,
+  firstDayOfWeekIndex: MaterialLocalizations.of(context).firstDayOfWeekIndex,
+  custom: choice.custom,
+);
+
+/// The period chips, and the dates they came to — on every Reports item, and
+/// setting the one period they all read.
 ///
 /// The dates are said every time, in mono: "This week" means a different
 /// Saturday in Arabic than Sunday in English, and the range is what settles
 /// which one somebody is looking at.
-class _PeriodBar extends StatelessWidget {
-  const _PeriodBar({
-    required this.period,
-    required this.filter,
-    required this.onSelect,
-  });
+class ReportPeriodBar extends ConsumerWidget {
+  const ReportPeriodBar({required this.filter, required this.today, super.key});
 
-  final ReportPeriod period;
+  /// What the chosen period came to on this page.
   final ReportFilter filter;
-  final ValueChanged<ReportPeriod> onSelect;
+
+  /// The last date a custom range may reach.
+  final DateTime today;
+
+  Future<void> _pickRange(BuildContext context, WidgetRef ref) async {
+    // Both read before the picker opens: the page may be gone by the time it
+    // closes, and the period outlives the page — it is what the next page
+    // opens on.
+    final period = ref.read(reportPeriodProvider.notifier);
+    final custom = ref.read(reportPeriodProvider).custom;
+    final picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2020),
+      lastDate: today,
+      initialDateRange: custom == null
+          ? null
+          : DateTimeRange(start: custom.first, end: custom.last),
+    );
+    if (picked == null) return;
+    period.pickCustom(first: picked.start, last: picked.end);
+  }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final pos = context.pos;
     final strings = context.strings;
+    final period = ref.watch(reportPeriodProvider).period;
+    void onSelect(ReportPeriod option) => option == ReportPeriod.custom
+        ? _pickRange(context, ref)
+        : ref.read(reportPeriodProvider.notifier).select(option);
     final last = DateTime(filter.to.year, filter.to.month, filter.to.day - 1);
     return Row(
       children: [
         for (final (i, option) in ReportPeriod.values.indexed) ...[
           if (i > 0) const SizedBox(width: PosSpace.sm),
-          _Chip(
+          ReportChip(
             key: Key('reports-period-${option.name}'),
             label: reportPeriodLabel(strings, option),
             selected: option == period,
@@ -389,8 +398,8 @@ class _PeriodBar extends StatelessWidget {
 /// A choice among a few. The Sales list's chip, without the ripple and the
 /// fill: selection is the accent border, and nothing on this design moves or
 /// tints under a pointer.
-class _Chip extends StatelessWidget {
-  const _Chip({
+class ReportChip extends StatelessWidget {
+  const ReportChip({
     required this.label,
     required this.selected,
     required this.onTap,
@@ -589,8 +598,8 @@ class _KpiTile extends StatelessWidget {
 }
 
 /// A bordered block with a heading, and the choices that change it.
-class _Section extends StatelessWidget {
-  const _Section({
+class ReportSection extends StatelessWidget {
+  const ReportSection({
     required this.title,
     required this.child,
     this.trailing = const [],
@@ -707,7 +716,9 @@ class _Payments extends StatelessWidget {
     final strings = context.strings;
     final shares = report.tenderShares;
     final owed = report.onAccount;
-    if (shares.isEmpty && owed.isZero) return _Note(strings.reportNoPayments);
+    if (shares.isEmpty && owed.isZero) {
+      return ReportNote(strings.reportNoPayments);
+    }
     final colors = chartSeries(pos);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -795,7 +806,7 @@ class _TopProducts extends ConsumerWidget {
     return switch (ref.watch(
       topProductsProvider((filter: filter, by: ranking)),
     )) {
-      AsyncData(value: final products) when products.isEmpty => _Note(
+      AsyncData(value: final products) when products.isEmpty => ReportNote(
         strings.reportNoProducts,
       ),
       AsyncData(value: final products) => Column(
@@ -884,7 +895,7 @@ class _TopProducts extends ConsumerWidget {
           ),
         ],
       ),
-      AsyncError() => _Note(strings.reportUnavailable, danger: true),
+      AsyncError() => ReportNote(strings.reportUnavailable, danger: true),
       _ => const SizedBox(height: 120),
     };
   }
@@ -899,7 +910,7 @@ class _Insights extends StatelessWidget {
   Widget build(BuildContext context) {
     final pos = context.pos;
     final strings = context.strings;
-    if (insights.isEmpty) return _Note(strings.reportInsightsNone);
+    if (insights.isEmpty) return ReportNote(strings.reportInsightsNone);
     final data = PosText.mono(
       size: 13,
       weight: FontWeight.w600,
@@ -998,8 +1009,8 @@ class _Insight extends StatelessWidget {
 /// Every till of the branch, zeros included (§3a rule 2), and the branch
 /// under them — the report's own rollup of the same rows, so the bottom line
 /// is the column's sum by construction rather than by a second addition.
-class _TerminalTable extends StatelessWidget {
-  const _TerminalTable({required this.report});
+class ReportTerminalTable extends StatelessWidget {
+  const ReportTerminalTable({required this.report, super.key});
 
   final SalesReport report;
 
@@ -1113,7 +1124,7 @@ class _TerminalRow extends StatelessWidget {
     final pos = context.pos;
     final weight = total ? FontWeight.w700 : FontWeight.w400;
     Widget amount(Money value) => SizedBox(
-      width: _TerminalTable._money,
+      width: ReportTerminalTable._money,
       child: Align(
         alignment: AlignmentDirectional.centerEnd,
         child: MonoAmount(value, weight: weight),
@@ -1128,7 +1139,7 @@ class _TerminalRow extends StatelessWidget {
         children: [
           Expanded(child: name),
           SizedBox(
-            width: _TerminalTable._count,
+            width: ReportTerminalTable._count,
             child: Text(
               '$orders',
               textAlign: TextAlign.end,
@@ -1146,8 +1157,8 @@ class _TerminalRow extends StatelessWidget {
   }
 }
 
-class _Note extends StatelessWidget {
-  const _Note(this.text, {this.danger = false});
+class ReportNote extends StatelessWidget {
+  const ReportNote(this.text, {this.danger = false, super.key});
 
   final String text;
   final bool danger;

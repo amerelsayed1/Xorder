@@ -350,7 +350,14 @@ void main() {
 
     expect(await linesOf(tester, 'Home'), ['Home', 'Exit Admin Mode']);
     expect(await linesOf(tester, 'Sales'), ['Orders']);
-    expect(await linesOf(tester, 'Reports'), ['Business summary']);
+    expect(await linesOf(tester, 'Reports'), [
+      'Business summary',
+      'Sales',
+      'Items',
+      'Payment methods',
+      'Branches & devices',
+      'Employees',
+    ]);
     expect(await linesOf(tester, 'Menu'), [
       'Menu',
       'Categories',

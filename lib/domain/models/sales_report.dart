@@ -217,6 +217,121 @@ class ProductSales {
   final Money amount;
 }
 
+/// The Items breakdown's bottom line: [products]' own units and amounts,
+/// added up.
+///
+/// **Not net sales, and not meant to be.** Each row is before order-level
+/// discounts and service, and takes a refunded unit off the day it was SOLD
+/// (see [ProductSales]); the tiles take a refund off the day it was issued.
+/// So this total is "what the lines sold for", and the page says so beside it
+/// rather than letting it sit under a tile it will not match.
+({int quantity, Money amount}) productTotals(List<ProductSales> products) => (
+  quantity: products.fold(0, (sum, p) => sum + p.quantity),
+  amount: products.fold(
+    products.isEmpty ? Money.zero : products.first.amount.copyWith(minor: 0),
+    (sum, p) => sum + p.amount,
+  ),
+);
+
+/// One person's part of a period's takings — a row of the Employees
+/// breakdown.
+///
+/// **Each figure is the act of the person who did it**, as [ReportFilter]'s
+/// person filter already reads a period: sales by who rang them up
+/// (`served_by`), refunds by who ISSUED them (`refunded_by`), voids by who
+/// voided the order (`voided_by`). Crediting a refund to the original seller
+/// instead was the alternative; it would make a cashier's net fall for a
+/// refund somebody else gave on another day, which nobody could explain to
+/// them from their own shift.
+class StaffSales {
+  const StaffSales({
+    required this.staffId,
+    required this.name,
+    required this.orders,
+    required this.gross,
+    required this.discounts,
+    required this.refunds,
+    required this.refundCount,
+    required this.voids,
+  });
+
+  /// Null for the sales that record nobody — `served_by` is nullable, and
+  /// rows from before it existed have none. They are a row of their own, not
+  /// dropped: without them the column would not add up to the branch.
+  final int? staffId;
+
+  /// Null when [staffId] is.
+  final String? name;
+
+  /// Settled sales this person rang up.
+  final int orders;
+
+  /// Before discounts, as [ReportDay.gross].
+  final Money gross;
+  final Money discounts;
+
+  /// Refunds this person issued in the period, whoever made the sale.
+  final Money refunds;
+  final int refundCount;
+
+  /// Orders this person voided in the period. A count and not an amount: a
+  /// voided order took no money, so there is nothing of it to add to a column
+  /// of money.
+  final int voids;
+
+  /// §3a rule 5, one person wide.
+  Money get net => gross - discounts - refunds;
+
+  /// [SalesReport.averageOrder]'s rule: net per order, rounded half-up once,
+  /// here. Null with no orders — somebody who only issued refunds.
+  Money? get averageOrder =>
+      orders == 0 ? null : net.copyWith(minor: roundHalfUp(net.minor, orders));
+}
+
+/// The Employees breakdown: every person with a sale, a refund or a void in
+/// the period, and the totals read off them.
+///
+/// **The totals are the rows' sums, never stored beside them**, for the reason
+/// `TerminalRollup` gives: a total with a life of its own is one constructor
+/// call from a column that does not add up. Because every settled sale has one
+/// `served_by` (or none, which is a row) and every refund one `refunded_by`,
+/// the rows partition exactly the sales and refunds [SalesReport] counts — so
+/// [net] equals the summary's net tile, which `reports_test.dart` holds to the
+/// piastre.
+class StaffSalesReport {
+  const StaffSalesReport({
+    required this.filter,
+    required this.people,
+    this.currency = 'EGP',
+    this.exponent = 2,
+  });
+
+  final ReportFilter filter;
+
+  /// Highest net first.
+  final List<StaffSales> people;
+  final String currency;
+  final int exponent;
+
+  Money get _zero => Money(0, currency: currency, exponent: exponent);
+
+  Money _sum(Money Function(StaffSales) figure) =>
+      people.fold(_zero, (sum, p) => sum + figure(p));
+
+  int get orders => people.fold(0, (sum, p) => sum + p.orders);
+  int get refundCount => people.fold(0, (sum, p) => sum + p.refundCount);
+  int get voids => people.fold(0, (sum, p) => sum + p.voids);
+  Money get gross => _sum((p) => p.gross);
+  Money get discounts => _sum((p) => p.discounts);
+  Money get refunds => _sum((p) => p.refunds);
+
+  /// Summed from the rows' own net, as `TerminalRollup.net` is.
+  Money get net => _sum((p) => p.net);
+
+  Money? get averageOrder =>
+      orders == 0 ? null : net.copyWith(minor: roundHalfUp(net.minor, orders));
+}
+
 /// One payment method's part of what was collected.
 class TenderShare {
   const TenderShare({required this.method, required this.basisPoints});
@@ -289,6 +404,17 @@ class SalesReport with TerminalRollup {
         TenderShare(method: collected[i], basisPoints: shares[i]),
     ];
   }
+
+  /// How many payments [tenderShares] is made of — the count beside
+  /// `collected` on Reports › Payment methods.
+  int get collectedPayments => paymentsByMethod
+      .where((m) => m.bucket.isCollected)
+      .fold(0, (sum, m) => sum + m.count);
+
+  /// How many payments [onAccount] is made of, shown apart as it is.
+  int get onAccountPayments => paymentsByMethod
+      .where((m) => !m.bucket.isCollected)
+      .fold(0, (sum, m) => sum + m.count);
 }
 
 /// Each of [parts]' share of their sum, in basis points, summing to exactly

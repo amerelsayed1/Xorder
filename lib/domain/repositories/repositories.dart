@@ -476,12 +476,17 @@ abstract interface class ReportsRepository {
   /// for [filter], read in one snapshot.
   Future<SalesReport> sales(ReportFilter filter);
 
-  /// The best-selling products over [filter], ranked [by], at most [limit].
+  /// The best-selling products over [filter], ranked [by], at most [limit] —
+  /// or every product sold, with a null [limit] (Reports › Items).
   Future<List<ProductSales>> topProducts(
     ReportFilter filter, {
     required ProductRanking by,
-    int limit = 5,
+    int? limit = 5,
   });
+
+  /// [filter]'s sales, refunds and voids per person (Reports › Employees),
+  /// over exactly the sales and refunds [sales] counts.
+  Future<StaffSalesReport> staffSales(ReportFilter filter);
 
   /// Tax on [filter]'s sales by rate, and the tax of the refunds issued in it,
   /// split across their sales' rates (BO-9). Read in one snapshot.

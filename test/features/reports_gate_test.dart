@@ -118,6 +118,39 @@ void main() {
     expect(allowed.calls, 2);
   });
 
+  // Reports' breakdowns: every product, and the figures per person. Behind
+  // the same gate on the same road, so a page built on either later cannot
+  // forget it.
+  test('the Items and Employees reads ask the same gate', () async {
+    final refused = _Recording();
+    final cashierSees = containerFor(cashier, refused);
+    expect(
+      await value(
+        cashierSees,
+        allProductsProvider((filter: filter, by: ProductRanking.amount)).future,
+      ),
+      isEmpty,
+    );
+    expect(await value(cashierSees, staffSalesProvider(filter).future), isNull);
+    expect(refused.calls, 0);
+
+    final allowed = _Recording();
+    final keeperSees = containerFor(stockKeeper, allowed);
+    expect(
+      await value(
+        keeperSees,
+        allProductsProvider((filter: filter, by: ProductRanking.amount)).future,
+      ),
+      hasLength(1),
+    );
+    expect(allowed.limits, [null], reason: 'every product, not the top five');
+    expect(
+      await value(keeperSees, staffSalesProvider(filter).future),
+      isNotNull,
+    );
+    expect(allowed.calls, 2);
+  });
+
   test('reports.view through a role is enough, and the figures are not narrowed', () async {
     final repository = _Recording();
     final container = containerFor(stockKeeper, repository);
@@ -183,6 +216,14 @@ class _InAdminMode extends AdminSessionController {
 class _Recording implements ReportsRepository {
   int calls = 0;
   final filters = <ReportFilter>[];
+  final limits = <int?>[];
+
+  @override
+  Future<StaffSalesReport> staffSales(ReportFilter filter) async {
+    calls++;
+    filters.add(filter);
+    return StaffSalesReport(filter: filter, people: const []);
+  }
 
   @override
   Future<SalesReport> sales(ReportFilter filter) async {
@@ -195,9 +236,10 @@ class _Recording implements ReportsRepository {
   Future<List<ProductSales>> topProducts(
     ReportFilter filter, {
     required ProductRanking by,
-    int limit = 5,
+    int? limit = 5,
   }) async {
     calls++;
+    limits.add(limit);
     return const [
       ProductSales(
         menuItemId: 101,

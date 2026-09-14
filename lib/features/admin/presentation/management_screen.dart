@@ -40,6 +40,7 @@ import 'management_reports_pane.dart';
 import 'management_roles_pane.dart';
 import 'management_staff_pane.dart';
 import 'management_terminal_pane.dart';
+import 'report_breakdown_panes.dart';
 
 /// The back office, inside the till.
 ///
@@ -267,7 +268,12 @@ enum BackOfficeTab {
 BackOfficeTab tabOf(ManagementPane pane) => switch (pane) {
   ManagementPane.home => BackOfficeTab.home,
   ManagementPane.sales => BackOfficeTab.sales,
-  ManagementPane.reports => BackOfficeTab.reports,
+  ManagementPane.reports ||
+  ManagementPane.reportsSales ||
+  ManagementPane.reportsItems ||
+  ManagementPane.reportsPayments ||
+  ManagementPane.reportsBranches ||
+  ManagementPane.reportsEmployees => BackOfficeTab.reports,
   ManagementPane.menu ||
   ManagementPane.categories ||
   ManagementPane.extras ||
@@ -370,6 +376,11 @@ SettingsSection? settingsSectionOf(ManagementPane pane) => switch (pane) {
   ManagementPane.home ||
   ManagementPane.sales ||
   ManagementPane.reports ||
+  ManagementPane.reportsSales ||
+  ManagementPane.reportsItems ||
+  ManagementPane.reportsPayments ||
+  ManagementPane.reportsBranches ||
+  ManagementPane.reportsEmployees ||
   ManagementPane.menu ||
   ManagementPane.categories ||
   ManagementPane.extras ||
@@ -403,7 +414,13 @@ SettingsSection? settingsSectionOf(ManagementPane pane) => switch (pane) {
 int _placeInTab(ManagementPane pane) => switch (pane) {
   ManagementPane.home => 0,
   ManagementPane.sales => 0,
+  // ملخص الأعمال، المبيعات، الأصناف، طرق الدفع، الفروع والأجهزة، الموظفين
   ManagementPane.reports => 0,
+  ManagementPane.reportsSales => 1,
+  ManagementPane.reportsItems => 2,
+  ManagementPane.reportsPayments => 3,
+  ManagementPane.reportsBranches => 4,
+  ManagementPane.reportsEmployees => 5,
   // المنيو، الأقسام، مكتبة الإضافات، الصالة
   ManagementPane.menu => 0,
   ManagementPane.categories => 1,
@@ -501,10 +518,10 @@ typedef BackOfficeItem = ({
 /// **An item of the owner's map with no screen yet is not here** — not as a
 /// placeholder, not as a greyed word: Sales' invoices, returns and cancelled
 /// orders; Finance's settlements; People's shifts; System's sync. Each arrives
-/// as a pane with the slice that builds it. Reports' five breakdowns are the
-/// same, though four are sections of Business summary already: the period is
-/// that page's own state, so four entries over it would each open it back on
-/// Today, and the header would name a page the screen does not have.
+/// as a pane with the slice that builds it. Reports' five breakdowns arrived
+/// as panes of their own once the period moved out of Business summary into
+/// `reportPeriodProvider`: entries into sections of that page would each have
+/// opened it back on Today.
 List<BackOfficeItem> backOfficeItemsFor(
   AppStrings s,
   BackOfficeTab tab,
@@ -801,6 +818,20 @@ ManagementDestination _purchasing(PurchasingTab tab, {bool create = false}) =>
       // the only one built.
       ManagementPane.sales => (s.orderHistoryTitle, s.paneSalesBlurb),
       ManagementPane.reports => (s.reportsSummary, s.paneReportsBlurb),
+      ManagementPane.reportsSales => (s.reportsSales, s.reportsSalesBlurb),
+      ManagementPane.reportsItems => (s.reportsItems, s.reportsItemsBlurb),
+      ManagementPane.reportsPayments => (
+        s.reportsPaymentMethods,
+        s.reportsPaymentMethodsBlurb,
+      ),
+      ManagementPane.reportsBranches => (
+        s.reportsBranches,
+        s.reportsBranchesBlurb,
+      ),
+      ManagementPane.reportsEmployees => (
+        s.reportsEmployees,
+        s.reportsEmployeesBlurb,
+      ),
       ManagementPane.menu => (s.paneMenu, s.paneMenuBlurb),
       ManagementPane.categories => (s.categories, s.paneMenuBlurb),
       ManagementPane.extras => (s.extrasTitle, s.extrasSubtitle),
@@ -881,7 +912,14 @@ Set<String> _paneRequires(ManagementPane pane) => switch (pane) {
   // The branch's takings (BO-6). Not the only guard: `salesReportProvider`
   // asks the same capability of the person acting before it reads a row, so
   // a screen built on the figures later without this gate still shows none.
-  ManagementPane.reports => const {PosCapability.reportsView},
+  // Reports' five breakdowns, the same gate on the same figures: each reads
+  // through `reportsAllowedProvider` too.
+  ManagementPane.reports ||
+  ManagementPane.reportsSales ||
+  ManagementPane.reportsItems ||
+  ManagementPane.reportsPayments ||
+  ManagementPane.reportsBranches ||
+  ManagementPane.reportsEmployees => const {PosCapability.reportsView},
   // Finance (BO-9, BO-10). Backed where it counts: every figure is read
   // through `reportsAllowedProvider`, which answers no without
   // `reports.view`, so a pane reached round the strip still draws nothing.
@@ -985,6 +1023,15 @@ enum ManagementPane {
   /// Settings › Language (the owner's map): the language half of the card
   /// [appearance] shows the other half of. Last, for the same reason.
   language,
+
+  /// Reports' five breakdowns (the owner's map): Business summary's figures,
+  /// each as a page of its own over the period all six share. Last, for the
+  /// same reason as [sales]; `_placeInTab` puts them in the map's order.
+  reportsSales,
+  reportsItems,
+  reportsPayments,
+  reportsBranches,
+  reportsEmployees,
 }
 
 class _ManagementScreenState extends ConsumerState<ManagementScreen> {
@@ -1335,6 +1382,11 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
     // Whose figures follows [admin] through `actingStaffProvider`, as the
     // Sales list's rows do — see `reportsAllowedProvider`.
     ManagementPane.reports => const ManagementReportsPane(),
+    ManagementPane.reportsSales => const ReportSalesPane(),
+    ManagementPane.reportsItems => const ReportItemsPane(),
+    ManagementPane.reportsPayments => const ReportPaymentsPane(),
+    ManagementPane.reportsBranches => const ReportBranchesPane(),
+    ManagementPane.reportsEmployees => const ReportEmployeesPane(),
     // "Manage roles" opens People › Roles & permissions, as the cloud's Users
     // page opens its roles.
     ManagementPane.staff => ManagementStaffPane(

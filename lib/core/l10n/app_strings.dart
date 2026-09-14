@@ -1171,6 +1171,26 @@ sealed class AppStrings {
   // for the items it names differently from the panes' own headings.
   String get tabPeople;
   String get reportsSummary;
+  // Reports' five breakdowns, in the map's words.
+  String get reportsSales;
+  String get reportsItems;
+  String get reportsPaymentMethods;
+  String get reportsBranches;
+  String get reportsEmployees;
+  String get reportsSalesBlurb;
+  String get reportsItemsBlurb;
+  String get reportsPaymentMethodsBlurb;
+  String get reportsBranchesBlurb;
+  String get reportsEmployeesBlurb;
+  String get reportColumnPayments;
+  String get reportColumnSeller;
+  String get reportColumnVoids;
+  String get reportAllItems;
+  String get reportItemsNote;
+  String get reportSellerNotRecorded;
+  String get reportStaffNote;
+  String get reportNoStaffSales;
+  String reportBranchesNote(String? branch);
   String get rolesAndPermissions;
   String get paneDevices;
   String get settingsOrdersInvoices;
@@ -5150,6 +5170,58 @@ final class EnStrings extends AppStrings {
   String get tabPeople => 'People';
   @override
   String get reportsSummary => 'Business summary';
+  @override
+  String get reportsSales => 'Sales';
+  @override
+  String get reportsItems => 'Items';
+  @override
+  String get reportsPaymentMethods => 'Payment methods';
+  @override
+  String get reportsBranches => 'Branches & devices';
+  @override
+  String get reportsEmployees => 'Employees';
+  @override
+  String get reportsSalesBlurb =>
+      'Each business day of the period: orders, gross, discounts, refunds and '
+      'net';
+  @override
+  String get reportsItemsBlurb =>
+      'Every product sold in the period, by quantity or by amount';
+  @override
+  String get reportsPaymentMethodsBlurb =>
+      "What was collected, by payment method, and each one's share";
+  @override
+  String get reportsBranchesBlurb =>
+      "This branch's tills, each with its sales, and the branch under them";
+  @override
+  String get reportsEmployeesBlurb =>
+      'Sales, refunds and voids, by the person who made them';
+  @override
+  String get reportColumnPayments => 'Payments';
+  @override
+  String get reportColumnSeller => 'Seller';
+  @override
+  String get reportColumnVoids => 'Voids';
+  @override
+  String get reportAllItems => 'All items';
+  @override
+  String get reportItemsNote =>
+      'Units kept after refunds and voids, at the price sold. The total is '
+      'before order discounts and service charges, and takes a refunded unit '
+      'off the day it was sold — so it will not match net sales.';
+  @override
+  String get reportSellerNotRecorded => 'No seller recorded';
+  @override
+  String get reportStaffNote =>
+      'A sale counts for whoever rang it up, a refund for whoever issued it, '
+      'and a void for whoever voided the order.';
+  @override
+  String get reportNoStaffSales =>
+      'Nobody sold, refunded or voided anything in this period.';
+  @override
+  String reportBranchesNote(String? branch) =>
+      'Each till trades at one branch and reads that branch alone, so these '
+      'are the tills of ${branch ?? 'this branch'}.';
   @override
   String get rolesAndPermissions => 'Roles & permissions';
   @override
@@ -9244,6 +9316,55 @@ final class ArStrings extends AppStrings {
   String get tabPeople => 'الأفراد';
   @override
   String get reportsSummary => 'ملخص الأعمال';
+  @override
+  String get reportsSales => 'المبيعات';
+  @override
+  String get reportsItems => 'الأصناف';
+  @override
+  String get reportsPaymentMethods => 'طرق الدفع';
+  @override
+  String get reportsBranches => 'الفروع والأجهزة';
+  @override
+  String get reportsEmployees => 'الموظفين';
+  @override
+  String get reportsSalesBlurb =>
+      'كل يوم عمل في الفترة: الطلبات والإجمالي والخصومات والمرتجعات والصافي';
+  @override
+  String get reportsItemsBlurb => 'كل صنف بِيع في الفترة، حسب الكمية أو القيمة';
+  @override
+  String get reportsPaymentMethodsBlurb =>
+      'ما حُصِّل حسب طريقة الدفع، ونسبة كل طريقة منه';
+  @override
+  String get reportsBranchesBlurb =>
+      'نقاط بيع هذا الفرع، كلٌّ بمبيعاتها، وإجمالي الفرع تحتها';
+  @override
+  String get reportsEmployeesBlurb =>
+      'المبيعات والمرتجعات والإلغاءات، حسب من قام بها';
+  @override
+  String get reportColumnPayments => 'عدد الدفعات';
+  @override
+  String get reportColumnSeller => 'البائع';
+  @override
+  String get reportColumnVoids => 'الإلغاءات';
+  @override
+  String get reportAllItems => 'كل الأصناف';
+  @override
+  String get reportItemsNote =>
+      'الوحدات التي بقيت مباعة بعد المرتجعات والإلغاء، بسعر بيعها. الإجمالي '
+      'قبل خصومات الطلبات ورسوم الخدمة، ويُخصم منه المرتجع في يوم بيعه — '
+      'لذلك لن يطابق صافي المبيعات.';
+  @override
+  String get reportSellerNotRecorded => 'بلا بائع مسجَّل';
+  @override
+  String get reportStaffNote =>
+      'يُحتسب البيع لمن سجّله، والمرتجع لمن أصدره، والإلغاء لمن ألغى الطلب.';
+  @override
+  String get reportNoStaffSales =>
+      'لم يُسجِّل أحد بيعاً أو مرتجعاً أو إلغاءً في هذه الفترة.';
+  @override
+  String reportBranchesNote(String? branch) =>
+      'كل نقطة بيع تتبع فرعاً واحداً ولا تقرأ غيره، لذلك هذه نقاط بيع '
+      '${branch == null ? 'هذا الفرع' : 'فرع $branch'}.';
   @override
   String get rolesAndPermissions => 'الأدوار والصلاحيات';
   @override

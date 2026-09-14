@@ -4,6 +4,7 @@ import '../../core/config/deployment.dart';
 import '../../core/money/money.dart';
 import '../../domain/models/branch_sales.dart';
 import '../../domain/models/finance_report.dart';
+import '../../domain/models/order_record.dart';
 import '../../domain/models/sales_report.dart';
 import '../../domain/models/tax.dart';
 import '../../domain/models/tender_method.dart';
@@ -349,9 +350,9 @@ class PostgresReportsRepository implements ReportsRepository {
   Future<List<ProductSales>> topProducts(
     ReportFilter filter, {
     required ProductRanking by,
-    int limit = 5,
+    int? limit = 5,
   }) async {
-    if (limit < 1) {
+    if (limit != null && limit < 1) {
       throw ArgumentError.value(limit, 'limit', 'A top list lists something.');
     }
     final sold = _sales(filter, 'o.id');
@@ -380,9 +381,12 @@ class PostgresReportsRepository implements ReportsRepository {
                 CASE WHEN l.menu_item_id IS NULL THEN l.name_snapshot END
       HAVING sum(l.quantity - l.refunded_quantity) > 0
        ORDER BY $ranking, name, l.menu_item_id
-       LIMIT @limit
+       ${limit == null ? '' : 'LIMIT @limit'}
       ''',
-      parameters: {...sold.parameters, 'limit': limit},
+      // No LIMIT at all for every product, rather than `LIMIT NULL`: the
+      // same in PostgreSQL, but a null parameter has no type for the driver
+      // to send, and "unknown" beside LIMIT is a planner's guess.
+      parameters: {...sold.parameters, 'limit': ?limit},
     );
 
     return [
@@ -394,6 +398,119 @@ class PostgresReportsRepository implements ReportsRepository {
           amount: _money(raw[3]),
         ),
     ];
+  }
+
+  @override
+  Future<StaffSalesReport> staffSales(ReportFilter filter) async {
+    final sold = _sales(
+      filter,
+      'o.served_by, o.total_minor, o.discount_minor',
+    );
+    // `_refunds`' own WHERE, so a person's refunds are exactly the refunds
+    // the refunds tile counts, split by who issued them.
+    final refunded = _refunds(filter, columns: 'r.refunded_by, r.total_minor');
+
+    // The voids: the drill-down's WHERE again, on the voided orders the
+    // sales list shows under its Voided status — filed by the same trading
+    // day. The status is its own parameter, not `filterFor`'s `statuses`:
+    // that name is already bound to the settled set in [sold], and one name
+    // with two values in one statement is the collision `_refunds` warns of.
+    // The person filter reads `voided_by` here for the reason it reads
+    // `refunded_by` there.
+    final voidQuery = PostgresOrderHistoryRepository.filterFor(
+      OrderHistoryQuery(
+        from: filter.from,
+        to: filter.to,
+        orderTypes: filter.orderTypes,
+        terminalId: filter.terminalId,
+      ),
+      restaurantId: restaurantId,
+      branchId: branchId,
+    );
+    final voidWhere = [...voidQuery.where, 'o.status = @voidedStatus'];
+    final voidParameters = <String, Object?>{
+      ...voidQuery.parameters,
+      'voidedStatus': OrderStatus.voided.wire,
+    };
+    final by = filter.servedByStaffId;
+    if (by != null) {
+      voidWhere.add('o.voided_by = @served');
+      voidParameters['served'] = by;
+    }
+
+    // One statement, so one snapshot: the three CTEs cannot see different
+    // moments of the till. `people` is a UNION, which counts NULL once — the
+    // sales that record nobody are one row, not dropped and not repeated.
+    // `IS NOT DISTINCT FROM` on the joins for the same NULL.
+    final rows = await _db.query(
+      config,
+      '''
+      WITH sales AS (${sold.sql}),
+      refunds AS (${refunded.sql}),
+      voids AS (
+        SELECT o.voided_by FROM pos_orders AS o
+        ${PostgresOrderHistoryRepository.tradingDayJoin('o')}
+        WHERE ${voidWhere.join(' AND ')}
+      ),
+      sold AS (
+        SELECT served_by AS staff_id, count(*) AS orders,
+               sum(total_minor + discount_minor)::bigint AS gross,
+               sum(discount_minor)::bigint AS discounts
+          FROM sales GROUP BY served_by
+      ),
+      given AS (
+        SELECT refunded_by AS staff_id, count(*) AS refunds,
+               sum(total_minor)::bigint AS refunded
+          FROM refunds GROUP BY refunded_by
+      ),
+      voided AS (
+        SELECT voided_by AS staff_id, count(*) AS voids
+          FROM voids GROUP BY voided_by
+      ),
+      people AS (
+        SELECT staff_id FROM sold
+        UNION SELECT staff_id FROM given
+        UNION SELECT staff_id FROM voided
+      )
+      SELECT p.staff_id, st.name,
+             coalesce(s.orders, 0), coalesce(s.gross, 0),
+             coalesce(s.discounts, 0),
+             coalesce(g.refunds, 0), coalesce(g.refunded, 0),
+             coalesce(v.voids, 0)
+        FROM people AS p
+        LEFT JOIN sold AS s ON s.staff_id IS NOT DISTINCT FROM p.staff_id
+        LEFT JOIN given AS g ON g.staff_id IS NOT DISTINCT FROM p.staff_id
+        LEFT JOIN voided AS v ON v.staff_id IS NOT DISTINCT FROM p.staff_id
+        LEFT JOIN pos_staff AS st ON st.id = p.staff_id
+       ORDER BY coalesce(s.gross, 0) - coalesce(s.discounts, 0)
+                  - coalesce(g.refunded, 0) DESC,
+                st.name NULLS LAST, p.staff_id NULLS LAST
+      ''',
+      parameters: {
+        ...sold.parameters,
+        ...refunded.parameters,
+        ...voidParameters,
+      },
+    );
+
+    return StaffSalesReport(
+      filter: filter,
+      people: List.unmodifiable([
+        for (final raw in rows)
+          StaffSales(
+            staffId: raw[0] as int?,
+            name: raw[1] as String?,
+            orders: raw[2]! as int,
+            gross: _money(raw[3]),
+            discounts: _money(raw[4]),
+            refundCount: raw[5]! as int,
+            refunds: _money(raw[6]),
+            voids: raw[7]! as int,
+          ),
+      ]),
+      currency: currency,
+      exponent: exponent,
+    );
   }
 
   @override

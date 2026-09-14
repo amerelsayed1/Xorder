@@ -107,6 +107,17 @@ const _finance = [
   ManagementPane.financeTransactions,
 ];
 
+/// Reports' panes, in the order its sub-nav shows them: Business summary and
+/// the owner's map's five breakdowns.
+const _reports = [
+  ManagementPane.reports,
+  ManagementPane.reportsSales,
+  ManagementPane.reportsItems,
+  ManagementPane.reportsPayments,
+  ManagementPane.reportsBranches,
+  ManagementPane.reportsEmployees,
+];
+
 /// What [admin] has of [_finance]: all of it where the supplier ledger is
 /// theirs to read here — offline, with `purchase.manage` — and all but Bills
 /// due otherwise (BO-10).
@@ -309,9 +320,10 @@ void main() {
           );
 
           // Reports for whoever holds `reports.view` — the owner and the
-          // manager through their roles, nobody else here — holding its one
-          // pane (BO-6), on both deployments: the figures are the branch's
-          // own rows, not the platform's.
+          // manager through their roles, nobody else here — holding Business
+          // summary (BO-6) and the map's five breakdowns, in its order, on
+          // both deployments: the figures are the branch's own rows, not the
+          // platform's.
           final reads = Authorization.check(
             admin,
             PosCapability.reportsView,
@@ -321,11 +333,7 @@ void main() {
               for (final (t, own) in tabs)
                 if (t == BackOfficeTab.reports) own,
             ],
-            reads
-                ? [
-                    [ManagementPane.reports],
-                  ]
-                : isEmpty,
+            reads ? [_reports] : isEmpty,
             reason: '$name, $where',
           );
 
@@ -620,9 +628,14 @@ void main() {
           BackOfficeTab.home: ['الرئيسية'],
           // Invoices, returns and cancelled orders: not built yet.
           BackOfficeTab.sales: ['الطلبات'],
-          // Sales, items, payment methods, branches & devices, staff: not
-          // built yet as pages of their own.
-          BackOfficeTab.reports: ['ملخص الأعمال'],
+          BackOfficeTab.reports: [
+            'ملخص الأعمال',
+            'المبيعات',
+            'الأصناف',
+            'طرق الدفع',
+            'الفروع والأجهزة',
+            'الموظفين',
+          ],
           BackOfficeTab.menu: ['المنيو', 'الأقسام', 'مكتبة الإضافات', 'الصالة'],
           BackOfficeTab.inventory: [
             'أصناف المخزون',
@@ -857,6 +870,24 @@ void main() {
             lessThanOrEqualTo(PosSize.wideShellMin),
             reason: pane.name,
           );
+        }
+
+        // Reports' six words too, each landing on its own page.
+        await tester.tap(find.byKey(const Key('back-office-tab-reports')));
+        await tester.pumpAndSettle();
+        for (final pane in _reports) {
+          final item = find.byKey(Key('back-office-subnav-${pane.name}'));
+          final rect = tester.getRect(item);
+          expect(rect.left, greaterThanOrEqualTo(0), reason: pane.name);
+          expect(
+            rect.right,
+            lessThanOrEqualTo(PosSize.wideShellMin),
+            reason: pane.name,
+          );
+          await tester.tap(item);
+          await tester.pumpAndSettle();
+          expect(_showing(tester), {pane});
+          expect(tester.takeException(), isNull, reason: pane.name);
         }
 
         await tester.tap(find.byKey(const Key('back-office-tab-settings')));
