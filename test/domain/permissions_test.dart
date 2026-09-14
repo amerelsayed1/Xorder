@@ -18,6 +18,31 @@ void main() {
       expect(SystemRoles.cashier, contains(PosCapability.catalogView));
     });
 
+    test('report.export is the owner\'s alone, never lent, never greyed', () {
+      // Owner decision, 14 Sep: seeded to the owner and to nobody else, and
+      // offered by no template — who else may take the sales away is decided
+      // in Roles, one person at a time.
+      for (final MapEntry(:key, :value) in SystemRoles.seeded.entries) {
+        expect(
+          value.capabilities.contains(PosCapability.reportExport),
+          key == SystemRoles.ownerCode,
+          reason: key,
+        );
+      }
+      for (final MapEntry(:key, :value) in SystemRoles.templates.entries) {
+        expect(
+          value.capabilities,
+          isNot(contains(PosCapability.reportExport)),
+          reason: key,
+        );
+      }
+      // Critical, like a backup: a copy of the data. No supervisor lends it,
+      // no cashier role holds it, and the button is not drawn without it.
+      expect(PosCapability.mayBeLent(PosCapability.reportExport), isFalse);
+      expect(PosCapability.riskOf(PosCapability.reportExport).isHidden, isTrue);
+      expect(PosCapability.backOffice, contains(PosCapability.reportExport));
+    });
+
     test('manager can maintain a fully offline catalogue', () {
       expect(SystemRoles.manager, contains(PosCapability.catalogManage));
       expect(SystemRoles.manager, contains(PosCapability.settingsManage));

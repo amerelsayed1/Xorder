@@ -50,6 +50,7 @@ abstract final class AdminText {
         PosCapability.shiftClose => s.capShiftClose,
         PosCapability.cashMovement => s.capCashMovement,
         PosCapability.reportsView => s.capReportsView,
+        PosCapability.reportExport => s.capReportExport,
         PosCapability.backupManage => s.capBackupManage,
         PosCapability.adminEnter => s.capAdminEnter,
         PosCapability.paymentRemove => s.capPaymentRemove,
