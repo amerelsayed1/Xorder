@@ -18,6 +18,7 @@ import 'admin_activity_watch.dart';
 import 'admin_pane_bits.dart';
 import 'admin_sign_in.dart';
 import 'management_activity_pane.dart';
+import 'management_appearance_pane.dart';
 import 'management_backup_pane.dart';
 import 'management_items_pane.dart';
 import 'management_stock_pane.dart';
@@ -266,7 +267,8 @@ BackOfficeTab tabOf(ManagementPane pane) => switch (pane) {
   ManagementPane.taxes ||
   ManagementPane.charges ||
   ManagementPane.tenders ||
-  ManagementPane.orderTypes => BackOfficeTab.settings,
+  ManagementPane.orderTypes ||
+  ManagementPane.appearance => BackOfficeTab.settings,
 };
 
 String backOfficeTabName(AppStrings s, BackOfficeTab tab) => switch (tab) {
@@ -294,18 +296,22 @@ IconData backOfficeTabIcon(BackOfficeTab tab) => switch (tab) {
 };
 
 /// The groups of Settings' side nav, as the cloud groups its own settings
-/// (`settings.config.js`: *account*, *pos*).
+/// (`settings.config.js`: *account*, *pos*), plus the plan's third.
 ///
-/// The plan's third group, *This terminal* — language and appearance — is not
-/// here: it has no pane until BO-8 builds one, and a heading over nothing
-/// reads as a section that failed to load. Language and theme stay in the
-/// bar's Settings menu meanwhile, where they already are.
-enum SettingsSection { account, pointOfSale }
+/// *This terminal* is the one group that is not the restaurant's: what it
+/// holds is written to this machine's config file, not the branch database, so
+/// changing it here changes nothing on the till beside it. Its own heading is
+/// what says so — under *Account* a language switch would read as the
+/// restaurant's language. BO-1 left it out while it had no pane; BO-8 gave it
+/// Language & appearance. The bar's Settings menu keeps its two lines too,
+/// over the same providers, because it is reachable without Admin Mode.
+enum SettingsSection { account, pointOfSale, thisTerminal }
 
 String settingsSectionName(AppStrings s, SettingsSection section) =>
     switch (section) {
       SettingsSection.account => s.settingsSectionAccount,
       SettingsSection.pointOfSale => s.settingsSectionPointOfSale,
+      SettingsSection.thisTerminal => s.settingsSectionThisTerminal,
     };
 
 /// Where a Settings pane sits in the side nav: its group, and its place in it.
@@ -323,6 +329,7 @@ String settingsSectionName(AppStrings s, SettingsSection section) =>
   ManagementPane.charges => (SettingsSection.pointOfSale, 1),
   ManagementPane.tenders => (SettingsSection.pointOfSale, 2),
   ManagementPane.orderTypes => (SettingsSection.pointOfSale, 3),
+  ManagementPane.appearance => (SettingsSection.thisTerminal, 0),
   ManagementPane.menu ||
   ManagementPane.extras ||
   ManagementPane.floor ||
@@ -599,6 +606,10 @@ ManagementDestination _purchasing(PurchasingTab tab, {bool create = false}) =>
       ManagementPane.stock => (s.paneStock, s.paneStockBlurb),
       ManagementPane.units => (s.paneUnits, s.paneUnitsBlurb),
       ManagementPane.terminal => (s.paneTerminal, s.paneTerminalBlurb),
+      ManagementPane.appearance => (
+        s.settingsAppearance,
+        s.paneAppearanceBlurb,
+      ),
     };
 
 /// The capability a pane needs beyond the `staffManage` that opened the screen.
@@ -675,6 +686,11 @@ enum ManagementPane {
   stock,
   units,
   terminal,
+
+  /// Settings › This terminal › Language & appearance (BO-8). Last, so every
+  /// other pane keeps the index it had; nothing stores one, but a deep link
+  /// or a test naming panes by position is cheaper not to have to find.
+  appearance,
 }
 
 class _ManagementScreenState extends ConsumerState<ManagementScreen> {
@@ -852,10 +868,13 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
     // Backups are the back office's business, said here rather than on the
     // screen a cashier opens the till from: only somebody who can open the
     // Backup pane can do anything about it, so only they are told. Not on the
-    // Backup pane itself, which already says how old the last copy is.
+    // Backup pane itself, which already says how old the last copy is — nor on
+    // General, whose backup card says the same sentence (BO-8). The same words
+    // twice on one screen read as two problems.
     final backupNotice =
         panes.contains(ManagementPane.backup) &&
             showing != ManagementPane.backup &&
+            showing != ManagementPane.receipt &&
             ref.watch(backupsApplyProvider)
         ? backupWarning(
             strings,
@@ -868,7 +887,7 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
         ? const SizedBox.expand()
         : KeyedSubtree(
             key: ValueKey('back-office-pane-${showing.name}'),
-            child: _paneBody(admin, showing),
+            child: _paneBody(admin, showing, panes),
           );
 
     final screen = Scaffold(
@@ -939,7 +958,11 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
     return AdminActivityWatch(onIdle: _lock, child: screen);
   }
 
-  Widget _paneBody(PosStaff admin, ManagementPane pane) => switch (pane) {
+  Widget _paneBody(
+    PosStaff admin,
+    ManagementPane pane,
+    List<ManagementPane> panes,
+  ) => switch (pane) {
     ManagementPane.staff => ManagementStaffPane(admin: admin),
     // The item editor's "Manage extras" link. Moved here rather than through
     // the router: this screen already owns which pane is showing, as the
@@ -960,7 +983,23 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
       create: widget.create,
       request: widget.request,
     ),
-    ManagementPane.receipt => ManagementReceiptPane(admin: admin),
+    // Settings › General (BO-8): the company form, and under it this
+    // terminal's appearance and the backup summary. The card's way to System
+    // › Backup is offered only to somebody who has that pane — a link to a
+    // pane the strip hides would be a door to the landing.
+    ManagementPane.receipt => ManagementReceiptPane(
+      admin: admin,
+      sections: [
+        const TerminalAppearanceCard(),
+        BackupSummaryCard(
+          admin: admin,
+          onOpenBackup: panes.contains(ManagementPane.backup)
+              ? () => _open(ManagementPane.backup)
+              : null,
+        ),
+      ],
+    ),
+    ManagementPane.appearance => const ManagementAppearancePane(),
     ManagementPane.eta => const ManagementEtaPane(),
     ManagementPane.roles => ManagementRolesPane(admin: admin),
     ManagementPane.activity => const ManagementActivityPane(),
@@ -1167,9 +1206,10 @@ class _SubNav extends StatelessWidget {
 
 /// Settings' side nav: on the start side, grouped as the cloud groups it.
 ///
-/// A column rather than a second row because Settings holds seven panes and
-/// will hold more (BO-8's appearance, BO-7's Users grows a matrix); a row of
-/// seven under a strip of nine is the scrolling strip by another name. At
+/// A column rather than a second row because Settings holds eight panes in
+/// three groups since BO-8 added This terminal, and BO-7's Users grows a
+/// matrix; a row of eight under a strip of nine is the scrolling strip by
+/// another name. At
 /// [PosSize.settingsNav] it leaves 868 px for a pane at the 1100 breakpoint.
 ///
 /// `BorderDirectional` and `EdgeInsetsDirectional` throughout, so Arabic puts

@@ -106,3 +106,45 @@ class PaneSection extends StatelessWidget {
     ],
   );
 }
+
+/// One section of Settings › General under the company form: a heading, a
+/// sentence, and its controls, framed (BO-8).
+///
+/// A border and no fill, because elevation is a border here and a tinted tile
+/// is the one thing the design system rules out (`07-design-system.md` §1).
+/// Capped at 420 — the form's own field width — so the cards line up under
+/// the boxes above them rather than running to the edge of a wide screen.
+class SettingsCard extends StatelessWidget {
+  const SettingsCard({
+    required this.title,
+    required this.hint,
+    required this.children,
+    super.key,
+  });
+
+  final String title;
+  final String hint;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) => Align(
+    alignment: AlignmentDirectional.centerStart,
+    child: ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 420),
+      child: Container(
+        padding: const EdgeInsets.all(PosSpace.lg),
+        // No colour, not even the surface's: a filled box between a
+        // `SwitchListTile` and its Material hides the tile's own ink, and
+        // Flutter asserts on it.
+        decoration: BoxDecoration(
+          border: Border.fromBorderSide(context.pos.resting),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [PaneSection(title: title, hint: hint), ...children],
+        ),
+      ),
+    ),
+  );
+}

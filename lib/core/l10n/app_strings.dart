@@ -1170,6 +1170,19 @@ sealed class AppStrings {
   String get settingsSectionPointOfSale;
   String get settingsGeneral;
   String get settingsUsers;
+  // Settings › General's two cards and the This terminal group (BO-8).
+  String get settingsSectionThisTerminal;
+  String get settingsAppearance;
+  String get paneAppearanceBlurb;
+  String get appearanceThisTerminal;
+  String get appearanceLanguage;
+  String get appearanceTheme;
+  String get themeSystem;
+  String get themeLight;
+  String get themeDark;
+  String get themeSystemHint;
+  String get backupLastCopy;
+  String get backupNowNeedsPermission;
   String get manage;
   String get manageMenuTooltip;
   String get backToTill;
@@ -4855,6 +4868,34 @@ final class EnStrings extends AppStrings {
   @override
   String get settingsUsers => 'Users';
   @override
+  String get settingsSectionThisTerminal => 'This terminal';
+  @override
+  String get settingsAppearance => 'Language & appearance';
+  @override
+  String get paneAppearanceBlurb => 'The language and theme of this terminal';
+  @override
+  String get appearanceThisTerminal =>
+      'For this terminal only. Every other till keeps its own language and '
+      'theme, whoever signs in.';
+  @override
+  String get appearanceLanguage => 'Language';
+  @override
+  String get appearanceTheme => 'Theme';
+  @override
+  String get themeSystem => 'Automatic';
+  @override
+  String get themeLight => 'Light';
+  @override
+  String get themeDark => 'Dark';
+  @override
+  String get themeSystemHint =>
+      'Automatic follows this computer\'s own light or dark setting.';
+  @override
+  String get backupLastCopy => 'Last copy';
+  @override
+  String get backupNowNeedsPermission =>
+      'Taking a copy on demand needs the backup permission.';
+  @override
   String get manage => 'Manage';
   @override
   String get manageMenuTooltip => 'Open a back-office area';
@@ -8424,6 +8465,34 @@ final class ArStrings extends AppStrings {
   String get settingsGeneral => 'عام';
   @override
   String get settingsUsers => 'المستخدمون';
+  @override
+  String get settingsSectionThisTerminal => 'هذا الجهاز';
+  @override
+  String get settingsAppearance => 'اللغة والمظهر';
+  @override
+  String get paneAppearanceBlurb => 'لغة هذا الجهاز ومظهره';
+  @override
+  String get appearanceThisTerminal =>
+      'لهذا الجهاز فقط. يحتفظ كل جهاز آخر بلغته ومظهره، أيًّا كان من يسجّل '
+      'الدخول.';
+  @override
+  String get appearanceLanguage => 'اللغة';
+  @override
+  String get appearanceTheme => 'المظهر';
+  @override
+  String get themeSystem => 'تلقائي';
+  @override
+  String get themeLight => 'فاتح';
+  @override
+  String get themeDark => 'داكن';
+  @override
+  String get themeSystemHint =>
+      'التلقائي يتبع إعداد الفاتح أو الداكن في هذا الجهاز نفسه.';
+  @override
+  String get backupLastCopy => 'آخر نسخة';
+  @override
+  String get backupNowNeedsPermission =>
+      'أخذ نسخة عند الطلب يحتاج صلاحية النسخ الاحتياطي.';
   @override
   String get manage => 'الإدارة';
   @override

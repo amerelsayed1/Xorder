@@ -35,9 +35,26 @@ import 'admin_messages.dart';
 /// its name and address read on paper should not have to save, ring a sale and
 /// print one to find out.
 class ManagementReceiptPane extends ConsumerStatefulWidget {
-  const ManagementReceiptPane({required this.admin, super.key});
+  const ManagementReceiptPane({
+    required this.admin,
+    this.sections = const [],
+    super.key,
+  });
 
   final PosStaff admin;
+
+  /// The rest of Settings › General, under the form (BO-8): this terminal's
+  /// appearance and the backup summary.
+  ///
+  /// **Handed in rather than built here**, so this pane stays the company
+  /// form and nothing else — the one `receipt_profile_ui_test.dart` pumps on
+  /// its own — and General is the screen that composes it. In the form's own
+  /// scroll rather than a second one around it: a list inside a list is two
+  /// scrollbars and a wheel that moves whichever the pointer happens to be
+  /// over. Each section saves itself; the form's Save is the form's alone, as
+  /// plan 19 §2.6 asks, because the three have different gates and only the
+  /// profile is revisioned.
+  final List<Widget> sections;
 
   @override
   ConsumerState<ManagementReceiptPane> createState() =>
@@ -152,7 +169,7 @@ class _ManagementReceiptPaneState extends ConsumerState<ManagementReceiptPane> {
     final strings = context.strings;
     final repository = ref.watch(receiptProfileRepositoryProvider);
     if (repository == null) {
-      return _Centred(text: strings.receiptProfileNoDatabase);
+      return _withSections(_Centred(text: strings.receiptProfileNoDatabase));
     }
 
     final stored = ref.watch(receiptProfileProvider);
@@ -176,7 +193,7 @@ class _ManagementReceiptPaneState extends ConsumerState<ManagementReceiptPane> {
           color: context.pos.accent,
         ),
       ),
-      error: (error, _) => _Centred(text: '$error'),
+      error: (error, _) => _withSections(_Centred(text: '$error')),
       data: (fromDb) {
         // Seeded once. Re-seeding on every rebuild would fight the typing,
         // and this rebuilds on each keystroke.
@@ -346,6 +363,10 @@ class _ManagementReceiptPaneState extends ConsumerState<ManagementReceiptPane> {
             onPressed: _busy ? null : () => _save(base),
           ),
         ),
+        for (final section in widget.sections) ...[
+          const SizedBox(height: PosSpace.s28),
+          section,
+        ],
       ],
     );
 
@@ -405,6 +426,22 @@ class _ManagementReceiptPaneState extends ConsumerState<ManagementReceiptPane> {
   }
 
   void _rebuild(String _) => setState(() {});
+
+  /// A pane with no form still has General's other sections under it: a till
+  /// with no database can still change its language, and the appearance card
+  /// is the one that does not need one.
+  Widget _withSections(Widget message) => widget.sections.isEmpty
+      ? message
+      : ListView(
+          padding: const EdgeInsets.all(PosSpace.xl),
+          children: [
+            message,
+            for (final section in widget.sections) ...[
+              const SizedBox(height: PosSpace.s28),
+              section,
+            ],
+          ],
+        );
 }
 
 /// Says whether this branch could file a receipt today.

@@ -89,17 +89,7 @@ class _ManagementBackupPaneState extends ConsumerState<ManagementBackupPane> {
   Future<void> _saveSetting(String key, String value) async {
     setState(() => _busy = true);
     try {
-      await ref
-          .read(settingsRepositoryProvider)
-          .save(
-            key: key,
-            value: value,
-            // Restaurant-wide: there is one database per branch and two tills
-            // disagreeing about where its copies go is two half-filled folders.
-            scope: SettingScope.restaurant,
-            by: widget.admin,
-          );
-      ref.invalidate(settingsProvider);
+      await saveBackupSetting(ref, key: key, value: value, by: widget.admin);
     } on Object catch (error) {
       if (mounted) {
         setState(() {
@@ -119,32 +109,18 @@ class _ManagementBackupPaneState extends ConsumerState<ManagementBackupPane> {
       _note = null;
     });
 
-    final service = await ref.read(backupServiceProvider.future);
-    if (!mounted) return;
-    if (service == null) {
-      setState(() => _busy = false);
-      return;
-    }
-
-    final result = await service.take(
+    final outcome = await takeBackupOnDemand(
+      ref,
+      strings,
       by: widget.admin,
-      trigger: BackupTrigger.manual,
+      mounted: () => mounted,
     );
     if (!mounted) return;
-
-    ref.invalidate(backupsProvider);
     setState(() {
       _busy = false;
-      if (!result.succeeded) {
-        _note = AdminText.refusal(strings, result.refusal!);
-        _noteIsGood = false;
-        return;
-      }
-      final record = result.value!;
-      _noteIsGood = record.isRestorable;
-      _note = record.isRestorable
-          ? null
-          : AdminText.backupFailure(strings, record.failure!);
+      if (outcome == null) return;
+      _note = outcome.note;
+      _noteIsGood = outcome.good;
     });
   }
 
@@ -175,7 +151,7 @@ class _ManagementBackupPaneState extends ConsumerState<ManagementBackupPane> {
 
     final confirmed = await DestructiveConfirmDialog.show(
       context,
-      title: strings.backupRestoreTitle(_stamp(record.takenAt)),
+      title: strings.backupRestoreTitle(backupStamp(record.takenAt)),
       confirmLabel: strings.backupRestoreConfirm,
       keepLabel: strings.backupRestoreKeep,
       // Counted, not described. "All data since 14:32" is a line somebody reads
@@ -569,7 +545,7 @@ class _Freshness extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          strings.backupLastVerified(_stamp(newest.takenAt)),
+          strings.backupLastVerified(backupStamp(newest.takenAt)),
           style: PosText.ui(size: 12.5, color: palette.muted),
         ),
         // Two days, not one: a restaurant that closes Sunday should not be
@@ -606,11 +582,7 @@ class _BackupRow extends StatelessWidget {
     final palette = context.pos;
     // Elevation is a border here, so an unusable row is a red edge rather than
     // a grey card.
-    final tone = switch (record.outcome) {
-      BackupOutcome.verified => palette.ok,
-      BackupOutcome.unverified => palette.danger,
-      BackupOutcome.failed => palette.warn,
-    };
+    final tone = backupOutcomeTone(palette, record.outcome);
 
     return Container(
       margin: const EdgeInsets.only(bottom: PosSpace.xs),
@@ -629,7 +601,7 @@ class _BackupRow extends StatelessWidget {
         children: [
           SizedBox(
             width: 150,
-            child: MonoCode(_stamp(record.takenAt), size: 12),
+            child: MonoCode(backupStamp(record.takenAt), size: 12),
           ),
           Expanded(
             child: Column(
@@ -863,7 +835,7 @@ class _Failure extends StatelessWidget {
 }
 
 /// Western digits in both languages, as everywhere else in the till.
-String _stamp(DateTime at) {
+String backupStamp(DateTime at) {
   final local = at.toLocal();
   String two(int value) => value.toString().padLeft(2, '0');
   return '${local.year}-${two(local.month)}-${two(local.day)} '
@@ -906,4 +878,299 @@ String? backupWarning(
   }
   final days = verified.first.ageAt(now).inDays;
   return days >= 2 ? strings.backupStale(days) : null;
+}
+
+/// What a copy on demand came to: the sentence to show, and whether it is
+/// good news. Null [note] with [good] true is a verified copy, which the list
+/// underneath already says.
+typedef BackupNowOutcome = ({String? note, bool good});
+
+/// Taking a copy on demand — this pane's button, and General's (BO-8).
+///
+/// **One function, two buttons.** General's backup card was specified as "the
+/// Backup pane's action", and a second copy of these lines would be a second
+/// answer to "what does Back up now do" the first time one of them changed —
+/// which trigger it records, whether it re-reads the list. The permission is
+/// not checked here: `BackupService.take` refuses a manual copy without
+/// `backup.manage` whoever calls it, and both buttons are absent without it.
+///
+/// Null when there was nothing to report: no database on this terminal, or
+/// the widget that asked has gone.
+Future<BackupNowOutcome?> takeBackupOnDemand(
+  WidgetRef ref,
+  AppStrings strings, {
+  required PosStaff by,
+  required bool Function() mounted,
+}) async {
+  final service = await ref.read(backupServiceProvider.future);
+  if (!mounted() || service == null) return null;
+
+  final result = await service.take(by: by, trigger: BackupTrigger.manual);
+  if (!mounted()) return null;
+
+  ref.invalidate(backupsProvider);
+  if (!result.succeeded) {
+    return (note: AdminText.refusal(strings, result.refusal!), good: false);
+  }
+  final record = result.value!;
+  return (
+    note: record.isRestorable
+        ? null
+        : AdminText.backupFailure(strings, record.failure!),
+    good: record.isRestorable,
+  );
+}
+
+/// Write one backup setting — the folder, or copying at day close.
+///
+/// Restaurant-wide: there is one database per branch, and two tills
+/// disagreeing about where its copies go is two half-filled folders. Shared
+/// with General's card for the reason [takeBackupOnDemand] is.
+Future<void> saveBackupSetting(
+  WidgetRef ref, {
+  required String key,
+  required String value,
+  required PosStaff by,
+}) async {
+  await ref
+      .read(settingsRepositoryProvider)
+      .save(key: key, value: value, scope: SettingScope.restaurant, by: by);
+  ref.invalidate(settingsProvider);
+}
+
+/// A copy's outcome as a colour: the list's left edge, and General's line.
+Color backupOutcomeTone(PosPalette palette, BackupOutcome outcome) =>
+    switch (outcome) {
+      BackupOutcome.verified => palette.ok,
+      BackupOutcome.unverified => palette.danger,
+      BackupOutcome.failed => palette.warn,
+    };
+
+/// Settings › General's backup card: the last copy, taking one now, and
+/// whether one is taken at day close (BO-8, plan 19 §2.6).
+///
+/// **A summary of this pane, not a second one.** Its data is this pane's —
+/// `backupsProvider`, `backupPolicyProvider` — and its two actions are this
+/// pane's functions. Folder, account, history and restore stay in System ›
+/// Backup, which the card links to: restoring is the one act in the product
+/// that cannot be undone, and it belongs on the screen that says out loud
+/// what a local copy is not.
+///
+/// **The 02:00 nightly copy in the mockup is not here, because nothing would
+/// take it** — the till has no scheduler, and a machine switched off at closing
+/// would miss it anyway. The copy at day close is the real policy, so its
+/// switch is what the card shows.
+///
+/// **Shown to everybody who reaches General; acted on only with
+/// `backup.manage`.** Whether the restaurant has a copy is worth a manager
+/// knowing — they are the one who rings the owner. But Back up now is absent
+/// without the capability rather than greyed, as the plan asks, and the switch
+/// reads the policy without changing it: the same gate the pane applies to its
+/// own two controls.
+class BackupSummaryCard extends ConsumerStatefulWidget {
+  const BackupSummaryCard({required this.admin, this.onOpenBackup, super.key});
+
+  final PosStaff admin;
+
+  /// To System › Backup. Null for somebody who cannot open that pane.
+  final VoidCallback? onOpenBackup;
+
+  @override
+  ConsumerState<BackupSummaryCard> createState() => _BackupSummaryCardState();
+}
+
+class _BackupSummaryCardState extends ConsumerState<BackupSummaryCard> {
+  bool _busy = false;
+  String? _note;
+  bool _noteIsGood = false;
+
+  bool get _mayManage =>
+      Authorization.check(widget.admin, PosCapability.backupManage).isAllowed;
+
+  Future<void> _backUpNow() async {
+    final strings = context.strings;
+    setState(() {
+      _busy = true;
+      _note = null;
+    });
+    final outcome = await takeBackupOnDemand(
+      ref,
+      strings,
+      by: widget.admin,
+      mounted: () => mounted,
+    );
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      if (outcome == null) return;
+      _note = outcome.note;
+      _noteIsGood = outcome.good;
+    });
+  }
+
+  Future<void> _dayClose(bool on) async {
+    setState(() {
+      _busy = true;
+      _note = null;
+    });
+    try {
+      await saveBackupSetting(
+        ref,
+        key: SettingKey.backupOnDayClose,
+        value: on ? 'true' : 'false',
+        by: widget.admin,
+      );
+    } on Object catch (error) {
+      if (mounted) {
+        setState(() {
+          _note = '$error';
+          _noteIsGood = false;
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // No database, nothing to copy — and a card saying "no copy has ever been
+    // taken" on such a till would be a warning about nothing.
+    if (!ref.watch(backupsApplyProvider)) return const SizedBox.shrink();
+
+    final strings = context.strings;
+    final palette = context.pos;
+    final policy = ref.watch(backupPolicyProvider);
+    final history = ref.watch(backupsProvider);
+    // Only asked of somebody who has the button: finding `pg_dump` means
+    // walking the disk, and the answer only decides whether it is live.
+    final tools = _mayManage ? ref.watch(pgToolsProvider) : null;
+
+    return SettingsCard(
+      key: const Key('general-backup'),
+      title: strings.paneBackup,
+      hint: strings.paneBackupBlurb,
+      children: [
+        MicroLabel(strings.backupLastCopy),
+        const SizedBox(height: PosSpace.xs),
+        ...history.when(
+          loading: () => const [SizedBox(height: 20)],
+          error: (error, _) => [
+            Text(
+              '$error',
+              style: PosText.ui(size: 12.5, color: palette.danger),
+            ),
+          ],
+          data: (all) => _lastCopy(strings, palette, all),
+        ),
+        const SizedBox(height: PosSpace.sm),
+        SwitchListTile(
+          key: const Key('general-backup-on-day-close'),
+          value: policy.onDayClose,
+          onChanged: _mayManage && !_busy ? _dayClose : null,
+          contentPadding: EdgeInsets.zero,
+          title: Text(
+            strings.backupAutomatic,
+            style: PosText.ui(size: 13.5, color: palette.body),
+          ),
+          subtitle: Text(
+            strings.backupAutomaticHint,
+            style: PosText.ui(size: 11.5, color: palette.muted),
+          ),
+        ),
+        const SizedBox(height: PosSpace.sm),
+        if (!_mayManage)
+          Text(
+            strings.backupNowNeedsPermission,
+            key: const Key('general-backup-needs-permission'),
+            style: PosText.ui(size: 12.5, color: palette.muted, height: 1.5),
+          ),
+        Wrap(
+          spacing: PosSpace.sm,
+          runSpacing: PosSpace.sm,
+          children: [
+            if (_mayManage)
+              PosButton(
+                key: const Key('general-backup-now'),
+                label: _busy ? strings.backupTaking : strings.backupTakeNow,
+                background: palette.accent,
+                foreground: Colors.white,
+                fontWeight: FontWeight.w700,
+                // Dead without `pg_dump`, as the pane's is: pressed, it would
+                // record a failed copy rather than take one. The pane says
+                // why at length; the link below goes there.
+                onPressed: !_busy && tools?.valueOrNull != null
+                    ? _backUpNow
+                    : null,
+              ),
+            if (widget.onOpenBackup case final open?)
+              PosButton(
+                key: const Key('general-backup-open'),
+                label: strings.backupOpenPane,
+                border: Border.fromBorderSide(palette.resting),
+                onPressed: open,
+              ),
+          ],
+        ),
+        if (_note != null) ...[
+          const SizedBox(height: PosSpace.sm),
+          Text(
+            _note!,
+            style: PosText.ui(
+              size: 12.5,
+              color: _noteIsGood ? palette.ok : palette.danger,
+              height: 1.5,
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  /// The newest row, whatever came of it, then the pane's own warning.
+  ///
+  /// Newest rather than newest VERIFIED, because "status and time" asks what
+  /// happened last — and a failed copy last night is the news. The verified
+  /// question is still answered: by [backupWarning], the sentence the back
+  /// office's notice uses, so the card and the notice cannot disagree.
+  List<Widget> _lastCopy(
+    AppStrings strings,
+    PosPalette palette,
+    List<BackupRecord> all,
+  ) {
+    final warning = backupWarning(strings, all, DateTime.now());
+    if (all.isEmpty) {
+      return [_Strip(text: warning!, tone: palette.warn)];
+    }
+    final newest = all.first;
+    final verified = all.where((r) => r.isRestorable);
+    return [
+      Row(
+        children: [
+          Text(
+            AdminText.backupOutcome(strings, newest.outcome),
+            key: const Key('general-backup-outcome'),
+            style: PosText.ui(
+              size: 13,
+              weight: FontWeight.w700,
+              color: backupOutcomeTone(palette, newest.outcome),
+            ),
+          ),
+          const SizedBox(width: PosSpace.sm),
+          MonoCode(backupStamp(newest.takenAt), size: 12),
+        ],
+      ),
+      if (!newest.isRestorable && verified.isNotEmpty) ...[
+        const SizedBox(height: PosSpace.xs),
+        Text(
+          strings.backupLastVerified(backupStamp(verified.first.takenAt)),
+          style: PosText.ui(size: 12.5, color: palette.muted),
+        ),
+      ],
+      if (warning != null) ...[
+        const SizedBox(height: PosSpace.xs),
+        _Strip(text: warning, tone: palette.warn),
+      ],
+    ];
+  }
 }
