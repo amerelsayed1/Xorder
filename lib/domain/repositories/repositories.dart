@@ -514,6 +514,14 @@ abstract interface class BusinessDayRepository {
   /// The open day for this branch, or null when nobody has started one.
   Future<BusinessDay?> current();
 
+  /// The latest CLOSED day for this branch, or with [before] the latest closed
+  /// day whose business date is earlier than it. Null when there is none.
+  ///
+  /// By business date rather than by `closed_at`: a day force-closed late
+  /// the next afternoon is still the day before, and ordering by when it was
+  /// closed would compare today with the wrong one.
+  Future<BusinessDay?> lastClosed({DateTime? before});
+
   /// Open the day [date] belongs to, or return the one already open.
   ///
   /// Idempotent by necessity rather than by choice: the database allows one

@@ -16,6 +16,7 @@ import 'package:xorder_pos/domain/models/shift.dart';
 import 'package:xorder_pos/domain/repositories/admin_repositories.dart';
 import 'package:xorder_pos/features/admin/application/admin_session.dart';
 import 'package:xorder_pos/features/admin/presentation/management_activity_pane.dart';
+import 'package:xorder_pos/features/admin/presentation/management_home_pane.dart';
 import 'package:xorder_pos/features/admin/presentation/management_roles_pane.dart';
 import 'package:xorder_pos/features/admin/presentation/management_screen.dart';
 
@@ -305,16 +306,13 @@ void main() {
     expect(find.text('That username and PIN cannot open Admin Mode. 4 attempts left.'), findsOneWidget);
   });
 
-  testWidgets('asked for nothing, it opens on the first tab that holds a pane',
-      (tester) async {
+  testWidgets('asked for nothing, it opens on Home', (tester) async {
     // Staff was the default while the back office was a list with Staff at
     // the top. With tabs it sits in the last one, so the door lands where the
-    // strip starts — on Home, once BO-4 builds it. On this cloud till that is
-    // System: Menu is the platform's, and Inventory and Purchasing only point
-    // there.
+    // strip starts: Home, which everybody past the door holds (BO-4).
     await open(tester, pane: null);
     await enter(tester, 'amer');
-    expect(find.byType(ManagementActivityPane), findsOneWidget);
+    expect(find.byType(ManagementHomePane), findsOneWidget);
     expect(find.text('Add somebody'), findsNothing);
   });
 
@@ -722,10 +720,10 @@ void main() {
     await enter(tester, 'nour', pin: '2468');
 
     expect(find.text('New order'), findsNothing);
-    // Back to the door's landing — on an offline till, Menu — rather than to
-    // anything the link named.
+    // Back to the door's landing — Home — rather than to anything the link
+    // named.
     expect(
-      find.byKey(const ValueKey('back-office-pane-menu')),
+      find.byKey(const ValueKey('back-office-pane-home')),
       findsOneWidget,
       reason: 'falls back',
     );

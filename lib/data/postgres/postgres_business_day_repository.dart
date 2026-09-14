@@ -65,6 +65,24 @@ class PostgresBusinessDayRepository implements BusinessDayRepository {
   }
 
   @override
+  Future<BusinessDay?> lastClosed({DateTime? before}) async {
+    final rows = await _db.query(
+      config,
+      'SELECT $_columns FROM pos_business_days AS d $_joins '
+      'WHERE d.restaurant_id = @restaurant AND d.branch_id = @branch '
+      '  AND d.closed_at IS NOT NULL '
+      '  AND (@before::date IS NULL OR d.business_date < @before::date) '
+      'ORDER BY d.business_date DESC LIMIT 1',
+      parameters: {
+        'restaurant': context.restaurantId,
+        'branch': context.branchId,
+        'before': before == null ? null : _dateText(before),
+      },
+    );
+    return rows.isEmpty ? null : _day(rows.first.toList());
+  }
+
+  @override
   Future<BusinessDay> open({
     required DateTime date,
     required PosStaff by,
@@ -236,6 +254,9 @@ class UnconfiguredBusinessDayRepository implements BusinessDayRepository {
 
   @override
   Future<BusinessDay?> current() async => null;
+
+  @override
+  Future<BusinessDay?> lastClosed({DateTime? before}) async => null;
 
   @override
   Future<DayCloseCheck> check() async =>

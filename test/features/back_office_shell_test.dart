@@ -18,6 +18,7 @@ import 'package:xorder_pos/domain/models/permissions.dart';
 import 'package:xorder_pos/domain/models/shift.dart';
 import 'package:xorder_pos/domain/repositories/admin_repositories.dart';
 import 'package:xorder_pos/features/admin/application/admin_session.dart';
+import 'package:xorder_pos/features/admin/presentation/management_home_pane.dart';
 import 'package:xorder_pos/features/admin/presentation/management_screen.dart';
 
 import '../support/fakes.dart';
@@ -86,8 +87,8 @@ const _fixtures = <String, PosStaff>{
 };
 
 /// The tabs whose content is a later slice. None of them holds a pane yet.
+/// Home left this list with BO-4.
 const _later = [
-  BackOfficeTab.home,
   BackOfficeTab.sales,
   BackOfficeTab.reports,
   BackOfficeTab.finance,
@@ -270,6 +271,29 @@ void main() {
             );
           }
 
+          // Home is everybody's, and first — so the door lands on it.
+          expect(tabs.first.$1, BackOfficeTab.home);
+          expect(tabs.first.$2, [ManagementPane.home]);
+          expect(backOfficeLanding(tabs), ManagementPane.home);
+
+          // Home's shortcuts reach nothing the tabs do not: none for Menu on
+          // a cloud till, none for Reports until it has a pane (BO-6).
+          final shortcuts = homeQuickActionsFor(tabs);
+          for (final (action, pane) in shortcuts) {
+            expect(reachable, contains(pane), reason: action.name);
+          }
+          final offered = [for (final (action, _) in shortcuts) action];
+          expect(
+            offered.contains(HomeQuickAction.products),
+            authors,
+            reason: 'Product management only where this till authors Menu',
+          );
+          expect(offered, isNot(contains(HomeQuickAction.salesReports)));
+          expect(
+            offered.contains(HomeQuickAction.employees),
+            reachable.contains(ManagementPane.staff),
+          );
+
           // The bar reaches nothing the tabs do not.
           for (final line in managementBarFor(
             const EnStrings(),
@@ -330,24 +354,53 @@ void main() {
     }
   });
 
-  group('where the door lands', () {
-    testWidgets('offline, the first tab: Menu', (tester) async {
-      await _open(tester, offline: true);
-      expect(_showing(tester), {ManagementPane.menu});
-    });
+  group('where the door lands: Home', () {
+    for (final offline in [true, false]) {
+      final where = offline ? 'offline' : 'cloud';
+      testWidgets(where, (tester) async {
+        await _open(tester, offline: offline);
+        expect(_showing(tester), {ManagementPane.home});
+        expect(find.byType(ManagementHomePane), findsOneWidget);
+        // Not the pointer a cloud till's Inventory holds: greeting the owner
+        // with "this is not here" on every entry would make it a welcome.
+        expect(
+          find.byKey(const Key('management-platform-pointer')),
+          findsNothing,
+        );
+      });
+    }
 
-    testWidgets('on cloud, the first tab that holds a pane — not a pointer', (
+    testWidgets('and for somebody with no business figures, too', (
       tester,
     ) async {
-      // Inventory is first on a cloud till and holds only a sentence;
-      // greeting the owner with "this is not here" on every entry would make
-      // the sentence a welcome.
+      // The supervisor holds no `reports.view`: Home still greets them, with
+      // the cards and without the tiles.
+      await _open(tester, username: 'nour', pin: '2468');
+      expect(_showing(tester), {ManagementPane.home});
+      expect(find.byKey(const Key('home-card-branch')), findsOneWidget);
+    });
+  });
+
+  group("Home's shortcuts open what they name", () {
+    testWidgets('offline: Product management and Employees', (tester) async {
+      await _open(tester, offline: true);
+
+      await tester.tap(find.byKey(const Key('home-action-products')));
+      await tester.pumpAndSettle();
+      expect(_showing(tester), {ManagementPane.menu});
+
+      await tester.tap(find.byKey(const Key('back-office-tab-home')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('home-action-employees')));
+      await tester.pumpAndSettle();
+      expect(_showing(tester), {ManagementPane.staff});
+    });
+
+    testWidgets('on cloud there is no Product management', (tester) async {
       await _open(tester);
-      expect(_showing(tester), {ManagementPane.activity});
-      expect(
-        find.byKey(const Key('management-platform-pointer')),
-        findsNothing,
-      );
+      expect(find.byKey(const Key('home-action-products')), findsNothing);
+      expect(find.byKey(const Key('home-action-employees')), findsOneWidget);
+      expect(find.byKey(const Key('home-action-salesReports')), findsNothing);
     });
   });
 
