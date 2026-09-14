@@ -1154,12 +1154,22 @@ sealed class AppStrings {
   String get orderTypeChipAddress;
   String get paneTaxes;
   String get paneTaxesHint;
-  String get areaPeople;
-  String get areaMenu;
-  String get areaMoney;
-  String get areaBuying;
-  String get areaCompliance;
-  String get areaSystem;
+
+  // BO-1: the back office's tabs, its one bar menu, and Settings' side nav.
+  String get backOffice;
+  String get tabHome;
+  String get tabSales;
+  String get tabReports;
+  String get tabMenu;
+  String get tabInventory;
+  String get tabPurchasing;
+  String get tabFinance;
+  String get tabSystem;
+  String get tabSettings;
+  String get settingsSectionAccount;
+  String get settingsSectionPointOfSale;
+  String get settingsGeneral;
+  String get settingsUsers;
   String get manage;
   String get manageMenuTooltip;
   String get backToTill;
@@ -1308,7 +1318,6 @@ sealed class AppStrings {
   String get aboutDatabase;
   String get receiptPreviewAction;
   String get receiptPreviewNote;
-  String get areaInventory;
   String get paneUnits;
   String get paneUnitsBlurb;
 
@@ -4818,17 +4827,33 @@ final class EnStrings extends AppStrings {
   @override
   String get paneTaxesHint => 'The rates this restaurant charges, and on what.';
   @override
-  String get areaPeople => 'People';
+  String get backOffice => 'Back office';
   @override
-  String get areaMenu => 'Menu';
+  String get tabHome => 'Home';
   @override
-  String get areaMoney => 'Money';
+  String get tabSales => 'Sales';
   @override
-  String get areaBuying => 'Buying';
+  String get tabReports => 'Reports';
   @override
-  String get areaCompliance => 'Compliance';
+  String get tabMenu => 'Menu';
   @override
-  String get areaSystem => 'System';
+  String get tabInventory => 'Inventory';
+  @override
+  String get tabPurchasing => 'Purchasing';
+  @override
+  String get tabFinance => 'Finance';
+  @override
+  String get tabSystem => 'System';
+  @override
+  String get tabSettings => 'Settings';
+  @override
+  String get settingsSectionAccount => 'Account';
+  @override
+  String get settingsSectionPointOfSale => 'Point of sale';
+  @override
+  String get settingsGeneral => 'General';
+  @override
+  String get settingsUsers => 'Users';
   @override
   String get manage => 'Manage';
   @override
@@ -5146,8 +5171,6 @@ final class EnStrings extends AppStrings {
   @override
   String get receiptPreviewNote =>
       'A preview only — nothing is printed and nothing is recorded.';
-  @override
-  String get areaInventory => 'Inventory';
   @override
   String get paneUnits => 'Units';
   @override
@@ -8374,17 +8397,33 @@ final class ArStrings extends AppStrings {
   @override
   String get paneTaxesHint => 'النسب التي يحتسبها المطعم، وعلى ماذا.';
   @override
-  String get areaPeople => 'الأفراد';
+  String get backOffice => 'الإدارة';
   @override
-  String get areaMenu => 'المنيو';
+  String get tabHome => 'الرئيسية';
   @override
-  String get areaMoney => 'المال';
+  String get tabSales => 'المبيعات';
   @override
-  String get areaBuying => 'المشتريات';
+  String get tabReports => 'التقارير';
   @override
-  String get areaCompliance => 'الالتزام الضريبي';
+  String get tabMenu => 'المنيو';
   @override
-  String get areaSystem => 'النظام';
+  String get tabInventory => 'المخزون';
+  @override
+  String get tabPurchasing => 'المشتريات';
+  @override
+  String get tabFinance => 'المال';
+  @override
+  String get tabSystem => 'النظام';
+  @override
+  String get tabSettings => 'الإعدادات';
+  @override
+  String get settingsSectionAccount => 'الحساب';
+  @override
+  String get settingsSectionPointOfSale => 'نقطة البيع';
+  @override
+  String get settingsGeneral => 'عام';
+  @override
+  String get settingsUsers => 'المستخدمون';
   @override
   String get manage => 'الإدارة';
   @override
@@ -8692,8 +8731,6 @@ final class ArStrings extends AppStrings {
   @override
   String get receiptPreviewNote =>
       'معاينة فقط — لا شيء يُطبع ولا شيء يُسجَّل.';
-  @override
-  String get areaInventory => 'المخزون';
   @override
   String get paneUnits => 'الوحدات';
   @override

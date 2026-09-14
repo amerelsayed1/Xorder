@@ -224,9 +224,9 @@ class XorderPosApp extends ConsumerWidget {
               //
               // **Somebody in Admin Mode is somebody signed in.** Admin Mode
               // is not the till, so it can be entered with nobody signed in
-              // there — and the back office has no rail: this bar is how it
-              // gets from one pane to the next. Hiding it would leave the
-              // owner on Staff with no way to Money.
+              // there — and its Back office menu holds the shortcuts the tabs
+              // do not, "New invoice" among them. Hiding the bar would take
+              // those away from exactly the person they are for.
               //
               // Except while the till is not set up yet: the wizard has no
               // language step up front and relies on Settings' language
@@ -254,40 +254,31 @@ class XorderPosApp extends ConsumerWidget {
                         router.routerDelegate.currentConfiguration.uri.path,
                       ),
                   barButtons: [
-                    // **The back office, in the window's own bar.**
+                    // **The back office, in the window's own bar: one menu.**
                     //
                     // Inside Admin Mode only. The till's bar and the start
                     // screen each had a Management button too — the same door
                     // twice, three times on the start screen counting this bar —
-                    // and both are gone. A menu bar is the one surface that is
-                    // always there, so the panes hang off it, grouped by area as
-                    // the back office's own tabs are, because "where do I change
-                    // the VAT rate" is answered by *Money* long before it is
-                    // answered by reading thirteen pane names.
+                    // and both are gone.
+                    //
+                    // One word, not one per area (BO-1). The back office has
+                    // its tabs back, and seven words here above a strip of the
+                    // same tabs was the same navigation twice. What is left is
+                    // one line per tab and the shortcuts the strip cannot be:
+                    // under المشتريات, "new order", "enter an invoice" and "new
+                    // supplier" start one straight away. On a cloud till one
+                    // line says where buying and stock went —
+                    // `managementBarFor` decides which.
                     //
                     // Absent entirely for somebody who cannot open the back
                     // office: a greyed-out menu is a permanent advertisement for
                     // a door they will never be given.
-                    // **One button per area of the back office.**
-                    //
-                    // Thirteen panes under a single word called Management is a
-                    // list somebody reads rather than a menu somebody uses: the
-                    // question is never "what is in the back office", it is "where
-                    // do I enter this invoice" — and the answer to that is
-                    // Purchasing, which is now a word in the bar rather than the
-                    // fifth line of a scrolling list.
-                    for (final (label, entries) in _managementMenus(ref, strings))
+                    if (_managementMenu(ref, strings) case final entries
+                        when entries.isNotEmpty)
                       BarButton(
-                        text: Text(label),
+                        text: Text(strings.backOffice),
                         submenu: SubMenu(
                           menuItems: [
-                            // The pane — or, where a pane is really several
-                            // things, each of them and the "new" that starts
-                            // one. Under المشتريات that is orders, invoices,
-                            // payments and suppliers, not one word that opens a
-                            // screen and makes you find them again. On a cloud
-                            // till it is one line saying where they went —
-                            // `managementBarFor` decides which.
                             for (final entry in entries) ...[
                               if (entry.divider) const MenuDivider(),
                               MenuButton(
@@ -430,13 +421,13 @@ class XorderPosApp extends ConsumerWidget {
   static bool _beforeTheTill(String path) =>
       path == PosRoutes.start || path == PosRoutes.lock;
 
-  /// The bar's back-office buttons: one per area, each with its own lines.
+  /// The lines of the bar's Back office menu.
   ///
   /// Asks `managementBarFor` rather than listing panes, for the reason
-  /// `managementAreasFor` exists beneath it: a menu offering Purchasing to
-  /// somebody the rail hides it from would take them to a screen that refuses
+  /// `backOfficeTabsFor` exists beneath it: a menu offering Purchasing to
+  /// somebody the strip hides it from would take them to a screen that refuses
   /// everything.
-  List<(String, List<ManagementBarEntry>)> _managementMenus(
+  List<ManagementBarEntry> _managementMenu(
     WidgetRef ref,
     AppStrings strings,
   ) {
@@ -445,19 +436,15 @@ class XorderPosApp extends ConsumerWidget {
     // hidden shortcut, and a menu item leading to it would be a second, visible
     // one. That includes a till being set up, which once offered Management
     // here: there is nobody to sign in and nothing yet to administer. Inside,
-    // the areas are the admin's, not the till operator's.
+    // the tabs are the admin's, not the till operator's.
     final admin = ref.watch(adminSessionProvider)?.staff;
     if (admin == null) return const [];
 
-    return [
-      for (final (area, entries) in managementBarFor(
-        strings,
-        admin: admin,
-        authorsItsOwnCatalogue:
-            ref.watch(catalogAdminRepositoryProvider) != null,
-      ))
-        (managementAreaName(strings, area), entries),
-    ];
+    return managementBarFor(
+      strings,
+      admin: admin,
+      authorsItsOwnCatalogue: ref.watch(catalogAdminRepositoryProvider) != null,
+    );
   }
 
   /// Into Admin Mode, from wherever the till is — and back there on the way
@@ -466,6 +453,9 @@ class XorderPosApp extends ConsumerWidget {
   /// Not on a till that is not set up: there is nobody to sign in and nothing
   /// to administer, and the welcome screen owns Ctrl+Shift+S there (it opens
   /// the wizard). Not twice: the chord inside Admin Mode is not a second door.
+  ///
+  /// No pane named: the door lands on the first tab that holds one, which is
+  /// Home once BO-4 builds it.
   void _openAdmin(WidgetRef ref) {
     if (!ref.read(setupCompleteProvider)) return;
     final router = ref.read(routerProvider);
@@ -473,7 +463,7 @@ class XorderPosApp extends ConsumerWidget {
     if (here == PosRoutes.management) return;
     router.go(
       PosRoutes.management,
-      extra: ManagementDestination(pane: ManagementPane.staff, returnTo: here),
+      extra: ManagementDestination(returnTo: here),
     );
   }
 

@@ -71,6 +71,11 @@ List<Override> fakeRepositoryOverrides({
           auditRepositoryProvider.overrideWithValue(FakeAuditRepository()),
         ];
       })(),
+      // The branch server answering, as a test double. The back office's
+      // status bar watches the same probe the till's top bar does, and the
+      // real one opens a connection pool to `localhost` — a socket a widget
+      // test on a fake clock can neither finish nor cancel.
+      branchDatabaseProvider.overrideWith((ref) async => null),
       // No database in a widget test, so no copies and nowhere to write one.
       // The real binding writes `pos_backups` on the till's credential.
       backupRepositoryProvider.overrideWithValue(FakeBackupRepository()),

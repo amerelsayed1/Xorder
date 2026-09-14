@@ -78,15 +78,26 @@ void main() {
       for (final pane in platformAuthored) {
         expect(panes, isNot(contains(pane)), reason: pane.name);
       }
-      final areas = [
-        for (final (area, _) in managementAreasFor(
-          admin: owner,
-          authorsItsOwnCatalogue: false,
-        ))
-          area,
-      ];
-      expect(areas, isNot(contains(ManagementArea.buying)));
-      expect(areas, isNot(contains(ManagementArea.inventory)));
+      final tabs = backOfficeTabsFor(
+        admin: owner,
+        authorsItsOwnCatalogue: false,
+      );
+      // The two tabs stay, as words that point at the platform — with nothing
+      // of their own under them.
+      expect(
+        [for (final (tab, _) in tabs) tab],
+        containsAll([BackOfficeTab.inventory, BackOfficeTab.purchasing]),
+      );
+      for (final (tab, own) in tabs) {
+        if (tab == BackOfficeTab.inventory ||
+            tab == BackOfficeTab.purchasing) {
+          expect(own, isEmpty, reason: tab.name);
+        }
+      }
+      expect(
+        [for (final (tab, _) in tabs) tab],
+        isNot(contains(BackOfficeTab.menu)),
+      );
     });
 
     test('nor for a local Manager role, nor for a direct grant', () {
@@ -171,104 +182,76 @@ void main() {
     });
   });
 
-  group('the Manage menu agrees with the rail', () {
+  group('the Back office menu agrees with the strip', () {
     const s = EnStrings();
 
     List<ManagementBarEntry> lines(
       PosStaff staff, {
       required bool authors,
-    }) => [
-      for (final (_, entries) in managementBarFor(
-        s,
-        admin: staff,
-        authorsItsOwnCatalogue: authors,
-      ))
-        ...entries,
-    ];
+    }) => managementBarFor(s, admin: staff, authorsItsOwnCatalogue: authors);
 
-    test('on cloud, every pane line names a pane the rail has, and only those',
+    test('on cloud, every line opens a pane the strip has, or is the pointer',
         () {
       for (final staff in buyers) {
-        final rail = managementPanesFor(
+        final tabs = backOfficeTabsFor(
           admin: staff,
           authorsItsOwnCatalogue: false,
         );
-        final panes = [
-          for (final line in lines(staff, authors: false)) ?line.pane,
-        ];
-        expect(panes.toSet(), rail.toSet(), reason: staff.name);
+        final strip = [for (final (_, own) in tabs) ...own];
         for (final line in lines(staff, authors: false)) {
           if (line.pane == null) continue;
-          expect(rail, contains(line.open().pane), reason: line.label);
+          expect(strip, contains(line.open().pane), reason: line.label);
         }
+        // A line for each tab that holds a pane, and the pointer for the two
+        // that only point.
         expect(
-          [for (final (area, _) in managementBarFor(
-            s,
-            admin: staff,
-            authorsItsOwnCatalogue: false,
-          )) area],
-          isNot(contains(ManagementArea.inventory)),
+          {for (final line in lines(staff, authors: false)) line.tab},
+          {
+            for (final (tab, own) in tabs)
+              if (own.isNotEmpty) tab,
+            BackOfficeTab.purchasing,
+          },
+          reason: staff.name,
+        );
+        expect(
+          [for (final line in lines(staff, authors: false)) line.tab],
+          isNot(contains(BackOfficeTab.inventory)),
+          reason: 'the pointer names stock too; a second line would repeat it',
         );
       }
     });
 
-    test('and Buying is one pointer, which lands on the notice', () {
-      final bar = managementBarFor(
-        s,
-        admin: owner,
-        authorsItsOwnCatalogue: false,
-      );
-      final buying = bar.firstWhere((a) => a.$1 == ManagementArea.buying).$2;
-      expect(buying, hasLength(1));
-      expect(buying.single.pane, isNull, reason: 'a pointer, not a pane');
-      expect(buying.single.label, s.purchasingOnPlatformEntry);
+    test('and the pointer is one line, which lands on the notice', () {
+      final pointers = [
+        for (final line in lines(owner, authors: false))
+          if (line.pane == null) line,
+      ];
+      expect(pointers, hasLength(1), reason: 'one pointer in the whole bar');
+      expect(pointers.single.label, s.purchasingOnPlatformEntry);
 
-      final landing = buying.single.open();
+      final landing = pointers.single.open().pane!;
       expect(
         hiddenBecausePlatformAuthors(
-          landing.pane,
+          landing,
           authorsItsOwnCatalogue: false,
         ),
         isTrue,
-        reason: 'the screen falls back and says why, rather than refusing',
+        reason: 'the screen shows the tab and says why, rather than refusing',
       );
       expect(
-        platformAuthoredPointer(s, landing.pane),
+        platformAuthoredPointer(s, landing),
         s.purchasingComesFromPlatform,
-      );
-      expect(
-        [for (final line in lines(owner, authors: false)) if (line.pane == null) line],
-        hasLength(1),
-        reason: 'one pointer in the whole bar',
       );
     });
 
-    test('offline, the bar is what it was: Buying\'s seven lines, no pointer',
+    test('offline, Purchasing\'s seven lines, no pointer, one line per tab',
         () {
-      expect(
-        lines(owner, authors: true).where((line) => line.pane == null),
-        isEmpty,
-      );
-      final bar = managementBarFor(
-        s,
-        admin: owner,
-        authorsItsOwnCatalogue: true,
-      );
-      expect(
-        [for (final (area, _) in bar) area],
-        [
-          for (final (area, _) in managementAreasFor(
-            admin: owner,
-            authorsItsOwnCatalogue: true,
-          ))
-            area,
-        ],
-      );
+      final bar = lines(owner, authors: true);
+      expect(bar.where((line) => line.pane == null), isEmpty);
       expect(
         [
-          for (final line
-              in bar.firstWhere((a) => a.$1 == ManagementArea.buying).$2)
-            line.label,
+          for (final line in bar)
+            if (line.tab == BackOfficeTab.purchasing) line.label,
         ],
         [
           for (final (label, _, _)
@@ -276,23 +259,28 @@ void main() {
             label,
         ],
       );
-      expect(
-        [
-          for (final line
-              in bar.firstWhere((a) => a.$1 == ManagementArea.inventory).$2)
-            line.pane,
-        ],
-        [ManagementPane.items, ManagementPane.stock, ManagementPane.units],
-      );
+      for (final (tab, own) in backOfficeTabsFor(
+        admin: owner,
+        authorsItsOwnCatalogue: true,
+      )) {
+        if (tab == BackOfficeTab.purchasing) continue;
+        final mine = [
+          for (final line in bar)
+            if (line.tab == tab) line,
+        ];
+        expect(mine, hasLength(1), reason: tab.name);
+        expect(mine.single.label, backOfficeTabName(s, tab));
+        expect(mine.single.open().pane, own.first, reason: tab.name);
+      }
     });
   });
 
-  test('the pointer covers buying and inventory, and nothing else', () {
+  test('the pointer covers purchasing and inventory, and nothing else', () {
     const s = EnStrings();
     for (final pane in ManagementPane.values) {
       final buyingOrStock =
-          areaOf(pane) == ManagementArea.buying ||
-          areaOf(pane) == ManagementArea.inventory;
+          tabOf(pane) == BackOfficeTab.purchasing ||
+          tabOf(pane) == BackOfficeTab.inventory;
       expect(
         platformAuthoredPointer(s, pane) != null,
         buyingOrStock,
@@ -366,9 +354,8 @@ void main() {
       return container;
     }
 
-    testWidgets('lands on Staff on a cloud till, and says where buying went', (
-      tester,
-    ) async {
+    testWidgets('lands on the Purchasing tab on a cloud till, and says where '
+        'buying went', (tester) async {
       final container = await open(tester, pane: ManagementPane.purchasing);
 
       expect(container.read(catalogAdminRepositoryProvider), isNull);
@@ -381,7 +368,12 @@ void main() {
       );
 
       expect(find.byType(ManagementPurchasingPane), findsNothing);
-      expect(find.byType(ManagementStaffPane), findsOneWidget);
+      // The tab they asked for, not a silent fall-back to another one.
+      expect(find.byType(ManagementStaffPane), findsNothing);
+      expect(
+        find.byKey(const Key('back-office-tab-purchasing')),
+        findsOneWidget,
+      );
       expect(
         find.byKey(const Key('management-platform-pointer')),
         findsOneWidget,
@@ -405,8 +397,8 @@ void main() {
       );
     });
 
-    // Asked for through the screen's own inputs rather than a tab: every pane
-    // is its own page now, and the bar re-asking is the only way to move on.
+    // Asked for through the screen's own inputs, as the bar asks: a new
+    // request moves on, and the sentence goes with the request that made it.
     testWidgets('asking for another pane moves on, and the sentence goes too', (
       tester,
     ) async {

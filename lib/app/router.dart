@@ -128,12 +128,12 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: PosRoutes.management,
         builder: (context, state) {
           // `extra` names which pane the caller meant and where they came from.
-          // A bare pane is still accepted, and absent means the default, so
-          // "Management" opens where it always did.
+          // A bare pane is still accepted, and absent means the door's own
+          // landing — the first tab that holds a pane (BO-1).
           final destination = switch (state.extra) {
             final ManagementDestination d => d,
             final ManagementPane p => ManagementDestination(pane: p),
-            _ => const ManagementDestination(pane: ManagementPane.staff),
+            _ => const ManagementDestination(),
           };
           return ManagementScreen(
             onClose: () =>

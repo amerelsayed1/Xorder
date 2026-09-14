@@ -380,10 +380,10 @@ void main() {
     });
 
     test('and it lives in System, beside Activity', () {
-      expect(areaOf(ManagementPane.backup), ManagementArea.system);
+      expect(tabOf(ManagementPane.backup), BackOfficeTab.system);
       expect(
-        areaOf(ManagementPane.activity),
-        areaOf(ManagementPane.backup),
+        tabOf(ManagementPane.activity),
+        tabOf(ManagementPane.backup),
       );
     });
   });

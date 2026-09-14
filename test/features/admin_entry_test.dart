@@ -12,6 +12,7 @@ import 'package:xorder_pos/domain/models/permissions.dart';
 import 'package:xorder_pos/domain/models/shift.dart';
 import 'package:xorder_pos/domain/repositories/admin_repositories.dart';
 import 'package:xorder_pos/features/admin/application/admin_session.dart';
+import 'package:xorder_pos/features/admin/presentation/management_screen.dart';
 
 import '../support/fakes.dart';
 
@@ -122,7 +123,10 @@ void main() {
   ];
 
   final door = find.byKey(const Key('admin-username'));
-  final staffPane = find.text('Add somebody');
+  // Past the door: the tab strip, which is drawn for nobody who is not. Not a
+  // pane's contents — the door lands on the first tab that holds a pane, and
+  // which that is depends on the till and the person.
+  final inside = find.byKey(const Key('back-office-tabs'));
 
   group('the way in', () {
     testWidgets('F8 no longer opens the back office from a locked till', (
@@ -136,7 +140,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(location(app), PosRoutes.lock);
-      expect(staffPane, findsNothing);
+      expect(inside, findsNothing);
     }, variant: desktop);
 
     testWidgets('the shortcut opens the door and nothing behind it — even for '
@@ -151,7 +155,7 @@ void main() {
 
       expect(location(app), PosRoutes.management);
       expect(door, findsOneWidget);
-      expect(staffPane, findsNothing, reason: 'the chord is not a lock');
+      expect(inside, findsNothing, reason: 'the chord is not a lock');
       expect(app.read(adminDbCredentialProvider), isNull);
     }, variant: desktop);
 
@@ -159,7 +163,7 @@ void main() {
       tester,
     ) async {
       await pumpApp(tester, atTheTill: _owner);
-      expect(find.text(_strings.areaPeople), findsNothing);
+      expect(find.text(_strings.backOffice), findsNothing);
       expect(find.text(_strings.management), findsNothing);
     }, variant: desktop);
 
@@ -192,12 +196,19 @@ void main() {
       await chord(tester, LogicalKeyboardKey.keyS);
       await signIn(tester, 'amer', '4321');
 
+      // The first tab that holds a pane — on this cloud till, System — and
+      // the header names the page it landed on.
+      final landing = backOfficeLanding(
+        backOfficeTabsFor(admin: _owner, authorsItsOwnCatalogue: false),
+      );
       expect(
-        find.text(_strings.adminTitle(_strings.paneStaff)),
+        find.text(
+          _strings.adminTitle(managementPaneLabel(_strings, landing).$1),
+        ),
         findsOneWidget,
       );
       expect(find.byKey(const Key('admin-exit')), findsOneWidget);
-      expect(staffPane, findsOneWidget);
+      expect(inside, findsOneWidget);
       expect(app.read(adminSessionProvider)!.staff.username, 'amer');
       expect(
         app.read(signedInStaffProvider)!.username,
@@ -213,11 +224,11 @@ void main() {
       await pumpApp(tester, atTheTill: _cashier);
       await chord(tester, LogicalKeyboardKey.keyS);
       await signIn(tester, 'amer', '4321');
-      expect(find.text(_strings.areaPeople), findsWidgets);
+      expect(find.text(_strings.backOffice), findsWidgets);
 
       await tester.tap(find.byKey(const Key('admin-exit')));
       await tester.pumpAndSettle();
-      expect(find.text(_strings.areaPeople), findsNothing);
+      expect(find.text(_strings.backOffice), findsNothing);
     }, variant: desktop);
 
     testWidgets('Exit returns to where the till was, and forgets everything', (
@@ -255,7 +266,7 @@ void main() {
 
       await tester.sendKeyEvent(LogicalKeyboardKey.f8);
       await chord(tester, LogicalKeyboardKey.keyS);
-      expect(staffPane, findsNothing);
+      expect(inside, findsNothing);
       expect(door, findsOneWidget);
     }, variant: desktop);
   });
@@ -269,7 +280,7 @@ void main() {
       await signIn(tester, 'rana', '1234');
 
       expect(find.text(_strings.adminSignInAttemptsLeft(4)), findsOneWidget);
-      expect(staffPane, findsNothing);
+      expect(inside, findsNothing);
       expect(ledger(app), [AuditAction.adminRefused]);
     }, variant: desktop);
 
@@ -302,22 +313,23 @@ void main() {
       // The owner's own PIN, and the door still shut: while it is, nothing is
       // checked, so a guess is not a guess.
       await signIn(tester, 'amer', '4321');
-      expect(staffPane, findsNothing);
+      expect(inside, findsNothing);
       expect(find.text(_strings.adminSignInLockedOut(30)), findsOneWidget);
     }, variant: desktop);
 
     testWidgets('somebody the owner let in through Roles gets in — and only as '
         'far as their role goes', (tester) async {
-      // Offline, where Buying is a word only for somebody who buys. On a cloud
-      // till the bar keeps Buying as a pointer to the platform for everyone
-      // in the back office (CB-09), so its absence there would say nothing
-      // about Nour's role.
+      // Offline, where Purchasing is a tab only for somebody who buys. On a
+      // cloud till Inventory and Purchasing stay as pointers to the platform
+      // for everyone in the back office (CB-09), so their presence there would
+      // say nothing about Nour's role.
       await pumpApp(tester, overrides: [offlineTerminal()]);
       await chord(tester, LogicalKeyboardKey.keyS);
       await signIn(tester, 'nour', '2468');
 
-      expect(staffPane, findsOneWidget);
-      expect(find.text(_strings.areaBuying), findsNothing);
+      expect(inside, findsOneWidget);
+      expect(find.byKey(const Key('back-office-tab-purchasing')), findsNothing);
+      expect(find.byKey(const Key('back-office-tab-inventory')), findsNothing);
     }, variant: desktop);
   });
 
@@ -331,13 +343,13 @@ void main() {
       );
       await chord(tester, LogicalKeyboardKey.keyS);
       await signIn(tester, 'amer', '4321');
-      expect(staffPane, findsOneWidget);
+      expect(inside, findsOneWidget);
 
       now = now.add(const Duration(minutes: 5));
       await tester.pump(const Duration(minutes: 5));
       await tester.pumpAndSettle();
 
-      expect(staffPane, findsNothing);
+      expect(inside, findsNothing);
       expect(find.byKey(const Key('admin-locked')), findsOneWidget);
       expect(door, findsOneWidget);
       expect(app.read(adminDbCredentialProvider), isNull);
@@ -363,7 +375,7 @@ void main() {
       await tester.pump(const Duration(minutes: 4));
       await tester.pumpAndSettle();
 
-      expect(staffPane, findsOneWidget, reason: 'eight minutes, but not idle');
+      expect(inside, findsOneWidget, reason: 'eight minutes, but not idle');
     }, variant: desktop);
   });
 
@@ -378,14 +390,14 @@ void main() {
 
     await signIn(tester, 'amer', '4321');
     expect(find.byKey(const Key('admin-db-password')), findsOneWidget);
-    expect(staffPane, findsNothing);
+    expect(inside, findsNothing);
 
     await signIn(tester, 'amer', '4321', databasePassword: 'not-it');
     expect(find.text(_strings.adminDatabasePasswordRefused), findsOneWidget);
     expect(kept.value, isNull, reason: 'tried before it is kept');
 
     await signIn(tester, 'amer', '4321', databasePassword: 'test-credential');
-    expect(staffPane, findsOneWidget);
+    expect(inside, findsOneWidget);
     expect(kept.value, 'test-credential');
     expect(app.read(adminSessionProvider)!.staff.can(PosCapability.adminEnter), isTrue);
   }, variant: desktop);

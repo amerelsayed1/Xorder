@@ -638,7 +638,7 @@ void main() {
       managementPanesFor(admin: manager, authorsItsOwnCatalogue: true),
       contains(ManagementPane.extras),
     );
-    expect(areaOf(ManagementPane.extras), ManagementArea.menu);
+    expect(tabOf(ManagementPane.extras), BackOfficeTab.menu);
   });
 }
 

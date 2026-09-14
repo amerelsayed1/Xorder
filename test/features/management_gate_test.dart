@@ -33,7 +33,7 @@ void main() {
   /// and since CB-09 a cloud till has no Purchasing pane to test.
   Future<ProviderContainer> open(
     WidgetTester tester, {
-    ManagementPane pane = ManagementPane.staff,
+    ManagementPane? pane = ManagementPane.staff,
     VoidCallback? onClose,
     Future<List<int>> Function()? schemaUpgrader,
     bool offline = false,
@@ -130,7 +130,7 @@ void main() {
 
     // The header names the product, the mode and the page.
     expect(
-      find.text('XOrder POS › Admin › ${const EnStrings().paneStaff}'),
+      find.text('XOrder POS › Admin › ${const EnStrings().settingsUsers}'),
       findsOneWidget,
     );
     expect(find.text('Amer M.'), findsWidgets);
@@ -239,7 +239,7 @@ void main() {
     expect(upgrades, 1);
     expect(find.byKey(const Key('management-schema-notice')), findsNothing);
     expect(
-      find.text('XOrder POS › Admin › ${const EnStrings().paneStaff}'),
+      find.text('XOrder POS › Admin › ${const EnStrings().settingsUsers}'),
       findsOneWidget,
     );
   });
@@ -256,7 +256,7 @@ void main() {
 
     // Backup is in here, so a failed upgrade must not keep anybody out.
     expect(
-      find.text('XOrder POS › Admin › ${const EnStrings().paneStaff}'),
+      find.text('XOrder POS › Admin › ${const EnStrings().settingsUsers}'),
       findsOneWidget,
     );
     expect(find.byKey(const Key('management-schema-notice')), findsOneWidget);
@@ -305,10 +305,17 @@ void main() {
     expect(find.text('That username and PIN cannot open Admin Mode. 4 attempts left.'), findsOneWidget);
   });
 
-  testWidgets('opens on staff by default, as it always did', (tester) async {
-    await open(tester);
+  testWidgets('asked for nothing, it opens on the first tab that holds a pane',
+      (tester) async {
+    // Staff was the default while the back office was a list with Staff at
+    // the top. With tabs it sits in the last one, so the door lands where the
+    // strip starts — on Home, once BO-4 builds it. On this cloud till that is
+    // System: Menu is the platform's, and Inventory and Purchasing only point
+    // there.
+    await open(tester, pane: null);
     await enter(tester, 'amer');
-    expect(find.text('Add somebody'), findsOneWidget);
+    expect(find.byType(ManagementActivityPane), findsOneWidget);
+    expect(find.text('Add somebody'), findsNothing);
   });
 
   testWidgets('can be pointed at another pane', (tester) async {
@@ -319,8 +326,8 @@ void main() {
     await open(tester, pane: ManagementPane.activity);
     await enter(tester, 'amer');
 
-    // The pane itself. Activity is the only pane in its area, so no tab names
-    // it — and the header says "System", which is where it lives.
+    // The pane itself, not its name: Activity's name is in System's sub-nav
+    // whichever of its panes is showing.
     expect(find.byType(ManagementActivityPane), findsOneWidget);
     expect(find.text('Add somebody'), findsNothing);
   });
@@ -358,12 +365,11 @@ void main() {
     expect(find.byType(ManagementActivityPane), findsNothing);
   });
 
-  testWidgets('every pane stands alone, and the header names it', (
-    tester,
-  ) async {
-    // The window's bar names every area and every pane. A strip of the
-    // current area's neighbours across the top was the same navigation twice,
-    // so the page is on its own and the header is what says which it is.
+  testWidgets('Tax sits in Settings beside its neighbours, and the header '
+      'names it', (tester) async {
+    // Money is configuration, as it is on the cloud, so it went to Settings
+    // when the tabs came back (BO-1). The side nav names the neighbours; the
+    // header still names the page.
     await open(tester, pane: ManagementPane.taxes);
     await enter(tester, 'amer');
 
@@ -372,7 +378,11 @@ void main() {
       findsOneWidget,
     );
     expect(find.byType(ManagementRolesPane), findsNothing);
-    expect(find.text(const EnStrings().serviceCharges), findsNothing);
+    expect(find.byKey(const Key('back-office-settings-nav')), findsOneWidget);
+    expect(
+      find.byKey(const Key('back-office-settings-charges')),
+      findsOneWidget,
+    );
   });
 
   testWidgets('the roles pane refuses to make a cashier an administrator',
@@ -676,15 +686,15 @@ void main() {
     final container = await open(tester, offline: true);
     await enter(tester, 'amer');
 
-    // Asked of the rule rather than of a rail that no longer exists. What
-    // decides whether Purchasing is offered — in the window's bar, in the
-    // tabs, and to a deep link — is `managementAreasFor`, so that is asked.
+    // Asked of the rule rather than of the strip. What decides whether
+    // Purchasing is offered — in the window's bar, in the tabs, and to a deep
+    // link — is `backOfficeTabsFor`, so that is asked.
     bool offersPurchasing() =>
-        managementAreasFor(
+        backOfficeTabsFor(
           admin: container.read(adminSessionProvider)!.staff,
           authorsItsOwnCatalogue:
               container.read(catalogAdminRepositoryProvider) != null,
-        ).expand((area) => area.$2).contains(ManagementPane.purchasing);
+        ).expand((tab) => tab.$2).contains(ManagementPane.purchasing);
 
     expect(offersPurchasing(), isTrue, reason: 'the owner buys');
 
@@ -712,7 +722,13 @@ void main() {
     await enter(tester, 'nour', pin: '2468');
 
     expect(find.text('New order'), findsNothing);
-    expect(find.text('Add somebody'), findsOneWidget, reason: 'falls back');
+    // Back to the door's landing — on an offline till, Menu — rather than to
+    // anything the link named.
+    expect(
+      find.byKey(const ValueKey('back-office-pane-menu')),
+      findsOneWidget,
+      reason: 'falls back',
+    );
   });
 
   testWidgets('tapping a role permission takes it away', (tester) async {
@@ -777,7 +793,11 @@ void main() {
           container: container,
           child: MaterialApp(
             theme: buildPosTheme(),
-            home: ManagementScreen(onClose: () {}, onReconfigure: () {}),
+            home: ManagementScreen(
+              onClose: () {},
+              onReconfigure: () {},
+              initialPane: ManagementPane.staff,
+            ),
           ),
         ),
       );

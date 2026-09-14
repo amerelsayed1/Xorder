@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:xorder_pos/app/app.dart';
 import 'package:xorder_pos/app/providers.dart';
 import 'package:xorder_pos/app/router.dart';
+import 'package:xorder_pos/core/l10n/app_strings.dart';
 
 import 'package:xorder_pos/domain/models/permissions.dart';
 import 'package:xorder_pos/domain/repositories/repositories.dart';
@@ -11,9 +12,9 @@ import 'package:xorder_pos/features/admin/application/admin_session.dart';
 
 import '../support/fakes.dart';
 
-/// The owner's role, not a hand-picked capability: which areas appear is
-/// `managementAreasFor`'s answer, and it hides Buying from somebody who
-/// manages the rota but does not buy the stock.
+/// The owner's role, not a hand-picked capability: which tabs the Back office
+/// menu lists is `backOfficeTabsFor`'s answer, and it hides Purchasing from
+/// somebody who manages the rota but does not buy the stock.
 const _owner = PosStaff(
   id: 1,
   name: 'Rana A.',
@@ -38,6 +39,9 @@ const _cashier = PosStaff(
   ),
 );
 
+/// The words the bar used, one per area, before the back office had tabs.
+const _oldAreas = ['People', 'Money', 'Buying', 'Compliance'];
+
 /// The Settings bar has to describe the till it is sitting on.
 ///
 /// It did not. `MenuBarWidget` needs an Overlay ancestor, so the bar builds one
@@ -58,8 +62,8 @@ void main() {
 
   /// Signed in as [staff], because the bar is absent until somebody is.
   ///
-  /// [offline] where a test is about Buying's own entries: the harness is a
-  /// cloud till, where the platform authors purchasing (CB-09).
+  /// [offline] where a test is about Purchasing's own entries: the harness is
+  /// a cloud till, where the platform authors purchasing (CB-09).
   Future<ProviderContainer> pumpApp(
     WidgetTester tester, {
     PosStaff? staff = _owner,
@@ -128,7 +132,7 @@ void main() {
     expect(find.byType(MenuBar), findsOneWidget);
     expect(find.text('Settings'), findsOneWidget);
     expect(
-      find.text('People'),
+      find.text('Back office'),
       findsNothing,
       reason: 'the owner signed in at the till is not in Admin Mode',
     );
@@ -161,6 +165,22 @@ void main() {
     expect(find.byType(MenuBar), findsNothing);
   }, variant: desktop);
 
+  testWidgets('nor on the lock screen, even in Admin Mode', (tester) async {
+    // The one Back office menu keeps the bar's old rule: in front of the
+    // till there is no bar, whoever is signed in behind it.
+    final container = await pumpApp(tester);
+    await container
+        .read(adminSessionProvider.notifier)
+        .signIn(username: 'amer', pin: '4321');
+    await tester.pumpAndSettle();
+    expect(find.text('Back office'), findsOneWidget);
+
+    container.read(routerProvider).go(PosRoutes.lock);
+    await tester.pumpAndSettle();
+    expect(find.byType(MenuBar), findsNothing);
+    expect(find.text('Back office'), findsNothing);
+  }, variant: desktop);
+
   testWidgets('but a till being set up keeps it, for the language switch', (
     tester,
   ) async {
@@ -172,14 +192,15 @@ void main() {
     expect(find.text('العربية'), findsOneWidget);
     // And only what nobody signed in may see.
     expect(find.text('Printer & cash drawer…'), findsNothing);
-    expect(find.text('People'), findsNothing);
+    expect(find.text('Back office'), findsNothing);
   }, variant: desktop);
 
   testWidgets('a cashier gets the till\'s settings and none of the back '
       'office', (tester) async {
     await pumpApp(tester, staff: _cashier);
 
-    for (final area in ['People', 'Money', 'Buying', 'Compliance', 'System']) {
+    expect(find.text('Back office'), findsNothing);
+    for (final area in _oldAreas) {
       expect(find.text(area), findsNothing, reason: area);
     }
 
@@ -235,28 +256,33 @@ void main() {
     expect(find.text('العربية'), findsNothing);
   }, variant: desktop);
 
-  testWidgets('each area of the back office is its own word in the bar', (
+  testWidgets('the back office is one word in the bar, not one per area', (
     tester,
   ) async {
-    // Offline, because Buying's own entries are what this reads. The cloud
-    // bar's Buying is a single pointer — asserted below.
+    // Offline, because Purchasing's own lines are what this reads. The cloud
+    // bar's is a single pointer — asserted below.
     final container = await pumpApp(tester, offline: true);
     await container
         .read(adminSessionProvider.notifier)
         .signIn(username: 'amer', pin: '4321');
     await tester.pumpAndSettle();
 
-    // "Where do I enter this invoice" is answered by Buying, in the bar,
-    // rather than by the fifth line of a scrolling list.
+    // The back office has its tabs on screen again (BO-1); seven words here
+    // above a strip of the same tabs were the same navigation twice.
     expect(find.text('Management'), findsNothing);
-    for (final area in ['People', 'Money', 'Buying', 'Compliance', 'System']) {
-      expect(find.text(area), findsOneWidget, reason: area);
+    expect(find.text('Back office'), findsOneWidget);
+    for (final area in _oldAreas) {
+      expect(find.text(area), findsNothing, reason: area);
     }
 
-    await tester.tap(find.text('Buying'));
+    await tester.tap(find.text('Back office'));
     await tester.pumpAndSettle();
-    // Each thing buying is, with the "new" that starts one — not one word that
-    // opens a screen and makes you find them again.
+    // A line per tab…
+    for (final tab in ['Menu', 'Inventory', 'System']) {
+      expect(find.text(tab), findsOneWidget, reason: tab);
+    }
+    // …and each thing buying is, with the "new" that starts one: the
+    // shortcuts the strip cannot be.
     for (final entry in [
       'Purchase orders',
       'New order',
@@ -268,18 +294,13 @@ void main() {
     ]) {
       expect(find.text(entry), findsOneWidget, reason: entry);
     }
-
-    await tester.tap(find.text('Money'));
-    await tester.pumpAndSettle();
-    expect(find.text('Tax'), findsOneWidget);
   }, variant: desktop);
 
-  testWidgets('on a cloud till Buying is one line, saying where it went', (
-    tester,
-  ) async {
-    // CB-09: the platform authors purchasing and stock on cloud. The word
-    // stays where a manager learned to look for it; what is under it is the
-    // answer, not four lists of rows the platform would never see.
+  testWidgets('on a cloud till buying and stock are one line, saying where '
+      'they went', (tester) async {
+    // CB-09: the platform authors purchasing and stock on cloud. What is under
+    // the menu is the answer, not four lists of rows the platform would never
+    // see.
     //
     // In Admin Mode as the owner: every capability, `purchase.manage`
     // included — a local Owner role grants it even though no cloud bundle ever
@@ -290,12 +311,10 @@ void main() {
         .signIn(username: 'amer', pin: '4321');
     await tester.pumpAndSettle();
 
-    expect(find.text('Buying'), findsOneWidget);
-    expect(find.text('Inventory'), findsNothing);
-
-    await tester.tap(find.text('Buying'));
+    await tester.tap(find.text('Back office'));
     await tester.pumpAndSettle();
     expect(find.text('Purchasing & stock — on xorder.io…'), findsOneWidget);
+    expect(find.text('Inventory'), findsNothing);
     for (final entry in [
       'Purchase orders',
       'New order',
@@ -342,15 +361,18 @@ void main() {
     container.read(localeProvider.notifier).apply('ar');
     await tester.pumpAndSettle();
 
-    expect(find.text('المال'), findsOneWidget);
+    expect(find.text('الإدارة'), findsOneWidget);
 
-    await tester.tap(find.text('المال'));
+    await tester.tap(find.text('الإدارة'));
     await tester.pumpAndSettle();
 
-    // A pane name, not the area's own word again — the area and its pane share
-    // a name under المشتريات, and an assertion that cannot tell them apart is
-    // an assertion that a menu which never opened would still pass.
-    expect(find.text('الضريبة'), findsOneWidget);
+    // A tab's line, not the menu's own word again — an assertion that cannot
+    // tell them apart is one a menu which never opened would still pass.
+    expect(find.text('النظام'), findsOneWidget);
+    expect(
+      find.text(const ArStrings().purchasingOnPlatformEntry),
+      findsOneWidget,
+    );
   }, variant: desktop);
 
   testWidgets('Settings holds the till\'s own settings, not the back office '

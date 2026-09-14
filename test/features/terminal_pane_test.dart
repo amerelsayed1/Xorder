@@ -155,8 +155,8 @@ void main() {
     });
 
     test('and it lives in System, beside Backup', () {
-      expect(areaOf(ManagementPane.terminal), ManagementArea.system);
-      expect(areaOf(ManagementPane.backup), ManagementArea.system);
+      expect(tabOf(ManagementPane.terminal), BackOfficeTab.system);
+      expect(tabOf(ManagementPane.backup), BackOfficeTab.system);
     });
   });
 }

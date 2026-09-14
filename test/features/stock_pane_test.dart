@@ -40,8 +40,8 @@ void main() {
   }
 
   test('it lives in Inventory, beside the units', () {
-    expect(areaOf(ManagementPane.stock), ManagementArea.inventory);
-    expect(areaOf(ManagementPane.units), ManagementArea.inventory);
+    expect(tabOf(ManagementPane.stock), BackOfficeTab.inventory);
+    expect(tabOf(ManagementPane.units), BackOfficeTab.inventory);
   });
 
   testWidgets('each item on hand in its unit, and the whole worth', (

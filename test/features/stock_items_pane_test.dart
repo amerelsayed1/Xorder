@@ -58,7 +58,7 @@ void main() {
   ) async {
     await open(tester);
 
-    expect(areaOf(ManagementPane.items), ManagementArea.inventory);
+    expect(tabOf(ManagementPane.items), BackOfficeTab.inventory);
     expect(find.text('Chicken'), findsOneWidget);
     expect(find.text('Kilogram'), findsOneWidget, reason: 'the unit by name');
     expect(

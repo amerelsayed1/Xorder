@@ -310,20 +310,13 @@ must be covered by `test/data/grants_cover_usage_test.dart`.
 ### BO-0 — Admin Mode on main · **gate** (owner, 14 Sep: before the shell)
 Not a slice of this plan; it is what BO-1 waits for.
 
-**Where it stands (checked 14 Sep with `git log --all`, `git branch -a`,
-`git stash list`, `git worktree list`): nothing of it is in git.**
-* No commit on any branch or remote mentions Admin Mode, and
-  `git log --all -S"admin.enter"` is empty. `lib/` has no `admin.enter`.
-* `claude/competent-bouman-00ad46` (`1e8dd39`) is an ancestor of `main` with
-  nothing of its own; `feat/cb-09-slice-e`, `feat/receipt-layout`,
-  `pos/offline-backup`, `claude/determined-poitras-1d4310` and the
-  `worktree-agent-*` branches predate or are unrelated to it.
-* No stash. The worktree `.claude/worktrees/determined-poitras-1d4310` no
-  longer exists; only its session transcripts remain under `~/.claude/projects/`.
-* The red test `test/features/admin_entry_test.dart` is on no ref.
-
-So the Phase 1 and 2 work recorded as uncommitted on 13 Sep (~3,900 lines) is
-treated as **lost**: BO-0 is a rebuild from the 12 Sep decisions, not a merge.
+**Where it stands (updated 14 Sep): recovered, not rebuilt.** The 13 Sep work
+was replayed from its session transcripts and committed as `43eeae7` on
+`pos/admin-mode`: migrations 46 (`admin.enter` for the owner role) and 47
+(`payment.remove` kept by the roles that had it), with both review findings
+fixed. Every item under *Done means* below is satisfied on that branch; it
+reaches `main` when the branch merges. The "lost / rebuild" finding this
+paragraph used to hold is withdrawn.
 
 **Done means, on `main`:**
 * `admin.enter` is in `PosCapability.all`: critical, not in `overridable`, Owner

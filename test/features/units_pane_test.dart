@@ -47,7 +47,7 @@ void main() {
   ) async {
     await open(tester);
 
-    expect(areaOf(ManagementPane.units), ManagementArea.inventory);
+    expect(tabOf(ManagementPane.units), BackOfficeTab.inventory);
     expect(find.text('Kilogram'), findsOneWidget);
     expect(find.byKey(const Key('unit-row-kg')), findsOneWidget);
     // A kilo can be part of one; a box cannot.
