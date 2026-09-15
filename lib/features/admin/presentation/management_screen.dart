@@ -107,11 +107,11 @@ class ManagementScreen extends ConsumerStatefulWidget {
 ///
 /// **Public, and the only answer.** The window's bar asks this — the only way
 /// round the back office since the owner took the on-screen strip away (15 Sep
-/// 2026) — and so do Home's quick actions ([homeQuickActionsFor]) and the
-/// screen, when it decides what a deep link may show. Two lists that were
-/// meant to agree are two lists that will not: a shortcut offering Purchasing
-/// to somebody the bar hides it from would take them to a screen that refuses
-/// everything.
+/// 2026) — and so does the screen, when it decides what a deep link may show.
+/// Two lists that were meant to agree are two lists that will not: a line
+/// offering Purchasing to somebody the screen hides it from would take them to
+/// a screen that refuses everything. Home's shortcuts asked it too, until the
+/// owner took them away as the bar's lines said twice (15 Sep 2026).
 ///
 /// [ManagementPane.receipt] is deliberately outside the authoring set: every
 /// terminal prints a slip with the restaurant's name and address on it, cloud
@@ -250,7 +250,7 @@ bool hiddenBecausePlatformAuthors(
 /// BO-1 filed Users and Roles under Settings, as the cloud does; the owner's
 /// map gives them a tab of their own, with Shifts beside them.
 enum BackOfficeTab {
-  /// The landing page (BO-4): this till, today's takings, the way onward.
+  /// The landing page (BO-4): a greeting, and today's takings.
   home,
 
   /// The order history, re-hosted by BO-2.
@@ -620,40 +620,6 @@ ManagementPane backOfficeLanding(
   List<(BackOfficeTab, List<ManagementPane>)> tabs,
 ) => tabs.expand((tab) => tab.$2).first;
 
-/// Home's shortcuts, each to the first pane it names — and absent when that
-/// pane is.
-///
-/// **Read off the same tabs as the bar**, so a shortcut can never lead where
-/// the bar would not: no Product management on a cloud
-/// till, where Menu is the platform's; no Sales reports for whoever lacks
-/// `reports.view`, which is the gate on the one pane Reports holds.
-List<(HomeQuickAction, ManagementPane)> homeQuickActionsFor(
-  List<(BackOfficeTab, List<ManagementPane>)> tabs,
-) {
-  ManagementPane? firstOf(BackOfficeTab tab) {
-    for (final (t, panes) in tabs) {
-      if (t == tab && panes.isNotEmpty) return panes.first;
-    }
-    return null;
-  }
-
-  final reachable = [for (final (_, panes) in tabs) ...panes];
-  return [
-    for (final action in HomeQuickAction.values)
-      if (switch (action) {
-            HomeQuickAction.salesReports => firstOf(BackOfficeTab.reports),
-            HomeQuickAction.products => firstOf(BackOfficeTab.menu),
-            // Staff, under People.
-            HomeQuickAction.employees =>
-              reachable.contains(ManagementPane.staff)
-                  ? ManagementPane.staff
-                  : null,
-          }
-          case final pane?)
-        (action, pane),
-  ];
-}
-
 /// Where the caller was, and which pane they asked for.
 ///
 /// **Both, because the way out matters as much as the way in.** The route used
@@ -757,10 +723,15 @@ typedef ManagementBarEntry = ({
 });
 
 /// One menu of the window's bar: a tab's word, and its lines.
+///
+/// [direct] when the bar draws the word as a button that opens the one line
+/// itself, with no menu under it — see [managementBarFor]. The line is still
+/// here, so every rule and walk that reads [lines] reads Home's too.
 typedef ManagementBarMenu = ({
   BackOfficeTab tab,
   String label,
   List<ManagementBarEntry> lines,
+  bool direct,
 });
 
 /// The back office as the window's bar offers it: a menu per visible tab, in
@@ -779,12 +750,16 @@ typedef ManagementBarMenu = ({
 /// every line to prove the first, and `managementPanesFor` is what it is held
 /// to.
 ///
-/// **The first menu is Home**, in the map's word for it. It holds the Home
-/// line — the one way back to the landing, now that no strip starts with it —
-/// and the bar adds Exit Admin Mode under it: that is an act on the session,
-/// not a destination, so it is not a line here. "Back office" was the other
-/// candidate for the word, and would have made the bar the one place the
-/// map's first word is not said.
+/// **The first word is Home, and it is a button, not a menu** (owner, 15 Sep
+/// 2026). It was a menu of two lines: Home, saying the menu's own word again,
+/// and Exit Admin Mode, which the header's button already is on every page.
+/// The owner called both duplication; with Exit gone the menu would have been
+/// one line repeating its title, so the word opens Home itself — the one way
+/// back to the landing, now that no strip starts with it. It keeps its one
+/// line in [lines], marked [ManagementBarMenu.direct], so what it opens is
+/// decided here like every other line and the bar only draws it. "Back
+/// office" was the other candidate for the word, and would have made the bar
+/// the one place the map's first word is not said.
 ///
 /// **Settings is returned like any other tab, and the bar does not draw it as
 /// a menu of its own.** The till already has a Settings menu, and two menus
@@ -815,8 +790,29 @@ List<ManagementBarMenu> managementBarFor(
       lines: panes.isEmpty
           ? [_platformPointerLine(s, tab)]
           : _tabLines(s, tab, panes),
+      direct: _opensDirectly(tab),
     ),
 ];
+
+/// Whether a tab's word in the bar is a button rather than a menu.
+///
+/// Only Home: its one item is itself, so a menu under it could only say its
+/// name a second time. Every other tab either holds several items or, on a
+/// cloud till, a pointer whose words are not the tab's. A total switch rather
+/// than a comparison of the menu's word with its line's, so a tab added later
+/// is decided here rather than by whatever two strings happen to match.
+bool _opensDirectly(BackOfficeTab tab) => switch (tab) {
+  BackOfficeTab.home => true,
+  BackOfficeTab.sales ||
+  BackOfficeTab.reports ||
+  BackOfficeTab.menu ||
+  BackOfficeTab.inventory ||
+  BackOfficeTab.purchasing ||
+  BackOfficeTab.finance ||
+  BackOfficeTab.people ||
+  BackOfficeTab.system ||
+  BackOfficeTab.settings => false,
+};
 
 /// A tab's lines: one per item, in the tab's order — Purchasing's own lines
 /// in place of its one, set off in groups by the dividers they carry.
@@ -1270,7 +1266,7 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
   /// somebody used it twice.
   ///
   /// Guarded on the OLD value rather than on `_pane`, so a manager who followed
-  /// a link inside a pane — Home's shortcuts, a Finance row — and is then
+  /// a link inside a pane — a Finance row, the backup notice — and is then
   /// rebuilt for any other reason stays where they put themselves. Only a
   /// caller changing its mind moves them.
   @override
@@ -1289,8 +1285,8 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
     }
   }
 
-  /// A pane, from inside the screen: Home's shortcuts, a notice, a link one
-  /// pane holds to another, Settings' side nav. Everything else arrives from
+  /// A pane, from inside the screen: a notice, a link one pane holds to
+  /// another, Settings' side nav. Everything else arrives from
   /// the bar, through the route and [didUpdateWidget].
   void _open(ManagementPane pane) => setState(() {
     _pane = pane;
@@ -1429,7 +1425,7 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
         ? const SizedBox.expand()
         : KeyedSubtree(
             key: ValueKey('back-office-pane-${showing.name}'),
-            child: _paneBody(admin, showing, panes, tabs),
+            child: _paneBody(admin, showing, panes),
           );
 
     final screen = Scaffold(
@@ -1502,23 +1498,10 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
     PosStaff admin,
     ManagementPane pane,
     List<ManagementPane> panes,
-    List<(BackOfficeTab, List<ManagementPane>)> tabs,
   ) => switch (pane) {
-    // Every way onward from Home is a pane this person already has — the
-    // cards lead to Terminal and Backup only for whoever can open them.
-    ManagementPane.home => ManagementHomePane(
-      admin: admin,
-      actions: [
-        for (final (action, target) in homeQuickActionsFor(tabs))
-          (action, () => _open(target)),
-      ],
-      onOpenTerminal: panes.contains(ManagementPane.terminal)
-          ? () => _open(ManagementPane.terminal)
-          : null,
-      onOpenBackup: panes.contains(ManagementPane.backup)
-          ? () => _open(ManagementPane.backup)
-          : null,
-    ),
+    // No links out of Home: its cards and shortcuts were the status bar and
+    // the window's bar said twice, and the owner took them away (15 Sep 2026).
+    ManagementPane.home => ManagementHomePane(admin: admin),
     // `/orders`' own widget, not a second screen over the same rows (BO-2).
     // No way out of its own: the back office's Exit and Esc are the way out.
     // Whose sales it lists follows [admin] through `actingStaffProvider`, not
@@ -1773,15 +1756,23 @@ class _SettingsNav extends StatelessWidget {
   }
 }
 
-/// The bottom line of every page: connection, branch, version, who is in.
+/// The bottom line of every page: connection, branch, this till, version, who
+/// is in.
 ///
 /// **The till's own sources, not new ones** (plan 19 §1.3). The connection is
 /// the same pill the till's top bar draws from the same providers — a sync
 /// state on a cloud till, the branch server on an offline one — so the back
 /// office can never call a till healthy that the till itself calls broken.
-/// The branch is the name the terminal was set up under, as About prints it;
-/// the version is `posAppVersion`, as About prints it. Support asks for both
-/// over the phone, which is why they are here and not only in a dialog.
+/// The branch and the till are the names the terminal was set up under, as
+/// About prints them; the version is `posAppVersion`, as About prints it.
+/// Support asks for all three over the phone, which is why they are here and
+/// not only in a dialog.
+///
+/// **The only place the back office names them** since the owner took Home's
+/// cards away as duplicates (15 Sep 2026). Branch and connection were already
+/// here; the till's name was only on its card, so it moved here rather than
+/// being lost — a branch with three counters needs to know which one it is
+/// standing at.
 ///
 /// Who is in moved here from the header: it is the administrator, not the
 /// till's operator, and it belongs with the other facts about this session.
@@ -1794,7 +1785,9 @@ class _StatusBar extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final pos = context.pos;
     final strings = context.strings;
-    final branch = ref.watch(terminalProfileProvider).branchName;
+    final profile = ref.watch(terminalProfileProvider);
+    final branch = profile.branchName;
+    final terminal = profile.terminalName;
     final meta = PosText.ui(size: 13, color: pos.body);
 
     return Container(
@@ -1807,7 +1800,6 @@ class _StatusBar extends ConsumerWidget {
       ),
       child: Row(
         children: [
-          // Shared with Home's connection card, so the two cannot disagree.
           const BackOfficeConnectionPill(),
           if (branch != null && branch.isNotEmpty) ...[
             const SizedBox(width: PosSpace.lg),
@@ -1817,6 +1809,22 @@ class _StatusBar extends ConsumerWidget {
               child: Text(
                 branch,
                 key: const Key('back-office-status-branch'),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: meta,
+              ),
+            ),
+          ],
+          // A name somebody typed at setup, in either script — so the UI face,
+          // not mono: it is a word, not a code.
+          if (terminal != null && terminal.trim().isNotEmpty) ...[
+            const SizedBox(width: PosSpace.lg),
+            Icon(Icons.point_of_sale_outlined, size: 16, color: pos.muted),
+            const SizedBox(width: PosSpace.xs),
+            Flexible(
+              child: Text(
+                terminal,
+                key: const Key('back-office-status-terminal'),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: meta,
@@ -1843,6 +1851,38 @@ class _StatusBar extends ConsumerWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// The connection, as the till's top bar shows it: the sync state on a cloud
+/// till, the branch server on an offline one.
+///
+/// Which pill and why is the till's top bar's decision; see it. Home's
+/// connection card drew this too, until the owner took it away as the status
+/// bar said twice (15 Sep 2026).
+class BackOfficeConnectionPill extends ConsumerWidget {
+  const BackOfficeConnectionPill({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    if (ref.watch(cloudSyncProvider) case final cloud?) {
+      final sync = ref.watch(pendingSyncCountProvider);
+      return SyncPill(
+        online: ref.watch(posUiProvider).online,
+        queued: sync.valueOrNull,
+        hasError: sync.hasError,
+        onTap: () {
+          cloud.kick();
+          posToast(context, context.strings.syncingWithPlatform);
+        },
+      );
+    }
+    final probe = ref.watch(branchDatabaseProvider);
+    return BranchServerPill(
+      checking: probe.isLoading,
+      reachable: probe.hasValue && probe.value == null,
+      onTap: () => ref.invalidate(branchDatabaseProvider),
     );
   }
 }

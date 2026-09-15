@@ -7,9 +7,9 @@ import 'package:xorder_pos/app/providers.dart';
 import 'package:xorder_pos/core/l10n/app_strings.dart';
 import 'package:xorder_pos/core/money/money.dart';
 import 'package:xorder_pos/core/ui/theme.dart';
+import 'package:xorder_pos/core/ui/widgets/pos_widgets.dart';
 import 'package:xorder_pos/data/cloud/cloud_sync.dart';
 import 'package:xorder_pos/data/fakes/fake_repositories.dart';
-import 'package:xorder_pos/domain/models/backup.dart';
 import 'package:xorder_pos/domain/models/branch_sales.dart';
 import 'package:xorder_pos/domain/models/business_day.dart';
 import 'package:xorder_pos/domain/models/home_sales.dart';
@@ -94,7 +94,6 @@ Future<void> _pump(
   bool noDay = false,
   bool cloud = false,
   String language = 'en',
-  List<(HomeQuickAction, VoidCallback)> actions = const [],
   List<Override> overrides = const [],
 }) async {
   tester.view
@@ -120,9 +119,6 @@ Future<void> _pump(
       ),
       if (cloud) ...[
         cloudSyncProvider.overrideWithValue(_Sync()),
-        lastPlatformSyncProvider.overrideWith(
-          (ref) async => DateTime(2026, 9, 10, 7, 30),
-        ),
         pendingSyncCountProvider.overrideWith((ref) async => 3),
       ],
       ...overrides,
@@ -149,7 +145,7 @@ Future<void> _pump(
         supportedLocales: AppLocalizations.supportedLocales,
         theme: buildPosTheme(),
         home: Scaffold(
-          body: ManagementHomePane(admin: admin, actions: actions),
+          body: ManagementHomePane(admin: admin),
         ),
       ),
     ),
@@ -160,7 +156,9 @@ Future<void> _pump(
 Finder _in(String key, Finder f) =>
     find.descendant(of: find.byKey(Key(key)), matching: f);
 
-/// Home (BO-4): what it claims about the day, about this till, and to whom.
+/// Home (BO-4): what it claims about the day, and to whom — and, since the
+/// owner took its cards and shortcuts away as duplicates (15 Sep 2026), that
+/// it claims nothing the status bar or the window's bar already says.
 void main() {
   const s = EnStrings();
 
@@ -236,110 +234,74 @@ void main() {
 
       expect(find.byKey(const Key('home-tiles')), findsNothing);
       expect(find.text(_todaySales.net.format()), findsNothing);
-      // The rest of Home is still theirs.
-      expect(find.byKey(const Key('home-card-branch')), findsOneWidget);
-      expect(find.byKey(const Key('home-card-connection')), findsOneWidget);
+      // The greeting is still theirs.
+      expect(find.text(s.homeWelcome('Salma T.')), findsOneWidget);
+      expect(find.text(s.paneHomeBlurb), findsOneWidget);
     });
   });
 
-  group('the cards', () {
-    testWidgets('name this branch and this device', (tester) async {
-      await _pump(tester);
-      expect(_in('home-card-branch', find.text('Maadi')), findsOneWidget);
-      expect(_in('home-card-device', find.text('POS-02')), findsOneWidget);
+  // The status bar under every page names the branch, the till and the
+  // connection; the backup notice over every page says when the last good
+  // copy was; the window's bar holds every page. Home said all of it again,
+  // and the owner took it away. Asserted by what a person would read — the
+  // names, the pills, the old headings — not only by the keys that are gone.
+  for (final cloud in [false, true]) {
+    final where = cloud ? 'cloud' : 'offline';
+    testWidgets('$where: no status cards and no quick actions — the greeting '
+        'and the day, and nothing else', (tester) async {
+      await _pump(tester, cloud: cloud);
+
+      for (final key in [
+        'home-card-branch',
+        'home-card-device',
+        'home-card-connection',
+        'home-card-last-backup',
+        'home-card-last-sync',
+        'home-action-salesReports',
+        'home-action-products',
+        'home-action-employees',
+      ]) {
+        expect(find.byKey(Key(key)), findsNothing, reason: key);
+      }
+      // The terminal profile says Maadi and POS-02; Home says neither.
+      expect(find.text('Maadi'), findsNothing);
+      expect(find.text('POS-02'), findsNothing);
+      expect(find.byType(BranchServerPill), findsNothing);
+      expect(find.byType(SyncPill), findsNothing);
+      for (final heading in [
+        'Connection',
+        'Last backup',
+        'Last sync',
+        'Quick actions',
+        'Product management',
+      ]) {
+        expect(find.text(heading), findsNothing, reason: heading);
+      }
+      // What is left: the greeting, and the tiles.
+      expect(find.text(s.homeWelcome('Amer M.')), findsOneWidget);
+      expect(find.byKey(const Key('home-tiles')), findsOneWidget);
+      expect(find.byType(GestureDetector), findsNothing, reason: 'no links');
     });
+  }
 
-    testWidgets('offline: the last verified backup, and no last sync', (
-      tester,
-    ) async {
-      await _pump(
-        tester,
-        overrides: [
-          backupsProvider.overrideWith(
-            (ref) async => [
-              // Newest first. The newest failed, so the verified one before
-              // it is the copy anybody could restore.
-              BackupRecord(
-                takenAt: DateTime(2026, 9, 10, 1),
-                takenByName: 'Amer M.',
-                trigger: BackupTrigger.dayClose,
-                outcome: BackupOutcome.failed,
-                filePath: '/backups/b.dump',
-              ),
-              BackupRecord(
-                takenAt: DateTime(2026, 9, 9, 23, 45),
-                takenByName: 'Amer M.',
-                trigger: BackupTrigger.dayClose,
-                outcome: BackupOutcome.verified,
-                filePath: '/backups/a.dump',
-              ),
-            ],
-          ),
-        ],
-      );
-
-      expect(
-        _in('home-card-last-backup', find.text('2026-09-09 23:45')),
-        findsOneWidget,
-      );
-      expect(find.byKey(const Key('home-card-last-sync')), findsNothing);
-    });
-
-    testWidgets('offline, with no copy ever taken: never', (tester) async {
-      await _pump(
-        tester,
-        overrides: [backupsProvider.overrideWith((ref) async => const [])],
-      );
-      expect(_in('home-card-last-backup', find.text(s.homeNever)), findsOneWidget);
-    });
-
-    testWidgets('cloud: the last sync and what is still to send, no backup', (
-      tester,
-    ) async {
-      await _pump(tester, cloud: true);
-
-      expect(
-        _in('home-card-last-sync', find.text('2026-09-10 07:30')),
-        findsOneWidget,
-      );
-      expect(
-        _in('home-card-last-sync', find.text(s.homeSalesWaiting(3))),
-        findsOneWidget,
-      );
-      expect(find.byKey(const Key('home-card-last-backup')), findsNothing);
-    });
-  });
-
-  testWidgets('shortcuts are the ones it is given, and open what they say', (
+  testWidgets('the subtitle promises no way onward: the links are gone', (
     tester,
   ) async {
-    var opened = <HomeQuickAction>[];
-    await _pump(
-      tester,
-      actions: [
-        (HomeQuickAction.employees, () => opened.add(HomeQuickAction.employees)),
-      ],
-    );
-
-    expect(find.byKey(const Key('home-action-products')), findsNothing);
-    expect(find.byKey(const Key('home-action-salesReports')), findsNothing);
-    await tester.tap(find.byKey(const Key('home-action-employees')));
-    expect(opened, [HomeQuickAction.employees]);
-    opened = [];
+    const ar = ArStrings();
+    for (final words in [s.paneHomeBlurb, ar.paneHomeBlurb]) {
+      expect(words, isNot(contains('rest')), reason: words);
+      expect(words, isNot(contains('الأقسام')), reason: words);
+    }
   });
 
   testWidgets('in Arabic: Arabic words, Latin digits left to right, and the '
-      'cards start on the right', (tester) async {
-    await _pump(
-      tester,
-      language: 'ar',
-      actions: [(HomeQuickAction.employees, () {})],
-    );
+      'tiles start on the right', (tester) async {
+    await _pump(tester, language: 'ar');
     const ar = ArStrings();
 
     expect(find.text(ar.homeWelcome('Amer M.')), findsOneWidget);
+    expect(find.text(ar.paneHomeBlurb), findsOneWidget);
     expect(find.text(ar.homeKpiNetSales), findsOneWidget);
-    expect(find.text(ar.homeActionEmployees), findsOneWidget);
     expect(find.text(s.homeKpiNetSales), findsNothing);
 
     // The delta is data: Western digits, and laid out left to right so the
@@ -349,9 +311,9 @@ void main() {
     );
     expect(delta.textDirection, TextDirection.ltr);
 
-    final branch = tester.getRect(find.byKey(const Key('home-card-branch')));
-    final device = tester.getRect(find.byKey(const Key('home-card-device')));
-    expect(branch.left, greaterThan(device.left), reason: 'start is right');
+    final net = tester.getRect(find.byKey(const Key('home-tile-net')));
+    final orders = tester.getRect(find.byKey(const Key('home-tile-orders')));
+    expect(net.left, greaterThan(orders.left), reason: 'start is right');
     expect(tester.takeException(), isNull);
   });
 }

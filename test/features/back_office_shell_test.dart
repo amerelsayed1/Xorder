@@ -405,24 +405,6 @@ void main() {
           expect(tabs.first.$2, [ManagementPane.home]);
           expect(backOfficeLanding(tabs), ManagementPane.home);
 
-          // Home's shortcuts reach nothing the tabs do not: none for Menu on
-          // a cloud till, none for Reports without `reports.view`.
-          final shortcuts = homeQuickActionsFor(tabs);
-          for (final (action, pane) in shortcuts) {
-            expect(reachable, contains(pane), reason: action.name);
-          }
-          final offered = [for (final (action, _) in shortcuts) action];
-          expect(
-            offered.contains(HomeQuickAction.products),
-            authors,
-            reason: 'Product management only where this till authors Menu',
-          );
-          expect(offered.contains(HomeQuickAction.salesReports), reads);
-          expect(
-            offered.contains(HomeQuickAction.employees),
-            reachable.contains(ManagementPane.staff),
-          );
-
           // The bar: a menu per tab, in the same order, and no line reaching
           // what the tabs do not.
           final bar = managementBarFor(
@@ -434,6 +416,13 @@ void main() {
             [for (final menu in bar) menu.tab],
             [for (final (tab, _) in tabs) tab],
           );
+          // Home is a word that opens itself (15 Sep 2026); every other word
+          // is a menu. Its one line is still the model's, and it is Home.
+          expect(
+            [for (final menu in bar) if (menu.direct) menu.tab],
+            [BackOfficeTab.home],
+          );
+          expect(bar.first.lines.single.open().pane, ManagementPane.home);
           for (final menu in bar) {
             for (final line in menu.lines) {
               final to = line.open().pane!;
@@ -649,52 +638,94 @@ void main() {
     testWidgets('and for somebody with no business figures, too', (
       tester,
     ) async {
-      // The supervisor holds no `reports.view`: Home still greets them, with
-      // the cards and without the tiles.
+      // The supervisor holds no `reports.view`: Home still greets them,
+      // without the tiles.
       await _open(tester, username: 'nour', pin: '2468');
       expect(_showing(tester), {ManagementPane.home});
-      expect(find.byKey(const Key('home-card-branch')), findsOneWidget);
+      expect(
+        find.text(const EnStrings().homeWelcome(_supervisor.name)),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('home-tiles')), findsNothing);
     });
   });
 
-  group("Home's shortcuts open what they name", () {
-    testWidgets('offline: Product management and Employees', (tester) async {
-      final (_, bar) = await _open(tester, offline: true);
+  // The owner, 15 Sep 2026: "there is duplication here, I don't need that".
+  // Home's four cards said what the status bar says and its shortcuts what
+  // the window's bar says; both went. The till's name was said only by its
+  // card, so it moved to the status bar rather than being lost.
+  group('Home says nothing the rest of the screen already does', () {
+    for (final offline in [true, false]) {
+      final where = offline ? 'offline' : 'cloud';
+      testWidgets('$where: no cards, no shortcuts, Exit once, and this till '
+          'named in the status bar', (tester) async {
+        final (container, _) = await _open(tester, offline: offline);
+        container
+            .read(terminalProfileProvider.notifier)
+            .apply(
+              const TerminalProfile(
+                branchName: 'Maadi',
+                terminalName: 'Counter 1',
+              ),
+            );
+        await tester.pumpAndSettle();
+        expect(_showing(tester), {ManagementPane.home});
+        final home = find.byKey(const Key('home-pane'));
+        final status = find.byKey(const Key('back-office-status-bar'));
 
-      await tester.tap(find.byKey(const Key('home-action-products')));
-      await tester.pumpAndSettle();
-      expect(_showing(tester), {ManagementPane.menu});
+        for (final key in [
+          'home-card-branch',
+          'home-card-device',
+          'home-card-connection',
+          'home-card-last-backup',
+          'home-card-last-sync',
+          'home-action-salesReports',
+          'home-action-products',
+          'home-action-employees',
+        ]) {
+          expect(find.byKey(Key(key)), findsNothing, reason: key);
+        }
+        expect(
+          find.descendant(of: home, matching: find.byType(GestureDetector)),
+          findsNothing,
+          reason: 'no way out of Home but the bar',
+        );
 
-      // Back to Home by the bar's الرئيسية › الرئيسية, its first line.
-      await bar.open(tester, ManagementPane.home);
-      await tester.tap(find.byKey(const Key('home-action-employees')));
-      await tester.pumpAndSettle();
-      expect(_showing(tester), {ManagementPane.staff});
-    });
+        // Exit once on screen, and that once is the header's.
+        expect(find.text(const EnStrings().exitAdminMode), findsOneWidget);
+        expect(find.byKey(const Key('admin-exit')), findsOneWidget);
 
-    testWidgets('on cloud there is no Product management', (tester) async {
-      await _open(tester);
-      expect(find.byKey(const Key('home-action-products')), findsNothing);
-      expect(find.byKey(const Key('home-action-employees')), findsOneWidget);
-    });
+        // Branch, till and connection: in the status bar, not on Home.
+        expect(
+          find.descendant(of: status, matching: find.text('Counter 1')),
+          findsOneWidget,
+        );
+        expect(
+          tester
+              .widget<Text>(find.byKey(const Key('back-office-status-terminal')))
+              .data,
+          'Counter 1',
+        );
+        expect(
+          find.descendant(of: status, matching: find.text('Maadi')),
+          findsOneWidget,
+        );
+        for (final said in [find.text('Counter 1'), find.text('Maadi')]) {
+          expect(find.descendant(of: home, matching: said), findsNothing);
+        }
+        expect(
+          find.descendant(of: status, matching: find.byType(BackOfficeConnectionPill)),
+          findsOneWidget,
+        );
+        expect(find.byType(BackOfficeConnectionPill), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      });
+    }
 
-    testWidgets('Sales reports opens Reports, now that it has a pane', (
+    testWidgets('and no Reports menu for somebody without reports.view', (
       tester,
     ) async {
-      await _open(tester);
-      await tester.tap(find.byKey(const Key('home-action-salesReports')));
-      await tester.pumpAndSettle();
-      expect(_showing(tester), {ManagementPane.reports});
-      expect(
-        tester.widget<Text>(find.byKey(const Key('back-office-title'))).data,
-        const EnStrings().reportsSummary,
-      );
-    });
-
-    testWidgets('and neither the shortcut nor the menu for somebody without '
-        'reports.view', (tester) async {
       final (container, _) = await _open(tester, username: 'nour', pin: '2468');
-      expect(find.byKey(const Key('home-action-salesReports')), findsNothing);
       expect(
         [for (final menu in _barOf(container)) menu.tab],
         isNot(contains(BackOfficeTab.reports)),

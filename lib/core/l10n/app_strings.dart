@@ -1196,15 +1196,14 @@ sealed class AppStrings {
   String get settingsOrdersInvoices;
   String get settingsLanguage;
   String get settingsLook;
-  // BO-4: Home — the landing page's cards, tiles and quick actions.
+  // BO-4: Home — the landing page's greeting and tiles. Its cards and quick
+  // actions went on 15 Sep 2026 (duplicates of the status bar and the menu
+  // bar); the three `home…` words below outlived them in the Sync pane.
   String get paneHomeBlurb;
   String homeWelcome(String name);
-  String get homeCardConnection;
-  String get homeCardLastSync;
   String get homeCardLastBackup;
   String get homeNotSet;
   String get homeNever;
-  String homeSalesWaiting(int count);
   String get homeToday;
   String homeDayOpen(String date, String time);
   String homeDayClosed(String date);
@@ -1215,10 +1214,6 @@ sealed class AppStrings {
   String get homeKpiAverage;
   String get homeVsPreviousDay;
   String get homeNoComparison;
-  String get homeQuickActions;
-  String get homeActionReports;
-  String get homeActionProducts;
-  String get homeActionEmployees;
   // BO-9: Finance — overview, revenue, payments and taxes, read-only.
   String get financeOverview;
   String get financeOverviewBlurb;
@@ -5408,24 +5403,15 @@ final class EnStrings extends AppStrings {
   @override
   String get settingsLook => 'Appearance';
   @override
-  String get paneHomeBlurb =>
-      'This till, how today is going, and the way to the rest.';
+  String get paneHomeBlurb => 'A look at how today is going.';
   @override
   String homeWelcome(String name) => 'Welcome, $name';
-  @override
-  String get homeCardConnection => 'Connection';
-  @override
-  String get homeCardLastSync => 'Last sync';
   @override
   String get homeCardLastBackup => 'Last backup';
   @override
   String get homeNotSet => 'Not set';
   @override
   String get homeNever => 'Never';
-  @override
-  String homeSalesWaiting(int count) => count == 1
-      ? '1 sale waiting to send'
-      : '$count sales waiting to send';
   @override
   String get homeToday => 'Today';
   @override
@@ -5452,14 +5438,6 @@ final class EnStrings extends AppStrings {
       'vs the previous day, same time since opening';
   @override
   String get homeNoComparison => 'No earlier day to compare with';
-  @override
-  String get homeQuickActions => 'Quick actions';
-  @override
-  String get homeActionReports => 'Sales reports';
-  @override
-  String get homeActionProducts => 'Product management';
-  @override
-  String get homeActionEmployees => 'Employees';
   @override
   String get financeOverview => 'Overview';
   @override
@@ -9759,21 +9737,15 @@ final class ArStrings extends AppStrings {
   @override
   String get settingsLook => 'المظهر';
   @override
-  String get paneHomeBlurb => 'هذا الجهاز، وسير اليوم، والطريق إلى بقية الأقسام.';
+  String get paneHomeBlurb => 'نظرة على سير اليوم.';
   @override
   String homeWelcome(String name) => 'أهلاً، $name';
-  @override
-  String get homeCardConnection => 'الاتصال';
-  @override
-  String get homeCardLastSync => 'آخر مزامنة';
   @override
   String get homeCardLastBackup => 'آخر نسخة احتياطية';
   @override
   String get homeNotSet => 'غير محدد';
   @override
   String get homeNever => 'لم يحدث بعد';
-  @override
-  String homeSalesWaiting(int count) => 'مبيعات بانتظار الإرسال: $count';
   @override
   String get homeToday => 'اليوم';
   @override
@@ -9796,14 +9768,6 @@ final class ArStrings extends AppStrings {
   String get homeVsPreviousDay => 'مقارنة باليوم السابق، بنفس المدة منذ الفتح';
   @override
   String get homeNoComparison => 'لا يوجد يوم سابق للمقارنة';
-  @override
-  String get homeQuickActions => 'إجراءات سريعة';
-  @override
-  String get homeActionReports => 'تقارير المبيعات';
-  @override
-  String get homeActionProducts => 'إدارة المنتجات';
-  @override
-  String get homeActionEmployees => 'الموظفون';
   @override
   String get financeOverview => 'نظرة عامة';
   @override

@@ -456,6 +456,15 @@ are absent without `reports.view`; quick actions obey the same pane list (none
 for Menu on cloud); offline shows last backup where cloud shows last sync.
 *Depends on* BO-1. Parallel with BO-2 and BO-3.
 
+> **Trimmed by the owner, 15 Sep 2026: "there is duplication here".** The
+> status cards and the quick actions are gone. Branch and connection were
+> already in the status bar under every page; the till's name moved there too
+> (§1.3); the last backup is the backup notice over every page; the shortcuts
+> were the menu bar's own lines. Exit Admin Mode is said once, by the header —
+> not also under a bar menu — and الرئيسية in the bar is a button straight to
+> the landing, not a menu whose one line was الرئيسية again. Home is now the
+> greeting and the اليوم section.
+
 ### BO-5 — Reports read model (Wave G core) · **M**
 `ReportsRepository` + `ReportFilter` (`11` §9): period totals, per-day series,
 top products, tender shares, per-terminal over a range. No screen. M because

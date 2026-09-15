@@ -127,40 +127,68 @@ void main() {
     await container
         .read(adminSessionProvider.notifier)
         .signIn(username: 'amer', pin: '4321');
+    // And onto the back office's screen, as the chord does: Admin Mode is
+    // never a session over the till's own screens, and the header — the one
+    // place Exit is said since 15 Sep 2026 — is that screen's. Exit goes back
+    // to wherever this was pressed, as the chord remembers it.
+    final router = container.read(routerProvider);
+    final from = router.routerDelegate.currentConfiguration.uri.path;
+    if (from != PosRoutes.management) {
+      router.go(
+        PosRoutes.management,
+        extra: ManagementDestination(returnTo: from),
+      );
+    }
     await tester.pumpAndSettle();
   }
 
-  /// The bar's menus as drawn, in the order they are built.
-  Finder barButtons() => find.descendant(
-    of: find.byType(MenuBar),
-    matching: find.byType(SubmenuButton),
-  );
+  /// A word of the bar itself — a menu, or a button with no menu under it
+  /// (Home's, since 15 Sep 2026) — and not a line of an open menu, which sits
+  /// inside the `MenuBar` too but under its menu's `SubmenuButton`.
+  bool onTheBar(Element e) =>
+      (e.widget is SubmenuButton || e.widget is MenuItemButton) &&
+      e.findAncestorWidgetOfExactType<MenuBar>() != null &&
+      e.findAncestorWidgetOfExactType<SubmenuButton>() == null;
+
+  String labelOf(Widget w) =>
+      ((w is SubmenuButton ? w.child : (w as MenuItemButton).child)! as Text)
+          .data!;
+
+  /// The bar's words as drawn, in the order they are built.
+  Finder barButtons() => find.byElementPredicate(onTheBar);
 
   List<String> barLabels(WidgetTester tester) => [
-    for (final button in tester.widgetList<SubmenuButton>(barButtons()))
-      (button.child! as Text).data!,
+    for (final element in barButtons().evaluate()) labelOf(element.widget),
   ];
 
-  /// The bar's own button, not a line of the same name: an open menu's lines
-  /// sit inside the `MenuBar` too, and Home's first line is called Home.
-  Finder barButton(String label) => find.byWidgetPredicate(
-    (w) => w is SubmenuButton && w.child is Text && (w.child! as Text).data == label,
+  /// The bar's own word, not a line of the same name.
+  Finder barButton(String label) => find.byElementPredicate(
+    (e) => onTheBar(e) && labelOf(e.widget) == label,
+  );
+
+  /// The bar's word only if it opens a menu. Home's does not.
+  Finder menuOf(String label) => find.byElementPredicate(
+    (e) => onTheBar(e) && e.widget is SubmenuButton && labelOf(e.widget) == label,
+  );
+
+  /// Lines of whichever menu is open.
+  Finder openLines() => find.byElementPredicate(
+    (e) =>
+        e.widget is MenuItemButton &&
+        e.findAncestorWidgetOfExactType<SubmenuButton>() != null,
   );
 
   /// Opens [menu], reads its lines in order, and closes it again — so the
   /// next menu read is read alone.
   Future<List<String>> linesOf(WidgetTester tester, String menu) async {
-    await tester.tap(barButton(menu));
+    await tester.tap(menuOf(menu));
     await tester.pumpAndSettle();
     final lines = [
-      for (final item in tester.widgetList<MenuItemButton>(
-        find.byType(MenuItemButton),
-      ))
-        (item.child! as Text).data!,
+      for (final element in openLines().evaluate()) labelOf(element.widget),
     ];
-    await tester.tap(barButton(menu));
+    await tester.tap(menuOf(menu));
     await tester.pumpAndSettle();
-    expect(find.byType(MenuItemButton), findsNothing, reason: 'closed again');
+    expect(openLines(), findsNothing, reason: 'closed again');
     return lines;
   }
 
@@ -282,7 +310,7 @@ void main() {
       'Settings',
     ]);
 
-    // And it moves them: a line, then Home again by its first line.
+    // And it moves them: a line, then Home again by its word alone.
     await tester.tap(barButton('People'));
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(MenuItemButton, 'Roles & permissions'));
@@ -292,8 +320,6 @@ void main() {
       findsOneWidget,
     );
     await tester.tap(barButton('Home'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(MenuItemButton, 'Home'));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('back-office-pane-home')), findsOneWidget);
 
@@ -405,7 +431,7 @@ void main() {
       expect(find.text(area), findsNothing, reason: area);
     }
 
-    expect(await linesOf(tester, 'Home'), ['Home', 'Exit Admin Mode']);
+    expect(menuOf('Home'), findsNothing, reason: 'a button, not a menu');
     expect(await linesOf(tester, 'Sales'), [
       'Orders',
       'Invoices',
@@ -482,9 +508,14 @@ void main() {
       ]);
       for (final menu in bar) {
         if (menu.tab == BackOfficeTab.settings) continue;
+        // A direct word has no lines to read: it is its one line.
+        if (menu.direct) {
+          expect(menuOf(menu.label), findsNothing, reason: menu.label);
+          expect(barButton(menu.label), findsOneWidget, reason: menu.label);
+          continue;
+        }
         expect(await linesOf(tester, menu.label), [
           for (final line in menu.lines) line.label,
-          if (menu.tab == BackOfficeTab.home) 'Exit Admin Mode',
         ], reason: menu.label);
       }
       // Settings: everything it held before Admin Mode, in the same order,
@@ -585,9 +616,7 @@ void main() {
     ]);
 
     // And back the moment Admin Mode ends.
-    await tester.tap(barButton('Home'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(MenuItemButton, 'Exit Admin Mode'));
+    await tester.tap(find.byKey(const Key('admin-exit')));
     await tester.pumpAndSettle();
     expect(await linesOf(tester, 'Settings'), till);
   }, variant: desktop);
@@ -615,8 +644,8 @@ void main() {
     expect(find.byType(PrinterSettingsDialog), findsNothing);
   }, variant: desktop);
 
-  testWidgets('a line opens its page, and Exit leaves Admin Mode as the '
-      'header\'s Exit does', (tester) async {
+  testWidgets('a line opens its page, and the header\'s Exit leaves Admin '
+      'Mode for where it began', (tester) async {
     final container = await pumpApp(tester);
     await intoAdminMode(tester, container);
 
@@ -647,9 +676,7 @@ void main() {
       );
     }
 
-    await tester.tap(barButton('Home'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(MenuItemButton, 'Exit Admin Mode'));
+    await tester.tap(find.byKey(const Key('admin-exit')));
     await tester.pumpAndSettle();
     expect(container.read(adminSessionProvider), isNull);
     // Back to Orders, where Admin Mode began: twelve bar lines later, the
@@ -665,56 +692,47 @@ void main() {
   // The way out is where the chord was pressed, however the back office was
   // moved about in since. Every bar line used to name its pane and no way
   // back, so the first line chosen from the bar replaced the route's memory
-  // of where Admin Mode was entered — and Exit, from the header or the bar,
-  // went to the start screen instead of the till the manager had come from.
-  for (final exitBy in ['the header', 'the bar']) {
-    testWidgets('entered by the chord from Orders, a pane chosen from the bar '
-        'still exits to Orders, by $exitBy', (tester) async {
-      final container = await pumpApp(tester);
-      String path() => container
-          .read(routerProvider)
-          .routerDelegate
-          .currentConfiguration
-          .uri
-          .path;
-      expect(path(), PosRoutes.orders);
+  // of where Admin Mode was entered — and Exit went to the start screen
+  // instead of the till the manager had come from. The header's Exit is the
+  // only one since 15 Sep 2026: the bar's, under Home, went as a duplicate.
+  testWidgets('entered by the chord from Orders, a pane chosen from the bar '
+      'still exits to Orders', (tester) async {
+    final container = await pumpApp(tester);
+    String path() => container
+        .read(routerProvider)
+        .routerDelegate
+        .currentConfiguration
+        .uri
+        .path;
+    expect(path(), PosRoutes.orders);
 
-      await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
-      await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
-      await tester.sendKeyEvent(LogicalKeyboardKey.keyS);
-      await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
-      await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyS);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    await tester.pumpAndSettle();
+    expect(path(), PosRoutes.management, reason: 'the chord opened it');
+    await intoAdminMode(tester, container);
+
+    // Two lines, so the second is chosen while already on a bar-opened
+    // pane: the memory has to survive being carried, not only made.
+    for (final (menu, line) in [
+      ('People', 'Roles & permissions'),
+      ('System', 'Activity'),
+    ]) {
+      await tester.tap(barButton(menu));
       await tester.pumpAndSettle();
-      expect(path(), PosRoutes.management, reason: 'the chord opened it');
-      await intoAdminMode(tester, container);
-
-      // Two lines, so the second is chosen while already on a bar-opened
-      // pane: the memory has to survive being carried, not only made.
-      for (final (menu, line) in [
-        ('People', 'Roles & permissions'),
-        ('System', 'Activity'),
-      ]) {
-        await tester.tap(barButton(menu));
-        await tester.pumpAndSettle();
-        await tester.tap(find.widgetWithText(MenuItemButton, line));
-        await tester.pumpAndSettle();
-      }
-      expect(path(), PosRoutes.management);
-
-      if (exitBy == 'the header') {
-        await tester.tap(find.byKey(const Key('admin-exit')));
-      } else {
-        await tester.tap(barButton('Home'));
-        await tester.pumpAndSettle();
-        await tester.tap(
-          find.widgetWithText(MenuItemButton, 'Exit Admin Mode'),
-        );
-      }
+      await tester.tap(find.widgetWithText(MenuItemButton, line));
       await tester.pumpAndSettle();
-      expect(container.read(adminSessionProvider), isNull);
-      expect(path(), PosRoutes.orders, reason: 'where the chord was pressed');
-    }, variant: desktop);
-  }
+    }
+    expect(path(), PosRoutes.management);
+
+    await tester.tap(find.byKey(const Key('admin-exit')));
+    await tester.pumpAndSettle();
+    expect(container.read(adminSessionProvider), isNull);
+    expect(path(), PosRoutes.orders, reason: 'where the chord was pressed');
+  }, variant: desktop);
 
   testWidgets('handing the till over is named for what it is', (tester) async {
     await pumpApp(tester);
@@ -739,6 +757,50 @@ void main() {
     expect(find.text('F8'), findsNothing);
   }, variant: desktop);
 
+  // The owner, 15 Sep 2026: "there is duplication here". Exit was the header's
+  // button and a line under Home; Home was a menu whose one other line was
+  // Home again. Now Exit is said once and Home is a word that opens Home.
+  testWidgets('Exit Admin Mode is said once, by the header, and Home is a '
+      'button straight to the landing', (tester) async {
+    final container = await pumpApp(tester, offline: true);
+    await intoAdminMode(tester, container);
+
+    expect(find.text('Exit Admin Mode'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('admin-exit')),
+        matching: find.text('Exit Admin Mode'),
+      ),
+      findsOneWidget,
+      reason: 'the one is the header\'s',
+    );
+    // Under no menu of the bar, each opened in turn.
+    for (final label in barLabels(tester)) {
+      if (menuOf(label).evaluate().isEmpty) continue;
+      expect(
+        await linesOf(tester, label),
+        isNot(contains('Exit Admin Mode')),
+        reason: label,
+      );
+    }
+
+    // Somewhere else, then Home by its word alone: no menu opens on the way.
+    await tester.tap(barButton('People'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(MenuItemButton, 'Staff'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('back-office-pane-staff')), findsOneWidget);
+    expect(menuOf('Home'), findsNothing);
+    await tester.tap(barButton('Home'));
+    await tester.pumpAndSettle();
+    expect(openLines(), findsNothing, reason: 'no menu under Home');
+    expect(find.byKey(const ValueKey('back-office-pane-home')), findsOneWidget);
+    expect(
+      tester.widget<Text>(find.byKey(const Key('back-office-title'))).data,
+      'Home',
+    );
+  }, variant: desktop);
+
   testWidgets('and the same in Arabic, the map\'s own words', (tester) async {
     final container = await pumpApp(tester);
     await intoAdminMode(tester, container);
@@ -757,10 +819,17 @@ void main() {
       'النظام',
       'الإعدادات',
     ]);
-    expect(await linesOf(tester, 'الرئيسية'), [
-      'الرئيسية',
-      'الخروج من وضع المسؤول',
-    ]);
+    // الرئيسية a button, and the way out said once — by the header.
+    expect(menuOf('الرئيسية'), findsNothing);
+    expect(barButton('الرئيسية'), findsOneWidget);
+    expect(find.text('الخروج من وضع المسؤول'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(MenuBar),
+        matching: find.text('الخروج من وضع المسؤول'),
+      ),
+      findsNothing,
+    );
     expect(await linesOf(tester, 'الأفراد'), [
       'الموظفون',
       'الأدوار والصلاحيات',

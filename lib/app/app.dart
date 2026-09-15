@@ -290,8 +290,10 @@ class XorderPosApp extends ConsumerWidget {
                     // that said the same — so these menus are the back
                     // office's only navigation, and every page anybody holds
                     // is a line here, bar the four behind Settings' side nav.
-                    // Home comes first and holds the landing and the way out;
-                    // under المشتريات, "new
+                    // Home comes first, a button straight to the landing
+                    // rather than a menu: its lines were Home again and Exit,
+                    // which the header's button already is, and the owner
+                    // called both duplication (15 Sep 2026). Under المشتريات, "new
                     // order", "enter an invoice" and "new supplier" still start
                     // one straight away; on a cloud till Inventory and
                     // Purchasing each hold one line saying where they went.
@@ -304,29 +306,26 @@ class XorderPosApp extends ConsumerWidget {
                     // a door they will never be given.
                     for (final menu in menus)
                       if (menu.tab != BackOfficeTab.settings)
-                        BarButton(
-                          text: Text(menu.label),
-                          submenu: SubMenu(
-                            menuItems: [
-                              for (final entry in menu.lines) ...[
-                                if (entry.divider) const MenuDivider(),
-                                MenuButton(
-                                  text: Text(entry.label),
-                                  onTap: () => _openFromBar(ref, entry),
-                                ),
+                        if (menu.direct)
+                          _DirectBarButton(
+                            () => _openFromBar(ref, menu.lines.single),
+                            text: Text(menu.label),
+                          )
+                        else
+                          BarButton(
+                            text: Text(menu.label),
+                            submenu: SubMenu(
+                              menuItems: [
+                                for (final entry in menu.lines) ...[
+                                  if (entry.divider) const MenuDivider(),
+                                  MenuButton(
+                                    text: Text(entry.label),
+                                    onTap: () => _openFromBar(ref, entry),
+                                  ),
+                                ],
                               ],
-                              // Only ever drawn in Admin Mode, since no menu
-                              // of the back office exists outside it.
-                              if (menu.tab == BackOfficeTab.home) ...[
-                                const MenuDivider(),
-                                MenuButton(
-                                  text: Text(strings.exitAdminMode),
-                                  onTap: () => _exitAdmin(ref),
-                                ),
-                              ],
-                            ],
+                            ),
                           ),
-                        ),
                     BarButton(
                       text: Text(strings.settings),
                       submenu: SubMenu(
@@ -512,8 +511,7 @@ class XorderPosApp extends ConsumerWidget {
   /// **Carrying the way back.** A line names its pane and nothing else, and
   /// the route's `extra` is the whole of what the back office remembers — so
   /// going there with the line's destination alone forgot where the chord
-  /// was pressed, and Exit, from the header or from Home's menu, landed on
-  /// the start screen. Remembering it in the admin session instead was the
+  /// was pressed, and Exit landed on the start screen. Remembering it in the admin session instead was the
   /// alternative, and would have been a second copy of the route's answer
   /// that the start screen's door and the router's own builder never read.
   void _openFromBar(WidgetRef ref, ManagementBarEntry entry) => ref
@@ -532,18 +530,6 @@ class XorderPosApp extends ConsumerWidget {
       final ManagementDestination d => d.returnTo,
       _ => null,
     };
-  }
-
-  /// Exit Admin Mode from the bar: exactly the header's Exit — the session
-  /// ended as `exited`, and back to wherever the back office was opened from.
-  ///
-  /// The session is ended before the route moves, not left to the screen's
-  /// dispose, which would record it as `left`: the audit row says Exit because
-  /// somebody chose Exit.
-  void _exitAdmin(WidgetRef ref) {
-    final returnTo = _cameFrom(ref);
-    ref.read(adminSessionProvider.notifier).end(AdminSessionEnd.exited);
-    ref.read(routerProvider).go(returnTo ?? PosRoutes.start);
   }
 
   /// Into Admin Mode, from wherever the till is — and back there on the way
@@ -589,6 +575,32 @@ class XorderPosApp extends ConsumerWidget {
       _resetting = false;
     }
   }
+}
+
+/// A word in the bar that is a button, not a menu: Home's (see
+/// `managementBarFor`).
+///
+/// **A subclass, because the package will not say it.** `MenuBarWidget` takes
+/// only [BarButton]s, and [BarButton] demands a [SubMenu] — yet it draws any
+/// entry whose `submenu` is null as a `MenuItemButton`, which Flutter's
+/// `MenuBar` holds at the top level as readily as a menu. So the getters say
+/// what the constructor would not. The alternatives were a menu of one line
+/// repeating its own title — the duplication the owner asked to be rid of —
+/// or dropping `menu_bar` for a hand-built `MenuBar`, which would re-home
+/// every line of the till's Settings menu to change one word. If an upgrade
+/// of the package stops honouring the getters, `settings_bar_test.dart` finds
+/// Home a menu again and fails.
+class _DirectBarButton extends BarButton {
+  _DirectBarButton(this._onTap, {required super.text})
+    : super(submenu: const SubMenu(menuItems: []));
+
+  final VoidCallback _onTap;
+
+  @override
+  SubMenu? get submenu => null;
+
+  @override
+  VoidCallback? get onTap => _onTap;
 }
 
 /// Rebuilds [builder] whenever the router moves — a frame late when the move is

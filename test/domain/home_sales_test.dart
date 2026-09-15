@@ -1,5 +1,4 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:xorder_pos/core/l10n/app_strings.dart';
 import 'package:xorder_pos/core/money/money.dart';
 import 'package:xorder_pos/domain/models/branch_sales.dart';
 import 'package:xorder_pos/domain/models/business_day.dart';
@@ -161,14 +160,5 @@ void main() {
       expect(home.averageDeltaBp, isNull);
       expect(home.netDeltaBp, isNull);
     });
-  });
-
-  test('every shortcut is named in both languages', () {
-    for (final action in HomeQuickAction.values) {
-      final en = homeQuickActionLabel(const EnStrings(), action);
-      final ar = homeQuickActionLabel(const ArStrings(), action);
-      expect(en, isNotEmpty);
-      expect(ar, isNot(en), reason: action.name);
-    }
   });
 }
