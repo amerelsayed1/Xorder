@@ -75,15 +75,23 @@ extension SetupStepLabel on SetupStep {
   /// [role] does the same for a child tablet, whose connection step is finding
   /// the main device and whose sign-in is a manager who already exists there —
   /// never the first administrator, whom the main device created.
+  /// [method] retitles the cloud account step, which is no longer a sign-in:
+  /// a cloud main device is asked for a pairing code and nothing else (owner
+  /// decision, 2026-09-15). "Sign in" is still the right word for the path
+  /// behind "sign in instead", and for a child tablet, which really does sign
+  /// in as a manager the main device already has.
   String title(
     AppStrings s, {
     DeploymentMode? mode,
     TerminalRole role = TerminalRole.main,
+    SetupMethod method = SetupMethod.manual,
   }) => switch (this) {
     SetupStep.deployment when role == TerminalRole.child => s.stepMainDevice,
     SetupStep.account when role == TerminalRole.child => s.stepAccount,
     SetupStep.account when mode == DeploymentMode.offline =>
       s.stepFirstAdministrator,
+    SetupStep.account when method == SetupMethod.pairingCode => s.stepSetupCode,
+    SetupStep.connecting => s.stepConnecting,
     SetupStep.setupType => s.stepSetupType,
     SetupStep.language => s.stepLanguage,
     SetupStep.deployment => s.stepConnection,
@@ -101,6 +109,7 @@ extension SetupStepLabel on SetupStep {
     AppStrings s, {
     DeploymentMode? mode,
     TerminalRole role = TerminalRole.main,
+    SetupMethod method = SetupMethod.manual,
   }) => switch (this) {
     SetupStep.deployment when role == TerminalRole.child =>
       s.stepMainDeviceBlurb,
@@ -108,6 +117,9 @@ extension SetupStepLabel on SetupStep {
       s.stepChildAccountBlurb,
     SetupStep.account when mode == DeploymentMode.offline =>
       s.stepFirstAdministratorBlurb,
+    SetupStep.account when method == SetupMethod.pairingCode =>
+      s.stepSetupCodeBlurb,
+    SetupStep.connecting => s.stepConnectingBlurb,
     SetupStep.setupType => s.stepSetupTypeBlurb,
     SetupStep.language => s.stepLanguageBlurb,
     SetupStep.deployment => s.stepConnectionBlurb,

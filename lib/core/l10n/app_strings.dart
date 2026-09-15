@@ -447,6 +447,26 @@ sealed class AppStrings {
   String get stepReady;
   String get stepReadyBlurb;
 
+  /// The cloud path's two collapsed steps (owner decision, 2026-09-15). The
+  /// account step is not a sign-in there — it asks for a code and nothing else
+  /// — and the step after it asks for nothing at all.
+  String get stepSetupCode;
+  String get stepSetupCodeBlurb;
+  String get stepConnecting;
+  String get stepConnectingBlurb;
+  String get settingUpThisTill;
+  String get tillIsReady;
+  String get connectingPaneHelp;
+  String printerDetected(String printer);
+  String get signInInstead;
+  String get useASetupCodeInstead;
+  String get tryAgain;
+
+  /// The fallback on a machine the Windows installer never ran on.
+  String get noInstalledDatabase;
+  String get noInstalledDatabaseHelp;
+  String get useThisDatabase;
+
   // ── Setup: language ───────────────────────────────────────────────────────
   String get englishBlurb;
   String get arabicBlurb;
@@ -3824,6 +3844,44 @@ final class EnStrings extends AppStrings {
   String get stepReady => 'Ready';
   @override
   String get stepReadyBlurb => 'Check everything, then open the till.';
+  @override
+  String get stepSetupCode => 'Setup code';
+  @override
+  String get stepSetupCodeBlurb =>
+      'The code the dashboard issued for this till. Everything else comes with '
+      'it.';
+  @override
+  String get stepConnecting => 'Connecting';
+  @override
+  String get stepConnectingBlurb =>
+      'Setting this till up from the restaurant’s own configuration. Nothing '
+      'to answer.';
+  @override
+  String get settingUpThisTill => 'Setting this till up…';
+  @override
+  String get tillIsReady => 'This till is set up.';
+  @override
+  String get connectingPaneHelp =>
+      'The database, the menu, the floor plan, the tax rules and the people '
+      'all came from the restaurant’s own configuration. Nothing here was '
+      'typed, so there is nothing here to get wrong.';
+  @override
+  String printerDetected(String printer) => 'Printer found: $printer.';
+  @override
+  String get signInInstead => 'Sign in instead';
+  @override
+  String get useASetupCodeInstead => 'Use a setup code instead';
+  @override
+  String get tryAgain => 'Try again';
+  @override
+  String get noInstalledDatabase => 'No installed database found';
+  @override
+  String get noInstalledDatabaseHelp =>
+      'This machine has no record of a database installed by XOrder setup, so '
+      'the till cannot read one off it. Enter where PostgreSQL is and the '
+      'password for the till’s account.';
+  @override
+  String get useThisDatabase => 'Use this database';
 
   @override
   String get englishBlurb => 'Left-to-right layout.';
@@ -8206,6 +8264,42 @@ final class ArStrings extends AppStrings {
   String get stepReady => 'جاهز';
   @override
   String get stepReadyBlurb => 'راجع كل شيء، ثم افتح الكاشير.';
+  @override
+  String get stepSetupCode => 'كود الإعداد';
+  @override
+  String get stepSetupCodeBlurb =>
+      'الكود الذي أصدرته لوحة التحكم لهذا الكاشير. وكل ما عداه يأتي معه.';
+  @override
+  String get stepConnecting => 'جارٍ التجهيز';
+  @override
+  String get stepConnectingBlurb =>
+      'يجري إعداد هذا الكاشير من إعدادات المطعم نفسه. لا شيء للإجابة عنه.';
+  @override
+  String get settingUpThisTill => 'جارٍ إعداد هذا الكاشير…';
+  @override
+  String get tillIsReady => 'تم إعداد هذا الكاشير.';
+  @override
+  String get connectingPaneHelp =>
+      'قاعدة البيانات والمنيو ومخطط الصالة وقواعد الضريبة والموظفون، كلها جاءت '
+      'من إعدادات المطعم نفسه. لم يُكتب هنا شيء باليد، فلا شيء هنا يمكن أن '
+      'يُكتب خطأ.';
+  @override
+  String printerDetected(String printer) => 'تم العثور على طابعة: $printer.';
+  @override
+  String get signInInstead => 'سجّل الدخول بدلاً من ذلك';
+  @override
+  String get useASetupCodeInstead => 'استخدم كود إعداد بدلاً من ذلك';
+  @override
+  String get tryAgain => 'حاول مرة أخرى';
+  @override
+  String get noInstalledDatabase => 'لم يُعثر على قاعدة بيانات مثبّتة';
+  @override
+  String get noInstalledDatabaseHelp =>
+      'لا يوجد على هذا الجهاز أثر لقاعدة بيانات ثبّتها إعداد XOrder، فلا '
+      'يستطيع الكاشير قراءتها منه. أدخل مكان PostgreSQL وكلمة مرور حساب '
+      'الكاشير.';
+  @override
+  String get useThisDatabase => 'استخدم قاعدة البيانات هذه';
 
   @override
   String get englishBlurb => 'تخطيط من اليسار إلى اليمين.';

@@ -828,6 +828,7 @@ class TerminalClaim {
     required this.syncPolicy,
     this.restaurantId,
     this.branchCode,
+    this.defaultLanguage,
   });
 
   /// Server-assigned, not device-generated, on the provisioned path — the
@@ -847,6 +848,15 @@ class TerminalClaim {
 
   /// Invoice prefix (POS-BE-005). `MAADI` in `MAADI-2026-001042`.
   final String? branchCode;
+
+  /// The restaurant's language, out of the bootstrap bundle the claim carried
+  /// (owner decision, 2026-09-15: the cloud wizard asks nothing the cloud
+  /// already knows). `en` or `ar`; null when the platform said neither.
+  ///
+  /// It is a DEFAULT, not a lock: the Settings bar's language switch is on
+  /// every screen of this app including the wizard's, and whoever is standing
+  /// at the till has the last word.
+  final String? defaultLanguage;
 }
 
 /// Outcome of a claim attempt.

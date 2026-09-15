@@ -57,6 +57,14 @@ enum SetupStep {
   account,
   branch,
   terminal,
+  // Everything a cloud main device used to be asked, done instead of asked
+  // (owner decision, 2026-09-15: "cloud setup should get everything from
+  // cloud, no need for asking anything"). One screen with no inputs on it: the
+  // installer's database credentials, the schema, the bundle, the menu and the
+  // printer. It sits after [terminal] because the sign-in path behind "sign in
+  // instead" still registers a till by hand on those two screens first, and
+  // this list is walked in enum order.
+  connecting,
   hardware,
   money,
   catalogue,
@@ -80,10 +88,12 @@ class SetupDraft {
     this.claims,
     this.licenceFile,
     this.licenceKey = '',
-    // Credentials are the phase-1 default: the owner's notes define cloud
-    // setup as slug + admin credentials pulling the tenant's configuration.
-    // The pairing code stays available as the provisioned path.
-    this.method = SetupMethod.manual,
+    // The main road on cloud (owner decision, 2026-09-15). The dashboard mints
+    // a code per terminal, and redeeming one is what lets the wizard stop
+    // asking: the branch, the till's name, its id and its sync policy all come
+    // back in the answer. Signing in with a staff password is still reachable —
+    // "sign in instead", on that screen — for a till registered by hand.
+    SetupMethod method = SetupMethod.pairingCode,
     this.pairingCode = '',
     this.operatorUsername = '',
     this.operatorPassword = '',
@@ -97,6 +107,9 @@ class SetupDraft {
     this.ownerPin = '',
     this.bootstrapped = false,
     this.bootstrapReport,
+    this.provisioned = false,
+    this.needsDatabase = false,
+    this.detectedPrinters,
     this.claimed = false,
     this.pulledTerminals,
     this.adoptTerminalId,
@@ -116,7 +129,7 @@ class SetupDraft {
     this.busy = false,
     this.error,
     this.notice,
-  });
+  }) : _chosenMethod = method;
 
   final SetupStep step;
   final String locale;
@@ -167,7 +180,27 @@ class SetupDraft {
   /// the only honest answer is this machine.
   bool get allowsSharedDatabase => maxTerminals > 1;
 
-  final SetupMethod method;
+  final SetupMethod _chosenMethod;
+
+  /// How this terminal is being set up.
+  ///
+  /// **Always [SetupMethod.manual] on anything but a cloud main device**,
+  /// whatever was stored. A pairing code is minted by a dashboard, and an
+  /// offline restaurant has none; a child tablet has one available in principle
+  /// — its main device may well be cloud — but codes are issued per terminal to
+  /// the person installing the till, and a tablet signs in as a manager who
+  /// already exists instead.
+  ///
+  /// Normalised here rather than guarded at each reader, because the readers are
+  /// the wizard's path, its step titles, its panes and its gates. One of them
+  /// forgetting is a terminal with no button to register itself with — which is
+  /// exactly what happened to a child of a cloud main device the moment the
+  /// pairing code became the default.
+  SetupMethod get method =>
+      deployment.mode == DeploymentMode.cloud && !deployment.isChild
+      ? _chosenMethod
+      : SetupMethod.manual;
+
   final String pairingCode;
   final String operatorUsername;
 
@@ -226,17 +259,75 @@ class SetupDraft {
   /// the licence has answered it — see [asksSetupType].
   ///
   /// **A child tablet walks a different, shorter path** — see [childSteps].
-  List<SetupStep> get visibleSteps => deployment.isChild
-      ? childSteps
-      : [
-    for (final candidate in SetupStep.values)
-      if (candidate != SetupStep.setupType ||
-          asksSetupType ||
-          // A step being stood on is always listed, whatever the rule says: the
-          // rail has to describe where the operator actually is, and `next()`
-          // and `back()` count positions in this list.
-          candidate == step)
-        candidate,
+  /// **A cloud main device walks a shorter one too** — see [cloudSteps].
+  List<SetupStep> get visibleSteps {
+    if (deployment.isChild) return childSteps;
+    final path = deployment.mode == DeploymentMode.cloud
+        ? cloudSteps
+        : offlineSteps;
+    if (path.contains(step)) return path;
+
+    // A step being stood on is always listed, whatever the rule says: the rail
+    // has to describe where the operator actually is, and `next()` and `back()`
+    // count positions in this list. Rebuilt in enum order so an inserted step
+    // lands where it belongs rather than at the end.
+    return [
+      for (final candidate in SetupStep.values)
+        if (path.contains(candidate) || candidate == step) candidate,
+    ];
+  }
+
+  /// What a cloud main device is asked (owner decision, 2026-09-15: "cloud
+  /// setup should get everything from cloud, no need for asking anything").
+  ///
+  /// Everything struck off is something the platform already knows, so the
+  /// terminal is TOLD it rather than asking: the language, currency and menu
+  /// ride in the bootstrap bundle; the branch, the till's name, its id and its
+  /// sync policy ride in the claim; the database is the one the Windows
+  /// installer built, with the passwords it generated; the printer is whatever
+  /// is plugged in. What survives are the two genuine questions — a licence key
+  /// and a pairing code — because each is a secret nobody can guess on the
+  /// operator's behalf, and the mode, on the one licence that covers both.
+  ///
+  /// Three steps come back when the answer stops being obvious, and only then:
+  ///
+  ///  * [SetupStep.hardware], when the scan found none or more than one printer
+  ///    — which printer prints the receipt is a fact only the person standing
+  ///    at the till holds.
+  ///  * [SetupStep.branch] and [SetupStep.terminal], on the sign-in path behind
+  ///    "sign in instead". A till registered by hand has no claim to read the
+  ///    branch and the name off, so it has to be asked for both.
+  ///
+  /// This does not contradict the "no fork" rule on [SetupStep] any more than
+  /// [childSteps] does: the mode is settled by the licence on screen one, before
+  /// anything has been typed into a screen that could strand somebody.
+  List<SetupStep> get cloudSteps => [
+    SetupStep.licence,
+    if (asksSetupType) SetupStep.setupType,
+    SetupStep.account,
+    if (method == SetupMethod.manual) ...[
+      SetupStep.branch,
+      SetupStep.terminal,
+    ],
+    SetupStep.connecting,
+    if (detectedPrinters != 1) SetupStep.hardware,
+    SetupStep.summary,
+  ];
+
+  /// The long path, unchanged. An offline restaurant has no platform to be told
+  /// anything by, so every one of these is a question somebody has to answer.
+  List<SetupStep> get offlineSteps => [
+    SetupStep.licence,
+    SetupStep.language,
+    if (asksSetupType) SetupStep.setupType,
+    SetupStep.deployment,
+    SetupStep.account,
+    SetupStep.branch,
+    SetupStep.terminal,
+    SetupStep.hardware,
+    SetupStep.money,
+    SetupStep.catalogue,
+    SetupStep.summary,
   ];
 
   /// What a child tablet is asked (owner decision, 2026-09-12).
@@ -294,8 +385,30 @@ class SetupDraft {
   /// bootstrap is harmless (every statement is an upsert) but pointless.
   final bool bootstrapped;
 
-  /// What it did, in the operator's words. Null before it has run.
+  /// What it did, in the operator's words. Null before it has run. Shared with
+  /// the cloud path's [SetupStep.connecting], which reports the same kind of
+  /// thing — a database created, migrations applied, grants given.
   final String? bootstrapReport;
+
+  /// True once the cloud path's automatic provisioning has finished. Its own
+  /// flag rather than a reading of [bootstrapped]: a cloud terminal on a
+  /// machine the installer prepared builds no database at all — it was already
+  /// built — and would otherwise never be able to leave the step.
+  final bool provisioned;
+
+  /// True when this machine has no `install-credentials.json`, so the database
+  /// could not be read off the installation and has to be asked for.
+  ///
+  /// The fallback, and deliberately narrow: on Windows the installer wrote that
+  /// file, so a real till never sees these fields. A developer's Mac has no
+  /// installer and therefore no file, and guessing a password there would be a
+  /// connection failure three screens later instead of a question now.
+  final bool needsDatabase;
+
+  /// How many printers the scan on [SetupStep.connecting] found. Null until it
+  /// has run, which is why the hardware step is *shown* until then — the rail
+  /// must not promise a screen the wizard has not yet decided to skip.
+  final int? detectedPrinters;
 
   /// True once the server has confirmed this terminal. On the pairing path the
   /// branch, name and id below were filled in by that response.
@@ -408,6 +521,12 @@ class SetupDraft {
     // rides on. Offline registration writes the `pos_terminals` row that gives
     // this machine its identity and its invoice prefix. Neither is optional.
     SetupStep.terminal => terminalName.trim().isNotEmpty && claimed,
+    // The one screen with no inputs on it, so the only thing that could gate it
+    // is whether the work it does actually finished. A catalogue that could not
+    // be downloaded does NOT gate it — the same rule the catalogue step has
+    // always had, for the same reason: an installer on a site whose menu is not
+    // authored yet must still be able to finish.
+    SetupStep.connecting => provisioned,
     SetupStep.hardware => true,
     SetupStep.money => true,
     SetupStep.catalogue => catalogueItems != null,
@@ -436,6 +555,9 @@ class SetupDraft {
     String? ownerPin,
     bool? bootstrapped,
     String? bootstrapReport,
+    bool? provisioned,
+    bool? needsDatabase,
+    int? detectedPrinters,
     bool? claimed,
     List<PosTerminalSummary>? pulledTerminals,
     int? adoptTerminalId,
@@ -471,7 +593,10 @@ class SetupDraft {
     claims: claims ?? this.claims,
     licenceFile: licenceFile ?? this.licenceFile,
     licenceKey: licenceKey ?? this.licenceKey,
-    method: method ?? this.method,
+    // `_method` rather than `method`: the getter normalises, and copying
+    // through it would turn a cloud draft's pairing code into `manual` the
+    // moment it passed through an offline mode on its way somewhere else.
+    method: method ?? _chosenMethod,
     pairingCode: pairingCode ?? this.pairingCode,
     operatorUsername: operatorUsername ?? this.operatorUsername,
     operatorPassword: operatorPassword ?? this.operatorPassword,
@@ -487,6 +612,9 @@ class SetupDraft {
     ownerPin: ownerPin ?? this.ownerPin,
     bootstrapped: bootstrapped ?? this.bootstrapped,
     bootstrapReport: bootstrapReport ?? this.bootstrapReport,
+    provisioned: provisioned ?? this.provisioned,
+    needsDatabase: needsDatabase ?? this.needsDatabase,
+    detectedPrinters: detectedPrinters ?? this.detectedPrinters,
     // `clearClaim` exists because the `?? this.x` idiom cannot express
     // "forget this": switching setup path has to erase the branch and till
     // name a previous claim filled in, not merely leave them unset.

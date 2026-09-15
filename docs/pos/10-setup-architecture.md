@@ -158,6 +158,60 @@ already validated and `RestaurantProvisioningService` already honoured. Before
 that the form sent nothing and the server fell back to `['cloud']`, so an
 offline deployment could not be sold from the creation screen at all.
 
+### 2026-09-15 — the cloud main device stopped asking
+
+Owner decision, quoted: *"cloud setup should get everything from cloud, no need
+for asking anything."* The `bootstrap` step proposed above is superseded by
+something stronger — not a step that *fills* the later screens, but a step that
+**replaces** them.
+
+A cloud main device now walks four screens, not eleven:
+
+| | |
+|---|---|
+| **Licence** | unchanged. Supplies the tenant, the modes and `max_terminals`. |
+| **Setup type** | only when the licence covers both, exactly as before. |
+| **Setup code** | the one account question. The slug comes from the licence and is read-only; the platform address is `PlatformEndpoint.base` and has no field at all. "Sign in instead" is a link on this screen, not a tile beside it. |
+| **Connecting** | `SetupStep.connecting` — no inputs. |
+| **Ready** | restaurant, branch, till, printer, and the test print. |
+
+`SetupDraft.cloudSteps` is the list, beside `childSteps`; `offlineSteps` is the
+long path, unchanged and still pinned by `licence_decides_mode_test.dart`.
+
+Where each formerly-asked value comes from now:
+
+* **Language** — `restaurant.default_language` in the bootstrap bundle, carried
+  to the wizard on `TerminalClaim.defaultLanguage` and applied at claim time so
+  the remaining screens are already in it. The Settings bar's switch still wins.
+* **Database** — `%ProgramData%\XOrder POS\install-credentials.json`, the file
+  `installer/provision.ps1` writes before `initdb`. Host, name, port, `pos_till`
+  and `pos_admin` and both generated passwords. The admin one is used to create,
+  migrate and grant (`databaseBuilderProvider`) and then kept for Admin Mode,
+  exactly as the offline path keeps it. **On a machine with no such file — a
+  developer's Mac, since there is no macOS installer — the connecting step grows
+  the old database fields, prefilled with the defaults.** That is the only
+  fallback on the path, and `SetupDraft.needsDatabase` is the flag for it.
+* **Branch, terminal name, terminal id, sync policy** — the claim. The branch and
+  terminal screens are gone from this path; they come back only behind "sign in
+  instead", which registers by hand and has no claim to read them off.
+* **Menu, floor, tax rules, tenders, staff** — the bundle, seeded by the same
+  `_seedFromPlatform` the catalogue step called. A failure here is a notice and
+  never a refusal: the terminal is real on the platform and the first sync pass
+  re-fetches. The money step is gone because it only ever displayed a "comes
+  from the platform" notice.
+* **Printer** — enumerated. Exactly one is adopted with 80 mm paper, a drawer and
+  no scanner, and the hardware screen is skipped. None or two or more is a
+  genuine question and the screen comes back.
+
+Currency, exponent and timezone are **not** written anywhere by this: the money
+step never wrote them either — `config.json` has no such fields, and `Money`
+carries its own exponent. Nothing was invented to hold them.
+
+The invariant the change is held to: for the same inputs, `config.json` and
+`secrets.json` are byte-identical to what the long path produced.
+`test/features/cloud_setup_collapsed_test.dart` asserts the screens actually
+shown and then the saved `SavedTerminalConfig` field by field.
+
 ### Slug-first, reconciled
 
 The requirement is that an operator types a company slug and the application

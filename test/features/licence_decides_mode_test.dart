@@ -149,7 +149,12 @@ void main() {
     final draft = container.read(setupProvider);
     expect(draft.asksSetupType, isFalse);
     expect(draft.visibleSteps, isNot(contains(SetupStep.setupType)));
-    expect(draft.stepCount, SetupStep.values.length - 1);
+    // The offline path, one step shorter. Counted against the path rather than
+    // against `SetupStep.values`, which now also carries the cloud-only
+    // `connecting` step and would make this assertion read as a failure the
+    // day a step is added for anybody else.
+    expect(draft.stepCount, draft.offlineSteps.length);
+    expect(draft.visibleSteps, isNot(contains(SetupStep.connecting)));
     // Taken away, not skipped past: the mode is set, and the summary screen is
     // where it is read back.
     expect(draft.deployment.mode, DeploymentMode.offline);
@@ -178,9 +183,15 @@ void main() {
     final draft = container.read(setupProvider);
     expect(draft.asksSetupType, isTrue);
     expect(draft.visibleSteps, contains(SetupStep.setupType));
-    expect(draft.stepCount, SetupStep.values.length);
 
-    controller.next();
+    // A dual-mode licence leaves the draft on cloud, which since 2026-09-15 is
+    // the short path: licence, setup type, setup code, connecting, hardware,
+    // ready. The mode screen is the only one of the six that is on it *because*
+    // the licence could not answer it.
+    expect(draft.stepCount, draft.cloudSteps.length);
+    expect(draft.visibleSteps, isNot(contains(SetupStep.language)));
+    expect(draft.visibleSteps, isNot(contains(SetupStep.deployment)));
+
     controller.next();
     expect(container.read(setupProvider).step, SetupStep.setupType);
   });

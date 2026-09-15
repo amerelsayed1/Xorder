@@ -537,13 +537,16 @@ void main() {
   });
 
   group('wizard UI', () {
-    testWidgets('opens on the licence, which is step one of eleven', (
+    testWidgets('opens on the licence, which is step one of six', (
       tester,
     ) async {
       await _pump(tester);
 
       expect(find.text('TERMINAL SETUP'), findsOneWidget);
-      expect(find.text('STEP 1 OF 11'), findsOneWidget);
+      // Six, not eleven (owner decision, 2026-09-15). A fresh draft is cloud,
+      // and a cloud main device is asked for a licence, a mode it may not even
+      // have a choice about, and a setup code — the rest it is told.
+      expect(find.text('STEP 1 OF 6'), findsOneWidget);
       // The licence step used to be hidden on the cloud path, then merely
       // second. It is first now: it decides the mode, supplies the tenant, and
       // says whether there is anything to set up at all.
@@ -581,11 +584,22 @@ void main() {
         lessThan(steps.indexOf(SetupStep.setupType)),
       );
       // And the licence is first of all (owner decision, 2026-09-06). The
-      // language step that used to hold this place is now second; the property
-      // it protected — being able to READ a licence refusal — is held instead
-      // by the language switch the Settings bar carries on every screen.
+      // language step that used to hold this place is second on the OFFLINE
+      // path and gone from the cloud one, which is what a fresh draft walks:
+      // the restaurant already told the dashboard which language it works in.
+      // The property the old order protected — being able to READ a licence
+      // refusal — is held by the language switch the Settings bar carries on
+      // every screen, including this one.
       expect(steps.first, SetupStep.licence);
-      expect(steps[1], SetupStep.language);
+      expect(steps[1], SetupStep.setupType);
+      expect(steps, isNot(contains(SetupStep.language)));
+
+      final offline = container
+          .read(setupProvider)
+          .copyWith(
+            deployment: const DeploymentConfig(mode: DeploymentMode.offline),
+          );
+      expect(offline.visibleSteps[1], SetupStep.language);
     });
 
     testWidgets('the wizard opens on the licence and stops there unlicensed', (

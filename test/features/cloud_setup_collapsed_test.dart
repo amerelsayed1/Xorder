@@ -1,0 +1,563 @@
+import 'dart:convert';
+
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:xorder_pos/app/providers.dart';
+import 'package:xorder_pos/core/config/deployment.dart';
+import 'package:xorder_pos/core/config/platform_endpoint.dart';
+import 'package:xorder_pos/core/config/printer_config.dart';
+import 'package:xorder_pos/core/ui/theme.dart';
+import 'package:xorder_pos/data/config/installer_credentials.dart';
+import 'package:xorder_pos/data/fakes/fake_repositories.dart';
+import 'package:xorder_pos/domain/repositories/repositories.dart';
+import 'package:xorder_pos/features/licensing/domain/license.dart';
+import 'package:xorder_pos/features/licensing/domain/license_verifier.dart';
+import 'package:xorder_pos/features/setup/application/setup_controller.dart';
+import 'package:xorder_pos/features/setup/domain/setup_state.dart';
+import 'package:xorder_pos/features/setup/presentation/setup_wizard.dart';
+
+import '../support/fakes.dart';
+
+/// The cloud main device asks nothing the cloud already knows.
+///
+/// Owner decision, 2026-09-15: *"cloud setup should get everything from cloud,
+/// no need for asking anything."* Eleven screens became four, and the claim
+/// this file makes is the strict one — not that the short path works, but that
+/// it lands the terminal in **exactly the state the long one did**. A wizard
+/// that stops asking and quietly writes something different is worse than a
+/// wizard that asks.
+///
+/// The offline and child paths are not touched here; they keep their own
+/// suites, and `licence_decides_mode_test.dart` pins the offline shape.
+
+/// A licence for `islanded`, covering [modes].
+///
+/// `FakeLicenceService` is the development issuer: it skips the signature and
+/// evaluates policy in full, which is what this file is about.
+LicenseFile _licence(Set<DeploymentMode> modes) {
+  final now = DateTime.now();
+  final claims = LicenseClaims(
+    licenseId: 'LIC-CLOUD-0001',
+    tenantSlug: 'islanded',
+    tenantName: 'The Islanded Cafe',
+    issuedAt: now.subtract(const Duration(days: 1)),
+    expiresAt: now.add(const Duration(days: 365)),
+    maxTerminals: 2,
+    features: const {'pos'},
+    modes: modes,
+  );
+  return LicenseFile(
+    payloadB64: base64Url.encode(utf8.encode(jsonEncode(claims.toJson()))),
+    signatureB64: base64Url.encode(List<int>.filled(64, 0)),
+    keyId: 'dev',
+  );
+}
+
+/// A machine the Windows installer prepared, as a test double.
+///
+/// The real source reads `%ProgramData%\XOrder POS\install-credentials.json`,
+/// which a developer's Mac does not have — and a test that depended on the
+/// machine it runs on would pass in CI and fail on a laptop, or the reverse.
+class _InstalledByTheInstaller implements InstallerCredentialsSource {
+  const _InstalledByTheInstaller();
+
+  static const credentials = InstallerCredentials(
+    port: 5433,
+    database: 'xorder_pos',
+    adminUser: 'pos_admin',
+    adminPassword: 'Adm1nGeneratedByTheInstaller',
+    tillUser: 'pos_till',
+    tillPassword: 'T1llGeneratedByTheInstaller',
+  );
+
+  @override
+  Future<InstallerCredentials?> read() async => credentials;
+}
+
+/// A machine nobody's installer ever ran on — a Mac, in practice.
+class _NoInstaller implements InstallerCredentialsSource {
+  const _NoInstaller();
+
+  @override
+  Future<InstallerCredentials?> read() async => null;
+}
+
+/// PostgreSQL, without PostgreSQL. Records what it was asked to build so the
+/// test can assert the till's own role was the one granted.
+class _RecordingDatabaseBuilder {
+  DeploymentConfig? config;
+  String? adminPassword;
+
+  Future<DatabaseBuildReport> call(
+    DeploymentConfig config,
+    String adminPassword,
+  ) async {
+    this.config = config;
+    this.adminPassword = adminPassword;
+    return const DatabaseBuildReport(created: true, migrations: 42);
+  }
+}
+
+/// Exactly [count] printers, answering at once.
+///
+/// `FakeHardwarePorts` finds two, which is a different and equally interesting
+/// case — so both are asked for by name rather than inherited from the harness.
+class _PrintersFound implements HardwarePorts {
+  _PrintersFound(this.count);
+
+  final int count;
+  int prints = 0;
+
+  @override
+  Future<List<DiscoveredPrinter>> discoverPrinters() async => [
+    for (var i = 0; i < count; i++)
+      DiscoveredPrinter(name: 'EPSON TM-T20III #${i + 1}', transport: 'usb'),
+  ];
+
+  @override
+  Future<bool> testPrint(String printerName) async {
+    prints++;
+    return true;
+  }
+
+  @override
+  Future<bool> sendJob({
+    required String printerName,
+    required List<int> bytes,
+  }) async => true;
+}
+
+void main() {
+  /// Pumps the wizard and hands back the container and the config store.
+  Future<(ProviderContainer, InMemoryTerminalConfigStore)> open(
+    WidgetTester tester, {
+    InstallerCredentialsSource installer = const _InstalledByTheInstaller(),
+    required _RecordingDatabaseBuilder builder,
+    required HardwarePorts printers,
+  }) async {
+    tester.view
+      ..physicalSize = const Size(1440, 1200)
+      ..devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    final store = InMemoryTerminalConfigStore();
+    final container = ProviderContainer(
+      overrides: [
+        ...fakeRepositoryOverrides(),
+        terminalConfigStoreProvider.overrideWithValue(store),
+        installerCredentialsProvider.overrideWithValue(installer),
+        databaseBuilderProvider.overrideWithValue(builder.call),
+        hardwarePortsProvider.overrideWithValue(printers),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: buildPosTheme(),
+          home: SetupWizard(onFinished: () {}),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    return (container, store);
+  }
+
+  /// Walk the wizard the way an installer does — the licence, the code, then
+  /// Continue until it opens — and record every screen that was actually shown.
+  ///
+  /// Recording the screens rather than reading `visibleSteps` is the point: a
+  /// step can be listed and never reached, and the claim here is about what a
+  /// person is made to look at.
+  Future<List<SetupStep>> walk(
+    WidgetTester tester,
+    ProviderContainer container, {
+    required Set<DeploymentMode> modes,
+    String code = FakeProvisioningRepository.demoCode,
+  }) async {
+    final controller = container.read(setupProvider.notifier);
+    final seen = <SetupStep>[container.read(setupProvider).step];
+
+    await controller.activateLicence(fileContents: _licence(modes).serialize());
+    await tester.pumpAndSettle();
+
+    while (!container.read(setupProvider).isLastStep) {
+      final at = container.read(setupProvider).step;
+      // The two screens that are genuinely questions, answered where they are
+      // asked. Everything else on this path advances on Continue alone.
+      if (at == SetupStep.account) {
+        controller.setPairingCode(code);
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Claim this terminal'));
+        await tester.pumpAndSettle();
+      }
+      if (at == SetupStep.setupType) {
+        controller.setMode(DeploymentMode.cloud);
+        await tester.pumpAndSettle();
+      }
+      await tester.tap(find.text('Continue'));
+      await tester.pumpAndSettle();
+
+      final now = container.read(setupProvider).step;
+      if (now == at) {
+        fail('the wizard would not leave ${at.name}: '
+            '${container.read(setupProvider).error}');
+      }
+      seen.add(now);
+    }
+    return seen;
+  }
+
+  group('the screens a cloud main device is shown', () {
+    testWidgets('a single-mode licence and one printer: four screens', (
+      tester,
+    ) async {
+      final builder = _RecordingDatabaseBuilder();
+      final (container, _) = await open(
+        tester,
+        builder: builder,
+        printers: _PrintersFound(1),
+      );
+
+      final seen = await walk(
+        tester,
+        container,
+        modes: {DeploymentMode.cloud},
+      );
+
+      expect(seen, [
+        SetupStep.licence,
+        SetupStep.account,
+        SetupStep.connecting,
+        SetupStep.summary,
+      ]);
+    });
+
+    testWidgets('a dual-mode licence adds the mode question, and only it', (
+      tester,
+    ) async {
+      final builder = _RecordingDatabaseBuilder();
+      final (container, _) = await open(
+        tester,
+        builder: builder,
+        printers: _PrintersFound(1),
+      );
+
+      final seen = await walk(
+        tester,
+        container,
+        modes: {DeploymentMode.cloud, DeploymentMode.offline},
+      );
+
+      expect(seen, [
+        SetupStep.licence,
+        SetupStep.setupType,
+        SetupStep.account,
+        SetupStep.connecting,
+        SetupStep.summary,
+      ]);
+    });
+
+    testWidgets('two printers add the hardware screen, and only it', (
+      tester,
+    ) async {
+      // Which of two printers prints the receipt is the one hardware question
+      // nobody but the person standing at the till can answer.
+      final builder = _RecordingDatabaseBuilder();
+      final (container, _) = await open(
+        tester,
+        builder: builder,
+        printers: _PrintersFound(2),
+      );
+
+      final seen = await walk(
+        tester,
+        container,
+        modes: {DeploymentMode.cloud},
+      );
+
+      expect(seen, [
+        SetupStep.licence,
+        SetupStep.account,
+        SetupStep.connecting,
+        SetupStep.hardware,
+        SetupStep.summary,
+      ]);
+      // And nothing was chosen for the operator: two printers is a choice, so
+      // the wizard leaves it open rather than picking the first.
+      expect(container.read(setupProvider).printerName, isNull);
+    });
+
+    testWidgets('no printer at all is also a question', (tester) async {
+      final builder = _RecordingDatabaseBuilder();
+      final (container, _) = await open(
+        tester,
+        builder: builder,
+        printers: _PrintersFound(0),
+      );
+
+      final seen = await walk(
+        tester,
+        container,
+        modes: {DeploymentMode.cloud},
+      );
+
+      expect(seen, contains(SetupStep.hardware));
+    });
+  });
+
+  group('what the short path writes', () {
+    testWidgets('is what the long path wrote for the same inputs', (
+      tester,
+    ) async {
+      final builder = _RecordingDatabaseBuilder();
+      final (container, store) = await open(
+        tester,
+        builder: builder,
+        printers: _PrintersFound(1),
+      );
+
+      await walk(tester, container, modes: {DeploymentMode.cloud});
+      await tester.tap(find.text('Open the till'));
+      await tester.pumpAndSettle();
+
+      final saved = store.saved!;
+
+      // The terminal, exactly as the claim described it — the same fields
+      // `setup_persistence_test.dart` asserts after the long walk.
+      expect(saved.terminal.terminalName, 'Counter 1');
+      expect(saved.terminal.branchId, 13);
+      expect(saved.terminal.branchName, 'Maadi');
+      expect(saved.terminal.branchCode, 'MAADI');
+      expect(saved.terminal.restaurantId, 1);
+      expect(saved.terminal.provisioned, isTrue);
+      expect(saved.setupComplete, isTrue);
+
+      // The deployment: the licence's tenant, the build's platform, and the
+      // database the installer built — none of it typed.
+      expect(saved.deployment.mode, DeploymentMode.cloud);
+      expect(saved.deployment.tenantSlug, 'islanded');
+      expect(saved.deployment.baseUrl, PlatformEndpoint.base);
+      expect(saved.deployment.databaseHost, DeploymentConfig.localhost);
+      expect(saved.deployment.databaseName, 'xorder_pos');
+      expect(saved.deployment.databasePort, 5433);
+      expect(saved.deployment.databaseUser, 'pos_till');
+      expect(saved.deployment.adminDatabaseUser, 'pos_admin');
+      expect(saved.deployment.syncPolicy, SyncPolicy.automatic);
+
+      // The printer, detected. 80mm because that is the roll every restaurant
+      // this ships to runs, and a receipt built for 576 dots on a 58mm head
+      // loses its right-hand column rather than scaling.
+      expect(saved.printer.name, 'EPSON TM-T20III #1');
+      expect(saved.printer.paperWidthDots, PrinterConfig.width80mm);
+
+      // A password in device config is a password that ends up in a support
+      // email — the long path's rule, and the short one does not relax it.
+      expect(saved.deployment.toJson().values, isNot(contains(
+        _InstalledByTheInstaller.credentials.tillPassword,
+      )));
+      expect(
+        await container.read(posDbCredentialsProvider).password(),
+        _InstalledByTheInstaller.credentials.tillPassword,
+      );
+      // And the administrator's, so Admin Mode is a username and a PIN rather
+      // than a generated password nobody was ever told.
+      expect(
+        await container.read(adminDbSecretStoreProvider).read(),
+        _InstalledByTheInstaller.credentials.adminPassword,
+      );
+    });
+
+    testWidgets('builds the database as the administrator, grants the till', (
+      tester,
+    ) async {
+      final builder = _RecordingDatabaseBuilder();
+      final (container, _) = await open(
+        tester,
+        builder: builder,
+        printers: _PrintersFound(1),
+      );
+
+      await walk(tester, container, modes: {DeploymentMode.cloud});
+
+      expect(
+        builder.adminPassword,
+        _InstalledByTheInstaller.credentials.adminPassword,
+        reason: 'DDL is never the till credential',
+      );
+      expect(builder.config!.databaseName, 'xorder_pos');
+      expect(builder.config!.databasePort, 5433);
+      expect(builder.config!.databaseUser, 'pos_till');
+    });
+
+    testWidgets('keeps the test print, which the hardware screen used to hold', (
+      tester,
+    ) async {
+      final printers = _PrintersFound(1);
+      final builder = _RecordingDatabaseBuilder();
+      final (container, _) = await open(
+        tester,
+        builder: builder,
+        printers: printers,
+      );
+
+      await walk(tester, container, modes: {DeploymentMode.cloud});
+
+      // Somebody has to be able to put paper through the thing before the
+      // restaurant opens, and with the hardware screen gone this is the last
+      // place they can.
+      await tester.tap(find.text('Test print'));
+      await tester.pumpAndSettle();
+      expect(printers.prints, 1);
+    });
+  });
+
+  group('a machine the installer never ran on', () {
+    testWidgets('asks for the database rather than guessing a password', (
+      tester,
+    ) async {
+      // macOS has no installer, so there is no credentials file and no way to
+      // know a password nobody typed. This is the one fallback on the path.
+      final builder = _RecordingDatabaseBuilder();
+      final (container, _) = await open(
+        tester,
+        installer: const _NoInstaller(),
+        builder: builder,
+        printers: _PrintersFound(1),
+      );
+
+      final controller = container.read(setupProvider.notifier);
+      await controller.activateLicence(
+        fileContents: _licence({DeploymentMode.cloud}).serialize(),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Continue'));
+      await tester.pumpAndSettle();
+
+      controller.setPairingCode(FakeProvisioningRepository.demoCode);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Claim this terminal'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Continue'));
+      await tester.pumpAndSettle();
+
+      expect(container.read(setupProvider).step, SetupStep.connecting);
+      expect(container.read(setupProvider).needsDatabase, isTrue);
+      expect(find.text('NO INSTALLED DATABASE FOUND'), findsOneWidget);
+      // Prefilled with the defaults every wizard-built install shares.
+      expect(
+        container.read(setupProvider).deployment.databaseName,
+        'xorder_pos',
+      );
+      expect(container.read(setupProvider).deployment.databaseUser, 'pos_till');
+      // And it cannot be walked past: the till has nowhere to write a sale.
+      expect(container.read(setupProvider).canAdvance, isFalse);
+
+      controller.setDatabasePassword('typed-by-hand');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Use this database'));
+      await tester.pumpAndSettle();
+
+      expect(container.read(setupProvider).provisioned, isTrue);
+      // No administrator credential was ever offered, so none was used — the
+      // long cloud path never asked for one either.
+      expect(builder.config, isNull);
+    });
+  });
+
+  group('a code the platform will not take', () {
+    testWidgets('says the same thing it said before the path got shorter', (
+      tester,
+    ) async {
+      final builder = _RecordingDatabaseBuilder();
+      final (container, _) = await open(
+        tester,
+        builder: builder,
+        printers: _PrintersFound(1),
+      );
+
+      final controller = container.read(setupProvider.notifier);
+      await controller.activateLicence(
+        fileContents: _licence({DeploymentMode.cloud}).serialize(),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Continue'));
+      await tester.pumpAndSettle();
+      expect(container.read(setupProvider).step, SetupStep.account);
+
+      controller.setPairingCode('NOPE-0000');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Claim this terminal'));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('not recognised'), findsOneWidget);
+      expect(container.read(setupProvider).claimed, isFalse);
+      // And it does not go on: everything after this screen IS the answer the
+      // code returns.
+      await tester.tap(find.text('Continue'));
+      await tester.pumpAndSettle();
+      expect(container.read(setupProvider).step, SetupStep.account);
+
+      // A spent code is a different problem from a wrong one — the operator
+      // needs a new code, not another attempt at this one.
+      controller.setPairingCode(FakeProvisioningRepository.demoCode);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Claim this terminal'));
+      await tester.pumpAndSettle();
+      expect(container.read(setupProvider).claimed, isTrue);
+
+      controller.setMethod(SetupMethod.pairingCode);
+      controller.setPairingCode(FakeProvisioningRepository.demoCode);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Claim this terminal'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('already been used'), findsOneWidget);
+    });
+  });
+
+  group('signing in instead', () {
+    testWidgets('is off the main road, and brings its two screens with it', (
+      tester,
+    ) async {
+      // A till registered by hand has no claim to read a branch and a name off,
+      // so those two screens come back — for that path only.
+      final builder = _RecordingDatabaseBuilder();
+      final (container, _) = await open(
+        tester,
+        builder: builder,
+        printers: _PrintersFound(1),
+      );
+
+      final controller = container.read(setupProvider.notifier);
+      await controller.activateLicence(
+        fileContents: _licence({DeploymentMode.cloud}).serialize(),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Continue'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('SETUP CODE'), findsOneWidget);
+      expect(
+        container.read(setupProvider).visibleSteps,
+        isNot(contains(SetupStep.branch)),
+      );
+
+      await tester.tap(find.text('Sign in instead'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('USERNAME'), findsOneWidget);
+      expect(
+        container.read(setupProvider).visibleSteps,
+        containsAllInOrder([
+          SetupStep.account,
+          SetupStep.branch,
+          SetupStep.terminal,
+          SetupStep.connecting,
+        ]),
+      );
+    });
+  });
+}

@@ -399,6 +399,9 @@ class CloudProvisioningRepository implements ProvisioningRepository {
         syncPolicy:
             SyncPolicy.fromWire(terminal['sync_policy'] as String?) ??
             config.syncPolicy,
+        // The cloud wizard no longer asks which language this till works in;
+        // the restaurant already told the dashboard.
+        defaultLanguage: bundle?.restaurant?.defaultLanguage,
       ),
       // Surfaced so the wizard can tell the operator the catalog will arrive
       // on first sync rather than pretending it is already there.

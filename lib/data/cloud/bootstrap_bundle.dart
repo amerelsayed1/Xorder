@@ -54,12 +54,23 @@ class BootstrapRestaurant {
     required this.exponent,
     this.nameAr,
     this.taxRegistrationNumber,
+    this.defaultLanguage,
   });
 
   final int id;
   final String name;
   final String? nameAr;
   final String slug;
+
+  /// The language this restaurant works in, as the dashboard has it — `en` or
+  /// `ar` and nothing else.
+  ///
+  /// Null when the platform sent a language this build cannot render. That is
+  /// deliberately not a fallback to English: a till that silently opened in a
+  /// third language's name would be unreadable to the people using it, and the
+  /// wizard's own default (Arabic, the restaurants this ships to) is a better
+  /// answer than a word the platform happened to send.
+  final String? defaultLanguage;
 
   /// Mandatory on the wire (A7). Defaulted here only so a malformed bundle
   /// still parses — the seeder refuses to seed money-bearing rows without them.
@@ -81,6 +92,11 @@ class BootstrapRestaurant {
       currency: _asString(json['currency']) ?? 'EGP',
       exponent: _asInt(json['exponent']) ?? 2,
       taxRegistrationNumber: _asString(json['tax_registration_number']),
+      defaultLanguage: switch (_asString(json['default_language'])) {
+        'en' => 'en',
+        'ar' => 'ar',
+        _ => null,
+      },
     );
   }
 }

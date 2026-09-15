@@ -23,6 +23,7 @@ import '../data/backup/backup_service.dart';
 import '../data/backup/pg_archive.dart';
 import '../data/backup/pg_tools.dart';
 import '../data/config/file_secret_store.dart';
+import '../data/config/installer_credentials.dart';
 import '../data/config/pos_db_secret_store.dart';
 import '../data/config/terminal_config_store.dart';
 import '../data/hardware/network_printer_ports.dart';
@@ -2186,6 +2187,75 @@ final schemaUpgraderProvider = Provider<Future<List<int>> Function()?>((ref) {
     ref.read(adminPosDatabaseProvider),
   ).upgrade(ref.read(adminDeploymentProvider), till: config);
 });
+
+/// Where the cloud wizard looks for the database the installer built.
+///
+/// A provider so a test can say what kind of machine this is. The real source
+/// reads a Windows path and answers null everywhere else, which is precisely
+/// the fallback the wizard's connecting step is written around.
+final installerCredentialsProvider = Provider<InstallerCredentialsSource>(
+  (ref) => const FileInstallerCredentials(),
+);
+
+/// What building this machine's database did, so the wizard can say it.
+class DatabaseBuildReport {
+  const DatabaseBuildReport({required this.created, required this.migrations});
+
+  /// False when the database was already there — the ordinary case on a machine
+  /// the installer prepared, and not a failure.
+  final bool created;
+  final int migrations;
+}
+
+/// Create the database, apply every migration this build carries, and grant the
+/// till and the administrator what each needs — all as the administrator role.
+///
+/// A function provider for the same reason [schemaUpgraderProvider] is one: it
+/// opens a PostgreSQL connection, and a widget test has none. The offline path
+/// deliberately does NOT come through here — `bootstrapDatabase` also seeds a
+/// restaurant, a branch, the system roles and the first person, none of which a
+/// cloud terminal wants, because all of them arrive in the bootstrap bundle and
+/// would be written over by it on the next seed.
+final databaseBuilderProvider =
+    Provider<Future<DatabaseBuildReport> Function(DeploymentConfig, String)>((
+      ref,
+    ) {
+      return (config, adminPassword) async {
+        // The admin connection: same host and database, a different role. The
+        // password is used here and dropped with the pool.
+        final admin = config.copyWith(databaseUser: config.adminDatabaseUser);
+        final credentials = MutablePosDbCredentials()..set(adminPassword);
+        final database = PosDatabase(credentials: credentials);
+        final bootstrap = LocalBootstrap(database);
+
+        try {
+          final created = await LocalBootstrap.createDatabase(
+            admin,
+            adminPassword,
+            config.databaseName,
+          );
+          final applied = await bootstrap.migrate(admin);
+          await bootstrap.applyGrants(admin, [
+            ...LocalBootstrap.tillGrants(
+              database: config.databaseName,
+              role: config.databaseUser,
+              // A cloud till runs `BootstrapSeeder`, so it is granted what that
+              // writes. See [LocalBootstrap.tillGrants].
+              cloudSeeding: true,
+            ),
+            ...LocalBootstrap.administrativeGrants(
+              role: config.adminDatabaseUser,
+            ),
+          ]);
+          return DatabaseBuildReport(
+            created: created,
+            migrations: applied.length,
+          );
+        } finally {
+          await database.close();
+        }
+      };
+    });
 
 /// Why the last upgrade at the back-office door failed, or null.
 ///

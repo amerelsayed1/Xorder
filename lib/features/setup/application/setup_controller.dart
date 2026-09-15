@@ -5,12 +5,15 @@ import 'package:uuid/uuid.dart';
 import '../../../app/labels.dart';
 import '../../../app/providers.dart';
 import '../../../core/config/deployment.dart';
+import '../../../core/config/platform_endpoint.dart';
 import '../../../core/config/printer_config.dart';
 import '../../../core/config/terminal_config.dart';
 import '../../../data/cloud/bootstrap_bundle.dart';
 import '../../../data/cloud/bootstrap_seeder.dart';
+import '../../../data/config/installer_credentials.dart';
 import '../../../data/postgres/local_bootstrap.dart';
 import '../../../domain/models/permissions.dart';
+import '../../../domain/repositories/repositories.dart' show DiscoveredPrinter;
 import '../../../data/postgres/pos_database.dart';
 import '../../licensing/data/licence_service.dart';
 import '../../licensing/data/site_licence.dart';
@@ -209,6 +212,8 @@ class SetupController extends Notifier<SetupDraft> {
       deployment: DeploymentConfig(
         mode: mode,
         tenantSlug: state.deployment.tenantSlug,
+        // Supplied, never asked — see [_adopt]. An offline terminal keeps none.
+        baseUrl: mode.needsBaseUrl ? PlatformEndpoint.base : null,
         // A one-terminal plan has no shared database to point at, so the host
         // stays on this machine and the wizard never asks.
         databaseHost: state.allowsSharedDatabase
@@ -1008,10 +1013,20 @@ class SetupController extends Notifier<SetupDraft> {
   /// only creates a mismatch to diagnose later.
   DeploymentConfig _adopt(LicenseClaims claims) {
     final current = state.deployment;
+    final mode = _coveredMode(claims, current.mode);
 
     return current.copyWith(
       tenantSlug: claims.tenantSlug,
-      mode: _coveredMode(claims, current.mode),
+      mode: mode,
+      // The platform address, supplied rather than typed (owner decision,
+      // 2026-09-15). There is exactly one hosted platform and the build already
+      // names it; the field on the old connection screen could only ever be
+      // filled in with what `PlatformEndpoint` already says, or filled in
+      // wrongly. An address the operator DID type survives — a staging box or a
+      // developer's stack is the one case where it is a real question.
+      baseUrl: mode.needsBaseUrl && (current.baseUrl?.isEmpty ?? true)
+          ? PlatformEndpoint.base
+          : current.baseUrl,
       databaseHost: claims.maxTerminals > 1
           ? current.databaseHost
           : DeploymentConfig.localhost,
@@ -1215,11 +1230,175 @@ class SetupController extends Notifier<SetupDraft> {
       branchCode: claim.branchCode,
       terminalName: claim.terminalName,
       terminalId: claim.terminalId,
+      // The restaurant's own language, from the bundle the claim carried. The
+      // cloud path has no language screen any more: the dashboard was asked
+      // this when the restaurant was created, and asking the installer to
+      // answer it again is how a till ends up in English in an Arabic kitchen.
+      // Whoever is standing here still has the last word — the Settings bar's
+      // switch is on every screen, including this one.
+      locale: claim.defaultLanguage,
       deployment: state.deployment.copyWith(syncPolicy: claim.syncPolicy),
       // A message on a SUCCESSFUL claim is information, not failure — the
       // seat warning and the deferred-seed note arrive here.
       notice: result.message,
     );
+
+    // On screen as well as on the draft: the rest of this wizard, short as it
+    // now is, should already be in the restaurant's language rather than
+    // switching at the moment the till opens.
+    if (claim.defaultLanguage case final language?) {
+      ref.read(localeProvider.notifier).apply(language);
+    }
+  }
+
+  /// Everything the cloud path used to ask for, done instead of asked (owner
+  /// decision, 2026-09-15: "cloud setup should get everything from cloud, no
+  /// need for asking anything").
+  ///
+  /// The order is the order of dependence, and each step is survivable:
+  ///
+  ///  1. the database this machine already has — host, name, port, roles and
+  ///     their generated passwords, out of the installer's credentials file;
+  ///  2. the schema, created and migrated with the administrator credential
+  ///     that file carries, then granted to the till;
+  ///  3. the menu, the floor, the tax rules and the people, pulled from the
+  ///     platform and seeded locally — the same call the catalogue step made;
+  ///  4. the printer, if there is exactly one to be sure about.
+  ///
+  /// **Only (1) and (2) can stop the wizard.** A till with no database cannot
+  /// take money and there is nothing to go on to; a till with no menu can be
+  /// finished, said so on the last screen, and synced in the morning — which is
+  /// the rule the catalogue step has always had.
+  Future<void> provisionTerminal() async {
+    if (state.busy || state.provisioned) return;
+    final s = ref.read(stringsProvider);
+    state = state.copyWith(busy: true, clearError: true, clearNotice: true);
+
+    // Read once. Once the fallback fields are on screen the operator is
+    // answering this question themselves, and going back to the file would
+    // throw their answer away on every retry.
+    if (!state.needsDatabase && !await _adoptInstalledDatabase()) {
+      state = state.copyWith(busy: false, needsDatabase: true);
+      return;
+    }
+    _publishDeployment();
+
+    final done = <String>[];
+    if (state.adminDatabasePassword.isNotEmpty) {
+      try {
+        final report = await ref.read(databaseBuilderProvider)(
+          state.deployment,
+          state.adminDatabasePassword,
+        );
+        done
+          ..add(
+            report.created
+                ? s.createdDatabase(state.deployment.databaseName)
+                : s.databaseAlreadyThere(state.deployment.databaseName),
+          )
+          ..add(
+            report.migrations == 0
+                ? s.schemaAlreadyCurrent
+                : s.migrationsApplied(report.migrations),
+          )
+          ..add(
+            s.grantsApplied(
+              state.deployment.databaseUser,
+              state.deployment.adminDatabaseUser,
+            ),
+          );
+      } on PosDbException catch (error) {
+        state = state.copyWith(busy: false, error: _bootstrapFailure(error));
+        return;
+      } on Object catch (error, stack) {
+        debugPrint('setup[provisionTerminal] threw: $error\n$stack');
+        state = state.copyWith(busy: false, error: '$error');
+        return;
+      }
+    }
+
+    // The bundle, seeded. Its failure is a notice and not a refusal: the claim
+    // already succeeded on the platform, the terminal is real, and the first
+    // sync pass re-fetches what could not be fetched now.
+    String? notice;
+    try {
+      await _seedFromPlatform();
+    } on _CatalogueBlocked catch (blocked) {
+      notice = blocked.message;
+    } on Exception catch (error) {
+      notice = s.catalogueDownloadFailed(error);
+    }
+    var items = 0;
+    try {
+      items = (await ref.read(catalogRepositoryProvider).load()).products.length;
+    } on Object {
+      // A menu that cannot be read is the same outcome as one that is not there
+      // yet, and the summary says so in as many words.
+    }
+    done.add(s.itemsCached(items));
+
+    // The printer, detected rather than asked about. ONE is not a choice — it
+    // is the printer on this machine — and the paper width, the drawer and the
+    // absence of a scanner are what every restaurant this ships to has. Two or
+    // none is a genuine question, and `visibleSteps` puts the hardware screen
+    // back for it.
+    var printers = const <DiscoveredPrinter>[];
+    try {
+      printers = await ref.read(hardwarePortsProvider).discoverPrinters();
+    } on Object {
+      // A scan that throws is a machine with no printing subsystem this build
+      // understands, which is the same answer as finding nothing.
+    }
+    final only = printers.length == 1 ? printers.single : null;
+    if (only != null) done.add(s.printerDetected(only.name));
+
+    state = state.copyWith(
+      busy: false,
+      provisioned: true,
+      bootstrapReport: done.join('\n'),
+      catalogueItems: items,
+      detectedPrinters: printers.length,
+      printerName: only?.name,
+      paperWidthDots: only == null ? null : PrinterConfig.width80mm,
+      drawerAttached: only == null ? null : true,
+      scannerAttached: only == null ? null : false,
+      notice: notice,
+    );
+  }
+
+  /// Take the database off the installation, or say there is none to take.
+  ///
+  /// True when this machine's `install-credentials.json` answered. False sends
+  /// the connecting step to its fallback fields — see [SetupDraft.needsDatabase].
+  Future<bool> _adoptInstalledDatabase() async {
+    final InstallerCredentials? installed;
+    try {
+      installed = await ref.read(installerCredentialsProvider).read();
+    } on Object catch (error, stack) {
+      // Nothing about a credentials file is worth failing an install over, and
+      // the fallback screen handles its absence perfectly well.
+      debugPrint('setup[installerCredentials] threw: $error\n$stack');
+      return false;
+    }
+    if (installed == null) return false;
+
+    state = state.copyWith(
+      deployment: state.deployment.copyWith(
+        // The installer puts PostgreSQL on the machine it is run on, and a
+        // cloud till's database is its own. A shared LAN database is the
+        // offline shape and keeps its screen.
+        databaseHost: DeploymentConfig.localhost,
+        databaseName: installed.database,
+        databasePort: installed.port,
+        databaseUser: installed.tillUser,
+        adminDatabaseUser: installed.adminUser,
+      ),
+      databasePassword: installed.tillPassword,
+      // Kept, so Admin Mode is a username and a PIN rather than a password
+      // nobody was ever told. `complete()` is what writes it to `secrets.json`.
+      adminDatabasePassword: installed.adminPassword,
+    );
+    return true;
   }
 
   /// Register a hand-configured terminal against the tenant.

@@ -30,6 +30,7 @@ class SetupPane extends ConsumerWidget {
     SetupStep.account => _AccountPane(draft: draft),
     SetupStep.branch => _BranchPane(draft: draft),
     SetupStep.terminal => _TerminalPane(draft: draft),
+    SetupStep.connecting => _ConnectingPane(draft: draft),
     SetupStep.hardware => _HardwarePane(draft: draft),
     SetupStep.money => _MoneyPane(draft: draft),
     SetupStep.catalogue => _CataloguePane(draft: draft),
@@ -905,15 +906,19 @@ class _AccountPane extends ConsumerWidget {
       );
     }
 
+    final s = context.strings;
+    final pairing = draft.method == SetupMethod.pairingCode;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // The licence names exactly one tenant, and it was installed two steps
-        // ago. Letting an operator retype it here could only ever produce a
-        // slug that contradicts their own licence — which the verifier would
-        // then reject as a tenant mismatch, on a licence that was fine.
+        // The restaurant, STATED. The licence names exactly one tenant and it
+        // was installed a screen ago; letting an operator retype it here could
+        // only ever produce a slug that contradicts their own licence, which
+        // the verifier would then reject as a tenant mismatch on a licence that
+        // was perfectly good.
         _Field(
-          label: context.strings.restaurant,
+          label: s.restaurant,
           value: draft.deployment.tenantSlug ?? '',
           mono: true,
           hint: 'mahsoub',
@@ -922,31 +927,35 @@ class _AccountPane extends ConsumerWidget {
           // Usernames are unique per tenant on the server, so the tenant has
           // to be known before a cashier can even be looked up.
           help: draft.claims != null
-              ? context.strings.restaurantFromLicenceHelp
-              : context.strings.restaurantHelp,
+              ? s.restaurantFromLicenceHelp
+              : s.restaurantHelp,
         ),
         const SizedBox(height: PosSpace.s28),
-        for (final method in SetupMethod.values) ...[
-          _ChoiceTile(
-            title: method.label(context.strings),
-            blurb: method.blurb(context.strings),
-            selected: draft.method == method,
-            // A pairing code is minted by a dashboard. An offline till has no
-            // dashboard, so a code can only come from `bin/pos_migrate.dart`
-            // having written one — offering the tile as the default way in
-            // sends the operator hunting for something nobody issued.
-            enabled:
-                method != SetupMethod.pairingCode ||
-                draft.deployment.mode == DeploymentMode.cloud,
-            onTap: () => controller.setMethod(method),
-          ),
-          const SizedBox(height: PosSpace.md),
-        ],
-        const SizedBox(height: PosSpace.sm),
-        if (draft.method == SetupMethod.pairingCode)
+        // One road, not a junction. The two tiles that used to be here asked
+        // the installer to choose between a code and a staff password before
+        // either had been typed — a question with an obvious answer nine times
+        // out of ten, in front of somebody who had not been told which one they
+        // were holding. The code is the road; the other is a link off it.
+        if (pairing)
           _PairingCodeFields(draft: draft)
         else
           _ManualCredentialFields(draft: draft),
+        const SizedBox(height: PosSpace.lg),
+        if (!draft.claimed && !draft.connected)
+          Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: PosButton(
+              label: pairing ? s.signInInstead : s.useASetupCodeInstead,
+              background: Colors.transparent,
+              foreground: context.pos.accent,
+              padding: const EdgeInsets.symmetric(horizontal: PosSpace.sm),
+              onPressed: draft.busy
+                  ? null
+                  : () => controller.setMethod(
+                      pairing ? SetupMethod.manual : SetupMethod.pairingCode,
+                    ),
+            ),
+          ),
       ],
     );
   }
@@ -1399,6 +1408,227 @@ class _TerminalPane extends ConsumerWidget {
   }
 }
 
+/// The cloud path's one automatic screen (owner decision, 2026-09-15).
+///
+/// Nothing on it is a question. It reads the database off the installation,
+/// builds and migrates it, pulls the restaurant's own configuration from the
+/// platform and looks for a printer — the four screens this replaced, minus the
+/// asking. What it shows is what it did, line by line, because a progress
+/// screen with nothing on it but a spinner is indistinguishable from one that
+/// has hung, and the person watching is standing in a restaurant.
+class _ConnectingPane extends ConsumerStatefulWidget {
+  const _ConnectingPane({required this.draft});
+
+  final SetupDraft draft;
+
+  @override
+  ConsumerState<_ConnectingPane> createState() => _ConnectingPaneState();
+}
+
+class _ConnectingPaneState extends ConsumerState<_ConnectingPane> {
+  @override
+  void initState() {
+    super.initState();
+    // After the first frame, so the screen paints before the work starts. A
+    // provisioning run kicked off in `initState` would hold the frame and the
+    // operator would see the previous screen for as long as it took.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final draft = ref.read(setupProvider);
+      // Already done, already running, or waiting on the fallback fields —
+      // going Back and forward again must not run any of it twice.
+      if (draft.provisioned || draft.busy || draft.needsDatabase) return;
+      ref.read(setupProvider.notifier).provisionTerminal();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = context.strings;
+    final draft = widget.draft;
+
+    if (draft.needsDatabase) return _InstalledDatabaseMissing(draft: draft);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(PosSpace.lg),
+          decoration: BoxDecoration(
+            color: draft.provisioned ? context.pos.okSoft : context.pos.surface,
+            border: Border.all(
+              color: draft.provisioned ? context.pos.ok : context.pos.line,
+              width: draft.provisioned ? 2 : 1,
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                draft.provisioned ? s.tillIsReady : s.settingUpThisTill,
+                style: PosText.ui(
+                  size: 13.5,
+                  weight: FontWeight.w700,
+                  color: context.pos.ink,
+                ),
+              ),
+              if (draft.bootstrapReport case final report?
+                  when report.isNotEmpty) ...[
+                const SizedBox(height: PosSpace.sm),
+                Text(
+                  report,
+                  style: PosText.ui(
+                    size: 12.5,
+                    color: context.pos.body,
+                    height: 1.6,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(height: PosSpace.lg),
+        Text(
+          s.connectingPaneHelp,
+          style: PosText.ui(size: 12.5, color: context.pos.muted, height: 1.5),
+        ),
+        // A refusal above the fold has already been shown in the error bar; the
+        // one thing missing there is a way to try the whole thing again, which
+        // is what the commonest cause — a platform that was briefly down —
+        // actually needs.
+        if (draft.error != null && !draft.busy) ...[
+          const SizedBox(height: PosSpace.lg),
+          Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: PosButton(
+              label: s.tryAgain,
+              border: Border.fromBorderSide(
+                BorderSide(color: context.pos.inkWarm),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: PosSpace.xl),
+              onPressed: ref.read(setupProvider.notifier).provisionTerminal,
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+/// The fallback, for a machine `installer/provision.ps1` never ran on.
+///
+/// A developer's Mac, above all — there is no macOS installer, so there is no
+/// `install-credentials.json` and no way to know a password nobody typed. These
+/// are the fields the connection step used to carry, prefilled with the
+/// defaults every wizard-built install shares, and they are the only thing on
+/// the cloud path anybody is still asked about the database.
+///
+/// Not shown on Windows, ever: if it appears there, the credentials file is
+/// missing or unreadable and the answer is to restore it, not to type around it.
+class _InstalledDatabaseMissing extends ConsumerWidget {
+  const _InstalledDatabaseMissing({required this.draft});
+
+  final SetupDraft draft;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final s = context.strings;
+    final controller = ref.read(setupProvider.notifier);
+    final config = draft.deployment;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(PosSpace.lg),
+          decoration: BoxDecoration(
+            color: context.pos.warnSoft,
+            border: Border.all(color: context.pos.warn, width: 2),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              MicroLabel(s.noInstalledDatabase, color: context.pos.warn),
+              const SizedBox(height: PosSpace.sm),
+              Text(
+                s.noInstalledDatabaseHelp,
+                style: PosText.ui(
+                  size: 13,
+                  color: context.pos.ink,
+                  height: 1.5,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: PosSpace.xl),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              flex: 2,
+              child: _Field(
+                label: s.databaseName,
+                value: config.databaseName,
+                mono: true,
+                hint: 'xorder_pos',
+                error:
+                    config.databaseName.isEmpty || config.hasValidDatabaseName
+                    ? null
+                    : s.databaseNameInvalid(config.databaseName),
+                onChanged: controller.setDatabaseName,
+              ),
+            ),
+            const SizedBox(width: PosSpace.lg),
+            Expanded(
+              child: _Field(
+                label: s.databasePort,
+                value: config.databasePort.toString(),
+                mono: true,
+                hint: '5432',
+                onChanged: controller.setDatabasePort,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: PosSpace.xl),
+        _Field(
+          label: s.databaseUser,
+          value: config.databaseUser,
+          mono: true,
+          hint: 'pos_till',
+          onChanged: controller.setDatabaseUser,
+          help: s.databaseUserHelp,
+        ),
+        const SizedBox(height: PosSpace.xl),
+        _PasswordField(
+          field: 'database',
+          label: s.databasePassword,
+          value: draft.databasePassword,
+          onChanged: controller.setDatabasePassword,
+          help: s.databasePasswordHelp,
+        ),
+        const SizedBox(height: PosSpace.xl),
+        Align(
+          alignment: AlignmentDirectional.centerStart,
+          child: PosButton(
+            label: s.useThisDatabase,
+            background: context.pos.ink,
+            foreground: context.pos.onInk,
+            padding: const EdgeInsets.symmetric(horizontal: PosSpace.xl),
+            onPressed:
+                draft.busy ||
+                    draft.databasePassword.isEmpty ||
+                    !config.hasValidDatabaseName
+                ? null
+                : controller.provisionTerminal,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _HardwarePane extends ConsumerStatefulWidget {
   const _HardwarePane({required this.draft});
 
@@ -1667,13 +1897,13 @@ class _CataloguePane extends ConsumerWidget {
   }
 }
 
-class _SummaryPane extends StatelessWidget {
+class _SummaryPane extends ConsumerWidget {
   const _SummaryPane({required this.draft});
 
   final SetupDraft draft;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final s = context.strings;
 
     // The chosen language names itself, not the language you are reading —
@@ -1682,30 +1912,58 @@ class _SummaryPane extends StatelessWidget {
         ? const ArStrings().languageName
         : const EnStrings().languageName;
 
-    final rows = <(String, String)>[
-      (s.summaryLanguage, language),
-      (s.summaryConnection, draft.deployment.mode.label(s)),
-      if (draft.deployment.baseUrl?.isNotEmpty ?? false)
-        (s.summaryUpstream, draft.deployment.baseUrl!),
-      (
-        s.theDatabase,
-        draft.deployment.isSingleMachine
-            ? s.summaryThisMachine
-            : draft.deployment.databaseHost,
-      ),
-      (s.summaryRestaurant, draft.deployment.tenantSlug ?? s.notSet),
-      (s.summaryBranch, draft.branchLabel ?? s.notSet),
-      (s.summaryTerminal, draft.terminalName),
-      (s.summaryPrinter, draft.printerName ?? s.summaryNoPrinter),
-      (s.summaryCashDrawer, draft.drawerAttached ? s.summaryAttached : s.none),
-      (s.summaryScanner, draft.scannerAttached ? s.summaryAttached : s.none),
-      (s.summaryMenu, s.itemsCached(draft.catalogueItems ?? 0)),
-      (
-        s.summaryLicence,
-        // The verdict in words, not the enum's Dart name.
-        draft.entitlement?.state.headline(s) ?? s.notLicensedHeadline,
-      ),
-    ];
+    // A cloud main device answered four questions to get here, so the last
+    // screen restates four things. The long list below is a review of a dozen
+    // decisions an installer made; a review of decisions nobody made is a
+    // screen people learn to press past, and the one row that would have been
+    // worth reading goes past with it.
+    final short =
+        draft.deployment.mode == DeploymentMode.cloud &&
+        !draft.deployment.isChild;
+
+    final rows = short
+        ? <(String, String)>[
+            (
+              s.summaryRestaurant,
+              draft.tenantName ??
+                  draft.claims?.tenantName ??
+                  draft.deployment.tenantSlug ??
+                  s.notSet,
+            ),
+            (s.summaryBranch, draft.branchLabel ?? s.notSet),
+            (s.summaryTerminal, draft.terminalName),
+            (s.summaryPrinter, draft.printerName ?? s.summaryNoPrinter),
+          ]
+        : <(String, String)>[
+            (s.summaryLanguage, language),
+            (s.summaryConnection, draft.deployment.mode.label(s)),
+            if (draft.deployment.baseUrl?.isNotEmpty ?? false)
+              (s.summaryUpstream, draft.deployment.baseUrl!),
+            (
+              s.theDatabase,
+              draft.deployment.isSingleMachine
+                  ? s.summaryThisMachine
+                  : draft.deployment.databaseHost,
+            ),
+            (s.summaryRestaurant, draft.deployment.tenantSlug ?? s.notSet),
+            (s.summaryBranch, draft.branchLabel ?? s.notSet),
+            (s.summaryTerminal, draft.terminalName),
+            (s.summaryPrinter, draft.printerName ?? s.summaryNoPrinter),
+            (
+              s.summaryCashDrawer,
+              draft.drawerAttached ? s.summaryAttached : s.none,
+            ),
+            (
+              s.summaryScanner,
+              draft.scannerAttached ? s.summaryAttached : s.none,
+            ),
+            (s.summaryMenu, s.itemsCached(draft.catalogueItems ?? 0)),
+            (
+              s.summaryLicence,
+              // The verdict in words, not the enum's Dart name.
+              draft.entitlement?.state.headline(s) ?? s.notLicensedHeadline,
+            ),
+          ];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1784,6 +2042,28 @@ class _SummaryPane extends StatelessWidget {
                   ),
                 ),
               ],
+            ),
+          ),
+        ],
+        // The hardware screen is where this used to live, and a cloud till no
+        // longer sees that screen when exactly one printer was found. Somebody
+        // has to be able to put paper through the thing before the restaurant
+        // opens, and this is now the last place they can.
+        if (draft.printerName case final printer?) ...[
+          const SizedBox(height: PosSpace.lg),
+          Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: PosButton(
+              label: s.testPrint,
+              border: Border.fromBorderSide(context.pos.resting),
+              padding: const EdgeInsets.symmetric(horizontal: PosSpace.xl),
+              onPressed: () async {
+                final ok = await ref
+                    .read(hardwarePortsProvider)
+                    .testPrint(printer);
+                if (!context.mounted) return;
+                posToast(context, ok ? s.testReceiptSent : s.nothingPrinted);
+              },
             ),
           ),
         ],

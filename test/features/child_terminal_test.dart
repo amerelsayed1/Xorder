@@ -106,6 +106,29 @@ void main() {
     expect(draft.deployment.databaseHost, isEmpty);
   });
 
+  /// A child registers by signing in, whatever its main device runs.
+  ///
+  /// The regression this pins arrived with the collapsed cloud path
+  /// (2026-09-15), which made [SetupMethod.pairingCode] the default because it
+  /// is the cloud main device's road. A child of a CLOUD main device inherits
+  /// that mode — and the terminal screen offers its "Register this terminal"
+  /// button only on the manual method, so the tablet would have reached the one
+  /// screen it has to act on with no way to register itself at all.
+  test('a child registers by signing in, even under a cloud main device', () {
+    final draft = _device(TerminalRole.child).read(setupProvider).copyWith(
+      deployment: const DeploymentConfig(
+        mode: DeploymentMode.cloud,
+        role: TerminalRole.child,
+      ),
+    );
+
+    expect(draft.method, SetupMethod.manual);
+    // And its path is still the child's — the cloud collapse belongs to a main
+    // device, and a tablet has no pairing code, no database to build and no
+    // printer scan to skip a screen with.
+    expect(draft.visibleSteps, SetupDraft.childSteps);
+  });
+
   test('a desktop still opens on the licence', () {
     final draft = _device(TerminalRole.main).read(setupProvider);
 
