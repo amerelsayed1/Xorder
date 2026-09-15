@@ -258,13 +258,44 @@ class DeploymentConfig {
   static bool isPlainIdentifier(String value) =>
       RegExp(r'^[A-Za-z_][A-Za-z0-9_]*$').hasMatch(value);
 
+  /// A cloud API is allowed to use plaintext only on the local/LAN addresses
+  /// that an installer can reasonably operate without a certificate.  Login
+  /// passwords and device bearer tokens otherwise travel with every request,
+  /// so accepting an explicit `http://public-host` is not a harmless override.
+  static bool isPermittedPlatformUrl(String? value) {
+    final uri = Uri.tryParse(value?.trim() ?? '');
+    if (uri == null || uri.host.isEmpty) return false;
+    if (uri.scheme == 'https') return true;
+    if (uri.scheme != 'http') return false;
+    return _isPrivateNetworkHost(uri.host);
+  }
+
+  static bool _isPrivateNetworkHost(String rawHost) {
+    final host = rawHost.toLowerCase();
+    if (host == localhost || host == '::1' || host.endsWith('.local')) {
+      return true;
+    }
+
+    final octets = host.split('.');
+    if (octets.length != 4) return false;
+    final first = int.tryParse(octets[0]);
+    final second = int.tryParse(octets[1]);
+    if (first == null || second == null) return false;
+    return first == 10 ||
+        first == 127 ||
+        (first == 192 && second == 168) ||
+        (first == 172 && second >= 16 && second <= 31);
+  }
+
   bool get hasValidDatabaseName => isPlainIdentifier(databaseName);
 
   bool get isConfigured {
     // A child of a cloud main device has no platform address of its own and
     // needs none: its sales go into the main device's database, and the main
     // device's outbox drain is what carries them up.
-    if (mode.needsBaseUrl && !isChild && (baseUrl?.isEmpty ?? true)) {
+    if (mode.needsBaseUrl &&
+        !isChild &&
+        !isPermittedPlatformUrl(baseUrl)) {
       return false;
     }
     // Every mode reads and writes PostgreSQL, so a terminal with nowhere to

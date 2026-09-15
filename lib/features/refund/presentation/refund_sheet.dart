@@ -90,10 +90,11 @@ class _RefundSheetState extends ConsumerState<RefundSheet> {
   @override
   void initState() {
     super.initState();
-    // Money goes back the way it came. One payment means one obvious answer, so
-    // the dialog does not ask a question with a single possible reply.
+    // Money goes back the way it came. The selected method is the preferred
+    // starting point, not permission to put a split bill's whole refund onto
+    // one tender; [_refundTenders] allocates any remainder safely.
     final payments = widget.detail.payments;
-    if (payments.length == 1) _tenderTypeId = payments.single.tenderTypeId;
+    _tenderTypeId = payments.firstOrNull?.tenderTypeId;
   }
 
   @override
@@ -114,6 +115,67 @@ class _RefundSheetState extends ConsumerState<RefundSheet> {
       given += refund.total;
     }
     return (_order.total - given).clampToZero();
+  }
+
+  /// Allocate a refund across the order's original payments without returning
+  /// more through any tender than it received.  Existing refunds consume a
+  /// tender's balance first, so a second partial refund cannot silently undo
+  /// the split of the first.
+  List<RefundTender>? _refundTenders(Money total) {
+    final preferred = _tenderTypeId;
+    final payments = [
+      for (final payment in widget.detail.payments)
+        if (payment.tenderTypeId != null) payment,
+    ]..sort((a, b) {
+        final aPreferred = a.tenderTypeId == preferred;
+        final bPreferred = b.tenderTypeId == preferred;
+        if (aPreferred == bPreferred) return 0;
+        return aPreferred ? -1 : 1;
+      });
+    if (payments.isEmpty) return null;
+
+    final alreadyReturned = <int, int>{};
+    for (final refund in widget.previous) {
+      for (final payment in refund.payments) {
+        alreadyReturned.update(
+          payment.tenderTypeId,
+          (amount) => amount + payment.amount.minor,
+          ifAbsent: () => payment.amount.minor,
+        );
+      }
+    }
+
+    var left = total.minor;
+    final allocated = <RefundTender>[];
+    for (final payment in payments) {
+      final typeId = payment.tenderTypeId!;
+      final returned = alreadyReturned[typeId] ?? 0;
+      final available = (payment.amount.minor - returned).clamp(
+        0,
+        payment.amount.minor,
+      );
+      alreadyReturned[typeId] = (returned - payment.amount.minor).clamp(
+        0,
+        returned,
+      );
+      final amount = left.clamp(0, available);
+      if (amount == 0) continue;
+      allocated.add(
+        RefundTender(
+          tenderTypeId: typeId,
+          label: payment.label,
+          amount: Money(
+            amount,
+            currency: total.currency,
+            exponent: total.exponent,
+          ),
+          reference: payment.reference,
+        ),
+      );
+      left -= amount;
+      if (left == 0) return allocated;
+    }
+    return null;
   }
 
   /// What the engine says this selection comes to, or why it will not.
@@ -459,8 +521,13 @@ class _RefundSheetState extends ConsumerState<RefundSheet> {
     RefundQuote? quote,
     RefundRefusal? refusal,
   ) {
-    final blocked = _message ?? (refusal == null ? null : _explain(refusal, strings));
-    final ready = quote != null && !quote.isEmpty && !_busy;
+    final allocation = quote == null ? null : _refundTenders(quote.total);
+    final blocked =
+        _message ??
+        (refusal == null ? null : _explain(refusal, strings)) ??
+        (quote != null && allocation == null ? strings.refundTenderNeeded : null);
+    final ready =
+        quote != null && !quote.isEmpty && allocation != null && !_busy;
 
     return Container(
       padding: const EdgeInsets.all(PosSpace.lg),
@@ -562,8 +629,8 @@ class _RefundSheetState extends ConsumerState<RefundSheet> {
       return;
     }
 
-    final tenderTypeId = _tenderTypeId;
-    if (tenderTypeId == null) {
+    final tenders = _refundTenders(quote.total);
+    if (tenders == null || tenders.isEmpty) {
       setState(() => _message = strings.refundTenderNeeded);
       return;
     }
@@ -651,13 +718,7 @@ class _RefundSheetState extends ConsumerState<RefundSheet> {
             approval: approval,
             reasonId: _reason?.id,
             note: _note.trim().isEmpty ? null : _note.trim(),
-            tenders: [
-              RefundTender(
-                tenderTypeId: tenderTypeId,
-                label: _tenderLabelFor(tenderTypeId),
-                amount: quote.total,
-              ),
-            ],
+            tenders: tenders,
             clientRefundId: _clientRefundId,
           );
       if (!mounted) return;
@@ -674,16 +735,6 @@ class _RefundSheetState extends ConsumerState<RefundSheet> {
     }
   }
 
-  /// The **stored** label, not the translated one.
-  ///
-  /// What goes into `pos_refund_payments.label` has to match what settlement
-  /// writes, because the cash-up finds the drawer's cash by matching that text.
-  String _tenderLabelFor(int typeId) {
-    for (final payment in widget.detail.payments) {
-      if (payment.tenderTypeId == typeId) return payment.label;
-    }
-    return 'Cash';
-  }
 }
 
 /// One order line, with how much of it is coming back.

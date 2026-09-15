@@ -190,7 +190,9 @@ class _SaleScreenState extends ConsumerState<SaleScreen> {
     // and the disk row must go for the same reason it does after payment — a
     // voided table that stayed parked would come back on the floor holding a
     // bill nobody owes.
-    ref.read(openTicketsProvider.notifier).settle(ticket);
+    await ref.read(openTicketsProvider.notifier).settle(ticket);
+
+    if (!mounted) return;
 
     setState(() => _selectedLineKey = null);
     ref.read(ticketProvider.notifier).reset();
@@ -474,7 +476,7 @@ class _SaleScreenState extends ConsumerState<SaleScreen> {
   /// sent a round, and F4 called the round handler unconditionally — so a
   /// takeaway ticket could not be put down at all, and the control that said
   /// *Park* sent food to the kitchen instead.
-  void _hold(Ticket ticket) {
+  Future<void> _hold(Ticket ticket) async {
     // The same configured answer the cart panel is given, from the same place,
     // so F4 and the button cannot disagree about what this ticket is.
     final action = TicketHoldAction.forTicket(
@@ -487,7 +489,7 @@ class _SaleScreenState extends ConsumerState<SaleScreen> {
       case TicketHoldAction.sendRound:
         _sendRound();
       case TicketHoldAction.park:
-        _park(ticket);
+        await _park(ticket);
     }
   }
 
@@ -502,8 +504,12 @@ class _SaleScreenState extends ConsumerState<SaleScreen> {
   /// left the ticket where it was would give the cashier two copies of one sale
   /// — the parked one and the one in front of them — and whichever they then
   /// charged, the other would still be there at the day close.
-  void _park(Ticket ticket) {
-    ref.read(openTicketsProvider.notifier).park(ticket);
+  Future<void> _park(Ticket ticket) async {
+    final saved = await ref.read(openTicketsProvider.notifier).park(ticket);
+    if (!saved || !mounted) {
+      if (mounted) posToast(context, context.strings.cashCouldNotBeRecorded);
+      return;
+    }
     ref.read(ticketProvider.notifier).reset();
     setState(() {
       _selectedLineKey = null;
@@ -524,7 +530,11 @@ class _SaleScreenState extends ConsumerState<SaleScreen> {
     final chosen = await HeldTicketsDialog.show(context, tickets: held);
     if (chosen == null || !mounted) return;
 
-    ref.read(openTicketsProvider.notifier).park(live);
+    final saved = await ref.read(openTicketsProvider.notifier).park(live);
+    if (!saved || !mounted) {
+      if (mounted) posToast(context, context.strings.cashCouldNotBeRecorded);
+      return;
+    }
     ref.read(ticketProvider.notifier).adopt(chosen);
     setState(() {
       _selectedLineKey = null;

@@ -120,6 +120,7 @@ class PosShift {
     required this.openedByName,
     this.openedById,
     this.closedAt,
+    this.clientTransactionId,
   });
 
   final int id;
@@ -135,6 +136,11 @@ class PosShift {
   /// [openedBy] treats null as "unknown" rather than as "not you".
   final int? openedById;
   final DateTime? closedAt;
+
+  /// The shift-open idempotency key used by cloud records that belong to this
+  /// drawer.  Older local shifts legitimately have none and remain readable;
+  /// they are never guessed into a different platform shift.
+  final String? clientTransactionId;
 
   /// Whether [staffId] is the person this drawer belongs to.
   ///
@@ -230,6 +236,7 @@ class ShiftSummary {
     this.service = Money.zero,
     this.vat = Money.zero,
     this.refunds = Money.zero,
+    this.cashRefunded = Money.zero,
     this.voids = Money.zero,
     this.voidCount = 0,
     this.refundCount = 0,
@@ -261,6 +268,11 @@ class ShiftSummary {
   /// both things, and a report showing only 800 hides the 200 — which is the
   /// number a manager is actually looking for. [net] is where they meet.
   final Money refunds;
+
+  /// The part of [refunds] that physically left this shift's drawer.  It is
+  /// snapshotted on `pos_refund_payments`, just like sale cash, so changing a
+  /// tender configuration later cannot rewrite an old cash-up.
+  final Money cashRefunded;
 
   /// What was thrown away after the kitchen had made it.
   ///
@@ -310,13 +322,11 @@ class ShiftSummary {
   /// a shortage every time somebody paid a supplier out of the till — which is
   /// the whole reason §22 records them.
   ///
-  /// Refunds do not appear here as a term of their own: a cash refund is a
-  /// tender going the other way and Wave B does not yet write one into
-  /// `pos_order_payments`. When it does, it belongs in [cashTaken], not here,
-  /// so that the drawer's arithmetic stays "float plus what came in, less what
-  /// went out".
+  /// Cash refunds leave the drawer and must be subtracted. Card/wallet refunds
+  /// do not touch it, so subtracting the refund headline would manufacture a
+  /// shortage for every electronic return.
   Money get expectedCash =>
-      shift.openingFloat + cashTaken + cashIn - cashOut;
+      shift.openingFloat + cashTaken + cashIn - cashOut - cashRefunded;
 
   /// Positive means more cash in the drawer than the sales explain.
   Money varianceAgainst(Money counted) => counted - expectedCash;

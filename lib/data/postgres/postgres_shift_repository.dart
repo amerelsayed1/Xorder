@@ -1,4 +1,5 @@
 import 'package:postgres/postgres.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../core/config/deployment.dart';
 import '../../core/money/money.dart';
@@ -40,7 +41,7 @@ class PostgresShiftRepository implements ShiftRepository {
 
   static const _selectShift = '''
     SELECT s.id, s.opened_at, s.opening_float_minor, st.name, s.closed_at,
-           s.opened_by
+           s.opened_by, s.client_transaction_id
     FROM pos_shifts s JOIN pos_staff st ON st.id = s.opened_by
   ''';
 
@@ -51,7 +52,9 @@ class PostgresShiftRepository implements ShiftRepository {
       '$_selectShift WHERE s.terminal_id::text = @terminal AND s.closed_at IS NULL',
       parameters: {'terminal': _terminalId},
     );
-    return rows.isEmpty ? null : _shift(rows.first);
+    return rows.isEmpty
+        ? null
+        : _shift(rows.first, clientTransactionId: rows.first[6]?.toString());
   }
 
   @override
@@ -67,28 +70,45 @@ class PostgresShiftRepository implements ShiftRepository {
       return existing;
     }
 
-    final rows = await _db.query(
-      _config,
-      'INSERT INTO pos_shifts '
-      '  (restaurant_id, branch_id, terminal_id, opened_by, opening_float_minor) '
-      'VALUES (@restaurant, @branch, @terminal, @staff, @float) '
-      'RETURNING id, opened_at',
-      parameters: {
-        'restaurant': _restaurantId,
-        'branch': _branchId,
-        'terminal': _terminalId,
-        'staff': by.id,
-        'float': openingFloat.minor,
-      },
-    );
-
-    return PosShift(
-      id: rows.first[0] as int,
-      openedAt: rows.first[1] as DateTime,
-      openingFloat: openingFloat,
-      openedByName: by.name,
-      openedById: by.id,
-    );
+    final clientId = _config.mode.syncsSalesToPlatform
+        ? const Uuid().v4()
+        : null;
+    return _db.runTx(_config, (tx) async {
+      final rows = await tx.execute(
+        Sql.named(
+          'INSERT INTO pos_shifts '
+          '  (restaurant_id, branch_id, terminal_id, opened_by, opening_float_minor, '
+          '   client_transaction_id) '
+          'VALUES (@restaurant, @branch, @terminal, @staff, @float, @client) '
+          'RETURNING id, opened_at',
+        ),
+        parameters: {
+          'restaurant': _restaurantId,
+          'branch': _branchId,
+          'terminal': _terminalId,
+          'staff': by.id,
+          'float': openingFloat.minor,
+          'client': clientId,
+        },
+      );
+      final id = rows.first[0] as int;
+      if (clientId != null) {
+        await _enqueueSync(
+          tx,
+          eventType: 'shift_open',
+          sourceId: id,
+          clientTransactionId: clientId,
+        );
+      }
+      return PosShift(
+        id: id,
+        openedAt: rows.first[1] as DateTime,
+        openingFloat: openingFloat,
+        openedByName: by.name,
+        openedById: by.id,
+        clientTransactionId: clientId,
+      );
+    });
   }
 
   @override
@@ -344,6 +364,10 @@ class PostgresShiftRepository implements ShiftRepository {
       final summary = await _summarise(tx, shift);
       final variance = summary.varianceAgainst(countedCash);
 
+      final closeClientId = _config.mode.syncsSalesToPlatform &&
+              shift.clientTransactionId != null
+          ? const Uuid().v4()
+          : null;
       final rows = await tx.execute(
         Sql.named('''
             UPDATE pos_shifts SET
@@ -352,7 +376,8 @@ class PostgresShiftRepository implements ShiftRepository {
               counted_cash_minor  = @counted,
               expected_cash_minor = @expected,
               variance_minor      = @variance,
-              closing_note        = @note
+              closing_note        = @note,
+              close_client_transaction_id = @closeClient
             WHERE id = @id AND closed_at IS NULL
             RETURNING closed_at
           '''),
@@ -363,12 +388,22 @@ class PostgresShiftRepository implements ShiftRepository {
           'expected': summary.expectedCash.minor,
           'variance': variance.minor,
           'note': note,
+          'closeClient': closeClientId,
         },
       );
 
       // Conditional on `closed_at IS NULL`, so a second cash-up cannot
       // overwrite the first one's numbers.
       if (rows.isEmpty) return null;
+
+      if (closeClientId != null) {
+        await _enqueueSync(
+          tx,
+          eventType: 'shift_close',
+          sourceId: shift.id,
+          clientTransactionId: closeClientId,
+        );
+      }
 
       return ShiftClose(
         summary: summary,
@@ -436,6 +471,16 @@ class PostgresShiftRepository implements ShiftRepository {
       parameters: {'shift': shift.id},
     );
 
+    final cashRefunds = await tx.execute(
+      Sql.named(
+        'SELECT coalesce(sum(p.amount_minor) FILTER (WHERE p.counts_as_cash), 0)::bigint '
+        'FROM pos_refund_payments p '
+        'JOIN pos_refunds r ON r.id = p.refund_id '
+        'WHERE r.shift_id = @shift',
+      ),
+      parameters: {'shift': shift.id},
+    );
+
     // Read here rather than left to the screen. `expectedCash` is float plus
     // cash taken plus paid in less paid out, so a summary without these would
     // report a shortage every time somebody paid a supplier out of the till —
@@ -491,6 +536,7 @@ class PostgresShiftRepository implements ShiftRepository {
       voids: Money(row[6] as int),
       voidCount: row[7] as int,
       refunds: Money(refunds.first[1] as int),
+      cashRefunded: Money(cashRefunds.first[0] as int),
       refundCount: refunds.first[0] as int,
       tenders: [
         for (final row in tenders)
@@ -510,12 +556,34 @@ class PostgresShiftRepository implements ShiftRepository {
     );
   }
 
-  PosShift _shift(ResultRow row) => PosShift(
+  PosShift _shift(ResultRow row, {String? clientTransactionId}) => PosShift(
     id: row[0] as int,
     openedAt: row[1] as DateTime,
     openingFloat: Money(row[2] as int),
     openedByName: row[3] as String,
     closedAt: row[4] as DateTime?,
     openedById: row[5] as int?,
+    clientTransactionId: clientTransactionId,
+  );
+
+  Future<void> _enqueueSync(
+    TxSession tx, {
+    required String eventType,
+    required int sourceId,
+    required String clientTransactionId,
+  }) => tx.execute(
+    Sql.named('''
+      INSERT INTO pos_sync_outbox
+        (restaurant_id, branch_id, event_type, source_id, client_transaction_id)
+      VALUES (@restaurant, @branch, @type, @source, @client)
+      ON CONFLICT (restaurant_id, client_transaction_id) DO NOTHING
+    '''),
+    parameters: {
+      'restaurant': _restaurantId,
+      'branch': _branchId,
+      'type': eventType,
+      'source': sourceId,
+      'client': clientTransactionId,
+    },
   );
 }

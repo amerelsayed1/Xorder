@@ -238,7 +238,18 @@ class SetupController extends Notifier<SetupDraft> {
   /// a dev loopback; anything public defaults to https, never the reverse.
   static String baseUrlFrom(String input) {
     final value = input.trim();
-    if (value.isEmpty || value.contains('://')) return value;
+    if (value.isEmpty) return value;
+    if (value.contains('://')) {
+      final uri = Uri.tryParse(value);
+      if (uri != null &&
+          uri.scheme == 'http' &&
+          !DeploymentConfig.isPermittedPlatformUrl(value)) {
+        // Never preserve an operator's accidental public plaintext URL.  The
+        // later reachability check makes a genuinely HTTPS-only server clear.
+        return uri.replace(scheme: 'https').toString();
+      }
+      return value;
+    }
     final host = value.split('/').first.split(':').first.toLowerCase();
     final isPrivate =
         host == 'localhost' ||

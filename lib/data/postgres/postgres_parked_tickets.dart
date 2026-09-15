@@ -15,9 +15,10 @@ import 'pos_database.dart';
 /// moment it settles. Reads happen once, at boot, to put the till back the way
 /// the restart found it.
 ///
-/// Every failure is swallowed into a best-effort result rather than thrown:
-/// parking a ticket must never crash a sale over a database hiccup — the
-/// in-memory floor keeps working and the next write tries again.
+/// Writes deliberately surface failure to the caller.  A parked ticket is a
+/// promise that a cashier may clear the screen and recover the sale after a
+/// restart; pretending that promise succeeded loses orders on the first
+/// database outage.
 class PostgresParkedTickets {
   const PostgresParkedTickets({
     required PosDatabase database,
@@ -51,8 +52,14 @@ class PostgresParkedTickets {
         // 25 backfilled from it — is shown to every till rather than to none,
         // because a parked ticket nobody can reach is money nobody can collect.
         'SELECT table_id, payload FROM pos_parked_tickets '
-        'WHERE restaurant_id = @restaurant '
+        'WHERE pos_parked_tickets.restaurant_id = @restaurant '
         '  AND (branch_id = @branch OR branch_id IS NULL) '
+        // A sale can commit before a transient delete of its parked row.  Do
+        // not ever hydrate that stale work as an unpaid ticket on the next
+        // boot; the committed order is the authoritative fact.
+        '  AND NOT EXISTS (SELECT 1 FROM pos_orders o '
+        '                  WHERE o.restaurant_id = pos_parked_tickets.restaurant_id '
+        '                    AND o.client_transaction_id = pos_parked_tickets.client_transaction_id) '
         'ORDER BY parked_at',
         parameters: {'restaurant': restaurantId, 'branch': branchId},
       );
@@ -77,9 +84,8 @@ class PostgresParkedTickets {
 
   Future<void> save(Ticket ticket) async {
     final tableId = ticket.tableId;
-    try {
-      await _db.query(
-        config,
+    await _db.query(
+      config,
         // Two upserts, one per identity, because a parked ticket is identified
         // by its table when it has one and by its transaction when it does not.
         // A single statement conflicting on the transaction id would have let a
@@ -113,11 +119,8 @@ class PostgresParkedTickets {
           'table': ?tableId,
           'txn': ticket.id,
           'payload': jsonEncode(ParkedTicketCodec.encode(ticket)),
-        },
-      );
-    } on Object {
-      // Best effort — see the class comment.
-    }
+      },
+    );
   }
 
   /// Let go of a parked ticket, by whichever of its two identities is real.
@@ -127,9 +130,8 @@ class PostgresParkedTickets {
   /// clears the table — would otherwise leave its old row behind, and that row
   /// comes back on the floor at the next boot as a bill nobody owes.
   Future<void> remove({int? tableId, required String transactionId}) async {
-    try {
-      await _db.query(
-        config,
+    await _db.query(
+      config,
         'DELETE FROM pos_parked_tickets '
         'WHERE restaurant_id = @restaurant '
         '  AND (client_transaction_id = @txn '
@@ -138,12 +140,8 @@ class PostgresParkedTickets {
           'restaurant': restaurantId,
           'txn': transactionId,
           'table': tableId,
-        },
-      );
-    } on Object {
-      // Best effort — a row that outlives its settlement is re-deleted on the
-      // next settle of that table, and hydration tolerates it meanwhile.
-    }
+      },
+    );
   }
 
   static Ticket? _decode(Object? payload, Catalog catalog) {

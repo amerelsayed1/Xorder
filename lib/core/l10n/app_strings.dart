@@ -190,6 +190,11 @@ sealed class AppStrings {
   String get clear;
   String get takePayment;
   String get enterAmountAboveZero;
+  String get paymentReferenceLabel;
+  String get paymentReferenceRequired;
+  String get paymentMethodsLoading;
+  String get paymentCouldNotBeRecorded;
+  String get paymentOnAccountUnavailable;
 
   // ── Receipt ───────────────────────────────────────────────────────────────
   String taxRegistrationLine(String number);
@@ -2345,6 +2350,7 @@ sealed class AppStrings {
   String get drawerOpenExplain;
   String get drawerOpenAction;
   String get drawerOpened;
+  String get drawerCouldNotOpen;
 
   // ── The trading day (§28) ─────────────────────────────────────────────────
   String get dayCloseTitle;
@@ -3133,6 +3139,9 @@ final class EnStrings extends AppStrings {
   @override
   String get drawerOpened => 'Drawer opened, and recorded';
   @override
+  String get drawerCouldNotOpen =>
+      'The drawer did not open. Check the receipt printer connection.';
+  @override
   String get dayCloseTitle => 'Close the day';
   @override
   String dayCloseFor(String date) => 'Trading day $date';
@@ -3390,6 +3399,18 @@ final class EnStrings extends AppStrings {
   String get takePayment => 'TAKE PAYMENT';
   @override
   String get enterAmountAboveZero => 'Enter an amount above zero.';
+  @override
+  String get paymentReferenceLabel => 'Authorisation / reference';
+  @override
+  String get paymentReferenceRequired => 'Enter the payment reference first.';
+  @override
+  String get paymentMethodsLoading => 'Loading payment methods…';
+  @override
+  String get paymentCouldNotBeRecorded =>
+      'The payment was not recorded. Check the connection and try again.';
+  @override
+  String get paymentOnAccountUnavailable =>
+      'On-account sales need a customer account and cannot be taken here yet.';
 
   @override
   String taxRegistrationLine(String number) => 'TAX REG $number';
@@ -7567,6 +7588,9 @@ final class ArStrings extends AppStrings {
   @override
   String get drawerOpened => 'فُتح الدرج وسُجِّل';
   @override
+  String get drawerCouldNotOpen =>
+      'لم يُفتح الدرج. افحص اتصال طابعة الإيصال.';
+  @override
   String get dayCloseTitle => 'إقفال اليوم';
   @override
   String dayCloseFor(String date) => 'يوم العمل $date';
@@ -7824,6 +7848,18 @@ final class ArStrings extends AppStrings {
   String get takePayment => 'تحصيل الدفعة';
   @override
   String get enterAmountAboveZero => 'أدخل مبلغاً أكبر من صفر.';
+  @override
+  String get paymentReferenceLabel => 'رقم التفويض / المرجع';
+  @override
+  String get paymentReferenceRequired => 'أدخل مرجع الدفع أولاً.';
+  @override
+  String get paymentMethodsLoading => 'جارٍ تحميل طرق الدفع…';
+  @override
+  String get paymentCouldNotBeRecorded =>
+      'لم تُسجَّل الدفعة. افحص الاتصال ثم حاول مرة أخرى.';
+  @override
+  String get paymentOnAccountUnavailable =>
+      'يتطلب الدفع على الحساب حساب عميل ولا يمكن تحصيله هنا بعد.';
 
   @override
   String taxRegistrationLine(String number) => 'TAX REG $number';

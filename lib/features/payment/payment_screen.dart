@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/providers.dart';
+import '../../core/config/deployment.dart';
 import '../../core/money/money.dart';
 import '../../app/labels.dart';
 import '../../core/l10n/app_strings.dart';
@@ -58,6 +59,15 @@ class PaymentScreen extends ConsumerStatefulWidget {
 class _PaymentScreenState extends ConsumerState<PaymentScreen> {
   int _methodId = 1;
   String _entry = '';
+  final _reference = TextEditingController();
+  bool _busy = false;
+  String? _message;
+
+  @override
+  void dispose() {
+    _reference.dispose();
+    super.dispose();
+  }
 
   Money? _parsedEntry(Ticket ticket) => _entry.isEmpty
       ? null // empty entry means "the whole remaining due"
@@ -67,32 +77,67 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
           exponent: ticket.exponent,
         );
 
-  void _digit(String value) => setState(() => _entry += value);
-  void _clear() => setState(() => _entry = '');
+  void _digit(String value) => setState(() {
+    _entry += value;
+    _message = null;
+  });
+  void _clear() => setState(() {
+    _entry = '';
+    _message = null;
+  });
 
-  void _quickCash(int major, Ticket ticket) => setState(
-    () => _entry = Money(major * 100, currency: ticket.currency).format(),
-  );
+  void _quickCash(int major, Ticket ticket) => setState(() {
+    _entry = Money(major * 100, currency: ticket.currency).format();
+    _message = null;
+  });
 
-  /// The methods on offer, with the seeded four while the query is in flight.
-  ///
-  /// A payment screen with no buttons on it is a till that cannot take money,
-  /// and the four are what the migration writes anyway — so the loading state
-  /// shows something correct rather than something empty.
-  List<TenderMethod> get _methods =>
-      ref.watch(tenderTypesProvider).valueOrNull ?? TenderMethod.seeded;
+  /// Cloud tenders carry platform ids and cannot safely be guessed.  Offline
+  /// tills retain their bootstrap fallback while the local query starts.
+  List<TenderMethod> get _methods {
+    final configured = ref.read(tenderTypesProvider).valueOrNull;
+    final source = configured ??
+        (ref.read(deploymentProvider).mode == DeploymentMode.cloud
+            ? const <TenderMethod>[]
+            : TenderMethod.seeded);
+    // Customer receivables are not modelled yet. Recording this as an ordinary
+    // tender closes the sale as paid and loses the debt, so fail closed.
+    return source.where((method) => method.kind != TenderKind.account).toList();
+  }
 
-  TenderMethod get _method => _methods.firstWhere(
-    (m) => m.id == _methodId,
-    // The selection outliving the list is a real state: a manager can retire a
-    // method while a cashier is mid-payment. Falling back to the first on offer
-    // beats an exception at the counter.
-    orElse: () => _methods.first,
-  );
+  bool get _cloudMethodsLoading =>
+      ref.read(deploymentProvider).mode == DeploymentMode.cloud &&
+      ref.read(tenderTypesProvider).isLoading;
+
+  TenderMethod? get _method {
+    final methods = _methods;
+    for (final method in methods) {
+      if (method.id == _methodId) return method;
+    }
+    return methods.firstOrNull;
+  }
 
   Future<void> _take(Ticket ticket) async {
+    if (_busy) return;
+    final strings = context.strings;
+    if (_cloudMethodsLoading) {
+      setState(() => _message = strings.paymentMethodsLoading);
+      return;
+    }
     final controller = ref.read(ticketProvider.notifier);
     final method = _method;
+    if (method == null) {
+      setState(() => _message = strings.paymentMethodsLoading);
+      return;
+    }
+    if (method.kind == TenderKind.account) {
+      setState(() => _message = strings.paymentOnAccountUnavailable);
+      return;
+    }
+    final reference = _reference.text.trim();
+    if (method.requiresReference && reference.isEmpty) {
+      setState(() => _message = strings.paymentReferenceRequired);
+      return;
+    }
     final ok = controller.addTender(
       typeId: method.id,
       label: method.wireLabel,
@@ -100,14 +145,19 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
       // [Tender.countsAsCash].
       countsAsCash: method.countsAsCash,
       amount: _parsedEntry(ticket),
+      reference: reference.isEmpty ? null : reference,
     );
 
     if (!ok) {
-      posToast(context, context.strings.enterAmountAboveZero);
+      posToast(context, strings.enterAmountAboveZero);
       return;
     }
 
-    setState(() => _entry = '');
+    setState(() {
+      _entry = '';
+      _reference.clear();
+      _message = null;
+    });
 
     final updated = ref.read(ticketProvider);
     if (!updated.totals.isSettled) return;
@@ -115,12 +165,28 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
     // Settled — record it, free the table, and hand the outcome back to the
     // sale screen, which owns what happens next (the receipt, and for a
     // seated ticket the walk back to the floor).
-    final result = await ref
-        .read(ordersRepositoryProvider)
-        // Read here rather than baked into the repository: the sale belongs to
-        // whoever took the money, and on a seated table that is routinely not
-        // the person who opened the ticket.
-        .submit(updated, servedBy: ref.read(signedInStaffProvider));
+    setState(() => _busy = true);
+    SubmitOrderResult result;
+    try {
+      result = await ref
+          .read(ordersRepositoryProvider)
+          // Read here rather than baked into the repository: the sale belongs to
+          // whoever took the money, and on a seated table that is routinely not
+          // the person who opened the ticket.
+          .submit(updated, servedBy: ref.read(signedInStaffProvider));
+    } on Object {
+      // The database did not commit the order. Restore the exact pre-tender
+      // ticket so the cashier can retry without a supervisor removing a payment
+      // that never existed in the ledger.
+      controller.applyEdit(ticket);
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _message = strings.paymentCouldNotBeRecorded;
+        });
+      }
+      return;
+    }
     if (!mounted) return;
 
     // Re-read the backlog rather than adding one to a running total. The count
@@ -130,13 +196,17 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
     ref.invalidate(pendingSyncCountProvider);
 
     // The table's money is in the drawer — its seat is free again.
-    ref.read(openTicketsProvider.notifier).settle(updated);
+    await ref.read(openTicketsProvider.notifier).settle(updated);
 
+    if (!mounted) return;
     Navigator.of(context).pop(SettledSale(ticket: updated, result: result));
   }
 
   @override
   Widget build(BuildContext context) {
+    // Rebuild the dialog when configured tenders arrive; event handlers use
+    // `read` so they never subscribe outside the build phase.
+    ref.watch(tenderTypesProvider);
     final ticket = ref.watch(ticketProvider);
     final totals = ticket.totals;
     final strings = context.strings;
@@ -395,12 +465,29 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
           children: [
             _methodGrid(strings),
             _amountBlock(strings, ticket, totals),
+            if ((_method?.requiresReference ?? false))
+              _referenceField(strings),
+            if (_message != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  PosSpace.md,
+                  PosSpace.sm,
+                  PosSpace.md,
+                  0,
+                ),
+                child: Text(
+                  _message!,
+                  style: PosText.ui(size: 12, color: context.pos.danger),
+                ),
+              ),
             Expanded(child: _keypad(strings)),
             PosButton(
               label: strings.takePayment,
               height: 72,
               alignLeft: true,
-              background: context.pos.ok,
+              background: _busy || _cloudMethodsLoading || _method == null
+                  ? context.pos.ctaDisabled
+                  : context.pos.ok,
               foreground: context.pos.onOk,
               fontSize: 16,
               fontWeight: FontWeight.w800,
@@ -413,7 +500,9 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                   color: context.pos.onOk,
                 ),
               ),
-              onPressed: () => _take(ticket),
+              onPressed: _busy || _cloudMethodsLoading || _method == null
+                  ? null
+                  : () => _take(ticket),
             ),
           ],
         ),
@@ -431,9 +520,16 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
       children: [
         for (final method in _methods)
           Material(
-            color: method.id == _methodId ? context.pos.ink : context.pos.surface,
+            color: method.id == _method?.id
+                ? context.pos.ink
+                : context.pos.surface,
             child: InkWell(
-              onTap: () => setState(() => _methodId = method.id),
+              onTap: _busy
+                  ? null
+                  : () => setState(() {
+                      _methodId = method.id;
+                      _message = null;
+                    }),
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: PosSpace.s14),
                 child: Align(
@@ -447,7 +543,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                     style: PosText.ui(
                       size: 13.5,
                       weight: FontWeight.w600,
-                      color: method.id == _methodId
+                      color: method.id == _method?.id
                           ? context.pos.onInk
                           : context.pos.inkWarm,
                     ),
@@ -508,6 +604,30 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
           ],
         ),
       );
+
+  Widget _referenceField(AppStrings strings) => Padding(
+    padding: const EdgeInsets.fromLTRB(
+      PosSpace.md,
+      PosSpace.sm,
+      PosSpace.md,
+      0,
+    ),
+    child: TextField(
+      controller: _reference,
+      enabled: !_busy,
+      maxLength: 80,
+      onChanged: (_) => setState(() => _message = null),
+      decoration: InputDecoration(
+        labelText: strings.paymentReferenceLabel,
+        counterText: '',
+        isDense: true,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.zero,
+          borderSide: context.pos.resting,
+        ),
+      ),
+    ),
+  );
 
   /// The keypad fills the remaining height as a flex grid rather than a
   /// GridView. A GridView scrolls, and a scrolled keypad silently hides a key —

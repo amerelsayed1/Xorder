@@ -895,8 +895,16 @@ class OpenTicketsController extends Notifier<OpenTickets> {
   /// under its own transaction id. An empty ticket is ignored rather than
   /// refused — leaving the sale screen with nothing rung up is normal, not an
   /// error, and there is nothing to come back to.
-  void park(Ticket ticket) {
-    if (ticket.lines.isEmpty) return;
+  Future<bool> park(Ticket ticket) async {
+    if (ticket.lines.isEmpty) return true;
+    try {
+      await _store?.save(ticket);
+    } on Object {
+      // Do not change the visible floor until the durable copy exists.  The
+      // caller keeps the live ticket and can tell the cashier exactly that.
+      return false;
+    }
+    if (_disposed) return false;
     final tableId = ticket.tableId;
 
     state = tableId != null
@@ -913,7 +921,7 @@ class OpenTicketsController extends Notifier<OpenTickets> {
             ],
           );
 
-    unawaited(_store?.save(ticket) ?? Future.value());
+    return true;
   }
 
   Ticket? at(int tableId) => state.onTables[tableId];
@@ -924,7 +932,15 @@ class OpenTicketsController extends Notifier<OpenTickets> {
   /// to be identified by, and a ticket that was seated when it was parked and
   /// is not now (somebody switched a dine-in order to takeaway, which clears
   /// the table) has to release the row it actually left behind.
-  void settle(Ticket ticket) {
+  Future<void> settle(Ticket ticket) async {
+    try {
+      await _store?.remove(tableId: ticket.tableId, transactionId: ticket.id);
+    } on Object {
+      // The order/void has already committed.  `load` excludes a parked row
+      // with a committed order, so a failed cleanup cannot resurrect a bill.
+      // Keeping the UI blocked here would instead invite the cashier to take
+      // the money a second time.
+    }
     final tables = {...state.onTables}
       ..removeWhere(
         (tableId, parked) =>
@@ -939,12 +955,6 @@ class OpenTicketsController extends Notifier<OpenTickets> {
         held.length != state.held.length) {
       state = OpenTickets(onTables: tables, held: held);
     }
-    // The disk row goes regardless of what memory held: a settled sale must
-    // not resurrect on the next boot.
-    unawaited(
-      _store?.remove(tableId: ticket.tableId, transactionId: ticket.id) ??
-          Future.value(),
-    );
   }
 }
 
@@ -1551,10 +1561,9 @@ final shiftActivityProvider = FutureProvider.autoDispose<ShiftActivity>(
   (ref) => ref.watch(shiftRepositoryProvider).activity(),
 );
 
-/// Endpoint probe. Swapped for a real HTTP HEAD against `/api/health` once a
-/// backend contract exists to point at.
+/// Endpoint probe used by the setup wizard before it persists a cloud address.
 final connectivityProbeProvider = Provider<ConnectivityProbe>(
-  (ref) => const FakeConnectivityProbe(),
+  (ref) => HttpConnectivityProbe(),
 );
 
 /// Licence verification.

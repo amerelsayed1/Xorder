@@ -1,4 +1,5 @@
 import 'package:uuid/uuid.dart';
+import 'package:postgres/postgres.dart';
 
 import '../../core/config/deployment.dart';
 import '../../domain/models/ticket.dart';
@@ -125,6 +126,7 @@ class OutboxDrain {
     required int exponent,
     required DateTime occurredAt,
     required int subtotalMinor,
+    int discountMinor = 0,
     required int serviceMinor,
     required int vatMinor,
     required int totalMinor,
@@ -132,21 +134,24 @@ class OutboxDrain {
     required List<Map<String, Object?>> payments,
     int? tableId,
     int? actingUserId,
+    String? shiftClientId,
     DateTime? catalogSyncedAt,
+    Map<String, Object?>? orderDiscount,
   }) => {
     'client_transaction_id': clientTransactionId,
     'branch_id': branchId,
     'order_type': orderType,
     'table_id': tableId,
     'acting_user_id': actingUserId,
-    'shift_client_id': null,
+    'shift_client_id': shiftClientId,
     'created_at': occurredAt.toUtc().toIso8601String(),
     'priced_offline': true,
     'catalog_synced_at': catalogSyncedAt?.toUtc().toIso8601String(),
     'lines': lines,
+    'order_discount': ?orderDiscount,
     'asserted_totals': {
       'subtotal_minor': subtotalMinor,
-      'discount_minor': 0,
+      'discount_minor': discountMinor,
       'charges_minor': serviceMinor,
       'tax_minor': vatMinor,
       'total_minor': totalMinor,
@@ -163,6 +168,8 @@ class OutboxDrain {
     required int quantity,
     required int unitPriceMinor,
     String? note,
+    Map<String, Object?>? discount,
+    Map<String, Object?>? priceOverride,
   }) => {
     'menu_item_id': menuItemId,
     // The variant option, when there is one, travels inside option_ids[] —
@@ -172,17 +179,50 @@ class OutboxDrain {
     'note': note,
     'name_snapshot': nameSnapshot,
     'unit_price_minor': unitPriceMinor,
+    'discount': ?discount,
+    'price_override': ?priceOverride,
   };
 
-  /// One pass: oldest first, stop on silence.
+  /// Drains causal lifecycle records around the sale queue.  A shift must
+  /// exist before an order can name it; cash movements and refunds need the
+  /// order/shift graph; a close comes last so the server computes the same
+  /// drawer the terminal just closed.  This is the serial form of POS-BE-021's
+  /// documented batch ordering and keeps one rejected record from holding
+  /// money that follows it hostage.
   Future<DrainReport> run() async {
     if (!config.mode.syncsSalesToPlatform) return const DrainReport();
+
+    final reports = <DrainReport>[];
+    for (final phase in const [
+      ['shift_open'],
+      ['order'],
+      ['cash_movement', 'refund'],
+      ['shift_close'],
+    ]) {
+      final report = phase.first == 'order'
+          ? await _drainOrders()
+          : await _drainLifecycle(phase);
+      reports.add(report);
+      if (report.wentOffline) break;
+    }
+
+    return DrainReport(
+      delivered: reports.fold(0, (sum, report) => sum + report.delivered),
+      quarantined: reports.fold(0, (sum, report) => sum + report.quarantined),
+      deferred: reports.fold(0, (sum, report) => sum + report.deferred),
+      wentOffline: reports.any((report) => report.wentOffline),
+    );
+  }
+
+  /// One pass: oldest first, stop on silence.
+  Future<DrainReport> _drainOrders() async {
 
     final pending = await _db.query(config, '''
       SELECT ob.id, o.id, o.client_transaction_id, o.branch_id, o.order_type,
              o.table_id, o.currency, o.exponent, o.subtotal_minor,
-             o.service_minor, o.vat_minor, o.total_minor, o.occurred_at,
-             s.opened_by, o.restaurant_id
+             o.discount_minor, o.service_minor, o.vat_minor, o.total_minor,
+             o.occurred_at, o.served_by, s.client_transaction_id,
+             o.restaurant_id
       FROM pos_outbox ob
       JOIN pos_orders o ON o.id = ob.order_id
       LEFT JOIN pos_shifts s ON s.id = o.shift_id
@@ -201,7 +241,7 @@ class OutboxDrain {
       final payments = await _paymentsFor(
         orderId,
         clientTransactionId,
-        restaurantId: row[14] as int,
+        restaurantId: row[16] as int,
       );
       if (payments.stranded.isNotEmpty) {
         await _hold(outboxId, payments.stranded);
@@ -217,12 +257,15 @@ class OutboxDrain {
         currency: row[6] as String,
         exponent: row[7] as int,
         subtotalMinor: row[8] as int,
-        serviceMinor: row[9] as int,
-        vatMinor: row[10] as int,
-        totalMinor: row[11] as int,
-        occurredAt: (row[12] as DateTime),
-        actingUserId: row[13] as int?,
+        discountMinor: row[9] as int,
+        serviceMinor: row[10] as int,
+        vatMinor: row[11] as int,
+        totalMinor: row[12] as int,
+        occurredAt: (row[13] as DateTime),
+        actingUserId: row[14] as int?,
+        shiftClientId: row[15]?.toString(),
         lines: await _linesFor(orderId),
+        orderDiscount: await _orderDiscountFor(orderId),
         payments: payments.sendable,
       );
 
@@ -239,16 +282,8 @@ class OutboxDrain {
 
       if (reply.ok) {
         final data = reply.data;
-        await _db.query(
-          config,
-          '''
-          UPDATE pos_outbox
-          SET delivered_at = now(), attempts = attempts + 1, last_attempt_at = now(),
-              last_error = NULL, server_order_id = @serverId,
-              server_invoice_number = @invoice, totals_mismatch = @mismatch
-          WHERE id = @id
-          ''',
-          parameters: {
+        await _db.runTx(config, (tx) async {
+          final parameters = <String, Object?>{
             'id': outboxId,
             'serverId': data['id'] is int ? data['id'] : null,
             'invoice': data['invoice_number'] as String?,
@@ -256,8 +291,33 @@ class OutboxDrain {
             // both sides — this marks it for the reconciliation view, it does
             // not fail anything (POS-R081).
             'mismatch': data['totals_mismatch'] == true,
-          },
-        );
+            'order': orderId,
+          };
+          await tx.execute(
+            Sql.named('''
+              UPDATE pos_outbox
+                 SET delivered_at = now(), attempts = attempts + 1,
+                     last_attempt_at = now(), last_error = NULL,
+                     server_order_id = @serverId,
+                     server_invoice_number = @invoice,
+                     totals_mismatch = @mismatch
+               WHERE id = @id
+            '''),
+            parameters: parameters,
+          );
+          // The platform invoice is authoritative for later history and
+          // reprints.  Keep the terminal's provisional sequence separately:
+          // two offline tills can legitimately issue the same local reference,
+          // so overwriting the locally unique `invoice_number` would turn a
+          // successful sync into a constraint failure.
+          await tx.execute(
+            Sql.named(
+              'UPDATE pos_orders SET server_invoice_number = @invoice '
+              'WHERE id = @order AND @invoice IS NOT NULL',
+            ),
+            parameters: parameters,
+          );
+        });
         delivered++;
         continue;
       }
@@ -292,12 +352,269 @@ class OutboxDrain {
     );
   }
 
+  Future<DrainReport> _drainLifecycle(List<String> types) async {
+    final pending = await _db.query(
+      config,
+      '''
+      SELECT id, event_type, source_id, client_transaction_id
+        FROM pos_sync_outbox
+       WHERE delivered_at IS NULL AND quarantined_at IS NULL
+         AND event_type = ANY(@types)
+       ORDER BY enqueued_at
+       LIMIT $passLimit
+      ''',
+      parameters: {'types': types},
+    );
+    var delivered = 0, quarantined = 0, deferred = 0;
+
+    for (final row in pending) {
+      final eventId = row[0] as int;
+      final eventType = row[1] as String;
+      final sourceId = row[2] as int;
+      final clientId = row[3].toString();
+      final event = await _lifecycleEvent(
+        eventType: eventType,
+        sourceId: sourceId,
+        clientTransactionId: clientId,
+      );
+      if (event == null) {
+        await _quarantineLifecycle(
+          eventId,
+          code: 'LOCAL_SOURCE_MISSING',
+          message:
+              'The local ${eventType.replaceAll('_', ' ')} source row no '
+              'longer has a complete platform payload. It was not sent.',
+        );
+        quarantined++;
+        continue;
+      }
+
+      final reply = await event.send();
+      if (reply.offline) {
+        return DrainReport(
+          delivered: delivered,
+          quarantined: quarantined,
+          deferred: deferred,
+          wentOffline: true,
+        );
+      }
+      if (reply.ok) {
+        await _db.query(
+          config,
+          '''
+          UPDATE pos_sync_outbox
+             SET delivered_at = now(), attempts = attempts + 1,
+                 last_attempt_at = now(), last_error = NULL
+           WHERE id = @id
+          ''',
+          parameters: {'id': eventId},
+        );
+        delivered++;
+        continue;
+      }
+
+      final action = classify(reply.code);
+      if (action == DrainAction.quarantine) {
+        await _quarantineLifecycle(
+          eventId,
+          code: reply.code ?? 'REJECTED',
+          message: '${reply.status} ${reply.code ?? ''} ${reply.message ?? ''}'
+              .trim(),
+          incrementAttempt: true,
+        );
+        quarantined++;
+      } else {
+        await _db.query(
+          config,
+          '''
+          UPDATE pos_sync_outbox
+             SET attempts = attempts + 1, last_attempt_at = now(),
+                 last_error = @error
+           WHERE id = @id
+          ''',
+          parameters: {
+            'id': eventId,
+            'error': '${reply.status} ${reply.code ?? ''} ${reply.message ?? ''}'
+                .trim(),
+          },
+        );
+        deferred++;
+      }
+    }
+    return DrainReport(
+      delivered: delivered,
+      quarantined: quarantined,
+      deferred: deferred,
+    );
+  }
+
+  Future<_LifecycleEvent?> _lifecycleEvent({
+    required String eventType,
+    required int sourceId,
+    required String clientTransactionId,
+  }) async => switch (eventType) {
+    'shift_open' => _shiftOpenEvent(sourceId, clientTransactionId),
+    'shift_close' => _shiftCloseEvent(sourceId, clientTransactionId),
+    'cash_movement' => _cashMovementEvent(sourceId, clientTransactionId),
+    // A refund needs the platform's order-item ids, not this database's local
+    // line ids.  The writer does not enqueue one until that mapping exists;
+    // keeping this guard makes an accidental/manual queue row visibly held
+    // instead of ever posting a local id as though it were a platform id.
+    'refund' => Future.value(null),
+    _ => Future.value(null),
+  };
+
+  Future<_LifecycleEvent?> _shiftOpenEvent(
+    int sourceId,
+    String clientTransactionId,
+  ) async {
+    final rows = await _db.query(
+      config,
+      '''
+      SELECT branch_id, opened_by, opened_at, opening_float_minor,
+             client_transaction_id
+        FROM pos_shifts WHERE id = @id
+      ''',
+      parameters: {'id': sourceId},
+    );
+    if (rows.isEmpty || rows.first[4]?.toString() != clientTransactionId) {
+      return null;
+    }
+    final row = rows.first;
+    final request = <String, Object?>{
+      'client_transaction_id': clientTransactionId,
+      'branch_id': row[0] as int,
+      'acting_user_id': row[1] as int,
+      'opened_at': (row[2] as DateTime).toUtc().toIso8601String(),
+      'opening_float_minor': row[3] as int,
+    };
+    return _LifecycleEvent(request: request, send: () => api.openShift(request));
+  }
+
+  Future<_LifecycleEvent?> _shiftCloseEvent(
+    int sourceId,
+    String clientTransactionId,
+  ) async {
+    final rows = await _db.query(
+      config,
+      '''
+      SELECT client_transaction_id, close_client_transaction_id, closed_by,
+             closed_at, counted_cash_minor
+        FROM pos_shifts WHERE id = @id
+      ''',
+      parameters: {'id': sourceId},
+    );
+    if (rows.isEmpty ||
+        rows.first[0] == null ||
+        rows.first[1]?.toString() != clientTransactionId ||
+        rows.first[2] == null ||
+        rows.first[3] == null ||
+        rows.first[4] == null) {
+      return null;
+    }
+    final row = rows.first;
+    final shiftClientId = row[0].toString();
+    final request = <String, Object?>{
+      'client_transaction_id': clientTransactionId,
+      'acting_user_id': row[2] as int,
+      'closed_at': (row[3] as DateTime).toUtc().toIso8601String(),
+      'counted_cash_minor': row[4] as int,
+    };
+    return _LifecycleEvent(
+      request: request,
+      send: () => api.closeShift(shiftClientId, request),
+    );
+  }
+
+  Future<_LifecycleEvent?> _cashMovementEvent(
+    int sourceId,
+    String clientTransactionId,
+  ) async {
+    final rows = await _db.query(
+      config,
+      '''
+      SELECT m.client_transaction_id, s.client_transaction_id, m.kind,
+             m.amount_minor, reason.code, m.note, m.staff_id, m.occurred_at
+        FROM pos_cash_movements m
+        JOIN pos_shifts s ON s.id = m.shift_id
+        LEFT JOIN pos_reason_codes reason ON reason.id = m.reason_id
+       WHERE m.id = @id
+      ''',
+      parameters: {'id': sourceId},
+    );
+    if (rows.isEmpty ||
+        rows.first[0]?.toString() != clientTransactionId ||
+        rows.first[1] == null) {
+      return null;
+    }
+    final row = rows.first;
+    final kind = row[2] as String;
+    final direction = switch (kind) {
+      'pay_in' || 'float_adjust' => 'in',
+      'pay_out' => 'out',
+      _ => null,
+    };
+    if (direction == null) return null;
+    final request = <String, Object?>{
+      'client_transaction_id': clientTransactionId,
+      'shift_client_id': row[1].toString(),
+      'direction': direction,
+      'amount_minor': row[3] as int,
+      'reason': row[4] as String?,
+      'reference': row[5] as String?,
+      'acting_user_id': row[6] as int,
+      'occurred_at': (row[7] as DateTime).toUtc().toIso8601String(),
+    };
+    return _LifecycleEvent(
+      request: request,
+      send: () => api.recordCashMovement(request),
+    );
+  }
+
+  Future<void> _quarantineLifecycle(
+    int eventId, {
+    required String code,
+    required String message,
+    bool incrementAttempt = false,
+  }) => _db.query(
+    config,
+    '''
+    UPDATE pos_sync_outbox
+       SET quarantined_at = now(), quarantine_code = @code, last_error = @error
+           ${incrementAttempt ? ', attempts = attempts + 1, last_attempt_at = now()' : ''}
+     WHERE id = @id
+    ''',
+    parameters: {'id': eventId, 'code': code, 'error': message},
+  );
+
   Future<List<Map<String, Object?>>> _linesFor(int orderId) async {
     final rows = await _db.query(
       config,
-      'SELECT menu_item_id, name_snapshot, modifier_ids, quantity, '
-      '       unit_price_minor, note '
-      'FROM pos_order_lines WHERE order_id = @order ORDER BY id',
+      '''
+      SELECT l.menu_item_id, l.name_snapshot, l.modifier_ids, l.quantity,
+             l.unit_price_minor, l.note,
+             coalesce(discount.amount_minor, 0)::bigint, discount.reason,
+             override.unit_price_minor, override.reason
+        FROM pos_order_lines l
+        LEFT JOIN LATERAL (
+          SELECT sum(d.amount_minor)::bigint AS amount_minor,
+                 min(reason.code) AS reason
+            FROM pos_order_discounts d
+            LEFT JOIN pos_reason_codes reason ON reason.id = d.reason_id
+           WHERE d.order_line_id = l.id
+        ) discount ON true
+        LEFT JOIN LATERAL (
+          SELECT e.unit_price_after_minor AS unit_price_minor,
+                 reason.code AS reason
+            FROM pos_order_line_events e
+            LEFT JOIN pos_reason_codes reason ON reason.id = e.reason_id
+           WHERE e.order_line_id = l.id AND e.event = 'price_overridden'
+           ORDER BY e.occurred_at DESC, e.id DESC
+           LIMIT 1
+        ) override ON true
+       WHERE l.order_id = @order
+       ORDER BY l.id
+      ''',
       parameters: {'order': orderId},
     );
     return [
@@ -313,8 +630,40 @@ class OutboxDrain {
           quantity: row[3] as int,
           unitPriceMinor: row[4] as int,
           note: row[5] as String?,
+          discount: (row[6] as int) == 0
+              ? null
+              : {
+                  'amount_minor': row[6] as int,
+                  'reason': row[7] as String?,
+                },
+          priceOverride: row[8] == null
+              ? null
+              : {
+                  'unit_price_minor': row[8] as int,
+                  'reason': row[9] as String?,
+                },
         ),
     ];
+  }
+
+  /// The platform's v1 envelope has one order-level discount object.  The
+  /// local ledger can retain multiple component discounts (and their separate
+  /// approvals), so their total is sent as the financial assertion while the
+  /// component rows remain available locally for audit.
+  Future<Map<String, Object?>?> _orderDiscountFor(int orderId) async {
+    final rows = await _db.query(
+      config,
+      '''
+      SELECT coalesce(sum(d.amount_minor), 0)::bigint, min(reason.code)
+        FROM pos_order_discounts d
+        LEFT JOIN pos_reason_codes reason ON reason.id = d.reason_id
+       WHERE d.order_id = @order AND d.order_line_id IS NULL
+      ''',
+      parameters: {'order': orderId},
+    );
+    final amount = rows.first[0] as int;
+    if (amount == 0) return null;
+    return {'amount_minor': amount, 'reason': rows.first[1] as String?};
   }
 
   /// The §006 `payments[]`, plus the ones that cannot be sent.
@@ -388,6 +737,13 @@ class OutboxDrain {
       },
     );
   }
+}
+
+class _LifecycleEvent {
+  const _LifecycleEvent({required this.request, required this.send});
+
+  final Map<String, Object?> request;
+  final Future<CloudReply> Function() send;
 }
 
 /// Wraps the local repository so every settled sale immediately pokes the

@@ -75,7 +75,9 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
         END''';
 
   static const _orderColumns = '''
-        o.id, o.client_transaction_id, o.invoice_number, o.status, o.order_type,
+        o.id, o.client_transaction_id,
+        coalesce(nullif(o.server_invoice_number, ''), o.invoice_number),
+        o.status, o.order_type,
         o.occurred_at, o.subtotal_minor, o.discount_minor, o.service_minor,
         o.vat_minor, o.total_minor, o.currency, o.exponent,
         o.table_label, o.guest_count, o.voided_at, o.void_note,
@@ -355,7 +357,8 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
       // scans are one branch's orders inside a date window, and the alternative
       // is a search box that does not find what the customer is holding.
       where.add(
-        '(o.invoice_number ILIKE @search OR o.table_label ILIKE @search)',
+        '(coalesce(nullif(o.server_invoice_number, \'\'), o.invoice_number) '
+        'ILIKE @search OR o.table_label ILIKE @search)',
       );
       parameters['search'] = '%$search%';
     }
@@ -490,7 +493,7 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
       config,
       'SELECT $_orderColumns FROM pos_orders AS o $_orderJoins '
       'WHERE o.restaurant_id = @restaurant AND o.branch_id = @branch '
-      '  AND o.invoice_number = @invoice',
+      '  AND coalesce(nullif(o.server_invoice_number, \'\'), o.invoice_number) = @invoice',
       parameters: {
         'restaurant': restaurantId,
         'branch': branchId,
@@ -527,7 +530,9 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
   /// The sale's currency, not the terminal's: a refund gives back in what it
   /// was paid in, and `pos_refunds` carries no currency of its own.
   static const _refundColumns = '''
-        r.id, r.order_id, o.invoice_number, r.occurred_at, r.total_minor,
+        r.id, r.order_id,
+        coalesce(nullif(o.server_invoice_number, ''), o.invoice_number),
+        r.occurred_at, r.total_minor,
         o.currency, o.exponent, r.kind, issuer.name, approver.name,
         reason.name_en, reason.name_ar, r.note, counted.lines,
         r.terminal_id::text, term.name, o.served_by, trading.business_date''';
@@ -595,7 +600,8 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
       // The refund's number exactly, with or without the `#` it is shown
       // with; the invoice anywhere, for the tail read off a receipt.
       where.add(
-        '(o.invoice_number ILIKE @search OR r.id::text = @refundNumber)',
+        '(coalesce(nullif(o.server_invoice_number, \'\'), o.invoice_number) '
+        'ILIKE @search OR r.id::text = @refundNumber)',
       );
       parameters['search'] = '%$search%';
       parameters['refundNumber'] = search.startsWith('#')

@@ -78,4 +78,34 @@ void main() {
       expect(nowhere.allowsInsecureTransport, isFalse);
     });
   });
+
+  group('platform API transport', () {
+    test('requires HTTPS outside loopback or a private LAN', () {
+      expect(
+        DeploymentConfig.isPermittedPlatformUrl('https://pos.example.com'),
+        isTrue,
+      );
+      expect(
+        DeploymentConfig.isPermittedPlatformUrl('http://pos.example.com'),
+        isFalse,
+      );
+      expect(
+        DeploymentConfig.isPermittedPlatformUrl('http://192.168.1.20:8080'),
+        isTrue,
+      );
+      expect(
+        DeploymentConfig.isPermittedPlatformUrl('http://pos-host.local:8080'),
+        isTrue,
+      );
+    });
+
+    test('rejects malformed platform URLs as an unconfigured cloud terminal', () {
+      const invalid = DeploymentConfig(
+        mode: DeploymentMode.cloud,
+        databaseHost: 'db.example.com',
+        baseUrl: 'http://pos.example.com',
+      );
+      expect(invalid.isConfigured, isFalse);
+    });
+  });
 }

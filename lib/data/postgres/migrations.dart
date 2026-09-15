@@ -4326,6 +4326,62 @@ const posMigrations = <PosMigration>[
        AND NOT (capabilities @> ARRAY['report.export']::text[])
     ''',
   ]),
+  // Cloud money records need durable client ids of their own.  An order's
+  // outbox cannot represent the shift that opened before it, the drawer event
+  // that followed it, or a later refund; each is independently idempotent on
+  // the platform.  Source rows stay the canonical local facts while this small
+  // queue records their delivery state.
+  PosMigration(49, 'cloud lifecycle ids and the non-order sync outbox', [
+    'ALTER TABLE pos_shifts ADD COLUMN IF NOT EXISTS client_transaction_id uuid',
+    'ALTER TABLE pos_shifts ADD COLUMN IF NOT EXISTS close_client_transaction_id uuid',
+    '''
+    CREATE UNIQUE INDEX IF NOT EXISTS pos_shifts_client_transaction_unique
+      ON pos_shifts (restaurant_id, client_transaction_id)
+      WHERE client_transaction_id IS NOT NULL
+    ''',
+    '''
+    CREATE UNIQUE INDEX IF NOT EXISTS pos_shifts_close_client_transaction_unique
+      ON pos_shifts (restaurant_id, close_client_transaction_id)
+      WHERE close_client_transaction_id IS NOT NULL
+    ''',
+    'ALTER TABLE pos_cash_movements ADD COLUMN IF NOT EXISTS client_transaction_id uuid',
+    '''
+    CREATE UNIQUE INDEX IF NOT EXISTS pos_cash_movements_client_transaction_unique
+      ON pos_cash_movements (restaurant_id, client_transaction_id)
+      WHERE client_transaction_id IS NOT NULL
+    ''',
+    // The platform assigns the real invoice.  The terminal's original invoice
+    // remains immutable and locally unique, so two isolated tills can reconcile
+    // without colliding when their provisional sequences overlap.
+    'ALTER TABLE pos_orders ADD COLUMN IF NOT EXISTS server_invoice_number text',
+    '''
+    CREATE TABLE IF NOT EXISTS pos_sync_outbox (
+      id                    bigserial   PRIMARY KEY,
+      restaurant_id         bigint      NOT NULL REFERENCES pos_restaurants(id) ON DELETE CASCADE,
+      branch_id             bigint      NOT NULL REFERENCES pos_branches(id) ON DELETE CASCADE,
+      event_type            text        NOT NULL,
+      source_id             bigint      NOT NULL,
+      client_transaction_id uuid        NOT NULL,
+      enqueued_at           timestamptz NOT NULL DEFAULT now(),
+      attempts              integer     NOT NULL DEFAULT 0,
+      last_attempt_at       timestamptz,
+      last_error            text,
+      delivered_at          timestamptz,
+      quarantined_at        timestamptz,
+      quarantine_code       text,
+      CONSTRAINT pos_sync_outbox_event_known CHECK (event_type IN (
+        'shift_open', 'shift_close', 'cash_movement', 'refund')),
+      CONSTRAINT pos_sync_outbox_attempts_sane CHECK (attempts >= 0),
+      CONSTRAINT pos_sync_outbox_idempotency_unique
+        UNIQUE (restaurant_id, client_transaction_id)
+    )
+    ''',
+    '''
+    CREATE INDEX IF NOT EXISTS pos_sync_outbox_pending_idx
+      ON pos_sync_outbox (restaurant_id, branch_id, enqueued_at)
+      WHERE delivered_at IS NULL AND quarantined_at IS NULL
+    ''',
+  ]),
 ];
 
 /// Brings the branch database up to the current schema.

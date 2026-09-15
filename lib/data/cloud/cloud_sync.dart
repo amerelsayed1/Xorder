@@ -173,8 +173,15 @@ class CloudSync {
     try {
       final rows = await _db.query(
         config,
-        'SELECT count(*), min(enqueued_at) FROM pos_outbox '
-        'WHERE restaurant_id = @restaurant AND delivered_at IS NULL',
+        '''
+        SELECT count(*), min(enqueued_at) FROM (
+          SELECT enqueued_at FROM pos_outbox
+           WHERE restaurant_id = @restaurant AND delivered_at IS NULL
+          UNION ALL
+          SELECT enqueued_at FROM pos_sync_outbox
+           WHERE restaurant_id = @restaurant AND delivered_at IS NULL
+        ) pending
+        ''',
         parameters: {'restaurant': profile.restaurantId},
       );
       pending = rows.first[0] as int;

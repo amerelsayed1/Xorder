@@ -184,8 +184,13 @@ class PostgresRefundsRepository implements RefundsRepository {
           Sql.named('''
             INSERT INTO pos_refund_payments (
               refund_id, tender_type_id, label, amount_minor, reference,
-              occurred_at
-            ) VALUES (@refund, @type, @label, @amount, @reference, @occurredAt)
+              counts_as_cash, occurred_at
+            ) VALUES (
+              @refund, @type, @label, @amount, @reference,
+              coalesce((SELECT counts_as_cash FROM pos_tender_types
+                        WHERE restaurant_id = @restaurant AND id = @type), false),
+              @occurredAt
+            )
           '''),
           parameters: {
             'refund': refundId,
@@ -193,6 +198,7 @@ class PostgresRefundsRepository implements RefundsRepository {
             'label': tender.label,
             'amount': tender.amount.minor,
             'reference': tender.reference,
+            'restaurant': context.restaurantId,
             'occurredAt': occurredAt,
           },
         );

@@ -14,6 +14,7 @@ void main() {
           exponent: 2,
           occurredAt: DateTime.utc(2026, 9, 2, 13, 5),
           subtotalMinor: 25000,
+          discountMinor: 1500,
           serviceMinor: 3000,
           vatMinor: 3920,
           totalMinor: 31920,
@@ -26,8 +27,20 @@ void main() {
               quantity: 2,
               unitPriceMinor: 9500,
               note: 'no onions',
+              discount: const {
+                'amount_minor': 500,
+                'reason': 'manager_comp',
+              },
+              priceOverride: const {
+                'unit_price_minor': 9000,
+                'reason': 'damaged',
+              },
             ),
           ],
+          orderDiscount: const {
+            'amount_minor': 1000,
+            'reason': 'staff_meal',
+          },
           payments: const [
             {
               'client_transaction_id': 'p-1',
@@ -53,6 +66,7 @@ void main() {
 
       final totals = request['asserted_totals'] as Map<String, Object?>;
       expect(totals['subtotal_minor'], 25000);
+      expect(totals['discount_minor'], 1500);
       expect(totals['charges_minor'], 3000);
       expect(totals['tax_minor'], 3920);
       expect(totals['total_minor'], 31920);
@@ -65,6 +79,18 @@ void main() {
       expect(line['quantity'], 2);
       expect(line['unit_price_minor'], 9500);
       expect(line['name_snapshot'], 'Classic Burger');
+      expect(line['discount'], {
+        'amount_minor': 500,
+        'reason': 'manager_comp',
+      });
+      expect(line['price_override'], {
+        'unit_price_minor': 9000,
+        'reason': 'damaged',
+      });
+      expect(request['order_discount'], {
+        'amount_minor': 1000,
+        'reason': 'staff_meal',
+      });
     });
 
     test('never emits a JSON float anywhere in the envelope', () {

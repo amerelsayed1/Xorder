@@ -175,6 +175,37 @@ class PosCloudApi {
     idempotencyKey: request['client_transaction_id'] as String?,
   );
 
+  /// The four independently idempotent money records from POS-BE-009/010.
+  /// They intentionally retain their own endpoints as well as the optional
+  /// bulk API: serial drain is easier to recover after one bad record and is
+  /// the compatibility path the contract explicitly keeps supported.
+  Future<CloudReply> openShift(Map<String, Object?> request) => _post(
+    '/api/pos/shifts',
+    request,
+    idempotencyKey: request['client_transaction_id'] as String?,
+  );
+
+  Future<CloudReply> closeShift(
+    String shiftClientId,
+    Map<String, Object?> request,
+  ) => _post(
+    '/api/pos/shifts/$shiftClientId/close',
+    request,
+    idempotencyKey: request['client_transaction_id'] as String?,
+  );
+
+  Future<CloudReply> recordCashMovement(Map<String, Object?> request) => _post(
+    '/api/pos/cash-movements',
+    request,
+    idempotencyKey: request['client_transaction_id'] as String?,
+  );
+
+  Future<CloudReply> submitRefund(Map<String, Object?> request) => _post(
+    '/api/pos/refunds',
+    request,
+    idempotencyKey: request['client_transaction_id'] as String?,
+  );
+
   /// Tiny, frequent, automatic; carries no money (POS-BE-022).
   Future<CloudReply> heartbeat(Map<String, Object?> payload) =>
       _post('/api/pos/terminals/heartbeat', payload);

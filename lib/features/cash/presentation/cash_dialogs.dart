@@ -14,6 +14,7 @@ import '../../../domain/models/business_day.dart';
 import '../../../domain/models/permissions.dart';
 import '../../../domain/models/reason_code.dart';
 import '../../../domain/services/authorization.dart';
+import '../../receipt/receipt_printing.dart';
 import '../../admin/presentation/supervisor_override.dart';
 
 /// Money into or out of the drawer that is not a sale (§22).
@@ -399,6 +400,15 @@ abstract final class DrawerOpenFlow {
       // wanted, and the till refusing is a smaller problem than a drawer that
       // opens without a trace.
       posToast(context, strings.cashCouldNotBeRecorded);
+      return false;
+    }
+
+    // The audit write comes first so a drawer cannot be opened when the till
+    // has nowhere to record why.  A failed hardware command is reported as a
+    // failure rather than claiming that the solenoid moved.
+    final opened = await ref.read(receiptPrinterProvider).openDrawer();
+    if (!opened) {
+      if (context.mounted) posToast(context, strings.drawerCouldNotOpen);
       return false;
     }
 

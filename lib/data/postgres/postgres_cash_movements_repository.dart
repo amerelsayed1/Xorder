@@ -1,3 +1,6 @@
+import 'package:postgres/postgres.dart';
+import 'package:uuid/uuid.dart';
+
 import '../../core/config/deployment.dart';
 import '../../core/money/money.dart';
 import '../../domain/models/business_day.dart';
@@ -25,9 +28,10 @@ abstract final class CashMovementWrite {
   static const sql =
       'INSERT INTO pos_cash_movements (restaurant_id, branch_id, terminal_id, '
       '  shift_id, business_day_id, kind, amount_minor, reason_id, note, '
-      '  staff_id, approved_by_id) '
+      '  staff_id, approved_by_id, client_transaction_id) '
       'VALUES (@restaurant, @branch, @terminal, @shift, @day, @kind, @amount, '
-      '  @reason, @note, @staff, @approvedBy) RETURNING id, occurred_at';
+      '  @reason, @note, @staff, @approvedBy, @client) '
+      'RETURNING id, occurred_at';
 
   /// What actually gets stored for [kind].
   ///
@@ -58,6 +62,7 @@ abstract final class CashMovementWrite {
     int? reasonId,
     String? note,
     int? approvedById,
+    String? clientTransactionId,
   }) => {
     'restaurant': restaurantId,
     'branch': branchId,
@@ -71,6 +76,7 @@ abstract final class CashMovementWrite {
     'staff': staffId,
     // Both people on the row when there were two, as everywhere else.
     'approvedBy': approvedById,
+    'client': clientTransactionId,
   };
 }
 
@@ -150,23 +156,49 @@ class PostgresCashMovementsRepository implements CashMovementsRepository {
     final stored = CashMovementWrite.normalise(kind, amount);
     CashMovementWrite.refuseNothing(kind, stored);
 
-    final rows = await _db.query(
-      config,
-      CashMovementWrite.sql,
-      parameters: CashMovementWrite.parameters(
-        restaurantId: context.restaurantId,
-        branchId: context.branchId,
-        terminalId: context.terminalId,
-        shiftId: shiftId,
-        businessDayId: businessDayId,
-        kind: kind,
-        amount: stored,
-        reasonId: reasonId,
-        note: note,
-        staffId: by.id,
-        approvedById: approvedBy?.id,
-      ),
-    );
+    // A drawer opening is an audit event but not a platform cash movement:
+    // BE-009 only accepts money in or out.  Every money-moving row gets an
+    // idempotency key and its outbox claim in the same transaction.
+    final clientId = config.mode.syncsSalesToPlatform &&
+            kind != CashMovementKind.drawerOpen
+        ? const Uuid().v4()
+        : null;
+    final rows = await _db.runTx(config, (tx) async {
+      final inserted = await tx.execute(
+        Sql.named(CashMovementWrite.sql),
+        parameters: CashMovementWrite.parameters(
+          restaurantId: context.restaurantId,
+          branchId: context.branchId,
+          terminalId: context.terminalId,
+          shiftId: shiftId,
+          businessDayId: businessDayId,
+          kind: kind,
+          amount: stored,
+          reasonId: reasonId,
+          note: note,
+          staffId: by.id,
+          approvedById: approvedBy?.id,
+          clientTransactionId: clientId,
+        ),
+      );
+      if (clientId != null) {
+        await tx.execute(
+          Sql.named('''
+            INSERT INTO pos_sync_outbox
+              (restaurant_id, branch_id, event_type, source_id, client_transaction_id)
+            VALUES (@restaurant, @branch, 'cash_movement', @source, @client)
+            ON CONFLICT (restaurant_id, client_transaction_id) DO NOTHING
+          '''),
+          parameters: {
+            'restaurant': context.restaurantId,
+            'branch': context.branchId,
+            'source': inserted.first[0] as int,
+            'client': clientId,
+          },
+        );
+      }
+      return inserted;
+    });
 
     return CashMovement(
       id: rows.first[0]! as int,

@@ -4,9 +4,9 @@
 <dict>
 	<key>com.apple.security.app-sandbox</key>
 	<true/>
-	<!-- The menu importer's open panel. Read-only: the app never writes back
-	     to a file the operator chose, it writes to PostgreSQL. -->
-	<key>com.apple.security.files.user-selected.read-only</key>
+	<!-- Imports are read-only, but the backup screen writes a verified archive
+	     into a directory selected by the operator (normally a USB drive). -->
+	<key>com.apple.security.files.user-selected.read-write</key>
 	<true/>
 	<key>com.apple.security.network.client</key>
 	<true/>

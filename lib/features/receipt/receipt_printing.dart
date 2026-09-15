@@ -146,6 +146,16 @@ class ReceiptPrinter {
     return printed;
   }
 
+  /// Kick the drawer immediately for a completed cash sale or an audited
+  /// manual-open action.  This is intentionally separate from receipt output:
+  /// a cashier may choose not to print, and a queued receipt must never spring
+  /// a drawer hours later when the printer comes back.
+  Future<bool> openDrawer() async {
+    final name = printer.name?.trim();
+    if (name == null || name.isEmpty) return false;
+    return ports.sendJob(printerName: name, bytes: EscPos.openDrawer);
+  }
+
   /// The whole ESC/POS job: reset, picture, feed, kick, cut.
   ///
   /// Static and pure so a test can read the bytes without a printer, a socket

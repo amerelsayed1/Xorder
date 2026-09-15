@@ -1,10 +1,13 @@
 import 'package:postgres/postgres.dart';
 
 import '../../core/config/deployment.dart';
+import '../../core/money/money.dart';
+import '../../core/money/quantity.dart';
 import '../../domain/models/permissions.dart';
 import '../../domain/models/ticket.dart';
 import '../../domain/repositories/repositories.dart';
 import '../../domain/services/authorization.dart';
+import '../../domain/services/stock_costing.dart';
 import 'pos_database.dart';
 
 /// Identifies which terminal and tenant a write belongs to.
@@ -167,6 +170,7 @@ class PostgresOrdersRepository implements OrdersRepository {
       await _insertDiscounts(tx, orderId, ticket, lineIds);
       await _insertTaxLines(tx, orderId, totals);
       await _insertPayments(tx, orderId, ticket, occurredAt);
+      await _issueStock(tx, orderId, ticket, occurredAt, servedBy: servedBy);
       final queued = await _enqueueForSync(tx, orderId, ticket);
 
       return SubmitOrderResult(
@@ -353,9 +357,17 @@ class PostgresOrdersRepository implements OrdersRepository {
 
     final rows = await _db.query(
       _config,
-      'SELECT count(*) FROM pos_outbox '
-      'WHERE restaurant_id = @restaurant AND branch_id = @branch '
-      'AND delivered_at IS NULL',
+      '''
+      SELECT (
+        (SELECT count(*) FROM pos_outbox
+          WHERE restaurant_id = @restaurant AND branch_id = @branch
+            AND delivered_at IS NULL)
+        +
+        (SELECT count(*) FROM pos_sync_outbox
+          WHERE restaurant_id = @restaurant AND branch_id = @branch
+            AND delivered_at IS NULL)
+      )::bigint
+      ''',
       parameters: {
         'restaurant': _context.restaurantId,
         'branch': _context.branchId,
@@ -664,6 +676,121 @@ class PostgresOrdersRepository implements OrdersRepository {
           // Snapshotted with the money. See [Tender.countsAsCash].
           'cash': tender.countsAsCash,
           'occurredAt': occurredAt,
+        },
+      );
+    }
+  }
+
+  /// Records a stock issue in the exact transaction that records the sale.
+  ///
+  /// A stocked menu item is counted in whole sellable units.  Menu dishes and
+  /// combos deliberately do not become inventory movements unless the product
+  /// itself is marked stocked: there is no recipe model here, so inferring that
+  /// a burger consumes one of every component would manufacture stock facts.
+  /// Negative stock remains valid — declining a paid sale because receiving is
+  /// late makes the financial ledger less truthful, not the stock ledger more
+  /// truthful.
+  Future<void> _issueStock(
+    TxSession tx,
+    int orderId,
+    Ticket ticket,
+    DateTime occurredAt, {
+    PosStaff? servedBy,
+  }) async {
+    final quantities = <int, int>{};
+    for (final line in ticket.lines) {
+      if (!line.product.isStocked || line.isVoided || line.product.isOpenPrice) {
+        continue;
+      }
+      quantities.update(
+        line.product.id,
+        (quantity) => quantity + line.quantity,
+        ifAbsent: () => line.quantity,
+      );
+    }
+
+    for (final entry in quantities.entries) {
+      final product = await tx.execute(
+        Sql.named(
+          'SELECT stock_unit FROM pos_products '
+          'WHERE id = @product AND restaurant_id = @restaurant FOR SHARE',
+        ),
+        parameters: {
+          'product': entry.key,
+          'restaurant': _context.restaurantId,
+        },
+      );
+      // The item was archived or replaced after the cashier added it.  The
+      // sale's own snapshot remains valid, but a foreign-key movement against
+      // a missing stock item would roll back a legitimate sale.
+      if (product.isEmpty) continue;
+
+      final unit = QuantityUnit.fromWire(product.first[0] as String?);
+      final held = await tx.execute(
+        Sql.named(
+          'SELECT quantity_milli, average_cost_minor, unit '
+          'FROM pos_stock_levels WHERE branch_id = @branch '
+          'AND product_id = @product FOR UPDATE',
+        ),
+        parameters: {'branch': _context.branchId, 'product': entry.key},
+      );
+      final before = held.isEmpty
+          ? StockPosition(onHand: Quantity(0, unit: unit), unitCost: Money.zero)
+          : StockPosition(
+              onHand: Quantity(
+                held.first[0] as int,
+                unit: QuantityUnit.fromWire(held.first[2] as String?),
+              ),
+              unitCost: Money(held.first[1] as int),
+            );
+
+      // A product's unit cannot change while it is held (migration 44), but
+      // an older row can predate that guard.  Preserve its recorded unit; the
+      // sale is still one whole unit of the thing the position says it is.
+      final issued = Quantity.of(entry.value, unit: before.onHand.unit);
+      final after = StockCosting.issue(before, issued: issued);
+
+      await tx.execute(
+        Sql.named('''
+          INSERT INTO pos_stock_movements
+            (restaurant_id, branch_id, product_id, kind, quantity_milli, unit,
+             unit_cost_minor, balance_milli, average_cost_minor, order_id,
+             occurred_at, created_by)
+          VALUES (@restaurant, @branch, @product, 'sale', @quantity, @unit,
+                  @cost, @balance, @average, @order, @occurredAt, @by)
+        '''),
+        parameters: {
+          'restaurant': _context.restaurantId,
+          'branch': _context.branchId,
+          'product': entry.key,
+          'quantity': -issued.milli,
+          'unit': before.onHand.unit.wire,
+          'cost': before.unitCost.minor,
+          'balance': after.onHand.milli,
+          'average': after.unitCost.minor,
+          'order': orderId,
+          'occurredAt': occurredAt,
+          'by': servedBy?.id,
+        },
+      );
+      await tx.execute(
+        Sql.named('''
+          INSERT INTO pos_stock_levels
+            (restaurant_id, branch_id, product_id, quantity_milli, unit,
+             average_cost_minor, updated_at)
+          VALUES (@restaurant, @branch, @product, @quantity, @unit, @average, now())
+          ON CONFLICT (branch_id, product_id) DO UPDATE SET
+            quantity_milli = excluded.quantity_milli,
+            average_cost_minor = excluded.average_cost_minor,
+            updated_at = now()
+        '''),
+        parameters: {
+          'restaurant': _context.restaurantId,
+          'branch': _context.branchId,
+          'product': entry.key,
+          'quantity': after.onHand.milli,
+          'unit': before.onHand.unit.wire,
+          'average': after.unitCost.minor,
         },
       );
     }

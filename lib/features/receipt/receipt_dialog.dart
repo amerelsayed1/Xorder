@@ -130,7 +130,13 @@ class _ReceiptDialogState extends ConsumerState<ReceiptDialog> {
               height: 48,
               background: _receipt.ink,
               foreground: Colors.white,
-              onPressed: _printing ? null : () => _finish(context, ref),
+              onPressed: _printing
+                  ? null
+                  : () => _finish(
+                      context,
+                      ref,
+                      openDrawer: _drawerOpens(),
+                    ),
             ),
           ),
           const SizedBox(width: PosSpace.sm),
@@ -173,7 +179,10 @@ class _ReceiptDialogState extends ConsumerState<ReceiptDialog> {
         .read(receiptPrinterProvider)
         .printReceipt(
           document,
-          openDrawer: _drawerOpens(),
+          // Drawer opening is not part of a queued print job.  Otherwise an
+          // offline printer could open the till on the next shift, long after
+          // the cash sale it belonged to.
+          openDrawer: false,
           // The local `pos_orders.id`, which is what `serverId` holds on a till
           // writing to its own branch database. Null on a sale that never
           // reached a row, and the column is nullable for exactly that.
@@ -183,7 +192,7 @@ class _ReceiptDialogState extends ConsumerState<ReceiptDialog> {
 
     if (!context.mounted) return;
     posToast(context, printOutcomeMessage(strings, outcome));
-    _finish(context, ref);
+    await _finish(context, ref, openDrawer: _drawerOpens());
   }
 
   /// Whether this sale should spring the drawer.
@@ -205,7 +214,18 @@ class _ReceiptDialogState extends ConsumerState<ReceiptDialog> {
     );
   }
 
-  void _finish(BuildContext context, WidgetRef ref) {
+  Future<void> _finish(
+    BuildContext context,
+    WidgetRef ref, {
+    required bool openDrawer,
+  }) async {
+    if (openDrawer) {
+      setState(() => _printing = true);
+      final opened = await ref.read(receiptPrinterProvider).openDrawer();
+      if (!context.mounted) return;
+      if (!opened) posToast(context, context.strings.drawerCouldNotOpen);
+    }
+    if (!context.mounted) return;
     ref.read(ticketProvider.notifier).reset();
     Navigator.of(context).pop();
   }

@@ -10,7 +10,10 @@ import 'package:xorder_pos/domain/models/tender_method.dart';
 /// wrong in both directions — and catastrophically so the day a restaurant
 /// renames its payment methods into Arabic.
 void main() {
-  ShiftSummary summary(List<ShiftTenderTotal> tenders) => ShiftSummary(
+  ShiftSummary summary(
+    List<ShiftTenderTotal> tenders, {
+    Money cashRefunded = Money.zero,
+  }) => ShiftSummary(
     shift: PosShift(
       id: 1,
       openedAt: DateTime(2026, 9, 8, 9),
@@ -20,6 +23,7 @@ void main() {
     saleCount: tenders.length,
     gross: tenders.fold(Money.zero, (sum, t) => sum + t.amount),
     tenders: tenders,
+    cashRefunded: cashRefunded,
   );
 
   group('what counts as cash', () {
@@ -120,6 +124,22 @@ void main() {
         ShiftTenderTotal(label: 'Cash', count: 1, amount: Money(10000)),
       ]);
       expect(s.cashTaken.minor, 0);
+    });
+
+    test('subtracts only cash refunds from the expected drawer', () {
+      final s = summary(
+        const [
+          ShiftTenderTotal(
+            label: 'Cash',
+            count: 1,
+            amount: Money(10000),
+            typeId: 1,
+          ),
+        ],
+        cashRefunded: const Money(2500),
+      );
+
+      expect(s.expectedCash.minor, 20000 + 10000 - 2500);
     });
   });
 }

@@ -1,4 +1,5 @@
 import 'package:postgres/postgres.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../core/config/deployment.dart';
 import '../../core/money/money.dart';
@@ -811,6 +812,9 @@ class PostgresSupplierInvoicesRepository implements SupplierInvoicesRepository {
           payment.amount,
         );
         CashMovementWrite.refuseNothing(CashMovementKind.payOut, amount);
+        final movementClientId = config.mode.syncsSalesToPlatform
+            ? const Uuid().v4()
+            : null;
 
         final movement = await tx.execute(
           Sql.named(CashMovementWrite.sql),
@@ -825,9 +829,17 @@ class PostgresSupplierInvoicesRepository implements SupplierInvoicesRepository {
             reasonId: reasonId,
             note: _movementNote(supplier.first[0]! as String, invoiceNumber),
             staffId: by.id,
+            clientTransactionId: movementClientId,
           ),
         );
         movementId = movement.first[0]! as int;
+        if (movementClientId != null) {
+          await _enqueueCashMovement(
+            tx,
+            sourceId: movementId,
+            clientTransactionId: movementClientId,
+          );
+        }
       }
 
       final rows = await tx.execute(
@@ -983,7 +995,10 @@ class PostgresSupplierInvoicesRepository implements SupplierInvoicesRepository {
           // on the drawer's history — "− Nile Dairy — INV-900" above
           // "+ Nile Dairy — INV-900" — rather than as two unrelated events a
           // manager has to work out for themselves.
-          await tx.execute(
+          final movementClientId = config.mode.syncsSalesToPlatform
+              ? const Uuid().v4()
+              : null;
+          final movement = await tx.execute(
             Sql.named(CashMovementWrite.sql),
             parameters: CashMovementWrite.parameters(
               restaurantId: restaurantId,
@@ -996,8 +1011,16 @@ class PostgresSupplierInvoicesRepository implements SupplierInvoicesRepository {
               reasonId: reasonForPayIn,
               note: drawer.first[3] as String?,
               staffId: by.id,
+              clientTransactionId: movementClientId,
             ),
           );
+          if (movementClientId != null) {
+            await _enqueueCashMovement(
+              tx,
+              sourceId: movement.first[0]! as int,
+              clientTransactionId: movementClientId,
+            );
+          }
         } else if ((note ?? '').trim().isEmpty) {
           // The drawer has been counted. A `pay_in` on a closed shift would
           // rewrite an expected total a manager already argued about, and one on
@@ -1087,6 +1110,25 @@ class PostgresSupplierInvoicesRepository implements SupplierInvoicesRepository {
 
   static String _json(String value) =>
       '"${value.replaceAll(r'\', r'\\').replaceAll('"', r'\"')}"';
+
+  Future<void> _enqueueCashMovement(
+    TxSession tx, {
+    required int sourceId,
+    required String clientTransactionId,
+  }) => tx.execute(
+    Sql.named('''
+      INSERT INTO pos_sync_outbox
+        (restaurant_id, branch_id, event_type, source_id, client_transaction_id)
+      VALUES (@restaurant, @branch, 'cash_movement', @source, @client)
+      ON CONFLICT (restaurant_id, client_transaction_id) DO NOTHING
+    '''),
+    parameters: {
+      'restaurant': restaurantId,
+      'branch': branchId,
+      'source': sourceId,
+      'client': clientTransactionId,
+    },
+  );
 }
 
 /// What a terminal binds before it has an administrator credential.

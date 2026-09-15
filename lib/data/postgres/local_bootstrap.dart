@@ -570,7 +570,8 @@ class LocalBootstrap {
     // money column. PostgreSQL enforces that per column, so a recovered till
     // credential can void a sale in the open and still cannot reprice one.
     'GRANT UPDATE (status, status_changed_at, voided_at, voided_by, '
-        'void_reason_id, void_note, business_day_id) ON pos_orders TO "$role"',
+        'void_reason_id, void_note, business_day_id, server_invoice_number) '
+        'ON pos_orders TO "$role"',
     // `refunded_quantity` is deliberately NOT in this list, though it was
     // when migration 9 introduced the column. Migration 12 maintains it from a
     // SECURITY DEFINER trigger instead, which means the counter can only move
@@ -716,6 +717,10 @@ class LocalBootstrap {
     // till that sends it twice.
     'GRANT SELECT, INSERT, UPDATE ON pos_outbox TO "$role"',
     'GRANT USAGE, SELECT ON SEQUENCE pos_outbox_id_seq TO "$role"',
+    // Shifts, cash movements and refunds have their own durable delivery
+    // claims; a sale's order outbox row cannot safely stand in for them.
+    'GRANT SELECT, INSERT, UPDATE ON pos_sync_outbox TO "$role"',
+    'GRANT USAGE, SELECT ON SEQUENCE pos_sync_outbox_id_seq TO "$role"',
     // The audit ledger. INSERT and SELECT, never UPDATE or DELETE. The
     // table's triggers refuse the rest anyway; this makes it true at the
     // grant as well, so the trigger is the second line of defence rather

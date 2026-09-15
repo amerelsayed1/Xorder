@@ -206,7 +206,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: PosRoutes.sale,
         builder: (context, state) => SaleScreen(
           onLock: () => context.go(PosRoutes.lock),
-          onTables: () {
+          onTables: () async {
             // Leaving a seated, non-empty ticket parks it on its table — the
             // floor then shows the table busy with its running total, and the
             // live ticket clears so the next table starts fresh.
@@ -218,7 +218,10 @@ final routerProvider = Provider<GoRouter>((ref) {
             // unseated ticket down is what Park is for, and it is one key away.
             final ticket = ref.read(ticketProvider);
             if (ticket.isSeated && ticket.lines.isNotEmpty) {
-              ref.read(openTicketsProvider.notifier).park(ticket);
+              final saved = await ref
+                  .read(openTicketsProvider.notifier)
+                  .park(ticket);
+              if (!saved || !context.mounted) return;
               ref.read(ticketProvider.notifier).reset();
             }
             context.go(PosRoutes.floor);
