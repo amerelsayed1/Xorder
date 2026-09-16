@@ -13,7 +13,8 @@ import '../../../data/cloud/bootstrap_seeder.dart';
 import '../../../data/config/installer_credentials.dart';
 import '../../../data/postgres/local_bootstrap.dart';
 import '../../../domain/models/permissions.dart';
-import '../../../domain/repositories/repositories.dart' show DiscoveredPrinter;
+import '../../../domain/repositories/repositories.dart'
+    show ClaimNotice, DiscoveredPrinter;
 import '../../../data/postgres/pos_database.dart';
 import '../../licensing/data/licence_service.dart';
 import '../../licensing/data/site_licence.dart';
@@ -350,6 +351,18 @@ class SetupController extends Notifier<SetupDraft> {
     clearError: true,
   );
 
+  /// The role that creates the database and owns its tables.
+  ///
+  /// Editable, because the default is only right on a machine the Windows
+  /// installer prepared: `pos_admin` is something `provision.ps1` creates, and
+  /// on a laptop with a hand-installed PostgreSQL the only role that can
+  /// `CREATE DATABASE` is usually `postgres`. Hard-coding it turned that into
+  /// an authentication failure with no field to answer it in.
+  void setAdminDatabaseUser(String user) => state = state.copyWith(
+    deployment: state.deployment.copyWith(adminDatabaseUser: user.trim()),
+    clearError: true,
+  );
+
   void setAdminDatabasePassword(String password) =>
       state = state.copyWith(adminDatabasePassword: password, clearError: true);
 
@@ -569,6 +582,18 @@ class SetupController extends Notifier<SetupDraft> {
           platform: state.deployment.baseUrl,
         );
 
+  /// Everything a successful claim still has to say, in one paragraph.
+  ///
+  /// The repository used to hand over an English sentence and this took it at
+  /// face value, which is how an Arabic wizard told an Arabic installer
+  /// "Catalog will be fetched on first sync." Codes in, words out — the same
+  /// division [_refusal] makes.
+  String? _claimNotices(List<ClaimNotice> notices) {
+    if (notices.isEmpty) return null;
+    final s = ref.read(stringsProvider);
+    return [for (final notice in notices) claimNotice(s, notice)].join(' ');
+  }
+
   /// The next thing to try, in the operator's words.
   String _bootstrapFailure(PosDbException error) {
     final s = ref.read(stringsProvider);
@@ -584,6 +609,15 @@ class SetupController extends Notifier<SetupDraft> {
       PosDbFailure.permissionDenied => s.permissionDenied(
         state.deployment.adminDatabaseUser,
         state.deployment.databaseName,
+      ),
+      // Not the first-install reassurance `_describe` gives this failure. There
+      // the next step is what builds the database; here the build has just run,
+      // so "the next step creates it" would be telling the operator to wait for
+      // something that already happened. What is left is a role that may log in
+      // and may not CREATE DATABASE.
+      PosDbFailure.missingDatabase => s.bootstrapDatabaseMissing(
+        state.deployment.databaseName,
+        state.deployment.adminDatabaseUser,
       ),
       _ => s.bootstrapRefused(error.raw),
     };
@@ -1251,7 +1285,7 @@ class SetupController extends Notifier<SetupDraft> {
       deployment: state.deployment.copyWith(syncPolicy: claim.syncPolicy),
       // A message on a SUCCESSFUL claim is information, not failure — the
       // seat warning and the deferred-seed note arrive here.
-      notice: result.message,
+      notice: _claimNotices(result.notices),
     );
 
     // On screen as well as on the draft: the rest of this wizard, short as it
@@ -1294,38 +1328,49 @@ class SetupController extends Notifier<SetupDraft> {
     }
     _publishDeployment();
 
+    // The schema, always. This used to run only `if (adminDatabasePassword
+    // .isNotEmpty)`, and on the fallback path nothing ever filled that in — the
+    // password came from `install-credentials.json` or from the offline
+    // deployment pane, and the cloud path shows neither. So a Mac walked
+    // straight past the build into the seeder and failed there with a raw
+    // `3D000: database "xorder_pos" does not exist`. `InstallerCredentials`
+    // refuses a file without both passwords and the fallback's button is dead
+    // until one is typed, so by here there is always a credential to build
+    // with; a wrong one comes back as `bootstrapAuthFailed`, which names the
+    // field it belongs to.
     final done = <String>[];
-    if (state.adminDatabasePassword.isNotEmpty) {
-      try {
-        final report = await ref.read(databaseBuilderProvider)(
-          state.deployment,
-          state.adminDatabasePassword,
+    try {
+      final report = await ref.read(databaseBuilderProvider)(
+        state.deployment,
+        state.adminDatabasePassword,
+      );
+      done
+        ..add(
+          report.created
+              ? s.createdDatabase(state.deployment.databaseName)
+              : s.databaseAlreadyThere(state.deployment.databaseName),
+        )
+        ..add(
+          report.migrations == 0
+              ? s.schemaAlreadyCurrent
+              : s.migrationsApplied(report.migrations),
+        )
+        ..add(
+          s.grantsApplied(
+            state.deployment.databaseUser,
+            state.deployment.adminDatabaseUser,
+          ),
         );
-        done
-          ..add(
-            report.created
-                ? s.createdDatabase(state.deployment.databaseName)
-                : s.databaseAlreadyThere(state.deployment.databaseName),
-          )
-          ..add(
-            report.migrations == 0
-                ? s.schemaAlreadyCurrent
-                : s.migrationsApplied(report.migrations),
-          )
-          ..add(
-            s.grantsApplied(
-              state.deployment.databaseUser,
-              state.deployment.adminDatabaseUser,
-            ),
-          );
-      } on PosDbException catch (error) {
-        state = state.copyWith(busy: false, error: _bootstrapFailure(error));
-        return;
-      } on Object catch (error, stack) {
-        debugPrint('setup[provisionTerminal] threw: $error\n$stack');
-        state = state.copyWith(busy: false, error: '$error');
-        return;
-      }
+    } on PosDbException catch (error) {
+      // Returns WITHOUT `provisioned`, which is what keeps Continue dim: a till
+      // whose database was not built has nowhere to write a sale, and letting
+      // the wizard finish over it only moves the failure to the first order.
+      state = state.copyWith(busy: false, error: _bootstrapFailure(error));
+      return;
+    } on Object catch (error, stack) {
+      debugPrint('setup[provisionTerminal] threw: $error\n$stack');
+      state = state.copyWith(busy: false, error: '$error');
+      return;
     }
 
     // The bundle, seeded. Its failure is a notice and not a refusal: the claim
@@ -1336,6 +1381,15 @@ class SetupController extends Notifier<SetupDraft> {
       await _seedFromPlatform();
     } on _CatalogueBlocked catch (blocked) {
       notice = blocked.message;
+    } on PosDbException catch (error) {
+      // Caught ahead of `Exception` on purpose. `catalogueDownloadFailed` ends
+      // in `$error`, and a `PosDbException`'s `toString()` is
+      // `PosDbException(missingDatabase): Severity.fatal 3D000: …` — a driver's
+      // words, in English, on a screen an Egyptian installer is reading. The
+      // notice channel is not logged the way the error channel is, so the raw
+      // cause is put on the console here by hand.
+      debugPrint('setup[provisionTerminal] seed refused: $error');
+      notice = _bootstrapFailure(error);
     } on Exception catch (error) {
       notice = s.catalogueDownloadFailed(error);
     }
@@ -1514,7 +1568,7 @@ class SetupController extends Notifier<SetupDraft> {
       // the failure; on a successful one it is a heads-up and must not wear
       // the error bar's red.
       error: claim == null ? _refusal(result.code, result.message) : null,
-      notice: claim == null ? null : result.message,
+      notice: claim == null ? null : _claimNotices(result.notices),
     );
   }
 

@@ -4,6 +4,7 @@ import '../domain/models/dining_table.dart';
 import '../domain/models/refund.dart';
 import '../domain/models/tender_method.dart';
 import '../domain/models/ticket.dart';
+import '../domain/repositories/repositories.dart' show ClaimNotice;
 import '../features/licensing/domain/license.dart';
 import '../features/setup/domain/setup_state.dart';
 
@@ -242,6 +243,16 @@ String provisioningRefusal(
   'ADOPT_UNSUPPORTED' => s.refusalAdoptUnsupported,
   'VALIDATION_FAILED' => s.refusalValidationFailed,
   _ => fallback,
+};
+
+/// What a claim that SUCCEEDED still has to say, in the operator's language.
+///
+/// No fallback to translate around, unlike [provisioningRefusal]: these are
+/// [ClaimNotice] members rather than wire strings, so the switch is exhaustive
+/// and a warning this build does not know about never reaches here at all.
+String claimNotice(AppStrings s, ClaimNotice notice) => switch (notice) {
+  ClaimNotice.overTerminalCount => s.claimOverTerminalCount,
+  ClaimNotice.catalogueAtFirstSync => s.catalogueArrivesAtFirstSync,
 };
 
 /// What a tender is called, in the reader's language.

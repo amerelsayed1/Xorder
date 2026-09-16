@@ -1447,7 +1447,13 @@ class _ConnectingPaneState extends ConsumerState<_ConnectingPane> {
     final s = context.strings;
     final draft = widget.draft;
 
-    if (draft.needsDatabase) return _InstalledDatabaseMissing(draft: draft);
+    // `provisioned` and not `needsDatabase` alone: the fields answered their
+    // question the moment the build succeeded, and leaving them up meant the
+    // one screen that says "this till is ready" was never shown to the operator
+    // who had just made it ready.
+    if (draft.needsDatabase && !draft.provisioned) {
+      return _InstalledDatabaseMissing(draft: draft);
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1522,6 +1528,13 @@ class _ConnectingPaneState extends ConsumerState<_ConnectingPane> {
 /// are the fields the connection step used to carry, prefilled with the
 /// defaults every wizard-built install shares, and they are the only thing on
 /// the cloud path anybody is still asked about the database.
+///
+/// **The administrator half is not optional.** This screen used to ask for the
+/// till's account alone, which is everything needed to *use* a database and
+/// nothing like enough to *build* one — and on this path nothing else builds
+/// it. The button then ran the seeder against a database that did not exist and
+/// the operator read `3D000` off the driver. Two more fields, the same two the
+/// offline pane has, and the button does what its label says.
 ///
 /// Not shown on Windows, ever: if it appears there, the credentials file is
 /// missing or unreadable and the answer is to restore it, not to type around it.
@@ -1609,6 +1622,27 @@ class _InstalledDatabaseMissing extends ConsumerWidget {
           help: s.databasePasswordHelp,
         ),
         const SizedBox(height: PosSpace.xl),
+        _Field(
+          label: s.adminDatabaseUser,
+          value: config.adminDatabaseUser,
+          mono: true,
+          hint: 'pos_admin',
+          onChanged: controller.setAdminDatabaseUser,
+          help: s.adminDatabaseUserHelp,
+        ),
+        const SizedBox(height: PosSpace.xl),
+        _PasswordField(
+          field: 'admin',
+          label: s.adminPasswordFor(config.adminDatabaseUser),
+          value: draft.adminDatabasePassword,
+          onChanged: controller.setAdminDatabasePassword,
+          // Not `adminPasswordHelp`, which promises the password is never
+          // written to this machine. True where it is written — the offline
+          // build screen — and false here: `complete()` puts it in the secret
+          // store so the back office is a username and a PIN.
+          help: s.adminPasswordKeptHelp,
+        ),
+        const SizedBox(height: PosSpace.xl),
         Align(
           alignment: AlignmentDirectional.centerStart,
           child: PosButton(
@@ -1616,9 +1650,14 @@ class _InstalledDatabaseMissing extends ConsumerWidget {
             background: context.pos.ink,
             foreground: context.pos.onInk,
             padding: const EdgeInsets.symmetric(horizontal: PosSpace.xl),
+            // Both credentials, because this button does both jobs: the
+            // administrator's builds the database, the till's is what the
+            // grants are for and what every sale after tonight connects with.
             onPressed:
                 draft.busy ||
                     draft.databasePassword.isEmpty ||
+                    draft.adminDatabasePassword.isEmpty ||
+                    config.adminDatabaseUser.isEmpty ||
                     !config.hasValidDatabaseName
                 ? null
                 : controller.provisionTerminal,

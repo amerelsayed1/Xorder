@@ -189,8 +189,21 @@ Where each formerly-asked value comes from now:
   migrate and grant (`databaseBuilderProvider`) and then kept for Admin Mode,
   exactly as the offline path keeps it. **On a machine with no such file — a
   developer's Mac, since there is no macOS installer — the connecting step grows
-  the old database fields, prefilled with the defaults.** That is the only
-  fallback on the path, and `SetupDraft.needsDatabase` is the flag for it.
+  the till's own fields, prefilled with the defaults, AND an administrator
+  role and password.** Found missing on the first real walk of this path
+  (16 Sep 2026): the screen used to ask for the till's account alone, which
+  is enough to *use* a database and nothing like enough to *build* one, and
+  on this path nothing else ever built it — `provisionTerminal` skipped the
+  builder outright when `adminDatabasePassword` was empty, which it always
+  was here, and ran the seeder against a database that had never been
+  created. The button now runs `databaseBuilderProvider` with whatever was
+  typed before it does anything else, so a Mac gets the same three-step
+  build the installer's own credentials give Windows: create, migrate,
+  grant. A refusal from that build is a sentence — `bootstrapDatabaseMissing`
+  and its siblings — never the driver's exception text, and Continue stays
+  dim until it succeeds (`provisioned`), because a till whose database was
+  never built has nowhere to write a sale. `SetupDraft.needsDatabase` is
+  still the flag that shows the fallback at all.
 * **Branch, terminal name, terminal id, sync policy** — the claim. The branch and
   terminal screens are gone from this path; they come back only behind "sign in
   instead", which registers by hand and has no claim to read them off.

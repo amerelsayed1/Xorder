@@ -518,8 +518,19 @@ sealed class AppStrings {
   String get noDatabaseYet;
   String get firstInstallHeading;
   String get firstInstallHelp;
+
+  /// The role that owns the schema. Editable because `pos_admin` is what the
+  /// Windows installer makes, and a machine whose PostgreSQL somebody set up by
+  /// hand usually only has `postgres`.
+  String get adminDatabaseUser;
+  String get adminDatabaseUserHelp;
   String adminPasswordFor(String user);
   String get adminPasswordHelp;
+
+  /// The same field on the cloud path, where the password does NOT stop at
+  /// building: it is kept so Admin Mode opens on a username and a PIN.
+  /// Separate wording because [adminPasswordHelp] promises the opposite.
+  String get adminPasswordKeptHelp;
   String get firstPerson;
   String get firstPersonHelp;
   String get theirUsername;
@@ -570,6 +581,10 @@ sealed class AppStrings {
   String bootstrapAuthFailed(String user);
   String bootstrapUnreachable(String host, int port);
   String bootstrapRefused(Object raw);
+
+  /// The build ran and the database is still not there, which is a permission
+  /// on the administrator role rather than anything the operator typed.
+  String bootstrapDatabaseMissing(String database, String user);
   String setupIncomplete(String missing);
   String get missingTerminalName;
   String get missingRestaurantIdentity;
@@ -601,6 +616,16 @@ sealed class AppStrings {
   String get refusalNoDatabaseReachable;
   String get refusalAdoptUnsupported;
   String get refusalValidationFailed;
+
+  // ── Claim notices ─────────────────────────────────────────────────────────
+  //
+  // The other half of the rule above. A claim that SUCCEEDED can still have
+  // news, and that news used to be an English sentence built in the repository
+  // and shown verbatim — which put "Catalog will be fetched on first sync." on
+  // an Arabic screen. Keyed off [ClaimNotice] for the same reason the refusals
+  // are keyed off their code.
+  String get claimOverTerminalCount;
+  String get catalogueArrivesAtFirstSync;
   String menuDownloadRefused(String address, String answer);
   String get menuDownloadSilence;
   String menuDownloadHttp(int? status);
@@ -3899,8 +3924,9 @@ final class EnStrings extends AppStrings {
   @override
   String get noInstalledDatabaseHelp =>
       'This machine has no record of a database installed by XOrder setup, so '
-      'the till cannot read one off it. Enter where PostgreSQL is and the '
-      'password for the till’s account.';
+      'the till cannot read one off it. Enter where PostgreSQL is, the till’s '
+      'account, and an administrator account allowed to create the database — '
+      'this screen is what builds it.';
   @override
   String get useThisDatabase => 'Use this database';
 
@@ -3997,11 +4023,23 @@ final class EnStrings extends AppStrings {
       'person. The restaurant\'s name comes from the licence. Safe to run '
       'twice — anything already there is left alone.';
   @override
+  String get adminDatabaseUser => 'Administrator role';
+  @override
+  String get adminDatabaseUserHelp =>
+      'The PostgreSQL account that creates the database and owns its tables — '
+      'not the till\'s. The installer makes "pos_admin"; where PostgreSQL was '
+      'set up by hand, "postgres" is usually the only one there is.';
+  @override
   String adminPasswordFor(String user) => '$user password';
   @override
   String get adminPasswordHelp =>
       'The PostgreSQL account that may create databases — not the till\'s. '
       'Used once, here, and never written to this machine.';
+  @override
+  String get adminPasswordKeptHelp =>
+      'Used here to build the database, and then kept on this machine so the '
+      'back office opens on a username and a PIN rather than on a password '
+      'nobody was ever told.';
   @override
   String get firstPerson => 'First person';
   @override
@@ -4097,6 +4135,11 @@ final class EnStrings extends AppStrings {
   String bootstrapRefused(Object raw) =>
       'Connected, but the database refused the work. $raw';
   @override
+  String bootstrapDatabaseMissing(String database, String user) =>
+      'There is still no database called "$database". "$user" was let in but '
+      'not allowed to create one — give that account CREATEDB, or point this '
+      'till at a database that already exists, and try again.';
+  @override
   String setupIncomplete(String missing) =>
       'Setup is missing $missing. Go back to the Terminal step and register '
       'this terminal, then try again.';
@@ -4180,6 +4223,14 @@ final class EnStrings extends AppStrings {
   String get refusalValidationFailed =>
       'Enter the username and password of a staff account that may add a '
       'terminal.';
+  @override
+  String get claimOverTerminalCount =>
+      'Registered — but this till puts the restaurant over its plan\'s '
+      'terminal count. Ask the owner to revoke an unused till or raise the '
+      'plan.';
+  @override
+  String get catalogueArrivesAtFirstSync =>
+      'The menu did not come with the claim; it arrives at the first sync.';
   @override
   String menuDownloadRefused(String address, String answer) =>
       '$address answered the menu download with $answer. Check the platform '
@@ -8332,8 +8383,8 @@ final class ArStrings extends AppStrings {
   @override
   String get noInstalledDatabaseHelp =>
       'لا يوجد على هذا الجهاز أثر لقاعدة بيانات ثبّتها إعداد XOrder، فلا '
-      'يستطيع الكاشير قراءتها منه. أدخل مكان PostgreSQL وكلمة مرور حساب '
-      'الكاشير.';
+      'يستطيع الكاشير قراءتها منه. أدخل مكان PostgreSQL، وحساب الكاشير، وحساب '
+      'مدير مسموح له بإنشاء قاعدة البيانات — فهذه الشاشة هي التي تبنيها.';
   @override
   String get useThisDatabase => 'استخدم قاعدة البيانات هذه';
 
@@ -8426,11 +8477,22 @@ final class ArStrings extends AppStrings {
       'يُنشئ قاعدة البيانات وجداولها وأدوار الموظفين الأربعة وأول شخص. اسم '
       'المطعم يأتي من الترخيص. تشغيله مرتين آمن — ما هو موجود يُترك كما هو.';
   @override
+  String get adminDatabaseUser => 'دور المدير';
+  @override
+  String get adminDatabaseUserHelp =>
+      'حساب PostgreSQL الذي يُنشئ قاعدة البيانات ويملك جداولها — وليس حساب '
+      'الكاشير. المثبِّت يُنشئ «pos_admin»، وعلى جهاز ثُبِّت فيه PostgreSQL '
+      'يدوياً غالباً لا يوجد سوى «postgres».';
+  @override
   String adminPasswordFor(String user) => 'كلمة مرور $user';
   @override
   String get adminPasswordHelp =>
       'حساب PostgreSQL المسموح له بإنشاء قواعد البيانات — وليس حساب '
       'الكاشير. يُستخدم مرة واحدة هنا، ولا يُكتب على هذا الجهاز.';
+  @override
+  String get adminPasswordKeptHelp =>
+      'تُستخدم هنا لبناء قاعدة البيانات، ثم تُحفظ على هذا الجهاز ليفتح مكتب '
+      'الإدارة باسم مستخدم ورمز، لا بكلمة مرور لم يُخبَر بها أحد.';
   @override
   String get firstPerson => 'أول شخص';
   @override
@@ -8520,6 +8582,11 @@ final class ArStrings extends AppStrings {
   String bootstrapRefused(Object raw) =>
       'تم الاتصال، لكن قاعدة البيانات رفضت التنفيذ. $raw';
   @override
+  String bootstrapDatabaseMissing(String database, String user) =>
+      'لا تزال لا توجد قاعدة بيانات باسم «$database». دخل «$user» ولم يُسمح له '
+      'بإنشائها — امنح هذا الحساب صلاحية CREATEDB، أو وجّه هذا الكاشير إلى '
+      'قاعدة بيانات موجودة، ثم حاول مرة أخرى.';
+  @override
   String setupIncomplete(String missing) =>
       'ينقص الإعداد $missing. ارجع إلى خطوة الجهاز وسجّل هذا الكاشير، ثم حاول '
       'مرة أخرى.';
@@ -8599,6 +8666,13 @@ final class ArStrings extends AppStrings {
   @override
   String get refusalValidationFailed =>
       'أدخل اسم المستخدم وكلمة المرور لحساب موظف مصرّح له بإضافة جهاز.';
+  @override
+  String get claimOverTerminalCount =>
+      'تم التسجيل — لكن هذا الكاشير يتجاوز عدد الأجهزة في باقة المطعم. اطلب من '
+      'المالك إلغاء جهاز غير مستخدم أو ترقية الباقة.';
+  @override
+  String get catalogueArrivesAtFirstSync =>
+      'لم يصل المنيو مع المطالبة؛ سيصل عند أول مزامنة.';
   @override
   String menuDownloadRefused(String address, String answer) =>
       'ردّ $address على تنزيل المنيو بـ$answer. تأكد من عنوان المنصة وحاول '

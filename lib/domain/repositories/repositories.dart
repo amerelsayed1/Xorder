@@ -866,13 +866,47 @@ class TerminalClaim {
 /// [code] mirrors the machine-readable error codes asked for in POS-BE-019 so
 /// the wizard can say *"this code was already used"* rather than *"invalid"*.
 class ClaimResult {
-  const ClaimResult({this.claim, this.code, this.message});
+  const ClaimResult({
+    this.claim,
+    this.code,
+    this.message,
+    this.notices = const [],
+  });
 
   final TerminalClaim? claim;
   final String? code;
   final String? message;
 
+  /// What a claim that WORKED still has to tell the operator.
+  ///
+  /// Codes rather than prose, for the same reason [code] is: the repository
+  /// built these as English sentences and the wizard showed them verbatim,
+  /// which is how "Catalog will be fetched on first sync." ended up on an
+  /// Arabic screen. A sentence cannot be translated after the fact; a member
+  /// can — see `claimNotice` in `app/labels.dart`.
+  final List<ClaimNotice> notices;
+
   bool get succeeded => claim != null;
+}
+
+/// Non-fatal news about a successful claim.
+///
+/// An enum and not the server's wire strings: a `switch` over a wire string
+/// cannot be exhaustive, so the day the platform adds a warning the till would
+/// silently show nothing. Anything this build does not recognise is dropped at
+/// the repository boundary rather than passed through in English, which is the
+/// one thing an operator in Cairo definitely cannot act on.
+enum ClaimNotice {
+  /// POS-BE-016: the platform registered this till past the plan's terminal
+  /// count on purpose — refusing mid-service is how a POS bricks a restaurant —
+  /// and says so in `warnings[]`. Swallowing it means the overage surfaces
+  /// weeks later in an invoice conversation instead of now, to the person
+  /// standing at the till.
+  overTerminalCount,
+
+  /// The claim carried no seedable bundle, or it could not be written locally,
+  /// so the menu arrives with the first sync pass instead of now.
+  catalogueAtFirstSync,
 }
 
 /// The result of verifying credentials and pulling the tenant's configuration

@@ -403,33 +403,33 @@ class CloudProvisioningRepository implements ProvisioningRepository {
         // the restaurant already told the dashboard.
         defaultLanguage: bundle?.restaurant?.defaultLanguage,
       ),
-      // Surfaced so the wizard can tell the operator the catalog will arrive
-      // on first sync rather than pretending it is already there.
-      message: _claimNotice(reply, seeded: seeded),
+      // Surfaced so the wizard can tell the operator the menu will arrive on
+      // first sync rather than pretending it is already there.
+      notices: _claimNotices(reply, seeded: seeded),
     );
   }
 
   /// Non-fatal facts the operator should hear about a successful claim.
   ///
-  /// The seat warning matters most: the server registers a till past the
-  /// plan's terminal count on purpose (POS-BE-016 — refusing mid-service is
-  /// how a POS bricks a restaurant) and says so in `warnings[]`. Swallowing
-  /// that means the overage surfaces weeks later on an invoice conversation
-  /// instead of right now, to the person standing at the till.
-  static String? _claimNotice(CloudReply reply, {required bool seeded}) {
+  /// Returns codes, not prose. These were English sentences until 2026-09-16,
+  /// and the wizard showed them as they arrived — so an Arabic till, claimed by
+  /// an Arabic-speaking installer, read "Catalog will be fetched on first
+  /// sync." The words now live in `AppStrings`; what belongs here is which
+  /// thing happened. See [ClaimNotice].
+  static List<ClaimNotice> _claimNotices(
+    CloudReply reply, {
+    required bool seeded,
+  }) {
     final warnings = [
       if (reply.body['warnings'] is List)
         for (final w in reply.body['warnings'] as List)
           if (w is String) w,
     ];
-    final parts = [
+    return [
       if (warnings.contains('MAX_TERMINALS_EXCEEDED'))
-        'Registered — but this till puts the restaurant over its plan\'s '
-            'terminal count. Ask the owner to revoke an unused till or raise '
-            'the plan.',
-      if (!seeded) 'Catalog will be fetched on first sync.',
+        ClaimNotice.overTerminalCount,
+      if (!seeded) ClaimNotice.catalogueAtFirstSync,
     ];
-    return parts.isEmpty ? null : parts.join(' ');
   }
 
   /// Migrate then seed, swallowing database unavailability — the claim already

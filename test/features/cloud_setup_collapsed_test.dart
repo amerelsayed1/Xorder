@@ -7,9 +7,11 @@ import 'package:xorder_pos/app/providers.dart';
 import 'package:xorder_pos/core/config/deployment.dart';
 import 'package:xorder_pos/core/config/platform_endpoint.dart';
 import 'package:xorder_pos/core/config/printer_config.dart';
+import 'package:xorder_pos/core/l10n/app_strings.dart';
 import 'package:xorder_pos/core/ui/theme.dart';
 import 'package:xorder_pos/data/config/installer_credentials.dart';
 import 'package:xorder_pos/data/fakes/fake_repositories.dart';
+import 'package:xorder_pos/data/postgres/pos_database.dart';
 import 'package:xorder_pos/domain/repositories/repositories.dart';
 import 'package:xorder_pos/features/licensing/domain/license.dart';
 import 'package:xorder_pos/features/licensing/domain/license_verifier.dart';
@@ -86,8 +88,16 @@ class _NoInstaller implements InstallerCredentialsSource {
 /// PostgreSQL, without PostgreSQL. Records what it was asked to build so the
 /// test can assert the till's own role was the one granted.
 class _RecordingDatabaseBuilder {
+  _RecordingDatabaseBuilder({this.refusal});
+
+  /// What the database says instead of building, when the test is about a
+  /// failure. A `PosDbException` rather than a bare `Exception` because the
+  /// whole question is whether the wizard translates it or prints it.
+  final PosDbException? refusal;
+
   DeploymentConfig? config;
   String? adminPassword;
+  int calls = 0;
 
   Future<DatabaseBuildReport> call(
     DeploymentConfig config,
@@ -95,6 +105,8 @@ class _RecordingDatabaseBuilder {
   ) async {
     this.config = config;
     this.adminPassword = adminPassword;
+    calls++;
+    if (refusal case final refusal?) throw refusal;
     return const DatabaseBuildReport(created: true, migrations: 42);
   }
 }
@@ -416,19 +428,14 @@ void main() {
   });
 
   group('a machine the installer never ran on', () {
-    testWidgets('asks for the database rather than guessing a password', (
-      tester,
-    ) async {
-      // macOS has no installer, so there is no credentials file and no way to
-      // know a password nobody typed. This is the one fallback on the path.
-      final builder = _RecordingDatabaseBuilder();
-      final (container, _) = await open(
-        tester,
-        installer: const _NoInstaller(),
-        builder: builder,
-        printers: _PrintersFound(1),
-      );
+    const en = EnStrings();
 
+    /// Licence, pairing code, Continue — as far as the connecting step, which
+    /// is where this machine's missing credentials file strands it.
+    Future<SetupController> upToTheDatabase(
+      WidgetTester tester,
+      ProviderContainer container,
+    ) async {
       final controller = container.read(setupProvider.notifier);
       await controller.activateLicence(
         fileContents: _licence({DeploymentMode.cloud}).serialize(),
@@ -443,6 +450,23 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('Continue'));
       await tester.pumpAndSettle();
+      return controller;
+    }
+
+    testWidgets('asks for the database rather than guessing a password', (
+      tester,
+    ) async {
+      // macOS has no installer, so there is no credentials file and no way to
+      // know a password nobody typed. This is the one fallback on the path.
+      final builder = _RecordingDatabaseBuilder();
+      final (container, _) = await open(
+        tester,
+        installer: const _NoInstaller(),
+        builder: builder,
+        printers: _PrintersFound(1),
+      );
+
+      final controller = await upToTheDatabase(tester, container);
 
       expect(container.read(setupProvider).step, SetupStep.connecting);
       expect(container.read(setupProvider).needsDatabase, isTrue);
@@ -456,15 +480,125 @@ void main() {
       // And it cannot be walked past: the till has nowhere to write a sale.
       expect(container.read(setupProvider).canAdvance, isFalse);
 
+      // The administrator half, which this screen asked for nothing of until
+      // 2026-09-16 — and then ran the seeder against a database nothing had
+      // created.
+      expect(find.text('ADMINISTRATOR ROLE'), findsOneWidget);
+      expect(find.text('POS_ADMIN PASSWORD'), findsOneWidget);
+      expect(
+        container.read(setupProvider).deployment.adminDatabaseUser,
+        'pos_admin',
+      );
+
+      // The till's password alone is not enough to BUILD anything, so the
+      // button stays dead until the account that can is named as well.
       controller.setDatabasePassword('typed-by-hand');
       await tester.pumpAndSettle();
       await tester.tap(find.text('Use this database'));
       await tester.pumpAndSettle();
+      expect(builder.calls, 0);
+      expect(container.read(setupProvider).provisioned, isFalse);
 
+      controller.setAdminDatabasePassword('admin-typed-by-hand');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Use this database'));
+      await tester.pumpAndSettle();
+
+      // Built with what was typed, and granted to the till account beside it.
+      expect(builder.adminPassword, 'admin-typed-by-hand');
+      expect(builder.config!.databaseName, 'xorder_pos');
+      expect(builder.config!.databaseUser, 'pos_till');
+      expect(builder.config!.adminDatabaseUser, 'pos_admin');
       expect(container.read(setupProvider).provisioned, isTrue);
-      // No administrator credential was ever offered, so none was used — the
-      // long cloud path never asked for one either.
-      expect(builder.config, isNull);
+      expect(container.read(setupProvider).canAdvance, isTrue);
+      // And the step says so, rather than leaving the form that built it up.
+      expect(find.text(en.tillIsReady), findsOneWidget);
+    });
+
+    testWidgets('keeps the administrator password for the back office', (
+      tester,
+    ) async {
+      final builder = _RecordingDatabaseBuilder();
+      final (container, store) = await open(
+        tester,
+        installer: const _NoInstaller(),
+        builder: builder,
+        printers: _PrintersFound(1),
+      );
+
+      final controller = await upToTheDatabase(tester, container);
+      controller
+        ..setDatabasePassword('typed-by-hand')
+        ..setAdminDatabasePassword('admin-typed-by-hand');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Use this database'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Continue'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Open the till'));
+      await tester.pumpAndSettle();
+
+      // Exactly what the installer-credentials path does with the generated
+      // one: Admin Mode's first sign-in is a username and a PIN either way.
+      expect(
+        await container.read(adminDbSecretStoreProvider).read(),
+        'admin-typed-by-hand',
+      );
+      expect(
+        await container.read(posDbCredentialsProvider).password(),
+        'typed-by-hand',
+      );
+      // A password in device config is a password in a support email.
+      expect(
+        store.saved!.deployment.toJson().values,
+        isNot(contains('admin-typed-by-hand')),
+      );
+    });
+
+    testWidgets('a build that fails is a sentence, and stops the wizard', (
+      tester,
+    ) async {
+      // The failure the walk of 16 Sep 2026 actually produced, with the
+      // difference that it used to arrive from the SEEDER — the build was
+      // skipped entirely — and reached the screen as the driver's own words.
+      final builder = _RecordingDatabaseBuilder(
+        refusal: PosDbException(
+          PosDbFailure.missingDatabase,
+          'Severity.fatal 3D000: database "xorder_pos" does not exist',
+        ),
+      );
+      final (container, _) = await open(
+        tester,
+        installer: const _NoInstaller(),
+        builder: builder,
+        printers: _PrintersFound(1),
+      );
+
+      final controller = await upToTheDatabase(tester, container);
+      controller
+        ..setDatabasePassword('typed-by-hand')
+        ..setAdminDatabasePassword('admin-typed-by-hand');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Use this database'));
+      await tester.pumpAndSettle();
+
+      expect(builder.calls, 1);
+      expect(
+        find.text(en.bootstrapDatabaseMissing('xorder_pos', 'pos_admin')),
+        findsOneWidget,
+        reason: 'the operator reads a sentence, not a driver',
+      );
+      expect(find.textContaining('PosDbException'), findsNothing);
+      expect(find.textContaining('3D000'), findsNothing);
+
+      // And Continue stays dim. A till whose database was never built has
+      // nowhere to write a sale, and finishing setup over it only moves the
+      // failure to the first order of the morning.
+      expect(container.read(setupProvider).provisioned, isFalse);
+      expect(container.read(setupProvider).canAdvance, isFalse);
+      await tester.tap(find.text('Continue'));
+      await tester.pumpAndSettle();
+      expect(container.read(setupProvider).step, SetupStep.connecting);
     });
   });
 
