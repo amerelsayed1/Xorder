@@ -1389,7 +1389,17 @@ class SetupController extends Notifier<SetupDraft> {
       // notice channel is not logged the way the error channel is, so the raw
       // cause is put on the console here by hand.
       debugPrint('setup[provisionTerminal] seed refused: $error');
-      notice = _bootstrapFailure(error);
+      // NOT `_bootstrapFailure`, which names the administrator
+      // regardless of which role's connection actually failed. This one is
+      // always the TILL's (`posDatabaseProvider`, inside
+      // `_seedFromPlatform`) — found live on 16 Sep 2026, where a mistyped
+      // till password on the fallback screen was reported to the operator
+      // as `pos_admin` being refused. Only the credential itself needs the
+      // till named; every other failure kind reads the same regardless of
+      // role.
+      notice = error.failure == PosDbFailure.auth
+          ? s.catalogueAuthFailed(state.deployment.databaseUser)
+          : _bootstrapFailure(error);
     } on Exception catch (error) {
       notice = s.catalogueDownloadFailed(error);
     }

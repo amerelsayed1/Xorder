@@ -579,6 +579,14 @@ sealed class AppStrings {
   String ownerAlreadyExists(String name, String username);
   String grantsApplied(String tillRole, String adminRole);
   String bootstrapAuthFailed(String user);
+
+  /// The seed step's own auth failure — the till's account, not the
+  /// administrator's. Added 2026-09-16: `_bootstrapFailure` used to answer
+  /// for this too, and named the administrator regardless of which
+  /// connection actually failed — so a mistyped TILL password on the
+  /// cloud fallback screen was reported as the administrator's account
+  /// being refused, which sent an installer chasing the wrong field.
+  String catalogueAuthFailed(String user);
   String bootstrapUnreachable(String host, int port);
   String bootstrapRefused(Object raw);
 
@@ -4127,6 +4135,11 @@ final class EnStrings extends AppStrings {
   String bootstrapAuthFailed(String user) =>
       'PostgreSQL rejected "$user" and that password. This is the '
       'ADMINISTRATOR account that creates the database, not the till\'s.';
+  @override
+  String catalogueAuthFailed(String user) =>
+      'PostgreSQL rejected "$user" and that password. This is the TILL\'s '
+      'own account, not the administrator\'s — check the database password '
+      'above and build the database again.';
   @override
   String bootstrapUnreachable(String host, int port) =>
       'Nothing answered at $host:$port. Check PostgreSQL is running on this '
@@ -8575,6 +8588,11 @@ final class ArStrings extends AppStrings {
   String bootstrapAuthFailed(String user) =>
       'رفضت PostgreSQL المستخدم «$user» وكلمة المرور هذه. هذا حساب المدير الذي '
       'يُنشئ قاعدة البيانات، وليس حساب الكاشير.';
+  @override
+  String catalogueAuthFailed(String user) =>
+      'رفضت PostgreSQL المستخدم «$user» وكلمة المرور هذه. هذا حساب الكاشير '
+      'نفسه، وليس حساب المدير — تحقّق من كلمة مرور قاعدة البيانات أعلاه '
+      'وأعد إعداد قاعدة البيانات.';
   @override
   String bootstrapUnreachable(String host, int port) =>
       'لم يردّ شيء على $host:$port. تأكد أن PostgreSQL يعمل على هذا الجهاز.';

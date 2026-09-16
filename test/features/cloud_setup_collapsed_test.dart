@@ -652,6 +652,30 @@ void main() {
     });
   });
 
+  group('the till and the administrator are never confused', () {
+    // Found live on 16 Sep 2026: a mistyped TILL password on the fallback
+    // screen made the SEED step's own connection fail authentication — and
+    // the notice named "pos_admin", because `_bootstrapFailure` always had.
+    // `catalogueAuthFailed` is the seed step's own wording; the two must
+    // never read the same, or the mix-up is back the moment somebody merges
+    // a "helpful" refactor that reunifies them.
+    test('name the account that actually failed, not the other one', () {
+      const en = EnStrings();
+      const ar = ArStrings();
+      for (final s in [en, ar]) {
+        expect(
+          s.catalogueAuthFailed('pos_till'),
+          isNot(s.bootstrapAuthFailed('pos_till')),
+        );
+        expect(s.catalogueAuthFailed('pos_till'), contains('pos_till'));
+        expect(
+          s.catalogueAuthFailed('pos_till'),
+          isNot(contains('pos_admin')),
+        );
+      }
+    });
+  });
+
   group('signing in instead', () {
     testWidgets('is off the main road, and brings its two screens with it', (
       tester,
