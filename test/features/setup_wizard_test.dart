@@ -556,7 +556,10 @@ void main() {
       // The licence PANE, not merely its name on the rail: the first thing an
       // installer sees is the field they have to fill.
       expect(find.text('Activate online'), findsOneWidget);
-      expect(find.text('Activate from file'), findsOneWidget);
+      // And nothing else. The `.xlic` file path was removed with the offline
+      // licence delivery it served; a second button here would be one that
+      // no supplier can answer.
+      expect(find.text('Activate from file'), findsNothing);
 
       // And the platform the key will be sent to, stated on the same screen.
       // Its absence is what made "not recognised" unreadable: a key issued by

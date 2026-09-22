@@ -333,7 +333,6 @@ sealed class AppStrings {
   String get renewThisTerminal;
   String get licenceKeyHint;
   String get activateKey;
-  String get importLicenceFile;
   String get checkForRenewal;
 
   /// Distinct from [noLicenceServer], which answers "this key cannot be
@@ -344,7 +343,6 @@ sealed class AppStrings {
   String get renewalOfflineHelp;
   String get licenceUpdated;
   String get noRouteToPlatform;
-  String get licenceFileHint;
   String get capabilityOpenShift;
   String get capabilitySell;
   String get capabilityCashUp;
@@ -684,10 +682,8 @@ sealed class AppStrings {
   String get licenceServer;
   String get licenceServerHelp;
   String get activateOnline;
-  String get activateFromFile;
   String get licenceOnlineHelp;
   String get licenceOfflineHelp;
-  String get pasteLicenceFile;
 
   /// What the licence bought, on one line under the activation panel.
   ///
@@ -712,6 +708,7 @@ sealed class AppStrings {
   String get claimThisTerminal;
   String get username;
   String get password;
+  String get managerPassword;
   String get manualCredentialsWarning;
   String connectedTo(String tenant);
   String branchesRetrieved(int branches);
@@ -3665,13 +3662,11 @@ final class EnStrings extends AppStrings {
   @override
   String get activateKey => 'Activate key';
   @override
-  String get importLicenceFile => 'Import licence file';
-  @override
   String get checkForRenewal => 'Check for renewal';
   @override
   String get cannotCheckForRenewal =>
       'This build cannot reach the licence server, so it cannot check for a '
-      'renewal. Import the licence file instead.';
+      'renewal.';
   @override
   String get renewalOnlineHelp =>
       'Renewals bought on the platform arrive automatically — this terminal '
@@ -3679,17 +3674,14 @@ final class EnStrings extends AppStrings {
       'for forcing it sooner.';
   @override
   String get renewalOfflineHelp =>
-      'This terminal has no route to the platform, so renewals arrive as a '
-      'file. Ask your supplier for the .xlic and import it — no internet is '
-      'needed to verify it.';
+      'This terminal has no route to the platform, so it cannot renew. Connect it '
+      'to the internet and check again.';
   @override
   String get licenceUpdated => 'Licence updated.';
   @override
   String get noRouteToPlatform =>
       'This terminal is not connected to the XOrder platform, so it cannot '
-      'check for a renewal. Enter a key or import the licence file instead.';
-  @override
-  String get licenceFileHint => '{"payload": "...", "signature": "..."}';
+      'check for a renewal. Connect it and try again.';
   @override
   String get capabilityOpenShift => 'Open a new shift';
   @override
@@ -4328,23 +4320,17 @@ final class EnStrings extends AppStrings {
       'issued somewhere else — a key from one platform is always refused by '
       'another, however correctly it is typed. Blank it to return to the '
       'default. Every licence is signed and verified on this machine, so the '
-      'address decides where the file comes from, never whether it counts.';
+      'address decides where the licence comes from, never whether it counts.';
   @override
   String get activateOnline => 'Activate online';
   @override
-  String get activateFromFile => 'Activate from file';
-  @override
   String get licenceOnlineHelp =>
-      'No internet at this site? Ask your supplier for the .xlic file and '
-      'activate from it. The licence is verified on this machine — it does not '
-      'need to phone home.';
+      'The key is checked against the XOrder platform, and the licence it returns '
+      'is verified on this machine against a key built into the app.';
   @override
   String get licenceOfflineHelp =>
-      'Licences are issued as a .xlic file. The signature is checked on this '
-      'machine against a key built into the app, so the till never has to phone '
-      'home — and a file that was not signed by your supplier will not activate.';
-  @override
-  String get pasteLicenceFile => 'Paste licence file';
+      'This build cannot reach the licence server, so it cannot activate a key. '
+      'Ask your supplier for a build that can.';
   @override
   String licenceCoverage(String tenant, String? plan, int terminals) =>
       '${_bidi(tenant)}${plan == null ? '' : ' · ${_bidi(plan)}'} · '
@@ -4398,6 +4384,8 @@ final class EnStrings extends AppStrings {
   String get username => 'Username';
   @override
   String get password => 'Password';
+  @override
+  String get managerPassword => 'Manager password';
   @override
   String get manualCredentialsWarning =>
       'Use the smallest account that may add a terminal, not the owner’s. This '
@@ -8146,29 +8134,24 @@ final class ArStrings extends AppStrings {
   @override
   String get activateKey => 'تفعيل بالمفتاح';
   @override
-  String get importLicenceFile => 'استيراد ملف الترخيص';
-  @override
   String get checkForRenewal => 'التحقق من التجديد';
   @override
   String get cannotCheckForRenewal =>
-      'هذه النسخة لا تصل إلى خادم التراخيص، فلا تستطيع البحث عن تجديد. '
-      'ثبّت ملف الترخيص بدلاً من ذلك.';
+      'هذه النسخة لا تصل إلى خادم التراخيص، فلا تستطيع البحث عن تجديد.';
   @override
   String get renewalOnlineHelp =>
       'التجديدات المشتراة من المنصّة تصل تلقائياً — يتحقق هذا الجهاز عند بدء '
       'التشغيل وقبل فتح كل وردية. الأزرار أعلاه لتعجيل ذلك فقط.';
   @override
   String get renewalOfflineHelp =>
-      'لا يوجد لهذا الجهاز طريق إلى المنصّة، فالتجديدات تصل في صورة ملف. اطلب '
-      'ملف ‎.xlic من مورّدك واستورده — التحقق منه لا يحتاج إنترنت.';
+      'لا يوجد لهذا الجهاز طريق إلى المنصّة، فلا يستطيع التجديد. صِله بالإنترنت '
+      'ثم أعد التحقق.';
   @override
   String get licenceUpdated => 'تم تحديث الترخيص.';
   @override
   String get noRouteToPlatform =>
-      'هذا الجهاز غير متصل بمنصّة XOrder، فلا يمكنه التحقق من التجديد. أدخل '
-      'المفتاح أو استورد ملف الترخيص بدلاً من ذلك.';
-  @override
-  String get licenceFileHint => '{"payload": "...", "signature": "..."}';
+      'هذا الجهاز غير متصل بمنصّة XOrder، فلا يمكنه التحقق من التجديد. صِله '
+      'بالإنترنت وحاول مجدداً.';
   @override
   String get capabilityOpenShift => 'فتح وردية جديدة';
   @override
@@ -8774,22 +8757,17 @@ final class ArStrings extends AppStrings {
       'الجهة التي يُفحص عندها هذا المفتاح. اتركه كما هو إلا إذا صدر الترخيص من '
       'مكان آخر — فالمفتاح الصادر من منصة تُرفضه دائماً منصة أخرى، مهما كانت '
       'كتابته سليمة. اتركه فارغاً للعودة إلى الافتراضي. كل ترخيص موقَّع ويُتحقق '
-      'منه على هذا الجهاز، فالعنوان يحدد مصدر الملف لا صلاحيته.';
+      'منه على هذا الجهاز، فالعنوان يحدد مصدر الترخيص لا صلاحيته.';
   @override
   String get activateOnline => 'تفعيل عبر الإنترنت';
   @override
-  String get activateFromFile => 'تفعيل من ملف';
-  @override
   String get licenceOnlineHelp =>
-      'لا يوجد إنترنت في الموقع؟ اطلب ملف ‎.xlic من مورّدك وفعّل منه. يتم التحقق '
-      'من الترخيص على هذا الجهاز — لا يحتاج الاتصال بأي خادم.';
+      'يُفحص المفتاح لدى منصّة XOrder، ويتم التحقق من الترخيص الذي تعيده على هذا '
+      'الجهاز مقابل مفتاح مدمج في التطبيق.';
   @override
   String get licenceOfflineHelp =>
-      'تُصدَر التراخيص في صورة ملف ‎.xlic. يُفحص التوقيع على هذا الجهاز مقابل '
-      'مفتاح مدمج في التطبيق، فلا يحتاج الكاشير للاتصال بأي خادم — وأي ملف لم '
-      'يوقّعه مورّدك لن يُفعِّل شيئاً.';
-  @override
-  String get pasteLicenceFile => 'الصق ملف الترخيص';
+      'هذه النسخة لا تصل إلى خادم التراخيص، فلا تستطيع تفعيل مفتاح. اطلب من '
+      'مورّدك نسخة تصل إليه.';
   @override
   String licenceCoverage(String tenant, String? plan, int terminals) =>
       '${_bidi(tenant)}${plan == null ? '' : ' · ${_bidi(plan)}'} · '
@@ -8847,6 +8825,8 @@ final class ArStrings extends AppStrings {
   String get username => 'اسم المستخدم';
   @override
   String get password => 'كلمة المرور';
+  @override
+  String get managerPassword => 'كلمة مرور المدير';
   @override
   String get manualCredentialsWarning =>
       'استخدم أقل حساب يملك صلاحية إضافة جهاز، لا حساب المالك. هذا الكاشير في '

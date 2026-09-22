@@ -81,24 +81,6 @@ class _LicenceScreenState extends ConsumerState<LicenceScreen> {
         ),
   );
 
-  Future<void> _activateFromFile() async {
-    final contents = await showDialog<String>(
-      context: context,
-      barrierColor: context.pos.scrim,
-      builder: (_) => const _PasteLicenceDialog(),
-    );
-    if (contents == null || !mounted) return;
-
-    await _run(
-      () => ref
-          .read(licenceServiceProvider)
-          .activate(
-            deployment: ref.read(deploymentProvider),
-            fileContents: contents,
-          ),
-    );
-  }
-
   /// Ask the platform whether a renewal has been issued.
   ///
   /// Offered in **every** mode. An offline terminal keeps its sales in the
@@ -287,14 +269,6 @@ class _LicenceScreenState extends ConsumerState<LicenceScreen> {
               onPressed: _busy ? null : _activateByKey,
             ),
             PosButton(
-              label: context.strings.importLicenceFile,
-              border: Border.fromBorderSide(
-                BorderSide(color: pos.inkWarm),
-              ),
-              padding: const EdgeInsets.symmetric(horizontal: PosSpace.xl),
-              onPressed: _busy ? null : _activateFromFile,
-            ),
-            PosButton(
               label: context.strings.checkForRenewal,
               border: Border.fromBorderSide(pos.resting),
               padding: const EdgeInsets.symmetric(horizontal: PosSpace.xl),
@@ -426,76 +400,6 @@ class _StatusPanel extends StatelessWidget {
           ),
         ),
       ],
-    ),
-  );
-}
-
-class _PasteLicenceDialog extends StatefulWidget {
-  const _PasteLicenceDialog();
-
-  @override
-  State<_PasteLicenceDialog> createState() => _PasteLicenceDialogState();
-}
-
-class _PasteLicenceDialogState extends State<_PasteLicenceDialog> {
-  final _controller = TextEditingController();
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) => Dialog(
-    backgroundColor: context.pos.surface,
-    shape: RoundedRectangleBorder(
-      side: context.pos.emphasis,
-      borderRadius: PosBorders.radius,
-    ),
-    child: ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 560),
-      child: Padding(
-        padding: const EdgeInsets.all(PosSpace.xl),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              context.strings.importLicenceFile,
-              style: PosText.panelTitle(color: context.pos.ink),
-            ),
-            const SizedBox(height: PosSpace.md),
-            TextField(
-              controller: _controller,
-              maxLines: 6,
-              style: PosText.mono(color: context.pos.inkWarm, size: 12),
-              decoration: InputDecoration(
-                hintText: context.strings.licenceFileHint,
-              ),
-            ),
-            const SizedBox(height: PosSpace.lg),
-            Row(
-              children: [
-                const Spacer(),
-                PosButton(
-                  label: context.strings.cancel,
-                  padding: const EdgeInsets.symmetric(horizontal: PosSpace.xl),
-                  onPressed: () => Navigator.of(context).pop(),
-                ),
-                const SizedBox(width: PosSpace.sm),
-                PosButton(
-                  label: context.strings.importLabel,
-                  background: context.pos.accent,
-                  foreground: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: PosSpace.xl),
-                  onPressed: () => Navigator.of(context).pop(_controller.text),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
     ),
   );
 }

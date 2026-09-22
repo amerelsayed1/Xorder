@@ -117,7 +117,6 @@ void main() {
       // the operator types over, or a protocol token.
       const notWords = {
         'licenceKeyHint', // XORD-0000-0000-0000
-        'licenceFileHint', // the .xlic JSON skeleton
         'notSet', // an em dash
         'listSeparator',
       };
@@ -793,12 +792,9 @@ Map<String, String> _sample(AppStrings s) => {
   'licence': s.licence,
   'activate': s.activate,
   'activateOnline': s.activateOnline,
-  'activateFromFile': s.activateFromFile,
   'checkForRenewal': s.checkForRenewal,
   'cannotCheckForRenewal': s.cannotCheckForRenewal,
-  'pasteLicenceFile': s.pasteLicenceFile,
   'licenceKeyHint': s.licenceKeyHint,
-  'licenceFileHint': s.licenceFileHint,
   'notSet': s.notSet,
   'listSeparator': s.listSeparator,
   'listAnd': s.listAnd,

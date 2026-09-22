@@ -180,7 +180,7 @@ void main() {
       expect(find.textContaining('Renewals bought on the platform'), findsOneWidget);
     });
 
-    testWidgets('a build with no licence transport falls back to a file', (tester) async {
+    testWidgets('a build with no licence transport says so and offers no file', (tester) async {
       await _pump(
         tester,
         deployment: _offline,
@@ -190,7 +190,7 @@ void main() {
       );
 
       expect(find.textContaining('no route to the platform'), findsOneWidget);
-      expect(find.textContaining('no internet is needed to verify it'), findsOneWidget);
+      expect(find.text('Import licence file'), findsNothing);
 
       await tester.tap(find.text('Check for renewal'));
       await _settle(tester);

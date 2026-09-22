@@ -649,7 +649,7 @@ class _LicencePane extends ConsumerWidget {
           // Editable, and that costs nothing: every licence is Ed25519-signed
           // and checked against a key compiled into this binary, so a hostile
           // address cannot mint one that passes. The most it can hand over is
-          // bytes — which "Activate from file" already accepts from anybody.
+          // bytes, and bytes that fail verification are refused.
           _Field(
             label: s.licenceServer,
             value: draft.deployment.licenceServerUrl ?? PlatformEndpoint.base,
@@ -660,42 +660,20 @@ class _LicencePane extends ConsumerWidget {
           ),
         ],
         const SizedBox(height: PosSpace.lg),
-        Row(
-          children: [
-            // Only offered when something can answer. A build with no licence
-            // transport would be showing a button that always fails — and an
-            // installer taps it three times before reading the error.
-            if (online) ...[
-              PosButton(
-                label: s.activateOnline,
-                background: context.pos.ink,
-                foreground: context.pos.onInk,
-                padding: const EdgeInsets.symmetric(horizontal: PosSpace.xl),
-                onPressed: draft.busy
-                    ? null
-                    : () => controller.activateLicence(),
-              ),
-              const SizedBox(width: PosSpace.md),
-            ],
-            PosButton(
-              label: s.activateFromFile,
-              // Promoted to the primary action when it is the only action.
-              background: online ? context.pos.surface : context.pos.ink,
-              foreground: online ? context.pos.ink : context.pos.onInk,
-              border: online
-                  ? Border.fromBorderSide(
-                      BorderSide(color: context.pos.inkWarm),
-                    )
-                  : null,
+        // Only offered when something can answer. A build with no licence
+        // transport would be showing a button that always fails — and an
+        // installer taps it three times before reading the error.
+        if (online)
+          Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: PosButton(
+              label: s.activateOnline,
+              background: context.pos.ink,
+              foreground: context.pos.onInk,
               padding: const EdgeInsets.symmetric(horizontal: PosSpace.xl),
-              // Offline activation is a first-class path, not a fallback: an
-              // on-premises till may never see the internet.
-              onPressed: draft.busy
-                  ? null
-                  : () => _pickFile(context, controller),
+              onPressed: draft.busy ? null : () => controller.activateLicence(),
             ),
-          ],
-        ),
+          ),
         const SizedBox(height: PosSpace.lg),
         Text(
           online ? s.licenceOnlineHelp : s.licenceOfflineHelp,
@@ -722,89 +700,6 @@ class _LicencePane extends ConsumerWidget {
       ],
     );
   }
-
-  Future<void> _pickFile(
-    BuildContext context,
-    SetupController controller,
-  ) async {
-    // A real file picker lands with the desktop packaging work; until then the
-    // path is exercised with a paste dialog so the offline route is testable.
-    final contents = await showDialog<String>(
-      context: context,
-      barrierColor: context.pos.scrim,
-      builder: (_) => const _PasteLicenceDialog(),
-    );
-    if (contents == null) return;
-
-    await controller.activateLicence(fileContents: contents);
-  }
-}
-
-class _PasteLicenceDialog extends StatefulWidget {
-  const _PasteLicenceDialog();
-
-  @override
-  State<_PasteLicenceDialog> createState() => _PasteLicenceDialogState();
-}
-
-class _PasteLicenceDialogState extends State<_PasteLicenceDialog> {
-  final _controller = TextEditingController();
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) => Dialog(
-    backgroundColor: context.pos.surface,
-    shape: RoundedRectangleBorder(
-      side: context.pos.emphasis,
-      borderRadius: PosBorders.radius,
-    ),
-    child: ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 560),
-      child: Padding(
-        padding: const EdgeInsets.all(PosSpace.xl),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(context.strings.pasteLicenceFile, style: PosText.panelTitle(color: context.pos.ink)),
-            const SizedBox(height: PosSpace.md),
-            TextField(
-              controller: _controller,
-              maxLines: 6,
-              style: PosText.mono(color: context.pos.inkWarm, size: 12),
-              decoration: InputDecoration(
-                hintText: context.strings.licenceFileHint,
-              ),
-            ),
-            const SizedBox(height: PosSpace.lg),
-            Row(
-              children: [
-                const Spacer(),
-                PosButton(
-                  label: context.strings.cancel,
-                  padding: const EdgeInsets.symmetric(horizontal: PosSpace.xl),
-                  onPressed: () => Navigator.of(context).pop(),
-                ),
-                const SizedBox(width: PosSpace.sm),
-                PosButton(
-                  label: context.strings.activate,
-                  background: context.pos.accent,
-                  foreground: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: PosSpace.xl),
-                  onPressed: () => Navigator.of(context).pop(_controller.text),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    ),
-  );
 }
 
 class _LicenceStatusCard extends StatelessWidget {
@@ -1061,6 +956,7 @@ class _ManualCredentialFields extends ConsumerWidget {
         const SizedBox(height: PosSpace.xl),
         _PasswordField(
           field: 'operator',
+          label: s.managerPassword,
           value: draft.operatorPassword,
           onChanged: controller.setOperatorPassword,
         ),
