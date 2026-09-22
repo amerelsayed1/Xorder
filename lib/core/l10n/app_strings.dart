@@ -2305,6 +2305,10 @@ sealed class AppStrings {
   String get paneReceipt;
   String get paneReceiptBlurb;
   String get receiptProfileExplain;
+
+  /// CB-08: on a cloud till the platform authors the legal identity, so the
+  /// pane reads it and says where it is typed.
+  String get receiptProfileComesFromPlatform;
   String get receiptProfileOnThePaper;
   String get receiptProfileForTheAuthority;
   String get receiptProfileSave;
@@ -3014,6 +3018,11 @@ final class EnStrings extends AppStrings {
       'Entered once. The top of every printed slip and the seller block of '
       'every e-receipt are the same facts, so they are typed here and read '
       'from here.';
+  @override
+  String get receiptProfileComesFromPlatform =>
+      'On this till, what the receipt says about the seller comes from XOrder. '
+      'Change it on the dashboard, under Settings → Point of sale → Receipt '
+      'details; it arrives here at the next sync.';
   @override
   String get receiptProfileOnThePaper => 'On the paper';
   @override
@@ -7492,6 +7501,11 @@ final class ArStrings extends AppStrings {
   String get receiptProfileExplain =>
       'تُكتب مرة واحدة. أعلى كل إيصال مطبوع وبيانات البائع في كل إيصال '
       'إلكتروني هي نفس البيانات، فتُكتب هنا وتُقرأ من هنا.';
+  @override
+  String get receiptProfileComesFromPlatform =>
+      'على هذا الجهاز تأتي بيانات البائع على الإيصال من XOrder. عدّلها من لوحة '
+      'التحكم، في الإعدادات ← نقطة البيع ← بيانات الإيصال، وتصل إلى هنا مع '
+      'المزامنة التالية.';
   @override
   String get receiptProfileOnThePaper => 'على الورق';
   @override

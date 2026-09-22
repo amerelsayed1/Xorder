@@ -116,6 +116,11 @@ class ManagementScreen extends ConsumerStatefulWidget {
 /// [ManagementPane.receipt] is deliberately outside the authoring set: every
 /// terminal prints a slip with the restaurant's name and address on it, cloud
 /// and offline alike, and only the write side needs Management's credential.
+/// Since CB-08 there is no write side at all on a cloud till — the platform
+/// authors the profile and the bundle carries it — and the pane still stays,
+/// read-only. It is the one screen that answers "what does our receipt say",
+/// with the slip drawn beside it; hiding it would leave a manager checking a
+/// registration number before an audit with nowhere at the till to read it.
 List<ManagementPane> managementPanesFor({
   required PosStaff admin,
   required bool authorsItsOwnCatalogue,

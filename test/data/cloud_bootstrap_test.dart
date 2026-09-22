@@ -60,6 +60,35 @@ const _fixture = '''
                "salt": "c2FsdHNhbHRzYWx0c2E=", "hash": "aGFzaGhhc2hoYXNoaGFzaGhhc2hoYXNoaGFzaGhhc2g=" } },
     { "id": 10, "name": "No Pin", "username": "nopin", "pin": null }
   ],
+  "receipt_profiles": [
+    { "branch_id": 3,
+      "trade_name": "Koshary House LLC",
+      "registration_number": "123456789",
+      "activity_code": "5610",
+      "branch_code": "0042",
+      "country": "EG",
+      "governate": "Cairo",
+      "region_city": "Maadi",
+      "street": "Road 9",
+      "building_number": "12",
+      "postal_code": "", "floor": "", "room": "", "landmark": "",
+      "additional_info": "",
+      "phone": "+201000000001",
+      "header_note": "Welcome",
+      "footer_note": "Wifi: guest",
+      "revision": 3 },
+    { "branch_id": 9,
+      "trade_name": "Demo Grill",
+      "registration_number": "123456789",
+      "activity_code": "", "branch_code": "",
+      "country": "EG",
+      "governate": "", "region_city": "", "street": "", "building_number": "",
+      "postal_code": "", "floor": "", "room": "", "landmark": "",
+      "additional_info": "", "phone": "",
+      "header_note": null, "footer_note": null,
+      "revision": 0 },
+    { "trade_name": "Nobody's Branch", "revision": 4 }
+  ],
   "money": {
     "tax_rules": [ { "id": 1, "name": "VAT", "rate_bp": 1400, "mode": "exclusive" } ],
     "charges": [], "tender_types": [ { "id": 1, "name": "Cash", "kind": "cash" } ]
@@ -126,6 +155,48 @@ void main() {
       expect(bundle.licence!['key_id'], 'v1');
     });
 
+    test('reads a receipt profile per branch, and drops the row with no branch',
+        () {
+      // A3's contract: one row per ACTIVE branch, authored or not. The third
+      // fixture row names no branch, which is the one field nothing can be
+      // keyed on — dropped, and the other two kept.
+      expect(bundle.receiptProfiles.map((p) => p.branchId), [3, 9]);
+
+      final maadi = bundle.receiptProfiles.first;
+      expect(maadi.tradeName, 'Koshary House LLC');
+      expect(maadi.registrationNumber, '123456789');
+      expect(maadi.activityCode, '5610');
+      // ETA's branch code, not the invoice prefix: `branches[0].code` is
+      // 'MAADI' in the same fixture and this is '0042'. Reading the wrong one
+      // would file every receipt under a branch the authority never issued.
+      expect(maadi.branchCode, '0042');
+      expect(maadi.address.governate, 'Cairo');
+      expect(maadi.address.regionCity, 'Maadi');
+      expect(maadi.address.street, 'Road 9');
+      expect(maadi.address.buildingNumber, '12');
+      expect(maadi.phone, '+201000000001');
+      expect(maadi.headerNote, 'Welcome');
+      expect(maadi.footerNote, 'Wifi: guest');
+      expect(maadi.revision, 3);
+      expect(maadi.canFile, isTrue, reason: 'the till still judges this');
+    });
+
+    test('an unauthored branch arrives as a projection, not as nothing', () {
+      // The bug this key closes: a missing row sent that till back to
+      // `ReceiptProfile(branchId: 0)` and printed compiled-in defaults.
+      final zamalek = bundle.receiptProfiles.last;
+      expect(zamalek.revision, 0, reason: 'nobody has authored this branch');
+      expect(zamalek.tradeName, 'Demo Grill');
+      expect(zamalek.canPrint, isTrue, reason: 'enough to hand somebody paper');
+      expect(zamalek.canFile, isFalse);
+      // Empty strings on the way in, nulls on the two notes — the columns'
+      // own shapes, so the seeder needs no translation.
+      expect(zamalek.address.street, '');
+      expect(zamalek.headerNote, isNull);
+      expect(zamalek.footerNote, isNull);
+      expect(zamalek.address.postalCode, isNull);
+    });
+
     test('reads the payment methods out of the money block', () {
       final cash = bundle.tenderTypes.single;
       expect(cash.id, 1);
@@ -185,6 +256,39 @@ void main() {
       expect(BootstrapBundle.tryParse('nonsense'), isNull);
       expect(BootstrapBundle.tryParse(null), isNull);
       expect(BootstrapBundle.tryParse([1, 2, 3]), isNull);
+    });
+
+    test('a platform that predates receipt profiles sends none, and parses',
+        () {
+      // Every deployment before 22 Sep 2026 sends no `receipt_profiles` key at
+      // all, and garbage must read the same way: empty, so the seeder leaves
+      // the table it already printed from alone.
+      final absent = BootstrapBundle.tryParse({'config_version': 1})!;
+      expect(absent.receiptProfiles, isEmpty);
+
+      final rubbish = BootstrapBundle.tryParse({
+        'config_version': 1,
+        'receipt_profiles': 'nonsense',
+      })!;
+      expect(rubbish.receiptProfiles, isEmpty);
+
+      final mixed = BootstrapBundle.tryParse({
+        'config_version': 1,
+        'receipt_profiles': [
+          'not a map',
+          {'branch_id': 'four', 'trade_name': 'Unkeyable'},
+          {'branch_id': '5', 'country': null, 'revision': 'two'},
+        ],
+      })!;
+      // A numeric string branch id is tolerated (the same PHP path the rest of
+      // the bundle allows for); an unparseable one is not.
+      expect(mixed.receiptProfiles.single.branchId, 5);
+      expect(
+        mixed.receiptProfiles.single.address.country,
+        'EG',
+        reason: 'a blank country is never the right answer',
+      );
+      expect(mixed.receiptProfiles.single.revision, 0);
     });
 
     test('catalog collections parse from a bare list too', () {

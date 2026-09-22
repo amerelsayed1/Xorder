@@ -12,6 +12,7 @@ import 'package:xorder_pos/domain/models/receipt_profile.dart';
 import 'package:xorder_pos/domain/models/shift.dart';
 import 'package:xorder_pos/domain/models/ticket.dart';
 import 'package:xorder_pos/domain/repositories/admin_repositories.dart';
+import 'package:xorder_pos/features/admin/presentation/admin_pane_bits.dart';
 import 'package:xorder_pos/features/admin/presentation/management_receipt_pane.dart';
 import 'package:xorder_pos/features/receipt/receipt_data.dart';
 import 'package:xorder_pos/features/receipt/receipt_paper.dart';
@@ -86,6 +87,7 @@ void main() {
       ReceiptProfile stored = const ReceiptProfile(branchId: 1),
       AdminRefusal? refuse,
       bool files = true,
+      bool authors = true,
     }) async {
       final repository = _Profiles(stored, refuse: refuse);
       await tester.pumpWidget(
@@ -96,6 +98,15 @@ void main() {
             // On, so the filing half of the pane is exercised; the builds
             // that ship with it off have their own case below.
             etaFilingEnabledProvider.overrideWithValue(files),
+            // An OFFLINE till by default, which is the only deployment that
+            // authors this at all (CB-08). Left to the real provider every
+            // case below would silently become the read-only cloud pane and
+            // still pass its "nothing was saved" assertions — so the
+            // deployment is stated rather than inherited, the way
+            // `offlineTerminal()` states it for the back-office shell.
+            catalogAdminRepositoryProvider.overrideWithValue(
+              authors ? _Catalogue() : null,
+            ),
           ],
         ),
       );
@@ -248,6 +259,68 @@ void main() {
 
       expect(find.textContaining('Saved.'), findsNothing);
     });
+
+    group('on a cloud till, where the platform authors this', () {
+      testWidgets('it says so, and names where the boxes are typed', (
+        tester,
+      ) async {
+        await pump(tester, stored: complete, authors: false);
+
+        expect(find.byType(PlatformOwnedNotice), findsOneWidget);
+        // The sentence has to answer "then where?", not merely "not here".
+        expect(find.textContaining('dashboard'), findsOneWidget);
+        expect(find.textContaining('Receipt details'), findsOneWidget);
+        // And not the explanation that says these facts are typed here, which
+        // is the one thing that is no longer true.
+        expect(find.textContaining('typed here and read from here'), findsNothing);
+      });
+
+      testWidgets('there is no Save, because a sync would erase what it wrote', (
+        tester,
+      ) async {
+        await pump(tester, stored: complete, authors: false);
+
+        // Absent rather than disabled: `BootstrapSeeder` upserts this table
+        // now, so a local edit would live until the next bundle and then
+        // vanish — after the manager watched it save.
+        expect(find.byKey(const Key('receipt-profile-save')), findsNothing);
+      });
+
+      testWidgets('every box is read-only, and none of them is hidden', (
+        tester,
+      ) async {
+        final repository = await pump(
+          tester,
+          stored: complete,
+          authors: false,
+        );
+
+        final boxes = tester.widgetList<TextField>(find.byType(TextField));
+        expect(boxes, hasLength(16), reason: 'shown, not taken away');
+        expect(boxes.every((f) => f.readOnly), isTrue);
+
+        // Typing into a read-only field changes nothing, and there is nothing
+        // to press if it did.
+        await tester.enterText(find.byType(TextField).first, 'Somewhere Else');
+        await tester.pumpAndSettle();
+        expect(find.text('KOSHARI ABOU TAREK'), findsOneWidget);
+        expect(repository.saved, isEmpty);
+      });
+
+      testWidgets('the slip is still beside it, which is why the pane stays', (
+        tester,
+      ) async {
+        // Unlike Menu or Purchasing this pane is not hidden on cloud: it is
+        // the one screen that answers "what does our receipt say", and
+        // somebody checking a registration number before an audit reads it at
+        // the till that prints it.
+        await pump(tester, stored: complete, authors: false);
+
+        expect(find.byKey(const Key('receipt-profile-preview')), findsOneWidget);
+        expect(find.text('TAX REG 123456789'), findsOneWidget);
+        expect(find.textContaining('Complete.'), findsOneWidget);
+      });
+    });
   });
 
   group('the slip', () {
@@ -386,6 +459,15 @@ void main() {
       expect(Directionality.of(tester.element(phone)), TextDirection.ltr);
     });
   });
+}
+
+/// Stands in for "this terminal authors its own configuration", which is what
+/// `catalogAdminRepositoryProvider` answers. Nothing here calls it: the pane
+/// only asks whether it is bound.
+class _Catalogue implements CatalogAdminRepository {
+  @override
+  Object? noSuchMethod(Invocation invocation) =>
+      throw UnsupportedError('the pane only asks whether this is bound');
 }
 
 class _Profiles implements ReceiptProfileRepository {

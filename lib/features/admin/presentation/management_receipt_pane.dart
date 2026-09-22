@@ -15,6 +15,7 @@ import '../../../domain/services/ticket_engine.dart';
 import '../../receipt/receipt_data.dart';
 import '../../receipt/receipt_paper.dart';
 import 'admin_messages.dart';
+import 'admin_pane_bits.dart';
 
 /// Who the receipt says sold the food.
 ///
@@ -34,6 +35,18 @@ import 'admin_messages.dart';
 /// receipt is, from what is in the boxes right now. A restaurant deciding how
 /// its name and address read on paper should not have to save, ring a sale and
 /// print one to find out.
+///
+/// **On a cloud till the platform authors this (CB-08), so the form reads and
+/// does not write.** The bundle's `receipt_profiles[]` carries one row per
+/// branch and `BootstrapSeeder` upserts it, which means a local edit here would
+/// live until the next sync and then vanish — the worst of the three possible
+/// behaviours, because the manager would have watched it save. Boxes read-only
+/// with a sentence naming where they are typed, rather than a hidden pane:
+/// unlike Menu or Purchasing, this is the one screen in the product that
+/// answers "what does our receipt say", the preview beside it is the answer,
+/// and somebody checking a registration number before an audit needs to read it
+/// at the till it prints from. Save is absent rather than disabled, on the
+/// Tenders pane's precedent — a button that always refused would be a lie.
 class ManagementReceiptPane extends ConsumerStatefulWidget {
   const ManagementReceiptPane({
     required this.admin,
@@ -206,6 +219,13 @@ class _ManagementReceiptPaneState extends ConsumerState<ManagementReceiptPane> {
 
   Widget _form(AppStrings strings, ReceiptProfile base) {
     final palette = context.pos;
+    // The same question the Taxes and Tenders panes ask, and the same answer:
+    // a terminal that authors its own catalogue authors its own receipt
+    // profile, and one that does not is a cloud till whose bundle carries both.
+    // Asked of the repository rather than of `DeploymentMode` directly so a
+    // child tablet answers by what its main device is, which is already how
+    // `catalogAdminRepositoryProvider` is bound.
+    final authors = ref.watch(catalogAdminRepositoryProvider) != null;
     // Recomputed as the operator types, so the ETA block's warning appears and
     // disappears under their hands rather than only after a save — and so
     // does the slip beside the form.
@@ -220,149 +240,108 @@ class _ManagementReceiptPaneState extends ConsumerState<ManagementReceiptPane> {
     };
     final session = ref.watch(sessionProvider).valueOrNull;
 
+    // One box, so "read-only on a cloud till" is decided once rather than
+    // sixteen times — which is how the sixteenth stays editable.
+    Widget field(
+      String label,
+      String name, {
+      bool optional = false,
+      bool mono = false,
+    }) => _Field(
+      label: label,
+      controller: _box(name),
+      onChanged: _rebuild,
+      optional: optional,
+      mono: mono,
+      readOnly: !authors,
+      problem: problemFor[name],
+    );
+
     final form = ListView(
       padding: const EdgeInsets.all(PosSpace.xl),
       children: [
-        Text(
-          strings.receiptProfileExplain,
-          style: PosText.ui(size: 13, color: palette.muted, height: 1.6),
-        ),
+        if (authors)
+          Text(
+            strings.receiptProfileExplain,
+            style: PosText.ui(size: 13, color: palette.muted, height: 1.6),
+          )
+        else
+          // Instead of the explanation, not above it: that sentence says these
+          // facts are "typed here and read from here", which is the one thing
+          // that is no longer true on a cloud till.
+          PlatformOwnedNotice(text: strings.receiptProfileComesFromPlatform),
         const SizedBox(height: PosSpace.xl),
 
         MicroLabel(strings.receiptProfileOnThePaper),
         const SizedBox(height: PosSpace.md),
-        _Field(
-          label: strings.receiptTradeName,
-          controller: _box(ProfileField.tradeName),
-          onChanged: _rebuild,
-          problem: problemFor[ProfileField.tradeName],
-        ),
-        _Field(
-          label: strings.receiptPhone,
-          controller: _box('phone'),
-          onChanged: _rebuild,
-          optional: true,
-        ),
-        _Field(
-          label: strings.receiptHeaderNote,
-          controller: _box('header_note'),
-          onChanged: _rebuild,
-          optional: true,
-        ),
-        _Field(
-          label: strings.receiptFooterNote,
-          controller: _box('footer_note'),
-          onChanged: _rebuild,
-          optional: true,
-        ),
+        field(strings.receiptTradeName, ProfileField.tradeName),
+        field(strings.receiptPhone, 'phone', optional: true),
+        field(strings.receiptHeaderNote, 'header_note', optional: true),
+        field(strings.receiptFooterNote, 'footer_note', optional: true),
 
         const SizedBox(height: PosSpace.xl),
+        // Shown on a cloud till too. "This branch cannot file yet" is a true
+        // and useful thing to learn at the counter even where the fix is on the
+        // dashboard — and the notice above says where that is.
         if (files) ...[
           _EtaBanner(complete: filing.isEmpty, blank: base.isBlank),
           const SizedBox(height: PosSpace.md),
         ],
 
-        _Field(
-          label: strings.receiptRegistrationNumber,
-          controller: _box(ProfileField.registrationNumber),
-          onChanged: _rebuild,
+        field(
+          strings.receiptRegistrationNumber,
+          ProfileField.registrationNumber,
           mono: true,
           optional: !files,
-          problem: problemFor[ProfileField.registrationNumber],
         ),
         if (files) ...[
-          _Field(
-            label: strings.receiptActivityCode,
-            controller: _box(ProfileField.activityCode),
-            onChanged: _rebuild,
+          field(
+            strings.receiptActivityCode,
+            ProfileField.activityCode,
             mono: true,
-            problem: problemFor[ProfileField.activityCode],
           ),
-          _Field(
-            label: strings.receiptBranchCode,
-            controller: _box(ProfileField.branchCode),
-            onChanged: _rebuild,
-            mono: true,
-            problem: problemFor[ProfileField.branchCode],
-          ),
+          field(strings.receiptBranchCode, ProfileField.branchCode, mono: true),
         ],
 
         const SizedBox(height: PosSpace.lg),
         MicroLabel(strings.receiptBranchAddress),
         const SizedBox(height: PosSpace.md),
-        _Field(
-          label: strings.receiptCountry,
-          controller: _box(ProfileField.country),
-          onChanged: _rebuild,
-          mono: true,
-          problem: problemFor[ProfileField.country],
-        ),
-        _Field(
-          label: strings.receiptGovernorate,
-          controller: _box(ProfileField.governate),
-          onChanged: _rebuild,
-          problem: problemFor[ProfileField.governate],
-        ),
-        _Field(
-          label: strings.receiptCity,
-          controller: _box(ProfileField.regionCity),
-          onChanged: _rebuild,
-          problem: problemFor[ProfileField.regionCity],
-        ),
-        _Field(
-          label: strings.receiptStreet,
-          controller: _box(ProfileField.street),
-          onChanged: _rebuild,
-          problem: problemFor[ProfileField.street],
-        ),
-        _Field(
-          label: strings.receiptBuildingNumber,
-          controller: _box(ProfileField.buildingNumber),
-          onChanged: _rebuild,
-          problem: problemFor[ProfileField.buildingNumber],
-        ),
-        _Field(
-          label: strings.receiptPostalCode,
-          controller: _box('postal_code'),
-          onChanged: _rebuild,
+        field(strings.receiptCountry, ProfileField.country, mono: true),
+        field(strings.receiptGovernorate, ProfileField.governate),
+        field(strings.receiptCity, ProfileField.regionCity),
+        field(strings.receiptStreet, ProfileField.street),
+        field(strings.receiptBuildingNumber, ProfileField.buildingNumber),
+        field(
+          strings.receiptPostalCode,
+          'postal_code',
           optional: true,
           mono: true,
         ),
-        _Field(
-          label: strings.receiptFloor,
-          controller: _box('floor'),
-          onChanged: _rebuild,
-          optional: true,
-        ),
-        _Field(
-          label: strings.receiptRoom,
-          controller: _box('room'),
-          onChanged: _rebuild,
-          optional: true,
-        ),
-        _Field(
-          label: strings.receiptLandmark,
-          controller: _box('landmark'),
-          onChanged: _rebuild,
-          optional: true,
-        ),
+        field(strings.receiptFloor, 'floor', optional: true),
+        field(strings.receiptRoom, 'room', optional: true),
+        field(strings.receiptLandmark, 'landmark', optional: true),
 
         if (_note != null) ...[
           const SizedBox(height: PosSpace.lg),
           Text(_note!, style: PosText.ui(size: 12.5, color: palette.body)),
         ],
-        const SizedBox(height: PosSpace.xl),
-        Align(
-          alignment: AlignmentDirectional.centerStart,
-          child: PosButton(
-            key: const Key('receipt-profile-save'),
-            label: strings.receiptProfileSave,
-            background: palette.ink,
-            foreground: palette.onInk,
-            padding: const EdgeInsets.symmetric(horizontal: PosSpace.xl),
-            onPressed: _busy ? null : () => _save(base),
+        // Absent rather than disabled on a cloud till, on the Tenders pane's
+        // precedent: a Save that refused every press, or worse saved something
+        // the next sync erased, is a button that lies.
+        if (authors) ...[
+          const SizedBox(height: PosSpace.xl),
+          Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: PosButton(
+              key: const Key('receipt-profile-save'),
+              label: strings.receiptProfileSave,
+              background: palette.ink,
+              foreground: palette.onInk,
+              padding: const EdgeInsets.symmetric(horizontal: PosSpace.xl),
+              onPressed: _busy ? null : () => _save(base),
+            ),
           ),
-        ),
+        ],
         for (final section in widget.sections) ...[
           const SizedBox(height: PosSpace.s28),
           section,
@@ -545,6 +524,7 @@ class _Field extends StatelessWidget {
     this.onChanged,
     this.optional = false,
     this.mono = false,
+    this.readOnly = false,
     this.problem,
   });
 
@@ -557,6 +537,13 @@ class _Field extends StatelessWidget {
   /// mono and stay left to right, in Arabic as much as in English.
   final bool mono;
 
+  /// The platform authored this and a sync will overwrite it — see the class
+  /// comment. Filled and muted, `MenuInput`'s shape for the same situation, so
+  /// the box reads as a statement rather than an invitation. Read-only and not
+  /// disabled, because a registration number somebody has to copy into a form
+  /// elsewhere still has to be selectable.
+  final bool readOnly;
+
   final String? problem;
 
   @override
@@ -565,10 +552,21 @@ class _Field extends StatelessWidget {
     final field = TextField(
       controller: controller,
       onChanged: onChanged,
+      readOnly: readOnly,
       style: mono
-          ? PosText.mono(size: 15, color: palette.ink)
-          : PosText.ui(size: 15, color: palette.ink),
+          ? PosText.mono(
+              size: 15,
+              color: readOnly ? palette.muted : palette.ink,
+            )
+          : PosText.ui(
+              size: 15,
+              color: readOnly ? palette.muted : palette.ink,
+            ),
       textDirection: mono ? TextDirection.ltr : null,
+      decoration: InputDecoration(
+        filled: readOnly,
+        fillColor: readOnly ? palette.page : null,
+      ),
     );
 
     return Padding(

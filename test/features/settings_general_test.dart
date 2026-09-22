@@ -175,7 +175,10 @@ void main() {
   testWidgets('General is the company form, then appearance, then backup', (
     tester,
   ) async {
-    await _open(tester);
+    // Offline, because the Save button is this test's landmark for where the
+    // company form ends — and since CB-08 a cloud till has none: the platform
+    // authors the profile and the pane only reads it.
+    await _open(tester, offline: true);
 
     final form = find.byKey(const Key('receipt-profile-save'));
     final appearance = find.byKey(const Key('general-appearance'));
@@ -207,7 +210,10 @@ void main() {
     final profiles = _Profiles(
       const ReceiptProfile(branchId: 1, tradeName: 'Koshari'),
     );
-    await _open(tester, profiles: profiles);
+    // Offline: it is the only deployment where this profile is the till's to
+    // write (CB-08). The cloud pane's read-only shape is pinned in
+    // `receipt_profile_ui_test.dart`.
+    await _open(tester, offline: true, profiles: profiles);
 
     final fields = find.descendant(
       of: find.byType(ManagementReceiptPane),

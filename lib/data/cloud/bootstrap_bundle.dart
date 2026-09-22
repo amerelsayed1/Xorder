@@ -13,6 +13,7 @@
 /// price on a till is worse than a missing product.
 library;
 
+import '../../domain/models/receipt_profile.dart';
 import '../../domain/models/tender_method.dart';
 
 /// One parsed key, or null — never an exception.
@@ -353,6 +354,66 @@ class BootstrapTable {
   }
 }
 
+/// One `receipt_profiles[]` row — who the receipt says sold the food, for one
+/// branch (§023, "Amendment 2026-09-22 (A3)").
+///
+/// **Parsed straight into the domain's [ReceiptProfile], with no wire class in
+/// between.** The platform copied the field names off `pos_receipt_profiles`
+/// one for one precisely so this would be a mapping and not a translation
+/// table, and every field lines up: `additional_info` is the till's column name
+/// rather than ETA's `additionalInformation`, `governate` is their spelling on
+/// both sides, and `revision` means the same thing in both places. A
+/// `BootstrapReceiptProfile` beside it would be nineteen fields written out
+/// twice — and the second copy is where the two drift.
+///
+/// A function rather than the file's usual `Bootstrap*.fromJson` statics,
+/// because there is no class of ours to hang a static on. Kept private: the
+/// bundle's `receiptProfiles` is the only reader.
+///
+/// Null means the row named no branch, which is the one thing nothing can be
+/// keyed on — the same rule [BootstrapTable] applies. Everything else is
+/// tolerated: the contract promises empty strings on every text field but the
+/// two notes, and this build does not rely on that promise.
+ReceiptProfile? _receiptProfile(Map<String, Object?> json) {
+  final branchId = _asInt(json['branch_id']);
+  if (branchId == null) return null;
+
+  return ReceiptProfile(
+    branchId: branchId,
+    tradeName: _asString(json['trade_name']) ?? '',
+    registrationNumber: _asString(json['registration_number']) ?? '',
+    activityCode: _asString(json['activity_code']) ?? '',
+    // ETA's branch code, NOT `branches.code` — that one is the invoice prefix
+    // and arrives in the `branches` block. They are allowed to differ and
+    // usually do.
+    branchCode: _asString(json['branch_code']) ?? '',
+    address: BranchAddress(
+      // 'EG' rather than '' when the platform sends nothing: the column
+      // defaults to it, a blank country is never the right answer, and the
+      // contract says this is never blank anyway.
+      country: _asString(json['country']) ?? 'EG',
+      governate: _asString(json['governate']) ?? '',
+      regionCity: _asString(json['region_city']) ?? '',
+      street: _asString(json['street']) ?? '',
+      buildingNumber: _asString(json['building_number']) ?? '',
+      postalCode: _asString(json['postal_code']),
+      floor: _asString(json['floor']),
+      room: _asString(json['room']),
+      landmark: _asString(json['landmark']),
+      additionalInformation: _asString(json['additional_info']),
+    ),
+    phone: _asString(json['phone']),
+    headerNote: _asString(json['header_note']),
+    footerNote: _asString(json['footer_note']),
+    // The platform's counter, taken verbatim rather than counted here. It is
+    // the same number the dashboard's stale-save guard checks, and 0 carries
+    // real news — "nobody has authored this branch yet, you are looking at a
+    // projection of the restaurant". A locally incremented copy would make the
+    // two sides disagree about which save was first.
+    revision: _asInt(json['revision']) ?? 0,
+  );
+}
+
 /// A cashier PIN verifier, as agreed in the POS-BE-024 amendment: PBKDF2-HMAC-
 /// SHA256, base64 salt and hash, iterations stated on the wire. Never the PIN.
 class BootstrapPin {
@@ -471,6 +532,7 @@ class BootstrapBundle {
     this.optionGroups = const [],
     this.tables = const [],
     this.staff = const [],
+    this.receiptProfiles = const [],
     this.money = const {},
     this.invoice = const {},
     this.licence,
@@ -488,6 +550,14 @@ class BootstrapBundle {
   final List<BootstrapOptionGroup> optionGroups;
   final List<BootstrapTable> tables;
   final List<BootstrapStaff> staff;
+
+  /// Who the receipt says sold the food, one row per active branch (A3).
+  ///
+  /// **Empty is not "no profiles", it is "this platform predates A3".** Older
+  /// deployments send no such key, and the seeder leaves the table alone on an
+  /// empty list for that reason: blanking what a till already prints with would
+  /// reintroduce the exact bug this key closes.
+  final List<ReceiptProfile> receiptProfiles;
 
   /// Tax rules, charges and tender types (§013). Kept as raw JSON until the
   /// till computes tax from server rules — persisting them unparsed means a
@@ -558,6 +628,10 @@ class BootstrapBundle {
       staff: [
         for (final member in _asMapList(json['staff']))
           ?BootstrapStaff.fromJson(member),
+      ],
+      receiptProfiles: [
+        for (final profile in _asMapList(json['receipt_profiles']))
+          ?_receiptProfile(profile),
       ],
       money: block('money') ?? const {},
       invoice: block('invoice') ?? const {},

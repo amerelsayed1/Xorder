@@ -75,6 +75,7 @@ class BootstrapSeeder {
       }
 
       await _seedIdentity(tx, bundle);
+      await _seedReceiptProfiles(tx, bundle);
       await _seedMoney(tx, bundle);
       await _seedTenderTypes(tx, bundle);
       await _seedStaff(tx, bundle);
@@ -172,6 +173,120 @@ class BootstrapSeeder {
         },
       },
     );
+  }
+
+  /// Who the receipt says sold the food, per branch (A3, CB-08).
+  ///
+  /// **The bug this closes.** Nothing in `data/cloud/` wrote this table, so
+  /// every cloud till printed and filed with `ReceiptProfile(branchId: 0)` —
+  /// the compiled-in blank — no matter what the restaurant had typed anywhere.
+  /// The platform is the author now, and the bundle carries one row per active
+  /// branch whether anybody authored it or not, so the till has something to
+  /// print on day one.
+  ///
+  /// The same columns and the same `ON CONFLICT (branch_id)` upsert
+  /// `PostgresReceiptProfileRepository.save` writes, with two differences, both
+  /// deliberate:
+  ///
+  /// - **`revision` is the platform's**, not `revision + 1`. There the counter
+  ///   is the till's own optimistic lock between an office and a counter; here
+  ///   the platform owns it and the till is a reader. Bumping it locally would
+  ///   put the two counters permanently out of step, and the number is what the
+  ///   dashboard refuses a stale save on.
+  /// - **No audit row and no `updated_by`.** The ledger answers "which person
+  ///   at this till changed this", and the answer here is "nobody — a sync
+  ///   did". Writing the seed as an audit event would bury the one entry that
+  ///   matters (a manager editing the legal identity) under one per resync, and
+  ///   the dashboard already has its own audit of the real edit.
+  ///
+  /// A profile for a branch the bundle did not carry is skipped rather than
+  /// inserted: `branch_id` is a foreign key, and one bad row would roll back
+  /// the whole seed — the catalog, the staff and the floor with it.
+  Future<void> _seedReceiptProfiles(TxSession tx, BootstrapBundle bundle) async {
+    // An empty list leaves every row as it is. A platform that predates A3
+    // sends no `receipt_profiles` at all, and wiping the table on that would
+    // send the till straight back to printing blanks — which is the bug. The
+    // contract's "one row per active branch, authored or not" is what makes
+    // "absent" and "empty" the same statement here.
+    if (bundle.receiptProfiles.isEmpty) return;
+
+    final restaurantId = bundle.restaurant!.id;
+    final knownBranches = {for (final b in bundle.branches) b.id};
+
+    for (final profile in bundle.receiptProfiles) {
+      if (!knownBranches.contains(profile.branchId)) continue;
+
+      await tx.execute(
+        Sql.named('''
+          INSERT INTO pos_receipt_profiles
+            (restaurant_id, branch_id, trade_name, registration_number,
+             activity_code, branch_code, country, governate, region_city,
+             street, building_number, postal_code, floor, room, landmark,
+             additional_info, phone, header_note, footer_note, revision,
+             updated_at)
+          VALUES
+            (@restaurant, @branch, @trade, @rin, @activity, @code, @country,
+             @governate, @city, @street, @building, @postal, @floor, @room,
+             @landmark, @extra, @phone, @header, @footer, @revision, now())
+          ON CONFLICT (branch_id) DO UPDATE SET
+            trade_name = excluded.trade_name,
+            registration_number = excluded.registration_number,
+            activity_code = excluded.activity_code,
+            branch_code = excluded.branch_code,
+            country = excluded.country,
+            governate = excluded.governate,
+            region_city = excluded.region_city,
+            street = excluded.street,
+            building_number = excluded.building_number,
+            postal_code = excluded.postal_code,
+            floor = excluded.floor,
+            room = excluded.room,
+            landmark = excluded.landmark,
+            additional_info = excluded.additional_info,
+            phone = excluded.phone,
+            header_note = excluded.header_note,
+            footer_note = excluded.footer_note,
+            revision = excluded.revision,
+            updated_at = now(),
+            -- Cleared, not kept: the row no longer says what the manager who
+            -- last touched it said, and leaving their id on it would name them
+            -- as the author of the platform's text.
+            updated_by = NULL
+        '''),
+        parameters: {
+          'restaurant': restaurantId,
+          'branch': profile.branchId,
+          'trade': profile.tradeName.trim(),
+          'rin': profile.registrationNumber.trim(),
+          'activity': profile.activityCode.trim(),
+          'code': profile.branchCode.trim(),
+          'country': profile.address.country.trim(),
+          'governate': profile.address.governate.trim(),
+          'city': profile.address.regionCity.trim(),
+          'street': profile.address.street.trim(),
+          'building': profile.address.buildingNumber.trim(),
+          // Every column is NOT NULL DEFAULT '' but the wire's two notes are
+          // nullable, so the nulls are flattened here rather than at the read —
+          // the same choice migration 19 made for the same reason.
+          'postal': profile.address.postalCode?.trim() ?? '',
+          'floor': profile.address.floor?.trim() ?? '',
+          'room': profile.address.room?.trim() ?? '',
+          'landmark': profile.address.landmark?.trim() ?? '',
+          'extra': profile.address.additionalInformation?.trim() ?? '',
+          'phone': profile.phone?.trim() ?? '',
+          'header': profile.headerNote?.trim() ?? '',
+          'footer': profile.footerNote?.trim() ?? '',
+          'revision': profile.revision,
+        },
+      );
+    }
+
+    // Nothing is deleted or blanked for a branch the bundle stopped naming.
+    // Inactive branches are omitted from both blocks, and `pos_branches` rows
+    // are switched off rather than removed — so a profile whose branch went
+    // away is unreachable already, and `ON DELETE CASCADE` takes it the day the
+    // branch really goes. A DELETE here would need a grant the till has no
+    // other use for.
   }
 
   /// The platform's tax rules, charges and tender types — the answer to "how
