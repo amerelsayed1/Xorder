@@ -59,6 +59,9 @@ class Order extends Model
             'tax_minor' => 'integer',
             'charges_minor' => 'integer',
             'total_minor' => 'integer',
+            // POS-BE-010: how much of this sale has gone back. A counter, not
+            // a SUM — it is what the next refund checks under the order's lock.
+            'refunded_minor' => 'integer',
             'received_at' => 'datetime',
             'pos_meta' => 'array',
         ];

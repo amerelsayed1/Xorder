@@ -40,6 +40,7 @@ return [
         'SHIFT_ALREADY_OPEN' => 'A shift is already open on this terminal.',
         'SHIFT_NOT_OPEN' => 'No open shift on this terminal.',
         'VALIDATION_FAILED' => 'The request was invalid.',
+        'REFUND_EXCEEDS_SOLD' => 'That refund is more than was sold on this ticket.',
         'unknown_item' => 'Unknown item',
         // Default tenders seeded at a POS restaurant's first terminal.
         'default_tender_cash' => 'Cash',
@@ -61,6 +62,7 @@ return [
         'pos_pin_cleared' => 'POS PIN cleared.',
         'order_received' => 'Order received.',
         'order_not_found' => 'Order not found.',
+        'refund_not_found' => 'Refund not found.',
         'order_updated' => 'Order updated.',
         'order_transition_invalid' => 'That order status change is not allowed.',
         'close_table_visit_instead' => 'Close or cancel the table visit to finish this dine-in order.',

@@ -87,7 +87,7 @@ smoke-verified locally, and its production deploy was pending the owner's go.
 | Tax rules, charges, tender types | present: POS-BE-013 READY, `PosMoneyView.vue`, delivered in the bootstrap `money` block |
 | Terminals, pairing, fleet, licences | present: POS-BE-022/023 READY, `PosTerminalsView.vue`, admin licence pages |
 | Orders + payments from the till, shifts, cash movements | present: POS-BE-006/007/008/009 READY |
-| Refunds from the till | **absent**: POS-BE-010 is APPROVED, not built |
+| Refunds from the till | present since 2026-09-22: POS-BE-010 **READY** (`PosRefundService`, `pos_refunds`), on a branch, not deployed |
 | Customers | present on the web (`CustomerController`); POS-BE-014 APPROVED, not built |
 | Reports | present for QR orders (`ReportController`, product/areas pages); not POS-aware |
 | Order-type rules, receipt profile, units, stock items, suppliers, purchasing, expenses, POS audit sync | **absent**, no models |
@@ -252,10 +252,28 @@ is it a cloud v1 feature, and is inventory v1 at all? Write the proposal
 (platform tables mirroring the till's, integer thousandths for quantity, no
 stored supplier balance) and stop there.
 
-### CB-10: The money facts that don't reach the platform · M · backend half only
+### CB-10: The money facts that don't reach the platform · M · backend half only · **refunds `BUILT`**
+
+> **2026-09-22 (owner go: "hand A3 and A7 to xorder-cloud", item A7).**
+> **POS-BE-010 is built, tested and `READY`** — `POST /api/pos/refunds` +
+> `GET /api/pos/refunds/by-client-id/{uuid}`, reversing records that never
+> touch the original order, credit notes in their own `CN-` sequence bucket,
+> cumulative quantity AND money checks taken under the order's row lock,
+> idempotent per POS-BE-007. The reason no cloud till had ever uploaded a
+> refund is also fixed: `POST /api/pos/orders` now accepts
+> `lines[].client_line_id`, so a refund addresses lines by a key the till owns
+> and never needs a platform order-item id. `OrderStatus` was deliberately
+> **not** extended — refund state rides the derived `settlement_status`
+> (`PARTIALLY_REFUNDED` / `REFUNDED`, the till's own `PaymentStatus` words).
+> Shift cash-up now subtracts cash refunds. Wire shape and every recorded
+> deviation: `BACKEND_TO_POS.md` §010. On branch
+> `pos/cloud-refunds-receipt-profile` in xorder-new; **not pushed, not
+> deployed**. The till half (queueing and draining refunds) is `pos-dev`'s.
+>
+> **Still open in CB-10:** the business-day field on orders, and POS-BE-021.
 
 Plan 17 §6 C1 findings (2026-09-10). Backend-side gaps, yours:
-- **POS-BE-010 refunds**: APPROVED, unbuilt. Build `POST` refunds as reversing records.
+- ~~**POS-BE-010 refunds**: APPROVED, unbuilt. Build `POST` refunds as reversing records.~~ **Done 2026-09-22, see above.**
 - **Business day on orders**: §006 doesn't carry it, and POS-BE-029 needs it.
   Propose an additive field.
 - **POS-BE-021 bulk sync**: APPROVED, unbuilt; the till's post-delivery

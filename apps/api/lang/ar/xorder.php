@@ -35,6 +35,7 @@ return [
         'SHIFT_ALREADY_OPEN' => 'هناك وردية مفتوحة بالفعل على هذا الجهاز.',
         'SHIFT_NOT_OPEN' => 'لا توجد وردية مفتوحة على هذا الجهاز.',
         'VALIDATION_FAILED' => 'الطلب غير صالح.',
+        'REFUND_EXCEEDS_SOLD' => 'قيمة الاسترداد أكبر مما تم بيعه في هذا الطلب.',
         'unknown_item' => 'صنف غير معروف',
         // Default tenders seeded at a POS restaurant's first terminal.
         'default_tender_cash' => 'نقدي',
@@ -56,6 +57,7 @@ return [
         'pos_pin_cleared' => 'تم مسح رمز نقاط البيع.',
         'order_received' => 'تم استلام الطلب.',
         'order_not_found' => 'لم يتم العثور على الطلب.',
+        'refund_not_found' => 'لم يتم العثور على الاسترداد.',
         'order_updated' => 'تم تحديث الطلب.',
         'order_transition_invalid' => 'تغيير حالة الطلب هذا غير مسموح به.',
         'close_table_visit_instead' => 'أغلق أو ألغِ زيارة الطاولة لإنهاء طلب الصالة.',

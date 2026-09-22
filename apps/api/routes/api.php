@@ -59,6 +59,7 @@ use App\Http\Controllers\Dashboard\UnitController;
 use App\Http\Controllers\Pos\BootstrapController as PosBootstrapController;
 use App\Http\Controllers\Pos\LicenceController as PosLicenceController;
 use App\Http\Controllers\Pos\OrderController as PosOrderController;
+use App\Http\Controllers\Pos\RefundController as PosRefundController;
 use App\Http\Controllers\Pos\ShiftController as PosShiftController;
 use App\Http\Controllers\Pos\TerminalController as PosTerminalController;
 use App\Http\Controllers\Public\LandingContentController as PublicLandingContentController;
@@ -752,6 +753,16 @@ Route::middleware(['pos.device', 'throttle:240,1'])->group(function () {
     Route::get('pos/orders/by-client-id/{uuid}', [PosOrderController::class, 'byClientId']);
     Route::post('pos/orders', [PosOrderController::class, 'store']);
     Route::post('pos/orders/{order}/payments', [PosOrderController::class, 'storePayment']);
+
+    // Refunds (POS-BE-010). Same device credential and the same three tiers of
+    // gate as an order: the terminal is authenticated, the cashier is named in
+    // `acting_user_id` and must hold `pos.refund` (or `pos.void` when the
+    // refund is a void), and the money invariants are the server's — a refund
+    // can never exceed what was sold. Lookup before the collection route for
+    // the same reason the order one is: "by-client-id" must never be eaten as
+    // a path parameter.
+    Route::get('pos/refunds/by-client-id/{uuid}', [PosRefundController::class, 'byClientId']);
+    Route::post('pos/refunds', [PosRefundController::class, 'store']);
 
     Route::get('pos/shifts/current', [PosShiftController::class, 'current']);
     Route::post('pos/shifts', [PosShiftController::class, 'open']);

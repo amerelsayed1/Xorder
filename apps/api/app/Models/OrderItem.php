@@ -21,6 +21,8 @@ class OrderItem extends Model
             'options' => 'array', 'quantity' => 'integer',
             'unit_price' => 'decimal:2', 'line_total' => 'decimal:2',
             'unit_price_minor' => 'integer', 'line_total_minor' => 'integer',
+            // POS-BE-010: the counter a refund checks under a row lock.
+            'refunded_quantity' => 'integer',
         ];
     }
 

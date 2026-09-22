@@ -15,10 +15,15 @@ use Illuminate\Support\Carbon;
  * makes two concurrent tills impossible to double-issue. A replayed
  * client_transaction_id never reaches here — the number is stored on the
  * order and replays read it back (idempotency never consumes a number).
+ *
+ * `$series` (POS-BE-010) puts a document class in its OWN bucket: a credit
+ * note is `CN-MAADI-2026-000001` counted in period `CN-2026`, so refunds never
+ * consume invoice numbers and a gap in the invoice series stays meaningful to
+ * an auditor. The period column is 10 chars, which `CN-2026-09` exactly fits.
  */
 class InvoiceSequenceService
 {
-    public function next(Branch $branch, Carbon $at, array $config): string
+    public function next(Branch $branch, Carbon $at, array $config, string $series = ''): string
     {
         $reset = $config['reset'] ?? 'yearly';
         $padding = (int) ($config['padding'] ?? 6);
@@ -28,6 +33,10 @@ class InvoiceSequenceService
             'never' => 'all',
             default => $at->format('Y'),
         };
+
+        if ($series !== '') {
+            $period = $series.'-'.$period;
+        }
 
         // firstOrCreate would race two tills to the same (branch, period) row;
         // the unique index turns the loser into a retry of the locked read.
@@ -63,6 +72,10 @@ class InvoiceSequenceService
         $prefix = ($config['prefix_source'] ?? 'branch_code') === 'branch_code'
             ? ($branch->code ?: 'BR'.$branch->id)
             : (string) ($config['prefix'] ?? 'INV');
+
+        if ($series !== '') {
+            $prefix = $series.'-'.$prefix;
+        }
 
         return sprintf('%s-%s-%s', $prefix, $at->format('Y'), str_pad((string) $number, $padding, '0', STR_PAD_LEFT));
     }

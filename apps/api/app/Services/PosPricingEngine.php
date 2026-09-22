@@ -106,6 +106,12 @@ class PosPricingEngine
             $discount = min($discount, $gross);
 
             $priced += [
+                // Carried through untouched (POS-BE-010): it is the till's
+                // name for the line, not a priced fact, and the refund path
+                // addresses lines by it.
+                'client_line_id' => isset($line['client_line_id']) && $line['client_line_id'] !== ''
+                    ? (string) $line['client_line_id']
+                    : null,
                 'quantity' => $quantity,
                 'note' => $line['note'] ?? null,
                 'unit_price_minor' => $unit,

@@ -8,6 +8,8 @@ use App\Exceptions\PosApiException;
 use App\Models\Branch;
 use App\Models\OrderPayment;
 use App\Models\PosCashMovement;
+use App\Models\PosRefund;
+use App\Models\PosRefundTender;
 use App\Models\PosShift;
 use App\Models\PosTerminal;
 use App\Models\TenderType;
@@ -22,8 +24,10 @@ use Illuminate\Support\Facades\DB;
  *
  * Expected cash is A3, confirmed:
  *   opening_float + cash_sales + cash_in − cash_out − cash_refunds
- * (cash_refunds is structurally 0 until POS-BE-010 lands; a future payouts
- * concept arrives as a cash-movement reason, never a new term.)
+ * (cash_refunds became real when POS-BE-010 landed — money handed back in cash
+ * is not in the drawer, and a Z report that ignored it would show every
+ * refunding till as short. A future payouts concept arrives as a cash-movement
+ * reason, never a new term.)
  */
 class PosShiftService
 {
@@ -229,6 +233,12 @@ class PosShiftService
             ])->values()->all(),
             'cash_in_minor' => (int) $movements->where('direction', 'in')->sum('amount_minor'),
             'cash_out_minor' => (int) $movements->where('direction', 'out')->sum('amount_minor'),
+            // POS-BE-010, additive keys: what went back in this shift, and how
+            // much of it left the drawer. Both 0 on a shift with no refunds,
+            // which is every shift the shipped contract described.
+            'refunds_minor' => $this->refundsTotal($shift),
+            'refunds_count' => PosRefund::where('pos_shift_id', $shift->id)->count(),
+            'cash_refunds_minor' => $this->cashRefunds($shift, TenderType::where('kind', 'cash')->pluck('id')->all()),
             'expected_cash_minor' => $shift->isOpen() ? $this->expectedCash($shift) : $shift->expected_cash_minor,
             'server_time' => now()->toIso8601String(),
         ];
@@ -253,7 +263,34 @@ class PosShiftService
         return $shift->opening_float_minor
             + $cashSales
             + (int) $movements->where('direction', 'in')->sum('amount_minor')
-            - (int) $movements->where('direction', 'out')->sum('amount_minor');
+            - (int) $movements->where('direction', 'out')->sum('amount_minor')
+            - $this->cashRefunds($shift, $cashTenderIds->all());
+    }
+
+    /**
+     * Cash handed back in this shift (POS-BE-010). Attributed to the shift the
+     * REFUND belongs to, never the original sale's — the drawer that paid it
+     * out is the drawer that is short.
+     *
+     * An untyped refund tender is counted as cash for the same conservative
+     * reason an untyped payment is: a give-back that did not actually leave the
+     * drawer would hide an overage, and hiding a discrepancy is the one
+     * outcome a cash-up must never produce.
+     *
+     * @param  list<int>  $cashTenderIds
+     */
+    private function cashRefunds(PosShift $shift, array $cashTenderIds): int
+    {
+        return (int) PosRefundTender::query()
+            ->whereIn('pos_refund_id', PosRefund::where('pos_shift_id', $shift->id)->select('id'))
+            ->where(fn ($q) => $q->whereIn('tender_type_id', $cashTenderIds)->orWhereNull('tender_type_id'))
+            ->sum('amount_minor');
+    }
+
+    /** Every refund raised in this shift, cash or not — the Z report's own line. */
+    public function refundsTotal(PosShift $shift): int
+    {
+        return (int) PosRefund::where('pos_shift_id', $shift->id)->sum('total_minor');
     }
 
     /**

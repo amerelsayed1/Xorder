@@ -4,6 +4,7 @@ namespace App\Http\Resources;
 
 use App\Enums\CurrencyEnum;
 use App\Models\Order;
+use App\Services\PosOrderService;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -26,13 +27,18 @@ class PosOrderResource extends JsonResource
 
         $paid = (int) $this->payments->sum('amount_minor');
         $total = (int) ($this->total_minor ?? 0);
+        $refunded = (int) ($this->refunded_minor ?? 0);
 
         $body = [
             'id' => $this->id,
             'client_transaction_id' => $this->client_transaction_id,
             'invoice_number' => $this->invoice_number,
             'status' => $this->status->value,
-            'settlement_status' => ($paid >= $total && $total > 0) ? 'PAID' : 'UNPAID',
+            // PAID | UNPAID | PARTIALLY_REFUNDED | REFUNDED — derived, never
+            // stored (A4). `status` above never carries refund state; see
+            // PosOrderService::settlementStatusFrom.
+            'settlement_status' => PosOrderService::settlementStatusFrom($total, $paid, $refunded),
+            'refunded_minor' => $refunded,
             'channel' => $this->channel,
             'totals' => [
                 'subtotal_minor' => (int) $this->subtotal_minor,
@@ -47,6 +53,10 @@ class PosOrderResource extends JsonResource
             'lines' => $this->orderItems->map(fn ($item) => [
                 'id' => $item->id,
                 'menu_item_id' => $item->menu_item_id,
+                // Echoed so the till can bind its own line to the server's id
+                // in one pass, and refund by either (POS-BE-010).
+                'client_line_id' => $item->client_line_id,
+                'refunded_quantity' => (int) ($item->refunded_quantity ?? 0),
                 'name' => $item->name,
                 'quantity' => $item->quantity,
                 'options' => $item->options ?? [],

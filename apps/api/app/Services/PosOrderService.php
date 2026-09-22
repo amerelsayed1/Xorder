@@ -224,6 +224,10 @@ class PosOrderService
                     'unit_price_minor' => $line['unit_price_minor'],
                     'line_total_minor' => $line['line_total_minor'],
                     'price_source' => $line['price_source'],
+                    // POS-BE-010: the till's own key for this line, stored
+                    // verbatim so a refund built offline can name it without
+                    // ever having seen order_items.id.
+                    'client_line_id' => $line['client_line_id'],
                 ])->save();
             }
 
@@ -294,10 +298,38 @@ class PosOrderService
     /** A5/A4: settlement is DERIVED, never a stored lifecycle state. */
     public function settlementStatus(Order $order): string
     {
-        $total = (int) ($order->total_minor ?? 0);
-        $paid = (int) OrderPayment::where('order_id', $order->id)->sum('amount_minor');
+        return self::settlementStatusFrom(
+            (int) ($order->total_minor ?? 0),
+            (int) OrderPayment::where('order_id', $order->id)->sum('amount_minor'),
+            (int) ($order->refunded_minor ?? 0),
+        );
+    }
 
-        return $paid >= $total && $total > 0 ? 'PAID' : 'UNPAID';
+    /**
+     * The derivation, in one place, from figures the caller already has.
+     *
+     * **A refund outranks everything before it** (POS-BE-010): once money has
+     * gone back, "how much went back" is the question being asked, and
+     * answering PAID for a sale half of which was returned is the stale answer.
+     * Measured against what was TAKEN, not against the total — a part-paid sale
+     * whose whole part came back has nothing of the customer's left, which is
+     * REFUNDED, not PARTIALLY_REFUNDED. This is the till's own rule, verbatim
+     * (xorder-pos `domain/services/payment_status.dart::paymentStatusFromSums`),
+     * so the till parses these words with the enum it already ships.
+     *
+     * PARTIALLY_PAID is deliberately NOT emitted: the shipped §006 contract
+     * answers UNPAID for every incompletely settled bill, and changing an
+     * existing value is not something a refund wave gets to do. `status`
+     * (OrderStatus) is untouched by all of this — NEW | COMPLETED | CANCELLED,
+     * exactly as the QR product left it.
+     */
+    public static function settlementStatusFrom(int $totalMinor, int $paidMinor, int $refundedMinor): string
+    {
+        if ($refundedMinor > 0) {
+            return $refundedMinor >= $paidMinor ? 'REFUNDED' : 'PARTIALLY_REFUNDED';
+        }
+
+        return $paidMinor >= $totalMinor && $totalMinor > 0 ? 'PAID' : 'UNPAID';
     }
 
     /** Server id or the order's own client uuid — both are how a till knows an order. */

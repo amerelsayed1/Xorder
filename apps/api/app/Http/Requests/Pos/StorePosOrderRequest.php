@@ -35,6 +35,14 @@ class StorePosOrderRequest extends FormRequest
             'note' => ['nullable', 'string', 'max:1000'],
 
             'lines' => ['required', 'array', 'min:1', 'max:200'],
+            // POS-BE-010: the till's own key for the line ('L1', a local row
+            // id — whatever it is, it must be unique within the order, which
+            // the unique(order_id, client_line_id) index also enforces). It is
+            // how a refund built offline names a line, and it is deliberately
+            // NOT part of the idempotency hash: it carries no money, so a till
+            // that starts sending it must not get a payload mismatch on an
+            // order it already delivered without one.
+            'lines.*.client_line_id' => ['nullable', 'string', 'max:64', 'distinct'],
             'lines.*.menu_item_id' => ['nullable', 'integer'],
             'lines.*.variant_option_id' => ['nullable', 'integer'],
             'lines.*.option_ids' => ['nullable', 'array', 'max:50'],

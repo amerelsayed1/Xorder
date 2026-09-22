@@ -96,6 +96,32 @@ have the old shape (missing users.pos_pin_salt). Fix locally with a manual
 ALTER or `php artisan migrate:fresh` (dev only!). **Prod unaffected — nothing
 has been deployed; the migration lands there in its final form.**
 
+## Post-wave additions (each under its own owner go)
+
+| Date | Item | Status | Files (paths relative to apps/api) | Tests |
+|---|---|---|---|---|
+| 2026-09-22 | **POS-BE-010 refunds** (owner go "hand A3 and A7 to xorder-cloud", item A7) | READY | migrations/2026_09_22_000100 + 000200, app/Models/{PosRefund,PosRefundLine,PosRefundTender}.php, app/Services/PosRefundService.php, Pos/RefundController, Requests/Pos/StoreRefundRequest, Resources/PosRefundResource, + `client_line_id` through StorePosOrderRequest → PosPricingEngine → PosOrderService → PosOrderResource, `settlementStatusFrom()` on PosOrderService, `cash_refunds` in PosShiftService, `$series` on InvoiceSequenceService, routes, lang en/ar | `tests/Feature/Pos/PosRefundsTest.php` (19) |
+
+**The A7 design point, settled.** A cloud till could not upload a refund at all
+because `outbox_drain.dart` needs platform order-item ids it has never seen. The
+fix is `order_items.client_line_id`: the till stamps its own key on each order
+line, the platform stores it verbatim under `unique(order_id, client_line_id)`,
+and a refund addresses lines by `(order client_transaction_id, client_line_id)`.
+It is excluded from the idempotency hash on purpose — it carries no money, so a
+till that starts sending it must not collide with an order it already delivered.
+**Recommended value is the till's local `pos_order_lines.id` as a string**, not
+`TicketLine.key`: `TicketEngine` merges only lines that are draft + same key +
+same note, so one order can genuinely hold two rows with the same `line_key`
+(and `_insertLines` already collapses them into one map entry — a latent
+ambiguity on the till, reported to `pos-dev`).
+
+**OrderStatus decision (A7).** `OrderStatus` stays `NEW | COMPLETED |
+CANCELLED`. Refund state is carried by the derived `settlement_status`, which
+now answers `PAID | UNPAID | PARTIALLY_REFUNDED | REFUNDED` using the till's
+own `paymentStatusFromSums` rule. `VOIDED` (named in the 2026-09-02 §010 text)
+and `PARTIALLY_PAID` are deliberately never emitted — the first is a property
+of the refund (`kind: "void"`), the second would change an existing wire value.
+
 ## Notes for a successor
 - POS error envelope = App\Exceptions\PosApiException rendered via its own
   render(); ValidationException on /api/pos/* is mapped to VALIDATION_FAILED
