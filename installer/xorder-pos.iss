@@ -13,8 +13,10 @@
 ;
 ; Two ways to install, because a restaurant has one database and possibly many
 ; tills: "This machine keeps the database" installs PostgreSQL beside the app
-; and sets it up (installer\provision.ps1); "Till only" installs the app, which
-; then connects to the machine that does.
+; and sets it up (installer\provision.ps1); "Till only" installs the app and
+; leaves install-role.json beside the credentials file, so the app opens as a
+; child of the machine that keeps the database — finding it, signing in as a
+; manager who exists there — rather than as a main device with no database.
 ;
 ; Running the same installer again upgrades in place. The database service is
 ; stopped first — its files are in use otherwise — and provision.ps1 then runs
@@ -138,10 +140,26 @@ end;
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   ResultCode: Integer;
-  Params, LogFile, CredFile: String;
+  Params, LogFile, CredFile, RoleFile: String;
 begin
-  if (CurStep <> ssPostInstall) or not WizardIsComponentSelected('database') then
+  if CurStep <> ssPostInstall then
     Exit;
+
+  // "Till only" leaves a note the app reads on its first start: this machine
+  // is a client terminal of the one that keeps the database, so the wizard
+  // opens on finding that machine rather than on a licence key. Written here
+  // because provision.ps1 never runs on a till-only install. The value is
+  // TerminalRole.child's wire form, and lib/data/config/installed_role.dart
+  // reads it back. A server install deletes a stale one: a machine
+  // re-installed with the database is a main device again.
+  RoleFile := ExpandConstant('{commonappdata}\XOrder POS\install-role.json');
+  if not WizardIsComponentSelected('database') then
+  begin
+    ForceDirectories(ExtractFilePath(RoleFile));
+    SaveStringToFile(RoleFile, '{"role": "client_terminal"}' + #13#10, False);
+    Exit;
+  end;
+  DeleteFile(RoleFile);
 
   LogFile := ExpandConstant('{commonappdata}\XOrder POS\logs\provision.log');
   CredFile := ExpandConstant('{commonappdata}\XOrder POS\install-credentials.json');

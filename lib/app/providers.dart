@@ -1652,6 +1652,12 @@ final licenseStoreProvider = Provider<LicenseStore>(
   (ref) => FileLicenseStore(),
 );
 
+/// The role the Windows installer wrote down for this machine, read once in
+/// `main()` before the first frame. Null wherever the installer never ran —
+/// a Mac, a hand-built machine, every install from before the marker — and
+/// null means "what it always was". See `InstalledRole`.
+final installedRoleProvider = Provider<TerminalRole?>((ref) => null);
+
 /// The role a FRESH install takes. A saved config keeps the role it was set
 /// up with; this only decides which wizard a new machine opens on.
 ///
@@ -1659,11 +1665,17 @@ final licenseStoreProvider = Provider<LicenseStore>(
 /// system rather than by screen size: a large Android tablet is still the
 /// device carried round the floor, and a small Windows till is still the one
 /// with the database on it.
-final deviceRoleProvider = Provider<TerminalRole>(
-  (ref) => Platform.isAndroid || Platform.isIOS
-      ? TerminalRole.child
-      : TerminalRole.main,
-);
+///
+/// A desktop is a main device unless the installer said otherwise: "Till
+/// only" installs no PostgreSQL, so the machine has no database to be the
+/// main device of, and it joins the one that does as a child (owner decision,
+/// 22 Sep 2026). Before the marker existed such a machine opened the
+/// main-device wizard and, on the cloud path, a database screen with nothing
+/// to point at.
+final deviceRoleProvider = Provider<TerminalRole>((ref) {
+  if (Platform.isAndroid || Platform.isIOS) return TerminalRole.child;
+  return ref.watch(installedRoleProvider) ?? TerminalRole.main;
+});
 
 /// The licence a main device shares with its children, in their database.
 /// Null until there is a database to find it in.

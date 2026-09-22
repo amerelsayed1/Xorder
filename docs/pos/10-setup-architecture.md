@@ -695,8 +695,16 @@ This document adds migration 6 only (§6).
 >   owner accepted A at that trigger knowingly, rather than building the HTTP
 >   tier.
 >
-> Not built yet: the role choice on a **desktop** (a desktop child), and the
-> *Find the main device* sweep (§10).
+> **Desktop child — owner decision, 2026-09-22.** A Windows machine installed
+> with the installer's *Till only* type (no PostgreSQL) is a child of the main
+> device too. The installer writes `%ProgramData%\XOrder POS\install-role.json`
+> (`{"role": "client_terminal"}`); `main()` reads it before the first frame
+> (`lib/data/config/installed_role.dart`) and `deviceRoleProvider` opens the
+> child wizard. No marker means main, so every existing install is unchanged,
+> and a saved `config.json` always outranks the marker. The child path already
+> carries the hardware step, so a desktop child prints and kicks its drawer.
+>
+> Not built yet: the *Find the main device* sweep (§10).
 
 ### Say plainly what the role is
 

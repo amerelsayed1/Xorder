@@ -35,6 +35,21 @@ void main() {
     }
   });
 
+  test('the till-only marker is the file the app reads, saying what it reads', () {
+    final role = File('lib/data/config/installed_role.dart').readAsStringSync();
+    final deployment = File('lib/core/config/deployment.dart').readAsStringSync();
+
+    // Same file, same directory as the credentials, on both sides.
+    expect(iss, contains(r'\XOrder POS\install-role.json'));
+    expect(role, contains("fileName = 'install-role.json'"));
+    // The value is the wire form of TerminalRole.child, verbatim.
+    expect(iss, contains('{"role": "client_terminal"}'));
+    expect(deployment, contains("child('client_terminal')"));
+    // Written by a till-only install only, and removed by a server install.
+    expect(iss, contains("if not WizardIsComponentSelected('database') then"));
+    expect(iss, contains('DeleteFile(RoleFile)'));
+  });
+
   test('the service the installer stops is the one the script registers', () {
     final iss_ = RegExp(r'#define DbService "([^"]+)"').firstMatch(iss)!;
     final ps1_ = RegExp(r"\$Service\s*=\s*'([^']+)'").firstMatch(ps1)!;

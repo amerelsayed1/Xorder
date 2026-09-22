@@ -9,6 +9,7 @@ import 'app/providers.dart';
 import 'core/config/terminal_config.dart';
 import 'data/cloud/device_token_vault.dart';
 import 'data/config/file_secret_store.dart';
+import 'data/config/installed_role.dart';
 import 'data/config/terminal_config_store.dart';
 import 'data/postgres/pos_database.dart';
 
@@ -50,9 +51,16 @@ Future<void> main() async {
   );
   await deviceTokens.restore();
 
+  // What the Windows installer said this machine is. Read here, before the
+  // first frame, because the wizard decides which screen it opens on from it
+  // synchronously; a file read from inside `build()` would paint the wrong
+  // wizard for a frame and then swap it.
+  final installedRole = await const FileInstalledRole().read();
+
   runApp(
     ProviderScope(
       overrides: [
+        installedRoleProvider.overrideWithValue(installedRole),
         terminalBootProvider.overrideWithValue(
           TerminalBoot(
             config: saved,

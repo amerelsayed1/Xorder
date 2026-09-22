@@ -114,12 +114,20 @@ enum SyncPolicy {
 /// device's PostgreSQL, **uses the licence the main device published there**,
 /// signs in with a manager who already exists, and registers itself as one
 /// more of the licence's terminals. The mode is the main device's too.
+///
+/// **A desktop can be a child as well** (owner decision, 2026-09-22): the
+/// Windows installer's "Till only" choice installs no PostgreSQL and leaves a
+/// marker saying so — `install-role.json`, read by `deviceRoleProvider` — and
+/// such a machine walks the same child path a tablet does. A desktop with no
+/// marker is a main device, which is what every desktop was until then.
 enum TerminalRole {
   /// Holds the site's database, activates the licence and builds the schema.
-  /// Every desktop till is one today, including the single-till shape.
+  /// Every desktop the installer gave a database, including the single-till
+  /// shape.
   main('main_device'),
 
-  /// Sells through a main device's database and licence.
+  /// Sells through a main device's database and licence: every tablet, and a
+  /// desktop installed "Till only".
   child('client_terminal');
 
   const TerminalRole(this.wire);
