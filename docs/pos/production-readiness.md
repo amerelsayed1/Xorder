@@ -31,8 +31,10 @@ printed. The drawer is not kicked at settlement either — `DrawerOpenFlow`
 (`lib/features/cash/presentation/cash_dialogs.dart:336-396`) records a cash movement
 and sends no bytes to hardware.
 
-Only network ESC/POS on TCP 9100 is implemented, and USB is explicitly out of scope
-(`lib/data/hardware/network_printer_ports.dart:19-21`, `lib/app/providers.dart:588`).
+Network ESC/POS on TCP 9100 (`lib/data/hardware/network_printer_ports.dart`) and, since
+2026-09-22, printers installed on the machine — USB in practice — through the OS spooler
+as RAW jobs (`lib/data/hardware/spooler_printer_ports.dart`); `CompositeHardwarePorts`
+in `lib/app/providers.dart` binds both and routes on the shape of the printer's name.
 
 **Cost.** No customer copy, therefore no paper carrying the ETA QR — which is the
 customer-facing half of the e-receipt obligation, so this is a legal blocker before it
@@ -47,7 +49,8 @@ both; a settle with no printer configured shows a *not printed* message and neve
 
 **Size: M** — the byte-building and the socket already exist for `testPrint`; the work
 is the receipt renderer, the settlement wiring, and honest failure states in EN and AR.
-**L if USB is in scope** — that is a platform channel per OS, which is a different job.
+*USB landed 2026-09-22 without a platform channel: the spooler accepts RAW ESC/POS on
+both desktops, so it was winspool over FFI on Windows and `lp -o raw` on macOS.*
 
 ### 2. The e-seal and the submission client do not exist. Nothing has ever been filed.
 
@@ -516,6 +519,8 @@ Decisions that cannot be read out of the code. Items 2 and 5 cannot start withou
 3. **Which receipt printers do we support and sell?** Only network ESC/POS exists.
    Most Egyptian restaurants already own USB printers, and USB is a platform channel
    per OS. This is the difference between item 1 being M and L.
+   *Answered 2026-09-22: "it can be usb or network". Built the same day — USB via the
+   OS spooler's RAW datatype, no platform channel needed; see `spooler_printer_ports.dart`.*
 4. **Windows: what is the deployment?** One till with local PostgreSQL, or a LAN with
    a main device? Do we ship a bundled PostgreSQL or require a technician to install
    it? Who runs `bin/pos_migrate.dart` at a restaurant, and how does version 1.1 reach

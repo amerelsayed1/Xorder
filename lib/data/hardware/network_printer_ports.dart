@@ -11,14 +11,12 @@ import '../../domain/repositories/repositories.dart';
 /// macOS and can be tested against a plain socket rather than a printer on
 /// somebody's desk.
 ///
-/// This is deliberately **not** the OS print spooler. A receipt printer driven
-/// through CUPS or winspool goes through a page-description layer that has no
-/// idea what a cash drawer is or where to cut the paper; talking to it directly
-/// is both simpler and the only way to reach the drawer kick.
-///
-/// USB printers are not covered. They need a platform channel per OS, and
-/// nothing here pretends otherwise — [discoverPrinters] returns what is on the
-/// network and says nothing about what is plugged in.
+/// Printers plugged into the till are the other half — `SpoolerPrinterPorts`,
+/// which hands the same bytes to the OS spooler as a RAW job. The two are
+/// bound together by `CompositeHardwarePorts`, which routes on the shape of
+/// the name: an address comes here, anything else goes to the spooler. So
+/// [discoverPrinters] still reports only what is on the network, and the
+/// composite adds what is plugged in.
 class NetworkPrinterPorts implements HardwarePorts {
   const NetworkPrinterPorts({
     this.port = 9100,

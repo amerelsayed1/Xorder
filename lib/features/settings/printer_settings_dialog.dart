@@ -127,7 +127,10 @@ class _PrinterSettingsFormState extends ConsumerState<PrinterSettingsForm> {
       // not find it (switched off, or on another floor today).
       if (_draft.name case final current?
           when !(_printers ?? const []).any((p) => p.name == current))
-        DiscoveredPrinter(name: current, transport: ''),
+        DiscoveredPrinter(
+          name: current,
+          transport: PrinterConfig.transportOf(current),
+        ),
       ...?_printers,
     ];
 

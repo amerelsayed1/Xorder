@@ -28,6 +28,7 @@ import '../data/config/pos_db_secret_store.dart';
 import '../data/config/setup_progress_store.dart';
 import '../data/config/terminal_config_store.dart';
 import '../data/hardware/network_printer_ports.dart';
+import '../data/hardware/spooler_printer_ports.dart';
 import '../data/postgres/pos_database.dart';
 import '../data/postgres/local_bootstrap.dart';
 import '../data/postgres/postgres_admin_repositories.dart';
@@ -711,21 +712,27 @@ final Provider<CloudSync?> cloudSyncProvider = Provider<CloudSync?>((ref) {
   return sync;
 });
 
-/// Printer and drawer, over the network.
+/// Printer and drawer — on the network, or plugged into the till.
 ///
 /// Real: it sweeps this machine's own /24 for anything listening on the RAW
-/// port every ESC/POS thermal printer uses, and *Test print* sends actual
-/// commands — including the drawer kick, because proving the drawer opens is
-/// half of what an installer is checking.
+/// port every ESC/POS thermal printer uses, asks the OS spooler what is
+/// installed, and *Test print* sends actual commands — including the drawer
+/// kick, because proving the drawer opens is half of what an installer is
+/// checking.
 ///
 /// It replaced a binding that invented two plausible-looking printers, which an
 /// operator could select and then discover at service time was never attached.
 ///
-/// **USB printers are not covered.** They need a platform channel per OS, and
-/// nothing here pretends otherwise: discovery reports what is on the network
-/// and says nothing about what is plugged in.
+/// USB printers arrive through the spooler as RAW jobs (owner decision,
+/// 22 Sep 2026: "it can be usb or network"). Most Egyptian restaurants own a
+/// USB printer, and until this a till with one always landed on the hardware
+/// screen with nothing found. Which port a job goes down is decided by the
+/// shape of the printer's name — see [PrinterConfig.transportOf].
 final hardwarePortsProvider = Provider<HardwarePorts>(
-  (ref) => const NetworkPrinterPorts(),
+  (ref) => CompositeHardwarePorts(
+    network: const NetworkPrinterPorts(),
+    spooler: SpoolerPrinterPorts(SpoolerBackend.forThisPlatform()),
+  ),
 );
 
 /// Which printer this till prints on, and how wide its paper is.

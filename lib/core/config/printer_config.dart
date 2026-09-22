@@ -20,9 +20,48 @@ class PrinterConfig {
   /// carries, and on a few counter-top units.
   static const width58mm = 384;
 
-  /// `192.168.1.44` or `192.168.1.44:9100`, as the wizard's scan found it.
-  /// Null when nothing is set up.
+  /// `192.168.1.44:9100` for a printer on the network, or the name the
+  /// operating system gives a plugged-in one — `EPSON TM-T20III` — as the
+  /// wizard's scan found it. Null when nothing is set up.
+  ///
+  /// The name is the whole identity: it is what the receipt queue keys a
+  /// job on, so it has to be stable across restarts, and it is what decides
+  /// which transport a job goes down — see [transportOf].
   final String? name;
+
+  /// `network` or `usb`, read off the shape of [name].
+  ///
+  /// Not a stored field, on purpose. The transport was being displayed by
+  /// the scan and dropped by everything that saved the choice, and a second
+  /// field that had to be kept in step with the name at every one of those
+  /// places would be one more thing to forget. The name is enough: a
+  /// printer on the network is written down as an address, a printer the
+  /// operating system installed is written down as the name it gave it, and
+  /// the two shapes do not overlap in practice.
+  String get transport => transportOf(name ?? '');
+
+  /// The transport a printer [name] addresses.
+  ///
+  /// An IPv4 address, with or without a port, or anything ending in
+  /// `:port`, is the network. Everything else — `EPSON TM-T20III`,
+  /// `POS-80`, `Receipt` — is a printer the OS spooler knows, which at a
+  /// counter means the one plugged into the till. A bare hostname is read as
+  /// a spooler name; whoever types a network printer by hostname types the
+  /// port with it, as the field's hint shows.
+  static String transportOf(String name) {
+    final trimmed = name.trim();
+    if (trimmed.isEmpty) return transportNetwork;
+    if (_ipv4.hasMatch(trimmed) || _hostAndPort.hasMatch(trimmed)) {
+      return transportNetwork;
+    }
+    return transportUsb;
+  }
+
+  static const transportNetwork = 'network';
+  static const transportUsb = 'usb';
+
+  static final _ipv4 = RegExp(r'^\d{1,3}(\.\d{1,3}){3}(:\d{1,5})?$');
+  static final _hostAndPort = RegExp(r'^[A-Za-z0-9][A-Za-z0-9.-]*:\d{1,5}$');
 
   /// The width of the printable area **in dots**, which is what the raster is
   /// built to.
