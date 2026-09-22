@@ -145,8 +145,10 @@ void main() {
 
     await printAndNew(tester, strings);
 
-    expect(ports.jobs, hasLength(1), reason: 'the button prints');
-    final job = ports.jobs.single;
+    expect(ports.jobs, isNotEmpty, reason: 'the button prints');
+    // The receipt is the first thing sent; a cash sale's drawer kick follows
+    // it as a job of its own — see the next test.
+    final job = ports.jobs.first;
 
     // Reset first, because the previous job may have left the printer bold.
     expect(job.take(EscPos.initialise.length), EscPos.initialise);
@@ -160,13 +162,38 @@ void main() {
     expect(find.text(strings.receiptPrintedToast), findsOneWidget);
   });
 
-  testWidgets('a cash sale kicks the drawer, in the same job', (tester) async {
+  testWidgets('a cash sale kicks the drawer, in a job of its own', (
+    tester,
+  ) async {
     final (ports, _) = await open(tester);
     await printAndNew(tester, const EnStrings());
 
-    // In the receipt's own job, not a second connection: a drawer opened by a
-    // separate call would spring on a receipt that failed to print.
-    expect(ports.jobs.single.join(','), contains(EscPos.openDrawer.join(',')));
+    // NOT inside the receipt's job. The kick used to ride in it, and the same
+    // bytes are what a silent printer queues — so a cash sale rung up while
+    // the printer was off sprang the drawer hours later, on the next shift,
+    // when the printer came back and the queue drained. The drawer answers to
+    // the money changing hands now; the receipt can wait, the kick cannot.
+    expect(ports.jobs, hasLength(2));
+    expect(
+      ports.jobs.first.join(','),
+      isNot(contains(EscPos.openDrawer.join(','))),
+      reason: 'the receipt job must be safe to queue',
+    );
+    expect(ports.jobs.last, EscPos.openDrawer);
+  });
+
+  testWidgets('a cash sale started anew without printing still kicks', (
+    tester,
+  ) async {
+    final (ports, queue) = await open(tester);
+    await tester.tap(find.text(const EnStrings().newSale));
+    await tester.pumpAndSettle();
+
+    // Whether a slip is wanted and whether the drawer should open are two
+    // different questions, and a cashier who skips the paper still has the
+    // customer's cash to put away.
+    expect(ports.jobs, [EscPos.openDrawer]);
+    expect(queue.jobs, isEmpty);
   });
 
   testWidgets('a card sale prints and leaves the drawer shut', (tester) async {
@@ -185,7 +212,8 @@ void main() {
     tester,
   ) async {
     const strings = EnStrings();
-    final (ports, queue) = await open(tester, reachable: false);
+    // A card sale, so the only sentence owed is the one about the paper.
+    final (ports, queue) = await open(tester, reachable: false, method: card);
 
     await printAndNew(tester, strings);
 
@@ -203,6 +231,26 @@ void main() {
     expect(queued.skip(queued.length - EscPos.cut.length), EscPos.cut);
   });
 
+  testWidgets('a cash sale on a silent printer queues the paper, never the '
+      'kick, and says the drawer stayed shut', (tester) async {
+    const strings = EnStrings();
+    final (ports, queue) = await open(tester, reachable: false);
+
+    await printAndNew(tester, strings);
+
+    expect(ports.jobs, isEmpty);
+    expect(queue.jobs, hasLength(1));
+    expect(
+      queue.jobs.single.bytes.join(','),
+      isNot(contains(EscPos.openDrawer.join(','))),
+      reason: 'the drain must not open the till on somebody else\'s shift',
+    );
+    // Two things went wrong and the toast holds one sentence. The drawer's
+    // wins: the receipt prints itself when the printer returns, the cash in
+    // the cashier's hand needs the key now.
+    expect(find.text(strings.drawerCouldNotOpen), findsOneWidget);
+  });
+
   testWidgets('a till with no printer says so and queues nothing', (
     tester,
   ) async {
@@ -215,7 +263,11 @@ void main() {
     // Deliberately not queued. A till with no printer would otherwise spool a
     // month of receipts and print all of them on the day one is plugged in.
     expect(queue.jobs, isEmpty);
+    // And one sentence, this one. A cash sale also asks for the drawer, and
+    // a till with no printer has nothing to kick it through — saying so a
+    // second time would only replace the sentence that explains why.
     expect(find.text(strings.receiptNoPrinterToast), findsOneWidget);
+    expect(find.text(strings.drawerCouldNotOpen), findsNothing);
   });
 
   testWidgets('the queue is retried before the receipt in hand', (tester) async {
@@ -229,9 +281,11 @@ void main() {
     await printAndNew(tester, strings);
 
     // Yesterday's paper first, so receipts come out in the order the sales
-    // happened rather than the order the printer came back.
-    expect(ports.jobs, hasLength(2));
+    // happened rather than the order the printer came back. Then today's,
+    // then the drawer for today's cash.
+    expect(ports.jobs, hasLength(3));
     expect(ports.jobs.first, const [1, 2, 3]);
+    expect(ports.jobs.last, EscPos.openDrawer);
     expect(queue.jobs.single.printed, isTrue);
   });
 

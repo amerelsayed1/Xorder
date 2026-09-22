@@ -221,9 +221,17 @@ class _ReceiptDialogState extends ConsumerState<ReceiptDialog> {
   }) async {
     if (openDrawer) {
       setState(() => _printing = true);
-      final opened = await ref.read(receiptPrinterProvider).openDrawer();
+      final printer = ref.read(receiptPrinterProvider);
+      final opened = await printer.openDrawer();
       if (!context.mounted) return;
-      if (!opened) posToast(context, context.strings.drawerCouldNotOpen);
+      // A till with no printer has nothing to kick a drawer through, and the
+      // print outcome already said so — a second sentence about the drawer
+      // would only replace it. A printer that is set up and answered nothing
+      // is different: the cash is in the cashier's hand right now, so that
+      // takes the toast over whatever the print said.
+      if (!opened && printer.printer.isConfigured) {
+        posToast(context, context.strings.drawerCouldNotOpen);
+      }
     }
     if (!context.mounted) return;
     ref.read(ticketProvider.notifier).reset();
