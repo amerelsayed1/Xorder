@@ -4,9 +4,11 @@
 **Request channel:** `./POS_TO_BACKEND.md` (Agent 1's; the authoritative copy lives in
 `~/Projects/Mobile Application/xorder-pos/docs/coordination/POS_TO_BACKEND.md`)
 **Backend repo:** `~/Projects/Web Application/xorder-new` (`apps/api`)
-**Last updated:** 2026-09-11 (CB-00: both repos' copies reconciled) · 2026-09-04 — **Cloud Wave 1 implemented, tested and
-smoke-verified; 16 items `READY`** (see the banner and change log). Deferred
-items stay `APPROVED`. Nothing committed or deployed.
+**Last updated:** 2026-09-22 (POS-BE-010 refunds built → `READY`; §023 bundle gains
+`receipt_profiles[]`) · 2026-09-11 (CB-00: both repos' copies reconciled) ·
+2026-09-04 — **Cloud Wave 1 implemented, tested and smoke-verified; 16 items
+`READY`** (see the banner and change log). Deferred items stay `APPROVED`.
+Nothing committed or deployed.
 
 ---
 
@@ -22,7 +24,11 @@ items stay `APPROVED`. Nothing committed or deployed.
 > `docs/backend/CLOUD_WAVE1_PROGRESS.md`.
 >
 > `APPROVED` items remain contract-final but UNBUILT (deferred from this
-> wave): POS-BE-004, 010, 012, 014, 017, 018, 021, 025, 026, 027, 028.
+> wave): POS-BE-004, 012, 014, 017, 018, 021, 025, 026, 027, 028.
+>
+> **2026-09-22 — POS-BE-010 (refunds) is built and `READY`**, and the §023
+> bundle gained `receipt_profiles[]`. Both were the owner's "hand A3 and A7 to
+> xorder-cloud". The whole `apps/api` suite is green; not deployed.
 
 **Agent 1: integrate against `READY` items only; keep `Fake` implementations
 for everything still `APPROVED`.**
@@ -59,7 +65,7 @@ for everything still `APPROVED`.**
 | POS-BE-007 | Idempotency + integer minor units | **READY** |
 | POS-BE-008 | Per-branch invoice sequence | **READY** |
 | POS-BE-009 | Shifts, cash movements, terminal registry | **READY** (registry itself lives in §023) |
-| POS-BE-010 | Refunds as reversing records | **APPROVED** |
+| POS-BE-010 | Refunds as reversing records | **READY** (2026-09-22) |
 | POS-BE-011 | **Option C decided** — device token issued at claim | **READY** |
 | POS-BE-012 | Incremental catalog sync, `complete` per collection | **APPROVED** |
 | POS-BE-013 | Money config — authored in dashboard, delivered in bundle | **READY** |
@@ -424,7 +430,12 @@ fields are present). `subscription.writable` does **not** apply (D2).
   "priced_offline": true,
   "catalog_synced_at": "2026-09-02T08:00:00Z",
   "lines": [
-    { "menu_item_id": 101,
+    { "client_line_id": "L1",                  // 2026-09-22, POS-BE-010: the TILL'S name for
+                                               // this line. Optional, ≤64 chars, unique within
+                                               // the order, stored verbatim, echoed back, and
+                                               // NOT part of the idempotency hash. It is how a
+                                               // refund built offline addresses a line.
+      "menu_item_id": 101,
       "variant_option_id": 555,                // nullable
       "option_ids": [710, 712],
       "quantity": 2,
@@ -473,13 +484,17 @@ fields are present). `subscription.writable` does **not** apply (D2).
     "client_transaction_id": "uuid-v4",
     "invoice_number": "MAADI-2026-001042",
     "status": "NEW",
-    "settlement_status": "PAID",               // derived (A4)
+    "settlement_status": "PAID",               // derived (A4) — PAID | UNPAID |
+                                               // PARTIALLY_REFUNDED | REFUNDED (§010)
+    "refunded_minor": 0,                       // 2026-09-22, POS-BE-010
     "channel": "pos",
     "totals": { "subtotal_minor": 25000, "discount_minor": 500,
                 "tax_minor": 3430, "charges_minor": 2500,
                 "total_minor": 30430, "currency": "EGP", "exponent": 2 },
     "totals_mismatch": false,                  // when true: "asserted_totals": {…} echoed
     "lines": [ { "id": 1, "menu_item_id": 101, "name": "Classic Burger",
+                 "client_line_id": "L1",       // as sent, or null (§010)
+                 "refunded_quantity": 0,       // 2026-09-22, POS-BE-010
                  "quantity": 2, "unit_price_minor": 9500,
                  "line_total_minor": 19000, "price_source": "server" } ],
     "payments": [ { "id": 51, "client_transaction_id": "uuid-v4",
@@ -517,6 +532,13 @@ server id from a lookup; the originating terminal may only know its own key.
 Overpayment beyond the outstanding balance → `422 VALIDATION_FAILED` (change is
 a client-side concern, not a stored negative payment).
 
+**Amendment 2026-09-22 (POS-BE-010).** `lines[].client_line_id` is accepted and
+stored on `order_items.client_line_id` under `unique(order_id, client_line_id)`;
+the order response echoes it plus `refunded_quantity` per line, and
+`refunded_minor` on the envelope. `settlement_status` gains
+`PARTIALLY_REFUNDED` and `REFUNDED`; it never emits `PARTIALLY_PAID` or
+`VOIDED`, and `status` still never carries refund state. Full reasoning in §010.
+
 **Schema:** `orders`: + `channel` (string, default `'qr'`), +
 `client_transaction_id` (uuid, nullable, `unique(restaurant_id,
 client_transaction_id)`), + `invoice_number` (string, nullable, indexed), +
@@ -553,7 +575,8 @@ Adopted **verbatim as requested**, as the cross-cutting convention:
   currency + exponent, never a JSON float.
 - Recovery: `GET /api/pos/orders/by-client-id/{uuid}` (§006); shifts and
   refunds are recoverable through their own `client_transaction_id`-addressable
-  paths (§009, §010).
+  paths (§009, §010 — the refund one is
+  `GET /api/pos/refunds/by-client-id/{uuid}`, live since 2026-09-22).
 
 **Schema:** the columns/indexes listed per aggregate in their own sections.
 
@@ -623,6 +646,14 @@ open and close may arrive in the same drain.
 cash_refunds`; a future `payouts` concept arrives as another cash-movement
 reason, never a new term), `variance_minor`, and the report figures.
 
+**Amendment 2026-09-22 (POS-BE-010): `cash_refunds` is live.** A cash refund is
+a refund tender whose POS-BE-013 tender kind is `cash` (an untyped tender counts
+as cash, the same conservative rule a payment obeys), attributed to the shift
+that **issued** the refund and never to the original sale's shift — the drawer
+that paid it out is the drawer that is short. `GET /shifts/{id}/report` gains
+three additive keys: `refunds_minor`, `refunds_count`, `cash_refunds_minor`,
+each `0` on a shift with no refunds.
+
 **Cash movement request:**
 
 ```jsonc
@@ -657,43 +688,188 @@ occurred_at, received_at, timestamps`. Both `BelongsToRestaurant` + `Auditable`.
 
 ---
 
-## POS-BE-010 — refunds as reversing records · APPROVED
+## POS-BE-010 — refunds as reversing records · **READY**
 
-- `POST /api/pos/refunds` — device token + `feature:pos` + `pos.refund` on
-  `acting_user_id`; supervisor override above a configurable amount is a
-  client-side gate (the server records who authorised via
-  `authorized_by_user_id`).
+**Built and tested 2026-09-22** (owner go: "hand A3 and A7 to xorder-cloud").
+The contract below is the as-shipped one; where it refines the 2026-09-02
+`APPROVED` text, the refinement is called out inline and the reason is given.
+
+- `POST /api/pos/refunds` — device token (`pos.device`) + `feature:pos`.
+  `acting_user_id`, when named, must hold **`pos.refund`** for `kind: refund`
+  and **`pos.void`** for `kind: void`. Supervisor override above a configurable
+  amount stays a client-side gate; the server records who authorised via
+  `authorized_by_user_id` (validated as a real, active account of this tenant,
+  never gated on a capability).
 - A refund is a **new record referencing the original order** — the original is
   never mutated or deleted. `OrderStatus` and its `canTransitionTo()` invariant
-  are untouched (A4); `settlement_status` on the order becomes
-  `PARTIALLY_REFUNDED` / `REFUNDED` / `VOIDED` by derivation.
+  are untouched (A4).
+- `GET /api/pos/refunds/by-client-id/{uuid}` is the POS-BE-007 recovery lookup:
+  same `200` body, `404` if unknown.
+
+### The OrderStatus decision (final)
+
+**The platform's `OrderStatus` enum does not grow.** It stays
+`NEW | COMPLETED | CANCELLED`, because it is the live QR product's lifecycle
+column and `canTransitionTo()` is what protects the "new orders" badge and
+order history. Refund state is carried entirely by the **derived**
+`settlement_status`, which a POS response has always emitted:
+
+| `settlement_status` | when |
+|---|---|
+| `UNPAID` | nothing taken, or taken in part, and nothing refunded |
+| `PAID` | `paid >= total`, `total > 0`, nothing refunded |
+| `PARTIALLY_REFUNDED` | `refunded > 0` and `refunded < paid` |
+| `REFUNDED` | `refunded > 0` and `refunded >= paid` |
+
+This is the till's own rule, verbatim — `paymentStatusFromSums` in
+`xorder-pos/lib/domain/services/payment_status.dart` — so `PaymentStatus.fromWire`
+parses every value the platform emits with the enum the till already ships.
+Two deliberate narrowings of that enum:
+
+- **`PARTIALLY_PAID` is never emitted.** The shipped §006 contract answers
+  `UNPAID` for every incompletely settled bill; changing an existing value is
+  not something a refund wave gets to do. A till wanting the finer word derives
+  it from `totals.total_minor` and the `payments[]` it already has.
+- **`VOIDED` is never emitted** — the 2026-09-02 text listed it. A settlement
+  status answers "where is the money"; voidness is a property of the *refund*,
+  and it is on the refund record as `kind: "void"`. Emitting `VOIDED` here would
+  hand the till a word its `PaymentStatus` enum cannot parse, for a fact it can
+  already read off the refund.
+
+Two counters carry it, both additive, both **counters and not SUMs** — they are
+what the *next* refund checks, inside the same transaction, under the same row
+lock (the till's own reasoning, xorder-pos migration 12):
+`orders.refunded_minor` and `order_items.refunded_quantity`.
+
+### Addressing a line — the thing that was blocking this entirely
+
+An offline till builds a refund against its **own** `pos_order_lines.id`; the
+order being refunded may still be sitting in its outbox, so the till has never
+seen `order_items.id`. `outbox_drain.dart` therefore refused to enqueue a refund
+at all. The cure is additive and lands on BOTH endpoints:
+
+- **`POST /api/pos/orders` accepts `lines[].client_line_id`** (string, ≤64,
+  optional) — the till's own name for the line. Stored verbatim on
+  `order_items.client_line_id` under `unique(order_id, client_line_id)`, echoed
+  back in the order response's `lines[]`, and **deliberately excluded from the
+  idempotency hash** (it carries no money, so a till that starts sending it must
+  not get `IDEMPOTENCY_PAYLOAD_MISMATCH` on an order it already delivered
+  without one).
+- **A refund line names itself with exactly one of `order_item_id` or
+  `client_line_id`.** Both, or neither, is `422 VALIDATION_FAILED`.
+
+> **`client_line_id` must be unique within the order, and the till's `line_key`
+> is not.** `TicketLine.keyFor` is `productId:sortedModifierIds` and
+> `TicketEngine` merges only lines that are *draft, same key AND same note* —
+> so one order legitimately holds two `pos_order_lines` rows with the same
+> `line_key` (a sent line plus a new draft of the same dish; or the same dish
+> with and without a note). `PostgresOrdersRepository._insertLines` already
+> collapses those into one `Map<String,int>` entry, so the till has a latent
+> ambiguity of its own here. **Recommended value: the till's local
+> `pos_order_lines.id` as a string** — it is unique by construction, it is what
+> `OrderRecordLine.id` already carries, and it is what `pos_refund_lines.order_line_id`
+> references, which makes the drain a straight projection. `'L1'`-style keys are
+> accepted too; the database index will refuse a duplicate within one order.
 
 **Request:**
 
 ```jsonc
 { "client_transaction_id": "uuid-v4",
-  "order_id": 8814,                         // or order client_transaction_id (UUID by format)
-  "kind": "refund",                         // refund | void (void = full, same shift, pre-settlement-report)
-  "reason": "cold food",
-  "acting_user_id": 9, "authorized_by_user_id": 4,
-  "shift_client_id": "uuid-v4",
-  "occurred_at": "2026-09-02T14:00:00+02:00",
-  "lines": [ { "order_item_id": 1, "quantity": 1, "amount_minor": 9500 } ],
-  "tenders": [ { "tender_type_id": 1, "amount_minor": 9500 } ] }  // how the money went back
+  "order_id": "8814",                       // server id OR the order's client_transaction_id (UUID by format); string on the wire
+  "kind": "refund",                         // refund | void — optional, defaults to "refund"
+  "reason": "cold food",                    // optional, ≤255
+  "acting_user_id": 9,                      // optional (v1 relaxation: null ⇒ terminal-only attribution)
+  "authorized_by_user_id": 4,               // optional, recorded not gated
+  "shift_client_id": "uuid-v4",             // optional; unknown ⇒ stored null, never a rejection
+  "occurred_at": "2026-09-02T14:00:00+02:00",   // client's event time, stored as sent
+  "lines": [ { "client_line_id": "L1",      // …or "order_item_id": 1 — exactly one
+               "quantity": 1, "amount_minor": 9500 } ],
+  "tenders": [ { "tender_type_id": 1,       // platform ids, per POS-BE-013
+                 "amount_minor": 9500 } ] }     // how the money went back — required, ≥1 row
 ```
 
-**Response `201`:** the refund with its own `credit_note_number` (drawn from the
-same `invoice_sequences` mechanism, its own `CN-` period row), a reference to
-the original order, and the order's recomputed `settlement_status`.
+**Response `201`** (byte-identical `200` on replay):
 
-**Validation:** cumulative refunded quantity per line never exceeds sold
-quantity — server-authoritative → `422 REFUND_EXCEEDS_SOLD`. Refund tender total
-must equal refund line total.
+```jsonc
+{ "data": {
+    "id": 12,
+    "client_transaction_id": "uuid-v4",
+    "credit_note_number": "CN-MAADI-2026-000001",   // own CN- series (see below)
+    "kind": "refund",
+    "reason": "cold food",
+    "order": { "id": 8814, "client_transaction_id": "uuid-v4",
+               "invoice_number": "MAADI-2026-001042",
+               "total_minor": 20000, "refunded_minor": 9500,
+               "settlement_status": "PARTIALLY_REFUNDED" },
+    "totals": { "total_minor": 9500, "currency": "EGP", "exponent": 2 },
+    "lines": [ { "id": 5, "order_item_id": 1, "client_line_id": "L1",
+                 "name": "Classic Burger", "quantity": 1,
+                 "unit_price_minor": 9500, "amount_minor": 9500 } ],
+    "tenders": [ { "id": 3, "tender_type_id": 1, "amount_minor": 9500 } ],
+    "acting_user_id": 9, "authorized_by_user_id": 4,
+    "occurred_at": "2026-09-02T14:00:00+02:00",     // as sent
+    "received_at": "2026-09-02T14:02:11Z" } }
+```
 
-**Schema:** `pos_refunds` + `pos_refund_lines` (+ negative-direction rows in
-`order_payments` for the money movement, `amount_minor < 0` forbidden —
-refund tenders live on the refund record, not as negative payments).
-`BelongsToRestaurant` + `Auditable`. Additive.
+**Credit note numbers** are drawn from the same `invoice_sequences` mechanism as
+an invoice, under the same `lockForUpdate()` inside the same transaction, in
+their **own `CN-` period bucket** (`CN-2026`): a refund therefore never consumes
+an invoice number, and a gap in the invoice series still means what an auditor
+thinks it means. A replayed `client_transaction_id` reads the stored number back
+and consumes nothing.
+
+**Validation, all server-authoritative:**
+
+| Rule | Failure |
+|---|---|
+| cumulative refunded quantity per line ≤ sold quantity | `422 REFUND_EXCEEDS_SOLD`, `details` = `{order_item_id, client_line_id, sold_quantity, already_refunded_quantity, requested_quantity}` |
+| cumulative refunded money ≤ the order's `total_minor` | `422 REFUND_EXCEEDS_SOLD`, `details` = `{order_total_minor, already_refunded_minor, requested_minor}` |
+| refund tender total **equals** refund line total | `422 VALIDATION_FAILED` |
+| tender ids are this tenant's own (POS-BE-013) | `422 VALIDATION_FAILED` |
+| a line is on that order, named exactly one way | `422 VALIDATION_FAILED` |
+| unknown / foreign / non-POS order | `422 VALIDATION_FAILED` (same answer either way — no existence leak) |
+| named actor lacks the verb | `403 POS_CAPABILITY_MISSING`, `details.capability` |
+| replay, same money | `200`, identical body |
+| replay, different money | `422 IDEMPOTENCY_PAYLOAD_MISMATCH` |
+
+**No new error code was invented.** §019's rule is that an unrecognised code is
+*retried, never discarded* — so a brand-new code for a permanent refusal would
+be retried forever by a till that predates it. Money-over-the-total therefore
+reuses `REFUND_EXCEEDS_SOLD` (the client's reaction is identical: stop, this
+refund is not valid) and everything else uses vocabulary §019 already carries.
+
+**Cash-up.** A refund is attributed to the shift that **issued** it, never the
+original sale's, and the A3 formula's `cash_refunds` term is now live:
+`opening_float + cash_sales + cash_in − cash_out − cash_refunds`, where a cash
+refund is a refund tender whose tender kind is `cash` (an untyped tender counts
+as cash, the same conservative rule a payment obeys). `GET /shifts/{id}/report`
+gains three additive keys: `refunds_minor`, `refunds_count`,
+`cash_refunds_minor` — all `0` on a shift with no refunds.
+
+**Audit:** `pos_refund.created`, carrying the credit note number, kind, total,
+order, reason, authoriser and terminal.
+
+**Schema (all additive, nullable/defaulted, reversible):**
+`orders.refunded_minor` (default 0); `order_items.client_line_id` (nullable,
+`unique(order_id, client_line_id)` — NULL is not unique on either engine, so
+every existing row and every QR order is untouched) and
+`order_items.refunded_quantity` (default 0); new tables `pos_refunds`,
+`pos_refund_lines`, `pos_refund_tenders` — `BelongsToRestaurant`, and
+`pos_refunds` is `Auditable`. There are **no negative `order_payments` rows**:
+that column is unsigned on purpose and a refund is not a payment with a minus
+sign.
+
+**Recorded deviations from the 2026-09-02 text:** (1) `VOIDED` is not a
+settlement status, per the reasoning above. (2) `kind: void` asks for `pos.void`
+rather than `pos.refund` — the till's own permission model keeps the two acts
+apart, and a person trusted to hand money back is not automatically the person
+trusted to make a sale disappear. (3) `tenders[]` is **required** and must
+balance the lines: this endpoint records money that physically went back, so a
+"void" of a bill nothing was ever taken on does not belong here at all (the till
+voids that locally and the platform's order simply has no payments). (4) The
+platform's `kind` axis (`refund | void`) is **not** the till's
+`pos_refunds.kind` (`full | partial`) — the platform derives full-vs-partial
+itself from the counters and reports it as the order's `settlement_status`.
 
 ---
 
@@ -1391,7 +1567,7 @@ grow freely and additions are never breaking.
 | `CATALOG_STALE` | 422 | reserved — server may demand a catalog refresh before accepting a priced-offline order |
 | `MENU_ITEM_NOT_FOUND` | 422 | line references an id that never existed in this tenant (deleted-during-outage lines use the `name_snapshot` fallback instead, §006) |
 | `CUSTOMER_NOT_FOUND` | 422 | order references an unknown customer |
-| `REFUND_EXCEEDS_SOLD` | 422 | cumulative refund quantity over sold quantity |
+| `REFUND_EXCEEDS_SOLD` | 422 | cumulative refund quantity over sold quantity — **and, since 2026-09-22, cumulative refund MONEY over the order's total.** One code for both because the client's reaction is identical (stop; this refund is not valid) and because §019's own "retry an unrecognised code" rule makes a brand-new code for a permanent refusal a retry loop on any till that predates it. `details` names which check failed |
 | `BATCH_TOO_LARGE` | 413 | §021 — over 100 elements; nothing processed |
 | `PAIRING_CODE_INVALID` | 422 | unknown code (deliberately indistinguishable from wrong) |
 | `PAIRING_CODE_EXPIRED` | 422 | known, past TTL → reissue from dashboard |
@@ -1643,6 +1819,7 @@ supersedes any separate `/api/pos/config`):
   "branches":  [ { "id", "code", "name", "supported_order_types" } ],   // POS-BE-005
   "tables":    [ { "id", "branch_id", "label", "seats", "area_name",
                    "is_active" } ],          // terminal's branch floor (2026-09-02 amendment)
+  "receipt_profiles": [ { … one per ACTIVE branch … } ],  // A3, 2026-09-22 — new key, see below
   "catalog":   {                             // POS-BE-003/012 (b) — frozen normalized shape:
                  // items: integer price_minor / discounted_price_minor + the
                  // COMPLETE resolved option_group_ids; groups deduplicated in
@@ -1673,6 +1850,79 @@ supersedes any separate `/api/pos/config`):
   advisory, `config_version` is the sole precedence signal (§025).
 - The bundle is complete enough to open, sell, authenticate cashiers and close
   a shift with no further contact — that is its acceptance test.
+
+### Amendment 2026-09-22 (A3) — `receipt_profiles[]`, a new frozen key
+
+The bundle carried `invoice{}` and `branding{}` but nothing that said **who the
+receipt says sold the food**, so every cloud till printed with compiled-in
+defaults. The platform is now the author of that (CB-08's platform half), and it
+travels as its own key. Frozen bundle keys are additive, so this is a new key
+and nothing existing changed shape.
+
+```jsonc
+"receipt_profiles": [
+  { "branch_id": 3,
+    "trade_name": "Koshary House LLC",  // '' ⇒ never: falls back to the restaurant's name
+    "registration_number": "123456789", // the TAXPAYER's — restaurants.tax_registration_number
+    "activity_code": "5610",            // ETA's four-digit activity code
+    "branch_code": "0042",              // ETA's branch code — NOT branches.code / the invoice prefix
+    "country": "EG",                    // two-letter ISO, never blank
+    "governate": "Cairo",               // ETA's spelling, deliberately
+    "region_city": "Maadi",
+    "street": "Road 9",
+    "building_number": "12",
+    "postal_code": "", "floor": "", "room": "", "landmark": "",
+    "additional_info": "",              // the till's column name, not "additional_information"
+    "phone": "+201000000001",           // '' ⇒ falls back to branches.phone
+    "header_note": "Welcome",           // nullable — genuinely absent, not empty
+    "footer_note": "Wifi: guest",       // nullable
+    "revision": 3 } ]                   // 0 = nobody has authored this branch yet
+```
+
+- **The field names are the till's `pos_receipt_profiles` columns, one for one**
+  (`xorder-pos/lib/data/postgres/migrations.dart`), in snake_case, so the
+  bootstrap seeder is a straight mapping with no translation table.
+- **One row per ACTIVE branch, authored or not.** A branch nobody has typed yet
+  is projected from what the platform knows (restaurant name, restaurant tax
+  registration number, `country: "EG"`, empty strings, `revision: 0`) — a
+  missing row would send that till back to its defaults, which is the whole bug.
+  Inactive branches are omitted, exactly like the `branches` block.
+- **Empty strings, not nulls**, on every text field except the two notes: the
+  till's columns are `NOT NULL DEFAULT ''`, so the seeder needs no null
+  handling. `header_note` / `footer_note` are nullable on both sides.
+- **`registration_number` is the restaurant's, not the branch's.** One taxpayer
+  has one number; a per-branch copy would be a second author of one row. It is
+  stored on `restaurants.tax_registration_number` (the same value the bundle's
+  `restaurant.tax_registration_number` has always carried) and projected into
+  every profile.
+- **`branch_code` is not `branches.code`.** `branches.code` is the invoice
+  prefix and the restaurant chooses it; `branch_code` is what the tax authority
+  registered. They are allowed to differ and usually do. The dashboard form says
+  so in both languages.
+- **Authored on the dashboard** at `GET /api/dashboard/receipt-profiles` and
+  `PUT /api/dashboard/receipt-profiles/{branch}`, gated
+  `feature:pos` + `can:settings.view` (+ `can:settings.update` and
+  `subscription.writable` to write) — the same gate pair as the POS money
+  config, because the legal identity on a slip is settings work of exactly the
+  same class as the tax registration number `settings.update` already authors.
+  Cross-tenant branch → **404**. Page: `apps/web/.../PosReceiptView.vue`, under
+  Settings → Point of sale → Receipt details, EN + AR.
+- **Every write bumps `pos_config_version`** (a `PosConfigVersion` model hook on
+  `ReceiptProfile`, plus an explicit bump when the restaurant's tax registration
+  number changes), so the next heartbeat tells every till to re-pull.
+- **`revision` is server-managed**: it increments on each save, and the PUT
+  accepts an optional `revision` so a stale save is refused with `409` instead
+  of overwriting whoever saved first — the same guard the till has for an office
+  and a counter editing one profile.
+- **What the platform does NOT decide:** whether a profile is complete enough to
+  print or to file. The till's `ReceiptProfile.printProblems` /
+  `.filingProblems` keep that judgement, where the receipt and the submission
+  are; the platform validates shape only (four-digit activity code, two-letter
+  country) and lets a half-typed profile save, because that is how one is filled
+  in.
+- **Print LAYOUT preferences are not here.** CB-08's ruling splits the legal
+  identity (platform) from how a given printer lays it out (till). This key is
+  the identity half only.
 
 **Schema:** `pos_terminals` — `id, restaurant_id, branch_id, terminal_id (uuid,
 unique(restaurant_id, terminal_id)), name, state
@@ -1947,4 +2197,6 @@ today; everything else awaits the owner's go for implementation.
 | 2026-09-05 | **Tenant creation split from terminal creation** (owner decision). Creating a client now mints the client **and its POS licence in one transaction** — a licence failure rolls the whole tenant back, so there is no such thing as an unlicensed client created through the wizard. Creating a client still creates **no terminal of any kind**; terminals are provisioned one at a time afterwards, and a licensed tenant with zero terminals is a valid resting state. New platform-side routes under `/api/admin/restaurants/{restaurant}/terminals` (§023 amendment), new `pos_fleet.manage` capability. **No POS-facing wire contract changed.** |
 | 2026-09-11 | **CB-00 — the two repos' copies reconciled** (`xorder-cloud`, docs only). They had drifted in both directions. xorder-new (2026-09-05) alone had the §023 "Amendment, owner decision 2026-09-05 — the platform-side front door" (the four `/api/admin/restaurants/{restaurant}/terminals` routes and the "zero terminals is a normal state" note) and the 2026-09-05 "tenant creation split from terminal creation" change-log row. xorder-pos (2026-09-06) alone had the §022 "Amendment 2026-09-06 — 'catalog authored in the cloud only' now reads 'on a cloud terminal'" (which carried no change-log row of its own). Both are kept; they touch different passages, so nothing conflicted. Change-log rows re-sorted into date order (no row removed or reworded). No contract status changed (the two copies agreed on every status). Both copies are now byte-identical. |
 | 2026-09-11 | **POS-BE-013 amended: the tender-id defect is fixed** (owner go 2026-09-11, `xorder-cloud`). A cloud till had been paying with its own local tender ids (1–4), and the platform validates `tender_type_id` against its own tenant-scoped `tender_types`. Platform side: `PosProvisioningService::ensureDefaultTenders()` creates Cash + Card at a POS restaurant's first terminal (provision or register, with claim as the backstop) when the restaurant has no tender types. It is idempotent, scoped per tenant, and bumps `config_version`. The rules added to §013 are that `tender_type_id` MUST come from `money.tender_types`, the list is never empty, and null means "unspecified" (counted as cash) and is never a fallback. This is an amendment, not new surface, so there is no POS-BE-030, and POS-BE-013 stays `READY`. Tests: `tests/Feature/Pos/PosDefaultTendersTest.php` (11). No migration. Till side (`pos-dev`, in parallel): seed `pos_tender_types` from the bundle on cloud and pay with platform ids. Nothing committed or deployed. |
+| 2026-09-22 | **§023 bundle gains `receipt_profiles[]`** (owner go: "hand A3 and A7 to xorder-cloud", item A3). A new frozen key, one row per active branch, field names copied one for one from the till's `pos_receipt_profiles` columns so its seeder is a straight mapping. An unauthored branch is projected from the restaurant rather than omitted — a missing row is exactly what made every cloud till print with compiled-in defaults. `registration_number` is the restaurant's single copy (one taxpayer, one number); `branch_code` is ETA's, **not** `branches.code`. Authored at `GET`/`PUT /api/dashboard/receipt-profiles[/{branch}]` under `feature:pos` + `settings.view`/`settings.update` + `subscription.writable`, with a `revision` guard (stale save → 409) and a `pos_config_version` bump on every write. New dashboard page `PosReceiptView.vue` (EN + AR, RTL). **CLOUD_WAVE1 deviation 6 is closed:** `UpdateRestaurantProfileRequest` finally accepts `tax_registration_number`, and changing it bumps `config_version`. Tests: `tests/Feature/Pos/PosReceiptProfileTest.php` (10). Migration additive: new `receipt_profiles` table. Branch `pos/cloud-refunds-receipt-profile`, not pushed, not deployed. |
+| 2026-09-22 | **POS-BE-010 built and tested → `READY`** (owner go: "hand A3 and A7 to xorder-cloud"). `POST /api/pos/refunds` + `GET /api/pos/refunds/by-client-id/{uuid}`, device token + `feature:pos`, `pos.refund` (or `pos.void` for `kind: void`), credit notes in their own `CN-` sequence bucket, cumulative quantity AND money checks under the order's row lock, idempotent per POS-BE-007 (201 first / 200 replay / never 409). **The blocker is cleared:** `POST /api/pos/orders` now accepts `lines[].client_line_id` and stores it under `unique(order_id, client_line_id)`, so a refund built offline addresses lines by `(order client_transaction_id, client_line_id)` and never needs a platform order-item id. **OrderStatus decision: the enum does not grow** — `NEW \| COMPLETED \| CANCELLED` stands, and refund state rides the derived `settlement_status` (`PARTIALLY_REFUNDED` / `REFUNDED`, the till's own `PaymentStatus` words; `VOIDED` and `PARTIALLY_PAID` are never emitted). A3's `cash_refunds` term went live and the shift report gained `refunds_minor`, `refunds_count`, `cash_refunds_minor`. No new §019 code. Tests: `tests/Feature/Pos/PosRefundsTest.php` (19). Migrations additive: `orders.refunded_minor`, `order_items.client_line_id` + `refunded_quantity`, `pos_refunds` / `pos_refund_lines` / `pos_refund_tenders`. Branch `pos/cloud-refunds-receipt-profile`, not pushed, not deployed. |
 | 2026-09-13 | **POS-BE-030 agreed; platform half `READY`** (CB-09; owner go "finish all phases"). `PosBootstrapService::staff()` withholds `purchase.manage` from every bundle, owner included, and `PosPurchaseCapabilityWithheldTest` covers it. Purchasing is authored only on the dashboard under `feature:purchasing` + `can:purchase.manage`, and `purchasing` does not require `pos`. No wire change. Built on `feat/cb-09-purchasing` in xorder-new, not deployed. The till half, hiding the panes by deployment, is on xorder-pos `feat/cb-09-slice-e` @ `1adb17f`, not merged. |

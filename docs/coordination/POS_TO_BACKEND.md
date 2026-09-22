@@ -501,7 +501,7 @@ closable offline and sync afterwards as a batch.
 
 ## POS-BE-010
 
-**Status:** APPROVED — contract agreed 2026-09-02, see `BACKEND_TO_POS.md`; implementation not started
+**Status:** READY — built 2026-09-22 (`b15f269` in xorder-new), see `BACKEND_TO_POS.md` §010 for the final wire shape; POS half (drain + `client_line_id`) follows
 **Feature:** Refunds and voids as reversing records
 
 **Description:** Partial and full refunds against a settled order, recorded as a
