@@ -36,7 +36,10 @@ use App\Http\Controllers\Dashboard\OrderController as DashboardOrderController;
 use App\Http\Controllers\Dashboard\PosPinController;
 use App\Http\Controllers\Dashboard\PosTerminalController as DashboardPosTerminalController;
 use App\Http\Controllers\Dashboard\PulseController;
+use App\Http\Controllers\Dashboard\PurchaseOrderController;
+use App\Http\Controllers\Dashboard\PurchasingLookupController;
 use App\Http\Controllers\Dashboard\PushTokenController;
+use App\Http\Controllers\Dashboard\ReceiptProfileController;
 use App\Http\Controllers\Dashboard\ReportController;
 use App\Http\Controllers\Dashboard\RestaurantProfileController;
 use App\Http\Controllers\Dashboard\ReviewController;
@@ -46,10 +49,8 @@ use App\Http\Controllers\Dashboard\StatsController;
 use App\Http\Controllers\Dashboard\StockAdjustmentController;
 use App\Http\Controllers\Dashboard\StockItemController;
 use App\Http\Controllers\Dashboard\StockLevelController;
-use App\Http\Controllers\Dashboard\PurchaseOrderController;
-use App\Http\Controllers\Dashboard\PurchasingLookupController;
-use App\Http\Controllers\Dashboard\SupplierController;
 use App\Http\Controllers\Dashboard\SupplierAccountController;
+use App\Http\Controllers\Dashboard\SupplierController;
 use App\Http\Controllers\Dashboard\SupplierInvoiceController;
 use App\Http\Controllers\Dashboard\SupplierPaymentController;
 use App\Http\Controllers\Dashboard\TableController;
@@ -656,11 +657,24 @@ Route::prefix('dashboard')
             });
 
             Route::middleware('can:settings.view')->group(function () {
+                // A3 / CB-08 — who the receipt says sold the food, per branch.
+                // Same gate pair as the money config, and for the same reason:
+                // the legal identity printed on a slip is settings work, it is
+                // the same class of fact as the restaurant profile's own tax
+                // registration number (which `settings.update` already
+                // authors), and a separate capability would leave every role
+                // that can edit tax unable to edit the header it prints on.
+                // `{branch}` is route model bound, so another tenant's branch
+                // is a 404.
+                Route::get('receipt-profiles', [ReceiptProfileController::class, 'index']);
+
                 Route::get('tax-rules', [TaxRuleController::class, 'index']);
                 Route::get('charges', [ChargeController::class, 'index']);
                 Route::get('tender-types', [TenderTypeController::class, 'index']);
 
                 Route::middleware(['can:settings.update', 'subscription.writable'])->group(function () {
+                    Route::put('receipt-profiles/{branch}', [ReceiptProfileController::class, 'update']);
+
                     Route::post('tax-rules', [TaxRuleController::class, 'store']);
                     Route::put('tax-rules/{taxRule}', [TaxRuleController::class, 'update']);
                     Route::delete('tax-rules/{taxRule}', [TaxRuleController::class, 'destroy']);

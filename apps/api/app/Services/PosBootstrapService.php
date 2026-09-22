@@ -36,11 +36,14 @@ use App\Support\PosPin;
  */
 class PosBootstrapService
 {
+    public function __construct(private readonly ReceiptProfileService $receiptProfiles) {}
+
     public function bundle(PosTerminal $terminal): array
     {
         $restaurant = $terminal->restaurant()->with('features')->first();
         $currency = $restaurant->currency;
         $exp = 10 ** $currency->exponent();
+        $branches = $restaurant->branches()->where('is_active', true)->get();
 
         return [
             'config_version' => (int) $restaurant->pos_config_version,
@@ -66,13 +69,19 @@ class PosBootstrapService
                 'timezone' => $restaurant->localTimezone(),
                 'default_language' => $restaurant->default_language->value,
             ],
-            'branches' => $restaurant->branches()->where('is_active', true)->get()
+            'branches' => $branches
                 ->map(fn ($b) => [
                     'id' => $b->id,
                     'code' => $b->code,
                     'name' => $b->name_en ?: $b->name_ar,
                     'supported_order_types' => $b->supported_order_types ?? [],
                 ])->values()->all(),
+            // A3 (new key, 2026-09-22): who the receipt says sold the food, one
+            // row per active branch — including branches nobody has authored
+            // yet, projected from the restaurant, because a till that gets no
+            // row for its branch prints compiled-in defaults, which is the
+            // whole bug. Names are the till's `pos_receipt_profiles` columns.
+            'receipt_profiles' => $this->receiptProfiles->wire($restaurant, $branches),
             // 2026-09-02 amendment: the branch floor, so a cloud till can seat
             // dine-in tickets. Scoped to the TERMINAL'S branch (decision
             // recorded in BACKEND_TO_POS.md §023). No occupancy state — the

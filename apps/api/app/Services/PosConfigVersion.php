@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Branch;
 use App\Models\Charge;
 use App\Models\PosTerminal;
+use App\Models\ReceiptProfile;
 use App\Models\Restaurant;
 use App\Models\TaxRule;
 use App\Models\TenderType;
@@ -20,13 +21,14 @@ use Illuminate\Database\Eloquent\Model;
  *
  * Coverage: rather than sprinkling bump() through every controller that can
  * change the bundle, the bundle-shaped models are hooked once here (called
- * from AppServiceProvider::boot). Branch, TaxRule, Charge, TenderType and
- * PosTerminal writes bump automatically; the PIN endpoints bump explicitly
- * (User writes are far too broad to hook — a password change is not a bundle
- * change).
+ * from AppServiceProvider::boot). Branch, TaxRule, Charge, TenderType,
+ * PosTerminal and ReceiptProfile writes bump automatically; the PIN endpoints
+ * and the restaurant's tax registration number bump explicitly (User and
+ * Restaurant writes are far too broad to hook — a password change or a new
+ * cover image is not a bundle change).
  *
- * KNOWN GAP (recorded in the wave journal): staff role changes and restaurant
- * profile edits (branding, currency) do not bump yet. The heartbeat's
+ * KNOWN GAP (recorded in the wave journal): staff role changes and the rest of
+ * the restaurant profile (branding, currency) do not bump yet. The heartbeat's
  * config_version still refreshes tills periodically, so the effect is a
  * delayed pickup, not a wrong bundle.
  */
@@ -50,7 +52,7 @@ class PosConfigVersion
             self::bump($model->restaurant_id ?? null);
         };
 
-        foreach ([Branch::class, TaxRule::class, Charge::class, TenderType::class, PosTerminal::class] as $class) {
+        foreach ([Branch::class, TaxRule::class, Charge::class, TenderType::class, PosTerminal::class, ReceiptProfile::class] as $class) {
             $class::saved($bump);
             $class::deleted($bump);
         }

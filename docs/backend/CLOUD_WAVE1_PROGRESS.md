@@ -74,9 +74,18 @@ Test files: `tests/Feature/Pos/{PosTestCase,PosFoundationsTest,PosProvisioningTe
    (branding/currency) writes do not bump pos_config_version yet — hooks
    cover Branch/TaxRule/Charge/TenderType/PosTerminal + explicit bumps on
    PIN set/clear. Effect is delayed pickup via heartbeat, never a wrong bundle.
-6. **restaurants.tax_registration_number**: column shipped + delivered in the
+   **Narrowed 2026-09-22 (A3):** ReceiptProfile joined the hooks, and a change
+   to `restaurants.tax_registration_number` now bumps explicitly. Branding,
+   currency and role edits are still the gap.
+6. ~~**restaurants.tax_registration_number**: column shipped + delivered in the
    bundle, but UpdateRestaurantProfileRequest does not accept it yet — no
-   authoring UI path this wave (settable via tinker/admin only).
+   authoring UI path this wave (settable via tinker/admin only).~~
+   **CLOSED 2026-09-22 (A3).** `UpdateRestaurantProfileRequest` accepts
+   `tax_registration_number` (nullable, ≤32, shape deliberately unvalidated so
+   a half-typed number saves), the new Receipt details page authors it, and a
+   change bumps `pos_config_version` because it rides the bundle twice — as
+   `restaurant.tax_registration_number` and as every
+   `receipt_profiles[].registration_number`.
 7. **terminal_status 'stale' not computed** — heartbeat answers active|revoked
    only; 'stale' needs the site tier (POS-BE-026, deferred).
 8. **POS-BE-009's self-registration endpoint subsumed by POS-BE-023** —
@@ -100,6 +109,7 @@ has been deployed; the migration lands there in its final form.**
 
 | Date | Item | Status | Files (paths relative to apps/api) | Tests |
 |---|---|---|---|---|
+| 2026-09-22 | **A3 receipt profile in the bundle** (same owner go, item A3) | DONE | migrations/2026_09_22_000400, app/Models/ReceiptProfile.php, app/Services/ReceiptProfileService.php, Dashboard/ReceiptProfileController, Requests/Dashboard/UpdateReceiptProfileRequest, `receipt_profiles` block in PosBootstrapService, ReceiptProfile hooked in PosConfigVersion, `tax_registration_number` accepted in UpdateRestaurantProfileRequest + explicit bump in RestaurantProfileController, routes, lang en/ar; web: `apps/web/src/pages/dashboard/PosReceiptView.vue`, router, settings.config.js, `pos_receipt` + `nav.pos_receipt` in both locales | `tests/Feature/Pos/PosReceiptProfileTest.php` (10) |
 | 2026-09-22 | **POS-BE-010 refunds** (owner go "hand A3 and A7 to xorder-cloud", item A7) | READY | migrations/2026_09_22_000100 + 000200, app/Models/{PosRefund,PosRefundLine,PosRefundTender}.php, app/Services/PosRefundService.php, Pos/RefundController, Requests/Pos/StoreRefundRequest, Resources/PosRefundResource, + `client_line_id` through StorePosOrderRequest → PosPricingEngine → PosOrderService → PosOrderResource, `settlementStatusFrom()` on PosOrderService, `cash_refunds` in PosShiftService, `$series` on InvoiceSequenceService, routes, lang en/ar | `tests/Feature/Pos/PosRefundsTest.php` (19) |
 
 **The A7 design point, settled.** A cloud till could not upload a refund at all
@@ -114,6 +124,18 @@ till that starts sending it must not collide with an order it already delivered.
 same note, so one order can genuinely hold two rows with the same `line_key`
 (and `_insertLines` already collapses them into one map entry — a latent
 ambiguity on the till, reported to `pos-dev`).
+
+**A3, where it is authored and why.** A dedicated page under Settings → Point
+of sale (`Receipt details`), not the branch form: a receipt profile is a POS and
+e-receipt concern, the Branches page is shared with tenants that never bought
+the till, and the money config next door is the established home for "platform
+authors, till reads". It reuses `settings.view` / `settings.update` rather than
+minting a `pos.receipt_profile` capability — the legal identity on a slip is the
+same class of fact as `restaurants.tax_registration_number`, which
+`settings.update` already authors, and a new checkbox would leave every role
+that can edit tax unable to edit the header it prints on. **That is a judgement
+call and the owner may reverse it**; reversing costs one enum case, one label
+pair, and a grant on every existing role.
 
 **OrderStatus decision (A7).** `OrderStatus` stays `NEW | COMPLETED |
 CANCELLED`. Refund state is carried by the derived `settlement_status`, which

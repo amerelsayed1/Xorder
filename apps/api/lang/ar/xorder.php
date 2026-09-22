@@ -58,6 +58,7 @@ return [
         'order_received' => 'تم استلام الطلب.',
         'order_not_found' => 'لم يتم العثور على الطلب.',
         'refund_not_found' => 'لم يتم العثور على الاسترداد.',
+        'receipt_profile_stale' => 'قام شخص آخر بحفظ بيانات الفاتورة أثناء تعديلك. أعد التحميل لعرض نسخته.',
         'order_updated' => 'تم تحديث الطلب.',
         'order_transition_invalid' => 'تغيير حالة الطلب هذا غير مسموح به.',
         'close_table_visit_instead' => 'أغلق أو ألغِ زيارة الطاولة لإنهاء طلب الصالة.',

@@ -184,6 +184,12 @@ const restaurantRoutes = [
                     // feature:pos + can:settings.view; the feature half lives on
                     // the sub-menu entry, so the guard mirrors the capability.
                     { path: 'taxes', name: 'dashboard.pos.money', component: () => import('../pages/dashboard/PosMoneyView.vue'), meta: { capability: 'settings.view' } },
+                    // The receipt profile (A3 / CB-08) — who the slip says sold
+                    // the food, per branch. Same server gate as the money
+                    // config (feature:pos + can:settings.view, settings.update
+                    // to write), so the guard mirrors the capability and the
+                    // feature half lives on the sub-menu entry.
+                    { path: 'receipt', name: 'dashboard.pos.receipt', component: () => import('../pages/dashboard/PosReceiptView.vue'), meta: { capability: 'settings.view' } },
                 ],
             },
             { path: 'settings/profile', redirect: { name: 'dashboard.profile' } },

@@ -28,6 +28,14 @@ class UpdateRestaurantProfileRequest extends FormRequest
             'phone' => ['nullable', 'string', 'max:32', (new MobileNumber)->allowLandline()],
             'whatsapp_number' => ['nullable', 'string', 'max:32', new MobileNumber],
             'address' => ['nullable', 'string', 'max:1000'],
+            // The taxpayer's registration number — ETA's `rin`, nine digits in
+            // Egypt. Accepted here since 2026-09-22 (A3): the column shipped
+            // with Cloud Wave 1 and travelled in the POS bundle, but nothing
+            // could set it except tinker, which is CLOUD_WAVE1 deviation 6.
+            // Shape is not enforced: a half-typed number must be savable, and
+            // the till already decides per field what is enough to print
+            // versus enough to FILE (ReceiptProfile.filingProblems).
+            'tax_registration_number' => ['nullable', 'string', 'max:32'],
             // Decides when the restaurant's day turns over: every "today" on the
             // dashboard (menu views, order counts, reports) is measured in this
             // zone. `timezone:all` accepts any IANA identifier PHP knows.

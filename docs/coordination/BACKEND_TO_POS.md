@@ -1819,6 +1819,7 @@ supersedes any separate `/api/pos/config`):
   "branches":  [ { "id", "code", "name", "supported_order_types" } ],   // POS-BE-005
   "tables":    [ { "id", "branch_id", "label", "seats", "area_name",
                    "is_active" } ],          // terminal's branch floor (2026-09-02 amendment)
+  "receipt_profiles": [ { … one per ACTIVE branch … } ],  // A3, 2026-09-22 — new key, see below
   "catalog":   {                             // POS-BE-003/012 (b) — frozen normalized shape:
                  // items: integer price_minor / discounted_price_minor + the
                  // COMPLETE resolved option_group_ids; groups deduplicated in
@@ -1849,6 +1850,79 @@ supersedes any separate `/api/pos/config`):
   advisory, `config_version` is the sole precedence signal (§025).
 - The bundle is complete enough to open, sell, authenticate cashiers and close
   a shift with no further contact — that is its acceptance test.
+
+### Amendment 2026-09-22 (A3) — `receipt_profiles[]`, a new frozen key
+
+The bundle carried `invoice{}` and `branding{}` but nothing that said **who the
+receipt says sold the food**, so every cloud till printed with compiled-in
+defaults. The platform is now the author of that (CB-08's platform half), and it
+travels as its own key. Frozen bundle keys are additive, so this is a new key
+and nothing existing changed shape.
+
+```jsonc
+"receipt_profiles": [
+  { "branch_id": 3,
+    "trade_name": "Koshary House LLC",  // '' ⇒ never: falls back to the restaurant's name
+    "registration_number": "123456789", // the TAXPAYER's — restaurants.tax_registration_number
+    "activity_code": "5610",            // ETA's four-digit activity code
+    "branch_code": "0042",              // ETA's branch code — NOT branches.code / the invoice prefix
+    "country": "EG",                    // two-letter ISO, never blank
+    "governate": "Cairo",               // ETA's spelling, deliberately
+    "region_city": "Maadi",
+    "street": "Road 9",
+    "building_number": "12",
+    "postal_code": "", "floor": "", "room": "", "landmark": "",
+    "additional_info": "",              // the till's column name, not "additional_information"
+    "phone": "+201000000001",           // '' ⇒ falls back to branches.phone
+    "header_note": "Welcome",           // nullable — genuinely absent, not empty
+    "footer_note": "Wifi: guest",       // nullable
+    "revision": 3 } ]                   // 0 = nobody has authored this branch yet
+```
+
+- **The field names are the till's `pos_receipt_profiles` columns, one for one**
+  (`xorder-pos/lib/data/postgres/migrations.dart`), in snake_case, so the
+  bootstrap seeder is a straight mapping with no translation table.
+- **One row per ACTIVE branch, authored or not.** A branch nobody has typed yet
+  is projected from what the platform knows (restaurant name, restaurant tax
+  registration number, `country: "EG"`, empty strings, `revision: 0`) — a
+  missing row would send that till back to its defaults, which is the whole bug.
+  Inactive branches are omitted, exactly like the `branches` block.
+- **Empty strings, not nulls**, on every text field except the two notes: the
+  till's columns are `NOT NULL DEFAULT ''`, so the seeder needs no null
+  handling. `header_note` / `footer_note` are nullable on both sides.
+- **`registration_number` is the restaurant's, not the branch's.** One taxpayer
+  has one number; a per-branch copy would be a second author of one row. It is
+  stored on `restaurants.tax_registration_number` (the same value the bundle's
+  `restaurant.tax_registration_number` has always carried) and projected into
+  every profile.
+- **`branch_code` is not `branches.code`.** `branches.code` is the invoice
+  prefix and the restaurant chooses it; `branch_code` is what the tax authority
+  registered. They are allowed to differ and usually do. The dashboard form says
+  so in both languages.
+- **Authored on the dashboard** at `GET /api/dashboard/receipt-profiles` and
+  `PUT /api/dashboard/receipt-profiles/{branch}`, gated
+  `feature:pos` + `can:settings.view` (+ `can:settings.update` and
+  `subscription.writable` to write) — the same gate pair as the POS money
+  config, because the legal identity on a slip is settings work of exactly the
+  same class as the tax registration number `settings.update` already authors.
+  Cross-tenant branch → **404**. Page: `apps/web/.../PosReceiptView.vue`, under
+  Settings → Point of sale → Receipt details, EN + AR.
+- **Every write bumps `pos_config_version`** (a `PosConfigVersion` model hook on
+  `ReceiptProfile`, plus an explicit bump when the restaurant's tax registration
+  number changes), so the next heartbeat tells every till to re-pull.
+- **`revision` is server-managed**: it increments on each save, and the PUT
+  accepts an optional `revision` so a stale save is refused with `409` instead
+  of overwriting whoever saved first — the same guard the till has for an office
+  and a counter editing one profile.
+- **What the platform does NOT decide:** whether a profile is complete enough to
+  print or to file. The till's `ReceiptProfile.printProblems` /
+  `.filingProblems` keep that judgement, where the receipt and the submission
+  are; the platform validates shape only (four-digit activity code, two-letter
+  country) and lets a half-typed profile save, because that is how one is filled
+  in.
+- **Print LAYOUT preferences are not here.** CB-08's ruling splits the legal
+  identity (platform) from how a given printer lays it out (till). This key is
+  the identity half only.
 
 **Schema:** `pos_terminals` — `id, restaurant_id, branch_id, terminal_id (uuid,
 unique(restaurant_id, terminal_id)), name, state
@@ -2123,5 +2197,6 @@ today; everything else awaits the owner's go for implementation.
 | 2026-09-05 | **Tenant creation split from terminal creation** (owner decision). Creating a client now mints the client **and its POS licence in one transaction** — a licence failure rolls the whole tenant back, so there is no such thing as an unlicensed client created through the wizard. Creating a client still creates **no terminal of any kind**; terminals are provisioned one at a time afterwards, and a licensed tenant with zero terminals is a valid resting state. New platform-side routes under `/api/admin/restaurants/{restaurant}/terminals` (§023 amendment), new `pos_fleet.manage` capability. **No POS-facing wire contract changed.** |
 | 2026-09-11 | **CB-00 — the two repos' copies reconciled** (`xorder-cloud`, docs only). They had drifted in both directions. xorder-new (2026-09-05) alone had the §023 "Amendment, owner decision 2026-09-05 — the platform-side front door" (the four `/api/admin/restaurants/{restaurant}/terminals` routes and the "zero terminals is a normal state" note) and the 2026-09-05 "tenant creation split from terminal creation" change-log row. xorder-pos (2026-09-06) alone had the §022 "Amendment 2026-09-06 — 'catalog authored in the cloud only' now reads 'on a cloud terminal'" (which carried no change-log row of its own). Both are kept; they touch different passages, so nothing conflicted. Change-log rows re-sorted into date order (no row removed or reworded). No contract status changed (the two copies agreed on every status). Both copies are now byte-identical. |
 | 2026-09-11 | **POS-BE-013 amended: the tender-id defect is fixed** (owner go 2026-09-11, `xorder-cloud`). A cloud till had been paying with its own local tender ids (1–4), and the platform validates `tender_type_id` against its own tenant-scoped `tender_types`. Platform side: `PosProvisioningService::ensureDefaultTenders()` creates Cash + Card at a POS restaurant's first terminal (provision or register, with claim as the backstop) when the restaurant has no tender types. It is idempotent, scoped per tenant, and bumps `config_version`. The rules added to §013 are that `tender_type_id` MUST come from `money.tender_types`, the list is never empty, and null means "unspecified" (counted as cash) and is never a fallback. This is an amendment, not new surface, so there is no POS-BE-030, and POS-BE-013 stays `READY`. Tests: `tests/Feature/Pos/PosDefaultTendersTest.php` (11). No migration. Till side (`pos-dev`, in parallel): seed `pos_tender_types` from the bundle on cloud and pay with platform ids. Nothing committed or deployed. |
+| 2026-09-22 | **§023 bundle gains `receipt_profiles[]`** (owner go: "hand A3 and A7 to xorder-cloud", item A3). A new frozen key, one row per active branch, field names copied one for one from the till's `pos_receipt_profiles` columns so its seeder is a straight mapping. An unauthored branch is projected from the restaurant rather than omitted — a missing row is exactly what made every cloud till print with compiled-in defaults. `registration_number` is the restaurant's single copy (one taxpayer, one number); `branch_code` is ETA's, **not** `branches.code`. Authored at `GET`/`PUT /api/dashboard/receipt-profiles[/{branch}]` under `feature:pos` + `settings.view`/`settings.update` + `subscription.writable`, with a `revision` guard (stale save → 409) and a `pos_config_version` bump on every write. New dashboard page `PosReceiptView.vue` (EN + AR, RTL). **CLOUD_WAVE1 deviation 6 is closed:** `UpdateRestaurantProfileRequest` finally accepts `tax_registration_number`, and changing it bumps `config_version`. Tests: `tests/Feature/Pos/PosReceiptProfileTest.php` (10). Migration additive: new `receipt_profiles` table. Branch `pos/cloud-refunds-receipt-profile`, not pushed, not deployed. |
 | 2026-09-22 | **POS-BE-010 built and tested → `READY`** (owner go: "hand A3 and A7 to xorder-cloud"). `POST /api/pos/refunds` + `GET /api/pos/refunds/by-client-id/{uuid}`, device token + `feature:pos`, `pos.refund` (or `pos.void` for `kind: void`), credit notes in their own `CN-` sequence bucket, cumulative quantity AND money checks under the order's row lock, idempotent per POS-BE-007 (201 first / 200 replay / never 409). **The blocker is cleared:** `POST /api/pos/orders` now accepts `lines[].client_line_id` and stores it under `unique(order_id, client_line_id)`, so a refund built offline addresses lines by `(order client_transaction_id, client_line_id)` and never needs a platform order-item id. **OrderStatus decision: the enum does not grow** — `NEW \| COMPLETED \| CANCELLED` stands, and refund state rides the derived `settlement_status` (`PARTIALLY_REFUNDED` / `REFUNDED`, the till's own `PaymentStatus` words; `VOIDED` and `PARTIALLY_PAID` are never emitted). A3's `cash_refunds` term went live and the shift report gained `refunds_minor`, `refunds_count`, `cash_refunds_minor`. No new §019 code. Tests: `tests/Feature/Pos/PosRefundsTest.php` (19). Migrations additive: `orders.refunded_minor`, `order_items.client_line_id` + `refunded_quantity`, `pos_refunds` / `pos_refund_lines` / `pos_refund_tenders`. Branch `pos/cloud-refunds-receipt-profile`, not pushed, not deployed. |
 | 2026-09-13 | **POS-BE-030 agreed; platform half `READY`** (CB-09; owner go "finish all phases"). `PosBootstrapService::staff()` withholds `purchase.manage` from every bundle, owner included, and `PosPurchaseCapabilityWithheldTest` covers it. Purchasing is authored only on the dashboard under `feature:purchasing` + `can:purchase.manage`, and `purchasing` does not require `pos`. No wire change. Built on `feat/cb-09-purchasing` in xorder-new, not deployed. The till half, hiding the panes by deployment, is on xorder-pos `feat/cb-09-slice-e` @ `1adb17f`, not merged. |

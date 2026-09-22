@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Pos;
 
+use App\Models\Branch;
 use App\Models\Category;
 use App\Models\MenuItem;
 use App\Models\Order;
@@ -432,7 +433,7 @@ class PosRefundsTest extends PosTestCase
     /** A second tenant's claimed terminal, for the isolation assertion. */
     private function claimForeignTerminal(Restaurant $restaurant): string
     {
-        $branch = new \App\Models\Branch([
+        $branch = new Branch([
             'name_en' => 'Other', 'code' => 'OTHR', 'supported_order_types' => ['takeaway'],
         ]);
         $branch->restaurant_id = $restaurant->id;

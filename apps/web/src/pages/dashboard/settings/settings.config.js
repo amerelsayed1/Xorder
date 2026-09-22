@@ -30,6 +30,7 @@ export const SETTINGS_GROUPS = [
         items: [
             { key: 'devices', labelKey: 'nav.pos_terminals', icon: 'pi pi-desktop', to: { name: 'dashboard.pos.terminals' }, feature: 'pos', capability: 'pos.provision' },
             { key: 'taxes', labelKey: 'nav.pos_money', icon: 'pi pi-percentage', to: { name: 'dashboard.pos.money' }, feature: 'pos', capability: 'settings.view' },
+            { key: 'receipt', labelKey: 'nav.pos_receipt', icon: 'pi pi-receipt', to: { name: 'dashboard.pos.receipt' }, feature: 'pos', capability: 'settings.view' },
         ],
     },
 ]

@@ -1,7 +1,7 @@
 # Back office → cloud — handoff
 
 **From:** XOrder POS (Flutter, `xorder-pos`) · **To:** `xorder-cloud` agent
-(platform, `xorder-new`) · **Written:** 2026-09-11
+(platform, `xorder-new`) · **Written:** 2026-09-11 · **Last updated:** 2026-09-22
 
 Kept identical in both repos' `docs/coordination/`. The `xorder-cloud` agent owns
 this file's statuses. `pos-dev` may append questions at the bottom.
@@ -21,8 +21,11 @@ cloud story actually looks like open. This handoff answers it with a backlog.
 the offline product and are not changing. Your job is the cloud counterpart.
 
 **Status of every item: `PROPOSED`**, except CB-00 (`DONE` 2026-09-11),
-CB-01 (`DRAFTED — awaiting owner`, see §4a) and CB-09 (`BUILT — slices a–e;
-on feature branches, not merged to main, not deployed`, 2026-09-13). Nothing
+CB-01 (`DRAFTED — awaiting owner`, see §4a), CB-09 (`BUILT — slices a–e;
+on feature branches, not merged to main, not deployed`, 2026-09-13), and —
+since the owner's 2026-09-22 go ("hand A3 and A7 to xorder-cloud") — CB-08's
+platform half and CB-10's refunds bullet, both `BUILT` on the xorder-new branch
+`pos/cloud-refunds-receipt-profile`, not pushed and not deployed. Nothing else
 here authorises implementation. Each `CB-xx` needs an explicit owner go.
 
 ---
@@ -90,7 +93,8 @@ smoke-verified locally, and its production deploy was pending the owner's go.
 | Refunds from the till | present since 2026-09-22: POS-BE-010 **READY** (`PosRefundService`, `pos_refunds`), on a branch, not deployed |
 | Customers | present on the web (`CustomerController`); POS-BE-014 APPROVED, not built |
 | Reports | present for QR orders (`ReportController`, product/areas pages); not POS-aware |
-| Order-type rules, receipt profile, units, stock items, suppliers, purchasing, expenses, POS audit sync | **absent**, no models |
+| Receipt profile | present since 2026-09-22: `receipt_profiles` + `PosReceiptView.vue`, delivered as the bundle's `receipt_profiles[]` (A3); on a branch, not deployed |
+| Order-type rules, units, stock items, suppliers, purchasing, expenses, POS audit sync | **absent**, no models |
 | Branch sales read for a cloud till | **absent**: POS-BE-029 PROPOSED |
 
 Uncommitted in the tree right now (staged, not yours to discard):
@@ -186,7 +190,54 @@ back-office password. On cloud, a manager should be sent to the dashboard
 instead. Decide what the till shows on cloud (a link to `/admin`?). This is mostly
 a ruling; the web side is the dashboard's existing login.
 
-### CB-08: Receipt profile · S · owner decision
+### CB-08: Receipt profile · S · owner decision · **platform half `BUILT`**
+
+> **2026-09-22 (owner go: "hand A3 and A7 to xorder-cloud", item A3).** The
+> platform now authors the legal identity on a cloud till's receipt, and the
+> bundle carries it as a **new key, `receipt_profiles[]`** — one row per active
+> branch, field names copied one for one from the till's
+> `pos_receipt_profiles` columns so its seeder is a straight mapping. A branch
+> nobody has authored is *projected* from the restaurant rather than omitted,
+> because a missing row is exactly what made every cloud till print with
+> compiled-in defaults.
+>
+> **Where it is authored:** a dedicated page, Settings → Point of sale →
+> **Receipt details** (`apps/web/src/pages/dashboard/PosReceiptView.vue`), not
+> the branch form — a receipt profile is a POS and e-receipt concern, the
+> Branches page is shared with tenants that never bought the till, and the
+> money config next door is the established home for "platform authors, till
+> reads". Endpoints `GET /api/dashboard/receipt-profiles` and
+> `PUT /api/dashboard/receipt-profiles/{branch}`, gated `feature:pos` +
+> `can:settings.view` (+ `can:settings.update` + `subscription.writable` to
+> write); cross-tenant branch → 404; every write bumps `pos_config_version`;
+> a `revision` guard refuses a stale save with 409. EN + AR, RTL.
+>
+> **One author per row, kept:** `registration_number` is the restaurant's
+> single copy (`restaurants.tax_registration_number`) projected into every
+> profile — one taxpayer has one number, and a per-branch copy would be a
+> second author. `branch_code` is ETA's branch code and is deliberately **not**
+> `branches.code` (the invoice prefix); the form says so in both languages.
+>
+> **CLOUD_WAVE1 deviation 6 is closed in the same change:**
+> `UpdateRestaurantProfileRequest` finally accepts `tax_registration_number`,
+> so the number has an authoring path for the first time, and changing it bumps
+> `config_version`.
+>
+> **Two owner decisions I did not take.** (1) The page reuses
+> `settings.view`/`settings.update` rather than minting a
+> `pos.receipt_profile` TenantCapability — the legal identity on a slip is the
+> same class of fact as the tax registration number `settings.update` already
+> authors, and a new checkbox would leave every role that can edit tax unable
+> to edit the header it prints on. Reversible for one enum case, one label pair
+> and a grant on every role. (2) **Print LAYOUT preferences stay till-local**,
+> per the §4a map's split; only the identity half moved. Nothing decides
+> whether a cloud till should stop offering its own Receipt pane — that is
+> `pos-dev`'s, and it needs the CB-01 ruling.
+>
+> Wire shape: `BACKEND_TO_POS.md` §023, "Amendment 2026-09-22 (A3)". On branch
+> `pos/cloud-refunds-receipt-profile` in xorder-new; **not pushed, not
+> deployed**. The till half (seeding `pos_receipt_profiles` from the bundle and
+> making the pane read-only on cloud) is `pos-dev`'s.
 
 `pos_receipt_profiles` (commit `f7208b0`: who the slip says sold the food) is
 till-local on both. Decide whether a cloud restaurant sets it once on the
@@ -466,7 +517,7 @@ means the seeder must delete combos first.
 | Payment methods | **nobody**; the seeded four; ids don't match the platform's | **platform**: **settled 2026-09-11** (owner go: fixed as a defect; POS-BE-013 amended) | The platform already validates tender ids on every synced payment, so the ids must be its own. The alternative, the platform learning the till's ids, would be a merge path. | Done 2026-09-11: the platform creates default Cash + Card at the first terminal; the till seeds `pos_tender_types` by platform id on cloud. Still optional: additive `code`, `name_ar`, `counts_as_cash`, `opens_drawer`, `requires_reference`, `refund_allowed`; one `kind` vocabulary; the pane going read-only. | POS-BE-013 amendment (done); CB-02 for the optional fields |
 | Order types | platform picks the offered set; rules frozen, no author | **platform** | The till already tells the manager these come from the platform. Make that true. | Platform: rules per restaurant (or per branch), one vocabulary, bundle block, config-version bump. Till: seeder writes `pos_order_types`. | CB-03 |
 | Purchasing | till-local | **platform** (owner, 2026-09-12, CB-09 D1) | The platform is the only author on cloud; the till's panes are to be hidden on cloud (slice e, not yet approved). | Platform: slices a → b → c. Till: nothing until slice e. | CB-09 |
-| Receipt | till-local `pos_receipt_profiles` | **platform** for the legal identity (name, TRN, address); **till** for print-layout preferences | Who the slip says sold the food is a fact about the business, and the platform already sends name and TRN. How a given printer lays it out is a fact about the device. | Platform: profile fields plus a bundle block. Till: split the profile. | CB-08 |
+| Receipt | till-local `pos_receipt_profiles` | **platform** for the legal identity (name, TRN, address); **till** for print-layout preferences | Who the slip says sold the food is a fact about the business, and the platform already sends name and TRN. How a given printer lays it out is a fact about the device. | **Platform: done 2026-09-22** — `receipt_profiles` table, the Receipt details page, and the bundle's `receipt_profiles[]` key. Till: seed from the bundle, make the pane read-only on cloud, keep the layout half local. | CB-08 |
 | ETA | till job | **till** (keep) | Submission happens on the device and is queued there. | none | — |
 | Activity | till-local, not synced | **till** writes events; platform gets a read-only copy if wanted | Only the till writes these events, so this is a sync question, not an ownership one. | only if CB-13 says yes | CB-13 |
 | Backup | till | **till** (keep) | It covers local-only state. Synced facts are durable on the platform. | none | — |
@@ -493,7 +544,10 @@ means the seeder must delete combos first.
    and multi-role, overrides and ceilings lost on cloud until CB-06 ports
    them?** Or (a) keep today's additive local roles? Or (a′) keep local roles
    but cap them at the platform's grants?
-5. **Receipt: does the platform author the legal identity on the slip?** (CB-08)
+5. ~~**Receipt: does the platform author the legal identity on the slip?**~~
+   **Answered 2026-09-22: yes** (owner go, item A3). Built; see CB-08. What is
+   still open there is only the capability choice and whether the till's
+   Receipt pane goes read-only on cloud.
 6. **May `pos-dev` verify the `pos_tax_groups` caveat** (Q1)? If it holds, a
    cloud till may be charging 14% regardless of the platform's rate.
 7. Unchanged from §5: is Cloud Wave 1 deployed? (*Purchasing answered

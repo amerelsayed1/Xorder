@@ -63,6 +63,7 @@ return [
         'order_received' => 'Order received.',
         'order_not_found' => 'Order not found.',
         'refund_not_found' => 'Refund not found.',
+        'receipt_profile_stale' => 'Somebody else saved this receipt profile while you were editing. Reload to see their version.',
         'order_updated' => 'Order updated.',
         'order_transition_invalid' => 'That order status change is not allowed.',
         'close_table_visit_instead' => 'Close or cancel the table visit to finish this dine-in order.',
