@@ -589,6 +589,17 @@ class LocalBootstrap {
     // was cooked" is a claim that must not be editable by the person it names.
     'GRANT SELECT, INSERT ON pos_order_line_events TO "$role"',
     'GRANT USAGE, SELECT ON SEQUENCE pos_order_line_events_id_seq TO "$role"',
+    // What the sale took off the shelf. The orders repository writes the
+    // ledger row and the position beside it in the sale's own transaction, so
+    // a stocked product sold on the till credential needs both — and had
+    // neither, which `grants_cover_usage_test` caught after the stock work
+    // landed. INSERT on the ledger only: a movement is a record, and an edit
+    // to one is another movement. UPDATE on the position, because it is the
+    // cache the same transaction maintains. Receipts, waste and counts are
+    // back-office acts and stay with [administrativeGrants].
+    'GRANT SELECT, INSERT ON pos_stock_movements TO "$role"',
+    'GRANT USAGE, SELECT ON SEQUENCE pos_stock_movements_id_seq TO "$role"',
+    'GRANT SELECT, INSERT, UPDATE ON pos_stock_levels TO "$role"',
     // The discounts the restaurant offers. Read-only for the till, for the
     // same reason the menu is: a cashier applies a discount, they do not
     // invent one. Authoring belongs to [administrativeGrants].
