@@ -1403,6 +1403,21 @@ class SetupController extends Notifier<SetupDraft> {
     } on Exception catch (error) {
       notice = s.catalogueDownloadFailed(error);
     }
+
+    // The till's own lists, once there is a restaurant row to hang them on —
+    // which is only after the seed above landed. A failure is a notice for the
+    // same reason the seed's is; "Try again" here and "Download menu" on the
+    // summary both run it again, and it upserts.
+    if (notice == null) {
+      try {
+        await _seedLocalDefaults();
+      } on PosDbException catch (error) {
+        debugPrint('setup[provisionTerminal] defaults refused: $error');
+        // The ADMINISTRATOR's connection this time, which is the role
+        // `_bootstrapFailure` names.
+        notice = _bootstrapFailure(error);
+      }
+    }
     var items = 0;
     try {
       items = (await ref.read(catalogRepositoryProvider).load()).products.length;
@@ -1613,6 +1628,7 @@ class SetupController extends Notifier<SetupDraft> {
     _publishDeployment();
     try {
       await _seedFromPlatform();
+      await _seedLocalDefaults();
       final catalog = await ref.read(catalogRepositoryProvider).load();
       state = state.copyWith(
         busy: false,
@@ -1674,6 +1690,28 @@ class SetupController extends Notifier<SetupDraft> {
       database: ref.read(posDatabaseProvider),
       config: state.deployment,
     ).seed(bundle, force: true);
+  }
+
+  /// What the bundle has no field for — reasons and order types — seeded over
+  /// the administrator's credential. See [cloudDefaultsSeederProvider] for
+  /// what it writes and, more to the point, what it deliberately does not.
+  ///
+  /// After [_seedFromPlatform] and only after it: the rows reference the
+  /// restaurant the bundle created. Silent when there is nothing to do —
+  /// an offline till seeded these in `bootstrapDatabase`, a child reads its
+  /// main device's, and a restaurant id the claim did not give means the
+  /// seed above never ran either.
+  Future<void> _seedLocalDefaults() async {
+    if (state.deployment.mode != DeploymentMode.cloud) return;
+    if (state.deployment.isChild) return;
+    final restaurantId = state.restaurantId;
+    if (restaurantId == null || state.adminDatabasePassword.isEmpty) return;
+
+    await ref.read(cloudDefaultsSeederProvider)(
+      state.deployment,
+      state.adminDatabasePassword,
+      restaurantId,
+    );
   }
 
   void next() {

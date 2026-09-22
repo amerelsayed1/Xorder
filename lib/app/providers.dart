@@ -2266,6 +2266,42 @@ final databaseBuilderProvider =
       };
     });
 
+/// Seed what the bundle has no field for, as the administrator role.
+///
+/// Void, refund, discount and price-override reasons, and what each kind of
+/// order requires. The platform authors the restaurant and `BootstrapSeeder`
+/// writes it, but neither carries these — they are the till's own defaults,
+/// and on the offline path `bootstrapDatabase` seeds them. The cloud path
+/// never did, so a cloud till opened with an empty list behind every void and
+/// pay-out dialog. Found in the 22 Sep 2026 review.
+///
+/// **Not the tax group.** On a cloud till the platform's money config IS the
+/// rate (POS-BE-013), and `TaxConfig.defaultTaxGroup` prefers a stored
+/// `is_default` row over `vatBp` — so a local 14% default would silently
+/// override whatever the dashboard set. Products from the bundle name no
+/// group, and an empty table costs nothing.
+///
+/// A function provider for the reason [databaseBuilderProvider] is one. Runs
+/// AFTER the seeder, because the lists hang off a restaurant row only the
+/// bundle can create. Upserts on the code, so a re-run keeps a renamed or
+/// retired reason.
+final cloudDefaultsSeederProvider =
+    Provider<Future<void> Function(DeploymentConfig, String, int)>((ref) {
+      return (config, adminPassword, restaurantId) async {
+        final admin = config.copyWith(databaseUser: config.adminDatabaseUser);
+        final credentials = MutablePosDbCredentials()..set(adminPassword);
+        final database = PosDatabase(credentials: credentials);
+        final bootstrap = LocalBootstrap(database);
+
+        try {
+          await bootstrap.seedReasonCodes(admin, restaurantId);
+          await bootstrap.seedOrderTypes(admin, restaurantId);
+        } finally {
+          await database.close();
+        }
+      };
+    });
+
 /// Why the last upgrade at the back-office door failed, or null.
 ///
 /// Held rather than thrown: a failed upgrade must not keep anybody out of the
