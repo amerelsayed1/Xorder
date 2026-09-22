@@ -4382,6 +4382,19 @@ const posMigrations = <PosMigration>[
       WHERE delivered_at IS NULL AND quarantined_at IS NULL
     ''',
   ]),
+  // The platform draws a credit note from its own `CN-` sequence when it
+  // accepts a refund (POS-BE-010), exactly as it draws an invoice number when
+  // it accepts a sale.  It is kept for the same reason `server_invoice_number`
+  // is: it is the number an auditor asks for and the till cannot derive it.
+  //
+  // A separate column rather than a reuse of anything local, because the
+  // refund has no local credit note series to overwrite — and if it ever gains
+  // one, two offline tills will legitimately issue the same local reference,
+  // which is what made the order's platform invoice a column of its own.
+  PosMigration(50, 'a refund keeps the platform\'s credit note number', [
+    'ALTER TABLE pos_refunds '
+        'ADD COLUMN IF NOT EXISTS server_credit_note_number text',
+  ]),
 ];
 
 /// Brings the branch database up to the current schema.

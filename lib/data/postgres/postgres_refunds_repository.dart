@@ -28,7 +28,8 @@ import 'postgres_orders_repository.dart' show PosWriteContext;
 /// * **Idempotency** is `UNIQUE (restaurant_id, client_refund_id)`.
 ///
 /// What is left here is putting it in one transaction and reporting what
-/// happened.
+/// happened — and, on a cloud till, putting the platform's delivery claim in
+/// that same transaction (POS-BE-010).
 class PostgresRefundsRepository implements RefundsRepository {
   const PostgresRefundsRepository({
     required PosDatabase database,
@@ -200,6 +201,32 @@ class PostgresRefundsRepository implements RefundsRepository {
             'reference': tender.reference,
             'restaurant': context.restaurantId,
             'occurredAt': occurredAt,
+          },
+        );
+      }
+
+      // The platform's claim on this refund, in the transaction that wrote it.
+      // Two commits would leave a refund the platform never hears about if the
+      // second one lost — invisible precisely because the first succeeded, the
+      // same reasoning `_enqueueForSync` gives for a sale.
+      //
+      // The key is `client_refund_id` itself rather than a second UUID: a
+      // refund already carries the idempotency key §007 asks for, and one key
+      // for one act means a replayed refund cannot queue a second delivery.
+      if (config.mode.syncsSalesToPlatform) {
+        await tx.execute(
+          Sql.named('''
+            INSERT INTO pos_sync_outbox
+              (restaurant_id, branch_id, event_type, source_id,
+               client_transaction_id)
+            VALUES (@restaurant, @branch, 'refund', @source, @client)
+            ON CONFLICT (restaurant_id, client_transaction_id) DO NOTHING
+          '''),
+          parameters: {
+            'restaurant': context.restaurantId,
+            'branch': context.branchId,
+            'source': refundId,
+            'client': clientRefundId,
           },
         );
       }

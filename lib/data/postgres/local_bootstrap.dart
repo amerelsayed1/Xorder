@@ -783,6 +783,40 @@ class LocalBootstrap {
       'GRANT INSERT, UPDATE ON pos_tender_types TO "$role"',
       'GRANT USAGE, SELECT, UPDATE ON SEQUENCE pos_tender_types_id_seq '
           'TO "$role"',
+      // Who the receipt says sold the food, since A3 delivers it in the bundle
+      // (`receipt_profiles[]`). The SELECT above is unconditional — every till
+      // prints a slip — and this adds the seeder's upsert on top.
+      //
+      // The bargain is the same one and reads as well here as anywhere: on a
+      // cloud till the trade name and registration number in this table are a
+      // *cache* of what the dashboard authors, and a resync overwrites whatever
+      // a stolen credential wrote into it. What that credential cannot do is
+      // change the document at the source, and the e-receipt it would forge is
+      // signed and filed against the taxpayer the PLATFORM names. Offline there
+      // is no source and no second opinion — this row IS what the receipt says
+      // — so the REVOKE below takes it back, and Management authors it over the
+      // administrator's credential exactly as before.
+      //
+      // No DELETE: a branch the platform stopped naming keeps its row, because
+      // `pos_branches` keeps the branch (switched off, not removed) and the
+      // cascade is what eventually takes both. INSERT means `nextval`, so the
+      // sequence comes with it — the `id` here is the till's own, not the
+      // platform's, which is why this one wants no UPDATE on the sequence.
+      'GRANT INSERT, UPDATE ON pos_receipt_profiles TO "$role"',
+      'GRANT USAGE, SELECT ON SEQUENCE pos_receipt_profiles_id_seq TO "$role"',
+      // The **only** UPDATE a refund ever gets, and column-scoped: the drain
+      // writes back the platform's credit note number when POS-BE-010 accepts
+      // a refund, exactly as it writes back an invoice number on a sale
+      // (migration 50). Every money column, the order it names, who gave it
+      // back and who authorised it stay unwritable — so the most a recovered
+      // till credential can rewrite here is a reference number the platform
+      // issued and will issue again on replay.
+      //
+      // Cloud only, and not because offline is safer: an offline till has no
+      // platform to get a credit note number from, so granting it there would
+      // be a write nothing performs, sitting in an audit trail as though
+      // something did.
+      'GRANT UPDATE (server_credit_note_number) ON pos_refunds TO "$role"',
     ] else ...[
       // Taken away, not merely withheld. Every offline branch server built
       // before this distinction existed was granted the block above, and a
@@ -804,6 +838,22 @@ class LocalBootstrap {
       // AFTER this list, so the REVOKE cannot take it from an administrator.
       'REVOKE INSERT, UPDATE ON pos_tender_types FROM "$role"',
       'REVOKE UPDATE ON SEQUENCE pos_tender_types_id_seq FROM "$role"',
+      // Offline, this row is not a cache of anything: it is the trade name and
+      // the tax registration number on a legal document, and the till keeps
+      // SELECT and nothing else. `till_grants_enforced_test` applies the cloud
+      // list and then this one, so this REVOKE is what keeps "the till may not
+      // change what the receipt says about the seller" true.
+      //
+      // The sequence goes too, though a sequence without INSERT is inert. Left
+      // granted it would read, to whoever audits this next, as a till that
+      // writes here.
+      'REVOKE INSERT, UPDATE ON pos_receipt_profiles FROM "$role"',
+      'REVOKE USAGE, SELECT ON SEQUENCE pos_receipt_profiles_id_seq '
+          'FROM "$role"',
+      // And a refund goes back to no UPDATE at all. Nothing offline ever
+      // writes this column, and a till that was once cloud must not keep the
+      // one grant that lets it edit a refund row.
+      'REVOKE UPDATE ON pos_refunds FROM "$role"',
     ],
     'GRANT SELECT, INSERT, UPDATE ON pos_cloud_state TO "$role"',
     // The open floor. The ONE table the till may DELETE from: settlement

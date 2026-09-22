@@ -22,6 +22,7 @@ void main() {
           lines: [
             OutboxDrain.lineJson(
               menuItemId: 101,
+              clientLineId: '4471',
               nameSnapshot: 'Classic Burger',
               optionIds: [71, 72],
               quantity: 2,
@@ -75,6 +76,9 @@ void main() {
 
       final line = (request['lines'] as List).single as Map<String, Object?>;
       expect(line['menu_item_id'], 101);
+      // POS-BE-010: the till's own name for the line, and the only way a
+      // refund built during an outage can address it.
+      expect(line['client_line_id'], '4471');
       expect(line['option_ids'], [71, 72]);
       expect(line['quantity'], 2);
       expect(line['unit_price_minor'], 9500);
@@ -124,6 +128,95 @@ void main() {
     });
   });
 
+  group('OutboxDrain.buildRefundRequest', () {
+    Map<String, Object?> sample() => OutboxDrain.buildRefundRequest(
+          clientTransactionId: '9c1d0e2f-5555-4666-8777-888899990000',
+          orderClientId: '3f2b9d0e-1111-2222-3333-444455556666',
+          occurredAt: DateTime.utc(2026, 9, 22, 14),
+          reason: 'quality',
+          actingUserId: 9,
+          authorizedByUserId: 4,
+          shiftClientId: 'aaaa1111-2222-4333-8444-555566667777',
+          lines: [
+            OutboxDrain.refundLineJson(
+              orderLineId: 4471,
+              quantity: 1,
+              amountMinor: 9500,
+            ),
+          ],
+          tenders: const [
+            {'tender_type_id': 2, 'amount_minor': 9500},
+          ],
+        );
+
+    test('matches the agreed §010 envelope', () {
+      final request = sample();
+
+      expect(request['client_transaction_id'],
+          '9c1d0e2f-5555-4666-8777-888899990000');
+      // The ORDER'S own key, not a platform id — §010 detects the UUID by
+      // format, and the platform id is the thing an offline refund has not
+      // seen.
+      expect(request['order_id'], '3f2b9d0e-1111-2222-3333-444455556666');
+      expect(request['kind'], 'refund');
+      expect(request['reason'], 'quality');
+      expect(request['acting_user_id'], 9);
+      expect(request['authorized_by_user_id'], 4);
+      expect(request['shift_client_id'], 'aaaa1111-2222-4333-8444-555566667777');
+      expect(request['occurred_at'], '2026-09-22T14:00:00.000Z');
+
+      final line = (request['lines'] as List).single as Map<String, Object?>;
+      expect(line, {
+        'client_line_id': '4471',
+        'quantity': 1,
+        'amount_minor': 9500,
+      });
+      expect((request['tenders'] as List).single, {
+        'tender_type_id': 2,
+        'amount_minor': 9500,
+      });
+    });
+
+    test('the refund line names itself exactly one way', () {
+      // §010 refuses a line carrying both `order_item_id` and
+      // `client_line_id`, and refuses one carrying neither.
+      final line = (sample()['lines'] as List).single as Map<String, Object?>;
+      expect(line.containsKey('client_line_id'), isTrue);
+      expect(line.containsKey('order_item_id'), isFalse);
+    });
+
+    test('kind is never the local full/partial word', () {
+      // `pos_refunds.kind` is `full | partial`; §010's axis is
+      // `refund | void`, and it derives full-vs-partial from its own counters.
+      // Sending the local word would be a 422 on every refund.
+      expect(sample()['kind'], isNot(anyOf('full', 'partial')));
+    });
+
+    test('never emits a JSON float anywhere in the envelope', () {
+      bool holdsNoDouble(Object? node) => switch (node) {
+            double() => false,
+            final Map map => map.values.every(holdsNoDouble),
+            final List list => list.every(holdsNoDouble),
+            _ => true,
+          };
+      expect(holdsNoDouble(sample()), isTrue);
+    });
+
+    test('attribution is nullable, as it is on a sale', () {
+      final request = OutboxDrain.buildRefundRequest(
+        clientTransactionId: 'txn',
+        orderClientId: 'order',
+        occurredAt: DateTime.utc(2026),
+        lines: const [],
+        tenders: const [],
+      );
+      expect(request['acting_user_id'], isNull);
+      expect(request['authorized_by_user_id'], isNull);
+      expect(request['shift_client_id'], isNull);
+      expect(request['reason'], isNull);
+    });
+  });
+
   group('per-payment client ids', () {
     test('are stable across passes and distinct across rows', () {
       // A retry after a timeout must present the same key, or the platform
@@ -156,6 +249,18 @@ void main() {
       expect(OutboxDrain.classify('IDEMPOTENCY_PAYLOAD_MISMATCH'),
           DrainAction.quarantine);
       expect(OutboxDrain.classify('BRANCH_NOT_IN_TENANT'), DrainAction.quarantine);
+      // §010: the platform's counters say this refund is over the ceiling, in
+      // quantity or in money. The ceiling only ever comes down, so no amount
+      // of waiting turns this into a yes.
+      expect(OutboxDrain.classify('REFUND_EXCEEDS_SOLD'), DrainAction.quarantine);
+    });
+
+    test('a missing capability defers — a manager can still grant it', () {
+      // Deliberate, and the opposite of REFUND_EXCEEDS_SOLD: the record is
+      // fine and the person is not yet allowed. Granting `pos.refund` on the
+      // dashboard makes the next pass succeed, so quarantining would demand a
+      // second act from somebody who had already done the first.
+      expect(OutboxDrain.classify('POS_CAPABILITY_MISSING'), DrainAction.defer);
     });
 
     test('defers tenant-, terminal- and moment-shaped refusals', () {

@@ -501,7 +501,7 @@ closable offline and sync afterwards as a batch.
 
 ## POS-BE-010
 
-**Status:** READY — built 2026-09-22 (`b15f269` in xorder-new), see `BACKEND_TO_POS.md` §010 for the final wire shape; POS half (drain + `client_line_id`) follows
+**Status:** READY — built 2026-09-22 (`b15f269` in xorder-new), see `BACKEND_TO_POS.md` §010 for the final wire shape. **POS half built 2026-09-22**: the drain stamps `lines[].client_line_id`, the refund writer queues a `refund` event in the same transaction as the refund, and the drain posts it. One gap raised — see *Amendment to POS-BE-010* below: a refund given as a flat amount off the bill has no lines, and §010 has no shape for it
 **Feature:** Refunds and voids as reversing records
 
 **Description:** Partial and full refunds against a settled order, recorded as a
@@ -1660,6 +1660,49 @@ that has not yet claimed has no credential to present.
 
 ---
 
+## Amendment to POS-BE-010 — a refund of an amount off the bill has no lines
+
+**Raised 2026-09-22, after building the till half of §010.** One local refund
+shape has no honest request on `POST /api/pos/refunds`, and it is a common one
+in a restaurant.
+
+`RefundEngine.quoteForAmount` refunds a flat sum against the bill as a whole —
+"give him fifty pounds back" — and attaches **no lines at all**, on purpose:
+nobody said which food the money was for, and attributing it would move
+`refunded_quantity` on a line the operator never chose. Its parts (subtotal,
+discount, service, VAT) are that same fraction of the order's own, so refunded
+tax still reconciles with refunded sales.
+
+§010 requires `lines[]` and requires `tenders[]` to **equal the line total**, so
+such a refund has exactly two possible fates on the wire, and both are bad:
+
+1. Send `lines: []` with a non-zero tender → `422 VALIDATION_FAILED` on every
+   amount refund the restaurant ever gives.
+2. Invent an attribution across the order's lines → the platform's own
+   `order_items.refunded_quantity` counters then say particular dishes were
+   returned when they were not, and the platform's per-line ceiling starts
+   refusing later, honest refunds of those dishes.
+
+**The till therefore holds these locally** under a client-side quarantine code
+`REFUND_HAS_NO_LINES` (the §019 discipline: decided here, never sent, held for a
+person, never deleted — the money did leave the drawer). That is a gap, not a
+solution: on a cloud till those refunds do not reach the platform at all, so
+platform turnover overstates by their total until this is closed.
+
+**What we ask for** — whichever is cheaper on your side:
+
+- accept `lines: []` when the refund carries an order-level `amount_minor`
+  (i.e. the tender balances the *envelope* rather than the lines), and leave
+  every `order_items.refunded_quantity` untouched; **or**
+- add an explicit `unattributed_amount_minor` to the envelope, counted into
+  `orders.refunded_minor` and into `settlement_status` exactly as a line refund
+  is, and excluded from the per-line checks.
+
+Either keeps `REFUND_EXCEEDS_SOLD`'s money check intact — that one is the check
+that matters here, and the order's `total_minor` is all it needs.
+
+---
+
 ## Additions to the POS-BE-019 error vocabulary
 
 ```
@@ -1892,3 +1935,4 @@ owner's explicit go to move `APPROVED → IN_PROGRESS`.
 | 2026-09-11 | **POS-BE-013 tender types: how the client conforms** (`pos-dev`, same defect go). A cloud till now upserts each `money.tender_types` element into `pos_tender_types`, keyed on a new column `(restaurant_id, platform_id)` (migration 41). The till's own primary key is kept, so platform tender 1 never overwrites local row 1. The drain sends `platform_id` as `payments[].tender_type_id`. A database CHECK keeps platform rows at ids above 4, with code `platform-<id>`. Kind mapping: `cash→cash`, `card→card`, `external→card` (reconciled as electronic against the bank terminal's slip), `other→other`, unknown→`other` (never cash). Only `cash` counts as cash and opens the drawer. Tenders the bundle no longer names are deactivated, never deleted. An empty list changes nothing. **Refused on the client:** a payment on a tender the bundle didn't deliver (the seeded 1–4, or legacy queued sales) is never sent, with a guessed id or with null. The order is quarantined locally with code `TENDER_NOT_FROM_PLATFORM`, which the platform never returns. The Payment methods pane is read-only on cloud. **Relies on the platform to:** never deliver an empty list for a POS restaurant; keep tender ids stable (delete means deactivate); treat a new `kind` as a contract change. It should always deliver one active `cash` tender. **Consequences:** a cloud till no longer offers "On account", because the platform has no `account` kind. Upgraded dev tills must re-apply the cloud till grants (`pos_migrate --cloud-till` or the wizard) and force a reseed. |
 | 2026-09-11 | **POS-BE-029 amended: payment kinds are the platform's** (`pos-dev`, docs + client; status unchanged, PROPOSED). Rule 3 and the summary example named the till's kinds (`wallet`, `account`), which the platform cannot produce: since the POS-BE-013 conformance above, a cloud till's payments are on platform tenders whose kind is `cash \| card \| external \| other`. Rule 3 now reads that vocabulary: cash by `counts_as_cash`; `card` and `external` electronic; `other` collected; no `account`. The example's on-account row became an `external` card. The client now parses `kind` through `PlatformTenderKind.tillKind` — the seeder's own mapping — instead of the till's parser, which had read `external` as other and left electronic short of the bank's settlement slip. Unknown kinds read as `other`, so a new kind (`account` included) is a POS-BE-013 contract change before the platform sends it. Both repos' copies updated identically. |
 | 2026-09-13 | **POS-BE-030 raised and approved: purchasing and stock on a cloud terminal are platform-authored** (CB-09; owner go "finish all phases"). A cloud till hides its Purchasing, Items, Stock and Units panes whatever the person holds, and the rail, the Manage menu and deep links all agree. A pointer names the xorder.io dashboard, in EN and AR. Built on `feat/cb-09-slice-e` @ `1adb17f`: `flutter analyze` is clean, `flutter test` shows 1734 passed and 43 skipped, and `test/data` shows 876 passed and 1 skipped. Not merged: the main checkout carries other sessions' uncommitted edits to `app.dart` and `management_screen.dart`. The platform half, the bundle withholding `purchase.manage`, is CB-09 slice a. Rows already on a cloud till stay where they are, neither imported nor deleted. |
+| 2026-09-22 | **POS-BE-010, till half: a cloud till uploads its refunds.** Two halves, both additive. (1) Every order line the drain sends now carries `lines[].client_line_id` — the LOCAL `pos_order_lines.id` as a string, not `line_key`: `TicketEngine` legitimately holds two rows with the same key (a sent line plus a new draft of the same dish), and the platform indexes `unique(order_id, client_line_id)`, so a key would turn a valid order into a constraint failure. It is excluded from the platform's idempotency hash, so orders already delivered without one do not collide. (2) `PostgresRefundsRepository.issue` queues a `refund` event in `pos_sync_outbox` **in the refund's own transaction**, keyed on `client_refund_id` itself — one key for one act, so a replayed refund cannot queue a second delivery — and the drain's `'refund' => null` guard is replaced by the real §010 request. **Ordering:** a refund is never sent before its sale; while the sale's `pos_outbox` row is undelivered the refund *defers* (self-healing, no person needed), and a sale that was never queued at all holds the refund under `SALE_NEVER_QUEUED`. `REFUND_EXCEEDS_SOLD` quarantines: the ceiling only comes down, so retrying is a queue that never empties. `POS_CAPABILITY_MISSING` still defers — a manager granting `pos.refund` makes the next pass succeed. Migration 50 adds `pos_refunds.server_credit_note_number`, written back from the reply in the same transaction that marks the row delivered, exactly as a sale keeps the platform's invoice number; the till's grant on it is column-scoped. **One gap raised, not worked around** — see *Amendment to POS-BE-010*: a refund given as a flat amount off the bill has no lines, §010 has no shape for it, and the till holds those locally under `REFUND_HAS_NO_LINES` rather than inventing an attribution that would corrupt the platform's per-line counters. Tests: `test/data/cloud_refunds_test.dart` (18, PostgreSQL) + 6 pure ones in `test/data/outbox_drain_test.dart`. **Second defect found and fixed while building this:** the order drain's delivery bookkeeping shared one parameter map between two statements, which the driver refuses — so no cloud sale had EVER been marked delivered. The platform had the sale (idempotency held), but `delivered_at` was never written, the sale was resent on every pass forever and the "owed to the platform" count never came down. Nothing committed or deployed. |

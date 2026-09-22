@@ -70,6 +70,13 @@ void main() {
       expect(writesTo(offline, 'pos_branches'), isEmpty);
     });
 
+    test('cannot change what the receipt says about the seller', () {
+      // The trade name and the tax registration number on a legal document.
+      // Offline this row is not a cache of anything — there is no platform to
+      // re-send it — so authoring stays on the administrator's credential.
+      expect(writesTo(offline, 'pos_receipt_profiles'), isEmpty);
+    });
+
     test('still reads everything a sale screen needs', () {
       expect(
         offline.any(
@@ -148,6 +155,10 @@ void main() {
     test('never gets UPDATE or DELETE on a refund', () {
       // A refund already given is a record of money that left the drawer.
       // Correcting one is a second refund, not an edit of the first.
+      //
+      // Still true offline after POS-BE-010: the one column-scoped UPDATE the
+      // drain needs is in the cloud block, because an offline till has no
+      // platform to draw a credit note number from. See the cloud group below.
       for (final table in [
         'pos_refunds',
         'pos_refund_lines',
@@ -207,6 +218,78 @@ void main() {
       // Granted with the rest of the catalogue so the seeder can be taught to
       // write it, though today it only goes by cascade — see `_seedCatalog`.
       expect(writesTo(cloud, 'pos_modifier_group_categories'), isNotEmpty);
+      // A3: the bundle carries `receipt_profiles[]` and the seeder upserts it.
+      // Without this grant the whole seed fails on a real cloud install and
+      // passes in every suite here, which all run as the superuser.
+      expect(writesTo(cloud, 'pos_receipt_profiles'), isNotEmpty);
+    });
+
+    test('and only the till writes them — no DELETE on the receipt profile',
+        () {
+      // A branch the platform stopped naming keeps its row: `pos_branches`
+      // switches the branch off rather than removing it, and the cascade is
+      // what eventually takes both. A DELETE here would be a grant with no
+      // caller.
+      expect(
+        cloud.where(
+          (s) => s.startsWith('GRANT') &&
+              s.contains('pos_receipt_profiles') &&
+              s.contains('DELETE'),
+        ),
+        isEmpty,
+      );
+    });
+
+    test('may write back a credit note number and nothing else on a refund',
+        () {
+      // POS-BE-010. The drain stores the platform's credit note number the way
+      // it stores an invoice number on a sale. If this grant were ever widened
+      // to the table, a recovered till credential could rewrite a refund's
+      // total or the order it names — which is precisely what the offline
+      // claim above forbids, and it must stay forbidden here too.
+      final refundUpdates = cloud.where(
+        (s) =>
+            s.startsWith('GRANT') &&
+            s.contains('UPDATE') &&
+            s.contains('pos_refunds'),
+      );
+      expect(refundUpdates, hasLength(1));
+      expect(refundUpdates.single, contains('(server_credit_note_number)'));
+      for (final column in [
+        'total_minor',
+        'order_id',
+        'refunded_by',
+        'approved_by_id',
+        'client_refund_id',
+      ]) {
+        expect(refundUpdates.single.contains(column), isFalse, reason: column);
+      }
+      // And the child tables stay untouchable outright: a refund's lines and
+      // its tender are what the receipt said.
+      for (final table in ['pos_refund_lines', 'pos_refund_payments']) {
+        expect(
+          cloud.where(
+            (s) =>
+                s.startsWith('GRANT') &&
+                s.contains(table) &&
+                (s.contains('UPDATE') || s.contains('DELETE')),
+          ),
+          isEmpty,
+          reason: table,
+        );
+      }
+    });
+
+    test('takes that one grant back if the till stops being a cloud till', () {
+      // An install migrated from cloud to offline keeps its role. A grant list
+      // that only ever adds would leave the UPDATE behind on a till that has
+      // nothing left to write it with.
+      expect(
+        revokes(grants(cloudSeeding: false)).any(
+          (s) => s.contains('UPDATE') && s.contains('pos_refunds'),
+        ),
+        isTrue,
+      );
     });
 
     test('holds every grant the offline set holds, and more', () {

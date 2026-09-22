@@ -89,6 +89,19 @@ class OutboxDrain {
   /// platform's shift maths counts a payment with no tender as cash.
   static const tenderNotFromPlatform = 'TENDER_NOT_FROM_PLATFORM';
 
+  /// The quarantine code for a refund given as a flat amount off the bill.
+  ///
+  /// `RefundEngine.quoteForAmount` attaches **no lines** on purpose: nobody
+  /// said which food the money was for, so inventing an attribution would move
+  /// `refunded_quantity` on a line the operator never chose. §010 requires
+  /// `lines[]` and requires the tender to equal the line total, so there is no
+  /// honest shape for this refund on that endpoint — the only two options are
+  /// holding it here or making the attribution up on the wire, where it would
+  /// corrupt the platform's own per-line counters instead of ours. Held, with
+  /// the reason on the row, and raised as an amendment in
+  /// `docs/coordination/POS_TO_BACKEND.md`.
+  static const refundHasNoLines = 'REFUND_HAS_NO_LINES';
+
   static String paymentClientId({
     required String orderClientId,
     required int paymentRowId,
@@ -108,7 +121,12 @@ class OutboxDrain {
     'IDEMPOTENCY_PAYLOAD_MISMATCH' ||
     'MENU_ITEM_NOT_FOUND' ||
     'BRANCH_NOT_IN_TENANT' ||
-    'CUSTOMER_NOT_FOUND' => DrainAction.quarantine,
+    'CUSTOMER_NOT_FOUND' ||
+    // §010: the platform's counters say this refund would give back more than
+    // the sale took, in quantity or in money. Time cannot cure that — the
+    // ceiling only ever comes down — so retrying it forever would be a queue
+    // that never empties behind a record that will never be accepted.
+    'REFUND_EXCEEDS_SOLD' => DrainAction.quarantine,
     _ => DrainAction.defer,
   };
 
@@ -161,8 +179,23 @@ class OutboxDrain {
     'exponent': exponent,
   };
 
+  /// One line of the §006 request.
+  ///
+  /// [clientLineId] is the till's own name for the line, and it is the LOCAL
+  /// `pos_order_lines.id` as a string — required rather than optional because
+  /// a line sent without one is a line no offline refund can ever address
+  /// (§010: a refund line names itself by `client_line_id` when it has never
+  /// seen `order_items.id`, which is every refund built during an outage).
+  ///
+  /// Not `line_key`. `TicketLine.keyFor` is `productId:sortedModifierIds` and
+  /// `TicketEngine` merges only draft lines with the same key AND the same
+  /// note, so one order legitimately holds two rows with the same key — a sent
+  /// line plus a new draft of the same dish. The platform indexes
+  /// `unique(order_id, client_line_id)`, so a key would make the second row a
+  /// constraint failure on an order that is perfectly valid here.
   static Map<String, Object?> lineJson({
     required int? menuItemId,
+    required String clientLineId,
     required String nameSnapshot,
     required List<int> optionIds,
     required int quantity,
@@ -171,6 +204,7 @@ class OutboxDrain {
     Map<String, Object?>? discount,
     Map<String, Object?>? priceOverride,
   }) => {
+    'client_line_id': clientLineId,
     'menu_item_id': menuItemId,
     // The variant option, when there is one, travels inside option_ids[] —
     // the 2026-09-02 amendment; the server resolves is_variant itself.
@@ -181,6 +215,56 @@ class OutboxDrain {
     'unit_price_minor': unitPriceMinor,
     'discount': ?discount,
     'price_override': ?priceOverride,
+  };
+
+  /// The §010 request, a pure function of local rows for the same reason
+  /// [buildOrderRequest] is one.
+  ///
+  /// [orderClientId] is the ORDER'S OWN `client_transaction_id`, never a
+  /// platform id. §010 accepts either and detects a UUID by format, and the
+  /// till's own key is the one it is certain of: the platform id arrives on the
+  /// order's reply, which a refund written during the same outage has not seen.
+  ///
+  /// `kind` is always `refund`. The platform's `refund | void` axis asks
+  /// whether a sale is being erased, and nothing reaches here to erase one — a
+  /// local void takes no money, so §010 has nothing to record for it (the
+  /// platform's order simply has no payments). `pos_refunds.kind`
+  /// (`full | partial`) is a different question entirely, and the platform
+  /// derives that one itself from its own counters.
+  static Map<String, Object?> buildRefundRequest({
+    required String clientTransactionId,
+    required String orderClientId,
+    required DateTime occurredAt,
+    required List<Map<String, Object?>> lines,
+    required List<Map<String, Object?>> tenders,
+    String? reason,
+    int? actingUserId,
+    int? authorizedByUserId,
+    String? shiftClientId,
+  }) => {
+    'client_transaction_id': clientTransactionId,
+    'order_id': orderClientId,
+    'kind': 'refund',
+    'reason': reason,
+    'acting_user_id': actingUserId,
+    'authorized_by_user_id': authorizedByUserId,
+    'shift_client_id': shiftClientId,
+    'occurred_at': occurredAt.toUtc().toIso8601String(),
+    'lines': lines,
+    'tenders': tenders,
+  };
+
+  /// One line of the §010 request, addressed the way [lineJson] promised it
+  /// would be — so the two together are the whole of the mapping that used to
+  /// be missing.
+  static Map<String, Object?> refundLineJson({
+    required int orderLineId,
+    required int quantity,
+    required int amountMinor,
+  }) => {
+    'client_line_id': '$orderLineId',
+    'quantity': quantity,
+    'amount_minor': amountMinor,
   };
 
   /// Drains causal lifecycle records around the sale queue.  A shift must
@@ -282,17 +366,15 @@ class OutboxDrain {
 
       if (reply.ok) {
         final data = reply.data;
+        final invoice = data['invoice_number'] as String?;
         await _db.runTx(config, (tx) async {
-          final parameters = <String, Object?>{
-            'id': outboxId,
-            'serverId': data['id'] is int ? data['id'] : null,
-            'invoice': data['invoice_number'] as String?,
-            // The server re-priced and disagreed. The order still exists on
-            // both sides — this marks it for the reconciliation view, it does
-            // not fail anything (POS-R081).
-            'mismatch': data['totals_mismatch'] == true,
-            'order': orderId,
-          };
+          // One parameter map per statement, not one shared between the two.
+          // The driver refuses a map carrying a variable its statement does
+          // not name, and the shared map meant EVERY delivered sale threw here
+          // — after the platform had accepted it. The sale was safe (§007
+          // idempotency) and the queue never emptied: `delivered_at` was never
+          // written, so the same sale was resent on every pass forever and the
+          // "owed to the platform" count never came down.
           await tx.execute(
             Sql.named('''
               UPDATE pos_outbox
@@ -303,20 +385,36 @@ class OutboxDrain {
                      totals_mismatch = @mismatch
                WHERE id = @id
             '''),
-            parameters: parameters,
+            parameters: {
+              'id': outboxId,
+              'serverId': data['id'] is int ? data['id'] : null,
+              'invoice': invoice,
+              // The server re-priced and disagreed. The order still exists on
+              // both sides — this marks it for the reconciliation view, it
+              // does not fail anything (POS-R081).
+              'mismatch': data['totals_mismatch'] == true,
+            },
           );
           // The platform invoice is authoritative for later history and
           // reprints.  Keep the terminal's provisional sequence separately:
           // two offline tills can legitimately issue the same local reference,
           // so overwriting the locally unique `invoice_number` would turn a
           // successful sync into a constraint failure.
-          await tx.execute(
-            Sql.named(
-              'UPDATE pos_orders SET server_invoice_number = @invoice '
-              'WHERE id = @order AND @invoice IS NOT NULL',
-            ),
-            parameters: parameters,
-          );
+          //
+          // The "only if there is one" guard is in Dart rather than in a
+          // `WHERE @invoice IS NOT NULL`: in that position PostgreSQL has no
+          // column to infer the parameter's type from and refuses the
+          // statement outright (42P08), which is the second half of the same
+          // defect as the shared parameter map above.
+          if (invoice != null) {
+            await tx.execute(
+              Sql.named(
+                'UPDATE pos_orders SET server_invoice_number = @invoice '
+                'WHERE id = @order',
+              ),
+              parameters: {'order': orderId, 'invoice': invoice},
+            );
+          }
         });
         delivered++;
         continue;
@@ -372,73 +470,89 @@ class OutboxDrain {
       final eventType = row[1] as String;
       final sourceId = row[2] as int;
       final clientId = row[3].toString();
-      final event = await _lifecycleEvent(
+      final prepared = await _lifecycleEvent(
         eventType: eventType,
         sourceId: sourceId,
         clientTransactionId: clientId,
       );
-      if (event == null) {
-        await _quarantineLifecycle(
-          eventId,
-          code: 'LOCAL_SOURCE_MISSING',
-          message:
-              'The local ${eventType.replaceAll('_', ' ')} source row no '
-              'longer has a complete platform payload. It was not sent.',
-        );
-        quarantined++;
-        continue;
-      }
 
-      final reply = await event.send();
-      if (reply.offline) {
-        return DrainReport(
-          delivered: delivered,
-          quarantined: quarantined,
-          deferred: deferred,
-          wentOffline: true,
-        );
-      }
-      if (reply.ok) {
-        await _db.query(
-          config,
-          '''
-          UPDATE pos_sync_outbox
-             SET delivered_at = now(), attempts = attempts + 1,
-                 last_attempt_at = now(), last_error = NULL
-           WHERE id = @id
-          ''',
-          parameters: {'id': eventId},
-        );
-        delivered++;
-        continue;
-      }
+      switch (prepared) {
+        case _Held(:final code, :final message):
+          await _quarantineLifecycle(eventId, code: code, message: message);
+          quarantined++;
 
-      final action = classify(reply.code);
-      if (action == DrainAction.quarantine) {
-        await _quarantineLifecycle(
-          eventId,
-          code: reply.code ?? 'REJECTED',
-          message: '${reply.status} ${reply.code ?? ''} ${reply.message ?? ''}'
-              .trim(),
-          incrementAttempt: true,
-        );
-        quarantined++;
-      } else {
-        await _db.query(
-          config,
-          '''
-          UPDATE pos_sync_outbox
-             SET attempts = attempts + 1, last_attempt_at = now(),
-                 last_error = @error
-           WHERE id = @id
-          ''',
-          parameters: {
-            'id': eventId,
-            'error': '${reply.status} ${reply.code ?? ''} ${reply.message ?? ''}'
-                .trim(),
-          },
-        );
-        deferred++;
+        case _Waiting(:final why):
+          // `attempts` is left alone on purpose, exactly as [_hold] leaves it:
+          // it counts conversations with the platform, and this record never
+          // opened one. The cure is the next pass, once whatever it waits
+          // behind has landed — so nothing here needs a person.
+          await _db.query(
+            config,
+            'UPDATE pos_sync_outbox SET last_error = @error WHERE id = @id',
+            parameters: {'id': eventId, 'error': why},
+          );
+          deferred++;
+
+        case _Sendable(:final event):
+          final reply = await event.send();
+          if (reply.offline) {
+            return DrainReport(
+              delivered: delivered,
+              quarantined: quarantined,
+              deferred: deferred,
+              wentOffline: true,
+            );
+          }
+          if (reply.ok) {
+            // One transaction, so "this was delivered" and whatever the reply
+            // carried back about the record cannot end up disagreeing — the
+            // same discipline the order path applies to its invoice number.
+            final data = reply.data;
+            await _db.runTx(config, (tx) async {
+              await tx.execute(
+                Sql.named('''
+                  UPDATE pos_sync_outbox
+                     SET delivered_at = now(), attempts = attempts + 1,
+                         last_attempt_at = now(), last_error = NULL
+                   WHERE id = @id
+                '''),
+                parameters: {'id': eventId},
+              );
+              await event.record?.call(tx, data);
+            });
+            delivered++;
+            continue;
+          }
+
+          final action = classify(reply.code);
+          if (action == DrainAction.quarantine) {
+            await _quarantineLifecycle(
+              eventId,
+              code: reply.code ?? 'REJECTED',
+              message:
+                  '${reply.status} ${reply.code ?? ''} ${reply.message ?? ''}'
+                      .trim(),
+              incrementAttempt: true,
+            );
+            quarantined++;
+          } else {
+            await _db.query(
+              config,
+              '''
+              UPDATE pos_sync_outbox
+                 SET attempts = attempts + 1, last_attempt_at = now(),
+                     last_error = @error
+               WHERE id = @id
+              ''',
+              parameters: {
+                'id': eventId,
+                'error':
+                    '${reply.status} ${reply.code ?? ''} ${reply.message ?? ''}'
+                        .trim(),
+              },
+            );
+            deferred++;
+          }
       }
     }
     return DrainReport(
@@ -448,21 +562,47 @@ class OutboxDrain {
     );
   }
 
-  Future<_LifecycleEvent?> _lifecycleEvent({
+  /// What one queued lifecycle row turned into, before a word was said to the
+  /// platform.
+  ///
+  /// An event type this build does not know quarantines rather than defers,
+  /// which is the opposite of the rule for an unknown *error* code — and
+  /// deliberately so. An unknown code comes from a newer server and the record
+  /// is fine; an unknown `event_type` in our own queue means something wrote a
+  /// row this code cannot build a request from, and no amount of waiting will
+  /// teach it how.
+  Future<_Prepared> _lifecycleEvent({
     required String eventType,
     required int sourceId,
     required String clientTransactionId,
   }) async => switch (eventType) {
-    'shift_open' => _shiftOpenEvent(sourceId, clientTransactionId),
-    'shift_close' => _shiftCloseEvent(sourceId, clientTransactionId),
-    'cash_movement' => _cashMovementEvent(sourceId, clientTransactionId),
-    // A refund needs the platform's order-item ids, not this database's local
-    // line ids.  The writer does not enqueue one until that mapping exists;
-    // keeping this guard makes an accidental/manual queue row visibly held
-    // instead of ever posting a local id as though it were a platform id.
-    'refund' => Future.value(null),
-    _ => Future.value(null),
+    'shift_open' => _sendableOrHeld(
+      eventType,
+      await _shiftOpenEvent(sourceId, clientTransactionId),
+    ),
+    'shift_close' => _sendableOrHeld(
+      eventType,
+      await _shiftCloseEvent(sourceId, clientTransactionId),
+    ),
+    'cash_movement' => _sendableOrHeld(
+      eventType,
+      await _cashMovementEvent(sourceId, clientTransactionId),
+    ),
+    'refund' => await _refundEvent(sourceId, clientTransactionId),
+    _ => _sendableOrHeld(eventType, null),
   };
+
+  /// The shared answer for the three record types whose only local failure is
+  /// "the source row no longer carries a complete payload".
+  static _Prepared _sendableOrHeld(String eventType, _LifecycleEvent? event) =>
+      event == null
+      ? _Held(
+          code: 'LOCAL_SOURCE_MISSING',
+          message:
+              'The local ${eventType.replaceAll('_', ' ')} source row no '
+              'longer has a complete platform payload. It was not sent.',
+        )
+      : _Sendable(event);
 
   Future<_LifecycleEvent?> _shiftOpenEvent(
     int sourceId,
@@ -571,6 +711,188 @@ class OutboxDrain {
     );
   }
 
+  /// One queued refund as §010's request — or the local reason it is not going
+  /// on this pass.
+  ///
+  /// **A refund can never precede its sale.** §010 resolves `order_id` against
+  /// the platform's own orders, so a refund sent while its sale is still in
+  /// `pos_outbox` earns a 422 for a fact that is about to stop being true.
+  /// It waits instead: the phase order in [run] already sends orders first, so
+  /// the usual case is that the sale went out moments ago in the same pass, and
+  /// the wait only bites when the sale is held or the pass ran out of room.
+  Future<_Prepared> _refundEvent(
+    int sourceId,
+    String clientTransactionId,
+  ) async {
+    final rows = await _db.query(
+      config,
+      '''
+      SELECT r.client_refund_id, o.client_transaction_id, reason.code, r.note,
+             r.refunded_by, r.approved_by_id, shift.client_transaction_id,
+             r.occurred_at, r.restaurant_id,
+             sale.id, sale.delivered_at, sale.quarantined_at
+        FROM pos_refunds r
+        JOIN pos_orders o ON o.id = r.order_id
+        LEFT JOIN pos_shifts shift ON shift.id = r.shift_id
+        LEFT JOIN pos_reason_codes reason ON reason.id = r.reason_id
+        LEFT JOIN LATERAL (
+          SELECT ob.id, ob.delivered_at, ob.quarantined_at
+            FROM pos_outbox ob
+           WHERE ob.order_id = o.id
+           ORDER BY ob.id
+           LIMIT 1
+        ) sale ON true
+       WHERE r.id = @id
+      ''',
+      parameters: {'id': sourceId},
+    );
+    if (rows.isEmpty || rows.first[0]?.toString() != clientTransactionId) {
+      return _sendableOrHeld('refund', null);
+    }
+    final row = rows.first;
+
+    if (row[9] == null) {
+      return const _Held(
+        code: 'SALE_NEVER_QUEUED',
+        message:
+            'The sale this refund reverses was never queued for the platform, '
+            'so the platform has no order for it to name. Held for a person: '
+            'the refund is recorded in this database and the money did leave '
+            'the drawer.',
+      );
+    }
+    if (row[10] == null) {
+      return _Waiting(
+        row[11] == null
+            ? 'Waiting for the sale this refund reverses to reach the '
+                  'platform. Nothing was sent.'
+            // Self-healing on purpose rather than quarantined alongside the
+            // sale: whoever unsticks the sale should not then have to find
+            // this row too.
+            : 'The sale this refund reverses is held for a person. This '
+                  'refund goes as soon as that sale does.',
+      );
+    }
+
+    final lines = await _refundLinesFor(sourceId);
+    if (lines.isEmpty) {
+      return const _Held(
+        code: refundHasNoLines,
+        message:
+            'This refund was given as an amount off the bill rather than '
+            'against chosen lines, and the platform requires lines that add '
+            'up to the tender. Held for a person rather than attributing it '
+            'to food nobody chose.',
+      );
+    }
+
+    final tenders = await _refundTendersFor(
+      sourceId,
+      restaurantId: row[8] as int,
+    );
+    if (tenders.stranded.isNotEmpty) {
+      return _Held(
+        code: tenderNotFromPlatform,
+        message:
+            'Not sent: handed back by ${tenders.stranded.join(', ')}, which '
+            'the platform did not send this till. The platform would refuse '
+            'it, or book it against a different payment method — and a card '
+            'refund booked as cash is a drawer that is short. Held for a '
+            'person.',
+      );
+    }
+
+    final request = buildRefundRequest(
+      clientTransactionId: clientTransactionId,
+      orderClientId: row[1].toString(),
+      // The coded reason, which is the axis the platform reports on. The free
+      // note stays local: §010 has one `reason` string, and gluing the two
+      // together would make every grouped refund report a list of one.
+      reason: row[2] as String? ?? row[3] as String?,
+      // The local staff id IS the platform's user id on a cloud till — the
+      // bootstrap seeder writes `pos_staff` under the platform's own ids, and
+      // the order path already sends `served_by` on that basis.
+      actingUserId: row[4] as int?,
+      authorizedByUserId: row[5] as int?,
+      shiftClientId: row[6]?.toString(),
+      occurredAt: row[7] as DateTime,
+      lines: lines,
+      tenders: tenders.sendable,
+    );
+
+    return _Sendable(
+      _LifecycleEvent(
+        request: request,
+        send: () => api.submitRefund(request),
+        // The platform's credit note number, kept exactly as the platform's
+        // invoice number is kept on a sale: it is what an auditor asks for,
+        // and it is drawn from the platform's own `CN-` sequence, so the till
+        // cannot derive it.
+        record: (tx, data) async {
+          final number = data['credit_note_number'] as String?;
+          if (number == null) return;
+          await tx.execute(
+            Sql.named(
+              'UPDATE pos_refunds SET server_credit_note_number = @number '
+              'WHERE id = @refund',
+            ),
+            parameters: {'refund': sourceId, 'number': number},
+          );
+        },
+      ),
+    );
+  }
+
+  /// The §010 `lines[]`, addressed by the local line id.
+  Future<List<Map<String, Object?>>> _refundLinesFor(int refundId) async {
+    final rows = await _db.query(
+      config,
+      'SELECT order_line_id, quantity, line_total_minor '
+      'FROM pos_refund_lines WHERE refund_id = @refund ORDER BY id',
+      parameters: {'refund': refundId},
+    );
+    return [
+      for (final row in rows)
+        refundLineJson(
+          orderLineId: row[0] as int,
+          quantity: row[1] as int,
+          amountMinor: row[2] as int,
+        ),
+    ];
+  }
+
+  /// The §010 `tenders[]`, plus the ones that cannot be sent.
+  ///
+  /// Identical reasoning to [_paymentsFor], applied to money going the other
+  /// way: `pos_refund_payments.tender_type_id` is the LOCAL row id, and only
+  /// its `platform_id` means anything to the platform. One stranded tender
+  /// holds the whole refund, because §010 requires the tenders to balance the
+  /// lines — half of them would be refused anyway, and a refund recorded short
+  /// would understate what a shift handed back.
+  Future<({List<Map<String, Object?>> sendable, List<String> stranded})>
+  _refundTendersFor(int refundId, {required int restaurantId}) async {
+    final rows = await _db.query(
+      config,
+      'SELECT t.platform_id, p.amount_minor, p.tender_type_id, p.label '
+      'FROM pos_refund_payments p '
+      'LEFT JOIN pos_tender_types t '
+      '  ON t.id = p.tender_type_id AND t.restaurant_id = @restaurant '
+      'WHERE p.refund_id = @refund ORDER BY p.id',
+      parameters: {'refund': refundId, 'restaurant': restaurantId},
+    );
+    return (
+      sendable: [
+        for (final row in rows)
+          if (row[0] case final int platformId)
+            {'tender_type_id': platformId, 'amount_minor': row[1] as int},
+      ],
+      stranded: [
+        for (final row in rows)
+          if (row[0] == null) '${row[3]} (payment method ${row[2]} on this till)',
+      ],
+    );
+  }
+
   Future<void> _quarantineLifecycle(
     int eventId, {
     required String code,
@@ -594,7 +916,7 @@ class OutboxDrain {
       SELECT l.menu_item_id, l.name_snapshot, l.modifier_ids, l.quantity,
              l.unit_price_minor, l.note,
              coalesce(discount.amount_minor, 0)::bigint, discount.reason,
-             override.unit_price_minor, override.reason
+             override.unit_price_minor, override.reason, l.id
         FROM pos_order_lines l
         LEFT JOIN LATERAL (
           SELECT sum(d.amount_minor)::bigint AS amount_minor,
@@ -621,6 +943,10 @@ class OutboxDrain {
       for (final row in rows)
         lineJson(
           menuItemId: row[0] as int?,
+          // What `pos_refund_lines.order_line_id` references, as a string, so
+          // a refund of this line is a straight projection rather than a
+          // lookup the till cannot do offline.
+          clientLineId: '${row[10]}',
           nameSnapshot: row[1] as String,
           optionIds: [
             if (row[2] is List)
@@ -740,10 +1066,52 @@ class OutboxDrain {
 }
 
 class _LifecycleEvent {
-  const _LifecycleEvent({required this.request, required this.send});
+  const _LifecycleEvent({
+    required this.request,
+    required this.send,
+    this.record,
+  });
 
   final Map<String, Object?> request;
   final Future<CloudReply> Function() send;
+
+  /// What to write back out of a successful reply, in the same transaction
+  /// that marks the row delivered. Null for the three records whose reply
+  /// tells the till nothing it did not already know.
+  final Future<void> Function(TxSession tx, Map<String, Object?> data)? record;
+}
+
+/// What one queued lifecycle row turned into before anything was sent.
+///
+/// Three outcomes rather than a nullable event, because a refund brought a
+/// third local answer: its sale may not have reached the platform yet, and
+/// that is a wait — nobody has to do anything, and the next pass fixes it.
+/// Modelled as a sealed type so the drain's `switch` is exhaustive and a
+/// fourth outcome cannot be added without the compiler finding the gap.
+sealed class _Prepared {
+  const _Prepared();
+}
+
+class _Sendable extends _Prepared {
+  const _Sendable(this.event);
+
+  final _LifecycleEvent event;
+}
+
+/// Held for a person, before the platform was asked. Nothing is deleted:
+/// money moved, and this row is what somebody resolves it from.
+class _Held extends _Prepared {
+  const _Held({required this.code, required this.message});
+
+  final String code;
+  final String message;
+}
+
+/// Left queued, with [why] on the row so the wait is legible.
+class _Waiting extends _Prepared {
+  const _Waiting(this.why);
+
+  final String why;
 }
 
 /// Wraps the local repository so every settled sale immediately pokes the
