@@ -11,6 +11,7 @@ import 'package:xorder_pos/core/config/terminal_config.dart';
 import 'package:xorder_pos/core/ui/theme.dart';
 import 'package:xorder_pos/data/config/terminal_config_store.dart';
 import 'package:xorder_pos/data/config/pos_db_secret_store.dart';
+import 'package:xorder_pos/data/fakes/fake_repositories.dart';
 import 'package:xorder_pos/data/postgres/pos_database.dart';
 import 'package:xorder_pos/features/licensing/data/licence_service.dart';
 import 'package:xorder_pos/features/licensing/domain/license.dart';
@@ -778,6 +779,127 @@ void main() {
       expect(activated.deployment.tenantSlug, 'second-restaurant');
     });
   });
+  group('a claim made on an earlier run', () {
+    const terminalId = '7f1c9a52-3b64-4f0e-9a11-0c2d5e8b7a10';
+
+    /// The first launch: a licence activated, a code claimed, and the process
+    /// gone before "Open the till". The store handed in is all that survives.
+    Future<void> firstRun(InMemorySetupProgressStore progress) async {
+      final container = ProviderContainer(
+        overrides: [
+          ...fakeRepositoryOverrides(),
+          setupProgressStoreProvider.overrideWithValue(progress),
+        ],
+      );
+      final controller = container.read(setupProvider.notifier);
+      controller.setLicenceKey('DEV-KEY');
+      await controller.activateLicence();
+      controller.setPairingCode(FakeProvisioningRepository.demoCode);
+      await controller.claimTerminal();
+      expect(container.read(setupProvider).claimed, isTrue);
+      container.dispose();
+    }
+
+    /// The second launch, over the same store. Reading the draft is what
+    /// builds it, and building it is what schedules the restore.
+    Future<ProviderContainer> secondRun(
+      InMemorySetupProgressStore progress,
+    ) async {
+      final container = ProviderContainer(
+        overrides: [
+          ...fakeRepositoryOverrides(),
+          setupProgressStoreProvider.overrideWithValue(progress),
+        ],
+      );
+      addTearDown(container.dispose);
+      container.read(setupProvider);
+      await pumpEventQueue();
+      return container;
+    }
+
+    test('is written the moment the code is spent', () async {
+      final progress = InMemorySetupProgressStore();
+      await firstRun(progress);
+
+      final written = progress.saved;
+      expect(written, isNotNull);
+      expect(written!.terminalId, terminalId);
+      expect(written.terminalName, 'Counter 1');
+      expect(written.branchLabel, 'Maadi');
+      expect(written.deployment.mode, DeploymentMode.cloud);
+      // The licence rides along, so the till it completes into is licensed.
+      // No password does — the record has no field for one, and its JSON
+      // is what a support engineer may be sent.
+      expect(written.licence, isNotNull);
+      expect(jsonEncode(written.toJson()), isNot(contains('password')));
+    });
+
+    test('carries the wizard on at the connecting step', () async {
+      final progress = InMemorySetupProgressStore();
+      await firstRun(progress);
+
+      // A fresh process knows nothing until the restore lands.
+      final container = ProviderContainer(
+        overrides: [
+          ...fakeRepositoryOverrides(),
+          setupProgressStoreProvider.overrideWithValue(progress),
+        ],
+      );
+      addTearDown(container.dispose);
+      expect(container.read(setupProvider).step, SetupStep.licence);
+      await pumpEventQueue();
+
+      final draft = container.read(setupProvider);
+      // Past the licence, the mode and the code — the three questions this
+      // machine already answered — and onto the screen that asks nothing.
+      expect(draft.step, SetupStep.connecting);
+      expect(draft.claimed, isTrue);
+      expect(draft.terminalId, terminalId);
+      expect(draft.terminalName, 'Counter 1');
+      expect(draft.branchId, 13);
+      expect(draft.branchCode, 'MAADI');
+      expect(draft.deployment.mode, DeploymentMode.cloud);
+      // Judged again on the way in, and held for complete() to write.
+      expect(draft.entitlement, isNotNull);
+      expect(draft.licenceFile, isNotNull);
+      // Flagged, so the connecting screen can say so in its report.
+      expect(draft.resumed, isTrue);
+      expect(draft.error, isNull);
+    });
+
+    test('is forgotten once the till opens', () async {
+      final progress = InMemorySetupProgressStore();
+      await firstRun(progress);
+      final container = await secondRun(progress);
+      final controller = container.read(setupProvider.notifier);
+
+      // The connecting pane is not pumped here; stand in for what it does.
+      controller.setDatabasePassword('s3cret');
+      controller.state = container.read(setupProvider).copyWith(
+        provisioned: true,
+      );
+      expect(await controller.complete(), isNull);
+
+      expect(
+        progress.saved,
+        isNull,
+        reason:
+            'a record that outlives the config would resume the wrong '
+            'install after the next reset',
+      );
+    });
+
+    test('and by a reset', () async {
+      final progress = InMemorySetupProgressStore();
+      await firstRun(progress);
+      final container = await secondRun(progress);
+
+      await container.read(terminalResetProvider).run();
+
+      expect(progress.saved, isNull);
+    });
+  });
+
   group('a licence installed on an earlier run', () {
     /// Pre-load the fake issuer the way a previous launch would have left it:
     /// a licence on disk, and a brand-new wizard draft that knows nothing.

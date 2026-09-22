@@ -5,6 +5,7 @@ import 'package:mocktail/mocktail.dart';
 import 'package:xorder_pos/app/providers.dart';
 import 'package:xorder_pos/core/config/terminal_config.dart';
 import 'package:xorder_pos/data/config/pos_db_secret_store.dart';
+import 'package:xorder_pos/data/config/setup_progress_store.dart';
 import 'package:xorder_pos/data/config/terminal_config_store.dart';
 import 'package:xorder_pos/data/fakes/fake_repositories.dart';
 import 'package:xorder_pos/data/postgres/pos_database.dart';
@@ -91,6 +92,8 @@ List<Override> fakeRepositoryOverrides({
       // and could not anyway, since `path_provider` has no implementation in
       // the test harness.
       terminalConfigStoreProvider.overrideWithValue(InMemoryTerminalConfigStore()),
+      // And the unfinished-claim record beside it, for the same reason.
+      setupProgressStoreProvider.overrideWithValue(InMemorySetupProgressStore()),
       // Admin Mode's database password, kept as the setup wizard keeps it, and
       // a database that accepts it. A widget test has no PostgreSQL to ask; a
       // test about the first-time question empties the store itself. Nobody is
@@ -177,6 +180,28 @@ class InMemoryTerminalConfigStore implements TerminalConfigStore {
   @override
   Future<void> write(SavedTerminalConfig config) async {
     saved = config;
+    writes++;
+  }
+
+  @override
+  Future<void> clear() async => saved = null;
+}
+
+/// The unfinished-claim record, held in memory for the length of a test.
+///
+/// Handed to two containers in turn to model a restart: the first writes it,
+/// the second reads it, and nothing between them is a file.
+class InMemorySetupProgressStore implements SetupProgressStore {
+  SetupProgress? saved;
+
+  int writes = 0;
+
+  @override
+  Future<SetupProgress?> read() async => saved;
+
+  @override
+  Future<void> write(SetupProgress progress) async {
+    saved = progress;
     writes++;
   }
 

@@ -108,6 +108,7 @@ class SetupDraft {
     this.bootstrapped = false,
     this.bootstrapReport,
     this.provisioned = false,
+    this.resumed = false,
     this.needsDatabase = false,
     this.detectedPrinters,
     this.claimed = false,
@@ -396,6 +397,11 @@ class SetupDraft {
   /// built — and would otherwise never be able to leave the step.
   final bool provisioned;
 
+  /// True when this draft was rebuilt from a claim an earlier run made, so
+  /// the connecting screen can say why it is the one that opened. See
+  /// `SetupController._restoreProgress`.
+  final bool resumed;
+
   /// True when this machine has no `install-credentials.json`, so the database
   /// could not be read off the installation and has to be asked for.
   ///
@@ -556,6 +562,7 @@ class SetupDraft {
     bool? bootstrapped,
     String? bootstrapReport,
     bool? provisioned,
+    bool? resumed,
     bool? needsDatabase,
     int? detectedPrinters,
     bool? claimed,
@@ -613,6 +620,7 @@ class SetupDraft {
     bootstrapped: bootstrapped ?? this.bootstrapped,
     bootstrapReport: bootstrapReport ?? this.bootstrapReport,
     provisioned: provisioned ?? this.provisioned,
+    resumed: resumed ?? this.resumed,
     needsDatabase: needsDatabase ?? this.needsDatabase,
     detectedPrinters: detectedPrinters ?? this.detectedPrinters,
     // `clearClaim` exists because the `?? this.x` idiom cannot express

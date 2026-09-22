@@ -10,6 +10,7 @@ import 'package:xorder_pos/core/config/printer_config.dart';
 import 'package:xorder_pos/core/l10n/app_strings.dart';
 import 'package:xorder_pos/core/ui/theme.dart';
 import 'package:xorder_pos/data/config/installer_credentials.dart';
+import 'package:xorder_pos/data/config/setup_progress_store.dart';
 import 'package:xorder_pos/data/fakes/fake_repositories.dart';
 import 'package:xorder_pos/data/postgres/pos_database.dart';
 import 'package:xorder_pos/domain/repositories/repositories.dart';
@@ -111,6 +112,21 @@ class _RecordingDatabaseBuilder {
   }
 }
 
+/// Reason codes and order types, recorded instead of written.
+class _RecordingDefaultsSeeder {
+  int calls = 0;
+  int? restaurantId;
+
+  Future<void> call(
+    DeploymentConfig config,
+    String adminPassword,
+    int restaurantId,
+  ) async {
+    calls++;
+    this.restaurantId = restaurantId;
+  }
+}
+
 /// Exactly [count] printers, answering at once.
 ///
 /// `FakeHardwarePorts` finds two, which is a different and equally interesting
@@ -147,6 +163,8 @@ void main() {
     InstallerCredentialsSource installer = const _InstalledByTheInstaller(),
     required _RecordingDatabaseBuilder builder,
     required HardwarePorts printers,
+    InMemorySetupProgressStore? progress,
+    _RecordingDefaultsSeeder? defaults,
   }) async {
     tester.view
       ..physicalSize = const Size(1440, 1200)
@@ -161,6 +179,10 @@ void main() {
         installerCredentialsProvider.overrideWithValue(installer),
         databaseBuilderProvider.overrideWithValue(builder.call),
         hardwarePortsProvider.overrideWithValue(printers),
+        if (progress != null)
+          setupProgressStoreProvider.overrideWithValue(progress),
+        if (defaults != null)
+          cloudDefaultsSeederProvider.overrideWithValue(defaults.call),
       ],
     );
     addTearDown(container.dispose);
@@ -222,6 +244,99 @@ void main() {
     }
     return seen;
   }
+
+  group('a restart between the claim and "Open the till"', () {
+    /// What the first run left behind: the claim, and the licence the bundle
+    /// embedded. No pairing code — it is spent, and nothing keeps it.
+    SetupProgress claimed() => SetupProgress(
+      deployment: DeploymentConfig(
+        mode: DeploymentMode.cloud,
+        tenantSlug: 'islanded',
+        baseUrl: PlatformEndpoint.base,
+      ),
+      terminalId: '7f1c9a52-3b64-4f0e-9a11-0c2d5e8b7a10',
+      terminalName: 'Counter 1',
+      locale: 'en',
+      branchId: 13,
+      branchLabel: 'Maadi',
+      restaurantId: 1,
+      branchCode: 'MAADI',
+      licence: _licence({DeploymentMode.cloud}).serialize(),
+    );
+
+    testWidgets('reopens on the connecting screen and builds unasked', (
+      tester,
+    ) async {
+      final builder = _RecordingDatabaseBuilder();
+      final progress = InMemorySetupProgressStore()..saved = claimed();
+      final (container, _) = await open(
+        tester,
+        builder: builder,
+        printers: _PrintersFound(1),
+        progress: progress,
+      );
+
+      final draft = container.read(setupProvider);
+      // Past the three questions this machine already answered, and onto the
+      // screen whose pane runs provisioning on its own.
+      expect(draft.step, SetupStep.connecting);
+      expect(draft.claimed, isTrue);
+      expect(draft.provisioned, isTrue);
+      expect(builder.calls, 1);
+      expect(draft.error, isNull);
+      // Said on screen: a wizard that opens on its fourth screen with nothing
+      // typed looks like a fault to whoever restarted it.
+      expect(find.textContaining('carried on'), findsOneWidget);
+      // And the code was not asked for.
+      expect(find.text('Claim this terminal'), findsNothing);
+    });
+
+    testWidgets('is finished with once the till opens', (tester) async {
+      final progress = InMemorySetupProgressStore()..saved = claimed();
+      final (container, store) = await open(
+        tester,
+        builder: _RecordingDatabaseBuilder(),
+        printers: _PrintersFound(1),
+        progress: progress,
+      );
+
+      while (!container.read(setupProvider).isLastStep) {
+        await tester.tap(find.text('Continue'));
+        await tester.pumpAndSettle();
+      }
+      await tester.tap(find.text('Open the till'));
+      await tester.pumpAndSettle();
+
+      expect(store.saved, isNotNull, reason: 'the till is configured');
+      expect(progress.saved, isNull, reason: 'and the claim record is spent');
+    });
+  });
+
+  group("the till's own lists", () {
+    testWidgets('are written the moment the code is spent, and seeded only '
+        'once the bundle has landed', (tester) async {
+      final defaults = _RecordingDefaultsSeeder();
+      final progress = InMemorySetupProgressStore();
+      final (container, _) = await open(
+        tester,
+        builder: _RecordingDatabaseBuilder(),
+        printers: _PrintersFound(1),
+        progress: progress,
+        defaults: defaults,
+      );
+
+      await walk(tester, container, modes: {DeploymentMode.cloud});
+
+      // The claim wrote its record before the wizard moved on.
+      expect(progress.saved, isNotNull);
+      expect(progress.saved!.terminalName, 'Counter 1');
+      // This harness has no platform to fetch a bundle from, so there is no
+      // restaurant row to hang reasons on — and nothing tried. The seed's
+      // failure is a notice, and the defaults wait for the retry that clears
+      // it rather than failing a second time on the same missing row.
+      expect(defaults.calls, 0);
+    });
+  });
 
   group('the screens a cloud main device is shown', () {
     testWidgets('a single-mode licence and one printer: four screens', (

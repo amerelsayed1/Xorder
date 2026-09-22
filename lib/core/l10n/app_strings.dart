@@ -605,6 +605,10 @@ sealed class AppStrings {
   String get noPlatformAddressInForce;
   String get terminalNotRegisteredYet;
 
+  /// On the connecting screen after a restart mid-setup: why the wizard opened
+  /// on its fourth screen with nothing typed.
+  String get setupResumed;
+
   // ── Provisioning refusals ─────────────────────────────────────────────────
   //
   // Keyed off the machine-readable `code` the repositories return, not off
@@ -4185,6 +4189,10 @@ final class EnStrings extends AppStrings {
   String get terminalNotRegisteredYet =>
       'This terminal is not registered yet, so the platform will not hand it a '
       'menu.';
+  @override
+  String get setupResumed =>
+      'Setup carried on from where it stopped: this terminal was already '
+      'paired, so the code was not asked for again.';
 
   @override
   String get refusalPairingCodeInvalid =>
@@ -8635,6 +8643,10 @@ final class ArStrings extends AppStrings {
   @override
   String get terminalNotRegisteredYet =>
       'لم يُسجَّل هذا الجهاز بعد، فلن تعطيه المنصة منيو.';
+  @override
+  String get setupResumed =>
+      'استُكمل الإعداد من حيث توقف: هذا الجهاز مقترن بالفعل، فلم يُطلب الرمز '
+      'مرة أخرى.';
 
   @override
   String get refusalPairingCodeInvalid =>

@@ -25,6 +25,7 @@ import '../data/backup/pg_tools.dart';
 import '../data/config/file_secret_store.dart';
 import '../data/config/installer_credentials.dart';
 import '../data/config/pos_db_secret_store.dart';
+import '../data/config/setup_progress_store.dart';
 import '../data/config/terminal_config_store.dart';
 import '../data/hardware/network_printer_ports.dart';
 import '../data/postgres/pos_database.dart';
@@ -1919,6 +1920,13 @@ final terminalConfigStoreProvider = Provider<TerminalConfigStore>(
   (ref) => FileTerminalConfigStore(),
 );
 
+/// Where an unfinished cloud setup is kept, so a restart after the claim
+/// carries on rather than asking for a pairing code that is already spent.
+/// See [SetupProgress].
+final setupProgressStoreProvider = Provider<SetupProgressStore>(
+  (ref) => FileSetupProgressStore(),
+);
+
 /// How this terminal is deployed. Written once by the setup wizard, then read
 /// by everything that needs to know whether a server exists to talk to.
 class DeploymentController extends Notifier<DeploymentConfig> {
@@ -1978,6 +1986,10 @@ class TerminalReset {
     // would come back on the next launch, which is the opposite of what the
     // operator just asked for.
     await _ref.read(terminalConfigStoreProvider).clear();
+    // And a claim the wizard never finished with. A reset is "start over", and
+    // a progress file left behind would reopen the wizard halfway through the
+    // last attempt, on the last restaurant's terminal.
+    await _ref.read(setupProgressStoreProvider).clear();
     await _ref.read(posDbCredentialsStoreProvider).forget();
     // And the back office's. A till moved onto another restaurant's database
     // must not arrive holding the last one's administrator password.

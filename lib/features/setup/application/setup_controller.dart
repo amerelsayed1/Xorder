@@ -11,6 +11,7 @@ import '../../../core/config/terminal_config.dart';
 import '../../../data/cloud/bootstrap_bundle.dart';
 import '../../../data/cloud/bootstrap_seeder.dart';
 import '../../../data/config/installer_credentials.dart';
+import '../../../data/config/setup_progress_store.dart';
 import '../../../data/postgres/local_bootstrap.dart';
 import '../../../domain/models/permissions.dart';
 import '../../../domain/repositories/repositories.dart'
@@ -76,6 +77,12 @@ class SetupController extends Notifier<SetupDraft> {
       // of the main device and opens on finding it. See [TerminalRole].
       final role = ref.read(deviceRoleProvider);
       final child = role == TerminalRole.child;
+
+      // A claim made on an earlier run is still made — the code is spent and
+      // the platform holds the terminal. Reading it back is what stops a
+      // restart mid-setup from asking for a pairing code that cannot be
+      // redeemed twice. A child never claims, so it has nothing to resume.
+      if (!child) Future.microtask(_restoreProgress);
 
       return SetupDraft(
         step: child ? SetupStep.deployment : SetupStep.licence,
@@ -178,6 +185,117 @@ class SetupController extends Notifier<SetupDraft> {
       notice: modeNotice,
       clearNotice: modeNotice == null,
     );
+  }
+
+  /// Carry on from a claim an earlier run made.
+  ///
+  /// The pairing code is single-use and the device token it earned was
+  /// persisted the moment it arrived, so a restart between the claim and "Open
+  /// the till" left the machine with a terminal on the platform and a wizard
+  /// that had never heard of it — blank at the licence step, demanding a claim
+  /// at the account step, with a code that now answers `PAIRING_CODE_USED`.
+  /// The only way past was "sign in instead", which nobody at the till had
+  /// been told about.
+  ///
+  /// So the draft is rebuilt from what the claim answered and the wizard
+  /// reopens on the connecting step, whose pane runs provisioning on its own.
+  /// Every step of that is an upsert, so a database half-built before the
+  /// restart costs nothing to finish.
+  ///
+  /// Only ever fills a gap, like [_restoreInstalledLicence]: a wizard the
+  /// operator has already moved off the first screen keeps what they did.
+  Future<void> _restoreProgress() async {
+    if (_disposed) return;
+
+    final SetupProgress? progress;
+    try {
+      progress = await ref.read(setupProgressStoreProvider).read();
+    } catch (_) {
+      // Started in a microtask, so an unreadable store would surface as an
+      // unhandled async error rather than a failed step. The store reports a
+      // missing or damaged file as null already; what is left is the platform
+      // refusing to name the support directory, and a wizard that works
+      // without a progress file must not be stopped by it.
+      return;
+    }
+    if (_disposed || progress == null) return;
+    if (state.claimed || state.step != SetupStep.licence) return;
+
+    // The licence the bundle embedded, judged again rather than trusted: the
+    // file is signed, and re-verifying costs nothing. Null when the wizard was
+    // carrying none — that one is on disk and [_restoreInstalledLicence] finds
+    // it, in whichever order the two microtasks land.
+    var entitlement = state.entitlement;
+    var claims = state.claims;
+    final licence = progress.licence == null
+        ? null
+        : LicenseFile.tryParse(progress.licence!);
+    if (licence != null) {
+      entitlement = await ref
+          .read(licenceServiceProvider)
+          .evaluate(licence, progress.deployment);
+      claims = LicenseVerifier.claimsOf(licence);
+    }
+    if (_disposed || state.claimed || state.step != SetupStep.licence) return;
+
+    state = state.copyWith(
+      step: SetupStep.connecting,
+      locale: progress.locale,
+      deployment: progress.deployment,
+      entitlement: entitlement,
+      claims: claims,
+      licenceFile: licence,
+      claimed: true,
+      branchId: progress.branchId,
+      branchLabel: progress.branchLabel,
+      restaurantId: progress.restaurantId,
+      branchCode: progress.branchCode,
+      terminalName: progress.terminalName,
+      terminalId: progress.terminalId,
+      // Said out loud by the connecting screen's report — a notice here would
+      // be cleared the moment provisioning starts — because a wizard that
+      // opens on its fourth screen with nothing typed looks like a fault to
+      // whoever restarted it.
+      resumed: true,
+    );
+    if (progress.locale case final locale?) {
+      ref.read(localeProvider.notifier).apply(locale);
+    }
+  }
+
+  /// The claim, on disk, until the wizard finishes — see [_restoreProgress].
+  ///
+  /// Best effort: a progress file that cannot be written costs a restart its
+  /// resume, not the claim its success. Cloud main devices only — a child never
+  /// claims, and an offline till registers on its last screen with nothing
+  /// left to lose.
+  Future<void> _rememberProgress() async {
+    if (state.deployment.mode != DeploymentMode.cloud ||
+        state.deployment.isChild) {
+      return;
+    }
+    final terminalId = state.terminalId;
+    if (terminalId == null || terminalId.isEmpty) return;
+
+    try {
+      await ref
+          .read(setupProgressStoreProvider)
+          .write(
+            SetupProgress(
+              deployment: state.deployment,
+              terminalId: terminalId,
+              terminalName: state.terminalName,
+              locale: state.locale,
+              branchId: state.branchId,
+              branchLabel: state.branchLabel,
+              restaurantId: state.restaurantId,
+              branchCode: state.branchCode,
+              licence: state.licenceFile?.serialize(),
+            ),
+          );
+    } on Exception catch (error) {
+      debugPrint('setup[progress] not written: $error');
+    }
   }
 
   void setLocale(String locale) => state = state.copyWith(locale: locale);
@@ -731,6 +849,11 @@ class SetupController extends Notifier<SetupDraft> {
               printer: printer,
             ),
           );
+      // The claim's own record is finished with once the config exists: from
+      // the next boot the terminal is configured, and a progress file left
+      // behind would only be read by a wizard nobody will see again — until a
+      // reset, when it would resume the wrong install.
+      await ref.read(setupProgressStoreProvider).clear();
     } on Exception catch (error) {
       final message = s.couldNotSaveSetup(error);
       state = state.copyWith(error: message);
@@ -1294,6 +1417,10 @@ class SetupController extends Notifier<SetupDraft> {
     if (claim.defaultLanguage case final language?) {
       ref.read(localeProvider.notifier).apply(language);
     }
+
+    // The code is spent from here on. What it bought has to outlive the
+    // process, or a restart before "Open the till" strands this machine.
+    await _rememberProgress();
   }
 
   /// Everything the cloud path used to ask for, done instead of asked (owner
@@ -1338,7 +1465,11 @@ class SetupController extends Notifier<SetupDraft> {
     // until one is typed, so by here there is always a credential to build
     // with; a wrong one comes back as `bootstrapAuthFailed`, which names the
     // field it belongs to.
-    final done = <String>[];
+    final done = <String>[
+      // First line of the report after a restart mid-setup, so the screen
+      // explains why it is the one that opened. See [_restoreProgress].
+      if (state.resumed) s.setupResumed,
+    ];
     try {
       final report = await ref.read(databaseBuilderProvider)(
         state.deployment,
@@ -1595,6 +1726,10 @@ class SetupController extends Notifier<SetupDraft> {
       error: claim == null ? _refusal(result.code, result.message) : null,
       notice: claim == null ? null : _claimNotices(result.notices),
     );
+
+    // A seat spent by hand is as spent as one a code bought; the fallback
+    // path resumes for the same reason the default one does.
+    if (claim != null) await _rememberProgress();
   }
 
   /// Adopt the terminal with this id, or pass null to create a new one.
@@ -1636,6 +1771,8 @@ class SetupController extends Notifier<SetupDraft> {
       );
     } on _CatalogueBlocked catch (blocked) {
       state = state.copyWith(busy: false, error: blocked.message);
+    } on PosDbException catch (error) {
+      state = state.copyWith(busy: false, error: _bootstrapFailure(error));
     } on Exception catch (error) {
       state = state.copyWith(
         busy: false,
