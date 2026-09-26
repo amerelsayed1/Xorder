@@ -209,6 +209,22 @@ sealed class AppStrings {
   String get receiptSynced;
   String get receiptThanks;
   String get receiptTaxFromDevice;
+
+  // The slip's own labels, from the owner's design of 2026-09-13.
+  String get receiptDate;
+  String get receiptTime;
+  String get receiptOrderNumber;
+  String get receiptCashier;
+  String get receiptTerminal;
+  String get receiptOrderType;
+  String get receiptItem;
+  String get receiptQty;
+  String get receiptPrice;
+
+  /// Only with a percentage. Without one the slip uses `orderDetailDiscount`.
+  String receiptDiscount(String percent);
+  String get receiptPaymentMethod;
+  String get receiptLookForward;
   String get newSale;
   String get printAndNew;
 
@@ -3482,25 +3498,49 @@ final class EnStrings extends AppStrings {
   @override
   String get provisionalInvoice => 'PROVISIONAL';
   @override
-  String get receiptSubtotal => 'SUBTOTAL';
+  String get receiptSubtotal => 'Subtotal';
   @override
-  String receiptService(String percent) => 'SERVICE $percent%';
+  String receiptService(String percent) => 'Service ($percent%)';
   @override
-  String receiptVat(String percent) => 'VAT $percent%';
+  String receiptVat(String percent) => 'VAT ($percent%)';
   @override
-  String get receiptTotal => 'TOTAL';
+  String get receiptTotal => 'Total';
   @override
-  String get receiptPaid => 'PAID';
+  String get receiptPaid => 'Amount Paid';
   @override
-  String get receiptChange => 'CHANGE';
+  String get receiptChange => 'Change';
   @override
   String get receiptQueuedOffline => 'QUEUED OFFLINE — WILL SYNC';
   @override
   String get receiptSynced => 'SYNCED TO XORDER';
   @override
-  String get receiptThanks => 'Thank you for your visit';
+  String get receiptThanks => 'Thank You';
   @override
   String get receiptTaxFromDevice => 'TAX FROM DEVICE CONFIG';
+  @override
+  String get receiptDate => 'Date';
+  @override
+  String get receiptTime => 'Time';
+  @override
+  String get receiptOrderNumber => 'Order #';
+  @override
+  String get receiptCashier => 'Cashier';
+  @override
+  String get receiptTerminal => 'Till';
+  @override
+  String get receiptOrderType => 'Order type';
+  @override
+  String get receiptItem => 'Item';
+  @override
+  String get receiptQty => 'Qty';
+  @override
+  String get receiptPrice => 'Price';
+  @override
+  String receiptDiscount(String percent) => 'Discount ($percent%)';
+  @override
+  String get receiptPaymentMethod => 'Payment Method';
+  @override
+  String get receiptLookForward => 'We look forward to seeing you again';
   @override
   String get newSale => 'New sale';
   @override
@@ -7986,11 +8026,11 @@ final class ArStrings extends AppStrings {
   @override
   String get provisionalInvoice => 'مبدئية';
   @override
-  String get receiptSubtotal => 'المجموع';
+  String get receiptSubtotal => 'المجموع الفرعي';
   @override
-  String receiptService(String percent) => 'خدمة $percent٪';
+  String receiptService(String percent) => 'خدمة ($percent%)';
   @override
-  String receiptVat(String percent) => 'ضريبة $percent٪';
+  String receiptVat(String percent) => 'ضريبة القيمة المضافة ($percent%)';
   @override
   String get receiptTotal => 'الإجمالي';
   @override
@@ -8005,6 +8045,30 @@ final class ArStrings extends AppStrings {
   String get receiptThanks => 'شكراً لزيارتكم';
   @override
   String get receiptTaxFromDevice => 'الضريبة من إعدادات الجهاز';
+  @override
+  String get receiptDate => 'التاريخ';
+  @override
+  String get receiptTime => 'الوقت';
+  @override
+  String get receiptOrderNumber => 'رقم الطلب';
+  @override
+  String get receiptCashier => 'الكاشير';
+  @override
+  String get receiptTerminal => 'الجهاز';
+  @override
+  String get receiptOrderType => 'نوع الطلب';
+  @override
+  String get receiptItem => 'الصنف';
+  @override
+  String get receiptQty => 'الكمية';
+  @override
+  String get receiptPrice => 'السعر';
+  @override
+  String receiptDiscount(String percent) => 'خصم ($percent%)';
+  @override
+  String get receiptPaymentMethod => 'طريقة الدفع';
+  @override
+  String get receiptLookForward => 'نتمنى أن نراكم دائماً';
   @override
   String get newSale => 'بيع جديد';
   @override

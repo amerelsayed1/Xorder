@@ -12,8 +12,10 @@
 library;
 
 import '../../core/money/money.dart';
+import '../../domain/models/discount.dart';
 import '../../domain/models/order_record.dart';
 import '../../domain/models/refund.dart';
+import '../../domain/models/tax.dart';
 import '../../domain/models/ticket.dart';
 
 /// What the slip says about where this sale has got to.
@@ -56,6 +58,31 @@ class ReceiptLine {
   final bool wasRepriced;
 }
 
+/// One rate's worth of tax — the engine's `TaxLine`, or a `pos_order_taxes`
+/// row, carrying only what the paper prints.
+class ReceiptTaxLine {
+  const ReceiptTaxLine({required this.rateBp, required this.amount});
+
+  final int rateBp;
+  final Money amount;
+}
+
+/// One tender, as it was taken.
+class ReceiptPayment {
+  const ReceiptPayment({
+    required this.label,
+    required this.amount,
+    this.tenderTypeId,
+  });
+
+  /// The label written when the money moved — English by design, see
+  /// `TenderMethod.wireLabel`. The slip translates it only where it can prove
+  /// the method has not been renamed since; see `ReceiptDocument.of`.
+  final String label;
+  final Money amount;
+  final int? tenderTypeId;
+}
+
 class ReceiptData {
   const ReceiptData({
     required this.orderType,
@@ -71,7 +98,9 @@ class ReceiptData {
     this.invoiceNumber,
     this.tableLabel,
     this.serviceBp,
-    this.vatBp,
+    this.taxLines = const [],
+    this.discountBp,
+    this.payments = const [],
     this.taxFromDeviceConfig = false,
     this.syncNote = ReceiptSyncNote.none,
     this.refunded = Money.zero,
@@ -119,8 +148,22 @@ class ReceiptData {
       total: totals.total,
       paid: totals.paid,
       change: totals.change,
-      serviceBp: ticket.taxConfig.serviceBp,
-      vatBp: ticket.taxConfig.vatBp,
+      // The legacy single rate only when it is what was charged. Once §38's
+      // charges are configured `serviceBp` is a fallback nobody used, and this
+      // printed "SERVICE 12%" over a service charge taken at 10%.
+      serviceBp: ticket.taxConfig.serviceCharges.isEmpty
+          ? ticket.taxConfig.serviceBp
+          : null,
+      taxLines: _explaining(totals.taxLines, totals.vat),
+      discountBp: _singlePercentage(ticket, totals),
+      payments: [
+        for (final tender in ticket.tenders)
+          ReceiptPayment(
+            label: tender.label,
+            amount: tender.amount,
+            tenderTypeId: tender.typeId,
+          ),
+      ],
       taxFromDeviceConfig: ticket.taxConfig.source == TaxSource.deviceConfig,
       syncNote: !cloudBacked
           ? ReceiptSyncNote.none
@@ -132,12 +175,13 @@ class ReceiptData {
 
   /// The same slip, rebuilt from the ledger.
   ///
-  /// [serviceBp] and [vatBp] are **null** here, and the paper prints "Service"
-  /// and "VAT" without a percentage as a result. The rates are not columns on
-  /// `pos_orders`, and deriving them by dividing the tax by the net would print
-  /// a figure that is right most of the time and wrong on any order where
-  /// rounding went the other way. A reprint that omits a rate is honest; one
-  /// that invents a rate is a document somebody will argue with.
+  /// **The VAT rate comes from `pos_order_taxes`**, the per-rate breakdown
+  /// written at settlement — a stored rate, not one derived by dividing the tax
+  /// by the net, which would be right most of the time and wrong wherever
+  /// rounding went the other way. [serviceBp] and [discountBp] stay **null**:
+  /// neither rate is stored on the order, and a reprint that omits a rate is
+  /// honest where one that invents a rate is a document somebody will argue
+  /// with.
   factory ReceiptData.fromOrder(
     OrderRecordDetail detail, {
     List<Refund> refunds = const [],
@@ -185,9 +229,74 @@ class ReceiptData {
       // A settled order has no change to give back — whatever the drawer
       // returned was returned at the time and is not part of this record.
       change: zero,
+      taxLines: _explaining(detail.taxLines, order.vat),
+      payments: [
+        for (final payment in detail.payments)
+          ReceiptPayment(
+            label: payment.label,
+            amount: payment.amount,
+            tenderTypeId: payment.tenderTypeId,
+          ),
+      ],
       refunded: refunded,
       isReprint: isReprint,
     );
+  }
+
+  /// The breakdown, but only if it accounts for every piastre of [vat].
+  ///
+  /// On a live ticket it always does — `vat` is summed from these lines. On a
+  /// reprint the lines are a second table, and a breakdown that disagrees with
+  /// the order's own figure would print two VAT numbers that do not add up. The
+  /// slip then prints the one figure with no rate, which is what it did before
+  /// the breakdown existed.
+  static List<ReceiptTaxLine> _explaining(List<TaxLine> lines, Money vat) {
+    var sum = 0;
+    for (final line in lines) {
+      sum += line.amount.minor;
+    }
+    if (lines.isEmpty || sum != vat.minor) return const [];
+    return [
+      for (final line in lines)
+        ReceiptTaxLine(rateBp: line.rateBp, amount: line.amount),
+    ];
+  }
+
+  /// The percentage to print beside "Discount", or null to print none.
+  ///
+  /// **Only when one percentage explains the whole figure.** A slip reading
+  /// "Discount (12%)" is a claim a customer can check against the subtotal
+  /// above it, so it must hold: one discount, on the order rather than a line,
+  /// a percentage, and that percentage of the printed subtotal is exactly the
+  /// printed discount. The last test is integer arithmetic on two figures the
+  /// engine already produced and decides only the label — it prints nothing.
+  /// It is what catches "20% off, capped at 50 EGP", which is a percentage
+  /// discount whose amount is not 20% of anything on the paper.
+  static int? _singlePercentage(Ticket ticket, TicketTotals totals) {
+    if (totals.discount.isZero) return null;
+
+    // The same set `Ticket.totals` counts: a discount on a voided line came
+    // off with the line.
+    final live = {for (final line in ticket.chargeableLines) line.key};
+    final counted = [
+      for (final discount in ticket.discounts)
+        if (discount.lineKey == null || live.contains(discount.lineKey))
+          discount,
+    ];
+    if (counted.length != 1) return null;
+
+    final only = counted.single;
+    final bp = only.valueBp;
+    if (!only.isOrderLevel ||
+        only.kind != DiscountKind.percentage ||
+        bp == null) {
+      return null;
+    }
+    if (only.amount.minor != totals.discount.minor) return null;
+    if (totals.subtotal.percentBp(bp).minor != totals.discount.minor) {
+      return null;
+    }
+    return bp;
   }
 
   final String? invoiceNumber;
@@ -206,7 +315,16 @@ class ReceiptData {
 
   /// Null when the rate is not known — see [ReceiptData.fromOrder].
   final int? serviceBp;
-  final int? vatBp;
+
+  /// [vat] by rate. Empty when there is no breakdown that accounts for it, and
+  /// the slip then prints "VAT" with no rate.
+  final List<ReceiptTaxLine> taxLines;
+
+  /// See [_singlePercentage].
+  final int? discountBp;
+
+  /// One per tender. Empty on a record written before payments were rows.
+  final List<ReceiptPayment> payments;
 
   final bool taxFromDeviceConfig;
   final ReceiptSyncNote syncNote;

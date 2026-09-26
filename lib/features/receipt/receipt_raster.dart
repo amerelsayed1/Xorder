@@ -4,8 +4,10 @@ import 'dart:ui' as ui;
 import 'package:qr/qr.dart';
 
 import '../../core/config/printer_config.dart';
+import '../../core/ui/tokens.dart' show PosFonts;
 import 'receipt_document.dart';
 import 'receipt_qr.dart';
+import 'slip_style.dart';
 
 /// The receipt as dots, ready for `GS v 0`.
 ///
@@ -28,18 +30,9 @@ import 'receipt_qr.dart';
 /// paths that matter most — a queued job retried after the printer came back,
 /// and a reprint from the orders list — have no live widget for the slip. This
 /// is a pure function from [ReceiptDocument] to dots, so it works headless and
-/// runs in `flutter test`.
+/// runs in `flutter test`. What keeps it the same slip as the preview is that
+/// both walk the same blocks with the same `SlipMetrics`.
 abstract final class ReceiptRaster {
-  /// White margin down each edge, in dots.
-  ///
-  /// A thermal head's first and last few columns are the ones that drift out of
-  /// alignment as the roll wanders, so nothing is printed there.
-  static const _margin = 12;
-
-  /// Everything below is sized for an 80mm roll and scaled from it, so a 58mm
-  /// printer gets a smaller slip rather than a clipped one.
-  static const _referenceWidth = PrinterConfig.width80mm;
-
   /// Render the whole slip.
   ///
   /// [widthDots] must be the printer's real printable width — see
@@ -50,14 +43,23 @@ abstract final class ReceiptRaster {
     ReceiptDocument document, {
     int widthDots = PrinterConfig.width80mm,
   }) async {
-    final layout = _Layout(document, widthDots);
-    final image = await layout.paint();
+    final image = await paint(document, widthDots: widthDots);
     try {
       return await pack(image);
     } finally {
       image.dispose();
     }
   }
+
+  /// The slip before it is thresholded to one bit — what [render] packs.
+  ///
+  /// Exposed so a picture of the slip can be taken without a printer.
+  /// Everything on it is already black or white; the only grey is the
+  /// antialiased edge of a glyph, which [pack] decides.
+  static Future<ui.Image> paint(
+    ReceiptDocument document, {
+    int widthDots = PrinterConfig.width80mm,
+  }) => _Layout(document, widthDots).paint();
 
   /// One bit per dot, MSB first, rows padded to a whole byte — the layout `GS
   /// v 0` expects, so no shuffling happens in the transport.
@@ -143,6 +145,16 @@ class ReceiptBitmap {
   }
 }
 
+/// The three columns of the items table, in dots from the paper's left edge.
+typedef _Columns = ({
+  double name,
+  double qty,
+  double price,
+  double nameX,
+  double qtyX,
+  double priceX,
+});
+
 /// Lays the blocks out once, then paints them.
 ///
 /// Two passes because [ui.Picture.toImage] needs the height up front, and the
@@ -151,7 +163,7 @@ class ReceiptBitmap {
 /// expensive half twice.
 class _Layout {
   _Layout(this.document, this.widthDots)
-    : scale = widthDots / ReceiptRaster._referenceWidth;
+    : scale = widthDots / SlipMetrics.printableDots;
 
   final ReceiptDocument document;
   final int widthDots;
@@ -160,131 +172,116 @@ class _Layout {
   static const _black = ui.Color(0xFF000000);
   static const _white = ui.Color(0xFFFFFFFF);
 
-  double get _content => widthDots - 2.0 * ReceiptRaster._margin;
+  /// The margin is **not** scaled: it is the part of a head that drifts, and
+  /// that is a number of physical dots whatever the roll.
+  double get _left => SlipMetrics.margin;
+  double get _content => widthDots - 2 * SlipMetrics.margin;
 
+  bool get _rtl => document.rightToLeft;
   ui.TextDirection get _direction =>
-      document.rightToLeft ? ui.TextDirection.rtl : ui.TextDirection.ltr;
+      _rtl ? ui.TextDirection.rtl : ui.TextDirection.ltr;
 
-  double _size(SlipEmphasis emphasis) =>
-      switch (emphasis) {
-        // Sized in dots at 203dpi: 22 dots is about 2.7mm of cap height, which
-        // is what a receipt has been printed at since receipts existed.
-        SlipEmphasis.title => 34.0,
-        SlipEmphasis.strong => 30.0,
-        SlipEmphasis.body => 22.0,
-        SlipEmphasis.small => 18.0,
-      } *
-      scale;
+  /// The side a label starts from, and the side a figure is pinned to.
+  ui.TextAlign get _inner => _rtl ? ui.TextAlign.right : ui.TextAlign.left;
+  ui.TextAlign get _outer => _rtl ? ui.TextAlign.left : ui.TextAlign.right;
 
-  ui.FontWeight _weight(SlipEmphasis emphasis) => switch (emphasis) {
-    SlipEmphasis.title || SlipEmphasis.strong => ui.FontWeight.w800,
-    SlipEmphasis.body || SlipEmphasis.small => ui.FontWeight.w400,
-  };
+  double _d(double dots) => dots * scale;
 
-  ui.Paragraph _paragraph(
+  /// A paragraph in the house faces.
+  ///
+  /// The families are named because the raster used to name none, and a slip
+  /// with no family is drawn in whatever the engine's default is on that
+  /// machine — Segoe UI on one till, Helvetica on the next — while the preview
+  /// beside it was in IBM Plex. Mono is 600 at its heaviest, the Arabic face
+  /// 700, and a weight a face does not have is synthesised badly.
+  ui.Paragraph _text(
     String text, {
+    required double size,
     required double width,
-    required SlipEmphasis emphasis,
-    ui.TextAlign align = ui.TextAlign.left,
-    ui.TextDirection? direction,
+    bool mono = false,
+    bool bold = false,
+    bool ltr = false,
     bool struck = false,
+    ui.TextAlign? align,
     int? maxLines,
   }) {
+    final family = mono ? PosFonts.mono : PosFonts.ui;
+    final fallback = mono ? PosFonts.monoFallback : PosFonts.uiFallback;
+    final weight = !bold
+        ? ui.FontWeight.w400
+        : (mono ? ui.FontWeight.w600 : ui.FontWeight.w700);
+    final fontSize = _d(size);
+
     final builder =
         ui.ParagraphBuilder(
             ui.ParagraphStyle(
-              textAlign: align,
-              textDirection: direction ?? _direction,
+              textAlign: align ?? _inner,
+              textDirection: ltr ? ui.TextDirection.ltr : _direction,
               maxLines: maxLines,
               ellipsis: maxLines == null ? null : '…',
-              fontSize: _size(emphasis),
-              fontWeight: _weight(emphasis),
+              fontFamily: family,
+              fontSize: fontSize,
+              fontWeight: weight,
             ),
           )
           ..pushStyle(
             ui.TextStyle(
               color: _black,
-              fontSize: _size(emphasis),
-              fontWeight: _weight(emphasis),
+              fontFamily: family,
+              fontFamilyFallback: fallback,
+              fontSize: fontSize,
+              fontWeight: weight,
               decoration: struck ? ui.TextDecoration.lineThrough : null,
               decorationColor: _black,
             ),
           )
           ..addText(text);
 
-    return builder.build()..layout(ui.ParagraphConstraints(width: width));
+    return builder.build()
+      ..layout(ui.ParagraphConstraints(width: width < 1 ? 1 : width));
   }
 
-  /// The whole slip, painted white-on-black-ink at [widthDots] across.
+  double _natural(ui.Paragraph paragraph) =>
+      paragraph.maxIntrinsicWidth.ceilToDouble();
+
+  static double _max(double a, double b) => a > b ? a : b;
+
+  /// The whole slip, painted black ink on white at [widthDots] across.
   Future<ui.Image> paint() async {
     final placed = <_Placed>[];
-    var y = 8.0 * scale;
+    var y = _d(SlipMetrics.top);
 
     for (final block in document.blocks) {
       switch (block) {
         case SlipGap(:final dots):
-          y += dots * scale;
-
-        case SlipRule():
-          y += 4 * scale;
-          placed.add(_PlacedRule(y));
-          y += 6 * scale;
-
-        case SlipCentre(:final text, :final emphasis):
-          final paragraph = _paragraph(
-            text,
-            width: _content,
-            emphasis: emphasis,
-            align: ui.TextAlign.center,
-          );
-          placed.add(
-            _PlacedText(
-              paragraph,
-              ui.Offset(ReceiptRaster._margin.toDouble(), y),
-            ),
-          );
-          y += paragraph.height + 2 * scale;
-
+          y += _d(dots.toDouble());
+        case SlipRule(:final weight):
+          y = _rule(placed, weight, y);
+        case SlipCentre():
+          y = _centre(placed, block, y);
         case SlipStamp(:final text):
-          final paragraph = _paragraph(
-            text,
-            width: _content - 12 * scale,
-            emphasis: SlipEmphasis.strong,
-            align: ui.TextAlign.center,
-          );
-          final height = paragraph.height + 10 * scale;
-          placed.add(
-            _PlacedBox(
-              ui.Rect.fromLTWH(
-                ReceiptRaster._margin.toDouble(),
-                y,
-                _content,
-                height,
-              ),
-            ),
-          );
-          placed.add(
-            _PlacedText(
-              paragraph,
-              ui.Offset(ReceiptRaster._margin + 6 * scale, y + 5 * scale),
-            ),
-          );
-          y += height + 8 * scale;
-
-        case SlipRow(:final label, :final amount, :final emphasis, :final struck):
-          y += _row(placed, label, amount, emphasis, struck, y);
-
+          y = _stamp(placed, text, y);
+        case SlipRow():
+          y = _row(placed, block, y);
+        case SlipItemsHeader():
+          y = _itemsHeader(placed, block, y);
+        case SlipItem():
+          y = _item(placed, block, y);
+        case SlipGrandTotal():
+          y = _grandTotal(placed, block, y);
         case SlipQr(:final payload):
           final square = _qr(payload);
           placed.add(_PlacedQr(square, y));
-          y += square.size + 4 * scale;
+          y += square.size + _d(SlipMetrics.rowGap);
+        case SlipOrnament():
+          y = _ornament(placed, y);
       }
     }
 
     // The tail the printer needs under the last line so the cut falls below the
     // text rather than through it. The feed before the cut adds more; this is
     // the part that belongs to the picture.
-    y += 16 * scale;
+    y += _d(SlipMetrics.tail);
 
     final height = y.ceil();
     final recorder = ui.PictureRecorder();
@@ -305,7 +302,7 @@ class _Layout {
       ..style = ui.PaintingStyle.fill
       // A head has two states, so nothing on this canvas is allowed to be grey
       // on purpose. Text antialiasing is thresholded in [ReceiptRaster.pack];
-      // rules and QR modules must land on whole dots.
+      // rules, glyphs and QR modules must land on whole dots.
       ..isAntiAlias = false;
 
     for (final item in placed) {
@@ -320,84 +317,342 @@ class _Layout {
     }
   }
 
-  /// A label against a figure. Returns the height it used.
-  double _row(
-    List<_Placed> placed,
-    String label,
-    String amount,
-    SlipEmphasis emphasis,
-    bool struck,
-    double y,
-  ) {
-    // The figure is measured at its natural width and pinned to the far edge;
-    // the label gets what is left. Sharing the width evenly would wrap "Mixed
-    // Grill Platter" while leaving half a line of blank paper beside the price.
-    final measured = _paragraph(
-      amount,
-      width: _content,
-      emphasis: emphasis,
+  double _rule(List<_Placed> placed, SlipRuleWeight weight, double y) {
+    final top = (y + _d(SlipMetrics.ruleAbove)).roundToDouble();
+    final thickness = _d(SlipMetrics.ruleThickness(weight)).ceilToDouble();
+    final band = ui.Rect.fromLTWH(_left, top, _content, thickness);
+    placed.add(
+      weight == SlipRuleWeight.dashed ? _PlacedDashes(band) : _PlacedFill(band),
+    );
+    return top + thickness + _d(SlipMetrics.ruleBelow);
+  }
+
+  double _centre(List<_Placed> placed, SlipCentre block, double y) {
+    final size = SlipMetrics.centreSize(block.emphasis);
+    final bold = SlipMetrics.centreBold(block.emphasis);
+    final gap = _d(SlipMetrics.lineGap);
+
+    final glyph = block.glyph;
+    if (glyph == null) {
+      final paragraph = _text(
+        block.text,
+        size: size,
+        width: _content,
+        mono: block.numeric,
+        bold: bold,
+        ltr: block.numeric,
+        align: ui.TextAlign.center,
+      );
+      placed.add(_PlacedText(paragraph, ui.Offset(_left, y)));
+      return y + paragraph.height + gap;
+    }
+
+    // Glyph and text centred together as one unit, the glyph on the side the
+    // slip reads from — so on an Arabic slip it leads from the right.
+    final side = _d(SlipMetrics.glyphSize).roundToDouble();
+    final spacing = _d(SlipMetrics.glyphGap);
+    final room = _content - side - spacing;
+    final width = _natural(
+      _text(block.text, size: size, width: room, mono: block.numeric, bold: bold),
+    ).clamp(1.0, room);
+    final paragraph = _text(
+      block.text,
+      size: size,
+      width: width,
+      mono: block.numeric,
+      bold: bold,
+      ltr: block.numeric,
+      align: ui.TextAlign.center,
+    );
+
+    final start = _left + (_content - side - spacing - width) / 2;
+    final textX = _rtl ? start : start + side + spacing;
+    final glyphX = _rtl ? start + width + spacing : start;
+    final height = _max(paragraph.height, side);
+
+    placed.add(
+      _PlacedText(paragraph, ui.Offset(textX, y + (height - paragraph.height) / 2)),
+    );
+    placed.add(
+      _PlacedGlyph(
+        glyph,
+        ui.Rect.fromLTWH(
+          glyphX.roundToDouble(),
+          (y + (height - side) / 2).roundToDouble(),
+          side,
+          side,
+        ),
+      ),
+    );
+    return y + height + gap;
+  }
+
+  double _stamp(List<_Placed> placed, String text, double y) {
+    final inset = _d(SlipMetrics.stampInset);
+    final pad = _d(SlipMetrics.stampPad);
+    final paragraph = _text(
+      text,
+      size: SlipMetrics.stampSize,
+      width: _content - 2 * inset,
+      mono: true,
+      bold: true,
+      align: ui.TextAlign.center,
+    );
+    final height = paragraph.height + 2 * pad;
+    placed.add(_PlacedBox(ui.Rect.fromLTWH(_left, y, _content, height)));
+    placed.add(_PlacedText(paragraph, ui.Offset(_left + inset, y + pad)));
+    return y + height + _d(SlipMetrics.stampAfter);
+  }
+
+  /// A label against a value. Returns where the next block starts.
+  double _row(List<_Placed> placed, SlipRow row, double y) {
+    // The value is measured at its natural width and pinned to the far edge;
+    // the label gets what is left. Sharing the width evenly would wrap a long
+    // label while leaving half a line of blank paper beside the figure. Capped
+    // at two thirds so a long cashier name cannot push its label off the slip.
+    const size = SlipMetrics.bodySize;
+    final cap = _content * 2 / 3;
+    final gap = _d(SlipMetrics.columnGap);
+
+    final valueWidth = _natural(
+      _text(
+        row.value,
+        size: size,
+        width: cap,
+        mono: row.numeric,
+        ltr: row.numeric,
+        struck: row.struck,
+      ),
+    ).clamp(0.0, cap);
+    final value = _text(
+      row.value,
+      size: size,
+      width: valueWidth,
+      mono: row.numeric,
       // Numbers are LTR and Latin on an Arabic slip too — the house rule, and
       // on a receipt also what lets somebody who does not read Arabic check
       // what they were charged.
-      direction: ui.TextDirection.ltr,
-      struck: struck,
-    );
-    final amountWidth = measured.maxIntrinsicWidth.ceilToDouble();
-
-    final amountParagraph = _paragraph(
-      amount,
-      width: amountWidth,
-      emphasis: emphasis,
-      direction: ui.TextDirection.ltr,
-      align: ui.TextAlign.left,
-      struck: struck,
-    );
-
-    final gap = 8 * scale;
-    final labelWidth = (_content - amountWidth - gap).clamp(1.0, _content);
-    final labelParagraph = _paragraph(
-      label,
-      width: labelWidth,
-      emphasis: emphasis,
-      align: document.rightToLeft ? ui.TextAlign.right : ui.TextAlign.left,
-      struck: struck,
+      ltr: row.numeric,
+      struck: row.struck,
+      align: _outer,
       maxLines: 2,
     );
 
-    const margin = ReceiptRaster._margin;
-    final labelX = document.rightToLeft
-        ? margin + amountWidth + gap
-        : margin.toDouble();
-    final amountX = document.rightToLeft
-        ? margin.toDouble()
-        : margin + _content - amountWidth;
+    final labelWidth = _content - valueWidth - gap;
+    final label = _text(
+      row.label,
+      size: size,
+      width: labelWidth,
+      struck: row.struck,
+      maxLines: 2,
+    );
 
-    placed.add(_PlacedText(labelParagraph, ui.Offset(labelX, y)));
-    placed.add(_PlacedText(amountParagraph, ui.Offset(amountX, y)));
+    final labelX = _rtl ? _left + valueWidth + gap : _left;
+    final valueX = _rtl ? _left : _left + _content - valueWidth;
+    placed.add(_PlacedText(label, ui.Offset(labelX, y)));
+    placed.add(_PlacedText(value, ui.Offset(valueX, y)));
 
-    final height = labelParagraph.height > amountParagraph.height
-        ? labelParagraph.height
-        : amountParagraph.height;
-    return height + 3 * scale;
+    return y + _max(label.height, value.height) + _d(SlipMetrics.rowGap);
   }
 
-  /// The QR, in whole dots.
-  ///
-  /// The module size is floored to an integer number of dots for the same
-  /// reason `ReceiptQr` floors it on screen: a module landing on a fraction of
-  /// a dot is a module the head prints at half strength, and a scanner reads
-  /// that as noise. Two dots minimum — one-dot modules do not survive a folded
-  /// receipt.
+  _Columns _columns() {
+    final gap = _d(SlipMetrics.columnGap);
+    final qty = _d(SlipMetrics.qtyColumn);
+    final price = _d(SlipMetrics.priceColumn);
+    final name = _content - qty - price - 2 * gap;
+    return _rtl
+        ? (
+            name: name,
+            qty: qty,
+            price: price,
+            priceX: _left,
+            qtyX: _left + price + gap,
+            nameX: _left + price + gap + qty + gap,
+          )
+        : (
+            name: name,
+            qty: qty,
+            price: price,
+            nameX: _left,
+            qtyX: _left + name + gap,
+            priceX: _left + name + gap + qty + gap,
+          );
+  }
+
+  double _itemsHeader(List<_Placed> placed, SlipItemsHeader header, double y) {
+    final columns = _columns();
+    const size = SlipMetrics.headerSize;
+    final pad = _d(SlipMetrics.headerPad);
+
+    final name = _text(
+      header.item,
+      size: size,
+      width: columns.name,
+      bold: true,
+      maxLines: 1,
+    );
+    final qty = _text(
+      header.quantity,
+      size: size,
+      width: columns.qty,
+      bold: true,
+      align: ui.TextAlign.center,
+      maxLines: 1,
+    );
+    final price = _text(
+      header.price,
+      size: size,
+      width: columns.price,
+      bold: true,
+      align: _outer,
+      maxLines: 1,
+    );
+
+    final inner = _max(_max(name.height, qty.height), price.height);
+    final band = ui.Rect.fromLTWH(_left, y, _content, inner + 2 * pad);
+    placed.add(_PlacedShade(band));
+    placed.add(_PlacedText(name, ui.Offset(columns.nameX, y + pad)));
+    placed.add(_PlacedText(qty, ui.Offset(columns.qtyX, y + pad)));
+    placed.add(_PlacedText(price, ui.Offset(columns.priceX, y + pad)));
+    return y + band.height + _d(SlipMetrics.rowGap);
+  }
+
+  double _item(List<_Placed> placed, SlipItem item, double y) {
+    final columns = _columns();
+    const size = SlipMetrics.bodySize;
+
+    final name = _text(
+      item.name,
+      size: size,
+      width: columns.name,
+      struck: item.struck,
+      maxLines: 2,
+    );
+    final qty = _text(
+      item.quantity,
+      size: size,
+      width: columns.qty,
+      mono: true,
+      ltr: true,
+      struck: item.struck,
+      align: ui.TextAlign.center,
+    );
+    final price = _text(
+      item.price,
+      size: size,
+      width: columns.price,
+      mono: true,
+      ltr: true,
+      struck: item.struck,
+      align: _outer,
+      maxLines: 1,
+    );
+
+    placed.add(_PlacedText(name, ui.Offset(columns.nameX, y)));
+    placed.add(_PlacedText(qty, ui.Offset(columns.qtyX, y)));
+    placed.add(_PlacedText(price, ui.Offset(columns.priceX, y)));
+    final height = _max(_max(name.height, qty.height), price.height);
+    return y + height + _d(SlipMetrics.rowGap);
+  }
+
+  double _grandTotal(List<_Placed> placed, SlipGrandTotal total, double y) {
+    final gap = _d(SlipMetrics.columnGap);
+    final cap = _content * 3 / 4;
+
+    final amountWidth = _natural(
+      _text(
+        total.amount,
+        size: SlipMetrics.totalAmountSize,
+        width: cap,
+        mono: true,
+        bold: true,
+        ltr: true,
+      ),
+    ).clamp(1.0, cap);
+    final amount = _text(
+      total.amount,
+      size: SlipMetrics.totalAmountSize,
+      width: amountWidth,
+      mono: true,
+      bold: true,
+      ltr: true,
+      align: ui.TextAlign.center,
+      maxLines: 1,
+    );
+    final currency = _text(
+      total.currency,
+      size: SlipMetrics.currencySize,
+      width: amountWidth,
+      mono: true,
+      ltr: true,
+      align: ui.TextAlign.center,
+      maxLines: 1,
+    );
+    final figure = amount.height + currency.height;
+
+    final label = _text(
+      total.label,
+      size: SlipMetrics.totalLabelSize,
+      width: _content - amountWidth - gap,
+      bold: true,
+      maxLines: 2,
+    );
+
+    final height = _max(figure, label.height);
+    final amountX = _rtl ? _left : _left + _content - amountWidth;
+    final labelX = _rtl ? _left + amountWidth + gap : _left;
+    final figureY = y + (height - figure) / 2;
+
+    placed.add(_PlacedText(amount, ui.Offset(amountX, figureY)));
+    placed.add(
+      _PlacedText(currency, ui.Offset(amountX, figureY + amount.height)),
+    );
+    placed.add(
+      _PlacedText(label, ui.Offset(labelX, y + (height - label.height) / 2)),
+    );
+    return y + height + _d(SlipMetrics.rowGap);
+  }
+
+  double _ornament(List<_Placed> placed, double y) {
+    final line = _d(SlipMetrics.ornamentLine);
+    final gap = _d(SlipMetrics.ornamentGap);
+    final heart = _d(SlipMetrics.ornamentHeart).roundToDouble();
+    final thickness = _d(
+      SlipMetrics.ruleThickness(SlipRuleWeight.solid),
+    ).ceilToDouble();
+
+    final start = (_left + (_content - 2 * line - 2 * gap - heart) / 2)
+        .roundToDouble();
+    final top = y.roundToDouble();
+    final lineY = (top + (heart - thickness) / 2).roundToDouble();
+
+    placed.add(_PlacedFill(ui.Rect.fromLTWH(start, lineY, line, thickness)));
+    placed.add(
+      _PlacedGlyph(
+        SlipGlyph.heart,
+        ui.Rect.fromLTWH(start + line + gap, top, heart, heart),
+      ),
+    );
+    placed.add(
+      _PlacedFill(
+        ui.Rect.fromLTWH(start + line + 2 * gap + heart, lineY, line, thickness),
+      ),
+    );
+    return top + heart + _d(SlipMetrics.lineGap);
+  }
+
+  /// The QR, in whole dots. See [SlipMetrics.qrModule].
   _QrSquare _qr(String payload) {
     final image = ReceiptQrCode.imageOf(payload);
-    final modules = image.moduleCount;
-    // A quiet zone of four modules, which the specification requires and which
-    // is the usual reason a printed code will not scan.
-    final available = _content - 8 * scale;
-    final module = (available / (modules + 8)).floor().clamp(2, 12);
-    final size = module * (modules + 8);
-
-    return _QrSquare(image: image, module: module.toDouble(), size: size.toDouble());
+    final module = SlipMetrics.qrModule(image.moduleCount, _content);
+    // A quiet zone of four modules each side, which the specification
+    // requires and which is the usual reason a printed code will not scan.
+    final size = module * (image.moduleCount + 8);
+    return _QrSquare(
+      image: image,
+      module: module.toDouble(),
+      size: size.toDouble(),
+    );
   }
 }
 
@@ -416,7 +671,7 @@ class _QrSquare {
 /// Something measured, waiting to be drawn.
 ///
 /// Sealed, so the paint pass switches over it and the compiler finds the gap
-/// when a fifth kind of block arrives — the same reason nothing in this
+/// when another kind of mark arrives — the same reason nothing in this
 /// codebase switches over a string.
 sealed class _Placed {
   const _Placed();
@@ -435,6 +690,66 @@ class _PlacedText extends _Placed {
       canvas.drawParagraph(paragraph, offset);
 }
 
+/// A solid rule, or one arm of the ornament.
+class _PlacedFill extends _Placed {
+  const _PlacedFill(this.rect);
+
+  final ui.Rect rect;
+
+  @override
+  void paint(ui.Canvas canvas, ui.Paint ink, _Layout layout) =>
+      canvas.drawRect(rect, ink);
+}
+
+class _PlacedDashes extends _Placed {
+  const _PlacedDashes(this.band);
+
+  final ui.Rect band;
+
+  @override
+  void paint(ui.Canvas canvas, ui.Paint ink, _Layout layout) {
+    // Drawn rather than typed. `'-' * 42` is a row of glyphs whose printed
+    // length depends on the font the machine happens to have; dashes drawn as
+    // rectangles are the same width on every till.
+    final dash = SlipMetrics.dash * layout.scale;
+    final step = dash + SlipMetrics.dashGap * layout.scale;
+    for (var x = band.left; x < band.right; x += step) {
+      final right = x + dash < band.right ? x + dash : band.right;
+      canvas.drawRect(ui.Rect.fromLTRB(x, band.top, right, band.bottom), ink);
+    }
+  }
+}
+
+/// The shaded ground of the items table's heading.
+///
+/// **A thermal head has no grey.** The preview paints this band in a light
+/// token; the same colour sent to paper thresholds to white in [ReceiptRaster.
+/// pack] and the shading disappears. So the paper gets a screen instead — one
+/// dot in eight, staggered — which reads as a light grey band and leaves the
+/// bold heading on top of it legible. Solid black with white text was the
+/// alternative, and on a cheap head that has been running all day a reversed
+/// band is where the paper streaks first.
+class _PlacedShade extends _Placed {
+  const _PlacedShade(this.band);
+
+  final ui.Rect band;
+
+  @override
+  void paint(ui.Canvas canvas, ui.Paint ink, _Layout layout) {
+    final top = band.top.ceil();
+    final left = band.left.ceil();
+    for (var y = top; y < band.bottom; y += 2) {
+      final stagger = ((y - top) ~/ 2).isOdd ? 2 : 0;
+      for (var x = left + stagger; x < band.right; x += 4) {
+        canvas.drawRect(
+          ui.Rect.fromLTWH(x.toDouble(), y.toDouble(), 1, 1),
+          ink,
+        );
+      }
+    }
+  }
+}
+
 /// The box around a stamp — REPRINT, REFUNDED.
 class _PlacedBox extends _Placed {
   const _PlacedBox(this.rect);
@@ -449,45 +764,35 @@ class _PlacedBox extends _Placed {
       // photographed and photocopied.
       ..color = _Layout._black
       ..style = ui.PaintingStyle.stroke
-      ..strokeWidth = 3 * layout.scale
+      ..strokeWidth = SlipMetrics.stampBorder * layout.scale
       ..isAntiAlias = false,
   );
 }
 
-class _PlacedRule extends _Placed {
-  const _PlacedRule(this.y);
+class _PlacedGlyph extends _Placed {
+  const _PlacedGlyph(this.glyph, this.box);
 
-  final double y;
+  final SlipGlyph glyph;
+  final ui.Rect box;
 
   @override
-  void paint(ui.Canvas canvas, ui.Paint ink, _Layout layout) {
-    // Drawn rather than typed. `'-' * 42` is a row of glyphs whose printed
-    // length depends on the font the machine happens to have; dashes drawn as
-    // rectangles are the same width on every till.
-    final dash = 6 * layout.scale;
-    for (
-      var x = ReceiptRaster._margin.toDouble();
-      x < layout.widthDots - ReceiptRaster._margin;
-      x += dash * 2
-    ) {
-      canvas.drawRect(
-        ui.Rect.fromLTWH(x, y, dash, (2 * layout.scale).ceilToDouble()),
-        ink,
-      );
-    }
-  }
+  void paint(ui.Canvas canvas, ui.Paint ink, _Layout layout) =>
+      paintSlipGlyph(canvas, glyph, box, ink);
 }
 
 class _PlacedQr extends _Placed {
-  const _PlacedQr(this.square, this.y);
+  const _PlacedQr(this.square, this.at);
 
   final _QrSquare square;
-  final double y;
+  final double at;
 
   @override
   void paint(ui.Canvas canvas, ui.Paint ink, _Layout layout) {
     final quiet = square.module * 4;
-    final left = ReceiptRaster._margin + (layout._content - square.size) / 2;
+    // Floored so every module starts on a whole dot.
+    final left = (SlipMetrics.margin + (layout._content - square.size) / 2)
+        .floorToDouble();
+    final top = at.floorToDouble();
 
     for (var x = 0; x < square.image.moduleCount; x++) {
       for (var y = 0; y < square.image.moduleCount; y++) {
@@ -495,7 +800,7 @@ class _PlacedQr extends _Placed {
         canvas.drawRect(
           ui.Rect.fromLTWH(
             left + quiet + x * square.module,
-            this.y + quiet + y * square.module,
+            top + quiet + y * square.module,
             square.module,
             square.module,
           ),

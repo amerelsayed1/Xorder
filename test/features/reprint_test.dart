@@ -11,6 +11,7 @@ import 'package:xorder_pos/data/fakes/fake_repositories.dart';
 import 'package:xorder_pos/domain/models/order_record.dart';
 import 'package:xorder_pos/domain/models/permissions.dart';
 import 'package:xorder_pos/domain/models/refund.dart';
+import 'package:xorder_pos/domain/models/tax.dart';
 import 'package:xorder_pos/domain/models/ticket.dart';
 import 'package:xorder_pos/domain/repositories/admin_repositories.dart';
 import 'package:xorder_pos/domain/repositories/repositories.dart';
@@ -31,6 +32,7 @@ void main() {
     OrderStatus status = OrderStatus.paid,
     String? servedBy = 'Nour Adel',
     List<OrderRecordLine>? lines,
+    List<TaxLine> taxLines = const [],
   }) => OrderRecordDetail(
     order: OrderRecord(
       id: 7,
@@ -63,6 +65,7 @@ void main() {
       OrderRecordPayment(label: 'Cash', amount: Money(21945), tenderTypeId: 1),
     ],
     discounts: const [],
+    taxLines: taxLines,
   );
 
   Refund refund({int total = 6270}) => Refund(
@@ -164,7 +167,9 @@ void main() {
       // A receipt reprinted a week later that claimed today's date would be a
       // forgery the till produced on request.
       await open(tester);
-      expect(find.textContaining('07/09 13:05'), findsOneWidget);
+      // Two rows since the 2026-09-13 layout, and the year is printed now.
+      expect(find.text('07/09/2026'), findsOneWidget);
+      expect(find.text('13:05'), findsOneWidget);
     });
 
     testWidgets('names who sold it, not who is reprinting', (tester) async {
@@ -183,7 +188,9 @@ void main() {
       // they did not make — a small lie on a document somebody may keep.
       await open(tester, on: detail(servedBy: null));
       expect(find.textContaining('HANA MOSTAFA'), findsNothing);
-      expect(find.textContaining('/ —'), findsOneWidget);
+      // The cashier row reads a dash. It used to share a line with the till
+      // code as `T1 / —`; the till has its own row now.
+      expect(find.text('—'), findsOneWidget);
     });
 
     testWidgets('prints the totals that were charged', (tester) async {
@@ -223,13 +230,17 @@ void main() {
       );
 
       // It stays because the kitchen made it and the customer watched.
-      final line = tester.widget<Text>(find.text('1 Mint tea'));
+      // The name is its own cell of the items table now, the quantity another.
+      final line = tester.widget<Text>(find.text('Mint tea'));
       expect(line.style?.decoration, TextDecoration.lineThrough);
     });
 
     testWidgets('renders in Arabic without overflowing', (tester) async {
       await open(tester, locale: 'ar');
       expect(find.text('إعادة طباعة — ليست الأصل'), findsOneWidget);
+      // The payment row was stored as "Cash"; an Arabic slip names the method
+      // in Arabic while the method still carries that name.
+      expect(find.text('نقدي'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
   });
@@ -290,14 +301,57 @@ void main() {
 
   group('ReceiptData.fromOrder', () {
     test('omits the tax rate rather than deriving one', () {
-      // The rates are not columns on `pos_orders`. Dividing the tax by the net
-      // would print a figure that is right most of the time and wrong wherever
-      // rounding went the other way — and a reprint that invents a rate is a
-      // document somebody will argue with.
+      // With no stored breakdown there is no rate to print. Dividing the tax
+      // by the net would print a figure that is right most of the time and
+      // wrong wherever rounding went the other way — and a reprint that
+      // invents a rate is a document somebody will argue with.
       final data = ReceiptData.fromOrder(detail());
       expect(data.serviceBp, isNull);
-      expect(data.vatBp, isNull);
+      expect(data.taxLines, isEmpty);
       expect(data.vat.minor, 2695);
+    });
+
+    test('takes the VAT rate from the stored breakdown', () {
+      // `pos_order_taxes` has held the rate since migration 16. It is a
+      // snapshot of what was charged, not a quotient.
+      final data = ReceiptData.fromOrder(
+        detail(
+          taxLines: const [
+            TaxLine(
+              name: 'VAT',
+              rateBp: 1400,
+              base: Money(19250),
+              amount: Money(2695),
+            ),
+          ],
+        ),
+      );
+      expect(data.taxLines.single.rateBp, 1400);
+      expect(data.taxLines.single.amount.minor, 2695);
+    });
+
+    test('ignores a breakdown that does not account for the VAT', () {
+      // Two VAT figures that do not agree on one slip is worse than one
+      // figure with no rate beside it.
+      final data = ReceiptData.fromOrder(
+        detail(
+          taxLines: const [
+            TaxLine(
+              name: 'VAT',
+              rateBp: 1400,
+              base: Money(14000),
+              amount: Money(1960),
+            ),
+          ],
+        ),
+      );
+      expect(data.taxLines, isEmpty);
+    });
+
+    test('carries every payment, so a split bill prints each tender', () {
+      final data = ReceiptData.fromOrder(detail());
+      expect(data.payments.single.label, 'Cash');
+      expect(data.payments.single.tenderTypeId, 1);
     });
 
     test('totals the payments rather than recomputing them', () {

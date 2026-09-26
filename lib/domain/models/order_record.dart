@@ -17,6 +17,7 @@ import 'package:collection/collection.dart';
 
 import '../../core/money/money.dart';
 import '../services/payment_status.dart';
+import 'tax.dart' show TaxLine;
 import 'ticket.dart' show OrderType;
 
 /// Where an order stands.
@@ -323,12 +324,20 @@ class OrderRecordDetail {
     required this.payments,
     required this.discounts,
     this.events = const [],
+    this.taxLines = const [],
   });
 
   final OrderRecord order;
   final List<OrderRecordLine> lines;
   final List<OrderRecordPayment> payments;
   final List<OrderRecordDiscount> discounts;
+
+  /// The tax by rate, as `pos_order_taxes` recorded it at settlement.
+  ///
+  /// Read so a reprint can say "VAT (14%)" from the rate that was actually
+  /// charged rather than print no rate at all. Empty for a record built by
+  /// hand, and a slip then prints the bare word.
+  final List<TaxLine> taxLines;
 
   /// What happened to this sale after it was rung up, oldest first.
   final List<SaleEvent> events;

@@ -11,6 +11,7 @@ import '../../domain/models/order_record.dart';
 import '../../domain/models/permissions.dart';
 import '../../domain/models/refund.dart';
 import '../../domain/models/shift.dart';
+import '../../domain/models/tender_method.dart';
 import '../../domain/repositories/admin_repositories.dart';
 import '../../domain/services/authorization.dart';
 import '../admin/presentation/supervisor_override.dart';
@@ -124,6 +125,9 @@ class _ReprintDialogState extends ConsumerState<ReprintDialog> {
                     // a sale they did not make, which is a small lie on a
                     // document somebody may keep.
                     cashierName: widget.detail.order.servedByName ?? '—',
+                    tenderMethods:
+                        ref.watch(tenderTypesProvider).valueOrNull ??
+                        TenderMethod.seeded,
                   ),
                 ),
               ),
@@ -224,6 +228,9 @@ class _ReprintDialogState extends ConsumerState<ReprintDialog> {
             // The person who sold it, not the person reprinting — see the
             // preview above.
             cashierName: order.servedByName ?? '—',
+            tenderMethods:
+                ref.read(tenderTypesProvider).valueOrNull ??
+                TenderMethod.seeded,
           ),
           isReprint: true,
           // A reprint never kicks the drawer. No money is moving, and a drawer

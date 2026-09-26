@@ -109,6 +109,7 @@ class _ReceiptDialogState extends ConsumerState<ReceiptDialog> {
                     tenantName: session?.tenantName ?? '',
                     terminalCode: session?.terminalCode ?? '',
                     cashierName: ref.watch(operatorNameProvider),
+                    tenderMethods: _tenderMethods(),
                   ),
                 ),
               ),
@@ -173,6 +174,7 @@ class _ReceiptDialogState extends ConsumerState<ReceiptDialog> {
       tenantName: session?.tenantName ?? '',
       terminalCode: session?.terminalCode ?? '',
       cashierName: ref.watch(operatorNameProvider),
+      tenderMethods: _tenderMethods(),
     );
 
     final outcome = await ref
@@ -204,9 +206,13 @@ class _ReceiptDialogState extends ConsumerState<ReceiptDialog> {
   /// moved. This decides whether a solenoid fires in the next half second, and
   /// the only correct answer to that is what the restaurant has configured
   /// right now.
+  /// The till's tender types, for the Arabic name on the slip. The seeded list
+  /// while they load, which is what the payment screen falls back to as well.
+  List<TenderMethod> _tenderMethods() =>
+      ref.read(tenderTypesProvider).valueOrNull ?? TenderMethod.seeded;
+
   bool _drawerOpens() {
-    final methods = ref.read(tenderTypesProvider).valueOrNull ??
-        TenderMethod.seeded;
+    final methods = _tenderMethods();
     return ticket.tenders.any(
       (tender) => methods.any(
         (method) => method.id == tender.typeId && method.opensDrawer,

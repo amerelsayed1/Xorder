@@ -34,7 +34,7 @@ void main() {
     paid: const Money(50000),
     change: const Money(9245),
     serviceBp: 1000,
-    vatBp: 1400,
+    taxLines: const [ReceiptTaxLine(rateBp: 1400, amount: Money(5005))],
     etaQrPayload: qr,
   );
 

@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 
-import '../../app/labels.dart';
 import '../../core/l10n/app_strings.dart';
 import '../../core/ui/theme.dart';
 import '../../core/ui/tokens.dart';
 import '../../domain/models/receipt_profile.dart';
+import '../../domain/models/tender_method.dart';
 import 'receipt_data.dart';
+import 'receipt_document.dart';
 import 'receipt_qr.dart';
+import 'slip_style.dart';
 
 /// A receipt is paper, and paper is white in a dark room too.
 ///
@@ -16,13 +18,19 @@ import 'receipt_qr.dart';
 /// perfectly well.
 const receiptPalette = PosPalette.light;
 
-/// The slip itself.
+/// The slip itself, on screen.
 ///
-/// Extracted from `ReceiptDialog` when reprint arrived: a settled order is not
-/// a `Ticket`, and rebuilding one from the ledger would re-price the sale
-/// against today's menu. Both paths now hand this the same [ReceiptData], which
-/// holds no catalogue and no tax configuration — so there is nothing here that
-/// *could* recompute a total.
+/// **The same blocks the printer gets, at the same proportions.** This used to
+/// be its own widget tree, sized by eye, beside a raster that was sized in
+/// dots — and the preview showed a receipt the printer never produced. It now
+/// builds the [ReceiptDocument] the raster prints and draws each block with the
+/// raster's own `SlipMetrics`, scaled from dots to the width it has. What
+/// differs is only what a screen can do and a head cannot: antialiasing, and
+/// the table heading's shading, which paper renders as a dot screen.
+///
+/// Both paths hand this the same [ReceiptData], which holds no catalogue and
+/// no tax configuration — so there is nothing here that *could* recompute a
+/// total.
 class ReceiptPaper extends StatelessWidget {
   const ReceiptPaper({
     super.key,
@@ -31,6 +39,7 @@ class ReceiptPaper extends StatelessWidget {
     required this.terminalCode,
     required this.cashierName,
     this.profile = const ReceiptProfile(branchId: 0),
+    this.tenderMethods = TenderMethod.seeded,
   });
 
   final ReceiptData data;
@@ -38,8 +47,8 @@ class ReceiptPaper extends StatelessWidget {
   /// Who this branch is, as Management entered it.
   ///
   /// Defaults to a blank profile so a till that has never been set up still
-  /// prints — it just prints less. Every line below that reads this is
-  /// conditional for exactly that reason.
+  /// prints — it just prints less. Every line that reads this is conditional
+  /// for exactly that reason.
   final ReceiptProfile profile;
 
   /// The tenant as the session knows it. Still here because it is what a till
@@ -49,296 +58,395 @@ class ReceiptPaper extends StatelessWidget {
   final String terminalCode;
   final String cashierName;
 
+  /// See `ReceiptDocument.of`.
+  final List<TenderMethod> tenderMethods;
+
+  /// Used only when the paper is given unbounded width, which no caller does.
+  /// The receipt dialogs are 360 wide, and a preview that threw instead would
+  /// take the dialog with it.
+  static const _fallbackWidth = 360.0;
+
   @override
   Widget build(BuildContext context) {
-    final strings = context.strings;
+    final document = ReceiptDocument.of(
+      data,
+      strings: context.strings,
+      tenantName: tenantName,
+      terminalCode: terminalCode,
+      cashierName: cashierName,
+      profile: profile,
+      tenderMethods: tenderMethods,
+    );
 
-    return Container(
-      color: Colors.white,
-      padding: const EdgeInsets.symmetric(
-        horizontal: PosSpace.lg,
-        vertical: PosSpace.s18,
+    return ColoredBox(
+      color: receiptPalette.surface,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final width = constraints.maxWidth.isFinite
+              ? constraints.maxWidth
+              : _fallbackWidth;
+          final slip = _Slip(document, width / SlipMetrics.paperDots);
+
+          return Directionality(
+            textDirection: document.rightToLeft
+                ? TextDirection.rtl
+                : TextDirection.ltr,
+            child: Padding(
+              padding: EdgeInsets.symmetric(
+                horizontal: slip.d(SlipMetrics.paperEdge + SlipMetrics.margin),
+                vertical: slip.d(SlipMetrics.paperEdge),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  for (final block in document.blocks) slip.block(block),
+                ],
+              ),
+            ),
+          );
+        },
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // Before the restaurant's name, not after the total. Somebody handed
-          // a slip has to know what it is before they read what is on it —
-          // §18's "the REPRINT marking on the output" is about a document that
-          // cannot be passed off as an original.
-          if (data.isReprint) _stamp(strings.receiptReprintMark, receiptPalette.warn),
-          if (data.wasRefunded)
-            _stamp(
-              strings.receiptRefundedMark(data.refunded.format()),
-              receiptPalette.danger,
-            ),
-          Text(
-            (profile.tradeName.trim().isEmpty
-                    ? tenantName
-                    : profile.tradeName)
-                .toUpperCase(),
-            textAlign: TextAlign.center,
-            style: PosText.ui(
-              size: 17,
-              weight: FontWeight.w800,
-              color: receiptPalette.ink,
-            ),
-          ),
-          // Address, phone and registration number print only when somebody
-          // has entered them.
-          //
-          // This line used to read `TAX REG 000-000-000` unconditionally — a
-          // fabricated registration number on a document a customer keeps and
-          // an inspector may read. A blank space is not a compliance problem;
-          // a made-up number is.
-          if (profile.address.printed.isNotEmpty) ...[
-            const SizedBox(height: 2),
-            Text(
-              profile.address.printed,
-              textAlign: TextAlign.center,
-              style: PosText.ui(size: 11, color: receiptPalette.body),
-            ),
-          ],
-          if ((profile.phone ?? '').trim().isNotEmpty) ...[
-            const SizedBox(height: 2),
-            Directionality(
-              textDirection: TextDirection.ltr,
-              child: Text(
-                profile.phone!.trim(),
-                textAlign: TextAlign.center,
-                style: PosText.mono(size: 11, color: receiptPalette.body),
+    );
+  }
+}
+
+/// One block at a time, at [scale] logical pixels to the dot.
+///
+/// Every size in here is a `SlipMetrics` value through [d] — no number is
+/// chosen for the screen alone. A size typed here instead would be the first
+/// step back to a preview that disagrees with the paper.
+class _Slip {
+  _Slip(this.document, this.scale);
+
+  final ReceiptDocument document;
+  final double scale;
+
+  Color get _ink => receiptPalette.ink;
+  bool get _rtl => document.rightToLeft;
+  TextAlign get _outer => _rtl ? TextAlign.left : TextAlign.right;
+
+  double d(double dots) => dots * scale;
+
+  /// The raster's faces and weights: 600 for mono, 700 for the Arabic face.
+  TextStyle _style(
+    double dots, {
+    bool mono = false,
+    bool bold = false,
+    bool struck = false,
+  }) {
+    final base = mono
+        ? PosText.mono(
+            color: _ink,
+            size: d(dots),
+            weight: bold ? FontWeight.w600 : FontWeight.w400,
+          )
+        : PosText.ui(
+            color: _ink,
+            size: d(dots),
+            weight: bold ? FontWeight.w700 : FontWeight.w400,
+          );
+    return struck
+        ? base.copyWith(
+            decoration: TextDecoration.lineThrough,
+            decorationColor: _ink,
+          )
+        : base;
+  }
+
+  Widget _ltr(Widget child) =>
+      Directionality(textDirection: TextDirection.ltr, child: child);
+
+  Widget block(SlipBlock block) => switch (block) {
+    SlipGap(:final dots) => SizedBox(height: d(dots.toDouble())),
+    SlipRule(:final weight) => _rule(weight),
+    SlipCentre() => _centre(block),
+    SlipStamp(:final text) => _stamp(text),
+    SlipRow() => _row(block),
+    SlipItemsHeader() => _itemsHeader(block),
+    SlipItem() => _item(block),
+    SlipGrandTotal() => _grandTotal(block),
+    SlipQr(:final payload) => _qr(payload),
+    SlipOrnament() => _ornament(),
+  };
+
+  Widget _rule(SlipRuleWeight weight) => Padding(
+    padding: EdgeInsets.only(
+      top: d(SlipMetrics.ruleAbove),
+      bottom: d(SlipMetrics.ruleBelow),
+    ),
+    child: SizedBox(
+      height: d(SlipMetrics.ruleThickness(weight)),
+      child: weight == SlipRuleWeight.dashed
+          ? CustomPaint(
+              painter: _Dashes(
+                dash: d(SlipMetrics.dash),
+                gap: d(SlipMetrics.dashGap),
+                colour: _ink,
               ),
-            ),
-          ],
-          if (profile.registrationNumber.trim().isNotEmpty) ...[
-            const SizedBox(height: 2),
-            Directionality(
-              textDirection: TextDirection.ltr,
-              child: Text(
-                strings.taxRegistrationLine(profile.registrationNumber.trim()),
-                textAlign: TextAlign.center,
-                style: PosText.mono(size: 11, color: receiptPalette.body),
-              ),
-            ),
-          ],
-          if ((profile.headerNote ?? '').trim().isNotEmpty) ...[
-            const SizedBox(height: 4),
-            Text(
-              profile.headerNote!.trim(),
-              textAlign: TextAlign.center,
-              style: PosText.ui(size: 11, color: receiptPalette.body),
-            ),
-          ],
-          _dashed(),
-          _row(
-            data.invoiceNumber ?? strings.provisionalInvoice,
-            '$terminalCode / ${cashierName.toUpperCase()}',
-          ),
-          _row(
-            [
-              data.orderType.label(strings),
-              if (data.tableLabel != null) data.tableLabel!,
-            ].join(' · '),
-            _timestamp(data.occurredAt),
-          ),
-          _dashed(),
-          for (final line in data.lines) _line(strings, line),
-          _dashed(),
-          _row(strings.receiptSubtotal, data.subtotal.format(), size: 12),
-          if (!data.discount.isZero)
-            _row(
-              strings.orderDetailDiscount,
-              '-${data.discount.format()}',
-              size: 12,
-            ),
-          if (!data.service.isZero)
-            _row(
-              // The rate when it is known, the bare word when it is not. See
-              // `ReceiptData.fromOrder` for why a reprint has no rate.
-              data.serviceBp == null
-                  ? strings.orderDetailService
-                  : strings.receiptService(
-                      (data.serviceBp! / 100).toStringAsFixed(0),
-                    ),
-              data.service.format(),
-              size: 12,
-            ),
-          _row(
-            data.vatBp == null
-                ? strings.orderDetailVat
-                : strings.receiptVat((data.vatBp! / 100).toStringAsFixed(0)),
-            data.vat.format(),
-            size: 12,
-          ),
-          Container(
-            margin: const EdgeInsets.only(top: PosSpace.sm),
-            padding: const EdgeInsets.only(top: PosSpace.sm),
-            decoration: BoxDecoration(
-              border: Border(top: receiptPalette.emphasis),
-            ),
-            child: Row(
+            )
+          : ColoredBox(color: _ink),
+    ),
+  );
+
+  Widget _centre(SlipCentre block) {
+    Widget text = Text(
+      block.text,
+      textAlign: TextAlign.center,
+      style: _style(
+        SlipMetrics.centreSize(block.emphasis),
+        mono: block.numeric,
+        bold: SlipMetrics.centreBold(block.emphasis),
+      ),
+    );
+    if (block.numeric) text = _ltr(text);
+
+    final glyph = block.glyph;
+    return Padding(
+      padding: EdgeInsets.only(bottom: d(SlipMetrics.lineGap)),
+      child: glyph == null
+          ? text
+          : Row(
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Text(
-                  strings.receiptTotal,
-                  style: PosText.mono(
-                    color: receiptPalette.inkWarm,
-                    size: 17,
-                    weight: FontWeight.w600,
-                  ),
-                ),
-                const Spacer(),
-                Text(
-                  data.total.format(),
-                  style: PosText.mono(
-                    color: receiptPalette.inkWarm,
-                    size: 17,
-                    weight: FontWeight.w600,
-                  ),
-                ),
+                _glyph(glyph, d(SlipMetrics.glyphSize)),
+                SizedBox(width: d(SlipMetrics.glyphGap)),
+                Flexible(child: text),
               ],
             ),
-          ),
-          _row(strings.receiptPaid, data.paid.format(), size: 12),
-          if (!data.change.isZero)
-            _row(strings.receiptChange, data.change.format(), size: 12),
-          _dashed(),
-          // Nothing at all on an offline till. It has no platform to be
-          // synced with, and printing either answer would be a claim about a
-          // relationship that does not exist.
-          if (data.syncNote != ReceiptSyncNote.none)
-            Text(
-              data.syncNote == ReceiptSyncNote.queued
-                  ? strings.receiptQueuedOffline
-                  : strings.receiptSynced,
-              textAlign: TextAlign.center,
-              style: PosText.mono(size: 10.5, color: receiptPalette.body),
-            ),
-          // Above the boilerplate, below the totals: where a customer looks
-          // when they have been told to scan something.
-          if (data.etaQrPayload case final payload?) ...[
-            const SizedBox(height: PosSpace.sm),
-            Center(child: ReceiptQr(payload: payload)),
-            const SizedBox(height: PosSpace.sm),
-          ],
-          Text(
-            'xorder.io',
-            textAlign: TextAlign.center,
-            style: PosText.mono(size: 10.5, color: receiptPalette.body),
-          ),
-          // The restaurant's own words, above the boilerplate thanks — a
-          // wifi password, an offer, an opening time.
-          if ((profile.footerNote ?? '').trim().isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(top: 2),
-              child: Text(
-                profile.footerNote!.trim(),
-                textAlign: TextAlign.center,
-                style: PosText.ui(size: 11, color: receiptPalette.body),
-              ),
-            ),
-          Text(
-            strings.receiptThanks,
-            textAlign: TextAlign.center,
-            style: strings.languageCode == 'ar'
-                ? PosText.arabic(size: 11, color: receiptPalette.body)
-                : PosText.mono(size: 10.5, color: receiptPalette.body),
-          ),
-          // Tax figures came from read-only device config, not the server.
-          // Disclosing that is deliberate — see POS-BE-013.
-          if (data.taxFromDeviceConfig)
-            Padding(
-              padding: const EdgeInsets.only(top: PosSpace.sm),
-              child: Text(
-                strings.receiptTaxFromDevice,
-                textAlign: TextAlign.center,
-                style: PosText.mono(size: 9.5, color: receiptPalette.warn),
-              ),
-            ),
-        ],
-      ),
     );
   }
 
   /// A banner across the top of the slip. Boxed and centred, because it has to
   /// survive being photographed, faxed and photocopied.
-  Widget _stamp(String text, Color colour) => Container(
-    margin: const EdgeInsets.only(bottom: PosSpace.sm),
-    padding: const EdgeInsets.symmetric(vertical: 3),
-    decoration: BoxDecoration(border: Border.all(color: colour, width: 2)),
+  Widget _stamp(String text) => Container(
+    margin: EdgeInsets.only(bottom: d(SlipMetrics.stampAfter)),
+    padding: EdgeInsets.symmetric(
+      vertical: d(SlipMetrics.stampPad),
+      horizontal: d(SlipMetrics.stampInset),
+    ),
+    decoration: BoxDecoration(
+      border: Border.all(color: _ink, width: d(SlipMetrics.stampBorder)),
+    ),
     child: Text(
       text,
       textAlign: TextAlign.center,
-      style: PosText.mono(size: 13, weight: FontWeight.w800, color: colour),
+      style: _style(SlipMetrics.stampSize, mono: true, bold: true),
     ),
   );
 
-  Widget _line(AppStrings strings, ReceiptLine line) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 2),
-    child: Row(
-      children: [
-        Expanded(
-          child: Text(
-            '${line.quantity} ${line.name}'
-            '${line.wasRepriced ? ' *' : ''}',
-            overflow: TextOverflow.ellipsis,
-            style:
-                PosText.mono(
-                  size: 12.5,
-                  color: line.isVoided
-                      ? receiptPalette.muted
-                      : receiptPalette.ink,
-                ).copyWith(
-                  decoration: line.isVoided ? TextDecoration.lineThrough : null,
-                ),
+  Widget _row(SlipRow row) {
+    Widget value = Text(
+      row.value,
+      textAlign: _outer,
+      maxLines: 2,
+      overflow: TextOverflow.ellipsis,
+      style: _style(SlipMetrics.bodySize, mono: row.numeric, struck: row.struck),
+    );
+    if (row.numeric) value = _ltr(value);
+
+    return Padding(
+      padding: EdgeInsets.only(bottom: d(SlipMetrics.rowGap)),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Text(
+              row.label,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: _style(SlipMetrics.bodySize, struck: row.struck),
+            ),
           ),
-        ),
-        Text(
-          line.lineTotal.format(),
-          style:
-              PosText.mono(
-                size: 12.5,
-                color: line.isVoided
-                    ? receiptPalette.muted
-                    : receiptPalette.ink,
-              ).copyWith(
-                decoration: line.isVoided ? TextDecoration.lineThrough : null,
-              ),
-        ),
-      ],
-    ),
-  );
-
-  static String _timestamp(DateTime at) {
-    String two(int v) => v.toString().padLeft(2, '0');
-    return '${two(at.day)}/${two(at.month)} ${two(at.hour)}:${two(at.minute)}';
+          SizedBox(width: d(SlipMetrics.columnGap)),
+          ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: d(SlipMetrics.contentDots) * 2 / 3,
+            ),
+            child: value,
+          ),
+        ],
+      ),
+    );
   }
 
-  Widget _dashed() => Padding(
-    padding: const EdgeInsets.symmetric(vertical: PosSpace.sm),
-    child: Text(
-      '-' * 42,
-      maxLines: 1,
-      overflow: TextOverflow.clip,
-      style: PosText.mono(size: 11, color: receiptPalette.shellLineMeta),
-    ),
+  /// Name, quantity, price — in that order from the side the slip reads from,
+  /// so an Arabic slip mirrors the whole table rather than only its words.
+  Widget _columns(Widget name, Widget quantity, Widget price) => Row(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Expanded(child: name),
+      SizedBox(width: d(SlipMetrics.columnGap)),
+      SizedBox(width: d(SlipMetrics.qtyColumn), child: quantity),
+      SizedBox(width: d(SlipMetrics.columnGap)),
+      SizedBox(width: d(SlipMetrics.priceColumn), child: price),
+    ],
   );
 
-  Widget _row(String left, String right, {double size = 12.5}) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 1),
+  Widget _itemsHeader(SlipItemsHeader header) {
+    final style = _style(SlipMetrics.headerSize, bold: true);
+    return Padding(
+      padding: EdgeInsets.only(bottom: d(SlipMetrics.rowGap)),
+      child: ColoredBox(
+        color: receiptPalette.chipBg,
+        child: Padding(
+          padding: EdgeInsets.symmetric(vertical: d(SlipMetrics.headerPad)),
+          child: _columns(
+            Text(header.item, maxLines: 1, style: style),
+            Text(
+              header.quantity,
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              style: style,
+            ),
+            Text(header.price, textAlign: _outer, maxLines: 1, style: style),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _item(SlipItem item) {
+    final figure = _style(
+      SlipMetrics.bodySize,
+      mono: true,
+      struck: item.struck,
+    );
+    return Padding(
+      padding: EdgeInsets.only(bottom: d(SlipMetrics.rowGap)),
+      child: _columns(
+        Text(
+          item.name,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: _style(SlipMetrics.bodySize, struck: item.struck),
+        ),
+        _ltr(Text(item.quantity, textAlign: TextAlign.center, style: figure)),
+        _ltr(
+          Text(item.price, textAlign: _outer, maxLines: 1, style: figure),
+        ),
+      ),
+    );
+  }
+
+  Widget _grandTotal(SlipGrandTotal total) => Padding(
+    padding: EdgeInsets.only(bottom: d(SlipMetrics.rowGap)),
     child: Row(
       children: [
         Expanded(
           child: Text(
-            left,
+            total.label,
+            maxLines: 2,
             overflow: TextOverflow.ellipsis,
-            style: PosText.mono(size: size, color: receiptPalette.ink),
+            style: _style(SlipMetrics.totalLabelSize, bold: true),
           ),
         ),
-        Text(
-          right,
-          style: PosText.mono(size: size, color: receiptPalette.ink),
+        SizedBox(width: d(SlipMetrics.columnGap)),
+        ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: d(SlipMetrics.contentDots) * 3 / 4,
+          ),
+          child: _ltr(
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  total.amount,
+                  maxLines: 1,
+                  style: _style(
+                    SlipMetrics.totalAmountSize,
+                    mono: true,
+                    bold: true,
+                  ),
+                ),
+                Text(
+                  total.currency,
+                  style: _style(SlipMetrics.currencySize, mono: true),
+                ),
+              ],
+            ),
+          ),
         ),
       ],
     ),
   );
+
+  /// The square at the paper's size, quiet zone included — the preview used
+  /// to draw it at a fixed 132px while the paper printed it the full width of
+  /// the roll.
+  Widget _qr(String payload) {
+    final modules = ReceiptQrCode.imageOf(payload).moduleCount;
+    final module = SlipMetrics.qrModule(modules, SlipMetrics.contentDots)
+        .toDouble();
+    return Padding(
+      padding: EdgeInsets.only(bottom: d(SlipMetrics.rowGap)),
+      child: Center(
+        child: Padding(
+          padding: EdgeInsets.all(d(module * 4)),
+          child: ReceiptQr(payload: payload, size: d(module * modules)),
+        ),
+      ),
+    );
+  }
+
+  Widget _ornament() {
+    final arm = SizedBox(
+      width: d(SlipMetrics.ornamentLine),
+      height: d(SlipMetrics.ruleThickness(SlipRuleWeight.solid)),
+      child: ColoredBox(color: _ink),
+    );
+    return Padding(
+      padding: EdgeInsets.only(bottom: d(SlipMetrics.lineGap)),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          arm,
+          SizedBox(width: d(SlipMetrics.ornamentGap)),
+          _glyph(SlipGlyph.heart, d(SlipMetrics.ornamentHeart)),
+          SizedBox(width: d(SlipMetrics.ornamentGap)),
+          arm,
+        ],
+      ),
+    );
+  }
+
+  Widget _glyph(SlipGlyph glyph, double side) => SizedBox.square(
+    dimension: side,
+    child: CustomPaint(painter: _GlyphPainter(glyph, _ink)),
+  );
+}
+
+class _Dashes extends CustomPainter {
+  const _Dashes({required this.dash, required this.gap, required this.colour});
+
+  final double dash;
+  final double gap;
+  final Color colour;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final ink = Paint()..color = colour;
+    for (var x = 0.0; x < size.width; x += dash + gap) {
+      final right = x + dash < size.width ? x + dash : size.width;
+      canvas.drawRect(Rect.fromLTRB(x, 0, right, size.height), ink);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_Dashes old) =>
+      old.dash != dash || old.gap != gap || old.colour != colour;
+}
+
+class _GlyphPainter extends CustomPainter {
+  const _GlyphPainter(this.glyph, this.colour);
+
+  final SlipGlyph glyph;
+  final Color colour;
+
+  @override
+  void paint(Canvas canvas, Size size) =>
+      paintSlipGlyph(canvas, glyph, Offset.zero & size, Paint()..color = colour);
+
+  @override
+  bool shouldRepaint(_GlyphPainter old) =>
+      old.glyph != glyph || old.colour != colour;
 }

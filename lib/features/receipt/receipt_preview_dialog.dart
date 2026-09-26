@@ -9,6 +9,7 @@ import '../../core/ui/widgets/pos_widgets.dart';
 import '../../domain/models/order_record.dart';
 import '../../domain/models/receipt_profile.dart';
 import '../../domain/models/refund.dart';
+import '../../domain/models/tender_method.dart';
 import 'receipt_data.dart';
 import 'receipt_paper.dart';
 
@@ -71,6 +72,9 @@ class ReceiptPreviewDialog extends ConsumerWidget {
                     terminalCode: session?.terminalCode ?? '',
                     // The person who sold it, as on the original.
                     cashierName: detail.order.servedByName ?? '—',
+                    tenderMethods:
+                        ref.watch(tenderTypesProvider).valueOrNull ??
+                        TenderMethod.seeded,
                   ),
                 ),
               ),

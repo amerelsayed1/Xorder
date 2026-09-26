@@ -5,6 +5,7 @@ import '../../core/money/money.dart';
 import '../../domain/models/order_record.dart';
 import '../../domain/models/refund.dart' show RefundKind;
 import '../../domain/models/refund_history.dart';
+import '../../domain/models/tax.dart' show TaxLine;
 import '../../domain/models/ticket.dart';
 import '../../domain/repositories/admin_repositories.dart' show AuditAction;
 import '../../domain/repositories/repositories.dart';
@@ -761,6 +762,17 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
       parameters: {'order': orderId},
     );
 
+    // The breakdown by rate, in the order it was written — highest rate first,
+    // as `TaxEngine.linesFor` sorts it. The rates are the snapshots taken at
+    // settlement, so a restaurant moved to 15% next year still reprints this
+    // sale at the 14% it was charged.
+    final taxRows = await _db.query(
+      config,
+      'SELECT name_snapshot, rate_bp, base_minor, amount_minor, tax_group_id '
+      'FROM pos_order_taxes WHERE order_id = @order ORDER BY id',
+      parameters: {'order': orderId},
+    );
+
     return OrderRecordDetail(
       order: order,
       lines: lineRows.map((raw) {
@@ -799,6 +811,16 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
           appliedByName: row[3] as String?,
           approvedByName: row[4] as String?,
           appliedAt: (row[5] as DateTime?)?.toLocal(),
+        );
+      }).toList(growable: false),
+      taxLines: taxRows.map((raw) {
+        final row = raw.toList();
+        return TaxLine(
+          name: row[0] as String,
+          rateBp: row[1] as int,
+          base: money(row[2]),
+          amount: money(row[3]),
+          taxGroupId: row[4] as int?,
         );
       }).toList(growable: false),
       events: await _events(order, money),

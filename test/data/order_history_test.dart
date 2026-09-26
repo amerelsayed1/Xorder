@@ -607,6 +607,40 @@ void main() {
       expect(detail!.payments, isEmpty);
     });
 
+    test('the tax breakdown comes back by rate, as it was written', () async {
+      // What a reprint prints its VAT rate from. Stored rates, not a rate
+      // worked back out of `vat_minor`.
+      final id = await insertOrder(
+        invoice: 'INV-TAX',
+        occurredAt: DateTime(2026, 9, 7, 9),
+        subtotal: 11500,
+        vat: 1400,
+        total: 12900,
+      );
+      await db.query(
+        pg.config,
+        'INSERT INTO pos_order_taxes (order_id, name_snapshot, rate_bp, '
+        "  base_minor, amount_minor) VALUES (@o, 'VAT', 1400, 10000, 1400), "
+        "  (@o, 'Zero-rated', 0, 1500, 0)",
+        parameters: {'o': id},
+      );
+
+      final detail = await repository.detail(id);
+      expect(detail!.taxLines.map((t) => t.rateBp), [1400, 0]);
+      expect(detail.taxLines.first.amount.minor, 1400);
+      expect(detail.taxLines.last.base.minor, 1500);
+      expect(detail.taxLines.last.name, 'Zero-rated');
+    });
+
+    test('an order with no breakdown reads as none, not as an error', () async {
+      final id = await insertOrder(
+        invoice: 'INV-NOTAX',
+        occurredAt: DateTime(2026, 9, 7, 9),
+      );
+      final detail = await repository.detail(id);
+      expect(detail!.taxLines, isEmpty);
+    });
+
     test('discounts name both the applier and the approver', () async {
       final id = await insertOrder(
         invoice: 'INV-DISC',
