@@ -35,6 +35,16 @@ enum PosDbFailure {
   /// typed, which was right all along.
   missingDatabase,
 
+  /// Reached Postgres, and there is no such role to sign in as — or the
+  /// statement named one that is not there.
+  ///
+  /// Its own case because it is NOT a password anybody can correct, and
+  /// [auth] used to claim it: `FATAL: role "pos_admin" does not exist` sent
+  /// an installer back to a password field to retype a password that was
+  /// never the problem. The remedy is a role — name one that exists, or
+  /// create it.
+  missingRole,
+
   /// Signed in, and this role is not allowed to do that.
   ///
   /// Its own case because the remedy is a GRANT, not a password. It bites
@@ -66,19 +76,23 @@ enum PosDbFailure {
         text.contains('tls')) {
       return tls;
     }
+    // BEFORE the auth check, both of them. Postgres phrases the two the same
+    // way — `FATAL: database "x" does not exist` and `FATAL: role "x" does not
+    // exist` — so they are told apart by the noun, and neither may fall to
+    // `auth`, which matches on `role ` and would take the role case first.
+    // It used to, and reported a role PostgreSQL has never heard of as a
+    // rejected password: an installer on a hand-installed PostgreSQL was sent
+    // to retype `pos_admin`'s password over and over, when the role was simply
+    // not there and the field to change was the one above it.
+    if (text.contains('does not exist')) {
+      if (text.contains('role ')) return missingRole;
+      if (text.contains('database')) return missingDatabase;
+    }
     if (text.contains('password') ||
         text.contains('authentication') ||
         text.contains('role ') ||
         text.contains('pg_hba')) {
       return auth;
-    }
-    // AFTER the auth check, deliberately. Postgres phrases both of these the
-    // same way — `FATAL: database "x" does not exist` and `FATAL: role "x" does
-    // not exist` — and a missing role is an authentication problem, not a
-    // first-install one. Letting `auth` claim the role case first is what keeps
-    // the two apart.
-    if (text.contains('does not exist') && text.contains('database')) {
-      return missingDatabase;
     }
     // 42501. Named before the generic ServerException below, which would
     // otherwise report a GRANT problem as "the statement failed".
@@ -100,6 +114,19 @@ class PosDbException implements Exception {
 
   final PosDbFailure failure;
   final Object raw;
+
+  /// The role a [PosDbFailure.missingRole] was about, when the driver named
+  /// one — which Postgres always does, in exactly this shape.
+  ///
+  /// Read rather than assumed because a build connects as one role and grants
+  /// to another: naming the administrator for a missing `pos_till` is the same
+  /// class of wrong answer as calling it a bad password. Null when the text is
+  /// not the shape this expects, and every caller has a role of its own to
+  /// fall back on.
+  static String? roleNamedIn(Object raw) =>
+      RegExp(r'role "([^"]+)" does not exist')
+          .firstMatch(raw.toString())
+          ?.group(1);
 
   @override
   String toString() => 'PosDbException(${failure.name}): $raw';

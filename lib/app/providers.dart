@@ -2239,12 +2239,21 @@ final installerCredentialsProvider = Provider<InstallerCredentialsSource>(
 
 /// What building this machine's database did, so the wizard can say it.
 class DatabaseBuildReport {
-  const DatabaseBuildReport({required this.created, required this.migrations});
+  const DatabaseBuildReport({
+    required this.created,
+    required this.migrations,
+    this.tillRoleCreated = false,
+  });
 
   /// False when the database was already there — the ordinary case on a machine
   /// the installer prepared, and not a failure.
   final bool created;
   final int migrations;
+
+  /// True when the till's own PostgreSQL account had to be made here. False on
+  /// a machine the installer prepared, where it was made before the wizard
+  /// ever ran. See [LocalBootstrap.ensureTillRole].
+  final bool tillRoleCreated;
 }
 
 /// Create the database, apply every migration this build carries, and grant the
@@ -2257,10 +2266,10 @@ class DatabaseBuildReport {
 /// cloud terminal wants, because all of them arrive in the bootstrap bundle and
 /// would be written over by it on the next seed.
 final databaseBuilderProvider =
-    Provider<Future<DatabaseBuildReport> Function(DeploymentConfig, String)>((
-      ref,
-    ) {
-      return (config, adminPassword) async {
+    Provider<
+      Future<DatabaseBuildReport> Function(DeploymentConfig, String, String)
+    >((ref) {
+      return (config, adminPassword, tillPassword) async {
         // The admin connection: same host and database, a different role. The
         // password is used here and dropped with the pool.
         final admin = config.copyWith(databaseUser: config.adminDatabaseUser);
@@ -2274,6 +2283,24 @@ final databaseBuilderProvider =
             adminPassword,
             config.databaseName,
           );
+          // BEFORE the grants, because they are what needs it. On a machine
+          // the installer prepared this finds the role and does nothing; on
+          // the fallback path — a PostgreSQL somebody installed by hand, which
+          // is the whole reason these fields are on screen — nobody has ever
+          // made `pos_till`, and the build used to get all the way to
+          // `GRANT … TO "pos_till"` before dying on a role that was not there.
+          //
+          // Skipped with no password to create it with, rather than refused:
+          // the role is usually already there, and the GRANT below says so
+          // plainly if it is not.
+          final tillRoleCreated =
+              tillPassword.isNotEmpty &&
+              await LocalBootstrap.ensureTillRole(
+                admin,
+                adminPassword,
+                name: config.databaseUser,
+                password: tillPassword,
+              );
           final applied = await bootstrap.migrate(admin);
           await bootstrap.applyGrants(admin, [
             ...LocalBootstrap.tillGrants(
@@ -2290,6 +2317,7 @@ final databaseBuilderProvider =
           return DatabaseBuildReport(
             created: created,
             migrations: applied.length,
+            tillRoleCreated: tillRoleCreated,
           );
         } finally {
           await database.close();

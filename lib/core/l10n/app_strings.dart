@@ -578,6 +578,22 @@ sealed class AppStrings {
   String grantsApplied(String tillRole, String adminRole);
   String bootstrapAuthFailed(String user);
 
+  /// The BUILD's missing-role case, which is nearly always the administrator
+  /// role and is answered in the field right above the error bar. The wizard
+  /// invites this machine by name — its own help text says a hand-installed
+  /// PostgreSQL usually has only `postgres` — so the message says which field
+  /// and what to put in it, rather than naming a password nobody mistyped.
+  String bootstrapAdminRoleMissing(String role);
+
+  /// The till's own role, created by the build because PostgreSQL did not
+  /// have it. A report line, not a failure.
+  String tillRoleCreated(String role);
+
+  /// The administrator credential may not create roles, and the till's is not
+  /// there to grant to. Names the SQL, because whoever reaches this is at a
+  /// machine with a PostgreSQL they installed themselves.
+  String tillRoleRefused(String role, String admin);
+
   /// The seed step's own auth failure — the till's account, not the
   /// administrator's. Added 2026-09-16: `_bootstrapFailure` used to answer
   /// for this too, and named the administrator regardless of which
@@ -671,6 +687,12 @@ sealed class AppStrings {
   /// old wording ("the database did not answer as expected") sent installers
   /// checking a name that was right all along.
   String missingDatabase(String database);
+
+  /// Reached Postgres, and there is no such ROLE. Its own sentence because
+  /// [authFailure] used to answer for it and sent the operator to a password
+  /// field — and a role PostgreSQL has never heard of has no password to get
+  /// right.
+  String roleMissing(String role);
 
   // ── Setup: licence ────────────────────────────────────────────────────────
   String get licenceKey;
@@ -4041,7 +4063,9 @@ final class EnStrings extends AppStrings {
   String get adminDatabaseUserHelp =>
       'The PostgreSQL account that creates the database and owns its tables — '
       'not the till\'s. The installer makes "pos_admin"; where PostgreSQL was '
-      'set up by hand, "postgres" is usually the only one there is.';
+      'set up by hand there is no such account, and its administrator is '
+      'usually "postgres" — or, on a Mac, the account you sign in to this '
+      'machine as.';
   @override
   String adminPasswordFor(String user) => '$user password';
   @override
@@ -4140,6 +4164,23 @@ final class EnStrings extends AppStrings {
   String bootstrapAuthFailed(String user) =>
       'PostgreSQL rejected "$user" and that password. This is the '
       'ADMINISTRATOR account that creates the database, not the till\'s.';
+  @override
+  String bootstrapAdminRoleMissing(String role) =>
+      'PostgreSQL has no role called "$role", so there was nothing to sign in '
+      'as. Nothing is wrong with the password. The XOrder installer creates '
+      '"$role"; a PostgreSQL installed by hand never has it, and its only '
+      'administrator is usually "postgres" — or, on a Mac, whatever account '
+      'you sign in to this machine as. Put a role that exists in the '
+      'administrator field above and try again.';
+  @override
+  String tillRoleCreated(String role) =>
+      'Created the "$role" account this till signs in as.';
+  @override
+  String tillRoleRefused(String role, String admin) =>
+      'This machine has no "$role" account for the till to use, and "$admin" '
+      'is not allowed to create one. Use an administrator role that may — '
+      '"postgres", usually — or create it once by hand:\n'
+      '  CREATE ROLE "$role" LOGIN PASSWORD \'the password typed above\';';
   @override
   String catalogueAuthFailed(String user) =>
       'PostgreSQL rejected "$user" and that password. This is the TILL\'s '
@@ -4318,6 +4359,11 @@ final class EnStrings extends AppStrings {
       'called "$database" yet. That is expected on a first install — the next '
       'step builds it. Continue, create the first administrator, and this '
       'answers itself.';
+  @override
+  String roleMissing(String role) =>
+      'PostgreSQL is running, and it has no role called "$role". Nothing is '
+      'wrong with the password. Create that account in PostgreSQL, or put one '
+      'that already exists in the field above.';
 
   @override
   String get licenceKey => 'Licence key';
@@ -8499,8 +8545,9 @@ final class ArStrings extends AppStrings {
   @override
   String get adminDatabaseUserHelp =>
       'حساب PostgreSQL الذي يُنشئ قاعدة البيانات ويملك جداولها — وليس حساب '
-      'الكاشير. المثبِّت يُنشئ «pos_admin»، وعلى جهاز ثُبِّت فيه PostgreSQL '
-      'يدوياً غالباً لا يوجد سوى «postgres».';
+      'الكاشير. المثبِّت يُنشئ «pos_admin»، أما على جهاز ثُبِّت فيه PostgreSQL '
+      'يدوياً فلا يوجد هذا الحساب، ومديره غالباً «postgres» — أو على أجهزة Mac '
+      'اسم الحساب الذي تدخل به إلى الجهاز نفسه.';
   @override
   String adminPasswordFor(String user) => 'كلمة مرور $user';
   @override
@@ -8593,6 +8640,22 @@ final class ArStrings extends AppStrings {
   String bootstrapAuthFailed(String user) =>
       'رفضت PostgreSQL المستخدم «$user» وكلمة المرور هذه. هذا حساب المدير الذي '
       'يُنشئ قاعدة البيانات، وليس حساب الكاشير.';
+  @override
+  String bootstrapAdminRoleMissing(String role) =>
+      'لا يوجد في PostgreSQL دور باسم «$role»، فلم يكن هناك حساب يُدخَل به. لا '
+      'خطأ في كلمة المرور. مثبِّت XOrder هو الذي يُنشئ «$role»؛ أما PostgreSQL '
+      'المثبَّت يدوياً فلا يحتوي هذا الحساب أبداً، ومديره غالباً «postgres» — أو '
+      'على أجهزة Mac اسم الحساب الذي تدخل به إلى الجهاز نفسه. اكتب دوراً '
+      'موجوداً في خانة مستخدم المدير أعلاه ثم حاول مرة أخرى.';
+  @override
+  String tillRoleCreated(String role) =>
+      'أُنشئ حساب «$role» الذي يدخل به هذا الكاشير.';
+  @override
+  String tillRoleRefused(String role, String admin) =>
+      'لا يوجد على هذا الجهاز حساب «$role» ليستخدمه الكاشير، و«$admin» لا يملك '
+      'صلاحية إنشائه. استخدم حساب مدير يملكها — «postgres» غالباً — أو أنشئه '
+      'مرة واحدة يدوياً:\n'
+      '  CREATE ROLE "$role" LOGIN PASSWORD \'كلمة المرور المكتوبة أعلاه\';';
   @override
   String catalogueAuthFailed(String user) =>
       'رفضت PostgreSQL المستخدم «$user» وكلمة المرور هذه. هذا حساب الكاشير '
@@ -8761,6 +8824,11 @@ final class ArStrings extends AppStrings {
       'الخادم يعمل وقَبِل الدخول، لكن لا توجد قاعدة بيانات باسم «$database» بعد. '
       'هذا متوقَّع في التثبيت الأول — الخطوة التالية هي التي تبنيها. تابع، وأنشئ '
       'أول مدير، وستُحلّ هذه من نفسها.';
+  @override
+  String roleMissing(String role) =>
+      'PostgreSQL يعمل، ولا يوجد لديه دور باسم «$role». لا خطأ في كلمة المرور. '
+      'أنشئ هذا الحساب في PostgreSQL، أو اكتب حساباً موجوداً بالفعل في الخانة '
+      'أعلاه.';
 
   @override
   String get licenceKey => 'مفتاح الترخيص';

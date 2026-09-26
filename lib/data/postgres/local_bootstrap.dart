@@ -42,6 +42,25 @@ class AnotherOwnerActive extends OwnerSeed {
   final String username;
 }
 
+/// PostgreSQL has no account for the till, and the administrator credential
+/// may not create one.
+///
+/// Not a [PosDbException], although a driver error is what it came from: by
+/// the time it reaches the wizard, `permissionDenied` is indistinguishable
+/// from a refused GRANT on a table, and the two need opposite sentences — one
+/// is about a role that does not exist, the other about one that does. Carries
+/// both names because the remedy names both: use an administrator that may
+/// create roles, or create this one by hand.
+class TillRoleRefused implements Exception {
+  const TillRoleRefused({required this.role, required this.admin});
+
+  final String role;
+  final String admin;
+
+  @override
+  String toString() => 'TillRoleRefused: "$admin" may not create "$role".';
+}
+
 /// Preparing an empty PostgreSQL for a till, in one place.
 ///
 /// This used to live only in `bin/pos_migrate.dart`, which meant an offline
@@ -82,20 +101,7 @@ class LocalBootstrap {
       );
     }
 
-    final connection = await Connection.open(
-      Endpoint(
-        host: admin.databaseHost,
-        port: admin.databasePort,
-        database: 'postgres',
-        username: admin.databaseUser,
-        password: adminPassword,
-      ),
-      settings: ConnectionSettings(
-        sslMode: admin.allowsInsecureTransport
-            ? SslMode.disable
-            : SslMode.require,
-      ),
-    );
+    final connection = await _openMaintenance(admin, adminPassword);
 
     try {
       final existing = await connection.execute(
@@ -114,8 +120,46 @@ class LocalBootstrap {
             : 'CREATE DATABASE "$name" OWNER "${_identifier(owner)}"',
       );
       return true;
+    } on PosDbException {
+      rethrow;
+    } on Object catch (error) {
+      throw PosDbException(PosDbFailure.classify(error), error);
     } finally {
       await connection.close();
+    }
+  }
+
+  /// The maintenance connection every account-level step here opens, with the
+  /// driver's errors translated on the way out.
+  ///
+  /// **The translation is the point.** These steps do not go through
+  /// [PosDatabase], which is the only other place a `postgres` exception is
+  /// turned into a [PosDbException] — so a failure here used to leave this
+  /// file as a raw `ServerException` and land in the setup wizard's error bar
+  /// as `Severity.fatal 28000: role "pos_admin" does not exist`: a driver's
+  /// words, in English, in front of an installer reading Arabic. It is the
+  /// FIRST step of the build, so it was also the likeliest thing to fail.
+  static Future<Connection> _openMaintenance(
+    DeploymentConfig admin,
+    String adminPassword,
+  ) async {
+    try {
+      return await Connection.open(
+        Endpoint(
+          host: admin.databaseHost,
+          port: admin.databasePort,
+          database: 'postgres',
+          username: admin.databaseUser,
+          password: adminPassword,
+        ),
+        settings: ConnectionSettings(
+          sslMode: admin.allowsInsecureTransport
+              ? SslMode.disable
+              : SslMode.require,
+        ),
+      );
+    } on Object catch (error) {
+      throw PosDbException(PosDbFailure.classify(error), error);
     }
   }
 
@@ -136,48 +180,102 @@ class LocalBootstrap {
     required Map<InstallRole, String> passwords,
     Map<InstallRole, String> names = InstallRole.defaultNames,
   }) async {
-    final connection = await Connection.open(
-      Endpoint(
-        host: superuser.databaseHost,
-        port: superuser.databasePort,
-        database: 'postgres',
-        username: superuser.databaseUser,
-        password: superuserPassword,
-      ),
-      settings: ConnectionSettings(
-        sslMode: superuser.allowsInsecureTransport
-            ? SslMode.disable
-            : SslMode.require,
-      ),
-    );
+    final connection = await _openMaintenance(superuser, superuserPassword);
 
     final created = <String>[];
     try {
       for (final role in InstallRole.values) {
         final name = names[role]!;
-        final existing = await connection.execute(
-          Sql.named('SELECT 1 FROM pg_roles WHERE rolname = @name'),
-          parameters: {'name': name},
-        );
-        if (existing.isNotEmpty) continue;
-
         final password = passwords[role];
-        if (password == null || password.isEmpty) {
-          throw ArgumentError.value(
-            role.name,
-            'passwords',
-            'No password for the $name role, and it does not exist yet.',
-          );
+        if (await _createRole(connection, role, name, password)) {
+          created.add(name);
         }
-        for (final statement in roleStatements(role, name, password)) {
-          await connection.execute(statement);
-        }
-        created.add(name);
       }
+    } on PosDbException {
+      rethrow;
+    } on ArgumentError {
+      rethrow;
+    } on Object catch (error) {
+      throw PosDbException(PosDbFailure.classify(error), error);
     } finally {
       await connection.close();
     }
     return created;
+  }
+
+  /// The till's own login, created only where PostgreSQL does not have it.
+  ///
+  /// **Not part of [createRoles], on purpose.** That one is the installer's
+  /// step and makes all three accounts as a superuser. This is the wizard's,
+  /// and it exists because the wizard's own help text invites the other kind
+  /// of machine: a PostgreSQL somebody installed by hand, where `pos_admin`
+  /// was never created and the operator is told to type `postgres` instead.
+  /// On that machine `pos_till` is missing too — so the build created the
+  /// database, applied every migration, and then died on
+  /// `GRANT … TO "pos_till"` with a role nobody had made. The till's
+  /// password is on the same screen; this uses it.
+  ///
+  /// **Created, never changed**, for the same reason [createRoles] says so:
+  /// a role that is already there keeps the password the till and the backup
+  /// already have stored.
+  ///
+  /// Returns true when it created one. Throws [PosDbException] with
+  /// [PosDbFailure.permissionDenied] when the administrator credential may
+  /// not create roles — which is the ordinary state of a real `pos_admin`,
+  /// and on that machine the role is already there and this never runs.
+  static Future<bool> ensureTillRole(
+    DeploymentConfig admin,
+    String adminPassword, {
+    required String name,
+    required String password,
+  }) async {
+    final connection = await _openMaintenance(admin, adminPassword);
+    try {
+      return await _createRole(connection, InstallRole.till, name, password);
+    } on PosDbException catch (error) {
+      // `permission denied to create role`, 42501 — the ordinary answer from
+      // a real `pos_admin`, which is deliberately given neither SUPERUSER nor
+      // CREATEROLE. On that machine the installer made this role already and
+      // this line is never reached; anywhere else it is a different remedy
+      // from every other refused privilege, so it leaves here as its own type.
+      if (error.failure == PosDbFailure.permissionDenied) {
+        throw TillRoleRefused(role: name, admin: admin.databaseUser);
+      }
+      rethrow;
+    } on ArgumentError {
+      rethrow;
+    } on Object catch (error) {
+      throw PosDbException(PosDbFailure.classify(error), error);
+    } finally {
+      await connection.close();
+    }
+  }
+
+  /// One role, on an open connection: look first, and leave an existing one
+  /// exactly as it is. Returns true when it created one.
+  static Future<bool> _createRole(
+    Connection connection,
+    InstallRole role,
+    String name,
+    String? password,
+  ) async {
+    final existing = await connection.execute(
+      Sql.named('SELECT 1 FROM pg_roles WHERE rolname = @name'),
+      parameters: {'name': name},
+    );
+    if (existing.isNotEmpty) return false;
+
+    if (password == null || password.isEmpty) {
+      throw ArgumentError.value(
+        role.name,
+        'passwords',
+        'No password for the $name role, and it does not exist yet.',
+      );
+    }
+    for (final statement in roleStatements(role, name, password)) {
+      await connection.execute(statement);
+    }
+    return true;
   }
 
   /// What creating one install role runs. Pure, so a test can read it.

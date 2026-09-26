@@ -25,13 +25,37 @@ void main() {
       );
     });
 
-    test('a role that does not exist stays an AUTH problem', () {
-      // Postgres phrases both the same way. A missing role is `pg_hba.conf` and
-      // a credential; a missing database is a button. They must not collapse.
+    test('a role that does not exist is its own problem, not a password', () {
+      // Postgres phrases all three the same way — `database "x" does not
+      // exist`, `role "x" does not exist`, `password authentication failed
+      // for user "x"` — and this used to fold the middle one into `auth`. The
+      // wizard then told an installer "PostgreSQL rejected «pos_admin» and
+      // that password", which sent them to retype a password for a role
+      // PostgreSQL had never heard of. Seen live on 26 Sep 2026, on a Mac
+      // where PostgreSQL was installed by hand and only `postgres` exists.
       expect(
         PosDbFailure.classify('FATAL 28000: role "pos_till" does not exist'),
-        PosDbFailure.auth,
+        PosDbFailure.missingRole,
       );
+      expect(
+        PosDbFailure.classify(
+          'ServerException Severity.fatal 28000: role "pos_admin" does not '
+          'exist',
+        ),
+        PosDbFailure.missingRole,
+      );
+    });
+
+    test('the role in the message is read, not guessed', () {
+      // A build connects as one role and grants to another, so the failing
+      // role is not whichever one the step was holding.
+      expect(
+        PosDbException.roleNamedIn(
+          'Severity.fatal 28000: role "pos_admin" does not exist',
+        ),
+        'pos_admin',
+      );
+      expect(PosDbException.roleNamedIn('nothing of the sort'), isNull);
     });
 
     test('a refused privilege is a GRANT problem, not a bad statement', () {

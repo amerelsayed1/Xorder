@@ -12,6 +12,7 @@ import 'package:xorder_pos/core/ui/theme.dart';
 import 'package:xorder_pos/data/config/installer_credentials.dart';
 import 'package:xorder_pos/data/config/setup_progress_store.dart';
 import 'package:xorder_pos/data/fakes/fake_repositories.dart';
+import 'package:xorder_pos/data/postgres/local_bootstrap.dart';
 import 'package:xorder_pos/data/postgres/pos_database.dart';
 import 'package:xorder_pos/domain/repositories/repositories.dart';
 import 'package:xorder_pos/features/licensing/domain/license.dart';
@@ -92,20 +93,28 @@ class _RecordingDatabaseBuilder {
   _RecordingDatabaseBuilder({this.refusal});
 
   /// What the database says instead of building, when the test is about a
-  /// failure. A `PosDbException` rather than a bare `Exception` because the
-  /// whole question is whether the wizard translates it or prints it.
-  final PosDbException? refusal;
+  /// failure. Typed as `Object` so both kinds can be asked for: a
+  /// `PosDbException`, which the wizard has to translate rather than print,
+  /// and a `TillRoleRefused`, which is not a driver error at all.
+  final Object? refusal;
 
   DeploymentConfig? config;
   String? adminPassword;
+
+  /// The till's own, which the builder needs as well: on a machine with no
+  /// installer the `pos_till` role does not exist either, and the build is
+  /// what creates it.
+  String? tillPassword;
   int calls = 0;
 
   Future<DatabaseBuildReport> call(
     DeploymentConfig config,
     String adminPassword,
+    String tillPassword,
   ) async {
     this.config = config;
     this.adminPassword = adminPassword;
+    this.tillPassword = tillPassword;
     calls++;
     if (refusal case final refusal?) throw refusal;
     return const DatabaseBuildReport(created: true, migrations: 42);
@@ -621,6 +630,11 @@ void main() {
 
       // Built with what was typed, and granted to the till account beside it.
       expect(builder.adminPassword, 'admin-typed-by-hand');
+      // The till's password goes down as well, and not only into the secret
+      // store: on a machine with no installer there is no `pos_till` role
+      // either, and the build is the only thing that can create it — with
+      // this, the password every sale after tonight connects with.
+      expect(builder.tillPassword, 'typed-by-hand');
       expect(builder.config!.databaseName, 'xorder_pos');
       expect(builder.config!.databaseUser, 'pos_till');
       expect(builder.config!.adminDatabaseUser, 'pos_admin');
@@ -714,6 +728,91 @@ void main() {
       await tester.tap(find.text('Continue'));
       await tester.pumpAndSettle();
       expect(container.read(setupProvider).step, SetupStep.connecting);
+    });
+
+    testWidgets('a role PostgreSQL never heard of is not a bad password', (
+      tester,
+    ) async {
+      // The failure a Mac produced on 26 Sep 2026, verbatim, on this very
+      // screen: `pos_admin` is what the Windows installer creates, and a
+      // PostgreSQL installed by hand has no such role. It reached the error
+      // bar as `Severity.fatal 28000: role "pos_admin" does not exist` —
+      // English, and the driver's — because this path opens its own
+      // connection and nothing translated it. Then, once it was translated,
+      // it was classed as `auth` and read "PostgreSQL rejected «pos_admin»
+      // and that password", which is a password nobody mistyped and a field
+      // that will never fix it.
+      final builder = _RecordingDatabaseBuilder(
+        refusal: PosDbException(
+          PosDbFailure.missingRole,
+          'ServerException Severity.fatal 28000: role "pos_admin" does not '
+          'exist',
+        ),
+      );
+      final (container, _) = await open(
+        tester,
+        installer: const _NoInstaller(),
+        builder: builder,
+        printers: _PrintersFound(1),
+      );
+
+      final controller = await upToTheDatabase(tester, container);
+      controller
+        ..setDatabasePassword('typed-by-hand')
+        ..setAdminDatabasePassword('admin-typed-by-hand');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Use this database'));
+      await tester.pumpAndSettle();
+
+      // The field above the error bar is the one that fixes this, and the
+      // sentence sends the operator to it.
+      expect(
+        find.text(en.bootstrapAdminRoleMissing('pos_admin')),
+        findsOneWidget,
+      );
+      expect(
+        find.text(en.bootstrapAuthFailed('pos_admin')),
+        findsNothing,
+        reason: 'a role that does not exist has no password to get right',
+      );
+      expect(find.textContaining('28000'), findsNothing);
+      expect(find.textContaining('Severity'), findsNothing);
+      expect(container.read(setupProvider).provisioned, isFalse);
+    });
+
+    testWidgets('an administrator that cannot make the till account says so', (
+      tester,
+    ) async {
+      // The other end of the same machine: an administrator role that exists
+      // and may create databases, and a `pos_till` that does not exist and
+      // cannot be created by it. `permissionDenied` would have read as a
+      // refused GRANT on a table — the remedy for which is nothing like this
+      // one.
+      final builder = _RecordingDatabaseBuilder(
+        refusal: const TillRoleRefused(role: 'pos_till', admin: 'pos_admin'),
+      );
+      final (container, _) = await open(
+        tester,
+        installer: const _NoInstaller(),
+        builder: builder,
+        printers: _PrintersFound(1),
+      );
+
+      final controller = await upToTheDatabase(tester, container);
+      controller
+        ..setDatabasePassword('typed-by-hand')
+        ..setAdminDatabasePassword('admin-typed-by-hand');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Use this database'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text(en.tillRoleRefused('pos_till', 'pos_admin')),
+        findsOneWidget,
+      );
+      expect(find.textContaining('TillRoleRefused'), findsNothing);
+      expect(container.read(setupProvider).provisioned, isFalse);
+      expect(container.read(setupProvider).canAdvance, isFalse);
     });
   });
 

@@ -580,6 +580,21 @@ class SetupController extends Notifier<SetupDraft> {
             : s.databaseAlreadyThere(state.deployment.databaseName),
       );
 
+      // The account every sale after tonight connects with, created here if
+      // PostgreSQL does not already have it — see
+      // [LocalBootstrap.ensureTillRole]. Before the grants, which are what
+      // need it, and before the migrations, so a machine that cannot make the
+      // role at all says so before it has written a schema.
+      if (state.databasePassword.isNotEmpty &&
+          await LocalBootstrap.ensureTillRole(
+            admin,
+            state.adminDatabasePassword,
+            name: state.deployment.databaseUser,
+            password: state.databasePassword,
+          )) {
+        done.add(s.tillRoleCreated(state.deployment.databaseUser));
+      }
+
       final applied = await bootstrap.migrate(admin);
       done.add(
         applied.isEmpty
@@ -671,6 +686,11 @@ class SetupController extends Notifier<SetupDraft> {
         bootstrapped: true,
         bootstrapReport: done.join('\n'),
       );
+    } on TillRoleRefused catch (refusal) {
+      state = state.copyWith(
+        busy: false,
+        error: s.tillRoleRefused(refusal.role, refusal.admin),
+      );
     } on PosDbException catch (error) {
       state = state.copyWith(busy: false, error: _bootstrapFailure(error));
     } on Object catch (error, stack) {
@@ -737,6 +757,22 @@ class SetupController extends Notifier<SetupDraft> {
         state.deployment.databaseName,
         state.deployment.adminDatabaseUser,
       ),
+      // The role the DRIVER named, not the one this step happened to be
+      // holding: a build connects as the administrator and grants to the till,
+      // and naming the wrong one of those is how an installer ends up
+      // correcting a field that was right. `pos_till` is created by the build
+      // now, so what is left here is nearly always the administrator — whose
+      // field is directly above this message.
+      PosDbFailure.missingRole => switch (PosDbException.roleNamedIn(
+        error.raw,
+      )) {
+        final role?
+            when role != state.deployment.adminDatabaseUser =>
+          s.roleMissing(role),
+        final role => s.bootstrapAdminRoleMissing(
+          role ?? state.deployment.adminDatabaseUser,
+        ),
+      },
       _ => s.bootstrapRefused(error.raw),
     };
   }
@@ -1024,6 +1060,9 @@ class SetupController extends Notifier<SetupDraft> {
       PosDbFailure.dns => s.dnsFailure(),
       PosDbFailure.tcp => s.tcpFailure(config.databasePort),
       PosDbFailure.auth => s.authFailure(config.databaseUser),
+      // The connection test signs in as the till and runs `SELECT 1`, so the
+      // till is the only role either half could be about.
+      PosDbFailure.missingRole => s.roleMissing(config.databaseUser),
       PosDbFailure.tls => s.tlsFailure(),
       PosDbFailure.missingDatabase => s.missingDatabase(config.databaseName),
       PosDbFailure.permissionDenied => s.permissionDenied(
@@ -1474,6 +1513,11 @@ class SetupController extends Notifier<SetupDraft> {
       final report = await ref.read(databaseBuilderProvider)(
         state.deployment,
         state.adminDatabasePassword,
+        // The till's own, for the account the grants are for. On an installed
+        // machine it is already a role and this is never used; on the fallback
+        // path it is the password typed on this screen, and the only one the
+        // till will ever connect with.
+        state.databasePassword,
       );
       done
         ..add(
@@ -1481,6 +1525,10 @@ class SetupController extends Notifier<SetupDraft> {
               ? s.createdDatabase(state.deployment.databaseName)
               : s.databaseAlreadyThere(state.deployment.databaseName),
         )
+        ..addAll([
+          if (report.tillRoleCreated)
+            s.tillRoleCreated(state.deployment.databaseUser),
+        ])
         ..add(
           report.migrations == 0
               ? s.schemaAlreadyCurrent
@@ -1492,6 +1540,12 @@ class SetupController extends Notifier<SetupDraft> {
             state.deployment.adminDatabaseUser,
           ),
         );
+    } on TillRoleRefused catch (refusal) {
+      state = state.copyWith(
+        busy: false,
+        error: s.tillRoleRefused(refusal.role, refusal.admin),
+      );
+      return;
     } on PosDbException catch (error) {
       // Returns WITHOUT `provisioned`, which is what keeps Continue dim: a till
       // whose database was not built has nowhere to write a sale, and letting

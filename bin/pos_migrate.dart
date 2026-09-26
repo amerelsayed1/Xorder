@@ -127,6 +127,11 @@ String _explain(
   PosDbFailure.auth =>
     'PostgreSQL rejected the username or password. Check the '
         '"${options.user}" role exists and the password is right.',
+  PosDbFailure.missingRole =>
+    'PostgreSQL is running, and there is no role called '
+        '"${PosDbException.roleNamedIn(error.raw) ?? options.user}". Nothing '
+        'is wrong with the password. Re-run with --create-roles to create the '
+        'three accounts an install needs, or name a role that already exists.',
   PosDbFailure.tls =>
     'PostgreSQL rejected the secure connection. Check its certificate, or '
         'pass --no-verify-tls if this really is a box on this network.',
