@@ -78,10 +78,16 @@ class PosPricingEngine
                 // Deleted during an outage: money was taken, honour the sale
                 // from the snapshot, flagged so reconciliation can see it.
                 $unit = (int) ($line['unit_price_minor'] ?? 0);
+                // R1: no item to resolve (deleted during an outage). The single
+                // POS snapshot is all we have, so write it into both language
+                // slots — the display path always has something to show.
+                $snapshot = (string) ($line['name_snapshot'] ?? __('xorder.pos.unknown_item'));
                 $priced = [
                     'menu_item_id' => null,
                     'category_id' => null,
-                    'name' => (string) ($line['name_snapshot'] ?? __('xorder.pos.unknown_item')),
+                    'name' => $snapshot,
+                    'name_ar' => $snapshot,
+                    'name_en' => $snapshot,
                     'options' => [],
                     'price_source' => 'client_asserted',
                 ];
@@ -90,7 +96,12 @@ class PosPricingEngine
                 $priced = [
                     'menu_item_id' => $item->id,
                     'category_id' => $item->category_id,
-                    'name' => $line['name_snapshot'] ?? ($item->name_en ?: $item->name_ar),
+                    // R1: the server is the naming authority for a resolved
+                    // item — freeze BOTH languages from it. The till's
+                    // name_snapshot is advisory and no longer wins here.
+                    'name' => $item->name_en ?: $item->name_ar,
+                    'name_ar' => $item->name_ar,
+                    'name_en' => $item->name_en,
                     'options' => $optionNames,
                     'price_source' => 'server',
                 ];

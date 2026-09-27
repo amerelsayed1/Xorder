@@ -58,6 +58,8 @@ class PosOrderResource extends JsonResource
                 'client_line_id' => $item->client_line_id,
                 'refunded_quantity' => (int) ($item->refunded_quantity ?? 0),
                 'name' => $item->name,
+                'name_ar' => $item->name_ar,
+                'name_en' => $item->name_en,
                 'quantity' => $item->quantity,
                 'options' => $item->options ?? [],
                 'note' => $item->note,

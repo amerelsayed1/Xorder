@@ -15,6 +15,8 @@ class OrderRoundResource extends JsonResource
             'items' => $this->items->map(fn ($item) => [
                 'id' => $item->id,
                 'name' => $item->name,
+                'name_ar' => $item->name_ar,
+                'name_en' => $item->name_en,
                 'qty' => $item->quantity,
                 'variant' => $item->variant,
                 'options' => $item->options ?? [],

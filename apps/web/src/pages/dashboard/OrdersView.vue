@@ -197,11 +197,19 @@ function itemSummary(order) {
     const names = (order.items || []).map((i) => itemTitle(i)).filter(Boolean)
     return names.length ? names.join(' · ') : '—'
 }
+// The line name in the current UI locale (R1). POS lines carry both languages
+// frozen from the item; older and QR/public lines carry only `name`, which is
+// the fallback — so no historical order ever renders blank. Mirrors the
+// app-wide idiom (RestaurantDetails.vue).
+function itemName(it) {
+    const byLocale = locale.value === 'ar' ? (it.name_ar || it.name_en) : (it.name_en || it.name_ar)
+    return byLocale || it.name || ''
+}
 // "Pizza (Medium)": the name plus the chosen size/portion. Orders recorded
 // before `variant` existed carry the size inside `options`, so nothing is lost
 // for them either — it shows up in the extras line instead.
 function itemTitle(it) {
-    return it.variant ? `${it.name} (${it.variant})` : (it.name || '')
+    return it.variant ? `${itemName(it)} (${it.variant})` : itemName(it)
 }
 function itemCount(order) {
     return (order.items || []).reduce((n, i) => n + (Number(i.qty) || 0), 0)
@@ -438,7 +446,7 @@ function fmtTime(iso) {
                     <div v-for="(it, i) in receiptOrder.items" :key="i" class="receipt-line">
                         <span class="order-item-qty">{{ it.qty }}×</span>
                         <span class="receipt-line-name">
-                            <span class="receipt-line-title">{{ it.name }}<span v-if="it.variant" class="receipt-variant">{{ it.variant }}</span></span>
+                            <span class="receipt-line-title">{{ itemName(it) }}<span v-if="it.variant" class="receipt-variant">{{ it.variant }}</span></span>
                             <span v-if="it.options?.length" class="receipt-line-sub">+ {{ it.options.join(' · ') }}</span>
                             <span v-if="it.note" class="receipt-line-sub receipt-line-note">✎ {{ it.note }}</span>
                         </span>

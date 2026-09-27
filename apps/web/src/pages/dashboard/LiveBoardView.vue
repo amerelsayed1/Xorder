@@ -237,6 +237,9 @@ onMounted(async () => {
 onUnmounted(() => { clearInterval(pollTimer); offTick?.() })
 
 const areaName = (b) => (locale.value === 'ar' ? (b.area_name_ar || b.area_name_en) : (b.area_name_en || b.area_name_ar)) || ''
+// R1: line name in the current locale; POS lines carry both, older/QR lines
+// fall back to the single `name` so nothing renders blank.
+const itemName = (it) => (locale.value === 'ar' ? (it.name_ar || it.name_en) : (it.name_en || it.name_ar)) || it.name || ''
 function fmtTime(iso) {
     if (!iso) return ''
     const d = new Date(iso)
@@ -386,7 +389,7 @@ const panelDir = computed(() => (locale.value === 'ar' ? 'rtl' : 'ltr'))
                     <div class="live-time">{{ fmtTime(o.created_at) }} · <b style="color:var(--ink)">{{ o.total }} {{ currencyLabel(o.currency, locale) }}</b></div>
                     <ul class="live-order-items">
                         <li v-for="(it, i) in o.items" :key="i">
-                            <span class="live-qty">{{ it.qty }}×</span> {{ it.name }}<span v-if="it.variant" class="live-variant">{{ it.variant }}</span>
+                            <span class="live-qty">{{ it.qty }}×</span> {{ itemName(it) }}<span v-if="it.variant" class="live-variant">{{ it.variant }}</span>
                             <div v-if="it.options?.length" class="live-item-sub">+ {{ it.options.join(' · ') }}</div>
                             <div v-if="it.note" class="live-item-sub live-item-note">✎ {{ it.note }}</div>
                         </li>

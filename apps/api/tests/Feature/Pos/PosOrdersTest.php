@@ -7,6 +7,7 @@ use App\Models\Category;
 use App\Models\Charge;
 use App\Models\MenuItem;
 use App\Models\Order;
+use App\Models\OrderItem;
 use App\Models\Restaurant;
 use App\Models\Role;
 use App\Models\TaxRule;
@@ -308,6 +309,42 @@ class PosOrdersTest extends PosTestCase
         $this->assertSame('client_asserted', $body['lines'][0]['price_source']);
         $this->assertSame('Classic Burger', $body['lines'][0]['name']);
         $this->assertSame(9500, $body['totals']['total_minor']);
+        // R1: with nothing to resolve, the single snapshot fills both slots.
+        $this->assertSame('Classic Burger', $body['lines'][0]['name_ar']);
+        $this->assertSame('Classic Burger', $body['lines'][0]['name_en']);
+    }
+
+    public function test_a_resolved_line_freezes_both_names_from_the_item_not_the_snapshot(): void
+    {
+        // R1: the server is the naming authority for a resolved item — it
+        // freezes both languages from the item and ignores the till's snapshot.
+        $item = MenuItem::factory()->create([
+            'restaurant_id' => $this->restaurant->id,
+            'category_id' => $this->burger->category_id,
+            'name_en' => 'Classic Burger',
+            'name_ar' => 'برجر كلاسيك',
+            'price' => 100.00,
+            'discounted_price' => null,
+        ]);
+
+        $body = $this->postJson('/api/pos/orders', $this->payload([
+            'lines' => [['menu_item_id' => $item->id, 'quantity' => 1, 'name_snapshot' => 'STALE TILL NAME']],
+            'payments' => [['client_transaction_id' => (string) Str::uuid(), 'tender_type_id' => $this->cash->id, 'amount_minor' => 10000]],
+        ]), $this->deviceHeaders($this->token()))->assertCreated()->json('data');
+
+        // Response: both languages frozen from the item; snapshot did not win.
+        $this->assertSame('برجر كلاسيك', $body['lines'][0]['name_ar']);
+        $this->assertSame('Classic Burger', $body['lines'][0]['name_en']);
+        $this->assertSame('Classic Burger', $body['lines'][0]['name']);
+        $this->assertSame('server', $body['lines'][0]['price_source']);
+
+        // Persisted on the row and in the legacy orders.items JSON projection.
+        $row = OrderItem::withoutGlobalScopes()->where('order_id', $body['id'])->firstOrFail();
+        $this->assertSame('برجر كلاسيك', $row->name_ar);
+        $this->assertSame('Classic Burger', $row->name_en);
+        $order = Order::withoutGlobalScopes()->findOrFail($body['id']);
+        $this->assertSame('برجر كلاسيك', $order->items[0]['name_ar']);
+        $this->assertSame('Classic Burger', $order->items[0]['name_en']);
     }
 
     public function test_the_v1_relaxation_accepts_no_actor_and_no_shift(): void

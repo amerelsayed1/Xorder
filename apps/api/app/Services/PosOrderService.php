@@ -182,6 +182,10 @@ class PosOrderService
                 // zero changes: same shape the public path stores.
                 'items' => array_map(fn ($l) => [
                     'name' => $l['name'],
+                    // R1: both languages carried in the legacy projection so the
+                    // dashboard resolves the line name by locale without a join.
+                    'name_ar' => $l['name_ar'],
+                    'name_en' => $l['name_en'],
                     'qty' => $l['quantity'],
                     'options' => $l['options'],
                     'note' => $l['note'],
@@ -245,6 +249,8 @@ class PosOrderService
                     'order_id' => $order->id,
                     'order_round_id' => $round->id,
                     'name' => $line['name'],
+                    'name_ar' => $line['name_ar'],
+                    'name_en' => $line['name_en'],
                     'quantity' => $line['quantity'],
                     'options' => $line['options'],
                     'note' => $line['note'],
