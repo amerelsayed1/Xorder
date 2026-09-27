@@ -1,8 +1,8 @@
 # POS → BACKEND — Requirement Requests
 
 **Channel owner:** Agent 1 (Flutter POS Desktop)
-**Absolute path:** `~/Projects/Mobile Application/xorder-pos/docs/coordination/POS_TO_BACKEND.md`
-**Backend repo under analysis:** `~/Projects/Web Application/xorder-new` (`apps/api`)
+**Absolute path:** `~/Projects/Xorder/xorder-pos/docs/coordination/POS_TO_BACKEND.md`
+**Backend repo under analysis:** `~/Projects/Xorder/xorder-new` (`apps/api`)
 **Reply channel:** `./BACKEND_TO_POS.md`
 **Last updated:** 2026-09-11 (POS-BE-029 rule 3: payment kinds are the platform's — see change log)
 
@@ -659,8 +659,31 @@ diagnostics.
 
 ## POS-BE-014
 
-**Status:** APPROVED — contract agreed 2026-09-02, see `BACKEND_TO_POS.md`; implementation not started
+**Status:** **BUILT both sides 2026-09-27** (owner go) — contract agreed
+2026-09-02, see `BACKEND_TO_POS.md`
 **Feature:** Authenticated customer creation from the till
+
+> **What was built.** `POST /api/pos/customers` on the device token, through
+> `CustomerDirectory::upsert()` exactly as the contract asked, so a regular who
+> has ordered from their phone and then gives the same number at the counter is
+> one customer and not two. `customers.create` is the gate; it was already
+> declared in `TenantCapability` and had never been used. A replay answers 200
+> with the same customer rather than creating a second — the phone is the
+> natural key, so this needs no separate idempotency table.
+>
+> **The bundle now carries the directory** (`customers`, newest first, capped
+> at 2000). Owner decision: a cashier must be able to search with no internet,
+> and the counter is exactly where the signal is worst. The till seeds it into
+> `pos_customers` (migration 51) and searches locally.
+>
+> **The till upserts on the phone too**, and the seeder matches on the number
+> rather than the platform id — a customer created at the counter during an
+> outage and the same person arriving in the next bundle merge into one row
+> instead of leaving a duplicate the cashier can see.
+>
+> Deferred: uploading till-created customers through the outbox. They are
+> written and usable locally and referenced by the sale; the platform learns
+> about them when somebody is created there or the sale carries them.
 
 **Description:** An authenticated endpoint to create a customer (and optionally an
 address) from the POS.
