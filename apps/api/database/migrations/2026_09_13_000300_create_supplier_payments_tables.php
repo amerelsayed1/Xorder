@@ -35,7 +35,7 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('supplier_payments', function (Blueprint $table) {
+        Schema::hasTable('supplier_payments') || Schema::create('supplier_payments', function (Blueprint $table) {
             $table->id();
             $table->foreignId('restaurant_id')->constrained()->cascadeOnDelete();
             $table->foreignId('branch_id')->constrained();
@@ -64,7 +64,7 @@ return new class extends Migration
             $table->index('pos_cash_movement_id');
         });
 
-        Schema::create('supplier_payment_allocations', function (Blueprint $table) {
+        Schema::hasTable('supplier_payment_allocations') || Schema::create('supplier_payment_allocations', function (Blueprint $table) {
             $table->id();
             // Stamped from the payment, never from input.
             $table->foreignId('restaurant_id')->constrained()->cascadeOnDelete();

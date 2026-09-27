@@ -40,7 +40,7 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('receipt_profiles', function (Blueprint $table) {
+        Schema::hasTable('receipt_profiles') || Schema::create('receipt_profiles', function (Blueprint $table) {
             $table->id();
             $table->foreignId('restaurant_id')->constrained()->cascadeOnDelete();
             $table->foreignId('branch_id')->constrained()->cascadeOnDelete();

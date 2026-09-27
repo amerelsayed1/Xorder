@@ -40,7 +40,7 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('supplier_invoices', function (Blueprint $table) {
+        Schema::hasTable('supplier_invoices') || Schema::create('supplier_invoices', function (Blueprint $table) {
             $table->id();
             $table->foreignId('restaurant_id')->constrained()->cascadeOnDelete();
             $table->foreignId('branch_id')->constrained();
@@ -71,7 +71,7 @@ return new class extends Migration
             $table->index('purchase_order_id');
         });
 
-        Schema::create('supplier_invoice_lines', function (Blueprint $table) {
+        Schema::hasTable('supplier_invoice_lines') || Schema::create('supplier_invoice_lines', function (Blueprint $table) {
             $table->id();
             // Stamped from the invoice, never from input.
             $table->foreignId('restaurant_id')->constrained()->cascadeOnDelete();

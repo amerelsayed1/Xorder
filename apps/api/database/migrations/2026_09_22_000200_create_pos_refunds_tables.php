@@ -31,7 +31,7 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('pos_refunds', function (Blueprint $table) {
+        Schema::hasTable('pos_refunds') || Schema::create('pos_refunds', function (Blueprint $table) {
             $table->id();
             $table->foreignId('restaurant_id')->constrained()->cascadeOnDelete();
             $table->foreignId('branch_id')->constrained()->cascadeOnDelete();
@@ -61,7 +61,7 @@ return new class extends Migration
             $table->index(['restaurant_id', 'pos_shift_id']);
         });
 
-        Schema::create('pos_refund_lines', function (Blueprint $table) {
+        Schema::hasTable('pos_refund_lines') || Schema::create('pos_refund_lines', function (Blueprint $table) {
             $table->id();
             $table->foreignId('restaurant_id')->constrained()->cascadeOnDelete();
             $table->foreignId('pos_refund_id')->constrained('pos_refunds')->cascadeOnDelete();
@@ -79,7 +79,7 @@ return new class extends Migration
             $table->unique(['pos_refund_id', 'order_item_id']);
         });
 
-        Schema::create('pos_refund_tenders', function (Blueprint $table) {
+        Schema::hasTable('pos_refund_tenders') || Schema::create('pos_refund_tenders', function (Blueprint $table) {
             $table->id();
             $table->foreignId('restaurant_id')->constrained()->cascadeOnDelete();
             $table->foreignId('pos_refund_id')->constrained('pos_refunds')->cascadeOnDelete();
