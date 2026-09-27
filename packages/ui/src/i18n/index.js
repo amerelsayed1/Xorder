@@ -1602,13 +1602,13 @@ const messages = {
             system_ordering: 'الطلب عبر النظام', customer_tracking: 'متابعة العملاء',
             table_management: 'إدارة الطاولات', bill_requests: 'طلب الفاتورة',
             internal_reviews: 'التقييمات الداخلية', product_analytics: 'تحليلات المنتجات',
-            dine_in: 'تناول بالمطعم', pickup: 'استلام', delivery: 'توصيل',
+            dine_in: 'تناول داخل المكان', pickup: 'استلام', delivery: 'توصيل',
             pickup_delivery: 'استلام وتوصيل',
             multi_branch: 'فروع متعددة',
             pos: 'نقاط البيع (POS)',
             purchasing: 'المشتريات والموردون',
         },
-        order_type: { dine_in: 'صالة', pickup: 'استلام', delivery: 'توصيل' },
+        order_type: { dine_in: 'داخل المكان', pickup: 'استلام', delivery: 'توصيل' },
         order_source: { pos: 'كاشير' },
         country: { EG: 'مصر', SA: 'السعودية', AE: 'الإمارات' },
         landing: {
@@ -1958,7 +1958,7 @@ const messages = {
             total_spent: 'إجمالي الإنفاق',
         },
         order_type: {
-            pickup: 'استلام', delivery: 'توصيل', dine_in: 'في المطعم',
+            pickup: 'استلام', delivery: 'توصيل', dine_in: 'داخل المكان',
             takeaway: 'سفري', drive_thru: 'الخدمة من السيارة',
         },
         pos_terminals: {

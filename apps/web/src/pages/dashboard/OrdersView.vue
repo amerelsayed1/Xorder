@@ -339,7 +339,7 @@ function fmtTime(iso) {
                                 <td class="px-3 py-3">
                                     <button v-if="canOpenCustomer(order)" type="button" class="cust-link cell-strong" @click="openCustomer(order)">{{ order.customer_name || '—' }}</button>
                                     <div v-else class="cell-strong">{{ order.customer_name || '—' }}</div>
-                                    <div v-if="order.customer_phone" class="cell-sub cell-phone" dir="ltr">{{ order.customer_phone }}</div>
+                                    <div v-if="order.customer_phone" class="cell-sub cell-phone"><bdi dir="ltr">{{ order.customer_phone }}</bdi></div>
                                 </td>
                                 <td class="px-3 py-3 whitespace-nowrap">
                                     <div class="cell-strong tabular">{{ fmtClock(order.created_at) }}</div>
