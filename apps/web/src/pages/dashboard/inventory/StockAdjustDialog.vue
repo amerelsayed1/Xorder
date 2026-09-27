@@ -205,7 +205,7 @@ async function submit({ reason, note }) {
                     {{ t('purchasing.adj_recorded_now') }}:
                     <span class="mono" dir="ltr" style="color:var(--ink)">{{ qty(held, item.unit_code) }}</span>
                     · {{ t('purchasing.adj_at_average') }}
-                    <span class="mono" dir="ltr" style="color:var(--ink)">{{ cost(average) }}</span>
+                    <span class="mono" style="color:var(--ink)">{{ cost(average) }}</span>
                 </template>
                 <template v-else>{{ t('purchasing.adj_nothing_here') }}</template>
             </p>
@@ -221,7 +221,7 @@ async function submit({ reason, note }) {
                     <input v-model="unitCost" class="input mono" dir="ltr" inputmode="decimal" autocomplete="off" :placeholder="costRequired ? '' : minorToAmount(average, exponent)" />
                     <p v-if="costRequired && mode !== 'opening'" class="text-xs mt-1" style="color:var(--muted)">{{ t('purchasing.adj_cost_required_hint') }}</p>
                     <p v-else-if="!costRequired" class="text-xs mt-1" style="color:var(--muted)">
-                        {{ t('purchasing.adj_cost_default_hint') }}: <span class="mono" dir="ltr">{{ cost(average) }}</span>
+                        {{ t('purchasing.adj_cost_default_hint') }}: <span class="mono">{{ cost(average) }}</span>
                     </p>
                     <FormError :errors="errors" field="unit_cost_minor" />
                 </label>
@@ -236,7 +236,7 @@ async function submit({ reason, note }) {
                     </div>
                     <div v-if="delta < 0" class="flex justify-between gap-3">
                         <span style="color:var(--muted)">{{ t('purchasing.adj_leaves_at') }}</span>
-                        <span class="mono" dir="ltr" style="color:var(--ink)">{{ cost(costAt(-delta, average)) }}</span>
+                        <span class="mono" style="color:var(--ink)">{{ cost(costAt(-delta, average)) }}</span>
                     </div>
                     <div class="flex justify-between gap-3">
                         <span style="color:var(--muted)">{{ t('purchasing.adj_after') }}</span>

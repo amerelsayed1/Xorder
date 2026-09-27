@@ -143,8 +143,8 @@ function saved() {
                                 <td class="px-5 py-3 text-end">
                                     <span class="mono" dir="ltr" :style="recorded(r) < 0 ? 'color:var(--red)' : ''">{{ qty(recorded(r), r.unit_code) }}</span>
                                 </td>
-                                <td class="px-5 py-3 text-end"><span class="mono" dir="ltr">{{ cost(r.average_cost_minor) }}</span></td>
-                                <td class="px-5 py-3 text-end"><span class="mono" dir="ltr">{{ cost(r.value_minor) }}</span></td>
+                                <td class="px-5 py-3 text-end"><span class="mono">{{ cost(r.average_cost_minor) }}</span></td>
+                                <td class="px-5 py-3 text-end"><span class="mono">{{ cost(r.value_minor) }}</span></td>
                                 <td v-if="canWrite" class="px-5 py-3 text-end">
                                     <button type="button" class="btn btn-ghost btn-sm" @click.stop="openDialog(false, r)">{{ t('purchasing.adj_action') }}</button>
                                 </td>
@@ -154,7 +154,7 @@ function saved() {
                     <tfoot v-if="!loading && rows.length">
                         <tr class="border-t font-medium" style="border-color:var(--line);color:var(--ink)">
                             <td class="px-5 py-3" :colspan="showBranch ? 4 : 3">{{ t('purchasing.total_value') }}</td>
-                            <td class="px-5 py-3 text-end"><span class="mono" dir="ltr">{{ cost(meta.value_minor) }}</span></td>
+                            <td class="px-5 py-3 text-end"><span class="mono">{{ cost(meta.value_minor) }}</span></td>
                             <td v-if="canWrite"></td>
                         </tr>
                     </tfoot>

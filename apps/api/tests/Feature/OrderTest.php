@@ -24,8 +24,8 @@ class OrderTest extends TestCase
     {
         return [
             'items' => [
-                ['name' => 'برجر', 'qty' => 2, 'options' => ['جبنة إضافية'], 'line_total' => 150],
-                ['name' => 'Pizza', 'qty' => 1, 'options' => [], 'line_total' => 80],
+                ['name' => 'برجر', 'qty' => 2, 'options' => ['جبنة إضافية'], 'note' => 'بدون بصل', 'line_total' => 150],
+                ['name' => 'Pizza', 'qty' => 1, 'variant' => 'Medium', 'options' => [], 'note' => null, 'line_total' => 80],
             ],
             'total' => 230,
             'customer_name' => 'Amer',
@@ -46,6 +46,52 @@ class OrderTest extends TestCase
             'customer_name' => 'Amer',
             'source' => 'system',
         ]);
+    }
+
+    /** The menu always sends the directory-only fields (email, address) — they must not break the order row. */
+    public function test_order_accepts_customer_email_and_address_fields(): void
+    {
+        $r = Restaurant::factory()->withOrdering()->create(['slug' => 'demo']);
+
+        $this->postJson('/api/public/restaurants/demo/orders', $this->payload() + [
+            'customer_email' => 'amer@example.com',
+            'customer_address' => '12 Nile St, Cairo',
+            'address_label' => 'Home',
+            'note' => null,
+        ])->assertCreated();
+
+        $this->assertDatabaseHas('orders', ['restaurant_id' => $r->id, 'customer_name' => 'Amer']);
+        $this->assertDatabaseHas('customers', ['restaurant_id' => $r->id, 'email' => 'amer@example.com']);
+    }
+
+    /** A size/portion pick is kept apart from the add-ons on both the JSON snapshot and the round line. */
+    public function test_order_keeps_the_chosen_variant(): void
+    {
+        $r = Restaurant::factory()->withOrdering()->create(['slug' => 'demo']);
+
+        $id = $this->postJson('/api/public/restaurants/demo/orders', $this->payload())
+            ->assertCreated()->json('data.id');
+
+        $order = Order::withoutGlobalScopes()->findOrFail($id);
+        $this->assertSame('Medium', $order->items[1]['variant']);
+        $this->assertArrayNotHasKey('variant', $order->items[0]);
+
+        $this->assertDatabaseHas('order_items', [
+            'order_id' => $id, 'name' => 'Pizza', 'variant' => 'Medium',
+        ]);
+        $this->assertDatabaseHas('order_items', [
+            'order_id' => $id, 'name' => 'برجر', 'variant' => null, 'note' => 'بدون بصل',
+        ]);
+        $this->assertSame('بدون بصل', $order->items[0]['note']);
+
+        $this->enableSystemOrdering($r);
+        $this->actingAs(User::factory()->restaurantAdmin($r->id)->create())
+            ->getJson('/api/dashboard/orders')
+            ->assertOk()
+            ->assertJsonPath('data.0.items.1.variant', 'Medium')
+            ->assertJsonPath('data.0.items.0.note', 'بدون بصل')
+            ->assertJsonPath('data.0.rounds.0.items.1.variant', 'Medium')
+            ->assertJsonPath('data.0.rounds.0.items.0.note', 'بدون بصل');
     }
 
     public function test_order_total_is_recomputed_from_line_totals_not_trusted(): void

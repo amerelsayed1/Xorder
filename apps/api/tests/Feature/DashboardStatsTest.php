@@ -5,9 +5,11 @@ namespace Tests\Feature;
 use App\Enums\RestaurantStatus;
 use App\Models\Category;
 use App\Models\MenuItem;
+use App\Models\Order;
 use App\Models\Restaurant;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Tests\TestCase;
 
 /**
@@ -55,6 +57,87 @@ class DashboardStatsTest extends TestCase
             ->getJson('/api/dashboard/stats')
             ->assertOk()
             ->json('data');
+    }
+
+    /** Place an order for the tenant at a given moment, with a given total. */
+    private function orderAt(string $at, float $total, string $status = 'NEW'): Order
+    {
+        $order = new Order([
+            'status' => $status,
+            'items' => [['name' => 'Item', 'qty' => 1, 'line_total' => $total]],
+            'total' => $total,
+            'currency' => 'EGP',
+            'order_type' => 'pickup',
+            'source' => 'system',
+        ]);
+        $order->restaurant_id = $this->restaurant->id;
+        $order->save();
+        $order->forceFill(['created_at' => $at])->save();
+
+        return $order;
+    }
+
+    public function test_sales_today_sums_todays_orders_and_counts_them(): void
+    {
+        $this->orderAt(now()->setTime(9, 0)->toDateTimeString(), 100.00);
+        $this->orderAt(now()->setTime(13, 0)->toDateTimeString(), 40.50);
+        $this->orderAt(now()->subDays(2)->setTime(13, 0)->toDateTimeString(), 999.00);
+
+        $stats = $this->stats();
+
+        $this->assertEquals(140.50, $stats['sales_today']);
+        $this->assertSame(2, $stats['orders_today']);
+    }
+
+    public function test_a_cancelled_order_is_not_a_sale(): void
+    {
+        $this->orderAt(now()->setTime(9, 0)->toDateTimeString(), 100.00);
+        $this->orderAt(now()->setTime(10, 0)->toDateTimeString(), 60.00, 'CANCELLED');
+
+        $stats = $this->stats();
+
+        $this->assertEquals(100.00, $stats['sales_today']);
+        $this->assertSame(1, $stats['orders_today']);
+    }
+
+    public function test_sales_change_is_measured_against_yesterday(): void
+    {
+        $this->orderAt(now()->subDay()->setTime(12, 0)->toDateTimeString(), 100.00);
+        $this->orderAt(now()->setTime(12, 0)->toDateTimeString(), 150.00);
+
+        $this->assertSame(50, $this->stats()['sales_change_pct']);
+    }
+
+    /**
+     * Going 0 -> something is not growth you can put a percentage on, so the
+     * dashboard is handed null and shows nothing rather than "+100%".
+     */
+    public function test_sales_change_is_null_when_yesterday_had_no_sales(): void
+    {
+        $this->orderAt(now()->setTime(12, 0)->toDateTimeString(), 150.00);
+
+        $this->assertNull($this->stats()['sales_change_pct']);
+    }
+
+    /**
+     * The day boundary is the restaurant's, not the server's: an order placed
+     * at 11pm Cairo time is still today's sale when the UTC clock has already
+     * rolled over.
+     */
+    public function test_sales_today_uses_the_restaurants_own_day(): void
+    {
+        $this->restaurant->forceFill(['timezone' => 'Africa/Cairo'])->save();
+
+        $localLateNight = Carbon::now('Africa/Cairo')->setTime(23, 30);
+        $this->orderAt($localLateNight->copy()->utc()->toDateTimeString(), 75.00);
+
+        $this->assertEquals(75.00, $this->stats()['sales_today']);
+    }
+
+    /** No till running means no shift panel — the common case for most tenants. */
+    public function test_current_shift_is_null_without_an_open_shift(): void
+    {
+        $this->assertNull($this->stats()['current_shift']);
     }
 
     public function test_items_in_an_inactive_category_do_not_count_as_available(): void

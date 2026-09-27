@@ -16,6 +16,7 @@ class OrderRoundResource extends JsonResource
                 'id' => $item->id,
                 'name' => $item->name,
                 'qty' => $item->quantity,
+                'variant' => $item->variant,
                 'options' => $item->options ?? [],
                 'note' => $item->note,
                 'unit_price' => $item->unit_price,

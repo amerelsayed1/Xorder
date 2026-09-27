@@ -370,7 +370,9 @@ class PosProvisioningService
      * And it must have NO MONEY HISTORY: pos_shifts cascade on terminal delete
      * and orders lose their attribution, so a till that ever traded is a
      * record, not clutter, and it stays. What this removes is the
-     * never-claimed, never-used leftover.
+     * never-claimed, never-used leftover — including one whose only trace is
+     * an empty shift somebody opened while testing the pairing, which is
+     * clutter of exactly the same kind and used to pin the row forever.
      *
      * Lives here rather than in a controller because both front doors — the
      * restaurant's dashboard and the Super Admin's tenant page — must apply
@@ -383,8 +385,22 @@ class PosProvisioningService
             throw new PosApiException('TERMINAL_STILL_ACTIVE', 422, null, __('xorder.errors.pos_terminal_still_active'));
         }
 
-        $hasHistory = PosShift::query()->withoutGlobalScopes()
-            ->where('pos_terminal_id', $terminal->id)->exists()
+        // A shift ROW is not money history. A till paired for a test, with a
+        // shift opened on it and nothing else — no order, nothing in the
+        // drawer, never closed — leaves the same leftover the terminal row is,
+        // and cascades with it. What must survive is anything that TRADED: an
+        // order, a float, a counted drawer, a close.
+        $tradedShift = PosShift::query()->withoutGlobalScopes()
+            ->where('pos_terminal_id', $terminal->id)
+            ->where(function ($shift) {
+                $shift->whereNotNull('closed_at')
+                    ->orWhereNotNull('closed_by_id')
+                    ->orWhereNotNull('counted_cash_minor')
+                    ->orWhere('opening_float_minor', '>', 0);
+            })
+            ->exists();
+
+        $hasHistory = $tradedShift
             || Order::query()->withoutGlobalScopes()
                 ->where('pos_terminal_id', $terminal->id)->exists();
 

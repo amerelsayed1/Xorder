@@ -69,6 +69,38 @@ export function useCart(slug = '') {
         return labels
     }
 
+    /**
+     * The chosen size/portion of a cart line, or null when the item has no
+     * variant group. Kept apart from the add-ons so the kitchen reads
+     * "Pizza — Medium" as one thing and "+ extra cheese" as another.
+     */
+    function getLineVariant(line, localize) {
+        const groups = (line.kind === 'combo' ? line.ref.groups : line.ref.option_groups) || []
+        for (let gi = 0; gi < groups.length; gi++) {
+            const g = groups[gi]
+            if (!g.is_variant) continue
+            const pool = (line.kind === 'combo' ? g.items : g.options) || []
+            const opt = pool[selectedIndexes(line.groups[gi])[0]]
+            return opt ? localize(opt) : null
+        }
+        return null
+    }
+
+    /** Labels of the selected add-ons only — every non-variant choice. */
+    function getLineExtras(line, localize) {
+        const groups = (line.kind === 'combo' ? line.ref.groups : line.ref.option_groups) || []
+        const labels = []
+        groups.forEach((g, gi) => {
+            if (g.is_variant) return
+            const pool = (line.kind === 'combo' ? g.items : g.options) || []
+            selectedIndexes(line.groups[gi]).forEach((oi) => {
+                const opt = pool[oi]
+                if (opt) labels.push(localize(opt))
+            })
+        })
+        return labels
+    }
+
     function amount(value) {
         const number = Number(value ?? 0)
         return Number.isFinite(number) ? number : 0
@@ -137,6 +169,8 @@ export function useCart(slug = '') {
         bumpLine,
         clearCart,
         getLineOptions,
+        getLineVariant,
+        getLineExtras,
         calculateLinePrice,
     }
 }

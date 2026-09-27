@@ -8,7 +8,9 @@ use App\Models\Category;
 use App\Models\MenuItem;
 use App\Models\MenuViewDaily;
 use App\Models\Order;
+use App\Models\OrderPayment;
 use App\Models\Restaurant;
+use App\Models\TenderType;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -101,6 +103,7 @@ class InsightsController extends Controller
                     'max_price' => $pricing?->max_price !== null ? (float) $pricing->max_price : null,
                 ],
                 'engagement' => $this->engagement($restaurant),
+                'payments' => $this->payments($restaurant),
                 'top_items' => $this->topItems(),
                 'category_breakdown' => $categoryBreakdown,
                 'needs_attention' => $this->needsAttention(
@@ -189,6 +192,69 @@ class InsightsController extends Controller
             'orders_change_pct' => $previous14 > 0
                 ? round((($current14 - $previous14) / $previous14) * 100, 1)
                 : null,
+        ];
+    }
+
+    /**
+     * Money actually taken, split by how it was tendered, for the last 14 local
+     * days. The dashboard draws one stacked bar per day and lets the reader
+     * narrow to the last 7, so the whole fortnight is returned once rather than
+     * re-queried per range.
+     *
+     * Tender types are per-tenant free text ("Visa", "InstaPay"), so they are
+     * folded into their `kind` — the fixed vocabulary the money config already
+     * enforces — and anything not cash or card lands in `other`. A payment with
+     * no tender type recorded counts as cash, matching how PosShiftService
+     * treats an untyped drawer payment when it works out expected cash.
+     *
+     * @return array<string, mixed>
+     */
+    private function payments(Restaurant $restaurant): array
+    {
+        $tz = $restaurant->localTimezone();
+
+        $kindById = TenderType::pluck('kind', 'id');
+
+        // Bucketed in PHP for the same reason the order series above is: the
+        // timestamp column is UTC and the bucket has to be the tenant's local
+        // day. `received_at` is when the till says the money was taken, which
+        // is the honest x-axis; it is nullable, so fall back to the row's own
+        // creation time rather than dropping the payment.
+        $rows = OrderPayment::where('created_at', '>=', Carbon::now($tz)->subDays(13)->startOfDay()->utc())
+            ->get(['tender_type_id', 'amount_minor', 'received_at', 'created_at']);
+
+        $buckets = $rows->groupBy(
+            fn (OrderPayment $p) => ($p->received_at ?? $p->created_at)->copy()->setTimezone($tz)->toDateString(),
+        );
+
+        $series = collect(range(13, 0))->map(function (int $daysAgo) use ($buckets, $kindById, $tz) {
+            $day = Carbon::now($tz)->subDays($daysAgo)->toDateString();
+            $rows = $buckets->get($day, collect());
+
+            $of = function (array $kinds) use ($rows, $kindById): int {
+                return (int) $rows->filter(function (OrderPayment $p) use ($kinds, $kindById) {
+                    $kind = $p->tender_type_id ? $kindById->get($p->tender_type_id) : 'cash';
+
+                    return in_array($kind ?? 'cash', $kinds, true);
+                })->sum('amount_minor');
+            };
+
+            $cash = $of(['cash']);
+            $card = $of(['card']);
+            $total = (int) $rows->sum('amount_minor');
+
+            return [
+                'date' => $day,
+                'cash_minor' => $cash,
+                'card_minor' => $card,
+                'other_minor' => $total - $cash - $card,
+                'total_minor' => $total,
+            ];
+        })->values();
+
+        return [
+            'currency' => $restaurant->currency,
+            'daily' => $series,
         ];
     }
 

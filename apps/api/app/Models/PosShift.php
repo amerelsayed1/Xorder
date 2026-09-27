@@ -43,6 +43,12 @@ class PosShift extends Model
         return $this->belongsTo(PosTerminal::class, 'pos_terminal_id');
     }
 
+    /** The cashier who opened the shift — named on the back-office summary. */
+    public function openedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'opened_by_id');
+    }
+
     public function cashMovements(): HasMany
     {
         return $this->hasMany(PosCashMovement::class);

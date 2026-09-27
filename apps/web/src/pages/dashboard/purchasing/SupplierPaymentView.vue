@@ -98,13 +98,13 @@ async function submitVoid({ reason, note }) {
             <div class="card p-5 grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
                 <div><div style="color:var(--muted)">{{ t('purchasing.paid_at') }}</div><div style="color:var(--ink)">{{ fmtDay(payment.paid_at, locale) }}</div></div>
                 <div><div style="color:var(--muted)">{{ t('purchasing.method') }}</div><div style="color:var(--ink)">{{ t('purchasing.methods.' + payment.method) }}</div></div>
-                <div><div style="color:var(--muted)">{{ t('purchasing.payment_reference') }}</div><div class="mono" dir="ltr" style="color:var(--ink)">{{ payment.reference || '—' }}</div></div>
-                <div><div style="color:var(--muted)">{{ t('purchasing.amount') }}</div><div class="mono font-semibold" dir="ltr" style="color:var(--ink)">{{ show(payment.amount_minor) }}</div></div>
-                <div><div style="color:var(--muted)">{{ t('purchasing.allocated') }}</div><div class="mono" dir="ltr" style="color:var(--ink)">{{ show(payment.allocated_minor) }}</div></div>
-                <div><div style="color:var(--muted)">{{ t('purchasing.on_account') }}</div><div class="mono" dir="ltr" style="color:var(--ink)">{{ show(payment.on_account_minor) }}</div></div>
+                <div><div style="color:var(--muted)">{{ t('purchasing.payment_reference') }}</div><div class="mono" style="color:var(--ink)"><span dir="ltr">{{ payment.reference || '—' }}</span></div></div>
+                <div><div style="color:var(--muted)">{{ t('purchasing.amount') }}</div><div class="mono font-semibold" style="color:var(--ink)"><span>{{ show(payment.amount_minor) }}</span></div></div>
+                <div><div style="color:var(--muted)">{{ t('purchasing.allocated') }}</div><div class="mono" style="color:var(--ink)"><span>{{ show(payment.allocated_minor) }}</span></div></div>
+                <div><div style="color:var(--muted)">{{ t('purchasing.on_account') }}</div><div class="mono" style="color:var(--ink)"><span>{{ show(payment.on_account_minor) }}</span></div></div>
                 <div v-if="payment.cash_movement" class="col-span-2">
                     <div style="color:var(--muted)">{{ t('purchasing.till_payout') }}</div>
-                    <div style="color:var(--ink)">{{ fmtDate(payment.cash_movement.occurred_at, locale, { time: true }) }} · <span class="mono" dir="ltr">{{ show(payment.cash_movement.amount_minor) }}</span> · {{ payment.cash_movement.reason }}</div>
+                    <div style="color:var(--ink)">{{ fmtDate(payment.cash_movement.occurred_at, locale, { time: true }) }} · <span class="mono">{{ show(payment.cash_movement.amount_minor) }}</span> · {{ payment.cash_movement.reason }}</div>
                 </div>
                 <div v-if="payment.note" class="col-span-2 sm:col-span-4"><div style="color:var(--muted)">{{ t('purchasing.notes') }}</div><div class="whitespace-pre-line" style="color:var(--body)">{{ payment.note }}</div></div>
             </div>
@@ -116,7 +116,7 @@ async function submitVoid({ reason, note }) {
                     <li v-for="a in payment.allocations" :key="a.id" class="flex flex-wrap items-center gap-3 px-5 py-3 border-t text-sm" style="border-color:var(--line)">
                         <RouterLink :to="{ name: 'dashboard.purchasing.invoice', params: { id: a.supplier_invoice_id } }" class="mono underline" dir="ltr">{{ a.invoice?.number || '#' + a.supplier_invoice_id }}</RouterLink>
                         <span v-if="a.invoice" style="color:var(--body)">{{ t('purchasing.due_at') }} {{ fmtDay(a.invoice.due_at, locale) }}</span>
-                        <span class="ms-auto mono" dir="ltr" :style="payment.is_voided ? 'text-decoration:line-through' : ''">{{ show(a.amount_minor) }}</span>
+                        <span class="ms-auto mono" :style="payment.is_voided ? 'text-decoration:line-through' : ''">{{ show(a.amount_minor) }}</span>
                     </li>
                 </ul>
             </div>

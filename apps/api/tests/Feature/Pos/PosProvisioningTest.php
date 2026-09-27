@@ -410,8 +410,45 @@ class PosProvisioningTest extends PosTestCase
         ['terminal' => $terminal] = $this->claimTerminal();
 
         // The record anchors money history: pos_shifts cascade on terminal
-        // delete, so a till that ever ran a shift must refuse cleanup.
+        // delete, so a till that ever ran a shift must refuse cleanup. The
+        // shift has to have TRADED — a float in the drawer is enough.
         DB::table('pos_shifts')->insert([
+            'restaurant_id' => $this->restaurant->id,
+            'branch_id' => $this->branch->id,
+            'pos_terminal_id' => $terminal->id,
+            'client_transaction_id' => (string) Str::uuid(),
+            'opened_at' => now(),
+            'received_at' => now(),
+            'opening_float_minor' => 20000,
+            'closed_at' => now(),
+            'counted_cash_minor' => 20000,
+            'status' => 'closed',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->actingAs($this->owner)
+            ->postJson("/api/dashboard/pos/terminals/{$terminal->id}/revoke")->assertOk();
+        $this->actingAs($this->owner)
+            ->deleteJson("/api/dashboard/pos/terminals/{$terminal->id}")
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'TERMINAL_HAS_HISTORY');
+
+        $this->assertDatabaseHas('pos_terminals', ['id' => $terminal->id]);
+    }
+
+    /**
+     * The leftover this rule exists to remove. Pairing a till for a test and
+     * opening a shift on it moves no money, and an empty shift row used to pin
+     * the terminal forever — the dashboard could neither delete it nor explain
+     * why, because "recorded sales or shifts" was true of a drawer that had
+     * never been opened.
+     */
+    public function test_a_terminal_whose_only_shift_never_traded_is_deleted(): void
+    {
+        ['terminal' => $terminal] = $this->claimTerminal();
+
+        $shift = DB::table('pos_shifts')->insertGetId([
             'restaurant_id' => $this->restaurant->id,
             'branch_id' => $this->branch->id,
             'pos_terminal_id' => $terminal->id,
@@ -427,11 +464,11 @@ class PosProvisioningTest extends PosTestCase
         $this->actingAs($this->owner)
             ->postJson("/api/dashboard/pos/terminals/{$terminal->id}/revoke")->assertOk();
         $this->actingAs($this->owner)
-            ->deleteJson("/api/dashboard/pos/terminals/{$terminal->id}")
-            ->assertStatus(422)
-            ->assertJsonPath('code', 'TERMINAL_HAS_HISTORY');
+            ->deleteJson("/api/dashboard/pos/terminals/{$terminal->id}")->assertOk();
 
-        $this->assertDatabaseHas('pos_terminals', ['id' => $terminal->id]);
+        $this->assertDatabaseMissing('pos_terminals', ['id' => $terminal->id]);
+        // It cascades with the row it belonged to rather than being orphaned.
+        $this->assertDatabaseMissing('pos_shifts', ['id' => $shift]);
     }
 
     // --------------------------------------------------- seat enforcement

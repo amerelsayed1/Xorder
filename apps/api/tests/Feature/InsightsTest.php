@@ -7,10 +7,13 @@ use App\Models\Category;
 use App\Models\MenuItem;
 use App\Models\MenuViewDaily;
 use App\Models\Order;
+use App\Models\OrderPayment;
 use App\Models\Restaurant;
+use App\Models\TenderType;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 class InsightsTest extends TestCase
@@ -177,6 +180,56 @@ class InsightsTest extends TestCase
         $order->restaurant_id = $restaurant->id;
         $order->save();
         $order->forceFill(['created_at' => $at])->save();
+    }
+
+    /**
+     * Tender names are per-tenant free text, so the series folds them into the
+     * fixed `kind` vocabulary. An untyped payment counts as cash, matching how
+     * PosShiftService treats one when working out what should be in the drawer.
+     */
+    public function test_dashboard_payments_series_splits_by_tender_kind(): void
+    {
+        $r = Restaurant::factory()->create();
+        $admin = User::factory()->restaurantAdmin($r->id)->create();
+
+        $cash = TenderType::forceCreate(['restaurant_id' => $r->id, 'name' => 'Cash', 'kind' => 'cash']);
+        $visa = TenderType::forceCreate(['restaurant_id' => $r->id, 'name' => 'Visa', 'kind' => 'card']);
+        $wallet = TenderType::forceCreate(['restaurant_id' => $r->id, 'name' => 'InstaPay', 'kind' => 'external']);
+
+        $order = new Order([
+            'status' => 'NEW', 'items' => [], 'total' => 0, 'currency' => 'EGP',
+            'order_type' => 'pickup', 'source' => 'system',
+        ]);
+        $order->restaurant_id = $r->id;
+        $order->save();
+
+        $pay = function (?TenderType $tender, int $minor) use ($r, $order) {
+            OrderPayment::forceCreate([
+                'restaurant_id' => $r->id,
+                'order_id' => $order->id,
+                'client_transaction_id' => (string) Str::uuid(),
+                'tender_type_id' => $tender?->id,
+                'amount_minor' => $minor,
+                'currency' => 'EGP',
+                'received_at' => now(),
+            ]);
+        };
+
+        $pay($cash, 1000);
+        $pay($visa, 2500);
+        $pay($wallet, 400);
+        $pay(null, 600);   // untyped -> cash
+
+        $daily = $this->actingAs($admin)->getJson('/api/dashboard/insights')
+            ->assertOk()->json('data.payments.daily');
+
+        $this->assertCount(14, $daily);
+
+        $today = end($daily);
+        $this->assertSame(1600, $today['cash_minor']);
+        $this->assertSame(2500, $today['card_minor']);
+        $this->assertSame(400, $today['other_minor']);
+        $this->assertSame(4500, $today['total_minor']);
     }
 
     public function test_dashboard_insights_compare_orders_against_the_previous_fortnight(): void

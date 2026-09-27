@@ -210,7 +210,7 @@ async function submitReceive() {
                 <div><div style="color:var(--muted)">{{ t('purchasing.created_on') }}</div><div style="color:var(--ink)">{{ fmtDate(order.created_at, locale) }}</div></div>
                 <div><div style="color:var(--muted)">{{ t('purchasing.ordered_on') }}</div><div style="color:var(--ink)">{{ fmtDate(order.ordered_at, locale, { time: true }) || '—' }}</div></div>
                 <div><div style="color:var(--muted)">{{ t('purchasing.expected_on') }}</div><div style="color:var(--ink)">{{ fmtDate(order.expected_at, locale) || '—' }}</div></div>
-                <div><div style="color:var(--muted)">{{ t('purchasing.received_value') }}</div><div class="mono" dir="ltr" style="color:var(--ink)">{{ show(order.received_value_minor) }}</div></div>
+                <div><div style="color:var(--muted)">{{ t('purchasing.received_value') }}</div><div class="mono" style="color:var(--ink)"><span>{{ show(order.received_value_minor) }}</span></div></div>
                 <div v-if="order.notes" class="col-span-2 sm:col-span-4"><div style="color:var(--muted)">{{ t('purchasing.notes') }}</div><div class="whitespace-pre-line" style="color:var(--body)">{{ order.notes }}</div></div>
             </div>
 
@@ -245,17 +245,17 @@ async function submitReceive() {
                                     <div v-if="l.received_milli > l.ordered_milli" class="text-xs" style="color:var(--amber)">{{ t('purchasing.over_received') }}</div>
                                 </td>
                                 <td class="px-4 py-3 text-end"><span class="mono" dir="ltr">{{ qty(order.closed_short ? l.not_coming_milli : l.outstanding_milli, l.unit_code) }}</span></td>
-                                <td class="px-4 py-3 text-end"><span class="mono" dir="ltr">{{ show(l.unit_cost_minor) }}</span></td>
+                                <td class="px-4 py-3 text-end"><span class="mono">{{ show(l.unit_cost_minor) }}</span></td>
                                 <td class="px-4 py-3 text-end"><span class="mono" dir="ltr">{{ bpToPercent(l.tax_rate_bp) }}%</span></td>
-                                <td class="px-4 py-3 text-end"><span class="mono" dir="ltr">{{ show(l.line_total_minor) }}</span></td>
+                                <td class="px-4 py-3 text-end"><span class="mono">{{ show(l.line_total_minor) }}</span></td>
                             </tr>
                         </tbody>
                     </table>
                 </div>
                 <div class="border-t px-4 py-3 space-y-1 text-sm" style="border-color:var(--line)">
-                    <div class="flex justify-between gap-3"><span style="color:var(--muted)">{{ t('purchasing.subtotal') }}</span><span class="mono" dir="ltr">{{ show(order.totals.subtotal_minor) }}</span></div>
-                    <div class="flex justify-between gap-3"><span style="color:var(--muted)">{{ t('purchasing.tax') }}</span><span class="mono" dir="ltr">{{ show(order.totals.tax_minor) }}</span></div>
-                    <div class="flex justify-between gap-3 font-semibold" style="color:var(--ink)"><span>{{ t('purchasing.total') }}</span><span class="mono" dir="ltr">{{ show(order.totals.total_minor) }}</span></div>
+                    <div class="flex justify-between gap-3"><span style="color:var(--muted)">{{ t('purchasing.subtotal') }}</span><span class="mono">{{ show(order.totals.subtotal_minor) }}</span></div>
+                    <div class="flex justify-between gap-3"><span style="color:var(--muted)">{{ t('purchasing.tax') }}</span><span class="mono">{{ show(order.totals.tax_minor) }}</span></div>
+                    <div class="flex justify-between gap-3 font-semibold" style="color:var(--ink)"><span>{{ t('purchasing.total') }}</span><span class="mono">{{ show(order.totals.total_minor) }}</span></div>
                 </div>
             </div>
             <p v-if="order.is_open" class="text-xs" style="color:var(--muted)">{{ t('purchasing.cost_from_order') }}</p>

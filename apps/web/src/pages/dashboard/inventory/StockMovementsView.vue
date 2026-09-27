@@ -114,9 +114,9 @@ const showBranch = computed(() => !branchId.value && branches.value.length > 1)
                                     <div v-if="m.note && !m.purchase_order_id" class="text-xs max-w-[16rem] truncate" style="color:var(--muted)" :title="m.note">{{ m.note }}</div>
                                 </td>
                                 <td class="px-4 py-3 text-end"><span class="mono" dir="ltr">{{ signed(m) }}</span></td>
-                                <td class="px-4 py-3 text-end"><span class="mono" dir="ltr">{{ cost(m.unit_cost_minor) }}</span></td>
+                                <td class="px-4 py-3 text-end"><span class="mono">{{ cost(m.unit_cost_minor) }}</span></td>
                                 <td class="px-4 py-3 text-end"><span class="mono" dir="ltr">{{ qty(m.balance_milli, m.unit_code) }}</span></td>
-                                <td class="px-4 py-3 text-end"><span class="mono" dir="ltr">{{ cost(m.average_cost_minor) }}</span></td>
+                                <td class="px-4 py-3 text-end"><span class="mono">{{ cost(m.average_cost_minor) }}</span></td>
                                 <td class="px-4 py-3">
                                     <RouterLink v-if="m.purchase_order_id" :to="{ name: 'dashboard.purchasing.order', params: { id: m.purchase_order_id } }" class="mono" dir="ltr" style="color:var(--accent)">{{ m.purchase_order_reference || ('#' + m.purchase_order_id) }}</RouterLink>
                                 </td>

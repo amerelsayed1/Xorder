@@ -139,7 +139,6 @@ const restaurantRoutes = [
             // feature half lives on the sidebar entry and the guard mirrors
             // the capability. No `pos` involvement: purchasing is standalone.
             { path: 'purchasing/suppliers', name: 'dashboard.purchasing.suppliers', component: () => import('../pages/dashboard/purchasing/SuppliersView.vue'), meta: { capability: 'purchase.manage' } },
-            { path: 'inventory/units', name: 'dashboard.inventory.units', component: () => import('../pages/dashboard/inventory/UnitsView.vue'), meta: { capability: 'purchase.manage' } },
             { path: 'purchasing/orders', name: 'dashboard.purchasing.orders', component: () => import('../pages/dashboard/purchasing/PurchaseOrdersView.vue'), meta: { capability: 'purchase.manage' } },
             { path: 'purchasing/orders/new', name: 'dashboard.purchasing.orders.create', component: () => import('../pages/dashboard/purchasing/PurchaseOrderForm.vue'), meta: { capability: 'purchase.manage' } },
             { path: 'purchasing/orders/:id', name: 'dashboard.purchasing.order', component: () => import('../pages/dashboard/purchasing/PurchaseOrderView.vue'), meta: { capability: 'purchase.manage' } },
@@ -190,9 +189,18 @@ const restaurantRoutes = [
                     // to write), so the guard mirrors the capability and the
                     // feature half lives on the sub-menu entry.
                     { path: 'receipt', name: 'dashboard.pos.receipt', component: () => import('../pages/dashboard/PosReceiptView.vue'), meta: { capability: 'settings.view' } },
+                    // Units are what a business counts and buys in — set once
+                    // and then referenced by every stock item and order line,
+                    // which is a setting, not a day's work. Same server gate as
+                    // the rest of purchasing (feature:purchasing +
+                    // can:purchase.manage); the feature half lives on the
+                    // sub-menu entry, so the guard mirrors the capability.
+                    { path: 'units', name: 'dashboard.inventory.units', component: () => import('../pages/dashboard/inventory/UnitsView.vue'), meta: { capability: 'purchase.manage' } },
                 ],
             },
             { path: 'settings/profile', redirect: { name: 'dashboard.profile' } },
+            // Units lived under Inventory until they moved into Settings.
+            { path: 'inventory/units', redirect: { name: 'dashboard.inventory.units' } },
             // The paths these pages used before the settings shell existed.
             // Kept as redirects so bookmarks and anything already printed or
             // pasted still land in the right place.

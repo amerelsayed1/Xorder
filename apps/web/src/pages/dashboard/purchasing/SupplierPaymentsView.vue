@@ -125,8 +125,8 @@ const show = (p, minor) => money(minor, p.exponent, p.currency, locale.value)
                                 <td class="px-5 py-3" style="color:var(--body)">
                                     {{ t('purchasing.methods.' + p.method) }}<span v-if="p.reference"> · <span class="mono" dir="ltr">{{ p.reference }}</span></span>
                                 </td>
-                                <td class="px-5 py-3 text-end"><span class="mono" dir="ltr" :style="p.is_voided ? 'text-decoration:line-through' : ''">{{ show(p, p.amount_minor) }}</span></td>
-                                <td class="px-5 py-3 text-end"><span class="mono" dir="ltr">{{ p.is_voided ? '—' : show(p, p.on_account_minor) }}</span></td>
+                                <td class="px-5 py-3 text-end"><span class="mono" :style="p.is_voided ? 'text-decoration:line-through' : ''">{{ show(p, p.amount_minor) }}</span></td>
+                                <td class="px-5 py-3 text-end"><span class="mono">{{ p.is_voided ? '—' : show(p, p.on_account_minor) }}</span></td>
                             </tr>
                         </template>
                     </tbody>

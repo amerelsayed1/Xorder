@@ -133,8 +133,8 @@ const show = (i, minor) => money(minor, i.exponent, i.currency, locale.value)
                                     {{ fmtDay(i.due_at, locale) }}
                                     <div v-if="i.days_late" class="text-xs" style="color:var(--red)">{{ t('purchasing.days_late', { n: i.days_late }) }}</div>
                                 </td>
-                                <td class="px-5 py-3 text-end"><span class="mono" dir="ltr">{{ show(i, i.total_minor) }}</span></td>
-                                <td class="px-5 py-3 text-end"><span class="mono" dir="ltr">{{ i.is_voided ? '—' : show(i, i.outstanding_minor) }}</span></td>
+                                <td class="px-5 py-3 text-end"><span class="mono">{{ show(i, i.total_minor) }}</span></td>
+                                <td class="px-5 py-3 text-end"><span class="mono">{{ i.is_voided ? '—' : show(i, i.outstanding_minor) }}</span></td>
                                 <td class="px-5 py-3"><span class="badge" :class="invoiceBadge(i.state)">{{ t('purchasing.invoice_states.' + i.state) }}</span></td>
                             </tr>
                         </template>

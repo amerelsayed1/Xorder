@@ -33,6 +33,13 @@ export const SETTINGS_GROUPS = [
             { key: 'receipt', labelKey: 'nav.pos_receipt', icon: 'pi pi-receipt', to: { name: 'dashboard.pos.receipt' }, feature: 'pos', capability: 'settings.view' },
         ],
     },
+    {
+        key: 'purchasing',
+        labelKey: 'settings_shell.group_purchasing',
+        items: [
+            { key: 'units', labelKey: 'nav.units', icon: 'pi pi-tag', to: { name: 'dashboard.inventory.units' }, feature: 'purchasing', capability: 'purchase.manage' },
+        ],
+    },
 ]
 
 const allowed = (features, can) => (item) =>

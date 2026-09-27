@@ -352,7 +352,7 @@ function back() {
                         <div class="block">
                             <span class="label">{{ t('purchasing.line_total') }}</span>
                             <div class="flex items-center justify-between gap-2 py-2">
-                                <span class="mono" dir="ltr" style="color:var(--ink)">{{ lineTotal(l) == null ? '—' : show(lineTotal(l)) }}</span>
+                                <span class="mono" style="color:var(--ink)">{{ lineTotal(l) == null ? '—' : show(lineTotal(l)) }}</span>
                                 <button type="button" class="icon-btn" :title="t('purchasing.remove_line')" :aria-label="t('purchasing.remove_line')" @click="removeLine(i)"><Icon name="close" :size="16" /></button>
                             </div>
                         </div>
@@ -361,17 +361,17 @@ function back() {
                 </div>
 
                 <div class="border-t pt-3 space-y-1 text-sm" style="border-color:var(--line)">
-                    <div class="flex justify-between gap-3"><span style="color:var(--muted)">{{ t('purchasing.subtotal_derived') }}</span><span class="mono" dir="ltr">{{ preview ? show(preview.subtotal_minor) : '—' }}</span></div>
-                    <div class="flex justify-between gap-3"><span style="color:var(--muted)">{{ t('purchasing.tax') }}</span><span class="mono" dir="ltr">{{ preview ? show(preview.tax_minor) : '—' }}</span></div>
-                    <div class="flex justify-between gap-3 font-semibold" style="color:var(--ink)"><span>{{ t('purchasing.total') }}</span><span class="mono" dir="ltr">{{ preview ? show(preview.total_minor) : '—' }}</span></div>
+                    <div class="flex justify-between gap-3"><span style="color:var(--muted)">{{ t('purchasing.subtotal_derived') }}</span><span class="mono">{{ preview ? show(preview.subtotal_minor) : '—' }}</span></div>
+                    <div class="flex justify-between gap-3"><span style="color:var(--muted)">{{ t('purchasing.tax') }}</span><span class="mono">{{ preview ? show(preview.tax_minor) : '—' }}</span></div>
+                    <div class="flex justify-between gap-3 font-semibold" style="color:var(--ink)"><span>{{ t('purchasing.total') }}</span><span class="mono">{{ preview ? show(preview.total_minor) : '—' }}</span></div>
                     <p class="text-xs pt-1" style="color:var(--muted)">{{ t('purchasing.preview_note') }}</p>
                 </div>
 
                 <div v-if="linked" class="rounded-lg p-3 text-sm space-y-1" style="background:var(--page)">
                     <div class="font-medium" style="color:var(--ink)">{{ t('purchasing.against_order') }} <span class="mono" dir="ltr">{{ linked.reference }}</span></div>
-                    <div class="flex justify-between gap-3"><span style="color:var(--muted)">{{ t('purchasing.received_total') }}</span><span class="mono" dir="ltr">{{ show(linked.received_total_minor) }}</span></div>
+                    <div class="flex justify-between gap-3"><span style="color:var(--muted)">{{ t('purchasing.received_total') }}</span><span class="mono">{{ show(linked.received_total_minor) }}</span></div>
                     <div v-if="variance !== null" class="flex justify-between gap-3"><span style="color:var(--muted)">{{ t('purchasing.variance') }}</span>
-                        <span class="mono" dir="ltr" :style="variance === 0 ? 'color:var(--green)' : 'color:var(--amber)'">{{ show(variance) }}</span></div>
+                        <span class="mono" :style="variance === 0 ? 'color:var(--green)' : 'color:var(--amber)'">{{ show(variance) }}</span></div>
                     <p class="text-xs" style="color:var(--muted)">{{ t('purchasing.variance_hint') }}</p>
                 </div>
             </div>

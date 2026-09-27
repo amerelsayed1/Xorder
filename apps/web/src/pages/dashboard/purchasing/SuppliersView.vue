@@ -70,9 +70,11 @@ const retiredCount = computed(() => rows.value.filter((s) => !s.is_active).lengt
 
 const showMoney = (minor) => money(minor, balanceMeta.value.exponent, balanceMeta.value.currency, locale.value)
 
+// Terms are no longer editable here, so there is nothing to say about the
+// suppliers that have none — only the ones carrying a term from before.
 const termsLabel = (s) => (s.payment_term_days > 0
     ? t('purchasing.terms_days', { n: s.payment_term_days })
-    : t('purchasing.terms_on_delivery'))
+    : '')
 
 // ------------------------------------------------------------------ editor
 const showModal = ref(false)
@@ -81,7 +83,7 @@ const errors = ref({})
 const saving = ref(false)
 const blank = () => ({
     name_en: '', name_ar: '', code: '', contact_name: '', phone: '', email: '',
-    address: '', tax_number: '', payment_term_days: 0, notes: '', is_active: true,
+    address: '', notes: '', is_active: true,
 })
 const form = reactive(blank())
 
@@ -105,8 +107,11 @@ function fromRow(s) {
     for (const key of Object.keys(blank())) out[key] = s[key] ?? blank()[key]
     return out
 }
+// The editor no longer carries payment terms or a tax number, so it sends
+// neither: an existing supplier's stored terms (which still set an invoice's
+// due date) survive a re-save untouched, because the server rule is `sometimes`.
 function payload(src) {
-    return { ...src, payment_term_days: Number(src.payment_term_days) || 0 }
+    return { ...src }
 }
 
 function replaceRow(row) {
@@ -134,8 +139,11 @@ async function save() {
     }
 }
 
-// Retiring is the only way a supplier leaves the list: later purchases,
-// invoices and payments point at it, so nothing is ever deleted.
+// Two ways a supplier leaves the list, and they mean different things.
+// Retiring keeps the row because purchases, invoices and payments point at it.
+// Deleting is for a supplier nothing points at yet — typed by mistake, or
+// entered twice. The server decides which is possible (409 when documents name
+// it), so this offers both and reports what it says.
 async function setActive(s, active) {
     if (!active) {
         const ok = await confirm({
@@ -151,6 +159,31 @@ async function setActive(s, active) {
         replaceRow(data.data)
     } catch (err) {
         alert(err.response?.data?.message || t('common.error'))
+    }
+}
+
+async function remove(s) {
+    const ok = await confirm({
+        title: t('purchasing.delete_supplier_title'),
+        message: t('purchasing.delete_supplier_message', { name: nameOf(s) }),
+        confirmText: t('common.delete'),
+        cancelText: t('common.cancel'),
+        danger: true,
+    })
+    if (!ok) return
+    try {
+        await api.delete(`api/dashboard/suppliers/${s.id}`)
+        rows.value = rows.value.filter((x) => x.id !== s.id)
+        delete balances.value[s.id]
+    } catch (err) {
+        // A 409 here is not a failure, it is the rule: documents name this
+        // supplier, so retiring is the answer. Say that, rather than dressing
+        // it up as an error.
+        if (err.response?.status === 409) {
+            alert({ title: t('purchasing.cannot_delete_supplier'), message: err.response.data.message, variant: 'info' })
+        } else {
+            alert(err.response?.data?.message || t('common.error'))
+        }
     }
 }
 </script>
@@ -195,13 +228,14 @@ async function setActive(s, active) {
                             </div>
                             <div class="text-xs truncate" style="color:var(--muted)">
                                 <span v-if="s.contact_name">{{ s.contact_name }} · </span>
-                                <span v-if="s.phone" class="mono" dir="ltr">{{ s.phone }}</span><span v-if="s.phone"> · </span>
+                                <span v-if="s.phone" class="mono" dir="ltr">{{ s.phone }}</span>
+                                <span v-if="s.phone && termsLabel(s)"> · </span>
                                 {{ termsLabel(s) }}
                             </div>
                             <div v-if="balances[s.id]" class="text-xs" style="color:var(--body)">
-                                <span v-if="balances[s.id].outstanding_minor < 0" class="mono" dir="ltr" style="color:var(--green)">{{ t('purchasing.in_credit_by', { amount: showMoney(-balances[s.id].outstanding_minor) }) }}</span>
-                                <span v-else class="mono" dir="ltr">{{ t('purchasing.owes', { amount: showMoney(balances[s.id].outstanding_minor) }) }}</span>
-                                <span v-if="balances[s.id].overdue_minor > 0" class="mono ms-2" dir="ltr" style="color:var(--red)">{{ t('purchasing.owes_overdue', { amount: showMoney(balances[s.id].overdue_minor) }) }}</span>
+                                <span v-if="balances[s.id].outstanding_minor < 0" class="mono" style="color:var(--green)">{{ t('purchasing.in_credit_by', { amount: showMoney(-balances[s.id].outstanding_minor) }) }}</span>
+                                <span v-else class="mono">{{ t('purchasing.owes', { amount: showMoney(balances[s.id].outstanding_minor) }) }}</span>
+                                <span v-if="balances[s.id].overdue_minor > 0" class="mono ms-2" style="color:var(--red)">{{ t('purchasing.owes_overdue', { amount: showMoney(balances[s.id].overdue_minor) }) }}</span>
                             </div>
                         </div>
                         <RouterLink :to="{ name: 'dashboard.purchasing.supplier', params: { id: s.id } }" class="btn btn-ghost btn-sm">{{ t('purchasing.view_account') }}</RouterLink>
@@ -209,20 +243,24 @@ async function setActive(s, active) {
                         <button v-if="canWrite" type="button" class="icon-btn" :title="t('common.edit')" :aria-label="t('common.edit')" @click="openEdit(s)"><Icon name="edit" :size="17" /></button>
                         <button v-if="canWrite && s.is_active" type="button" class="btn btn-ghost btn-sm" @click="setActive(s, false)">{{ t('purchasing.retire') }}</button>
                         <button v-else-if="canWrite" type="button" class="btn btn-ghost btn-sm" @click="setActive(s, true)">{{ t('purchasing.reactivate') }}</button>
+                        <button v-if="canWrite" type="button" class="icon-btn" :title="t('common.delete')" :aria-label="t('common.delete')" @click="remove(s)"><Icon name="trash" :size="17" /></button>
                     </li>
                 </ul>
             </div>
-            <p v-if="!loading && rows.length" class="text-xs" style="color:var(--muted)">{{ t('purchasing.never_deleted') }}</p>
+            <p v-if="!loading && rows.length" class="text-xs" style="color:var(--muted)">{{ t('purchasing.delete_or_retire') }}</p>
         </template>
 
         <Dialog v-if="showModal" :title="editing ? t('purchasing.edit_supplier') : t('purchasing.add_supplier')" @close="showModal = false">
             <form class="space-y-4" @submit.prevent="save">
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <label v-for="lng in langs" :key="'n' + lng" class="block" :dir="lng === 'ar' ? 'rtl' : 'ltr'">
-                        <span class="label">{{ bilingual ? t('common.name_' + lng) : t('common.name') }}</span>
+                        <span class="label">{{ bilingual ? t('common.name_' + lng) : t('common.name') }} <span style="color:var(--red)">*</span></span>
                         <input v-model="form['name_' + lng]" class="input" maxlength="160" />
                         <FormError :errors="errors" :field="'name_' + lng" />
                     </label>
+                    <!-- The server asks for one name, not two: say so rather than
+                         let two asterisks promise otherwise. -->
+                    <p v-if="bilingual" class="text-xs sm:col-span-2" style="color:var(--muted)">{{ t('purchasing.name_one_language') }}</p>
                 </div>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <label class="block"><span class="label">{{ t('purchasing.code') }}</span>
@@ -232,20 +270,12 @@ async function setActive(s, active) {
                     <label class="block"><span class="label">{{ t('purchasing.contact_name') }}</span>
                         <input v-model="form.contact_name" class="input" maxlength="160" />
                         <FormError :errors="errors" field="contact_name" /></label>
-                    <label class="block"><span class="label">{{ t('purchasing.phone') }}</span>
-                        <input v-model="form.phone" class="input" dir="ltr" inputmode="tel" data-en-digits maxlength="40" />
+                    <label class="block"><span class="label">{{ t('purchasing.phone') }} <span style="color:var(--red)">*</span></span>
+                        <input v-model="form.phone" class="input" dir="ltr" inputmode="tel" data-en-digits maxlength="40" required />
                         <FormError :errors="errors" field="phone" /></label>
                     <label class="block"><span class="label">{{ t('purchasing.email') }}</span>
                         <input v-model="form.email" type="email" class="input" dir="ltr" maxlength="255" />
                         <FormError :errors="errors" field="email" /></label>
-                    <label class="block"><span class="label">{{ t('purchasing.tax_number') }}</span>
-                        <input v-model="form.tax_number" class="input mono" dir="ltr" inputmode="numeric" data-en-digits maxlength="9" />
-                        <span class="text-xs" style="color:var(--muted)">{{ t('purchasing.tax_number_hint') }}</span>
-                        <FormError :errors="errors" field="tax_number" /></label>
-                    <label class="block"><span class="label">{{ t('purchasing.payment_terms') }}</span>
-                        <input v-model.number="form.payment_term_days" type="number" min="0" max="3650" step="1" class="input" dir="ltr" />
-                        <span class="text-xs" style="color:var(--muted)">{{ t('purchasing.payment_terms_hint') }}</span>
-                        <FormError :errors="errors" field="payment_term_days" /></label>
                 </div>
                 <label class="block"><span class="label">{{ t('purchasing.address') }}</span>
                     <textarea v-model="form.address" class="input" rows="2" maxlength="1000"></textarea>

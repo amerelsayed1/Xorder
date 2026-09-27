@@ -127,8 +127,8 @@ function recordPayment() {
                 <div><div style="color:var(--muted)">{{ t('purchasing.due_at') }}</div>
                     <div style="color:var(--ink)">{{ fmtDay(invoice.due_at, locale) }}</div>
                     <div v-if="invoice.days_late" class="text-xs" style="color:var(--red)">{{ t('purchasing.days_late', { n: invoice.days_late }) }}</div></div>
-                <div><div style="color:var(--muted)">{{ t('purchasing.paid') }}</div><div class="mono" dir="ltr" style="color:var(--ink)">{{ show(invoice.paid_minor) }}</div></div>
-                <div><div style="color:var(--muted)">{{ t('purchasing.outstanding') }}</div><div class="mono font-semibold" dir="ltr" style="color:var(--ink)">{{ show(invoice.outstanding_minor) }}</div></div>
+                <div><div style="color:var(--muted)">{{ t('purchasing.paid') }}</div><div class="mono" style="color:var(--ink)"><span>{{ show(invoice.paid_minor) }}</span></div></div>
+                <div><div style="color:var(--muted)">{{ t('purchasing.outstanding') }}</div><div class="mono font-semibold" style="color:var(--ink)"><span>{{ show(invoice.outstanding_minor) }}</span></div></div>
                 <div v-if="invoice.note" class="col-span-2 sm:col-span-4"><div style="color:var(--muted)">{{ t('purchasing.notes') }}</div><div class="whitespace-pre-line" style="color:var(--body)">{{ invoice.note }}</div></div>
             </div>
 
@@ -148,17 +148,17 @@ function recordPayment() {
                             <tr v-for="l in invoice.lines" :key="l.id" class="border-t" style="border-color:var(--line)">
                                 <td class="px-4 py-3" style="color:var(--ink)">{{ l.description }}</td>
                                 <td class="px-4 py-3 text-end"><span class="mono" dir="ltr">{{ formatMilli(l.quantity_milli) }}</span></td>
-                                <td class="px-4 py-3 text-end"><span class="mono" dir="ltr">{{ show(l.unit_cost_minor) }}</span></td>
+                                <td class="px-4 py-3 text-end"><span class="mono">{{ show(l.unit_cost_minor) }}</span></td>
                                 <td class="px-4 py-3 text-end"><span class="mono" dir="ltr">{{ bpToPercent(l.tax_rate_bp) }}%</span></td>
-                                <td class="px-4 py-3 text-end"><span class="mono" dir="ltr">{{ show(l.line_total_minor) }}</span></td>
+                                <td class="px-4 py-3 text-end"><span class="mono">{{ show(l.line_total_minor) }}</span></td>
                             </tr>
                         </tbody>
                     </table>
                 </div>
                 <div class="px-4 py-3 space-y-1 text-sm" :class="invoice.lines && invoice.lines.length ? 'border-t' : ''" style="border-color:var(--line)">
-                    <div class="flex justify-between gap-3"><span style="color:var(--muted)">{{ t('purchasing.subtotal_derived') }}</span><span class="mono" dir="ltr">{{ show(invoice.subtotal_minor) }}</span></div>
-                    <div class="flex justify-between gap-3"><span style="color:var(--muted)">{{ t('purchasing.tax') }}</span><span class="mono" dir="ltr">{{ show(invoice.tax_minor) }}</span></div>
-                    <div class="flex justify-between gap-3 font-semibold" style="color:var(--ink)"><span>{{ t('purchasing.total') }}</span><span class="mono" dir="ltr">{{ show(invoice.total_minor) }}</span></div>
+                    <div class="flex justify-between gap-3"><span style="color:var(--muted)">{{ t('purchasing.subtotal_derived') }}</span><span class="mono">{{ show(invoice.subtotal_minor) }}</span></div>
+                    <div class="flex justify-between gap-3"><span style="color:var(--muted)">{{ t('purchasing.tax') }}</span><span class="mono">{{ show(invoice.tax_minor) }}</span></div>
+                    <div class="flex justify-between gap-3 font-semibold" style="color:var(--ink)"><span>{{ t('purchasing.total') }}</span><span class="mono">{{ show(invoice.total_minor) }}</span></div>
                 </div>
             </div>
 
@@ -167,11 +167,11 @@ function recordPayment() {
                     <h2 class="font-semibold" style="color:var(--ink)">{{ t('purchasing.against_order') }}</h2>
                     <RouterLink :to="{ name: 'dashboard.purchasing.order', params: { id: po.id } }" class="mono underline" dir="ltr">{{ po.reference }}</RouterLink>
                 </div>
-                <div class="flex justify-between gap-3"><span style="color:var(--muted)">{{ t('purchasing.ordered_total') }}</span><span class="mono" dir="ltr">{{ show(po.ordered_total_minor) }}</span></div>
-                <div class="flex justify-between gap-3"><span style="color:var(--muted)">{{ t('purchasing.received_value') }}</span><span class="mono" dir="ltr">{{ show(po.received_value_minor) }}</span></div>
-                <div class="flex justify-between gap-3"><span style="color:var(--muted)">{{ t('purchasing.received_total') }}</span><span class="mono" dir="ltr">{{ show(po.received_total_minor) }}</span></div>
+                <div class="flex justify-between gap-3"><span style="color:var(--muted)">{{ t('purchasing.ordered_total') }}</span><span class="mono">{{ show(po.ordered_total_minor) }}</span></div>
+                <div class="flex justify-between gap-3"><span style="color:var(--muted)">{{ t('purchasing.received_value') }}</span><span class="mono">{{ show(po.received_value_minor) }}</span></div>
+                <div class="flex justify-between gap-3"><span style="color:var(--muted)">{{ t('purchasing.received_total') }}</span><span class="mono">{{ show(po.received_total_minor) }}</span></div>
                 <div class="flex justify-between gap-3 font-medium"><span style="color:var(--ink)">{{ t('purchasing.variance') }}</span>
-                    <span class="mono" dir="ltr" :style="variance === 0 ? 'color:var(--green)' : 'color:var(--amber)'">{{ show(variance) }}</span></div>
+                    <span class="mono" :style="variance === 0 ? 'color:var(--green)' : 'color:var(--amber)'">{{ show(variance) }}</span></div>
                 <p class="text-xs" style="color:var(--muted)">{{ varianceText }}. {{ t('purchasing.variance_hint') }}</p>
             </div>
             <p v-else-if="invoice.purchase_order_reference" class="text-sm" style="color:var(--muted)">{{ t('purchasing.purchase_order') }}: <span class="mono" dir="ltr">{{ invoice.purchase_order_reference }}</span></p>
@@ -184,7 +184,7 @@ function recordPayment() {
                         <RouterLink :to="{ name: 'dashboard.purchasing.payment', params: { id: a.supplier_payment_id } }" class="underline">{{ t('purchasing.payment_ref', { id: a.supplier_payment_id }) }}</RouterLink>
                         <span v-if="a.payment" style="color:var(--body)">{{ fmtDay(a.payment.paid_at, locale) }} · {{ t('purchasing.methods.' + a.payment.method) }}<span v-if="a.payment.reference"> · <span class="mono" dir="ltr">{{ a.payment.reference }}</span></span></span>
                         <span v-if="a.payment?.is_voided" class="badge badge-gray">{{ t('purchasing.voided') }}</span>
-                        <span class="ms-auto mono" dir="ltr" :style="a.payment?.is_voided ? 'text-decoration:line-through' : ''">{{ show(a.amount_minor) }}</span>
+                        <span class="ms-auto mono" :style="a.payment?.is_voided ? 'text-decoration:line-through' : ''">{{ show(a.amount_minor) }}</span>
                     </li>
                 </ul>
             </div>

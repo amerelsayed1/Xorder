@@ -365,7 +365,7 @@ class TenantCreationTest extends TestCase
             'pos_terminal_id' => $row->id,
             'client_transaction_id' => (string) Str::uuid(),
             'status' => 'open',
-            'opening_float_minor' => 0,
+            'opening_float_minor' => 20000,
         ])->save();
 
         $this->actingAs($sa)->postJson("/api/admin/restaurants/{$restaurant->id}/terminals/{$terminal['id']}/revoke")->assertOk();

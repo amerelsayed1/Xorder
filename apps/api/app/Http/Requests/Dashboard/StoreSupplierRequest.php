@@ -2,15 +2,19 @@
 
 namespace App\Http\Requests\Dashboard;
 
-use App\Rules\MobileNumber;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
 /**
  * CB-09: a supplier, validated the till's way (xorder-pos supplier.dart
- * `problems`): a name, non-negative payment terms, and a tax registration
- * number that is exactly nine digits when given. Kept short on purpose: a
- * delivery recorded at seven in the morning needs who it came from, not a form.
+ * `problems`): a name and a phone number, and nothing else compulsory. Kept
+ * short on purpose: a delivery recorded at seven in the morning needs who it
+ * came from and how to reach them, not a form.
+ *
+ * The phone shape is deliberately loose (any 40 characters): a supplier is as
+ * likely to be reached on a landline, an extension or a second number written
+ * beside the first as on a mobile, and a delivery driver's scrap of paper is
+ * not a place to argue about E.164.
  *
  * Written whole, like the POS money config: update reuses these rules.
  */
@@ -23,24 +27,13 @@ class StoreSupplierRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
-        $merge = [];
-
         // '' and NULL mean the same thing: no code. NULL is what lets the
         // plain unique(restaurant_id, code) allow any number of suppliers
         // without one.
         if ($this->has('code')) {
             $code = is_string($this->input('code')) ? trim($this->input('code')) : $this->input('code');
-            $merge['code'] = $code === '' ? null : $code;
+            $this->merge(['code' => $code === '' ? null : $code]);
         }
-
-        // Typed on an Arabic keyboard, ٢٠٤١٢٣٤٥٦ is the same number.
-        if ($this->has('tax_number')) {
-            $tax = $this->input('tax_number');
-            $tax = is_string($tax) ? MobileNumber::normalizeDigits($tax) : $tax;
-            $merge['tax_number'] = $tax === '' ? null : $tax;
-        }
-
-        $this->merge($merge);
     }
 
     public function rules(): array
@@ -55,10 +48,9 @@ class StoreSupplierRequest extends FormRequest
                     ->ignore($this->route('supplier')),
             ],
             'contact_name' => ['nullable', 'string', 'max:160'],
-            'phone' => ['nullable', 'string', 'max:40'],
+            'phone' => ['required', 'string', 'max:40'],
             'email' => ['nullable', 'email', 'max:255'],
             'address' => ['nullable', 'string', 'max:1000'],
-            'tax_number' => ['nullable', 'string', 'regex:/^[0-9]{9}$/'],
             'payment_term_days' => ['sometimes', 'integer', 'min:0', 'max:3650'],
             'notes' => ['nullable', 'string', 'max:2000'],
             'is_active' => ['sometimes', 'boolean'],
@@ -78,7 +70,7 @@ class StoreSupplierRequest extends FormRequest
     {
         return [
             'code.unique' => __('xorder.validation.supplier_code_taken'),
-            'tax_number.regex' => __('xorder.validation.supplier_tax_number'),
+            'phone.required' => __('xorder.validation.supplier_phone_required'),
         ];
     }
 }

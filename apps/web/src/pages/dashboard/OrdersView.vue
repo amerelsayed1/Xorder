@@ -194,8 +194,14 @@ const advanceActions = (order) => (order.table_visit_id ? [] : (nextActions[orde
 // One line of what was ordered, so the board is readable without opening every
 // receipt. The full list stays in the receipt sheet.
 function itemSummary(order) {
-    const names = (order.items || []).map((i) => i.name).filter(Boolean)
+    const names = (order.items || []).map((i) => itemTitle(i)).filter(Boolean)
     return names.length ? names.join(' · ') : '—'
+}
+// "Pizza (Medium)": the name plus the chosen size/portion. Orders recorded
+// before `variant` existed carry the size inside `options`, so nothing is lost
+// for them either — it shows up in the extras line instead.
+function itemTitle(it) {
+    return it.variant ? `${it.name} (${it.variant})` : (it.name || '')
 }
 function itemCount(order) {
     return (order.items || []).reduce((n, i) => n + (Number(i.qty) || 0), 0)
@@ -431,7 +437,11 @@ function fmtTime(iso) {
                 <div class="receipt-items">
                     <div v-for="(it, i) in receiptOrder.items" :key="i" class="receipt-line">
                         <span class="order-item-qty">{{ it.qty }}×</span>
-                        <span class="receipt-line-name">{{ it.name }}<template v-if="it.options?.length"> ({{ it.options.join(', ') }})</template></span>
+                        <span class="receipt-line-name">
+                            <span class="receipt-line-title">{{ it.name }}<span v-if="it.variant" class="receipt-variant">{{ it.variant }}</span></span>
+                            <span v-if="it.options?.length" class="receipt-line-sub">+ {{ it.options.join(' · ') }}</span>
+                            <span v-if="it.note" class="receipt-line-sub receipt-line-note">✎ {{ it.note }}</span>
+                        </span>
                         <span v-if="it.line_total != null" class="receipt-line-total">{{ it.line_total }} {{ currencyLabel(receiptOrder.currency, locale) }}</span>
                     </div>
                 </div>
@@ -537,7 +547,14 @@ function fmtTime(iso) {
 .receipt-divider { height: 1px; background: var(--line); margin: 16px 0; }
 .receipt-items { display: flex; flex-direction: column; gap: 10px; }
 .receipt-line { display: flex; align-items: baseline; gap: 8px; }
-.receipt-line-name { flex: 1 1 auto; color: var(--body); }
+.receipt-line-name { flex: 1 1 auto; color: var(--body); display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.receipt-line-title { color: var(--ink); display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: 6px; }
+/* The chosen size/portion — a chip so it reads as one thing with the name,
+   never as an add-on. */
+.receipt-variant { font-size: 12px; font-weight: 600; color: var(--accent-dark); background: var(--accent-soft);
+    padding: 1px 7px; border-radius: 10px; }
+.receipt-line-sub { font-size: 12.5px; color: var(--muted); }
+.receipt-line-note { color: var(--body); }
 .receipt-line-total { flex: none; font-weight: 600; color: var(--ink); unicode-bidi: isolate; }
 .receipt-note { margin-top: 14px; font-size: 13px; color: var(--body); }
 .receipt-total { display: flex; align-items: center; justify-content: space-between;

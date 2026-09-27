@@ -285,8 +285,8 @@ async function save() {
                                     {{ fmtDay(r.due_at, locale) }}
                                     <div v-if="r.days_late" class="text-xs" style="color:var(--red)">{{ t('purchasing.days_late', { n: r.days_late }) }}</div>
                                 </td>
-                                <td class="px-3 py-2 text-end"><span class="mono" dir="ltr">{{ show(r.total_minor) }}</span></td>
-                                <td class="px-3 py-2 text-end"><span class="mono" dir="ltr">{{ show(r.outstanding_minor) }}</span></td>
+                                <td class="px-3 py-2 text-end"><span class="mono">{{ show(r.total_minor) }}</span></td>
+                                <td class="px-3 py-2 text-end"><span class="mono">{{ show(r.outstanding_minor) }}</span></td>
                                 <td class="px-3 py-2" style="min-width: 9rem">
                                     <input v-model="r.alloc" class="input mono text-end" dir="ltr" inputmode="decimal" data-en-digits placeholder="0" autocomplete="off" :aria-label="t('purchasing.allocated') + ' ' + r.number" />
                                     <FormError :errors="rowErrors" :field="String(r.id)" />
@@ -297,10 +297,10 @@ async function save() {
                 </div>
 
                 <div class="border-t pt-3 space-y-1 text-sm" style="border-color:var(--line)">
-                    <div class="flex justify-between gap-3"><span style="color:var(--muted)">{{ t('purchasing.amount') }}</span><span class="mono" dir="ltr">{{ valid(amountMinor) ? show(amountMinor) : '—' }}</span></div>
-                    <div class="flex justify-between gap-3"><span style="color:var(--muted)">{{ t('purchasing.allocated') }}</span><span class="mono" dir="ltr">{{ show(allocated) }}</span></div>
+                    <div class="flex justify-between gap-3"><span style="color:var(--muted)">{{ t('purchasing.amount') }}</span><span class="mono">{{ valid(amountMinor) ? show(amountMinor) : '—' }}</span></div>
+                    <div class="flex justify-between gap-3"><span style="color:var(--muted)">{{ t('purchasing.allocated') }}</span><span class="mono">{{ show(allocated) }}</span></div>
                     <div class="flex justify-between gap-3 font-semibold" :style="onAccount !== null && onAccount < 0 ? 'color:var(--red)' : 'color:var(--ink)'">
-                        <span>{{ t('purchasing.on_account') }}</span><span class="mono" dir="ltr">{{ onAccount === null ? '—' : show(onAccount) }}</span>
+                        <span>{{ t('purchasing.on_account') }}</span><span class="mono">{{ onAccount === null ? '—' : show(onAccount) }}</span>
                     </div>
                     <p class="text-xs pt-1" style="color:var(--muted)">{{ t('purchasing.on_account_hint') }}</p>
                 </div>

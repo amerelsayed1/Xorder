@@ -11,7 +11,7 @@ class OrderItem extends Model
     use BelongsToRestaurant;
 
     protected $fillable = [
-        'order_id', 'order_round_id', 'name', 'quantity', 'options', 'note',
+        'order_id', 'order_round_id', 'name', 'quantity', 'variant', 'options', 'note',
         'unit_price', 'line_total',
     ];
 

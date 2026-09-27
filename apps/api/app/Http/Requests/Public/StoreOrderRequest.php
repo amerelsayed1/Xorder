@@ -46,8 +46,14 @@ class StoreOrderRequest extends FormRequest
             'items' => ['required', 'array', 'min:1', 'max:100'],
             'items.*.name' => ['required', 'string', 'max:200'],
             'items.*.qty' => ['required', 'integer', 'min:1', 'max:99'],
+            // The chosen size/portion, when the item has a variant group.
+            'items.*.variant' => ['nullable', 'string', 'max:200'],
             'items.*.options' => ['sometimes', 'array', 'max:20'],
             'items.*.options.*' => ['string', 'max:200'],
+            // The diner's per-line note ("no garlic"). Without this rule the
+            // menu's note was silently stripped by validated() and never
+            // reached the kitchen.
+            'items.*.note' => ['nullable', 'string', 'max:500'],
             'items.*.line_total' => ['required', 'numeric', 'min:0', 'max:1000000'],
             'total' => ['required', 'numeric', 'min:0', 'max:1000000'],
             'customer_name' => ['nullable', 'string', 'max:150'],

@@ -599,6 +599,7 @@ Route::prefix('dashboard')
                 Route::put('units/{unit}', [UnitController::class, 'update']);
                 Route::post('suppliers', [SupplierController::class, 'store']);
                 Route::put('suppliers/{supplier}', [SupplierController::class, 'update']);
+                Route::delete('suppliers/{supplier}', [SupplierController::class, 'destroy']);
                 // The unit can't change while stock is held or the item is on
                 // a draft or open order (StockItemService, under a lock).
                 Route::post('stock-items', [StockItemController::class, 'store']);

@@ -57,7 +57,7 @@ const tableAreaName = computed(() => {
     if (!a) return ''
     return isAr.value ? (a.name_ar || a.name_en) : (a.name_en || a.name_ar)
 })
-const { cart, cartCount, cartTotal, addToCart, removeLine, bumpLine, clearCart, getLineOptions, calculateLinePrice } = useCart(slug)
+const { cart, cartCount, cartTotal, addToCart, removeLine, bumpLine, clearCart, getLineOptions, getLineVariant, getLineExtras, calculateLinePrice } = useCart(slug)
 const { submittingOrder, orderSuccess, lastOrderUrl, lastOrderCode, lastOrderId, customer, buildOrderData, sendToWhatsApp } = useOrder()
 const { userInfoDialog, isEditing, userInfo, editForm, saveSuccess, hasUserInfo, initials, loadUserInfo, saveUserInfo, enterEditMode, cancelEdit, clearUserInfo, openDialog, closeDialog } = useUserInfo()
 const { remember: rememberPendingReview, resolveClosedOrder } = useReviewPrompt(slug)
@@ -335,7 +335,10 @@ function submitOrder(details) {
         items: cart.value.map(line => ({
             name: localize(line.ref),
             qty: line.qty,
-            options: getLineOptions(line, localize),
+            // Size/portion travels on its own so the dashboard can show it next
+            // to the name; `options` carries only the add-ons.
+            variant: getLineVariant(line, localize),
+            options: getLineExtras(line, localize),
             note: line.note || null,
             line_total: +(line.qty * line.price).toFixed(2),
         })),

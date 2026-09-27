@@ -24,7 +24,7 @@ class Supplier extends Model
 
     protected $fillable = [
         'name_en', 'name_ar', 'code', 'contact_name', 'phone', 'email', 'address',
-        'tax_number', 'payment_term_days', 'notes', 'is_active',
+        'payment_term_days', 'notes', 'is_active',
     ];
 
     /** Who last touched it is already the audit actor; not a meaningful diff. */

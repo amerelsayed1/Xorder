@@ -310,7 +310,11 @@ const panelDir = computed(() => (locale.value === 'ar' ? 'rtl' : 'ltr'))
                                     <span class="badge" :class="orderBadge[it.order.status]">{{ t('orders.status.' + it.order.status) }}</span>
                                 </div>
                                 <ul class="live-order-items">
-                                    <li v-for="(itm, i) in it.order.items" :key="i"><span class="live-qty">{{ itm.qty }}×</span> {{ itm.name }}</li>
+                                    <li v-for="(itm, i) in it.order.items" :key="i">
+                                        <span class="live-qty">{{ itm.qty }}×</span> {{ itm.name }}<span v-if="itm.variant" class="live-variant">{{ itm.variant }}</span>
+                                        <div v-if="itm.options?.length" class="live-item-sub">+ {{ itm.options.join(' · ') }}</div>
+                                        <div v-if="itm.note" class="live-item-sub live-item-note">✎ {{ itm.note }}</div>
+                                    </li>
                                 </ul>
                                 <div class="live-time"><b style="color:var(--ink)">{{ it.order.total }} {{ currencyLabel(it.order.currency, locale) }}</b></div>
                                 <div v-if="canActOrders && !it.order.table_visit_id" class="live-actions">
@@ -381,7 +385,11 @@ const panelDir = computed(() => (locale.value === 'ar' ? 'rtl' : 'ltr'))
                     </div>
                     <div class="live-time">{{ fmtTime(o.created_at) }} · <b style="color:var(--ink)">{{ o.total }} {{ currencyLabel(o.currency, locale) }}</b></div>
                     <ul class="live-order-items">
-                        <li v-for="(it, i) in o.items" :key="i"><span class="live-qty">{{ it.qty }}×</span> {{ it.name }}</li>
+                        <li v-for="(it, i) in o.items" :key="i">
+                            <span class="live-qty">{{ it.qty }}×</span> {{ it.name }}<span v-if="it.variant" class="live-variant">{{ it.variant }}</span>
+                            <div v-if="it.options?.length" class="live-item-sub">+ {{ it.options.join(' · ') }}</div>
+                            <div v-if="it.note" class="live-item-sub live-item-note">✎ {{ it.note }}</div>
+                        </li>
                     </ul>
                     <div v-if="o.note" class="live-note">{{ o.note }}</div>
                     <div v-if="canActOrders && !o.table_visit_id" class="live-actions">
@@ -478,7 +486,14 @@ const panelDir = computed(() => (locale.value === 'ar' ? 'rtl' : 'ltr'))
 .live-time { font-size: 12.5px; color: var(--muted); }
 .live-note { font-size: 12.5px; color: var(--body); background: var(--accent-soft); padding: 6px 9px; }
 .live-order-items { list-style: none; margin: 0; padding: 0; font-size: 13px; color: var(--body); }
-.live-order-items li { padding: 1px 0; }
+.live-order-items li { padding: 2px 0; }
+/* The chosen size/portion, kept visually attached to the name; add-ons and the
+   diner's note sit under it in a quieter line so the kitchen reads the item
+   the way the diner built it. */
+.live-variant { margin-inline-start: 6px; font-size: 11.5px; font-weight: 600; color: var(--accent-dark, var(--accent));
+    background: var(--accent-soft); padding: 1px 7px; border-radius: 10px; vertical-align: 1px; }
+.live-item-sub { font-size: 12px; color: var(--muted); padding-inline-start: 26px; }
+.live-item-note { color: var(--body); }
 .live-qty { font-weight: 700; color: var(--accent-dark, var(--accent)); unicode-bidi: isolate; }
 
 /* Shared action buttons */

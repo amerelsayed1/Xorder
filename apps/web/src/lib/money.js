@@ -71,10 +71,24 @@ export const amountToMinor = (value, exponent) => decimalToScaledInt(value, expo
 /**
  * A minor-unit value with its currency token, for read-only hints and table
  * cells. Formatting only — nothing here ever feeds a request body.
+ *
+ * The amount comes first and the currency follows it — in the reader's own
+ * direction, so an Arabic page prints "ج.م 591.25" on screen, which is read
+ * right to left as 591.25 then ج.م. That falls out of the line's direction, so
+ * these must NOT be rendered inside `dir="ltr"`: forcing the line LTR is what
+ * puts the token on the English side, and it does so whichever order the
+ * string is written in.
+ *
+ * The amount is fenced in LRI…PDI because an RTL line is exactly where a
+ * leading "-" drifts: bare, "-591.25 ج.م" renders with the minus stranded on
+ * the far side of the digits. The fence is two invisible characters, so the
+ * caller still interpolates one plain string.
  */
 export function formatMinor(minor, exponent, token) {
     const amount = scaledIntToDecimal(minor, exponent)
-    return token ? `${amount} ${token}` : amount
+    if (!token) return amount
+
+    return `\u2066${amount}\u2069 ${token}`
 }
 
 /**

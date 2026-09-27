@@ -126,7 +126,7 @@ function open(o) {
                                     <span v-if="o.closed_short" class="text-xs ms-1" style="color:var(--muted)">{{ t('purchasing.closed_short_tag') }}</span>
                                 </td>
                                 <td class="px-5 py-3 whitespace-nowrap" style="color:var(--body)">{{ fmtDate(o.ordered_at, locale) || '—' }}</td>
-                                <td class="px-5 py-3 text-end"><span class="mono" dir="ltr">{{ money(o.totals.total_minor, o.exponent, o.currency, locale) }}</span></td>
+                                <td class="px-5 py-3 text-end"><span class="mono">{{ money(o.totals.total_minor, o.exponent, o.currency, locale) }}</span></td>
                             </tr>
                         </template>
                     </tbody>

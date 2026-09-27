@@ -1,8 +1,10 @@
 {
   "version": "0.0.1",
   "configurations": [
+    { "name": "api", "runtimeExecutable": "sh", "runtimeArgs": ["-c", "cd apps/api && php artisan serve --host=127.0.0.1 --port=8100"], "port": 8100, "url": "http://localhost:8100" },
     { "name": "landing", "runtimeExecutable": "pnpm", "runtimeArgs": ["--filter", "@xorder/landing", "dev"], "port": 5174 },
     { "name": "web", "runtimeExecutable": "pnpm", "runtimeArgs": ["--filter", "@xorder/web", "exec", "vite", "--port", "5180"], "port": 5180 },
-    { "name": "menu", "runtimeExecutable": "pnpm", "runtimeArgs": ["--filter", "@xorder/menu", "exec", "vite", "--port", "5175", "--strictPort"], "port": 5175, "url": "http://localhost:5175" }
+    { "name": "menu", "runtimeExecutable": "pnpm", "runtimeArgs": ["--filter", "@xorder/menu", "exec", "vite", "--port", "5175", "--strictPort"], "port": 5175, "url": "http://localhost:5175" },
+    { "name": "menu-dev", "runtimeExecutable": "pnpm", "runtimeArgs": ["--filter", "@xorder/menu", "exec", "vite", "--port", "5185", "--strictPort"], "port": 5185, "url": "http://localhost:5185" }
   ]
 }

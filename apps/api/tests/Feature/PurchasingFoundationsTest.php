@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Enums\Feature;
 use App\Enums\SubscriptionStatus;
 use App\Enums\TenantCapability;
+use App\Models\Branch;
 use App\Models\Restaurant;
 use App\Models\Role;
 use App\Models\Supplier;
@@ -12,6 +13,7 @@ use App\Models\Unit;
 use App\Models\User;
 use App\Services\UnitCatalog;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -108,6 +110,40 @@ class PurchasingFoundationsTest extends TestCase
         return $supplier;
     }
 
+    /**
+     * One row in whichever table names a supplier, written straight to the
+     * table: the delete check only asks whether such a row exists, and going
+     * through the real endpoints would drag a whole order-to-payment flow into
+     * a test about deleting a supplier.
+     */
+    private function attachPurchasingDocument(string $kind, Restaurant $restaurant, Supplier $supplier): void
+    {
+        $branch = new Branch(['name_en' => 'Downtown']);
+        $branch->restaurant_id = $restaurant->id;
+        $branch->save();
+
+        $common = [
+            'restaurant_id' => $restaurant->id,
+            'branch_id' => $branch->id,
+            'supplier_id' => $supplier->id,
+            'supplier_name' => $supplier->name_en,
+            'currency' => 'EGP',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ];
+
+        match ($kind) {
+            'order' => DB::table('purchase_orders')->insert($common + ['status' => 'draft']),
+            'invoice' => DB::table('supplier_invoices')->insert($common + [
+                'number' => 'INV-1', 'total_minor' => 5000,
+                'issued_at' => '2026-09-01', 'due_at' => '2026-09-01',
+            ]),
+            'payment' => DB::table('supplier_payments')->insert($common + [
+                'method' => 'cash', 'amount_minor' => 5000, 'paid_at' => '2026-09-01',
+            ]),
+        };
+    }
+
     private function unit(Restaurant $restaurant, array $attributes = []): Unit
     {
         $unit = new Unit(array_merge(['code' => 'tray30', 'name_en' => 'Tray of 30'], $attributes));
@@ -196,7 +232,7 @@ class PurchasingFoundationsTest extends TestCase
         $buyer = $this->staffWith($restaurant, ['purchase.manage']);
 
         $this->actingAs($buyer)->getJson('/api/dashboard/suppliers')->assertOk();
-        $this->actingAs($buyer)->postJson('/api/dashboard/suppliers', ['name_en' => 'Nile Dairy'])->assertCreated();
+        $this->actingAs($buyer)->postJson('/api/dashboard/suppliers', ['name_en' => 'Nile Dairy', 'phone' => '0100000000'])->assertCreated();
         $this->actingAs($buyer)->postJson('/api/dashboard/units', ['code' => 'crate', 'name_en' => 'Crate'])->assertCreated();
     }
 
@@ -207,9 +243,9 @@ class PurchasingFoundationsTest extends TestCase
         $this->assertFalse($restaurant->hasFeature('pos'));
 
         $this->actingAs($owner)->getJson('/api/dashboard/units')->assertOk()->assertJsonCount(7, 'data');
-        $id = $this->actingAs($owner)->postJson('/api/dashboard/suppliers', ['name_en' => 'Cairo Poultry'])
+        $id = $this->actingAs($owner)->postJson('/api/dashboard/suppliers', ['name_en' => 'Cairo Poultry', 'phone' => '0100000000'])
             ->assertCreated()->json('data.id');
-        $this->actingAs($owner)->putJson("/api/dashboard/suppliers/{$id}", ['name_en' => 'Cairo Poultry Co.'])
+        $this->actingAs($owner)->putJson("/api/dashboard/suppliers/{$id}", ['name_en' => 'Cairo Poultry Co.', 'phone' => '0100000000'])
             ->assertOk()->assertJsonPath('data.name_en', 'Cairo Poultry Co.');
     }
 
@@ -257,7 +293,7 @@ class PurchasingFoundationsTest extends TestCase
         $owner = $this->owner($mine);
 
         $id = $this->actingAs($owner)->postJson('/api/dashboard/suppliers', [
-            'name_en' => 'Mine', 'restaurant_id' => $theirs->id,
+            'name_en' => 'Mine', 'phone' => '0100000000', 'restaurant_id' => $theirs->id,
         ])->assertCreated()->json('data.id');
 
         $this->assertSame($mine->id, Supplier::withoutGlobalScopes()->find($id)->restaurant_id);
@@ -350,38 +386,96 @@ class PurchasingFoundationsTest extends TestCase
             ->assertCreated()->assertJsonPath('data.eta_unit_type', 'CR');
     }
 
-    public function test_there_is_no_delete_route_for_units_or_suppliers(): void
+    public function test_there_is_no_delete_route_for_units(): void
     {
         $restaurant = $this->tenant();
         $owner = $this->owner($restaurant);
         $unit = $this->unit($restaurant);
-        $supplier = $this->supplier($restaurant);
 
         $this->actingAs($owner)->deleteJson("/api/dashboard/units/{$unit->id}")->assertStatus(405);
-        $this->actingAs($owner)->deleteJson("/api/dashboard/suppliers/{$supplier->id}")->assertStatus(405);
         $this->assertNotNull($unit->fresh());
+    }
+
+    public function test_an_unused_supplier_can_be_deleted_and_it_is_audited(): void
+    {
+        $restaurant = $this->tenant();
+        $owner = $this->owner($restaurant);
+        $supplier = $this->supplier($restaurant);
+
+        $this->actingAs($owner)->deleteJson("/api/dashboard/suppliers/{$supplier->id}")->assertOk();
+        $this->assertNull(Supplier::withoutGlobalScopes()->find($supplier->id));
+        $this->assertSame($owner->id, $this->event('supplier.deleted', $restaurant->id)['actor_id'] ?? null);
+    }
+
+    public function test_a_supplier_named_by_any_purchasing_document_is_kept(): void
+    {
+        // Each of the three tables that point at a supplier, one at a time: the
+        // row is part of what that document means, so the answer is retire.
+        foreach (['order', 'invoice', 'payment'] as $kind) {
+            $restaurant = $this->tenant();
+            $owner = $this->owner($restaurant);
+            $supplier = $this->supplier($restaurant);
+            $this->attachPurchasingDocument($kind, $restaurant, $supplier);
+
+            $this->actingAs($owner)->deleteJson("/api/dashboard/suppliers/{$supplier->id}")
+                ->assertStatus(409)
+                ->assertJsonPath('message', __('xorder.messages.supplier_has_purchasing'));
+            $this->assertNotNull($supplier->fresh(), "deleted despite a {$kind}");
+        }
+    }
+
+    public function test_another_tenants_supplier_cannot_be_deleted(): void
+    {
+        $mine = $this->tenant();
+        $theirs = $this->tenant();
+        $supplier = $this->supplier($theirs);
+
+        $this->actingAs($this->owner($mine))->deleteJson("/api/dashboard/suppliers/{$supplier->id}")
+            ->assertNotFound();
         $this->assertNotNull($supplier->fresh());
+    }
+
+    public function test_deleting_a_supplier_needs_the_capability_and_a_live_subscription(): void
+    {
+        $restaurant = $this->tenant();
+        $clerk = $this->staffWith($restaurant, ['menu.view']);
+        $supplier = $this->supplier($restaurant);
+
+        $this->actingAs($clerk)->deleteJson("/api/dashboard/suppliers/{$supplier->id}")->assertForbidden();
+
+        $lapsed = $this->tenant(['purchasing'], ['subscription_status' => SubscriptionStatus::EXPIRED]);
+        $theirs = $this->supplier($lapsed);
+        $this->actingAs($this->owner($lapsed))->deleteJson("/api/dashboard/suppliers/{$theirs->id}")
+            ->assertForbidden()->assertJsonPath('code', 'subscription_inactive');
+
+        $this->assertNotNull($supplier->fresh());
+        $this->assertNotNull($theirs->fresh());
     }
 
     // ------------------------------------------------------------ suppliers
 
-    public function test_supplier_tax_number_is_exactly_nine_digits(): void
+    public function test_supplier_phone_is_required_but_its_shape_is_not_policed(): void
     {
         $restaurant = $this->tenant();
         $owner = $this->owner($restaurant);
 
-        foreach (['12345678', '1234567890', '12345678a', '123-456-789'] as $bad) {
-            $this->actingAs($owner)->postJson('/api/dashboard/suppliers', ['name_en' => 'X', 'tax_number' => $bad])
-                ->assertUnprocessable()->assertJsonValidationErrors('tax_number');
+        foreach ([[], ['phone' => null], ['phone' => '']] as $missing) {
+            $this->actingAs($owner)->postJson('/api/dashboard/suppliers', ['name_en' => 'X'] + $missing)
+                ->assertUnprocessable()->assertJsonValidationErrors('phone');
         }
 
-        // Arabic-Indic digits are folded to Latin before the check.
-        $this->actingAs($owner)->postJson('/api/dashboard/suppliers', ['name_en' => 'X', 'tax_number' => '٢٠٤١٢٣٤٥٦'])
-            ->assertCreated()->assertJsonPath('data.tax_number', '204123456');
+        // A supplier is reached however the supplier is reached: a landline
+        // with an extension, or an Arabic-typed mobile, both stored verbatim.
+        $this->actingAs($owner)->postJson('/api/dashboard/suppliers', ['name_en' => 'X', 'phone' => '02 2735 1234 ext 4'])
+            ->assertCreated()->assertJsonPath('data.phone', '02 2735 1234 ext 4');
+        $this->actingAs($owner)->postJson('/api/dashboard/suppliers', ['name_en' => 'Y', 'phone' => '٠١٠٢٢٢٢٣٣٣٣'])
+            ->assertCreated()->assertJsonPath('data.phone', '٠١٠٢٢٢٢٣٣٣٣');
 
-        // Blank means none.
-        $this->actingAs($owner)->postJson('/api/dashboard/suppliers', ['name_en' => 'Y', 'tax_number' => ''])
-            ->assertCreated()->assertJsonPath('data.tax_number', null);
+        // Editing an existing supplier cannot silently drop its phone either.
+        $id = $this->actingAs($owner)->postJson('/api/dashboard/suppliers', ['name_en' => 'Z', 'phone' => '0100000000'])
+            ->assertCreated()->json('data.id');
+        $this->actingAs($owner)->putJson("/api/dashboard/suppliers/{$id}", ['name_en' => 'Z'])
+            ->assertUnprocessable()->assertJsonValidationErrors('phone');
     }
 
     public function test_supplier_code_is_unique_when_set_and_many_can_have_none(): void
@@ -389,22 +483,22 @@ class PurchasingFoundationsTest extends TestCase
         $restaurant = $this->tenant();
         $owner = $this->owner($restaurant);
 
-        $this->actingAs($owner)->postJson('/api/dashboard/suppliers', ['name_en' => 'A'])->assertCreated();
-        $this->actingAs($owner)->postJson('/api/dashboard/suppliers', ['name_en' => 'B', 'code' => ''])
+        $this->actingAs($owner)->postJson('/api/dashboard/suppliers', ['name_en' => 'A', 'phone' => '0100000000'])->assertCreated();
+        $this->actingAs($owner)->postJson('/api/dashboard/suppliers', ['name_en' => 'B', 'phone' => '0100000000', 'code' => ''])
             ->assertCreated()->assertJsonPath('data.code', null);
-        $this->actingAs($owner)->postJson('/api/dashboard/suppliers', ['name_en' => 'C', 'code' => null])->assertCreated();
+        $this->actingAs($owner)->postJson('/api/dashboard/suppliers', ['name_en' => 'C', 'phone' => '0100000000', 'code' => null])->assertCreated();
 
-        $d = $this->actingAs($owner)->postJson('/api/dashboard/suppliers', ['name_en' => 'D', 'code' => 'SUP-01'])
+        $d = $this->actingAs($owner)->postJson('/api/dashboard/suppliers', ['name_en' => 'D', 'phone' => '0100000000', 'code' => 'SUP-01'])
             ->assertCreated()->json('data.id');
-        $this->actingAs($owner)->postJson('/api/dashboard/suppliers', ['name_en' => 'E', 'code' => 'SUP-01'])
+        $this->actingAs($owner)->postJson('/api/dashboard/suppliers', ['name_en' => 'E', 'phone' => '0100000000', 'code' => 'SUP-01'])
             ->assertUnprocessable()->assertJsonValidationErrors('code');
 
         // Re-saving D with its own code is not a clash.
-        $this->actingAs($owner)->putJson("/api/dashboard/suppliers/{$d}", ['name_en' => 'D2', 'code' => 'SUP-01'])->assertOk();
+        $this->actingAs($owner)->putJson("/api/dashboard/suppliers/{$d}", ['name_en' => 'D2', 'phone' => '0100000000', 'code' => 'SUP-01'])->assertOk();
 
         // Another tenant may use the same code.
         $this->actingAs($this->owner($this->tenant()))
-            ->postJson('/api/dashboard/suppliers', ['name_en' => 'Z', 'code' => 'SUP-01'])->assertCreated();
+            ->postJson('/api/dashboard/suppliers', ['name_en' => 'Z', 'phone' => '0100000000', 'code' => 'SUP-01'])->assertCreated();
 
         $this->assertSame(4, Supplier::withoutGlobalScopes()->where('restaurant_id', $restaurant->id)->count());
     }
@@ -414,14 +508,16 @@ class PurchasingFoundationsTest extends TestCase
         $restaurant = $this->tenant();
         $owner = $this->owner($restaurant);
 
-        $this->actingAs($owner)->postJson('/api/dashboard/suppliers', ['contact_name' => 'Hassan'])
+        $this->actingAs($owner)->postJson('/api/dashboard/suppliers', ['contact_name' => 'Hassan', 'phone' => '0100000000'])
             ->assertUnprocessable()->assertJsonValidationErrors('name_en');
-        $this->actingAs($owner)->postJson('/api/dashboard/suppliers', ['name_en' => 'X', 'payment_term_days' => -1])
+        $this->actingAs($owner)->postJson('/api/dashboard/suppliers', ['name_en' => 'X', 'phone' => '0100000000', 'payment_term_days' => -1])
             ->assertUnprocessable()->assertJsonValidationErrors('payment_term_days');
-        $this->actingAs($owner)->postJson('/api/dashboard/suppliers', ['name_en' => 'X', 'email' => 'not-an-email'])
+        $this->actingAs($owner)->postJson('/api/dashboard/suppliers', ['name_en' => 'X', 'phone' => '0100000000', 'email' => 'not-an-email'])
             ->assertUnprocessable()->assertJsonValidationErrors('email');
 
-        $this->actingAs($owner)->postJson('/api/dashboard/suppliers', ['name_ar' => 'مورد', 'payment_term_days' => 30])
+        // Either language alone is a name; terms are still settable by API for
+        // the invoice form's due-date default, they just left the editor.
+        $this->actingAs($owner)->postJson('/api/dashboard/suppliers', ['name_ar' => 'مورد', 'phone' => '0100000000', 'payment_term_days' => 30])
             ->assertCreated()->assertJsonPath('data.payment_term_days', 30)->assertJsonPath('data.is_active', true);
     }
 
@@ -430,11 +526,11 @@ class PurchasingFoundationsTest extends TestCase
         $restaurant = $this->tenant();
         $owner = $this->owner($restaurant);
 
-        $id = $this->actingAs($owner)->postJson('/api/dashboard/suppliers', ['name_en' => 'Cairo Poultry'])
+        $id = $this->actingAs($owner)->postJson('/api/dashboard/suppliers', ['name_en' => 'Cairo Poultry', 'phone' => '0100000000'])
             ->assertCreated()->json('data.id');
         $this->assertSame($owner->id, $this->event('supplier.created', $restaurant->id)['actor_id'] ?? null);
 
-        $this->actingAs($owner)->putJson("/api/dashboard/suppliers/{$id}", ['name_en' => 'Cairo Poultry', 'is_active' => false])
+        $this->actingAs($owner)->putJson("/api/dashboard/suppliers/{$id}", ['name_en' => 'Cairo Poultry', 'phone' => '0100000000', 'is_active' => false])
             ->assertOk()->assertJsonPath('data.is_active', false);
         $updated = $this->event('supplier.updated', $restaurant->id);
         $this->assertSame($owner->id, $updated['actor_id'] ?? null);

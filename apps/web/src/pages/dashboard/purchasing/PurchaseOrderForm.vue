@@ -274,7 +274,7 @@ function back() {
                         <div class="block">
                             <span class="label">{{ t('purchasing.line_total') }}</span>
                             <div class="flex items-center justify-between gap-2 py-2">
-                                <span class="mono" dir="ltr" style="color:var(--ink)">{{ lineTotal(l) == null ? '—' : show(lineTotal(l)) }}</span>
+                                <span class="mono" style="color:var(--ink)">{{ lineTotal(l) == null ? '—' : show(lineTotal(l)) }}</span>
                                 <button type="button" class="icon-btn" :title="t('purchasing.remove_line')" :aria-label="t('purchasing.remove_line')" @click="removeLine(i)"><Icon name="close" :size="16" /></button>
                             </div>
                         </div>
@@ -282,9 +282,9 @@ function back() {
                 </div>
 
                 <div class="border-t pt-3 space-y-1 text-sm" style="border-color:var(--line)">
-                    <div class="flex justify-between gap-3"><span style="color:var(--muted)">{{ t('purchasing.subtotal') }}</span><span class="mono" dir="ltr">{{ show(preview.subtotal_minor) }}</span></div>
-                    <div class="flex justify-between gap-3"><span style="color:var(--muted)">{{ t('purchasing.tax') }}</span><span class="mono" dir="ltr">{{ show(preview.tax_minor) }}</span></div>
-                    <div class="flex justify-between gap-3 font-semibold" style="color:var(--ink)"><span>{{ t('purchasing.total') }}</span><span class="mono" dir="ltr">{{ show(preview.total_minor) }}</span></div>
+                    <div class="flex justify-between gap-3"><span style="color:var(--muted)">{{ t('purchasing.subtotal') }}</span><span class="mono">{{ show(preview.subtotal_minor) }}</span></div>
+                    <div class="flex justify-between gap-3"><span style="color:var(--muted)">{{ t('purchasing.tax') }}</span><span class="mono">{{ show(preview.tax_minor) }}</span></div>
+                    <div class="flex justify-between gap-3 font-semibold" style="color:var(--ink)"><span>{{ t('purchasing.total') }}</span><span class="mono">{{ show(preview.total_minor) }}</span></div>
                     <p class="text-xs pt-1" style="color:var(--muted)">{{ t('purchasing.preview_note') }}</p>
                 </div>
             </div>

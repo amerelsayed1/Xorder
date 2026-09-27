@@ -104,23 +104,23 @@ function openRow(row) {
             <div class="grid grid-cols-2 lg:grid-cols-5 gap-3" :style="loading ? 'opacity:.6' : ''">
                 <div class="card p-4">
                     <div class="text-xs" style="color:var(--muted)">{{ inCredit ? t('purchasing.in_credit') : t('purchasing.outstanding_balance') }}</div>
-                    <div class="mono text-lg font-semibold" dir="ltr" :style="inCredit ? 'color:var(--green)' : 'color:var(--ink)'">{{ show(Math.abs(f.outstanding_minor || 0)) }}</div>
+                    <div class="mono text-lg font-semibold" :style="inCredit ? 'color:var(--green)' : 'color:var(--ink)'"><span>{{ show(Math.abs(f.outstanding_minor || 0)) }}</span></div>
                 </div>
                 <div class="card p-4">
                     <div class="text-xs" style="color:var(--muted)">{{ t('purchasing.overdue') }}</div>
-                    <div class="mono text-lg font-semibold" dir="ltr" :style="f.overdue_minor ? 'color:var(--red)' : 'color:var(--ink)'">{{ show(f.overdue_minor) }}</div>
+                    <div class="mono text-lg font-semibold" :style="f.overdue_minor ? 'color:var(--red)' : 'color:var(--ink)'"><span>{{ show(f.overdue_minor) }}</span></div>
                 </div>
                 <div class="card p-4">
                     <div class="text-xs" style="color:var(--muted)">{{ t('purchasing.on_account') }}</div>
-                    <div class="mono text-lg font-semibold" dir="ltr" style="color:var(--ink)">{{ show(f.on_account_minor) }}</div>
+                    <div class="mono text-lg font-semibold" style="color:var(--ink)"><span>{{ show(f.on_account_minor) }}</span></div>
                 </div>
                 <div class="card p-4">
                     <div class="text-xs" style="color:var(--muted)">{{ t('purchasing.invoiced') }}</div>
-                    <div class="mono text-lg" dir="ltr" style="color:var(--ink)">{{ show(f.invoiced_minor) }}</div>
+                    <div class="mono text-lg" style="color:var(--ink)"><span>{{ show(f.invoiced_minor) }}</span></div>
                 </div>
                 <div class="card p-4">
                     <div class="text-xs" style="color:var(--muted)">{{ t('purchasing.paid_total') }}</div>
-                    <div class="mono text-lg" dir="ltr" style="color:var(--ink)">{{ show(f.paid_minor) }}</div>
+                    <div class="mono text-lg" style="color:var(--ink)"><span>{{ show(f.paid_minor) }}</span></div>
                 </div>
             </div>
 
@@ -153,9 +153,9 @@ function openRow(row) {
                                     <template v-else>{{ t('purchasing.methods.' + row.method) }}<span v-if="row.reference"> · <span class="mono" dir="ltr">{{ row.reference }}</span></span></template>
                                 </td>
                                 <td v-if="branches.length > 1 && !branchId" class="px-4 py-3" style="color:var(--body)">{{ branchName(row.branch_id) }}</td>
-                                <td class="px-4 py-3 text-end"><span class="mono" dir="ltr">{{ row.debit_minor ? show(row.debit_minor) : '' }}</span></td>
-                                <td class="px-4 py-3 text-end"><span class="mono" dir="ltr">{{ row.credit_minor ? show(row.credit_minor) : '' }}</span></td>
-                                <td class="px-4 py-3 text-end"><span class="mono font-medium" dir="ltr">{{ show(row.balance_minor) }}</span></td>
+                                <td class="px-4 py-3 text-end"><span class="mono">{{ row.debit_minor ? show(row.debit_minor) : '' }}</span></td>
+                                <td class="px-4 py-3 text-end"><span class="mono">{{ row.credit_minor ? show(row.credit_minor) : '' }}</span></td>
+                                <td class="px-4 py-3 text-end"><span class="mono font-medium">{{ show(row.balance_minor) }}</span></td>
                             </tr>
                         </tbody>
                     </table>
@@ -183,9 +183,9 @@ function openRow(row) {
                                     {{ fmtDay(i.due_at, locale) }}
                                     <div v-if="i.days_late" class="text-xs" style="color:var(--red)">{{ t('purchasing.days_late', { n: i.days_late }) }}</div>
                                 </td>
-                                <td class="px-4 py-3 text-end"><span class="mono" dir="ltr">{{ show(i.total_minor) }}</span></td>
-                                <td class="px-4 py-3 text-end"><span class="mono" dir="ltr">{{ show(i.paid_minor) }}</span></td>
-                                <td class="px-4 py-3 text-end"><span class="mono font-medium" dir="ltr">{{ show(i.outstanding_minor) }}</span></td>
+                                <td class="px-4 py-3 text-end"><span class="mono">{{ show(i.total_minor) }}</span></td>
+                                <td class="px-4 py-3 text-end"><span class="mono">{{ show(i.paid_minor) }}</span></td>
+                                <td class="px-4 py-3 text-end"><span class="mono font-medium">{{ show(i.outstanding_minor) }}</span></td>
                             </tr>
                         </tbody>
                     </table>
@@ -212,9 +212,9 @@ function openRow(row) {
                                     {{ t('purchasing.methods.' + p.method) }}<span v-if="p.reference"> · <span class="mono" dir="ltr">{{ p.reference }}</span></span>
                                     <span v-if="p.is_voided" class="badge badge-gray ms-1">{{ t('purchasing.voided') }}</span>
                                 </td>
-                                <td class="px-4 py-3 text-end"><span class="mono" dir="ltr" :style="p.is_voided ? 'text-decoration:line-through' : ''">{{ show(p.amount_minor) }}</span></td>
-                                <td class="px-4 py-3 text-end"><span class="mono" dir="ltr">{{ show(p.allocated_minor) }}</span></td>
-                                <td class="px-4 py-3 text-end"><span class="mono" dir="ltr">{{ p.is_voided ? '—' : show(p.on_account_minor) }}</span></td>
+                                <td class="px-4 py-3 text-end"><span class="mono" :style="p.is_voided ? 'text-decoration:line-through' : ''">{{ show(p.amount_minor) }}</span></td>
+                                <td class="px-4 py-3 text-end"><span class="mono">{{ show(p.allocated_minor) }}</span></td>
+                                <td class="px-4 py-3 text-end"><span class="mono">{{ p.is_voided ? '—' : show(p.on_account_minor) }}</span></td>
                             </tr>
                         </tbody>
                     </table>

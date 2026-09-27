@@ -93,10 +93,14 @@ class PublicOrderController extends Controller
             [$customer, $address] = $this->directory->upsert($data);
 
             // session_token is a lookup key, not a column on the order — it is
-            // consumed by bindTableSession below. Dropping it explicitly rather
-            // than leaving mass assignment to discard it silently, so the
-            // constructor is only ever handed things the model actually stores.
-            unset($data['session_token']);
+            // consumed by bindTableSession below. The email, address and its
+            // label belong to the customer directory (upserted just above), not
+            // to the order row. Dropping them explicitly rather than leaving mass
+            // assignment to discard them: outside production the model is strict
+            // and an unknown key is a 500, which turned every menu order that
+            // carried the (always present, often null) email field into a
+            // silent failure behind the diner's success dialog.
+            unset($data['session_token'], $data['customer_email'], $data['customer_address'], $data['address_label']);
 
             $order = DB::transaction(function () use ($data, $restaurant, $mode, $customer, $address, $request) {
                 $session = $this->resolveTableSession(
@@ -278,6 +282,7 @@ class PublicOrderController extends Controller
                 'order_round_id' => $round->id,
                 'name' => $line['name'],
                 'quantity' => $quantity,
+                'variant' => $line['variant'] ?? null,
                 'options' => $line['options'] ?? [],
                 'note' => $line['note'] ?? null,
                 'unit_price' => round((float) $line['line_total'] / $quantity, 2),
