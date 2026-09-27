@@ -59,6 +59,7 @@ use App\Http\Controllers\Dashboard\TenderTypeController;
 use App\Http\Controllers\Dashboard\UnitController;
 use App\Http\Controllers\Pos\BootstrapController as PosBootstrapController;
 use App\Http\Controllers\Pos\LicenceController as PosLicenceController;
+use App\Http\Controllers\Pos\CustomerController as PosCustomerController;
 use App\Http\Controllers\Pos\OrderController as PosOrderController;
 use App\Http\Controllers\Pos\RefundController as PosRefundController;
 use App\Http\Controllers\Pos\ShiftController as PosShiftController;
@@ -777,6 +778,13 @@ Route::middleware(['pos.device', 'throttle:240,1'])->group(function () {
     // a path parameter.
     Route::get('pos/refunds/by-client-id/{uuid}', [PosRefundController::class, 'byClientId']);
     Route::post('pos/refunds', [PosRefundController::class, 'store']);
+
+    // Customers (POS-BE-014). The same device credential as an order, and the
+    // cashier — when the till names one — must hold `customers.create`, the
+    // first write verb on the directory. Deliberately NOT gated on
+    // `customers.view`: reading the dashboard's directory and adding somebody
+    // at the counter are different acts, and a cashier does the second.
+    Route::post('pos/customers', [PosCustomerController::class, 'store']);
 
     Route::get('pos/shifts/current', [PosShiftController::class, 'current']);
     Route::post('pos/shifts', [PosShiftController::class, 'open']);

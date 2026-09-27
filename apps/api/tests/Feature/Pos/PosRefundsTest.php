@@ -107,7 +107,11 @@ class PosRefundsTest extends PosTestCase
         // The order's own lifecycle state is untouched (A4) — refund state is
         // carried by the DERIVED settlement status, not by OrderStatus.
         $this->assertSame($before->status, $after->status);
-        $this->assertSame('NEW', $after->status->value);
+        // COMPLETED, not NEW: `sell()` pays in full, and a settled sale is
+        // marked complete at ingest rather than queued for a confirmation
+        // nobody can give. The claim here is that a refund does not MOVE it,
+        // which is the line above.
+        $this->assertSame('COMPLETED', $after->status->value);
         $this->assertSame((int) $before->total_minor, (int) $after->total_minor);
         $this->assertSame('PARTIALLY_REFUNDED', $body['order']['settlement_status']);
         $this->assertSame(10000, $body['order']['refunded_minor']);

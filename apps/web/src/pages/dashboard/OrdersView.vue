@@ -324,6 +324,11 @@ function fmtTime(iso) {
                                         <span class="type-dot" :class="'type-' + order.order_type"></span>{{ orderTypeLabel(order) }}
                                     </span>
                                     <span v-else style="color:var(--muted)">—</span>
+                                    <!-- Where it was rung up, when that is not the QR
+                                         menu. A till sale and a diner's phone order look
+                                         identical in every other column, and they are not
+                                         the same thing to a manager reading this list. -->
+                                    <span v-if="order.source === 'pos'" class="src-tag">{{ t('order_source.pos') }}</span>
                                 </td>
                                 <td class="px-3 py-3">
                                     <button v-if="canOpenCustomer(order)" type="button" class="cust-link cell-strong" @click="openCustomer(order)">{{ order.customer_name || '—' }}</button>
@@ -489,6 +494,21 @@ function fmtTime(iso) {
 .type-delivery { background: var(--accent); }
 .type-pickup { background: var(--gray); }
 .type-dine_in { background: var(--green); }
+/* Deliberately quieter than the status pill: this is provenance, not something
+   anybody has to act on. Logical properties so it sits after the type in both
+   directions. */
+.src-tag {
+    display: inline-block;
+    margin-inline-start: 8px;
+    padding: 1px 7px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.6;
+    color: var(--muted);
+    background: var(--surface-2, rgba(127, 127, 127, .12));
+    vertical-align: middle;
+}
 
 /* Empty state */
 .empty { display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center; }

@@ -7,6 +7,7 @@ use App\Enums\TenantCapability;
 use App\Enums\UserStatus;
 use App\Models\Category;
 use App\Models\Charge;
+use App\Models\Customer;
 use App\Models\DiningTable;
 use App\Models\MenuItem;
 use App\Models\OptionGroup;
@@ -36,6 +37,13 @@ use App\Support\PosPin;
  */
 class PosBootstrapService
 {
+    /**
+     * How many customers ride in the bundle. Big enough to hold a busy
+     * restaurant's regulars, small enough that the bootstrap stays a download
+     * and not an export.
+     */
+    private const CUSTOMER_LIMIT = 2000;
+
     public function __construct(private readonly ReceiptProfileService $receiptProfiles) {}
 
     public function bundle(PosTerminal $terminal): array
@@ -148,6 +156,7 @@ class PosBootstrapService
                 'accent_hex' => $restaurant->brand_color,
             ],
             'staff' => $this->staff($restaurant->id),
+            'customers' => $this->customers($restaurant->id),
             'licence' => PosLicence::query()
                 ->where('restaurant_id', $restaurant->id)
                 ->live()
@@ -251,6 +260,43 @@ class PosBootstrapService
     }
 
     /** @return array<int,array<string,mixed>> */
+    /**
+     * The customer directory, so a cashier can find a regular with no internet.
+     *
+     * **Sent down rather than searched over the wire (owner decision, 27 Sep
+     * 2026).** A till is offline-first and the counter is exactly where the
+     * connection is worst; a search box that needs the platform is a search
+     * box that fails during a power cut, which is when the queue is longest.
+     *
+     * **Capped, and newest first.** A directory is unbounded — a restaurant
+     * that has traded for years has tens of thousands of numbers, and putting
+     * all of them in every bundle would make the bootstrap the biggest thing
+     * the till ever downloads, on every config change. The cap takes the most
+     * recently seen, which is the half of the directory a counter actually
+     * asks for; anyone older is still reachable by creating them again, which
+     * `CustomerDirectory::upsert()` resolves back to the same person by phone.
+     *
+     * Addresses: the default one only. A till prints one address on a delivery
+     * docket and has nowhere to show a chooser.
+     */
+    private function customers(int $restaurantId): array
+    {
+        return Customer::query()
+            ->where('restaurant_id', $restaurantId)
+            ->with(['addresses' => fn ($q) => $q->orderByDesc('is_default')->limit(1)])
+            ->orderByDesc('updated_at')
+            ->limit(self::CUSTOMER_LIMIT)
+            ->get()
+            ->map(fn (Customer $c) => [
+                'id' => $c->id,
+                'name' => $c->name,
+                'phone' => $c->phone,
+                'email' => $c->email,
+                'address' => $c->addresses->first()?->address,
+            ])
+            ->all();
+    }
+
     private function staff(int $restaurantId): array
     {
         // User has no RestaurantScope — scoped by hand, the StaffController

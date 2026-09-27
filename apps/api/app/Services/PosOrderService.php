@@ -108,6 +108,36 @@ class PosOrderService
             $currency,
         );
 
+        // **The same bar `addPayment` holds, held at the door too.** Settling a
+        // bill later is refused when it exceeds the outstanding balance; an
+        // order that arrives settled had no such check, so the one path that
+        // could write an impossible ledger state was the one nobody guarded.
+        //
+        // Found on 27 Sep 2026: `BR8-2026-000007` landed as 380.00 of payment
+        // against a 360.00 sale, because the till was writing cash TENDERED
+        // where its own contract says a payment row records what was APPLIED
+        // (`payment_status.dart`). The till is fixed; this is the half that
+        // means a till with that bug cannot put the platform's ledger in a
+        // state `settlementStatusFrom` has no word for.
+        //
+        // Against the SERVER's total, never the asserted one — a client that
+        // gets the total wrong does not also get to set the bar it is measured
+        // against.
+        $tendered = array_sum(array_map(
+            static fn ($payment) => (int) ($payment['amount_minor'] ?? 0),
+            $data['payments'] ?? [],
+        ));
+
+        if ($tendered > $priced['totals']['total_minor']) {
+            throw new PosApiException('VALIDATION_FAILED', 422, [
+                'errors' => ['payments' => [
+                    'Payments total '.$tendered.', which exceeds the order total of '
+                        .$priced['totals']['total_minor'].'. A payment records what was '
+                        .'applied to the bill, not what was tendered.',
+                ]],
+            ]);
+        }
+
         $asserted = $data['asserted_totals'] ?? null;
         $mismatch = $asserted !== null && array_diff_assoc(
             array_map('intval', $asserted),
@@ -138,6 +168,9 @@ class PosOrderService
             }
 
             $order = new Order([
+                // Provisional. A sale that arrives already settled is moved to
+                // COMPLETED once its payments are stored, below — the paid
+                // total is not known until then.
                 'status' => OrderStatus::NEW->value,
                 'currency' => $currency->value,
                 'order_type' => $data['order_type'],
@@ -235,6 +268,8 @@ class PosOrderService
                 $this->storePayment($order, $terminal, $shift, $actor, $payment, $currency->value);
             }
 
+            $this->completeIfSettled($order);
+
             return $order;
         });
 
@@ -288,11 +323,51 @@ class PosOrderService
             ]);
         }
 
-        $payment = DB::transaction(fn () => $this->storePayment(
-            $order, $terminal, $shift, $actor, $data, $order->currency, $payloadHash,
-        ));
+        $payment = DB::transaction(function () use ($order, $terminal, $shift, $actor, $data, $payloadHash) {
+            $stored = $this->storePayment(
+                $order, $terminal, $shift, $actor, $data, $order->currency, $payloadHash,
+            );
+
+            // In the SAME transaction as the payment that settles it: a bill
+            // left open at the counter and paid on the way out reaches PAID
+            // here rather than at ingest, and it has exactly as little to
+            // confirm as one that arrived settled.
+            $this->completeIfSettled($order);
+
+            return $stored;
+        });
 
         return ['payment' => $payment, 'order' => $order, 'replay' => false];
+    }
+
+    /**
+     * A settled sale leaves the confirmation queue.
+     *
+     * **Money already taken is not a request.** The sale happened at the
+     * counter, the receipt printed, the customer left; the till is reporting
+     * it, not asking permission. Ingested as NEW it sat in the dashboard's
+     * "new orders" list behind a "Mark received" button, counted in every
+     * new-order badge (`StatsController`, `PulseController`,
+     * `OrderController`), and lit the table it was rung up against as having
+     * an order waiting — all of it work nobody could act on, and a sales
+     * figure that read as pending.
+     *
+     * **Only a settled one, and only from NEW.** A POS ticket sent to the
+     * kitchen against an open table is genuinely still open, so an unpaid one
+     * stays NEW — which is what keeps `TableController`'s seated-table marker
+     * honest. The NEW guard also means a CANCELLED order that somehow receives
+     * a payment is never quietly completed: `canTransitionTo` permits that
+     * move, but only a person should make it.
+     *
+     * Nothing else moves. `settlement_status` stays the derived answer it has
+     * always been (A5/A4) — this writes the QR product's own NEW → COMPLETED
+     * transition, and the till neither sends nor reads `status`.
+     */
+    private function completeIfSettled(Order $order): void
+    {
+        if ($order->status === OrderStatus::NEW && $this->settlementStatus($order) === 'PAID') {
+            $order->update(['status' => OrderStatus::COMPLETED->value]);
+        }
     }
 
     /** A5/A4: settlement is DERIVED, never a stored lifecycle state. */

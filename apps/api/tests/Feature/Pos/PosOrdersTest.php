@@ -179,6 +179,59 @@ class PosOrdersTest extends PosTestCase
 
     // ------------------------------------------------------- §006-P
 
+    public function test_paying_more_than_the_bill_is_refused_at_the_door(): void
+    {
+        // `addPayment` has always refused this; ingest did not, so the one
+        // path that could write a ledger state `settlementStatusFrom` has no
+        // word for was the unguarded one. Found live on 27 Sep 2026 —
+        // BR8-2026-000007, 380.00 of cash recorded against a 360.00 sale,
+        // because the till wrote what was TENDERED instead of what it applied.
+        $payload = $this->payload();
+        $payload['payments'][0]['amount_minor'] = 20000 + 2000;
+
+        $this->postJson('/api/pos/orders', $payload, $this->deviceHeaders($this->token()))
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'VALIDATION_FAILED');
+
+        $this->assertSame(
+            0,
+            Order::withoutGlobalScopes()->where('channel', 'pos')->count(),
+            'a refused sale writes no order at all',
+        );
+    }
+
+    public function test_a_settled_sale_is_not_queued_for_confirmation(): void
+    {
+        // Found live on 27 Sep 2026: six POS sales, all paid at the counter and
+        // printed, sat in the dashboard's "new orders" list behind a "Mark
+        // received" button — a confirmation nobody could give for money that
+        // had already changed hands.
+        $order = $this->postJson('/api/pos/orders', $this->payload(), $this->deviceHeaders($this->token()))
+            ->assertCreated()->json('data');
+
+        $stored = Order::withoutGlobalScopes()->find($order['id']);
+        $this->assertSame('PAID', $order['settlement_status']);
+        $this->assertSame('COMPLETED', $stored->status->value);
+        $this->assertSame(
+            0,
+            Order::withoutGlobalScopes()->where('status', 'NEW')->count(),
+            'a paid POS sale must not appear in any new-order count',
+        );
+    }
+
+    public function test_an_unpaid_ticket_stays_open(): void
+    {
+        // The other half of the rule. A bill rung up against a table and sent
+        // to the kitchen is genuinely still open — completing it here would
+        // clear the seated-table marker `TableController` draws from NEW.
+        $order = $this->postJson('/api/pos/orders', $this->payload(['payments' => []]), $this->deviceHeaders($this->token()))
+            ->assertCreated()->json('data');
+
+        $stored = Order::withoutGlobalScopes()->find($order['id']);
+        $this->assertSame('UNPAID', $order['settlement_status']);
+        $this->assertSame('NEW', $stored->status->value);
+    }
+
     public function test_settling_an_open_bill_later_recomputes_settlement(): void
     {
         $token = $this->token();
@@ -197,6 +250,12 @@ class PosOrdersTest extends PosTestCase
         $paid = $this->postJson("/api/pos/orders/{$order['id']}/payments", $payment, $this->deviceHeaders($token))
             ->assertCreated()->json('data');
         $this->assertSame('PAID', $paid['settlement_status']);
+        // And the bill leaves the confirmation queue at the moment it is
+        // settled, not only when it arrives settled.
+        $this->assertSame(
+            'COMPLETED',
+            Order::withoutGlobalScopes()->find($order['id'])->status->value,
+        );
 
         // Payment replay: same 2xx body, one row.
         $replay = $this->postJson("/api/pos/orders/{$order['id']}/payments", $payment, $this->deviceHeaders($token))

@@ -183,12 +183,35 @@ numeric ceilings, risk levels, no-escalation). The platform has per-restaurant
 today, or (b) author them on the platform and send them. (b) means one role per
 person across tills, but it's a large contract. Write up both; don't build either.
 
-### CB-07: Back-office sign-in on cloud · S · docs + small web
+### CB-07: Back-office sign-in on cloud · S · docs + small web · **`BUILT` 2026-09-27**
 
 Commit `b0ab577`: the till's back office opens with a username plus the database
 back-office password. On cloud, a manager should be sent to the dashboard
 instead. Decide what the till shows on cloud (a link to `/admin`?). This is mostly
 a ruling; the web side is the dashboard's existing login.
+
+> **2026-09-27 (owner go).** Ruled: **the whole back office**, not part of it.
+> A cloud till shows a signpost — `CloudBackOfficeScreen` — naming the
+> dashboard and nothing else. No panes, no read-only mode, no edits.
+>
+> The reasoning is §2's, applied honestly: the platform authors every row a
+> Management pane would edit, so an edit made on a cloud till survived only
+> until the next bundle landed on top of it. That is worse than no edit,
+> because it looked like it had worked.
+>
+> Enforced at the ROUTE (`lib/app/router.dart`), not on the doors that open
+> it — Management is reached from the start screen, Ctrl+Shift+S, the status
+> bar and deep links that name a pane, and a guard on any one of those is a
+> guard somebody adds a fifth way around.
+>
+> **The address is derived, not sent.** `dashboardAddress()` builds it from the
+> platform URL and tenant slug the till already has, and answers null rather
+> than guessing — a wrong address sends a manager to a certificate warning or
+> to somebody else's restaurant. If the platform ever wants to name it
+> explicitly, a `dashboard_url` on the bundle would be the place.
+>
+> Selling, shifts, the drawer and cash-up are untouched and still work with no
+> internet. Those are facts about this terminal, not rows the platform owns.
 
 ### CB-08: Receipt profile · S · owner decision · **platform half `BUILT`**
 

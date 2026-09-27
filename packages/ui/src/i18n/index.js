@@ -61,6 +61,9 @@ const messages = {
             purchasing: 'Purchasing & suppliers',
         },
         order_type: { dine_in: 'Dine-in', pickup: 'Pickup', delivery: 'Delivery' },
+        // Where the order was rung up, which is not the same question as
+        // what kind of order it is. Only shown when it is not the QR menu.
+        order_source: { pos: 'Till' },
         country: { EG: 'Egypt', SA: 'Saudi Arabia', AE: 'United Arab Emirates' },
         landing: {
             nav_home: 'Home', nav_features: 'Features', nav_how: 'How it works', nav_contact: 'Contact',
@@ -1551,6 +1554,7 @@ const messages = {
             purchasing: 'المشتريات والموردون',
         },
         order_type: { dine_in: 'صالة', pickup: 'استلام', delivery: 'توصيل' },
+        order_source: { pos: 'كاشير' },
         country: { EG: 'مصر', SA: 'السعودية', AE: 'الإمارات' },
         landing: {
             nav_home: 'الرئيسية', nav_features: 'المميزات', nav_how: 'كيف يعمل', nav_contact: 'تواصل',
