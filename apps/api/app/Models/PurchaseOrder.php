@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\PurchaseCloseReason;
 use App\Enums\PurchaseStatus;
 use App\Models\Concerns\BelongsToRestaurant;
 use Illuminate\Database\Eloquent\Model;
@@ -37,7 +38,7 @@ class PurchaseOrder extends Model
             'ordered_at' => 'datetime',
             'expected_at' => 'date:Y-m-d',
             'closed_short_at' => 'datetime',
-            'close_reason' => \App\Enums\PurchaseCloseReason::class,
+            'close_reason' => PurchaseCloseReason::class,
         ];
     }
 

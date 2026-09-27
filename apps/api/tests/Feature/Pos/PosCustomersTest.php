@@ -4,6 +4,7 @@ namespace Tests\Feature\Pos;
 
 use App\Enums\TenantCapability;
 use App\Models\Customer;
+use App\Models\Restaurant;
 use App\Models\Role;
 use App\Models\User;
 use App\Support\TenantContext;
@@ -150,7 +151,7 @@ class PosCustomersTest extends PosTestCase
         $this->postJson('/api/pos/customers', $this->payload(), $this->deviceHeaders($this->token))
             ->assertCreated();
 
-        $other = \App\Models\Restaurant::factory()->create();
+        $other = Restaurant::factory()->create();
         TenantContext::overrideId($other->id);
         try {
             Customer::forceCreate([

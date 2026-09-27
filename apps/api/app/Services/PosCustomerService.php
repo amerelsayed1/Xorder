@@ -48,7 +48,7 @@ class PosCustomerService
             // makes that true even for the first caller.
             $existing = Customer::where('phone', $phone)->first();
 
-            [$customer, ] = $this->directory->upsert([
+            [$customer] = $this->directory->upsert([
                 'customer_name' => $data['name'],
                 'customer_phone' => $data['phone'],
                 'customer_email' => $data['email'] ?? null,

@@ -5,7 +5,6 @@ namespace App\Http\Controllers\Dashboard;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Dashboard\StoreStockAdjustmentRequest;
 use App\Models\StockLevel;
-use App\Models\StockMovement;
 use App\Services\StockAdjustmentService;
 use Illuminate\Http\JsonResponse;
 
