@@ -538,6 +538,29 @@ sealed class AppStrings {
   /// hand usually only has `postgres`.
   String get adminDatabaseUser;
   String get adminDatabaseUserHelp;
+
+  /// CB-07: a cloud till has no back office of its own. The platform authors
+  /// every row a Management pane would edit, so the till points at the
+  /// dashboard rather than offering controls whose edits the next bundle
+  /// would overwrite.
+  /// POS-BE-014 — who the food is for, asked at the moment the money is
+  /// taken, which is when a phone number gets given.
+  String get whoIsThisFor;
+  String get searchNameOrPhone;
+  String get addCustomer;
+  String get customerName;
+  String get customerPhone;
+  String get customerAddress;
+  String get noCustomerFound;
+  String get removeCustomer;
+  String get customerNeedsNameAndPhone;
+  String get customerOnTicket;
+
+  String get backOfficeIsOnTheCloud;
+  String get backOfficeIsOnTheCloudHelp;
+  String get dashboardAddress;
+  String get copyAddress;
+  String get addressCopied;
   String adminPasswordFor(String user);
   String get adminPasswordHelp;
 
@@ -4099,6 +4122,46 @@ final class EnStrings extends AppStrings {
       'twice — anything already there is left alone.';
   @override
   String get adminDatabaseUser => 'Administrator role';
+  @override
+  @override
+  String get whoIsThisFor => 'Who is this for?';
+  @override
+  String get searchNameOrPhone => 'Name, or any part of the number';
+  @override
+  String get addCustomer => 'Add a customer';
+  @override
+  String get customerName => 'Name';
+  @override
+  String get customerPhone => 'Phone';
+  @override
+  String get customerAddress => 'Address (for delivery)';
+  @override
+  String get noCustomerFound => 'Nobody by that name or number yet.';
+  @override
+  String get removeCustomer => 'Take off';
+  @override
+  String get customerNeedsNameAndPhone =>
+      'A customer needs a name and a number — the number is how they are '
+      'found again.';
+  @override
+  String get customerOnTicket => 'Customer';
+  @override
+  String get backOfficeIsOnTheCloud => 'THE BACK OFFICE IS ON THE DASHBOARD';
+  @override
+  String get backOfficeIsOnTheCloudHelp =>
+      'This till belongs to a restaurant that is managed from XOrder Cloud. '
+      'The menu, the people, the tables, the tax rules and the receipt are '
+      'authored there and sent down to this machine, so there is nothing here '
+      'to edit — anything changed on the till would be replaced the next time '
+      'the restaurant\'s settings arrive. Sign in to the dashboard from any '
+      'browser. Taking money, shifts and the drawer stay on this screen and '
+      'keep working with no internet.';
+  @override
+  String get dashboardAddress => 'DASHBOARD ADDRESS';
+  @override
+  String get copyAddress => 'Copy the address';
+  @override
+  String get addressCopied => 'Address copied.';
   @override
   String get adminDatabaseUserHelp =>
       'The PostgreSQL account that creates the database and owns its tables — '
@@ -8606,6 +8669,44 @@ final class ArStrings extends AppStrings {
       'المطعم يأتي من الترخيص. تشغيله مرتين آمن — ما هو موجود يُترك كما هو.';
   @override
   String get adminDatabaseUser => 'دور المدير';
+  @override
+  @override
+  String get whoIsThisFor => 'لمن هذا الطلب؟';
+  @override
+  String get searchNameOrPhone => 'الاسم، أو أي جزء من الرقم';
+  @override
+  String get addCustomer => 'إضافة عميل';
+  @override
+  String get customerName => 'الاسم';
+  @override
+  String get customerPhone => 'رقم الهاتف';
+  @override
+  String get customerAddress => 'العنوان (للتوصيل)';
+  @override
+  String get noCustomerFound => 'لا يوجد أحد بهذا الاسم أو الرقم بعد.';
+  @override
+  String get removeCustomer => 'إزالة';
+  @override
+  String get customerNeedsNameAndPhone =>
+      'العميل يحتاج اسماً ورقماً — والرقم هو الطريقة التي يُعثر بها عليه مرة '
+      'أخرى.';
+  @override
+  String get customerOnTicket => 'العميل';
+  @override
+  String get backOfficeIsOnTheCloud => 'الإدارة من لوحة التحكم';
+  @override
+  String get backOfficeIsOnTheCloudHelp =>
+      'هذا الكاشير تابع لمطعم يُدار من XOrder Cloud. المنيو والموظفون '
+      'والطاولات وقواعد الضريبة والفاتورة تُكتب هناك وتُرسل إلى هذا الجهاز، '
+      'فلا يوجد هنا ما يُعدَّل — وأي تغيير على الجهاز نفسه سيُستبدل عند وصول '
+      'إعدادات المطعم في المرة القادمة. ادخل إلى لوحة التحكم من أي متصفح. '
+      'أما البيع والورديات والدرج فتبقى على هذه الشاشة وتعمل بدون إنترنت.';
+  @override
+  String get dashboardAddress => 'عنوان لوحة التحكم';
+  @override
+  String get copyAddress => 'انسخ العنوان';
+  @override
+  String get addressCopied => 'نُسخ العنوان.';
   @override
   String get adminDatabaseUserHelp =>
       'حساب PostgreSQL الذي يُنشئ قاعدة البيانات ويملك جداولها — وليس حساب '
