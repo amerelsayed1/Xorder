@@ -788,6 +788,14 @@ class LocalBootstrap {
     // part of the record of what they paid.
     'GRANT SELECT, INSERT ON pos_order_taxes TO "$role"',
     'GRANT USAGE, SELECT ON SEQUENCE pos_order_taxes_id_seq TO "$role"',
+    // Who the food is for (POS-BE-014). The till WRITES this one, unlike the
+    // rest of the restaurant's data: a cashier taking a phone order creates a
+    // customer at the counter, with no connection and no back office to do it
+    // in. UPDATE as well, because the platform's id lands on the row when the
+    // drain delivers it, and because a regular who corrects their address
+    // should not become a second person.
+    'GRANT SELECT, INSERT, UPDATE ON pos_customers TO "$role"',
+    'GRANT USAGE, SELECT ON SEQUENCE pos_customers_id_seq TO "$role"',
     // What a combo line was actually made of. Same discipline: the kitchen
     // made these, so they are a record rather than a working figure.
     'GRANT SELECT, INSERT ON pos_order_line_items TO "$role"',

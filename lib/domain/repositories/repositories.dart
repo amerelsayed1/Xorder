@@ -6,6 +6,7 @@ import '../models/pos_unit.dart';
 import '../models/stock_item.dart';
 import '../models/stock_level.dart';
 import '../models/catalog.dart';
+import '../models/customer.dart';
 import '../models/order_type_config.dart';
 import '../models/purchase_order.dart';
 import '../services/stock_costing.dart';
@@ -137,6 +138,34 @@ class EtaEnqueued {
 /// A repository rather than a constant since Wave D. Two lists of tender types
 /// is how a till ends up refunding to a method it cannot take payment on, so
 /// settlement and refunds both read this one.
+/// Who the food is for (POS-BE-014).
+///
+/// **Searched locally, always.** A cloud till receives the directory in its
+/// bootstrap bundle and a cashier finds a regular with no connection — the
+/// counter is exactly where the signal is worst, and a search box that needs
+/// the platform fails during the power cut when the queue is longest.
+abstract interface class CustomersRepository {
+  /// Everyone matching [query] — a name fragment or any run of digits from the
+  /// number. An empty query answers the most recently seen, so the list is
+  /// useful before anybody types.
+  Future<List<PosCustomer>> search(String query, {int limit = 30});
+
+  /// Create one at the counter, or return the one who already has that number.
+  ///
+  /// **Never a second row for one number.** The platform's directory keys on
+  /// the phone and `CustomerDirectory::upsert()` resolves a repeat to the same
+  /// person; a till that created a duplicate locally would upload a split the
+  /// platform then has to merge. So this upserts too, and a re-entered regular
+  /// simply comes back with their details corrected.
+  Future<PosCustomer> upsert({
+    required String name,
+    required String phone,
+    String? email,
+    String? address,
+    String? note,
+  });
+}
+
 abstract interface class TenderTypesRepository {
   /// Active methods, in the order the restaurant put them in.
   ///

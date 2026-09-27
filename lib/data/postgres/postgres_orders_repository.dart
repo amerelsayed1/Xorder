@@ -103,18 +103,24 @@ class PostgresOrdersRepository implements OrdersRepository {
             client_transaction_id, restaurant_id, branch_id, terminal_id,
             invoice_number, order_type, table_id, table_label, guest_count,
             currency, exponent, subtotal_minor, discount_minor, service_minor,
-            vat_minor, total_minor, occurred_at, shift_id, served_by
+            vat_minor, total_minor, occurred_at, shift_id, served_by,
+            customer_id
           ) VALUES (
             @txn, @restaurant, @branch, @terminal,
             @invoice, @orderType, @tableId, @tableLabel, @guests,
             @currency, @exponent, @subtotal, @discount, @service,
-            @vat, @total, @occurredAt, @shift, @servedBy
+            @vat, @total, @occurredAt, @shift, @servedBy,
+            @customer
           )
           ON CONFLICT (restaurant_id, client_transaction_id) DO NOTHING
           RETURNING id, invoice_number
         '''),
         parameters: {
           'txn': ticket.id,
+          // Who the food is for (POS-BE-014), when anybody said. Null on most
+          // sales and that is the normal case — somebody buys a coffee and
+          // nobody asks their name.
+          'customer': ticket.customer?.id,
           'restaurant': _context.restaurantId,
           'branch': _context.branchId,
           'terminal': _context.terminalId,

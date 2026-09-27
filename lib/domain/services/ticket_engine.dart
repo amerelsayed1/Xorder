@@ -6,6 +6,7 @@ import '../models/combo.dart';
 import '../models/discount.dart';
 import '../models/permissions.dart';
 import '../models/shift.dart';
+import '../models/customer.dart';
 import '../models/ticket.dart';
 import 'authorization.dart';
 
@@ -543,6 +544,19 @@ abstract final class TicketEngine {
     tableLabel: label,
     guestCount: guests,
   );
+
+  /// Name who the food is for (POS-BE-014).
+  ///
+  /// Late rather than early: a cashier rings the food up first and is asked
+  /// for a name at the moment they take the money, which is where a phone
+  /// number gets given. Attaching one never changes what is owed — a customer
+  /// is who, not what — so this is a plain copy and not a [TicketResult].
+  static Ticket attachCustomer(Ticket ticket, PosCustomer customer) =>
+      ticket.copyWith(customer: customer);
+
+  /// Take the customer back off — the wrong person picked from the list.
+  static Ticket detachCustomer(Ticket ticket) =>
+      ticket.copyWith(clearCustomer: true);
 
   /// Take a tender.
   ///

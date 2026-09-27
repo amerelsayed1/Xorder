@@ -35,6 +35,7 @@ import '../data/postgres/postgres_admin_repositories.dart';
 import '../data/postgres/postgres_backup_repository.dart';
 import '../data/postgres/postgres_catalog_admin_repository.dart';
 import '../data/postgres/postgres_catalog_repository.dart';
+import '../data/postgres/postgres_customers_repository.dart';
 import '../data/postgres/postgres_directory_repositories.dart';
 import '../data/postgres/postgres_discounts_repository.dart';
 import '../data/postgres/postgres_reason_repository.dart';
@@ -84,6 +85,7 @@ import '../features/licensing/domain/license.dart';
 import '../features/setup/application/setup_controller.dart';
 import '../domain/models/backup.dart';
 import '../domain/models/catalog.dart';
+import '../domain/models/customer.dart';
 import '../domain/models/dining_table.dart';
 import '../domain/models/ticket.dart';
 import '../domain/models/discount.dart';
@@ -1417,6 +1419,14 @@ class TicketController extends Notifier<Ticket> {
     guests: table.seats,
   );
 
+  /// Who the food is for (POS-BE-014), or null to take them off again.
+  ///
+  /// Never refuses and never touches the totals — a customer is who, not what.
+  /// A cashier who picked the wrong person simply opens the dialog again.
+  void setCustomer(PosCustomer? customer) => state = customer == null
+      ? TicketEngine.detachCustomer(state)
+      : TicketEngine.attachCustomer(state, customer);
+
   bool addTender({
     required int typeId,
     required String label,
@@ -2626,6 +2636,23 @@ final serviceChargesAllProvider = FutureProvider<List<ServiceCharge>>(
 ///
 /// Read on the till's own credential — a cashier needs the list to take money,
 /// and a back-office password at the counter is not a thing that can exist.
+/// Who the food is for (POS-BE-014). Searched locally, always — see
+/// [CustomersRepository].
+final customersRepositoryProvider = Provider<CustomersRepository>((ref) {
+  final config = ref.watch(deploymentProvider);
+  final context = ref.watch(posWriteContextProvider);
+  if (context == null || PosDatabase.hostFor(config) == null) {
+    return const UnconfiguredCustomersRepository();
+  }
+  return PostgresCustomersRepository(
+    database: ref.watch(posDatabaseProvider),
+    config: config,
+    restaurantId: context.restaurantId,
+    branchId: context.branchId,
+    syncsToPlatform: config.mode.syncsSalesToPlatform,
+  );
+});
+
 final tenderTypesRepositoryProvider = Provider<TenderTypesRepository>((ref) {
   final config = ref.watch(deploymentProvider);
   final context = ref.watch(posWriteContextProvider);

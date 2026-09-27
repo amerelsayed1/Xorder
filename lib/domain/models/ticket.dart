@@ -1,3 +1,4 @@
+import 'customer.dart';
 import 'package:collection/collection.dart';
 
 import '../../core/money/money.dart';
@@ -596,6 +597,7 @@ class Ticket {
     this.currency = 'EGP',
     this.exponent = 2,
     this.roundsSent = 0,
+    this.customer,
   });
 
   /// Client-generated. This is the `client_transaction_id` the server will
@@ -608,6 +610,14 @@ class Ticket {
   final int? guestCount;
   final List<TicketLine> lines;
   final List<Tender> tenders;
+
+  /// Who the food is for (POS-BE-014), when anybody said.
+  ///
+  /// Null on almost every ticket, and that is the normal case: somebody buys a
+  /// coffee and nobody asks their name. It is required in practice only where
+  /// `pos_order_types.requires_customer` says so — a delivery has to reach
+  /// somebody — and that rule is enforced where order types are, not here.
+  final PosCustomer? customer;
 
   /// What has been taken off, each one a snapshot of the discount as applied.
   ///
@@ -788,6 +798,9 @@ class Ticket {
     TaxConfig? taxConfig,
     int? roundsSent,
     bool clearTable = false,
+    PosCustomer? customer,
+    /// Taking the customer back off, which `customer: null` cannot say.
+    bool clearCustomer = false,
   }) => Ticket(
     id: id,
     orderType: orderType ?? this.orderType,
@@ -802,5 +815,6 @@ class Ticket {
     currency: currency,
     exponent: exponent,
     roundsSent: roundsSent ?? this.roundsSent,
+    customer: clearCustomer ? null : (customer ?? this.customer),
   );
 }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/providers.dart';
+import 'customer_dialog.dart';
 import '../../core/config/deployment.dart';
 import '../../core/money/money.dart';
 import '../../app/labels.dart';
@@ -263,6 +264,23 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
           ),
         ),
         const Spacer(),
+        // Who the food is for (POS-BE-014). On the payment header rather than
+        // on the sale screen because this is where a phone number is given:
+        // the cashier asks for it while they are taking the money, not while
+        // they are ringing the food up.
+        PosButton(
+          label: ticket.customer?.name ?? strings.whoIsThisFor,
+          height: 36,
+          background: ticket.customer == null
+              ? context.pos.shellCard
+              : context.pos.accent,
+          foreground: ticket.customer == null
+              ? context.pos.shellText
+              : Colors.white,
+          fontSize: 12.5,
+          onPressed: _chooseCustomer,
+        ),
+        const SizedBox(width: PosSpace.md),
         Text(
           [
             ticket.orderType.label(strings),
@@ -274,6 +292,22 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
       ],
     ),
   );
+
+  /// Attach, replace or remove the customer on this ticket.
+  ///
+  /// Nothing here touches the money: a customer is who, not what, and the
+  /// totals are the same either way. So this never refuses and never has to
+  /// be undone if the cashier picked the wrong person — they open it again.
+  Future<void> _chooseCustomer() async {
+    final ticket = ref.read(ticketProvider);
+    final choice = await CustomerDialog.show(
+      context,
+      attached: ticket.customer,
+    );
+    if (choice == null || !mounted) return;
+
+    ref.read(ticketProvider.notifier).setCustomer(choice.customer);
+  }
 
   Widget _left(AppStrings strings, Ticket ticket, TicketTotals totals) =>
       Container(

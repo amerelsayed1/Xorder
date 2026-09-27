@@ -6,6 +6,7 @@ import '../../core/config/deployment.dart';
 import '../../domain/models/permissions.dart';
 import '../../domain/models/tender_method.dart';
 import '../postgres/pos_database.dart';
+import '../../domain/models/customer.dart';
 import 'bootstrap_bundle.dart';
 
 /// What a seed attempt did, as data the wizard and the sync loop can act on.
@@ -79,6 +80,7 @@ class BootstrapSeeder {
       await _seedMoney(tx, bundle);
       await _seedTenderTypes(tx, bundle);
       await _seedStaff(tx, bundle);
+      await _seedCustomers(tx, bundle);
       await _seedCatalog(tx, bundle);
       await _seedTables(tx, bundle);
       await _bumpSequences(tx);
@@ -408,6 +410,50 @@ class BootstrapSeeder {
         'keep': [for (final t in tenders) t.id],
       },
     );
+  }
+
+  /// The customer directory (POS-BE-014).
+  ///
+  /// **Upserted, never cleared.** Every other platform-authored collection is
+  /// DELETEd and re-inserted, because the platform is the sole author and the
+  /// bundle is the whole truth. Customers are the one collection the till also
+  /// WRITES — a cashier creates one at the counter during an outage — so
+  /// wiping the table on every bootstrap would delete people this till has not
+  /// managed to upload yet. An empty list is therefore left alone entirely.
+  ///
+  /// Matched on the PHONE, not on the platform id, because a customer created
+  /// here and one sent down may be the same person: the till made a local row
+  /// with no `platform_id`, and the bundle now brings the id the platform gave
+  /// them. Keying on the number is what merges those two into one row instead
+  /// of leaving a duplicate the cashier can see.
+  Future<void> _seedCustomers(TxSession tx, BootstrapBundle bundle) async {
+    if (bundle.customers.isEmpty) return;
+    final restaurantId = bundle.restaurant!.id;
+
+    for (final customer in bundle.customers) {
+      await tx.execute(
+        Sql.named('''
+          INSERT INTO pos_customers (restaurant_id, client_transaction_id,
+                                     platform_id, name, phone, email, address)
+          VALUES (@restaurant, gen_random_uuid(), @platform, @name, @phone,
+                  @email, @address)
+          ON CONFLICT (restaurant_id, phone) DO UPDATE
+            SET platform_id = @platform,
+                name        = @name,
+                email       = COALESCE(@email, pos_customers.email),
+                address     = COALESCE(@address, pos_customers.address),
+                updated_at  = now()
+        '''),
+        parameters: {
+          'restaurant': restaurantId,
+          'platform': customer.id,
+          'name': customer.name,
+          'phone': PosCustomer.normalisePhone(customer.phone),
+          'email': customer.email,
+          'address': customer.address,
+        },
+      );
+    }
   }
 
   Future<void> _seedStaff(TxSession tx, BootstrapBundle bundle) async {

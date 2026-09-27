@@ -278,6 +278,11 @@ class OutboxDrain {
 
     final reports = <DrainReport>[];
     for (final phase in const [
+      // Customers first, and before orders on purpose: a sale can name one,
+      // and the platform has to know who they are before it is told what they
+      // bought. Same reasoning as the shift, which must exist before an order
+      // can name it.
+      ['customer'],
       ['shift_open'],
       ['order'],
       ['cash_movement', 'refund'],
@@ -588,6 +593,10 @@ class OutboxDrain {
       eventType,
       await _cashMovementEvent(sourceId, clientTransactionId),
     ),
+    'customer' => _sendableOrHeld(
+      eventType,
+      await _customerEvent(sourceId, clientTransactionId),
+    ),
     'refund' => await _refundEvent(sourceId, clientTransactionId),
     _ => _sendableOrHeld(eventType, null),
   };
@@ -603,6 +612,57 @@ class OutboxDrain {
               'longer has a complete platform payload. It was not sent.',
         )
       : _Sendable(event);
+
+  /// A customer created at the counter (POS-BE-014).
+  ///
+  /// **The reply is worth keeping**, unlike a shift's: it carries the
+  /// platform's own customer id, and writing it back is what lets a sale
+  /// uploaded afterwards name the person the dashboard already knows rather
+  /// than a local row number that means nothing there.
+  ///
+  /// Only rows that have never been delivered are queued, so a customer who
+  /// came DOWN in a bundle is never sent back up — they already have a
+  /// `platform_id`, and re-posting them would be a write the platform has to
+  /// resolve for no reason.
+  Future<_LifecycleEvent?> _customerEvent(
+    int sourceId,
+    String clientTransactionId,
+  ) async {
+    final rows = await _db.query(
+      config,
+      'SELECT name, phone, email, address, client_transaction_id '
+      'FROM pos_customers WHERE id = @id',
+      parameters: {'id': sourceId},
+    );
+    if (rows.isEmpty || rows.first[4]?.toString() != clientTransactionId) {
+      return null;
+    }
+
+    final row = rows.first;
+    final request = <String, Object?>{
+      'client_transaction_id': clientTransactionId,
+      'name': row[0] as String,
+      'phone': row[1] as String,
+      'email': row[2] as String?,
+      'address': row[3] as String?,
+    };
+
+    return _LifecycleEvent(
+      request: request,
+      send: () => api.createCustomer(request),
+      record: (tx, data) async {
+        if (data['id'] case final int platformId) {
+          await tx.execute(
+            Sql.named(
+              'UPDATE pos_customers SET platform_id = @platform '
+              'WHERE id = @id',
+            ),
+            parameters: {'platform': platformId, 'id': sourceId},
+          );
+        }
+      },
+    );
+  }
 
   Future<_LifecycleEvent?> _shiftOpenEvent(
     int sourceId,

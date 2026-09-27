@@ -440,6 +440,42 @@ class BootstrapPin {
   }
 }
 
+/// One row of the platform's customer directory.
+class BootstrapCustomer {
+  const BootstrapCustomer({
+    required this.id,
+    required this.name,
+    required this.phone,
+    this.email,
+    this.address,
+  });
+
+  /// The **platform customer id**, kept as `platform_id` so a sale uploaded
+  /// later names the person the dashboard already knows.
+  final int id;
+  final String name;
+  final String phone;
+  final String? email;
+  final String? address;
+
+  /// Null for a row this build cannot use. A customer with no number cannot
+  /// be found again by the only key the directory has, so it is dropped
+  /// rather than seeded into a table whose unique index would reject it.
+  static BootstrapCustomer? fromJson(Map<String, Object?> json) {
+    final id = json['id'];
+    final phone = '${json['phone'] ?? ''}'.trim();
+    if (id is! int || phone.isEmpty) return null;
+
+    return BootstrapCustomer(
+      id: id,
+      name: '${json['name'] ?? ''}'.trim(),
+      phone: phone,
+      email: json['email'] as String?,
+      address: json['address'] as String?,
+    );
+  }
+}
+
 class BootstrapStaff {
   const BootstrapStaff({
     required this.id,
@@ -532,6 +568,7 @@ class BootstrapBundle {
     this.optionGroups = const [],
     this.tables = const [],
     this.staff = const [],
+    this.customers = const [],
     this.receiptProfiles = const [],
     this.money = const {},
     this.invoice = const {},
@@ -550,6 +587,21 @@ class BootstrapBundle {
   final List<BootstrapOptionGroup> optionGroups;
   final List<BootstrapTable> tables;
   final List<BootstrapStaff> staff;
+
+  /// The customer directory, so a cashier can find a regular with no internet
+  /// (POS-BE-014, owner decision 27 Sep 2026).
+  ///
+  /// **Capped by the platform, newest first**, because a directory is
+  /// unbounded and a bootstrap is downloaded on every config change. Anyone
+  /// older is still reachable by entering them again: the number is the
+  /// identity, so the platform resolves it back to the same person rather
+  /// than creating a second.
+  ///
+  /// **Empty is "this platform predates the key", not "no customers"** — the
+  /// same reading `receiptProfiles` takes, and for the same reason: blanking a
+  /// directory a till has already been given would lose customers it created
+  /// at the counter and has not yet uploaded.
+  final List<BootstrapCustomer> customers;
 
   /// Who the receipt says sold the food, one row per active branch (A3).
   ///
@@ -624,6 +676,10 @@ class BootstrapBundle {
       tables: [
         for (final table in _asMapList(json['tables']))
           ?BootstrapTable.fromJson(table),
+      ],
+      customers: [
+        for (final row in _asMapList(json['customers']))
+          ?BootstrapCustomer.fromJson(row),
       ],
       staff: [
         for (final member in _asMapList(json['staff']))
