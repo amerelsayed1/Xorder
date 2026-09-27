@@ -662,10 +662,13 @@ final deviceTokenVaultProvider = Provider<DeviceTokenVault>(
 /// refresh, and the outbox drain. Null when there is nothing to talk to or
 /// nothing to say (unprovisioned).
 ///
-/// Under [SyncPolicy.automatic] a pass runs shortly after boot and then every
-/// three minutes; every settled sale also kicks one immediately. Under
-/// [SyncPolicy.manual] nothing runs on its own — the operator drains from the
-/// sync pill, and closing a shift offers to drain first.
+/// Under [SyncPolicy.automatic] a pass runs shortly after boot and then on the
+/// cadence [SyncSchedule] sets — four hours when everything is through, thirty
+/// minutes while anything is still queued or the platform is unreachable.
+/// Every settled sale also kicks one immediately, which is what keeps a busy
+/// till's money moving between the slow ticks. Under [SyncPolicy.manual]
+/// nothing runs on its own — the operator drains from the sync pill, and
+/// closing a shift offers to drain first.
 final Provider<CloudSync?> cloudSyncProvider = Provider<CloudSync?>((ref) {
   final config = ref.watch(deploymentProvider);
   final api = ref.watch(posCloudApiProvider);
@@ -699,15 +702,23 @@ final Provider<CloudSync?> cloudSyncProvider = Provider<CloudSync?>((ref) {
   );
 
   if (config.syncPolicy == SyncPolicy.automatic) {
-    final first = Timer(const Duration(seconds: 5), sync.kick);
-    final periodic = Timer.periodic(
-      const Duration(minutes: 3),
-      (_) => sync.kick(),
-    );
-    ref.onDispose(() {
-      first.cancel();
-      periodic.cancel();
-    });
+    // Self-rescheduling rather than `Timer.periodic`: the gap to the next pass
+    // is decided by how the last one went, which a fixed period cannot express.
+    // Each pass is AWAITED before the next is scheduled, so a slow drain can
+    // never stack passes on top of each other — the old periodic timer could,
+    // and `CloudSync.run` had to serialise them itself.
+    Timer? next;
+    void schedule(Duration delay) {
+      next = Timer(delay, () async {
+        if (!alive) return;
+        final outcome = await sync.run();
+        if (!alive) return;
+        schedule(SyncSchedule.after(outcome));
+      });
+    }
+
+    schedule(const Duration(seconds: 5));
+    ref.onDispose(() => next?.cancel());
   }
   return sync;
 });
