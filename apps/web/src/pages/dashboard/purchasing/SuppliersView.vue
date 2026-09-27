@@ -82,7 +82,7 @@ const editing = ref(null)
 const errors = ref({})
 const saving = ref(false)
 const blank = () => ({
-    name_en: '', name_ar: '', code: '', contact_name: '', phone: '', email: '',
+    name_en: '', name_ar: '', contact_name: '', phone: '', email: '',
     address: '', notes: '', is_active: true,
 })
 const form = reactive(blank())
@@ -253,9 +253,9 @@ async function remove(s) {
         <Dialog v-if="showModal" :title="editing ? t('purchasing.edit_supplier') : t('purchasing.add_supplier')" @close="showModal = false">
             <form class="space-y-4" @submit.prevent="save">
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <label v-for="lng in langs" :key="'n' + lng" class="block" :dir="lng === 'ar' ? 'rtl' : 'ltr'">
+                    <label v-for="lng in langs" :key="'n' + lng" class="block">
                         <span class="label">{{ bilingual ? t('common.name_' + lng) : t('common.name') }} <span style="color:var(--red)">*</span></span>
-                        <input v-model="form['name_' + lng]" class="input" maxlength="160" />
+                        <input v-model="form['name_' + lng]" class="input" :dir="lng === 'ar' ? 'rtl' : 'ltr'" maxlength="160" />
                         <FormError :errors="errors" :field="'name_' + lng" />
                     </label>
                     <!-- The server asks for one name, not two: say so rather than
@@ -263,17 +263,13 @@ async function remove(s) {
                     <p v-if="bilingual" class="text-xs sm:col-span-2" style="color:var(--muted)">{{ t('purchasing.name_one_language') }}</p>
                 </div>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <label class="block"><span class="label">{{ t('purchasing.code') }}</span>
-                        <input v-model="form.code" class="input mono" dir="ltr" maxlength="40" />
-                        <span class="text-xs" style="color:var(--muted)">{{ t('purchasing.code_hint') }}</span>
-                        <FormError :errors="errors" field="code" /></label>
                     <label class="block"><span class="label">{{ t('purchasing.contact_name') }}</span>
                         <input v-model="form.contact_name" class="input" maxlength="160" />
                         <FormError :errors="errors" field="contact_name" /></label>
                     <label class="block"><span class="label">{{ t('purchasing.phone') }} <span style="color:var(--red)">*</span></span>
                         <input v-model="form.phone" class="input" dir="ltr" inputmode="tel" data-en-digits maxlength="40" required />
                         <FormError :errors="errors" field="phone" /></label>
-                    <label class="block"><span class="label">{{ t('purchasing.email') }}</span>
+                    <label class="block sm:col-span-2"><span class="label">{{ t('purchasing.email') }}</span>
                         <input v-model="form.email" type="email" class="input" dir="ltr" maxlength="255" />
                         <FormError :errors="errors" field="email" /></label>
                 </div>
