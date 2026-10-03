@@ -9,7 +9,6 @@ import { currencyExponent, minorToAmount } from '../../lib/money.js'
 import { pickLocalized } from '@xorder/ui/localize.js'
 import Icon from '@xorder/ui/Icon.vue'
 import ErrorState from '@xorder/ui/ErrorState.vue'
-import { alert } from '@xorder/ui/alert.js'
 import { asPreview } from '../../lib/host.js'
 import { buildDashboardNav } from './nav.config.js'
 
@@ -21,10 +20,8 @@ const clientName = computed(() => pickLocalized(auth.restaurant, 'name', locale.
 const cur = computed(() => currencyLabel(auth.restaurant?.currency, locale.value, auth.restaurant?.currency_symbol))
 const exponent = computed(() => currencyExponent(auth.restaurant?.currency))
 const stats = ref(null)
-const qr = ref(null)
 const items = ref([])
 const engagement = ref(null)
-const copied = ref(false)
 // Without this, a failed core fetch left `stats` null forever and the page
 // showed a permanent loading skeleton — a blank first screen after login.
 const error = ref(false)
@@ -35,7 +32,6 @@ const error = ref(false)
 // shortcut landing below instead of a wall of stats it cannot see.
 const canAnalytics = computed(() => auth.can('analytics.view'))
 const canMenu = computed(() => auth.can('menu.view'))
-const canSettings = computed(() => auth.can('settings.view'))
 const canOrders = computed(() => auth.can('orders.view'))
 // Payments and shifts only exist where a till does. Showing a cashier panel to
 // a QR-menu-only tenant would be describing hardware they do not have.
@@ -54,14 +50,12 @@ async function load() {
     if (!canAnalytics.value) return
 
     try {
-        const [s, q, it, cats] = await Promise.all([
+        const [s, it, cats] = await Promise.all([
             api.get('api/dashboard/stats'),
-            canSettings.value ? api.get('api/dashboard/qr') : Promise.resolve(null),
             canMenu.value ? api.get('api/dashboard/items') : Promise.resolve(null),
             canMenu.value ? api.get('api/dashboard/categories') : Promise.resolve(null),
         ])
         stats.value = s.data.data
-        qr.value = q.data?.data ?? null
         items.value = it.data?.data ?? []
         categories.value = cats.data?.data ?? []
     } catch (err) {
@@ -117,14 +111,70 @@ const hasViews = computed(() => viewsTotal.value > 0)
 // The busiest day sets the scale, so a quiet fortnight still reads as a shape
 // rather than a flat line.
 const viewsMax = computed(() => Math.max(0, ...viewDays.value.map((d) => d.views)))
+// Which visible bar is the peak — flagged so the chart highlights it in accent
+// while the rest of the fortnight sits in cream. A tie takes the first day; if
+// every day was zero, nothing is highlighted.
+const peakIdx = computed(() => {
+    if (!viewDays.value.length) return -1
+    let best = 0
+    for (let i = 1; i < viewDays.value.length; i++) {
+        if (viewDays.value[i].views > viewDays.value[best].views) best = i
+    }
+    return viewDays.value[best].views > 0 ? best : -1
+})
 const bars = computed(() => viewDays.value.map((d, i, all) => ({
     date: d.date,
     day: new Date(d.date + 'T00:00:00').getDate(),
     last: i === all.length - 1,
+    peak: i === peakIdx.value,
     h: viewsMax.value > 0 ? (d.views / viewsMax.value) * 100 + '%' : '0%',
     tip: `${d.date} — ${t('dashboard.views_total', { n: d.views })}`,
 })))
 const rangeLabel = computed(() => t(range.value === 7 ? 'dashboard.last_7' : 'dashboard.last_14'))
+
+// Mini-stats above the chart: comparison to the previous window, daily
+// average, and the peak day. The prior-period delta needs a window of equal
+// length before the visible one — with a 14-day API series that only exists
+// when the user is looking at the 7-day view; otherwise we omit the pill
+// rather than pretending 0 was the baseline.
+const viewsPrevTotal = computed(() => {
+    const all = engagement.value?.daily || []
+    const start = all.length - range.value * 2
+    if (start < 0) return null
+    return all.slice(start, all.length - range.value).reduce((a, d) => a + d.views, 0)
+})
+const viewsDeltaPct = computed(() => {
+    const prev = viewsPrevTotal.value
+    if (prev === null || prev <= 0) return null
+    return Math.round(((viewsTotal.value - prev) / prev) * 100)
+})
+const viewsPeak = computed(() => {
+    if (peakIdx.value < 0) return null
+    const d = viewDays.value[peakIdx.value]
+    return { value: d.views, day: new Date(d.date + 'T00:00:00').getDate() }
+})
+const viewStats = computed(() => {
+    const list = []
+    if (viewsDeltaPct.value !== null) {
+        list.push({ label: t('dashboard.vs_previous'), value: signed(viewsDeltaPct.value, '%') })
+    }
+    if (viewDays.value.length > 0) {
+        list.push({
+            label: t('dashboard.daily_avg'),
+            value: group(Math.round(viewsTotal.value / viewDays.value.length)),
+            note: t('dashboard.views_word'),
+        })
+    }
+    if (viewsPeak.value) {
+        list.push({
+            label: t('dashboard.peak_day'),
+            value: group(viewsPeak.value.value),
+            note: t('dashboard.day_n', { n: viewsPeak.value.day }),
+            highlight: true,
+        })
+    }
+    return list
+})
 
 // --- Current shift ---------------------------------------------------------
 
@@ -142,42 +192,6 @@ const shiftMeta = computed(() => {
         : ''
     return t('dashboard.shift_started', { who: shift.value.opened_by || shift.value.terminal || '—', time })
 })
-
-// --- QR / sharing ----------------------------------------------------------
-
-// JWT-Bearer API: fetch the PNG through the authed client (a bare link carries
-// no Authorization header and 401s), then save the blob.
-async function downloadQr() {
-    try {
-        const res = await api.get('api/dashboard/qr/download', { responseType: 'blob' })
-        const blobUrl = URL.createObjectURL(res.data)
-        const a = document.createElement('a')
-        a.href = blobUrl; a.download = 'qr-menu.png'; a.click()
-        URL.revokeObjectURL(blobUrl)
-    } catch (err) { alert(err.response?.data?.message || t('admin.download_failed')) }
-}
-
-// Print the code on its own rather than the whole dashboard: a table tent is
-// the QR and the menu address, not a screenshot of the admin UI.
-function printQr() {
-    if (!qr.value?.svg) return
-    const w = window.open('', '_blank', 'width=480,height=640')
-    if (!w) return
-    w.document.write(`<!doctype html><html><head><title>${clientName.value}</title>
-        <style>body{margin:0;display:grid;place-items:center;min-height:100vh;font-family:system-ui,sans-serif;gap:16px}
-        svg{width:280px;height:280px}.u{font:13px ui-monospace,monospace;color:#555}</style></head>
-        <body><div>${qr.value.svg}</div><div class="u">${stats.value?.public_url || ''}</div></body></html>`)
-    w.document.close()
-    w.focus()
-    w.print()
-}
-
-function copyUrl() {
-    if (!stats.value) return
-    navigator.clipboard?.writeText(stats.value.public_url)
-    copied.value = true
-    setTimeout(() => (copied.value = false), 1600)
-}
 
 // --- Featured items & setup guide ------------------------------------------
 
@@ -199,8 +213,8 @@ const catOf = (it) => {
 }
 
 // Setup guide: steps we can detect from stats/auth data. The card hides once
-// every detectable step is done. (The QR lives on the card to the right, so
-// there's no separate "print your QR" step.)
+// every detectable step is done. The QR itself is printed from the restaurant
+// profile page, so there's no separate "print your QR" step here.
 const setupSteps = computed(() => stats.value ? [
     { key: 'category', labelKey: 'dashboard.step_category', to: { name: 'dashboard.categories' }, done: stats.value.total_categories > 0 },
     { key: 'item', labelKey: 'dashboard.step_item', to: { name: 'dashboard.items' }, done: stats.value.total_items > 0 },
@@ -337,12 +351,21 @@ const showSetup = computed(() => !setupComplete.value && !dismissed.value && set
                     </div>
 
                     <template v-if="hasViews">
+                        <div v-if="viewStats.length" class="view-stats">
+                            <div v-for="m in viewStats" :key="m.label" class="view-stat">
+                                <span class="view-stat-label">{{ m.label }}</span>
+                                <span class="flex items-baseline gap-1.5">
+                                    <span class="view-stat-value mono">{{ m.value }}</span>
+                                    <span v-if="m.note" class="view-stat-note" :class="{ hl: m.highlight }">{{ m.note }}</span>
+                                </span>
+                            </div>
+                        </div>
                         <div class="chart">
                             <div class="chart-y"><span>{{ group(viewsMax) }}</span><span>0</span></div>
                             <div>
                                 <div class="chart-plot">
                                     <div v-for="b in bars" :key="b.date" class="bar-slot" :title="b.tip">
-                                        <div class="bar" :style="{ height: b.h }"></div>
+                                        <div class="bar" :class="{ peak: b.peak, last: b.last && !b.peak }" :style="{ height: b.h }"></div>
                                     </div>
                                 </div>
                                 <div class="chart-x">
@@ -377,9 +400,9 @@ const showSetup = computed(() => !setupComplete.value && !dismissed.value && set
                 </div>
             </div>
 
-            <div class="col">
+            <div v-if="hasPos" class="col">
                 <!-- Current shift -->
-                <div v-if="hasPos" class="card p-5 flex flex-col gap-4">
+                <div class="card p-5 flex flex-col gap-4">
                     <div class="flex items-start justify-between gap-3">
                         <div>
                             <div class="flex items-center gap-2 flex-wrap">
@@ -403,35 +426,6 @@ const showSetup = computed(() => !setupComplete.value && !dismissed.value && set
                     <div class="flex items-center gap-2 text-xs pt-3" style="color:var(--muted);border-top:1px solid var(--line)">
                         <i class="pi pi-desktop" style="font-size:13px"></i>{{ t('dashboard.shift_managed_by_pos') }}
                     </div>
-                </div>
-
-                <!-- Share the menu -->
-                <div v-if="qr" class="share-card">
-                    <div>
-                        <div class="share-title">{{ t('dashboard.share_menu') }}</div>
-                        <div class="share-sub">{{ t('dashboard.share_menu_sub') }}</div>
-                    </div>
-                    <div class="flex gap-4 items-center flex-wrap">
-                        <div class="share-qr"><div v-html="qr.svg" class="qrbox"></div></div>
-                        <div class="flex-1 flex flex-col gap-2" style="min-width:140px">
-                            <button @click="downloadQr" class="share-btn share-btn-accent"><Icon name="download" :size="15" />PNG</button>
-                            <button @click="printQr" class="share-btn share-btn-ghost"><i class="pi pi-print" style="font-size:14px"></i>{{ t('dashboard.print') }}</button>
-                        </div>
-                    </div>
-                    <div class="share-url">
-                        <span dir="ltr" class="share-url-text mono">{{ stats.public_url }}</span>
-                        <button @click="copyUrl" class="share-copy">
-                            <Icon :name="copied ? 'check' : 'copy'" :size="14" />{{ copied ? t('common.copied') : t('common.copy') }}
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Quick actions -->
-                <div class="card p-2">
-                    <div class="quick-head">{{ t('stats.quick_actions') }}</div>
-                    <RouterLink v-if="canMenu" :to="{ name: 'dashboard.categories' }" class="quick-row"><Icon name="categories" :size="18" /><span class="flex-1">{{ t('nav.categories') }}</span><Icon name="chevronDown" :size="14" class="quick-chev" /></RouterLink>
-                    <RouterLink v-if="canMenu" :to="{ name: 'dashboard.items' }" class="quick-row"><Icon name="items" :size="18" /><span class="flex-1">{{ t('nav.items') }}</span><Icon name="chevronDown" :size="14" class="quick-chev" /></RouterLink>
-                    <RouterLink v-if="canSettings" :to="{ name: 'dashboard.profile' }" class="quick-row"><Icon name="store" :size="18" /><span class="flex-1">{{ t('dashboard.restaurant_profile') }}</span><Icon name="chevronDown" :size="14" class="quick-chev" /></RouterLink>
                 </div>
             </div>
         </div>
@@ -515,7 +509,7 @@ a.tile:hover { border-color: var(--accent); }
 }
 .col { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
 
-/* ── Payments ───────────────────────────────────────────────────── */
+/* ── Menu-views chart ───────────────────────────────────────────── */
 .seg { display: flex; gap: 2px; padding: 3px; background: var(--gray-soft); border-radius: 9px; }
 .seg-btn {
     height: 28px; padding: 0 12px; white-space: nowrap; border: 0; border-radius: 7px;
@@ -524,6 +518,21 @@ a.tile:hover { border-color: var(--accent); }
     transition: background .15s, color .15s, box-shadow .15s;
 }
 .seg-btn.on { background: var(--card); color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgba(0, 0, 0, .1); }
+/* View stats row above the chart: three mini-metrics that answer "compared to
+   what?" for the totals line — prior-period delta, daily average, peak day.
+   `.hl` on the peak day's note ties it back to the highlighted bar below. */
+.view-stats {
+    margin-top: 14px; display: flex; gap: 24px; flex-wrap: wrap;
+}
+.view-stat { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.view-stat-label { font-size: 12px; color: var(--muted); }
+.view-stat-value {
+    font-size: 15px; font-weight: 700; color: var(--ink);
+    font-variant-numeric: tabular-nums;
+}
+.view-stat-note { font-size: 12px; font-weight: 500; color: var(--muted); }
+.view-stat-note.hl { color: var(--accent-dark); }
+
 .chart { margin-top: 16px; display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 8px; }
 .chart-y {
     display: flex; flex-direction: column; justify-content: space-between; height: 160px;
@@ -534,10 +543,15 @@ a.tile:hover { border-color: var(--accent); }
     border-bottom: 1px solid var(--line);
 }
 .bar-slot { flex: 1; height: 100%; display: flex; align-items: flex-end; min-width: 0; }
+/* Three-tier fill so the fortnight reads at a glance: the busiest day owns the
+   eye in solid accent, today sits one step lighter, and the rest hold the
+   context in cream. The gradient stays in the accent family so nothing shouts. */
 .bar {
     width: 100%; min-height: 3px; border-radius: 4px 4px 0 0;
-    background: var(--accent);
+    background: color-mix(in srgb, var(--accent) 42%, #fff);
 }
+.bar.last { background: color-mix(in srgb, var(--accent) 62%, #fff); }
+.bar.peak { background: var(--accent); }
 .chart-x { display: flex; gap: 6px; margin-top: 6px; }
 .chart-x > span {
     flex: 1; text-align: center; min-width: 0;
@@ -573,51 +587,4 @@ a.tile:hover { border-color: var(--accent); }
 }
 .shift-cell { background: var(--card); padding: 12px 14px; min-width: 0; }
 .shift-num { font-family: var(--font-mono); font-size: 18px; font-weight: 700; color: var(--ink); }
-
-/* ── Share card ─────────────────────────────────────────────────── */
-.share-card {
-    background: var(--ink); border-radius: 14px; padding: 20px; color: #fff;
-    display: flex; flex-direction: column; gap: 16px;
-}
-.share-title { font-family: var(--font-display); font-weight: 700; font-size: 15px; }
-.share-sub { margin-top: 2px; font-size: 12.5px; color: rgba(255, 255, 255, .62); }
-.share-qr { flex: none; width: 120px; height: 120px; border-radius: 12px; background: #fff; padding: 10px; }
-.share-qr .qrbox { width: 100%; height: 100%; }
-.share-qr :deep(svg) { width: 100%; height: 100%; display: block; }
-.share-btn {
-    height: 36px; padding: 0 12px; border-radius: 9px; cursor: pointer;
-    display: flex; align-items: center; justify-content: center; gap: 8px;
-    font-family: inherit; font-size: 13px; font-weight: 600; border: 0;
-    transition: filter .15s, background .15s;
-}
-.share-btn-accent { background: var(--accent); color: #fff; }
-.share-btn-accent:hover { background: var(--accent-dark); }
-.share-btn-ghost { background: transparent; border: 1px solid rgba(255, 255, 255, .26); color: #fff; font-weight: 500; }
-.share-btn-ghost:hover { background: rgba(255, 255, 255, .1); }
-.share-url {
-    display: flex; align-items: center; gap: 6px; padding: 4px;
-    background: rgba(255, 255, 255, .08); border-radius: 10px; min-width: 0;
-}
-.share-url-text {
-    flex: 1; min-width: 0; padding: 0 10px; font-size: 12.5px;
-    color: rgba(255, 255, 255, .88);
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.share-copy {
-    height: 32px; padding: 0 12px; flex: none; border: 0; border-radius: 8px; cursor: pointer;
-    display: flex; align-items: center; gap: 6px;
-    background: #fff; color: var(--ink); font-family: inherit; font-size: 12.5px; font-weight: 600;
-}
-
-/* ── Quick actions ──────────────────────────────────────────────── */
-.quick-head { padding: 10px 12px 6px; font-size: 13px; font-weight: 600; color: var(--body); }
-.quick-row {
-    display: flex; align-items: center; gap: 12px; padding: 10px 12px;
-    border-radius: 9px; color: var(--ink); font-size: 14px; text-decoration: none;
-    transition: background .15s;
-}
-.quick-row:hover { background: var(--page); }
-.quick-row :deep(svg):first-child { color: var(--muted); flex: none; }
-.quick-chev { color: var(--muted); transform: rotate(90deg); }
-[dir="rtl"] .quick-chev { transform: rotate(-90deg); }
 </style>

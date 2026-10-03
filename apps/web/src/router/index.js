@@ -183,6 +183,10 @@ const restaurantRoutes = [
                     // feature:pos + can:settings.view; the feature half lives on
                     // the sub-menu entry, so the guard mirrors the capability.
                     { path: 'taxes', name: 'dashboard.pos.money', component: () => import('../pages/dashboard/PosMoneyView.vue'), meta: { capability: 'settings.view' } },
+                    // Payment methods (tender types) as their own settings
+                    // section, matching the "طرق الدفع والحسابات" design.
+                    // Same server gate as taxes: feature:pos + can:settings.view.
+                    { path: 'payment-methods', name: 'dashboard.pos.payment_methods', component: () => import('../pages/dashboard/settings/PaymentMethodsView.vue'), meta: { capability: 'settings.view' } },
                     // The receipt profile (A3 / CB-08) — who the slip says sold
                     // the food, per branch. Same server gate as the money
                     // config (feature:pos + can:settings.view, settings.update
