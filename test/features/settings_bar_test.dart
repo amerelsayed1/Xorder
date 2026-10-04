@@ -474,6 +474,7 @@ void main() {
       'Taxes',
       'Bills due',
       'Transactions',
+      'Profit & loss',
     ]);
     expect(await linesOf(tester, 'People'), [
       'Staff',

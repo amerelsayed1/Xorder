@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../domain/models/finance_report.dart';
 import '../domain/models/order_record.dart';
 import '../domain/models/permissions.dart';
+import '../domain/models/profit_and_loss.dart';
 import '../domain/models/sales_report.dart';
 import '../domain/models/shift.dart';
 import '../domain/services/authorization.dart';
@@ -171,5 +172,38 @@ final financeTransactionsProvider =
         sales: listed,
         salesCut: listed.length >= FinanceTransactions.limit,
         expenses: spent,
+      );
+    });
+
+/// One period's operating statement.
+///
+/// **Composed from the providers each report is already read through**, so every
+/// line is the figure its own screen shows and the statement cannot disagree
+/// with them — the reason Finance has no revenue provider of its own. Null when
+/// any of the four is: without `reports.view`, with no database, or with a
+/// report that could not be read. A statement missing a line would add up and
+/// mean nothing.
+///
+/// Four reads, not one snapshot, as the Overview's are: a sale rung up between
+/// two of them can put a piastre in one and not another. They are of the same
+/// range — `ProfitAndLoss.of` asserts it.
+final profitAndLossProvider =
+    FutureProvider.autoDispose.family<ProfitAndLoss?, ReportFilter>((
+      ref,
+      filter,
+    ) async {
+      if (!ref.watch(reportsAllowedProvider)) return null;
+      final sales = await ref.watch(salesReportProvider(filter).future);
+      final tax = await ref.watch(taxReportProvider(filter).future);
+      final profit = await ref.watch(profitReportProvider(filter).future);
+      final expenses = await ref.watch(expenseReportProvider(filter).future);
+      if (sales == null || tax == null || profit == null || expenses == null) {
+        return null;
+      }
+      return ProfitAndLoss.of(
+        salesReport: sales,
+        taxReport: tax,
+        profitReport: profit,
+        expenses: expenses,
       );
     });

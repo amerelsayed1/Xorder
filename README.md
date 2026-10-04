@@ -254,6 +254,15 @@ what it sold for. It is deliberately modest about what it knows:
   estimate where rates are mixed — and the column is headed "Amount, no tax"; the
   page says so.
 
+**Finance › Profit & loss** puts the period in one column — sales, less the tax
+collected for the state, is revenue; less cost of goods, gross profit; less what
+was paid out of the drawers, the operating result — from figures Reports and
+Finance already show. It is plain about what it leaves out, in the page: items
+with no cost (the gross profit and result are then labelled "before items with no
+cost" and shown with the share of sales that has one), supplier payments (they
+buy stock, which is already in cost of goods when sold), and rent and salaries
+(nowhere to record them yet). Receivables are not built.
+
 An item with stock and no cost can be given its first cost from the **Stock
 pane** ("Set cost"): recorded as an `opening` movement of quantity zero, audited,
 and only for an item that has none — changing an existing cost is a revaluation,

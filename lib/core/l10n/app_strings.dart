@@ -1822,6 +1822,26 @@ sealed class AppStrings {
   String get customersAddress;
   String get customersNote;
   String get customersBranchOnly;
+  String get financeProfitLoss;
+  String get financeProfitLossBlurb;
+  String get plSales;
+  String get plTax;
+  String get plRevenue;
+  String get plCostOfGoods;
+  String get plGrossProfit;
+  String get plGrossProfitPartial;
+  String get plExpenses;
+  String get plOperatingResult;
+  String get plOperatingResultPartial;
+  String get plLeavesOut;
+  String get plCaveatNoCost;
+  String get plCaveatSupplier;
+  String get plCaveatRent;
+  String get plCaveatService;
+  String get plPaidToSuppliers;
+  String get plSuppliersUnread;
+  String plMargin(String share);
+  String plCostedShare(String share);
   String get stockSetCost;
   String get stockOpeningCostField;
   String get stockOpeningCostHint;
@@ -6880,6 +6900,64 @@ final class EnStrings extends AppStrings {
   String get customersBranchOnly =>
       'Orders and spending are this branch\'s only, and net of refunds.';
   @override
+  String get financeProfitLoss =>
+      'Profit & loss';
+  @override
+  String get financeProfitLossBlurb =>
+      'Revenue, cost of goods and expenses for the period, from the figures Reports and Finance already show.';
+  @override
+  String get plSales =>
+      'Sales, after discounts and refunds';
+  @override
+  String get plTax =>
+      'Tax collected, net of refunds';
+  @override
+  String get plRevenue =>
+      'Revenue';
+  @override
+  String get plCostOfGoods =>
+      'Cost of goods sold';
+  @override
+  String get plGrossProfit =>
+      'Gross profit';
+  @override
+  String get plGrossProfitPartial =>
+      'Gross profit, before items with no cost';
+  @override
+  String get plExpenses =>
+      'Expenses paid from the drawers';
+  @override
+  String get plOperatingResult =>
+      'Operating result';
+  @override
+  String get plOperatingResultPartial =>
+      'Operating result, before items with no cost';
+  @override
+  String get plLeavesOut =>
+      'Not in this statement';
+  @override
+  String get plCaveatNoCost =>
+      'Items with no recorded cost: their cost of goods is missing, so the gross profit above is a ceiling, not a figure.';
+  @override
+  String get plCaveatSupplier =>
+      'Purchases are stock, not expense. Paying a supplier is not deducted, because the goods are in the cost of goods when they are sold. Packaging, gas and the like are bought the same way and cannot be told apart, so they are not deducted either.';
+  @override
+  String get plCaveatRent =>
+      'Rent, salaries and other running costs: there is nowhere to record them yet.';
+  @override
+  String get plCaveatService =>
+      'Sales are order totals, so any service charge is in them.';
+  @override
+  String get plPaidToSuppliers =>
+      'Paid to suppliers in the period, for reference';
+  @override
+  String get plSuppliersUnread =>
+      'What was paid to suppliers is not read on this till.';
+  @override
+  String plMargin(String share) => 'Margin $share';
+  @override
+  String plCostedShare(String share) => '$share of sales have a cost';
+  @override
   String get stockOpeningCostField =>
       'Cost per unit';
   @override
@@ -11571,6 +11649,64 @@ final class ArStrings extends AppStrings {
   @override
   String get customersBranchOnly =>
       'الطلبات والمنفق لهذا الفرع فقط، وبعد خصم المسترد.';
+  @override
+  String get financeProfitLoss =>
+      'الأرباح والخسائر';
+  @override
+  String get financeProfitLossBlurb =>
+      'الإيراد وتكلفة البضاعة والمصروفات للفترة، من الأرقام التي تعرضها التقارير والمالية بالفعل.';
+  @override
+  String get plSales =>
+      'المبيعات بعد الخصومات والمرتجعات';
+  @override
+  String get plTax =>
+      'الضريبة المحصّلة بعد المرتجعات';
+  @override
+  String get plRevenue =>
+      'الإيراد';
+  @override
+  String get plCostOfGoods =>
+      'تكلفة البضاعة المباعة';
+  @override
+  String get plGrossProfit =>
+      'مجمل الربح';
+  @override
+  String get plGrossProfitPartial =>
+      'مجمل الربح، قبل الأصناف بلا تكلفة';
+  @override
+  String get plExpenses =>
+      'مصروفات مدفوعة من الدرج';
+  @override
+  String get plOperatingResult =>
+      'نتيجة التشغيل';
+  @override
+  String get plOperatingResultPartial =>
+      'نتيجة التشغيل، قبل الأصناف بلا تكلفة';
+  @override
+  String get plLeavesOut =>
+      'غير مشمول في هذا الكشف';
+  @override
+  String get plCaveatNoCost =>
+      'أصناف بلا تكلفة مسجّلة: تكلفة بضاعتها ناقصة، فمجمل الربح أعلاه سقف وليس رقمًا نهائيًا.';
+  @override
+  String get plCaveatSupplier =>
+      'المشتريات مخزون وليست مصروفًا. دفع المورّد لا يُخصم، لأن البضاعة تدخل في تكلفة البضاعة عند بيعها. والتغليف والغاز ونحوهما تُشترى بالطريقة نفسها ولا يمكن تمييزها، فلا تُخصم أيضًا.';
+  @override
+  String get plCaveatRent =>
+      'الإيجار والرواتب وسائر تكاليف التشغيل: لا يوجد مكان لتسجيلها بعد.';
+  @override
+  String get plCaveatService =>
+      'المبيعات هي إجماليات الطلبات، فأي رسوم خدمة داخلة فيها.';
+  @override
+  String get plPaidToSuppliers =>
+      'المدفوع للمورّدين في الفترة، للاطلاع';
+  @override
+  String get plSuppliersUnread =>
+      'المدفوع للمورّدين غير مقروء على هذا الجهاز.';
+  @override
+  String plMargin(String share) => 'الهامش $share';
+  @override
+  String plCostedShare(String share) => '$share من المبيعات لها تكلفة';
   @override
   String get stockOpeningCostField =>
       'التكلفة للوحدة';

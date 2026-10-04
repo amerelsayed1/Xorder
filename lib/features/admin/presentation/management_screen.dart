@@ -324,6 +324,7 @@ BackOfficeTab tabOf(ManagementPane pane) => switch (pane) {
   ManagementPane.financeDrawers ||
   ManagementPane.financeBills ||
   ManagementPane.financeTransactions ||
+  ManagementPane.financeProfitLoss ||
   ManagementPane.settlements => BackOfficeTab.finance,
   // Terminal beside Backup and the log rather than in Settings: it wipes the
   // machine, and Settings is where somebody goes to change a tax rate.
@@ -457,6 +458,7 @@ SettingsSection? settingsSectionOf(ManagementPane pane) => switch (pane) {
   ManagementPane.financeExpenses ||
   ManagementPane.financeDrawers ||
   ManagementPane.financeBills ||
+  ManagementPane.financeProfitLoss ||
   ManagementPane.financeTransactions => null,
 };
 
@@ -509,6 +511,9 @@ int _placeInTab(ManagementPane pane) => switch (pane) {
   ManagementPane.financeTaxes => 6,
   ManagementPane.financeBills => 7,
   ManagementPane.financeTransactions => 8,
+  // After the owner's: the map has no word for it, so it goes last rather than
+  // between pages whose order was dictated.
+  ManagementPane.financeProfitLoss => 9,
   // الموظفون، الأدوار والصلاحيات، الورديات
   ManagementPane.staff => 0,
   ManagementPane.roles => 1,
@@ -975,6 +980,10 @@ ManagementDestination _purchasing(PurchasingTab tab, {bool create = false}) =>
         s.financeTransactions,
         s.financeTransactionsBlurb,
       ),
+      ManagementPane.financeProfitLoss => (
+        s.financeProfitLoss,
+        s.financeProfitLossBlurb,
+      ),
     };
 
 /// The capabilities a pane needs beyond the door that opened the screen — all
@@ -1040,6 +1049,7 @@ Set<String> _paneRequires(ManagementPane pane) => switch (pane) {
   ManagementPane.financeTaxes ||
   ManagementPane.financeExpenses ||
   ManagementPane.financeDrawers ||
+  ManagementPane.financeProfitLoss ||
   ManagementPane.financeTransactions => const {PosCapability.reportsView},
   // Both: a Finance figure, and made of the supplier ledger that is
   // Purchasing's. Backed by `billsDueProvider`, which asks both of the
@@ -1156,6 +1166,10 @@ enum ManagementPane {
   financeDrawers,
   financeBills,
   financeTransactions,
+
+  /// Finance › Profit & loss: the period as one statement, behind
+  /// `reports.view` like every Finance figure it is made of.
+  financeProfitLoss,
 
   /// Menu › Categories (the owner's map): the menu pane again. It has no
   /// categories-only mode — its categories are the list down its start side,
@@ -1661,6 +1675,7 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
     ManagementPane.financeTransactions => FinanceTransactionsPane(
       links: (target) => _financeLink(target, panes),
     ),
+    ManagementPane.financeProfitLoss => const FinanceProfitLossPane(),
   };
 }
 
