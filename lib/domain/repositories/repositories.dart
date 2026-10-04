@@ -7,6 +7,7 @@ import '../models/stock_item.dart';
 import '../models/stock_level.dart';
 import '../models/catalog.dart';
 import '../models/customer.dart';
+import '../models/customer_summary.dart';
 import '../models/order_type_config.dart';
 import '../models/purchase_order.dart';
 import '../services/stock_costing.dart';
@@ -165,6 +166,28 @@ abstract interface class CustomersRepository {
     String? address,
     String? note,
   });
+}
+
+/// The customer directory as the back office reads it: everyone on file, with
+/// what they have bought at this branch.
+///
+/// Read-only, and a different thing from [CustomersRepository], which is the
+/// counter's — find somebody in a hurry, or add them. Editing a customer
+/// stays at the counter for now: the phone is their identity, and changing it
+/// is changing who they are, which wants more care than a field in a list.
+///
+/// Gated on `reports.view` where it is read (the provider asks), because a name
+/// and a phone number beside what somebody spends is the most personal thing
+/// this till holds.
+abstract interface class CustomerDirectoryRepository {
+  /// Customers matching [query] — a name fragment, or digits of a phone number —
+  /// most recently seen first, then by name. An empty query lists everybody, up
+  /// to [limit].
+  Future<List<CustomerSummary>> list({String query = '', int limit = 100});
+
+  /// [customerId]'s settled orders at this branch, newest first, at most
+  /// [limit].
+  Future<List<CustomerOrder>> recentOrders(int customerId, {int limit = 20});
 }
 
 abstract interface class TenderTypesRepository {

@@ -1803,6 +1803,25 @@ sealed class AppStrings {
   String get stockColumnValue;
   String get stockNoCostNote;
   String stockExcludesUncosted(int count);
+  String get paneCustomers;
+  String get paneCustomersBlurb;
+  String get customersSearchHint;
+  String get customersNone;
+  String get customersNoMatch;
+  String get customersColumnCustomer;
+  String get customersColumnOrders;
+  String get customersColumnSpent;
+  String get customersColumnLast;
+  String get customersNever;
+  String get customersDetailAverage;
+  String get customersDetailRefunded;
+  String get customersDetailRecent;
+  String get customersNoOrders;
+  String get customersPhone;
+  String get customersEmail;
+  String get customersAddress;
+  String get customersNote;
+  String get customersBranchOnly;
   String get stockSetCost;
   String get stockOpeningCostField;
   String get stockOpeningCostHint;
@@ -6804,6 +6823,63 @@ final class EnStrings extends AppStrings {
   String get stockSetCost =>
       'Set cost';
   @override
+  String get paneCustomers =>
+      'Customers';
+  @override
+  String get paneCustomersBlurb =>
+      'Everyone on file, and what they have bought at this branch.';
+  @override
+  String get customersSearchHint =>
+      'Search by name or phone';
+  @override
+  String get customersNone =>
+      'No customers on file yet. They are added at the counter when an order is taken for someone.';
+  @override
+  String get customersNoMatch =>
+      'No customer matches that.';
+  @override
+  String get customersColumnCustomer =>
+      'Customer';
+  @override
+  String get customersColumnOrders =>
+      'Orders';
+  @override
+  String get customersColumnSpent =>
+      'Spent';
+  @override
+  String get customersColumnLast =>
+      'Last order';
+  @override
+  String get customersNever =>
+      'Never';
+  @override
+  String get customersDetailAverage =>
+      'Average order';
+  @override
+  String get customersDetailRefunded =>
+      'Refunded';
+  @override
+  String get customersDetailRecent =>
+      'Recent orders';
+  @override
+  String get customersNoOrders =>
+      'No orders at this branch yet.';
+  @override
+  String get customersPhone =>
+      'Phone';
+  @override
+  String get customersEmail =>
+      'Email';
+  @override
+  String get customersAddress =>
+      'Address';
+  @override
+  String get customersNote =>
+      'Note';
+  @override
+  String get customersBranchOnly =>
+      'Orders and spending are this branch\'s only, and net of refunds.';
+  @override
   String get stockOpeningCostField =>
       'Cost per unit';
   @override
@@ -11438,6 +11514,63 @@ final class ArStrings extends AppStrings {
   @override
   String get stockSetCost =>
       'تحديد التكلفة';
+  @override
+  String get paneCustomers =>
+      'العملاء';
+  @override
+  String get paneCustomersBlurb =>
+      'كل من في السجل، وما اشتروه من هذا الفرع.';
+  @override
+  String get customersSearchHint =>
+      'ابحث بالاسم أو الهاتف';
+  @override
+  String get customersNone =>
+      'لا يوجد عملاء في السجل بعد. يُضافون من الكاشير عند تسجيل طلب لشخص.';
+  @override
+  String get customersNoMatch =>
+      'لا يوجد عميل مطابق.';
+  @override
+  String get customersColumnCustomer =>
+      'العميل';
+  @override
+  String get customersColumnOrders =>
+      'الطلبات';
+  @override
+  String get customersColumnSpent =>
+      'المنفق';
+  @override
+  String get customersColumnLast =>
+      'آخر طلب';
+  @override
+  String get customersNever =>
+      'لم يطلب';
+  @override
+  String get customersDetailAverage =>
+      'متوسط الطلب';
+  @override
+  String get customersDetailRefunded =>
+      'المسترد';
+  @override
+  String get customersDetailRecent =>
+      'آخر الطلبات';
+  @override
+  String get customersNoOrders =>
+      'لا طلبات من هذا الفرع بعد.';
+  @override
+  String get customersPhone =>
+      'الهاتف';
+  @override
+  String get customersEmail =>
+      'البريد الإلكتروني';
+  @override
+  String get customersAddress =>
+      'العنوان';
+  @override
+  String get customersNote =>
+      'ملاحظة';
+  @override
+  String get customersBranchOnly =>
+      'الطلبات والمنفق لهذا الفرع فقط، وبعد خصم المسترد.';
   @override
   String get stockOpeningCostField =>
       'التكلفة للوحدة';

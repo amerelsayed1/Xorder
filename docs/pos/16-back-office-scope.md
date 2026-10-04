@@ -126,7 +126,16 @@ Five substantially done, three partial, seven absent.
 >   audited, `purchase.manage`. Not a revaluation — it refuses an item that
 >   already has a cost.
 >
-> Still absent from the code as checked: a Customers pane and Accounting lite.
+> * **Customers has a pane.** People › Customers lists everyone on file with
+>   orders, what they kept (net of refunds) and when they last bought, searchable
+>   by name or phone; a row opens their contact details, average order and recent
+>   orders. Read-only — customers are added at the counter, and the phone is their
+>   identity — and **this branch's sales only**, settled ones. Gated on
+>   `reports.view`, because it sets a name and a phone beside what somebody spends.
+>
+> Still absent from the code as checked: Accounting lite, and a customer on the
+> order detail and in the sales list's search (plan 19 §2.2 lists both as waiting
+> for `pos_customers`, which now exists).
 > Expenses, Terminals and the rest were not re-scored here.
 
 ---

@@ -865,6 +865,7 @@ void main() {
             'الموظفون',
             'الأدوار والصلاحيات',
             'الورديات',
+            'العملاء',
           ],
           // ETA only while filing is on.
           BackOfficeTab.system: [

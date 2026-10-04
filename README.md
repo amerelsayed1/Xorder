@@ -263,6 +263,15 @@ from then on.
 Design and the reasoning: `docs/pos/16-back-office-scope.md` (§3 and its
 4 October update) and `docs/pos/14-progress.md` §6.
 
+## Customers
+
+**People › Customers** lists everyone on file with their orders, what they have
+kept (net of refunds) and when they last bought, searchable by name or phone; a
+row opens their contact details and recent orders. It is read-only — a customer
+is added at the counter when an order is taken for them, and the phone is their
+identity — and it shows **this branch's sales only**. It needs `reports.view`,
+because it sets a name and a phone number beside what somebody spends.
+
 ## Shifts and the drawer
 
 A shift is opened before the till will sell, and closed by counting the drawer.

@@ -31,6 +31,7 @@ import 'management_floor_pane.dart';
 import 'management_menu_pane.dart';
 import 'management_eta_pane.dart';
 import 'management_combos_pane.dart';
+import 'management_customers_pane.dart';
 import 'management_extras_pane.dart';
 import 'management_finance_panes.dart';
 import 'management_home_pane.dart';
@@ -335,6 +336,7 @@ BackOfficeTab tabOf(ManagementPane pane) => switch (pane) {
   ManagementPane.staff ||
   ManagementPane.roles ||
   ManagementPane.shifts => BackOfficeTab.people,
+  ManagementPane.customers => BackOfficeTab.people,
   ManagementPane.receipt ||
   ManagementPane.taxes ||
   ManagementPane.charges ||
@@ -424,6 +426,7 @@ SettingsSection? settingsSectionOf(ManagementPane pane) => switch (pane) {
   ManagementPane.returns ||
   ManagementPane.voidedOrders ||
   ManagementPane.shifts ||
+  ManagementPane.customers ||
   ManagementPane.settlements ||
   ManagementPane.sync ||
   ManagementPane.reports ||
@@ -510,6 +513,9 @@ int _placeInTab(ManagementPane pane) => switch (pane) {
   ManagementPane.staff => 0,
   ManagementPane.roles => 1,
   ManagementPane.shifts => 2,
+  // After the owner's three: the map has no word for Customers, so it goes
+  // last rather than between pages whose order was dictated.
+  ManagementPane.customers => 3,
   // السجل، النسخ الاحتياطي، الأجهزة، المزامنة — and ETA, hidden while filing
   // is off.
   ManagementPane.activity => 0,
@@ -906,6 +912,7 @@ ManagementDestination _purchasing(PurchasingTab tab, {bool create = false}) =>
         s.paneVoidedOrdersBlurb,
       ),
       ManagementPane.shifts => (s.paneShifts, s.shiftsBlurb),
+      ManagementPane.customers => (s.paneCustomers, s.paneCustomersBlurb),
       ManagementPane.settlements => (s.paneSettlements, s.settlementsBlurb),
       ManagementPane.sync => (s.paneSync, s.paneSyncBlurb),
       // Without the till line's ellipsis: here it is a page, not a dialog.
@@ -1021,6 +1028,9 @@ Set<String> _paneRequires(ManagementPane pane) => switch (pane) {
   ManagementPane.reportsPayments ||
   ManagementPane.reportsBranches ||
   ManagementPane.reportsEmployees => const {PosCapability.reportsView},
+  // Names and phone numbers beside what each person spends: the same gate as
+  // the figures, asked again by `customerDirectoryProvider`.
+  ManagementPane.customers => const {PosCapability.reportsView},
   // Finance (BO-9, BO-10). Backed where it counts: every figure is read
   // through `reportsAllowedProvider`, which answers no without
   // `reports.view`, so a pane reached round the bar still draws nothing.
@@ -1166,6 +1176,10 @@ enum ManagementPane {
   invoices,
   returns,
   voidedOrders,
+
+  /// People › Customers: the directory with what each has bought, behind
+  /// `reports.view` because it sets a name and a phone number beside spending.
+  customers,
 
   /// People › Shifts and Finance › Settlements, both behind `reports.view`.
   shifts,
@@ -1549,6 +1563,7 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
           : null,
     ),
     ManagementPane.shifts => ManagementShiftsPane(admin: admin),
+    ManagementPane.customers => const ManagementCustomersPane(),
     ManagementPane.settlements => ManagementSettlementsPane(admin: admin),
     ManagementPane.sync => ManagementSyncPane(admin: admin),
     ManagementPane.printer => ManagementPrinterPane(admin: admin),

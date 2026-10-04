@@ -330,9 +330,23 @@ After an opening cost, the delivery averages against the real figure. Past sales
 stay uncosted — they were recorded at zero and the ledger is append-only — so
 this prices what is sold from now on, and the dialog says so before it asks.
 
+**Customers pane (4 Oct).** `pos_customers` and `pos_orders.customer_id` arrived in
+migration 51 so the counter could attach a customer to an order; nothing in the
+back office read them. People › Customers (`CustomerDirectoryRepository`) lists
+the directory with each customer's settled orders at this branch, what they kept
+net of refunds, and their last order — one `LEFT JOIN LATERAL`, refunds summed per
+order — and a row opens their details and recent orders. Search is the counter's
+own rule (a name fragment, or phone digits normalised so Arabic-Indic digits
+match), so a name finds the same person in both places. Read-only on purpose: the
+phone is a customer's identity, and changing it is changing who they are. Two
+database mutations were checked the clean way — with a tautology in place of the
+filter, because deleting the line leaves an unused parameter and fails every test
+for the wrong reason.
+
 **Known gaps:** the tax mode is today's setting, not a per-order snapshot; an
 item that already has a cost cannot be revalued (no revaluation movement exists);
-there is no cost column on the product itself.
+there is no cost column on the product itself; the order detail and the sales
+list do not show or search by customer.
 
 **Verification:** `flutter analyze` clean · **2,448 unit and widget tests** pass,
 64 skipped · the combo, profit and reports database suites (**50 tests**) pass
