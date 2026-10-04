@@ -367,6 +367,10 @@ final _orders = [
       servedByName: 'Amer M.',
       terminalName: 'Counter',
       tenders: const [OrderRecordTender(tenderTypeId: 1, label: 'Cash')],
+      // Every third sale is for somebody, so the file has both a customer and a
+      // blank to get right.
+      customerName: i % 3 == 0 ? 'Mona Fathy' : null,
+      customerPhone: i % 3 == 0 ? '01012345678' : null,
     ),
 ];
 
@@ -671,6 +675,9 @@ void main() {
         '${s.orderColumnTotal} (EGP)',
         s.orderColumnStatus,
         s.orderColumnPayment,
+        // After the page's own columns, so Total does not move.
+        s.customersColumnCustomer,
+        s.customersPhone,
       ]);
 
       // Every sale, newest first as the list pages them, each cell the
@@ -693,6 +700,8 @@ void main() {
             order.total.minor,
             order.status.label(s),
             order.paymentStatus.label(s),
+            order.customerName,
+            order.customerPhone,
           ],
           reason: order.invoiceNumber,
         );

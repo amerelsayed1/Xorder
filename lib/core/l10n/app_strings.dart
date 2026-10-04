@@ -2712,7 +2712,7 @@ final class EnStrings extends AppStrings {
   @override
   String get orderHistoryLast30Days => 'Last 30 days';
   @override
-  String get orderHistorySearchHint => 'Invoice or table';
+  String get orderHistorySearchHint => 'Invoice, table or customer';
   @override
   String get orderHistoryAllStatuses => 'All statuses';
   @override
@@ -7526,7 +7526,7 @@ final class ArStrings extends AppStrings {
   @override
   String get orderHistoryLast30Days => 'آخر ٣٠ يومًا';
   @override
-  String get orderHistorySearchHint => 'رقم الفاتورة أو الطاولة';
+  String get orderHistorySearchHint => 'رقم الفاتورة أو الطاولة أو العميل';
   @override
   String get orderHistoryAllStatuses => 'كل الحالات';
   @override

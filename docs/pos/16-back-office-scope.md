@@ -133,9 +133,13 @@ Five substantially done, three partial, seven absent.
 >   identity — and **this branch's sales only**, settled ones. Gated on
 >   `reports.view`, because it sets a name and a phone beside what somebody spends.
 >
-> Still absent from the code as checked: Accounting lite, and a customer on the
-> order detail and in the sales list's search (plan 19 §2.2 lists both as waiting
-> for `pos_customers`, which now exists).
+> * **The customer is on the sale.** The sales list has a Customer column (not on
+>   Cancelled orders), its search matches a customer's name and — from seven
+>   digits — their phone, the order detail shows name, phone and email when the
+>   sale had one, and the sales Excel export gains Customer and Phone columns
+>   after the page's own, so Total does not move.
+>
+> Still absent from the code as checked: Accounting lite.
 > Expenses, Terminals and the rest were not re-scored here.
 
 ---

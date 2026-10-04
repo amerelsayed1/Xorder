@@ -205,6 +205,35 @@ class _Detail extends ConsumerWidget {
               ],
             ),
           ],
+          // Who it was for, when it was for anybody: name and phone on one line,
+          // the email under it. Absent for the sale to nobody in particular,
+          // which is most of them — a "Customer: —" line on every sale would be
+          // noise on the screen that is read for the money.
+          if (order.customerName case final customer?) ...[
+            const SizedBox(height: 2),
+            Row(
+              key: const Key('order-detail-customer'),
+              children: [
+                Expanded(
+                  child: Text(
+                    '${strings.customersColumnCustomer}: $customer',
+                    overflow: TextOverflow.ellipsis,
+                    style: PosText.ui(size: 12.5, color: pos.muted),
+                  ),
+                ),
+                if (order.customerPhone case final phone?)
+                  MonoCode(phone, size: 11.5),
+              ],
+            ),
+            if (order.customerEmail case final email?
+                when email.trim().isNotEmpty)
+              Text(
+                email,
+                key: const Key('order-detail-customer-email'),
+                overflow: TextOverflow.ellipsis,
+                style: PosText.ui(size: 12, color: pos.muted),
+              ),
+          ],
           const SizedBox(height: 2),
           Row(
             children: [

@@ -343,10 +343,22 @@ database mutations were checked the clean way — with a tautology in place of t
 filter, because deleting the line leaves an unused parameter and fails every test
 for the wrong reason.
 
+**The customer on the sale (4 Oct).** The sales list gets a Customer column, its
+search matches the customer's name and, from seven digits, their phone, and the
+order detail shows name, phone and email when there is one. The seven-digit floor
+is the one decision in it: a short run of digits is the tail of a receipt number
+far more often than of a phone, so matching both would list a stranger's sale for
+a cashier who typed what was on a receipt — a database test puts such a stranger
+in the ledger and fails if the floor is lowered. A customer removed from the
+directory leaves their sales behind unnamed (`ON DELETE SET NULL`). Cancelled
+orders does not draw the column: its three shared columns are the void, and a
+fourth would squeeze the reason that list is read for. At the back office's
+1100px with the detail pane open the list already scrolled sideways, so the new
+column starts partly off-screen there and shows in full wider.
+
 **Known gaps:** the tax mode is today's setting, not a per-order snapshot; an
 item that already has a cost cannot be revalued (no revaluation movement exists);
-there is no cost column on the product itself; the order detail and the sales
-list do not show or search by customer.
+there is no cost column on the product itself.
 
 **Verification:** `flutter analyze` clean · **2,448 unit and widget tests** pass,
 64 skipped · the combo, profit and reports database suites (**50 tests**) pass
