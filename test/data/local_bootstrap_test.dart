@@ -1,17 +1,34 @@
+@Tags(['integration'])
+library;
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:postgres/postgres.dart';
 import 'package:xorder_pos/core/config/deployment.dart';
 import 'package:xorder_pos/data/postgres/local_bootstrap.dart';
 import 'package:xorder_pos/data/postgres/pos_database.dart';
 
+import 'pg_fixture.dart';
+
 /// The wizard's "this machine has no database yet" path, end to end, against a
 /// real PostgreSQL. Opt-in: it creates and drops a database of its own.
+///
+/// **Opt-in means `POS_PG_HOST`, like every other suite that needs a server.**
+/// It used to connect to `127.0.0.1:5432` as one developer's own role with a
+/// made-up password — which passes only on a PostgreSQL that trusts everyone —
+/// and ran, unasked, in every plain `flutter test`.
 void main() {
-  const admin = DeploymentConfig(
+  if (PgFixture.host == null) {
+    test('local bootstrap (skipped — set POS_PG_HOST to run)', () {}, skip: true);
+    return;
+  }
+
+  final admin = DeploymentConfig(
     mode: DeploymentMode.offline,
-    databaseHost: '127.0.0.1',
+    databaseHost: PgFixture.host!,
+    databasePort: PgFixture.port,
     databaseName: 'wizard_bootstrap_test',
-    databaseUser: 'amerelsayed',
+    databaseUser: PgFixture.user,
+    verifyTls: false,
   );
 
   /// Self-cleaning, so the test is repeatable rather than passing once.
@@ -22,6 +39,7 @@ void main() {
         port: admin.databasePort,
         database: 'postgres',
         username: admin.databaseUser,
+        password: PgFixture.password,
       ),
       settings: const ConnectionSettings(sslMode: SslMode.disable),
     );
@@ -36,13 +54,13 @@ void main() {
   tearDown(drop);
 
   test('builds a sellable database from nothing', () async {
-    final credentials = MutablePosDbCredentials()..set('unused-trust-auth');
+    final credentials = MutablePosDbCredentials()..set(PgFixture.password);
     final database = PosDatabase(credentials: credentials);
     final bootstrap = LocalBootstrap(database);
     addTearDown(database.close);
 
     expect(
-      await LocalBootstrap.createDatabase(admin, 'unused', admin.databaseName),
+      await LocalBootstrap.createDatabase(admin, PgFixture.password, admin.databaseName),
       isTrue,
       reason: 'the database did not exist yet',
     );
@@ -104,6 +122,7 @@ void main() {
           port: admin.databasePort,
           database: 'postgres',
           username: admin.databaseUser,
+          password: PgFixture.password,
         ),
         settings: const ConnectionSettings(sslMode: SslMode.disable),
       );
@@ -132,12 +151,22 @@ void main() {
         );
         fail('a role that does not exist cannot create a database');
       } on PosDbException catch (error) {
-        expect(error.failure, PosDbFailure.missingRole);
+        // Typed, never the driver's text — that is the point. WHICH type
+        // depends on the server: one that trusts its clients says the role
+        // does not exist, and one that checks passwords says the password is
+        // wrong, deliberately, so that it does not tell a stranger which roles
+        // exist. The sentence naming the role is only possible on the first.
         expect(
-          PosDbException.roleNamedIn(error.raw),
-          'pos_admin_that_is_not_here',
-          reason: 'the sentence names the role the driver named',
+          error.failure,
+          anyOf(PosDbFailure.missingRole, PosDbFailure.auth),
         );
+        if (error.failure == PosDbFailure.missingRole) {
+          expect(
+            PosDbException.roleNamedIn(error.raw),
+            'pos_admin_that_is_not_here',
+            reason: 'the sentence names the role the driver named',
+          );
+        }
       }
     }, timeout: const Timeout(Duration(minutes: 1)));
 
@@ -145,7 +174,7 @@ void main() {
       expect(
         await LocalBootstrap.ensureTillRole(
           admin,
-          'unused-trust-auth',
+          PgFixture.password,
           name: till,
           password: 'first-password',
         ),
@@ -158,14 +187,14 @@ void main() {
       expect(
         await LocalBootstrap.ensureTillRole(
           admin,
-          'unused-trust-auth',
+          PgFixture.password,
           name: till,
           password: 'a-different-password',
         ),
         isFalse,
       );
 
-      final credentials = MutablePosDbCredentials()..set('unused-trust-auth');
+      final credentials = MutablePosDbCredentials()..set(PgFixture.password);
       final database = PosDatabase(credentials: credentials);
       addTearDown(database.close);
       final row = await database.query(
