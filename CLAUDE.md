@@ -60,14 +60,15 @@ dart bin/pos_migrate.dart     # prepare a branch PostgreSQL before first run
   repository to an `Api…`/HTTP implementation as a contract reaches `READY` is a one-line
   change here.
 - **Primary datastore is PostgreSQL on the branch server**, reached directly with the pure
-  Dart `postgres` package (no native plugin) and shared by every till on the LAN. `sqflite`
-  is retained only for the still-unbuilt local outbound queue — it is **not** the primary store.
-- **Every backend contract is `PROPOSED`/`APPROVED`; a Cloud Wave 1 slice is `READY`.**
-  Integrate against `READY` items only; keep local/fake implementations for the rest. The
-  blocking items are `POS-BE-006` (server-priced order create), `POS-BE-007` (idempotency),
-  `POS-BE-008` (per-branch invoice sequence). Status lives in `docs/coordination/BACKEND_TO_POS.md`.
+  Dart `postgres` package (no native plugin) and shared by every till on the LAN. The outbound
+  sync queue is the `pos_outbox` table in the same database; nothing under `lib/` imports `sqflite`.
+- **Contract status lives in `docs/coordination/BACKEND_TO_POS.md` — read its table, not this
+  file.** At last check `POS-BE-006/007/008/009/013/023/024` (orders, idempotency, invoice
+  sequence, shifts, money config, provisioning, PIN) are `READY`; branch-server, upstream-sync
+  and setup contracts are `APPROVED`. Integrate against `READY` items only; keep local/fake
+  implementations for the rest.
 - **Three deployment modes, one API + schema:** cloud · branch-server · islanded — differ only
-  in `base_url` and check-in cadence. **Phase 1 builds the cloud path only.** Every mode is
+  in `base_url` and check-in cadence. **Cloud and offline setup are both built** (the licence decides which the wizard offers). Every mode is
   offline-first; a desktop till always has a disk.
 - **Unconfigured, it refuses to take money, on purpose.** No database → logo-only welcome
   screen; **Ctrl+Shift+S** (⌘+Shift+S on macOS) opens the setup wizard.
