@@ -41,7 +41,7 @@ void main() {
     bool inclusive = false,
   }) => ProfitReport(
     filter: filter,
-    revenueIncludesTax: inclusive,
+    pricesIncludeTax: inclusive,
     products: ProfitReport.ranked(
       products ??
           [
@@ -181,7 +181,18 @@ void main() {
     });
   });
 
-  test('a restaurant that prices tax in is warned inside the file', () {
+  test('where prices hold tax the amount column is headed net', () {
+    final inclusive = read(report(inclusive: true))[s.profitTitle]!;
+    final header = inclusive.firstWhere((r) => r.first == s.exportColumnProduct);
+    expect(header[1], '${s.profitColumnAmountNet} (EGP)');
+
+    // And plain "Amount" where they do not — the Items sheet's own word.
+    final exclusive = read(report())[s.profitTitle]!;
+    final plain = exclusive.firstWhere((r) => r.first == s.exportColumnProduct);
+    expect(plain[1], '${s.reportColumnAmount} (EGP)');
+  });
+
+  test('a restaurant that prices tax in is told how, inside the file', () {
     final sheet = read(report(inclusive: true))[s.profitTitle]!;
 
     expect(sheet.any((r) => r.isNotEmpty && r.first == s.profitTaxNote), isTrue);

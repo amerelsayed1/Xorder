@@ -346,7 +346,7 @@ void _profitSheet(WorkbookWriter book, ProfitReport report, AppStrings s) {
   if (!report.hasAnyCost) {
     // As the page: no column of blanks, and the way to get a cost.
     sheet.row([TextCell(s.profitNothingCosted)]);
-    if (report.revenueIncludesTax) {
+    if (report.pricesIncludeTax) {
       sheet
         ..blank()
         ..row([TextCell(s.profitTaxNote)]);
@@ -356,7 +356,9 @@ void _profitSheet(WorkbookWriter book, ProfitReport report, AppStrings s) {
 
   sheet.header([
     s.exportColumnProduct,
-    amount(s.reportColumnAmount),
+    amount(
+      report.pricesIncludeTax ? s.profitColumnAmountNet : s.reportColumnAmount,
+    ),
     amount(s.profitColumnCost),
     amount(s.profitColumnProfit),
     s.profitColumnMargin,
@@ -396,7 +398,7 @@ void _profitSheet(WorkbookWriter book, ProfitReport report, AppStrings s) {
       BasisPointsCell(coverage),
     ]);
   }
-  if (report.revenueIncludesTax) {
+  if (report.pricesIncludeTax) {
     sheet
       ..blank()
       ..row([TextCell(s.profitTaxNote)]);

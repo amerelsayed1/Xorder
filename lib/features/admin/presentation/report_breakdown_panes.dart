@@ -620,7 +620,7 @@ class _ProfitBody extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           ReportNote(s.profitNothingCosted, key: const Key('profit-nothing-costed')),
-          if (report.revenueIncludesTax) _taxNote(context),
+          if (report.pricesIncludeTax) _taxNote(context),
         ],
       );
     }
@@ -669,7 +669,14 @@ class _ProfitBody extends StatelessWidget {
         _Headings(
           lead: s.exportColumnProduct,
           columns: [
-            (s.reportColumnAmount, _money),
+            // Net where the prices held tax, so it is never mistaken for the
+            // gross Amount of the Items list above.
+            (
+              report.pricesIncludeTax
+                  ? s.profitColumnAmountNet
+                  : s.reportColumnAmount,
+              _money,
+            ),
             (s.profitColumnCost, _money),
             (s.profitColumnProfit, _money),
             (s.profitColumnMargin, _count + 12),
@@ -722,7 +729,7 @@ class _ProfitBody extends StatelessWidget {
             _marginCell(context, margin, total: true),
           ],
         ),
-        if (report.revenueIncludesTax) _taxNote(context),
+        if (report.pricesIncludeTax) _taxNote(context),
         _caption(context, s.profitNote),
       ],
     );

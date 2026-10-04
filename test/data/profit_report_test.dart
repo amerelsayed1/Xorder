@@ -445,11 +445,132 @@ void main() {
     });
   });
 
+  group('prices that contain tax: revenue is taken back to net', () {
+    // The lines record no tax of their own, so each line is scaled by its
+    // ORDER's net-to-gross ratio from `pos_order_taxes`. Three orders put the
+    // three cases to it: one rate (exact), mixed rates (a documented estimate,
+    // pinned so the approximation is explicit rather than discovered), and no
+    // tax rows at all (left whole).
+    Future<void> taxRow(int orderId, String name, int rateBp, int base, int amount) =>
+        db.query(
+          pg.config,
+          'INSERT INTO pos_order_taxes (order_id, name_snapshot, rate_bp, '
+          '  base_minor, amount_minor) VALUES (@o, @n, @r, @b, @a)',
+          parameters: {
+            'o': orderId,
+            'n': name,
+            'r': rateBp,
+            'b': base,
+            'a': amount,
+          },
+        );
+
+    Future<void> inclusive() => db.query(
+      pg.config,
+      "UPDATE pos_restaurants SET tax_mode = 'inclusive' WHERE id = @r",
+      parameters: {'r': restaurantId},
+    );
+
+    /// T1: three Colas at 11.40 gross, all at 14% → 30.00 net + 4.20 tax.
+    /// T2: a Cola at 11.40 (14%) beside a Burger at 10.00 (zero-rated):
+    ///     20.00 net over 21.40 gross.
+    /// T3: a Cola at 10.00 with no tax recorded.
+    Future<void> ledger() async {
+      final t1 = await order(at: tenth, lines: [(cola, 'Cola', 3, 1140, 0)]);
+      await taxRow(t1, 'VAT 14%', 1400, 3000, 420);
+      await movement(product: cola, kind: 'sale', milli: -3000, cost: 500, orderId: t1);
+
+      final t2 = await order(
+        at: tenth.add(const Duration(hours: 1)),
+        lines: [(cola, 'Cola', 1, 1140, 0), (burger, 'Burger', 1, 1000, 0)],
+      );
+      await taxRow(t2, 'VAT 14%', 1400, 1000, 140);
+      await taxRow(t2, 'Zero-rated', 0, 1000, 0);
+      await movement(product: cola, kind: 'sale', milli: -1000, cost: 500, orderId: t2);
+
+      final t3 = await order(
+        at: tenth.add(const Duration(hours: 2)),
+        lines: [(cola, 'Cola', 1, 1000, 0)],
+      );
+      await movement(product: cola, kind: 'sale', milli: -1000, cost: 500, orderId: t3);
+    }
+
+    test('an order at one rate comes back to its net exactly', () async {
+      await inclusive();
+      // T1 on its own: three Colas, 34.20 gross, 14% in it.
+      final only = await order(at: tenth, lines: [(cola, 'Cola', 3, 1140, 0)]);
+      await taxRow(only, 'VAT 14%', 1400, 3000, 420);
+      await movement(product: cola, kind: 'sale', milli: -3000, cost: 500, orderId: only);
+
+      final cola_ = row(await reports.profit(range), 'Cola');
+
+      // 30.00 — the net — and never the 34.20 it was rung up at.
+      expect(cola_.revenue.minor, 3000);
+      expect(cola_.cost!.minor, 1500);
+      expect(cola_.profit!.minor, 1500);
+      expect(cola_.marginBp, 5000);
+    });
+
+    test('across three orders the Cola is net, not gross', () async {
+      await inclusive();
+      await ledger();
+      final colas = await reports.profit(range);
+
+      // T1's 30.00, T2's 10.65 and T3's untaxed 10.00: 50.65, where gross is
+      // 55.60.
+      expect(row(colas, 'Cola').revenue.minor, 3000 + 1065 + 1000);
+      expect(row(colas, 'Cola').revenue.minor, isNot(3420 + 1140 + 1000));
+    });
+
+    test('a mixed-rate order is shared out at its blend — an estimate', () async {
+      await inclusive();
+      await ledger();
+      final r = await reports.profit(range);
+
+      // T2's 20.00 net over 21.40 gross: the 14% Cola 11.40 → 10.65, and the
+      // ZERO-RATED Burger 10.00 → 9.35, though it carried no tax at all. That
+      // second figure is the approximation; the order's own net, 10.65 + 9.35,
+      // is exactly its recorded 20.00.
+      expect(row(r, 'Burger').revenue.minor, 935);
+      expect(1065 + 935, 2000, reason: 'the order still adds up to its net');
+    });
+
+    test('an order with no recorded tax is left whole', () async {
+      await inclusive();
+      await ledger();
+      final r = await reports.profit(range);
+
+      // T3's Cola is 10.00 in the total above: 30.00 + 10.65 + 10.00.
+      expect(row(r, 'Cola').revenue.minor, 5065);
+    });
+
+    test('profit is measured on that net revenue', () async {
+      await inclusive();
+      await ledger();
+      final cola = row(await reports.profit(range), 'Cola');
+
+      // Cost: 3,000 + 1,000 + 1,000 milli at 5.00 = 25.00.
+      expect(cola.cost!.minor, 2500);
+      expect(cola.costedRevenue.minor, 5065);
+      expect(cola.profit!.minor, 2565);
+    });
+
+    test('the same orders on a tax-exclusive restaurant are untouched', () async {
+      // Default mode: the lines are already net, and nothing is scaled.
+      await ledger();
+      final r = await reports.profit(range);
+
+      expect(r.pricesIncludeTax, isFalse);
+      expect(row(r, 'Cola').revenue.minor, 3420 + 1140 + 1000);
+      expect(row(r, 'Burger').revenue.minor, 1000);
+    });
+  });
+
   group('whether the price contains tax', () {
     test('an exclusive restaurant is not flagged', () async {
       await seed();
 
-      expect((await reports.profit(range)).revenueIncludesTax, isFalse);
+      expect((await reports.profit(range)).pricesIncludeTax, isFalse);
     });
 
     test('an inclusive one is', () async {
@@ -460,7 +581,7 @@ void main() {
         parameters: {'r': restaurantId},
       );
 
-      expect((await reports.profit(range)).revenueIncludesTax, isTrue);
+      expect((await reports.profit(range)).pricesIncludeTax, isTrue);
     });
   });
 }

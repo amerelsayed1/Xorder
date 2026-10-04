@@ -289,9 +289,18 @@ has priced. It is now a dash and a "no cost" tag, with one note above the rows.
   wipes restaurants must delete `pos_combos` first; and the audit ledger is
   append-only, so a test reading it must filter by restaurant.
 
-**Known gaps:** profit on a tax-inclusive restaurant still contains VAT (lines
-do not store tax); an item with stock but no cost is valued at zero on the Stock
-pane; there is no cost column on the product itself.
+**Tax-inclusive restaurants (4 Oct, later the same day).** Profit first shipped
+with a warning that revenue still contained VAT. It now takes the tax out: each
+line is scaled by its order's net-to-gross ratio from `pos_order_taxes`, in one
+integer half-up expression in the query. Lines carry no tax group, so this is
+the order's blend — exact at one rate, an estimate at several (pinned by a
+database test that states the zero-rated-item case outright). Deliberately **not**
+done: per-line tax by re-deriving each product's *current* group, which silently
+drifts the day a product is moved to another rate.
+
+**Known gaps:** the tax mode is today's setting, not a per-order snapshot; an
+item with stock but no cost is valued at zero on the Stock pane; there is no
+cost column on the product itself.
 
 **Verification:** `flutter analyze` clean · **2,448 unit and widget tests** pass,
 64 skipped · the combo, profit and reports database suites (**50 tests**) pass

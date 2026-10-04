@@ -1528,6 +1528,7 @@ sealed class AppStrings {
   // ── profit ──
   String get profitTitle;
   String get profitColumnCost;
+  String get profitColumnAmountNet;
   String get profitColumnProfit;
   String get profitColumnMargin;
   String get profitKpiProfit;
@@ -6217,6 +6218,9 @@ final class EnStrings extends AppStrings {
   String get profitColumnCost =>
       'Cost';
   @override
+  String get profitColumnAmountNet =>
+      'Amount, no tax';
+  @override
   String get profitColumnProfit =>
       'Profit';
   @override
@@ -6242,7 +6246,9 @@ final class EnStrings extends AppStrings {
       'Profit is counted only on items with a recorded cost, at the average cost when each was sold. Dishes and combos have none, so they show revenue only. A refunded sale keeps its cost: the food was already used.';
   @override
   String get profitTaxNote =>
-      'Your prices include tax, so revenue and margin here still contain it and read higher than they are.';
+      'Your prices include tax, so it is taken out of the revenue here, order '
+      'by order, using the tax each order recorded. That is exact for an order '
+      'at one rate and an estimate where rates are mixed.';
   @override
   String get profitCoverageNote => 'of all revenue';
   @override
@@ -10842,6 +10848,9 @@ final class ArStrings extends AppStrings {
   String get profitColumnCost =>
       'التكلفة';
   @override
+  String get profitColumnAmountNet =>
+      'القيمة بدون ضريبة';
+  @override
   String get profitColumnProfit =>
       'الربح';
   @override
@@ -10867,7 +10876,8 @@ final class ArStrings extends AppStrings {
       'يُحتسب الربح على الأصناف التي لها تكلفة مسجّلة فقط، بمتوسط التكلفة وقت كل بيع. الأطباق والكومبو بلا تكلفة فتظهر بإيرادها فقط. والبيع المسترد يحتفظ بتكلفته لأن الطعام استُهلك بالفعل.';
   @override
   String get profitTaxNote =>
-      'أسعارك شاملة الضريبة، لذا فالإيراد والهامش هنا ما زالا يشملانها ويبدوان أعلى من حقيقتهما.';
+      'أسعارك شاملة الضريبة، لذا تُخصم من الإيراد هنا طلبًا بطلب بحسب الضريبة '
+      'المسجّلة في كل طلب. وهذا دقيق للطلب بنسبة واحدة، وتقدير حين تختلف النسب.';
   @override
   String get profitCoverageNote => 'من إجمالي الإيراد';
   @override

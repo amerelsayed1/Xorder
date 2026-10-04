@@ -109,8 +109,15 @@ Five substantially done, three partial, seven absent.
 >   a "no cost" tag for the same reason.
 > * A **refund returns the revenue and not the cost** — no stock movement is
 >   written for one — so a plate refunded before it was made reads as a loss.
-> * On a **tax-inclusive** restaurant the lines do not store their tax, so
->   revenue and margin still contain VAT and read high. The page warns.
+> * On a **tax-inclusive** restaurant the lines do not store their tax, so it
+>   is taken out of the revenue **order by order**: each line is scaled by its
+>   order's recorded net-to-gross ratio (`pos_order_taxes`). Exact for an order
+>   at one rate; an **estimate** for an order that mixes rates (a zero-rated
+>   item beside a 14% one is shared out at the order's blend); an order with no
+>   tax rows is left whole. The page and the file say so, and head the column
+>   "Amount, no tax" so it is not read against the Items list, which is gross.
+>   The mode read is the restaurant's *current* one — orders do not record the
+>   mode they were taxed in.
 > * Revenue is the lines' own, before order-level discounts, as the Items list
 >   has it.
 >

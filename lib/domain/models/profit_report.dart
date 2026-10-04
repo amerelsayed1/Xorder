@@ -20,10 +20,21 @@
 ///
 /// **Revenue is the lines' own**, as `ProductSales` has it: units kept, at the
 /// price they were sold at, before order-level discounts (which belong to no one
-/// line) and with a refunded unit taken off. It is **before tax is removed**:
-/// the lines do not store their tax, so on a tax-inclusive restaurant
-/// ([ProfitReport.revenueIncludesTax]) every revenue and margin here is
-/// overstated by the VAT in the price, and the page has to say so.
+/// line) and with a refunded unit taken off.
+///
+/// **It is without tax.** On a restaurant whose prices exclude tax the lines are
+/// already net. Where prices **include** tax ([ProfitReport.pricesIncludeTax])
+/// the tax is taken back out, because a margin measured on money that was
+/// handed to the tax authority is a margin nobody earned. The lines do not
+/// store their tax, so it is taken out **order by order**: each line's revenue
+/// is scaled by its order's recorded net-to-gross ratio (`pos_order_taxes`).
+/// That is exact for an order taxed at one rate, and an **estimate** for one
+/// that mixes rates — a zero-rated item beside a 14% one is shared out at the
+/// order's blend. The page and the file say so. An order with no recorded tax
+/// is left as it is: there is nothing to take out.
+///
+/// The revenue on this report therefore will not match the Items list above it
+/// on an inclusive restaurant, which is gross; the column says which it is.
 ///
 /// **Cost is what left the shelf, refunded or not.** A refund writes no stock
 /// movement, so the food a refunded plate used is still spent; the revenue came
@@ -92,7 +103,7 @@ class ProfitReport {
   ProfitReport({
     required this.filter,
     required List<ProductProfit> products,
-    required this.revenueIncludesTax,
+    required this.pricesIncludeTax,
     this.currency = 'EGP',
     this.exponent = 2,
   }) : products = List.unmodifiable(products);
@@ -102,9 +113,10 @@ class ProfitReport {
   /// Highest profit first, uncosted products after, by revenue.
   final List<ProductProfit> products;
 
-  /// The restaurant prices tax into the menu, so every revenue figure here
-  /// still contains VAT — see the library comment.
-  final bool revenueIncludesTax;
+  /// The restaurant prices tax into the menu. Every revenue figure here has
+  /// then had it taken out — exactly for an order at one rate, by estimate for
+  /// a mixed one (see the library comment) — and the page says so.
+  final bool pricesIncludeTax;
 
   final String currency;
   final int exponent;

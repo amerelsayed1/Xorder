@@ -30,7 +30,7 @@ void main() {
       ProfitReport(
         filter: ReportFilter.day(DateTime(2026, 9, 10)),
         products: products,
-        revenueIncludesTax: inclusive,
+        pricesIncludeTax: inclusive,
       );
 
   group('one product', () {
@@ -146,8 +146,8 @@ void main() {
     });
 
     test('a tax-inclusive restaurant is flagged, for the page to say', () {
-      expect(report(products, inclusive: true).revenueIncludesTax, isTrue);
-      expect(report(products).revenueIncludesTax, isFalse);
+      expect(report(products, inclusive: true).pricesIncludeTax, isTrue);
+      expect(report(products).pricesIncludeTax, isFalse);
     });
 
     test('the rows cannot be changed from outside', () {

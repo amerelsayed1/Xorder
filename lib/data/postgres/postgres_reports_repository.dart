@@ -421,6 +421,13 @@ class PostgresReportsRepository implements ReportsRepository {
     //    cost is of exactly the sales the revenue is of, never a neighbouring
     //    day's.
     //
+    // Revenue without tax. Where prices contain tax (`@inclusive`) each line is
+    // scaled by its ORDER's net-to-gross ratio from `pos_order_taxes` —
+    // sum(base) / sum(base + amount) — because a line records no tax of its
+    // own. Exact for an order at one rate, an estimate for a mixed one; an
+    // order with no tax rows is left whole. Half-up, in integer arithmetic, as
+    // the cost below: the numerator is never negative.
+    //
     // Per-movement rounding, half-up, exactly `Quantity.costAt`: the numerator
     // is positive (a sale issues, so its quantity is negative and is negated),
     // where integer division floors, so `+ 500` before `/ 1000` is half-up.
@@ -448,6 +455,22 @@ class PostgresReportsRepository implements ReportsRepository {
          GROUP BY l.order_id, l.menu_item_id,
                   CASE WHEN l.menu_item_id IS NULL THEN l.name_snapshot END
       ),
+      taxed AS (
+        SELECT t.order_id,
+               sum(t.base_minor)::bigint AS net,
+               sum(t.base_minor + t.amount_minor)::bigint AS gross
+          FROM pos_order_taxes AS t
+          JOIN sales AS s ON s.id = t.order_id
+         GROUP BY t.order_id
+      ),
+      priced AS (
+        SELECT k.*,
+               CASE WHEN @inclusive::boolean AND x.gross > 0
+                    THEN (k.amount * x.net * 2 + x.gross) / (x.gross * 2)
+                    ELSE k.amount END AS net_amount
+          FROM kept AS k
+          LEFT JOIN taxed AS x ON x.order_id = k.order_id
+      ),
       issued AS (
         SELECT m.order_id, m.product_id,
                sum(((-m.quantity_milli * m.unit_cost_minor) + 500) / 1000)
@@ -462,11 +485,11 @@ class PostgresReportsRepository implements ReportsRepository {
       SELECT k.menu_item_id,
              (array_agg(k.name ORDER BY k.order_id DESC))[1] AS name,
              sum(k.kept)::bigint AS kept,
-             sum(k.amount)::bigint AS amount,
-             coalesce(sum(k.amount) FILTER (WHERE i.cost IS NOT NULL), 0)
+             sum(k.net_amount)::bigint AS amount,
+             coalesce(sum(k.net_amount) FILTER (WHERE i.cost IS NOT NULL), 0)
                ::bigint AS costed_amount,
              sum(i.cost)::bigint AS cost
-        FROM kept AS k
+        FROM priced AS k
         LEFT JOIN issued AS i
                ON i.order_id = k.order_id AND i.product_id = k.menu_item_id
        GROUP BY k.menu_item_id, k.open_name
@@ -481,22 +504,25 @@ class PostgresReportsRepository implements ReportsRepository {
       await tx.execute(
         'SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY',
       );
-      final rows = await tx.execute(
-        Sql.named(rowsSql),
-        parameters: sold.parameters,
-      );
+      // The mode first: whether the lines' prices contain tax decides the
+      // arithmetic of the revenue, not only the note under it. Today's setting,
+      // not a snapshot — orders do not record the mode they were taxed in, so a
+      // restaurant that switched has its earlier orders read by the new one.
       final mode = await tx.execute(
         Sql.named('SELECT tax_mode FROM pos_restaurants WHERE id = @r'),
         parameters: {'r': restaurantId},
+      );
+      final inclusive = mode.isNotEmpty && mode.first[0] == 'inclusive';
+      final rows = await tx.execute(
+        Sql.named(rowsSql),
+        parameters: {...sold.parameters, 'inclusive': inclusive},
       );
 
       return ProfitReport(
         filter: filter,
         currency: currency,
         exponent: exponent,
-        // Unknown reads as inclusive: the direction that overstates nothing the
-        // page would not already have warned about.
-        revenueIncludesTax: mode.isEmpty || mode.first[0] != 'exclusive',
+        pricesIncludeTax: inclusive,
         products: ProfitReport.ranked([
           for (final raw in rows)
             ProductProfit(

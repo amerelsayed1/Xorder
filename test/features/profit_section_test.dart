@@ -64,7 +64,7 @@ const _sold = [
 ProfitReport _profit(ReportFilter filter, {bool inclusive = false}) =>
     ProfitReport(
       filter: filter,
-      revenueIncludesTax: inclusive,
+      pricesIncludeTax: inclusive,
       products: ProfitReport.ranked(const [
         ProductProfit(
           menuItemId: 1,
@@ -377,7 +377,7 @@ void main() {
       reports: _Reports(
         profit_: (filter) => ProfitReport(
           filter: filter,
-          revenueIncludesTax: false,
+          pricesIncludeTax: false,
           products: const [
             ProductProfit(
               menuItemId: null,
@@ -416,13 +416,49 @@ void main() {
       expect(find.byKey(const Key('profit-tax-note')), findsNothing);
     });
 
+    testWidgets('the amount column says it is net, so it is not mistaken for '
+        'the gross list above', (tester) async {
+      await _pane(tester, reports: _Reports(inclusive: true));
+
+      // Micro-labels are set in capitals.
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('reports-profit')),
+          matching: find.text(s.profitColumnAmountNet.toUpperCase()),
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('and is plain "Amount" where prices exclude tax', (tester) async {
+      await _pane(tester);
+
+      expect(find.text(s.profitColumnAmountNet.toUpperCase()), findsNothing);
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('reports-profit')),
+          matching: find.text(s.reportColumnAmount.toUpperCase()),
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('the note tells the method, and says where it is an estimate', (
+      tester,
+    ) async {
+      await _pane(tester, reports: _Reports(inclusive: true));
+
+      expect(s.profitTaxNote, contains('estimate'));
+      expect(find.text(s.profitTaxNote), findsOneWidget);
+    });
+
     testWidgets('and it is said even when nothing is costed', (tester) async {
       await _pane(
         tester,
         reports: _Reports(
           profit_: (filter) => ProfitReport(
             filter: filter,
-            revenueIncludesTax: true,
+            pricesIncludeTax: true,
             products: const [],
           ),
         ),
