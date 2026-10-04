@@ -19,6 +19,7 @@ import 'package:xorder_pos/domain/models/order_record.dart';
 import 'package:xorder_pos/domain/models/permissions.dart';
 import 'package:xorder_pos/domain/models/refund.dart';
 import 'package:xorder_pos/domain/models/finance_report.dart';
+import 'package:xorder_pos/domain/models/profit_report.dart';
 import 'package:xorder_pos/domain/models/sales_report.dart';
 import 'package:xorder_pos/domain/models/tender_method.dart';
 import 'package:xorder_pos/domain/models/ticket.dart';
@@ -266,6 +267,10 @@ class _Fixed implements ReportsRepository {
   @override
   Future<PaymentLedger> payments(ReportFilter filter, {int limit = 500}) =>
       throw UnimplementedError('the exports write no payment ledger');
+
+  @override
+  Future<ProfitReport> profit(ReportFilter filter) =>
+      throw UnimplementedError('the exports write no profit');
 }
 
 class _InAdminMode extends AdminSessionController {

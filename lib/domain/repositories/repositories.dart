@@ -22,6 +22,7 @@ import '../models/permissions.dart';
 import '../models/dining_table.dart';
 import '../models/business_day.dart';
 import '../models/order_record.dart';
+import '../models/profit_report.dart';
 import '../models/sales_report.dart';
 import '../models/finance_report.dart';
 import '../models/pos_settings.dart';
@@ -542,6 +543,14 @@ abstract interface class ReportsRepository {
   /// One row per payment on [filter]'s sales, newest first, at most [limit]
   /// (BO-9, plan 17 S2).
   Future<PaymentLedger> payments(ReportFilter filter, {int limit = 500});
+
+  /// What [filter]'s sales earned, where the till knows what they cost.
+  ///
+  /// Revenue is the lines' own — the figures [topProducts] ranks — and cost is
+  /// what the stock ledger recorded when each stocked item was sold. Every
+  /// product with revenue is returned, costed or not, because the share of the
+  /// menu this cannot speak to is part of the answer (see [ProfitReport]).
+  Future<ProfitReport> profit(ReportFilter filter);
 }
 
 /// The outcome of issuing a refund.

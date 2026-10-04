@@ -66,6 +66,23 @@ class ManagementStockPane extends ConsumerWidget {
                   ),
                   const SizedBox(height: PosSpace.md),
                   _Header(),
+                  // Said once, above the rows it is about, and only when a row
+                  // needs it: a note on a page where every item is costed is
+                  // noise.
+                  if (levels.any((level) => !level.hasCost)) ...[
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: PosSpace.sm),
+                      child: Text(
+                        strings.stockNoCostNote,
+                        key: const Key('stock-no-cost-note'),
+                        style: PosText.ui(
+                          size: 12,
+                          color: palette.muted,
+                          height: 1.4,
+                        ),
+                      ),
+                    ),
+                  ],
                   for (final level in levels)
                     _LevelRow(
                       level: level,
@@ -161,7 +178,30 @@ class _LevelRow extends StatelessWidget {
               ),
             ),
           ),
-          SizedBox(width: 120, child: MonoAmount(level.unitCost, size: 13)),
+          SizedBox(
+            width: 120,
+            // A dash and a tag, never 0.00: nothing has set a cost, which is
+            // not the same as the item being free (`StockLevel.hasCost`).
+            child: level.hasCost
+                ? MonoAmount(level.unitCost, size: 13)
+                : Row(
+                    key: Key('stock-no-cost-${level.productId}'),
+                    children: [
+                      Text(
+                        '—',
+                        style: PosText.mono(size: 13, color: palette.muted),
+                      ),
+                      const SizedBox(width: PosSpace.sm),
+                      Flexible(
+                        child: Text(
+                          strings.profitNoCostTag,
+                          overflow: TextOverflow.ellipsis,
+                          style: PosText.ui(size: 11.5, color: palette.muted),
+                        ),
+                      ),
+                    ],
+                  ),
+          ),
           SizedBox(width: 120, child: MonoAmount(level.value, size: 13)),
         ],
       ),

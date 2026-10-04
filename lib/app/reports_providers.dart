@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../data/postgres/pos_database.dart';
 import '../data/postgres/postgres_reports_repository.dart';
 import '../domain/models/permissions.dart';
+import '../domain/models/profit_report.dart';
 import '../domain/models/sales_report.dart';
 import '../domain/repositories/repositories.dart';
 import '../domain/services/authorization.dart';
@@ -119,4 +120,22 @@ final staffSalesProvider =
       final repository = ref.watch(reportsRepositoryProvider);
       if (repository == null) return null;
       return repository.staffSales(filter);
+    });
+
+/// What [filter]'s sales earned where the till knows their cost.
+///
+/// Its own provider rather than a part of the Items list: it is a second read
+/// of a different ledger, and a page that shows the list should not wait on
+/// — or fail with — the one beneath it. Null with no database, for the same
+/// reason [salesReportProvider] is: zeros would read as a period with no
+/// profit.
+final profitReportProvider =
+    FutureProvider.autoDispose.family<ProfitReport?, ReportFilter>((
+      ref,
+      filter,
+    ) async {
+      if (!ref.watch(reportsAllowedProvider)) return null;
+      final repository = ref.watch(reportsRepositoryProvider);
+      if (repository == null) return null;
+      return repository.profit(filter);
     });

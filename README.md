@@ -179,9 +179,9 @@ sitting on a machine in a public room being able to reprice the menu and reset
 PINs, and not.
 
 **Management** is at `/management`, reached from the start screen and gated on a
-PIN that holds `staff.manage`. Its strings are English-only for now, collected
-in `lib/features/admin/presentation/admin_messages.dart` so that moving them
-into `AppStrings` is one pass rather than forty.
+PIN that holds `staff.manage`. Its refusals and audit labels are collected in
+`lib/features/admin/presentation/admin_messages.dart` and its strings are in
+`AppStrings`, English and Arabic.
 
 ## Not built yet
 
@@ -192,7 +192,8 @@ submission client (everything else about e-receipts is built — see below).
 Refunds, discounts, price override, catalogue administration, order history,
 combos, per-branch pricing, the cash drawer and business day, menu import from
 a spreadsheet and the permission model have all landed since this list was last
-correct. Arabic covers Management too: `AppStrings` is abstract, so a string
+correct — and since then **combo authoring** (Management › Menu › Combos) and
+**profit** (below). Arabic covers Management too: `AppStrings` is abstract, so a string
 that exists in English and not in Arabic does not compile.
 
 **The cloud path is built and verified end-to-end (2026-09-04).** A cloud
@@ -217,6 +218,31 @@ record. `SessionRepository.current()` still returns the branch's first active
 member of staff for the top bar, so the *displayed* name is not necessarily the
 person holding the till — but the shift, and therefore the money, is attributed
 correctly. A dedicated sign-in screen is still `POS-BE-024`.
+
+## Combos and profit
+
+**Combos** are meals at one price, built from real menu items. Management ›
+Menu › **Combos** creates and edits them — choices ("Choose a drink"), the items
+in each, an optional upgrade price per item, min and max, category, SKU. A combo
+is retired with a switch, never deleted: an order line names it. Offline tills
+only; on a cloud till the platform authors the catalogue and the sync would
+erase a local one.
+
+**Profit** is on Reports › Items, under the list, and is the second sheet of that
+page's Excel export. It reads what each stocked item cost when it was sold (the
+moving average from purchasing, recorded on the sale's stock movement) against
+what it sold for. It is deliberately modest about what it knows:
+
+* only **stocked** items have a cost — a dish or a combo shows revenue and no
+  cost, and the page says how much of the revenue it covers;
+* a sale at a cost of **zero** counts as *not costed*, not free (the Stock pane
+  shows the same thing as a dash and a "no cost" tag);
+* a **refund** takes the revenue back and leaves the cost spent;
+* on a **tax-inclusive** restaurant revenue and margin still contain VAT, and the
+  page says so.
+
+Design and the reasoning: `docs/pos/16-back-office-scope.md` (§3 and its
+4 October update) and `docs/pos/14-progress.md` §6.
 
 ## Shifts and the drawer
 
@@ -393,6 +419,21 @@ Point them at a database to run the rest:
 ```bash
 POS_PG_HOST=127.0.0.1 POS_PG_USER=pos_till POS_PG_PASSWORD=… flutter test
 ```
+
+No PostgreSQL to hand? A throwaway container is enough, and the fixture's
+defaults (user `pos_till`, password `postgres`) match it:
+
+```bash
+docker run -d --rm --name xorder-pos-test-pg -p 127.0.0.1:5544:5432 \
+  -e POSTGRES_USER=pos_till -e POSTGRES_PASSWORD=postgres postgres:16-alpine
+POS_PG_HOST=127.0.0.1 POS_PG_PORT=5544 flutter test test/data/reports_test.dart
+docker stop xorder-pos-test-pg
+```
+
+Two things a new database suite trips over: an option `RESTRICT`s deleting its
+product, so a suite that wipes restaurants must `DELETE FROM pos_combos` first;
+and the audit ledger is append-only, so a test that reads it must filter by
+restaurant, because earlier tests' rows are still there.
 
 Each suite creates and owns its own `xorder_pos_<suite>` database. That is not
 tidiness: two suites truncating one database produced a duplicate invoice number

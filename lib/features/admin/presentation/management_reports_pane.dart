@@ -54,9 +54,11 @@ String productRankingLabel(AppStrings s, ProductRanking ranking) =>
 /// same arithmetic. `back_office_reports_test.dart` holds every value on
 /// screen to a fake repository's numbers.
 ///
-/// **Net profit and customers are cut** (plan 19 §2.3): no product has a cost
-/// price and no sale has a customer. Refunds took the customers' tile, count
-/// and amount, as plan 17 S3 lists it.
+/// **Net profit and customers are cut from the summary** (plan 19 §2.3): a
+/// business-wide profit needs every item costed, and no sale has a customer.
+/// Refunds took the customers' tile, count and amount, as plan 17 S3 lists it.
+/// Profit now exists, but where it can be honest — per item, under Reports ›
+/// Items, over the stocked items the ledger has a cost for (`ProfitReport`).
 ///
 /// **No drill-down yet.** A till row or a day should open the Sales tab on
 /// `ReportFilter.historyQuery()`, but the Sales list takes no query from

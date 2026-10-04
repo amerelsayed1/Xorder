@@ -12,6 +12,7 @@ import 'package:xorder_pos/data/cloud/cloud_provisioning_repository.dart'
     show posAppVersion;
 import 'package:xorder_pos/data/cloud/cloud_sync.dart';
 import 'package:xorder_pos/data/fakes/fake_repositories.dart';
+import 'package:xorder_pos/domain/models/combo_draft.dart';
 import 'package:xorder_pos/domain/models/option_group.dart';
 import 'package:xorder_pos/core/money/money.dart';
 import 'package:xorder_pos/domain/models/permissions.dart';
@@ -142,12 +143,14 @@ class _Sync extends Mock implements CloudSync {}
 ///
 /// `offlineTerminal()` binds a bare mock, which is right for a test that only
 /// asks whether this till authors — and wrong for one that opens every pane,
-/// because Extras reads its library the moment it shows. That read is the only
-/// one an authoring pane makes unprompted; everything else is a write behind a
-/// button the walk never presses, and stays unanswered on purpose.
+/// because Extras reads its library, and Combos its list, the moment they
+/// show. Those reads are the only ones an authoring pane makes unprompted;
+/// everything else is a write behind a button the walk never presses, and
+/// stays unanswered on purpose.
 class _OfflineCatalogue extends Mock implements CatalogAdminRepository {
   _OfflineCatalogue() {
     when(optionLibrary).thenAnswer((_) async => const <LibraryGroup>[]);
+    when(combos).thenAnswer((_) async => const <ComboDraft>[]);
   }
 }
 
@@ -825,7 +828,13 @@ void main() {
             'الفروع والأجهزة',
             'الموظفين',
           ],
-          BackOfficeTab.menu: ['المنيو', 'الأقسام', 'مكتبة الإضافات', 'الصالة'],
+          BackOfficeTab.menu: [
+            'المنيو',
+            'الأقسام',
+            'مكتبة الإضافات',
+            'الصالة',
+            'الكومبو',
+          ],
           BackOfficeTab.inventory: [
             'أصناف المخزون',
             'المخزون المتاح',

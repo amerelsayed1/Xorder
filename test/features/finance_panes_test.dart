@@ -13,6 +13,7 @@ import 'package:xorder_pos/domain/models/branch_sales.dart';
 import 'package:xorder_pos/domain/models/business_day.dart';
 import 'package:xorder_pos/domain/models/finance_report.dart';
 import 'package:xorder_pos/domain/models/permissions.dart';
+import 'package:xorder_pos/domain/models/profit_report.dart';
 import 'package:xorder_pos/domain/models/sales_report.dart';
 import 'package:xorder_pos/domain/models/tender_method.dart';
 import 'package:xorder_pos/domain/repositories/repositories.dart';
@@ -206,6 +207,10 @@ class _Books implements ReportsRepository {
       truncated: truncated,
     );
   }
+
+  @override
+  Future<ProfitReport> profit(ReportFilter filter) =>
+      throw UnimplementedError('Finance draws no profit');
 }
 
 class _Viewer extends SignedInStaffController {

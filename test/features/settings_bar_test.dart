@@ -451,6 +451,7 @@ void main() {
       'Categories',
       'Extras library',
       'Floor',
+      'Combos',
     ]);
     // Each thing buying is, with the "new" that starts one: shortcuts no
     // pane's own tabs can be.

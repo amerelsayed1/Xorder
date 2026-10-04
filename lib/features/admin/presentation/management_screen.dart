@@ -30,6 +30,7 @@ import 'management_units_pane.dart';
 import 'management_floor_pane.dart';
 import 'management_menu_pane.dart';
 import 'management_eta_pane.dart';
+import 'management_combos_pane.dart';
 import 'management_extras_pane.dart';
 import 'management_finance_panes.dart';
 import 'management_home_pane.dart';
@@ -170,6 +171,9 @@ const _authoringPanes = {
   // The library is the menu's too: a group made here would be erased by the
   // next sync on a cloud till, where the platform's Extras page is the author.
   ManagementPane.extras,
+  // Combos are menu items too, and the seeder deletes `pos_products` they
+  // point at on a cloud till.
+  ManagementPane.combos,
   ManagementPane.floor,
   ManagementPane.purchasing,
   ManagementPane.items,
@@ -305,6 +309,7 @@ BackOfficeTab tabOf(ManagementPane pane) => switch (pane) {
   ManagementPane.menu ||
   ManagementPane.categories ||
   ManagementPane.extras ||
+  ManagementPane.combos ||
   ManagementPane.floor => BackOfficeTab.menu,
   ManagementPane.items ||
   ManagementPane.stock ||
@@ -430,6 +435,7 @@ SettingsSection? settingsSectionOf(ManagementPane pane) => switch (pane) {
   ManagementPane.menu ||
   ManagementPane.categories ||
   ManagementPane.extras ||
+  ManagementPane.combos ||
   ManagementPane.floor ||
   ManagementPane.purchasing ||
   ManagementPane.eta ||
@@ -476,6 +482,9 @@ int _placeInTab(ManagementPane pane) => switch (pane) {
   ManagementPane.categories => 1,
   ManagementPane.extras => 2,
   ManagementPane.floor => 3,
+  // After the owner's four: the map has no word for Combos, so it goes last
+  // rather than between two pages whose order was dictated.
+  ManagementPane.combos => 4,
   // أصناف المخزون، المخزون المتاح، الوحدات
   ManagementPane.items => 0,
   ManagementPane.stock => 1,
@@ -921,6 +930,7 @@ ManagementDestination _purchasing(PurchasingTab tab, {bool create = false}) =>
       ManagementPane.menu => (s.paneMenu, s.paneMenuBlurb),
       ManagementPane.categories => (s.categories, s.paneMenuBlurb),
       ManagementPane.extras => (s.extrasTitle, s.extrasSubtitle),
+      ManagementPane.combos => (s.combosTitle, s.combosSubtitle),
       ManagementPane.floor => (s.floorPlan, s.floorPlanHint),
       ManagementPane.taxes => (s.paneTaxes, s.paneTaxesHint),
       ManagementPane.charges => (s.serviceCharges, s.serviceChargesHint),
@@ -1046,6 +1056,7 @@ Set<String> _paneRequires(ManagementPane pane) => switch (pane) {
   ManagementPane.menu ||
   ManagementPane.categories ||
   ManagementPane.extras ||
+  ManagementPane.combos ||
   ManagementPane.floor ||
   ManagementPane.taxes ||
   ManagementPane.charges ||
@@ -1093,6 +1104,7 @@ enum ManagementPane {
   staff,
   menu,
   extras,
+  combos,
   floor,
   taxes,
   charges,
@@ -1573,6 +1585,7 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
       onOpenExtras: () => _open(ManagementPane.extras),
     ),
     ManagementPane.extras => ManagementExtrasPane(admin: admin),
+    ManagementPane.combos => ManagementCombosPane(admin: admin),
     ManagementPane.floor => ManagementFloorPane(admin: admin),
     ManagementPane.taxes => ManagementTaxesPane(admin: admin),
     ManagementPane.charges => ManagementChargesPane(admin: admin),

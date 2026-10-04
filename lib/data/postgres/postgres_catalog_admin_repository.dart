@@ -6,6 +6,7 @@ import '../../core/config/deployment.dart';
 import '../../core/money/money.dart';
 import '../../core/money/quantity.dart';
 import '../../domain/models/catalog.dart';
+import '../../domain/models/combo_draft.dart';
 import '../../domain/models/option_group.dart';
 import '../../domain/models/tax.dart';
 import '../../domain/models/order_type_config.dart';
@@ -2067,6 +2068,309 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
     isStocked: row[12]! as bool,
     stockUnit: row[13] == null ? null : QuantityUnit.fromWire(row[13] as String),
   );
+
+  // ── combos ─────────────────────────────────────────────────────────────────
+
+  @override
+  Future<List<ComboDraft>> combos() =>
+      database.runTx(config, (tx) => _combosIn(tx));
+
+  /// On the caller's transaction, so a save can read back what it has written
+  /// and not yet committed — a second transaction would see the old tree.
+  Future<List<ComboDraft>> _combosIn(TxSession tx) async {
+    final comboRows = await tx.execute(
+      Sql.named(
+        'SELECT id, category_id, name_en, name_ar, price_minor, '
+        '       tax_group_id, sku, is_available '
+        'FROM pos_combos WHERE restaurant_id = @r '
+        'ORDER BY sort_order, id',
+      ),
+      parameters: {'r': restaurantId},
+    );
+    if (comboRows.isEmpty) return const <ComboDraft>[];
+
+    // Three small reads rather than one join, as the till's own catalogue
+    // read does: unpicking a combo → groups → options shape from a flattened
+    // result is more code than asking three times.
+    final groupRows = await tx.execute(
+      Sql.named(
+        'SELECT g.id, g.combo_id, g.name_en, g.name_ar, g.min_select, '
+        '       g.max_select '
+        'FROM pos_combo_groups g '
+        'JOIN pos_combos c ON c.id = g.combo_id '
+        'WHERE c.restaurant_id = @r ORDER BY g.sort_order, g.id',
+      ),
+      parameters: {'r': restaurantId},
+    );
+    final optionRows = await tx.execute(
+      Sql.named(
+        'SELECT o.combo_group_id, o.product_id, o.price_delta_minor '
+        'FROM pos_combo_options o '
+        'JOIN pos_combo_groups g ON g.id = o.combo_group_id '
+        'JOIN pos_combos c ON c.id = g.combo_id '
+        'WHERE c.restaurant_id = @r ORDER BY o.sort_order, o.id',
+      ),
+      parameters: {'r': restaurantId},
+    );
+
+    final optionsByGroup = <int, List<ComboOptionDraft>>{};
+    for (final row in optionRows) {
+      optionsByGroup
+          .putIfAbsent(row[0]! as int, () => [])
+          .add(
+            ComboOptionDraft(
+              productId: row[1]! as int,
+              priceDelta: Money(row[2]! as int),
+            ),
+          );
+    }
+    final groupsByCombo = <int, List<ComboGroupDraft>>{};
+    for (final row in groupRows) {
+      final id = row[0]! as int;
+      groupsByCombo
+          .putIfAbsent(row[1]! as int, () => [])
+          .add(
+            ComboGroupDraft(
+              id: id,
+              nameEn: row[2]! as String,
+              nameAr: row[3] as String?,
+              minSelect: row[4]! as int,
+              maxSelect: row[5]! as int,
+              options: optionsByGroup[id] ?? const [],
+            ),
+          );
+    }
+
+    return [
+      for (final row in comboRows)
+        ComboDraft(
+          id: row[0]! as int,
+          categoryId: row[1]! as int,
+          nameEn: row[2]! as String,
+          nameAr: row[3] as String?,
+          price: Money(row[4]! as int),
+          taxGroupId: row[5] as int?,
+          sku: row[6] as String?,
+          isAvailable: row[7]! as bool,
+          groups: groupsByCombo[row[0]! as int] ?? const [],
+        ),
+    ];
+  }
+
+  @override
+  Future<AdminResult<ComboDraft>> saveCombo(
+    ComboDraft combo, {
+    required PosStaff by,
+  }) async {
+    final blocked = _blocked(by);
+    if (blocked != null) return AdminResult.refused(blocked);
+
+    final problem = ComboRules.refusal(combo);
+    if (problem != null) return AdminResult.refused(ComboRefused(problem));
+
+    final sku = combo.sku?.trim();
+    final skuOrNull = (sku == null || sku.isEmpty) ? null : sku;
+
+    return database.runTx(config, (tx) async {
+      AdminResult<ComboDraft> refuse(ComboProblem problem) =>
+          AdminResult.refused(ComboRefused(problem));
+
+      final category = await tx.execute(
+        Sql.named(
+          'SELECT 1 FROM pos_categories WHERE id = @id AND restaurant_id = @r',
+        ),
+        parameters: {'id': combo.categoryId, 'r': restaurantId},
+      );
+      if (category.isEmpty) return refuse(ComboProblem.categoryUnknown);
+
+      if (combo.taxGroupId != null) {
+        final rate = await tx.execute(
+          Sql.named(
+            'SELECT 1 FROM pos_tax_groups WHERE id = @id AND restaurant_id = @r',
+          ),
+          parameters: {'id': combo.taxGroupId, 'r': restaurantId},
+        );
+        if (rate.isEmpty) return refuse(ComboProblem.taxGroupUnknown);
+      }
+
+      final productIds = {
+        for (final group in combo.groups)
+          for (final option in group.options) option.productId,
+      }.toList();
+      final owned = await tx.execute(
+        Sql.named(
+          'SELECT id FROM pos_products '
+          'WHERE restaurant_id = @r AND id = ANY(@ids::bigint[])',
+        ),
+        parameters: {'r': restaurantId, 'ids': productIds},
+      );
+      if (owned.length != productIds.length) {
+        return refuse(ComboProblem.productUnknown);
+      }
+
+      if (skuOrNull != null) {
+        final clash = await tx.execute(
+          Sql.named(
+            'SELECT 1 FROM pos_combos '
+            'WHERE restaurant_id = @r AND sku = @sku AND id <> @id',
+          ),
+          parameters: {'r': restaurantId, 'sku': skuOrNull, 'id': combo.id},
+        );
+        if (clash.isNotEmpty) return refuse(ComboProblem.skuTaken);
+      }
+
+      final fields = <String, Object?>{
+        'r': restaurantId,
+        'category': combo.categoryId,
+        'nameEn': combo.nameEn.trim(),
+        'nameAr': combo.nameAr?.trim().isEmpty ?? true
+            ? null
+            : combo.nameAr!.trim(),
+        'price': combo.price.minor,
+        'taxGroup': combo.taxGroupId,
+        'sku': skuOrNull,
+        'available': combo.isAvailable,
+      };
+
+      int? before;
+      final int comboId;
+      if (combo.id == 0) {
+        final rows = await tx.execute(
+          Sql.named(
+            'INSERT INTO pos_combos (restaurant_id, category_id, name_en, '
+            '  name_ar, price_minor, tax_group_id, sku, is_available, '
+            '  sort_order) '
+            'VALUES (@r, @category, @nameEn, @nameAr, @price, @taxGroup, '
+            '  @sku, @available, '
+            '  (SELECT coalesce(max(sort_order), 0) + 1 FROM pos_combos '
+            '    WHERE restaurant_id = @r)) '
+            'RETURNING id',
+          ),
+          parameters: fields,
+        );
+        comboId = rows.first[0]! as int;
+      } else {
+        final held = await tx.execute(
+          Sql.named(
+            'SELECT price_minor FROM pos_combos '
+            'WHERE id = @id AND restaurant_id = @r FOR UPDATE',
+          ),
+          parameters: {'id': combo.id, 'r': restaurantId},
+        );
+        if (held.isEmpty) {
+          return const AdminResult<ComboDraft>.refused(EditedElsewhere(0));
+        }
+        before = held.first[0]! as int;
+        await tx.execute(
+          Sql.named(
+            'UPDATE pos_combos SET category_id = @category, name_en = @nameEn, '
+            '  name_ar = @nameAr, price_minor = @price, '
+            '  tax_group_id = @taxGroup, sku = @sku, is_available = @available '
+            'WHERE id = @id AND restaurant_id = @r',
+          ),
+          parameters: {...fields, 'id': combo.id},
+        );
+        comboId = combo.id;
+      }
+
+      // Groups matched by id: updated, added, or removed — never recreated.
+      final keptGroups = <int>[];
+      for (var g = 0; g < combo.groups.length; g++) {
+        final group = combo.groups[g];
+        final groupFields = <String, Object?>{
+          'nameEn': group.nameEn.trim(),
+          'nameAr': group.nameAr?.trim().isEmpty ?? true
+              ? null
+              : group.nameAr!.trim(),
+          'min': group.minSelect,
+          'max': group.maxSelect,
+          'sort': g,
+        };
+
+        int groupId;
+        if (group.id == 0) {
+          final rows = await tx.execute(
+            Sql.named(
+              'INSERT INTO pos_combo_groups (combo_id, name_en, name_ar, '
+              '  min_select, max_select, sort_order) '
+              'VALUES (@combo, @nameEn, @nameAr, @min, @max, @sort) '
+              'RETURNING id',
+            ),
+            parameters: {...groupFields, 'combo': comboId},
+          );
+          groupId = rows.first[0]! as int;
+        } else {
+          // Scoped to this combo: a group id typed into another combo's save
+          // must not move that group here.
+          final rows = await tx.execute(
+            Sql.named(
+              'UPDATE pos_combo_groups SET name_en = @nameEn, '
+              '  name_ar = @nameAr, min_select = @min, max_select = @max, '
+              '  sort_order = @sort '
+              'WHERE id = @id AND combo_id = @combo RETURNING id',
+            ),
+            parameters: {...groupFields, 'id': group.id, 'combo': comboId},
+          );
+          if (rows.isEmpty) {
+            return const AdminResult<ComboDraft>.refused(EditedElsewhere(0));
+          }
+          groupId = group.id;
+        }
+        keptGroups.add(groupId);
+
+        // Options are replaced as a set. Nothing refers to an option row —
+        // an order line snapshots its items — so unlike a group they have no
+        // identity to keep, and replacing them cannot orphan a ticket.
+        await tx.execute(
+          Sql.named('DELETE FROM pos_combo_options WHERE combo_group_id = @g'),
+          parameters: {'g': groupId},
+        );
+        for (var o = 0; o < group.options.length; o++) {
+          final option = group.options[o];
+          await tx.execute(
+            Sql.named(
+              'INSERT INTO pos_combo_options '
+              '  (combo_group_id, product_id, price_delta_minor, sort_order) '
+              'VALUES (@g, @product, @delta, @sort)',
+            ),
+            parameters: {
+              'g': groupId,
+              'product': option.productId,
+              'delta': option.priceDelta.minor,
+              'sort': o,
+            },
+          );
+        }
+      }
+
+      await tx.execute(
+        Sql.named(
+          'DELETE FROM pos_combo_groups '
+          'WHERE combo_id = @combo AND NOT (id = ANY(@keep::bigint[]))',
+        ),
+        parameters: {'combo': comboId, 'keep': keptGroups},
+      );
+
+      await _audit(
+        tx,
+        by: by,
+        action: AuditAction.comboSaved,
+        entityType: AuditAction.entityCombo,
+        entityId: '$comboId',
+        before: before == null ? null : {'price_minor': before},
+        after: {
+          'name': combo.nameEn.trim(),
+          'price_minor': combo.price.minor,
+          'available': combo.isAvailable,
+          'groups': combo.groups.length,
+        },
+      );
+
+      // Read back, so what is returned is what was stored — ids included.
+      final stored = (await _combosIn(tx)).where((c) => c.id == comboId);
+      return AdminResult.done(stored.first);
+    });
+  }
 
   /// One ledger row, on the open transaction.
   ///

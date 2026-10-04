@@ -350,6 +350,7 @@ const _actionsThisBuildWrites = <String>[
   AuditAction.tenderTypeSaved,
   AuditAction.orderTypeSaved,
   AuditAction.taxGroupSaved,
+  AuditAction.comboSaved,
   AuditAction.productOptionsChanged,
   AuditAction.optionGroupSaved,
   AuditAction.optionGroupRepriced,

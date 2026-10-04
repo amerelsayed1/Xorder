@@ -33,6 +33,14 @@ class StockLevel {
 
   Money get value => StockPosition(onHand: onHand, unitCost: unitCost).value;
 
+  /// Whether anything has ever set a cost for this item.
+  ///
+  /// A cost of zero is how "never received" looks on the ledger, and it is read
+  /// that way everywhere else: the profit report counts a sale at zero as not
+  /// costed rather than free. So the stock page must not draw it as a price of
+  /// 0.00 — that says "free" about the one item nobody has priced.
+  bool get hasCost => unitCost.minor > 0;
+
   String displayName(String languageCode) =>
       languageCode == 'ar' && (nameAr?.trim().isNotEmpty ?? false)
       ? nameAr!.trim()

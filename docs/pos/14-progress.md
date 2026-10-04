@@ -1,6 +1,6 @@
 # Progress — where the gap-closure plan stands
 
-**As of 8 September 2026.** Companion to [11-gap-closure-plan.md](11-gap-closure-plan.md),
+**As of 8 September 2026** (§§1–5; §6, added 4 October, is the back office's combos and profit). Companion to [11-gap-closure-plan.md](11-gap-closure-plan.md),
 which is the plan; this is the state of it. When the two disagree, this file is
 newer.
 
@@ -250,3 +250,50 @@ constants, so a table would be a seeded copy.
 **Next: Wave D** — the settings surface, the configurable order types, taxes,
 service charges and tender types, and the settings navigation the six Management
 panes fold into.
+
+---
+
+## 6. Back office: combos and profit (4 Oct 2026)
+
+Three slices that close the chain `16-back-office-scope.md` §3 describes,
+plus one correction to a screen the chain exposed.
+
+**Combo authoring.** The till has sold combos since Wave M and nothing could
+create one. `ComboDraft` / `ComboRules` (pure, `lib/domain/models/combo_draft.dart`)
+hold the rules; `CatalogAdminRepository.combos()` and `saveCombo()` write the
+whole tree in one transaction, matching groups by id so they keep it, and
+replacing a group's options as a set (nothing refers to an option row — an order
+line snapshots its items). Refusals are data (`ComboRefused(ComboProblem)`),
+worded per language. Hidden on a cloud till with the other authoring panes.
+
+**Profit.** `ReportsRepository.profit(filter)` joins the Items list's revenue to
+the stock ledger's cost, per (order, item), in one `REPEATABLE READ` snapshot.
+The three rules that matter, each pinned by a database test that was checked by
+deleting the rule: only `kind = 'sale'` movements; a recorded cost of zero is
+*uncosted*; each movement rounded half-up on its own, as `Quantity.costAt`.
+The UI is a second section on Reports › Items and a second sheet of its Excel
+export — not a new tab, which would have changed the owner's Reports map.
+
+**Stock pane.** The Average cost column already existed. What was wrong was that
+a never-received item read `0.00`, which says "free" about the one item nobody
+has priced. It is now a dash and a "no cost" tag, with one note above the rows.
+
+**Decisions worth keeping**
+
+* **Profit is claimed only where it can be honest.** A business-wide profit
+  needs every item costed; this reports per item, with coverage beside the
+  margin, rather than a number that quietly covers half the menu.
+* **A refund does not give the cost back.** The ledger has no refund movement,
+  so this is the reading it can support; it can only understate profit.
+* **Fixtures:** an option `RESTRICT`s deleting its product, so a suite that
+  wipes restaurants must delete `pos_combos` first; and the audit ledger is
+  append-only, so a test reading it must filter by restaurant.
+
+**Known gaps:** profit on a tax-inclusive restaurant still contains VAT (lines
+do not store tax); an item with stock but no cost is valued at zero on the Stock
+pane; there is no cost column on the product itself.
+
+**Verification:** `flutter analyze` clean · **2,448 unit and widget tests** pass,
+64 skipped · the combo, profit and reports database suites (**50 tests**) pass
+against PostgreSQL 16. Not run: the rest of the database suites, and the
+`integration_test/` end-to-end run, in this change.

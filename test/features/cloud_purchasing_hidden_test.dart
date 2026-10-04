@@ -174,11 +174,14 @@ void main() {
         // the supplier ledger, which is the platform's on a cloud till.
         // Categories with the menu: the same pane, reached from the map's
         // الأقسام line.
+        // Combos with the menu: they are built from product rows, which the
+        // seeder deletes and rewrites on a cloud till.
         {
           ManagementPane.menu,
           ManagementPane.categories,
           ManagementPane.floor,
           ManagementPane.extras,
+          ManagementPane.combos,
           ManagementPane.financeBills,
           ...platformAuthored,
         },

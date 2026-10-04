@@ -20,6 +20,7 @@ import '../../../core/l10n/app_strings.dart';
 import '../../../core/money/money.dart';
 import '../../../domain/models/branch_sales.dart' show businessDayWire;
 import '../../../domain/models/home_sales.dart' show deltaBp;
+import '../../../domain/models/profit_report.dart';
 import '../../../domain/models/sales_report.dart';
 
 /// `report-2026-09-01-2026-09-10.xlsx`, or one date for one day — and
@@ -286,12 +287,20 @@ Uint8List salesDaysWorkbook({
 }
 
 /// Reports › Items: every product, in the ranking on screen, the rows' total,
-/// and the page's sentence on what that total is not.
+/// and the page's sentence on what that total is not — and, when [profit] is
+/// given, the page's Profit section as a second sheet.
+///
+/// The second sheet is the screen's, not a recomputation: [ProfitReport] is
+/// what the page drew, so the file and the page cannot disagree. An item with
+/// no cost leaves its cost, profit and margin cells **empty** — a blank is
+/// "unknown" and a zero would read as "free", and a formula over a column of
+/// zeros is exactly how a margin gets quoted that nobody costed.
 Uint8List itemsWorkbook({
   required ReportFilter filter,
   required List<ProductSales> products,
   required AppStrings strings,
   required bool rightToLeft,
+  ProfitReport? profit,
 }) {
   final s = strings;
   final book = WorkbookWriter(rightToLeft: rightToLeft);
@@ -321,7 +330,80 @@ Uint8List itemsWorkbook({
     ])
     ..blank()
     ..row([TextCell(s.reportItemsNote)]);
+  if (profit != null && profit.products.isNotEmpty) {
+    _profitSheet(book, profit, s);
+  }
   return book.encode();
+}
+
+/// The Profit sheet: a row per product, the rows' total, and what the figures
+/// do and do not cover — the page's notes, in the page's words.
+void _profitSheet(WorkbookWriter book, ProfitReport report, AppStrings s) {
+  final currency = report.currency;
+  String amount(String label) => '$label ($currency)';
+  final sheet = _breakdownSheet(book, s.profitTitle, report.filter, currency, s);
+
+  if (!report.hasAnyCost) {
+    // As the page: no column of blanks, and the way to get a cost.
+    sheet.row([TextCell(s.profitNothingCosted)]);
+    if (report.revenueIncludesTax) {
+      sheet
+        ..blank()
+        ..row([TextCell(s.profitTaxNote)]);
+    }
+    return;
+  }
+
+  sheet.header([
+    s.exportColumnProduct,
+    amount(s.reportColumnAmount),
+    amount(s.profitColumnCost),
+    amount(s.profitColumnProfit),
+    s.profitColumnMargin,
+    // Which rows have no cost, said in words as well as by the blanks.
+    '',
+  ]);
+  for (final product in report.products) {
+    sheet.row([
+      TextCell(product.name),
+      MoneyCell(product.revenue),
+      product.cost == null ? null : MoneyCell(product.cost!),
+      product.profit == null ? null : MoneyCell(product.profit!),
+      product.marginBp == null ? null : BasisPointsCell(product.marginBp!),
+      product.isCosted ? null : TextCell(s.profitNoCostTag),
+    ]);
+  }
+  sheet
+    ..row([
+      TextCell(s.reportAllItems),
+      MoneyCell(report.revenue),
+      MoneyCell(report.cost),
+      MoneyCell(report.profit),
+      report.marginBp == null ? null : BasisPointsCell(report.marginBp!),
+    ])
+    ..blank()
+    // The denominator of that margin, beside it: a margin without its coverage
+    // is read as the business's, and it is not.
+    ..row([TextCell(s.profitKpiCoverage), MoneyCell(report.costedRevenue)])
+    ..row([
+      TextCell(s.profitUncostedRevenue),
+      MoneyCell(report.uncostedRevenue),
+    ]);
+  final coverage = report.coverageBp;
+  if (coverage != null) {
+    sheet.row([
+      TextCell('${s.profitKpiCoverage} · ${s.profitCoverageNote}'),
+      BasisPointsCell(coverage),
+    ]);
+  }
+  if (report.revenueIncludesTax) {
+    sheet
+      ..blank()
+      ..row([TextCell(s.profitTaxNote)]);
+  }
+  sheet
+    ..blank()
+    ..row([TextCell(s.profitNote)]);
 }
 
 /// Reports › Payment methods: BO-5's shares with their counts, the collected

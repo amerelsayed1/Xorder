@@ -2,6 +2,7 @@ import '../../../core/l10n/app_strings.dart';
 import '../../../core/money/quantity.dart';
 import '../../../domain/models/backup.dart';
 import '../../../domain/models/catalog.dart';
+import '../../../domain/models/combo_draft.dart';
 import '../../../domain/models/option_group.dart';
 import '../../../domain/models/purchase_order.dart';
 import '../../../domain/models/supplier_invoice.dart';
@@ -116,6 +117,7 @@ abstract final class AdminText {
     AuditAction.tenderTypeSaved => s.actTenderTypeSaved,
     AuditAction.orderTypeSaved => s.actOrderTypeSaved,
     AuditAction.taxGroupSaved => s.actTaxGroupSaved,
+    AuditAction.comboSaved => s.actComboSaved,
     AuditAction.productOptionsChanged => s.actProductOptionsChanged,
     AuditAction.optionGroupSaved => s.actOptionGroupSaved,
     AuditAction.optionGroupRepriced => s.actOptionGroupRepriced,
@@ -308,6 +310,7 @@ abstract final class AdminText {
         // itself; there is nothing here to translate it into.
         CatalogInvalid(:final reason) => reason,
         CatalogRefused(:final problem) => catalogProblem(s, problem),
+        ComboRefused(:final problem) => comboProblem(s, problem),
         OptionGroupRefused(:final problem, :final names) => optionGroupProblem(
           s,
           problem,
@@ -338,6 +341,26 @@ abstract final class AdminText {
 
   /// Why a size or extra could not be saved.
   ///
+  /// A combo's reason, keyed by the enum so one learned later is a compile
+  /// error here rather than a blank on an Arabic back office.
+  static String comboProblem(AppStrings s, ComboProblem problem) =>
+      switch (problem) {
+        ComboProblem.nameMissing => s.refusalComboNameMissing,
+        ComboProblem.categoryMissing => s.refusalComboCategoryMissing,
+        ComboProblem.priceNegative => s.refusalComboPriceNegative,
+        ComboProblem.noGroups => s.refusalComboNoGroups,
+        ComboProblem.groupNameMissing => s.refusalComboGroupNameMissing,
+        ComboProblem.groupEmpty => s.refusalComboGroupEmpty,
+        ComboProblem.selectionRange => s.refusalComboSelectionRange,
+        ComboProblem.minAboveOptions => s.refusalComboMinAboveOptions,
+        ComboProblem.duplicateOption => s.refusalComboDuplicateOption,
+        ComboProblem.deltaNegative => s.refusalComboDeltaNegative,
+        ComboProblem.categoryUnknown => s.refusalComboCategoryUnknown,
+        ComboProblem.taxGroupUnknown => s.refusalComboTaxGroupUnknown,
+        ComboProblem.productUnknown => s.refusalComboProductUnknown,
+        ComboProblem.skuTaken => s.refusalComboSkuTaken,
+      };
+
   /// Keyed by the enum, so a reason the repository learns is a compile error
   /// here rather than an English sentence on an Arabic back office — which is
   /// exactly what these were while they travelled inside `CatalogInvalid`.

@@ -77,6 +77,46 @@ Five substantially done, three partial, seven absent.
 > `backup.on_day_close`). Still absent: Dashboard, Reports beyond X/Z,
 > Customers, Accounting lite.
 
+> **Updated 4 October 2026.** This table was not re-scored row by row; what
+> follows is only what was checked against the code, and it corrects three
+> lines above.
+>
+> * **Combos were sellable but not authorable.** The "Products & menu" row
+>   counts combos as done; until this date the till could ring one up
+>   (`ComboSheet`, migration 18) and nothing in the app could create one.
+>   Management › Menu › **Combos** now lists, creates and edits them: groups,
+>   items with optional upgrade prices, min/max choices, category, SKU. Offline
+>   only, `catalog.manage`, audited as `combo.saved`. Retired with a switch,
+>   never deleted — an order line names its combo.
+> * **The chain in §3 is closed at the report.** Purchases → receiving (moving
+>   average) → every sale of a stocked item records that cost on its stock
+>   movement → **Reports › Items › Profit**, with the same figures as a second
+>   sheet of the Items Excel export. "No cost price" in the Products row is
+>   still true of the *product*: cost lives on the stock ledger, not on a
+>   column of `pos_products`.
+> * **Dashboard and Reports are no longer "absent".** Home shows the open
+>   day's net sales, orders and average against the day before; Reports has the
+>   business summary and the Sales, Items, Payments, Branches and Employees
+>   breakdowns. (Depth beyond that was not re-checked.)
+>
+> **What the profit figures do not claim** — the page and the file say it too:
+>
+> * Only a **stocked** item is costed. There is no recipe model, so dishes and
+>   combos show revenue and no cost; the report prints how much of the revenue
+>   it covers (`coverageBp`) and the margin is on the costed part alone.
+> * A sale at a carrying cost of **zero** is *not costed*, not free: zero is how
+>   "never received" looks on the ledger. The Stock pane draws it as a dash and
+>   a "no cost" tag for the same reason.
+> * A **refund returns the revenue and not the cost** — no stock movement is
+>   written for one — so a plate refunded before it was made reads as a loss.
+> * On a **tax-inclusive** restaurant the lines do not store their tax, so
+>   revenue and margin still contain VAT and read high. The page warns.
+> * Revenue is the lines' own, before order-level discounts, as the Items list
+>   has it.
+>
+> Still absent from the code as checked: a Customers pane and Accounting lite.
+> Expenses, Terminals and the rest were not re-scored here.
+
 ---
 
 ## 3. Why the absences are one absence
