@@ -50,13 +50,10 @@ class ManagementStockPane extends ConsumerWidget {
                     ),
                   ];
                 }
-                final total = levels.fold<Money>(
-                  Money.zero,
-                  (sum, level) => sum + level.value,
-                );
+                final valuation = StockValuation.of(levels);
                 return [
                   Text(
-                    strings.stockTotalValue(total.format()),
+                    strings.stockTotalValue(valuation.total.format()),
                     key: const Key('stock-total'),
                     style: PosText.ui(
                       size: 15,
@@ -64,6 +61,21 @@ class ManagementStockPane extends ConsumerWidget {
                       color: palette.ink,
                     ),
                   ),
+                  // What the total leaves out, beside it — so it is not read as
+                  // the worth of the whole shelf when part of the shelf has
+                  // never been priced.
+                  if (!valuation.isComplete) ...[
+                    const SizedBox(height: PosSpace.xs),
+                    Text(
+                      strings.stockExcludesUncosted(valuation.unvalued),
+                      key: const Key('stock-unvalued'),
+                      style: PosText.ui(
+                        size: 12.5,
+                        weight: FontWeight.w600,
+                        color: palette.warn,
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: PosSpace.md),
                   _Header(),
                   // Said once, above the rows it is about, and only when a row
@@ -202,7 +214,14 @@ class _LevelRow extends StatelessWidget {
                     ],
                   ),
           ),
-          SizedBox(width: 120, child: MonoAmount(level.value, size: 13)),
+          SizedBox(
+            width: 120,
+            // Unknown, not nothing: an uncosted item's worth is not in the
+            // total above, and 0.00 here would say it had been counted.
+            child: level.hasCost
+                ? MonoAmount(level.value, size: 13)
+                : Text('—', style: PosText.mono(size: 13, color: palette.muted)),
+          ),
         ],
       ),
     );

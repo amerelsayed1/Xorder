@@ -1802,6 +1802,7 @@ sealed class AppStrings {
   String get stockColumnAvgCost;
   String get stockColumnValue;
   String get stockNoCostNote;
+  String stockExcludesUncosted(int count);
   String stockTotalValue(String amount);
   String get stockEmpty;
   String get purchaseUnit;
@@ -6788,6 +6789,9 @@ final class EnStrings extends AppStrings {
   String get stockNoCostNote =>
       'Items marked "no cost" have never been received, so they are not in Profit. Receive stock for one to give it a cost.';
   @override
+  String stockExcludesUncosted(int count) =>
+      'Not counted: $count item(s) with stock on hand and no cost.';
+  @override
   String stockTotalValue(String amount) => 'Stock value: $amount';
   @override
   String get stockEmpty =>
@@ -11395,6 +11399,9 @@ final class ArStrings extends AppStrings {
   @override
   String get stockNoCostNote =>
       'الأصناف المعلَّمة «بلا تكلفة» لم يُستلم منها شيء بعد، فلا تدخل في الربح. استلم مخزونًا لصنف ليكون له تكلفة.';
+  @override
+  String stockExcludesUncosted(int count) =>
+      'غير محسوب: $count صنف له مخزون ولا تكلفة له.';
   @override
   String stockTotalValue(String amount) => 'قيمة المخزون: $amount';
   @override

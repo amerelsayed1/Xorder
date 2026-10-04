@@ -298,8 +298,18 @@ database test that states the zero-rated-item case outright). Deliberately **not
 done: per-line tax by re-deriving each product's *current* group, which silently
 drifts the day a product is moved to another rate.
 
+**Uncosted stock (4 Oct, on its own branch).** The Stock pane used to add an
+item with stock and no cost into the total at zero, so the total read as the
+whole shelf. `StockValuation` now totals the costed items and counts the
+uncosted items with stock on hand, and the pane says it under the total ("Not
+counted: N item(s) with stock on hand and no cost"); an uncosted row's value is a
+dash. Chosen over estimating a cost from the menu price, which would put an
+invented number in the same total as real ones. Giving such an item a real cost
+needs an opening-cost movement — the ledger has an `opening` kind, nothing writes
+it yet.
+
 **Known gaps:** the tax mode is today's setting, not a per-order snapshot; an
-item with stock but no cost is valued at zero on the Stock pane; there is no
+uncosted item cannot be given a cost except by receiving stock; there is no
 cost column on the product itself.
 
 **Verification:** `flutter analyze` clean · **2,448 unit and widget tests** pass,

@@ -146,17 +146,62 @@ void main() {
       expect(find.text(const EnStrings().stockNoCostNote), findsOneWidget);
     });
 
-    testWidgets('the stock value does not change: only the cost is reworded', (
+    testWidgets('the total is of what is costed, and says what it leaves out', (
       tester,
     ) async {
       await open(tester, levels: [cola, ketchup]);
 
-      // 48 × 5.00 for the Cola; the Ketchup is worth what it cost, which is
-      // nothing recorded.
+      // 48 × 5.00 for the Cola. The Ketchup is not added as nothing: its worth
+      // is unknown, and the line under the total says so.
       expect(
         find.text('Stock value: ${const Money(24000).format()}'),
         findsOneWidget,
       );
+      expect(find.byKey(const Key('stock-unvalued')), findsOneWidget);
+      expect(
+        find.text(const EnStrings().stockExcludesUncosted(1)),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('an uncosted row\'s value is a dash, a costed row\'s is its '
+        'worth', (tester) async {
+      await open(tester, levels: [cola, ketchup]);
+
+      // Unknown, not 0.00 — which would say it had been counted.
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('stock-row-2')),
+          matching: find.text(Money.zero.format()),
+        ),
+        findsNothing,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('stock-row-1')),
+          matching: find.text(const Money(24000).format()),
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('with nothing on hand there is nothing to leave out', (
+      tester,
+    ) async {
+      await open(
+        tester,
+        levels: [
+          cola,
+          const StockLevel(
+            productId: 3,
+            nameEn: 'Mayo',
+            onHand: Quantity(0),
+            unitCost: Money.zero,
+          ),
+        ],
+      );
+
+      expect(find.byKey(const Key('stock-unvalued')), findsNothing);
     });
 
     testWidgets('with every item costed there is no note and no tag', (
@@ -165,6 +210,7 @@ void main() {
       await open(tester);
 
       expect(find.byKey(const Key('stock-no-cost-note')), findsNothing);
+      expect(find.byKey(const Key('stock-unvalued')), findsNothing);
       expect(find.text(const EnStrings().profitNoCostTag), findsNothing);
     });
   });
