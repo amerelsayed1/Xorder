@@ -135,3 +135,42 @@ abstract final class StockCosting {
   static Money costOfGoods(StockPosition position, {required Quantity issued}) =>
       position.unitCost.copyWith(minor: issued.costAt(position.unitCost.minor));
 }
+
+/// Why an opening cost cannot be set.
+///
+/// Data, not a sentence: the screen words each one in its own language, and a
+/// reason added here is a compile error in the message table.
+enum OpeningCostProblem {
+  /// Zero or below. A cost of zero is how "never received" looks on the ledger,
+  /// so setting one would leave the item exactly as uncosted as it was.
+  notPositive,
+
+  /// It already has a cost. Changing one is a revaluation — a different act with
+  /// different consequences for every margin measured against the old figure —
+  /// and not something to do through a box meant for the first.
+  alreadyCosted,
+
+  /// The item is not counted here, so there is no stock to give a cost to.
+  itemUnknown,
+}
+
+/// Setting the cost of an item nothing has ever costed.
+///
+/// **Only ever the first cost.** An item reaches "uncosted" by being set up as
+/// counted and never received. Receiving gives it a cost, and until then every
+/// sale of it is recorded at zero and its stock cannot be valued. This is the
+/// other way in: a restaurant that starts using the system with stock already
+/// on the shelf says what that stock cost. Quantity is untouched — that is a
+/// count, and this is a price.
+abstract final class OpeningCost {
+  /// Null when [cost] may be set on [position]; otherwise why not.
+  static OpeningCostProblem? refusal(StockPosition position, Money cost) {
+    if (cost.minor <= 0) return OpeningCostProblem.notPositive;
+    if (position.unitCost.minor > 0) return OpeningCostProblem.alreadyCosted;
+    return null;
+  }
+
+  /// [position] with its cost set and its quantity as it was.
+  static StockPosition apply(StockPosition position, Money cost) =>
+      StockPosition(onHand: position.onHand, unitCost: cost);
+}

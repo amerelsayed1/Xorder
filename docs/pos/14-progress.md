@@ -308,9 +308,31 @@ invented number in the same total as real ones. Giving such an item a real cost
 needs an opening-cost movement — the ledger has an `opening` kind, nothing writes
 it yet.
 
+**Opening cost (4 Oct, on the same branch as uncosted stock).** An item with
+stock and no cost can now be given its first cost from the Stock pane ("Set
+cost"). It is the other way into "costed": a restaurant that starts with stock
+already on the shelf says what it cost. The rules are `OpeningCost` (pure,
+`stock_costing.dart`): only a cost above zero, only on an item that has none —
+changing one is a revaluation, a different act — and quantity is never touched.
+`ReceivingRepository.setOpeningCost` records it as an `opening` movement **of
+quantity zero** carrying the cost and the resulting position, upserts the level,
+and audits it (`stock.cost_set`), under `purchase.manage` as receiving is.
+
+**Migration 52** relaxes `pos_stock_movements_not_nothing` to
+`quantity_milli <> 0 OR kind = 'opening'`. A cost is not a physical movement, so
+its row moves nothing; every other kind still refuses a movement of nothing, and
+a database test pins both halves. Relaxing a CHECK admits rows the old one
+refused and invalidates none, so it is safe on a live database.
+
+It also removes a quirk worth knowing: receiving into uncosted stock averages the
+shelf in **at zero**, so ten unpriced units plus ten bought at 5.00 read as 2.50.
+After an opening cost, the delivery averages against the real figure. Past sales
+stay uncosted — they were recorded at zero and the ledger is append-only — so
+this prices what is sold from now on, and the dialog says so before it asks.
+
 **Known gaps:** the tax mode is today's setting, not a per-order snapshot; an
-uncosted item cannot be given a cost except by receiving stock; there is no
-cost column on the product itself.
+item that already has a cost cannot be revalued (no revaluation movement exists);
+there is no cost column on the product itself.
 
 **Verification:** `flutter analyze` clean · **2,448 unit and widget tests** pass,
 64 skipped · the combo, profit and reports database suites (**50 tests**) pass

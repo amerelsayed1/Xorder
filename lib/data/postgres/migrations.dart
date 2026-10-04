@@ -4453,6 +4453,20 @@ const posMigrations = <PosMigration>[
         "CHECK (event_type IN ('shift_open', 'shift_close', 'cash_movement', "
         "'refund', 'customer'))",
   ]),
+  PosMigration(52, 'an opening cost is a movement that moves nothing', [
+    // Setting the first cost of an item already on the shelf changes what the
+    // stock is worth and not how much of it there is, so its ledger row has a
+    // quantity of zero. The constraint that forbade a zero-quantity movement
+    // was right for every other kind — a receipt of nothing is a mistake — and
+    // is relaxed for `opening` alone, whose whole purpose this is. Relaxing a
+    // CHECK admits rows the old one refused and invalidates none already
+    // written, so it is safe on a live database.
+    'ALTER TABLE pos_stock_movements '
+        'DROP CONSTRAINT IF EXISTS pos_stock_movements_not_nothing',
+    "ALTER TABLE pos_stock_movements ADD CONSTRAINT "
+        "pos_stock_movements_not_nothing "
+        "CHECK (quantity_milli <> 0 OR kind = 'opening')",
+  ]),
 ];
 
 /// Brings the branch database up to the current schema.

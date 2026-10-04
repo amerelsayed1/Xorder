@@ -286,6 +286,23 @@ abstract interface class ReceivingRepository {
 
   /// What is on hand and what it cost, or null for a product never stocked.
   Future<StockPosition?> positionFor(int productId);
+
+  /// Give an item nothing has costed its first cost, without moving any stock.
+  ///
+  /// Refused for an item that already has one ([OpeningCostProblem.alreadyCosted]),
+  /// for a cost of zero, and for an item not counted here. Recorded as an
+  /// `opening` movement of quantity zero beside the cost, and audited. Sales
+  /// already made stay uncosted: they were recorded at zero and the ledger is
+  /// append-only, so this prices what is sold from now on.
+  ///
+  /// Needs `purchase.manage`, as receiving does — it sets the figure every
+  /// margin is measured against.
+  Future<AdminResult<StockPosition>> setOpeningCost({
+    required int productId,
+    required Money unitCost,
+    required PosStaff by,
+    String? note,
+  });
 }
 
 /// What the restaurant owes its suppliers, and what it has paid them (§37).

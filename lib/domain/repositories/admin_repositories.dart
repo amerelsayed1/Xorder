@@ -2,6 +2,7 @@ import '../../core/money/quantity.dart';
 import '../models/backup.dart';
 import '../models/catalog.dart';
 import '../models/combo_draft.dart';
+import '../services/stock_costing.dart' show OpeningCostProblem;
 import '../models/option_group.dart';
 import '../models/purchase_order.dart';
 import '../models/tax.dart';
@@ -198,6 +199,16 @@ class CatalogRefused extends AdminRefusal {
   const CatalogRefused(this.problem);
 
   final CatalogProblem problem;
+}
+
+/// An opening cost cannot be set — [OpeningCostProblem] says why.
+///
+/// Its own refusal, like [ComboRefused], so each language words it and a reason
+/// added to the enum is a compile error in the message table.
+class OpeningCostRefused extends AdminRefusal {
+  const OpeningCostRefused(this.problem);
+
+  final OpeningCostProblem problem;
 }
 
 /// A combo broke one of [ComboRules] — [ComboProblem] says which.
@@ -456,6 +467,11 @@ abstract final class AuditAction {
   /// Goods booked in. Its own action because it is the moment a cost price
   /// changes, and every margin afterwards is measured against it.
   static const stockReceived = 'stock.received';
+
+  /// An item's first cost set by hand. Its own action for the reason receiving
+  /// is one: it is the moment a cost price appears, and every margin measured
+  /// against it afterwards asks who said so.
+  static const stockCostSet = 'stock.cost_set';
 
   /// An invoice entered, corrected or voided. Its own action because it is the
   /// moment a debt comes into existence, and a voided invoice is the shape a

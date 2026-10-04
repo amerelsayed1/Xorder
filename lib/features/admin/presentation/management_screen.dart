@@ -1624,7 +1624,7 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
     ManagementPane.activity => const ManagementActivityPane(),
     ManagementPane.backup => ManagementBackupPane(admin: admin),
     ManagementPane.items => ManagementItemsPane(admin: admin),
-    ManagementPane.stock => const ManagementStockPane(),
+    ManagementPane.stock => ManagementStockPane(admin: admin),
     ManagementPane.units => ManagementUnitsPane(admin: admin),
     ManagementPane.terminal => ManagementTerminalPane(
       admin: admin,

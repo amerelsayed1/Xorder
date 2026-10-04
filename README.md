@@ -254,6 +254,12 @@ what it sold for. It is deliberately modest about what it knows:
   estimate where rates are mixed — and the column is headed "Amount, no tax"; the
   page says so.
 
+An item with stock and no cost can be given its first cost from the **Stock
+pane** ("Set cost"): recorded as an `opening` movement of quantity zero, audited,
+and only for an item that has none — changing an existing cost is a revaluation,
+which this does not do. Sales already made stay uncosted; it prices what is sold
+from then on.
+
 Design and the reasoning: `docs/pos/16-back-office-scope.md` (§3 and its
 4 October update) and `docs/pos/14-progress.md` §6.
 

@@ -1803,6 +1803,14 @@ sealed class AppStrings {
   String get stockColumnValue;
   String get stockNoCostNote;
   String stockExcludesUncosted(int count);
+  String get stockSetCost;
+  String get stockOpeningCostField;
+  String get stockOpeningCostHint;
+  String get refusalOpeningCostNotPositive;
+  String get refusalOpeningCostAlreadyCosted;
+  String get refusalOpeningCostItemUnknown;
+  String get actStockCostSet;
+  String stockOpeningCostTitle(String item);
   String stockTotalValue(String amount);
   String get stockEmpty;
   String get purchaseUnit;
@@ -6787,10 +6795,34 @@ final class EnStrings extends AppStrings {
   String get stockColumnValue => 'Value';
   @override
   String get stockNoCostNote =>
-      'Items marked "no cost" have never been received, so they are not in Profit. Receive stock for one to give it a cost.';
+      'Items marked "no cost" have never been received, so they are not in '
+      'Profit. Receive stock for one, or set its cost here, to give it a cost.';
   @override
   String stockExcludesUncosted(int count) =>
       'Not counted: $count item(s) with stock on hand and no cost.';
+  @override
+  String get stockSetCost =>
+      'Set cost';
+  @override
+  String get stockOpeningCostField =>
+      'Cost per unit';
+  @override
+  String get stockOpeningCostHint =>
+      'This item has stock and no cost. Say what it cost per unit and it is valued, and its sales from now on are costed and count in Profit. Sales already made stay uncosted, and the quantity is not changed.';
+  @override
+  String get refusalOpeningCostNotPositive =>
+      'A cost has to be more than zero — zero is how "never received" looks.';
+  @override
+  String get refusalOpeningCostAlreadyCosted =>
+      'That item already has a cost. Changing one is a revaluation, which this does not do.';
+  @override
+  String get refusalOpeningCostItemUnknown =>
+      'That item is not counted here, so there is no stock to give a cost to.';
+  @override
+  String get actStockCostSet =>
+      'Set an item\'s first cost';
+  @override
+  String stockOpeningCostTitle(String item) => 'Cost of $item';
   @override
   String stockTotalValue(String amount) => 'Stock value: $amount';
   @override
@@ -11398,10 +11430,34 @@ final class ArStrings extends AppStrings {
   String get stockColumnValue => 'القيمة';
   @override
   String get stockNoCostNote =>
-      'الأصناف المعلَّمة «بلا تكلفة» لم يُستلم منها شيء بعد، فلا تدخل في الربح. استلم مخزونًا لصنف ليكون له تكلفة.';
+      'الأصناف المعلَّمة «بلا تكلفة» لم يُستلم منها شيء بعد، فلا تدخل في الربح. '
+      'استلم مخزونًا لصنف، أو حدّد تكلفته هنا، ليكون له تكلفة.';
   @override
   String stockExcludesUncosted(int count) =>
       'غير محسوب: $count صنف له مخزون ولا تكلفة له.';
+  @override
+  String get stockSetCost =>
+      'تحديد التكلفة';
+  @override
+  String get stockOpeningCostField =>
+      'التكلفة للوحدة';
+  @override
+  String get stockOpeningCostHint =>
+      'لهذا الصنف مخزون بلا تكلفة. حدّد تكلفة الوحدة فيُقيَّم المخزون، وتُحتسب مبيعاته من الآن في الربح. المبيعات السابقة تبقى بلا تكلفة، ولا تتغير الكمية.';
+  @override
+  String get refusalOpeningCostNotPositive =>
+      'يجب أن تكون التكلفة أكبر من صفر — الصفر هو شكل «لم يُستلم قط».';
+  @override
+  String get refusalOpeningCostAlreadyCosted =>
+      'هذا الصنف له تكلفة بالفعل. تغييرها إعادة تقييم، وهذا لا يفعلها.';
+  @override
+  String get refusalOpeningCostItemUnknown =>
+      'هذا الصنف غير مُعدّ للجرد هنا، فلا مخزون لتحديد تكلفته.';
+  @override
+  String get actStockCostSet =>
+      'تحديد أول تكلفة لصنف';
+  @override
+  String stockOpeningCostTitle(String item) => 'تكلفة $item';
   @override
   String stockTotalValue(String amount) => 'قيمة المخزون: $amount';
   @override

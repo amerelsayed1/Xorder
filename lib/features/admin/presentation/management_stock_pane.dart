@@ -8,9 +8,13 @@ import '../../../core/ui/theme.dart';
 import '../../../core/ui/tokens.dart';
 import '../../../core/ui/widgets/mono_amount.dart';
 import '../../../core/ui/widgets/pos_widgets.dart';
+import '../../../domain/models/permissions.dart';
+import '../../../domain/models/shift.dart';
 import '../../../domain/models/stock_level.dart';
+import '../../../domain/services/authorization.dart';
 import 'admin_messages.dart';
 import 'admin_pane_bits.dart';
+import 'opening_cost_dialog.dart';
 
 /// How much of each counted item this branch holds, and what it is worth.
 ///
@@ -19,7 +23,45 @@ import 'admin_pane_bits.dart';
 /// note explains. Counts, waste and adjustments are the next wave, and each
 /// will be a movement with a reason — never an edit to this figure.
 class ManagementStockPane extends ConsumerWidget {
-  const ManagementStockPane({super.key});
+  const ManagementStockPane({required this.admin, super.key});
+
+  /// Who is looking — for whether they may give an uncosted item its first cost.
+  final PosStaff admin;
+
+  /// The same permission receiving needs: both set the figure every margin is
+  /// measured against.
+  bool get _mayCost =>
+      Authorization.check(admin, PosCapability.purchaseManage).isAllowed;
+
+  Future<void> _setCost(
+    BuildContext context,
+    WidgetRef ref,
+    StockLevel level,
+    String unitName,
+  ) async {
+    final cost = await OpeningCostDialog.show(
+      context,
+      level: level,
+      unitName: unitName,
+    );
+    if (cost == null || !context.mounted) return;
+
+    final strings = context.strings;
+    final messenger = ScaffoldMessenger.of(context);
+    final result = await ref
+        .read(receivingRepositoryProvider)
+        .setOpeningCost(productId: level.productId, unitCost: cost, by: admin);
+
+    final refusal = result.refusal;
+    if (refusal != null) {
+      messenger.showSnackBar(
+        SnackBar(content: Text(AdminText.refusal(strings, refusal))),
+      );
+      return;
+    }
+    // The list is what shows the cost, the total and the "not counted" line.
+    ref.invalidate(stockLevelsProvider);
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -51,6 +93,10 @@ class ManagementStockPane extends ConsumerWidget {
                   ];
                 }
                 final valuation = StockValuation.of(levels);
+                // One slot for the button in every row or in none, so the
+                // columns stay under their headings whichever rows have one.
+                final showAction =
+                    _mayCost && levels.any((level) => !level.hasCost);
                 return [
                   Text(
                     strings.stockTotalValue(valuation.total.format()),
@@ -76,14 +122,12 @@ class ManagementStockPane extends ConsumerWidget {
                       ),
                     ),
                   ],
-                  const SizedBox(height: PosSpace.md),
-                  _Header(),
-                  // Said once, above the rows it is about, and only when a row
-                  // needs it: a note on a page where every item is costed is
-                  // noise.
+                  // Said once, with the figure it explains and above the table rather
+                  // than inside it, and only when a row needs it: a note on a page
+                  // where every item is costed is noise.
                   if (levels.any((level) => !level.hasCost)) ...[
                     Padding(
-                      padding: const EdgeInsets.only(bottom: PosSpace.sm),
+                      padding: const EdgeInsets.only(top: PosSpace.xs),
                       child: Text(
                         strings.stockNoCostNote,
                         key: const Key('stock-no-cost-note'),
@@ -95,12 +139,24 @@ class ManagementStockPane extends ConsumerWidget {
                       ),
                     ),
                   ],
+                  const SizedBox(height: PosSpace.md),
+                  _Header(showAction: showAction),
                   for (final level in levels)
                     _LevelRow(
                       level: level,
                       unitName:
                           named[level.onHand.unit.wire] ??
                           AdminText.unit(strings, level.onHand.unit),
+                      reserveAction: showAction,
+                      onSetCost: _mayCost && !level.hasCost
+                          ? () => _setCost(
+                              context,
+                              ref,
+                              level,
+                              named[level.onHand.unit.wire] ??
+                                  AdminText.unit(strings, level.onHand.unit),
+                            )
+                          : null,
                     ),
                 ];
               },
@@ -111,6 +167,11 @@ class ManagementStockPane extends ConsumerWidget {
 }
 
 class _Header extends StatelessWidget {
+  const _Header({required this.showAction});
+
+  /// Whether any row carries a button, so the headings stay over their columns.
+  final bool showAction;
+
   @override
   Widget build(BuildContext context) {
     final strings = context.strings;
@@ -122,17 +183,32 @@ class _Header extends StatelessWidget {
           SizedBox(width: 150, child: MicroLabel(strings.stockColumnOnHand)),
           SizedBox(width: 120, child: MicroLabel(strings.stockColumnAvgCost)),
           SizedBox(width: 120, child: MicroLabel(strings.stockColumnValue)),
+          if (showAction) const SizedBox(width: _actionWidth),
         ],
       ),
     );
   }
 }
 
+/// The room a row's "Set cost" button takes.
+const _actionWidth = 112.0;
+
 class _LevelRow extends StatelessWidget {
-  const _LevelRow({required this.level, required this.unitName});
+  const _LevelRow({
+    required this.level,
+    required this.unitName,
+    required this.reserveAction,
+    this.onSetCost,
+  });
 
   final StockLevel level;
   final String unitName;
+
+  /// Another row has a button, so this one leaves room for it.
+  final bool reserveAction;
+
+  /// Null when the item has a cost, or the person may not give it one.
+  final VoidCallback? onSetCost;
 
   @override
   Widget build(BuildContext context) {
@@ -222,6 +298,20 @@ class _LevelRow extends StatelessWidget {
                 ? MonoAmount(level.value, size: 13)
                 : Text('—', style: PosText.mono(size: 13, color: palette.muted)),
           ),
+          if (reserveAction)
+            SizedBox(
+              width: _actionWidth,
+              child: Align(
+                alignment: AlignmentDirectional.centerEnd,
+                child: onSetCost == null
+                    ? null
+                    : TextButton(
+                        key: Key('stock-set-cost-${level.productId}'),
+                        onPressed: onSetCost,
+                        child: Text(strings.stockSetCost),
+                      ),
+              ),
+            ),
         ],
       ),
     );

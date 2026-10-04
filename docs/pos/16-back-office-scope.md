@@ -121,6 +121,11 @@ Five substantially done, three partial, seven absent.
 > * Revenue is the lines' own, before order-level discounts, as the Items list
 >   has it.
 >
+> * **An item can be given its first cost by hand.** Stock pane › Set cost, for
+>   an item that has stock and no cost: an `opening` movement of quantity zero,
+>   audited, `purchase.manage`. Not a revaluation — it refuses an item that
+>   already has a cost.
+>
 > Still absent from the code as checked: a Customers pane and Accounting lite.
 > Expenses, Terminals and the rest were not re-scored here.
 
