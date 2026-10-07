@@ -183,6 +183,12 @@ Route::prefix('admin')
             // (revoke first). Owner decision 2026-09-05.
             Route::delete('licences/{licence}', [AdminLicenceController::class, 'destroy']);
             Route::post('licences/{licence}/revoke', [AdminLicenceController::class, 'revoke']);
+            // R2: the operator's status for the online path. POSTs for the
+            // same reason renew and revoke are — each is an act, not an edit.
+            Route::post('licences/{licence}/suspend', [AdminLicenceController::class, 'suspend']);
+            Route::post('licences/{licence}/resume', [AdminLicenceController::class, 'resume']);
+            Route::post('licences/{licence}/expire', [AdminLicenceController::class, 'expire']);
+            Route::get('licences/{licence}/terminals', [AdminLicenceController::class, 'terminals']);
             // The on-premises delivery path: a till that may never reach the
             // internet still has to be licensable.
             Route::get('licences/{licence}/download', [AdminLicenceController::class, 'download']);
@@ -726,6 +732,13 @@ Route::post('pos/licence/activate', [PosLicenceController::class, 'activate'])
     ->middleware('throttle:licence-activate');
 
 Route::get('pos/licence/current', [PosLicenceController::class, 'current'])
+    ->middleware(['pos.device:no-feature', 'throttle:60,1']);
+
+// The online verdict for a connected till (R2, POS-BE-031) — asked on the
+// splash screen and before each shift. Same tier as `current`: device
+// credential, no-feature (a lapsed till must hear why), no subscription.writable.
+// Spelled `license` as the contract fixed it; the till already calls it so.
+Route::post('pos/license/check', [PosLicenceController::class, 'check'])
     ->middleware(['pos.device:no-feature', 'throttle:60,1']);
 
 /*

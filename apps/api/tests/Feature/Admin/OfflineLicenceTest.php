@@ -276,9 +276,11 @@ class OfflineLicenceTest extends TestCase
         // send. Demanding one made "Activate online" impossible to satisfy.
         $body = $this->issue();
 
+        // The signed file, plus where this till gets its verdict (R2): an
+        // offline licence's tills trust the file.
         $this->postJson('/api/pos/licence/activate', ['key' => $body['activation_key']])
             ->assertOk()
-            ->assertExactJson($body['file']);
+            ->assertExactJson($body['file'] + ['enforcement' => 'offline']);
 
         $this->assertNotNull(PosLicence::sole()->activated_at);
     }
@@ -297,7 +299,7 @@ class OfflineLicenceTest extends TestCase
 
         $this->postJson('/api/pos/licence/activate', ['key' => $cloud['activation_key']])
             ->assertOk()
-            ->assertExactJson($cloud['file']);
+            ->assertExactJson($cloud['file'] + ['enforcement' => 'online']);
     }
 
     public function test_a_slug_that_is_offered_is_still_checked(): void
@@ -392,6 +394,7 @@ class OfflineLicenceTest extends TestCase
         $this->assertTrue($renewal['key_unchanged']);
         $this->postJson('/api/pos/licence/activate', ['key' => $body['activation_key']])
             ->assertOk()
-            ->assertExactJson($renewal['file']);
+            // A renewal keeps the kind, and so how it is enforced.
+            ->assertExactJson($renewal['file'] + ['enforcement' => 'offline']);
     }
 }

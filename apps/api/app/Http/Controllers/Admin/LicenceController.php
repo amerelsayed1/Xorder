@@ -7,7 +7,9 @@ use App\Http\Requests\Admin\RenewLicenceRequest;
 use App\Http\Requests\Admin\StoreLicenceRequest;
 use App\Http\Requests\Admin\StoreOfflineLicenceRequest;
 use App\Http\Resources\PosLicenceResource;
+use App\Http\Resources\PosTerminalResource;
 use App\Models\PosLicence;
+use App\Models\PosTerminal;
 use App\Models\Restaurant;
 use App\Services\AuditLogger;
 use App\Services\LicenceIssuer;
@@ -37,6 +39,11 @@ class LicenceController extends Controller
             ->when(
                 in_array($request->string('kind')->toString(), [PosLicence::KIND_CLOUD, PosLicence::KIND_OFFLINE], true),
                 fn ($q) => $q->where('kind', $request->string('kind')->toString()),
+            )
+            // The operator's status (R2) — "who is suspended?" is a list.
+            ->when(
+                in_array($request->string('status')->toString(), [PosLicence::STATUS_ACTIVE, PosLicence::STATUS_SUSPENDED, PosLicence::STATUS_EXPIRED], true),
+                fn ($q) => $q->where('status', $request->string('status')->toString()),
             )
             ->when($request->string('search')->toString() !== '', function ($q) use ($request) {
                 $term = '%'.$request->string('search')->toString().'%';
@@ -160,6 +167,82 @@ class LicenceController extends Controller
         return response()->json([
             'data' => PosLicenceResource::make($licence),
             'message' => __('xorder.messages.licence_revoked'),
+        ]);
+    }
+
+    /**
+     * Suspend, resume, force-expire (R2, POS-BE-031).
+     *
+     * Status changes on the online path only: a connected till hears it at its
+     * next /license/check; an islanded till's signed file cannot be recalled,
+     * so `enforcement` is in the response for the screen to say so. Refused on
+     * a revoked or superseded licence — that row is history, and a status on
+     * it would be a decision nobody can see take effect.
+     */
+    public function suspend(Request $request, PosLicence $licence): JsonResponse
+    {
+        $validated = $request->validate(['reason' => ['nullable', 'string', 'max:255']]);
+
+        return $this->whenLive($licence, fn () => $this->statusResponse(
+            $this->issuer->suspend($licence, $validated['reason'] ?? null, $request->user()),
+            'licence_suspended',
+        ));
+    }
+
+    public function resume(Request $request, PosLicence $licence): JsonResponse
+    {
+        return $this->whenLive($licence, fn () => $this->statusResponse(
+            $this->issuer->resume($licence, $request->user()),
+            'licence_resumed',
+        ));
+    }
+
+    public function expire(Request $request, PosLicence $licence): JsonResponse
+    {
+        $validated = $request->validate(['reason' => ['nullable', 'string', 'max:255']]);
+
+        return $this->whenLive($licence, fn () => $this->statusResponse(
+            $this->issuer->expire($licence, $validated['reason'] ?? null, $request->user()),
+            'licence_force_expired',
+        ));
+    }
+
+    /**
+     * The tills behind a licence, with when each last checked it (R2).
+     *
+     * Cross-tenant like the rest of this controller: names the licence's own
+     * restaurant explicitly. An offline licence has no tenant and so no
+     * terminals here — its tills never reach the platform.
+     */
+    public function terminals(PosLicence $licence): JsonResponse
+    {
+        $terminals = $licence->restaurant_id === null ? collect() : PosTerminal::query()
+            ->withoutGlobalScopes()
+            ->where('restaurant_id', $licence->restaurant_id)
+            ->with('branch:id,name_en,name_ar,code')
+            ->orderByDesc('id')
+            ->get();
+
+        return response()->json(['data' => PosTerminalResource::collection($terminals)]);
+    }
+
+    private function whenLive(PosLicence $licence, \Closure $action): JsonResponse
+    {
+        if ($licence->revoked_at !== null || $licence->superseded_by_id !== null) {
+            return response()->json([
+                'code' => 'LICENCE_NOT_LIVE',
+                'message' => __('xorder.errors.licence_not_live'),
+            ], 422);
+        }
+
+        return $action();
+    }
+
+    private function statusResponse(PosLicence $licence, string $message): JsonResponse
+    {
+        return response()->json([
+            'data' => PosLicenceResource::make($licence),
+            'message' => __('xorder.messages.'.$message),
         ]);
     }
 

@@ -112,6 +112,35 @@ below are now **agreed**. Statuses: **R1 → `READY`** (built in `77fb22e`);
   urgent kill is device-token revocation (`TERMINAL_REVOKED`), honoured
   immediately.
 
+### R2 build status — 2026-10-07 · cloud API `IN_PROGRESS` (branch `feat/pos-licence-check`, not deployed)
+
+Built and tested (1,007 API tests green): **phase 0** (schema), **phase 1 API**
+(suspend / resume / expire / per-licence terminals, audited), **phase 2**
+(`POST /api/pos/license/check`), and `enforcement` on the §023 bootstrap
+`licence` object and the activate 200. **Not yet:** the `apps/web` Super Admin
+screens (phase 1 UI) and the provisioning decoupling (phase 4, `issueOnline`).
+The wire is exactly as agreed above, with these settled details:
+
+- **`enforcement` is derived from `kind`** at issue and backfill: `cloud` →
+  `online`, `offline` → `offline`. An offline-kind licence has no tenant, so no
+  terminal of it can authenticate to `/license/check`; R2.6's
+  "offline without `max_offline_days` → online" row could only ever 404.
+  Renewal copies it. It is a stored column, so it can be changed later.
+- **`status` backfills to `active` for every row.** Expiry still comes from the
+  dates, so no verdict changes; `status='expired'` means only "an operator
+  force-expired it".
+- The 200 also carries **`enforcement`**, and **`starts_at`** is always the
+  licence's `issued_at` (not only on `not_yet_valid`).
+- `fingerprint` is accepted and **not** checked or written: the terminal's
+  fingerprint is its pairing identity and the check must not rewrite it.
+  Telemetry written: `last_licence_check_at`, `licence_id`, `app_version`,
+  `reported_licence_expires_at`.
+- `TOO_MANY_ATTEMPTS` is rendered for this route only; the `60,1` budget is
+  shared with the till's other device calls (Laravel keys `throttle:` per
+  credential, not per route).
+- Status actions on a revoked or superseded licence → **422 `LICENCE_NOT_LIVE`**.
+- `LICENCE_CHECK_CACHE_SECONDS` (default 259200) drives `grace_policy.cache_seconds`.
+
 **Build order when the go comes:** cloud R2 phases 0–5 first (schema →
 `/license/check` → bootstrap/activate `enforcement` → dashboard actions →
 `issueOnline` decoupling); the till builds against a faked `/license/check`

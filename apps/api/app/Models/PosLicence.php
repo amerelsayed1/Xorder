@@ -84,6 +84,7 @@ class PosLicence extends Model
             'expires_at' => 'datetime',
             'revoked_at' => 'datetime',
             'activated_at' => 'datetime',
+            'suspended_at' => 'datetime',
             'features' => 'array',
             'modes' => 'array',
             'branch_ids' => 'array',
@@ -109,6 +110,21 @@ class PosLicence extends Model
      * dashboard reads so an operator sees "Lifetime", not that date.
      */
     public const LIFETIME_EXPIRES_AT = '2099-12-31 00:00:00';
+
+    /** Operator status (R2): trading as its dates allow. */
+    public const STATUS_ACTIVE = 'active';
+
+    /** Operator status (R2): stopped from the dashboard, resumable. */
+    public const STATUS_SUSPENDED = 'suspended';
+
+    /** Operator status (R2): expired from the dashboard ahead of its dates. */
+    public const STATUS_EXPIRED = 'expired';
+
+    /** The till asks the platform for its verdict (POST /api/pos/license/check). */
+    public const ENFORCEMENT_ONLINE = 'online';
+
+    /** The till trusts its signed file — an islanded site (POS-BE-015). */
+    public const ENFORCEMENT_OFFLINE = 'offline';
 
     /** No tenant on this platform — the customer lives in this row. */
     public function isOffline(): bool
@@ -202,6 +218,33 @@ class PosLicence extends Model
             $now->gt($this->expires_at) => 'in_grace',
             $now->gte($this->expires_at->copy()->subDays($this->warn_days)) => 'expiring_soon',
             default => 'active',
+        };
+    }
+
+    /**
+     * The online verdict a connected till acts on (R2, POS-BE-031).
+     *
+     * The operator's `status` first — a suspension or a forced expiry is a
+     * decision about this customer, not about the calendar — then the dates.
+     * Revoked and superseded rows never get here: the check reads only a live
+     * licence, and finding none is a 404, not a verdict.
+     *
+     * One of: valid, expiring_soon, in_grace, expired, suspended,
+     * not_yet_valid, unknown.
+     */
+    public function verdict(?Carbon $now = null): string
+    {
+        return match (true) {
+            $this->status === self::STATUS_SUSPENDED => 'suspended',
+            $this->status === self::STATUS_EXPIRED => 'expired',
+            default => match ($this->state($now)) {
+                'active' => 'valid',
+                'expiring_soon' => 'expiring_soon',
+                'in_grace' => 'in_grace',
+                'expired' => 'expired',
+                'pending' => 'not_yet_valid',
+                default => 'unknown',
+            },
         };
     }
 

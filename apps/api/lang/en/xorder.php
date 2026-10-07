@@ -10,6 +10,11 @@ return [
         // POS licence activation. 'not found' deliberately covers both a wrong
         // key and a key that never existed — that difference is an enumeration
         // oracle and is worth nothing to an honest installer.
+        'licence_none_for_terminal' => 'No licence is issued for this restaurant. Contact your supplier.',
+        'licence_suspended' => 'This licence is suspended. Contact your supplier.',
+        'licence_expired' => 'This licence has expired. Contact your supplier to renew.',
+        'licence_not_yet_valid' => 'This licence has not started yet.',
+        'licence_not_live' => 'This licence was revoked or replaced by a renewal, so its status cannot change.',
         'licence_not_found' => 'That licence key was not recognised.',
         'licence_revoked' => 'This licence has been revoked. Contact your supplier.',
         'licence_tenant_mismatch' => 'This licence was issued to a different restaurant.',
@@ -131,6 +136,9 @@ return [
         'licence_issued' => 'Licence issued. Copy the activation key now — it is not shown again.',
         'licence_renewed' => 'Licence renewed.',
         'licence_deleted' => 'Licence deleted.',
+        'licence_suspended' => 'Licence suspended. Connected terminals stop opening new shifts at their next check; islanded terminals are not affected.',
+        'licence_resumed' => 'Licence resumed.',
+        'licence_force_expired' => 'Licence expired. Connected terminals stop opening new shifts at their next check; islanded terminals are not affected.',
         'licence_revoked' => 'Licence revoked. Terminals already holding it keep working until they next reach the platform.',
         'admin_password_reset' => 'Admin password reset and emailed.',
         'admin_updated' => 'Admin account updated.',

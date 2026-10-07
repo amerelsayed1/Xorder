@@ -46,6 +46,18 @@ return [
     | far higher than a fortnight of unpaid use. See docs/pos/09-licensing.md.
     |
     */
+    /*
+    |--------------------------------------------------------------------------
+    | Online check (R2, POS-BE-031)
+    |--------------------------------------------------------------------------
+    |
+    | How long a connected till may trust one /license/check answer while it
+    | cannot reach the platform. 72h by default; the till clamps it to 7 days,
+    | so a bad value here can never grant forever.
+    |
+    */
+    'check_cache_seconds' => (int) env('LICENCE_CHECK_CACHE_SECONDS', 259200),
+
     'defaults' => [
         'grace_days' => 14,
         'warn_days' => 30,

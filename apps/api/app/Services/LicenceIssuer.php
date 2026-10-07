@@ -62,6 +62,9 @@ class LicenceIssuer
             $licence->forceFill([
                 'restaurant_id' => $restaurant?->id,
                 'kind' => $restaurant === null ? PosLicence::KIND_OFFLINE : PosLicence::KIND_CLOUD,
+                // A tenant's tills can reach the online check; a customer with
+                // no tenant has no terminal that could, so theirs trust the file.
+                'enforcement' => $restaurant === null ? PosLicence::ENFORCEMENT_OFFLINE : PosLicence::ENFORCEMENT_ONLINE,
                 'customer_name' => $restaurant === null ? ($data['customer_name'] ?? null) : null,
                 'customer_slug' => $restaurant === null ? ($data['customer_slug'] ?? null) : null,
                 'key_hash' => LicenceKey::hash($key),
@@ -121,6 +124,7 @@ class LicenceIssuer
                 // would be an edit wearing a new term's clothes.
                 'restaurant_id' => $original->restaurant_id,
                 'kind' => $original->kind,
+                'enforcement' => $original->enforcement ?? PosLicence::ENFORCEMENT_ONLINE,
                 'customer_name' => $original->customer_name,
                 'customer_slug' => $original->customer_slug,
                 'key_hash' => $key ? LicenceKey::hash($key) : $original->key_hash,
@@ -174,6 +178,67 @@ class LicenceIssuer
             'actor' => $actor,
             'auditable' => $licence,
             'description' => "Revoked POS licence {$licence->licence_ref}",
+            'properties' => ['licence_ref' => $licence->licence_ref, 'reason' => $reason],
+        ]);
+
+        return $licence->fresh(['restaurant', 'plan']);
+    }
+
+    /**
+     * Suspend a licence from the dashboard (R2).
+     *
+     * Bites at a connected till's next online check: the open shift finishes,
+     * the next one does not open. An islanded till holds a signed file and
+     * never asks, so this changes nothing there — revoke the device token for
+     * an urgent stop.
+     */
+    public function suspend(PosLicence $licence, ?string $reason, ?User $actor = null): PosLicence
+    {
+        $licence->forceFill([
+            'status' => PosLicence::STATUS_SUSPENDED,
+            'suspended_at' => Carbon::now(),
+            'suspended_reason' => $reason,
+        ])->save();
+
+        return $this->recordStatus($licence, 'suspended', $reason, $actor);
+    }
+
+    /** Lift a suspension or a forced expiry; the dates decide again (R2). */
+    public function resume(PosLicence $licence, ?User $actor = null): PosLicence
+    {
+        $licence->forceFill([
+            'status' => PosLicence::STATUS_ACTIVE,
+            'suspended_at' => null,
+            'suspended_reason' => null,
+        ])->save();
+
+        return $this->recordStatus($licence, 'resumed', null, $actor);
+    }
+
+    /**
+     * Expire a licence ahead of its dates (R2) — distinct from revoke, which
+     * withdraws the licence outright, and from delete, which is cleanup. The
+     * row stays live, so the till is told "expired" rather than "no licence",
+     * and a resume puts it back.
+     */
+    public function expire(PosLicence $licence, ?string $reason, ?User $actor = null): PosLicence
+    {
+        $licence->forceFill([
+            'status' => PosLicence::STATUS_EXPIRED,
+            'suspended_at' => null,
+            'suspended_reason' => $reason,
+        ])->save();
+
+        return $this->recordStatus($licence, 'expired', $reason, $actor);
+    }
+
+    private function recordStatus(PosLicence $licence, string $event, ?string $reason, ?User $actor): PosLicence
+    {
+        AuditLogger::record("pos_licence.{$event}", [
+            'restaurant_id' => $licence->restaurant_id,
+            'actor' => $actor,
+            'auditable' => $licence,
+            'description' => ucfirst($event)." POS licence {$licence->licence_ref}",
             'properties' => ['licence_ref' => $licence->licence_ref, 'reason' => $reason],
         ]);
 
