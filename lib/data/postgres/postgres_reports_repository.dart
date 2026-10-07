@@ -508,8 +508,18 @@ class PostgresReportsRepository implements ReportsRepository {
       // arithmetic of the revenue, not only the note under it. Today's setting,
       // not a snapshot — orders do not record the mode they were taxed in, so a
       // restaurant that switched has its earlier orders read by the new one.
+      //
+      // Read from where the till prices from: `pos_money_config`'s payload,
+      // the path `MoneyConfigCodec` writes and the Taxes pane saves to.
+      // `pos_restaurants.tax_mode` is only ever its migration default, so
+      // reading it alone called every inclusive restaurant exclusive.
       final mode = await tx.execute(
-        Sql.named('SELECT tax_mode FROM pos_restaurants WHERE id = @r'),
+        Sql.named(
+          "SELECT COALESCE(m.payload ->> 'tax_mode', r.tax_mode) "
+          '  FROM pos_restaurants r '
+          '  LEFT JOIN pos_money_config m ON m.restaurant_id = r.id '
+          ' WHERE r.id = @r',
+        ),
         parameters: {'r': restaurantId},
       );
       final inclusive = mode.isNotEmpty && mode.first[0] == 'inclusive';
