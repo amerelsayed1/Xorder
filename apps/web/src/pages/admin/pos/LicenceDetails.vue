@@ -78,7 +78,7 @@ async function submitRenewal() {
         renewing.value = false
         renewed.value = data
         // A renewal is a NEW row — the old one is superseded, not edited.
-        if (!data.activation_key) router.push({ name: 'admin.licences.show', params: { id: data.data.id } }).then(load)
+        if (!data.activation_key) router.push({ name: 'admin.licences.show', params: { id: data.data.id } }).then(() => { load(); loadTills() })
     } catch (err) {
         renewErrors.value = err.response?.data?.errors || {}
     } finally {
@@ -127,6 +127,83 @@ async function revoke() {
     }
 }
 
+// R2 — the operator's status. Suspend and expire take an optional reason (a
+// suspension's is shown on the till); resume is a plain confirm. All three are
+// refused by the server on a revoked or superseded row, so they ride isLive.
+const isHeld = computed(() => licence.value && ['suspended', 'expired'].includes(licence.value.status))
+const holding = ref(null) // 'suspend' | 'expire' | null
+const holdReason = ref('')
+const holdErrors = ref({})
+
+function openHold(action) {
+    holding.value = action
+    holdReason.value = ''
+    holdErrors.value = {}
+}
+
+async function submitHold() {
+    holdErrors.value = {}
+    busy.value = true
+    try {
+        const { data } = await api.post(`api/admin/pos/licences/${licence.value.id}/${holding.value}`, {
+            reason: holdReason.value || null,
+        })
+        licence.value = data.data
+        holding.value = null
+    } catch (err) {
+        holdErrors.value = err.response?.data?.errors || {}
+        if (!err.response?.data?.errors) alert(err?.response?.data?.message || t('common.error'))
+    } finally {
+        busy.value = false
+    }
+}
+
+async function resume() {
+    const ok = await confirm({
+        title: t('licence.resume_title'),
+        message: t('licence.resume_message'),
+        confirmText: t('licence.resume'),
+        cancelText: t('common.cancel'),
+    })
+    if (!ok) return
+    busy.value = true
+    try {
+        const { data } = await api.post(`api/admin/pos/licences/${licence.value.id}/resume`, {})
+        licence.value = data.data
+    } catch (err) {
+        alert(err?.response?.data?.message || t('common.error'))
+    } finally {
+        busy.value = false
+    }
+}
+
+const verdictBadge = (v) => ({
+    valid: 'badge-green', expiring_soon: 'badge-amber', in_grace: 'badge-amber',
+    expired: 'badge-red', suspended: 'badge-red',
+}[v] || 'badge-gray')
+
+// The tills behind this licence. Loaded on its own so a slow or failed list
+// never hides the licence itself.
+const tills = ref([])
+const tillsLoading = ref(true)
+const tillsFailed = ref(false)
+const termName = (x) => x?.[locale.value === 'ar' ? 'name_ar' : 'name_en'] || x?.name_en || x?.name_ar || x?.code || '—'
+const stamp = (iso) => iso ? new Date(iso).toLocaleString(locale.value === 'ar' ? 'ar-EG' : 'en-GB', { dateStyle: 'short', timeStyle: 'short' }) : null
+
+async function loadTills() {
+    tillsLoading.value = true
+    tillsFailed.value = false
+    try {
+        const { data } = await withMinDuration(api.get(`api/admin/pos/licences/${route.params.id}/terminals`))
+        tills.value = data.data
+    } catch (err) {
+        tillsFailed.value = true
+    } finally {
+        tillsLoading.value = false
+    }
+}
+onMounted(loadTills)
+
 async function download() {
     const { data } = await api.get(`api/admin/pos/licences/${licence.value.id}/download`, { responseType: 'blob' })
     const url = URL.createObjectURL(data)
@@ -145,7 +222,7 @@ function finishRenewal() {
     const id = renewed.value.data.id
     renewed.value = null
     acknowledged.value = false
-    router.push({ name: 'admin.licences.show', params: { id } }).then(load)
+    router.push({ name: 'admin.licences.show', params: { id } }).then(() => { load(); loadTills() })
 }
 </script>
 
@@ -164,8 +241,26 @@ function finishRenewal() {
                 </div>
                 <div class="flex items-center gap-2">
                     <span class="badge" :class="licence.kind === 'offline' ? 'badge-gray' : 'badge-green'">{{ t('licence.kind.' + licence.kind) }}</span>
-                    <span class="badge" :class="badge(licence.state)">{{ t('licence.state.' + licence.state) }}</span>
+                    <!-- A held licence shows the dashboard status, not its dates' "Active". -->
+                    <span v-if="isHeld && isLive" class="badge badge-red">{{ t('licence.op_status.' + licence.status) }}</span>
+                    <span v-else class="badge" :class="badge(licence.state)">{{ t('licence.state.' + licence.state) }}</span>
                 </div>
+            </div>
+
+            <!-- Where the till gets its verdict decides whether the status below
+                 reaches it at all — said before the buttons, not after. -->
+            <div class="card p-6 space-y-4 text-sm">
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div><span class="label">{{ t('licence.enforcement_label') }}</span><span style="color:var(--ink)">{{ t('licence.enforcement.' + (licence.enforcement || 'online')) }}</span></div>
+                    <div><span class="label">{{ t('licence.op_status_label') }}</span><span style="color:var(--ink)">{{ t('licence.op_status.' + (licence.status || 'active')) }}</span></div>
+                    <div>
+                        <span class="label">{{ t('licence.verdict_label') }}</span>
+                        <span class="badge" :class="verdictBadge(licence.verdict)">{{ t('licence.verdict.' + (licence.verdict || 'unknown')) }}</span>
+                    </div>
+                    <div v-if="licence.suspended_at"><span class="label">{{ t('licence.suspended_at') }}</span><span style="color:var(--ink)">{{ dateOf(licence.suspended_at) }}</span></div>
+                    <div v-if="licence.suspended_reason" class="sm:col-span-2"><span class="label">{{ t('licence.status_reason') }}</span><span style="color:var(--body)">{{ licence.suspended_reason }}</span></div>
+                </div>
+                <p class="text-xs" style="color:var(--muted)">{{ t(licence.enforcement === 'offline' ? 'licence.enforcement_offline_hint' : 'licence.enforcement_online_hint') }}</p>
             </div>
 
             <!-- An offline customer exists only here. There is no tenant page
@@ -196,8 +291,57 @@ function finishRenewal() {
             <div class="flex flex-wrap gap-3">
                 <button v-if="isLive" class="btn btn-accent" :disabled="busy" @click="renewing = true">{{ t('licence.renew') }}</button>
                 <button class="btn btn-ghost" @click="download"><Icon name="download" :size="15" />{{ t('licence.download') }}</button>
+                <!-- Only where a till will hear it: a signed-file licence never asks. -->
+                <template v-if="isLive && licence.enforcement !== 'offline'">
+                    <button v-if="isHeld" class="btn btn-ghost" :disabled="busy" @click="resume">{{ t('licence.resume') }}</button>
+                    <template v-else>
+                        <button class="btn btn-ghost" style="color:var(--amber)" :disabled="busy" @click="openHold('suspend')">{{ t('licence.suspend') }}</button>
+                        <button class="btn btn-ghost" style="color:var(--amber)" :disabled="busy" @click="openHold('expire')">{{ t('licence.force_expire') }}</button>
+                    </template>
+                </template>
                 <button v-if="isLive" class="btn btn-ghost" style="color:var(--red)" :disabled="busy" @click="revoke">{{ t('licence.revoke') }}</button>
                 <button v-if="isDeletable" class="btn btn-ghost" style="color:var(--red)" :disabled="busy" @click="destroyLicence">{{ t('licence.delete') }}</button>
+            </div>
+
+            <div class="card">
+                <div class="px-6 pt-5 pb-3">
+                    <h2 class="h-card">{{ t('licence.tills_title') }}</h2>
+                    <p class="text-xs mt-1" style="color:var(--muted)">{{ t('licence.tills_subtitle') }}</p>
+                </div>
+                <p v-if="licence.kind === 'offline'" class="px-6 pb-5 text-sm" style="color:var(--muted)">{{ t('licence.tills_offline') }}</p>
+                <div v-else-if="tillsLoading" class="px-6 pb-5"><ListSkeleton :rows="2" /></div>
+                <div v-else-if="tillsFailed" class="px-6 pb-5"><ErrorState :message="t('common.error')" @retry="loadTills" /></div>
+                <p v-else-if="!tills.length" class="px-6 pb-5 text-sm" style="color:var(--muted)">{{ t('licence.tills_none') }}</p>
+                <div v-else class="overflow-x-auto">
+                    <table class="w-full text-sm" style="min-width:720px">
+                        <thead>
+                            <tr style="color:var(--muted)">
+                                <th class="px-6 py-2 font-medium text-start" style="font-size:11px;text-transform:uppercase">{{ t('common.name') }}</th>
+                                <th class="px-3 py-2 font-medium text-start" style="font-size:11px;text-transform:uppercase">{{ t('pos_terminals.branch') }}</th>
+                                <th class="px-3 py-2 font-medium text-center" style="font-size:11px;text-transform:uppercase">{{ t('common.status') }}</th>
+                                <th class="px-3 py-2 font-medium text-center" style="font-size:11px;text-transform:uppercase">{{ t('licence.deployment_mode') }}</th>
+                                <th class="px-3 py-2 font-medium text-center" style="font-size:11px;text-transform:uppercase">{{ t('pos_terminals.last_seen') }}</th>
+                                <th class="px-3 py-2 font-medium text-center" style="font-size:11px;text-transform:uppercase">{{ t('licence.last_check') }}</th>
+                                <th class="px-3 py-2 font-medium text-center" style="font-size:11px;text-transform:uppercase">{{ t('licence.reported_expiry') }}</th>
+                                <th class="px-3 py-2 font-medium text-center" style="font-size:11px;text-transform:uppercase">{{ t('pos_terminals.version') }}</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="x in tills" :key="x.id" class="border-t" :style="{ borderColor: 'var(--line)', opacity: x.state === 'revoked' ? 0.6 : 1 }">
+                                <td class="px-6 py-2.5 text-start" style="color:var(--ink)">{{ x.name }}</td>
+                                <td class="px-3 py-2.5 text-start" style="color:var(--body)">{{ termName(x.branch) }}</td>
+                                <td class="px-3 py-2.5 text-center">
+                                    <span class="badge" :class="{ active: 'badge-green', revoked: 'badge-red' }[x.state] || 'badge-gray'">{{ t('pos_terminals.state.' + x.state) }}</span>
+                                </td>
+                                <td class="px-3 py-2.5 text-center" style="color:var(--body)">{{ x.deployment_mode ? t('licence.mode.' + x.deployment_mode) : '—' }}</td>
+                                <td class="px-3 py-2.5 text-center" style="color:var(--body)">{{ stamp(x.last_seen_at) || '—' }}</td>
+                                <td class="px-3 py-2.5 text-center" style="color:var(--body)">{{ stamp(x.last_licence_check_at) || t('licence.never_checked') }}</td>
+                                <td class="px-3 py-2.5 text-center" style="color:var(--body)">{{ x.reported_licence_expires_at ? dateOf(x.reported_licence_expires_at) : '—' }}</td>
+                                <td class="px-3 py-2.5 text-center mono" style="color:var(--muted)">{{ x.app_version || '—' }}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
 
             <!-- The claims exactly as the till will read them, so an operator can
@@ -236,6 +380,22 @@ function finishRenewal() {
                 <div class="flex gap-3">
                     <button type="submit" class="btn btn-accent" :disabled="busy">{{ t('licence.renew') }}</button>
                     <button type="button" class="btn btn-ghost" @click="renewing = false">{{ t('common.cancel') }}</button>
+                </div>
+            </form>
+        </Modal>
+
+        <Modal v-if="holding" :title="t(holding === 'suspend' ? 'licence.suspend_title' : 'licence.expire_title')"
+            :subtitle="t(holding === 'suspend' ? 'licence.suspend_subtitle' : 'licence.expire_subtitle')" @close="holding = null">
+            <form @submit.prevent="submitHold" class="space-y-4">
+                <label class="block">
+                    <span class="label">{{ t('licence.status_reason') }}</span>
+                    <input v-model="holdReason" class="input" maxlength="255" />
+                    <span class="block text-xs mt-1" style="color:var(--muted)">{{ t('licence.reason_hint') }}</span>
+                    <FormError :errors="holdErrors" field="reason" />
+                </label>
+                <div class="flex gap-3">
+                    <button type="submit" class="btn btn-accent" :disabled="busy">{{ t(holding === 'suspend' ? 'licence.suspend' : 'licence.force_expire') }}</button>
+                    <button type="button" class="btn btn-ghost" @click="holding = null">{{ t('common.cancel') }}</button>
                 </div>
             </form>
         </Modal>
