@@ -21,11 +21,8 @@ import 'reports_providers.dart';
 /// Tax by rate for one range. Null without `reports.view`, or with nothing to
 /// read — through the same gate as every report, on the one road to the data.
 /// `autoDispose` as the reports are, for the reasons given there.
-final taxReportProvider =
-    FutureProvider.autoDispose.family<TaxReport?, ReportFilter>((
-      ref,
-      filter,
-    ) async {
+final taxReportProvider = FutureProvider.autoDispose
+    .family<TaxReport?, ReportFilter>((ref, filter) async {
       if (!ref.watch(reportsAllowedProvider)) return null;
       final repository = ref.watch(reportsRepositoryProvider);
       if (repository == null) return null;
@@ -33,11 +30,8 @@ final taxReportProvider =
     });
 
 /// The payments of one range's sales. Null as [taxReportProvider] is.
-final paymentLedgerProvider =
-    FutureProvider.autoDispose.family<PaymentLedger?, ReportFilter>((
-      ref,
-      filter,
-    ) async {
+final paymentLedgerProvider = FutureProvider.autoDispose
+    .family<PaymentLedger?, ReportFilter>((ref, filter) async {
       if (!ref.watch(reportsAllowedProvider)) return null;
       final repository = ref.watch(reportsRepositoryProvider);
       if (repository == null) return null;
@@ -91,11 +85,8 @@ final supplierFiguresProvider = Provider.autoDispose<SupplierFigures>((ref) {
 /// administrator's pool — and not asked at all unless [supplierFiguresProvider]
 /// says so, so a cloud till or a manager without purchasing sends no query to
 /// a table that is not theirs.
-final expenseReportProvider =
-    FutureProvider.autoDispose.family<ExpenseReport?, ReportFilter>((
-      ref,
-      filter,
-    ) async {
+final expenseReportProvider = FutureProvider.autoDispose
+    .family<ExpenseReport?, ReportFilter>((ref, filter) async {
       if (!ref.watch(reportsAllowedProvider)) return null;
       final figures = ref.watch(supplierFiguresProvider);
       final drawers = ref.watch(cashMovementsRepositoryProvider);
@@ -129,17 +120,16 @@ final openDrawersProvider = FutureProvider.autoDispose<List<OpenDrawer>?>((
 /// `reports.view`, and null unless the supplier ledger is this person's here —
 /// which is what makes the bills card absent on a cloud till and without
 /// `purchase.manage`, whatever screen draws it.
-final billsDueProvider = FutureProvider.autoDispose
-    .family<BillsDue?, DateTime>((ref, businessDate) async {
-      if (!ref.watch(reportsAllowedProvider)) return null;
-      if (ref.watch(supplierFiguresProvider) != SupplierFigures.included) {
-        return null;
-      }
-      final unpaid = await ref
-          .watch(supplierInvoicesRepositoryProvider)
-          .unpaid();
-      return BillsDue.of(unpaid, businessDate: businessDate);
-    });
+final billsDueProvider = FutureProvider.autoDispose.family<BillsDue?, DateTime>(
+  (ref, businessDate) async {
+    if (!ref.watch(reportsAllowedProvider)) return null;
+    if (ref.watch(supplierFiguresProvider) != SupplierFigures.included) {
+      return null;
+    }
+    final unpaid = await ref.watch(supplierInvoicesRepositoryProvider).unpaid();
+    return BillsDue.of(unpaid, businessDate: businessDate);
+  },
+);
 
 /// The transactions table over one range. Null without `reports.view`.
 ///
@@ -149,11 +139,8 @@ final billsDueProvider = FutureProvider.autoDispose
 /// row drills into. A table that listed sales its drill-down then refused to
 /// open would be a list of doors that do not open. The totals elsewhere in
 /// Finance are the branch's; this is rows, and rows follow the list's rule.
-final financeTransactionsProvider =
-    FutureProvider.autoDispose.family<FinanceTransactions?, ReportFilter>((
-      ref,
-      filter,
-    ) async {
+final financeTransactionsProvider = FutureProvider.autoDispose
+    .family<FinanceTransactions?, ReportFilter>((ref, filter) async {
       if (!ref.watch(reportsAllowedProvider)) return null;
       final sales = ref.watch(
         orderHistoryProvider(
@@ -187,11 +174,8 @@ final financeTransactionsProvider =
 /// Four reads, not one snapshot, as the Overview's are: a sale rung up between
 /// two of them can put a piastre in one and not another. They are of the same
 /// range — `ProfitAndLoss.of` asserts it.
-final profitAndLossProvider =
-    FutureProvider.autoDispose.family<ProfitAndLoss?, ReportFilter>((
-      ref,
-      filter,
-    ) async {
+final profitAndLossProvider = FutureProvider.autoDispose
+    .family<ProfitAndLoss?, ReportFilter>((ref, filter) async {
       if (!ref.watch(reportsAllowedProvider)) return null;
       final sales = await ref.watch(salesReportProvider(filter).future);
       final tax = await ref.watch(taxReportProvider(filter).future);
@@ -200,10 +184,20 @@ final profitAndLossProvider =
       if (sales == null || tax == null || profit == null || expenses == null) {
         return null;
       }
+      // Read without the ledger, the expenses still count a supplier paid from
+      // a drawer; the statement must not, so ask for the ids alone. Not on a
+      // cloud till, which pays no supplier from its drawers.
+      final supplierPayOutIds =
+          expenses.supplierFigures == SupplierFigures.notPermitted
+          ? await ref
+                .watch(supplierInvoicesRepositoryProvider)
+                .supplierPayOutIds(filter)
+          : const <int>{};
       return ProfitAndLoss.of(
         salesReport: sales,
         taxReport: tax,
         profitReport: profit,
         expenses: expenses,
+        supplierPayOutIds: supplierPayOutIds,
       );
     });

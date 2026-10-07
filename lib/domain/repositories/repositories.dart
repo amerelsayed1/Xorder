@@ -349,6 +349,12 @@ abstract interface class SupplierInvoicesRepository {
   /// row belongs to a business day, and both carry the date off the paper.
   Future<SupplierSpending> spending(ReportFilter filter);
 
+  /// Only [SupplierSpending.drawerMovementIds] for [filter]: which drawer
+  /// pay-outs are a supplier payment's own. Ids, no supplier, amount or note —
+  /// so the P&L can keep stock out of expenses for a person who may not read
+  /// the ledger itself.
+  Future<Set<int>> supplierPayOutIds(ReportFilter filter);
+
   Future<List<SupplierInvoice>> all({int? supplierId, int limit = 200});
 
   Future<SupplierInvoice?> byId(int id);

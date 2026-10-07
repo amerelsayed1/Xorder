@@ -157,16 +157,6 @@ class PostgresSupplierInvoicesRepository implements SupplierInvoicesRepository {
       'from': filter.from.toUtc(),
       'to': filter.to.toUtc(),
     };
-    // Which drawer pay-outs in the range are a supplier payment's own. The
-    // movement is filed by the drawer's rule — the business day, as the till's
-    // range read files it — so this set and that list are cut from the same
-    // dates and meet exactly.
-    final drawers = PostgresOrderHistoryRepository.businessDateRange(
-      from: filter.from,
-      to: filter.to,
-      alias: 'm',
-    );
-
     return _db.runTx(config, (tx) async {
       final invoices = await tx.execute(
         Sql.named(
@@ -186,22 +176,41 @@ class PostgresSupplierInvoicesRepository implements SupplierInvoicesRepository {
         ),
         parameters: window,
       );
-      final linked = await tx.execute(
-        Sql.named(
-          'SELECT y.cash_movement_id FROM pos_supplier_payments y '
-          'JOIN pos_cash_movements AS m ON m.id = y.cash_movement_id '
-          '${PostgresOrderHistoryRepository.tradingDayJoin('m')} '
-          'WHERE y.restaurant_id = @r AND m.branch_id = @b '
-          '  AND ${drawers.where.join(' AND ')}',
-        ),
-        parameters: {'r': restaurantId, 'b': branchId, ...drawers.parameters},
-      );
       return SupplierSpending(
         invoices: [for (final row in invoices) _readInvoice(row)],
         payments: [for (final row in payments) _readPayment(row)],
-        drawerMovementIds: {for (final row in linked) row[0]! as int},
+        drawerMovementIds: await _linkedPayOuts(tx, filter),
       );
     });
+  }
+
+  @override
+  Future<Set<int>> supplierPayOutIds(ReportFilter filter) async {
+    if (!adminAvailable) return const {};
+    return _db.runTx(config, (tx) => _linkedPayOuts(tx, filter));
+  }
+
+  /// Which drawer pay-outs in the range are a supplier payment's own. The
+  /// movement is filed by the drawer's rule — the business day, as the till's
+  /// range read files it — so this set and that list are cut from the same
+  /// dates and meet exactly.
+  Future<Set<int>> _linkedPayOuts(TxSession tx, ReportFilter filter) async {
+    final drawers = PostgresOrderHistoryRepository.businessDateRange(
+      from: filter.from,
+      to: filter.to,
+      alias: 'm',
+    );
+    final linked = await tx.execute(
+      Sql.named(
+        'SELECT y.cash_movement_id FROM pos_supplier_payments y '
+        'JOIN pos_cash_movements AS m ON m.id = y.cash_movement_id '
+        '${PostgresOrderHistoryRepository.tradingDayJoin('m')} '
+        'WHERE y.restaurant_id = @r AND m.branch_id = @b '
+        '  AND ${drawers.where.join(' AND ')}',
+      ),
+      parameters: {'r': restaurantId, 'b': branchId, ...drawers.parameters},
+    );
+    return {for (final row in linked) row[0]! as int};
   }
 
   @override
@@ -644,7 +653,9 @@ class PostgresSupplierInvoicesRepository implements SupplierInvoicesRepository {
     // it behind something that looks like a security message.
     if (fromShiftId != null &&
         !Authorization.check(by, PosCapability.cashMovement).isAllowed) {
-      return const AdminResult.refused(NotPermitted(PosCapability.cashMovement));
+      return const AdminResult.refused(
+        NotPermitted(PosCapability.cashMovement),
+      );
     }
 
     if (fromShiftId != null && payment.method != SupplierPaymentMethod.cash) {
@@ -1142,6 +1153,9 @@ class UnconfiguredSupplierInvoicesRepository
   @override
   Future<SupplierSpending> spending(ReportFilter filter) async =>
       SupplierSpending.none;
+
+  @override
+  Future<Set<int>> supplierPayOutIds(ReportFilter filter) async => const {};
 
   @override
   Future<List<SupplierInvoice>> all({int? supplierId, int limit = 200}) async =>

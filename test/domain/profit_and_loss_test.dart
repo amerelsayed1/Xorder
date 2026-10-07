@@ -16,7 +16,10 @@ import 'package:xorder_pos/domain/models/sales_report.dart';
 /// counted again as an expense, or a gross profit quoted as complete when a
 /// quarter of the sales have no cost.
 void main() {
-  final range = ReportFilter(from: DateTime(2026, 9, 1), to: DateTime(2026, 9, 11));
+  final range = ReportFilter(
+    from: DateTime(2026, 9, 1),
+    to: DateTime(2026, 9, 11),
+  );
 
   ProfitAndLoss statement({
     int sales = 114000,
@@ -38,27 +41,30 @@ void main() {
   );
 
   group('the lines', () {
-    test('revenue is sales without the tax that was collected for the state', () {
-      // 1,140.00 taken, 140.00 of it VAT: the restaurant sold 1,000.00.
-      expect(statement().revenue.minor, 100000);
-    });
+    test(
+      'revenue is sales without the tax that was collected for the state',
+      () {
+        // 1,140.00 taken, 140.00 of it VAT: the restaurant sold 1,000.00.
+        expect(statement().revenue.minor, 100000);
+      },
+    );
 
     test('gross profit is revenue less the cost of goods', () {
       expect(statement().grossProfit.minor, 70000);
     });
 
-    test('the result is gross profit less what was paid out of the drawers', () {
-      expect(statement().operatingResult.minor, 65000);
-    });
+    test(
+      'the result is gross profit less what was paid out of the drawers',
+      () {
+        expect(statement().operatingResult.minor, 65000);
+      },
+    );
 
     test('the gross margin is a share of revenue, rounded once', () {
       // 700 of 1,000 is 70%.
       expect(statement().grossMarginBp, 7000);
       // 1 of 3 is 33.33%.
-      expect(
-        statement(sales: 3, tax: 0, cost: 2).grossMarginBp,
-        3333,
-      );
+      expect(statement(sales: 3, tax: 0, cost: 2).grossMarginBp, 3333);
     });
 
     test('a loss is negative, in profit and margin alike', () {
@@ -121,7 +127,10 @@ void main() {
     });
 
     test('no sales to cost is vacuously complete', () {
-      expect(statement(sales: 0, tax: 0, cost: 0, costed: null).isFullyCosted, isTrue);
+      expect(
+        statement(sales: 0, tax: 0, cost: 0, costed: null).isFullyCosted,
+        isTrue,
+      );
     });
   });
 
@@ -137,15 +146,12 @@ void main() {
     });
 
     test('a missing-cost caveat leads, because it qualifies the most', () {
-      expect(
-        statement(costed: 5000).caveats,
-        [
-          StatementCaveat.itemsWithNoCost,
-          StatementCaveat.supplierSpendOutsideStock,
-          StatementCaveat.rentAndSalaries,
-          StatementCaveat.serviceChargeIncluded,
-        ],
-      );
+      expect(statement(costed: 5000).caveats, [
+        StatementCaveat.itemsWithNoCost,
+        StatementCaveat.supplierSpendOutsideStock,
+        StatementCaveat.rentAndSalaries,
+        StatementCaveat.serviceChargeIncluded,
+      ]);
     });
   });
 
@@ -270,9 +276,85 @@ void main() {
       expect(s.supplierFigures, SupplierFigures.onPlatform);
     });
 
+    test('a supplier paid from a drawer is not an expense, even read '
+        'without the ledger', () {
+      // A manager without purchasing: the expenses still hold pay-out 2, a
+      // supplier paid for stock that is already cost of goods when it sells.
+      final expenses = ExpenseReport(
+        filter: range,
+        payOuts: [
+          CashMovement(
+            id: 1,
+            kind: CashMovementKind.payOut,
+            amount: const Money(2500),
+            occurredAt: DateTime(2026, 9, 3),
+          ),
+          CashMovement(
+            id: 2,
+            kind: CashMovementKind.payOut,
+            amount: const Money(500000),
+            occurredAt: DateTime(2026, 9, 4),
+          ),
+        ],
+        supplierFigures: SupplierFigures.notPermitted,
+      );
+
+      final s = ProfitAndLoss.of(
+        salesReport: salesReport(),
+        taxReport: taxReport(),
+        profitReport: profitReport(),
+        expenses: expenses,
+        supplierPayOutIds: const {2},
+      );
+
+      expect(s.drawerExpenses.minor, 2500);
+      expect(s.paidToSuppliers, isNull);
+    });
+
+    test(
+      'a share that rounds to 100% with revenue uncosted is not complete',
+      () {
+        // 99,996 of 100,000 costed: 9999.6 bp rounds to 10000.
+        final s = ProfitAndLoss.of(
+          salesReport: salesReport(),
+          taxReport: taxReport(),
+          profitReport: ProfitReport(
+            filter: range,
+            pricesIncludeTax: false,
+            products: const [
+              ProductProfit(
+                menuItemId: 1,
+                name: 'Cola',
+                quantity: 10,
+                revenue: Money(99996),
+                costedRevenue: Money(99996),
+                cost: Money(25000),
+              ),
+              ProductProfit(
+                menuItemId: null,
+                name: 'Gum',
+                quantity: 1,
+                revenue: Money(4),
+                costedRevenue: Money(0),
+                cost: null,
+              ),
+            ],
+          ),
+          expenses: expenseReport(),
+        );
+
+        expect(s.costedShareBp, 9999);
+        expect(s.isFullyCosted, isFalse);
+        expect(s.caveats, contains(StatementCaveat.itemsWithNoCost));
+      },
+    );
+
     test('four reports of different periods are refused', () {
       final other = ProfitReport(
-        filter: ReportFilter(from: DateTime(2026, 8, 1), to: DateTime(2026, 8, 11)),
+        filter: ReportFilter(
+          from: DateTime(2026, 8, 1),
+          to: DateTime(2026, 8, 11),
+        ),
         pricesIncludeTax: false,
         products: const [],
       );

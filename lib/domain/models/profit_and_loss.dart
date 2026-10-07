@@ -75,6 +75,9 @@ class ProfitAndLoss {
 
   /// Assembled from the four reports of one range.
   ///
+  /// [supplierPayOutIds] are the drawer pay-outs that are a supplier payment's
+  /// own, for when [expenses] was read without the supplier ledger.
+  ///
   /// Asserts they are of the **same range**: four figures of four periods in one
   /// column is a statement that adds up and means nothing.
   factory ProfitAndLoss.of({
@@ -82,6 +85,7 @@ class ProfitAndLoss {
     required TaxReport taxReport,
     required ProfitReport profitReport,
     required ExpenseReport expenses,
+    Set<int> supplierPayOutIds = const {},
   }) {
     assert(
       salesReport.filter.from == taxReport.filter.from &&
@@ -92,16 +96,39 @@ class ProfitAndLoss {
           salesReport.filter.to == expenses.filter.to,
       'A statement is of one period; these reports are of different ones.',
     );
+    // A share that rounds up to 100% while some revenue has no cost is not
+    // fully costed: hold it below, so the caveat and "partial" stay on screen.
+    final share = profitReport.coverageBp;
+    final costedShareBp =
+        share != null &&
+            share >= 10000 &&
+            profitReport.costedRevenue != profitReport.revenue
+        ? 9999
+        : share;
     return ProfitAndLoss(
       filter: salesReport.filter,
       sales: salesReport.net,
       tax: taxReport.net,
       costOfGoods: profitReport.cost,
-      costedShareBp: profitReport.coverageBp,
-      drawerExpenses: expenses.payOutTotal,
+      costedShareBp: costedShareBp,
+      // Never a supplier payment, whoever is looking. [ExpenseReport] can take
+      // those out only when it read the ledger; [supplierPayOutIds] lets a
+      // statement made without it leave out the same pay-outs, so stock paid
+      // for from a drawer is not an expense here as well as cost of goods.
+      drawerExpenses:
+          [
+            for (final payOut in expenses.drawerPayOuts)
+              if (!supplierPayOutIds.contains(payOut.id)) payOut,
+          ].fold(
+            Money(
+              0,
+              currency: salesReport.currency,
+              exponent: salesReport.exponent,
+            ),
+            (sum, p) => sum + p.amount,
+          ),
       supplierFigures: expenses.supplierFigures,
-      paidToSuppliers:
-          expenses.supplierFigures == SupplierFigures.included
+      paidToSuppliers: expenses.supplierFigures == SupplierFigures.included
           ? expenses.supplierTotal
           : null,
       currency: salesReport.currency,
