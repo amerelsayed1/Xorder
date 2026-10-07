@@ -538,6 +538,29 @@ sealed class AppStrings {
   /// hand usually only has `postgres`.
   String get adminDatabaseUser;
   String get adminDatabaseUserHelp;
+
+  /// CB-07: a cloud till has no back office of its own. The platform authors
+  /// every row a Management pane would edit, so the till points at the
+  /// dashboard rather than offering controls whose edits the next bundle
+  /// would overwrite.
+  /// POS-BE-014 — who the food is for, asked at the moment the money is
+  /// taken, which is when a phone number gets given.
+  String get whoIsThisFor;
+  String get searchNameOrPhone;
+  String get addCustomer;
+  String get customerName;
+  String get customerPhone;
+  String get customerAddress;
+  String get noCustomerFound;
+  String get removeCustomer;
+  String get customerNeedsNameAndPhone;
+  String get customerOnTicket;
+
+  String get backOfficeIsOnTheCloud;
+  String get backOfficeIsOnTheCloudHelp;
+  String get dashboardAddress;
+  String get copyAddress;
+  String get addressCopied;
   String adminPasswordFor(String user);
   String get adminPasswordHelp;
 
@@ -1198,6 +1221,7 @@ sealed class AppStrings {
   String get actTenderTypeSaved;
   String get actOrderTypeSaved;
   String get actTaxGroupSaved;
+  String get actComboSaved;
   String get actProductOptionsChanged;
   String get actOptionGroupSaved;
   String get actOptionGroupRepriced;
@@ -1500,6 +1524,21 @@ sealed class AppStrings {
   String get reportColumnQuantity;
   String get reportColumnAmount;
   String get reportNoProducts;
+
+  // ── profit ──
+  String get profitTitle;
+  String get profitColumnCost;
+  String get profitColumnAmountNet;
+  String get profitColumnProfit;
+  String get profitColumnMargin;
+  String get profitKpiProfit;
+  String get profitKpiCoverage;
+  String get profitUncostedRevenue;
+  String get profitNoCostTag;
+  String get profitNothingCosted;
+  String get profitNote;
+  String get profitTaxNote;
+  String get profitCoverageNote;
   String get reportPayments;
   String get reportOnAccount;
   String get reportNoPayments;
@@ -1762,6 +1801,35 @@ sealed class AppStrings {
   String get stockColumnOnHand;
   String get stockColumnAvgCost;
   String get stockColumnValue;
+  String get stockNoCostNote;
+  String stockExcludesUncosted(int count);
+  String get paneCustomers;
+  String get paneCustomersBlurb;
+  String get customersSearchHint;
+  String get customersNone;
+  String get customersNoMatch;
+  String get customersColumnCustomer;
+  String get customersColumnOrders;
+  String get customersColumnSpent;
+  String get customersColumnLast;
+  String get customersNever;
+  String get customersDetailAverage;
+  String get customersDetailRefunded;
+  String get customersDetailRecent;
+  String get customersNoOrders;
+  String get customersPhone;
+  String get customersEmail;
+  String get customersAddress;
+  String get customersNote;
+  String get customersBranchOnly;
+  String get stockSetCost;
+  String get stockOpeningCostField;
+  String get stockOpeningCostHint;
+  String get refusalOpeningCostNotPositive;
+  String get refusalOpeningCostAlreadyCosted;
+  String get refusalOpeningCostItemUnknown;
+  String get actStockCostSet;
+  String stockOpeningCostTitle(String item);
   String stockTotalValue(String amount);
   String get stockEmpty;
   String get purchaseUnit;
@@ -1915,6 +1983,45 @@ sealed class AppStrings {
   String get savingLabel;
 
   // Why a size or extra was refused. See `OptionGroupProblem`.
+
+  // ── combos ──
+  String get combosTitle;
+  String get combosSubtitle;
+  String get combosNew;
+  String get combosEdit;
+  String get combosNone;
+  String get comboName;
+  String get comboPrice;
+  String get comboCategory;
+  String get comboSku;
+  String get comboAvailable;
+  String get comboAvailableHint;
+  String get comboChoices;
+  String get comboAddGroup;
+  String get comboGroupName;
+  String get comboMinSelect;
+  String get comboMaxSelect;
+  String get comboAddOption;
+  String get comboOptionProduct;
+  String get comboOptionDelta;
+  String get comboRemove;
+  String get comboRetired;
+  String get refusalComboNameMissing;
+  String get refusalComboCategoryMissing;
+  String get refusalComboPriceNegative;
+  String get refusalComboNoGroups;
+  String get refusalComboGroupNameMissing;
+  String get refusalComboGroupEmpty;
+  String get refusalComboSelectionRange;
+  String get refusalComboMinAboveOptions;
+  String get refusalComboDuplicateOption;
+  String get refusalComboDeltaNegative;
+  String get refusalComboCategoryUnknown;
+  String get refusalComboTaxGroupUnknown;
+  String get refusalComboProductUnknown;
+  String get refusalComboSkuTaken;
+  String comboGroupsSummary(int groups, int options);
+
   String get refusalGroupNameMissing;
   String get refusalGroupScopeNeedsLibrary;
   String get refusalGroupCategoriesMissing;
@@ -2605,7 +2712,7 @@ final class EnStrings extends AppStrings {
   @override
   String get orderHistoryLast30Days => 'Last 30 days';
   @override
-  String get orderHistorySearchHint => 'Invoice or table';
+  String get orderHistorySearchHint => 'Invoice, table or customer';
   @override
   String get orderHistoryAllStatuses => 'All statuses';
   @override
@@ -4100,6 +4207,46 @@ final class EnStrings extends AppStrings {
   @override
   String get adminDatabaseUser => 'Administrator role';
   @override
+  @override
+  String get whoIsThisFor => 'Who is this for?';
+  @override
+  String get searchNameOrPhone => 'Name, or any part of the number';
+  @override
+  String get addCustomer => 'Add a customer';
+  @override
+  String get customerName => 'Name';
+  @override
+  String get customerPhone => 'Phone';
+  @override
+  String get customerAddress => 'Address (for delivery)';
+  @override
+  String get noCustomerFound => 'Nobody by that name or number yet.';
+  @override
+  String get removeCustomer => 'Take off';
+  @override
+  String get customerNeedsNameAndPhone =>
+      'A customer needs a name and a number — the number is how they are '
+      'found again.';
+  @override
+  String get customerOnTicket => 'Customer';
+  @override
+  String get backOfficeIsOnTheCloud => 'THE BACK OFFICE IS ON THE DASHBOARD';
+  @override
+  String get backOfficeIsOnTheCloudHelp =>
+      'This till belongs to a restaurant that is managed from XOrder Cloud. '
+      'The menu, the people, the tables, the tax rules and the receipt are '
+      'authored there and sent down to this machine, so there is nothing here '
+      'to edit — anything changed on the till would be replaced the next time '
+      'the restaurant\'s settings arrive. Sign in to the dashboard from any '
+      'browser. Taking money, shifts and the drawer stay on this screen and '
+      'keep working with no internet.';
+  @override
+  String get dashboardAddress => 'DASHBOARD ADDRESS';
+  @override
+  String get copyAddress => 'Copy the address';
+  @override
+  String get addressCopied => 'Address copied.';
+  @override
   String get adminDatabaseUserHelp =>
       'The PostgreSQL account that creates the database and owns its tables — '
       'not the till\'s. The installer makes "pos_admin"; where PostgreSQL was '
@@ -5426,6 +5573,8 @@ final class EnStrings extends AppStrings {
   @override
   String get actTaxGroupSaved => 'Changed a tax rate';
   @override
+  String get actComboSaved => 'Saved a combo';
+  @override
   String get actProductOptionsChanged => "Changed an item's sizes or extras";
   @override
   String get actOptionGroupSaved => 'Changed a sizes or extras group';
@@ -6091,6 +6240,46 @@ final class EnStrings extends AppStrings {
   @override
   String get reportNoProducts => 'Nothing was sold in this period.';
   @override
+  String get profitTitle =>
+      'Profit';
+  @override
+  String get profitColumnCost =>
+      'Cost';
+  @override
+  String get profitColumnAmountNet =>
+      'Amount, no tax';
+  @override
+  String get profitColumnProfit =>
+      'Profit';
+  @override
+  String get profitColumnMargin =>
+      'Margin';
+  @override
+  String get profitKpiProfit =>
+      'Gross profit, costed items';
+  @override
+  String get profitKpiCoverage =>
+      'Revenue with a cost';
+  @override
+  String get profitUncostedRevenue =>
+      'Revenue with no cost';
+  @override
+  String get profitNoCostTag =>
+      'no cost';
+  @override
+  String get profitNothingCosted =>
+      'No item sold in this period has a cost yet. Receive stock for an item, and its sales will show profit.';
+  @override
+  String get profitNote =>
+      'Profit is counted only on items with a recorded cost, at the average cost when each was sold. Dishes and combos have none, so they show revenue only. A refunded sale keeps its cost: the food was already used.';
+  @override
+  String get profitTaxNote =>
+      'Your prices include tax, so it is taken out of the revenue here, order '
+      'by order, using the tax each order recorded. That is exact for an order '
+      'at one rate and an estimate where rates are mixed.';
+  @override
+  String get profitCoverageNote => 'of all revenue';
+  @override
   String get reportPayments => 'Payment methods';
   @override
   String get reportOnAccount => 'On account — owed, not collected';
@@ -6624,6 +6813,93 @@ final class EnStrings extends AppStrings {
   @override
   String get stockColumnValue => 'Value';
   @override
+  String get stockNoCostNote =>
+      'Items marked "no cost" have never been received, so they are not in '
+      'Profit. Receive stock for one, or set its cost here, to give it a cost.';
+  @override
+  String stockExcludesUncosted(int count) =>
+      'Not counted: $count item(s) with stock on hand and no cost.';
+  @override
+  String get stockSetCost =>
+      'Set cost';
+  @override
+  String get paneCustomers =>
+      'Customers';
+  @override
+  String get paneCustomersBlurb =>
+      'Everyone on file, and what they have bought at this branch.';
+  @override
+  String get customersSearchHint =>
+      'Search by name or phone';
+  @override
+  String get customersNone =>
+      'No customers on file yet. They are added at the counter when an order is taken for someone.';
+  @override
+  String get customersNoMatch =>
+      'No customer matches that.';
+  @override
+  String get customersColumnCustomer =>
+      'Customer';
+  @override
+  String get customersColumnOrders =>
+      'Orders';
+  @override
+  String get customersColumnSpent =>
+      'Spent';
+  @override
+  String get customersColumnLast =>
+      'Last order';
+  @override
+  String get customersNever =>
+      'Never';
+  @override
+  String get customersDetailAverage =>
+      'Average order';
+  @override
+  String get customersDetailRefunded =>
+      'Refunded';
+  @override
+  String get customersDetailRecent =>
+      'Recent orders';
+  @override
+  String get customersNoOrders =>
+      'No orders at this branch yet.';
+  @override
+  String get customersPhone =>
+      'Phone';
+  @override
+  String get customersEmail =>
+      'Email';
+  @override
+  String get customersAddress =>
+      'Address';
+  @override
+  String get customersNote =>
+      'Note';
+  @override
+  String get customersBranchOnly =>
+      'Orders and spending are this branch\'s only, and net of refunds.';
+  @override
+  String get stockOpeningCostField =>
+      'Cost per unit';
+  @override
+  String get stockOpeningCostHint =>
+      'This item has stock and no cost. Say what it cost per unit and it is valued, and its sales from now on are costed and count in Profit. Sales already made stay uncosted, and the quantity is not changed.';
+  @override
+  String get refusalOpeningCostNotPositive =>
+      'A cost has to be more than zero — zero is how "never received" looks.';
+  @override
+  String get refusalOpeningCostAlreadyCosted =>
+      'That item already has a cost. Changing one is a revaluation, which this does not do.';
+  @override
+  String get refusalOpeningCostItemUnknown =>
+      'That item is not counted here, so there is no stock to give a cost to.';
+  @override
+  String get actStockCostSet =>
+      'Set an item\'s first cost';
+  @override
+  String stockOpeningCostTitle(String item) => 'Cost of $item';
+  @override
   String stockTotalValue(String amount) => 'Stock value: $amount';
   @override
   String get stockEmpty =>
@@ -6905,6 +7181,114 @@ final class EnStrings extends AppStrings {
   String get savingLabel => 'Saving…';
 
   @override
+  String get combosTitle =>
+      'Combos';
+  @override
+  String get combosSubtitle =>
+      'Meals sold at one price, built from real menu items.';
+  @override
+  String get combosNew =>
+      'New combo';
+  @override
+  String get combosEdit =>
+      'Edit combo';
+  @override
+  String get combosNone =>
+      'No combos yet.';
+  @override
+  String get comboName =>
+      'Name';
+  @override
+  String get comboPrice =>
+      'Price';
+  @override
+  String get comboCategory =>
+      'Category';
+  @override
+  String get comboSku =>
+      'SKU';
+  @override
+  String get comboAvailable =>
+      'Offered on the till';
+  @override
+  String get comboAvailableHint =>
+      'Switch off to retire it. Past sales keep its name.';
+  @override
+  String get comboChoices =>
+      'Choices';
+  @override
+  String get comboAddGroup =>
+      '+ Add choice';
+  @override
+  String get comboGroupName =>
+      'Choice name, e.g. Choose a drink';
+  @override
+  String get comboMinSelect =>
+      'Min';
+  @override
+  String get comboMaxSelect =>
+      'Max';
+  @override
+  String get comboAddOption =>
+      '+ Add item';
+  @override
+  String get comboOptionProduct =>
+      'Item';
+  @override
+  String get comboOptionDelta =>
+      'Upgrade';
+  @override
+  String get comboRemove =>
+      'Remove';
+  @override
+  String get comboRetired =>
+      'Retired';
+  @override
+  String get refusalComboNameMissing =>
+      'A combo needs a name — it is what the kitchen ticket prints.';
+  @override
+  String get refusalComboCategoryMissing =>
+      'Pick a category, so the combo has a place on the grid.';
+  @override
+  String get refusalComboPriceNegative =>
+      'A combo price cannot be below zero.';
+  @override
+  String get refusalComboNoGroups =>
+      'Add at least one choice — a combo with nothing in it cannot be sold.';
+  @override
+  String get refusalComboGroupNameMissing =>
+      'Every choice needs a name, so the cashier knows what is being asked.';
+  @override
+  String get refusalComboGroupEmpty =>
+      'Every choice needs at least one item, or the meal can never be completed.';
+  @override
+  String get refusalComboSelectionRange =>
+      'Min and max do not fit: min cannot be above max, and max is at least 1.';
+  @override
+  String get refusalComboMinAboveOptions =>
+      'A choice asks for more items than it offers.';
+  @override
+  String get refusalComboDuplicateOption =>
+      'The same item appears twice in one choice.';
+  @override
+  String get refusalComboDeltaNegative =>
+      'An upgrade cannot be below zero.';
+  @override
+  String get refusalComboCategoryUnknown =>
+      'That category no longer exists. Pick another.';
+  @override
+  String get refusalComboTaxGroupUnknown =>
+      'That tax rate no longer exists.';
+  @override
+  String get refusalComboProductUnknown =>
+      'An item in this combo no longer exists on the menu.';
+  @override
+  String get refusalComboSkuTaken =>
+      'Another combo already uses that SKU.';
+  @override
+  String comboGroupsSummary(int groups, int options) => '$groups choice(s) · $options item(s)';
+
+  @override
   String get refusalGroupNameMissing =>
       'An option group needs a name — it is how the group is found again.';
   @override
@@ -7142,7 +7526,7 @@ final class ArStrings extends AppStrings {
   @override
   String get orderHistoryLast30Days => 'آخر ٣٠ يومًا';
   @override
-  String get orderHistorySearchHint => 'رقم الفاتورة أو الطاولة';
+  String get orderHistorySearchHint => 'رقم الفاتورة أو الطاولة أو العميل';
   @override
   String get orderHistoryAllStatuses => 'كل الحالات';
   @override
@@ -8607,6 +8991,44 @@ final class ArStrings extends AppStrings {
   @override
   String get adminDatabaseUser => 'دور المدير';
   @override
+  @override
+  String get whoIsThisFor => 'لمن هذا الطلب؟';
+  @override
+  String get searchNameOrPhone => 'الاسم، أو أي جزء من الرقم';
+  @override
+  String get addCustomer => 'إضافة عميل';
+  @override
+  String get customerName => 'الاسم';
+  @override
+  String get customerPhone => 'رقم الهاتف';
+  @override
+  String get customerAddress => 'العنوان (للتوصيل)';
+  @override
+  String get noCustomerFound => 'لا يوجد أحد بهذا الاسم أو الرقم بعد.';
+  @override
+  String get removeCustomer => 'إزالة';
+  @override
+  String get customerNeedsNameAndPhone =>
+      'العميل يحتاج اسماً ورقماً — والرقم هو الطريقة التي يُعثر بها عليه مرة '
+      'أخرى.';
+  @override
+  String get customerOnTicket => 'العميل';
+  @override
+  String get backOfficeIsOnTheCloud => 'الإدارة من لوحة التحكم';
+  @override
+  String get backOfficeIsOnTheCloudHelp =>
+      'هذا الكاشير تابع لمطعم يُدار من XOrder Cloud. المنيو والموظفون '
+      'والطاولات وقواعد الضريبة والفاتورة تُكتب هناك وتُرسل إلى هذا الجهاز، '
+      'فلا يوجد هنا ما يُعدَّل — وأي تغيير على الجهاز نفسه سيُستبدل عند وصول '
+      'إعدادات المطعم في المرة القادمة. ادخل إلى لوحة التحكم من أي متصفح. '
+      'أما البيع والورديات والدرج فتبقى على هذه الشاشة وتعمل بدون إنترنت.';
+  @override
+  String get dashboardAddress => 'عنوان لوحة التحكم';
+  @override
+  String get copyAddress => 'انسخ العنوان';
+  @override
+  String get addressCopied => 'نُسخ العنوان.';
+  @override
   String get adminDatabaseUserHelp =>
       'حساب PostgreSQL الذي يُنشئ قاعدة البيانات ويملك جداولها — وليس حساب '
       'الكاشير. المثبِّت يُنشئ «pos_admin»، أما على جهاز ثُبِّت فيه PostgreSQL '
@@ -9891,6 +10313,8 @@ final class ArStrings extends AppStrings {
   @override
   String get actTaxGroupSaved => 'تعديل نسبة ضريبة';
   @override
+  String get actComboSaved => 'حفظ كومبو';
+  @override
   String get actProductOptionsChanged => 'تعديل أحجام أو إضافات صنف';
   @override
   String get actOptionGroupSaved => 'تعديل مجموعة أحجام أو إضافات';
@@ -10530,6 +10954,45 @@ final class ArStrings extends AppStrings {
   @override
   String get reportNoProducts => 'لم يُبع أي صنف في هذه الفترة.';
   @override
+  String get profitTitle =>
+      'الربح';
+  @override
+  String get profitColumnCost =>
+      'التكلفة';
+  @override
+  String get profitColumnAmountNet =>
+      'القيمة بدون ضريبة';
+  @override
+  String get profitColumnProfit =>
+      'الربح';
+  @override
+  String get profitColumnMargin =>
+      'الهامش';
+  @override
+  String get profitKpiProfit =>
+      'إجمالي الربح للأصناف المكلّفة';
+  @override
+  String get profitKpiCoverage =>
+      'إيراد له تكلفة';
+  @override
+  String get profitUncostedRevenue =>
+      'إيراد بلا تكلفة';
+  @override
+  String get profitNoCostTag =>
+      'بلا تكلفة';
+  @override
+  String get profitNothingCosted =>
+      'لا يوجد صنف مباع في هذه الفترة له تكلفة مسجّلة بعد. استلم مخزونًا لصنف وستظهر أرباح مبيعاته.';
+  @override
+  String get profitNote =>
+      'يُحتسب الربح على الأصناف التي لها تكلفة مسجّلة فقط، بمتوسط التكلفة وقت كل بيع. الأطباق والكومبو بلا تكلفة فتظهر بإيرادها فقط. والبيع المسترد يحتفظ بتكلفته لأن الطعام استُهلك بالفعل.';
+  @override
+  String get profitTaxNote =>
+      'أسعارك شاملة الضريبة، لذا تُخصم من الإيراد هنا طلبًا بطلب بحسب الضريبة '
+      'المسجّلة في كل طلب. وهذا دقيق للطلب بنسبة واحدة، وتقدير حين تختلف النسب.';
+  @override
+  String get profitCoverageNote => 'من إجمالي الإيراد';
+  @override
   String get reportPayments => 'طرق الدفع';
   @override
   String get reportOnAccount => 'على الحساب — مبلغ مستحق لم يُحصَّل';
@@ -11042,6 +11505,93 @@ final class ArStrings extends AppStrings {
   @override
   String get stockColumnValue => 'القيمة';
   @override
+  String get stockNoCostNote =>
+      'الأصناف المعلَّمة «بلا تكلفة» لم يُستلم منها شيء بعد، فلا تدخل في الربح. '
+      'استلم مخزونًا لصنف، أو حدّد تكلفته هنا، ليكون له تكلفة.';
+  @override
+  String stockExcludesUncosted(int count) =>
+      'غير محسوب: $count صنف له مخزون ولا تكلفة له.';
+  @override
+  String get stockSetCost =>
+      'تحديد التكلفة';
+  @override
+  String get paneCustomers =>
+      'العملاء';
+  @override
+  String get paneCustomersBlurb =>
+      'كل من في السجل، وما اشتروه من هذا الفرع.';
+  @override
+  String get customersSearchHint =>
+      'ابحث بالاسم أو الهاتف';
+  @override
+  String get customersNone =>
+      'لا يوجد عملاء في السجل بعد. يُضافون من الكاشير عند تسجيل طلب لشخص.';
+  @override
+  String get customersNoMatch =>
+      'لا يوجد عميل مطابق.';
+  @override
+  String get customersColumnCustomer =>
+      'العميل';
+  @override
+  String get customersColumnOrders =>
+      'الطلبات';
+  @override
+  String get customersColumnSpent =>
+      'المنفق';
+  @override
+  String get customersColumnLast =>
+      'آخر طلب';
+  @override
+  String get customersNever =>
+      'لم يطلب';
+  @override
+  String get customersDetailAverage =>
+      'متوسط الطلب';
+  @override
+  String get customersDetailRefunded =>
+      'المسترد';
+  @override
+  String get customersDetailRecent =>
+      'آخر الطلبات';
+  @override
+  String get customersNoOrders =>
+      'لا طلبات من هذا الفرع بعد.';
+  @override
+  String get customersPhone =>
+      'الهاتف';
+  @override
+  String get customersEmail =>
+      'البريد الإلكتروني';
+  @override
+  String get customersAddress =>
+      'العنوان';
+  @override
+  String get customersNote =>
+      'ملاحظة';
+  @override
+  String get customersBranchOnly =>
+      'الطلبات والمنفق لهذا الفرع فقط، وبعد خصم المسترد.';
+  @override
+  String get stockOpeningCostField =>
+      'التكلفة للوحدة';
+  @override
+  String get stockOpeningCostHint =>
+      'لهذا الصنف مخزون بلا تكلفة. حدّد تكلفة الوحدة فيُقيَّم المخزون، وتُحتسب مبيعاته من الآن في الربح. المبيعات السابقة تبقى بلا تكلفة، ولا تتغير الكمية.';
+  @override
+  String get refusalOpeningCostNotPositive =>
+      'يجب أن تكون التكلفة أكبر من صفر — الصفر هو شكل «لم يُستلم قط».';
+  @override
+  String get refusalOpeningCostAlreadyCosted =>
+      'هذا الصنف له تكلفة بالفعل. تغييرها إعادة تقييم، وهذا لا يفعلها.';
+  @override
+  String get refusalOpeningCostItemUnknown =>
+      'هذا الصنف غير مُعدّ للجرد هنا، فلا مخزون لتحديد تكلفته.';
+  @override
+  String get actStockCostSet =>
+      'تحديد أول تكلفة لصنف';
+  @override
+  String stockOpeningCostTitle(String item) => 'تكلفة $item';
+  @override
   String stockTotalValue(String amount) => 'قيمة المخزون: $amount';
   @override
   String get stockEmpty =>
@@ -11314,6 +11864,114 @@ final class ArStrings extends AppStrings {
   String get deleteConfirmGeneric => 'هل أنت متأكد من الحذف؟';
   @override
   String get savingLabel => 'جارٍ الحفظ…';
+
+  @override
+  String get combosTitle =>
+      'الكومبو';
+  @override
+  String get combosSubtitle =>
+      'وجبات بسعر واحد، مكوّنة من أصناف حقيقية في المنيو.';
+  @override
+  String get combosNew =>
+      'كومبو جديد';
+  @override
+  String get combosEdit =>
+      'تعديل الكومبو';
+  @override
+  String get combosNone =>
+      'لا توجد كومبوهات بعد.';
+  @override
+  String get comboName =>
+      'الاسم';
+  @override
+  String get comboPrice =>
+      'السعر';
+  @override
+  String get comboCategory =>
+      'القسم';
+  @override
+  String get comboSku =>
+      'الرمز (SKU)';
+  @override
+  String get comboAvailable =>
+      'متاح في الكاشير';
+  @override
+  String get comboAvailableHint =>
+      'أوقفه لإخفائه. المبيعات السابقة تحتفظ باسمه.';
+  @override
+  String get comboChoices =>
+      'الاختيارات';
+  @override
+  String get comboAddGroup =>
+      '+ إضافة اختيار';
+  @override
+  String get comboGroupName =>
+      'اسم الاختيار، مثال: اختر مشروبًا';
+  @override
+  String get comboMinSelect =>
+      'الأدنى';
+  @override
+  String get comboMaxSelect =>
+      'الأقصى';
+  @override
+  String get comboAddOption =>
+      '+ إضافة صنف';
+  @override
+  String get comboOptionProduct =>
+      'الصنف';
+  @override
+  String get comboOptionDelta =>
+      'الزيادة';
+  @override
+  String get comboRemove =>
+      'حذف';
+  @override
+  String get comboRetired =>
+      'متوقف';
+  @override
+  String get refusalComboNameMissing =>
+      'الكومبو يحتاج إلى اسم — فهو ما تطبعه تذكرة المطبخ.';
+  @override
+  String get refusalComboCategoryMissing =>
+      'اختر قسمًا ليظهر الكومبو في الشاشة.';
+  @override
+  String get refusalComboPriceNegative =>
+      'سعر الكومبو لا يمكن أن يكون أقل من صفر.';
+  @override
+  String get refusalComboNoGroups =>
+      'أضف اختيارًا واحدًا على الأقل — الكومبو الفارغ لا يُباع.';
+  @override
+  String get refusalComboGroupNameMissing =>
+      'كل اختيار يحتاج إلى اسم ليعرف الكاشير ما المطلوب.';
+  @override
+  String get refusalComboGroupEmpty =>
+      'كل اختيار يحتاج إلى صنف واحد على الأقل، وإلا لا يمكن إتمام الوجبة.';
+  @override
+  String get refusalComboSelectionRange =>
+      'الأدنى والأقصى غير متوافقين: الأدنى لا يزيد على الأقصى، والأقصى 1 على الأقل.';
+  @override
+  String get refusalComboMinAboveOptions =>
+      'الاختيار يطلب أصنافًا أكثر مما يعرضه.';
+  @override
+  String get refusalComboDuplicateOption =>
+      'الصنف نفسه مكرر في اختيار واحد.';
+  @override
+  String get refusalComboDeltaNegative =>
+      'الزيادة لا يمكن أن تكون أقل من صفر.';
+  @override
+  String get refusalComboCategoryUnknown =>
+      'هذا القسم لم يعد موجودًا. اختر قسمًا آخر.';
+  @override
+  String get refusalComboTaxGroupUnknown =>
+      'نسبة الضريبة هذه لم تعد موجودة.';
+  @override
+  String get refusalComboProductUnknown =>
+      'أحد أصناف الكومبو لم يعد موجودًا في المنيو.';
+  @override
+  String get refusalComboSkuTaken =>
+      'كومبو آخر يستخدم هذا الرمز بالفعل.';
+  @override
+  String comboGroupsSummary(int groups, int options) => '$groups اختيار · $options صنف';
 
   @override
   String get refusalGroupNameMissing =>

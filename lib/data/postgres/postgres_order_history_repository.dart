@@ -2,6 +2,7 @@ import 'package:collection/collection.dart';
 
 import '../../core/config/deployment.dart';
 import '../../core/money/money.dart';
+import '../../domain/models/customer.dart' show PosCustomer;
 import '../../domain/models/order_record.dart';
 import '../../domain/models/refund.dart' show RefundKind;
 import '../../domain/models/refund_history.dart';
@@ -85,7 +86,8 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
         served.name, voider.name, reason.name_en, reason.name_ar,
         o.served_by, taken.minor, given_back.minor, $paymentStatusSql,
         trading.business_date, o.terminal_id::text, term.name,
-        tenders.labels, tenders.type_ids''';
+        tenders.labels, tenders.type_ids,
+        o.customer_id, cust.name, cust.phone, cust.email''';
 
   /// The joins [_orderColumns] needs.
   ///
@@ -113,6 +115,7 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
         LEFT JOIN pos_staff       AS voider ON voider.id = o.voided_by
         LEFT JOIN pos_reason_codes AS reason ON reason.id = o.void_reason_id
         LEFT JOIN pos_terminals   AS term   ON term.id = o.terminal_id
+        LEFT JOIN pos_customers   AS cust   ON cust.id = o.customer_id
         $_moneyJoins
         LEFT JOIN LATERAL (
           SELECT coalesce(array_agg(used.label ORDER BY used.first_id),
@@ -234,6 +237,10 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
             label: label as String,
           ),
       ],
+      customerId: row[30] as int?,
+      customerName: row[31] as String?,
+      customerPhone: row[32] as String?,
+      customerEmail: row[33] as String?,
     );
   }
 
@@ -302,6 +309,9 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
   /// should BO-3's summary strip. Handing them the rule, rather than asking
   /// them to restate it, is what keeps that true after somebody changes a
   /// filter here.
+  /// The fewest digits of a search that are also tried as a phone number.
+  static const minPhoneDigits = 7;
+
   static ({List<String> where, Map<String, Object?> parameters}) filterFor(
     OrderHistoryQuery query, {
     required int restaurantId,
@@ -357,11 +367,24 @@ class PostgresOrderHistoryRepository implements OrderHistoryRepository {
       // input they have. It costs the index — accepted, because the rows this
       // scans are one branch's orders inside a date window, and the alternative
       // is a search box that does not find what the customer is holding.
+      //
+      // And the customer the sale was for, by name or by number. The number
+      // only from [minPhoneDigits] digits: a short run of digits is the tail of
+      // a receipt number far more often than the tail of a phone, and matching
+      // both would fill the list with strangers whose phones happen to end in
+      // the same three digits. A customer found by fewer digits is one search
+      // away in Customers.
+      final digits = PosCustomer.normalisePhone(search);
+      final byPhone = digits.length >= minPhoneDigits;
       where.add(
         '(coalesce(nullif(o.server_invoice_number, \'\'), o.invoice_number) '
-        'ILIKE @search OR o.table_label ILIKE @search)',
+        'ILIKE @search OR o.table_label ILIKE @search '
+        'OR EXISTS (SELECT 1 FROM pos_customers AS buyer '
+        '            WHERE buyer.id = o.customer_id '
+        "              AND (buyer.name ILIKE @search${byPhone ? ' OR buyer.phone LIKE @searchDigits' : ''})))",
       );
       parameters['search'] = '%$search%';
+      if (byPhone) parameters['searchDigits'] = '%$digits%';
     }
     return (where: where, parameters: parameters);
   }

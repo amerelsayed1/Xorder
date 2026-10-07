@@ -444,4 +444,86 @@ void main() {
       expect(rows.first[0], 500);
     });
   });
+
+  /// What a payment row means.
+  ///
+  /// `payment_status.dart` states it and explains why there is no OVERPAID:
+  /// a row records what was APPLIED to the bill, never what was tendered,
+  /// because change is a till concern that never reaches the ledger. It also
+  /// warned this would break "the day somebody wrote tendered by mistake" —
+  /// and on 27 Sep 2026 it had, all the way up to the platform, which took a
+  /// 380.00 payment against a 360.00 sale.
+  group('a payment records what it applied', () {
+    Ticket billOf(String id, int totalMinor, List<Tender> tenders) => Ticket(
+      id: id,
+      orderType: OrderType.takeaway,
+      taxConfig: const TaxConfig(serviceBp: 0, vatBp: 0),
+      lines: [
+        TicketLine(
+          product: Product(
+            id: 1,
+            categoryId: 1,
+            nameEn: 'Meal',
+            price: Money(totalMinor),
+          ),
+          quantity: 1,
+        ),
+      ],
+      tenders: tenders,
+    );
+
+    /// Summed from the rows, addressed by the till's own key for the sale —
+    /// `submit` answers with that and not with the local id.
+    Future<int> paidFor(String clientTransactionId) async {
+      final rows = await db.query(
+        pg.config,
+        'SELECT COALESCE(SUM(p.amount_minor), 0) FROM pos_order_payments p '
+        'JOIN pos_orders o ON o.id = p.order_id '
+        'WHERE o.client_transaction_id = @k',
+        parameters: {'k': clientTransactionId},
+      );
+      // SUM of a bigint comes back as a String from the driver, not a num.
+      return int.parse('${rows.first[0]}');
+    }
+
+    test('cash over the total is capped, and the change is still the slip\'s',
+        () async {
+      // 380.00 handed over for a 360.00 bill.
+      const key = '77777777-7777-4777-8777-00000000000a';
+      final ticket = billOf(key, 36000, const [
+        Tender(typeId: 1, label: 'Cash', amount: Money(38000)),
+      ]);
+
+      // The TICKET keeps the tendered figure — the receipt prints what the
+      // customer handed over and what came back.
+      expect(ticket.totals.change, const Money(2000));
+
+      await orders().submit(ticket);
+      expect(
+        await paidFor(key),
+        36000,
+        reason: 'the ledger takes what the sale took, not what the drawer saw',
+      );
+    });
+
+    test('a split tender applies each in turn and only the last is short',
+        () async {
+      const key = '77777777-7777-4777-8777-00000000000b';
+      await orders().submit(billOf(key, 36000, const [
+        Tender(typeId: 1, label: 'Card', amount: Money(20000)),
+        Tender(typeId: 1, label: 'Cash', amount: Money(30000)),
+      ]));
+
+      // 200 applied, then 160 of the 300 — never 500 against a 360 bill.
+      expect(await paidFor(key), 36000);
+    });
+
+    test('an exact tender is written exactly, with nothing clever', () async {
+      const key = '77777777-7777-4777-8777-00000000000c';
+      await orders().submit(billOf(key, 36000, const [
+        Tender(typeId: 1, label: 'Cash', amount: Money(36000)),
+      ]));
+      expect(await paidFor(key), 36000);
+    });
+  });
 }

@@ -451,6 +451,7 @@ void main() {
       'Categories',
       'Extras library',
       'Floor',
+      'Combos',
     ]);
     // Each thing buying is, with the "new" that starts one: shortcuts no
     // pane's own tabs can be.
@@ -478,6 +479,7 @@ void main() {
       'Staff',
       'Roles & permissions',
       'Shifts',
+      'Customers',
     ]);
     expect(await linesOf(tester, 'System'), [
       'Activity',
@@ -834,6 +836,7 @@ void main() {
       'الموظفون',
       'الأدوار والصلاحيات',
       'الورديات',
+      'العملاء',
     ]);
     // Each of the map's six once, in its words — no second printer or about
     // line from the till's own.

@@ -179,6 +179,13 @@ class PosCloudApi {
   /// They intentionally retain their own endpoints as well as the optional
   /// bulk API: serial drain is easier to recover after one bad record and is
   /// the compatibility path the contract explicitly keeps supported.
+  /// POS-BE-014 — a customer created at the counter.
+  Future<CloudReply> createCustomer(Map<String, Object?> request) => _post(
+    '/api/pos/customers',
+    request,
+    idempotencyKey: request['client_transaction_id'] as String?,
+  );
+
   Future<CloudReply> openShift(Map<String, Object?> request) => _post(
     '/api/pos/shifts',
     request,

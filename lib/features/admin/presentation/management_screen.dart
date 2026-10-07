@@ -30,6 +30,8 @@ import 'management_units_pane.dart';
 import 'management_floor_pane.dart';
 import 'management_menu_pane.dart';
 import 'management_eta_pane.dart';
+import 'management_combos_pane.dart';
+import 'management_customers_pane.dart';
 import 'management_extras_pane.dart';
 import 'management_finance_panes.dart';
 import 'management_home_pane.dart';
@@ -170,6 +172,9 @@ const _authoringPanes = {
   // The library is the menu's too: a group made here would be erased by the
   // next sync on a cloud till, where the platform's Extras page is the author.
   ManagementPane.extras,
+  // Combos are menu items too, and the seeder deletes `pos_products` they
+  // point at on a cloud till.
+  ManagementPane.combos,
   ManagementPane.floor,
   ManagementPane.purchasing,
   ManagementPane.items,
@@ -305,6 +310,7 @@ BackOfficeTab tabOf(ManagementPane pane) => switch (pane) {
   ManagementPane.menu ||
   ManagementPane.categories ||
   ManagementPane.extras ||
+  ManagementPane.combos ||
   ManagementPane.floor => BackOfficeTab.menu,
   ManagementPane.items ||
   ManagementPane.stock ||
@@ -330,6 +336,7 @@ BackOfficeTab tabOf(ManagementPane pane) => switch (pane) {
   ManagementPane.staff ||
   ManagementPane.roles ||
   ManagementPane.shifts => BackOfficeTab.people,
+  ManagementPane.customers => BackOfficeTab.people,
   ManagementPane.receipt ||
   ManagementPane.taxes ||
   ManagementPane.charges ||
@@ -419,6 +426,7 @@ SettingsSection? settingsSectionOf(ManagementPane pane) => switch (pane) {
   ManagementPane.returns ||
   ManagementPane.voidedOrders ||
   ManagementPane.shifts ||
+  ManagementPane.customers ||
   ManagementPane.settlements ||
   ManagementPane.sync ||
   ManagementPane.reports ||
@@ -430,6 +438,7 @@ SettingsSection? settingsSectionOf(ManagementPane pane) => switch (pane) {
   ManagementPane.menu ||
   ManagementPane.categories ||
   ManagementPane.extras ||
+  ManagementPane.combos ||
   ManagementPane.floor ||
   ManagementPane.purchasing ||
   ManagementPane.eta ||
@@ -476,6 +485,9 @@ int _placeInTab(ManagementPane pane) => switch (pane) {
   ManagementPane.categories => 1,
   ManagementPane.extras => 2,
   ManagementPane.floor => 3,
+  // After the owner's four: the map has no word for Combos, so it goes last
+  // rather than between two pages whose order was dictated.
+  ManagementPane.combos => 4,
   // أصناف المخزون، المخزون المتاح، الوحدات
   ManagementPane.items => 0,
   ManagementPane.stock => 1,
@@ -501,6 +513,9 @@ int _placeInTab(ManagementPane pane) => switch (pane) {
   ManagementPane.staff => 0,
   ManagementPane.roles => 1,
   ManagementPane.shifts => 2,
+  // After the owner's three: the map has no word for Customers, so it goes
+  // last rather than between pages whose order was dictated.
+  ManagementPane.customers => 3,
   // السجل، النسخ الاحتياطي، الأجهزة، المزامنة — and ETA, hidden while filing
   // is off.
   ManagementPane.activity => 0,
@@ -897,6 +912,7 @@ ManagementDestination _purchasing(PurchasingTab tab, {bool create = false}) =>
         s.paneVoidedOrdersBlurb,
       ),
       ManagementPane.shifts => (s.paneShifts, s.shiftsBlurb),
+      ManagementPane.customers => (s.paneCustomers, s.paneCustomersBlurb),
       ManagementPane.settlements => (s.paneSettlements, s.settlementsBlurb),
       ManagementPane.sync => (s.paneSync, s.paneSyncBlurb),
       // Without the till line's ellipsis: here it is a page, not a dialog.
@@ -921,6 +937,7 @@ ManagementDestination _purchasing(PurchasingTab tab, {bool create = false}) =>
       ManagementPane.menu => (s.paneMenu, s.paneMenuBlurb),
       ManagementPane.categories => (s.categories, s.paneMenuBlurb),
       ManagementPane.extras => (s.extrasTitle, s.extrasSubtitle),
+      ManagementPane.combos => (s.combosTitle, s.combosSubtitle),
       ManagementPane.floor => (s.floorPlan, s.floorPlanHint),
       ManagementPane.taxes => (s.paneTaxes, s.paneTaxesHint),
       ManagementPane.charges => (s.serviceCharges, s.serviceChargesHint),
@@ -1011,6 +1028,9 @@ Set<String> _paneRequires(ManagementPane pane) => switch (pane) {
   ManagementPane.reportsPayments ||
   ManagementPane.reportsBranches ||
   ManagementPane.reportsEmployees => const {PosCapability.reportsView},
+  // Names and phone numbers beside what each person spends: the same gate as
+  // the figures, asked again by `customerDirectoryProvider`.
+  ManagementPane.customers => const {PosCapability.reportsView},
   // Finance (BO-9, BO-10). Backed where it counts: every figure is read
   // through `reportsAllowedProvider`, which answers no without
   // `reports.view`, so a pane reached round the bar still draws nothing.
@@ -1046,6 +1066,7 @@ Set<String> _paneRequires(ManagementPane pane) => switch (pane) {
   ManagementPane.menu ||
   ManagementPane.categories ||
   ManagementPane.extras ||
+  ManagementPane.combos ||
   ManagementPane.floor ||
   ManagementPane.taxes ||
   ManagementPane.charges ||
@@ -1093,6 +1114,7 @@ enum ManagementPane {
   staff,
   menu,
   extras,
+  combos,
   floor,
   taxes,
   charges,
@@ -1154,6 +1176,10 @@ enum ManagementPane {
   invoices,
   returns,
   voidedOrders,
+
+  /// People › Customers: the directory with what each has bought, behind
+  /// `reports.view` because it sets a name and a phone number beside spending.
+  customers,
 
   /// People › Shifts and Finance › Settlements, both behind `reports.view`.
   shifts,
@@ -1537,6 +1563,7 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
           : null,
     ),
     ManagementPane.shifts => ManagementShiftsPane(admin: admin),
+    ManagementPane.customers => const ManagementCustomersPane(),
     ManagementPane.settlements => ManagementSettlementsPane(admin: admin),
     ManagementPane.sync => ManagementSyncPane(admin: admin),
     ManagementPane.printer => ManagementPrinterPane(admin: admin),
@@ -1573,6 +1600,7 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
       onOpenExtras: () => _open(ManagementPane.extras),
     ),
     ManagementPane.extras => ManagementExtrasPane(admin: admin),
+    ManagementPane.combos => ManagementCombosPane(admin: admin),
     ManagementPane.floor => ManagementFloorPane(admin: admin),
     ManagementPane.taxes => ManagementTaxesPane(admin: admin),
     ManagementPane.charges => ManagementChargesPane(admin: admin),
@@ -1611,7 +1639,7 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
     ManagementPane.activity => const ManagementActivityPane(),
     ManagementPane.backup => ManagementBackupPane(admin: admin),
     ManagementPane.items => ManagementItemsPane(admin: admin),
-    ManagementPane.stock => const ManagementStockPane(),
+    ManagementPane.stock => ManagementStockPane(admin: admin),
     ManagementPane.units => ManagementUnitsPane(admin: admin),
     ManagementPane.terminal => ManagementTerminalPane(
       admin: admin,

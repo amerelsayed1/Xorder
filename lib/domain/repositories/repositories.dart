@@ -6,6 +6,8 @@ import '../models/pos_unit.dart';
 import '../models/stock_item.dart';
 import '../models/stock_level.dart';
 import '../models/catalog.dart';
+import '../models/customer.dart';
+import '../models/customer_summary.dart';
 import '../models/order_type_config.dart';
 import '../models/purchase_order.dart';
 import '../services/stock_costing.dart';
@@ -21,6 +23,7 @@ import '../models/permissions.dart';
 import '../models/dining_table.dart';
 import '../models/business_day.dart';
 import '../models/order_record.dart';
+import '../models/profit_report.dart';
 import '../models/sales_report.dart';
 import '../models/finance_report.dart';
 import '../models/pos_settings.dart';
@@ -137,6 +140,56 @@ class EtaEnqueued {
 /// A repository rather than a constant since Wave D. Two lists of tender types
 /// is how a till ends up refunding to a method it cannot take payment on, so
 /// settlement and refunds both read this one.
+/// Who the food is for (POS-BE-014).
+///
+/// **Searched locally, always.** A cloud till receives the directory in its
+/// bootstrap bundle and a cashier finds a regular with no connection — the
+/// counter is exactly where the signal is worst, and a search box that needs
+/// the platform fails during the power cut when the queue is longest.
+abstract interface class CustomersRepository {
+  /// Everyone matching [query] — a name fragment or any run of digits from the
+  /// number. An empty query answers the most recently seen, so the list is
+  /// useful before anybody types.
+  Future<List<PosCustomer>> search(String query, {int limit = 30});
+
+  /// Create one at the counter, or return the one who already has that number.
+  ///
+  /// **Never a second row for one number.** The platform's directory keys on
+  /// the phone and `CustomerDirectory::upsert()` resolves a repeat to the same
+  /// person; a till that created a duplicate locally would upload a split the
+  /// platform then has to merge. So this upserts too, and a re-entered regular
+  /// simply comes back with their details corrected.
+  Future<PosCustomer> upsert({
+    required String name,
+    required String phone,
+    String? email,
+    String? address,
+    String? note,
+  });
+}
+
+/// The customer directory as the back office reads it: everyone on file, with
+/// what they have bought at this branch.
+///
+/// Read-only, and a different thing from [CustomersRepository], which is the
+/// counter's — find somebody in a hurry, or add them. Editing a customer
+/// stays at the counter for now: the phone is their identity, and changing it
+/// is changing who they are, which wants more care than a field in a list.
+///
+/// Gated on `reports.view` where it is read (the provider asks), because a name
+/// and a phone number beside what somebody spends is the most personal thing
+/// this till holds.
+abstract interface class CustomerDirectoryRepository {
+  /// Customers matching [query] — a name fragment, or digits of a phone number —
+  /// most recently seen first, then by name. An empty query lists everybody, up
+  /// to [limit].
+  Future<List<CustomerSummary>> list({String query = '', int limit = 100});
+
+  /// [customerId]'s settled orders at this branch, newest first, at most
+  /// [limit].
+  Future<List<CustomerOrder>> recentOrders(int customerId, {int limit = 20});
+}
+
 abstract interface class TenderTypesRepository {
   /// Active methods, in the order the restaurant put them in.
   ///
@@ -256,6 +309,23 @@ abstract interface class ReceivingRepository {
 
   /// What is on hand and what it cost, or null for a product never stocked.
   Future<StockPosition?> positionFor(int productId);
+
+  /// Give an item nothing has costed its first cost, without moving any stock.
+  ///
+  /// Refused for an item that already has one ([OpeningCostProblem.alreadyCosted]),
+  /// for a cost of zero, and for an item not counted here. Recorded as an
+  /// `opening` movement of quantity zero beside the cost, and audited. Sales
+  /// already made stay uncosted: they were recorded at zero and the ledger is
+  /// append-only, so this prices what is sold from now on.
+  ///
+  /// Needs `purchase.manage`, as receiving does — it sets the figure every
+  /// margin is measured against.
+  Future<AdminResult<StockPosition>> setOpeningCost({
+    required int productId,
+    required Money unitCost,
+    required PosStaff by,
+    String? note,
+  });
 }
 
 /// What the restaurant owes its suppliers, and what it has paid them (§37).
@@ -513,6 +583,14 @@ abstract interface class ReportsRepository {
   /// One row per payment on [filter]'s sales, newest first, at most [limit]
   /// (BO-9, plan 17 S2).
   Future<PaymentLedger> payments(ReportFilter filter, {int limit = 500});
+
+  /// What [filter]'s sales earned, where the till knows what they cost.
+  ///
+  /// Revenue is the lines' own — the figures [topProducts] ranks — and cost is
+  /// what the stock ledger recorded when each stocked item was sold. Every
+  /// product with revenue is returned, costed or not, because the share of the
+  /// menu this cannot speak to is part of the answer (see [ProfitReport]).
+  Future<ProfitReport> profit(ReportFilter filter);
 }
 
 /// The outcome of issuing a refund.

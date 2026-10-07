@@ -5,6 +5,7 @@ import '../../core/money/money.dart';
 import '../../domain/models/branch_sales.dart';
 import '../../domain/models/finance_report.dart';
 import '../../domain/models/order_record.dart';
+import '../../domain/models/profit_report.dart';
 import '../../domain/models/sales_report.dart';
 import '../../domain/models/tax.dart';
 import '../../domain/models/tender_method.dart';
@@ -398,6 +399,153 @@ class PostgresReportsRepository implements ReportsRepository {
           amount: _money(raw[3]),
         ),
     ];
+  }
+
+  @override
+  Future<ProfitReport> profit(ReportFilter filter) {
+    final sold = _sales(filter, 'o.id');
+
+    // Revenue per (order, item), as `topProducts` counts it: kept units at the
+    // price they were sold at, a voided line out. The grouping key is the same
+    // too — a line with no menu item (an open charge, a combo) is grouped by
+    // its name, so two different open charges are not one anonymous row.
+    //
+    // Cost per (order, item), off the stock ledger. Three rules, all of them
+    // in the WHERE and each one the library comment of [ProfitReport] argues:
+    //
+    //  * `kind = 'sale'` — receipts, waste and counts are not the cost of a
+    //    sale, and they would be if this read the ledger whole.
+    //  * `unit_cost_minor > 0` — a sale at a carrying cost of zero is "never
+    //    bought", not "free". It stays out, so its revenue is uncosted.
+    //  * the sale's own orders, by the same `sales` CTE the revenue uses — the
+    //    cost is of exactly the sales the revenue is of, never a neighbouring
+    //    day's.
+    //
+    // Revenue without tax. Where prices contain tax (`@inclusive`) each line is
+    // scaled by its ORDER's net-to-gross ratio from `pos_order_taxes` —
+    // sum(base) / sum(base + amount) — because a line records no tax of its
+    // own. Exact for an order at one rate, an estimate for a mixed one; an
+    // order with no tax rows is left whole. Half-up, in integer arithmetic, as
+    // the cost below: the numerator is never negative.
+    //
+    // Per-movement rounding, half-up, exactly `Quantity.costAt`: the numerator
+    // is positive (a sale issues, so its quantity is negative and is negated),
+    // where integer division floors, so `+ 500` before `/ 1000` is half-up.
+    // Summed after rounding, never rounded after summing, so the figure is the
+    // sum of the movements an auditor can read.
+    //
+    // One LEFT JOIN: every item with revenue arrives, and a null cost is how
+    // "not costed" reaches Dart. HAVING keeps an item every unit of which came
+    // back only if its cost was spent — a refunded plate is a loss, and
+    // dropping the row would hide it.
+    final rowsSql =
+        '''
+      WITH sales AS (${sold.sql}),
+      kept AS (
+        SELECT l.order_id, l.menu_item_id,
+               CASE WHEN l.menu_item_id IS NULL THEN l.name_snapshot END
+                 AS open_name,
+               (array_agg(l.name_snapshot ORDER BY l.id DESC))[1] AS name,
+               sum(l.quantity - l.refunded_quantity)::bigint AS kept,
+               sum((l.quantity - l.refunded_quantity) * l.unit_price_minor)
+                 ::bigint AS amount
+          FROM pos_order_lines AS l
+          JOIN sales AS s ON s.id = l.order_id
+         WHERE l.voided_at IS NULL
+         GROUP BY l.order_id, l.menu_item_id,
+                  CASE WHEN l.menu_item_id IS NULL THEN l.name_snapshot END
+      ),
+      taxed AS (
+        SELECT t.order_id,
+               sum(t.base_minor)::bigint AS net,
+               sum(t.base_minor + t.amount_minor)::bigint AS gross
+          FROM pos_order_taxes AS t
+          JOIN sales AS s ON s.id = t.order_id
+         GROUP BY t.order_id
+      ),
+      priced AS (
+        SELECT k.*,
+               CASE WHEN @inclusive::boolean AND x.gross > 0
+                    THEN (k.amount * x.net * 2 + x.gross) / (x.gross * 2)
+                    ELSE k.amount END AS net_amount
+          FROM kept AS k
+          LEFT JOIN taxed AS x ON x.order_id = k.order_id
+      ),
+      issued AS (
+        SELECT m.order_id, m.product_id,
+               sum(((-m.quantity_milli * m.unit_cost_minor) + 500) / 1000)
+                 ::bigint AS cost
+          FROM pos_stock_movements AS m
+          JOIN sales AS s ON s.id = m.order_id
+         WHERE m.kind = 'sale'
+           AND m.quantity_milli < 0
+           AND m.unit_cost_minor > 0
+         GROUP BY m.order_id, m.product_id
+      )
+      SELECT k.menu_item_id,
+             (array_agg(k.name ORDER BY k.order_id DESC))[1] AS name,
+             sum(k.kept)::bigint AS kept,
+             sum(k.net_amount)::bigint AS amount,
+             coalesce(sum(k.net_amount) FILTER (WHERE i.cost IS NOT NULL), 0)
+               ::bigint AS costed_amount,
+             sum(i.cost)::bigint AS cost
+        FROM priced AS k
+        LEFT JOIN issued AS i
+               ON i.order_id = k.order_id AND i.product_id = k.menu_item_id
+       GROUP BY k.menu_item_id, k.open_name
+      HAVING sum(k.kept) > 0 OR sum(i.cost) IS NOT NULL
+      ''';
+
+    // One snapshot, for the reason `sales` takes one: the revenue and the cost
+    // are two reads of a ledger that is being written to while the report is
+    // open, and a sale committed between them would be in one and not the
+    // other.
+    return _db.runTx(config, (tx) async {
+      await tx.execute(
+        'SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY',
+      );
+      // The mode first: whether the lines' prices contain tax decides the
+      // arithmetic of the revenue, not only the note under it. Today's setting,
+      // not a snapshot — orders do not record the mode they were taxed in, so a
+      // restaurant that switched has its earlier orders read by the new one.
+      //
+      // Read from where the till prices from: `pos_money_config`'s payload,
+      // the path `MoneyConfigCodec` writes and the Taxes pane saves to.
+      // `pos_restaurants.tax_mode` is only ever its migration default, so
+      // reading it alone called every inclusive restaurant exclusive.
+      final mode = await tx.execute(
+        Sql.named(
+          "SELECT COALESCE(m.payload ->> 'tax_mode', r.tax_mode) "
+          '  FROM pos_restaurants r '
+          '  LEFT JOIN pos_money_config m ON m.restaurant_id = r.id '
+          ' WHERE r.id = @r',
+        ),
+        parameters: {'r': restaurantId},
+      );
+      final inclusive = mode.isNotEmpty && mode.first[0] == 'inclusive';
+      final rows = await tx.execute(
+        Sql.named(rowsSql),
+        parameters: {...sold.parameters, 'inclusive': inclusive},
+      );
+
+      return ProfitReport(
+        filter: filter,
+        currency: currency,
+        exponent: exponent,
+        pricesIncludeTax: inclusive,
+        products: ProfitReport.ranked([
+          for (final raw in rows)
+            ProductProfit(
+              menuItemId: raw[0] as int?,
+              name: raw[1]! as String,
+              quantity: raw[2]! as int,
+              revenue: _money(raw[3]),
+              costedRevenue: _money(raw[4]),
+              cost: raw[5] == null ? null : _money(raw[5]),
+            ),
+        ]),
+      );
+    });
   }
 
   @override

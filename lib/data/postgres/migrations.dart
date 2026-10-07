@@ -4395,6 +4395,78 @@ const posMigrations = <PosMigration>[
     'ALTER TABLE pos_refunds '
         'ADD COLUMN IF NOT EXISTS server_credit_note_number text',
   ]),
+  // Who the food is for (POS-BE-014, owner go 27 Sep 2026). A cashier taking a
+  // phone order had nowhere to put a name and a number, and a delivery ticket
+  // needs both.
+  //
+  // **The phone is the identity**, exactly as it is on the platform: the
+  // directory there keys on `restaurant_id + phone` and normalises
+  // Arabic-Indic digits before it looks, so the till stores the normalised
+  // form and matches on it. A second normalisation rule here would split the
+  // directory the moment somebody typed ٠١٠ instead of 010.
+  //
+  // `platform_id` is the platform's own id, null until the customer has been
+  // through the outbox. It is what lets a sale reference a customer created at
+  // the counter thirty seconds ago with no connection: the order carries the
+  // local row, and the drain fills the platform's id in when it lands.
+  PosMigration(51, 'the counter knows who the food is for', [
+    '''
+    CREATE TABLE IF NOT EXISTS pos_customers (
+      id                    serial PRIMARY KEY,
+      restaurant_id         integer NOT NULL REFERENCES pos_restaurants(id)
+                              ON DELETE CASCADE,
+      platform_id           integer,
+      client_transaction_id uuid NOT NULL,
+      name                  text NOT NULL,
+      phone                 text NOT NULL,
+      email                 text,
+      address               text,
+      note                  text,
+      created_at            timestamptz NOT NULL DEFAULT now(),
+      updated_at            timestamptz NOT NULL DEFAULT now()
+    )
+    ''',
+    // One person per number per restaurant — the platform's own constraint,
+    // held locally so a till cannot create the split it would then upload.
+    'CREATE UNIQUE INDEX IF NOT EXISTS pos_customers_phone_key '
+        'ON pos_customers (restaurant_id, phone)',
+    'CREATE UNIQUE INDEX IF NOT EXISTS pos_customers_client_key '
+        'ON pos_customers (client_transaction_id)',
+    // What the search box actually asks: a name fragment or the tail of a
+    // number, on every keystroke, while somebody waits at the counter.
+    'CREATE INDEX IF NOT EXISTS pos_customers_name_idx '
+        'ON pos_customers (restaurant_id, lower(name))',
+    // The sale's own reference. Nullable: most sales are to nobody in
+    // particular, and requiring a customer to take money would be the worst
+    // possible way to enforce a directory.
+    'ALTER TABLE pos_orders '
+        'ADD COLUMN IF NOT EXISTS customer_id integer '
+        'REFERENCES pos_customers(id) ON DELETE SET NULL',
+    // A customer created at the counter is uploaded like a shift or a refund,
+    // so `customer` joins the closed set of event types the outbox will
+    // accept. The constraint is what turns "something wrote a row this build
+    // cannot send" into a write that fails loudly instead of a row that sits
+    // in the queue forever being skipped.
+    'ALTER TABLE pos_sync_outbox '
+        'DROP CONSTRAINT IF EXISTS pos_sync_outbox_event_known',
+    "ALTER TABLE pos_sync_outbox ADD CONSTRAINT pos_sync_outbox_event_known "
+        "CHECK (event_type IN ('shift_open', 'shift_close', 'cash_movement', "
+        "'refund', 'customer'))",
+  ]),
+  PosMigration(52, 'an opening cost is a movement that moves nothing', [
+    // Setting the first cost of an item already on the shelf changes what the
+    // stock is worth and not how much of it there is, so its ledger row has a
+    // quantity of zero. The constraint that forbade a zero-quantity movement
+    // was right for every other kind — a receipt of nothing is a mistake — and
+    // is relaxed for `opening` alone, whose whole purpose this is. Relaxing a
+    // CHECK admits rows the old one refused and invalidates none already
+    // written, so it is safe on a live database.
+    'ALTER TABLE pos_stock_movements '
+        'DROP CONSTRAINT IF EXISTS pos_stock_movements_not_nothing',
+    "ALTER TABLE pos_stock_movements ADD CONSTRAINT "
+        "pos_stock_movements_not_nothing "
+        "CHECK (quantity_milli <> 0 OR kind = 'opening')",
+  ]),
 ];
 
 /// Brings the branch database up to the current schema.

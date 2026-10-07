@@ -34,6 +34,7 @@ import '../../../core/ui/tokens.dart';
 import '../../../core/ui/widgets/mono_amount.dart';
 import '../../../core/ui/widgets/pos_widgets.dart';
 import '../../../domain/models/branch_sales.dart';
+import '../../../domain/models/profit_report.dart';
 import '../../../domain/models/sales_report.dart';
 import '../application/report_export.dart';
 import '../application/reports_view.dart';
@@ -448,6 +449,14 @@ class _ReportItemsPaneState extends ConsumerState<ReportItemsPane> {
           products: products,
           strings: strings,
           rightToLeft: rightToLeft,
+          // The page's own read, so the file is the figures on screen. A
+          // ledger that failed to read is a sheet left out — the section above
+          // already said it was unavailable — rather than an export that
+          // fails with the items it could have written.
+          profit: await ref
+              .read(profitReportProvider(filter).future)
+              .then<ProfitReport?>((report) => report)
+              .catchError((Object _) => null),
         ),
       ),
       figures: (products) => [
@@ -467,6 +476,11 @@ class _ReportItemsPaneState extends ConsumerState<ReportItemsPane> {
               ? ReportNote(context.strings.reportNoProducts)
               : _ItemsTable(products: products, ranking: _ranking),
         ),
+        // Only once something sold: profit on nothing is not a section.
+        if (products.isNotEmpty) ...[
+          const SizedBox(height: PosSpace.lg),
+          _ProfitSection(filter: filter),
+        ],
       ],
     ),
   );
@@ -545,6 +559,265 @@ class _ItemsTable extends StatelessWidget {
       ],
     );
   }
+}
+
+// ── الربح ───────────────────────────────────────────────────────────────────
+
+/// A margin, signed, to two decimals — `formatShareBp` for shares, which are
+/// never negative. A loss has to read as one: through the share formatter,
+/// −6.25% would print as −6.75%, because Dart's `%` is never negative.
+String formatMarginBp(int bp) =>
+    '${bp < 0 ? '-' : ''}${formatShareBp(bp.abs())}';
+
+/// Reports › Items, under the list: what the same sales earned, where the
+/// till knows what they cost (`ProfitReport`).
+///
+/// **It says what it does not know before it says what it does.** The margin
+/// is on the costed revenue only, so the coverage sits beside it and the
+/// revenue it cannot speak to has a line of its own: a margin shown alone would
+/// read as the business's, and it is not. A product with no cost is a row with
+/// a tag and dashes, never a zero cost — "free" and "unknown" are different
+/// claims.
+///
+/// Its own read, so the list above never waits on it or fails with it.
+class _ProfitSection extends ConsumerWidget {
+  const _ProfitSection({required this.filter});
+
+  final ReportFilter filter;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final s = context.strings;
+    return ReportSection(
+      key: const Key('reports-profit'),
+      title: s.profitTitle,
+      child: switch (ref.watch(profitReportProvider(filter))) {
+        AsyncData(value: final report?) => _ProfitBody(report: report),
+        AsyncData(value: null) => ReportNote(s.reportNoDatabase),
+        AsyncError() => ReportNote(s.reportUnavailable, danger: true),
+        _ => const SizedBox(
+          height: 120,
+          child: Center(child: CircularProgressIndicator()),
+        ),
+      },
+    );
+  }
+}
+
+class _ProfitBody extends StatelessWidget {
+  const _ProfitBody({required this.report});
+
+  final ProfitReport report;
+
+  @override
+  Widget build(BuildContext context) {
+    final s = context.strings;
+    final margin = report.marginBp;
+    final coverage = report.coverageBp;
+
+    if (!report.hasAnyCost) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ReportNote(s.profitNothingCosted, key: const Key('profit-nothing-costed')),
+          if (report.pricesIncludeTax) _taxNote(context),
+        ],
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Wrap(
+          spacing: PosSpace.s28,
+          runSpacing: PosSpace.md,
+          children: [
+            _Figure(
+              key: const Key('profit-tile-profit'),
+              label: s.profitKpiProfit,
+              child: MonoAmount(
+                report.profit,
+                size: 22,
+                weight: FontWeight.w600,
+                color: report.profit.minor < 0 ? context.pos.danger : null,
+              ),
+            ),
+            _Figure(
+              key: const Key('profit-tile-margin'),
+              label: s.profitColumnMargin,
+              child: _bp(context, margin, size: 22),
+            ),
+            _Figure(
+              key: const Key('profit-tile-coverage'),
+              label: s.profitKpiCoverage,
+              note: coverage == null ? null : s.profitCoverageNote,
+              child: _bp(context, coverage, size: 22, share: true),
+            ),
+            if (report.uncostedRevenue.minor > 0)
+              _Figure(
+                key: const Key('profit-tile-uncosted'),
+                label: s.profitUncostedRevenue,
+                child: MonoAmount(
+                  report.uncostedRevenue,
+                  size: 22,
+                  weight: FontWeight.w600,
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: PosSpace.lg),
+        _Headings(
+          lead: s.exportColumnProduct,
+          columns: [
+            // Net where the prices held tax, so it is never mistaken for the
+            // gross Amount of the Items list above.
+            (
+              report.pricesIncludeTax
+                  ? s.profitColumnAmountNet
+                  : s.reportColumnAmount,
+              _money,
+            ),
+            (s.profitColumnCost, _money),
+            (s.profitColumnProfit, _money),
+            (s.profitColumnMargin, _count + 12),
+          ],
+        ),
+        for (final (i, product) in report.products.indexed)
+          _Line(
+            key: Key('reports-profit-$i'),
+            lead: Padding(
+              padding: const EdgeInsetsDirectional.only(
+                top: PosSpace.xs,
+                bottom: PosSpace.xs,
+                end: PosSpace.lg,
+              ),
+              child: Row(
+                children: [
+                  Flexible(child: _name(context, product.name)),
+                  if (!product.isCosted)
+                    Padding(
+                      padding: const EdgeInsetsDirectional.only(
+                        start: PosSpace.sm,
+                      ),
+                      child: Text(
+                        s.profitNoCostTag,
+                        key: Key('reports-profit-$i-uncosted'),
+                        style: PosText.ui(
+                          size: 11.5,
+                          color: context.pos.muted,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            cells: [
+              _moneyCell(context, product.revenue),
+              _moneyCell(context, product.cost),
+              _profitCell(context, product.profit),
+              _marginCell(context, product.marginBp),
+            ],
+          ),
+        _Line(
+          key: const Key('reports-profit-total'),
+          total: true,
+          lead: _name(context, s.reportAllItems, total: true),
+          cells: [
+            _moneyCell(context, report.revenue, total: true),
+            _moneyCell(context, report.cost, total: true),
+            _profitCell(context, report.profit, total: true),
+            _marginCell(context, margin, total: true),
+          ],
+        ),
+        if (report.pricesIncludeTax) _taxNote(context),
+        _caption(context, s.profitNote),
+      ],
+    );
+  }
+
+  Widget _taxNote(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(top: PosSpace.md),
+    child: Text(
+      context.strings.profitTaxNote,
+      key: const Key('profit-tax-note'),
+      style: PosText.ui(
+        size: 12.5,
+        weight: FontWeight.w600,
+        color: context.pos.warn,
+        height: 1.4,
+      ),
+    ),
+  );
+}
+
+/// A basis-point figure in the table's mono: a dash for none, danger for a
+/// loss.
+Widget _bp(
+  BuildContext context,
+  int? bp, {
+  double size = 13,
+  bool share = false,
+  bool bold = false,
+}) {
+  final pos = context.pos;
+  if (bp == null) {
+    return Text('—', style: PosText.mono(size: size, color: pos.muted));
+  }
+  return Text(
+    share ? formatShareBp(bp) : formatMarginBp(bp),
+    textDirection: TextDirection.ltr,
+    style: PosText.mono(
+      size: size,
+      weight: size > 14
+          ? FontWeight.w600
+          : (bold ? FontWeight.w700 : FontWeight.w400),
+      color: bp < 0 ? pos.danger : pos.ink,
+    ),
+  );
+}
+
+/// Profit, or a dash where there is no cost; a loss in the danger colour.
+_Cell _profitCell(BuildContext context, Money? value, {bool total = false}) => (
+  width: _money,
+  child: Align(
+    alignment: AlignmentDirectional.centerEnd,
+    child: value == null
+        ? Text('—', style: PosText.mono(size: 13, color: context.pos.muted))
+        : MonoAmount(
+            value,
+            weight: total ? FontWeight.w700 : FontWeight.w400,
+            color: value.minor < 0 ? context.pos.danger : null,
+          ),
+  ),
+);
+
+_Cell _marginCell(BuildContext context, int? bp, {bool total = false}) => (
+  width: _count + 12,
+  child: Align(
+    alignment: AlignmentDirectional.centerEnd,
+    child: _bp(context, bp, bold: total),
+  ),
+);
+
+/// A labelled figure above the table.
+class _Figure extends StatelessWidget {
+  const _Figure({required this.label, required this.child, this.note, super.key});
+
+  final String label;
+  final Widget child;
+  final String? note;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      MicroLabel(label),
+      const SizedBox(height: PosSpace.xs),
+      child,
+      if (note != null)
+        Text(note!, style: PosText.ui(size: 11.5, color: context.pos.muted)),
+    ],
+  );
 }
 
 // ── طرق الدفع ───────────────────────────────────────────────────────────────

@@ -35,6 +35,7 @@ import '../data/postgres/postgres_admin_repositories.dart';
 import '../data/postgres/postgres_backup_repository.dart';
 import '../data/postgres/postgres_catalog_admin_repository.dart';
 import '../data/postgres/postgres_catalog_repository.dart';
+import '../data/postgres/postgres_customers_repository.dart';
 import '../data/postgres/postgres_directory_repositories.dart';
 import '../data/postgres/postgres_discounts_repository.dart';
 import '../data/postgres/postgres_reason_repository.dart';
@@ -84,6 +85,7 @@ import '../features/licensing/domain/license.dart';
 import '../features/setup/application/setup_controller.dart';
 import '../domain/models/backup.dart';
 import '../domain/models/catalog.dart';
+import '../domain/models/customer.dart';
 import '../domain/models/dining_table.dart';
 import '../domain/models/ticket.dart';
 import '../domain/models/discount.dart';
@@ -662,10 +664,13 @@ final deviceTokenVaultProvider = Provider<DeviceTokenVault>(
 /// refresh, and the outbox drain. Null when there is nothing to talk to or
 /// nothing to say (unprovisioned).
 ///
-/// Under [SyncPolicy.automatic] a pass runs shortly after boot and then every
-/// three minutes; every settled sale also kicks one immediately. Under
-/// [SyncPolicy.manual] nothing runs on its own — the operator drains from the
-/// sync pill, and closing a shift offers to drain first.
+/// Under [SyncPolicy.automatic] a pass runs shortly after boot and then on the
+/// cadence [SyncSchedule] sets — four hours when everything is through, thirty
+/// minutes while anything is still queued or the platform is unreachable.
+/// Every settled sale also kicks one immediately, which is what keeps a busy
+/// till's money moving between the slow ticks. Under [SyncPolicy.manual]
+/// nothing runs on its own — the operator drains from the sync pill, and
+/// closing a shift offers to drain first.
 final Provider<CloudSync?> cloudSyncProvider = Provider<CloudSync?>((ref) {
   final config = ref.watch(deploymentProvider);
   final api = ref.watch(posCloudApiProvider);
@@ -699,15 +704,23 @@ final Provider<CloudSync?> cloudSyncProvider = Provider<CloudSync?>((ref) {
   );
 
   if (config.syncPolicy == SyncPolicy.automatic) {
-    final first = Timer(const Duration(seconds: 5), sync.kick);
-    final periodic = Timer.periodic(
-      const Duration(minutes: 3),
-      (_) => sync.kick(),
-    );
-    ref.onDispose(() {
-      first.cancel();
-      periodic.cancel();
-    });
+    // Self-rescheduling rather than `Timer.periodic`: the gap to the next pass
+    // is decided by how the last one went, which a fixed period cannot express.
+    // Each pass is AWAITED before the next is scheduled, so a slow drain can
+    // never stack passes on top of each other — the old periodic timer could,
+    // and `CloudSync.run` had to serialise them itself.
+    Timer? next;
+    void schedule(Duration delay) {
+      next = Timer(delay, () async {
+        if (!alive) return;
+        final outcome = await sync.run();
+        if (!alive) return;
+        schedule(SyncSchedule.after(outcome));
+      });
+    }
+
+    schedule(const Duration(seconds: 5));
+    ref.onDispose(() => next?.cancel());
   }
   return sync;
 });
@@ -1405,6 +1418,14 @@ class TicketController extends Notifier<Ticket> {
     table.label,
     guests: table.seats,
   );
+
+  /// Who the food is for (POS-BE-014), or null to take them off again.
+  ///
+  /// Never refuses and never touches the totals — a customer is who, not what.
+  /// A cashier who picked the wrong person simply opens the dialog again.
+  void setCustomer(PosCustomer? customer) => state = customer == null
+      ? TicketEngine.detachCustomer(state)
+      : TicketEngine.attachCustomer(state, customer);
 
   bool addTender({
     required int typeId,
@@ -2615,6 +2636,23 @@ final serviceChargesAllProvider = FutureProvider<List<ServiceCharge>>(
 ///
 /// Read on the till's own credential — a cashier needs the list to take money,
 /// and a back-office password at the counter is not a thing that can exist.
+/// Who the food is for (POS-BE-014). Searched locally, always — see
+/// [CustomersRepository].
+final customersRepositoryProvider = Provider<CustomersRepository>((ref) {
+  final config = ref.watch(deploymentProvider);
+  final context = ref.watch(posWriteContextProvider);
+  if (context == null || PosDatabase.hostFor(config) == null) {
+    return const UnconfiguredCustomersRepository();
+  }
+  return PostgresCustomersRepository(
+    database: ref.watch(posDatabaseProvider),
+    config: config,
+    restaurantId: context.restaurantId,
+    branchId: context.branchId,
+    syncsToPlatform: config.mode.syncsSalesToPlatform,
+  );
+});
+
 final tenderTypesRepositoryProvider = Provider<TenderTypesRepository>((ref) {
   final config = ref.watch(deploymentProvider);
   final context = ref.watch(posWriteContextProvider);

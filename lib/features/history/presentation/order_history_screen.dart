@@ -724,6 +724,13 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
         Expanded(child: MicroLabel(second)),
         const SizedBox(width: PosSpace.sm),
         Expanded(child: MicroLabel(third)),
+        // Who the sale was for. Not on Cancelled orders, whose three shared
+        // columns are who voided it, when and why — a customer there would
+        // squeeze the reason, which is what that list is read for.
+        if (_Cols.hasCustomer(widget.preset)) ...[
+          const SizedBox(width: PosSpace.sm),
+          Expanded(child: MicroLabel(strings.customersColumnCustomer)),
+        ],
         const SizedBox(width: PosSpace.sm),
         SizedBox(
           width: _Cols.total,
@@ -774,7 +781,20 @@ abstract final class _Cols {
   /// [shared], and the padding and gaps between. Arithmetic over the widths
   /// above rather than a number, so widening one cannot leave this stale.
   static const minTable =
-      _common + status + PosSpace.sm + payment + PosSpace.md;
+      _common +
+      (shared + PosSpace.sm) +
+      status +
+      PosSpace.sm +
+      payment +
+      PosSpace.md;
+
+  /// Whether a list draws the Customer column — every list but Cancelled
+  /// orders. The fourth of the columns that share what is left, so the table's
+  /// minimum grows by one [shared] and a gap.
+  static bool hasCustomer(HistoryPreset preset) => switch (preset) {
+    HistoryPreset.all || HistoryPreset.invoices => true,
+    HistoryPreset.voided => false,
+  };
 
   static const minVoided = _common + voidedAt + PosSpace.md;
 
@@ -1011,6 +1031,21 @@ class _OrderRow extends StatelessWidget {
         Expanded(child: second),
         const SizedBox(width: PosSpace.sm),
         Expanded(child: third),
+        if (_Cols.hasCustomer(preset)) ...[
+          const SizedBox(width: PosSpace.sm),
+          Expanded(
+            child: Text(
+              order.customerName ?? '—',
+              key: Key('history-customer-${order.id}'),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: PosText.ui(
+                size: 12.5,
+                color: order.hasCustomer ? pos.body : pos.muted,
+              ),
+            ),
+          ),
+        ],
         const SizedBox(width: PosSpace.sm),
         SizedBox(
           width: _Cols.total,

@@ -77,6 +77,71 @@ Five substantially done, three partial, seven absent.
 > `backup.on_day_close`). Still absent: Dashboard, Reports beyond X/Z,
 > Customers, Accounting lite.
 
+> **Updated 4 October 2026.** This table was not re-scored row by row; what
+> follows is only what was checked against the code, and it corrects three
+> lines above.
+>
+> * **Combos were sellable but not authorable.** The "Products & menu" row
+>   counts combos as done; until this date the till could ring one up
+>   (`ComboSheet`, migration 18) and nothing in the app could create one.
+>   Management › Menu › **Combos** now lists, creates and edits them: groups,
+>   items with optional upgrade prices, min/max choices, category, SKU. Offline
+>   only, `catalog.manage`, audited as `combo.saved`. Retired with a switch,
+>   never deleted — an order line names its combo.
+> * **The chain in §3 is closed at the report.** Purchases → receiving (moving
+>   average) → every sale of a stocked item records that cost on its stock
+>   movement → **Reports › Items › Profit**, with the same figures as a second
+>   sheet of the Items Excel export. "No cost price" in the Products row is
+>   still true of the *product*: cost lives on the stock ledger, not on a
+>   column of `pos_products`.
+> * **Dashboard and Reports are no longer "absent".** Home shows the open
+>   day's net sales, orders and average against the day before; Reports has the
+>   business summary and the Sales, Items, Payments, Branches and Employees
+>   breakdowns. (Depth beyond that was not re-checked.)
+>
+> **What the profit figures do not claim** — the page and the file say it too:
+>
+> * Only a **stocked** item is costed. There is no recipe model, so dishes and
+>   combos show revenue and no cost; the report prints how much of the revenue
+>   it covers (`coverageBp`) and the margin is on the costed part alone.
+> * A sale at a carrying cost of **zero** is *not costed*, not free: zero is how
+>   "never received" looks on the ledger. The Stock pane draws it as a dash and
+>   a "no cost" tag for the same reason.
+> * A **refund returns the revenue and not the cost** — no stock movement is
+>   written for one — so a plate refunded before it was made reads as a loss.
+> * On a **tax-inclusive** restaurant the lines do not store their tax, so it
+>   is taken out of the revenue **order by order**: each line is scaled by its
+>   order's recorded net-to-gross ratio (`pos_order_taxes`). Exact for an order
+>   at one rate; an **estimate** for an order that mixes rates (a zero-rated
+>   item beside a 14% one is shared out at the order's blend); an order with no
+>   tax rows is left whole. The page and the file say so, and head the column
+>   "Amount, no tax" so it is not read against the Items list, which is gross.
+>   The mode read is the restaurant's *current* one — orders do not record the
+>   mode they were taxed in.
+> * Revenue is the lines' own, before order-level discounts, as the Items list
+>   has it.
+>
+> * **An item can be given its first cost by hand.** Stock pane › Set cost, for
+>   an item that has stock and no cost: an `opening` movement of quantity zero,
+>   audited, `purchase.manage`. Not a revaluation — it refuses an item that
+>   already has a cost.
+>
+> * **Customers has a pane.** People › Customers lists everyone on file with
+>   orders, what they kept (net of refunds) and when they last bought, searchable
+>   by name or phone; a row opens their contact details, average order and recent
+>   orders. Read-only — customers are added at the counter, and the phone is their
+>   identity — and **this branch's sales only**, settled ones. Gated on
+>   `reports.view`, because it sets a name and a phone beside what somebody spends.
+>
+> * **The customer is on the sale.** The sales list has a Customer column (not on
+>   Cancelled orders), its search matches a customer's name and — from seven
+>   digits — their phone, the order detail shows name, phone and email when the
+>   sale had one, and the sales Excel export gains Customer and Phone columns
+>   after the page's own, so Total does not move.
+>
+> Still absent from the code as checked: Accounting lite.
+> Expenses, Terminals and the rest were not re-scored here.
+
 ---
 
 ## 3. Why the absences are one absence

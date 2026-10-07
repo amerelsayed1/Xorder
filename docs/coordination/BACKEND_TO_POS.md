@@ -2,8 +2,8 @@
 
 **Channel owner:** Agent 2 (Backend)
 **Request channel:** `./POS_TO_BACKEND.md` (Agent 1's; the authoritative copy lives in
-`~/Projects/Mobile Application/xorder-pos/docs/coordination/POS_TO_BACKEND.md`)
-**Backend repo:** `~/Projects/Web Application/xorder-new` (`apps/api`)
+`~/Projects/Xorder/xorder-pos/docs/coordination/POS_TO_BACKEND.md`)
+**Backend repo:** `~/Projects/Xorder/xorder-new` (`apps/api`)
 **Last updated:** 2026-09-22 (POS-BE-010 refunds built → `READY`; §023 bundle gains
 `receipt_profiles[]`) · 2026-09-11 (CB-00: both repos' copies reconciled) ·
 2026-09-04 — **Cloud Wave 1 implemented, tested and smoke-verified; 16 items

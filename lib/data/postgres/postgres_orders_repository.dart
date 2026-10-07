@@ -103,18 +103,24 @@ class PostgresOrdersRepository implements OrdersRepository {
             client_transaction_id, restaurant_id, branch_id, terminal_id,
             invoice_number, order_type, table_id, table_label, guest_count,
             currency, exponent, subtotal_minor, discount_minor, service_minor,
-            vat_minor, total_minor, occurred_at, shift_id, served_by
+            vat_minor, total_minor, occurred_at, shift_id, served_by,
+            customer_id
           ) VALUES (
             @txn, @restaurant, @branch, @terminal,
             @invoice, @orderType, @tableId, @tableLabel, @guests,
             @currency, @exponent, @subtotal, @discount, @service,
-            @vat, @total, @occurredAt, @shift, @servedBy
+            @vat, @total, @occurredAt, @shift, @servedBy,
+            @customer
           )
           ON CONFLICT (restaurant_id, client_transaction_id) DO NOTHING
           RETURNING id, invoice_number
         '''),
         parameters: {
           'txn': ticket.id,
+          // Who the food is for (POS-BE-014), when anybody said. Null on most
+          // sales and that is the normal case — somebody buys a coffee and
+          // nobody asks their name.
+          'customer': ticket.customer?.id,
           'restaurant': _context.restaurantId,
           'branch': _context.branchId,
           'terminal': _context.terminalId,
@@ -652,13 +658,39 @@ class PostgresOrdersRepository implements OrdersRepository {
     }
   }
 
+  /// **The ledger records what was APPLIED, never what was tendered.**
+  ///
+  /// `payment_status.dart` states the rule and the reason: change is a till
+  /// concern and never reaches the ledger, so "paid more than the total" is
+  /// not a state a correct ledger can be in — and it warned this would break
+  /// "the day somebody wrote tendered by mistake". That day was 27 Sep 2026.
+  /// `BR8-2026-000007`: a 360.00 bill with 380.00 of cash on it, uploaded to
+  /// the platform as a 380.00 payment against a 360.00 sale.
+  ///
+  /// The ticket is right to hold the tendered figure — `TicketTotals.change`
+  /// is derived from it and the slip prints it. It is only the row that must
+  /// be capped, which is what keeps both true at once: the customer's receipt
+  /// says what they handed over and what came back, and the ledger says what
+  /// the sale took.
+  ///
+  /// Capped in order and against what is still owed, so a split tender applies
+  /// each one in turn and only the last can be short. A tender that lands with
+  /// nothing left owing writes no row at all — it applied nothing.
   Future<void> _insertPayments(
     TxSession tx,
     int orderId,
     Ticket ticket,
     DateTime occurredAt,
   ) async {
+    var remaining = ticket.totals.total;
+
     for (final tender in ticket.tenders) {
+      if (remaining.isZero || remaining.isNegative) break;
+
+      final applied = tender.amount.minor > remaining.minor
+          ? remaining
+          : tender.amount;
+      remaining = remaining - applied;
       await tx.execute(
         Sql.named('''
           INSERT INTO pos_order_payments (
@@ -671,7 +703,7 @@ class PostgresOrdersRepository implements OrdersRepository {
           'order': orderId,
           'typeId': tender.typeId,
           'label': tender.label,
-          'amount': tender.amount.minor,
+          'amount': applied.minor,
           'reference': tender.reference,
           // Snapshotted with the money. See [Tender.countsAsCash].
           'cash': tender.countsAsCash,

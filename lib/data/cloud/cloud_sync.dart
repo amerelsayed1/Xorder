@@ -17,9 +17,30 @@ class SyncOutcome {
     required this.drain,
     this.reseeded = false,
     this.deviceTokenRejected = false,
+    this.heartbeatOk = false,
   });
 
   final DrainReport drain;
+
+  /// The platform answered the heartbeat. False when it could not be reached
+  /// at all, which is the difference between "nothing to send" and "nobody
+  /// listening" — [SyncSchedule] needs to tell those apart.
+  final bool heartbeatOk;
+
+  /// Everything this till had to say has been said, and the platform was
+  /// there to hear it.
+  ///
+  /// **Quarantined rows do not count against this.** A quarantined record is
+  /// held for a person (POS-BE-019: the record itself is at fault, retrying
+  /// will never change the answer), so letting one hold the till at the fast
+  /// cadence would mean a single bad row polling the platform every half hour
+  /// until somebody noticed — forever, on a till that is otherwise perfectly
+  /// in sync.
+  bool get settled =>
+      heartbeatOk &&
+      !deviceTokenRejected &&
+      !drain.wentOffline &&
+      drain.deferred == 0;
 
   /// The platform's `config_version` moved past ours, so the bundle was
   /// re-fetched and re-seeded — catalog, staff, floor, money rules.
@@ -29,6 +50,35 @@ class SyncOutcome {
   /// discarded over a credential — but the till has to be re-paired, and the
   /// UI must say so rather than showing an eternally-stuck pill.
   final bool deviceTokenRejected;
+}
+
+/// When the next pass runs.
+///
+/// **Owner decision, 27 Sep 2026: every four hours, and every thirty minutes
+/// until everything is through.** It replaced a flat three-minute tick that
+/// ran whether or not there was anything to say and whether or not the last
+/// pass had worked.
+///
+/// The cost was named at the time and accepted: a sale now reaches the
+/// dashboard up to four hours after it is rung up, a menu change made in the
+/// dashboard reaches the till up to four hours later, and the fleet registry
+/// sees a healthy till as four hours stale. What buys that back is the retry —
+/// a till that is offline, or that still has money queued, does not wait four
+/// hours to try again.
+///
+/// Pure, and a class rather than two constants, because the rule is the thing
+/// worth a test: "retry until it is all through" is only true if [SyncOutcome]
+/// answers honestly about what is still pending.
+abstract final class SyncSchedule {
+  /// Nothing pending and the platform is answering.
+  static const idle = Duration(hours: 4);
+
+  /// Something is still queued, or nobody answered.
+  static const retry = Duration(minutes: 30);
+
+  /// How long after [outcome] the next pass should run.
+  static Duration after(SyncOutcome outcome) =>
+      outcome.settled ? idle : retry;
 }
 
 /// The cloud terminal's background conversation with the platform.
@@ -101,6 +151,7 @@ class CloudSync {
       drain: drain,
       reseeded: reseeded,
       deviceTokenRejected: tokenRejected,
+      heartbeatOk: heartbeat.ok,
     );
     if (reseeded || drain.delivered > 0 || tokenRejected) {
       onChanged?.call(outcome);

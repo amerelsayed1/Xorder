@@ -6,6 +6,7 @@ import 'package:xorder_pos/app/reports_providers.dart';
 import 'package:xorder_pos/core/money/money.dart';
 import 'package:xorder_pos/domain/models/finance_report.dart';
 import 'package:xorder_pos/domain/models/permissions.dart';
+import 'package:xorder_pos/domain/models/profit_report.dart';
 import 'package:xorder_pos/domain/models/sales_report.dart';
 import 'package:xorder_pos/domain/repositories/repositories.dart';
 import 'package:xorder_pos/features/admin/application/admin_session.dart';
@@ -267,4 +268,8 @@ class _Recording implements ReportsRepository {
     filters.add(filter);
     return PaymentLedger(filter: filter, entries: const [], truncated: false);
   }
+
+  @override
+  Future<ProfitReport> profit(ReportFilter filter) =>
+      throw UnimplementedError('the gate test asks nothing of profit');
 }

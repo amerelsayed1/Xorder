@@ -108,6 +108,11 @@ Uint8List salesWorkbook({
       '${s.orderColumnTotal} (${summary.total.currency})',
       s.orderColumnStatus,
       s.orderColumnPayment,
+      // After the page's own columns rather than where the screen has them, so
+      // the Total column the figures sit under does not move: a file somebody
+      // has built a formula over should not change under them.
+      s.customersColumnCustomer,
+      s.customersPhone,
     ]);
   for (final order in rows) {
     sheet.row([
@@ -121,6 +126,8 @@ Uint8List salesWorkbook({
       MoneyCell(order.total),
       TextCell(order.status.label(s)),
       TextCell(order.paymentStatus.label(s)),
+      _text(order.customerName),
+      _text(order.customerPhone),
     ]);
   }
 

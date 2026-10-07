@@ -19,6 +19,7 @@ import 'package:xorder_pos/domain/models/order_record.dart';
 import 'package:xorder_pos/domain/models/permissions.dart';
 import 'package:xorder_pos/domain/models/refund.dart';
 import 'package:xorder_pos/domain/models/finance_report.dart';
+import 'package:xorder_pos/domain/models/profit_report.dart';
 import 'package:xorder_pos/domain/models/sales_report.dart';
 import 'package:xorder_pos/domain/models/tender_method.dart';
 import 'package:xorder_pos/domain/models/ticket.dart';
@@ -266,6 +267,10 @@ class _Fixed implements ReportsRepository {
   @override
   Future<PaymentLedger> payments(ReportFilter filter, {int limit = 500}) =>
       throw UnimplementedError('the exports write no payment ledger');
+
+  @override
+  Future<ProfitReport> profit(ReportFilter filter) =>
+      throw UnimplementedError('the exports write no profit');
 }
 
 class _InAdminMode extends AdminSessionController {
@@ -362,6 +367,10 @@ final _orders = [
       servedByName: 'Amer M.',
       terminalName: 'Counter',
       tenders: const [OrderRecordTender(tenderTypeId: 1, label: 'Cash')],
+      // Every third sale is for somebody, so the file has both a customer and a
+      // blank to get right.
+      customerName: i % 3 == 0 ? 'Mona Fathy' : null,
+      customerPhone: i % 3 == 0 ? '01012345678' : null,
     ),
 ];
 
@@ -666,6 +675,9 @@ void main() {
         '${s.orderColumnTotal} (EGP)',
         s.orderColumnStatus,
         s.orderColumnPayment,
+        // After the page's own columns, so Total does not move.
+        s.customersColumnCustomer,
+        s.customersPhone,
       ]);
 
       // Every sale, newest first as the list pages them, each cell the
@@ -688,6 +700,8 @@ void main() {
             order.total.minor,
             order.status.label(s),
             order.paymentStatus.label(s),
+            order.customerName,
+            order.customerPhone,
           ],
           reason: order.invoiceNumber,
         );

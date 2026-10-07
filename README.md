@@ -79,19 +79,22 @@ says so on the slip.
 
 ## Backend status — read this before wiring anything up
 
-Every backend contract this app needs is **`PROPOSED`**. Nothing is `READY`.
+The contracts the till needs are tracked in `docs/coordination/BACKEND_TO_POS.md`;
+the table at its top is the source of truth, and this paragraph can go stale.
+As of that table: the orders endpoint with server pricing and idempotency (`POS-BE-006`,
+`-007`), the per-branch invoice sequence (`-008`), shifts and the terminal
+registry (`-009`), money configuration (`-013`), provisioning with pairing-code
+claim and the bootstrap bundle (`-023`) and the POS PIN (`-024`) are `READY`.
+The branch-server and upstream-sync contracts (`-017`, `-018`, `-021`) and the
+setup contracts (`-025` to `-027`) are `APPROVED`.
 
-The till therefore talks to the branch server's PostgreSQL directly rather than
-over HTTP — see *Where the till's data comes from*. It used to bind every
-repository to a `Fake` instead, which is why a first run showed a restaurant
-nobody owns. The UI depends only on the interfaces in
-`lib/domain/repositories/`, so swapping in an `Api…` implementation as each
-contract reaches `READY` is a one-line change in `lib/app/providers.dart` with no
-widget changes.
-
-The blocking request is **`POS-BE-006`** (authenticated, server-priced order
-creation) together with **`POS-BE-007`** (idempotency). Until they land, the till
-can price and settle a ticket locally but has nowhere authoritative to send it.
+The till still talks to the branch server's PostgreSQL directly rather than over
+HTTP for everything except the cloud path — see *Where the till's data comes
+from*. It used to bind every repository to a `Fake` instead, which is why a
+first run showed a restaurant nobody owns. The UI depends only on the interfaces
+in `lib/domain/repositories/`, so swapping in an `Api…` implementation as a
+contract reaches `READY` is a one-line change in `lib/app/providers.dart` with
+no widget changes.
 
 ## Deployment modes
 
@@ -116,15 +119,21 @@ Chosen in the setup wizard. The honest reason to pick a branch server is
 provide — not "offline support", which it already does. Full reasoning and the
 costs in `docs/pos/08-deployment-modes.md`.
 
-**Phase 1 builds the cloud path only.** An unconfigured terminal boots to a
-logo-only welcome screen; **Ctrl+Shift+S** (or ⌘+Shift+S on macOS) opens the
-Setup Wizard — a chord rather than a button, because an unconfigured till
-stands in a public room. The wizard's first step chooses the setup type: Cloud
-is selectable, Offline is visible but dimmed *COMING SOON* until its phase
-lands. Cloud setup is slug + admin credentials: **Connect** pulls the tenant's
-configuration (name, branches) and the following steps display it; the licence
-is not a wizard step on this path — it arrives inside the bootstrap bundle at
-registration and installs itself.
+**Both paths are built.** An unconfigured terminal boots to a logo-only welcome
+screen; **Ctrl+Shift+S** (or ⌘+Shift+S on macOS) opens the Setup Wizard — a chord
+rather than a button, because an unconfigured till stands in a public room. It
+starts with the licence, which says which modes the customer bought; the setup
+type step offers Cloud and Offline, and dims one only when the *licence* does not
+cover it.
+
+* **Cloud** is short: slug and administrator credentials (or a pairing code),
+  then **Connect** pulls the tenant's configuration and the terminal registers.
+  The licence arrives again inside the bootstrap bundle and installs itself.
+* **Offline** is the long path, because there is no platform to be told
+  anything: deployment and database, the first administrator, branch, terminal,
+  hardware, money rules and the menu. The wizard builds the branch database
+  itself — create, migrate, grant — and discards the administrator password
+  afterwards; only the till's is stored.
 
 ## Licensing
 
@@ -179,9 +188,9 @@ sitting on a machine in a public room being able to reprice the menu and reset
 PINs, and not.
 
 **Management** is at `/management`, reached from the start screen and gated on a
-PIN that holds `staff.manage`. Its strings are English-only for now, collected
-in `lib/features/admin/presentation/admin_messages.dart` so that moving them
-into `AppStrings` is one pass rather than forty.
+PIN that holds `staff.manage`. Its refusals and audit labels are collected in
+`lib/features/admin/presentation/admin_messages.dart` and its strings are in
+`AppStrings`, English and Arabic.
 
 ## Not built yet
 
@@ -192,7 +201,8 @@ submission client (everything else about e-receipts is built — see below).
 Refunds, discounts, price override, catalogue administration, order history,
 combos, per-branch pricing, the cash drawer and business day, menu import from
 a spreadsheet and the permission model have all landed since this list was last
-correct. Arabic covers Management too: `AppStrings` is abstract, so a string
+correct — and since then **combo authoring** (Management › Menu › Combos) and
+**profit** (below). Arabic covers Management too: `AppStrings` is abstract, so a string
 that exists in English and not in Arabic does not compile.
 
 **The cloud path is built and verified end-to-end (2026-09-04).** A cloud
@@ -211,12 +221,56 @@ See `lib/data/cloud/` and `docs/coordination/BACKEND_TO_POS.md`.
 receipt output remains Latin-only because ESC/POS Arabic code pages vary by
 printer model.
 
-**Sign-in happens at the drawer, not at the door.** Opening a shift asks for a
-PIN and records who gave it, so the person answerable for the cash is on the
-record. `SessionRepository.current()` still returns the branch's first active
-member of staff for the top bar, so the *displayed* name is not necessarily the
-person holding the till — but the shift, and therefore the money, is attributed
-correctly. A dedicated sign-in screen is still `POS-BE-024`.
+**Sign-in is by name and PIN.** The lock screen asks for both: a PIN alone is
+four digits that get shared and watched over a shoulder, and a till is shared, so
+the person coming back to it is often not the one who locked it. Whoever signs in
+becomes `signedInStaffProvider` — the name on the top bar and the receipt, and
+the capabilities every check resolves against — and opening a shift records who
+gave the PIN, so the person answerable for the cash is on the record. The PIN is
+PBKDF2-HMAC-SHA256 (`POS-BE-024`), verified against the branch database, so it
+works offline.
+
+## Combos and profit
+
+**Combos** are meals at one price, built from real menu items. Management ›
+Menu › **Combos** creates and edits them — choices ("Choose a drink"), the items
+in each, an optional upgrade price per item, min and max, category, SKU. A combo
+is retired with a switch, never deleted: an order line names it. Offline tills
+only; on a cloud till the platform authors the catalogue and the sync would
+erase a local one.
+
+**Profit** is on Reports › Items, under the list, and is the second sheet of that
+page's Excel export. It reads what each stocked item cost when it was sold (the
+moving average from purchasing, recorded on the sale's stock movement) against
+what it sold for. It is deliberately modest about what it knows:
+
+* only **stocked** items have a cost — a dish or a combo shows revenue and no
+  cost, and the page says how much of the revenue it covers;
+* a sale at a cost of **zero** counts as *not costed*, not free (the Stock pane
+  shows the same thing as a dash and a "no cost" tag);
+* a **refund** takes the revenue back and leaves the cost spent;
+* on a **tax-inclusive** restaurant the tax is taken out of the revenue, order
+  by order, from the tax each order recorded — exact for an order at one rate, an
+  estimate where rates are mixed — and the column is headed "Amount, no tax"; the
+  page says so.
+
+An item with stock and no cost can be given its first cost from the **Stock
+pane** ("Set cost"): recorded as an `opening` movement of quantity zero, audited,
+and only for an item that has none — changing an existing cost is a revaluation,
+which this does not do. Sales already made stay uncosted; it prices what is sold
+from then on.
+
+Design and the reasoning: `docs/pos/16-back-office-scope.md` (§3 and its
+4 October update) and `docs/pos/14-progress.md` §6.
+
+## Customers
+
+**People › Customers** lists everyone on file with their orders, what they have
+kept (net of refunds) and when they last bought, searchable by name or phone; a
+row opens their contact details and recent orders. It is read-only — a customer
+is added at the counter when an order is taken for them, and the phone is their
+identity — and it shows **this branch's sales only**. It needs `reports.view`,
+because it sets a name and a phone number beside what somebody spends.
 
 ## Shifts and the drawer
 
@@ -394,6 +448,21 @@ Point them at a database to run the rest:
 POS_PG_HOST=127.0.0.1 POS_PG_USER=pos_till POS_PG_PASSWORD=… flutter test
 ```
 
+No PostgreSQL to hand? A throwaway container is enough, and the fixture's
+defaults (user `pos_till`, password `postgres`) match it:
+
+```bash
+docker run -d --rm --name xorder-pos-test-pg -p 127.0.0.1:5544:5432 \
+  -e POSTGRES_USER=pos_till -e POSTGRES_PASSWORD=postgres postgres:16-alpine
+POS_PG_HOST=127.0.0.1 POS_PG_PORT=5544 flutter test test/data/reports_test.dart
+docker stop xorder-pos-test-pg
+```
+
+Two things a new database suite trips over: an option `RESTRICT`s deleting its
+product, so a suite that wipes restaurants must `DELETE FROM pos_combos` first;
+and the audit ledger is append-only, so a test that reads it must filter by
+restaurant, because earlier tests' rows are still there.
+
 Each suite creates and owns its own `xorder_pos_<suite>` database. That is not
 tidiness: two suites truncating one database produced a duplicate invoice number
 from a test artefact rather than a real race, and a flaky money test is worse
@@ -414,9 +483,7 @@ then checks the branch ledger against the receipt on screen. See
 `integration_test/README.md` for why it needs a device and what it deliberately
 does not cover.
 
-Terminal provisioning is built against `FakeProvisioningRepository`: the wizard
-offers both paths — claim a dashboard-issued pairing code, or set the till up by
-hand — but no dashboard screen issues a real code and no endpoint redeems one
-yet. Both halves are `POS-BE-023`. Offline cashier sign-in by PIN
-(`SessionRepository.verifyPin`) still has no credential behind it; that is
-`POS-BE-024`.
+Terminal provisioning has two real implementations: `CloudProvisioningRepository`
+(claim a dashboard-issued pairing code, receive the bootstrap bundle — `POS-BE-023`)
+and `PostgresProvisioningRepository` (register the terminal against the branch
+database, offline). `FakeProvisioningRepository` is for tests.

@@ -1,6 +1,8 @@
 import '../../core/money/quantity.dart';
 import '../models/backup.dart';
 import '../models/catalog.dart';
+import '../models/combo_draft.dart';
+import '../services/stock_costing.dart' show OpeningCostProblem;
 import '../models/option_group.dart';
 import '../models/purchase_order.dart';
 import '../models/tax.dart';
@@ -197,6 +199,26 @@ class CatalogRefused extends AdminRefusal {
   const CatalogRefused(this.problem);
 
   final CatalogProblem problem;
+}
+
+/// An opening cost cannot be set — [OpeningCostProblem] says why.
+///
+/// Its own refusal, like [ComboRefused], so each language words it and a reason
+/// added to the enum is a compile error in the message table.
+class OpeningCostRefused extends AdminRefusal {
+  const OpeningCostRefused(this.problem);
+
+  final OpeningCostProblem problem;
+}
+
+/// A combo broke one of [ComboRules] — [ComboProblem] says which.
+///
+/// Its own refusal, like [OptionGroupRefused], so each language words it and a
+/// problem added to the enum is a compile error in the message table.
+class ComboRefused extends AdminRefusal {
+  const ComboRefused(this.problem);
+
+  final ComboProblem problem;
 }
 
 /// A size or extra, or an item's list of them, broke one of the option-group
@@ -429,6 +451,7 @@ abstract final class AuditAction {
   static const entityTenderType = 'tender_type';
   static const entityOrderType = 'order_type';
   static const entityTaxGroup = 'tax_group';
+  static const entityCombo = 'combo';
   static const entityServiceCharge = 'service_charge';
   static const entityUnit = 'unit';
   static const entitySupplier = 'supplier';
@@ -444,6 +467,11 @@ abstract final class AuditAction {
   /// Goods booked in. Its own action because it is the moment a cost price
   /// changes, and every margin afterwards is measured against it.
   static const stockReceived = 'stock.received';
+
+  /// An item's first cost set by hand. Its own action for the reason receiving
+  /// is one: it is the moment a cost price appears, and every margin measured
+  /// against it afterwards asks who said so.
+  static const stockCostSet = 'stock.cost_set';
 
   /// An invoice entered, corrected or voided. Its own action because it is the
   /// moment a debt comes into existence, and a voided invoice is the shape a
@@ -478,6 +506,11 @@ abstract final class AuditAction {
   /// changing a rate changes what every product in that group costs, and a
   /// filing is reconciled against the rate that was charged on the day.
   static const taxGroupSaved = 'tax_group.saved';
+
+  /// A combo made, edited, repriced or retired. Its own action for the reason
+  /// a product reprice has one: its price is what every future meal costs, and
+  /// "who made the meal deal 85" is what a margin review asks.
+  static const comboSaved = 'combo.saved';
 
   /// An order type renamed, retired, or its requirements changed (§31). Its own
   /// action because turning off *requires a table* changes what the floor plan
@@ -731,6 +764,32 @@ abstract interface class CatalogAdminRepository {
   Future<AdminResult<List<OptionGroupRef>>> setProductOptionGroups(
     int productId,
     List<OptionGroupRef> groups, {
+    required PosStaff by,
+  });
+
+  // ── combos ────────────────────────────────────────────────────────────────
+
+  /// Every combo, retired ones included, as the editor holds them.
+  ///
+  /// Not the till's list: [CatalogRepository.load] feeds a cashier's grid and
+  /// a manager needs to find the combo they switched off last month.
+  Future<List<ComboDraft>> combos();
+
+  /// Create or update a combo with its groups and options. Id `0` is new.
+  ///
+  /// **One transaction, and the whole tree.** Groups and options are matched
+  /// by id: updated in place, added, or removed — never recreated, so a group
+  /// keeps its id across a save. A product that is not this restaurant's is
+  /// refused rather than written.
+  ///
+  /// There is no delete: retire it with `isAvailable`. An order line names the
+  /// combo and a reprint must still say what was sold.
+  ///
+  /// Gated on `catalog.manage`, like the menu it appears on, and offline only
+  /// for the same reason: on a cloud till the bootstrap seeder rewrites the
+  /// catalogue.
+  Future<AdminResult<ComboDraft>> saveCombo(
+    ComboDraft combo, {
     required PosStaff by,
   });
 }

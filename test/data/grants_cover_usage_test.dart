@@ -72,11 +72,19 @@ void main() {
     'postgres_business_day_repository.dart',
     'postgres_cash_movements_repository.dart',
     'postgres_order_history_repository.dart',
+    // Who the food is for (POS-BE-014). On the till's credential because a
+    // cashier creates one at the counter during an outage — the one piece of
+    // the restaurant's own data the till WRITES rather than displays.
+    'postgres_customers_repository.dart',
     'postgres_branch_sales_repository.dart',
     // Wave G's reports. On the till's credential, as the branch view it grew
     // from: `reports.view` is a capability of people at the counter, and the
     // numbers are the same rows the till already reads.
     'postgres_reports_repository.dart',
+    // The customer directory, read the way the reports are: the till holds
+    // SELECT on pos_customers, pos_orders and pos_refunds, and the pane asks
+    // `reports.view` before it reads a name beside what somebody spends.
+    'postgres_customer_directory_repository.dart',
     'postgres_eta_queue_repository.dart',
     // Receipts the printer would not take. Written at the counter on the till's
     // own credential, because a printer that is off is a till problem and not a
