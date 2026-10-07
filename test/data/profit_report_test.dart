@@ -465,9 +465,14 @@ void main() {
           },
         );
 
+    // Where the till prices from — the payload the Taxes pane saves — not
+    // `pos_restaurants.tax_mode`, which nothing writes.
     Future<void> inclusive() => db.query(
       pg.config,
-      "UPDATE pos_restaurants SET tax_mode = 'inclusive' WHERE id = @r",
+      'INSERT INTO pos_money_config (restaurant_id, payload) '
+      "VALUES (@r, '{\"tax_mode\": \"inclusive\"}'::jsonb) "
+      'ON CONFLICT (restaurant_id) DO UPDATE '
+      "SET payload = pos_money_config.payload || '{\"tax_mode\": \"inclusive\"}'::jsonb",
       parameters: {'r': restaurantId},
     );
 
@@ -577,7 +582,10 @@ void main() {
       await seed();
       await db.query(
         pg.config,
-        "UPDATE pos_restaurants SET tax_mode = 'inclusive' WHERE id = @r",
+        'INSERT INTO pos_money_config (restaurant_id, payload) '
+        "VALUES (@r, '{\"tax_mode\": \"inclusive\"}'::jsonb) "
+        'ON CONFLICT (restaurant_id) DO UPDATE '
+        "SET payload = pos_money_config.payload || '{\"tax_mode\": \"inclusive\"}'::jsonb",
         parameters: {'r': restaurantId},
       );
 
