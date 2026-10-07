@@ -217,6 +217,11 @@ class PosCloudApi {
   Future<CloudReply> heartbeat(Map<String, Object?> payload) =>
       _post('/api/pos/terminals/heartbeat', payload);
 
+  /// The online licence verdict (POS-BE-031) — asked on the start screen and
+  /// before each shift. Spelled `license` as the contract fixed it.
+  Future<CloudReply> checkLicence(Map<String, Object?> payload) =>
+      _post('/api/pos/license/check', payload);
+
   Future<CloudReply> _get(String path) =>
       _send(() => _client.get<Object?>('$_base$path', options: _options()));
 

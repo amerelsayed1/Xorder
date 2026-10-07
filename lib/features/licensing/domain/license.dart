@@ -34,6 +34,13 @@ enum LicenseState {
 
   /// Correctly signed and bound to specific machines, none of which is this one.
   terminalNotLicensed,
+
+  /// Suspended from the platform's dashboard (POS-BE-031, online check only).
+  suspended,
+
+  /// An online-checked till that could not reach the platform for longer than
+  /// the verdict may be trusted offline (POS-BE-031).
+  unconfirmed,
 }
 
 /// The signed claims inside a licence file.
@@ -350,6 +357,32 @@ final class LicenceServerRefused extends LicenceNotice {
 
   final String address;
   final int status;
+}
+
+/// Suspended from the platform's dashboard (POS-BE-031). The reason, when the
+/// operator gave one, is shown as they wrote it.
+final class LicenceSuspended extends LicenceNotice {
+  const LicenceSuspended([this.reason]);
+  final String? reason;
+}
+
+/// The online verdict is older than the till may trust it, and the platform
+/// cannot be reached to renew it (POS-BE-031).
+final class LicenceUnconfirmed extends LicenceNotice {
+  const LicenceUnconfirmed(this.lastConfirmed);
+  final DateTime lastConfirmed;
+}
+
+/// The platform answered, and it has no live licence for this restaurant.
+final class LicenceNotIssued extends LicenceNotice {
+  const LicenceNotIssued();
+}
+
+/// The platform's own verdict that the term has not begun. Unlike
+/// [LicenceNotYetValid], this is not a clock problem: the server judged it.
+final class LicenceNotStarted extends LicenceNotice {
+  const LicenceNotStarted(this.startsOn);
+  final DateTime startsOn;
 }
 
 /// The platform knows this licence and has withdrawn it. A commercial fact,
