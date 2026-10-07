@@ -228,6 +228,10 @@ class OrderRecord {
     this.terminalId,
     this.terminalName,
     this.tenders = const [],
+    this.customerId,
+    this.customerName,
+    this.customerPhone,
+    this.customerEmail,
   });
 
   /// The day `served_by` became trustworthy.
@@ -304,6 +308,17 @@ class OrderRecord {
   /// Every method this sale was paid in, once each, in the order first taken
   /// — a split bill lists both. Empty for a sale that took no money.
   final List<OrderRecordTender> tenders;
+
+  /// Who the sale was for, when it was for anybody (`pos_orders.customer_id`).
+  /// Most sales are for nobody in particular, so all four are usually null —
+  /// and a customer since removed from the directory leaves the order with
+  /// none, rather than hiding the order.
+  final int? customerId;
+  final String? customerName;
+  final String? customerPhone;
+  final String? customerEmail;
+
+  bool get hasCustomer => customerName != null;
 
   /// What is still with the restaurant.
   Money get netTotal => Money(

@@ -99,7 +99,13 @@ void main() {
 
     // ── 1. A machine with no database ─────────────────────────────────────
     expect(
-      await LocalBootstrap.createDatabase(admin, '', admin.databaseName),
+      // The superuser's real password. It was '' — which only works on a
+      // PostgreSQL that trusts every client, and fails on one that checks.
+      await LocalBootstrap.createDatabase(
+        admin,
+        PgFixture.password,
+        admin.databaseName,
+      ),
       isTrue,
     );
     expect(await bootstrap.migrate(admin), isNotEmpty);

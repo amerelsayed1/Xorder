@@ -226,7 +226,7 @@ at route `/orders`, opened from Settings › Orders, with detail pane
 | Element | Verdict | Where |
 |---|---|---|
 | Search: invoice no. | ✓ | `OrderHistoryQuery.search`, `byInvoiceNumber` |
-| Search: customer name | ∅ | no `pos_customers`; Wave H (`11-gap-closure-plan.md` §10) |
+| Search: customer name | ✓ | `OrderHistoryQuery.search` also matches the customer's name, and their phone from **7 digits** — a shorter run is the tail of a receipt number far more often than of a phone, and matching both would list strangers (`filterFor`, `minPhoneDigits`) |
 | Date range | ✓ | `from`/`to`, business dates |
 | Branch filter | ✗ | a till sees its own branch only (plan 17 §2, owner 2026-09-10). **Terminal filter instead** — ✓ `terminalId`, `terminals()` |
 | Order status | ✓ | `statuses` |
@@ -235,13 +235,13 @@ at route `/orders`, opened from Settings › Orders, with detail pane
 | KPI total sales / invoice count / paid / outstanding | Q | new `OrderHistoryRepository.summarise(query)` — **same WHERE as `search`, same scope rule**. Outstanding = total − paid over `unpaid`/`partiallyPaid` (`payment_status.dart:28`) |
 | Row checkbox | ✗ | no bulk action is defined, and bulk void/refund is not one anybody should have |
 | Invoice no., date-time, total | ✓ | `OrderRecord` |
-| Customer | ∅ | Wave H |
+| Customer | ✓ | `OrderRecord.customerName`; a dash for a sale to nobody. **Not on Cancelled orders**, whose shared columns are who voided it, when and why |
 | Payment method column | Q | not on `OrderRecord`; add aggregated tender labels to the `search` query |
 | Status pill | ✓ | `OrderStatusChip` + `PaymentStatusChip` — two chips, per plan 17 §4 |
 | Branch column | ✗ | → terminal column, ✓ `OrderRecord.terminalName` |
 | Pagination + page size | Q | today: cap 200 with a "truncated" notice (`order_history_screen.dart:482-513`). Build keyset prev/next with "showing n of total", **as the cloud does** (`OrdersView.vue:385-397`); no page-size picker (the cloud has none) |
 | Detail: status, invoice, date, lines, subtotal, discount, tax, total | ✓ | `OrderRecordDetail`. **Service charge must be shown too** — the mockup omits it and its totals would not add up |
-| Detail: customer, phone, email | ∅ | Wave H |
+| Detail: customer, phone, email | ✓ | `order_detail_pane.dart`: name and phone on one line, the email under it, **only when the sale had a customer** |
 | Detail: branch | ✗ | → terminal |
 | Print | ✓ | preview / reprint (`order_detail_pane.dart:579-603`), `receipt.reprint` |
 | Edit | ✗ | a settled sale is immutable; voids and refunds are the corrections (plan 17 §0 rule 4) |

@@ -297,6 +297,134 @@ class PostgresReceivingRepository implements ReceivingRepository {
   }
 
   @override
+  Future<AdminResult<StockPosition>> setOpeningCost({
+    required int productId,
+    required Money unitCost,
+    required PosStaff by,
+    String? note,
+  }) async {
+    if (!adminAvailable) {
+      return const AdminResult.refused(AdministratorCredentialRequired());
+    }
+    if (!Authorization.check(by, PosCapability.purchaseManage).isAllowed) {
+      return const AdminResult.refused(
+        NotPermitted(PosCapability.purchaseManage),
+      );
+    }
+
+    return _db.runTx(config, (tx) async {
+      AdminResult<StockPosition> refuse(OpeningCostProblem problem) =>
+          AdminResult.refused(OpeningCostRefused(problem));
+
+      // The item, locked: two people setting a first cost at once must not both
+      // succeed, and the second has to find it costed.
+      final product = await tx.execute(
+        Sql.named(
+          'SELECT stock_unit, is_stocked FROM pos_products '
+          'WHERE id = @p AND restaurant_id = @r FOR UPDATE',
+        ),
+        parameters: {'p': productId, 'r': restaurantId},
+      );
+      if (product.isEmpty) return refuse(OpeningCostProblem.itemUnknown);
+
+      final held = await tx.execute(
+        Sql.named(
+          'SELECT quantity_milli, unit, average_cost_minor '
+          'FROM pos_stock_levels '
+          'WHERE branch_id = @b AND product_id = @p FOR UPDATE',
+        ),
+        parameters: {'b': branchId, 'p': productId},
+      );
+      // Not counted at all — neither stocked nor holding a position — means
+      // there is no stock here to give a cost to.
+      if (held.isEmpty && product.first[1] != true) {
+        return refuse(OpeningCostProblem.itemUnknown);
+      }
+
+      final unit = held.isEmpty
+          ? QuantityUnit.fromWire(product.first[0] as String?)
+          : QuantityUnit.fromWire(held.first[1] as String?);
+      final before = StockPosition(
+        onHand: Quantity(held.isEmpty ? 0 : held.first[0]! as int, unit: unit),
+        unitCost: Money(held.isEmpty ? 0 : held.first[2]! as int),
+      );
+
+      final problem = OpeningCost.refusal(before, unitCost);
+      if (problem != null) return refuse(problem);
+      final after = OpeningCost.apply(before, unitCost);
+
+      // A movement of nothing: how much is on the shelf has not changed, only
+      // what it cost. It carries the cost and the resulting position like every
+      // other row, so a replay of the ledger arrives at the same average.
+      await tx.execute(
+        Sql.named('''
+        INSERT INTO pos_stock_movements
+          (restaurant_id, branch_id, product_id, kind, quantity_milli, unit,
+           unit_cost_minor, balance_milli, average_cost_minor, note,
+           occurred_at, created_by)
+        VALUES (@r, @b, @p, 'opening', 0, @unit, @cost, @balance, @cost, @note,
+                now(), @by)
+        '''),
+        parameters: {
+          'r': restaurantId,
+          'b': branchId,
+          'p': productId,
+          'unit': unit.wire,
+          'cost': unitCost.minor,
+          'balance': before.onHand.milli,
+          'note': note,
+          'by': by.id == 0 ? null : by.id,
+        },
+      );
+
+      await tx.execute(
+        Sql.named('''
+        INSERT INTO pos_stock_levels
+          (restaurant_id, branch_id, product_id, quantity_milli, unit,
+           average_cost_minor, updated_at)
+        VALUES (@r, @b, @p, @qty, @unit, @cost, now())
+        ON CONFLICT (branch_id, product_id) DO UPDATE SET
+          average_cost_minor = excluded.average_cost_minor,
+          updated_at = now()
+        '''),
+        parameters: {
+          'r': restaurantId,
+          'b': branchId,
+          'p': productId,
+          'qty': before.onHand.milli,
+          'unit': unit.wire,
+          'cost': unitCost.minor,
+        },
+      );
+
+      await tx.execute(
+        Sql.named('''
+        INSERT INTO pos_audit_events
+          (restaurant_id, branch_id, actor_staff_id, actor_name, action,
+           entity_type, entity_id, before_value, after_value)
+        VALUES (@restaurant, @branch, @by, @actor, @action, @type, @entity,
+                @before::jsonb, @after::jsonb)
+        '''),
+        parameters: {
+          'restaurant': restaurantId,
+          'branch': branchId,
+          'by': by.id == 0 ? null : by.id,
+          'actor': by.name,
+          'action': AuditAction.stockCostSet,
+          'type': AuditAction.entityProduct,
+          'entity': '$productId',
+          'before': '{"average_cost_minor": 0}',
+          'after':
+              '{"average_cost_minor": ${unitCost.minor}, '
+              '"on_hand_milli": ${before.onHand.milli}}',
+        },
+      );
+
+      return AdminResult.done(after);
+    });
+  }
+
+  @override
   Future<StockPosition?> positionFor(int productId) async {
     if (!adminAvailable) return null;
 
@@ -333,4 +461,12 @@ class UnconfiguredReceivingRepository implements ReceivingRepository {
 
   @override
   Future<StockPosition?> positionFor(int productId) async => null;
+
+  @override
+  Future<AdminResult<StockPosition>> setOpeningCost({
+    required int productId,
+    required Money unitCost,
+    required PosStaff by,
+    String? note,
+  }) async => const AdminResult.refused(NoDatabaseConfigured());
 }

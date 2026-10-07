@@ -121,7 +121,25 @@ Five substantially done, three partial, seven absent.
 > * Revenue is the lines' own, before order-level discounts, as the Items list
 >   has it.
 >
-> Still absent from the code as checked: a Customers pane and Accounting lite.
+> * **An item can be given its first cost by hand.** Stock pane › Set cost, for
+>   an item that has stock and no cost: an `opening` movement of quantity zero,
+>   audited, `purchase.manage`. Not a revaluation — it refuses an item that
+>   already has a cost.
+>
+> * **Customers has a pane.** People › Customers lists everyone on file with
+>   orders, what they kept (net of refunds) and when they last bought, searchable
+>   by name or phone; a row opens their contact details, average order and recent
+>   orders. Read-only — customers are added at the counter, and the phone is their
+>   identity — and **this branch's sales only**, settled ones. Gated on
+>   `reports.view`, because it sets a name and a phone beside what somebody spends.
+>
+> * **The customer is on the sale.** The sales list has a Customer column (not on
+>   Cancelled orders), its search matches a customer's name and — from seven
+>   digits — their phone, the order detail shows name, phone and email when the
+>   sale had one, and the sales Excel export gains Customer and Phone columns
+>   after the page's own, so Total does not move.
+>
+> Still absent from the code as checked: Accounting lite.
 > Expenses, Terminals and the rest were not re-scored here.
 
 ---

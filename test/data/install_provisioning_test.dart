@@ -78,6 +78,13 @@ void main() {
     }
   }
 
+  // The passwords the install's roles are made with, and then signed in with.
+  // The administrator's was typed twice below — once to create the role and once
+  // to be it — and the second time used the superuser's instead, which a server
+  // that trusts every client never noticed.
+  const adminPassword = 'first-admin';
+  const cliPassword = 'cli-install-password';
+
   setUpAll(() => PgFixture.maintenance(cleanUp()));
 
   tearDownAll(() => PgFixture.maintenance(cleanUp()));
@@ -88,7 +95,7 @@ void main() {
       PgFixture.password,
       names: names,
       passwords: {
-        InstallRole.admin: 'first-admin',
+        InstallRole.admin: adminPassword,
         InstallRole.till: 'first-till',
         InstallRole.backup: 'first-backup',
       },
@@ -149,8 +156,9 @@ void main() {
       isTrue,
     );
 
+    // As the administrator, with the administrator's own password.
     final asAdmin = PosDatabase(
-      credentials: InMemoryPosDbCredentials(PgFixture.password),
+      credentials: InMemoryPosDbCredentials(adminPassword),
     );
     try {
       await PosMigrator(asAdmin).migrate(configFor(apiDb, admin));
@@ -186,18 +194,22 @@ void main() {
 
   test('the command line, called the way provision.ps1 calls it', () async {
     // Step one as the superuser, step two as the owner — the script's exact
-    // flags. The install's own role names exist on this server already, so
-    // step one leaves them alone; the owner of the database it creates is
-    // still pos_admin, which is the part that matters.
+    // flags. Where the install's own role names already exist on the server,
+    // step one leaves them alone; where they do not, it makes them with
+    // [cliPassword]. Either way the owner of the database it creates is
+    // pos_admin, which is the part that matters.
     Future<ProcessResult> tool(List<String> args, String password) =>
         Process.run(
           'dart',
           ['run', 'bin/pos_migrate.dart', ...args],
           environment: {
             'POS_PG_PASSWORD': password,
-            'POS_ADMIN_PASSWORD': 'unused-roles-exist',
-            'POS_TILL_PASSWORD': 'unused-roles-exist',
-            'POS_BACKUP_PASSWORD': 'unused-roles-exist',
+            // What step one makes the three roles with when they are not there
+            // yet — as they are not on a server this suite has to itself — and
+            // what step two signs in as the owner with.
+            'POS_ADMIN_PASSWORD': cliPassword,
+            'POS_TILL_PASSWORD': cliPassword,
+            'POS_BACKUP_PASSWORD': cliPassword,
           },
         );
     final common = [
@@ -222,7 +234,7 @@ void main() {
     final migrate = await tool([
       ...common,
       '--user', 'pos_admin', '--grant-to', 'pos_till', //
-    ], PgFixture.password);
+    ], cliPassword);
     expect(migrate.exitCode, 0, reason: '${migrate.stdout}${migrate.stderr}');
 
     final owner = await sql(
@@ -234,7 +246,7 @@ void main() {
     final status = await tool([
       ...common,
       '--user', 'pos_admin', '--status', //
-    ], PgFixture.password);
+    ], cliPassword);
     expect('${status.stdout}', isNot(contains('PENDING')));
 
     await PgFixture.maintenance(['DROP DATABASE IF EXISTS "$cliDb" WITH (FORCE)']);

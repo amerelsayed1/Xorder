@@ -298,9 +298,67 @@ database test that states the zero-rated-item case outright). Deliberately **not
 done: per-line tax by re-deriving each product's *current* group, which silently
 drifts the day a product is moved to another rate.
 
+**Uncosted stock (4 Oct, on its own branch).** The Stock pane used to add an
+item with stock and no cost into the total at zero, so the total read as the
+whole shelf. `StockValuation` now totals the costed items and counts the
+uncosted items with stock on hand, and the pane says it under the total ("Not
+counted: N item(s) with stock on hand and no cost"); an uncosted row's value is a
+dash. Chosen over estimating a cost from the menu price, which would put an
+invented number in the same total as real ones. Giving such an item a real cost
+needs an opening-cost movement — the ledger has an `opening` kind, nothing writes
+it yet.
+
+**Opening cost (4 Oct, on the same branch as uncosted stock).** An item with
+stock and no cost can now be given its first cost from the Stock pane ("Set
+cost"). It is the other way into "costed": a restaurant that starts with stock
+already on the shelf says what it cost. The rules are `OpeningCost` (pure,
+`stock_costing.dart`): only a cost above zero, only on an item that has none —
+changing one is a revaluation, a different act — and quantity is never touched.
+`ReceivingRepository.setOpeningCost` records it as an `opening` movement **of
+quantity zero** carrying the cost and the resulting position, upserts the level,
+and audits it (`stock.cost_set`), under `purchase.manage` as receiving is.
+
+**Migration 52** relaxes `pos_stock_movements_not_nothing` to
+`quantity_milli <> 0 OR kind = 'opening'`. A cost is not a physical movement, so
+its row moves nothing; every other kind still refuses a movement of nothing, and
+a database test pins both halves. Relaxing a CHECK admits rows the old one
+refused and invalidates none, so it is safe on a live database.
+
+It also removes a quirk worth knowing: receiving into uncosted stock averages the
+shelf in **at zero**, so ten unpriced units plus ten bought at 5.00 read as 2.50.
+After an opening cost, the delivery averages against the real figure. Past sales
+stay uncosted — they were recorded at zero and the ledger is append-only — so
+this prices what is sold from now on, and the dialog says so before it asks.
+
+**Customers pane (4 Oct).** `pos_customers` and `pos_orders.customer_id` arrived in
+migration 51 so the counter could attach a customer to an order; nothing in the
+back office read them. People › Customers (`CustomerDirectoryRepository`) lists
+the directory with each customer's settled orders at this branch, what they kept
+net of refunds, and their last order — one `LEFT JOIN LATERAL`, refunds summed per
+order — and a row opens their details and recent orders. Search is the counter's
+own rule (a name fragment, or phone digits normalised so Arabic-Indic digits
+match), so a name finds the same person in both places. Read-only on purpose: the
+phone is a customer's identity, and changing it is changing who they are. Two
+database mutations were checked the clean way — with a tautology in place of the
+filter, because deleting the line leaves an unused parameter and fails every test
+for the wrong reason.
+
+**The customer on the sale (4 Oct).** The sales list gets a Customer column, its
+search matches the customer's name and, from seven digits, their phone, and the
+order detail shows name, phone and email when there is one. The seven-digit floor
+is the one decision in it: a short run of digits is the tail of a receipt number
+far more often than of a phone, so matching both would list a stranger's sale for
+a cashier who typed what was on a receipt — a database test puts such a stranger
+in the ledger and fails if the floor is lowered. A customer removed from the
+directory leaves their sales behind unnamed (`ON DELETE SET NULL`). Cancelled
+orders does not draw the column: its three shared columns are the void, and a
+fourth would squeeze the reason that list is read for. At the back office's
+1100px with the detail pane open the list already scrolled sideways, so the new
+column starts partly off-screen there and shows in full wider.
+
 **Known gaps:** the tax mode is today's setting, not a per-order snapshot; an
-item with stock but no cost is valued at zero on the Stock pane; there is no
-cost column on the product itself.
+item that already has a cost cannot be revalued (no revaluation movement exists);
+there is no cost column on the product itself.
 
 **Verification:** `flutter analyze` clean · **2,448 unit and widget tests** pass,
 64 skipped · the combo, profit and reports database suites (**50 tests**) pass

@@ -46,3 +46,38 @@ class StockLevel {
       ? nameAr!.trim()
       : nameEn;
 }
+
+/// What the stock on hand is worth — and how much of it that figure leaves out.
+///
+/// **The total is of costed items only, and says so.** An item nothing has ever
+/// received has no cost, so its worth is unknown, not nil: counting it at zero
+/// would let the total read as complete while understating the shelf by exactly
+/// the stock nobody has priced. [unvalued] is how many items with stock on hand
+/// are left out, so the page can say it beside the figure rather than leave the
+/// reader to assume. An uncosted item with nothing on hand is not counted — it
+/// leaves nothing out — and neither is one below zero, which is a shortage to
+/// look at and not stock to value.
+class StockValuation {
+  const StockValuation({required this.total, required this.unvalued});
+
+  factory StockValuation.of(Iterable<StockLevel> levels) {
+    var total = Money.zero;
+    var unvalued = 0;
+    for (final level in levels) {
+      if (level.hasCost) {
+        total += level.value;
+      } else if (level.onHand.milli > 0) {
+        unvalued++;
+      }
+    }
+    return StockValuation(total: total, unvalued: unvalued);
+  }
+
+  /// The worth of the items that have a cost.
+  final Money total;
+
+  /// Items with stock on hand and no cost: in no figure here.
+  final int unvalued;
+
+  bool get isComplete => unvalued == 0;
+}

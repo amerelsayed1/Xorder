@@ -1802,6 +1802,34 @@ sealed class AppStrings {
   String get stockColumnAvgCost;
   String get stockColumnValue;
   String get stockNoCostNote;
+  String stockExcludesUncosted(int count);
+  String get paneCustomers;
+  String get paneCustomersBlurb;
+  String get customersSearchHint;
+  String get customersNone;
+  String get customersNoMatch;
+  String get customersColumnCustomer;
+  String get customersColumnOrders;
+  String get customersColumnSpent;
+  String get customersColumnLast;
+  String get customersNever;
+  String get customersDetailAverage;
+  String get customersDetailRefunded;
+  String get customersDetailRecent;
+  String get customersNoOrders;
+  String get customersPhone;
+  String get customersEmail;
+  String get customersAddress;
+  String get customersNote;
+  String get customersBranchOnly;
+  String get stockSetCost;
+  String get stockOpeningCostField;
+  String get stockOpeningCostHint;
+  String get refusalOpeningCostNotPositive;
+  String get refusalOpeningCostAlreadyCosted;
+  String get refusalOpeningCostItemUnknown;
+  String get actStockCostSet;
+  String stockOpeningCostTitle(String item);
   String stockTotalValue(String amount);
   String get stockEmpty;
   String get purchaseUnit;
@@ -2684,7 +2712,7 @@ final class EnStrings extends AppStrings {
   @override
   String get orderHistoryLast30Days => 'Last 30 days';
   @override
-  String get orderHistorySearchHint => 'Invoice or table';
+  String get orderHistorySearchHint => 'Invoice, table or customer';
   @override
   String get orderHistoryAllStatuses => 'All statuses';
   @override
@@ -6786,7 +6814,91 @@ final class EnStrings extends AppStrings {
   String get stockColumnValue => 'Value';
   @override
   String get stockNoCostNote =>
-      'Items marked "no cost" have never been received, so they are not in Profit. Receive stock for one to give it a cost.';
+      'Items marked "no cost" have never been received, so they are not in '
+      'Profit. Receive stock for one, or set its cost here, to give it a cost.';
+  @override
+  String stockExcludesUncosted(int count) =>
+      'Not counted: $count item(s) with stock on hand and no cost.';
+  @override
+  String get stockSetCost =>
+      'Set cost';
+  @override
+  String get paneCustomers =>
+      'Customers';
+  @override
+  String get paneCustomersBlurb =>
+      'Everyone on file, and what they have bought at this branch.';
+  @override
+  String get customersSearchHint =>
+      'Search by name or phone';
+  @override
+  String get customersNone =>
+      'No customers on file yet. They are added at the counter when an order is taken for someone.';
+  @override
+  String get customersNoMatch =>
+      'No customer matches that.';
+  @override
+  String get customersColumnCustomer =>
+      'Customer';
+  @override
+  String get customersColumnOrders =>
+      'Orders';
+  @override
+  String get customersColumnSpent =>
+      'Spent';
+  @override
+  String get customersColumnLast =>
+      'Last order';
+  @override
+  String get customersNever =>
+      'Never';
+  @override
+  String get customersDetailAverage =>
+      'Average order';
+  @override
+  String get customersDetailRefunded =>
+      'Refunded';
+  @override
+  String get customersDetailRecent =>
+      'Recent orders';
+  @override
+  String get customersNoOrders =>
+      'No orders at this branch yet.';
+  @override
+  String get customersPhone =>
+      'Phone';
+  @override
+  String get customersEmail =>
+      'Email';
+  @override
+  String get customersAddress =>
+      'Address';
+  @override
+  String get customersNote =>
+      'Note';
+  @override
+  String get customersBranchOnly =>
+      'Orders and spending are this branch\'s only, and net of refunds.';
+  @override
+  String get stockOpeningCostField =>
+      'Cost per unit';
+  @override
+  String get stockOpeningCostHint =>
+      'This item has stock and no cost. Say what it cost per unit and it is valued, and its sales from now on are costed and count in Profit. Sales already made stay uncosted, and the quantity is not changed.';
+  @override
+  String get refusalOpeningCostNotPositive =>
+      'A cost has to be more than zero — zero is how "never received" looks.';
+  @override
+  String get refusalOpeningCostAlreadyCosted =>
+      'That item already has a cost. Changing one is a revaluation, which this does not do.';
+  @override
+  String get refusalOpeningCostItemUnknown =>
+      'That item is not counted here, so there is no stock to give a cost to.';
+  @override
+  String get actStockCostSet =>
+      'Set an item\'s first cost';
+  @override
+  String stockOpeningCostTitle(String item) => 'Cost of $item';
   @override
   String stockTotalValue(String amount) => 'Stock value: $amount';
   @override
@@ -7414,7 +7526,7 @@ final class ArStrings extends AppStrings {
   @override
   String get orderHistoryLast30Days => 'آخر ٣٠ يومًا';
   @override
-  String get orderHistorySearchHint => 'رقم الفاتورة أو الطاولة';
+  String get orderHistorySearchHint => 'رقم الفاتورة أو الطاولة أو العميل';
   @override
   String get orderHistoryAllStatuses => 'كل الحالات';
   @override
@@ -11394,7 +11506,91 @@ final class ArStrings extends AppStrings {
   String get stockColumnValue => 'القيمة';
   @override
   String get stockNoCostNote =>
-      'الأصناف المعلَّمة «بلا تكلفة» لم يُستلم منها شيء بعد، فلا تدخل في الربح. استلم مخزونًا لصنف ليكون له تكلفة.';
+      'الأصناف المعلَّمة «بلا تكلفة» لم يُستلم منها شيء بعد، فلا تدخل في الربح. '
+      'استلم مخزونًا لصنف، أو حدّد تكلفته هنا، ليكون له تكلفة.';
+  @override
+  String stockExcludesUncosted(int count) =>
+      'غير محسوب: $count صنف له مخزون ولا تكلفة له.';
+  @override
+  String get stockSetCost =>
+      'تحديد التكلفة';
+  @override
+  String get paneCustomers =>
+      'العملاء';
+  @override
+  String get paneCustomersBlurb =>
+      'كل من في السجل، وما اشتروه من هذا الفرع.';
+  @override
+  String get customersSearchHint =>
+      'ابحث بالاسم أو الهاتف';
+  @override
+  String get customersNone =>
+      'لا يوجد عملاء في السجل بعد. يُضافون من الكاشير عند تسجيل طلب لشخص.';
+  @override
+  String get customersNoMatch =>
+      'لا يوجد عميل مطابق.';
+  @override
+  String get customersColumnCustomer =>
+      'العميل';
+  @override
+  String get customersColumnOrders =>
+      'الطلبات';
+  @override
+  String get customersColumnSpent =>
+      'المنفق';
+  @override
+  String get customersColumnLast =>
+      'آخر طلب';
+  @override
+  String get customersNever =>
+      'لم يطلب';
+  @override
+  String get customersDetailAverage =>
+      'متوسط الطلب';
+  @override
+  String get customersDetailRefunded =>
+      'المسترد';
+  @override
+  String get customersDetailRecent =>
+      'آخر الطلبات';
+  @override
+  String get customersNoOrders =>
+      'لا طلبات من هذا الفرع بعد.';
+  @override
+  String get customersPhone =>
+      'الهاتف';
+  @override
+  String get customersEmail =>
+      'البريد الإلكتروني';
+  @override
+  String get customersAddress =>
+      'العنوان';
+  @override
+  String get customersNote =>
+      'ملاحظة';
+  @override
+  String get customersBranchOnly =>
+      'الطلبات والمنفق لهذا الفرع فقط، وبعد خصم المسترد.';
+  @override
+  String get stockOpeningCostField =>
+      'التكلفة للوحدة';
+  @override
+  String get stockOpeningCostHint =>
+      'لهذا الصنف مخزون بلا تكلفة. حدّد تكلفة الوحدة فيُقيَّم المخزون، وتُحتسب مبيعاته من الآن في الربح. المبيعات السابقة تبقى بلا تكلفة، ولا تتغير الكمية.';
+  @override
+  String get refusalOpeningCostNotPositive =>
+      'يجب أن تكون التكلفة أكبر من صفر — الصفر هو شكل «لم يُستلم قط».';
+  @override
+  String get refusalOpeningCostAlreadyCosted =>
+      'هذا الصنف له تكلفة بالفعل. تغييرها إعادة تقييم، وهذا لا يفعلها.';
+  @override
+  String get refusalOpeningCostItemUnknown =>
+      'هذا الصنف غير مُعدّ للجرد هنا، فلا مخزون لتحديد تكلفته.';
+  @override
+  String get actStockCostSet =>
+      'تحديد أول تكلفة لصنف';
+  @override
+  String stockOpeningCostTitle(String item) => 'تكلفة $item';
   @override
   String stockTotalValue(String amount) => 'قيمة المخزون: $amount';
   @override

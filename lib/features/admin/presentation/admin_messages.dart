@@ -9,6 +9,7 @@ import '../../../domain/models/supplier_invoice.dart';
 import '../../../domain/models/permissions.dart';
 import '../../../domain/repositories/admin_repositories.dart';
 import '../../../domain/services/authorization.dart';
+import '../../../domain/services/stock_costing.dart' show OpeningCostProblem;
 import '../application/users_overview.dart';
 
 /// Where the Management section's domain values become words.
@@ -118,6 +119,7 @@ abstract final class AdminText {
     AuditAction.orderTypeSaved => s.actOrderTypeSaved,
     AuditAction.taxGroupSaved => s.actTaxGroupSaved,
     AuditAction.comboSaved => s.actComboSaved,
+    AuditAction.stockCostSet => s.actStockCostSet,
     AuditAction.productOptionsChanged => s.actProductOptionsChanged,
     AuditAction.optionGroupSaved => s.actOptionGroupSaved,
     AuditAction.optionGroupRepriced => s.actOptionGroupRepriced,
@@ -311,6 +313,12 @@ abstract final class AdminText {
         CatalogInvalid(:final reason) => reason,
         CatalogRefused(:final problem) => catalogProblem(s, problem),
         ComboRefused(:final problem) => comboProblem(s, problem),
+        OpeningCostRefused(:final problem) => switch (problem) {
+          OpeningCostProblem.notPositive => s.refusalOpeningCostNotPositive,
+          OpeningCostProblem.alreadyCosted =>
+            s.refusalOpeningCostAlreadyCosted,
+          OpeningCostProblem.itemUnknown => s.refusalOpeningCostItemUnknown,
+        },
         OptionGroupRefused(:final problem, :final names) => optionGroupProblem(
           s,
           problem,

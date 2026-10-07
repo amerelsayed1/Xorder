@@ -64,11 +64,7 @@ void main() {
     if (Platform.isWindows) return;
     final s = store('k');
     await s.write('v');
-    final mode = (await Process.run('stat', [
-      '-f', '%Lp',
-      p.join(temp.path, FileSecretStore.fileName),
-    ])).stdout.toString().trim();
-    expect(mode, '600');
+    expect(await _mode(p.join(temp.path, FileSecretStore.fileName)), '600');
   });
 
   test('a rewrite leaves nothing readable behind it', () async {
@@ -92,13 +88,26 @@ void main() {
       reason: 'the temporary is renamed onto the target, never orphaned',
     );
 
-    final mode = (await Process.run('stat', [
-      '-f',
-      '%Lp',
-      p.join(temp.path, FileSecretStore.fileName),
-    ])).stdout.toString().trim();
-    expect(mode, '600', reason: 'rename preserves the mode it was given');
+    expect(
+      await _mode(p.join(temp.path, FileSecretStore.fileName)),
+      '600',
+      reason: 'rename preserves the mode it was given',
+    );
     expect(await s.read(), 'v3');
   });
 
+}
+
+/// A file's permission bits in octal, e.g. `600`.
+///
+/// `stat` takes its format differently on the two platforms this runs on: BSD
+/// and macOS read `-f %Lp`, GNU reads `-c %a` — and on GNU `-f` means "report
+/// the filesystem", which printed a block of free-space figures where this
+/// expected a mode and failed on every Linux runner.
+Future<String> _mode(String path) async {
+  final result = await Process.run(
+    'stat',
+    Platform.isMacOS ? ['-f', '%Lp', path] : ['-c', '%a', path],
+  );
+  return result.stdout.toString().trim();
 }

@@ -58,6 +58,9 @@ void main() {
     String? terminal,
     String? till,
     List<OrderRecordTender> tenders = const [],
+    String? customer,
+    String? customerPhone,
+    String? customerEmail,
   }) => OrderRecord(
     id: id,
     clientTransactionId: 'txn-$id',
@@ -83,6 +86,10 @@ void main() {
     terminalId: terminal,
     terminalName: till,
     tenders: tenders,
+    customerId: customer == null ? null : 500 + id,
+    customerName: customer,
+    customerPhone: customerPhone,
+    customerEmail: customerEmail,
   );
 
   setUp(() {
@@ -114,6 +121,7 @@ void main() {
     BusinessDay? businessDay,
     List<Refund> refunds = const [],
     DateTime? openedAt,
+    HistoryPreset preset = HistoryPreset.all,
   }) async {
     final repository = FakeOrderHistoryRepository(
       orders: orders,
@@ -147,6 +155,7 @@ void main() {
           home: OrderHistoryScreen(
             onClose: onClose ?? () {},
             openedAt: openedAt,
+            preset: preset,
           ),
         ),
       ),
@@ -352,10 +361,10 @@ void main() {
         orders: [order(id: 1, invoice: 'OLD', occurredAt: at(10))],
       );
       expect(find.text('OLD'), findsOneWidget);
-      // Four em dashes: the staff and table columns, and since BO-2 the
-      // payment method and till columns — each saying "not recorded" rather
-      // than guessing.
-      expect(find.text('—'), findsNWidgets(4));
+      // Five em dashes: the staff and table columns, since BO-2 the payment
+      // method and till columns, and the customer — each saying "not recorded"
+      // rather than guessing.
+      expect(find.text('—'), findsNWidgets(5));
     });
 
     // "Says so when the cap was hit" lived here. There is no cap since BO-3:
@@ -1379,6 +1388,186 @@ void main() {
       final invoice = tester.getRect(find.text('HST-000481'));
       expect(invoice.left, greaterThanOrEqualTo(PosSize.historyDetail));
       expect(invoice.right, lessThanOrEqualTo(1024));
+    });
+  });
+
+  group('who the sale was for', () {
+    final mona = order(
+      id: 1,
+      invoice: 'INV-1',
+      occurredAt: at(10),
+      customer: 'Mona Fathy',
+      customerPhone: '01012345678',
+      customerEmail: 'mona@example.com',
+    );
+    final nobody = order(id: 2, invoice: 'INV-2', occurredAt: at(11));
+
+    Future<void> openMona(WidgetTester tester) async {
+      await pump(
+        tester,
+        orders: [mona, nobody],
+        details: {
+          1: OrderRecordDetail(
+            order: mona,
+            lines: const [],
+            payments: const [],
+            discounts: const [],
+          ),
+          2: OrderRecordDetail(
+            order: nobody,
+            lines: const [],
+            payments: const [],
+            discounts: const [],
+          ),
+        },
+      );
+    }
+
+    testWidgets('the list names the customer, and a dash where there is none', (
+      tester,
+    ) async {
+      await openMona(tester);
+
+      expect(
+        tester.widget<Text>(find.byKey(const Key('history-customer-1'))).data,
+        'Mona Fathy',
+      );
+      expect(
+        tester.widget<Text>(find.byKey(const Key('history-customer-2'))).data,
+        '—',
+      );
+    });
+
+    testWidgets('the column is headed Customer', (tester) async {
+      await openMona(tester);
+
+      expect(
+        find.text(const EnStrings().customersColumnCustomer.toUpperCase()),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('and absent from Cancelled orders, whose columns are the void', (
+      tester,
+    ) async {
+      final voided = order(
+        id: 3,
+        invoice: 'INV-3',
+        occurredAt: at(12),
+        status: OrderStatus.voided,
+        voidedBy: 'Hana',
+        reason: 'Mistake',
+        customer: 'Mona Fathy',
+      );
+      await pump(tester, orders: [voided], preset: HistoryPreset.voided);
+
+      expect(find.byKey(const Key('history-customer-3')), findsNothing);
+      expect(
+        find.text(const EnStrings().customersColumnCustomer.toUpperCase()),
+        findsNothing,
+      );
+    });
+
+    testWidgets('the detail gives name, phone and email', (tester) async {
+      await openMona(tester);
+
+      await tester.tap(find.text('INV-1'));
+      await tester.pumpAndSettle();
+
+      final customer = find.byKey(const Key('order-detail-customer'));
+      expect(customer, findsOneWidget);
+      expect(
+        find.descendant(
+          of: customer,
+          matching: find.text('Customer: Mona Fathy'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: customer, matching: find.text('01012345678')),
+        findsOneWidget,
+      );
+      expect(find.text('mona@example.com'), findsOneWidget);
+    });
+
+    testWidgets('a sale for nobody has no customer line at all', (tester) async {
+      await openMona(tester);
+
+      await tester.tap(find.text('INV-2'));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('order-detail-customer')), findsNothing);
+    });
+
+    testWidgets('a customer with no email has no empty line for it', (tester) async {
+      final plain = order(
+        id: 4,
+        invoice: 'INV-4',
+        occurredAt: at(13),
+        customer: 'Karim Said',
+        customerPhone: '01198765432',
+      );
+      await pump(
+        tester,
+        orders: [plain],
+        details: {
+          4: OrderRecordDetail(
+            order: plain,
+            lines: const [],
+            payments: const [],
+            discounts: const [],
+          ),
+        },
+      );
+
+      await tester.tap(find.text('INV-4'));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('order-detail-customer')), findsOneWidget);
+      expect(
+        find.byKey(const Key('order-detail-customer-email')),
+        findsNothing,
+      );
+    });
+
+    testWidgets('the search box says it takes a customer', (tester) async {
+      await openMona(tester);
+
+      expect(
+        find.text(const EnStrings().orderHistorySearchHint),
+        findsOneWidget,
+      );
+      expect(const EnStrings().orderHistorySearchHint, contains('customer'));
+    });
+
+    testWidgets('in Arabic the column and the detail line are in Arabic', (
+      tester,
+    ) async {
+      await pump(
+        tester,
+        orders: [mona],
+        locale: 'ar',
+        details: {
+          1: OrderRecordDetail(
+            order: mona,
+            lines: const [],
+            payments: const [],
+            discounts: const [],
+          ),
+        },
+      );
+
+      expect(
+        find.text(const ArStrings().customersColumnCustomer),
+        findsOneWidget,
+      );
+      await tester.tap(find.text('INV-1'));
+      await tester.pumpAndSettle();
+      expect(
+        find.text('${const ArStrings().customersColumnCustomer}: Mona Fathy'),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
     });
   });
 

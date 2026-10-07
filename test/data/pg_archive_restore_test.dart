@@ -58,7 +58,13 @@ void main() {
   // for this checkout, because another worktree's run shares the server's
   // roles even though it never shares these databases.
   final reader = PgFixture.roleFor('backup_reader');
-  const owner = 'pos_admin';
+  // The database's owner, and the account that restores it: not a superuser,
+  // and not the install's real `pos_admin` — which a clean server has not got,
+  // and which another suite makes with a password of its own. A name for this
+  // checkout, made here and dropped here.
+  final owner = PgFixture.roleFor('backup_owner');
+  const readerPassword = 'reader-password';
+  const ownerPassword = 'owner-password';
   const terminal = '55555555-5555-4555-8555-555555555555';
 
   final source = PgFixture.nameFor('pg_archive_restore');
@@ -81,7 +87,14 @@ void main() {
     port: PgFixture.port,
     database: database,
     user: user,
-    password: PgFixture.password,
+    // Each account signs in with the password it was made with. They all
+    // signed in with the superuser's, which a server that trusts every client
+    // never noticed and one that checks passwords refuses.
+    password: user == reader
+        ? readerPassword
+        : user == owner
+        ? ownerPassword
+        : PgFixture.password,
     verifyTls: false,
   );
 
@@ -140,8 +153,24 @@ void main() {
       // pg_read_all_data, and nothing else.
       'DO \$\$ BEGIN '
           "IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '$reader') "
-          'THEN CREATE ROLE $reader LOGIN; END IF; END \$\$',
+          "THEN CREATE ROLE $reader LOGIN PASSWORD '$readerPassword'; END IF; "
+          'END \$\$',
+      // Set again either way: a leftover from an earlier run has whatever
+      // password that run gave it, and these names are this suite's alone.
+      "ALTER ROLE $reader LOGIN PASSWORD '$readerPassword'",
       'GRANT pg_read_all_data TO $reader',
+      'DO \$\$ BEGIN '
+          "IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '$owner') "
+          "THEN CREATE ROLE $owner LOGIN PASSWORD '$ownerPassword'; END IF; "
+          'END \$\$',
+      "ALTER ROLE $owner LOGIN PASSWORD '$ownerPassword'",
+      // The till's account, which the fingerprint compares grants for. Made
+      // only if the server has none: on a machine where the installer ran it is
+      // the real one, and this suite has no business changing its password.
+      'DO \$\$ BEGIN '
+          "IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'pos_till') "
+          "THEN CREATE ROLE pos_till LOGIN PASSWORD 'till-password'; END IF; "
+          'END \$\$',
     ]);
 
     pg = await PgFixture.open('pg_archive_restore');
@@ -239,7 +268,13 @@ void main() {
     // has to go first. Dropped rather than kept for the next run: with a name
     // per checkout, a deleted worktree's reader — a login role that can read
     // everything — would otherwise stay on the server for good.
-    await PgFixture.maintenance(['DROP ROLE IF EXISTS $reader']);
+    await PgFixture.maintenance([
+      'DROP ROLE IF EXISTS $reader',
+      // The owner owns the restore target, so the database goes first. The
+      // till's role is not dropped: where the installer ran it is the real one.
+      'DROP DATABASE IF EXISTS "$target" WITH (FORCE)',
+      'DROP ROLE IF EXISTS $owner',
+    ]);
   });
 
   test('taken by an account that can read everything and write nothing',
