@@ -75,13 +75,16 @@ import '../features/admin/application/admin_session.dart'
     show adminSessionProvider;
 import '../features/history/history_scope.dart';
 import '../features/licensing/data/file_license_store.dart';
+import '../features/licensing/data/licence_check_store.dart';
 import '../features/licensing/data/licence_service.dart';
 import '../features/licensing/data/license_keys.dart';
 import '../features/licensing/data/license_store.dart';
+import '../features/licensing/data/online_licence_service.dart';
 import '../features/licensing/data/platform_licence_api.dart';
 import '../features/licensing/data/site_licence.dart';
 import '../features/licensing/domain/license_verifier.dart';
 import '../features/licensing/domain/license.dart';
+import '../features/licensing/domain/online_verdict.dart';
 import '../features/setup/application/setup_controller.dart';
 import '../domain/models/backup.dart';
 import '../domain/models/catalog.dart';
@@ -622,6 +625,17 @@ final provisioningRepositoryProvider = Provider<ProvisioningRepository>((ref) {
             );
         if (installed.file case final file?) {
           ref.read(setupProvider.notifier).holdLicence(file);
+        }
+        // Where this till takes its verdict from (POS-BE-031). Absent from an
+        // older platform, and then nothing is recorded: the till keeps its file.
+        if (licence['enforcement'] case final String enforcement) {
+          try {
+            final store = ref.read(licenceCheckStoreProvider);
+            final record = await store.read() ?? const LicenceCheckRecord();
+            await store.write(record.copyWith(enforcement: enforcement));
+          } on Object {
+            // A cache, not a gate: the first check learns it again.
+          }
         }
       },
     );
@@ -1627,16 +1641,40 @@ final licenceServiceProvider = Provider<LicenceService>((ref) {
     );
   }
   final platform = ref.watch(platformLicenceApiProvider);
-  return DefaultLicenceService(
+  final fingerprint = TerminalIdFingerprint(
+    ref.watch(terminalProfileProvider).installationId,
+  );
+  final file = DefaultLicenceService(
     verifier: verifier,
     store_: ref.watch(licenseStoreProvider),
-    fingerprint: TerminalIdFingerprint(
-      ref.watch(terminalProfileProvider).installationId,
-    ),
+    fingerprint: fingerprint,
     clock: DateTime.now,
     remote: platform.fetchByKey,
   );
+  // A till that talks to the platform may be told to take its verdict from
+  // it (POS-BE-031). Everything but the verdict stays with the file service,
+  // and a till never told `online` keeps the file — see OnlineLicenceService.
+  final api = ref.watch(posCloudApiProvider);
+  if (api == null) return file;
+  final vault = ref.watch(deviceTokenVaultProvider);
+  return OnlineLicenceService(
+    inner: file,
+    checks: ref.watch(licenceCheckStoreProvider),
+    // Not paired yet: nothing to ask with, so no request at all.
+    check: (body) async => (vault.token?.isNotEmpty ?? false)
+        ? api.checkLicence(body)
+        : const CloudReply.offline(),
+    fingerprint: fingerprint,
+    clock: DateTime.now,
+    appVersion: posAppVersion,
+  );
 });
+
+/// The last online licence verdict and where this till takes its verdict from
+/// (POS-BE-031). On disk, beside the licence file — see [LicenceCheckStore].
+final licenceCheckStoreProvider = Provider<LicenceCheckStore>(
+  (ref) => FileLicenceCheckStore(),
+);
 
 /// Overridden in tests so activation never reaches the network.
 final platformLicenceApiProvider = Provider<PlatformLicenceApi>(

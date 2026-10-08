@@ -373,6 +373,8 @@ sealed class AppStrings {
   String get expiredHeadline;
   String get notLicensedHeadline;
   String get licenceProblemHeadline;
+  String get suspendedHeadline;
+  String get unconfirmedHeadline;
 
   /// The verifier's findings. The domain decides *what* is wrong and hands back
   /// a `LicenceNotice`; only these methods put it into words, so the licence
@@ -385,6 +387,10 @@ sealed class AppStrings {
   String licenceModeNotCovered(String mode);
   String get licenceOtherTerminal;
   String licenceNotYetValid(String date);
+  String licenceSuspended(String? reason);
+  String licenceUnconfirmed(String date);
+  String get licenceNotIssued;
+  String licenceNotStarted(String date);
   String get licenceFileDamaged;
   String get noLicenceInstalled;
   String get licenceUnverifiable;
@@ -3908,6 +3914,10 @@ final class EnStrings extends AppStrings {
   String get notLicensedHeadline => 'Not licensed';
   @override
   String get licenceProblemHeadline => 'Licence problem';
+  @override
+  String get suspendedHeadline => 'Suspended';
+  @override
+  String get unconfirmedHeadline => 'Not confirmed';
 
   @override
   String licenceExpiresInDays(int days) =>
@@ -3933,6 +3943,24 @@ final class EnStrings extends AppStrings {
   @override
   String licenceNotYetValid(String date) =>
       "This licence starts on $date. Check the terminal's date and time.";
+  @override
+  String licenceSuspended(String? reason) =>
+      'This licence is suspended${reason == null || reason.isEmpty ? '' : ': $reason'}. '
+      'You can finish and cash up the open shift, but a new shift cannot be '
+      'started. Contact your supplier.';
+  @override
+  String licenceUnconfirmed(String date) =>
+      'The licence was last confirmed on $date and the platform cannot be '
+      'reached. You can finish and cash up the open shift; reconnect to start '
+      'a new one.';
+  @override
+  String get licenceNotIssued =>
+      'The platform has no licence for this restaurant. You can finish and cash '
+      'up the open shift, but a new shift cannot be started. Contact your '
+      'supplier.';
+  @override
+  String licenceNotStarted(String date) =>
+      'This licence starts on $date. A new shift can be started from then.';
   @override
   String get licenceFileDamaged => 'This licence file is damaged.';
   @override
@@ -8766,6 +8794,10 @@ final class ArStrings extends AppStrings {
   String get notLicensedHeadline => 'غير مرخَّص';
   @override
   String get licenceProblemHeadline => 'مشكلة في الترخيص';
+  @override
+  String get suspendedHeadline => 'موقوف';
+  @override
+  String get unconfirmedHeadline => 'غير مؤكَّد';
 
   @override
   String licenceExpiresInDays(int days) => 'ينتهي الترخيص خلال $days يوم.';
@@ -8788,6 +8820,22 @@ final class ArStrings extends AppStrings {
   @override
   String licenceNotYetValid(String date) =>
       'يبدأ هذا الترخيص في $date. راجع تاريخ الجهاز وساعته.';
+  @override
+  String licenceSuspended(String? reason) =>
+      'هذا الترخيص موقوف${reason == null || reason.isEmpty ? '' : ': $reason'}. '
+      'يمكنك إنهاء الوردية المفتوحة وتقفيلها، لكن لا يمكن بدء وردية جديدة. '
+      'تواصل مع المورّد.';
+  @override
+  String licenceUnconfirmed(String date) =>
+      'آخر تأكيد للترخيص كان في $date والمنصة غير متاحة. يمكنك إنهاء الوردية '
+      'المفتوحة وتقفيلها؛ أعد الاتصال لبدء وردية جديدة.';
+  @override
+  String get licenceNotIssued =>
+      'لا يوجد ترخيص لهذا المطعم على المنصة. يمكنك إنهاء الوردية المفتوحة '
+      'وتقفيلها، لكن لا يمكن بدء وردية جديدة. تواصل مع المورّد.';
+  @override
+  String licenceNotStarted(String date) =>
+      'يبدأ هذا الترخيص في $date. يمكن بدء وردية جديدة من حينها.';
   @override
   String get licenceFileDamaged => 'ملف الترخيص هذا تالف.';
   @override
