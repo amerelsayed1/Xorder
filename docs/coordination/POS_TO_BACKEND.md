@@ -12,6 +12,21 @@
 
 **Working notes for the current coordination pass (2026-09-27). Kept at the top so status is reportable at any time.**
 
+- **[done 2026-10-08] POS-BE-031 till side merged** (xorder-pos#5), built against the
+  cloud side (Xorder-Menu#4, merged and waiting to deploy). `OnlineLicenceService`
+  wraps the signed-file service and replaces only `current()`; activation,
+  import and the islanded path are untouched. Settled details:
+  - the verdict cache is its own file, `licence_check.json`, until the
+    `bootstrap.json` bundle cache exists; it moves there with it;
+  - `enforcement` is learned from the claim bundle and from every check reply. A
+    cloud till that never heard it asks once, and only a real 200 moves it
+    online; a 404 without `licence_not_found` (an older platform) keeps the file;
+  - `suspended`, `expired`, `not_yet_valid` and `licence_not_found` all stop the
+    next shift with `canSell` true; `unknown` never overwrites the cache or
+    blocks; 401/403/429/5xx/offline fall back to the cache;
+  - past `grace_policy.cache_seconds` (clamped to 7 days) the state is the new
+    `LicenseState.unconfirmed`: the open shift finishes, a new one waits.
+  - Verified end to end against a local cloud on 2026-10-07 (see xorder-pos#5).
 - **[done 2026-10-07] Owner decisions received.** All asks on both revisions are
   closed in `BACKEND_TO_POS.md` → "Owner decisions — 2026-10-07". The
   `name_ar_snapshot` amendment and **POS-BE-031** are now `APPROVED` (agreed, no
