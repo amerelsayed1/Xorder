@@ -7,6 +7,7 @@ import Icon from '@xorder/ui/Icon.vue'
 import TableSkeleton from '@xorder/ui/TableSkeleton.vue'
 import ErrorState from '@xorder/ui/ErrorState.vue'
 import { confirm } from '@xorder/ui/confirm.js'
+import { alert } from '@xorder/ui/alert.js'
 import { withMinDuration } from '../../../lib/minLoading.js'
 
 const router = useRouter()
@@ -21,6 +22,8 @@ const state = ref('')
 // Cloud and offline licences share one list — an operator asking "whose
 // licence expires next?" should not have to ask it twice.
 const kind = ref('')
+// The operator's own status (R2): "who is suspended?" is a server-side filter.
+const opStatus = ref('')
 const search = ref('')
 
 // Mirrors PosLicence::state() on the server. `superseded` is deliberately
@@ -58,6 +61,49 @@ const expiryOf = (l) => l.lifetime ? t('licence.lifetime_short') : dateOf(l.expi
 // offer delete. Owner decision, 2026-09-05.
 const isLive = (l) => !['revoked', 'superseded', 'expired'].includes(l.state)
 const acting = ref(null)
+
+// Suspend / resume (R2) act on the online path only, and only on a row that is
+// still live — the server refuses a revoked or superseded one. A force-expired
+// licence is held the same way as a suspended one: `state` still reads its
+// dates (often "Active"), so `status` is what decides that it offers Resume.
+const isRecord = (l) => ['revoked', 'superseded'].includes(l.state)
+const isHeld = (l) => l.status === 'suspended' || l.status === 'expired'
+// A signed-file licence never asks the platform, so a status set here would
+// be a decision no till ever hears — not offered at all.
+const isOnline = (l) => (l.enforcement || 'online') === 'online'
+
+async function quickSuspend(l) {
+    const ok = await confirm({
+        title: t('licence.suspend_title'),
+        message: t('licence.suspend_subtitle'),
+        confirmText: t('licence.suspend'),
+        danger: true,
+    })
+    if (!ok) return
+    await patchRow(l, 'suspend')
+}
+
+async function quickResume(l) {
+    const ok = await confirm({
+        title: t('licence.resume_title'),
+        message: t('licence.resume_message'),
+        confirmText: t('licence.resume'),
+    })
+    if (!ok) return
+    await patchRow(l, 'resume')
+}
+
+async function patchRow(l, action) {
+    acting.value = l.id
+    try {
+        const { data } = await api.post(`api/admin/pos/licences/${l.id}/${action}`, {})
+        rows.value = rows.value.map((x) => (x.id === l.id ? data.data : x))
+    } catch (err) {
+        alert(err?.response?.data?.message || t('common.error'))
+    } finally {
+        acting.value = null
+    }
+}
 
 async function quickRevoke(l) {
     const ok = await confirm({
@@ -109,6 +155,7 @@ async function load() {
                 params: {
                     restaurant_id: restaurantId.value || undefined,
                     kind: kind.value || undefined,
+                    status: opStatus.value || undefined,
                     search: search.value || undefined,
                     per_page: 100,
                 },
@@ -168,6 +215,13 @@ onMounted(load)
                     <option value="offline">{{ t('licence.kind.offline') }}</option>
                 </select>
             </label>
+            <label class="block" style="min-width:180px">
+                <span class="label">{{ t('licence.op_status_label') }}</span>
+                <select v-model="opStatus" class="input" @change="load">
+                    <option value="">{{ t('licence.all_op_statuses') }}</option>
+                    <option v-for="s in ['active', 'suspended', 'expired']" :key="s" :value="s">{{ t('licence.op_status.' + s) }}</option>
+                </select>
+            </label>
             <label class="block" style="min-width:200px">
                 <span class="label">{{ t('common.search') }}</span>
                 <input v-model="search" class="input" :placeholder="t('licence.search_hint')" @change="load" />
@@ -203,6 +257,7 @@ onMounted(load)
                         <td class="px-3 py-3 text-start" style="color:var(--body)">{{ clientName(l) }}</td>
                         <td class="px-3 py-3 text-center">
                             <span class="badge" :class="l.kind === 'offline' ? 'badge-gray' : 'badge-green'">{{ t('licence.kind.' + l.kind) }}</span>
+                            <div class="mt-1" style="font-size:11px;color:var(--muted)">{{ t('licence.enforcement.' + (l.enforcement || 'online')) }}</div>
                         </td>
                         <td class="px-3 py-3 text-center" style="color:var(--body)">{{ expiryOf(l) }}</td>
                         <td class="px-3 py-3 text-center"><span class="badge badge-gray">{{ l.max_terminals }}</span></td>
@@ -213,9 +268,18 @@ onMounted(load)
                         </td>
                         <td class="px-3 py-3 text-center mono" style="color:var(--muted)">…{{ l.key_last_four }}</td>
                         <td class="px-3 py-3 text-center">
-                            <span class="badge" :class="badge(l.state)">{{ t('licence.state.' + l.state) }}</span>
+                            <!-- The dashboard status outranks the dates on the online
+                                 path, so a held licence shows that, not "Active". -->
+                            <span v-if="isHeld(l) && !isRecord(l)" class="badge badge-red">{{ t('licence.op_status.' + l.status) }}</span>
+                            <span v-else class="badge" :class="badge(l.state)">{{ t('licence.state.' + l.state) }}</span>
                         </td>
-                        <td class="px-3 py-3 text-center" @click.stop>
+                        <td class="px-3 py-3 text-center whitespace-nowrap" @click.stop>
+                            <template v-if="!isRecord(l) && isOnline(l)">
+                                <button v-if="isHeld(l)" class="btn btn-ghost btn-sm"
+                                    :disabled="acting === l.id" @click="quickResume(l)">{{ t('licence.resume') }}</button>
+                                <button v-else-if="isLive(l)" class="btn btn-ghost btn-sm" style="color:var(--amber)"
+                                    :disabled="acting === l.id" @click="quickSuspend(l)">{{ t('licence.suspend') }}</button>
+                            </template>
                             <button v-if="isLive(l)" class="btn btn-ghost btn-sm" style="color:var(--red)"
                                 :disabled="acting === l.id" @click="quickRevoke(l)">{{ t('licence.revoke') }}</button>
                             <button v-else class="btn btn-ghost btn-sm" style="color:var(--red)"

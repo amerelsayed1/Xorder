@@ -10,6 +10,7 @@ use App\Http\Middleware\SetLocale;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Http\Exceptions\ThrottleRequestsException;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\IpUtils;
@@ -81,5 +82,20 @@ return Application::configure(basePath: dirname(__DIR__))
                 'message' => $e->getMessage(),
                 'details' => ['errors' => $e->errors()],
             ], 422);
+        });
+
+        // R2: a throttled licence check carries the agreed TOO_MANY_ATTEMPTS
+        // code, so the till falls back to its cached verdict on the code, not
+        // on a bare 429. Scoped to this route; the other POS limiters keep
+        // the codes their own contracts fixed.
+        $exceptions->render(function (ThrottleRequestsException $e, Request $request) {
+            if (! $request->is('api/pos/license/check')) {
+                return null;
+            }
+
+            return response()->json([
+                'code' => 'TOO_MANY_ATTEMPTS',
+                'message' => $e->getMessage(),
+            ], 429, $e->getHeaders());
         });
     })->create();

@@ -157,11 +157,16 @@ class PosBootstrapService
             ],
             'staff' => $this->staff($restaurant->id),
             'customers' => $this->customers($restaurant->id),
-            'licence' => PosLicence::query()
+            // The signed file, plus `enforcement` (R2): where this till gets
+            // its verdict — the platform's /license/check, or the file alone.
+            // LicenseFile.tryParse ignores the extra key.
+            'licence' => ($licence = PosLicence::query()
                 ->where('restaurant_id', $restaurant->id)
                 ->live()
                 ->latest('id')
-                ->first()?->file(),
+                ->first()) ? $licence->file() + [
+                    'enforcement' => $licence->enforcement ?? PosLicence::ENFORCEMENT_ONLINE,
+                ] : null,
         ];
     }
 

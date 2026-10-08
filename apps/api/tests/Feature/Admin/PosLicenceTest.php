@@ -171,9 +171,11 @@ class PosLicenceTest extends TestCase
             'deployment_mode' => 'cloud',
         ])->assertOk()->json();
 
-        // The bare three-key file and nothing else.
-        $this->assertSame(['payload', 'signature', 'key_id'], array_keys($res));
-        $this->assertSame($body['file'], $res);
+        // The three-key file, byte-identical to the download, plus
+        // `enforcement` (R2) — LicenseFile.tryParse ignores the extra key.
+        $this->assertSame(['payload', 'signature', 'key_id', 'enforcement'], array_keys($res));
+        $this->assertSame($body['file'], array_diff_key($res, ['enforcement' => true]));
+        $this->assertSame('online', $res['enforcement']);
 
         $this->assertNotNull(PosLicence::first()->activated_at);
     }
@@ -271,6 +273,7 @@ class PosLicenceTest extends TestCase
         $res = $this->postJson('/api/pos/licence/activate', ['key' => $key, 'tenant_slug' => 'demo'])
             ->assertOk()->json();
 
+        $res = array_diff_key($res, ['enforcement' => true]);
         $this->assertSame($renewal['file'], $res);
         $this->assertNotSame($issued['file'], $res);
     }

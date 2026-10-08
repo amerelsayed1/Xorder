@@ -55,6 +55,13 @@ class PosLicenceResource extends JsonResource
             ] : null),
 
             'state' => $this->state(),
+            // R2: what the operator set, and where the till gets its verdict.
+            // `verdict` is exactly what /license/check would answer now.
+            'status' => $this->status ?? PosLicence::STATUS_ACTIVE,
+            'enforcement' => $this->enforcement ?? PosLicence::ENFORCEMENT_ONLINE,
+            'verdict' => $this->verdict(),
+            'suspended_at' => $this->suspended_at?->toIso8601String(),
+            'suspended_reason' => $this->suspended_reason,
             // Null rather than 26,000 for a licence that was sold outright —
             // a countdown to a sentinel is a number nobody should read.
             'days_remaining' => $this->lifetime ? null : $this->daysRemaining(),

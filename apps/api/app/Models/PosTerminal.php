@@ -61,12 +61,19 @@ class PosTerminal extends Model
             'shift_open' => 'boolean',
             'last_catalog_sync_at' => 'datetime',
             'reported_licence_expires_at' => 'datetime',
+            'last_licence_check_at' => 'datetime',
         ];
     }
 
     public function branch(): BelongsTo
     {
         return $this->belongsTo(Branch::class);
+    }
+
+    /** The licence this till last checked against (R2 telemetry). */
+    public function licence(): BelongsTo
+    {
+        return $this->belongsTo(PosLicence::class, 'licence_id');
     }
 
     public function pairingCodes(): HasMany

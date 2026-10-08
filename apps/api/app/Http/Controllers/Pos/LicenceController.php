@@ -4,7 +4,9 @@ namespace App\Http\Controllers\Pos;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Pos\ActivateLicenceRequest;
+use App\Http\Requests\Pos\LicenceCheckRequest;
 use App\Models\PosLicence;
+use App\Models\PosTerminal;
 use App\Services\LicenceActivator;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -26,10 +28,11 @@ class LicenceController extends Controller
      * bytes without re-signing, and those bytes are the same ones the .xlic
      * download produces. Nothing here can make the two paths drift.
      *
-     * The response is the bare three-key file and nothing else. LicenseFile
-     * .tryParse ignores extra keys, but keeping it minimal is what makes "the
-     * download and the API response are the same document" true rather than
-     * merely intended.
+     * The response is the three-key file plus `enforcement` (R2, owner
+     * decision 2026-10-07): an islanded till may never call bootstrap, and
+     * this is the one reply it is sure to get. LicenseFile.tryParse ignores
+     * extra keys, and the three it reads are still byte-identical to the
+     * download, which is the property that matters.
      *
      * EnsureSubscriptionAllowsWrites deliberately does NOT apply: a lapsed
      * subscription must not stop a till installing a licence the customer
@@ -55,7 +58,77 @@ class LicenceController extends Controller
 
         $this->activator->markActivated($licence, $request->input('fingerprint'));
 
-        return response()->json($licence->file());
+        return response()->json($licence->file() + [
+            'enforcement' => $licence->enforcement ?? PosLicence::ENFORCEMENT_ONLINE,
+        ]);
+    }
+
+    /**
+     * The online verdict for a connected till (R2, POS-BE-031).
+     *
+     * Asked on the splash screen and before each new shift. `status` is the
+     * one field the till acts on; the rest says why and for how long. Device
+     * credential, no-feature, like `current` and the heartbeat: a till whose
+     * pos flag lapsed must still hear why. The restaurant is the terminal's.
+     *
+     * Read-only as far as the licence goes. What the till reports, and when it
+     * last asked, is written to the terminal quietly, as the heartbeat writes
+     * its telemetry — never an audited edit.
+     *
+     * This is commercial hygiene, not security: the answer is unsigned, over
+     * TLS, and every money write is still gated server-side on feature:pos.
+     */
+    public function check(LicenceCheckRequest $request): JsonResponse
+    {
+        /** @var PosTerminal $terminal */
+        $terminal = $request->attributes->get('pos_terminal');
+
+        $licence = PosLicence::query()
+            ->where('restaurant_id', $terminal->restaurant_id)
+            ->live()
+            ->latest('id')
+            ->first();
+
+        $data = $request->validated();
+        $terminal->forceFill([
+            'last_licence_check_at' => now(),
+            'licence_id' => $licence?->id,
+            'app_version' => $data['app_version'] ?? $terminal->app_version,
+            'reported_licence_expires_at' => $data['licence_expires_at'] ?? $terminal->reported_licence_expires_at,
+        ])->saveQuietly();
+
+        if (! $licence) {
+            return response()->json([
+                'message' => __('xorder.errors.licence_none_for_terminal'),
+                'code' => 'licence_not_found',
+            ], 404);
+        }
+
+        $status = $licence->verdict();
+
+        return response()->json([
+            'status' => $status,
+            'licence_ref' => $licence->licence_ref,
+            'starts_at' => $licence->issued_at?->toIso8601String(),
+            'expires_at' => $licence->lifetime ? null : $licence->expires_at?->toIso8601String(),
+            'lifetime' => (bool) $licence->lifetime,
+            'grace_days' => $licence->grace_days,
+            'warn_days' => $licence->warn_days,
+            'max_terminals' => $licence->max_terminals,
+            'max_users' => $licence->max_users,
+            'features' => $licence->features ?? [],
+            'enforcement' => $licence->enforcement ?? PosLicence::ENFORCEMENT_ONLINE,
+            'message' => match ($status) {
+                'suspended' => $licence->suspended_reason ?: __('xorder.errors.licence_suspended'),
+                'expired' => __('xorder.errors.licence_expired'),
+                'not_yet_valid' => __('xorder.errors.licence_not_yet_valid'),
+                default => null,
+            },
+            'server_time' => now()->toIso8601String(),
+            'grace_policy' => [
+                'cache_seconds' => (int) config('licence.check_cache_seconds', 259200),
+            ],
+        ]);
     }
 
     /**

@@ -50,6 +50,8 @@ class PosTerminalResource extends JsonResource
             'clock_offset_seconds' => $this->clock_offset_seconds,
             'last_catalog_sync_at' => $this->last_catalog_sync_at?->toIso8601String(),
             'reported_licence_expires_at' => $this->reported_licence_expires_at?->toIso8601String(),
+            'licence_id' => $this->licence_id,
+            'last_licence_check_at' => $this->last_licence_check_at?->toIso8601String(),
             'created_at' => $this->created_at?->toIso8601String(),
         ];
     }
