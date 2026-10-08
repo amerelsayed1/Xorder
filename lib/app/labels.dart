@@ -147,6 +147,8 @@ extension LicenseStateHeadline on LicenseState {
     LicenseState.inGrace => s.expiredInGraceHeadline,
     LicenseState.expired => s.expiredHeadline,
     LicenseState.missing => s.notLicensedHeadline,
+    LicenseState.suspended => s.suspendedHeadline,
+    LicenseState.unconfirmed => s.unconfirmedHeadline,
     _ => s.licenceProblemHeadline,
   };
 }
@@ -184,6 +186,14 @@ extension LicenceNoticeText on LicenceNotice {
     NoLicenceServer() => s.noLicenceServer,
     NotALicenceFile() => s.notALicenceFile,
     LicenceRevoked() => s.licenceRevokedByPlatform,
+    LicenceSuspended(:final reason) => s.licenceSuspended(reason),
+    LicenceUnconfirmed(:final lastConfirmed) => s.licenceUnconfirmed(
+      _shortDate(lastConfirmed.toLocal()),
+    ),
+    LicenceNotIssued() => s.licenceNotIssued,
+    LicenceNotStarted(:final startsOn) => s.licenceNotStarted(
+      _shortDate(startsOn.toLocal()),
+    ),
     TooManyLicenceAttempts() => s.tooManyLicenceAttempts,
     LicenceServerUnreachable(:final address) => s.licenceServerUnreachable(
       address,
