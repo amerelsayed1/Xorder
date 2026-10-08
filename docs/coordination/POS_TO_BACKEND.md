@@ -4,20 +4,76 @@
 **Absolute path:** `~/Projects/Xorder/xorder-pos/docs/coordination/POS_TO_BACKEND.md`
 **Backend repo under analysis:** `~/Projects/Xorder/xorder-new` (`apps/api`)
 **Reply channel:** `./BACKEND_TO_POS.md`
-**Last updated:** 2026-09-11 (POS-BE-029 rule 3: payment kinds are the platform's — see change log)
+**Last updated:** 2026-10-07 (owner decisions on both revisions → `APPROVED`) · 2026-09-27 (reconciled statuses to `BACKEND_TO_POS.md` Cloud Wave 1 + POS-BE-010; recorded POS positions on the two 2026-09 revisions — see PROGRESS and change log)
 
 ---
 
-> ## ✅ Contracts are AGREED. Implementation is still gated.
-> **Owner instruction, 2026-09-02:** both agents were directed to agree the
-> contract for every item. Every request below is now `APPROVED` — the final
-> wire contracts live in `BACKEND_TO_POS.md`, including the resolutions of
-> DIS-1…DIS-5 — except POS-BE-015, which is `READY` (shipped).
+## PROGRESS — desktop coordination on the two 2026-09 revisions
+
+**Working notes for the current coordination pass (2026-09-27). Kept at the top so status is reportable at any time.**
+
+- **[done 2026-10-08] POS-BE-031 till side merged** (xorder-pos#5), built against the
+  cloud side (Xorder-Menu#4, merged and waiting to deploy). `OnlineLicenceService`
+  wraps the signed-file service and replaces only `current()`; activation,
+  import and the islanded path are untouched. Settled details:
+  - the verdict cache is its own file, `licence_check.json`, until the
+    `bootstrap.json` bundle cache exists; it moves there with it;
+  - `enforcement` is learned from the claim bundle and from every check reply. A
+    cloud till that never heard it asks once, and only a real 200 moves it
+    online; a 404 without `licence_not_found` (an older platform) keeps the file;
+  - `suspended`, `expired`, `not_yet_valid` and `licence_not_found` all stop the
+    next shift with `canSell` true; `unknown` never overwrites the cache or
+    blocks; 401/403/429/5xx/offline fall back to the cache;
+  - past `grace_policy.cache_seconds` (clamped to 7 days) the state is the new
+    `LicenseState.unconfirmed`: the open shift finishes, a new one waits.
+  - Verified end to end against a local cloud on 2026-10-07 (see xorder-pos#5).
+- **[done 2026-10-07] Owner decisions received.** All asks on both revisions are
+  closed in `BACKEND_TO_POS.md` → "Owner decisions — 2026-10-07". The
+  `name_ar_snapshot` amendment and **POS-BE-031** are now `APPROVED` (agreed, no
+  code authorised). POS-side deltas from what is filed below: handle a seventh
+  verdict `not_yet_valid` (`expired`-shaped, shows `starts_at`); read
+  `enforcement` from the bootstrap `licence` object or the activate reply,
+  treating absent as `offline`; ignore `max_offline_days` on an `online` till.
+
+- **[done] Verified backend state.** `BACKEND_TO_POS.md` marks **16 items `READY`**
+  (Cloud Wave 1, 2026-09-04) plus **POS-BE-010 `READY`** (2026-09-22). This file's
+  index + several entry headers still read `APPROVED` / "implementation not
+  started" from before the wave — reconciled below.
+- **[done] Corrected the POS-BE-006 staleness** flagged in
+  `REVISION_ORDER_ITEM_ID.md §7 gap 4`: `order_items.menu_item_id` exists
+  (nullable FK, shipped as T0.2) and `POST /api/pos/orders` is live and `READY`.
+  The old "order_items has no menu_item_id … re-pricing is impossible" prose is
+  removed. The POS already sends `menu_item_id` + `name_snapshot` on every line.
+- **[done] Verified in the Flutter code (this pass):** the order line the drain
+  sends, the English-only `name_snapshot`, the verbatim-id catalog seeding, and
+  the shipped offline-signed licensing flow (splash gate, entitlement, states).
+  See *Order-line reality* and *Licensing reality* boxes under the new items.
+- **[done] Recorded POS positions / requests for both revisions:**
+  - Order lines → *Amendment to POS-BE-006 — bilingual name snapshot* below
+    (POS will also send `name_ar_snapshot`).
+  - Licensing → **POS-BE-031** (online dashboard-managed `/license/check`) below.
+- **[open] Asks to the cloud side** are collected under each new item's *Asks for
+  Agent 2* heading. Nothing here is built on the till yet; both revisions are
+  `PROPOSED` pending owner go, and the POS stays on the shipped offline path
+  (POS-BE-015) plus the current `menu_item_id` + `name_snapshot` wire.
+
+---
+
+> ## ✅ Contracts are AGREED. Cloud Wave 1 is BUILT and `READY`.
+> **Owner instruction, 2026-09-02:** both agents agreed the contract for every
+> item (final wire shapes in `BACKEND_TO_POS.md`, incl. DIS-1…DIS-5).
 >
-> `APPROVED` authorises **no backend code**. Implementation of any item still
-> needs the owner's explicit go, item by item. Agent 1 keeps building against
-> repository interfaces and fake implementations, and integrates real transport
-> only when an item reaches `READY`.
+> **2026-09-04 — Cloud Wave 1 shipped `READY`** (owner go "make the POS work with
+> cloud for now"): POS-BE-001, 002, 003, 005, **006**, 007, 008, 009, 011, 013,
+> 016, 019, 020, 022 (fleet API), 023, 024 — implemented and tested in `apps/api`
+> and integrated on the till (`lib/data/cloud/`). **2026-09-22 — POS-BE-010
+> (refunds) is `READY`.** POS-BE-015 has been `READY` (shipped) since 2026-08-26.
+> Deferred, still `APPROVED`: 004, 012, 014, 017, 018, 021, 025, 026, 027, 028
+> (029 `PROPOSED`; 030 platform-half `READY`, till half built, not merged).
+>
+> `APPROVED` authorises **no backend code**; a `READY` item is safe to integrate.
+> Agent 1 integrates real transport for `READY` items and keeps `Fake`
+> implementations for the rest. The index below mirrors `BACKEND_TO_POS.md`.
 
 **Status vocabulary:** `PROPOSED` · `APPROVED` · `IN_PROGRESS` · `READY` · `BLOCKED`
 Only Agent 2 (after owner approval) moves an item past `PROPOSED`, and it does so
@@ -29,44 +85,50 @@ in `BACKEND_TO_POS.md` — this file records the *request*.
 
 | ID | Feature | Priority | Blocking | Status |
 |---|---|---|---|---|
-| POS-BE-001 | `Feature::POS` entitlement + plan wiring | MEDIUM | NO | APPROVED |
-| POS-BE-002 | POS tenant capabilities (`pos.*`) | HIGH | NO | APPROVED |
-| POS-BE-003 | Auto-applied option groups on `/dashboard/items` | HIGH | NO | APPROVED |
-| POS-BE-004 | `sku` + `barcode` on menu items | MEDIUM | NO | APPROVED |
-| POS-BE-005 | `supported_order_types` + `code` on `BranchResource` | HIGH | NO | APPROVED |
-| **POS-BE-006** | **Authenticated, server-priced POS order creation** | **HIGH** | **YES** | APPROVED |
-| POS-BE-007 | Idempotency + integer minor units on POS writes | HIGH | YES | APPROVED |
-| POS-BE-008 | Per-branch invoice sequence | HIGH | YES | APPROVED |
-| POS-BE-009 | Shifts, cash movements, terminal registry | HIGH | YES | APPROVED |
-| POS-BE-010 | Refunds / voids as reversing records | MEDIUM | NO | APPROVED |
-| POS-BE-011 | Token lifetime compatible with an offline till | HIGH | NO | APPROVED |
-| POS-BE-012 | Incremental catalog sync (`updated_since` + tombstones) | LOW | NO | APPROVED |
-| POS-BE-013 | Money configuration: tax, charges, tender types, tax id | HIGH | YES | APPROVED |
-| POS-BE-014 | Authenticated customer creation from the till | LOW | NO | APPROVED |
-| POS-BE-015 | Licence issuance + activation endpoints | MEDIUM | NO | **READY** |
-| POS-BE-016 | Terminal registration against a licence (seat counting) | MEDIUM | NO | APPROVED |
-| POS-BE-017 | Branch-server packaging (on-premises deployment) | MEDIUM | NO | APPROVED |
-| POS-BE-018 | Upstream sync: branch server → platform | MEDIUM | NO | APPROVED |
-| POS-BE-019 | Machine-readable error codes on POS writes | HIGH | NO | APPROVED |
-| POS-BE-020 | Server time exposed for clock-skew detection | LOW | NO | APPROVED |
-| POS-BE-021 | Bulk drain of a queued backlog after an outage | MEDIUM | NO | APPROVED |
-| POS-BE-022 | Super Admin fleet registry + automatic heartbeat | HIGH | NO | APPROVED |
-| POS-BE-023 | Terminal provisioning from the dashboard + `/api/pos/bootstrap` | HIGH | YES | APPROVED |
-| POS-BE-024 | POS PIN credential for offline cashier sign-in | HIGH | YES | APPROVED |
-| POS-BE-025 | Pre-auth tenant setup config (`/setup/config/{slug}`) + versioning | HIGH | NO | APPROVED |
-| POS-BE-026 | Site registration and `ServerId` | MEDIUM | NO | APPROVED |
-| POS-BE-027 | Licence claims: `max_offline_days`, `server_id`, `license_version` | MEDIUM | NO | APPROVED |
-| POS-BE-028 | Terminal display-name update, decoupled from identity | LOW | NO | APPROVED |
-| POS-BE-030 | Purchasing and stock on a cloud terminal are platform-authored | LOW | NO | APPROVED — built both sides, not merged or deployed |
+| POS-BE-001 | `Feature::POS` entitlement + plan wiring | MEDIUM | NO | **READY** |
+| POS-BE-002 | POS tenant capabilities (`pos.*`) | HIGH | NO | **READY** |
+| POS-BE-003 | Auto-applied option groups on `/dashboard/items` | HIGH | NO | **READY** |
+| POS-BE-004 | `sku` + `barcode` on menu items | MEDIUM | NO | APPROVED (deferred) |
+| POS-BE-005 | `supported_order_types` + `code` on `BranchResource` | HIGH | NO | **READY** |
+| **POS-BE-006** | **Authenticated, server-priced POS order creation** | **HIGH** | **YES** | **READY** (integrated 2026-09-04) |
+| POS-BE-007 | Idempotency + integer minor units on POS writes | HIGH | YES | **READY** |
+| POS-BE-008 | Per-branch invoice sequence | HIGH | YES | **READY** |
+| POS-BE-009 | Shifts, cash movements, terminal registry | HIGH | YES | **READY** (registry via §023) |
+| POS-BE-010 | Refunds / voids as reversing records | MEDIUM | NO | **READY** (2026-09-22) |
+| POS-BE-011 | Token lifetime compatible with an offline till | HIGH | NO | **READY** (Option C device token) |
+| POS-BE-012 | Incremental catalog sync (`updated_since` + tombstones) | LOW | NO | APPROVED (deferred) |
+| POS-BE-013 | Money configuration: tax, charges, tender types, tax id | HIGH | YES | **READY** |
+| POS-BE-014 | Authenticated customer creation from the till | LOW | NO | APPROVED — built both sides 2026-09-27 |
+| POS-BE-015 | Licence issuance + activation endpoints (offline signed file) | MEDIUM | NO | **READY** |
+| POS-BE-016 | Terminal registration against a licence (seat counting) | MEDIUM | NO | **READY** (warns) |
+| POS-BE-017 | Branch-server packaging (on-premises deployment) | MEDIUM | NO | APPROVED (deferred) |
+| POS-BE-018 | Upstream sync: branch server → platform | MEDIUM | NO | APPROVED (deferred) |
+| POS-BE-019 | Machine-readable error codes on POS writes | HIGH | NO | **READY** |
+| POS-BE-020 | Server time exposed for clock-skew detection | LOW | NO | **READY** |
+| POS-BE-021 | Bulk drain of a queued backlog after an outage | MEDIUM | NO | APPROVED (deferred) |
+| POS-BE-022 | Super Admin fleet registry + automatic heartbeat | HIGH | NO | **READY** (fleet API; web UI later) |
+| POS-BE-023 | Terminal provisioning from the dashboard + `/api/pos/bootstrap` | HIGH | YES | **READY** |
+| POS-BE-024 | POS PIN credential for offline cashier sign-in | HIGH | YES | **READY** (PBKDF2-SHA256 120k) |
+| POS-BE-025 | Pre-auth tenant setup config (`/setup/config/{slug}`) + versioning | HIGH | NO | APPROVED (deferred) |
+| POS-BE-026 | Site registration and `ServerId` | MEDIUM | NO | APPROVED (deferred) |
+| POS-BE-027 | Licence claims: `max_offline_days`, `server_id`, `license_version` | MEDIUM | NO | APPROVED (deferred; amends 015) |
+| POS-BE-028 | Terminal display-name update, decoupled from identity | LOW | NO | APPROVED (deferred) |
+| POS-BE-029 | Branch view on a cloud till (own branch, per-terminal) | MEDIUM | NO | PROPOSED |
+| POS-BE-030 | Purchasing and stock on a cloud terminal are platform-authored | LOW | NO | **READY** (platform half; till half built, not merged) |
+| **POS-BE-031** | **Online, dashboard-managed licence check (`/license/check`)** | **HIGH** | **NO** | APPROVED (2026-10-07) |
+| *Amd 006* | *Bilingual name snapshot on the wire (`name_ar_snapshot`)* | MEDIUM | NO | PROPOSED (see revision) |
 
 Three of the entries above are **amendments rather than new surface**:
 POS-BE-025 is a redacted projection of POS-BE-023's bundle, POS-BE-027 adds three
 claims to the already-`READY` POS-BE-015, and the POS-BE-022 amendment asks only
 that its heartbeat *response* be specified. See `docs/pos/10-setup-architecture.md`.
 
-**If the owner approves only one item, it should be POS-BE-006** — everything
-that takes money depends on it, and its prerequisite (`order_items.menu_item_id`)
-independently fixes product reporting for the existing QR product.
+**POS-BE-006 shipped and is integrated** (Cloud Wave 1, 2026-09-04) — everything
+that takes money depended on it, and its prerequisite (`order_items.menu_item_id`)
+also fixed product reporting for the existing QR product (BE-A05). The two open
+2026-09 revisions are recorded as **POS-BE-031** (online licence check) and the
+**Amendment to POS-BE-006** (bilingual `name_ar_snapshot`); both are `PROPOSED`
+and neither has an owner go to build on the till yet.
 
 ---
 
@@ -263,10 +325,20 @@ prefix in POS-BE-008.
 
 ## POS-BE-006
 
-**Status:** APPROVED — contract agreed 2026-09-02, see `BACKEND_TO_POS.md`; implementation not started
+**Status:** **READY** — built and tested in `apps/api`, integrated on the till in
+Cloud Wave 1 (2026-09-04). `POST /api/pos/orders` is live; the prerequisite schema
+`order_items.menu_item_id` (nullable FK, `nullOnDelete`) shipped as T0.2
+(`2026_09_02_000100_add_menu_item_id_to_order_items_table.php`). See
+`BACKEND_TO_POS.md §006` for the frozen wire shape and the till side in
+`lib/data/cloud/` (`OutboxDrain`, `BootstrapSeeder`). The original request text is
+kept below for the record; the "no `menu_item_id` / re-pricing impossible" prose
+was **corrected** on 2026-09-27 (it predated T0.2).
 **Feature:** Authenticated, server-priced POS order creation
 
-> **This is the blocking request. Everything that takes money depends on it.**
+> **This was the blocking request; it is now `READY` and integrated.** Everything
+> that takes money depended on it. It carries `menu_item_id` + `name_snapshot` per
+> line and re-prices server-side. See also the *Amendment to POS-BE-006 —
+> bilingual name snapshot* below (the `name_ar_snapshot` follow-up).
 
 **Description:** An authenticated endpoint that creates an order from **item ids
 and option ids**, prices it **server-side**, and returns the authoritative totals
@@ -279,10 +351,12 @@ and invoice number.
 2. That endpoint recomputes `total` from **client-submitted `line_total` values**
    (`PublicOrderController::store`) — acceptable when no money changes hands,
    unacceptable at a till.
-3. **`order_items` has no `menu_item_id`** — only a `name` string
-   (`2026_08_19_000100_create_table_visits_and_order_rounds.php`). Server-side
-   re-pricing is therefore *impossible* on the current schema. This is the real
-   prerequisite.
+3. ~~**`order_items` has no `menu_item_id`** — only a `name` string. Server-side
+   re-pricing is therefore *impossible* on the current schema.~~ **CORRECTED
+   2026-09-27:** `order_items.menu_item_id` now exists (nullable FK, T0.2,
+   `2026_09_02_000100_add_menu_item_id_to_order_items_table.php`), the endpoint is
+   live, and the till sends `menu_item_id` + `name_snapshot` on every line and
+   re-prices server-side. This was the real prerequisite and it shipped.
 
 **Existing API discovered / reusable:**
 `Order` → `OrderRound` → `OrderItem` graph; `TableVisit` + `MenuSession` with the
@@ -1646,6 +1720,246 @@ protects older till builds.
 
 ---
 
+## Amendment to POS-BE-006 — bilingual name snapshot on the wire (`name_ar_snapshot`)
+
+**Status:** APPROVED 2026-10-07 (owner) · was PROPOSED — filed 2026-09-27, POS position on `REVISION_ORDER_ITEM_ID.md`.
+Design only; no till code written. POS-BE-006 itself is `READY` and this does not
+change its accepted request — it *adds one optional field*.
+**Feature:** the till also sends the Arabic name snapshot, so the backend can
+freeze a real `name_ar` even on the fallback (unresolved / open-price) path.
+
+### Order-line reality (verified in the Flutter code, 2026-09-27)
+
+The revision's problem statement — "the POS sends the name directly" — is **stale
+for the POS path** and exactly true only for the public/QR path. Confirmed:
+
+| Fact | Evidence |
+|---|---|
+| The wire line already carries `menu_item_id` (nullable) + `name_snapshot` | `lib/data/cloud/outbox_drain.dart:196-218` (`lineJson`) — keys: `client_line_id`, `menu_item_id`, `option_ids`, `quantity`, `note`, `name_snapshot`, `unit_price_minor`, `discount?`, `price_override?` |
+| **No `variant_option_id`** on the wire — the variant option travels *inside* `option_ids[]`; the server resolves `is_variant` | `outbox_drain.dart:209-211` |
+| `name_snapshot` is **English-only** — it is `product.nameEn`, snapshotted at persist time and read back verbatim by the drain | persisted at `lib/data/postgres/postgres_orders_repository.dart:484` (`'name': line.product.nameEn`); drain re-reads `pos_order_lines.name_snapshot` at `outbox_drain.dart:976,1010` |
+| **No Arabic name is on the line at all** — `name_ar` is neither a column nor a wire key | same files; there is no `name_ar` selected or emitted |
+| The domain `Product` **does** hold both languages | `lib/domain/models/catalog.dart:58` (`nameEn`, required), `:59` (`nameAr`, nullable); `displayName(locale)` at `:95-98` |
+| The local catalog **is** bilingual — the seeder writes `name_en` **and** `name_ar` | `lib/data/cloud/bootstrap_seeder.dart:618-619` |
+| Catalog ids are `menu_items.id` **verbatim** (no remap table); serials bumped past the max seeded id | `bootstrap_seeder.dart:615` (`'id': product.id`), `_bumpSequences` at `:680-697` |
+| Open-price and combo lines send `menu_item_id = null`; the negative synthetic id is a per-ticket merge key only, never persisted or sent | `postgres_orders_repository.dart:481`; allocator in `lib/domain/services/ticket_engine.dart:715-729,771-777` |
+
+**So the only place bilingual fidelity is lost is the fallback path**: when the
+line's `menu_item_id` is null or the item was deleted during an outage, the
+backend has only the single English `name_snapshot` to write into both `name_ar`
+and `name_en`. On a *resolved* line the backend already has both names from the
+item, so this amendment does not affect the common case.
+
+### POS position
+
+- **Accepted, no wire change is *required* to ship the revision's benefit.** The
+  resolved-line case (the vast majority) already works from `menu_item_id`; the
+  backend freezing both names from the resolved item is a backend-only change.
+- **The POS will additionally send `name_ar_snapshot`** so the fallback path is
+  bilingual too. This is the one place the revision loses Arabic today, and the
+  till already holds `Product.nameAr` locally, so the cost is small.
+- The field is **optional and additive**; an older till that omits it is handled
+  exactly as today (both frozen columns hold the English snapshot).
+
+### Desktop implementation plan (POS side, gated on owner go)
+
+Ordered, additive, each independently shippable; all behind the repository seam.
+
+1. **Persist the Arabic snapshot.** Add a nullable `name_ar_snapshot` column to
+   `pos_order_lines` (a new `bin/pos_migrate.dart` migration; column-scope the
+   till grant as with `name_snapshot`). Write `product.nameAr` into it at
+   `postgres_orders_repository.dart:460-501` next to the existing
+   `'name': line.product.nameEn`. Do the same for combo component rows
+   (`pos_order_line_items`, currently `item.nameEn` at `:514-521`).
+2. **Carry it to the wire.** Select `l.name_ar_snapshot` in the drain's
+   `_linesFor` SQL (`outbox_drain.dart:972-1033`) and add
+   `'name_ar_snapshot': nameArSnapshot` to `lineJson` (`:196-218`), null-omitted
+   like `discount`/`price_override` so nothing breaks when it is absent.
+3. **Response parse.** When the §006 response line gains `name_ar`/`name_en`,
+   have the bundle/order-response parser read them tolerantly (fall back to the
+   existing `name`), matching the till's never-throw rule. The till prints from
+   its own local snapshot, so this is for reconciliation display only.
+4. **Tests.** Extend `test/data/outbox_drain_test.dart` for the new key, and the
+   repository test for the new column; assert the resolved and fallback cases.
+
+No change to open-price/combo behaviour: they still send `menu_item_id = null`
+and now carry a real Arabic snapshot alongside the English one.
+
+### Asks for Agent 2 (cloud side)
+
+1. **Confirm the field name and precedence.** POS proposes `name_ar_snapshot`
+   (mirroring `name_snapshot`). On a resolved line the server **ignores both
+   snapshots for naming** and freezes `name_ar`/`name_en` from the item; on the
+   unresolved/`client_asserted` fallback the server writes
+   `name_en = name_snapshot` and `name_ar = name_ar_snapshot ?? name_snapshot`.
+   Please confirm this is what §2b will do.
+2. **Confirm the response shape.** Each `lines[]` element gains `name_ar` +
+   `name_en`, `name` kept for back-compat (revision §3). POS reads them
+   tolerantly; an unknown/absent value never blocks.
+3. **`StorePosOrderRequest` validation.** `name_ar_snapshot` should be
+   `nullable|string`, never `required` — `name_snapshot` stays the
+   `required_without:menu_item_id` gate. No new 422 shape.
+4. **Public/QR path is out of POS scope.** The revision's "Minimum" (write the
+   single diner name into all three columns) and the later "menu SPA sends
+   `menu_item_id`" follow-up are backend/`apps/menu` concerns; the POS neither
+   sends nor consumes that path.
+
+**Priority:** MEDIUM · **Blocking:** NO — the resolved-line benefit ships without
+any till change; this only restores Arabic on the rare fallback line.
+
+---
+
+## POS-BE-031 — Online, dashboard-managed licence check (`POST /api/pos/license/check`)
+
+**Status:** APPROVED 2026-10-07 (owner) · was PROPOSED — filed 2026-09-27, POS position on `REVISION_POS_LICENSING.md`.
+Design only; no till code written. This is a **new online verdict path** that sits
+beside the shipped, `READY` POS-BE-015 offline-signed file (which is *kept, for
+islanded/`enforcement='offline'` tills only*). It supersedes, for connected tills,
+the runtime use of the signed file — not POS-BE-015's activation endpoints.
+**Feature:** a connected till reads its licence verdict from the server on splash
+and before each shift, with a ~72h offline grace cache; the signed file becomes
+the islanded-only path.
+
+### Licensing reality (verified in the Flutter code, 2026-09-27)
+
+| Fact | Evidence |
+|---|---|
+| Runtime licence trust is **offline Ed25519** against a public key compiled into the binary; fails closed in release without the key env var | `lib/features/licensing/domain/license_verifier.dart:65-94`; `lib/features/licensing/data/license_keys.dart:45,51-63` |
+| The bound service is the **real `DefaultLicenceService`**, not the dev self-signer | `lib/app/providers.dart:1619-1639`; `FakeLicenceService` (`licence_service.dart:259-362`) is used by tests only |
+| `LicenseState` has exactly the 10 spec'd values | `lib/features/licensing/domain/license.dart:4-37` (`valid, expiringSoon, inGrace, expired, notYetValid, missing, invalid, tenantMismatch, modeNotLicensed, terminalNotLicensed`) |
+| The gate exposes state-driven `canOpenShift`, **`canSell`**, `canChangeConfiguration`; `canCashUp`/`canReprint`/`canExportData` are hardcoded `true` getters | `license.dart:208-245` (note: spec's "canChangeConfig" = field `canChangeConfiguration`; spec omits the real `canSell` field) |
+| Current state→gate mapping | `license_verifier.dart:199-253`: `valid`/`expiringSoon` → all true; `inGrace` → config **frozen**; `expired` → `canOpenShift=false`, **`canSell=true`** (open shift never cut off); every deny state (`missing`/`invalid`/`tenantMismatch`/`modeNotLicensed`/`terminalNotLicensed`/`notYetValid`) → **`canSell=false`** via `_deny` |
+| Splash gate: `StartScreen.initState` invalidates `licenceEntitlementProvider` on every arrival; `_start()` blocks a new shift on `!canOpenShift`; a null (slow/unloaded) entitlement is **treated as permitted** | `lib/features/start/start_screen.dart:52`, `:67-68`, `:148-150` |
+| `max_offline_days` is a **parsed but NOT-enforced** `LicenseClaims` field; enforcement needs a durable last-contact timestamp that does not exist yet | `license.dart:107-119,161,194` |
+| `DeploymentMode` is **`cloud` / `offline`** (two values); `requiresPeriodicCheckIn => offline`, `syncsSalesToPlatform => cloud` | `lib/core/config/deployment.dart:10-75` |
+| **No online `/license/check` exists.** The only online licence call is *activation* (`POST /api/pos/licence/activate`); revocation is seen only as HTTP 403 at activation | `lib/features/licensing/data/platform_licence_api.dart:88-89,115-118`; grep for `licence/check` → nothing |
+| **`bootstrap.json` + `last_platform_contact_at` are design-only** (no `lib/` code); only `config.json` (device config) and `licence.xlic` exist on disk; `CloudSync.lastSyncedAt()` reads when the bundle was last written to the DB, not a licence timestamp | `docs/pos/10-setup-architecture.md §13`; `lib/data/cloud/cloud_sync.dart:186+` |
+| Device-token (terminal) revocation already exists via the heartbeat 401 → `terminalRejectedProvider` (cloud-only, non-persisted), distinct from licence revocation | `providers.dart:1050-1052,1014-1035`; `lib/data/cloud/cloud_api.dart:217-218`; `cloud_sync.dart:132-160` |
+
+### POS position
+
+- **Accepted in principle** — it materially improves revocation latency and
+  removes the "signed file can never be recalled" hole for connected tills, while
+  keeping the offline file for genuinely islanded tills. It aligns with the
+  cardinal rule the client already enforces: **block only the *next* shift, never
+  mid-service.**
+- **The enforcement axis is a new switch, orthogonal to `DeploymentMode`.** The
+  client already has `requiresPeriodicCheckIn` on `offline` mode; the revision's
+  `enforcement` flag (`online` vs `offline`) must be delivered to the till (at
+  activation/bootstrap) so a single binary picks the path. The POS asks that this
+  be a first-class field, not inferred from `DeploymentMode` (a `cloud` till is
+  always `online`; an `offline` till may be either connected-offline `online` or
+  truly islanded `offline`).
+- **The signed-file machinery stays intact** for `enforcement='offline'`: all ten
+  `LicenseState` cases, `DefaultLicenceService`, `LicenseVerifier`, the embedded
+  public key, and `activate`/`current`. POS-BE-015/027 are unaffected for that
+  path.
+
+### Desktop implementation plan (POS side, gated on owner go)
+
+Ordered; the first two are **prerequisites the online path shares with the
+still-unenforced POS-BE-027 `max_offline_days`**, so they pay for themselves twice.
+
+1. **Build the durable last-contact cache first (`bootstrap.json`).** Implement
+   the design-only `bootstrap.json` beside `config.json`/`licence.xlic` — a
+   separate failure domain, written by the client, holding `last_platform_contact_at`
+   and (new) the last successful licence verdict + `checkedAt`. This is the single
+   missing primitive behind both this revision's grace window **and** POS-BE-027's
+   offline-window enforcement. (`docs/pos/10-setup-architecture.md §13` is the design.)
+2. **Add the online verdict client.** A `PlatformLicenceApi.check()` →
+   `POST /api/pos/license/check` on the **device token** (`xdt_…`, the same
+   credential the heartbeat uses), sending `fingerprint` (already computed by
+   `TerminalIdFingerprint`), `deployment_mode`, optional `app_version` and the
+   till's believed `licence_expires_at`. Timeout ~10s.
+3. **A new `LicenceService` for `enforcement='online'`.** Introduce an
+   `OnlineLicenceService` bound in `lib/app/providers.dart:1619-1639` when the
+   config's enforcement is `online` (else keep `DefaultLicenceService`/
+   `SiteLicenceService`). `licenceEntitlementProvider` stays the seam — nothing
+   in `StartScreen` changes. The service maps the server `status` enum onto a
+   `LicenseEntitlement` and caches the verdict per step 1.
+4. **Map the online verdict onto the existing gate — carefully.** The server
+   enum (`valid`, `expiring_soon`, `in_grace`, `expired`, `suspended`, `unknown`)
+   plus HTTP `404 licence_not_found` must produce entitlements that honour §4.2.
+   **Gap to close:** the current `_deny` path sets `canSell=false`, but the
+   revision requires `suspended`/`licence_not_found` to behave like `expired`
+   (`canOpenShift=false`, **`canSell=true`** so the open shift finishes,
+   `canChangeConfiguration=false`). So the online mapping must **not** reuse
+   `_deny` for those; it needs an `expired`-shaped entitlement. Options: add
+   `LicenseState.suspended` (+ `offlineWindowExpired` from POS-BE-027) or map both
+   to the existing `expired` state. `canCashUp`/`canReprint`/`canExportData` stay
+   hardcoded `true` regardless.
+5. **Wire the splash + before-shift checks (non-blocking).** `StartScreen`
+   already invalidates `licenceEntitlementProvider` on every arrival
+   (`start_screen.dart:52`) and gates only `_start()` on `canOpenShift`
+   (`:67-68`), treating a null/slow verdict as permitted (`:148-150`). The online
+   service hangs off that provider: it returns the cached verdict immediately and
+   refreshes in the background, so the splash never blocks on the network. A
+   renewal/suspend applied minutes ago is visible at the next arrival with no
+   restart — which is exactly what the current invalidation already guarantees.
+6. **The 72h grace-window rule (client-side).** On a 200, store
+   `{verdict, checkedAt}` in `bootstrap.json` and derive the entitlement. On
+   network/5xx/timeout, trust the cache if `now - checkedAt <= grace_policy.cache_seconds`
+   (default 72h, server-driven, clamped client-side to a sane max e.g. 7d); show a
+   subtle "working offline, licence last confirmed <t>" pill. Past the window:
+   allow the OPEN shift, **block a new shift**, banner "cannot confirm licence —
+   reconnect". On 401/403 reuse the existing re-pair / `terminalRejectedProvider`
+   handling. Never write the verdict to `config.json` (gates boot) or as a signed
+   file (connected tills stop keeping one).
+7. **Clock-skew honesty.** Compare the response `server_time` to local time (the
+   heartbeat already carries `server_time`); a large skew shows the honest "check
+   the terminal's date and time" rather than a false expiry.
+8. **Islanded stays on the file.** A terminal whose config is `enforcement='offline'`
+   never calls `/license/check`; `DefaultLicenceService` + the `.xlic` path is
+   unchanged, all ten `LicenseState` cases live only there.
+9. **Tests.** Fake the HTTP layer (as `branch_sales_api`/`cloud_refunds` tests do)
+   and cover: each `status` → entitlement, the 72h cache hit/expiry, the
+   suspended/404 "open shift finishes but next is blocked" rule, and the islanded
+   path never calling the endpoint.
+
+### Asks for Agent 2 (cloud side)
+
+1. **Confirm the exact request/response shapes and auth.** POS will build against
+   `POST /api/pos/license/check` on `pos.device:no-feature` (so a lapsed
+   `feature:pos` till is still told *why*), restaurant resolved from the terminal,
+   throttle `60,1`. Please confirm the request body fields (`fingerprint`,
+   `deployment_mode`, `app_version?`, `licence_expires_at?`) and the 200 body
+   (`status`, `licence_ref`, `expires_at`, `lifetime`, `grace_days`, `warn_days`,
+   `max_terminals`, `max_users`, `features[]`, `message`, `server_time`,
+   `grace_policy.cache_seconds`).
+2. **Freeze the verdict enum.** POS needs the final `status` value set —
+   `valid | expiring_soon | in_grace | expired | suspended | unknown` — and the
+   HTTP/code table (`404 licence_not_found`, `401 DEVICE_TOKEN_INVALID`,
+   `403 TERMINAL_REVOKED`, `429 TOO_MANY_ATTEMPTS`). The client switches on
+   `status`/`code` and falls back to **retry/trust-cache, never block-on-unknown**,
+   so new values can be added safely — but the initial set must be fixed so the
+   entitlement mapping (step 4) is correct.
+3. **Deliver the `enforcement` flag to the till.** POS asks that
+   `enforcement` (`online`/`offline`) be delivered at activation and in the
+   bootstrap/setup bundle, so the binary can pick the path without guessing from
+   `DeploymentMode`. Name the field and say which bundle carries it.
+4. **`grace_policy.cache_seconds` is server-driven but bounded.** Confirm the
+   default (72h / 259200s) and that the client may clamp it (POS will clamp to a
+   max of 7d so a bad value can't grant forever).
+5. **Confirm the verdict is not signed (TLS-only) and that real enforcement stays
+   server-side** on `feature:pos` at every money write — the splash verdict is
+   commercial hygiene. If an HMAC over the verdict is ever wanted, that is a
+   separate contract change; POS is fine deferring it.
+6. **Relationship to POS-BE-027.** The `max_offline_days` claim (parsed, not yet
+   enforced) and this online window overlap. POS proposes: on an `online` till the
+   `/license/check` grace window governs; on an `offline` (islanded) till the
+   signed-file `max_offline_days` governs. Please confirm there is **one**
+   enforcement path per till, not two competing windows.
+7. **Suspend/resume/expire latency semantics.** Confirm the dashboard actions
+   bite at the next check (immediate for a launching till; up to the grace window
+   for an open one), and that an urgent kill uses device-token revocation
+   (`TERMINAL_REVOKED`), which the till already honours immediately.
+
+**Priority:** HIGH · **Blocking:** NO — the shipped offline-signed path
+(POS-BE-015) keeps every till working until this lands; the POS builds against a
+faked `/license/check` until it reaches `READY`.
+
+---
+
 ## Amendment to POS-BE-022 — please specify the heartbeat *response*
 
 **This is the highest-leverage single item in the whole request set, and it costs
@@ -1958,4 +2272,6 @@ owner's explicit go to move `APPROVED → IN_PROGRESS`.
 | 2026-09-11 | **POS-BE-013 tender types: how the client conforms** (`pos-dev`, same defect go). A cloud till now upserts each `money.tender_types` element into `pos_tender_types`, keyed on a new column `(restaurant_id, platform_id)` (migration 41). The till's own primary key is kept, so platform tender 1 never overwrites local row 1. The drain sends `platform_id` as `payments[].tender_type_id`. A database CHECK keeps platform rows at ids above 4, with code `platform-<id>`. Kind mapping: `cash→cash`, `card→card`, `external→card` (reconciled as electronic against the bank terminal's slip), `other→other`, unknown→`other` (never cash). Only `cash` counts as cash and opens the drawer. Tenders the bundle no longer names are deactivated, never deleted. An empty list changes nothing. **Refused on the client:** a payment on a tender the bundle didn't deliver (the seeded 1–4, or legacy queued sales) is never sent, with a guessed id or with null. The order is quarantined locally with code `TENDER_NOT_FROM_PLATFORM`, which the platform never returns. The Payment methods pane is read-only on cloud. **Relies on the platform to:** never deliver an empty list for a POS restaurant; keep tender ids stable (delete means deactivate); treat a new `kind` as a contract change. It should always deliver one active `cash` tender. **Consequences:** a cloud till no longer offers "On account", because the platform has no `account` kind. Upgraded dev tills must re-apply the cloud till grants (`pos_migrate --cloud-till` or the wizard) and force a reseed. |
 | 2026-09-11 | **POS-BE-029 amended: payment kinds are the platform's** (`pos-dev`, docs + client; status unchanged, PROPOSED). Rule 3 and the summary example named the till's kinds (`wallet`, `account`), which the platform cannot produce: since the POS-BE-013 conformance above, a cloud till's payments are on platform tenders whose kind is `cash \| card \| external \| other`. Rule 3 now reads that vocabulary: cash by `counts_as_cash`; `card` and `external` electronic; `other` collected; no `account`. The example's on-account row became an `external` card. The client now parses `kind` through `PlatformTenderKind.tillKind` — the seeder's own mapping — instead of the till's parser, which had read `external` as other and left electronic short of the bank's settlement slip. Unknown kinds read as `other`, so a new kind (`account` included) is a POS-BE-013 contract change before the platform sends it. Both repos' copies updated identically. |
 | 2026-09-13 | **POS-BE-030 raised and approved: purchasing and stock on a cloud terminal are platform-authored** (CB-09; owner go "finish all phases"). A cloud till hides its Purchasing, Items, Stock and Units panes whatever the person holds, and the rail, the Manage menu and deep links all agree. A pointer names the xorder.io dashboard, in EN and AR. Built on `feat/cb-09-slice-e` @ `1adb17f`: `flutter analyze` is clean, `flutter test` shows 1734 passed and 43 skipped, and `test/data` shows 876 passed and 1 skipped. Not merged: the main checkout carries other sessions' uncommitted edits to `app.dart` and `management_screen.dart`. The platform half, the bundle withholding `purchase.manage`, is CB-09 slice a. Rows already on a cloud till stay where they are, neither imported nor deleted. |
+| 2026-09-27 | **Reconciliation + two 2026-09 revisions recorded (desktop coordination pass).** Synced this file's index and the POS-BE-006 entry to `BACKEND_TO_POS.md`: Cloud Wave 1 (2026-09-04) items and POS-BE-010 (2026-09-22) are `READY`; the stale "`order_items` has no `menu_item_id` / re-pricing impossible" prose and the "implementation not started" headers were corrected (T0.2 shipped, endpoint live, till integrated). Verified in the Flutter code: the wire line sends `menu_item_id` + English-only `name_snapshot` (`product.nameEn`) with no `name_ar` and no `variant_option_id` (folded into `option_ids[]`); catalog is bilingual and seeded with verbatim ids; the licensing runtime is offline Ed25519 (`DefaultLicenceService`, 10 `LicenseState` values, `canCashUp/Reprint/Export` hardcoded true), `max_offline_days` parsed-not-enforced, `bootstrap.json`/`last_platform_contact_at` design-only, and **no** online `/license/check` exists. Recorded **POS-BE-031** (online dashboard-managed `/license/check` — POS position, ordered till plan, and asks for verdict enum / request+response shapes / `enforcement` flag / grace-window bound) and an **Amendment to POS-BE-006** (till also sends `name_ar_snapshot` for the fallback path). Both `PROPOSED`; nothing built on the till; POS stays on POS-BE-015 offline path + the current `menu_item_id`+`name_snapshot` wire. No backend code authorised. |
+| 2026-10-07 | **Owner decisions recorded — both 2026-09 revisions agreed.** Every ask under the `name_ar_snapshot` amendment and POS-BE-031 is answered in `BACKEND_TO_POS.md` → "Owner decisions — 2026-10-07". Amendment → `APPROVED` as proposed. POS-BE-031 → `APPROVED` with one addition: the verdict enum gains `not_yet_valid` (+ `starts_at`); `enforcement` arrives in the bootstrap `licence` object and the activate reply (absent ⇒ `offline`). Nothing built on the till yet. |
 | 2026-09-22 | **POS-BE-010, till half: a cloud till uploads its refunds.** Two halves, both additive. (1) Every order line the drain sends now carries `lines[].client_line_id` — the LOCAL `pos_order_lines.id` as a string, not `line_key`: `TicketEngine` legitimately holds two rows with the same key (a sent line plus a new draft of the same dish), and the platform indexes `unique(order_id, client_line_id)`, so a key would turn a valid order into a constraint failure. It is excluded from the platform's idempotency hash, so orders already delivered without one do not collide. (2) `PostgresRefundsRepository.issue` queues a `refund` event in `pos_sync_outbox` **in the refund's own transaction**, keyed on `client_refund_id` itself — one key for one act, so a replayed refund cannot queue a second delivery — and the drain's `'refund' => null` guard is replaced by the real §010 request. **Ordering:** a refund is never sent before its sale; while the sale's `pos_outbox` row is undelivered the refund *defers* (self-healing, no person needed), and a sale that was never queued at all holds the refund under `SALE_NEVER_QUEUED`. `REFUND_EXCEEDS_SOLD` quarantines: the ceiling only comes down, so retrying is a queue that never empties. `POS_CAPABILITY_MISSING` still defers — a manager granting `pos.refund` makes the next pass succeed. Migration 50 adds `pos_refunds.server_credit_note_number`, written back from the reply in the same transaction that marks the row delivered, exactly as a sale keeps the platform's invoice number; the till's grant on it is column-scoped. **One gap raised, not worked around** — see *Amendment to POS-BE-010*: a refund given as a flat amount off the bill has no lines, §010 has no shape for it, and the till holds those locally under `REFUND_HAS_NO_LINES` rather than inventing an attribution that would corrupt the platform's per-line counters. Tests: `test/data/cloud_refunds_test.dart` (18, PostgreSQL) + 6 pure ones in `test/data/outbox_drain_test.dart`. **Second defect found and fixed while building this:** the order drain's delivery bookkeeping shared one parameter map between two statements, which the driver refuses — so no cloud sale had EVER been marked delivered. The platform had the sale (idempotency held), but `delivered_at` was never written, the sale was resent on every pass forever and the "owed to the platform" count never came down. Nothing committed or deployed. |

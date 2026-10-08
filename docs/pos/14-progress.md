@@ -356,6 +356,21 @@ fourth would squeeze the reason that list is read for. At the back office's
 1100px with the detail pane open the list already scrolled sideways, so the new
 column starts partly off-screen there and shows in full wider.
 
+**Profit & loss (5 Oct).** Finance › Profit & loss composes four reports already
+drawn elsewhere (`ProfitAndLoss.of` over sales, tax, profit and expenses, asserted
+to be of one period) into revenue → cost of goods → gross profit → drawer expenses
+→ operating result. The work was in the definitions, not the arithmetic, and three
+of them are decisions worth keeping: **tax is taken out of revenue** (it was
+collected for the state); **a supplier payment is not an expense**, because the
+goods it bought are in cost of goods when sold — Finance's own Expenses figure is
+cash paid out and *does* include it, so the two screens answer different questions
+and the page says what it left out; and **while any sales have no cost, the gross
+profit and the result are labelled "before items with no cost"**, with the costed
+share beside them, rather than quoted as complete. The statement ships with the
+list of what it excludes, because a result drawn without it reads as the
+business's profit and the data does not support that. Receivables are the other
+half of Accounting lite and are not started: a sale cannot go on account yet.
+
 **Known gaps:** the tax mode is today's setting, not a per-order snapshot; an
 item that already has a cost cannot be revalued (no revaluation movement exists);
 there is no cost column on the product itself.

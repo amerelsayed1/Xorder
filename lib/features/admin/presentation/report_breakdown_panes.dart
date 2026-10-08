@@ -38,9 +38,11 @@ import '../../../domain/models/profit_report.dart';
 import '../../../domain/models/sales_report.dart';
 import '../application/report_export.dart';
 import '../application/reports_view.dart';
-import 'management_finance_panes.dart' show formatShareBp;
+import 'management_finance_panes.dart' show formatMarginBp, formatShareBp;
 import 'management_reports_pane.dart';
 import 'report_charts.dart';
+
+export 'management_finance_panes.dart' show formatMarginBp;
 
 /// The period bar over one breakdown's figures.
 ///
@@ -562,12 +564,6 @@ class _ItemsTable extends StatelessWidget {
 }
 
 // ── الربح ───────────────────────────────────────────────────────────────────
-
-/// A margin, signed, to two decimals — `formatShareBp` for shares, which are
-/// never negative. A loss has to read as one: through the share formatter,
-/// −6.25% would print as −6.75%, because Dart's `%` is never negative.
-String formatMarginBp(int bp) =>
-    '${bp < 0 ? '-' : ''}${formatShareBp(bp.abs())}';
 
 /// Reports › Items, under the list: what the same sales earned, where the
 /// till knows what they cost (`ProfitReport`).

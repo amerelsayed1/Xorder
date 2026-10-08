@@ -139,7 +139,29 @@ Five substantially done, three partial, seven absent.
 >   sale had one, and the sales Excel export gains Customer and Phone columns
 >   after the page's own, so Total does not move.
 >
-> Still absent from the code as checked: Accounting lite.
+> * **Accounting lite is half built: the profit and loss.** Finance › Profit &
+>   loss is one column — sales after discounts and refunds, less the tax collected
+>   for the state, is revenue; less cost of goods is gross profit; less what was
+>   paid out of the drawers is the operating result. Every line is a figure
+>   Reports or Finance already draws, composed rather than recomputed, so it
+>   cannot disagree with them. **Receivables are not built**: a sale cannot go on
+>   a customer's account (the till says so), so there is nothing to age or collect.
+>
+> **What the statement says it leaves out**, in the page, under it:
+>
+> * **Items with no cost** — their cost of goods is missing, so the gross profit
+>   (and the result) is a *ceiling*, labelled "before items with no cost" and
+>   shown with the share of sales that has a cost, until every sale is costed.
+> * **Purchases are stock, not expense.** Paying a supplier is not deducted: the
+>   goods are in the cost of goods when sold, and deducting the payment too would
+>   count the same food twice. A supplier invoice is one total with no lines, so
+>   packaging and gas — a real expense — cannot be told from stock and are not
+>   deducted either. What was paid to suppliers is shown beside the statement, not
+>   in it.
+> * **Rent and salaries** — no expense entity to hold them.
+> * **Service charge** is in sales, which are the orders' totals.
+>
+> Still absent from the code as checked: receivables, and expense categories.
 > Expenses, Terminals and the rest were not re-scored here.
 
 ---

@@ -4,11 +4,147 @@
 **Request channel:** `./POS_TO_BACKEND.md` (Agent 1's; the authoritative copy lives in
 `~/Projects/Xorder/xorder-pos/docs/coordination/POS_TO_BACKEND.md`)
 **Backend repo:** `~/Projects/Xorder/xorder-new` (`apps/api`)
-**Last updated:** 2026-09-22 (POS-BE-010 refunds built → `READY`; §023 bundle gains
+**Last updated:** 2026-10-07 (owner decisions close the R1/R2 asks) · 2026-09-22 (POS-BE-010 refunds built → `READY`; §023 bundle gains
 `receipt_profiles[]`) · 2026-09-11 (CB-00: both repos' copies reconciled) ·
 2026-09-04 — **Cloud Wave 1 implemented, tested and smoke-verified; 16 items
 `READY`** (see the banner and change log). Deferred items stay `APPROVED`.
 Nothing committed or deployed.
+
+---
+
+## Cloud coordination review — 2026-09-27 (PROGRESS, PROPOSED)
+
+The cloud side reviewed two owner revision specs against the live `apps/api` +
+`apps/web` code and reconciled the cloud→POS wire shapes below. **Both specs were
+cross-checked and are accurate**; nothing here is built, committed or deployed —
+these are `PROPOSED` amendments awaiting the owner's go.
+
+- **R1 — order-line bilingual name freeze** (spec: `docs/coordination/REVISION_ORDER_ITEM_ID.md`).
+  Amends §006 / §010 / §023. New section **R1** below.
+- **R2 — dashboard-managed online licence + `POST /api/pos/license/check`**
+  (spec: `docs/coordination/REVISION_POS_LICENSING.md`). Amends §015 / §022.
+  New section **R2** below.
+
+**Verified against code (2026-09-27):** POS-BE-006's `StorePosOrderRequest`
+already accepts `lines[].menu_item_id` (nullable) + `name_snapshot`
+(`required_without`); `PosPricingEngine::price()` resolves by id and today lets
+the client `name_snapshot` **win** (L93); `order_items` has **no** `name_ar`/
+`name_en` yet. `PosLicence` has **no** `status`/`enforcement`/`suspended_*`
+columns and **no** `RestaurantScope`; it already carries `kind` (cloud/offline),
+`lifetime`, `max_users`, and `PosLicenceResource` already emits a computed
+`state`. `LicenceController` has only `activate()` + `current()` (returns the
+signed file); there is **no** `/license/check` endpoint and **no**
+`LicenceIssuer::issueOnline()`. `pos.device` is a route-middleware alias that
+supports `:no-feature`. Provisioning mints the licence inside the tenant-creation
+transaction (`RestaurantProvisioningService::provision()`), which is exactly what
+R2 §5.1 decouples. Full evidence in the two specs' "verified in code" tables,
+re-confirmed.
+
+**Open reconciliation items (need the desktop side / owner):** see the "Asks for
+the desktop side" list at the end of R1 and R2.
+
+---
+
+## Owner decisions — 2026-10-07 (closes the R1 / R2 asks)
+
+The owner closed every open ask from both sides on the two revisions. Wire shapes
+below are now **agreed**. Statuses: **R1 → `READY`** (built in `77fb22e`);
+**`name_ar_snapshot` amendment → `APPROVED`**; **R2 / POS-BE-031 → `APPROVED`**.
+`APPROVED` still authorises no code — each build needs its own go.
+
+### R1 — order-line names
+
+- **R1-A1 → accepted.** The till sends `lines[].name_ar_snapshot` (from
+  `Product.nameAr`, persisted at sale time next to `name_snapshot`). Cloud:
+  `lines.*.name_ar_snapshot` = `nullable|string|max:255`, never required;
+  `name_snapshot` stays the `required_without:lines.*.menu_item_id` gate; no new
+  422 shape. Precedence (answers POS ask 1): a **resolved** line ignores both
+  snapshots and freezes from the item; the **`client_asserted`** fallback writes
+  `name_en = name_snapshot`, `name_ar = name_ar_snapshot ?? name_snapshot`,
+  `name = name_snapshot`. An older till that omits the field behaves exactly as
+  today.
+- **R1-A2 → done.** `POS_TO_BACKEND.md` §006 staleness corrected by the desktop
+  side (2026-09-27 pass).
+- **R1-A3 → the till does not consume response line names.** Verified
+  2026-10-07: the drain reads only `data['id']` from the §006/§010 replies
+  (`outbox_drain.dart:395,654`) and prints from its own local snapshot. The
+  expanded `name_ar`/`name_en` response is for the dashboard; the till may read
+  it later, tolerantly, for reconciliation display only.
+- **POS asks 2–4 → confirmed** (response shape as R1.2; validation as above;
+  public/QR path is not POS scope).
+
+### R2 — online licence check (POS-BE-031)
+
+- **R2-A2 → `enforcement` lives in the POS-BE-023 bootstrap `licence` object**
+  as `licence.enforcement: "online" | "offline"`, **and** is echoed top-level in
+  the `POST /api/pos/licence/activate` 200 body (an islanded till may never
+  bootstrap). **Absent ⇒ `"offline"`** — i.e. today's signed-file path — so an
+  old cloud never flips a till onto an endpoint that does not exist.
+- **R2-A3 → confirmed.** The till chooses the path from `enforcement` only, never
+  from `deployment_mode`. The licence `modes` claim terminology is unchanged by
+  this revision.
+- **R2-A4 → add one value.** The verdict enum is
+  `valid | expiring_soon | in_grace | expired | suspended | not_yet_valid | unknown`.
+  `not_yet_valid` is emitted when `state() == pending` (future `issued_at`), with
+  `starts_at`. `tenantMismatch` / `modeNotLicensed` / `terminalNotLicensed` stay
+  client-only (the device token already scopes tenant + terminal). The client
+  switches on `status` and treats any unrecognised value as `unknown`.
+- **Client mapping (agreed):** `valid`/`expiring_soon` → all permitted;
+  `in_grace` → config frozen; `expired`/`suspended`/`not_yet_valid`/`404
+  licence_not_found` → **`expired`-shaped** (`canOpenShift=false`,
+  **`canSell=true`**, `canChangeConfiguration=false`) — never the `_deny` path;
+  `unknown` → trust cache. `canCashUp`/`canReprint`/`canExportData` stay `true`.
+- **R2-A1 + POS ask 4 → confirmed.** Check on splash→StartScreen and before each
+  new shift, non-blocking; cache last 200 in `bootstrap.json` with `checkedAt`;
+  `grace_policy.cache_seconds` default **259200 (72h)**, client clamps to **≤ 7
+  days**; past the window the open shift finishes, a new one is blocked.
+- **POS ask 1 → confirmed** request `{fingerprint, deployment_mode, app_version?,
+  licence_expires_at?}` and the 200 body as POS-BE-031 lists it, plus
+  `starts_at` (nullable). Auth `pos.device:no-feature`, throttle `60,1`; codes
+  `404 licence_not_found`, `401 DEVICE_TOKEN_INVALID`, `403 TERMINAL_REVOKED`,
+  `429 TOO_MANY_ATTEMPTS`.
+- **POS ask 5 → confirmed.** The verdict is TLS-only, unsigned; real enforcement
+  stays server-side on `feature:pos` at every money write.
+- **POS ask 6 → one window per till.** `online` till: the `/license/check` grace
+  window governs and `max_offline_days` is ignored. `offline` (islanded) till:
+  the signed-file `max_offline_days` governs and `/license/check` is never called.
+- **POS ask 7 → confirmed.** Suspend/resume/expire bite at the next check; an
+  urgent kill is device-token revocation (`TERMINAL_REVOKED`), honoured
+  immediately.
+
+### R2 build status — 2026-10-07 · cloud API `IN_PROGRESS` (branch `feat/pos-licence-check`, not deployed)
+
+Built and tested (1,007 API tests green): **phase 0** (schema), **phase 1 API**
+(suspend / resume / expire / per-licence terminals, audited), **phase 2**
+(`POST /api/pos/license/check`), and `enforcement` on the §023 bootstrap
+`licence` object and the activate 200. **Not yet:** the `apps/web` Super Admin
+screens (phase 1 UI) and the provisioning decoupling (phase 4, `issueOnline`).
+The wire is exactly as agreed above, with these settled details:
+
+- **`enforcement` is derived from `kind`** at issue and backfill: `cloud` →
+  `online`, `offline` → `offline`. An offline-kind licence has no tenant, so no
+  terminal of it can authenticate to `/license/check`; R2.6's
+  "offline without `max_offline_days` → online" row could only ever 404.
+  Renewal copies it. It is a stored column, so it can be changed later.
+- **`status` backfills to `active` for every row.** Expiry still comes from the
+  dates, so no verdict changes; `status='expired'` means only "an operator
+  force-expired it".
+- The 200 also carries **`enforcement`**, and **`starts_at`** is always the
+  licence's `issued_at` (not only on `not_yet_valid`).
+- `fingerprint` is accepted and **not** checked or written: the terminal's
+  fingerprint is its pairing identity and the check must not rewrite it.
+  Telemetry written: `last_licence_check_at`, `licence_id`, `app_version`,
+  `reported_licence_expires_at`.
+- `TOO_MANY_ATTEMPTS` is rendered for this route only; the `60,1` budget is
+  shared with the till's other device calls (Laravel keys `throttle:` per
+  credential, not per route).
+- Status actions on a revoked or superseded licence → **422 `LICENCE_NOT_LIVE`**.
+- `LICENCE_CHECK_CACHE_SECONDS` (default 259200) drives `grace_policy.cache_seconds`.
+
+**Build order when the go comes:** cloud R2 phases 0–5 first (schema →
+`/license/check` → bootstrap/activate `enforcement` → dashboard actions →
+`issueOnline` decoupling); the till builds against a faked `/license/check`
+in parallel, starting with `bootstrap.json`.
 
 ---
 
@@ -2175,6 +2311,393 @@ and are never sent to a till.
 
 ---
 
+## REVISION R1 — order-line bilingual name freeze · **PROPOSED** (amends §006, §010, §023)
+
+**Spec:** `docs/coordination/REVISION_ORDER_ITEM_ID.md`. **Owner decision being
+specced:** the POS sends the item **id** (it already does); the backend resolves
+the item at order-creation time and **freezes both `name_ar` and `name_en`** onto
+the line as a snapshot; the dashboard localises by the current UI locale.
+Additive-only, deploy-safe, no live rows rewritten.
+
+### R1.1 What is true today (verified 2026-09-27)
+
+- The POS wire **already carries** `lines[].menu_item_id` (nullable) and
+  `lines[].name_snapshot` (`required_without:menu_item_id`) — §006 is unchanged
+  on the request side.
+- `PosPricingEngine::price()` resolves the item by id (`MenuItem::withTrashed()
+  ->whereIn('id', …)`) and today sets a **single** `name` where the client
+  `name_snapshot` **wins** over the resolved item, else `name_en ?: name_ar`.
+- `order_items` stores one `name` string; **no `name_ar`/`name_en` columns
+  exist**. The catalog the till holds is already bilingual and keyed by the real
+  `menu_items.id` (POS-BE-023 bootstrap emits `id` + `name_en` + `name_ar`).
+- The public/QR path stores only `name` (diner-locale) and **no** `menu_item_id`.
+
+### R1.2 Agreed cloud→POS wire shape
+
+**Request line — no accepted-field change.** `name_snapshot` is **downgraded to a
+fallback**: used only when `menu_item_id` does not resolve. It stays
+`required_without:menu_item_id`.
+
+```jsonc
+"lines": [
+  { "client_line_id": "L1",
+    "menu_item_id": 101,                 // == menu_items.id; nullable
+    "variant_option_id": 555,
+    "option_ids": [710, 712],
+    "quantity": 2,
+    "note": "no onions",
+    "name_snapshot": "Classic Burger",   // FALLBACK ONLY now — ignored for naming
+                                         // when menu_item_id resolves (server freezes
+                                         // name_ar/name_en from the item).
+    "unit_price_minor": 9500,            // asserted; used only in client_asserted fallback
+    "discount": { … }, "price_override": { … } } ]
+```
+
+**Response line — expanded.** Every `lines[]` element in the §006 order response,
+the §010 refund response, `PosOrderResource`, `OrderRoundResource`, and the legacy
+`orders.items` JSON gains `name_ar` + `name_en`; **`name` is kept** for back-compat.
+
+```jsonc
+"lines": [
+  { "id": 1, "menu_item_id": 101, "client_line_id": "L1",
+    "refunded_quantity": 0,
+    "name":    "Classic Burger",         // back-compat (EN-preferred, or the snapshot fallback)
+    "name_ar": "برجر كلاسيك",             // NEW — frozen from the resolved item at creation
+    "name_en": "Classic Burger",         // NEW — frozen from the resolved item at creation
+    "quantity": 2, "unit_price_minor": 9500,
+    "line_total_minor": 19000, "price_source": "server" } ]
+```
+
+**Freeze rule (server = naming authority for resolvable items):**
+
+| Case | `name_ar` | `name_en` | `name` (legacy) | `price_source` |
+|---|---|---|---|---|
+| item resolves (`!null && !trashed`) | `item->name_ar` | `item->name_en` | `name_en ?: name_ar` | `server` |
+| id null / trashed (deleted in outage, open-price, combo) | `name_snapshot ?? __('xorder.pos.unknown_item')` | same | same | `client_asserted` |
+
+On the `client_asserted` fallback `name == name_ar == name_en == name_snapshot`
+(the single string the till printed). This is **English-only today** because the
+till sends only `Product.nameEn` as `name_snapshot` — see the desktop ask R1-A1.
+
+**Fallback is accept, never reject.** A line whose `menu_item_id` no longer
+resolves is still recorded from `name_snapshot` (money was taken at the counter),
+flagged `client_asserted` — unchanged §006 behaviour. `MENU_ITEM_NOT_FOUND` stays
+reserved for an id that never existed in this tenant.
+
+**Public / QR path (Minimum, this revision):** without a menu-SPA change, write
+the single diner-provided `name` into **all three** columns (`name = name_ar =
+name_en`). The fuller unification (menu SPA sends `menu_item_id`) is a separate
+follow-up, not this revision.
+
+### R1.3 Schema (additive-only)
+
+- `order_items`: add `name_ar` (string, nullable), `name_en` (string, nullable).
+  New migration, e.g. `2026_09_2x_000000_add_name_ar_en_to_order_items_table.php`.
+  `menu_item_id` already exists (`2026_09_02_000100`). No `NOT NULL`, no backfill.
+- Legacy `orders.items` JSON (cast `array` on `Order`): each element gains
+  `name_ar` + `name_en` alongside `name`. No schema change (JSON column).
+
+### R1.4 Ordered CLOUD implementation plan (each step independently shippable)
+
+1. **Migration** — add `order_items.name_ar` + `name_en` (nullable). Add both to
+   the `OrderItem` write path consistently with `menu_item_id` (i.e. via the same
+   `forceFill` block, or add to `$fillable`). No behaviour change on deploy.
+2. **`PosPricingEngine::price()`** — on the resolved branch, set
+   `name_ar = $item->name_ar`, `name_en = $item->name_en`, `name = $item->name_en
+   ?: $item->name_ar`; **drop** the `$line['name_snapshot'] ??` precedence for the
+   resolved case. On the unresolved branch, write the snapshot (or
+   `unknown_item`) into all three. Add `name_ar`/`name_en` to the returned line
+   array.
+3. **`PosOrderService::create()`** — persist `name_ar`/`name_en` on the
+   `order_items` row (next to `name`) and in the legacy `orders.items` JSON
+   projection (L183-189 map).
+4. **`PublicOrderController`** — Minimum: write `$line['name']` into all three
+   columns on `recordRound()` and the `orders.items` merge.
+5. **Resources** — `PosOrderResource` (lines map), `OrderRoundResource` (items
+   map), and the §010 refund line output gain `name_ar`/`name_en` (keep `name`).
+   `OrderResource.items` carries them automatically once the JSON has them.
+6. **Frontend `apps/web`** — add one `itemName(it)` resolver using the app idiom
+   `locale === 'ar' ? name_ar || name_en : name_en || name_ar`, ending
+   `|| it.name || ''`. Route `OrdersView.vue` `itemTitle()` (L203) and the receipt
+   sheet (L441) through it. Grep other order/line render sites and apply the same.
+7. **Feature tests** — extend `PosOrdersTest` (resolved line freezes both names;
+   `client_asserted` fallback fills all three) and a resource test asserting the
+   two keys appear. `ReportService` name-matching still works because `name` is
+   retained on every path (regression-guard test).
+
+### R1.5 Back-compat
+
+`name` is retained everywhere; historical rows and public "Minimum" rows leave
+`name_ar`/`name_en` null (frontend falls through to `name`). No backfill.
+`ReportService` (keys products by `name`, `lineName()`) is unaffected.
+
+### R1.6 Asks for the desktop side
+
+- **R1-A1 (optional, restores bilingual fidelity on the fallback path).** The till
+  sends only `Product.nameEn` as `name_snapshot`. Consider also sending
+  `name_ar_snapshot` (from `Product.nameAr`) so the backend can freeze a real
+  Arabic name on unresolved / open-price / combo lines. Not required to ship R1;
+  today those lines get the English string in both slots. If accepted, the cloud
+  adds `lines.*.name_ar_snapshot` (nullable) to `StorePosOrderRequest` and uses it
+  on the `client_asserted` branch.
+- **R1-A2 (doc sync).** `xorder-pos/docs/coordination/POS_TO_BACKEND.md` still says
+  `order_items` has no `menu_item_id` and POS-BE-006 is "APPROVED, not started."
+  That is stale: the migration exists and §006 is `READY`. Please sync when R1
+  lands (desktop owns that file).
+- **R1-A3 (confirm consumer).** The response `name_ar`/`name_en` are primarily for
+  the **dashboard**; the till renders from its own local catalog. Confirm whether
+  the POS consumes the response line `name`/`name_ar`/`name_en` anywhere (e.g. a
+  server-order reprint), so we know if the expanded response matters to the client.
+
+---
+
+## REVISION R2 — dashboard-managed online licence + `POST /api/pos/license/check` · **PROPOSED** (amends §015, §022)
+
+**Spec:** `docs/coordination/REVISION_POS_LICENSING.md`. **Owner decision being
+specced:** move licence lifecycle management into Super Admin; a **connected** POS
+does an **online licence check on the splash screen at every launch** (and before
+each shift) against a server-side record (issue / suspend / renew / force-expire).
+Keep the Ed25519-signed file **only** for **islanded** tills. Add a short offline
+**grace window** (~72h) so a brief outage never bricks a connected till.
+Additive-only; the entire POS-BE-015 offline path stays intact.
+
+### R2.1 What is true today (verified 2026-09-27)
+
+- `pos_licences` has **no** `status`/`enforcement`/`suspended_at`/
+  `suspended_reason`. It already has `kind` (`cloud`|`offline`), `lifetime`,
+  `max_users`, and a derived `state()` (revoked → superseded → pending → expired →
+  in_grace → expiring_soon → active). No `RestaurantScope` (deliberate).
+- `pos_terminals` uses `BelongsToRestaurant` (scoped); column is **`fingerprint`
+  (singular)**; the plural `fingerprints[]` lives on `PosLicence`. **No**
+  `licence_id`, **no** `last_licence_check_at`.
+- `LicenceController` has only `activate()` (unauth, throttled, key = credential)
+  and `current()` (device credential, returns the **signed file**). **No**
+  `/license/check`.
+- `LicenceIssuer` has `issue/renew/revoke/mint/claims`; **no** `issueOnline`.
+  `signingKey()` is called only in `mint()`.
+- `RestaurantProvisioningService::provision()` mints the licence **inside** the
+  tenant-creation `DB::transaction`, so every tenant-creating server needs
+  `LICENCE_SIGNING_KEY` today (change-log 2026-09-05).
+- `pos.device` is a route-middleware **alias** (not an `auth:pos-device` guard)
+  and supports `:no-feature` (used by `current` and `heartbeat`).
+- Admin licence routes: `index/store/storeOffline/show/renew/revoke/destroy/
+  download`. **No** suspend/resume/expire. `AuditLogger` emits `pos_licence.issued/
+  .renewed/.revoked` (no `.suspended/.resumed/.expired`).
+
+### R2.2 Agreed cloud→POS wire shape — `POST /api/pos/license/check`
+
+The **new online verdict endpoint** for connected tills. It replaces `GET
+/api/pos/licence/current` (the signed *file*) for connected tills; `current` and
+`activate` stay for the islanded/file path and back-compat.
+
+**Request** — `pos.device:no-feature` (same device token as the heartbeat),
+`throttle:60,1`, restaurant resolved from the terminal (never from body):
+
+```jsonc
+POST /api/pos/license/check
+Authorization: Bearer xdt_<device-token>
+{ "fingerprint": "<sha256 hex>",                 // verified vs licence fingerprints[] if pinned; recorded
+  "deployment_mode": "cloud" | "offline",
+  "app_version": "1.4.0",                          // telemetry, optional
+  "licence_expires_at": "2026-12-31T00:00:00+00:00" }  // what the till believes, optional
+```
+
+**Response `200`** — the `status` field is the single source of truth for the till:
+
+```jsonc
+{ "status": "valid",                               // enum below
+  "licence_ref": "LIC-2026-0042",
+  "expires_at": "2026-12-31T00:00:00+00:00",       // null when lifetime
+  "lifetime": false,
+  "grace_days": 14,                                 // server expiry-grace (≠ the offline cache window)
+  "warn_days": 30,
+  "max_terminals": 2,
+  "max_users": null,
+  "features": ["pos"],
+  "message": null,                                  // human string for suspended/expired
+  "server_time": "2026-09-27T10:00:00+00:00",       // clock-skew reference
+  "grace_policy": { "cache_seconds": 259200 } }     // 72h — how long the till may trust THIS answer offline
+```
+
+**`status` enum (server-computed effective verdict) and its mapping to the code
+that exists today:**
+
+| `status` | Server condition | Derived from |
+|---|---|---|
+| `valid` | live, in date, not suspended | `state()==active` |
+| `expiring_soon` | valid, within `warn_days` | `state()==expiring_soon` |
+| `in_grace` | past `expires_at`, within `grace_days` | `state()==in_grace` |
+| `expired` | past grace **or** `status='expired'` set in dashboard | `state()==expired` OR new `status` col |
+| `suspended` | `status='suspended'` set in dashboard | new `status` col |
+| `unknown` | row exists but cannot be evaluated (should not happen) | — |
+
+**Effective-verdict precedence (server):** `revoked_at` → `superseded_by_id` →
+`status=suspended` → `status=expired` → `state()` date math. Since `current()`
+already resolves via `->live()` (excludes revoked + superseded), a revoked or
+superseded licence surfaces as **404 `licence_not_found`**, not as a 200 verdict.
+
+**HTTP / error bodies** (lowercase `licence_not_found` is intentionally consistent
+with the grandfathered §015 codes, DIS-4; the others are the existing SCREAMING
+device codes from §019):
+
+| Case | HTTP | `code` | Till reaction |
+|---|---|---|---|
+| found & evaluated | 200 | (status in payload) | per table above |
+| no live licence for tenant | 404 | `licence_not_found` | block new shift; "no licence" banner |
+| device token invalid | 401 | `DEVICE_TOKEN_INVALID` | re-pair |
+| terminal revoked | 403 | `TERMINAL_REVOKED` | "terminal orphaned" banner |
+| throttled | 429 | `TOO_MANY_ATTEMPTS` | fall back to grace cache silently |
+
+**Idempotent + read-only.** It opportunistically writes telemetry
+(`pos_terminals.last_licence_check_at`, `licence_id`, `fingerprint`,
+`reported_licence_expires_at`) with `saveQuietly()`, exactly as the heartbeat does
+— never an audited edit.
+
+### R2.3 Schema (additive-only; production DB is live)
+
+```
+2026_09_2x_000100_add_status_to_pos_licences_table.php
+  + status (string16, default 'active', indexed) : active | suspended | expired
+  + suspended_at (timestamp, nullable)
+  + suspended_reason (string255, nullable)
+2026_09_2x_000200_add_enforcement_to_pos_licences_table.php
+  + enforcement (string16, default 'online', indexed) : online | offline
+  + backfill (§R2.6)
+2026_09_2x_000300_add_licence_binding_to_pos_terminals_table.php
+  + licence_id (foreignId, nullable, nullOnDelete)
+  + last_licence_check_at (timestamp, nullable)
+```
+
+`status` is authoritative for the **online** path only; `state()` stays the
+display/derivation helper and the **only** signal the offline/islanded path has.
+The two may legitimately disagree while an islanded till is out of contact — that
+asymmetry is the point. No column dropped, no `NOT NULL`, no existing value
+changed.
+
+> **Reconciliation flag (owner):** the new `enforcement` (online|offline) largely
+> overlaps the existing `kind` (cloud|offline). We keep `enforcement` as the
+> explicit orthogonal switch the spec asks for (it decides *where the verdict comes
+> from*, independent of where sales live), backfilled from `kind`. If the owner
+> prefers not to carry two near-parallel columns, `enforcement` can instead be
+> derived from `kind` — flagged, not decided here.
+
+### R2.4 Super Admin (`apps/web` + admin API)
+
+New endpoints beside `AdminLicenceController` (all `can:licences.manage`,
+SUPER_ADMIN via `Gate::before`; cross-tenant reads audited, matching §015/§022):
+
+```
+POST  /api/admin/pos/licences/{licence}/suspend   { reason?:string }  -> 200 PosLicenceResource
+POST  /api/admin/pos/licences/{licence}/resume                         -> 200 PosLicenceResource
+POST  /api/admin/pos/licences/{licence}/expire     { reason?:string }  -> 200 PosLicenceResource   // force-expire, distinct from revoke/delete
+GET   /api/admin/pos/licences/{licence}/terminals                      -> 200 [PosTerminalResource]  // per-terminal status
+```
+
+- `PosLicenceResource` gains `status`, `enforcement`, `suspended_at`,
+  `suspended_reason` (it already emits `state`, `days_remaining`, `grace_ends_at`,
+  `lifetime`, `max_users`, `kind`).
+- Audit via `AuditLogger`: `pos_licence.suspended` / `.resumed` / `.expired`
+  (mirroring `.issued/.renewed/.revoked`).
+- `apps/web/src/pages/admin/pos/`: `LicencesList.vue` gains a Status column +
+  filter and per-row Suspend/Resume; `LicenceForm.vue`/`OfflineLicenceForm.vue`
+  gain an **Enforcement** choice (Online-managed default vs Signed-file/islanded,
+  which reveals `max_offline_days`); `LicenceDetails.vue` gains a per-terminal
+  table (each bound `pos_terminal` with `last_seen_at`, `last_licence_check_at`,
+  `reported_licence_expires_at`, `deployment_mode`, revoked flag).
+
+### R2.5 Decouple tenant creation from signing
+
+- Add `LicenceIssuer::issueOnline($restaurant, $data, $actor)` — writes the row
+  (`enforcement='online'`, `status='active'`, term/features/modes/caps) but
+  **skips `seal()`/`mint()`**: `payload`/`signature` stay `''` (schema already
+  allows), `key_id` default. The verdict is computed from columns, not a signed
+  artifact, so `signingKey()` is never touched.
+- `RestaurantProvisioningService::provision()` calls `issueOnline` instead of
+  `issue`. A server that only creates cloud tenants then needs **no**
+  `LICENCE_SIGNING_KEY`. Existing tenants are unaffected (their signed artifact is
+  kept but unused on the online path).
+- `LICENCE_SIGNING_KEY` is **retained but demoted to islanded-only** — required
+  only when issuing/renewing an `enforcement='offline'` licence (i.e. inside
+  `mint()`). `activate`/`current` stay for the islanded/file path.
+
+### R2.6 Backfill rules (data migration / one-off command; no key read, no re-sign)
+
+| Existing row | `enforcement` | `status` |
+|---|---|---|
+| `kind='cloud'` | `online` | `active` if `state()`∈{active,expiring_soon,in_grace}; `expired` if past grace; unchanged if revoked/superseded |
+| `kind='offline'` **with** `max_offline_days` | `offline` (islanded) | derived from dates |
+| `kind='offline'` **without** `max_offline_days` | `online` | derived from dates |
+
+### R2.7 Ordered CLOUD implementation plan (phased, each independently shippable)
+
+- **Phase 0 — schema (safe on live prod).** Three additive migrations (R2.3) +
+  backfill (R2.6). Extend `PosLicenceResource` with the four fields. Nothing reads
+  them yet. Must pass `release-check` (additive-only, no `NOT NULL`, no data loss).
+- **Phase 1 — dashboard.** Suspend/Resume/Expire endpoints + audit events + the
+  `/licences/{id}/terminals` view; the `apps/web` list/detail/form changes (R2.4).
+  Operators manage online licences before any till reads the new endpoint.
+- **Phase 2 — `/license/check`.** Ship `POST /api/pos/license/check` behind
+  `pos.device:no-feature` (R2.2). Keep `current`/`activate` untouched. Feature
+  tests mirroring `PosLicenceTest`/`OfflineLicenceTest`, covering each status,
+  404/401/403/429, telemetry write, and precedence (revoked/superseded → 404).
+- **Phase 3 — POS online path + grace cache** (desktop; see asks). Cloud only
+  needs `grace_policy.cache_seconds` to be server-driven.
+- **Phase 4 — decouple provisioning.** `issueOnline` (R2.5); add a test asserting
+  the cloud provision path makes **no** `signingKey()` call and works without
+  `LICENCE_SIGNING_KEY`.
+- **Phase 5 — cleanup/hardening.** Tune `cache_seconds` from telemetry; optional
+  verdict HMAC if the threat model tightens; document the islanded-only status of
+  `LICENCE_SIGNING_KEY`.
+
+Phases 0–3 leave the offline path fully intact; Phase 4 changes provisioning
+behaviour (the one non-trivially-reversible step).
+
+### R2.8 Security posture (unchanged bottom line)
+
+The till gate is **commercial hygiene**, not security: the verdict is unsigned and
+travels over TLS on the authenticated device channel; real enforcement stays
+server-side on `feature:pos` at every money write (`PosDeviceAuth` feature gate),
+which a forged splash verdict cannot bypass. Online suspend/expire bites at the
+*next* check (immediate for a launching till, up to 72h for one already open) —
+far better than the offline file, which can never be recalled. For an urgent kill,
+revoking the **device token** (→ 403 `TERMINAL_REVOKED`) stops all writes
+immediately, independent of the licence cache.
+
+### R2.9 Asks for the desktop side
+
+- **R2-A1 (splash-check behaviour).** For a **connected** terminal, call `POST
+  /api/pos/license/check` on the splash→StartScreen transition and before each new
+  shift. Cache the last good 200 verdict in `bootstrap.json` (not the signed file,
+  not `config.json`) with `checkedAt`; on network/5xx/timeout trust the cache while
+  `now - checkedAt <= grace_policy.cache_seconds` (default 72h), clamped client-side
+  to a sane max (e.g. 7 days). Beyond the window: allow the open shift, block a new
+  one. Non-blocking UI (a slow verdict is treated as permitted). Map the six
+  `status` values onto the **existing** `LicenseEntitlement` gate — never brick a
+  till mid-service (`canCashUp`/`canReprint`/`canExportData` stay `true`).
+- **R2-A2 (path selection + where the enforcement flag is delivered).** The client
+  picks online vs islanded from its own config (deployment mode + an **enforcement
+  flag**). The cloud must deliver that flag somewhere the client can read at
+  activation/bootstrap. **Decision needed:** do you want `enforcement`
+  (`online`|`offline`) added to the POS-BE-023 bootstrap `licence` object, to the
+  `activate` response, or as a top-level bundle field? Name the shape and the cloud
+  will emit it. An `enforcement='offline'` (islanded) terminal must **not** call
+  `/license/check` and keeps the whole POS-BE-015 signed-file path.
+- **R2-A3 (deployment-mode terminology).** The licence `modes` claim still uses
+  `cloud`/`branch_server`/`standalone` (POS-BE-015 §6), while the POS collapsed
+  deployment modes to `cloud`/`offline`. R2 treats *enforcement* as orthogonal to
+  *deployment_mode* (per the spec §0). Confirm the client determines
+  connected-vs-islanded from the **enforcement flag**, not from `deployment_mode`,
+  so the two axes don't get conflated.
+- **R2-A4 (status enum coverage).** The `/license/check` enum is
+  {`valid`,`expiring_soon`,`in_grace`,`expired`,`suspended`,`unknown`}. It does
+  **not** carry `not_yet_valid` (a licence with a future `issued_at`, `state()==
+  pending`) or the client-only `tenantMismatch`/`modeNotLicensed`. Confirm the
+  client maps these six onto its `LicenseEntitlement` without needing a
+  `pending`/`not_yet_valid` verdict — or tell us to add one. `server_time` is
+  provided for the client's existing clock-skew handling.
+
+---
+
 ## How this file is used from here
 
 `APPROVED` = contract final under the owner's 2026-09-02 instruction; either
@@ -2199,4 +2722,6 @@ today; everything else awaits the owner's go for implementation.
 | 2026-09-11 | **POS-BE-013 amended: the tender-id defect is fixed** (owner go 2026-09-11, `xorder-cloud`). A cloud till had been paying with its own local tender ids (1–4), and the platform validates `tender_type_id` against its own tenant-scoped `tender_types`. Platform side: `PosProvisioningService::ensureDefaultTenders()` creates Cash + Card at a POS restaurant's first terminal (provision or register, with claim as the backstop) when the restaurant has no tender types. It is idempotent, scoped per tenant, and bumps `config_version`. The rules added to §013 are that `tender_type_id` MUST come from `money.tender_types`, the list is never empty, and null means "unspecified" (counted as cash) and is never a fallback. This is an amendment, not new surface, so there is no POS-BE-030, and POS-BE-013 stays `READY`. Tests: `tests/Feature/Pos/PosDefaultTendersTest.php` (11). No migration. Till side (`pos-dev`, in parallel): seed `pos_tender_types` from the bundle on cloud and pay with platform ids. Nothing committed or deployed. |
 | 2026-09-22 | **§023 bundle gains `receipt_profiles[]`** (owner go: "hand A3 and A7 to xorder-cloud", item A3). A new frozen key, one row per active branch, field names copied one for one from the till's `pos_receipt_profiles` columns so its seeder is a straight mapping. An unauthored branch is projected from the restaurant rather than omitted — a missing row is exactly what made every cloud till print with compiled-in defaults. `registration_number` is the restaurant's single copy (one taxpayer, one number); `branch_code` is ETA's, **not** `branches.code`. Authored at `GET`/`PUT /api/dashboard/receipt-profiles[/{branch}]` under `feature:pos` + `settings.view`/`settings.update` + `subscription.writable`, with a `revision` guard (stale save → 409) and a `pos_config_version` bump on every write. New dashboard page `PosReceiptView.vue` (EN + AR, RTL). **CLOUD_WAVE1 deviation 6 is closed:** `UpdateRestaurantProfileRequest` finally accepts `tax_registration_number`, and changing it bumps `config_version`. Tests: `tests/Feature/Pos/PosReceiptProfileTest.php` (10). Migration additive: new `receipt_profiles` table. Branch `pos/cloud-refunds-receipt-profile`, not pushed, not deployed. |
 | 2026-09-22 | **POS-BE-010 built and tested → `READY`** (owner go: "hand A3 and A7 to xorder-cloud"). `POST /api/pos/refunds` + `GET /api/pos/refunds/by-client-id/{uuid}`, device token + `feature:pos`, `pos.refund` (or `pos.void` for `kind: void`), credit notes in their own `CN-` sequence bucket, cumulative quantity AND money checks under the order's row lock, idempotent per POS-BE-007 (201 first / 200 replay / never 409). **The blocker is cleared:** `POST /api/pos/orders` now accepts `lines[].client_line_id` and stores it under `unique(order_id, client_line_id)`, so a refund built offline addresses lines by `(order client_transaction_id, client_line_id)` and never needs a platform order-item id. **OrderStatus decision: the enum does not grow** — `NEW \| COMPLETED \| CANCELLED` stands, and refund state rides the derived `settlement_status` (`PARTIALLY_REFUNDED` / `REFUNDED`, the till's own `PaymentStatus` words; `VOIDED` and `PARTIALLY_PAID` are never emitted). A3's `cash_refunds` term went live and the shift report gained `refunds_minor`, `refunds_count`, `cash_refunds_minor`. No new §019 code. Tests: `tests/Feature/Pos/PosRefundsTest.php` (19). Migrations additive: `orders.refunded_minor`, `order_items.client_line_id` + `refunded_quantity`, `pos_refunds` / `pos_refund_lines` / `pos_refund_tenders`. Branch `pos/cloud-refunds-receipt-profile`, not pushed, not deployed. |
+| 2026-09-27 | **Cloud coordination review of two owner revision specs → two `PROPOSED` amendments** (cloud side; no code, nothing committed/deployed). Both specs cross-checked against live `apps/api`+`apps/web` and confirmed accurate. **R1 — order-line bilingual name freeze** (amends §006/§010/§023): `order_items` gains nullable `name_ar`/`name_en`; `PosPricingEngine` freezes both from the resolved item and demotes `name_snapshot` to fallback-only; resources + legacy `orders.items` JSON expose both; dashboard resolves by locale with the app idiom; public/QR "Minimum" writes the single name into all three. `name` retained everywhere; no backfill. **R2 — dashboard-managed online licence + `POST /api/pos/license/check`** (amends §015/§022): additive `pos_licences.status/enforcement/suspended_at/suspended_reason` + `pos_terminals.licence_id/last_licence_check_at`; new `pos.device:no-feature` verdict endpoint (status enum mapped onto the existing `state()` + new `status` col); Super Admin suspend/resume/expire + per-terminal view + audit events; `LicenceIssuer::issueOnline` decouples tenant creation from `LICENCE_SIGNING_KEY` (demoted to islanded-only); the Ed25519 signed-file path kept for islanded tills. Phased 0–5, additive/deploy-safe. Desktop asks recorded (R1-A1..A3, R2-A1..A4). Statuses stay **PROPOSED** — owner's go pending. |
+| 2026-10-07 | **Owner decisions close the R1/R2 asks** (see "Owner decisions — 2026-10-07" at the top). R1 → `READY` (built `77fb22e`). `name_ar_snapshot` (R1-A1) accepted → `APPROVED`: nullable on `StorePosOrderRequest`, used only on the `client_asserted` fallback. R1-A3: the till reads only `data['id']` from replies. R2/POS-BE-031 → `APPROVED`: `enforcement` in the §023 bootstrap `licence` object **and** the activate 200 (absent ⇒ `offline`); path chosen by `enforcement`, never `deployment_mode`; verdict enum gains `not_yet_valid` (+ `starts_at`); `suspended`/`expired`/`not_yet_valid`/404 map `expired`-shaped (open shift finishes); 72h cache, client clamp 7d; one enforcement window per till. No code authorised by this entry. |
 | 2026-09-13 | **POS-BE-030 agreed; platform half `READY`** (CB-09; owner go "finish all phases"). `PosBootstrapService::staff()` withholds `purchase.manage` from every bundle, owner included, and `PosPurchaseCapabilityWithheldTest` covers it. Purchasing is authored only on the dashboard under `feature:purchasing` + `can:purchase.manage`, and `purchasing` does not require `pos`. No wire change. Built on `feat/cb-09-purchasing` in xorder-new, not deployed. The till half, hiding the panes by deployment, is on xorder-pos `feat/cb-09-slice-e` @ `1adb17f`, not merged. |

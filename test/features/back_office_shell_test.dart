@@ -113,6 +113,7 @@ const _finance = [
   ManagementPane.financeTaxes,
   ManagementPane.financeBills,
   ManagementPane.financeTransactions,
+  ManagementPane.financeProfitLoss,
 ];
 
 /// Reports' panes, in the order its bar menu lists them: Business summary and
@@ -510,7 +511,7 @@ void main() {
     }
   });
 
-  testWidgets('Finance: nine lines of its bar menu, in the map\'s order, each '
+  testWidgets('Finance: ten lines of its bar menu, in the map\'s order, each '
       'opening its own page', (tester) async {
     final (container, bar) = await _open(tester, offline: true);
     final finance = _barOf(
@@ -860,6 +861,7 @@ void main() {
             'الضرائب',
             'الفواتير المستحقة',
             'الحركات',
+            'الأرباح والخسائر',
           ],
           BackOfficeTab.people: [
             'الموظفون',

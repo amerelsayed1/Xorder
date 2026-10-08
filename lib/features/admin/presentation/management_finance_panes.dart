@@ -14,6 +14,7 @@ import '../../../core/ui/widgets/pos_widgets.dart';
 import '../../../domain/models/branch_sales.dart';
 import '../../../domain/models/business_day.dart';
 import '../../../domain/models/finance_report.dart';
+import '../../../domain/models/profit_and_loss.dart';
 import '../../../domain/models/sales_report.dart';
 import '../../../domain/models/shift.dart';
 import 'admin_messages.dart';
@@ -124,6 +125,12 @@ String supplierFiguresNote(AppStrings s, SupplierFigures figures) =>
 /// to 100.1%.
 String formatShareBp(int bp) =>
     '${bp ~/ 100}.${(bp % 100).toString().padLeft(2, '0')}%';
+
+/// A margin, signed, to two decimals — [formatShareBp] for shares, which are
+/// never negative. A loss has to read as one: through the share formatter alone,
+/// −6.25% would print as −6.75%, because Dart's `%` is never negative.
+String formatMarginBp(int bp) =>
+    '${bp < 0 ? '-' : ''}${formatShareBp(bp.abs())}';
 
 /// Overview: the period's revenue, what was collected and owed, the tax, the
 /// tender bar — and, since BO-10, what went out, what the drawers should
@@ -1052,6 +1059,185 @@ class _Note extends StatelessWidget {
       height: 1.4,
     ),
   );
+}
+
+// ── Profit & loss ────────────────────────────────────────────────────────────
+
+/// Finance › Profit & loss: the period as one column — sales, the tax that was
+/// never the restaurant's, revenue, cost of goods, gross profit, what was paid
+/// from the drawers, and the result.
+///
+/// **Every line is a figure another screen already shows** (see
+/// [ProfitAndLoss]), so this cannot disagree with Reports or Finance. What it
+/// adds is the order, and — more than the order — the list under it of what it
+/// does not include. A result drawn without that list reads as the business's
+/// profit, and the data does not support that: only costed items have a cost of
+/// goods, and purchases are stock rather than expense.
+class FinanceProfitLossPane extends StatelessWidget {
+  const FinanceProfitLossPane({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final s = context.strings;
+    return _FinanceFrame(
+      paneKey: 'finance-profit-loss',
+      blurb: s.financeProfitLossBlurb,
+      builder: (ref, filter, _) => _read(
+        context,
+        ref.watch(profitAndLossProvider(filter)),
+        (statement) => [_Statement(statement: statement)],
+      ),
+    );
+  }
+}
+
+class _Statement extends StatelessWidget {
+  const _Statement({required this.statement});
+
+  final ProfitAndLoss statement;
+
+  @override
+  Widget build(BuildContext context) {
+    final s = context.strings;
+    final pos = context.pos;
+    final p = statement;
+    final margin = p.grossMarginBp;
+    final costed = p.costedShareBp;
+
+    /// A line of the statement. A deduction is drawn as itself — the figure,
+    /// not a negative of it — under a label that says it comes off.
+    Widget line(
+      String key,
+      String label,
+      Money amount, {
+      bool strong = false,
+      bool deduct = false,
+      String? note,
+      bool dangerWhenNegative = false,
+    }) {
+      final loss = dangerWhenNegative && amount.minor < 0;
+      return Container(
+        key: Key(key),
+        padding: const EdgeInsets.symmetric(vertical: PosSpace.sm),
+        decoration: BoxDecoration(
+          border: Border(top: strong ? pos.resting : pos.hairline),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    deduct ? '− $label' : label,
+                    style: PosText.ui(
+                      size: strong ? 14 : 13,
+                      weight: strong ? FontWeight.w700 : FontWeight.w500,
+                      color: pos.ink,
+                    ),
+                  ),
+                  if (note != null)
+                    Text(
+                      note,
+                      style: PosText.ui(size: 12, color: pos.muted),
+                    ),
+                ],
+              ),
+            ),
+            MonoAmount(
+              amount,
+              size: strong ? 15 : 13,
+              weight: strong ? FontWeight.w700 : FontWeight.w400,
+              color: loss ? pos.danger : null,
+            ),
+          ],
+        ),
+      );
+    }
+
+    final partial = !p.isFullyCosted;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        PosSurface(
+          padding: const EdgeInsets.all(PosSpace.lg),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              line('pl-sales', s.plSales, p.sales),
+              line('pl-tax', s.plTax, p.tax, deduct: true),
+              line('pl-revenue', s.plRevenue, p.revenue, strong: true),
+              line('pl-cogs', s.plCostOfGoods, p.costOfGoods, deduct: true),
+              line(
+                'pl-gross',
+                partial ? s.plGrossProfitPartial : s.plGrossProfit,
+                p.grossProfit,
+                strong: true,
+                dangerWhenNegative: true,
+                note: margin == null ? null : s.plMargin(formatMarginBp(margin)),
+              ),
+              line('pl-expenses', s.plExpenses, p.drawerExpenses, deduct: true),
+              line(
+                'pl-result',
+                // Qualified as gross profit is: the result inherits its
+                // missing costs, and it is the figure that gets quoted.
+                partial ? s.plOperatingResultPartial : s.plOperatingResult,
+                p.operatingResult,
+                strong: true,
+                dangerWhenNegative: true,
+              ),
+            ],
+          ),
+        ),
+        if (costed != null) ...[
+          const SizedBox(height: PosSpace.sm),
+          Text(
+            s.plCostedShare(formatShareBp(costed)),
+            key: const Key('pl-costed-share'),
+            style: PosText.ui(
+              size: 12.5,
+              weight: FontWeight.w600,
+              color: partial ? pos.warn : pos.muted,
+            ),
+          ),
+        ],
+        const SizedBox(height: PosSpace.s24),
+        MicroLabel(s.plLeavesOut),
+        const SizedBox(height: PosSpace.sm),
+        for (final caveat in p.caveats)
+          Padding(
+            padding: const EdgeInsets.only(bottom: PosSpace.sm),
+            child: Text(
+              switch (caveat) {
+                StatementCaveat.itemsWithNoCost => s.plCaveatNoCost,
+                StatementCaveat.supplierSpendOutsideStock => s.plCaveatSupplier,
+                StatementCaveat.rentAndSalaries => s.plCaveatRent,
+                StatementCaveat.serviceChargeIncluded => s.plCaveatService,
+              },
+              key: Key('pl-caveat-${caveat.name}'),
+              style: PosText.ui(size: 12.5, color: pos.body, height: 1.45),
+            ),
+          ),
+        const SizedBox(height: PosSpace.sm),
+        // Beside the statement and not in it: what was paid to suppliers, so a
+        // manager who wonders where that money went is told where to look.
+        switch (p.paidToSuppliers) {
+          final paid? => line(
+            'pl-suppliers',
+            s.plPaidToSuppliers,
+            paid,
+            note: null,
+          ),
+          null => Text(
+            s.plSuppliersUnread,
+            key: const Key('pl-suppliers-unread'),
+            style: PosText.ui(size: 12.5, color: pos.muted),
+          ),
+        },
+      ],
+    );
+  }
 }
 
 // ── BO-10 ───────────────────────────────────────────────────────────────────
