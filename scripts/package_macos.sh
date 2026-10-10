@@ -18,6 +18,12 @@
 # of which notarisation requires. Without it the DMG is ad-hoc signed and
 # Gatekeeper will refuse it on any Mac other than the one that built it.
 #
+# Licence key. A release build refuses to start without the release channel's
+# licence public key and key id (see lib/features/licensing/data/license_keys.dart),
+# so both are required here, exactly as the Windows installer workflow requires them:
+#
+#   XORDER_LICENSE_PUBLIC_KEY_B64=… XORDER_LICENSE_KEY_ID=… ./scripts/package_macos.sh
+#
 # Notarising. With a stored notarytool profile:
 #
 #   xcrun notarytool store-credentials xorder --apple-id … --team-id … --password …
@@ -38,8 +44,16 @@ VERSION="$(sed -n 's/^version: *\([0-9.]*\)+.*/\1/p' pubspec.yaml)"
 BUILD_NUMBER="$(sed -n 's/^version: *[0-9.]*+\(.*\)/\1/p' pubspec.yaml)"
 DMG_PATH="$DIST_DIR/XOrder-POS-$VERSION.dmg"
 
+if [ -z "${XORDER_LICENSE_PUBLIC_KEY_B64:-}" ] || [ -z "${XORDER_LICENSE_KEY_ID:-}" ]; then
+  echo "XORDER_LICENSE_PUBLIC_KEY_B64 and XORDER_LICENSE_KEY_ID are required for a release build." >&2
+  echo "Without them the app builds but stops at launch. See the header of this script." >&2
+  exit 1
+fi
+
 echo "==> Building $APP_NAME $VERSION ($BUILD_NUMBER)"
-flutter build macos --release
+flutter build macos --release \
+  "--dart-define=XORDER_LICENSE_PUBLIC_KEY_B64=$XORDER_LICENSE_PUBLIC_KEY_B64" \
+  "--dart-define=XORDER_LICENSE_KEY_ID=$XORDER_LICENSE_KEY_ID"
 
 [ -d "$APP_PATH" ] || { echo "Build produced no app at $APP_PATH" >&2; exit 1; }
 

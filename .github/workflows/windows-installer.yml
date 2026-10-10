@@ -109,8 +109,16 @@ jobs:
 
       - name: Build pos_migrate.exe
         run: |
+          # `dart compile exe` refuses a package graph with build hooks
+          # (objective_c, via file_picker); `dart build cli` is its replacement.
           New-Item -ItemType Directory -Force build/installer/tools | Out-Null
-          dart compile exe bin/pos_migrate.dart -o build/installer/tools/pos_migrate.exe
+          dart build cli --target bin/pos_migrate.dart --output build/pos_migrate
+          if ($LASTEXITCODE -ne 0) { throw "dart build cli exited with $LASTEXITCODE" }
+          # The installer ships the executable alone. A native library beside it
+          # would be left behind, so a new one has to be added to the .iss first.
+          $libs = Get-ChildItem build/pos_migrate/bundle/lib -File -ErrorAction SilentlyContinue
+          if ($libs) { throw "pos_migrate now needs native libraries the installer does not ship: $($libs.Name -join ', ')" }
+          Copy-Item build/pos_migrate/bundle/bin/pos_migrate.exe build/installer/tools/pos_migrate.exe
 
       - name: PostgreSQL binaries
         run: |

@@ -30,9 +30,6 @@ dependencies:
   # file and nothing in domain/ or features/.
   postgres: ^3.5.12
 
-  # Retained for the local outbound queue, which is still unbuilt. It is NOT the
-  # primary store — Postgres is.
-  sqflite_common_ffi: ^2.4.2+1
   path_provider: ^2.1.6
   path: ^1.9.1
 
