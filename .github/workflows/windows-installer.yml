@@ -5,23 +5,21 @@ name: Windows installer
 # and its accounts, then run the SAME installer again as an upgrade and check
 # nothing was lost. On a tag, the installer is attached to a release.
 #
-# A tag is a restaurant release: it must be tested, signed, built with the
-# release licence key, and use an integrity-pinned PostgreSQL archive. A run on
-# a branch exercises the installer (unsigned unless the certificate secrets are
-# set) but can never publish a release.
+# A tag is a restaurant release: it must be signed, built with the release
+# licence key, and use an integrity-pinned PostgreSQL archive. A run on a branch
+# exercises the installer (unsigned unless the certificate secrets are set) but
+# can never publish a release.
+#
+# Analyse and the tests are not run here: they run on your own machine with
+# scripts/check.sh, against a local PostgreSQL. Run it, green, before starting
+# this workflow, and always before tagging a release.
 #
 # Runs only when started by hand (Actions > Windows installer > Run workflow,
-# or `gh workflow run windows-installer.yml --ref <branch-or-tag>`). Day to day,
-# scripts/check.sh runs the same checks as `verify` on your own machine. To
-# release, push the tag, then run this workflow on that tag.
+# or `gh workflow run windows-installer.yml --ref <branch-or-tag>`). To release,
+# push the tag, then run this workflow on that tag.
 
 on:
   workflow_dispatch:
-    inputs:
-      installer:
-        description: 'Also build and test the Windows installer (always on for a tag)'
-        type: boolean
-        default: true
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -36,63 +34,7 @@ env:
   XORDER_LICENSE_KEY_ID: ${{ vars.XORDER_LICENSE_KEY_ID }}
 
 jobs:
-  verify:
-    # Pinned: ubuntu-latest moves to Ubuntu 26 on 2026-10-19.
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    # `flutter test` compiles suites one at a time, so the suite count, not the
-    # CPU, sets the pace. Each shard gets whole files, round-robin, and compiles
-    # only those. Not --total-shards: that splits the tests inside every file,
-    # so each shard still compiles all of them, and a test that builds on the
-    # one before it in its file breaks when that one ran elsewhere. Every suite
-    # already has its own database (test/data/pg_fixture.dart), and each shard
-    # has its own PostgreSQL container besides.
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [0, 1, 2]
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: xorder_pos
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres -d xorder_pos"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-    steps:
-      - uses: actions/checkout@v5
-      - uses: subosito/flutter-action@v2
-        with:
-          flutter-version: ${{ env.FLUTTER_VERSION }}
-          channel: stable
-          cache: true
-      - name: PostgreSQL client tools
-        # The runner image ships them; install only if that ever changes.
-        run: |
-          command -v pg_dump >/dev/null && command -v psql >/dev/null && { pg_dump --version; exit 0; }
-          sudo apt-get update && sudo apt-get install --yes postgresql-client
-      - name: Analyse and test, including PostgreSQL suites
-        env:
-          POS_PG_HOST: 127.0.0.1
-          POS_PG_PORT: '5432'
-          POS_PG_USER: postgres
-          POS_PG_PASSWORD: postgres
-        run: |
-          flutter pub get
-          if [ "${{ matrix.shard }}" = 0 ]; then flutter analyze; fi
-          mapfile -t files < <(find test -name '*_test.dart' | LC_ALL=C sort | awk -v n=3 -v i=${{ matrix.shard }} '(NR-1) % n == i')
-          echo "Shard ${{ matrix.shard }}: ${#files[@]} test files"
-          flutter test "${files[@]}"
-
   installer:
-    needs: verify
-    if: inputs.installer || startsWith(github.ref, 'refs/tags/v')
     runs-on: windows-latest
     timeout-minutes: 60
     permissions:

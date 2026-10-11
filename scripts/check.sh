@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# The checks CI's `verify` job runs, on this machine: analyse, then every test
-# including the PostgreSQL suites. CI itself only runs when started by hand, so
-# run this before pushing.
+# The project's verification, run on this machine rather than in CI: analyse,
+# then every test including the PostgreSQL suites. CI only builds the Windows
+# installer, and only when started by hand, so run this before pushing and
+# before any release.
 #
 #   scripts/check.sh                 # everything
 #   scripts/check.sh test/data       # extra args go to `flutter test`
