@@ -41,7 +41,10 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     # `flutter test` compiles suites one at a time, so the suite count, not the
-    # CPU, sets the pace. Shards each compile their own share. Every suite
+    # CPU, sets the pace. Each shard gets whole files, round-robin, and compiles
+    # only those. Not --total-shards: that splits the tests inside every file,
+    # so each shard still compiles all of them, and a test that builds on the
+    # one before it in its file breaks when that one ran elsewhere. Every suite
     # already has its own database (test/data/pg_fixture.dart), and each shard
     # has its own PostgreSQL container besides.
     strategy:
@@ -83,7 +86,9 @@ jobs:
         run: |
           flutter pub get
           if [ "${{ matrix.shard }}" = 0 ]; then flutter analyze; fi
-          flutter test --total-shards 3 --shard-index ${{ matrix.shard }}
+          mapfile -t files < <(find test -name '*_test.dart' | LC_ALL=C sort | awk -v n=3 -v i=${{ matrix.shard }} '(NR-1) % n == i')
+          echo "Shard ${{ matrix.shard }}: ${#files[@]} test files"
+          flutter test "${files[@]}"
 
   installer:
     needs: verify
