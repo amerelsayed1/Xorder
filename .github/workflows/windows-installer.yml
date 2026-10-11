@@ -6,16 +6,25 @@ name: Windows installer
 # nothing was lost. On a tag, the installer is attached to a release.
 #
 # A tag is a restaurant release: it must be tested, signed, built with the
-# release licence key, and use an integrity-pinned PostgreSQL archive. Manual
-# runs and every push to main exercise the installer (unsigned unless the
-# certificate secrets are set), but can never publish a release.
+# release licence key, and use an integrity-pinned PostgreSQL archive. A run on
+# a branch exercises the installer (unsigned unless the certificate secrets are
+# set) but can never publish a release.
+#
+# Runs only when started by hand (Actions > Windows installer > Run workflow,
+# or `gh workflow run windows-installer.yml --ref <branch-or-tag>`). Day to day,
+# scripts/check.sh runs the same checks as `verify` on your own machine. To
+# release, push the tag, then run this workflow on that tag.
 
 on:
-  pull_request:
-  push:
-    branches: [main]
-    tags: ['v*']
   workflow_dispatch:
+    inputs:
+      installer:
+        description: 'Also build and test the Windows installer (always on for a tag)'
+        type: boolean
+        default: true
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
 
 env:
   FLUTTER_VERSION: '3.47.0'
@@ -28,8 +37,20 @@ env:
 
 jobs:
   verify:
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # Pinned: ubuntu-latest moves to Ubuntu 26 on 2026-10-19.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    # `flutter test` compiles suites one at a time, so the suite count, not the
+    # CPU, sets the pace. Each shard gets whole files, round-robin, and compiles
+    # only those. Not --total-shards: that splits the tests inside every file,
+    # so each shard still compiles all of them, and a test that builds on the
+    # one before it in its file breaks when that one ran elsewhere. Every suite
+    # already has its own database (test/data/pg_fixture.dart), and each shard
+    # has its own PostgreSQL container besides.
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2]
     services:
       postgres:
         image: postgres:16
@@ -45,14 +66,17 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
-      - name: Install PostgreSQL client tools
-        run: sudo apt-get update && sudo apt-get install --yes postgresql-client
+      - name: PostgreSQL client tools
+        # The runner image ships them; install only if that ever changes.
+        run: |
+          command -v pg_dump >/dev/null && command -v psql >/dev/null && { pg_dump --version; exit 0; }
+          sudo apt-get update && sudo apt-get install --yes postgresql-client
       - name: Analyse and test, including PostgreSQL suites
         env:
           POS_PG_HOST: 127.0.0.1
@@ -61,12 +85,14 @@ jobs:
           POS_PG_PASSWORD: postgres
         run: |
           flutter pub get
-          flutter analyze
-          flutter test
+          if [ "${{ matrix.shard }}" = 0 ]; then flutter analyze; fi
+          mapfile -t files < <(find test -name '*_test.dart' | LC_ALL=C sort | awk -v n=3 -v i=${{ matrix.shard }} '(NR-1) % n == i')
+          echo "Shard ${{ matrix.shard }}: ${#files[@]} test files"
+          flutter test "${files[@]}"
 
   installer:
     needs: verify
-    if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
+    if: inputs.installer || startsWith(github.ref, 'refs/tags/v')
     runs-on: windows-latest
     timeout-minutes: 60
     permissions:
@@ -78,7 +104,7 @@ jobs:
       run:
         shell: pwsh
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: subosito/flutter-action@v2
         with:
@@ -120,11 +146,22 @@ jobs:
           if ($libs) { throw "pos_migrate now needs native libraries the installer does not ship: $($libs.Name -join ', ')" }
           Copy-Item build/pos_migrate/bundle/bin/pos_migrate.exe build/installer/tools/pos_migrate.exe
 
+      # Keyed on the pinned hash, and the hash is still checked after a restore,
+      # so a cached archive is held to the same bar as a fresh download.
+      - name: Cache the PostgreSQL archive
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/pg-download
+          key: pgsql-${{ env.PG_VERSION }}-${{ env.PG_SHA256 }}
+
       - name: PostgreSQL binaries
         run: |
           if ([string]::IsNullOrWhiteSpace($env:PG_SHA256)) { throw 'XORDER_PG_SHA256 repository variable is required.' }
-          $zip = Join-Path $env:RUNNER_TEMP 'pgsql.zip'
-          Invoke-WebRequest "https://get.enterprisedb.com/postgresql/postgresql-$env:PG_VERSION-windows-x64-binaries.zip" -OutFile $zip
+          New-Item -ItemType Directory -Force (Join-Path $env:RUNNER_TEMP 'pg-download') | Out-Null
+          $zip = Join-Path $env:RUNNER_TEMP 'pg-download\pgsql.zip'
+          if (-not (Test-Path $zip)) {
+            Invoke-WebRequest "https://get.enterprisedb.com/postgresql/postgresql-$env:PG_VERSION-windows-x64-binaries.zip" -OutFile $zip
+          }
           $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
           Write-Host "PostgreSQL $env:PG_VERSION sha256 $hash"
           if ($hash -ne $env:PG_SHA256) { throw "PostgreSQL download does not match PG_SHA256" }
@@ -139,7 +176,9 @@ jobs:
         run: Invoke-WebRequest https://aka.ms/vs/17/release/vc_redist.x64.exe -OutFile build/installer/tools/vc_redist.x64.exe
 
       - name: Inno Setup
-        run: choco install innosetup -y --no-progress
+        run: |
+          if (Test-Path 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe') { Write-Host 'Inno Setup is preinstalled'; exit 0 }
+          choco install innosetup -y --no-progress
 
       - name: Build the installer
         run: |
