@@ -11,11 +11,21 @@ name: Windows installer
 # certificate secrets are set), but can never publish a release.
 
 on:
+  # Docs-only changes cannot change the build. Paths filters are not applied to
+  # tag pushes, so a release always builds.
   pull_request:
+    paths-ignore: ['docs/**', '**/*.md']
   push:
     branches: [main]
     tags: ['v*']
+    paths-ignore: ['docs/**', '**/*.md']
   workflow_dispatch:
+
+# A newer push to the same PR makes the older run moot. Runs on main and tags
+# always finish, so every commit there keeps its installer verdict.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   FLUTTER_VERSION: '3.47.0'
@@ -28,8 +38,17 @@ env:
 
 jobs:
   verify:
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # Pinned: ubuntu-latest moves to Ubuntu 26 on 2026-10-19.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    # `flutter test` compiles suites one at a time, so the suite count, not the
+    # CPU, sets the pace. Shards each compile their own share. Every suite
+    # already has its own database (test/data/pg_fixture.dart), and each shard
+    # has its own PostgreSQL container besides.
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2]
     services:
       postgres:
         image: postgres:16
@@ -45,14 +64,17 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
-      - name: Install PostgreSQL client tools
-        run: sudo apt-get update && sudo apt-get install --yes postgresql-client
+      - name: PostgreSQL client tools
+        # The runner image ships them; install only if that ever changes.
+        run: |
+          command -v pg_dump >/dev/null && command -v psql >/dev/null && { pg_dump --version; exit 0; }
+          sudo apt-get update && sudo apt-get install --yes postgresql-client
       - name: Analyse and test, including PostgreSQL suites
         env:
           POS_PG_HOST: 127.0.0.1
@@ -61,8 +83,8 @@ jobs:
           POS_PG_PASSWORD: postgres
         run: |
           flutter pub get
-          flutter analyze
-          flutter test
+          if [ "${{ matrix.shard }}" = 0 ]; then flutter analyze; fi
+          flutter test --total-shards 3 --shard-index ${{ matrix.shard }}
 
   installer:
     needs: verify
@@ -78,7 +100,7 @@ jobs:
       run:
         shell: pwsh
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: subosito/flutter-action@v2
         with:
@@ -120,11 +142,22 @@ jobs:
           if ($libs) { throw "pos_migrate now needs native libraries the installer does not ship: $($libs.Name -join ', ')" }
           Copy-Item build/pos_migrate/bundle/bin/pos_migrate.exe build/installer/tools/pos_migrate.exe
 
+      # Keyed on the pinned hash, and the hash is still checked after a restore,
+      # so a cached archive is held to the same bar as a fresh download.
+      - name: Cache the PostgreSQL archive
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/pg-download
+          key: pgsql-${{ env.PG_VERSION }}-${{ env.PG_SHA256 }}
+
       - name: PostgreSQL binaries
         run: |
           if ([string]::IsNullOrWhiteSpace($env:PG_SHA256)) { throw 'XORDER_PG_SHA256 repository variable is required.' }
-          $zip = Join-Path $env:RUNNER_TEMP 'pgsql.zip'
-          Invoke-WebRequest "https://get.enterprisedb.com/postgresql/postgresql-$env:PG_VERSION-windows-x64-binaries.zip" -OutFile $zip
+          New-Item -ItemType Directory -Force (Join-Path $env:RUNNER_TEMP 'pg-download') | Out-Null
+          $zip = Join-Path $env:RUNNER_TEMP 'pg-download\pgsql.zip'
+          if (-not (Test-Path $zip)) {
+            Invoke-WebRequest "https://get.enterprisedb.com/postgresql/postgresql-$env:PG_VERSION-windows-x64-binaries.zip" -OutFile $zip
+          }
           $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
           Write-Host "PostgreSQL $env:PG_VERSION sha256 $hash"
           if ($hash -ne $env:PG_SHA256) { throw "PostgreSQL download does not match PG_SHA256" }
@@ -139,7 +172,9 @@ jobs:
         run: Invoke-WebRequest https://aka.ms/vs/17/release/vc_redist.x64.exe -OutFile build/installer/tools/vc_redist.x64.exe
 
       - name: Inno Setup
-        run: choco install innosetup -y --no-progress
+        run: |
+          if (Test-Path 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe') { Write-Host 'Inno Setup is preinstalled'; exit 0 }
+          choco install innosetup -y --no-progress
 
       - name: Build the installer
         run: |
