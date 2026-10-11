@@ -40,6 +40,7 @@ flutter pub get
 flutter run -d macos          # or: flutter run -d windows
 flutter test                  # unit + widget; green with NO database (see below)
 flutter analyze               # flutter_lints; keep clean
+scripts/check.sh              # what CI's verify runs: analyse + every test, PostgreSQL included
 dart bin/pos_migrate.dart     # prepare a branch PostgreSQL before first run
 ```
 
@@ -89,6 +90,10 @@ dart bin/pos_migrate.dart     # prepare a branch PostgreSQL before first run
   `POS_PG_HOST` is unset (declared in `dart_test.yaml`).
 - `integration_test/` runs the assembled app through the UI against a **real** PostgreSQL —
   point it at one to exercise the datastore.
+- **CI runs only when started by hand** (`gh workflow run windows-installer.yml --ref <ref>`).
+  Run `scripts/check.sh` before pushing; it needs a local PostgreSQL (defaults to
+  `127.0.0.1:5432` as `$USER`; override with `POS_PG_*`). A release is a tag plus a manual
+  run on that tag.
 
 ## Token hygiene
 
