@@ -8,6 +8,7 @@ use App\Http\Requests\Pos\LicenceCheckRequest;
 use App\Models\PosLicence;
 use App\Models\PosTerminal;
 use App\Services\LicenceActivator;
+use App\Services\LicenceIssuer;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -58,9 +59,15 @@ class LicenceController extends Controller
 
         $this->activator->markActivated($licence, $request->input('fingerprint'));
 
-        return response()->json($licence->file() + [
+        // The signed file, plus two things that are not part of it and that
+        // LicenseFile.tryParse is free to ignore: where this till takes its
+        // verdict from (R2), and the public key this platform signs with, so a
+        // DEVELOPMENT build of the till can read the file without the key
+        // being carried over by hand — see LicenceIssuer::configuredPublicKey.
+        return response()->json($licence->file() + array_filter([
             'enforcement' => $licence->enforcement ?? PosLicence::ENFORCEMENT_ONLINE,
-        ]);
+            'issuer_public_key' => LicenceIssuer::configuredPublicKey(),
+        ]));
     }
 
     /**

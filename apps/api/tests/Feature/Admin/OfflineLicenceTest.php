@@ -280,7 +280,7 @@ class OfflineLicenceTest extends TestCase
         // offline licence's tills trust the file.
         $this->postJson('/api/pos/licence/activate', ['key' => $body['activation_key']])
             ->assertOk()
-            ->assertExactJson($body['file'] + ['enforcement' => 'offline']);
+            ->assertExactJson($body['file'] + ['enforcement' => 'offline', 'issuer_public_key' => $this->issuerPublicKey()]);
 
         $this->assertNotNull(PosLicence::sole()->activated_at);
     }
@@ -299,7 +299,7 @@ class OfflineLicenceTest extends TestCase
 
         $this->postJson('/api/pos/licence/activate', ['key' => $cloud['activation_key']])
             ->assertOk()
-            ->assertExactJson($cloud['file'] + ['enforcement' => 'online']);
+            ->assertExactJson($cloud['file'] + ['enforcement' => 'online', 'issuer_public_key' => $this->issuerPublicKey()]);
     }
 
     public function test_a_slug_that_is_offered_is_still_checked(): void
@@ -395,6 +395,16 @@ class OfflineLicenceTest extends TestCase
         $this->postJson('/api/pos/licence/activate', ['key' => $body['activation_key']])
             ->assertOk()
             // A renewal keeps the kind, and so how it is enforced.
-            ->assertExactJson($renewal['file'] + ['enforcement' => 'offline']);
+            ->assertExactJson($renewal['file'] + ['enforcement' => 'offline', 'issuer_public_key' => $this->issuerPublicKey()]);
+    }
+
+    /**
+     * What activation sends beside the file: the public half of the key this
+     * test configured in setUp. A development till trusts it; a release till
+     * ignores it; the signed file is the same bytes either way.
+     */
+    private function issuerPublicKey(): string
+    {
+        return base64_encode($this->publicKey);
     }
 }

@@ -172,10 +172,19 @@ class PosLicenceTest extends TestCase
         ])->assertOk()->json();
 
         // The three-key file, byte-identical to the download, plus
-        // `enforcement` (R2) — LicenseFile.tryParse ignores the extra key.
-        $this->assertSame(['payload', 'signature', 'key_id', 'enforcement'], array_keys($res));
-        $this->assertSame($body['file'], array_diff_key($res, ['enforcement' => true]));
+        // `enforcement` (R2) and the issuer's PUBLIC key, which a development
+        // build of the till trusts and a release build ignores —
+        // LicenseFile.tryParse reads neither into the file it verifies.
+        $this->assertSame(
+            ['payload', 'signature', 'key_id', 'enforcement', 'issuer_public_key'],
+            array_keys($res),
+        );
+        $this->assertSame(
+            $body['file'],
+            array_diff_key($res, ['enforcement' => true, 'issuer_public_key' => true]),
+        );
         $this->assertSame('online', $res['enforcement']);
+        $this->assertSame(base64_encode($this->publicKey), $res['issuer_public_key']);
 
         $this->assertNotNull(PosLicence::first()->activated_at);
     }
@@ -273,7 +282,7 @@ class PosLicenceTest extends TestCase
         $res = $this->postJson('/api/pos/licence/activate', ['key' => $key, 'tenant_slug' => 'demo'])
             ->assertOk()->json();
 
-        $res = array_diff_key($res, ['enforcement' => true]);
+        $res = array_diff_key($res, ['enforcement' => true, 'issuer_public_key' => true]);
         $this->assertSame($renewal['file'], $res);
         $this->assertNotSame($issued['file'], $res);
     }

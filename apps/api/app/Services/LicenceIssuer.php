@@ -391,6 +391,29 @@ class LicenceIssuer
         ];
     }
 
+    /**
+     * The PUBLIC half of the configured signing key, base64 — or null when no
+     * key is configured, so activation of already-minted licences keeps
+     * working exactly as it does today.
+     *
+     * Sent with every activation so a development build of the till can read
+     * a licence this platform issued without somebody first carrying the key
+     * over by hand. The key is public by definition — it ships inside every
+     * customer's binary — and a RELEASE build ignores the field entirely: it
+     * verifies against the key compiled into it and nothing else, which is the
+     * whole point of signing the file.
+     */
+    public static function configuredPublicKey(): ?string
+    {
+        $secret = base64_decode((string) config('licence.signing_key'), true);
+
+        if ($secret === false || strlen($secret) !== SODIUM_CRYPTO_SIGN_SECRETKEYBYTES) {
+            return null;
+        }
+
+        return base64_encode(sodium_crypto_sign_publickey_from_secretkey($secret));
+    }
+
     private function signingKey(): string
     {
         $configured = (string) config('licence.signing_key');
