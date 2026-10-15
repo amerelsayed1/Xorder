@@ -232,6 +232,8 @@ class XorderPosApp extends ConsumerWidget {
               // Except while the till is not set up yet: the wizard has no
               // language step up front and relies on Settings' language
               // switch, and nobody can sign in to a till that has no staff.
+              // That exception is the wizard's, not the welcome screen's —
+              // see `_beforeTheTill` below.
               //
               // Hidden through `enabled` rather than by returning [child]
               // bare: that keeps the tree's shape, so signing in or out never
@@ -244,8 +246,11 @@ class XorderPosApp extends ConsumerWidget {
               // **And not in front of the till.** The start and lock screens are
               // where somebody signs in to sell, so they stay clean even with a
               // name still signed in behind them; the bar arrives with the
-              // till. Listened to through the router because this sits above
-              // it and no route rebuilds it.
+              // till. The welcome screen is the same kind of place: a mark and
+              // one line, in front of whoever walks past an unconfigured
+              // machine, with nothing on this menu that means anything there
+              // yet (15 Oct 2026). Listened to through the router because
+              // this sits above it and no route rebuilds it.
               final router = ref.watch(routerProvider);
 
               final menus = _managementMenus(ref, strings);
@@ -476,8 +481,16 @@ class XorderPosApp extends ConsumerWidget {
 
   /// The screens in front of the till: nobody has signed in to sell there yet,
   /// whatever the back office remembers.
+  ///
+  /// The welcome screen too. An unconfigured till sits there for whoever
+  /// walks past, and the bar's lines — orders, switch user, about — describe
+  /// a till that does not exist yet; its own brightness toggle is the one
+  /// control the screen needs. The language switch the wizard relies on is
+  /// still there the moment the chord opens the wizard.
   static bool _beforeTheTill(String path) =>
-      path == PosRoutes.start || path == PosRoutes.lock;
+      path == PosRoutes.start ||
+      path == PosRoutes.lock ||
+      path == PosRoutes.welcome;
 
   /// The bar's back-office menus.
   ///

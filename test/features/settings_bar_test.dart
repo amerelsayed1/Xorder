@@ -333,10 +333,18 @@ void main() {
   testWidgets('but a till being set up keeps it, for the language switch', (
     tester,
   ) async {
-    await pumpApp(tester, staff: null, setUp: false);
+    final container = await pumpApp(tester, staff: null, setUp: false);
+
+    // Not on the welcome screen, where an unconfigured till waits: that is a
+    // mark and one line in front of whoever walks past, and nothing on this
+    // menu means anything there yet.
+    expect(find.byType(MenuBar), findsNothing);
+    expect(find.text('Settings'), findsNothing);
 
     // The wizard has no language step up front; this bar is how an installer
     // facing a refusal they cannot read gets it in their language.
+    container.read(routerProvider).go(PosRoutes.setup);
+    await tester.pumpAndSettle();
     expect(barLabels(tester), ['Settings'], reason: 'no back office');
     await openSettings(tester);
     expect(find.text('العربية'), findsOneWidget);
