@@ -15,11 +15,19 @@ class LicenseFile {
     required this.payloadB64,
     required this.signatureB64,
     this.keyId = 'v1',
+    this.issuerPublicKeyB64,
   });
 
   final String payloadB64;
   final String signatureB64;
   final String keyId;
+
+  /// The public key the issuing platform says it signed with, base64, as the
+  /// activation reply carries it. **Not part of what is signed, and not
+  /// something a release build ever reads** — see
+  /// [LicenseVerifier.trustIssuerKey]. Kept on the file so a development till
+  /// that learned it at activation still has it at the next launch.
+  final String? issuerPublicKeyB64;
 
   static LicenseFile? tryParse(String raw) {
     try {
@@ -28,10 +36,14 @@ class LicenseFile {
       final signature = json['signature'] as String?;
       if (payload == null || signature == null) return null;
 
+      final issuer = json['issuer_public_key'];
       return LicenseFile(
         payloadB64: payload,
         signatureB64: signature,
         keyId: json['key_id'] as String? ?? 'v1',
+        issuerPublicKeyB64: issuer is String && issuer.isNotEmpty
+            ? issuer
+            : null,
       );
     } on FormatException {
       return null;
@@ -44,6 +56,7 @@ class LicenseFile {
     'payload': payloadB64,
     'signature': signatureB64,
     'key_id': keyId,
+    'issuer_public_key': ?issuerPublicKeyB64,
   });
 }
 
@@ -63,18 +76,58 @@ class LicenseFile {
 ///   * terminal counting — only a server can see sibling terminals, so the
 ///     offline `maxTerminals` check is advisory (POS-BE-016).
 class LicenseVerifier {
-  LicenseVerifier({required this.publicKeyBytes, Ed25519? algorithm})
-    : _algorithm = algorithm ?? Ed25519();
+  LicenseVerifier({
+    required this.publicKeyBytes,
+    this.keyId,
+    this.trustIssuerKey = !_release,
+    Ed25519? algorithm,
+  }) : _algorithm = algorithm ?? Ed25519();
+
+  static const _release = bool.fromEnvironment('dart.vm.product');
 
   /// The licence-server public key. The private half never leaves the issuer.
   ///
   /// Replaced at build time per release channel; tests inject their own so they
   /// can sign real fixtures rather than mock the crypto away.
   final List<int> publicKeyBytes;
+
+  /// The key id [publicKeyBytes] is published under, so a file signed with a
+  /// different one can be told apart from a file that has been edited — see
+  /// [LicenceUnverifiable]. Null skips that distinction, never the check.
+  final String? keyId;
+
+  /// Whether a file that fails against [publicKeyBytes] may be verified
+  /// against the key the issuing platform sent along with it
+  /// ([LicenseFile.issuerPublicKeyB64]).
+  ///
+  /// **Never in a release build**, and the default says so: a release build
+  /// is `dart.vm.product`, and there the compiled-in key is the only one
+  /// there is — a platform naming its own key proves nothing about the
+  /// platform. A debug or profile build is a different thing: it already
+  /// holds the development key, so anybody with this repository can license
+  /// it, and what a developer wants from it is to type a key issued on
+  /// whichever platform they work against and have the licence read. Before
+  /// this, that meant carrying production's public key over by hand and
+  /// passing it as a dart-define on every run.
+  final bool trustIssuerKey;
   final Ed25519 _algorithm;
 
   /// Verify the detached signature over the payload bytes.
   Future<bool> verifySignature(LicenseFile file) async {
+    if (await _verifiesWith(file, publicKeyBytes)) return true;
+
+    final issuer = file.issuerPublicKeyB64;
+    if (!trustIssuerKey || issuer == null) return false;
+    final List<int> key;
+    try {
+      key = base64.decode(issuer);
+    } on FormatException {
+      return false;
+    }
+    return key.length == 32 && await _verifiesWith(file, key);
+  }
+
+  Future<bool> _verifiesWith(LicenseFile file, List<int> publicKey) async {
     try {
       final message = base64Url.decode(_pad(file.payloadB64));
       final signature = base64Url.decode(_pad(file.signatureB64));
@@ -83,7 +136,7 @@ class LicenseVerifier {
         message,
         signature: Signature(
           signature,
-          publicKey: SimplePublicKey(publicKeyBytes, type: KeyPairType.ed25519),
+          publicKey: SimplePublicKey(publicKey, type: KeyPairType.ed25519),
         ),
       );
     } on FormatException {
@@ -120,7 +173,10 @@ class LicenseVerifier {
     }
 
     if (!await verifySignature(file)) {
-      return _deny(LicenseState.invalid, const LicenceUnverifiable());
+      return _deny(
+        LicenseState.invalid,
+        LicenceUnverifiable(signedWith: file.keyId, holds: keyId),
+      );
     }
 
     final claims = claimsOf(file);

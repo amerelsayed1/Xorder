@@ -187,6 +187,14 @@ dart run bin/pos_licence.dart inspect --file licences/valid.xlic \
 key, and keep its private half off shared drives. A build that ships the
 development key is a build anyone with this repository can license.
 
+**A debug build against production needs nothing carried over.** The activation
+reply carries `issuer_public_key` beside the file, and a non-release verifier
+(`LicenseVerifier.trustIssuerKey`, off whenever `dart.vm.product` is set) falls
+back to it when the compiled-in key fails. A release build never reads it: there
+the compiled-in key is the only one, which is the whole point. The key a release
+build needs is the public half of that platform's `LICENCE_SIGNING_KEY`; the
+activation reply carries it as `issuer_public_key`.
+
 ## 5. Renewal — how a licence is updated
 
 Renewal is the **common** case; first activation is the rare one. A till is set up

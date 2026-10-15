@@ -394,6 +394,7 @@ sealed class AppStrings {
   String get licenceFileDamaged;
   String get noLicenceInstalled;
   String get licenceUnverifiable;
+  String licenceSignedWithOtherKey(String signedWith, String holds);
   String get noLicenceServer;
   String get notALicenceFile;
   String get licenceKeyNotRecognised;
@@ -3968,6 +3969,12 @@ final class EnStrings extends AppStrings {
   @override
   String get licenceUnverifiable =>
       'This licence file could not be verified. Ask your supplier to reissue it.';
+  @override
+  String licenceSignedWithOtherKey(String signedWith, String holds) =>
+      'This licence was signed with key “$signedWith”, and this build of '
+      'XOrder POS only holds key “$holds”. It was issued by a platform this '
+      'build was not made for — install the build made for that platform, or '
+      'activate a licence issued by the one this build is made for.';
   @override
   String get noLicenceServer =>
       'There is no licence server to check a key against. Ask your supplier for '
@@ -8843,6 +8850,12 @@ final class ArStrings extends AppStrings {
   @override
   String get licenceUnverifiable =>
       'تعذّر التحقق من ملف الترخيص هذا. اطلب من مورّدك إعادة إصداره.';
+  @override
+  String licenceSignedWithOtherKey(String signedWith, String holds) =>
+      'وُقِّع هذا الترخيص بالمفتاح «$signedWith»، وهذا الإصدار من XOrder POS '
+      'لا يحمل إلا المفتاح «$holds». صدر الترخيص من منصة لم يُبنَ هذا الإصدار '
+      'لها — ثبِّت الإصدار المبني لتلك المنصة، أو فعِّل ترخيصاً صادراً من '
+      'المنصة التي بُني لها هذا الإصدار.';
   @override
   String get noLicenceServer =>
       'لا يوجد خادم تراخيص للتحقق من المفتاح. اطلب ملف ‎.xlic من مورّدك '

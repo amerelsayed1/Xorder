@@ -83,10 +83,14 @@ class SiteLicenceService implements LicenceService {
     required this.verifySignature,
     required this.clock,
     this.restaurantId,
+    this.keyId,
   });
 
   final SiteLicenceSource source;
   final Future<bool> Function(LicenseFile file) verifySignature;
+
+  /// The key id this build verifies with — see [LicenseVerifier.keyId].
+  final String? keyId;
   final DateTime Function() clock;
   final int? restaurantId;
 
@@ -105,12 +109,12 @@ class SiteLicenceService implements LicenceService {
     DeploymentConfig deployment,
   ) async {
     if (!await verifySignature(file)) {
-      return const LicenseEntitlement(
+      return LicenseEntitlement(
         state: LicenseState.invalid,
         canOpenShift: false,
         canSell: false,
         canChangeConfiguration: false,
-        notice: LicenceUnverifiable(),
+        notice: LicenceUnverifiable(signedWith: file.keyId, holds: keyId),
       );
     }
     final claims = LicenseVerifier.claimsOf(file);

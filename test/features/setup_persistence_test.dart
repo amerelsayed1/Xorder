@@ -1005,7 +1005,14 @@ void main() {
         fileContents: _licenceFor('somebody-else'),
       );
 
-      expect(container.read(setupProvider).error, isNotNull);
+      // Refused in the verdict, which the pane's status card draws. The
+      // footer's error bar is silent on purpose: it used to repeat the card's
+      // sentence, and the same words twice on one screen read as two faults.
+      final draft = container.read(setupProvider);
+      expect(draft.entitlement?.state, LicenseState.tenantMismatch);
+      expect(draft.entitlement?.notice, isA<LicenceTenantMismatch>());
+      expect(draft.entitlement?.canSell, isFalse);
+      expect(draft.error, isNull, reason: draft.error ?? '');
     });
 
     test('a machine with no licence is left alone', () async {

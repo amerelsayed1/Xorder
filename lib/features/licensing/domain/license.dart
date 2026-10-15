@@ -308,8 +308,29 @@ final class LicenceFileDamaged extends LicenceNotice {
   const LicenceFileDamaged();
 }
 
+/// The signature did not verify against the key this build holds.
+///
+/// Two very different things look like this from the outside, and the file's
+/// `key_id` tells them apart. A file whose key id names a key this build does
+/// not hold was issued by a platform or release channel this build was not
+/// made for — a debug till pointed at production, a release till handed a
+/// licence from a staging issuer — and the licence itself is perfectly good.
+/// A file whose key id names the key this build DOES hold, and still fails,
+/// has been edited. The wording follows, because "ask your supplier to reissue
+/// it" is the wrong advice for the first: the issuer would mint the same file
+/// again, signed with the same key this build still cannot read.
 final class LicenceUnverifiable extends LicenceNotice {
-  const LicenceUnverifiable();
+  const LicenceUnverifiable({this.signedWith, this.holds});
+
+  /// The `key_id` the file says signed it.
+  final String? signedWith;
+
+  /// The key id this build verifies with; null where the caller has no idea.
+  final String? holds;
+
+  /// Whether the two name different keys.
+  bool get otherKey =>
+      signedWith != null && holds != null && signedWith != holds;
 }
 
 final class LicenceMissing extends LicenceNotice {

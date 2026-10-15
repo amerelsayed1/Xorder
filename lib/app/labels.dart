@@ -181,7 +181,10 @@ extension LicenceNoticeText on LicenceNotice {
       _shortDate(startsOn),
     ),
     LicenceFileDamaged() => s.licenceFileDamaged,
-    LicenceUnverifiable() => s.licenceUnverifiable,
+    LicenceUnverifiable(:final otherKey, :final signedWith, :final holds) =>
+      otherKey
+          ? s.licenceSignedWithOtherKey(signedWith!, holds!)
+          : s.licenceUnverifiable,
     LicenceMissing() => s.noLicenceInstalled,
     NoLicenceServer() => s.noLicenceServer,
     NotALicenceFile() => s.notALicenceFile,

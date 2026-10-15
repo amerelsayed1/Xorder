@@ -1631,13 +1631,17 @@ final connectivityProbeProvider = Provider<ConnectivityProbe>(
 /// [SiteLicenceService]. Same public key, same policy; the file simply lives in
 /// the database they share rather than on the tablet.
 final licenceServiceProvider = Provider<LicenceService>((ref) {
-  final verifier = LicenseVerifier(publicKeyBytes: LicenseKeys.current);
+  final verifier = LicenseVerifier(
+    publicKeyBytes: LicenseKeys.current,
+    keyId: LicenseKeys.currentId,
+  );
   if (ref.watch(deploymentProvider).isChild) {
     return SiteLicenceService(
       source: ref.watch(siteLicenceSourceProvider) ?? InMemorySiteLicenceSource(),
       verifySignature: verifier.verifySignature,
       clock: DateTime.now,
       restaurantId: ref.watch(terminalProfileProvider).restaurantId,
+      keyId: LicenseKeys.currentId,
     );
   }
   final platform = ref.watch(platformLicenceApiProvider);

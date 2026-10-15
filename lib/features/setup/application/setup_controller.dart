@@ -1173,7 +1173,14 @@ class SetupController extends Notifier<SetupDraft> {
       // terminal must end up holding the file its status screen describes.
       licenceFile: result.file,
       deployment: claims == null ? null : adopted,
-      error: notice?.text(ref.read(stringsProvider)),
+      // Said once. A verdict is drawn by the pane's status card, headline and
+      // notice together, so the error bar at the foot repeats it only when
+      // there is no verdict to draw — an unrecognised key, an unreachable
+      // platform, a file that is not a licence. The same sentence twice on one
+      // screen read as two problems.
+      error: entitlement != null && identical(entitlement.notice, notice)
+          ? null
+          : notice?.text(ref.read(stringsProvider)),
       notice: modeChanged,
       clearNotice: modeChanged == null,
     );

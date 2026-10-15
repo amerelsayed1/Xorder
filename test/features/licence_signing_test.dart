@@ -2,7 +2,9 @@ import 'dart:convert';
 
 import 'package:cryptography/cryptography.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:xorder_pos/app/labels.dart';
 import 'package:xorder_pos/core/config/deployment.dart';
+import 'package:xorder_pos/core/l10n/app_strings.dart';
 import 'package:xorder_pos/features/licensing/data/licence_service.dart';
 import 'package:xorder_pos/features/licensing/data/license_keys.dart';
 import 'package:xorder_pos/features/licensing/data/license_store.dart';
@@ -97,6 +99,117 @@ void main() {
     expect(result.succeeded, isFalse);
     expect(result.entitlement?.state, LicenseState.invalid);
     expect(result.notice, isA<LicenceUnverifiable>());
+  });
+
+  test('a development build reads a licence from a platform whose key it '
+      'was not built with', () async {
+    final ours = await Ed25519().newKeyPair();
+    final theirs = await Ed25519().newKeyPair();
+    final theirPublic = (await theirs.extractPublicKey()).bytes;
+    final signed = await sign(claimsFor(), theirs);
+
+    // What activation hands a till: the file, and the issuer's public key
+    // beside it. Through tryParse, as the platform API delivers it.
+    final file = LicenseFile.tryParse(
+      jsonEncode({
+        'payload': signed.payloadB64,
+        'signature': signed.signatureB64,
+        'key_id': 'v1',
+        'enforcement': 'online',
+        'issuer_public_key': base64.encode(theirPublic),
+      }),
+    )!;
+    expect(file.issuerPublicKeyB64, base64.encode(theirPublic));
+    // And it survives the round trip to disk, so the next launch still has it.
+    expect(
+      LicenseFile.tryParse(file.serialize())!.issuerPublicKeyB64,
+      base64.encode(theirPublic),
+    );
+
+    // Tests run without dart.vm.product, so the default is a developer's.
+    final development = LicenseVerifier(
+      publicKeyBytes: (await ours.extractPublicKey()).bytes,
+      keyId: 'development-v1',
+    );
+    expect(development.trustIssuerKey, isTrue);
+    expect(await development.verifySignature(file), isTrue);
+    final verdict = await development.evaluate(
+      file: file,
+      deployment: deployment,
+      now: now,
+    );
+    expect(verdict.state, LicenseState.valid);
+
+    // A release build holds its compiled-in key and nothing else.
+    final release = LicenseVerifier(
+      publicKeyBytes: (await ours.extractPublicKey()).bytes,
+      keyId: 'v1',
+      trustIssuerKey: false,
+    );
+    expect(await release.verifySignature(file), isFalse);
+
+    // The issuer's word is not a skeleton key: a file that fails against the
+    // key it names fails. Edited payload, honest-looking issuer field.
+    final edited = LicenseFile(
+      payloadB64: base64Url.encode(
+        utf8.encode(
+          jsonEncode(claimsFor(term: const Duration(days: 3650)).toJson()),
+        ),
+      ),
+      signatureB64: signed.signatureB64,
+      issuerPublicKeyB64: base64.encode(theirPublic),
+    );
+    expect(await development.verifySignature(edited), isFalse);
+  });
+
+  test('a licence signed under another key id says which, and which this '
+      'build holds', () async {
+    final ours = await Ed25519().newKeyPair();
+    final theirs = await Ed25519().newKeyPair();
+    final verifier = LicenseVerifier(
+      publicKeyBytes: (await ours.extractPublicKey()).bytes,
+      keyId: 'development-v1',
+    );
+
+    // A production platform's file read by a debug build: the key id on the
+    // file names a key this build does not hold. The licence is good; the
+    // build is the wrong one, and "ask your supplier to reissue it" would
+    // get the same file minted again.
+    final signed = await sign(claimsFor(), theirs);
+    final verdict = await verifier.evaluate(
+      file: LicenseFile(
+        payloadB64: signed.payloadB64,
+        signatureB64: signed.signatureB64,
+        keyId: 'v1',
+      ),
+      deployment: deployment,
+      now: now,
+    );
+    final notice = verdict.notice;
+    expect(notice, isA<LicenceUnverifiable>());
+    notice as LicenceUnverifiable;
+    expect(notice.otherKey, isTrue);
+    expect(notice.signedWith, 'v1');
+    expect(notice.holds, 'development-v1');
+    final said = notice.text(const EnStrings());
+    expect(said, contains('“v1”'));
+    expect(said, contains('“development-v1”'));
+    expect(said, isNot(contains('reissue')));
+
+    // The same key id, and still not verifying: the file has been edited, and
+    // reissuing it is exactly the advice.
+    final edited = await verifier.evaluate(
+      file: LicenseFile(
+        payloadB64: signed.payloadB64,
+        signatureB64: signed.signatureB64,
+        keyId: 'development-v1',
+      ),
+      deployment: deployment,
+      now: now,
+    );
+    final same = edited.notice! as LicenceUnverifiable;
+    expect(same.otherKey, isFalse);
+    expect(same.text(const EnStrings()), contains('reissue'));
   });
 
   test('editing the term of a signed licence invalidates it', () async {

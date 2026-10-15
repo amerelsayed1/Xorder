@@ -42,6 +42,11 @@ abstract final class LicenseKeys {
   /// A release build must not use this. Run `php artisan licence:keygen` for
   /// the release channel and supply its public half through
   /// `XORDER_LICENSE_PUBLIC_KEY_B64` before signing the installer.
+  ///
+  /// A debug build pointed at some OTHER platform — production, staging — is
+  /// not stuck with this key either: activation sends the issuer's public key
+  /// along, and a non-release verifier trusts it. See
+  /// [LicenseVerifier.trustIssuerKey].
   static const _developmentB64 = 'ZRdC6SonAA+7/63bGBT5z2JauylXU0iYZe79hU78vE0=';
 
   /// Which key signed a given file. Files carry `key_id` so a rotation can be
