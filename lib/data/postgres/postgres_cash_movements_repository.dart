@@ -92,7 +92,12 @@ class PostgresCashMovementsRepository implements CashMovementsRepository {
     required this.context,
     this.currency = 'EGP',
     this.exponent = 2,
+    this.onQueued,
   }) : _db = database;
+
+  /// Told after a movement is recorded — see
+  /// `PostgresOrdersRepository.onQueued`.
+  final void Function()? onQueued;
 
   final PosDatabase _db;
   final DeploymentConfig config;
@@ -200,6 +205,7 @@ class PostgresCashMovementsRepository implements CashMovementsRepository {
       return inserted;
     });
 
+    onQueued?.call();
     return CashMovement(
       id: rows.first[0]! as int,
       kind: kind,

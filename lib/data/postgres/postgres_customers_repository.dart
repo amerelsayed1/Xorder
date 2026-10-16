@@ -19,7 +19,11 @@ class PostgresCustomersRepository implements CustomersRepository {
     required this.restaurantId,
     this.branchId,
     this.syncsToPlatform = false,
+    this.onQueued,
   }) : _db = database;
+
+  /// Told after a customer is queued — see `PostgresOrdersRepository.onQueued`.
+  final void Function()? onQueued;
 
   final PosDatabase _db;
   final DeploymentConfig config;
@@ -116,6 +120,7 @@ class PostgresCustomersRepository implements CustomersRepository {
     // has to resolve for no reason.
     if (syncsToPlatform && branchId != null && customer.platformId == null) {
       await _enqueue(customer.id);
+      onQueued?.call();
     }
 
     return customer;

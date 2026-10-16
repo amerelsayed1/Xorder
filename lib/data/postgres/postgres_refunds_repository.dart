@@ -38,7 +38,11 @@ class PostgresRefundsRepository implements RefundsRepository {
     this.shiftId,
     this.currency = 'EGP',
     this.exponent = 2,
+    this.onQueued,
   }) : _db = database;
+
+  /// Told after a refund is queued — see `PostgresOrdersRepository.onQueued`.
+  final void Function()? onQueued;
 
   final PosDatabase _db;
   final DeploymentConfig config;
@@ -231,6 +235,7 @@ class PostgresRefundsRepository implements RefundsRepository {
         );
       }
 
+      onQueued?.call();
       return RefundResult(
         clientRefundId: clientRefundId,
         refundId: refundId,

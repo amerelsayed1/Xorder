@@ -272,6 +272,7 @@ ordersRepositoryProvider = Provider<OrdersRepository>((ref) {
     // rung up; rebuilding the repository mid-payment because a shift closed
     // elsewhere would be worse than an unattributed order.
     shiftId: ref.read(shiftProvider).valueOrNull?.id,
+    onQueued: () => ref.read(cloudSyncProvider)?.nudge(),
   );
 
   // On a cloud terminal every settled sale pokes the drain, so "sold" and
@@ -440,6 +441,7 @@ final refundsRepositoryProvider = Provider<RefundsRepository>((ref) {
     config: config,
     context: context,
     shiftId: ref.read(shiftProvider).valueOrNull?.id,
+    onQueued: () => ref.read(cloudSyncProvider)?.nudge(),
   );
 
   // A refund is a receipt too — a credit note naming the sale it undoes.
@@ -562,6 +564,7 @@ final cashMovementsRepositoryProvider = Provider<CashMovementsRepository>((
     database: ref.watch(posDatabaseProvider),
     config: config,
     context: context,
+    onQueued: () => ref.read(cloudSyncProvider)?.nudge(),
   );
 });
 
@@ -727,6 +730,14 @@ final Provider<CloudSync?> cloudSyncProvider = Provider<CloudSync?>((ref) {
     void schedule(Duration delay) {
       next = Timer(delay, () async {
         if (!alive) return;
+        // A nudge may have just run a pass — the start screen asks for one
+        // on launch, two seconds before this first tick. Yield to it rather
+        // than heartbeat twice in the same breath.
+        final since = sync.sinceLastPass;
+        if (since != null && since < SyncSchedule.nudgeFloor) {
+          schedule(SyncSchedule.nudgeFloor - since);
+          return;
+        }
         final outcome = await sync.run();
         if (!alive) return;
         schedule(SyncSchedule.after(outcome));
@@ -736,6 +747,7 @@ final Provider<CloudSync?> cloudSyncProvider = Provider<CloudSync?>((ref) {
     schedule(const Duration(seconds: 5));
     ref.onDispose(() => next?.cancel());
   }
+  ref.onDispose(sync.dispose);
   return sync;
 });
 
@@ -1503,6 +1515,7 @@ final shiftRepositoryProvider = Provider<ShiftRepository>((ref) {
     restaurantId: context.restaurantId,
     branchId: context.branchId,
     terminalId: context.terminalId,
+    onQueued: () => ref.read(cloudSyncProvider)?.nudge(),
   );
 });
 
@@ -2692,6 +2705,7 @@ final customersRepositoryProvider = Provider<CustomersRepository>((ref) {
     restaurantId: context.restaurantId,
     branchId: context.branchId,
     syncsToPlatform: config.mode.syncsSalesToPlatform,
+    onQueued: () => ref.read(cloudSyncProvider)?.nudge(),
   );
 });
 

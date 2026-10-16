@@ -52,9 +52,16 @@ class PostgresOrdersRepository implements OrdersRepository {
     required this._config,
     required this._context,
     this.shiftId,
+    this.onQueued,
     DateTime Function()? clock,
   }) : _db = database,
        _now = clock ?? DateTime.now;
+
+  /// Told after a sale is queued for the platform, so the drain can be
+  /// nudged rather than waited for. Called inside the transaction; the nudge
+  /// it feeds is debounced past the commit, and a nudge with nothing to
+  /// drain costs one heartbeat.
+  final void Function()? onQueued;
 
   /// The shift this sale belongs to, so a Z report can total it.
   ///
@@ -354,6 +361,7 @@ class PostgresOrdersRepository implements OrdersRepository {
       },
     );
 
+    onQueued?.call();
     return true;
   }
 

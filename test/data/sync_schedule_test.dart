@@ -66,6 +66,41 @@ void main() {
     });
   });
 
+  group('a nudge', () {
+    // Before this, "automatic" meant one pass at launch and one every four
+    // hours: a sale rung up at noon reached the dashboard at four, and a
+    // cashier added on the dashboard could not sign in without a restart.
+    final t0 = DateTime.utc(2026, 10, 16, 9);
+
+    test('with no pass yet waits only the debounce', () {
+      expect(
+        SyncSchedule.nudgeAfter(lastPass: null, now: t0),
+        SyncSchedule.nudgeDelay,
+      );
+    });
+
+    test('long after the last pass waits only the debounce', () {
+      expect(
+        SyncSchedule.nudgeAfter(
+          lastPass: t0.subtract(const Duration(minutes: 5)),
+          now: t0,
+        ),
+        SyncSchedule.nudgeDelay,
+      );
+    });
+
+    test('right after a pass waits out the floor, so a busy counter makes '
+        'one pass per floor and not one per sale', () {
+      expect(
+        SyncSchedule.nudgeAfter(
+          lastPass: t0.subtract(const Duration(seconds: 5)),
+          now: t0,
+        ),
+        SyncSchedule.nudgeFloor - const Duration(seconds: 5),
+      );
+    });
+  });
+
   test('a quarantined row does NOT hold the till at the fast cadence', () {
     // POS-BE-019: the record itself is at fault and retrying will never change
     // the answer. Letting one count as "not yet synced" would have a single bad

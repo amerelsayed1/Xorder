@@ -36,6 +36,16 @@ class _LockScreenState extends ConsumerState<LockScreen> {
   bool _error = false;
 
   @override
+  void initState() {
+    super.initState();
+    // Somebody is about to sign in with a PIN this till verifies from its
+    // own staff table. A cashier added on the dashboard a minute ago, or a
+    // PIN reset there, is exactly what that table lacks — so ask the
+    // platform now rather than on the four-hourly pass.
+    Future.microtask(() => ref.read(cloudSyncProvider)?.nudge());
+  }
+
+  @override
   void dispose() {
     _username.dispose();
     super.dispose();
@@ -73,6 +83,9 @@ class _LockScreenState extends ConsumerState<LockScreen> {
           _pin = '';
           _error = true;
         });
+        // A wrong PIN is the moment a just-changed one would be wrong: ask
+        // the platform again, so the second try can be against the new one.
+        ref.read(cloudSyncProvider)?.nudge();
       }
     }
   }

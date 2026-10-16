@@ -55,6 +55,10 @@ class _StartScreenState extends ConsumerState<StartScreen> {
     // on the first boot of one installed before tablets could be children.
     // A no-op on a child and on a one-terminal licence; never throws.
     Future.microtask(() => ref.read(siteLicencePublisherProvider).publish());
+    // The staff list this screen's sign-in reads is the platform's: a
+    // cashier added there should be able to start a shift here without a
+    // restart — see the lock screen.
+    Future.microtask(() => ref.read(cloudSyncProvider)?.nudge());
   }
 
   /// Open a shift, then go selling.
