@@ -180,6 +180,11 @@ class LicenceController extends Controller
             'data' => PosLicenceResource::make($result['licence']),
             'activation_key' => $result['key'],
             'key_unchanged' => $result['key'] === null,
+            // A future issued_at is accepted on purpose (back-to-back terms are
+            // a real sale), but it means the till refuses this licence as "not
+            // yet valid" until that day. Say so, so the UI can warn after the
+            // fact as well as before (S2-3, 16 Oct 2026).
+            'starts_in_future' => $result['licence']->issued_at->isFuture(),
             'file' => $result['licence']->file(),
             'message' => __('xorder.messages.licence_renewed'),
         ], 201);

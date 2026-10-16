@@ -336,6 +336,31 @@ class PosLicenceTest extends TestCase
 
     // ----------------------------------------------------------------- renewal
 
+    /**
+     * S2-3 (16 Oct 2026): a renewal chained to a far-off expiry is not valid
+     * until then and the till refuses it. The date is still accepted — a
+     * back-to-back term is a real sale — but the response says it has not
+     * started, so the operator hears it before the till does.
+     */
+    public function test_a_renewal_says_when_its_term_has_not_started_yet(): void
+    {
+        $r = $this->restaurant();
+        $this->issue($r);
+        $original = PosLicence::first();
+        $sa = User::factory()->superAdmin()->create();
+
+        $this->actingAs($sa)->postJson("/api/admin/pos/licences/{$original->id}/renew", [
+            'issued_at' => now()->addMonth()->toDateString(),
+            'expires_at' => now()->addMonth()->addYear()->toDateString(),
+        ])->assertCreated()->assertJsonPath('starts_in_future', true);
+
+        $renewal = PosLicence::latest('id')->first();
+        $this->actingAs($sa)->postJson("/api/admin/pos/licences/{$renewal->id}/renew", [
+            'issued_at' => now()->toDateString(),
+            'expires_at' => now()->addYear()->toDateString(),
+        ])->assertCreated()->assertJsonPath('starts_in_future', false);
+    }
+
     public function test_renewal_writes_a_new_row_and_the_same_key_now_returns_it(): void
     {
         $r = $this->restaurant();

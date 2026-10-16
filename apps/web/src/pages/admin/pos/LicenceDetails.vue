@@ -1,5 +1,5 @@
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter, RouterLink } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import api from '@xorder/api-client/api.js'
@@ -38,6 +38,38 @@ const renewForm = reactive({
 
 const isLive = computed(() => licence.value && !licence.value.revoked_at && !licence.value.superseded_by_id)
 const dateOf = (iso) => iso ? new Date(iso).toLocaleDateString(locale.value === 'ar' ? 'ar-EG' : 'en-GB') : '—'
+// A bare YYYY-MM-DD read as a local day, so the label never slips a day.
+const dayLabel = (ymd) => ymd ? new Date(ymd + 'T00:00:00').toLocaleDateString(locale.value === 'ar' ? 'ar-EG' : 'en-GB') : '—'
+
+// When the new term starts. 'after_current' chains it to the day the current
+// licence ends — right when that day is near, wrong when it is years away:
+// renewing a licence that ran to 2029 produced one not valid until 2029, and
+// the till refused it as "not yet valid" (S2-3, 16 Oct 2026). So it is the
+// default only when the current term ends within 30 days; otherwise the
+// renewal starts today. Typing any other date in the field leaves both radios
+// clear ('custom') — the warning below reads the date, not the choice.
+const startMode = ref('today')
+const expiresTouched = ref(false)
+const ymd = (d) => d.toISOString().slice(0, 10)
+const plusYear = (from) => ymd(new Date(new Date(from + 'T00:00:00Z').getTime() + 365 * 864e5))
+// A licence sold outright reports no expiry, so there is no day to chain to.
+const currentEnd = computed(() => licence.value?.expires_at ? ymd(new Date(licence.value.expires_at)) : null)
+
+function applyStart(mode) {
+    startMode.value = mode
+    const from = mode === 'after_current' && currentEnd.value ? currentEnd.value : ymd(new Date())
+    renewForm.issued_at = from
+    // Another year from the chosen start, unless the operator already set the end.
+    if (!expiresTouched.value) renewForm.expires_at = plusYear(from)
+}
+watch(() => renewForm.issued_at, (v) => {
+    startMode.value = v === ymd(new Date()) ? 'today' : (v && v === currentEnd.value ? 'after_current' : 'custom')
+})
+// More than a day out: the till will refuse the licence until that day.
+const startsInFuture = computed(() => {
+    if (!renewForm.issued_at) return false
+    return new Date(renewForm.issued_at + 'T00:00:00').getTime() - Date.now() > 864e5
+})
 
 const badge = (s) => ({
     active: 'badge-green', expiring_soon: 'badge-amber', in_grace: 'badge-amber',
@@ -51,13 +83,12 @@ async function load() {
         const { data } = await withMinDuration(api.get(`api/admin/pos/licences/${route.params.id}`))
         licence.value = data.data
         claims.value = data.claims
-        // Prefill a renewal as "another year from where this one ends" — the
-        // overwhelmingly common case. A licence sold outright reports no
-        // expiry at all, so there is nothing to count from: start from today
-        // rather than from an Invalid Date.
-        const from = licence.value.expires_at ? new Date(licence.value.expires_at) : new Date()
-        renewForm.issued_at = from.toISOString().slice(0, 10)
-        renewForm.expires_at = new Date(from.getTime() + 365 * 864e5).toISOString().slice(0, 10)
+        // Prefill the renewal: chained to the current end only when that end
+        // is within 30 days, otherwise from today (see startMode).
+        expiresTouched.value = false
+        const end = currentEnd.value ? new Date(currentEnd.value + 'T00:00:00').getTime() : null
+        const endIsNear = end !== null && end - Date.now() <= 30 * 864e5
+        applyStart(endIsNear ? 'after_current' : 'today')
     } catch (err) {
         failed.value = true
     } finally {
@@ -77,6 +108,10 @@ async function submitRenewal() {
         })
         renewing.value = false
         renewed.value = data
+        // The server's own word on it: a term that has not started yet is one
+        // the till will refuse until it does. Said again here, after the fact,
+        // so a date typed past the form's warning still gets named.
+        if (data.starts_in_future) alert(t('licence.renewed_starts_future', { date: dateOf(data.data.issued_at) }))
         // A renewal is a NEW row — the old one is superseded, not edited.
         if (!data.activation_key) router.push({ name: 'admin.licences.show', params: { id: data.data.id } }).then(() => { load(); loadTills() })
     } catch (err) {
@@ -385,6 +420,24 @@ function finishRenewal() {
 
         <Modal v-if="renewing" :title="t('licence.renew')" :subtitle="t('licence.renew_subtitle')" @close="renewing = false">
             <form @submit.prevent="submitRenewal" class="space-y-4">
+                <fieldset class="space-y-2">
+                    <legend class="label">{{ t('licence.renew_start') }}</legend>
+                    <label class="flex items-start gap-2 text-sm cursor-pointer" style="color:var(--ink)">
+                        <input type="radio" name="renew_start" class="mt-0.5" :checked="startMode === 'today'" @change="applyStart('today')" />
+                        <span>
+                            {{ t('licence.renew_start_today') }}
+                            <span class="block text-xs" style="color:var(--muted)">{{ t('licence.renew_start_today_hint') }}</span>
+                        </span>
+                    </label>
+                    <label v-if="currentEnd" class="flex items-start gap-2 text-sm cursor-pointer" style="color:var(--ink)">
+                        <input type="radio" name="renew_start" class="mt-0.5" :checked="startMode === 'after_current'" @change="applyStart('after_current')" />
+                        <span>
+                            {{ t('licence.renew_start_after_current', { date: dayLabel(currentEnd) }) }}
+                            <span class="block text-xs" style="color:var(--muted)">{{ t('licence.renew_start_after_current_hint') }}</span>
+                        </span>
+                    </label>
+                </fieldset>
+
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <label class="block">
                         <span class="label">{{ t('licence.issued_at') }}</span>
@@ -393,10 +446,14 @@ function finishRenewal() {
                     </label>
                     <label class="block">
                         <span class="label">{{ t('licence.expires_at') }}</span>
-                        <input v-model="renewForm.expires_at" type="date" class="input" />
+                        <input v-model="renewForm.expires_at" type="date" class="input" @input="expiresTouched = true" />
                         <FormError :errors="renewErrors" field="expires_at" />
                     </label>
                 </div>
+
+                <p v-if="startsInFuture" class="rounded-lg p-3 text-sm" style="background:var(--amber-soft);color:var(--amber)">
+                    {{ t('licence.renew_starts_future', { date: dayLabel(renewForm.issued_at) }) }}
+                </p>
 
                 <label class="flex items-start gap-2 text-sm cursor-pointer" style="color:var(--ink)">
                     <input type="checkbox" v-model="renewForm.rotate_key" class="h-4 w-4 mt-0.5" />
