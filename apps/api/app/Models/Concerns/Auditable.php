@@ -56,7 +56,11 @@ trait Auditable
 
         // Diner-driven writes (e.g. an order placed on the public menu) have no
         // authenticated user; stamp the fallback role so they read as "Customer".
-        if (! Auth::check() && ($role = $this->auditActorRoleFallback())) {
+        // A till's write has no user either, but it is not a diner's: the
+        // terminal is on the request, and AuditLogger names it (and the acting
+        // cashier) instead — a POS sale used to read "created — Customer"
+        // (S4-1, 16 Oct 2026).
+        if (! Auth::check() && AuditLogger::requestTerminal() === null && ($role = $this->auditActorRoleFallback())) {
             $opts['actor_role'] = $role;
         }
 

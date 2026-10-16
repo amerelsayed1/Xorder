@@ -56,6 +56,10 @@ abstract class PosTestCase extends TestCase
             ->json('pairing_code');
 
         // The claim itself is unauthenticated — a fresh machine has no login.
+        // actingAs() above pinned the owner to the guard for the rest of the
+        // test; drop that, or every device request after this one would carry
+        // a dashboard user a real till never has (and be audited as them).
+        $this->app['auth']->forgetGuards();
         $response = $this->postJson('/api/pos/terminals/claim', array_merge([
             'tenant_slug' => $this->restaurant->slug,
             'pairing_code' => $code,

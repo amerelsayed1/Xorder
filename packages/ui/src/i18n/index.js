@@ -204,7 +204,7 @@ const messages = {
             files_title: 'Daily log files', files_sub: 'The trail is stored as one file per day. Pick a day to filter the feed, or download the raw file.',
             files_events: '{n} events', files_download: 'Download raw file', files_none: 'No log files yet.',
             changed: '{field}: {old} → {new}', system: 'System',
-            role: { SUPER_ADMIN: 'Super Admin', RESTAURANT_ADMIN: 'Restaurant Admin', CUSTOMER: 'Customer', ANONYMOUS: 'Anonymous' },
+            role: { SUPER_ADMIN: 'Super Admin', RESTAURANT_ADMIN: 'Restaurant Admin', CUSTOMER: 'Customer', ANONYMOUS: 'Anonymous', TERMINAL: 'Till' },
             cat: {
                 auth: 'Authentication', restaurant: 'Restaurant', user: 'User accounts',
                 menu_item: 'Menu items', category: 'Categories', order: 'Orders',
@@ -1837,7 +1837,7 @@ const messages = {
             files_title: 'ملفات السجل اليومية', files_sub: 'يُحفظ السجل في ملف لكل يوم. اختر يومًا لتصفية القائمة أو نزّل الملف الأصلي.',
             files_events: '{n} حدثًا', files_download: 'تنزيل الملف الأصلي', files_none: 'لا توجد ملفات سجل بعد.',
             changed: '{field}: {old} ← {new}', system: 'النظام',
-            role: { SUPER_ADMIN: 'مدير عام', RESTAURANT_ADMIN: 'مدير مطعم', CUSTOMER: 'عميل', ANONYMOUS: 'مجهول' },
+            role: { SUPER_ADMIN: 'مدير عام', RESTAURANT_ADMIN: 'مدير مطعم', CUSTOMER: 'عميل', ANONYMOUS: 'مجهول', TERMINAL: 'جهاز الكاشير' },
             cat: {
                 auth: 'المصادقة', restaurant: 'المطعم', user: 'حسابات المستخدمين',
                 menu_item: 'الأصناف', category: 'الأقسام', order: 'الطلبات',

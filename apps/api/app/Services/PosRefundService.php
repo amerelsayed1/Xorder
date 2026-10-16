@@ -321,6 +321,8 @@ class PosRefundService
             throw new PosApiException('POS_CAPABILITY_MISSING', 403, ['capability' => $required->value]);
         }
 
+        AuditLogger::attachPosActingUser($user);
+
         return $user;
     }
 

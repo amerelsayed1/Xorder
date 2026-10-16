@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\PosTerminal;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Auth;
@@ -60,6 +61,20 @@ class AuditLogger
 
         $actorRole = $opts['actor_role'] ?? self::resolveActorRole($actor);
         $actorName = $actor?->name ?? ($actorRole === 'CUSTOMER' ? 'Customer' : null);
+
+        // A till's write: no authenticated user (device auth is a PosTerminal,
+        // not an Authenticatable), but the request knows which terminal and —
+        // when the payload named one — which cashier. Read as the terminal and
+        // the acting staff member rather than as nobody or as "Customer" (the
+        // Order's diner fallback, S4-1). TERMINAL is the role the POS services
+        // already stamp by hand on their own rows; those rows get the name too.
+        $terminalRole = ! isset($opts['actor_role']) || $opts['actor_role'] === 'TERMINAL';
+        if ($actor === null && $terminalRole && ($terminal = self::requestTerminal()) !== null) {
+            $staff = self::requestActingUser();
+            $actor = $staff;
+            $actorRole = 'TERMINAL';
+            $actorName = $staff ? $terminal->name.' · '.$staff->name : $terminal->name;
+        }
 
         // Honour an explicitly-provided restaurant_id even when it is null
         // (e.g. a tenant-root deletion is intentionally platform-scoped);
@@ -130,6 +145,42 @@ class AuditLogger
         $user = Auth::user();
 
         return $user instanceof User ? $user : null;
+    }
+
+    /**
+     * The terminal behind the current request, when it is a till's
+     * (PosDeviceAuth sets it); null on every other path.
+     */
+    public static function requestTerminal(): ?PosTerminal
+    {
+        $terminal = request()?->attributes->get('pos_terminal');
+
+        return $terminal instanceof PosTerminal ? $terminal : null;
+    }
+
+    /**
+     * The cashier a till's request acts for, once the service resolved the
+     * payload's acting_user_id ({@see attachPosActingUser}); null when the
+     * till named nobody (v1's terminal-only attribution).
+     */
+    public static function requestActingUser(): ?User
+    {
+        $user = request()?->attributes->get('pos_acting_user');
+
+        return $user instanceof User ? $user : null;
+    }
+
+    /**
+     * Called by the POS services as soon as they have verified the acting
+     * staff member, so every audit row the rest of the request writes carries
+     * the cashier's name next to the terminal's. Verified first, never raw:
+     * an unknown or foreign acting_user_id is refused before it gets here.
+     */
+    public static function attachPosActingUser(?User $user): void
+    {
+        if ($user !== null) {
+            request()?->attributes->set('pos_acting_user', $user);
+        }
     }
 
     private static function resolveActorRole(?User $actor): ?string

@@ -491,6 +491,8 @@ class PosOrderService
             }
         }
 
+        AuditLogger::attachPosActingUser($user);
+
         return $user;
     }
 
