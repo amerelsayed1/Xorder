@@ -438,6 +438,30 @@ void main() {
         reason: 'the licence names its tenant; the operator should not have to',
       );
       expect(draft.licensedModes, contains(draft.deployment.mode));
+      // And names the database after the restaurant: the wizard builds it,
+      // and `mahsoub_db` says whose it is where `xorder_pos` said nothing.
+      expect(draft.deployment.databaseName, 'mahsoub_db');
+
+      // A name the operator typed is theirs; the default is only a default.
+      controller.setDatabaseName('shop_db');
+      await controller.activateLicence();
+      expect(container.read(setupProvider).deployment.databaseName, 'shop_db');
+    });
+
+    test('the draft follows the language bar, so the last word is the operator\'s', () async {
+      // The claim sets the restaurant's own language, and the Settings bar
+      // lets whoever is standing there switch back. The draft used to keep
+      // the claim's answer, and `complete()` wrote that to disk — a till
+      // switched to English on the last screen booted in Arabic.
+      final container = ProviderContainer(overrides: fakeRepositoryOverrides());
+      addTearDown(container.dispose);
+      final controller = container.read(setupProvider.notifier);
+      container.read(localeProvider.notifier).apply('ar');
+      expect(container.read(setupProvider).locale, 'ar');
+
+      container.read(localeProvider.notifier).apply('en');
+      expect(container.read(setupProvider).locale, 'en');
+      expect(controller.state.locale, 'en');
     });
 
     test('a licence activated against a typed platform is claimed there too', () async {

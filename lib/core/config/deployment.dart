@@ -150,7 +150,7 @@ class DeploymentConfig {
     this.verifyTls = true,
     this.syncPolicy = SyncPolicy.automatic,
     this.databaseHost = localhost,
-    this.databaseName = 'xorder_pos',
+    this.databaseName = defaultDatabaseName,
     this.databaseUser = 'pos_till',
     this.adminDatabaseUser = 'pos_admin',
     this.databasePort = 5432,
@@ -265,6 +265,26 @@ class DeploymentConfig {
   /// about bind parameters, in the operator's error bar.
   static bool isPlainIdentifier(String value) =>
       RegExp(r'^[A-Za-z_][A-Za-z0-9_]*$').hasMatch(value);
+
+  /// The name a database gets when nobody has named it — and nobody should
+  /// have to. The Windows installer names the one it builds; everywhere else
+  /// the wizard builds one, and before 16 Oct 2026 called every one of them
+  /// `xorder_pos`, so a laptop that had set up two restaurants had two tills
+  /// fighting over one database.
+  static const defaultDatabaseName = 'xorder_pos';
+
+  /// `demo` → `demo_db`, `good-cafe` → `good_cafe_db`: the restaurant's own
+  /// short name, made a plain identifier, so the database reads as whose it
+  /// is in any PostgreSQL tool. [defaultDatabaseName] when there is no
+  /// restaurant to name it after yet.
+  static String databaseNameFor(String? tenantSlug) {
+    final slug = (tenantSlug ?? '')
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
+        .replaceAll(RegExp(r'^_+|_+$'), '');
+    if (slug.isEmpty) return defaultDatabaseName;
+    return '${RegExp(r'^[0-9]').hasMatch(slug) ? 't_$slug' : slug}_db';
+  }
 
   /// A cloud API is allowed to use plaintext only on the local/LAN addresses
   /// that an installer can reasonably operate without a certificate.  Login
