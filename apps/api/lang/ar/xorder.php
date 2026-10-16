@@ -15,6 +15,7 @@ return [
         'licence_not_found' => 'مفتاح الترخيص غير معروف.',
         'licence_revoked' => 'تم إلغاء هذا الترخيص. تواصل مع المورّد.',
         'licence_tenant_mismatch' => 'هذا الترخيص صادر لمطعم آخر.',
+        'licence_issuer_unconfigured' => 'لم يتم ضبط مفتاح توقيع التراخيص على هذه المنصة.',
         'account_suspended' => 'تم إيقاف حسابك.',
         'no_access' => 'ليس لديك صلاحية للوصول إلى هذا المورد.',
         'no_restaurant_context' => 'لا يوجد مطعم مرتبط بهذا الحساب.',

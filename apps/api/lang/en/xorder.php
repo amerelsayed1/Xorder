@@ -18,6 +18,7 @@ return [
         'licence_not_found' => 'That licence key was not recognised.',
         'licence_revoked' => 'This licence has been revoked. Contact your supplier.',
         'licence_tenant_mismatch' => 'This licence was issued to a different restaurant.',
+        'licence_issuer_unconfigured' => 'This platform has no licence signing key configured.',
         'account_suspended' => 'Your account is suspended.',
         'no_access' => 'You do not have access to this resource.',
         'no_restaurant_context' => 'No restaurant context.',

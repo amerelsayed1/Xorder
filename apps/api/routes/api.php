@@ -734,6 +734,11 @@ Route::prefix('dashboard')
 Route::post('pos/licence/activate', [PosLicenceController::class, 'activate'])
     ->middleware('throttle:licence-activate');
 
+// The signing key's public half and its id, for a release build of the till
+// to be compiled with (audit S1-2). Public by definition; no credential.
+Route::get('pos/licence/issuer', [PosLicenceController::class, 'issuer'])
+    ->middleware('throttle:60,1');
+
 Route::get('pos/licence/current', [PosLicenceController::class, 'current'])
     ->middleware(['pos.device:no-feature', 'throttle:60,1']);
 

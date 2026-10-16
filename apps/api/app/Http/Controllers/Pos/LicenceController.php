@@ -71,6 +71,40 @@ class LicenceController extends Controller
     }
 
     /**
+     * The key this platform signs licences with, and its id.
+     *
+     * Unauthenticated and unthrottled beyond the global limit: a public key is
+     * public by definition — it ships inside every customer's binary — and
+     * nothing here is secret. What it buys is a RELEASE build that carries the
+     * right key: the installer builds (`windows-installer.yml`,
+     * `package_macos.sh`) take `XORDER_LICENSE_PUBLIC_KEY_B64` and
+     * `XORDER_LICENSE_KEY_ID`, and until 16 Oct 2026 the only way to learn
+     * them was to decode the private key by hand on the server. Nobody had, so
+     * no release build had ever been able to read a production licence
+     * (audit S1-2). Now the release pipeline reads them from here.
+     *
+     * 503 when no signing key is configured: a platform that cannot sign has
+     * nothing to publish, and an empty key would be built into a binary.
+     */
+    public function issuer(): JsonResponse
+    {
+        $publicKey = LicenceIssuer::configuredPublicKey();
+
+        if ($publicKey === null) {
+            return response()->json([
+                'message' => __('xorder.errors.licence_issuer_unconfigured'),
+                'code' => 'licence_issuer_unconfigured',
+            ], 503);
+        }
+
+        return response()->json([
+            'key_id' => (string) config('licence.key_id', 'v1'),
+            'public_key' => $publicKey,
+            'algorithm' => 'ed25519',
+        ]);
+    }
+
+    /**
      * The online verdict for a connected till (R2, POS-BE-031).
      *
      * Asked on the splash screen and before each new shift. `status` is the
