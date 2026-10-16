@@ -6,6 +6,7 @@ import { withMinDuration } from '../../lib/minLoading.js'
 import { pickLocalized } from '@xorder/ui/localize.js'
 import Dialog from '@xorder/ui/Dialog.vue'
 import ListSkeleton from '@xorder/ui/ListSkeleton.vue'
+import ErrorState from '@xorder/ui/ErrorState.vue'
 import StatusBadge from '@xorder/ui/StatusBadge.vue'
 import FormError from '@xorder/ui/FormError.vue'
 import Icon from '@xorder/ui/Icon.vue'
@@ -21,6 +22,11 @@ const { canCreate, canUpdate, canDelete } = useCaps('tables')
 const rows = ref([])
 const areas = ref([])
 const loading = ref(true)
+// Why the list is not showing, when it is not: a refused request leaves a
+// sentence rather than a skeleton. 'plan' is the feature gate — table
+// management is not in this restaurant's plan, which the sidebar already
+// hides but a typed URL still reaches (16 Oct 2026).
+const failed = ref(null)
 const saving = ref(false)
 const showModal = ref(false)
 const editing = ref(null)
@@ -61,15 +67,31 @@ async function loadAreas() {
 }
 async function loadTables() {
     loading.value = true
+    failed.value = null
     const params = {}
     if (filters.dining_area_id) params.dining_area_id = filters.dining_area_id
     if (filters.status) params.status = filters.status
     if (filters.search) params.search = filters.search
-    const { data } = await withMinDuration(api.get('api/dashboard/tables', { params }))
-    rows.value = data.data
-    loading.value = false
+    try {
+        const { data } = await withMinDuration(api.get('api/dashboard/tables', { params }))
+        rows.value = data.data
+    } catch (err) {
+        failed.value = err?.response?.status === 403 ? 'plan' : 'error'
+    } finally {
+        loading.value = false
+    }
 }
-onMounted(async () => { await loadAreas(); await loadTables() })
+async function load() {
+    try { await loadAreas() } catch (err) {
+        // The areas call is the first past the feature gate; its refusal is
+        // the page's, and the tables call would only say it again.
+        failed.value = err?.response?.status === 403 ? 'plan' : 'error'
+        loading.value = false
+        return
+    }
+    await loadTables()
+}
+onMounted(load)
 watch(() => [filters.dining_area_id, filters.status], loadTables)
 
 let searchTimer
@@ -240,7 +262,7 @@ const areaLabel = (id) => { const a = areas.value.find(x => x.id === id); return
             </div>
         </div>
 
-        <p v-if="!areas.length" class="card p-4 text-sm" style="color:var(--muted)">{{ t('tbl.no_area_first') }}</p>
+        <p v-if="!failed && !loading && !areas.length" class="card p-4 text-sm" style="color:var(--muted)">{{ t('tbl.no_area_first') }}</p>
 
         <div class="flex flex-wrap gap-2">
             <select v-model="filters.dining_area_id" class="input" style="max-width:14rem">
@@ -273,6 +295,8 @@ const areaLabel = (id) => { const a = areas.value.find(x => x.id === id); return
 
         <div class="card overflow-hidden">
             <ListSkeleton v-if="loading" />
+            <div v-else-if="failed === 'plan'" class="p-8 text-center text-sm" style="color:var(--muted)">{{ t('tbl.not_in_plan') }}</div>
+            <ErrorState v-else-if="failed" @retry="load" />
             <div v-else-if="!rows.length" class="p-8 text-center" style="color:var(--muted)">{{ t('tbl.none_tables') }}</div>
             <template v-else>
                 <!-- Select-all header (only when the user can delete). -->
