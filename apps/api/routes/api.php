@@ -174,6 +174,9 @@ Route::prefix('admin')
             // "offline" is never read as a licence id.
             Route::post('licences/offline', [AdminLicenceController::class, 'storeOffline']);
             Route::get('licences/{licence}', [AdminLicenceController::class, 'show']);
+            // The activation key, again — kept encrypted since 16 Oct 2026 and
+            // audited on every read. 404 for a licence issued before that.
+            Route::get('licences/{licence}/key', [AdminLicenceController::class, 'key']);
             // Renew and revoke are POSTs, not a PUT: neither edits the licence
             // in place. A renewal writes a NEW row and supersedes this one,
             // because the signed artifact is the record of what the customer

@@ -134,6 +134,7 @@ return [
         'plan_updated' => 'Plan updated.',
         'plan_deleted' => 'Plan deleted.',
         'licence_issued' => 'Licence issued. Copy the activation key now — it is not shown again.',
+        'licence_key_not_kept' => 'This licence was issued before activation keys were kept. Renew it with a new key to get one.',
         'licence_renewed' => 'Licence renewed.',
         'licence_deleted' => 'Licence deleted.',
         'licence_suspended' => 'Licence suspended. Connected terminals stop opening new shifts at their next check; islanded terminals are not affected.',

@@ -73,6 +73,7 @@ class PosLicence extends Model
      */
     protected $hidden = [
         'key_hash',
+        'key_encrypted',
         'payload',
         'signature',
     ];
@@ -90,7 +91,20 @@ class PosLicence extends Model
             'branch_ids' => 'array',
             'fingerprints' => 'array',
             'lifetime' => 'boolean',
+            // Encrypted at rest with the app key; read by one audited Super
+            // Admin endpoint and never serialised — see `$hidden`.
+            'key_encrypted' => 'encrypted',
         ];
+    }
+
+    /**
+     * The activation key, for Super Admin to copy again — null on a licence
+     * issued before keys were kept, whose only way to a key is a renewal
+     * with `rotate_key`.
+     */
+    public function activationKey(): ?string
+    {
+        return $this->key_encrypted;
     }
 
     /** A licence for a tenant we host. */

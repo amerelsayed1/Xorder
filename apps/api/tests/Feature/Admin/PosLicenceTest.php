@@ -8,6 +8,8 @@ use App\Models\Restaurant;
 use App\Models\User;
 use App\Support\LicenceKey;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Log;
 use Tests\TestCase;
 
 /**
@@ -73,7 +75,7 @@ class PosLicenceTest extends TestCase
 
     // ---------------------------------------------------------------- issuance
 
-    public function test_super_admin_issues_a_licence_and_the_key_is_returned_once(): void
+    public function test_super_admin_issues_a_licence_and_can_copy_the_key_again(): void
     {
         $r = $this->restaurant();
         $body = $this->issue($r);
@@ -84,15 +86,96 @@ class PosLicenceTest extends TestCase
         $licence = PosLicence::first();
         $this->assertSame('LIC-2026-'.str_pad((string) $licence->id, 4, '0', STR_PAD_LEFT), $licence->licence_ref);
 
-        // The plaintext key is nowhere in the row — only its HMAC and tail.
+        // Activation still checks the HMAC; the plaintext is kept only
+        // encrypted, and never as itself in the row.
         $this->assertSame(LicenceKey::hash($key), $licence->key_hash);
         $this->assertSame(LicenceKey::lastFour($key), $licence->key_last_four);
+        $this->assertNotSame($key, $licence->getRawOriginal('key_encrypted'));
+        $this->assertStringNotContainsString($key, (string) $licence->getRawOriginal('key_encrypted'));
 
-        // And it is never returned again.
+        // Never as a side effect of the model: not on show, not in the row's
+        // JSON — only through the one endpoint for it.
         $sa = User::factory()->superAdmin()->create();
         $show = $this->actingAs($sa)->getJson("/api/admin/pos/licences/{$licence->id}")->assertOk()->json();
         $this->assertArrayNotHasKey('activation_key', $show);
         $this->assertArrayNotHasKey('key_hash', $show['data']);
+        $this->assertArrayNotHasKey('key_encrypted', $show['data']);
+        $this->assertTrue($show['data']['key_available']);
+        $this->assertStringNotContainsString($key, $licence->toJson());
+
+        // The endpoint, for Super Admin, audited — the tail only in the line.
+        $dir = storage_path('framework/testing/activity-'.uniqid());
+        config(['platform.activity_log_file' => true, 'logging.channels.activity.path' => $dir.'/activity.log']);
+        Log::forgetChannel('activity');
+        try {
+            $this->actingAs($sa)->getJson("/api/admin/pos/licences/{$licence->id}/key")
+                ->assertOk()
+                ->assertExactJson(['licence_ref' => $licence->licence_ref, 'activation_key' => $key]);
+
+            $audit = file_get_contents($dir.'/activity-'.now()->format('Y-m-d').'.log');
+            $this->assertStringContainsString('"action":"pos_licence.key_revealed"', $audit);
+            $this->assertStringContainsString($licence->key_last_four, $audit);
+            $this->assertStringNotContainsString($key, $audit);
+        } finally {
+            Log::forgetChannel('activity');
+            File::deleteDirectory($dir);
+        }
+    }
+
+    public function test_the_key_is_not_for_platform_staff_below_super_admin(): void
+    {
+        $r = $this->restaurant();
+        $this->issue($r);
+        $licence = PosLicence::first();
+
+        foreach ([RoleEnum::ADMIN, RoleEnum::SALES, RoleEnum::SUPPORT, RoleEnum::MODERATOR] as $role) {
+            $this->actingAs(User::factory()->create(['role' => $role, 'restaurant_id' => null]))
+                ->getJson("/api/admin/pos/licences/{$licence->id}/key")
+                ->assertForbidden();
+        }
+    }
+
+    public function test_a_licence_issued_before_keys_were_kept_says_so(): void
+    {
+        $r = $this->restaurant();
+        $this->issue($r);
+        $licence = PosLicence::first();
+        // The row an older platform left: HMAC and tail, nothing else.
+        $licence->forceFill(['key_encrypted' => null])->save();
+
+        $sa = User::factory()->superAdmin()->create();
+        $this->assertFalse(
+            $this->actingAs($sa)->getJson("/api/admin/pos/licences/{$licence->id}")->json('data.key_available'),
+        );
+        $this->actingAs($sa)->getJson("/api/admin/pos/licences/{$licence->id}/key")
+            ->assertNotFound()
+            ->assertJsonPath('code', 'licence_key_not_kept');
+    }
+
+    public function test_a_renewal_carries_the_key_it_keeps_and_the_one_it_rotates_to(): void
+    {
+        $r = $this->restaurant();
+        $issued = $this->issue($r);
+        $sa = User::factory()->superAdmin()->create();
+        $original = PosLicence::first();
+
+        $kept = $this->actingAs($sa)->postJson("/api/admin/pos/licences/{$original->id}/renew", [
+            'issued_at' => '2027-09-01',
+            'expires_at' => '2028-09-01',
+        ])->assertCreated()->json();
+        $this->actingAs($sa)->getJson("/api/admin/pos/licences/{$kept['data']['id']}/key")
+            ->assertOk()
+            ->assertJsonPath('activation_key', $issued['activation_key']);
+
+        $rotated = $this->actingAs($sa)->postJson("/api/admin/pos/licences/{$kept['data']['id']}/renew", [
+            'issued_at' => '2028-09-01',
+            'expires_at' => '2029-09-01',
+            'rotate_key' => true,
+        ])->assertCreated()->json();
+        $this->actingAs($sa)->getJson("/api/admin/pos/licences/{$rotated['data']['id']}/key")
+            ->assertOk()
+            ->assertJsonPath('activation_key', $rotated['activation_key']);
+        $this->assertNotSame($issued['activation_key'], $rotated['activation_key']);
     }
 
     public function test_the_signature_verifies_and_the_claims_match_the_client_contract(): void

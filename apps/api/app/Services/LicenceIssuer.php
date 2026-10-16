@@ -69,6 +69,11 @@ class LicenceIssuer
                 'customer_slug' => $restaurant === null ? ($data['customer_slug'] ?? null) : null,
                 'key_hash' => LicenceKey::hash($key),
                 'key_last_four' => LicenceKey::lastFour($key),
+                // Kept, encrypted, so the key can be copied again from the
+                // licence page (16 Oct 2026). The HMAC above is still what
+                // activation checks; this is only ever read back to a Super
+                // Admin, and that read is audited.
+                'key_encrypted' => $key,
                 'created_by_id' => $actor?->id,
                 // Placeholder: the real reference needs the id, and the id needs
                 // the insert. Never escapes the transaction.
@@ -129,6 +134,10 @@ class LicenceIssuer
                 'customer_slug' => $original->customer_slug,
                 'key_hash' => $key ? LicenceKey::hash($key) : $original->key_hash,
                 'key_last_four' => $key ? LicenceKey::lastFour($key) : $original->key_last_four,
+                // The same key the six-till site keeps typing, carried to the
+                // row that now answers it; null stays null on a renewal of a
+                // licence issued before keys were kept.
+                'key_encrypted' => $key ?? $original->key_encrypted,
                 'created_by_id' => $actor?->id,
                 'licence_ref' => 'LIC-PENDING-'.Str::random(20),
                 'payload' => '',

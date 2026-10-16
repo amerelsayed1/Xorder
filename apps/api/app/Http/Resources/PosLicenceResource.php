@@ -54,6 +54,11 @@ class PosLicenceResource extends JsonResource
                 'name' => $this->plan->name,
             ] : null),
 
+            // Whether the activation key can be copied again from the page:
+            // false for a licence issued before keys were kept (16 Oct 2026).
+            // The key itself is behind its own audited endpoint, never here.
+            'key_available' => $this->key_encrypted !== null,
+
             'state' => $this->state(),
             // R2: what the operator set, and where the till gets its verdict.
             // `verdict` is exactly what /license/check would answer now.

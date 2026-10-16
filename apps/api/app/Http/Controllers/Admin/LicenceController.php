@@ -129,11 +129,48 @@ class LicenceController extends Controller
     }
 
     /**
+     * The activation key, again.
+     *
+     * It used to be shown once, at issuance, and never again — the row kept
+     * only an HMAC. A key not written down at that moment was gone, and the
+     * only way forward was a renewal with `rotate_key`, which this platform's
+     * first customer did three times in an afternoon (owner decision, 16 Oct
+     * 2026). The key is now kept encrypted and handed back HERE, to a Super
+     * Admin, with an audit row for every read. Licences issued before it was
+     * kept answer 404 with a code the page turns into a sentence.
+     */
+    public function key(Request $request, PosLicence $licence): JsonResponse
+    {
+        $key = $licence->activationKey();
+
+        if ($key === null) {
+            return response()->json([
+                'message' => __('xorder.messages.licence_key_not_kept'),
+                'code' => 'licence_key_not_kept',
+            ], 404);
+        }
+
+        AuditLogger::record('pos_licence.key_revealed', [
+            'restaurant_id' => $licence->restaurant_id,
+            'actor' => $request->user(),
+            'auditable' => $licence,
+            'description' => "Activation key of POS licence {$licence->licence_ref} copied",
+            // The tail only, as every licence audit row: never the key.
+            'properties' => ['licence_ref' => $licence->licence_ref, 'key_last_four' => $licence->key_last_four],
+        ]);
+
+        return response()->json([
+            'licence_ref' => $licence->licence_ref,
+            'activation_key' => $key,
+        ]);
+    }
+
+    /**
      * Renew: a new row with a new term, superseding this one.
      *
      * The activation key is unchanged unless `rotate_key` was set, so the
-     * response carries a key only in that case — there is no way to return the
-     * existing one, and that is the point of storing an HMAC.
+     * response carries a key only in that case; the existing one is a GET on
+     * `licences/{licence}/key` away.
      */
     public function renew(RenewLicenceRequest $request, PosLicence $licence): JsonResponse
     {

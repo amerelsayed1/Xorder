@@ -218,6 +218,28 @@ async function copyRenewedKey() {
     await navigator.clipboard.writeText(renewed.value.activation_key)
 }
 
+// The key, again. It used to be shown once at issuance and never after; a
+// key not written down at that moment was gone, and the way forward was a
+// renewal with a new key. Super Admin can now copy it from here (16 Oct 2026)
+// — the platform keeps it encrypted and audits every read. A licence issued
+// before that answers 404, and the button says so instead of hiding.
+const keyCopied = ref(false)
+const keyBusy = ref(false)
+async function copyKey() {
+    if (keyBusy.value) return
+    keyBusy.value = true
+    try {
+        const { data } = await api.get(`api/admin/pos/licences/${licence.value.id}/key`)
+        await navigator.clipboard.writeText(data.activation_key)
+        keyCopied.value = true
+        setTimeout(() => { keyCopied.value = false }, 2000)
+    } catch (err) {
+        alert(err?.response?.data?.message || t('common.error'))
+    } finally {
+        keyBusy.value = false
+    }
+}
+
 function finishRenewal() {
     const id = renewed.value.data.id
     renewed.value = null
@@ -281,7 +303,16 @@ function finishRenewal() {
                 <div><span class="label">{{ t('licence.terminals') }}</span><span style="color:var(--ink)">{{ licence.max_terminals }}</span></div>
                 <div><span class="label">{{ t('licence.max_users') }}</span><span style="color:var(--ink)">{{ licence.max_users ?? t('licence.unlimited') }}</span></div>
                 <div><span class="label">{{ t('licence.modes') }}</span><span style="color:var(--ink)">{{ licence.modes.map((m) => t('licence.mode.' + m)).join(' · ') }}</span></div>
-                <div><span class="label">{{ t('licence.key_tail') }}</span><span class="mono" style="color:var(--ink)">…{{ licence.key_last_four }}</span></div>
+                <div>
+                    <span class="label">{{ t('licence.key_tail') }}</span>
+                    <span class="flex items-center gap-2 flex-wrap">
+                        <span class="mono" style="color:var(--ink)">…{{ licence.key_last_four }}</span>
+                        <button v-if="licence.key_available" type="button" class="btn btn-ghost" style="padding:2px 8px;font-size:12px" :disabled="keyBusy" @click="copyKey">
+                            <Icon :name="keyCopied ? 'check' : 'copy'" :size="13" />{{ keyCopied ? t('common.copied') : t('licence.copy_key') }}
+                        </button>
+                        <span v-else class="text-xs" style="color:var(--muted)" :title="t('licence.key_not_kept')">{{ t('licence.key_not_kept_short') }}</span>
+                    </span>
+                </div>
                 <div><span class="label">{{ t('licence.max_offline_days') }}</span><span style="color:var(--ink)">{{ licence.max_offline_days ?? t('licence.unlimited') }}</span></div>
                 <div><span class="label">{{ t('licence.activated_at') }}</span><span style="color:var(--ink)">{{ licence.activated_at ? dateOf(licence.activated_at) : t('licence.never_activated') }}</span></div>
                 <div v-if="licence.notes" class="sm:col-span-2"><span class="label">{{ t('licence.notes') }}</span><span style="color:var(--body)">{{ licence.notes }}</span></div>
