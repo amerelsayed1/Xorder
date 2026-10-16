@@ -25,6 +25,19 @@ int? _asInt(Object? value) => switch (value) {
   _ => null,
 };
 
+/// The name a catalogue row goes by: English when it has one, otherwise the
+/// Arabic one standing in for it.
+///
+/// The platform lets a restaurant name a category or an item in one language
+/// only — the dashboard and the diner's menu both resolve by locale and fall
+/// back — and Good Cafe's whole menu is Arabic-only. The till used to require
+/// `name_en` and drop every row without one, which dropped every category,
+/// then every item under them, and the sale screen opened on "no matching
+/// items" over a menu of forty-six (16 Oct 2026). Null only when the row is
+/// nameless in both, which is the one case nothing can be sold under.
+String? _nameOf(Map<String, Object?> json) =>
+    _asString(json['name_en']) ?? _asString(json['name_ar']);
+
 String? _asString(Object? value) =>
     value is String && value.isNotEmpty ? value : null;
 
@@ -174,7 +187,7 @@ class BootstrapCategory {
 
   static BootstrapCategory? fromJson(Map<String, Object?> json) {
     final id = _asInt(json['id']);
-    final name = _asString(json['name_en']);
+    final name = _nameOf(json);
     if (id == null || name == null) return null;
     return BootstrapCategory(
       id: id,
@@ -217,7 +230,7 @@ class BootstrapProduct {
   static BootstrapProduct? fromJson(Map<String, Object?> json) {
     final id = _asInt(json['id']);
     final categoryId = _asInt(json['category_id']);
-    final name = _asString(json['name_en']);
+    final name = _nameOf(json);
     // A product whose price cannot be read as an integer is dropped whole. A
     // float here is the exact bug class D1 exists to prevent.
     final price = _asInt(json['price_minor']);
@@ -266,7 +279,7 @@ class BootstrapOptionGroup {
 
   static BootstrapOptionGroup? fromJson(Map<String, Object?> json) {
     final id = _asInt(json['id']);
-    final name = _asString(json['name_en']);
+    final name = _nameOf(json);
     if (id == null || name == null) return null;
     return BootstrapOptionGroup(
       id: id,
@@ -303,7 +316,7 @@ class BootstrapOption {
 
   static BootstrapOption? fromJson(Map<String, Object?> json) {
     final id = _asInt(json['id']);
-    final name = _asString(json['name_en']);
+    final name = _nameOf(json);
     if (id == null || name == null) return null;
     return BootstrapOption(
       id: id,
