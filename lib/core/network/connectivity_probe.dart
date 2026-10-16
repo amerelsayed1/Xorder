@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 
 import '../config/deployment.dart';
+import 'network_log.dart';
 
 /// Can this terminal actually reach *its* configured server?
 ///
@@ -43,7 +44,7 @@ class FakeConnectivityProbe implements ConnectivityProbe {
 class HttpConnectivityProbe implements ConnectivityProbe {
   HttpConnectivityProbe({Dio? client})
     : _client = client ??
-          Dio(
+          posHttpClient(
             BaseOptions(
               connectTimeout: const Duration(seconds: 5),
               receiveTimeout: const Duration(seconds: 5),

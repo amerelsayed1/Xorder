@@ -677,6 +677,7 @@ sealed class AppStrings {
   // stopped instead of falling back to the server's English.
   String get refusalPairingCodeInvalid;
   String get refusalPairingCodeSpent;
+  String get refusalPairingCodeExpired;
   String get refusalCredentialsRejected;
   String get refusalNoBranches;
   String get refusalBranchUnknown;
@@ -4486,6 +4487,9 @@ final class EnStrings extends AppStrings {
   String get refusalPairingCodeSpent =>
       'That setup code has already been used. Issue a new one from the '
       'dashboard.';
+  @override
+  String get refusalPairingCodeExpired =>
+      'That setup code has expired. Issue a new one from the dashboard.';
   @override
   String get refusalCredentialsRejected =>
       'That username and password were not accepted. Check them with a '
@@ -9340,6 +9344,9 @@ final class ArStrings extends AppStrings {
   @override
   String get refusalPairingCodeSpent =>
       'كود الإعداد هذا مستخدم بالفعل. أصدر واحداً جديداً من لوحة التحكم.';
+  @override
+  String get refusalPairingCodeExpired =>
+      'انتهت صلاحية كود الإعداد هذا. أصدر واحداً جديداً من لوحة التحكم.';
   @override
   String get refusalCredentialsRejected =>
       'اسم المستخدم وكلمة المرور غير مقبولين. راجعهما مع مدير، أو استخدم كود '

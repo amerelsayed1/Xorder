@@ -440,6 +440,43 @@ void main() {
       expect(draft.licensedModes, contains(draft.deployment.mode));
     });
 
+    test('a licence activated against a typed platform is claimed there too', () async {
+      // The bug: the licence step said xorder.io, the claim two screens later
+      // went to the build default — on a developer's machine the local stack —
+      // and the dashboard's pairing code came back "not recognised" from a
+      // platform that had never issued it.
+      final container = ProviderContainer(overrides: fakeRepositoryOverrides());
+      addTearDown(container.dispose);
+      final controller = container.read(setupProvider.notifier);
+
+      controller.setLicenceServer('https://xorder.io');
+      controller.setLicenceKey('XORD-TEST');
+      await controller.activateLicence();
+
+      final draft = container.read(setupProvider);
+      expect(draft.deployment.mode, DeploymentMode.cloud);
+      expect(draft.deployment.baseUrl, 'https://xorder.io');
+
+      // And the same when the mode is re-chosen later.
+      controller.setMode(DeploymentMode.offline);
+      controller.setMode(DeploymentMode.cloud);
+      expect(container.read(setupProvider).deployment.baseUrl, 'https://xorder.io');
+    });
+
+    test('with no platform typed, a licence falls back to the build default', () async {
+      final container = ProviderContainer(overrides: fakeRepositoryOverrides());
+      addTearDown(container.dispose);
+      final controller = container.read(setupProvider.notifier);
+
+      controller.setLicenceKey('XORD-TEST');
+      await controller.activateLicence();
+
+      final draft = container.read(setupProvider);
+      if (draft.deployment.mode.needsBaseUrl) {
+        expect(draft.deployment.baseUrl, PlatformEndpoint.base);
+      }
+    });
+
     test('a mode the licence does not cover cannot be selected', () {
       final container = ProviderContainer(overrides: fakeRepositoryOverrides());
       addTearDown(container.dispose);

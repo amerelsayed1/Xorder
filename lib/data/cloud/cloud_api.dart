@@ -1,5 +1,7 @@
 import 'package:dio/dio.dart';
 
+import '../../core/network/network_log.dart';
+
 /// One answer from the platform — status, decoded body, and the POS-BE-019
 /// error envelope if there was one. **Never an exception for a 4xx/5xx**: a
 /// refused write is data the drain reacts to, and the reaction differs
@@ -50,7 +52,7 @@ class PosCloudApi {
        _deviceToken = deviceToken ?? (() => null),
        _client =
            client ??
-           Dio(
+           posHttpClient(
              BaseOptions(
                connectTimeout: const Duration(seconds: 10),
                sendTimeout: const Duration(seconds: 15),

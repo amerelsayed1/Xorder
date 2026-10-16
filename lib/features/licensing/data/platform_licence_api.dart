@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' show debugPrint;
 
 import '../../../core/config/platform_endpoint.dart';
+import '../../../core/network/network_log.dart';
 import '../domain/license.dart';
 import '../domain/license_verifier.dart';
 import 'licence_service.dart';
@@ -25,7 +26,7 @@ class PlatformLicenceApi {
        _deploymentMode = deploymentMode ?? (() => 'cloud'),
        _client =
            client ??
-           Dio(
+           posHttpClient(
              BaseOptions(
                // Generous, but finite. An installer standing in a restaurant
                // watching a spinner needs to be told to import the file instead,

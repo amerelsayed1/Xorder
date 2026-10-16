@@ -332,12 +332,17 @@ class SetupController extends Notifier<SetupDraft> {
         mode: mode,
         tenantSlug: state.deployment.tenantSlug,
         // Supplied, never asked — see [_adopt]. An offline terminal keeps none.
-        baseUrl: mode.needsBaseUrl ? PlatformEndpoint.base : null,
+        baseUrl: mode.needsBaseUrl ? _platformFor(state.deployment) : null,
         // A one-terminal plan has no shared database to point at, so the host
         // stays on this machine and the wizard never asks.
         databaseHost: state.allowsSharedDatabase
             ? state.deployment.databaseHost
             : DeploymentConfig.localhost,
+        // Where the licence came from survives the switch in both directions:
+        // an offline till renews against it, and a cloud till is claimed
+        // there — see [_platformFor]. It used to be dropped here, so a mode
+        // tapped twice sent the claim to the build default.
+        licenceServerUrl: state.deployment.licenceServerUrl,
       ),
       // Switching to offline takes the pairing-code path away with it: no
       // dashboard exists to have minted a code. Reset rather than leave the
@@ -1239,12 +1244,30 @@ class SetupController extends Notifier<SetupDraft> {
       // wrongly. An address the operator DID type survives — a staging box or a
       // developer's stack is the one case where it is a real question.
       baseUrl: mode.needsBaseUrl && (current.baseUrl?.isEmpty ?? true)
-          ? PlatformEndpoint.base
+          ? _platformFor(current)
           : current.baseUrl,
       databaseHost: claims.maxTerminals > 1
           ? current.databaseHost
           : DeploymentConfig.localhost,
     );
+  }
+
+  /// The platform a cloud till talks to, when nobody typed one.
+  ///
+  /// The licence server, if the operator named one on the licence step, and
+  /// the build's own default otherwise. On the cloud path the platform that
+  /// licenses a till is the platform that takes its money — there is one —
+  /// so a key activated against an address IS that address being named.
+  /// Before this the licence step could say xorder.io and the claim two
+  /// screens later still went to the build default, which on a developer's
+  /// machine is the local stack: the pairing code the dashboard had just
+  /// issued came back "not recognised", truthfully, from a platform that had
+  /// never heard of it (16 Oct 2026).
+  static String _platformFor(DeploymentConfig current) {
+    final licenceServer = current.licenceServerUrl;
+    return licenceServer != null && licenceServer.isNotEmpty
+        ? licenceServer
+        : PlatformEndpoint.base;
   }
 
   /// The mode this licence permits, nearest to the one already chosen.

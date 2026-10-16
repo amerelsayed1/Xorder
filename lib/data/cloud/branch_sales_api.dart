@@ -1,5 +1,7 @@
 import 'package:dio/dio.dart';
 
+import '../../core/network/network_log.dart';
+
 import '../../core/money/money.dart';
 import '../../domain/models/branch_sales.dart';
 import '../../domain/models/branch_sales_source.dart';
@@ -29,7 +31,7 @@ class BranchSalesApi {
        _deviceToken = deviceToken ?? (() => null),
        _client =
            client ??
-           Dio(
+           posHttpClient(
              BaseOptions(
                connectTimeout: const Duration(seconds: 10),
                receiveTimeout: const Duration(seconds: 30),

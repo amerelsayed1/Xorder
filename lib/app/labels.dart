@@ -239,7 +239,12 @@ String provisioningRefusal(
   String? platform,
 }) => switch (code) {
   'PAIRING_CODE_INVALID' => s.refusalPairingCodeInvalid,
-  'PAIRING_CODE_SPENT' => s.refusalPairingCodeSpent,
+  // `SPENT` is the till's own word, from the branch database a child pairs
+  // against; `USED` and `EXPIRED` are the platform's (POS-BE-019). All three
+  // used to reach here as the platform's English sentence, whatever language
+  // the wizard was in.
+  'PAIRING_CODE_SPENT' || 'PAIRING_CODE_USED' => s.refusalPairingCodeSpent,
+  'PAIRING_CODE_EXPIRED' => s.refusalPairingCodeExpired,
   'CREDENTIALS_REJECTED' => s.refusalCredentialsRejected,
   'NO_BRANCHES' => s.refusalNoBranches,
   'BRANCH_UNKNOWN' => s.refusalBranchUnknown,
