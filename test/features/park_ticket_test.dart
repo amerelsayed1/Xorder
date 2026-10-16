@@ -105,6 +105,80 @@ void main() {
     expect(container.read(ticketProvider).isEmpty, isFalse);
   });
 
+  testWidgets('Change table moves the ticket, frees the old table, and refuses '
+      'a table that already has an order', (tester) async {
+    // Before this, "Change table" parked the ticket on its OLD table and
+    // started a fresh ticket for the new one, so the order never moved.
+    final container = await _pumpTill(tester);
+    final tickets = container.read(ticketProvider.notifier);
+    final parked = container.read(openTicketsProvider.notifier);
+    const t12 = DiningTable(id: 12, label: 'T12', seats: 4);
+    const t14 = DiningTable(id: 14, label: 'T14', seats: 2);
+    const t15 = DiningTable(id: 15, label: 'T15', seats: 2);
+    const burger = Product(id: 101, categoryId: 1, nameEn: 'Burger', price: Money(9500));
+
+    // Somebody else's bill sits on T15.
+    tickets
+      ..attachTable(t15)
+      ..addProduct(burger);
+    await parked.park(container.read(ticketProvider));
+    tickets.reset();
+
+    // The ticket being moved: at T12, parked there once already, as any
+    // ticket the cashier left and came back to is.
+    tickets
+      ..attachTable(t12)
+      ..addProduct(burger);
+    await parked.park(container.read(ticketProvider));
+    expect(parked.at(12), isNotNull);
+
+    expect(await tickets.moveTo(t15), isFalse, reason: 'T15 is taken');
+    expect(container.read(ticketProvider).tableId, 12);
+
+    expect(await tickets.moveTo(t14), isTrue);
+    final moved = container.read(ticketProvider);
+    expect(moved.tableId, 14);
+    expect(moved.tableLabel, 'T14');
+    expect(moved.lines, hasLength(1), reason: 'the order moved with it');
+    expect(parked.at(12), isNull, reason: 'T12 is free again');
+    expect(parked.at(15), isNotNull, reason: 'T15 was left alone');
+  });
+
+  testWidgets('the cart\'s Change table goes through its own callback, not the '
+      'Tables one that parks', (tester) async {
+    tester.view
+      ..physicalSize = _desktop
+      ..devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final container = ProviderContainer(overrides: fakeRepositoryOverrides());
+    addTearDown(container.dispose);
+    final events = <String>[];
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: buildPosTheme(),
+          home: SaleScreen(
+            onLock: () {},
+            onTables: () => events.add('tables'),
+            onChangeTable: () => events.add('change-table'),
+            onOrders: () {},
+            onCloseShift: () {},
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    container.read(ticketProvider.notifier)
+      ..attachTable(const DiningTable(id: 12, label: 'T12', seats: 4))
+      ..addProduct(const Product(id: 101, categoryId: 1, nameEn: 'Burger', price: Money(9500)));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Change table'));
+    await tester.pumpAndSettle();
+    expect(events, ['change-table']);
+  });
+
   testWidgets('a parked unseated ticket comes back from Held', (tester) async {
     final container = await _pumpTill(tester);
     _ringUpTakeaway(container);

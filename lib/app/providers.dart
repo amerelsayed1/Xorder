@@ -1003,6 +1003,11 @@ class OpenTicketsController extends Notifier<OpenTickets> {
       state = OpenTickets(onTables: tables, held: held);
     }
   }
+
+  /// Forget where [ticket] was parked — the table it is leaving, when it is
+  /// moved to another. The same forgetting a settlement does; a second name
+  /// because the ticket is very much still open.
+  Future<void> release(Ticket ticket) => settle(ticket);
 }
 
 final openTicketsProvider =
@@ -1444,6 +1449,24 @@ class TicketController extends Notifier<Ticket> {
     table.label,
     guests: table.seats,
   );
+
+  /// Move this ticket to [table]: "Change table" on the cart.
+  ///
+  /// False when another ticket already sits there — the floor shows that
+  /// table as taken, and a move onto it would stack two bills on one table.
+  /// Otherwise the old table is released, so the floor stops showing the
+  /// order there, and the ticket is seated at the new one with its lines and
+  /// rounds intact. Before this, "Change table" parked the ticket on its OLD
+  /// table and started a fresh one for the new table, so the order never
+  /// moved and the cashier found it still on the first table (16 Oct 2026).
+  Future<bool> moveTo(DiningTable table) async {
+    final parked = ref.read(openTicketsProvider.notifier);
+    final other = parked.at(table.id);
+    if (other != null && other.id != state.id) return false;
+    await parked.release(state);
+    attachTable(table);
+    return true;
+  }
 
   /// Who the food is for (POS-BE-014), or null to take them off again.
   ///

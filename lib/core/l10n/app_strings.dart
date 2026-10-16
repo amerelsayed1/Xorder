@@ -141,6 +141,7 @@ sealed class AppStrings {
   /// are part of it.
   String cartStatusLine(String cashier, bool online);
   String get changeTable;
+  String tableTaken(String label);
   String get cartEmptyHelp;
   String alreadySent(int lines);
   String get newRound;
@@ -3522,6 +3523,9 @@ final class EnStrings extends AppStrings {
       'OPEN · ${cashier.toUpperCase()} · ${online ? 'LIVE' : 'OFFLINE'}';
   @override
   String get changeTable => 'Change table';
+  @override
+  String tableTaken(String label) =>
+      'Table $label already has an order on it — pick an empty table.';
   @override
   String get cartEmptyHelp =>
       'Ticket is empty. Tap a product, or press F2 and type to search. '
@@ -8415,6 +8419,9 @@ final class ArStrings extends AppStrings {
       'مفتوح · $cashier · ${online ? 'متصل' : 'غير متصل'}';
   @override
   String get changeTable => 'تغيير الطاولة';
+  @override
+  String tableTaken(String label) =>
+      'الطاولة $label عليها طلب بالفعل — اختر طاولة فارغة.';
   @override
   String get cartEmptyHelp =>
       'الطلب فارغ. اضغط على أي صنف، أو اضغط F2 واكتب للبحث. الأصناف التي لها '

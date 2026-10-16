@@ -40,6 +40,21 @@ import 'widgets/product_grid.dart';
 /// ≥1100 rail + grid + persistent cart · 700–1099 tabs + grid + cart ·
 /// <700 pushed routes. Desktop is the design driver; the narrow shell exists
 /// for Android POS handhelds.
+/// What the sale screen was in the middle of when it left for another
+/// screen, carried as the route's `extra` so the other screen can hand it
+/// back and the sale screen can pick up where it was.
+enum SaleIntent {
+  /// Collecting: the cashier pressed F9 on a dine-in ticket with no table,
+  /// went to the floor to seat it (or to say there is no table), and wants
+  /// payment next — not the sale screen again and F9 a second time.
+  collect,
+
+  /// Changing table: the ticket on screen goes to the floor WITH the cashier,
+  /// and the table they pick is where it moves to — not where a new ticket
+  /// starts.
+  moveTable,
+}
+
 class SaleScreen extends ConsumerStatefulWidget {
   const SaleScreen({
     super.key,
@@ -47,10 +62,27 @@ class SaleScreen extends ConsumerStatefulWidget {
     required this.onTables,
     required this.onOrders,
     required this.onCloseShift,
+    this.onTablesToCollect,
+    this.onChangeTable,
+    this.collectOnOpen = false,
   });
 
   final VoidCallback onLock;
   final VoidCallback onTables;
+
+  /// To the floor because a collect needs a table first — carrying
+  /// [SaleIntent.collect], so the floor sends the cashier back here into
+  /// payment. Falls back to [onTables] when not given.
+  final VoidCallback? onTablesToCollect;
+
+  /// "Change table" on the cart: to the floor carrying
+  /// [SaleIntent.moveTable], without parking the ticket first. Falls back to
+  /// [onTables] when not given — which parks it, and is the bug this exists
+  /// to fix.
+  final VoidCallback? onChangeTable;
+
+  /// Opened with [SaleIntent.collect] in hand: go straight to payment.
+  final bool collectOnOpen;
 
   /// Order history. A destination, so leaving the till does not disturb the
   /// live ticket — it is parked in memory and still here on return.
@@ -64,6 +96,19 @@ class SaleScreen extends ConsumerStatefulWidget {
 class _SaleScreenState extends ConsumerState<SaleScreen> {
   final _searchController = TextEditingController();
   final _searchFocus = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.collectOnOpen) {
+      // Back from the floor with a table chosen, or with "no table" said:
+      // the cashier pressed collect before leaving and has not changed their
+      // mind. Before this they landed here and pressed it again (16 Oct 2026).
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _charge(ref.read(ticketProvider));
+      });
+    }
+  }
 
   /// The line a line-level act aims at.
   ///
@@ -148,7 +193,7 @@ class _SaleScreenState extends ConsumerState<SaleScreen> {
     if (ticket.tableId == null &&
         ref.read(orderTypeRulesProvider).requiresTable(ticket.orderType)) {
       posToast(context, context.strings.chooseTableFirst);
-      widget.onTables();
+      (widget.onTablesToCollect ?? widget.onTables)();
       return;
     }
     final settled = await PaymentScreen.show(context);
@@ -718,7 +763,7 @@ class _SaleScreenState extends ConsumerState<SaleScreen> {
     onHold: () => _hold(ticket),
     onVoid: () => _void(ticket),
     onCharge: () => _charge(ticket),
-    onChangeTable: widget.onTables,
+    onChangeTable: widget.onChangeTable ?? widget.onTables,
     heldCount: ref.watch(openTicketsProvider).heldOtherThan(ticket.id).length,
     onShowHeld: () => _showHeld(ticket),
   );
