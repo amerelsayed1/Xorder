@@ -24,6 +24,11 @@
 #
 #   XORDER_LICENSE_PUBLIC_KEY_B64=… XORDER_LICENSE_KEY_ID=… ./scripts/package_macos.sh
 #
+# Both values are public. The platform publishes them at
+# https://xorder.io/api/pos/licence/issuer (`public_key`, `key_id`); the
+# repository variables of the same names, which the Windows workflow reads,
+# were filled from there on 2026-10-16 (audit S1-2).
+#
 # Notarising. With a stored notarytool profile:
 #
 #   xcrun notarytool store-credentials xorder --apple-id … --team-id … --password …
