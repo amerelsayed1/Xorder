@@ -423,7 +423,8 @@ Each is stated here once, then baked into the item sections.
   within the TTL (encrypted response cached against the code, purged at
   expiry). **PIN hash: PBKDF2-HMAC-SHA256, 120k iterations** (amended
   2026-09-02 from the earlier bcrypt pick — the client ships a tested PBKDF2
-  verifier); 4–6 digits; the salt+hash pair never `$fillable`, never in
+  verifier); exactly 4 digits (amended 2026-10-16 from 4–6, S2-2); the
+  salt+hash pair never `$fillable`, never in
   `UserResource`, only in the bootstrap `staff[]` behind the device
   credential. §024.
 
@@ -2084,20 +2085,25 @@ Every ask adopted, with the algorithm decided:
   32-byte key** (amended 2026-09-02 from the earlier bcrypt pick, at Agent
   1's request — the Flutter client ships a tested PBKDF2 verifier and stores
   (salt, hash) base64 pairs; bcrypt would have added a Dart dependency for no
-  security gain at a 4–6 digit keyspace). Wire shape inside `staff[]`:
+  security gain at a 4-digit keyspace). Wire shape inside `staff[]`:
 
   ```jsonc
   "pin": { "algorithm": "pbkdf2_sha256", "iterations": 120000,
            "salt": "…base64…", "hash": "…base64…" }   // null when no PIN set
   ```
-- **PIN:** 4–6 ASCII digits, validated server-side on set. Stated plainly: a
+- **PIN:** exactly 4 ASCII digits, validated server-side on set (`[0-9]{4}`).
+  **Amended 2026-10-16 from 4–6 (audit S2-2):** the till's keypad submits on
+  the fourth digit — one tap fewer at every unlock, kept on purpose — so a
+  5- or 6-digit PIN set in the dashboard could never be typed at the till.
+  Four everywhere: `SetPosPinRequest`, the staff form, `pin_hash.dart`.
+  Stated plainly: a
   digit PIN is offline-brute-forceable from a stolen hash regardless of
   algorithm — the containment is that it opens *only the till*: it is never
   accepted by login, never opens the dashboard, and clearing it (set to null)
   locks the cashier out of every till at that till's next sync without touching
   dashboard access.
 - **Set / reset:** dashboard staff form — `PUT /api/dashboard/staff/{staff}/pin`
-  `{ "pin": "482913" }` and `DELETE …/pin` to clear; `can:staff.update`, or any
+  `{ "pin": "4829" }` and `DELETE …/pin` to clear; `can:staff.update`, or any
   user on their own row. Write-only: the API returns `pin_set: true|false` and
   nothing else, ever. Both are audited (action, never the PIN) and both bump
   `config_version` so tills refresh.

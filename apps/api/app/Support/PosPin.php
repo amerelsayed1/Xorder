@@ -7,7 +7,7 @@ namespace App\Support;
  * 120000 iterations, 16-byte salt, 32-byte key — chosen because the Flutter
  * client already ships a tested PBKDF2 verifier (lib/core/security/pin_hash
  * .dart) and stores (salt, hash) base64 pairs; bcrypt would have added a
- * client dependency for no security gain at a 4-6 digit keyspace.
+ * client dependency for no security gain at a 4-digit keyspace.
  *
  * Stated plainly in the contract and repeated here: a digit PIN is offline
  * brute-forceable from a stolen hash regardless of algorithm. The containment

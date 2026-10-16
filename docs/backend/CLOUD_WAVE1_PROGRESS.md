@@ -35,7 +35,9 @@ Test files: `tests/Feature/Pos/{PosTestCase,PosFoundationsTest,PosProvisioningTe
 ## Amendments folded in mid-wave (from Agent 1, 2026-09-02/04)
 - **PIN hash is PBKDF2-HMAC-SHA256 (120000 iter, 16B salt, 32B key, base64
   pair), NOT bcrypt** — the Flutter client ships a tested PBKDF2 verifier;
-  bcrypt would add a Dart dependency for no gain at a 4–6 digit keyspace.
+  bcrypt would add a Dart dependency for no gain at a 4-digit keyspace
+  (exactly 4 since 2026-10-16, audit S2-2 — the till keypad submits on the
+  fourth digit).
   Columns: users.pos_pin_salt + pos_pin_hash. Wire: staff[].pin =
   {algorithm:"pbkdf2_sha256", iterations, salt, hash} | null.
 - **Bootstrap bundle gains `tables`** — active dining tables of the

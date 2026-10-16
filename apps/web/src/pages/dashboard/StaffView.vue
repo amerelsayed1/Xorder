@@ -112,7 +112,9 @@ const pinErrors = ref({})
 const pinSaving = ref(false)
 
 const pinMismatch = computed(() => pinConfirm.value.length > 0 && pinValue.value !== pinConfirm.value)
-const pinValid = computed(() => /^[0-9]{4,6}$/.test(pinValue.value) && pinValue.value === pinConfirm.value)
+// Exactly four digits: the till's keypad submits on the fourth, so a longer
+// PIN could never be typed there (S2-2, 16 Oct 2026). The API enforces the same.
+const pinValid = computed(() => /^[0-9]{4}$/.test(pinValue.value) && pinValue.value === pinConfirm.value)
 
 function openPin(u) {
     pinModal.value = u
@@ -272,7 +274,7 @@ async function remove(u) {
             <label class="block">
                 <span class="label">{{ t('pos_pin.new_pin') }}</span>
                 <input v-model="pinValue" type="password" class="input mono" dir="ltr" inputmode="numeric"
-                    autocomplete="new-password" maxlength="6" data-en-digits placeholder="••••" />
+                    autocomplete="new-password" maxlength="4" data-en-digits placeholder="••••" />
                 <p class="text-xs mt-1" style="color:var(--muted)">{{ t('pos_pin.rule') }}</p>
                 <FormError :errors="pinErrors" field="pin" />
             </label>
@@ -280,7 +282,7 @@ async function remove(u) {
             <label class="block">
                 <span class="label">{{ t('pos_pin.confirm_pin') }}</span>
                 <input v-model="pinConfirm" type="password" class="input mono" dir="ltr" inputmode="numeric"
-                    autocomplete="new-password" maxlength="6" data-en-digits placeholder="••••" />
+                    autocomplete="new-password" maxlength="4" data-en-digits placeholder="••••" />
                 <p v-if="pinMismatch" class="text-xs mt-1" style="color:var(--red)">{{ t('pos_pin.mismatch') }}</p>
             </label>
 
