@@ -30,17 +30,18 @@ import 'support/till_driver.dart';
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
-  if (PgFixture.host == null ||
-      E2eLicence.signingKey == null ||
-      E2ePlatform.baseUrl == null) {
+  // A licence key is no longer a precondition: without one the suite signs
+  // with a key minted for the run, which a development build trusts — see
+  // E2eLicence.issue. A release-build run still sets POS_LICENCE_KEY.
+  if (PgFixture.host == null || E2ePlatform.baseUrl == null) {
     const required = bool.fromEnvironment('POS_E2E_REQUIRED');
     if (required) {
       throw StateError(
-        'POS_E2E_REQUIRED is set, but POS_PG_HOST or POS_LICENCE_KEY is missing.',
+        'POS_E2E_REQUIRED is set, but POS_PG_HOST or POS_PLATFORM_URL is missing.',
       );
     }
     testWidgets(
-      'sale to settle (skipped — set POS_PG_HOST, POS_LICENCE_KEY, POS_PLATFORM_URL)',
+      'sale to settle (skipped — set POS_PG_HOST and POS_PLATFORM_URL)',
       (_) async {},
       skip: true,
     );
