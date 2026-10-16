@@ -19,8 +19,11 @@ class User extends Authenticatable
     /** @use HasFactory<UserFactory> */
     use Auditable, HasApiTokens, HasFactory, Notifiable;
 
-    // Never surface credential columns in audit change diffs.
-    protected array $auditExclude = ['password', 'remember_token', 'email_verified_at'];
+    // Never surface credential columns in audit change diffs. The PIN pair is
+    // the till's credential (POS-BE-024): "audited (action, never the PIN)".
+    protected array $auditExclude = [
+        'password', 'remember_token', 'email_verified_at', 'pos_pin_salt', 'pos_pin_hash',
+    ];
 
     // `role`, `role_id` and `restaurant_id` are deliberately NOT mass-assignable:
     // they are the privilege/tenant boundary and must only ever be set explicitly

@@ -93,10 +93,7 @@ trait Auditable
      */
     protected function auditChanges(): array
     {
-        $excluded = array_merge(
-            ['id', 'created_at', 'updated_at', 'password', 'remember_token'],
-            $this->auditExclude ?? []
-        );
+        $excluded = $this->auditExcludedAttributes();
 
         $changes = [];
         foreach ($this->getChanges() as $key => $new) {
@@ -107,6 +104,27 @@ trait Auditable
         }
 
         return $changes;
+    }
+
+    /**
+     * Attributes the change diff never records.
+     *
+     * Everything the model hides from serialisation is excluded too: a column
+     * that must not leave through JSON must not leave through the audit log
+     * either. The two lists had drifted — the cashier PIN's salt and hash, and
+     * a terminal's device-token hash, were being written to the activity file
+     * on every "updated" event, where anyone with audit.view could read them
+     * and recover a four-digit PIN offline (found 16 Oct 2026).
+     *
+     * @return list<string>
+     */
+    public function auditExcludedAttributes(): array
+    {
+        return array_values(array_unique(array_merge(
+            ['id', 'created_at', 'updated_at', 'password', 'remember_token'],
+            $this->getHidden(),
+            $this->auditExclude ?? [],
+        )));
     }
 
     protected function auditLabel(): string

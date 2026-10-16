@@ -50,6 +50,11 @@ class PosTerminal extends Model
         'register_response_cache',
     ];
 
+    // Hidden columns are already kept out of the audit diff (see Auditable);
+    // the fingerprint is not hidden — it is what a replayed claim is matched on
+    // — but it identifies a machine and has no business in a log line.
+    protected array $auditExclude = ['fingerprint'];
+
     protected function casts(): array
     {
         return [
