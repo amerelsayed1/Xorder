@@ -29,7 +29,9 @@ export const DASHBOARD_NAV = [
     {
         key: 'orders', labelKey: 'nav.group_orders', icon: 'pi pi-shopping-bag',
         children: [
-            { key: 'orders.list', labelKey: 'nav.orders', icon: 'pi pi-shopping-bag', to: { name: 'dashboard.orders' }, feature: 'system_ordering', capability: 'orders.view' },
+            // The queue holds online orders AND the till's sales, so a plan with
+            // either feature gets the entry (the API gate is the same any-of).
+            { key: 'orders.list', labelKey: 'nav.orders', icon: 'pi pi-shopping-bag', to: { name: 'dashboard.orders' }, featureAny: ['system_ordering', 'pos'], capability: 'orders.view' },
         ],
     },
     {

@@ -60,7 +60,9 @@ const messages = {
             pos: 'Point of sale (POS)',
             purchasing: 'Purchasing & suppliers',
         },
-        order_type: { dine_in: 'Dine-in', pickup: 'Pickup', delivery: 'Delivery' },
+        // `takeaway` is what the till sends for a pickup; both spellings are
+        // stored as sent, so both need a label on the orders board.
+        order_type: { dine_in: 'Dine-in', pickup: 'Pickup', takeaway: 'Pickup', delivery: 'Delivery' },
         // Where the order was rung up, which is not the same question as
         // what kind of order it is. Only shown when it is not the QR menu.
         order_source: { pos: 'Till' },
@@ -254,6 +256,7 @@ const messages = {
             title: 'Orders',
             subtitle: 'Track and update incoming orders.',
             none: 'No orders yet.',
+            not_in_plan: 'Orders are not included in your plan — neither online ordering nor the POS. Ask your account manager to add one.',
             order: 'Order', type: 'Type', time: 'Time', customer: 'Customer', items: 'Items', total: 'Total',
             note: 'Note',
             view: 'View', receipt: 'Receipt', qty: 'Qty', order_items: 'Order items',
@@ -1694,7 +1697,7 @@ const messages = {
             pos: 'نقاط البيع (POS)',
             purchasing: 'المشتريات والموردون',
         },
-        order_type: { dine_in: 'داخل المكان', pickup: 'استلام', delivery: 'توصيل' },
+        order_type: { dine_in: 'داخل المكان', pickup: 'استلام', takeaway: 'استلام', delivery: 'توصيل' },
         order_source: { pos: 'كاشير' },
         country: { EG: 'مصر', SA: 'السعودية', AE: 'الإمارات' },
         landing: {
@@ -1886,6 +1889,7 @@ const messages = {
             title: 'الطلبات',
             subtitle: 'تابِع الطلبات الواردة وحدِّث حالتها.',
             none: 'لا توجد طلبات بعد.',
+            not_in_plan: 'الطلبات غير مشمولة في باقتك — لا الطلب الإلكتروني ولا نقطة البيع. اطلب من مدير حسابك إضافة أحدهما.',
             order: 'الطلب', type: 'النوع', time: 'الوقت', customer: 'العميل', items: 'الأصناف', total: 'الإجمالي',
             note: 'ملاحظة',
             view: 'عرض', receipt: 'الفاتورة', qty: 'الكمية', order_items: 'أصناف الطلب',

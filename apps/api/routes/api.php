@@ -436,13 +436,16 @@ Route::prefix('dashboard')
         });
 
         /*
-        | Order management — gated on the system_ordering feature (Restaurant
-        | Pro). WhatsApp-only plans hand orders off to WhatsApp and have no
-        | durable order queue to manage. Deliberately NOT behind
-        | subscription.writable: a restaurant whose subscription just expired
-        | must still be able to process the orders that already came in.
+        | Order management — open to a restaurant holding EITHER system_ordering
+        | (Restaurant Pro: online orders land here) OR pos (a till's sales land
+        | here too, as channel=pos rows). WhatsApp-only plans hand orders off
+        | to WhatsApp and have no durable order queue to manage; a plan with the
+        | POS paid for the till and must see what it rang up (S2-1, 16 Oct
+        | 2026). Deliberately NOT behind subscription.writable: a restaurant
+        | whose subscription just expired must still be able to process the
+        | orders that already came in.
         */
-        Route::middleware('feature:system_ordering')->group(function () {
+        Route::middleware('feature:system_ordering|pos')->group(function () {
             // orders.read = orders.view OR live.view (see AppServiceProvider).
             Route::middleware('can:orders.read')->group(function () {
                 Route::get('orders', [DashboardOrderController::class, 'index']);

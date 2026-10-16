@@ -28,12 +28,20 @@ class OrderController extends Controller
 
         $term = trim((string) $request->input('q', ''));
 
+        // The toolbar's Pickup tab must also find what the till rang up: the
+        // POS sends `takeaway` for the same act (PosOrderService accepts both
+        // spellings for the same reason), and those rows are stored as sent.
+        // No channel filter anywhere here, on purpose — a till's sale is an
+        // order of this restaurant like any other (S2-1, 16 Oct 2026).
+        $typeSynonyms = ['pickup' => ['pickup', 'takeaway', 'take_away']];
+        $types = $typeSynonyms[$request->input('order_type')] ?? [$request->input('order_type')];
+
         // Everything the toolbar narrows by EXCEPT the status tabs. The counts
         // are drawn on the tabs themselves, so they have to answer "what would
         // I get if I clicked this?" — which means the search term and the type
         // filter apply to them and the selected status does not.
         $scoped = fn () => Order::query()
-            ->when($request->filled('order_type'), fn ($q) => $q->where('order_type', $request->input('order_type')))
+            ->when($request->filled('order_type'), fn ($q) => $q->whereIn('order_type', $types))
             ->when($request->filled('table_id'), fn ($q) => $q->where('table_id', $request->integer('table_id')))
             ->when($term !== '', fn ($q) => $q->where(function ($w) use ($term) {
                 $w->where('customer_name', 'like', '%'.$term.'%')

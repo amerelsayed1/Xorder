@@ -8,6 +8,7 @@ import { currencyLabel } from '../../lib/currency.js'
 import { withMinDuration } from '../../lib/minLoading.js'
 import Icon from '@xorder/ui/Icon.vue'
 import Skeleton from '@xorder/ui/Skeleton.vue'
+import ErrorState from '@xorder/ui/ErrorState.vue'
 import Dialog from '@xorder/ui/Dialog.vue'
 import { confirm } from '@xorder/ui/confirm.js'
 import { alert } from '@xorder/ui/alert.js'
@@ -40,6 +41,12 @@ const rows = ref([])
 const meta = ref(null)
 const summary = ref(null)
 const loading = ref(true)
+// Why the list is not showing, when it is not: a refused request leaves a
+// sentence rather than the "no orders yet" empty state. 'plan' is the feature
+// gate — neither online ordering nor the POS is in this restaurant's plan, which
+// the sidebar already hides but a typed URL still reaches. Until 16 Oct 2026 the
+// 403 was swallowed and an owner read "no orders yet" over a day with a sale.
+const failed = ref(null)
 const statusFilter = ref('')
 const typeFilter = ref('')
 const query = ref('')
@@ -78,6 +85,7 @@ function params() {
  */
 async function load({ silent = false } = {}) {
     if (!silent) loading.value = true
+    failed.value = null
     try {
         const req = api.get('api/dashboard/orders', { params: params() })
         const { data } = await (silent ? req : withMinDuration(req))
@@ -85,6 +93,8 @@ async function load({ silent = false } = {}) {
         meta.value = data.meta || null
         summary.value = data.summary || null
         readAt.value = new Date()
+    } catch (err) {
+        failed.value = err?.response?.status === 403 ? 'plan' : 'error'
     } finally {
         if (!silent) loading.value = false
     }
@@ -94,7 +104,8 @@ async function load({ silent = false } = {}) {
 // so an order that just triggered a notification appears without a refresh.
 // Only on page 1 with the current filter — pagination is left untouched.
 async function pollNew() {
-    if (loading.value || page.value !== 1 || document.hidden) return
+    // A refused list stays refused; polling it again would only repeat the 403.
+    if (loading.value || failed.value || page.value !== 1 || document.hidden) return
     try {
         const { data } = await api.get('api/dashboard/orders', { params: { ...params(), page: 1 } })
         // The counts and the day figures move with every new order, so they are
@@ -384,6 +395,12 @@ function fmtTime(iso) {
                                 </td>
                             </tr>
                         </template>
+                        <tr v-else-if="failed === 'plan'">
+                            <td colspan="8" class="px-6 py-14 text-center text-sm" style="color:var(--muted)">{{ t('orders.not_in_plan') }}</td>
+                        </tr>
+                        <tr v-else-if="failed">
+                            <td colspan="8" class="px-6 py-6"><ErrorState @retry="load()" /></td>
+                        </tr>
                         <tr v-else>
                             <td colspan="8" class="px-6 py-14">
                                 <div class="empty">
