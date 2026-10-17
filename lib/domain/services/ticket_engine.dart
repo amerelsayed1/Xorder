@@ -1209,4 +1209,17 @@ abstract final class TicketEngine {
     currency: ticket.currency,
     exponent: ticket.exponent,
   );
+
+  /// What [tickets] come to together — each one's total, as it would be
+  /// charged, added up.
+  ///
+  /// For the close-shift dialog, which has to say how much is still sitting
+  /// on tables and on hold before somebody counts the drawer (S3-5): the
+  /// audit watched a shift closed with an 80.00 ticket parked and no mention
+  /// of it. Here rather than in the widget because it is money, and money is
+  /// added up in one place. Zero for no tickets.
+  static Money totalOf(Iterable<Ticket> tickets) => tickets.fold(
+    Money.zero,
+    (sum, ticket) => sum + ticket.totals.total,
+  );
 }

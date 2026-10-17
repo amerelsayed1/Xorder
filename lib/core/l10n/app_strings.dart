@@ -332,6 +332,16 @@ sealed class AppStrings {
   String closeShiftTitle(String reference);
   String closeShiftHelp(String openedBy);
 
+  /// Over the close-shift count when tickets are still parked on tables or
+  /// held: how many, and what they come to. The audit (S3-5) watched a shift
+  /// closed over an 80.00 ticket the dialog never mentioned. Closing is still
+  /// allowed — the owner may close over them — so this warns, and does not
+  /// refuse.
+  String closeShiftOpenTickets(int count, String total);
+
+  /// One parked ticket on that warning, when it is on no table.
+  String get closeShiftHeldTicket;
+
   /// What the supervisor is being asked to approve, in the cashier's words.
   /// Shown only — the audit row keeps its own stable English wording, so a
   /// record written on an Arabic till still reads the same to whoever
@@ -3846,6 +3856,12 @@ final class EnStrings extends AppStrings {
   @override
   String closeShiftHelp(String openedBy) =>
       'Opened by $openedBy. Count the drawer, then confirm.';
+  @override
+  String closeShiftOpenTickets(int count, String total) => count == 1
+      ? '1 ticket is still open, $total — it is not in this count.'
+      : '$count tickets are still open, $total in all — they are not in this count.';
+  @override
+  String get closeShiftHeldTicket => 'Held';
   @override
   String closeShiftApproval(String reference) =>
       'Close $reference and count the drawer';
@@ -8752,6 +8768,12 @@ final class ArStrings extends AppStrings {
   @override
   String closeShiftHelp(String openedBy) =>
       'فتحها $openedBy. اعدّ الدرج ثم أكّد.';
+  @override
+  String closeShiftOpenTickets(int count, String total) => count == 1
+      ? 'ما زالت هناك تذكرة مفتوحة بقيمة $total — ليست ضمن هذا العدّ.'
+      : 'ما زالت هناك $count تذاكر مفتوحة بإجمالي $total — ليست ضمن هذا العدّ.';
+  @override
+  String get closeShiftHeldTicket => 'معلّقة';
   @override
   String closeShiftApproval(String reference) => 'تقفيل $reference وعدّ الدرج';
   @override

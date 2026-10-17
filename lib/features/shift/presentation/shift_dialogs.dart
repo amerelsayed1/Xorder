@@ -14,7 +14,9 @@ import '../../admin/presentation/supervisor_override.dart';
 import '../../../domain/models/permissions.dart';
 import '../../../domain/models/shift.dart';
 import '../../../domain/services/authorization.dart';
+import '../../../domain/services/ticket_engine.dart';
 import '../../../core/security/pin_hash.dart';
+import '../../../core/ui/widgets/mono_amount.dart';
 
 /// Opening a shift: who is on the till, and what is in the drawer.
 ///
@@ -471,6 +473,10 @@ class _CloseShiftDialogState extends ConsumerState<CloseShiftDialog> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               mainAxisSize: MainAxisSize.min,
               children: [
+                // What is still open goes FIRST, above the figures: a
+                // warning under a Z report is a warning read after the
+                // decision it was meant to inform.
+                _OpenTicketsWarning(ref.watch(openTicketsProvider)),
                 // Blind while counting (§25): the expected figure and the
                 // live difference are hidden from anybody who may not see
                 // them, so the count is a count rather than a reconciliation
@@ -590,6 +596,88 @@ class _CloseShiftDialogState extends ConsumerState<CloseShiftDialog> {
         summary: closed.summary,
         counted: closed.countedCash,
         blind: !ref.read(canProvider(PosCapability.cashVarianceView)).isAllowed,
+      ),
+    );
+  }
+}
+
+/// What is still parked when somebody goes to close the shift (S3-5).
+///
+/// The audit watched a shift closed with an 80.00 ticket parked and a close
+/// dialog that said nothing about it. Now every open ticket is listed — its
+/// table, or *Held* for one with no table, and what it comes to — under one
+/// line that counts them and adds them up. **A warning, not a refusal.**
+/// Closing over them is still the owner's call (the day close is where a
+/// parked ticket is a blocker); what this removes is closing over them
+/// without knowing.
+///
+/// Nothing when nothing is open: a warning box with "0 tickets" in it would
+/// teach everybody to stop reading it.
+class _OpenTicketsWarning extends StatelessWidget {
+  const _OpenTicketsWarning(this.open);
+
+  final OpenTickets open;
+
+  @override
+  Widget build(BuildContext context) {
+    if (open.isEmpty) return const SizedBox.shrink();
+
+    final strings = context.strings;
+    final pos = context.pos;
+    // Tables first, in table order, then the held ones oldest first — the
+    // order a manager walks the floor and then the counter.
+    final tickets = [
+      ...open.onTables.values,
+      ...open.held,
+    ];
+    // Added up by the engine, not here: money is added up in one place.
+    final total = TicketEngine.totalOf(tickets);
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: PosSpace.lg),
+      child: Container(
+        key: const Key('close-shift-open-tickets'),
+        padding: const EdgeInsets.all(PosSpace.md),
+        decoration: BoxDecoration(
+          color: pos.warnSoft,
+          border: Border.all(color: pos.warn, width: 2),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              strings.closeShiftOpenTickets(
+                tickets.length,
+                total.format(withCurrency: true),
+              ),
+              style: PosText.ui(
+                size: 13,
+                weight: FontWeight.w700,
+                color: pos.ink,
+                height: 1.4,
+              ),
+            ),
+            const SizedBox(height: PosSpace.sm),
+            for (final ticket in tickets)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 2),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        ticket.tableLabel ?? strings.closeShiftHeldTicket,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: PosText.ui(size: 12.5, color: pos.body),
+                      ),
+                    ),
+                    MonoAmount(ticket.totals.total, size: 12.5, color: pos.ink),
+                  ],
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
