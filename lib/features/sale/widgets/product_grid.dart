@@ -4,6 +4,7 @@ import '../../../core/l10n/app_strings.dart';
 import '../../../core/ui/theme.dart';
 import '../../../core/ui/tokens.dart';
 import '../../../domain/models/catalog.dart';
+import '../../../core/ui/widgets/item_name.dart';
 import '../../../core/ui/widgets/mono_amount.dart';
 import '../../../domain/models/combo.dart';
 
@@ -123,10 +124,12 @@ class ProductTile extends StatelessWidget {
             children: [
               Container(width: 36, height: 4, color: barColor),
               const SizedBox(height: PosSpace.xs),
-              Text(
+              // `ItemName`, not `Text`: either line can be in the other
+              // script from the till, and a plain `Text` cuts it in the
+              // middle. See the widget.
+              ItemName(
                 primary,
                 maxLines: 2,
-                overflow: TextOverflow.ellipsis,
                 style: PosText.ui(
                   size: 15,
                   weight: FontWeight.w600,
@@ -135,10 +138,8 @@ class ProductTile extends StatelessWidget {
                 ),
               ),
               if (alternate != null && alternate != primary)
-                Text(
+                ItemName(
                   alternate,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
                   // The Arabic face only when the line is actually Arabic —
                   // in an Arabic till this second line is the English name.
                   style: language == 'ar'
@@ -233,10 +234,9 @@ class ComboTile extends StatelessWidget {
                         ),
                         const SizedBox(height: 2),
                         Expanded(
-                          child: Text(
+                          child: ItemName(
                             combo.displayName(language),
                             maxLines: 3,
-                            overflow: TextOverflow.ellipsis,
                             style: PosText.ui(
                               size: 14,
                               weight: FontWeight.w600,

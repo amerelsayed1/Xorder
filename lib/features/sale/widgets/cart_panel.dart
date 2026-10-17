@@ -4,6 +4,7 @@ import '../../../app/labels.dart';
 import '../../../core/l10n/app_strings.dart';
 import '../../../core/ui/theme.dart';
 import '../../../core/ui/tokens.dart';
+import '../../../core/ui/widgets/item_name.dart';
 import '../../../core/ui/widgets/pos_widgets.dart';
 import '../../../domain/models/discount.dart';
 import '../../../domain/models/ticket.dart';
@@ -582,9 +583,14 @@ class _LineRow extends StatelessWidget {
                 Row(
                   children: [
                     Flexible(
-                      child: Text(
+                      // Two lines before the end ellipsis, and the ellipsis
+                      // on the end the name is read from — see `ItemName`.
+                      // The row grows by one line for a long name, which the
+                      // list height absorbs; a name cut to half its letters
+                      // is what gets the wrong dish rung up.
+                      child: ItemName(
                         line.product.displayName(language),
-                        overflow: TextOverflow.ellipsis,
+                        maxLines: 2,
                         style:
                             PosText.ui(
                               size: density.nameSize,
