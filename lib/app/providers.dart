@@ -1582,12 +1582,79 @@ class SignedInStaffController extends Notifier<PosStaff?> {
   @override
   PosStaff? build() => null;
 
-  void signIn(PosStaff staff) => state = staff;
+  /// Here rather than on each door — the start screen's shift dialog and the
+  /// lock screen both sign people in — so the till remembers whoever came
+  /// through either one, and a third door added later cannot forget to.
+  void signIn(PosStaff staff) {
+    state = staff;
+    ref.read(lastUsernameProvider.notifier).remember(staff.username);
+  }
 
   /// Closing a shift signs the person out with it. The next shift is somebody
   /// else's responsibility until they say otherwise.
   void signOut() => state = null;
 }
+
+/// The username of whoever signed in at this till last, for the lock screen
+/// to offer back.
+///
+/// **A prefill, not an identity.** The PIN still has to belong to the name,
+/// and the name is one tap away from being somebody else's — what this saves
+/// is the same cashier typing their own name on a keypad screen at every
+/// lock, which the audit (S3-2) watched happen all shift.
+///
+/// A property of the terminal, kept in the terminal's config file beside the
+/// language and the brightness, and with their bargain: written without
+/// being awaited, because unlocking must not wait on a file, and silent on
+/// failure, because the name is already in [state] for this process and the
+/// worst a lost write costs is one typed name tomorrow morning.
+class LastUsernameController extends Notifier<String?> {
+  @override
+  String? build() => ref.watch(terminalBootProvider).config?.lastUsername;
+
+  void remember(String? username) {
+    final name = username?.trim();
+    if (name == null || name.isEmpty) return;
+    state = name;
+    unawaited(_persist(name));
+  }
+
+  /// See [TerminalLocaleController._persist] for why a terminal with no
+  /// config yet is left alone, and why this catches `Object`.
+  Future<void> _persist(String username) async {
+    final store = ref.read(terminalConfigStoreProvider);
+    try {
+      final saved = await store.read();
+      if (saved == null || saved.lastUsername == username) return;
+      await store.write(saved.copyWith(lastUsername: username));
+    } on Object {
+      // The name on screen is already right; see above.
+    }
+  }
+}
+
+final lastUsernameProvider = NotifierProvider<LastUsernameController, String?>(
+  LastUsernameController.new,
+);
+
+/// Who can take this till by name and PIN: the active staff with a username,
+/// for the lock screen to show as tiles.
+///
+/// Read through the staff directory, which is bound on the till's own
+/// credential for exactly this reason (see [staffDirectoryRepositoryProvider]):
+/// a cashier switching user at the counter must not need the back office's
+/// password to see who works here. Nobody without a username is listed —
+/// they cannot sign in at a till at all, and a tile that leads to a refusal
+/// is worse than no tile.
+final signInCandidatesProvider = FutureProvider<List<PosStaff>>((ref) async {
+  final staff = await ref
+      .watch(staffDirectoryRepositoryProvider)
+      .all(includeInactive: false);
+  return [
+    for (final person in staff)
+      if (person.username?.trim().isNotEmpty ?? false) person,
+  ];
+});
 
 /// Who is acting on this terminal right now: whoever came through Admin
 /// Mode's door while its session lasts, and the person signed in at the till

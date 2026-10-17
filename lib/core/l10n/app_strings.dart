@@ -273,6 +273,10 @@ sealed class AppStrings {
   /// it is, so it cannot name a person before one has typed anything.
   String get enterYourPin;
 
+  /// Over the name tiles on the lock screen: who can take this till, one tap
+  /// each, so switching user is not typing a name on a keypad screen.
+  String get lockPickYourName;
+
   // ── Start ─────────────────────────────────────────────────────────────────
   String get pointOfSale;
   String get renewLicence;
@@ -3752,6 +3756,8 @@ final class EnStrings extends AppStrings {
   String enterPinFor(String name) => '$name · enter PIN';
   @override
   String get enterYourPin => 'Enter your PIN';
+  @override
+  String get lockPickYourName => 'WHO IS BACK?';
 
   @override
   String get pointOfSale => 'POINT OF SALE';
@@ -8652,6 +8658,8 @@ final class ArStrings extends AppStrings {
   String enterPinFor(String name) => '$name · أدخل الرقم السري';
   @override
   String get enterYourPin => 'أدخل رقمك السري';
+  @override
+  String get lockPickYourName => 'من عاد إلى الجهاز؟';
 
   @override
   String get pointOfSale => 'نقطة بيع';

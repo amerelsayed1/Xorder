@@ -374,6 +374,7 @@ class PinPad extends StatelessWidget {
     required this.onDigit,
     required this.onBackspace,
     this.autofocus = true,
+    this.focusNode,
   });
 
   final ValueChanged<String> onDigit;
@@ -385,6 +386,11 @@ class PinPad extends StatelessWidget {
   /// first — the lock screen's username field, which would otherwise never see
   /// a keystroke.
   final bool autofocus;
+
+  /// For a screen that hands the keyboard to the pad itself — the lock
+  /// screen, once a name tile has been tapped and there is nothing left to
+  /// type but the PIN. Null lets the pad own its node.
+  final FocusNode? focusNode;
 
   /// Both rows of digits a keyboard has.
   ///
@@ -427,6 +433,7 @@ class PinPad extends StatelessWidget {
     // `KeyDownEvent` only. Handling every event would enter a digit on press
     // and again on release, and a held key would fill the PIN with one number.
     return Focus(
+      focusNode: focusNode,
       autofocus: autofocus,
       onKeyEvent: (_, event) {
         if (event is! KeyDownEvent) return KeyEventResult.ignored;
@@ -526,6 +533,8 @@ class UsernameField extends StatelessWidget {
   const UsernameField({
     required this.controller,
     this.onSubmitted,
+    this.onChanged,
+    this.autofocus = true,
     super.key,
   });
 
@@ -535,6 +544,13 @@ class UsernameField extends StatelessWidget {
   /// only way from the name to the keypad is the mouse.
   final VoidCallback? onSubmitted;
 
+  final ValueChanged<String>? onChanged;
+
+  /// False where the name is already known — the lock screen with the last
+  /// cashier's name filled in — so the keyboard goes to the PIN pad, which is
+  /// the only thing left to type.
+  final bool autofocus;
+
   @override
   Widget build(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -543,7 +559,8 @@ class UsernameField extends StatelessWidget {
       const SizedBox(height: PosSpace.sm),
       TextField(
         controller: controller,
-        autofocus: true,
+        autofocus: autofocus,
+        onChanged: onChanged,
         textInputAction: TextInputAction.next,
         onSubmitted: (_) => onSubmitted?.call(),
         textAlign: TextAlign.center,

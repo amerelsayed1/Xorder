@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:xorder_pos/app/providers.dart';
+import 'package:xorder_pos/core/config/deployment.dart';
+import 'package:xorder_pos/core/config/terminal_config.dart';
 import 'package:xorder_pos/core/ui/theme.dart';
 import 'package:xorder_pos/app/router.dart';
 import 'package:xorder_pos/features/lock/lock_screen.dart';
@@ -19,25 +21,36 @@ import '../support/fakes.dart';
 /// it: `verifyPin` only ever answered "does somebody who works here know a
 /// PIN", never *who*, so unlocking left the previous person signed in.
 void main() {
+  /// [container] carries a till across two locks: the same process, locked
+  /// again, with whatever the first unlock left behind.
   Future<ProviderContainer> pumpLock(
     WidgetTester tester, {
     VoidCallback? onUnlocked,
     VoidCallback? onBack,
+    ProviderContainer? container,
+    List<Override> overrides = const [],
   }) async {
     tester.view
       ..physicalSize = const Size(1440, 900)
       ..devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
 
-    final container = ProviderContainer(overrides: fakeRepositoryOverrides());
-    addTearDown(container.dispose);
+    final scope =
+        container ??
+        ProviderContainer(
+          overrides: [...fakeRepositoryOverrides(), ...overrides],
+        );
+    if (container == null) addTearDown(scope.dispose);
 
     await tester.pumpWidget(
       UncontrolledProviderScope(
-        container: container,
+        container: scope,
         child: MaterialApp(
           theme: buildPosTheme(),
           home: LockScreen(
+            // A new key per pump: the second lock is a fresh screen, as it
+            // is in the app, not the first one rebuilt.
+            key: UniqueKey(),
             onUnlocked: onUnlocked ?? () {},
             onBack: onBack ?? () {},
           ),
@@ -45,7 +58,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    return container;
+    return scope;
   }
 
   Future<void> typeUsername(WidgetTester tester, String username) async {
@@ -165,11 +178,168 @@ void main() {
   testWidgets('the screen names nobody before a PIN is typed', (tester) async {
     await pumpLock(tester);
 
-    // It cannot know who is coming back to a shared till, and naming the last
-    // person to stand at it invited the next one to type their own PIN under
-    // somebody else's name.
+    // The heading claims no identity: it cannot know who is coming back to a
+    // shared till. The name field may be filled in and the tiles name the
+    // roster, but both are offers the PIN still has to back up.
     expect(find.text('Enter your PIN'), findsOneWidget);
     expect(find.textContaining('·'), findsNothing);
+    // Nobody has signed in on this till yet, so nothing to prefill.
+    expect(tester.widget<TextField>(find.byType(TextField)).controller!.text,
+        isEmpty);
+  });
+
+  group('who is offered, so the cashier types only the PIN', () {
+    // The audit (S3-2) watched every cashier type their username on a keypad
+    // screen at every lock. The till now remembers the last person to sign in
+    // and shows everybody who can, as tiles. What it must not do is relax
+    // the check: the PIN still has to belong to the name.
+    const terminal = TerminalProfile(
+      branchId: 13,
+      branchName: 'Maadi',
+      terminalName: 'Counter 1',
+      terminalId: 'e6c0f0a2-0000-4000-8000-000000000001',
+      restaurantId: 7,
+      branchCode: 'MAA',
+    );
+    const saved = SavedTerminalConfig(
+      deployment: DeploymentConfig(
+        mode: DeploymentMode.offline,
+        databaseHost: '192.168.1.20',
+      ),
+      terminal: terminal,
+      languageCode: 'en',
+    );
+
+    testWidgets('the last person to sign in is filled in at the next lock', (
+      tester,
+    ) async {
+      final store = InMemoryTerminalConfigStore()..saved = saved;
+      var unlocked = 0;
+      final container = await pumpLock(
+        tester,
+        onUnlocked: () => unlocked++,
+        overrides: [terminalConfigStoreProvider.overrideWithValue(store)],
+      );
+
+      await typeUsername(tester, 'rana');
+      await typePin(tester, '1234');
+      expect(unlocked, 1);
+
+      // Locked again, in the same process: the name is already there, and
+      // it is on disk for tomorrow's first lock too.
+      await pumpLock(tester, onUnlocked: () => unlocked++, container: container);
+      final field = tester.widget<TextField>(find.byType(TextField));
+      expect(field.controller!.text, 'rana');
+      expect(store.saved?.lastUsername, 'rana');
+
+      // So the PIN alone is enough — typed, because the pad holds the
+      // keyboard once the name is in.
+      for (final digit in [
+        LogicalKeyboardKey.digit1,
+        LogicalKeyboardKey.digit2,
+        LogicalKeyboardKey.digit3,
+        LogicalKeyboardKey.digit4,
+      ]) {
+        await tester.sendKeyEvent(digit);
+        await tester.pump();
+      }
+      await tester.pumpAndSettle();
+      expect(unlocked, 2);
+    });
+
+    testWidgets('a remembered name comes back after a restart', (
+      tester,
+    ) async {
+      // The config file is what the next launch reads; the controller seeds
+      // from it before the first frame, like the language does.
+      await pumpLock(
+        tester,
+        overrides: [
+          terminalBootProvider.overrideWithValue(
+            TerminalBoot(
+              config: saved.copyWith(lastUsername: 'rana'),
+              hasDatabaseCredential: true,
+            ),
+          ),
+        ],
+      );
+      final field = tester.widget<TextField>(find.byType(TextField));
+      expect(field.controller!.text, 'rana');
+    });
+
+    testWidgets('a tile fills the name, so switching user is one tap', (
+      tester,
+    ) async {
+      var unlocked = false;
+      final container = await pumpLock(
+        tester,
+        onUnlocked: () => unlocked = true,
+      );
+
+      // Everybody the directory lists who can sign in here, by name.
+      expect(find.text('Amer M.'), findsOneWidget);
+      expect(find.text('Rana A.'), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('lock-tile-amer')));
+      await tester.pumpAndSettle();
+      final field = tester.widget<TextField>(find.byType(TextField));
+      expect(field.controller!.text, 'amer');
+
+      // Amer's PIN, under Amer's name. The tap handed the keyboard to the
+      // pad, so the digits can be typed straight away.
+      for (final digit in [
+        LogicalKeyboardKey.digit4,
+        LogicalKeyboardKey.digit3,
+        LogicalKeyboardKey.digit2,
+        LogicalKeyboardKey.digit1,
+      ]) {
+        await tester.sendKeyEvent(digit);
+        await tester.pump();
+      }
+      await tester.pumpAndSettle();
+
+      expect(unlocked, isTrue);
+      expect(container.read(signedInStaffProvider)?.name, 'Amer M.');
+    });
+
+    testWidgets('a tile is an offer, not an identity: the wrong PIN still fails', (
+      tester,
+    ) async {
+      var unlocked = false;
+      final container = await pumpLock(
+        tester,
+        onUnlocked: () => unlocked = true,
+      );
+
+      await tester.tap(find.byKey(const Key('lock-tile-rana')));
+      await tester.pumpAndSettle();
+      await typePin(tester, '9999');
+
+      expect(unlocked, isFalse);
+      expect(container.read(signedInStaffProvider), isNull);
+      expect(find.text('Wrong username or PIN — try again'), findsOneWidget);
+      // And the name stays, for the second try.
+      final field = tester.widget<TextField>(find.byType(TextField));
+      expect(field.controller!.text, 'rana');
+    });
+
+    testWidgets('the typed name is still there for somebody not on a tile', (
+      tester,
+    ) async {
+      var unlocked = false;
+      final container = await pumpLock(
+        tester,
+        onUnlocked: () => unlocked = true,
+      );
+
+      // Nour is not in the directory's list, and signs in by typing.
+      expect(find.byKey(const Key('lock-tile-nour')), findsNothing);
+      await typeUsername(tester, 'nour');
+      await typePin(tester, '2468');
+
+      expect(unlocked, isTrue);
+      expect(container.read(signedInStaffProvider)?.name, 'Nour S.');
+    });
   });
 
   group('an unattended till is sent to sign in', () {
