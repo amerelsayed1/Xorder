@@ -299,4 +299,82 @@ void main() {
       expect(bare.data['id'], 7);
     });
   });
+
+  // The platform answers 422 to a shift close whose count differs from the
+  // expected cash IT worked out, unless a reason comes with it, and the drain
+  // quarantines a 422 for good. Found in the 17 Oct 2026 audit: the till never
+  // sent a reason, so the first close the two sides disagreed about stayed open
+  // on the dashboard forever. The till has no note field today, so what goes
+  // out has to make sense without one.
+  group('OutboxDrain.shiftCloseReason', () {
+    test('is the cashier\'s own words when there are some', () {
+      expect(
+        OutboxDrain.shiftCloseReason(
+          note: 'Short 5 EGP, change given twice',
+          countedMinor: 99500,
+          expectedMinor: 100000,
+          varianceMinor: -500,
+        ),
+        'Short 5 EGP, change given twice',
+      );
+    });
+
+    test('trims the note, and treats an empty one as no note', () {
+      expect(
+        OutboxDrain.shiftCloseReason(
+          note: '  counted twice  ',
+          countedMinor: 1,
+          expectedMinor: 0,
+          varianceMinor: 1,
+        ),
+        'counted twice',
+      );
+
+      final blank = OutboxDrain.shiftCloseReason(
+        note: '   ',
+        countedMinor: 452000,
+        expectedMinor: 452000,
+        varianceMinor: 0,
+      );
+      expect(blank, isNotEmpty);
+      expect(blank, contains('No cashier note'));
+    });
+
+    test('without a note, states the till\'s own figures so the platform can compare',
+        () {
+      final reason = OutboxDrain.shiftCloseReason(
+        note: null,
+        countedMinor: 452000,
+        expectedMinor: 400000,
+        varianceMinor: 52000,
+      );
+
+      expect(reason, contains('counted 452000'));
+      expect(reason, contains('expected 400000'));
+      expect(reason, contains('variance 52000'));
+    });
+
+    test('never exceeds the 255 characters the platform accepts', () {
+      final reason = OutboxDrain.shiftCloseReason(
+        note: 'x' * 400,
+        countedMinor: 0,
+        expectedMinor: 0,
+        varianceMinor: 0,
+      );
+
+      expect(reason.runes.length, 255);
+    });
+
+    test('counts characters, so a long Arabic or emoji note is not cut in half', () {
+      final reason = OutboxDrain.shiftCloseReason(
+        note: '😀' * 300,
+        countedMinor: 0,
+        expectedMinor: 0,
+        varianceMinor: 0,
+      );
+
+      expect(reason.runes.length, 255);
+      expect(reason.runes.every((r) => r == 0x1F600), isTrue);
+    });
+  });
 }
