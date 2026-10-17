@@ -487,8 +487,14 @@ class _CloseShiftDialogState extends ConsumerState<CloseShiftDialog> {
                   onChanged: (_) => setState(() {}),
                   onSubmitted: (_) => _close(),
                 ),
-                const SizedBox(height: PosSpace.md),
-                _variance(strings, summary, pos: context.pos),
+                if (!_blind) const SizedBox(height: PosSpace.md),
+                // Not while blind. Every line of this panel is the expected
+                // cash one subtraction away: the difference as it is typed,
+                // the expected figure itself once the count matches, and, with
+                // nothing typed yet, "Expected X". The count is revealed after
+                // closing, to whoever holds `cash.variance.view` (see
+                // [_closedShell]).
+                if (!_blind) _variance(strings, summary, pos: context.pos),
                 const SizedBox(height: PosSpace.lg),
                 MicroLabel(strings.closeShiftNoteLabel),
                 const SizedBox(height: PosSpace.sm),
