@@ -621,11 +621,19 @@ class ZReportView extends StatelessWidget {
   /// difference from the one on the list beside it.
   final Money? expected;
 
-  /// Hide the expected figure and the live difference (§25).
+  /// Hide the expected figure and the live difference (§25), and what the
+  /// expected figure is made of.
   ///
   /// The count itself is never hidden — a cashier has to see what they typed.
   /// What blind withholds is the *answer*, so that counting is counting rather
-  /// than reconciling to a number already on screen.
+  /// than reconciling to a number already on screen. The expected cash is the
+  /// float plus the cash tenders plus pay-ins less pay-outs, so the tender rows
+  /// and the pay-in and pay-out rows go too: shown beside the float they are the
+  /// sum with the answer masked (audit, 17 Oct 2026).
+  ///
+  /// The sales totals stay. The cashier rang those sales, and a Z report
+  /// without them is no report. What that leaves is a limit worth knowing: on a
+  /// shift paid only in cash, *gross taken* is the cash taken.
   final bool blind;
 
   @override
@@ -689,20 +697,26 @@ class ZReportView extends StatelessWidget {
           // The tender label is whatever was WRITTEN with the payment, and it
           // stays as written. What the drawer's cash is worked out from is the
           // tender *type* beside it — see `TenderMethod.countsAsCash`.
-          for (final tender in summary.tenders)
-            CashUpRow(
-              label: strings.zTenderRow(tender.label, tender.count),
-              value: tender.amount,
-            ),
+          //
+          // Not while blind: these are the cash the drawer should hold, in
+          // pieces (see [blind]).
+          if (!blind)
+            for (final tender in summary.tenders)
+              CashUpRow(
+                label: strings.zTenderRow(tender.label, tender.count),
+                value: tender.amount,
+              ),
 
           // ── The drawer ─────────────────────────────────────────────────
           CashUpRow(
             label: strings.zOpeningFloat,
             value: summary.shift.openingFloat,
           ),
-          if (!summary.cashIn.isZero)
+          // Pay-ins and pay-outs change what the drawer should hold, so they
+          // are withheld while blind like the tenders above.
+          if (!blind && !summary.cashIn.isZero)
             CashUpRow(label: strings.zCashIn, value: summary.cashIn),
-          if (!summary.cashOut.isZero)
+          if (!blind && !summary.cashOut.isZero)
             CashUpRow(
               label: strings.zCashOut,
               value: -summary.cashOut,

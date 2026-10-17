@@ -8,6 +8,7 @@ import 'package:xorder_pos/core/money/money.dart';
 import 'package:xorder_pos/core/ui/theme.dart';
 import 'package:xorder_pos/core/ui/tokens.dart';
 import 'package:xorder_pos/data/fakes/fake_repositories.dart';
+import 'package:xorder_pos/domain/models/business_day.dart';
 import 'package:xorder_pos/domain/models/permissions.dart';
 import 'package:xorder_pos/domain/models/pos_settings.dart';
 import 'package:xorder_pos/domain/models/shift.dart';
@@ -21,8 +22,16 @@ import 'package:xorder_pos/features/shift/presentation/shift_dialogs.dart';
 /// before any number, "Expected 323.45 — float …". Each is the expected cash one
 /// subtraction away, so the policy protected nothing (audit, 17 Oct 2026).
 ///
-/// The drawer here opened with 200.00 and took 123.45 in cash, so the expected
-/// cash is 323.45, a number that appears nowhere else on the screen.
+/// The drawer here opened with 200.00, took 123.45 in cash and 126.55 on a card,
+/// had 50.00 paid in and 20.00 paid out: the expected cash is 353.45, a number
+/// that appears nowhere else on the screen.
+///
+/// The Z report is held to the same rule. The expected cash is the float plus
+/// the cash tenders plus pay-ins less pay-outs, so a blind cashier shown the
+/// tender rows and the pay-in and pay-out rows beside the float is shown the
+/// sum with the answer masked (audit, 17 Oct 2026). What blind withholds there
+/// is those components; the sales totals stay, because the cashier rang the
+/// sales and a Z report without them is no report.
 void main() {
   final shift = PosShift(
     id: 7,
@@ -32,7 +41,7 @@ void main() {
     openedById: 1,
   );
 
-  const expected = Money(32345); // 200.00 float + 123.45 cash
+  const expected = Money(35345); // 200.00 float + 123.45 cash + 50.00 in - 20.00 out
 
   setUp(() {
     final view =
@@ -122,9 +131,9 @@ void main() {
       final s = strings(tester);
 
       for (final (typed, difference) in [
-        ('300.00', '-23.45'), // short
-        ('400.00', '76.55'), // over
-        ('323.45', null), // balances
+        ('300.00', '-53.45'), // short
+        ('400.00', '46.55'), // over
+        ('353.45', null), // balances
       ]) {
         await count(tester, typed);
 
@@ -142,6 +151,8 @@ void main() {
       await open(tester, blindPolicy: true, mayViewExpected: false);
 
       await count(tester, '300.00');
+      // The dialog scrolls; on a busy drawer the button is below the fold.
+      await tester.ensureVisible(find.text('Close shift'));
       await tester.tap(find.text('Close shift'));
       await tester.pumpAndSettle();
 
@@ -165,13 +176,74 @@ void main() {
 
       await count(tester, '300.00');
       expect(find.text(s.varianceShort), findsOneWidget);
-      expect(find.text('-23.45'), findsOneWidget);
+      expect(find.text('-53.45'), findsOneWidget);
 
       await count(tester, '400.00');
       expect(find.text(s.varianceOver), findsOneWidget);
 
-      await count(tester, '323.45');
+      await count(tester, '353.45');
       expect(find.text(s.varianceBalances), findsOneWidget);
+    });
+  });
+
+  group('the Z report on the same screen', () {
+    testWidgets('does not lay out the cash components for a blind cashier', (
+      tester,
+    ) async {
+      await open(tester, blindPolicy: true, mayViewExpected: false);
+      final s = strings(tester);
+
+      // The tenders, each one: cash and card.
+      expect(shows('Cash ×'), findsNothing);
+      expect(shows('Card ×'), findsNothing);
+      expect(shows('123.45'), findsNothing);
+      expect(shows('126.55'), findsNothing);
+      // Money paid in and out of the drawer.
+      expect(find.text(s.zCashIn), findsNothing);
+      expect(find.text(s.zCashOut), findsNothing);
+      // Exact: `50.00` is inside the gross `250.00` and `20.00` inside the float.
+      expect(find.text('50.00'), findsNothing);
+      expect(find.text('-20.00'), findsNothing);
+      // And still masked where the answer would be.
+      expect(find.text(s.zHiddenUntilCounted), findsOneWidget);
+    });
+
+    testWidgets('still reports what was sold', (tester) async {
+      await open(tester, blindPolicy: true, mayViewExpected: false);
+      final s = strings(tester);
+
+      expect(find.text(s.zSales), findsOneWidget);
+      expect(find.text(s.zGrossTaken), findsOneWidget);
+      expect(shows('250.00'), findsOneWidget); // gross
+      expect(find.text(s.zOpeningFloat), findsOneWidget);
+    });
+
+    testWidgets('shows everything to somebody who may see the expected cash', (
+      tester,
+    ) async {
+      await open(tester, blindPolicy: true, mayViewExpected: true);
+      final s = strings(tester);
+
+      // Exact row values: `123.45` is also inside the "Expected … plus 123.45
+      // taken in cash" help line, which is not what this is about.
+      expect(shows('Cash ×'), findsOneWidget);
+      expect(shows('Card ×'), findsOneWidget);
+      expect(find.text('123.45'), findsOneWidget);
+      expect(find.text('126.55'), findsOneWidget);
+      expect(find.text(s.zCashIn), findsOneWidget);
+      expect(find.text(s.zCashOut), findsOneWidget);
+      expect(find.text('50.00'), findsOneWidget);
+      expect(find.text('-20.00'), findsOneWidget);
+      expect(find.text(s.zExpectedInDrawer), findsOneWidget);
+    });
+
+    testWidgets('shows everything with blind counting off', (tester) async {
+      await open(tester, blindPolicy: false, mayViewExpected: false);
+      final s = strings(tester);
+
+      expect(shows('Cash ×'), findsOneWidget);
+      expect(find.text(s.zCashIn), findsOneWidget);
+      expect(find.text(s.zCashOut), findsOneWidget);
     });
   });
 
@@ -186,13 +258,13 @@ void main() {
   });
 }
 
-/// A drawer with 123.45 of cash taken in it.
+/// A drawer with 123.45 cash and 126.55 card taken, 50.00 paid in, 20.00 out.
 class _Shifts extends FakeShiftRepository {
   @override
   Future<ShiftSummary> summarise(PosShift shift) async => ShiftSummary(
     shift: shift,
-    saleCount: 3,
-    gross: const Money(12345),
+    saleCount: 5,
+    gross: const Money(25000),
     tenders: const [
       ShiftTenderTotal(
         label: 'Cash',
@@ -200,7 +272,19 @@ class _Shifts extends FakeShiftRepository {
         amount: Money(12345),
         countsAsCash: true,
       ),
+      ShiftTenderTotal(
+        label: 'Card',
+        count: 2,
+        amount: Money(12655),
+        countsAsCash: false,
+      ),
     ],
+    movements: const CashMovementTotals(
+      paidIn: Money(5000),
+      paidOut: Money(2000),
+      drawerOpens: 0,
+      movements: [],
+    ),
   );
 }
 
