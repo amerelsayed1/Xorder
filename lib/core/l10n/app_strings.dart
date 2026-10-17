@@ -331,6 +331,12 @@ sealed class AppStrings {
   /// that belongs to somebody else.
   String closeShiftNotYours(String openedBy);
   String get countedInDrawer;
+
+  /// The optional note under the count on a shift close. It goes to the
+  /// platform as the close's reason, which the platform asks for whenever its
+  /// own expected cash differs from the count.
+  String get closeShiftNoteLabel;
+  String get closeShiftNoteHint;
   String expectedInDrawerHelp(String expected, String float, String taken);
   String get varianceBalances;
   String get varianceOver;
@@ -3833,6 +3839,10 @@ final class EnStrings extends AppStrings {
       'Close a drawer opened by $openedBy';
   @override
   String get countedInDrawer => 'Counted in the drawer';
+  @override
+  String get closeShiftNoteLabel => 'Note (optional)';
+  @override
+  String get closeShiftNoteHint => 'Anything worth knowing about this count';
   @override
   String expectedInDrawerHelp(String expected, String float, String taken) =>
       'Expected $expected — float $float plus $taken taken in cash.';
@@ -8728,6 +8738,10 @@ final class ArStrings extends AppStrings {
       'تقفيل درج فتحه $openedBy';
   @override
   String get countedInDrawer => 'المعدود في الدرج';
+  @override
+  String get closeShiftNoteLabel => 'ملاحظة (اختياري)';
+  @override
+  String get closeShiftNoteHint => 'أي شيء يجدر معرفته عن هذا العدّ';
   @override
   String expectedInDrawerHelp(String expected, String float, String taken) =>
       'المتوقع $expected — رصيد بداية $float زائد $taken محصَّلة نقداً.';

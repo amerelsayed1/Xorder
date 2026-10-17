@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/providers.dart';
@@ -250,6 +251,12 @@ class CloseShiftDialog extends ConsumerStatefulWidget {
 
 class _CloseShiftDialogState extends ConsumerState<CloseShiftDialog> {
   final _counted = TextEditingController();
+
+  /// Optional, and there for everybody — including a cashier counting blind,
+  /// who cannot see a variance and may still know why the drawer is short.
+  /// What the platform accepts as a close's reason, and no more.
+  final _note = TextEditingController();
+  static const _noteMax = 255;
   ShiftSummary? _summary;
   ShiftClose? _closed;
   bool _busy = true;
@@ -275,6 +282,7 @@ class _CloseShiftDialogState extends ConsumerState<CloseShiftDialog> {
   @override
   void dispose() {
     _counted.dispose();
+    _note.dispose();
     super.dispose();
   }
 
@@ -386,6 +394,9 @@ class _CloseShiftDialogState extends ConsumerState<CloseShiftDialog> {
             shift: widget.shift,
             by: by,
             countedCash: counted,
+            // Spaces are no note. Null reaches the platform as a generated line
+            // of the till's own figures; a note reaches it as the reason.
+            note: _note.text.trim().isEmpty ? null : _note.text.trim(),
             // The handover, when there was one: it is what lets somebody who
             // did not open this drawer close it, and it covers the permission
             // too.
@@ -478,6 +489,18 @@ class _CloseShiftDialogState extends ConsumerState<CloseShiftDialog> {
                 ),
                 const SizedBox(height: PosSpace.md),
                 _variance(strings, summary, pos: context.pos),
+                const SizedBox(height: PosSpace.lg),
+                MicroLabel(strings.closeShiftNoteLabel),
+                const SizedBox(height: PosSpace.sm),
+                TextField(
+                  key: const Key('close-shift-note'),
+                  controller: _note,
+                  maxLines: 2,
+                  minLines: 1,
+                  inputFormatters: [LengthLimitingTextInputFormatter(_noteMax)],
+                  style: PosText.ui(color: context.pos.inkWarm, size: 14),
+                  decoration: InputDecoration(hintText: strings.closeShiftNoteHint),
+                ),
               ],
             ),
     );
