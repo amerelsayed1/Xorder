@@ -6,7 +6,9 @@ import '../../core/config/deployment.dart';
 import '../../core/l10n/app_strings.dart';
 import '../../domain/models/receipt_profile.dart';
 import '../../domain/models/tender_method.dart';
+import '../../core/ui/theme.dart';
 import '../../core/ui/tokens.dart';
+import '../../core/ui/widgets/mono_amount.dart';
 import '../../core/ui/widgets/pos_widgets.dart';
 import '../../domain/models/ticket.dart';
 import '../../domain/repositories/repositories.dart';
@@ -100,6 +102,13 @@ class _ReceiptDialogState extends ConsumerState<ReceiptDialog> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              // Above the paper, not on it: the slip is the customer's and
+              // says "Change 170.00" in its own small type. This is the
+              // cashier's, for the seconds they are counting it out.
+              if (ticket.totals.change.isPositive) ...[
+                _changeDue(strings),
+                const SizedBox(height: PosSpace.md),
+              ],
               Flexible(
                 child: SingleChildScrollView(
                   child: ReceiptPaper(
@@ -121,6 +130,62 @@ class _ReceiptDialogState extends ConsumerState<ReceiptDialog> {
       ),
     );
   }
+
+  /// The change, as the biggest number on the screen.
+  ///
+  /// The audit watched a cashier hand back 170 on a 500 note by reading it
+  /// off a line of the slip in 11px mono — the same size as the VAT. The
+  /// amount is the engine's (`TicketTotals.change`, the same figure the slip
+  /// prints); nothing here adds or subtracts. 46px is `bigNumeric`, the size
+  /// the payment screen gave the amount due a moment ago, so what was owed
+  /// and what goes back are read at the same size.
+  ///
+  /// Keyed, so a test can tell this figure from the slip's own change row.
+  Widget _changeDue(AppStrings strings) => Container(
+    key: const ValueKey('change-due'),
+    width: double.infinity,
+    padding: const EdgeInsets.symmetric(
+      horizontal: PosSpace.lg,
+      vertical: PosSpace.s14,
+    ),
+    color: _receipt.ink,
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        MicroLabel(strings.changeDue, color: Colors.white),
+        const SizedBox(height: PosSpace.xs),
+        // Scaled down, never clipped: a figure that lost its leading digit
+        // to the dialog's edge would be the one lie this banner must not
+        // tell. At 46px mono the widest change a till hands back fits the
+        // 296px inside the paper; this is for the day one does not.
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: AlignmentDirectional.centerStart,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              MonoAmount(
+                ticket.totals.change,
+                size: 46,
+                weight: FontWeight.w600,
+                color: Colors.white,
+              ),
+              Padding(
+                // Directional: after the figure, which is its right in
+                // English and its left in Arabic.
+                padding: const EdgeInsetsDirectional.only(bottom: 6, start: 6),
+                child: Text(
+                  ticket.currency,
+                  style: PosText.ui(size: 14, color: Colors.white),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    ),
+  );
 
   Widget _actions(BuildContext context, WidgetRef ref, AppStrings strings) =>
       Row(

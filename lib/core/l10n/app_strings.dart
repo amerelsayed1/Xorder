@@ -229,6 +229,10 @@ sealed class AppStrings {
   String get newSale;
   String get printAndNew;
 
+  /// Over the receipt, for the seconds the cashier is counting coins back —
+  /// the one number on that dialog that is read aloud across the counter.
+  String get changeDue;
+
   /// The three answers the till can honestly give after trying to print, plus
   /// the one it gives when the queue could not be written either. See
   /// `PrintOutcome` — the toast used to say "queued" in every case, including
@@ -3694,6 +3698,8 @@ final class EnStrings extends AppStrings {
   String get newSale => 'New sale';
   @override
   String get printAndNew => 'Print & new';
+  @override
+  String get changeDue => 'CHANGE DUE';
   @override
   String get receiptPrintedToast => 'Receipt printed.';
   @override
@@ -8597,6 +8603,8 @@ final class ArStrings extends AppStrings {
   String get newSale => 'بيع جديد';
   @override
   String get printAndNew => 'طباعة وبيع جديد';
+  @override
+  String get changeDue => 'الباقي للعميل';
   @override
   String get receiptPrintedToast => 'تمت طباعة الفاتورة.';
   @override
