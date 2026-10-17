@@ -8,6 +8,7 @@ import '../../domain/models/permissions.dart';
 import '../../domain/models/shift.dart';
 import '../../domain/repositories/admin_repositories.dart';
 import '../../domain/services/authorization.dart';
+import 'open_shift.dart';
 import 'pos_database.dart';
 
 /// The Management section's data layer.
@@ -28,7 +29,6 @@ class _AdminContext {
     required this.restaurantId,
     this.branchId,
     this.terminalId,
-    this.shiftId,
   });
 
   final PosDatabase database;
@@ -36,7 +36,6 @@ class _AdminContext {
   final int restaurantId;
   final int? branchId;
   final String? terminalId;
-  final int? shiftId;
 
   /// Write one ledger row on an open transaction.
   ///
@@ -52,33 +51,39 @@ class _AdminContext {
     Map<String, Object?>? before,
     Map<String, Object?>? after,
     String? reason,
-  }) => tx.execute(
-    Sql.named(
-      'INSERT INTO pos_audit_events (restaurant_id, branch_id, terminal_id, shift_id, '
-      '  actor_staff_id, actor_name, approved_by_id, approved_by_name, action, '
-      '  entity_type, entity_id, before_value, after_value, reason) '
-      'VALUES (@restaurant, @branch, @terminal, @shift, @actorId, @actorName, '
-      '  @approverId, @approverName, @action, @entityType, @entityId, '
-      // Cast rather than trusting the driver to infer jsonb from a string.
-      '  @before::jsonb, @after::jsonb, @reason)',
-    ),
-    parameters: {
-      'restaurant': restaurantId,
-      'branch': branchId,
-      'terminal': terminalId,
-      'shift': shiftId,
-      'actorId': by.id,
-      'actorName': by.name,
-      'approverId': approvedBy?.id,
-      'approverName': approvedBy?.name,
-      'action': action,
-      'entityType': entityType,
-      'entityId': entityId,
-      'before': before == null ? null : jsonEncode(before),
-      'after': after == null ? null : jsonEncode(after),
-      'reason': reason,
-    },
-  );
+  }) async {
+    // The drawer open when the thing happened, read on this transaction: an
+    // audit row belongs to that shift even when the till has changed shifts
+    // since this repository was built (see [openShiftIdFor]).
+    final shiftId = await openShiftIdFor(tx, terminalId);
+    await tx.execute(
+      Sql.named(
+        'INSERT INTO pos_audit_events (restaurant_id, branch_id, terminal_id, shift_id, '
+        '  actor_staff_id, actor_name, approved_by_id, approved_by_name, action, '
+        '  entity_type, entity_id, before_value, after_value, reason) '
+        'VALUES (@restaurant, @branch, @terminal, @shift, @actorId, @actorName, '
+        '  @approverId, @approverName, @action, @entityType, @entityId, '
+        // Cast rather than trusting the driver to infer jsonb from a string.
+        '  @before::jsonb, @after::jsonb, @reason)',
+      ),
+      parameters: {
+        'restaurant': restaurantId,
+        'branch': branchId,
+        'terminal': terminalId,
+        'shift': shiftId,
+        'actorId': by.id,
+        'actorName': by.name,
+        'approverId': approvedBy?.id,
+        'approverName': approvedBy?.name,
+        'action': action,
+        'entityType': entityType,
+        'entityId': entityId,
+        'before': before == null ? null : jsonEncode(before),
+        'after': after == null ? null : jsonEncode(after),
+        'reason': reason,
+      },
+    );
+  }
 }
 
 /// The columns [roleFromRow] expects, in order. Shared with the directory
@@ -1113,14 +1118,12 @@ class PostgresAuditRepository implements AuditRepository {
     required int restaurantId,
     int? branchId,
     String? terminalId,
-    int? shiftId,
   }) : _c = _AdminContext(
          database: database,
          config: config,
          restaurantId: restaurantId,
          branchId: branchId,
          terminalId: terminalId,
-         shiftId: shiftId,
        );
 
   final _AdminContext _c;

@@ -268,10 +268,10 @@ ordersRepositoryProvider = Provider<OrdersRepository>((ref) {
     database: ref.watch(posDatabaseProvider),
     config: config,
     context: context,
-    // Read, not watched. A sale stamps the shift that was open when it was
-    // rung up; rebuilding the repository mid-payment because a shift closed
-    // elsewhere would be worse than an unattributed order.
-    shiftId: ref.read(shiftProvider).valueOrNull?.id,
+    // No shift here. A sale names the shift open when it is rung up, and the
+    // repository asks the database for that inside the sale's own transaction
+    // (`openShiftIdFor`) — a value captured when this provider built would go
+    // on naming a shift that had since closed.
     onQueued: () => ref.read(cloudSyncProvider)?.nudge(),
   );
 
@@ -440,7 +440,6 @@ final refundsRepositoryProvider = Provider<RefundsRepository>((ref) {
     database: ref.watch(posDatabaseProvider),
     config: config,
     context: context,
-    shiftId: ref.read(shiftProvider).valueOrNull?.id,
     onQueued: () => ref.read(cloudSyncProvider)?.nudge(),
   );
 
@@ -3011,9 +3010,6 @@ final auditRepositoryProvider = Provider<AuditRepository>((ref) {
     restaurantId: context.restaurantId,
     branchId: context.branchId,
     terminalId: context.terminalId,
-    // Read, not watched, for the same reason the orders repository does it: an
-    // audit row belongs to the shift that was open when the thing happened.
-    shiftId: ref.read(shiftProvider).valueOrNull?.id,
   );
 });
 

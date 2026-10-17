@@ -7,6 +7,7 @@ import 'package:xorder_pos/core/money/money.dart';
 import 'package:xorder_pos/core/security/pin_hash.dart';
 import 'package:xorder_pos/data/postgres/migrations.dart';
 import 'package:xorder_pos/data/postgres/pos_database.dart';
+import 'package:xorder_pos/data/postgres/postgres_admin_repositories.dart';
 import 'package:xorder_pos/data/postgres/postgres_orders_repository.dart';
 import 'package:xorder_pos/data/postgres/postgres_shift_repository.dart';
 import 'package:xorder_pos/domain/models/catalog.dart';
@@ -14,6 +15,7 @@ import 'package:xorder_pos/domain/models/permissions.dart';
 import 'package:xorder_pos/domain/models/shift.dart';
 import 'package:xorder_pos/domain/models/tender_method.dart';
 import 'package:xorder_pos/domain/models/ticket.dart';
+import 'package:xorder_pos/domain/repositories/admin_repositories.dart';
 import 'package:xorder_pos/domain/services/authorization.dart';
 import 'package:xorder_pos/domain/services/ticket_engine.dart';
 
@@ -115,7 +117,9 @@ void main() {
         terminalId: terminalId,
       );
 
-  /// Sell something into [shift], paid with the given tenders.
+  /// Sell something while [shift] is the drawer open on this till, paid with
+  /// the given tenders. The repository finds the open shift itself; [shift] says
+  /// which one the caller expects that to be.
   ///
   /// Returns the **order total**, which is not the product price: the engine
   /// adds VAT, and a test that counted the drawer against the shelf price would
@@ -156,7 +160,6 @@ void main() {
         terminalId: terminalId,
         branchCode: 'SHF',
       ),
-      shiftId: shift.id,
     ).submit(ticket);
 
     return ticket.totals.total.minor;
@@ -543,5 +546,125 @@ void main() {
 
     final rows = await db.query(pg.config, 'SELECT shift_id FROM pos_orders');
     expect(rows.first[0], shift.id);
+  });
+
+  group('a till that closes a shift and opens another without restarting', () {
+    // The audit of 17 Oct 2026 found two cash sales (4,520.00 EGP) stamped with
+    // a shift that had closed 70 seconds before the first of them: the till
+    // builds its orders repository once and had captured the id of the shift
+    // that was open at that moment. The Z report of the shift actually open
+    // then left them out, and the cashier counted a surplus.
+    //
+    // So every test here builds the repository ONCE, up front, and only then
+    // closes and opens shifts — which is exactly what the till does.
+    Ticket oneSale(int priceMinor) {
+      final product = Product(
+        id: 1,
+        categoryId: 1,
+        nameEn: 'Thing',
+        price: Money(priceMinor),
+      );
+      var ticket = Ticket(id: const Uuid().v4(), orderType: OrderType.takeaway);
+      ticket = TicketEngine.addLine(ticket, product).ticket!;
+      return TicketEngine.addTender(
+        ticket,
+        typeId: 1,
+        label: 'Cash',
+        countsAsCash: true,
+      ).ticket!;
+    }
+
+    Future<List<Object?>> stampedShifts() async {
+      final rows = await db.query(
+        pg.config,
+        'SELECT shift_id FROM pos_orders ORDER BY id',
+      );
+      return [for (final r in rows) r[0]];
+    }
+
+    test('the second shift gets its own sales, and the first keeps none of them',
+        () async {
+      final first = await shifts().open(by: sara, openingFloat: Money.zero);
+      final orders = PostgresOrdersRepository(
+        database: db,
+        config: pg.config,
+        context: PosWriteContext(
+          restaurantId: restaurantId,
+          branchId: branchId,
+          terminalId: terminalId,
+          branchCode: 'SHF',
+        ),
+      );
+      final beforeClose = oneSale(10000);
+      await orders.submit(beforeClose);
+      final firstTotal = beforeClose.totals.total.minor;
+
+      await shifts().close(
+        shift: first,
+        by: sara,
+        countedCash: Money(firstTotal),
+      );
+      final second = await shifts().open(by: sara, openingFloat: Money.zero);
+
+      final afterReopen = oneSale(20000);
+      await orders.submit(afterReopen);
+
+      expect(await stampedShifts(), [first.id, second.id]);
+      expect((await shifts().summarise(first)).cashTaken.minor, firstTotal);
+      expect(
+        (await shifts().summarise(second)).cashTaken.minor,
+        afterReopen.totals.total.minor,
+        reason: 'the cash is in the second drawer, so its Z report must say so',
+      );
+    });
+
+    test('a sale with no shift open is recorded unattributed, not on the last one',
+        () async {
+      final first = await shifts().open(by: sara, openingFloat: Money.zero);
+      final orders = PostgresOrdersRepository(
+        database: db,
+        config: pg.config,
+        context: PosWriteContext(
+          restaurantId: restaurantId,
+          branchId: branchId,
+          terminalId: terminalId,
+          branchCode: 'SHF',
+        ),
+      );
+      await shifts().close(shift: first, by: sara, countedCash: Money.zero);
+
+      await orders.submit(oneSale(10000));
+
+      expect(await stampedShifts(), [null]);
+    });
+
+    test('an audit row names the shift open when the thing happened', () async {
+      final first = await shifts().open(by: sara, openingFloat: Money.zero);
+      final audit = PostgresAuditRepository(
+        database: db,
+        config: pg.config,
+        restaurantId: restaurantId,
+        branchId: branchId,
+        terminalId: terminalId,
+      );
+      await shifts().close(shift: first, by: sara, countedCash: Money.zero);
+      final second = await shifts().open(by: sara, openingFloat: Money.zero);
+
+      await audit.record(
+        by: sara,
+        action: AuditAction.permissionOverridden,
+        entityType: AuditAction.entityOrder,
+        entityId: '1042',
+        reason: 'After the shift changed',
+      );
+
+      final rows = await db.query(
+        pg.config,
+        'SELECT shift_id FROM pos_audit_events '
+        "WHERE restaurant_id = @r AND entity_id = '1042'",
+        parameters: {'r': restaurantId},
+      );
+      expect(rows.single[0], second.id);
+    });
   });
 }

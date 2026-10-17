@@ -8,6 +8,7 @@ import '../../domain/models/ticket.dart';
 import '../../domain/repositories/repositories.dart';
 import '../../domain/services/authorization.dart';
 import '../../domain/services/stock_costing.dart';
+import 'open_shift.dart';
 import 'pos_database.dart';
 
 /// Identifies which terminal and tenant a write belongs to.
@@ -51,7 +52,6 @@ class PostgresOrdersRepository implements OrdersRepository {
     required PosDatabase database,
     required this._config,
     required this._context,
-    this.shiftId,
     this.onQueued,
     DateTime Function()? clock,
   }) : _db = database,
@@ -62,14 +62,6 @@ class PostgresOrdersRepository implements OrdersRepository {
   /// it feeds is debounced past the commit, and a nudge with nothing to
   /// drain costs one heartbeat.
   final void Function()? onQueued;
-
-  /// The shift this sale belongs to, so a Z report can total it.
-  ///
-  /// Nullable because a till can be selling before the shift concept reaches
-  /// every deployment, and an order that cannot name its shift is still an
-  /// order that must be recorded. It shows up as an unattributed sale on the
-  /// report rather than being silently dropped from it.
-  final int? shiftId;
 
   final PosDatabase _db;
   final DeploymentConfig _config;
@@ -103,6 +95,11 @@ class PostgresOrdersRepository implements OrdersRepository {
       }
 
       final invoiceNumber = await _nextInvoiceNumber(tx, occurredAt);
+
+      // The shift open at this moment, so a Z report can total the sale. Read
+      // here, not remembered: see [openShiftIdFor]. Null when no drawer is
+      // open — the order is still recorded, as an unattributed sale.
+      final shiftId = await openShiftIdFor(tx, _context.terminalId);
 
       final inserted = await tx.execute(
         Sql.named('''
@@ -241,6 +238,10 @@ class PostgresOrdersRepository implements OrdersRepository {
       }
 
       final invoiceNumber = await _nextInvoiceNumber(tx, occurredAt);
+
+      // As in [submit]: the shift open now, not the one open when this
+      // repository was built.
+      final shiftId = await openShiftIdFor(tx, _context.terminalId);
 
       final inserted = await tx.execute(
         Sql.named('''
