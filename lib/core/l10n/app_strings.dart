@@ -233,6 +233,11 @@ sealed class AppStrings {
   /// the one number on that dialog that is read aloud across the counter.
   String get changeDue;
 
+  /// What the print button says, disabled, on a till with no printer. A dead
+  /// control with no explanation is a fault the cashier reports; this names
+  /// the cause instead.
+  String get receiptNoPrinter;
+
   /// The three answers the till can honestly give after trying to print, plus
   /// the one it gives when the queue could not be written either. See
   /// `PrintOutcome` — the toast used to say "queued" in every case, including
@@ -3700,6 +3705,8 @@ final class EnStrings extends AppStrings {
   String get printAndNew => 'Print & new';
   @override
   String get changeDue => 'CHANGE DUE';
+  @override
+  String get receiptNoPrinter => 'No printer configured';
   @override
   String get receiptPrintedToast => 'Receipt printed.';
   @override
@@ -8605,6 +8612,8 @@ final class ArStrings extends AppStrings {
   String get printAndNew => 'طباعة وبيع جديد';
   @override
   String get changeDue => 'الباقي للعميل';
+  @override
+  String get receiptNoPrinter => 'لا توجد طابعة مضبوطة';
   @override
   String get receiptPrintedToast => 'تمت طباعة الفاتورة.';
   @override

@@ -187,37 +187,58 @@ class _ReceiptDialogState extends ConsumerState<ReceiptDialog> {
     ),
   );
 
-  Widget _actions(BuildContext context, WidgetRef ref, AppStrings strings) =>
-      Row(
-        children: [
-          Expanded(
-            child: PosButton(
-              label: strings.newSale,
-              height: 48,
-              background: _receipt.ink,
-              foreground: Colors.white,
-              onPressed: _printing
-                  ? null
-                  : () => _finish(
-                      context,
-                      ref,
-                      openDrawer: _drawerOpens(),
+  Widget _actions(BuildContext context, WidgetRef ref, AppStrings strings) {
+    final printer = ref.watch(printerConfigProvider);
+    return Row(
+      children: [
+        Expanded(
+          child: PosButton(
+            label: strings.newSale,
+            height: 48,
+            background: _receipt.ink,
+            foreground: Colors.white,
+            onPressed: _printing
+                ? null
+                : () => _finish(
+                    context,
+                    ref,
+                    openDrawer: _drawerOpens(),
+                  ),
+          ),
+        ),
+        const SizedBox(width: PosSpace.sm),
+        // On a till with no printer the print button is disabled and says
+        // why, in its own place: it used to stay live, print nothing and
+        // toast about it afterwards, and a disabled control with no words
+        // on it is a fault the cashier reports. Not hidden, because the
+        // dialog's two-button layout is what hands learn, and the day the
+        // printer is plugged in the button should be where it always was.
+        Expanded(
+          child: printer.isConfigured
+              ? PosButton(
+                  label: strings.printAndNew,
+                  height: 48,
+                  border: Border.fromBorderSide(
+                    BorderSide(color: _receipt.inkWarm),
+                  ),
+                  onPressed: _printing
+                      ? null
+                      : () => _print(context, strings),
+                )
+              : Tooltip(
+                  message: strings.receiptNoPrinterToast,
+                  child: PosButton(
+                    label: strings.receiptNoPrinter,
+                    height: 48,
+                    border: Border.fromBorderSide(
+                      BorderSide(color: _receipt.inkWarm),
                     ),
-            ),
-          ),
-          const SizedBox(width: PosSpace.sm),
-          Expanded(
-            child: PosButton(
-              label: strings.printAndNew,
-              height: 48,
-              border: Border.fromBorderSide(
-                BorderSide(color: _receipt.inkWarm),
-              ),
-              onPressed: _printing ? null : () => _print(context, strings),
-            ),
-          ),
-        ],
-      );
+                  ),
+                ),
+        ),
+      ],
+    );
+  }
 
   /// Print the slip, then start the next sale.
   ///
