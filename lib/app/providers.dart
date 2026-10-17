@@ -75,6 +75,7 @@ import '../features/admin/application/admin_session.dart'
     show adminSessionProvider;
 import '../features/history/history_scope.dart';
 import '../features/licensing/data/file_license_store.dart';
+import '../features/licensing/data/licence_check_gate.dart';
 import '../features/licensing/data/licence_check_store.dart';
 import '../features/licensing/data/licence_service.dart';
 import '../features/licensing/data/license_keys.dart';
@@ -1773,8 +1774,20 @@ final licenceServiceProvider = Provider<LicenceService>((ref) {
     fingerprint: fingerprint,
     clock: DateTime.now,
     appVersion: posAppVersion,
+    gate: ref.watch(licenceCheckGateProvider),
   );
 });
+
+/// The one [LicenceCheckGate] for the process.
+///
+/// **No dependencies, on purpose.** [licenceServiceProvider] is rebuilt as
+/// the vault, the deployment config and the cloud API settle at launch, and
+/// every rebuild used to be a new service sending its own check — three
+/// identical `POST /api/pos/license/check` in the first second (S3-4). This
+/// provider never rebuilds, so the gate remembers across them.
+final licenceCheckGateProvider = Provider<LicenceCheckGate>(
+  (ref) => LicenceCheckGate(),
+);
 
 /// The last online licence verdict and where this till takes its verdict from
 /// (POS-BE-031). On disk, beside the licence file — see [LicenceCheckStore].
