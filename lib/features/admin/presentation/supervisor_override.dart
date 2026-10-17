@@ -607,7 +607,18 @@ class _SupervisorOverrideDialogState
       ],
     );
 
-    if (widget.reasonRequirement == ReasonRequirement.disabled) return pin;
+    if (widget.reasonRequirement == ReasonRequirement.disabled) {
+      // At the pad's own width, not the dialog's. With no reason column
+      // beside it the pad was handed all 584px, and since its keys keep their
+      // aspect ratio that made four rows of 110px — the 0 key sat below the
+      // fold on a 900px screen, half visible, under a footer that scrolled
+      // over it. At [PosSize.pinPad] the keys are the design's 62px and the
+      // whole dialog fits without scrolling.
+      return Align(
+        alignment: AlignmentDirectional.centerStart,
+        child: SizedBox(width: PosSize.pinPad, child: pin),
+      );
+    }
 
     final reason = ReasonPicker(
       reasons: widget.reasons,

@@ -449,7 +449,10 @@ class PinPad extends StatelessWidget {
           shrinkWrap: true,
           mainAxisSpacing: 1,
           crossAxisSpacing: 1,
-          childAspectRatio: 320 / 3 / PosSize.pinKey,
+          // Keys are [PosSize.pinKey] tall when the pad is [PosSize.pinPad]
+          // wide, and scale with whatever width they are actually given — so
+          // a caller that wants the design size gives the pad that width.
+          childAspectRatio: PosSize.pinPad / 3 / PosSize.pinKey,
           physics: const NeverScrollableScrollPhysics(),
           children: keys.map((key) => _key(context, key)).toList(),
         ),
