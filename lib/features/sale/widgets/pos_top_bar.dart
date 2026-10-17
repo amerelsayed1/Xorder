@@ -107,13 +107,13 @@ class PosTopBar extends ConsumerWidget {
               },
             ),
             const SizedBox(width: PosSpace.s14),
-            Text(
-              // The open shift, not the session. `PosSession.shiftReference` is
-              // empty against a real database — shifts are their own record now,
-              // and the till shows the one it actually has open.
-              ref.watch(shiftProvider).valueOrNull?.reference ??
-                  strings.noShift,
-              style: PosText.mono(size: 11.5, color: context.pos.shellMuted),
+            // The open shift, not the session. `PosSession.shiftReference` is
+            // empty against a real database — shifts are their own record now,
+            // and the till shows the one it actually has open.
+            _shiftLabel(
+              strings,
+              ref.watch(shiftProvider).valueOrNull,
+              pos: context.pos,
             ),
             const SizedBox(width: PosSpace.s14),
             PosButton(
@@ -192,6 +192,47 @@ class PosTopBar extends ConsumerWidget {
       ),
     ],
   );
+
+  /// "SHIFT #0001" — or "الوردية #0001" — or the no-shift notice.
+  ///
+  /// The word is the language's and the number is the till's: `shiftLabel`
+  /// puts them in one string, and this draws the digits in mono whatever face
+  /// the word takes, because every figure on the till is mono and a shift
+  /// number read out to a manager over the phone is a figure. The mono face
+  /// has no Arabic, so the Arabic word goes in the UI face rather than in
+  /// whatever the platform substitutes.
+  Widget _shiftLabel(
+    AppStrings strings,
+    PosShift? shift, {
+    required PosPalette pos,
+  }) {
+    final digits = PosText.mono(size: 11.5, color: pos.shellMuted);
+    if (shift == null) {
+      return Text(strings.noShift, style: _wordStyle(strings.noShift, pos));
+    }
+    final label = strings.shiftLabel(shift.number);
+    final at = label.indexOf(shift.number);
+    if (at < 0) return Text(label, style: _wordStyle(label, pos));
+    final before = label.substring(0, at);
+    final after = label.substring(at + shift.number.length);
+    return Text.rich(
+      TextSpan(
+        children: [
+          if (before.isNotEmpty)
+            TextSpan(text: before, style: _wordStyle(before, pos)),
+          TextSpan(text: shift.number, style: digits),
+          if (after.isNotEmpty)
+            TextSpan(text: after, style: _wordStyle(after, pos)),
+        ],
+      ),
+    );
+  }
+
+  static final _arabic = RegExp(r'[\u0600-\u06FF]');
+
+  TextStyle _wordStyle(String text, PosPalette pos) => _arabic.hasMatch(text)
+      ? PosText.ui(size: 11.5, weight: FontWeight.w600, color: pos.shellMuted)
+      : PosText.mono(size: 11.5, color: pos.shellMuted);
 
   /// Segmented control inside a 1px shellLine box — no gaps, no radius.
   Widget _modeSwitch(

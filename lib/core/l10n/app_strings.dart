@@ -125,6 +125,11 @@ sealed class AppStrings {
   String get closeShift;
   String get noShift;
 
+  /// The open shift as the top bar names it — "SHIFT #0001". [number] is the
+  /// shift's four digits, kept Western like every other figure on the till;
+  /// only the word is translated.
+  String shiftLabel(String number);
+
   // ── Category rail ─────────────────────────────────────────────────────────
   String get categories;
   String get allItems;
@@ -3527,6 +3532,8 @@ final class EnStrings extends AppStrings {
   String get closeShift => 'Close shift';
   @override
   String get noShift => 'NO SHIFT';
+  @override
+  String shiftLabel(String number) => 'SHIFT #$number';
 
   @override
   String get categories => 'Categories';
@@ -8439,6 +8446,10 @@ final class ArStrings extends AppStrings {
   String get closeShift => 'تقفيل الوردية';
   @override
   String get noShift => 'لا توجد وردية';
+  @override
+  // Isolated, so the bidi algorithm keeps "#0001" one run after the word
+  // rather than floating the hash to the other side of it.
+  String shiftLabel(String number) => 'الوردية ${_bidi('#$number')}';
 
   @override
   String get categories => 'الأقسام';

@@ -368,10 +368,17 @@ class CartPanel extends StatelessWidget {
             pos: pos,
             emphasis: pos.accent,
           ),
-        // Shown whenever service applies to this order type, even at zero:
-        // the design lists all three rows, and a row that appears only once
-        // the ticket is non-empty makes the totals block jump as items land.
-        if (ticket.taxConfig.appliesServiceTo(ticket.orderType))
+        // Shown whenever service applies to this order type, even at a zero
+        // AMOUNT: the design lists all three rows, and a row that appears
+        // only once the ticket is non-empty makes the totals block jump as
+        // items land. A zero RATE is different — "Service 0%" on every
+        // takeaway, or "VAT 0%" on a branch that charges none, is a line the
+        // cashier reads past a hundred times a day for nothing, and the rate
+        // is configuration, so hiding on it never makes the block jump. The
+        // amount still wins: a rate of nought with money against it (a tax
+        // group on one product) is shown rather than hidden.
+        if (ticket.taxConfig.appliesServiceTo(ticket.orderType) &&
+            (ticket.taxConfig.serviceBp != 0 || !totals.service.isZero))
           _totalRow(
             s.servicePercent(
               (ticket.taxConfig.serviceBp / 100).toStringAsFixed(0),
@@ -379,11 +386,12 @@ class CartPanel extends StatelessWidget {
             totals.service.format(),
             pos: pos,
           ),
-        _totalRow(
-          s.vatPercent((ticket.taxConfig.vatBp / 100).toStringAsFixed(0)),
-          totals.vat.format(),
-          pos: pos,
-        ),
+        if (ticket.taxConfig.vatBp != 0 || !totals.vat.isZero)
+          _totalRow(
+            s.vatPercent((ticket.taxConfig.vatBp / 100).toStringAsFixed(0)),
+            totals.vat.format(),
+            pos: pos,
+          ),
         Padding(
           padding: EdgeInsets.symmetric(vertical: PosSpace.sm),
           child: ColoredBox(
