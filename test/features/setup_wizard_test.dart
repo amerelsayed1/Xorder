@@ -131,6 +131,33 @@ void main() {
       expect(draft.copyWith(step: SetupStep.deployment).canAdvance, isTrue);
     });
 
+    /// Found driving the real till offline (report 2026-10-24, F-1): the
+    /// database password field was left empty on a machine whose PostgreSQL
+    /// trusts localhost. The till never contacts PostgreSQL without a password,
+    /// yet the wizard said "PostgreSQL rejected the username or password" and
+    /// sent the installer to check a role that was fine.
+    test('an empty database password is named, not blamed on PostgreSQL', () async {
+      final container = ProviderContainer(
+        overrides: [
+          ...fakeRepositoryOverrides(),
+          // What the real pool does with no credential: an auth failure.
+          posDatabaseProvider.overrideWithValue(_ProbesAs(PosDbFailure.auth)),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final controller = container.read(setupProvider.notifier);
+      controller.setMode(DeploymentMode.offline);
+      controller.setDatabasePassword('');
+
+      expect(await controller.testConnection(), isFalse);
+
+      final draft = container.read(setupProvider);
+      final strings = container.read(stringsProvider);
+      expect(draft.error, strings.databasePasswordRequired);
+      expect(draft.error, isNot(strings.authFailure(draft.deployment.databaseUser)));
+    });
+
     test('a login that is refused is still a refusal', () async {
       final container = ProviderContainer(
         overrides: [

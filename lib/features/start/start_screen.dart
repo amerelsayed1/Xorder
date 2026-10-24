@@ -11,10 +11,13 @@ import '../../core/ui/tokens.dart';
 import '../../core/ui/widgets/pos_widgets.dart';
 import '../admin/presentation/management_eta_pane.dart' show etaProblemText;
 import '../admin/presentation/management_screen.dart' show ManagementPane;
+import '../../domain/models/branch_sales.dart' show businessDayWire;
 import '../../domain/repositories/repositories.dart';
+import '../../domain/services/business_day_service.dart';
 import '../licensing/domain/license.dart';
 import '../cash/presentation/day_close_dialog.dart';
 import '../shift/presentation/shift_dialogs.dart';
+import 'database_unavailable.dart';
 
 /// Start screen — terminal identity and opening the shift.
 ///
@@ -97,8 +100,9 @@ class _StartScreenState extends ConsumerState<StartScreen> {
         loading: () => Center(
           child: CircularProgressIndicator(color: context.pos.accent),
         ),
-        error: (error, _) => Center(
-          child: Text('$error', style: PosText.ui(color: context.pos.shellText)),
+        error: (error, _) => DatabaseUnavailable(
+          error: error,
+          onRetry: () => ref.invalidate(sessionProvider),
         ),
         data: (data) => Shortcuts(
           shortcuts: const {
@@ -218,6 +222,10 @@ class _StartScreenState extends ConsumerState<StartScreen> {
             foreground: blocked ? Colors.white : context.pos.shellText,
             onPressed: widget.onManageLicence,
           ),
+        ],
+        if (ref.watch(dayNoticeProvider).valueOrNull case final notice?) ...[
+          const SizedBox(height: PosSpace.lg),
+          _dayNoticeBanner(notice, pos: context.pos),
         ],
         if (etaProblemText(strings, ref.watch(etaFilingProblemProvider))
             case final problem?) ...[
@@ -363,6 +371,31 @@ class _StartScreenState extends ConsumerState<StartScreen> {
             ),
           ],
         ],
+      ),
+    );
+  }
+
+  /// A day left open from an earlier date, or sales after the date was closed.
+  /// A warning, not a refusal: nothing here stops the till selling.
+  Widget _dayNoticeBanner(DayNotice notice, {required PosPalette pos}) {
+    final strings = context.strings;
+    final date = businessDayWire(notice.date);
+    return Container(
+      key: const Key('start-day-notice'),
+      padding: const EdgeInsets.all(PosSpace.md),
+      decoration: BoxDecoration(
+        color: pos.offlinePillBg,
+        border: Border.all(color: pos.warn),
+      ),
+      child: Text(
+        switch (notice.kind) {
+          DayNoticeKind.staleOpenDay => strings.dayStillOpenFrom(date),
+          DayNoticeKind.todayAlreadyClosed => strings.dayClosedTodayNotice(
+            date,
+          ),
+        },
+        textAlign: TextAlign.center,
+        style: PosText.ui(size: 12.5, color: pos.offlinePillText, height: 1.5),
       ),
     );
   }

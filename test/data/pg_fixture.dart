@@ -6,20 +6,31 @@ import 'package:xorder_pos/data/postgres/pos_database.dart';
 
 /// Shared setup for the suites that need a real PostgreSQL.
 ///
-/// **Each suite gets its own database.** `flutter test` runs suites in parallel,
-/// and two of them truncating one database produced exactly the failure you
-/// would fear most here — a duplicate invoice number — from a test artefact
-/// rather than a real race. A flaky money test is worse than no test, because
-/// people learn to ignore it.
+/// **Every suite uses ONE database per checkout** ([sharedName]). It used to be
+/// one database per suite, which left ~65 `xorder_pos_<suite>_<tag>` databases
+/// on the server after every run. Each suite already migrates (idempotent) and
+/// empties what it needs in its own `setUp`, so a single database is enough —
+/// **provided the suites run one at a time.**
 ///
-/// **And each checkout gets its own set**, which is the same lesson one level
-/// out. Naming by suite alone was enough while there was one working copy; the
-/// moment two git worktrees ran `test/data` against the same server they shared
-/// `xorder_pos_permission_grants`, and each suite's `DELETE FROM pos_restaurants`
-/// wiped the other's rows mid-test. It surfaced as a foreign key violation on a
-/// restaurant that had existed a millisecond earlier — a failure that reads
-/// exactly like a real bug and is not one, which is the worst kind to leave
-/// lying around.
+/// **That proviso is the whole risk, and it has bitten before.** `flutter test`
+/// runs suites in parallel, and two of them truncating one database produced a
+/// failure you would fear most here — a duplicate invoice number — from a test
+/// artefact rather than a real race. A flaky money test is worse than no test,
+/// because people learn to ignore it. So the PostgreSQL suites (tagged
+/// `integration`) must run with `--concurrency=1`; `scripts/check.sh` does that.
+/// **Running them yourself, run `flutter test --tags integration --concurrency=1`.**
+/// A plain parallel `flutter test` with `POS_PG_HOST` set brings the flaky
+/// failures back.
+///
+/// A suite that creates and drops databases of its own (a restore needs a
+/// source and a target; an install test builds the database it is testing)
+/// keeps using [nameFor] for those, so they never share the common one.
+///
+/// **Each checkout gets its own database**, which is the same lesson one level
+/// out: two git worktrees running `test/data` against the same server used to
+/// share one database and each suite's `DELETE FROM pos_restaurants` wiped the
+/// other's rows mid-test, surfacing as a foreign key violation on a restaurant
+/// that had existed a millisecond earlier.
 ///
 /// The discriminator is derived from the checkout path rather than passed in, so
 /// nothing has to be coordinated between concurrent agents or remembered by a
@@ -35,12 +46,16 @@ class PgFixture {
   static String get password => Platform.environment['POS_PG_PASSWORD'] ?? 'postgres';
   static String get user => Platform.environment['POS_PG_USER'] ?? 'pos_till';
 
-  /// Create (once) and open a database named for the calling suite.
+  /// Create (once) and open the checkout's shared database.
+  ///
+  /// [suite] is kept so the 60-odd call sites still say who is asking, but it no
+  /// longer names a database; see the class comment for why that is safe only
+  /// when the suites run one at a time.
   static Future<PgFixture> open(String suite) async {
     final address = host;
     if (address == null) throw StateError('POS_PG_HOST is not set');
 
-    final databaseName = nameFor(suite);
+    final databaseName = sharedName;
     await _ensureDatabase(address, databaseName);
 
     return PgFixture._(
@@ -58,7 +73,11 @@ class PgFixture {
     );
   }
 
-  /// The database [open] uses for [suite] in this checkout.
+  /// The one database every suite shares in this checkout.
+  static String get sharedName => 'xorder_pos_test_$_checkout';
+
+  /// A database of its own for [suite] in this checkout, for the few suites that
+  /// create and drop databases themselves. Not what [open] uses.
   static String nameFor(String suite) => 'xorder_pos_${suite}_$_checkout';
 
   /// A role named [name] for this checkout alone.

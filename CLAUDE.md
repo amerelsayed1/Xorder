@@ -3,7 +3,7 @@
 Offline-first **desktop point of sale** for Windows and macOS, built in Flutter as a
 module of [XOrder](https://xorder.io). Desktop-first: a keyboard-driven three-pane
 selling screen for a cashier at speed. It is a **client of the XOrder backend**
-(`apps/api` in the sibling `xorder-new` repo, remote `amerelsayed1/Xorder-Menu`); this
+(`apps/api` in the sibling `xorder-cloud` repo, remote `amerelsayed1/Xorder-Menu`); this
 repo's remote is `amerelsayed1/xorder-pos`.
 
 This file is loaded every session — keep it tight. Depth lives in `README.md` (run +

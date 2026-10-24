@@ -1,7 +1,7 @@
 # Back office → cloud — handoff
 
 **From:** XOrder POS (Flutter, `xorder-pos`) · **To:** `xorder-cloud` agent
-(platform, `xorder-new`) · **Written:** 2026-09-11 · **Last updated:** 2026-09-22
+(platform, `xorder-cloud`) · **Written:** 2026-09-11 · **Last updated:** 2026-09-22
 
 Kept identical in both repos' `docs/coordination/`. The `xorder-cloud` agent owns
 this file's statuses. `pos-dev` may append questions at the bottom.
@@ -24,7 +24,7 @@ the offline product and are not changing. Your job is the cloud counterpart.
 CB-01 (`DRAFTED — awaiting owner`, see §4a), CB-09 (`BUILT — slices a–e;
 on feature branches, not merged to main, not deployed`, 2026-09-13), and —
 since the owner's 2026-09-22 go ("hand A3 and A7 to xorder-cloud") — CB-08's
-platform half and CB-10's refunds bullet, both `BUILT` on the xorder-new branch
+platform half and CB-10's refunds bullet, both `BUILT` on the xorder-cloud branch
 `pos/cloud-refunds-receipt-profile`, not pushed and not deployed. Nothing else
 here authorises implementation. Each `CB-xx` needs an explicit owner go.
 
@@ -110,11 +110,11 @@ it, and the next free number is **030**.
 ### CB-00: Reconcile the coordination files · S · do first, no go needed · **`DONE` 2026-09-11**
 
 > **Done 2026-09-11 (`xorder-cloud`).** `POS_TO_BACKEND.md`: the xorder-pos copy
-> was a superset, except for one passage. xorder-new still had the 2026-08-26
+> was a superset, except for one passage. xorder-cloud still had the 2026-08-26
 > wording of the "catalog stays authored in the cloud dashboard" bullet, and it
 > is superseded by the 2026-09-06 narrowing ("on a CLOUD terminal"), which is
-> kept. xorder-new gained POS-BE-029 and the 09-06 and 09-10 log rows.
-> `BACKEND_TO_POS.md`: xorder-new's §023 "platform-side front door" amendment
+> kept. xorder-cloud gained POS-BE-029 and the 09-06 and 09-10 log rows.
+> `BACKEND_TO_POS.md`: xorder-cloud's §023 "platform-side front door" amendment
 > and its 09-05 log row, and xorder-pos's §022 2026-09-06 amendment, are both
 > kept. They touch different passages, so nothing conflicted. No status
 > differed. Both change logs were re-sorted by date, and a 2026-09-11 row was
@@ -258,7 +258,7 @@ a ruling; the web side is the dashboard's existing login.
 > `pos-dev`'s, and it needs the CB-01 ruling.
 >
 > Wire shape: `BACKEND_TO_POS.md` §023, "Amendment 2026-09-22 (A3)". On branch
-> `pos/cloud-refunds-receipt-profile` in xorder-new; **not pushed, not
+> `pos/cloud-refunds-receipt-profile` in xorder-cloud; **not pushed, not
 > deployed**. The till half (seeding `pos_receipt_profiles` from the bundle and
 > making the pane read-only on cloud) is `pos-dev`'s.
 
@@ -278,7 +278,7 @@ platform (the restaurant profile already carries `tax_registration_number`).
 > writes (D7). (4) Slices a, b and c are approved, built in that order with an
 > owner review between slices. Slice a (suppliers, units, the feature, the
 > capability, and the D8 bundle filter) is committed as `dd9a530` on the
-> xorder-new branch `feat/cb-09-purchasing`. Slice b (stock items, purchase
+> xorder-cloud branch `feat/cb-09-purchasing`. Slice b (stock items, purchase
 > orders, receiving at the till's moving-average cost, the per-branch stock
 > ledger and "received to date", and their pages) is committed as `bcb092c`
 > (design §14). Neither is deployed. **2026-09-13, the owner: "finish all
@@ -305,7 +305,7 @@ platform (the restaurant profile already carries `tax_registration_number`).
 > go was taken as design only: the design comes back for review before
 > anything is built. No code, migration or test was written. Design, with a
 > recommended answer for each question and item-by-item approval points:
-> [`xorder-new/docs/backend/CB-09-cloud-purchasing-design.md`](../backend/CB-09-cloud-purchasing-design.md).
+> [`xorder-cloud/docs/backend/CB-09-cloud-purchasing-design.md`](../backend/CB-09-cloud-purchasing-design.md).
 > In brief: on cloud the platform is the only author of purchasing and stock.
 > There is a new `purchasing` plan feature (standalone since the owner's
 > 2026-09-12 ruling; the original design had it require `pos`) and one
@@ -341,7 +341,7 @@ stored supplier balance) and stop there.
 > (`PARTIALLY_REFUNDED` / `REFUNDED`, the till's own `PaymentStatus` words).
 > Shift cash-up now subtracts cash refunds. Wire shape and every recorded
 > deviation: `BACKEND_TO_POS.md` §010. On branch
-> `pos/cloud-refunds-receipt-profile` in xorder-new; **not pushed, not
+> `pos/cloud-refunds-receipt-profile` in xorder-cloud; **not pushed, not
 > deployed**. The till half (queueing and draining refunds) is `pos-dev`'s.
 >
 > **Still open in CB-10:** the business-day field on orders, and POS-BE-021.

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -116,6 +118,12 @@ class _LockScreenState extends ConsumerState<LockScreen> {
 
       if (staff != null) {
         ref.read(signedInStaffProvider.notifier).signIn(staff);
+        // Resuming a shift: make sure the branch is trading in a day. Covers a
+        // till upgraded mid-shift and a day that failed to open earlier. Not
+        // awaited and never throws: unlocking must not wait on it.
+        if (ref.read(shiftProvider).valueOrNull != null) {
+          unawaited(ref.read(ensureBusinessDayProvider)(staff));
+        }
         widget.onUnlocked();
       } else {
         setState(() {

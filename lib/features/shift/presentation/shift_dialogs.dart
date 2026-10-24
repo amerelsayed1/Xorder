@@ -115,6 +115,12 @@ class _OpenShiftDialogState extends ConsumerState<OpenShiftDialog> {
     });
 
     try {
+      // The trading day first: a trigger files the shift under the day whose
+      // window contains its `opened_at` when the row is inserted (migration 36),
+      // so a day opened afterwards would leave this shift unfiled. Returns
+      // rather than throws — the shift opens whatever the day does (the till
+      // never stops selling because of it).
+      await ref.read(ensureBusinessDayProvider)(staff);
       final shift = await ref
           .read(shiftRepositoryProvider)
           .open(by: staff, openingFloat: float);

@@ -112,6 +112,7 @@ import '../domain/models/tender_method.dart';
 import '../domain/repositories/admin_repositories.dart';
 import '../domain/repositories/repositories.dart';
 import '../domain/services/authorization.dart';
+import '../domain/services/business_day_service.dart';
 import '../domain/services/floor_overlay.dart';
 import '../domain/services/ticket_engine.dart';
 
@@ -549,6 +550,62 @@ final businessDayRepositoryProvider = Provider<BusinessDayRepository>((ref) {
 final businessDayProvider = FutureProvider<BusinessDay?>(
   (ref) => ref.watch(businessDayRepositoryProvider).current(),
 );
+
+/// Make sure the branch is trading in a day, for [PosStaff] who is signing in
+/// or opening a shift. **Never throws and never blocks selling** — see
+/// `ensureBusinessDay`. A provider holding a function so a test can hand the
+/// screens a double, and so the two doors (the shift dialog and the lock
+/// screen) cannot drift apart.
+final ensureBusinessDayProvider =
+    Provider<Future<BusinessDayResult> Function(PosStaff by)>((ref) {
+      return (by) async {
+        // Guarded here as well as inside `ensureBusinessDay`: the two doors
+        // await this inside their own `try`, whose `catch` would stop the shift
+        // opening and print the raw exception. "The till never stops selling
+        // because of the day" is held by this guard, not by everything below it
+        // happening never to throw.
+        try {
+          final result = await ensureBusinessDay(
+            days: ref.read(businessDayRepositoryProvider),
+            policy: ref.read(dayPolicyProvider),
+            now: DateTime.now(),
+            by: by,
+          );
+          if (result.outcome == BusinessDayOutcome.failed) {
+            // Logged, not shown: the shift opens regardless and the next
+            // sign-in tries again.
+            debugPrint('business day: could not open one: ${result.error}');
+          }
+          // The close button, Home and the start-screen notice all read the
+          // day; the notice watches it, so this refreshes all three.
+          ref.invalidate(businessDayProvider);
+          return result;
+        } on Object catch (error) {
+          debugPrint('business day: unexpected failure: $error');
+          return BusinessDayResult(BusinessDayOutcome.failed, error: error);
+        }
+      };
+    });
+
+/// What the start screen should say about the day, if anything. Derived from
+/// current state each time rather than stored, so it cannot outlive the
+/// condition it describes. Not `autoDispose`, like [businessDayProvider]: it is
+/// refreshed by invalidation, and a disposal timer outliving a screen is what
+/// the start-screen tests would trip over.
+final dayNoticeProvider = FutureProvider<DayNotice?>((ref) async {
+  final open = await ref.watch(businessDayProvider.future);
+  final shiftOpen = ref.watch(shiftProvider).valueOrNull != null;
+  final lastClosed = open == null
+      ? await ref.watch(businessDayRepositoryProvider).lastClosed()
+      : null;
+  return dayNotice(
+    open: open,
+    lastClosed: lastClosed,
+    policy: ref.watch(dayPolicyProvider),
+    now: DateTime.now(),
+    shiftOpen: shiftOpen,
+  );
+});
 
 /// Money into and out of the drawer that is not a sale.
 final cashMovementsRepositoryProvider = Provider<CashMovementsRepository>((
@@ -2206,9 +2263,42 @@ class TerminalReset {
     // from what is actually still true rather than from a half-filled attempt.
     _ref.invalidate(setupProvider);
   }
+
+  /// **Back to a blank till.** Everything [run] does, and also what it keeps on
+  /// purpose: the licence file and its cached verdict, every saved password and
+  /// token (the whole `secrets.json`, not only the two entries [run] touches),
+  /// and this machine's identity, so the wizard opens on "enter a licence key"
+  /// as on a machine that has never run it.
+  ///
+  /// **It erases this machine's memory, nothing more.** No database is dropped,
+  /// no sale, backup or platform record is touched; the dialog that offers it
+  /// says so. Every file goes through its own store, and every store resolves
+  /// its folder the same way (`getApplicationSupportDirectory`), so this is the
+  /// same wipe on macOS and Windows. Files the installer wrote elsewhere (the
+  /// Windows `ProgramData` role and credentials) are not this till's to delete.
+  Future<void> runHard() async {
+    await run();
+    await _ref.read(licenseStoreProvider).clear();
+    await _ref.read(licenceCheckStoreProvider).clear();
+    await _ref.read(secretsFileProvider).deleteFile();
+
+    _ref.read(terminalProfileProvider.notifier).renew();
+    _ref.read(signedInStaffProvider.notifier).signOut();
+
+    // The wizard and everything that read the licence start again from disk.
+    _ref.invalidate(licenceEntitlementProvider);
+    _ref.invalidate(licenceClaimsProvider);
+    _ref.invalidate(setupProvider);
+  }
 }
 
 final terminalResetProvider = Provider<TerminalReset>(TerminalReset.new);
+
+/// The shared `secrets.json`, for the hard reset to delete whole. A provider so
+/// a test can point it at a temporary folder.
+final secretsFileProvider = Provider<FileSecretStore>(
+  (ref) => FileSecretStore(key: FileSecretStore.databasePasswordKey),
+);
 
 /// The licence entitlement currently in force.
 ///
@@ -2246,6 +2336,10 @@ class TerminalProfileController extends Notifier<TerminalProfile> {
     terminalId: state.terminalId,
     installationId: state.installationId,
   );
+
+  /// A brand-new installation: no terminal id, a new installation id. The hard
+  /// reset's counterpart to [reset], which deliberately keeps both.
+  void renew() => state = TerminalProfile(installationId: _uuid.v4());
 }
 
 final terminalProfileProvider =

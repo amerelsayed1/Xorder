@@ -134,6 +134,22 @@ class FileSecretStore implements PosDbSecretStore {
     }
   }
 
+  /// Delete the whole secrets file — every entry, not only this instance's
+  /// [key]. For the hard reset: the file holds the database password, the cloud
+  /// device token and the back-office and backup passwords together, and a till
+  /// handed to somebody else must keep none of them. A missing file is not an
+  /// error.
+  Future<void> deleteFile() async {
+    try {
+      final file = await _file();
+      if (await file.exists()) await file.delete();
+      _lastFailure = null;
+    } on FileSystemException catch (error) {
+      _lastFailure = error;
+      throw PosDbSecretStoreException(error);
+    }
+  }
+
   @override
   Future<void> clear() async {
     try {
