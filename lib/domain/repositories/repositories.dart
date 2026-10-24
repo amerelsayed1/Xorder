@@ -473,6 +473,11 @@ abstract interface class OrdersRepository {
   /// exist. Read from the queue rather than counted in memory, so it survives a
   /// restart: a till that forgot its backlog when someone rebooted it would
   /// report "synced" while holding a day of unsent takings.
+  ///
+  /// **Pending only — not what the drain has held for a person.** A held
+  /// record is still owed, but no pass will send it, so it is counted apart
+  /// (`SyncQueueRepository.heldSyncCount`). A caller asking "what would be lost
+  /// if this queue went away" wants both.
   Future<int> pendingSyncCount();
 
   /// Record an order that was made and then thrown away.
@@ -1073,12 +1078,25 @@ abstract interface class ProvisioningRepository {
     required String password,
   });
 
+  /// [installId] is this machine's `TerminalProfile.installationId` — the
+  /// identity minted once per installation, which the licence fingerprint is
+  /// also taken from. A registration that carries it is an upsert: the same
+  /// machine registering again (a retried step, a wizard killed and re-run, a
+  /// reset) lands on the row it already has rather than spending a second
+  /// seat. Required-but-nullable rather than optional so that a new caller has
+  /// to decide; null is the old behaviour, a fresh row every call, and is only
+  /// right for something that genuinely has no installation behind it.
+  ///
+  /// The cloud implementation takes its fingerprint from its constructor and
+  /// ignores this; the branch-database one is where it matters, because there
+  /// `max_terminals` is enforced by counting `pos_terminals` rows.
   Future<ClaimResult> registerManually({
     required String tenantSlug,
     required String username,
     required String password,
     required String terminalName,
     required int branchId,
+    required String? installId,
   });
 
   /// Adopt a terminal the dashboard already created, rather than making

@@ -59,6 +59,10 @@ List<Override> fakeRepositoryOverrides({
       provisioningRepositoryProvider.overrideWithValue(FakeProvisioningRepository()),
       ordersRepositoryProvider.overrideWithValue(FakeOrdersRepository()),
       shiftRepositoryProvider.overrideWithValue(FakeShiftRepository()),
+      // Nothing held. The real binding is unconfigured here anyway (no
+      // terminal profile), but a test that gives the harness one must not find
+      // a Postgres repository behind the Sync pane.
+      syncQueueRepositoryProvider.overrideWithValue(FakeSyncQueueRepository()),
       hardwarePortsProvider.overrideWithValue(FakeHardwarePorts()),
       ...(() {
         // Roles and staff share one store, because a fake staff directory that

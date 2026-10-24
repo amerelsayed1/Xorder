@@ -69,6 +69,7 @@ import '../data/postgres/money_config_codec.dart';
 import '../data/postgres/postgres_parked_tickets.dart';
 import '../data/postgres/postgres_print_queue_repository.dart';
 import '../data/postgres/postgres_shift_repository.dart';
+import '../data/postgres/postgres_sync_queue_repository.dart';
 import '../data/postgres/postgres_site_licence.dart';
 import '../data/unconfigured/unconfigured_repositories.dart';
 import '../features/admin/application/admin_session.dart'
@@ -87,6 +88,7 @@ import '../features/licensing/domain/license.dart';
 import '../features/licensing/domain/online_verdict.dart';
 import '../features/setup/application/setup_controller.dart';
 import '../domain/models/backup.dart';
+import '../domain/models/held_sync.dart';
 import '../domain/models/catalog.dart';
 import '../domain/models/customer.dart';
 import '../domain/models/dining_table.dart';
@@ -1020,9 +1022,49 @@ final floorTablesProvider = FutureProvider<List<DiningTable>>((ref) async {
 /// prevent it saying.
 ///
 /// Invalidate it after anything that enqueues or drains.
+///
+/// **What the next pass will try** — not what the drain has held for a person,
+/// which is [heldSyncCountProvider]. The two were one number until a single
+/// refused sale left the pill reading "1 unsent" for ever.
 final FutureProvider<int> pendingSyncCountProvider = FutureProvider<int>(
   (ref) => ref.watch(ordersRepositoryProvider).pendingSyncCount(),
 );
+
+/// The records the drain has held for a person (D1/D2/D13).
+///
+/// Unconfigured — empty — on an offline till as well as on one with no
+/// database: an offline till owes the platform nothing, so nothing it holds
+/// would ever be drained, and a Retry button there would do nothing at all.
+/// On the till's credential, which already holds UPDATE on both outboxes; see
+/// [PostgresSyncQueueRepository].
+final Provider<SyncQueueRepository> syncQueueRepositoryProvider =
+    Provider<SyncQueueRepository>((ref) {
+      final config = ref.watch(deploymentProvider);
+      final context = ref.watch(posWriteContextProvider);
+      if (context == null ||
+          PosDatabase.hostFor(config) == null ||
+          !config.mode.syncsSalesToPlatform) {
+        return const UnconfiguredSyncQueueRepository();
+      }
+      return PostgresSyncQueueRepository(
+        database: ref.watch(posDatabaseProvider),
+        config: config,
+        restaurantId: context.restaurantId,
+        branchId: context.branchId,
+        terminalId: context.terminalId,
+      );
+    });
+
+/// How many records are held. Invalidated with [pendingSyncCountProvider].
+final FutureProvider<int> heldSyncCountProvider = FutureProvider<int>(
+  (ref) => ref.watch(syncQueueRepositoryProvider).heldSyncCount(),
+);
+
+/// The held records themselves, for the Sync pane.
+final FutureProvider<List<HeldSyncItem>> heldSyncItemsProvider =
+    FutureProvider<List<HeldSyncItem>>(
+      (ref) => ref.watch(syncQueueRepositoryProvider).listHeldSync(),
+    );
 
 /// Fan a finished sync pass out into the providers that care.
 ///
@@ -1033,7 +1075,11 @@ final FutureProvider<int> pendingSyncCountProvider = FutureProvider<int>(
 /// widget test can notice. Keeping the handling here means the wiring itself
 /// is the thing under test.
 void applySyncOutcome(ProviderContainer container, SyncOutcome outcome) {
-  container.invalidate(pendingSyncCountProvider);
+  container
+    ..invalidate(pendingSyncCountProvider)
+    // A pass that held something moves it from one count to the other.
+    ..invalidate(heldSyncCountProvider)
+    ..invalidate(heldSyncItemsProvider);
 
   // Written on every pass, not only on rejection, so a till that gets
   // re-paired clears the banner by itself instead of carrying it until

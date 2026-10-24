@@ -7,6 +7,9 @@ import 'package:xorder_pos/data/cloud/cloud_api.dart';
 import 'package:xorder_pos/data/cloud/outbox_drain.dart';
 import 'package:xorder_pos/data/postgres/migrations.dart';
 import 'package:xorder_pos/data/postgres/pos_database.dart';
+import 'package:xorder_pos/data/postgres/postgres_sync_queue_repository.dart';
+import 'package:xorder_pos/domain/models/permissions.dart';
+import 'package:xorder_pos/domain/models/shift.dart';
 
 import 'pg_fixture.dart';
 
@@ -549,6 +552,65 @@ void main() {
       expect(row[0], isNotNull);
       expect(row[2], isNull, reason: 'the stale MALFORMED_ACK is cleared');
       expect(row[3], 2);
+      expect(row[5], 8814);
+    });
+
+    test('a held sale is skipped until somebody releases it, and goes on the '
+        'next pass after (D1)', () async {
+      final sale = await queueSale();
+      // What a pass that met `422 MENU_ITEM_NOT_FOUND` left behind: the
+      // product was deleted on the dashboard after the sale was rung up.
+      await db.query(
+        pg.config,
+        '''
+        UPDATE pos_outbox
+           SET quarantined_at = now(), quarantine_code = 'MENU_ITEM_NOT_FOUND',
+               last_error = '422 MENU_ITEM_NOT_FOUND', attempts = 1
+         WHERE id = @id
+        ''',
+        parameters: {'id': sale.outboxId},
+      );
+
+      // The platform would take it now — the product is back — but nobody
+      // has said so, and the drain must not decide that for itself.
+      final skipped = await drain(
+        _ScriptedPlatform({sale.client: (accepted, Headers.jsonContentType)}),
+      );
+      expect(skipped.attempted, 0);
+      expect((await outboxRow(sale.outboxId))[3], 1, reason: 'not tried');
+
+      final queue = PostgresSyncQueueRepository(
+        database: db,
+        config: cloud,
+        restaurantId: restaurantId,
+        branchId: branchId,
+        terminalId: terminalId,
+      );
+      final [held] = await queue.listHeldSync();
+      final released = await queue.releaseHeldSync(
+        held,
+        by: const PosStaff(
+          id: 0,
+          name: 'Amer M.',
+          role: PosRole(
+            id: 1,
+            code: 'owner',
+            nameEn: 'Owner',
+            capabilities: {PosCapability.terminalManage},
+          ),
+        ),
+      );
+      expect(released.succeeded, isTrue);
+
+      final report = await drain(
+        _ScriptedPlatform({sale.client: (accepted, Headers.jsonContentType)}),
+      );
+
+      expect(report.delivered, 1);
+      final row = await outboxRow(sale.outboxId);
+      expect(row[0], isNotNull, reason: 'delivered');
+      expect(row[1], isNull, reason: 'no longer held');
+      expect(row[3], 2, reason: 'the first refusal, and this acceptance');
       expect(row[5], 8814);
     });
   });

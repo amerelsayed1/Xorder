@@ -3,6 +3,7 @@ import '../../../core/money/quantity.dart';
 import '../../../domain/models/backup.dart';
 import '../../../domain/models/catalog.dart';
 import '../../../domain/models/combo_draft.dart';
+import '../../../domain/models/held_sync.dart';
 import '../../../domain/models/option_group.dart';
 import '../../../domain/models/purchase_order.dart';
 import '../../../domain/models/supplier_invoice.dart';
@@ -131,8 +132,41 @@ abstract final class AdminText {
     AuditAction.adminTimedOut => s.actAdminTimedOut,
     AuditAction.adminRefused => s.actAdminRefused,
     AuditAction.adminLockedOut => s.actAdminLockedOut,
+    AuditAction.syncRecordReleased => s.actSyncRecordReleased,
     _ => action,
   };
+
+  /// What kind of record is held. Enum-keyed, so a lifecycle event added to the
+  /// outbox without a word here fails to compile.
+  static String heldSyncKind(AppStrings s, HeldSyncKind kind) =>
+      switch (kind) {
+        HeldSyncKind.sale => s.heldKindSale,
+        HeldSyncKind.shiftOpen => s.heldKindShiftOpen,
+        HeldSyncKind.shiftClose => s.heldKindShiftClose,
+        HeldSyncKind.cashMovement => s.heldKindCashMovement,
+        HeldSyncKind.refund => s.heldKindRefund,
+        HeldSyncKind.customer => s.heldKindCustomer,
+        HeldSyncKind.other => s.heldKindOther,
+      };
+
+  /// Why it is held, in a sentence. The raw code is shown beside it in mono,
+  /// because it is what support asks for; this is what the manager reads.
+  static String quarantineCode(AppStrings s, QuarantineCode code) =>
+      switch (code) {
+        QuarantineCode.validationFailed => s.quarantineValidationFailed,
+        QuarantineCode.idempotencyPayloadMismatch =>
+          s.quarantineIdempotencyPayloadMismatch,
+        QuarantineCode.menuItemNotFound => s.quarantineMenuItemNotFound,
+        QuarantineCode.branchNotInTenant => s.quarantineBranchNotInTenant,
+        QuarantineCode.customerNotFound => s.quarantineCustomerNotFound,
+        QuarantineCode.refundExceedsSold => s.quarantineRefundExceedsSold,
+        QuarantineCode.saleNeverQueued => s.quarantineSaleNeverQueued,
+        QuarantineCode.refundHasNoLines => s.quarantineRefundHasNoLines,
+        QuarantineCode.tenderNotFromPlatform =>
+          s.quarantineTenderNotFromPlatform,
+        QuarantineCode.localSourceMissing => s.quarantineLocalSourceMissing,
+        QuarantineCode.unknown => s.quarantineUnknown,
+      };
 
   /// How much of a backup a row actually is.
   ///

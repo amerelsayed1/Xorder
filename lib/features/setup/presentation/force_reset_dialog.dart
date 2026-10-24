@@ -66,7 +66,12 @@ Future<bool> showForceResetDialog(BuildContext context, WidgetRef ref) async {
 
   var queued = 0;
   try {
-    queued = await ref.read(ordersRepositoryProvider).pendingSyncCount();
+    // Pending AND held. The pending count leaves out what the drain has held
+    // for a person, because no pass will send it — but this question is what
+    // a reset leaves behind unsent, and a held sale is exactly that.
+    queued =
+        await ref.read(ordersRepositoryProvider).pendingSyncCount() +
+        await ref.read(syncQueueRepositoryProvider).heldSyncCount();
   } on Exception {
     queued = 0;
   }

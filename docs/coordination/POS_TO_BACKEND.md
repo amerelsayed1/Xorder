@@ -2040,6 +2040,31 @@ that matters here, and the order's `total_minor` is all it needs.
 
 ---
 
+## Amendment to POS-BE-022 — `pending_count` stops counting held records; `held_count` beside it
+
+**Raised 2026-10-24 (DATABASE_AND_SYNC D1/D2/D8/D13). Additive, `PROPOSED`.**
+
+`pending_count` and `oldest_pending_at` used to count every undelivered row,
+including the ones the drain had **held for a person** (a §019 quarantine code,
+or a client-side hold such as `TENDER_NOT_FROM_PLATFORM` /
+`REFUND_HAS_NO_LINES`). No pass ever sends those, so one held sale pinned
+`oldest_pending_at` to its date for ever and the fleet view showed a current
+till as weeks behind.
+
+The heartbeat now sends:
+
+- `pending_count` / `oldest_pending_at` — **what the next drain pass will try**
+  (`delivered_at IS NULL AND quarantined_at IS NULL`);
+- `held_count` — undelivered and held, waiting on a person (the till's Sync
+  pane now lists them with a Retry, behind `terminal.manage`).
+
+The sum is the old `pending_count`. **Ask:** store `held_count` beside
+`pending_count` on `pos_terminals` and show it as its own Super Admin column —
+it is the money that is stuck rather than slow, which is the call support
+should make first. Until then the key is ignored and nothing breaks.
+
+---
+
 ## Additions to the POS-BE-019 error vocabulary
 
 ```
@@ -2275,3 +2300,4 @@ owner's explicit go to move `APPROVED → IN_PROGRESS`.
 | 2026-09-27 | **Reconciliation + two 2026-09 revisions recorded (desktop coordination pass).** Synced this file's index and the POS-BE-006 entry to `BACKEND_TO_POS.md`: Cloud Wave 1 (2026-09-04) items and POS-BE-010 (2026-09-22) are `READY`; the stale "`order_items` has no `menu_item_id` / re-pricing impossible" prose and the "implementation not started" headers were corrected (T0.2 shipped, endpoint live, till integrated). Verified in the Flutter code: the wire line sends `menu_item_id` + English-only `name_snapshot` (`product.nameEn`) with no `name_ar` and no `variant_option_id` (folded into `option_ids[]`); catalog is bilingual and seeded with verbatim ids; the licensing runtime is offline Ed25519 (`DefaultLicenceService`, 10 `LicenseState` values, `canCashUp/Reprint/Export` hardcoded true), `max_offline_days` parsed-not-enforced, `bootstrap.json`/`last_platform_contact_at` design-only, and **no** online `/license/check` exists. Recorded **POS-BE-031** (online dashboard-managed `/license/check` — POS position, ordered till plan, and asks for verdict enum / request+response shapes / `enforcement` flag / grace-window bound) and an **Amendment to POS-BE-006** (till also sends `name_ar_snapshot` for the fallback path). Both `PROPOSED`; nothing built on the till; POS stays on POS-BE-015 offline path + the current `menu_item_id`+`name_snapshot` wire. No backend code authorised. |
 | 2026-10-07 | **Owner decisions recorded — both 2026-09 revisions agreed.** Every ask under the `name_ar_snapshot` amendment and POS-BE-031 is answered in `BACKEND_TO_POS.md` → "Owner decisions — 2026-10-07". Amendment → `APPROVED` as proposed. POS-BE-031 → `APPROVED` with one addition: the verdict enum gains `not_yet_valid` (+ `starts_at`); `enforcement` arrives in the bootstrap `licence` object and the activate reply (absent ⇒ `offline`). Nothing built on the till yet. |
 | 2026-09-22 | **POS-BE-010, till half: a cloud till uploads its refunds.** Two halves, both additive. (1) Every order line the drain sends now carries `lines[].client_line_id` — the LOCAL `pos_order_lines.id` as a string, not `line_key`: `TicketEngine` legitimately holds two rows with the same key (a sent line plus a new draft of the same dish), and the platform indexes `unique(order_id, client_line_id)`, so a key would turn a valid order into a constraint failure. It is excluded from the platform's idempotency hash, so orders already delivered without one do not collide. (2) `PostgresRefundsRepository.issue` queues a `refund` event in `pos_sync_outbox` **in the refund's own transaction**, keyed on `client_refund_id` itself — one key for one act, so a replayed refund cannot queue a second delivery — and the drain's `'refund' => null` guard is replaced by the real §010 request. **Ordering:** a refund is never sent before its sale; while the sale's `pos_outbox` row is undelivered the refund *defers* (self-healing, no person needed), and a sale that was never queued at all holds the refund under `SALE_NEVER_QUEUED`. `REFUND_EXCEEDS_SOLD` quarantines: the ceiling only comes down, so retrying is a queue that never empties. `POS_CAPABILITY_MISSING` still defers — a manager granting `pos.refund` makes the next pass succeed. Migration 50 adds `pos_refunds.server_credit_note_number`, written back from the reply in the same transaction that marks the row delivered, exactly as a sale keeps the platform's invoice number; the till's grant on it is column-scoped. **One gap raised, not worked around** — see *Amendment to POS-BE-010*: a refund given as a flat amount off the bill has no lines, §010 has no shape for it, and the till holds those locally under `REFUND_HAS_NO_LINES` rather than inventing an attribution that would corrupt the platform's per-line counters. Tests: `test/data/cloud_refunds_test.dart` (18, PostgreSQL) + 6 pure ones in `test/data/outbox_drain_test.dart`. **Second defect found and fixed while building this:** the order drain's delivery bookkeeping shared one parameter map between two statements, which the driver refuses — so no cloud sale had EVER been marked delivered. The platform had the sale (idempotency held), but `delivered_at` was never written, the sale was resent on every pass forever and the "owed to the platform" count never came down. Nothing committed or deployed. |
+| 2026-10-24 | **Amendment to POS-BE-022 raised: `held_count`.** `pending_count`/`oldest_pending_at` now exclude records the drain has held for a person; the heartbeat carries `held_count` beside them, so the old figure is their sum. The till gains a "Held sync items" list with Retry (audited, `terminal.manage`). Additive; `PROPOSED`. No backend code touched. |

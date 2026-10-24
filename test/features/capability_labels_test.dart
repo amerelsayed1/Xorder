@@ -6,6 +6,7 @@ import 'package:xorder_pos/core/l10n/app_strings.dart';
 import 'package:xorder_pos/domain/models/refund.dart';
 import 'package:xorder_pos/core/money/quantity.dart';
 import 'package:xorder_pos/domain/models/finance_report.dart';
+import 'package:xorder_pos/domain/models/held_sync.dart';
 import 'package:xorder_pos/domain/models/permissions.dart';
 import 'package:xorder_pos/domain/models/purchase_order.dart';
 import 'package:xorder_pos/domain/models/sales_report.dart';
@@ -131,6 +132,32 @@ void main() {
             reason: method.name,
           );
         }
+      });
+
+      test('every held sync record says what it is and why, in words', () {
+        // Enum-keyed, so a missing case cannot compile; what is left to catch
+        // is an empty translation, or a code pasted in where a sentence
+        // belongs — `MENU_ITEM_NOT_FOUND` read out to a restaurant owner.
+        for (final kind in HeldSyncKind.values) {
+          expect(
+            AdminText.heldSyncKind(strings, kind).trim(),
+            isNotEmpty,
+            reason: kind.name,
+          );
+        }
+        final sentences = <String>{};
+        for (final code in QuarantineCode.values) {
+          final label = AdminText.quarantineCode(strings, code);
+          expect(label.trim(), isNotEmpty, reason: code.name);
+          expect(label, isNot(contains('_')), reason: code.name);
+          sentences.add(label);
+        }
+        expect(
+          sentences,
+          hasLength(QuarantineCode.values.length),
+          reason: 'two reasons worded alike are two problems nobody can tell '
+              'apart',
+        );
       });
 
       test('every staff status the Users filter offers is named', () {
@@ -363,4 +390,5 @@ const _actionsThisBuildWrites = <String>[
   AuditAction.adminTimedOut,
   AuditAction.adminRefused,
   AuditAction.adminLockedOut,
+  AuditAction.syncRecordReleased,
 ];

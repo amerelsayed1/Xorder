@@ -9,6 +9,7 @@ import '../models/tax.dart';
 import '../models/order_type_config.dart';
 import '../services/menu_import.dart';
 import '../models/dining_table.dart';
+import '../models/held_sync.dart';
 import '../models/permissions.dart';
 import '../models/receipt_profile.dart';
 import '../models/shift.dart';
@@ -547,10 +548,56 @@ abstract final class AuditAction {
   /// know about.
   static const adminLockedOut = 'admin.locked_out';
 
+  /// A held sync record put back in the queue (DATABASE_AND_SYNC D1/D2/D13).
+  /// Its own action because it is a decision that a sale or a refund the
+  /// platform refused should be offered to it again — and when the second
+  /// refusal comes, "who pressed Retry, on what, and what did it say the first
+  /// time" is the question. The row keeps the code and the error it cleared.
+  static const syncRecordReleased = 'sync_record.released';
+
   static const entityAdminSession = 'admin_session';
+
+  /// An outbox row; the entity id is `<table>:<id>`, because the two outbox
+  /// tables number their rows independently.
+  static const entitySyncRecord = 'sync_record';
   static const entityTable = 'table';
   static const entityReceiptProfile = 'receipt_profile';
   static const entityBackup = 'backup';
+}
+
+/// The records the drain has held for a person, and putting one back.
+///
+/// **Release, never delete, never edit.** A held sale is money that changed
+/// hands; the only thing a person can usefully decide from the till is "try it
+/// again" — after the product came back on the platform, the tender was
+/// synced, the customer was created. Anything that edits the record itself
+/// would be a till rewriting a sale after the fact, which is what the outbox's
+/// no-DELETE grant exists to stop. The cure for a record that is wrong is on
+/// the platform, or with support.
+///
+/// Releasing clears `quarantined_at`, `quarantine_code` and `last_error` in the
+/// same transaction as the audit row; the caller then kicks the drain. If the
+/// platform refuses again it is held again, with the new answer — so the worst
+/// a mistaken Retry costs is one conversation with the platform, and a §007
+/// idempotency key makes even an accepted resend safe.
+///
+/// Gated on `terminal.manage`: the queue is this till's, like its printer and
+/// its setup. Asked here as well as on the button, as every write is.
+abstract interface class SyncQueueRepository {
+  /// Every held record, newest first.
+  Future<List<HeldSyncItem>> listHeldSync();
+
+  /// How many there are — the number the Sync pane shows next to the unsent
+  /// count, and that is *not* in it.
+  Future<int> heldSyncCount();
+
+  /// Put [item] back in the queue. Refused with [EditedElsewhere] when it is no
+  /// longer held — somebody on another till pressed Retry first, or the drain
+  /// already had it back.
+  Future<AdminResult<HeldSyncItem>> releaseHeldSync(
+    HeldSyncItem item, {
+    required PosStaff by,
+  });
 }
 
 /// Authoring the menu on the till itself.

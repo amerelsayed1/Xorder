@@ -7,6 +7,7 @@ import '../../domain/models/stock_item.dart';
 import '../../domain/models/stock_level.dart';
 import '../../domain/models/catalog.dart';
 import '../../domain/models/dining_table.dart';
+import '../../domain/models/held_sync.dart';
 import '../../domain/models/order_record.dart';
 import '../../domain/models/refund.dart';
 import '../../domain/models/refund_history.dart';
@@ -1863,4 +1864,39 @@ class FakeStockLevelsRepository implements StockLevelsRepository {
 
   @override
   Future<List<StockLevel>> all() async => [...levels];
+}
+
+/// The held records, in memory: what the Sync pane's widget tests list and
+/// release. Asks the same capability the Postgres one does, so a test cannot
+/// pass a Retry the real repository would refuse.
+class FakeSyncQueueRepository implements SyncQueueRepository {
+  FakeSyncQueueRepository([List<HeldSyncItem> held = const []])
+    : held = [...held];
+
+  final List<HeldSyncItem> held;
+  final released = <HeldSyncItem>[];
+
+  @override
+  Future<List<HeldSyncItem>> listHeldSync() async => [...held];
+
+  @override
+  Future<int> heldSyncCount() async => held.length;
+
+  @override
+  Future<AdminResult<HeldSyncItem>> releaseHeldSync(
+    HeldSyncItem item, {
+    required PosStaff by,
+  }) async {
+    if (!Authorization.check(by, PosCapability.terminalManage).isAllowed) {
+      return const AdminResult.refused(
+        NotPermitted(PosCapability.terminalManage),
+      );
+    }
+    final index = held.indexWhere(
+      (h) => h.id == item.id && h.kind.isSale == item.kind.isSale,
+    );
+    if (index < 0) return const AdminResult.refused(EditedElsewhere(0));
+    released.add(held.removeAt(index));
+    return AdminResult.done(item);
+  }
 }

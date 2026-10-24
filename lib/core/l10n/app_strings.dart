@@ -1657,6 +1657,7 @@ sealed class AppStrings {
   String get actAdminTimedOut;
   String get actAdminRefused;
   String get actAdminLockedOut;
+  String get actSyncRecordReleased;
 
   // ── Admin Mode ────────────────────────────────────────────────────────────
   //
@@ -1745,6 +1746,35 @@ sealed class AppStrings {
   String syncPassSent(int count);
   String get syncOfflineTill;
   String get syncBranchServer;
+
+  // Back office › System › Sync › Held sync items (D1/D2/D13).
+  String get syncHeldCount;
+  String get heldSyncTitle;
+  String get heldSyncBlurb;
+  String get heldSyncNone;
+  String get heldSyncRetry;
+  String get heldSyncReleased;
+  String get heldSyncNotYours;
+  String get heldSyncAttempts;
+  String get heldSyncRetryFailed;
+  String get heldKindSale;
+  String get heldKindShiftOpen;
+  String get heldKindShiftClose;
+  String get heldKindCashMovement;
+  String get heldKindRefund;
+  String get heldKindCustomer;
+  String get heldKindOther;
+  String get quarantineValidationFailed;
+  String get quarantineIdempotencyPayloadMismatch;
+  String get quarantineMenuItemNotFound;
+  String get quarantineBranchNotInTenant;
+  String get quarantineCustomerNotFound;
+  String get quarantineRefundExceedsSold;
+  String get quarantineSaleNeverQueued;
+  String get quarantineRefundHasNoLines;
+  String get quarantineTenderNotFromPlatform;
+  String get quarantineLocalSourceMissing;
+  String get quarantineUnknown;
 
   // Back office › Settings › Printer & cash drawer.
   String get printerNotYours;
@@ -6612,6 +6642,8 @@ final class EnStrings extends AppStrings {
   String get actAdminLockedOut =>
       'Admin Mode shut its door after repeated wrong PINs for this username';
   @override
+  String get actSyncRecordReleased => 'Sent a held sync record again';
+  @override
   String get actAdminRefused => 'Was refused Admin Mode';
   @override
   String adminTitle(String pane) => pane;
@@ -6765,6 +6797,78 @@ final class EnStrings extends AppStrings {
       'server below, and a backup is the copy that keeps them safe.';
   @override
   String get syncBranchServer => 'Branch server';
+  @override
+  String get syncHeldCount => 'Held for a person';
+  @override
+  String get heldSyncTitle => 'Held sync items';
+  @override
+  String get heldSyncBlurb =>
+      'Records the platform refused, or that this till would not send. They '
+      'wait here and are never deleted. Retry puts one back in the queue once '
+      'whatever stopped it is fixed; if the platform refuses it again, it '
+      'comes back here.';
+  @override
+  String get heldSyncNone => 'Nothing is held.';
+  @override
+  String get heldSyncRetry => 'Retry';
+  @override
+  String get heldSyncReleased =>
+      'Back in the queue. It goes on the next sync.';
+  @override
+  String get heldSyncNotYours =>
+      'Only somebody who may manage this terminal can retry a held record.';
+  @override
+  String get heldSyncAttempts => 'Attempts';
+  @override
+  String get heldSyncRetryFailed =>
+      'The database did not answer, so nothing changed. Try again.';
+  @override
+  String get heldKindSale => 'Sale';
+  @override
+  String get heldKindShiftOpen => 'Shift opened';
+  @override
+  String get heldKindShiftClose => 'Shift closed';
+  @override
+  String get heldKindCashMovement => 'Cash movement';
+  @override
+  String get heldKindRefund => 'Refund';
+  @override
+  String get heldKindCustomer => 'Customer';
+  @override
+  String get heldKindOther => 'Other record';
+  @override
+  String get quarantineValidationFailed =>
+      'The platform found a problem with the record itself';
+  @override
+  String get quarantineIdempotencyPayloadMismatch =>
+      'The platform already has a different record under the same key';
+  @override
+  String get quarantineMenuItemNotFound =>
+      'An item on it no longer exists on the platform';
+  @override
+  String get quarantineBranchNotInTenant =>
+      "The platform does not recognise this branch as this restaurant's";
+  @override
+  String get quarantineCustomerNotFound =>
+      'The customer on it is not on the platform';
+  @override
+  String get quarantineRefundExceedsSold =>
+      'The platform says this would refund more than was sold';
+  @override
+  String get quarantineSaleNeverQueued =>
+      'The sale it belongs to was never queued to send';
+  @override
+  String get quarantineRefundHasNoLines =>
+      'A refund of an amount with no items, which the platform cannot accept';
+  @override
+  String get quarantineTenderNotFromPlatform =>
+      'Paid by a payment method the platform never sent this till';
+  @override
+  String get quarantineLocalSourceMissing =>
+      'The record it was made from is missing on this till';
+  @override
+  String get quarantineUnknown =>
+      'Held for a reason this version does not recognise';
   @override
   String get printerNotYours =>
       'Only somebody who may manage this terminal can change its printer.';
@@ -11428,6 +11532,8 @@ final class ArStrings extends AppStrings {
   String get actAdminLockedOut =>
       'أُغلق باب وضع المسؤول بعد أكواد خاطئة متكررة لاسم المستخدم هذا';
   @override
+  String get actSyncRecordReleased => 'أعاد إرسال سجل مزامنة محتجز';
+  @override
   String get actAdminRefused => 'رُفض دخوله وضع المسؤول';
   @override
   String adminTitle(String pane) => pane;
@@ -11574,6 +11680,75 @@ final class ArStrings extends AppStrings {
       'والنسخة الاحتياطية هي ما يحفظها.';
   @override
   String get syncBranchServer => 'خادم الفرع';
+  @override
+  String get syncHeldCount => 'محتجزة لمراجعة شخص';
+  @override
+  String get heldSyncTitle => 'عناصر مزامنة محتجزة';
+  @override
+  String get heldSyncBlurb =>
+      'سجلات رفضتها المنصة، أو امتنع هذا الجهاز عن إرسالها. تبقى هنا ولا '
+      'تُحذف أبدًا. «إعادة المحاولة» تعيد السجل إلى قائمة الإرسال بعد إصلاح ما '
+      'أوقفه، وإن رفضته المنصة مرة أخرى يعود إلى هنا.';
+  @override
+  String get heldSyncNone => 'لا يوجد شيء محتجز.';
+  @override
+  String get heldSyncRetry => 'إعادة المحاولة';
+  @override
+  String get heldSyncReleased =>
+      'عاد إلى قائمة الإرسال، وسيُرسل في المزامنة التالية.';
+  @override
+  String get heldSyncNotYours =>
+      'إعادة محاولة السجلات المحتجزة لمن يملك صلاحية إدارة هذا الجهاز فقط.';
+  @override
+  String get heldSyncAttempts => 'المحاولات';
+  @override
+  String get heldSyncRetryFailed =>
+      'لم تستجب قاعدة البيانات، فلم يتغيّر شيء. حاول مرة أخرى.';
+  @override
+  String get heldKindSale => 'عملية بيع';
+  @override
+  String get heldKindShiftOpen => 'فتح وردية';
+  @override
+  String get heldKindShiftClose => 'إغلاق وردية';
+  @override
+  String get heldKindCashMovement => 'حركة نقدية';
+  @override
+  String get heldKindRefund => 'استرداد';
+  @override
+  String get heldKindCustomer => 'عميل';
+  @override
+  String get heldKindOther => 'سجل آخر';
+  @override
+  String get quarantineValidationFailed => 'وجدت المنصة مشكلة في السجل نفسه';
+  @override
+  String get quarantineIdempotencyPayloadMismatch =>
+      'لدى المنصة سجل مختلف بالمفتاح نفسه';
+  @override
+  String get quarantineMenuItemNotFound =>
+      'أحد الأصناف فيه لم يعد موجودًا على المنصة';
+  @override
+  String get quarantineBranchNotInTenant =>
+      'لا تعرف المنصة هذا الفرع كفرع تابع لهذا المطعم';
+  @override
+  String get quarantineCustomerNotFound =>
+      'العميل المذكور فيه غير موجود على المنصة';
+  @override
+  String get quarantineRefundExceedsSold =>
+      'تقول المنصة إن هذا الاسترداد أكبر مما بيع';
+  @override
+  String get quarantineSaleNeverQueued =>
+      'عملية البيع التي يتبعها لم تُدرج للإرسال أصلًا';
+  @override
+  String get quarantineRefundHasNoLines =>
+      'استرداد بمبلغ دون أصناف، ولا تقبله المنصة';
+  @override
+  String get quarantineTenderNotFromPlatform =>
+      'مدفوع بوسيلة دفع لم ترسلها المنصة إلى هذا الجهاز';
+  @override
+  String get quarantineLocalSourceMissing =>
+      'السجل الذي أُنشئ منه مفقود على هذا الجهاز';
+  @override
+  String get quarantineUnknown => 'محتجز لسبب لا يعرفه هذا الإصدار';
   @override
   String get printerNotYours =>
       'تغيير الطابعة لمن يملك صلاحية إدارة هذا الجهاز فقط.';
