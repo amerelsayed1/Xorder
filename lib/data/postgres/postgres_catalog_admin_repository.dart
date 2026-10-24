@@ -389,6 +389,27 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
     }
 
     return database.runTx(config, (tx) async {
+      // SKUs are unique per restaurant (`pos_products_sku_unique`). Asked here,
+      // in the transaction, so a clash is a sentence in the editor and not the
+      // database's unique-violation exception reaching the dialog. A blank SKU
+      // means "none" and never clashes. The index stays the backstop for two
+      // tills saving the same SKU at the same moment.
+      final sku = product.sku?.trim() ?? '';
+      if (sku.isNotEmpty) {
+        final clash = await tx.execute(
+          Sql.named(
+            'SELECT 1 FROM pos_products '
+            'WHERE restaurant_id = @r AND sku = @sku AND id <> @id LIMIT 1',
+          ),
+          parameters: {'r': restaurantId, 'sku': sku, 'id': product.id},
+        );
+        if (clash.isNotEmpty) {
+          return const AdminResult<Product>.refused(
+            CatalogRefused(CatalogProblem.skuTaken),
+          );
+        }
+      }
+
       if (product.id == 0) {
         final rows = await tx.execute(
           Sql.named(

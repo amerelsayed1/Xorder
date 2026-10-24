@@ -1041,6 +1041,17 @@ class SetupController extends Notifier<SetupDraft> {
       }
     }
 
+    // The pool refuses to open without a password, so probing with an empty one
+    // reported "PostgreSQL rejected the username or password" for a refusal
+    // PostgreSQL never made (report 2026-10-24, F-1). Said as what it is.
+    if (state.databasePassword.isEmpty) {
+      state = state.copyWith(
+        busy: false,
+        error: ref.read(stringsProvider).databasePasswordRequired,
+      );
+      return false;
+    }
+
     // Probe with what the operator just typed, not with whatever the store
     // holds from an earlier attempt.
     ref.read(posDbCredentialsStoreProvider).set(state.databasePassword);

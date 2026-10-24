@@ -9,6 +9,7 @@ import '../../../core/money/money.dart';
 import '../../../core/ui/theme.dart';
 import '../../../core/ui/tokens.dart';
 import '../../../core/ui/widgets/pos_widgets.dart';
+import '../../../data/postgres/pos_database.dart' show PosDbException;
 import '../../../domain/models/catalog.dart';
 import '../../../domain/models/option_group.dart';
 import '../../../domain/models/tax.dart';
@@ -787,7 +788,21 @@ class _ProductDialogState extends State<_ProductDialog> {
       _saving = true;
       _error = null;
     });
-    final result = await widget.onSave(product, groups);
+    final _Saved result;
+    try {
+      result = await widget.onSave(product, groups);
+    } on PosDbException {
+      // A database failure the repository had no refusal for. Without this the
+      // await never returned: the editor stayed on "Saving…" with Save and
+      // Cancel both disabled, and only Esc got out, losing everything typed
+      // (report 2026-10-24, F-2). Said in a sentence; the owner keeps the form.
+      if (!mounted) return;
+      setState(() {
+        _saving = false;
+        _error = strings.refusalSaveFailed;
+      });
+      return;
+    }
     if (!mounted) return;
     _saved = result.product ?? _saved;
     final refusal = result.refusal;

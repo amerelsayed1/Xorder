@@ -207,6 +207,11 @@ enum CatalogProblem {
   offerAbovePrice,
 
   categoryNameMissing,
+
+  /// Another item already carries this SKU. SKUs are unique per restaurant
+  /// (`pos_products_sku_unique`); said as a refusal so the editor can show it
+  /// rather than the database's exception reaching the dialog.
+  skuTaken,
 }
 
 /// A modifier group — the server's `option_group`.

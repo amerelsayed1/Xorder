@@ -696,6 +696,11 @@ sealed class AppStrings {
   String get missingTerminalId;
   String couldNotSaveSetup(Object error);
   String get platformAddressRequired;
+
+  /// The database password was left empty. The till does not connect without
+  /// one, so this is said instead of blaming PostgreSQL for a refusal it never
+  /// made.
+  String get databasePasswordRequired;
   String couldNotReach(String address);
   String get noPlatformAddressInForce;
   String get terminalNotRegisteredYet;
@@ -2112,6 +2117,11 @@ sealed class AppStrings {
   String get refusalItemNameMissing;
   String get refusalOfferAbovePrice;
   String get refusalCategoryNameMissing;
+  String get refusalSkuTaken;
+
+  /// A save that failed for a reason this screen has no sentence for. Said
+  /// instead of leaving the editor frozen on "Saving…".
+  String get refusalSaveFailed;
 
   // ── Reasons ───────────────────────────────────────────────────────────────
   // The chrome around the reason picker. The reasons THEMSELVES are rows in
@@ -4519,6 +4529,11 @@ final class EnStrings extends AppStrings {
       'Enter the platform address first, or choose Offline if this terminal '
       'keeps its sales in the building.';
   @override
+  String get databasePasswordRequired =>
+      'Enter the database password first. This terminal does not connect '
+      'without one — if PostgreSQL does not ask for a password on this '
+      'machine, type any value.';
+  @override
   String couldNotReach(String address) =>
       'Could not reach $address. Check the address, and that the server is '
       'switched on and on this network.';
@@ -4904,7 +4919,7 @@ final class EnStrings extends AppStrings {
   String get noTablesYet =>
       'No tables yet. Add one so a waiter can seat somebody at it.';
   @override
-  String tableSummary(int tables) => '\$tables tables';
+  String tableSummary(int tables) => '$tables tables';
   @override
   String get fromDeviceConfiguration => 'From device configuration';
   @override
@@ -7539,6 +7554,11 @@ final class EnStrings extends AppStrings {
       'The offer price is higher than the normal price.';
   @override
   String get refusalCategoryNameMissing => 'A category needs a name.';
+  @override
+  String get refusalSkuTaken => 'Another item already uses this SKU.';
+  @override
+  String get refusalSaveFailed =>
+      'Could not save this item. Check it and try again.';
 }
 
 /// Arabic.
@@ -9402,6 +9422,10 @@ final class ArStrings extends AppStrings {
       'أدخل عنوان المنصة أولاً، أو اختر «بدون اتصال» إن كان هذا الجهاز يحتفظ '
       'بمبيعاته داخل المبنى.';
   @override
+  String get databasePasswordRequired =>
+      'أدخل كلمة مرور قاعدة البيانات أولاً. لا يتصل هذا الجهاز بدونها — وإن '
+      'كان PostgreSQL لا يطلب كلمة مرور على هذا الجهاز فاكتب أي قيمة.';
+  @override
   String couldNotReach(String address) =>
       'تعذّر الوصول إلى $address. تأكد من العنوان، ومن أن الخادم يعمل وعلى هذه '
       'الشبكة.';
@@ -9771,7 +9795,7 @@ final class ArStrings extends AppStrings {
   String get noTablesYet =>
       'لا توجد طاولات بعد. أضف واحدة ليتمكن النادل من إجلاس الضيوف عليها.';
   @override
-  String tableSummary(int tables) => '\$tables طاولة';
+  String tableSummary(int tables) => '$tables طاولة';
   @override
   String get fromDeviceConfiguration => 'من إعدادات الجهاز';
   @override
@@ -12332,6 +12356,11 @@ final class ArStrings extends AppStrings {
   String get refusalOfferAbovePrice => 'سعر العرض أعلى من السعر العادي.';
   @override
   String get refusalCategoryNameMissing => 'التصنيف يحتاج إلى اسم.';
+  @override
+  String get refusalSkuTaken => 'صنف آخر يستخدم رمز الصنف هذا بالفعل.';
+  @override
+  String get refusalSaveFailed =>
+      'تعذّر حفظ هذا الصنف. راجعه وحاول مرة أخرى.';
 }
 
 /// Makes [AppStrings] reachable from a [BuildContext], and tells Flutter which
