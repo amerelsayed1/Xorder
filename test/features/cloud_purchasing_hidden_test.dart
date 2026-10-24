@@ -438,7 +438,7 @@ void main() {
     });
 
     test('and nobody who does not buy is pointed at buying', () {
-      // Offline they have no Purchasing or Inventory tab; xorder-new's sidebar
+      // Offline they have no Purchasing or Inventory tab; xorder-cloud's sidebar
       // hides the Purchasing group from them. The pointer is for whoever it
       // replaced.
       expect(rota.can(PosCapability.purchaseManage), isFalse);

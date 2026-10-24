@@ -9,9 +9,10 @@
 #
 # The PostgreSQL suites need a role that can CREATE DATABASE and CREATE ROLE.
 # Defaults suit a Homebrew PostgreSQL, whose superuser is the login user; set
-# POS_PG_HOST/PORT/USER/PASSWORD to point elsewhere. Each suite and each
-# checkout gets its own database (test/data/pg_fixture.dart), so this is safe
-# against a server other work also uses.
+# POS_PG_HOST/PORT/USER/PASSWORD to point elsewhere. Every PostgreSQL suite
+# shares ONE database per checkout (test/data/pg_fixture.dart), run one suite at
+# a time, so a run leaves a single database behind instead of dozens and does not
+# touch anyone else's.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -42,5 +43,17 @@ echo "PostgreSQL server ${server_major:-unknown}; $(pg_dump --version 2>/dev/nul
 
 flutter pub get
 flutter analyze
-flutter test "$@"
+# Two passes, because every PostgreSQL suite shares ONE database (see
+# test/data/pg_fixture.dart): the ordinary tests run in parallel, the
+# `integration` ones one at a time. Running them in parallel against the shared
+# database brought back a fake "duplicate invoice number" failure.
+flutter test --exclude-tags integration "$@"
+
+# 79 is "no tests match the tag": a path argument that selects no PostgreSQL
+# suite is not a failure.
+set +e
+flutter test --tags integration --concurrency=1 "$@"
+status=$?
+set -e
+if [ "$status" -ne 0 ] && [ "$status" -ne 79 ]; then exit "$status"; fi
 echo "All checks passed."

@@ -30,10 +30,25 @@ import 'menu_import_dialog.dart';
 /// Nothing here deletes. A category is archived because
 /// `pos_products.category_id` is `ON DELETE RESTRICT`, and an item is taken
 /// off sale because every past receipt still names its row.
+/// Which of the two pages in the Menu tab this is.
+///
+/// They used to be one screen reached by two drop-down entries, "Menu" and
+/// "Sections". The owner's map asks for both, so they are now two pages: the
+/// Menu page is items grouped by section, with Add item inside each section; the
+/// Sections page is the sections themselves, with how many items each holds.
+enum MenuPaneMode { menu, sections }
+
 class ManagementMenuPane extends ConsumerStatefulWidget {
-  const ManagementMenuPane({required this.admin, this.onOpenExtras, super.key});
+  const ManagementMenuPane({
+    required this.admin,
+    this.onOpenExtras,
+    this.mode = MenuPaneMode.menu,
+    super.key,
+  });
 
   final PosStaff admin;
+
+  final MenuPaneMode mode;
 
   /// Switch Management to the Extras library — the item editor's "Manage
   /// extras" link. Null hides the link.
@@ -99,6 +114,21 @@ class _ManagementMenuPaneState extends ConsumerState<ManagementMenuPane> {
         final products = selected == null
             ? const <Product>[]
             : menu.products.where((p) => p.categoryId == selected).toList();
+        final counts = {
+          for (final category in categories)
+            category.id: menu.products
+                .where((p) => p.categoryId == category.id)
+                .length,
+        };
+        final sectionsPage = widget.mode == MenuPaneMode.sections;
+        Category? current;
+        for (final category in categories) {
+          if (category.id == selected) current = category;
+        }
+
+        Future<void> archiveCategory(Category category) => _write(
+          () => repository.archiveCategory(category, by: widget.admin),
+        );
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -108,39 +138,52 @@ class _ManagementMenuPaneState extends ConsumerState<ManagementMenuPane> {
                 categories.length,
                 menu.products.length,
               ),
-              onImport: _import,
+              // Importing builds sections AND items: a Menu-page action.
+              onImport: sectionsPage ? null : _import,
               onAddCategory: () => _editCategory(repository, null),
-              onAddProduct: selected == null
-                  ? null
-                  : () => _editProduct(
-                      repository,
-                      null,
-                      selected,
-                      taxGroups,
-                      units,
-                    ),
             ),
             Expanded(
               child: categories.isEmpty
                   ? _Centred(text: strings.noCategoriesYet)
+                  : sectionsPage
+                  // The sections alone, across the page: nothing to pick,
+                  // because there is no item list beside them.
+                  ? _CategoryList(
+                      categories: categories,
+                      counts: counts,
+                      selected: null,
+                      onPick: (_) {},
+                      onEdit: (category) => _editCategory(repository, category),
+                      onArchive: archiveCategory,
+                    )
                   : Row(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         _CategoryList(
                           categories: categories,
+                          counts: counts,
+                          width: 260,
                           selected: selected,
                           onPick: (id) => setState(() => _categoryId = id),
                           onEdit: (category) =>
                               _editCategory(repository, category),
-                          onArchive: (category) => _write(
-                            () => repository.archiveCategory(
-                              category,
-                              by: widget.admin,
-                            ),
-                          ),
+                          onArchive: archiveCategory,
                         ),
                         Expanded(
                           child: _ProductList(
+                            sectionName:
+                                current?.displayName(strings.languageCode) ??
+                                '',
+                            // Add item belongs to the section being looked at.
+                            onAdd: selected == null
+                                ? null
+                                : () => _editProduct(
+                                    repository,
+                                    null,
+                                    selected,
+                                    taxGroups,
+                                    units,
+                                  ),
                             products: products,
                             onEdit: (product) => _editProduct(
                               repository,
@@ -266,13 +309,13 @@ class _Toolbar extends StatelessWidget {
     required this.summary,
     required this.onImport,
     required this.onAddCategory,
-    required this.onAddProduct,
   });
 
   final String summary;
-  final VoidCallback onImport;
+
+  /// Null on the Sections page, which has nothing to import into.
+  final VoidCallback? onImport;
   final VoidCallback onAddCategory;
-  final VoidCallback? onAddProduct;
 
   @override
   Widget build(BuildContext context) => Container(
@@ -288,23 +331,18 @@ class _Toolbar extends StatelessWidget {
             style: PosText.ui(size: 13, color: context.pos.muted),
           ),
         ),
-        PosButton(
-          label: context.strings.menuImportAction,
-          border: Border.fromBorderSide(context.pos.resting),
-          onPressed: onImport,
-        ),
-        const SizedBox(width: PosSpace.md),
+        if (onImport != null) ...[
+          PosButton(
+            label: context.strings.menuImportAction,
+            border: Border.fromBorderSide(context.pos.resting),
+            onPressed: onImport,
+          ),
+          const SizedBox(width: PosSpace.md),
+        ],
         PosButton(
           label: context.strings.addCategory,
           border: Border.fromBorderSide(context.pos.resting),
           onPressed: onAddCategory,
-        ),
-        const SizedBox(width: PosSpace.md),
-        PosButton(
-          label: context.strings.addItem,
-          background: context.pos.ink,
-          foreground: context.pos.onInk,
-          onPressed: onAddProduct,
         ),
       ],
     ),
@@ -314,13 +352,21 @@ class _Toolbar extends StatelessWidget {
 class _CategoryList extends StatelessWidget {
   const _CategoryList({
     required this.categories,
+    required this.counts,
     required this.selected,
     required this.onPick,
     required this.onEdit,
     required this.onArchive,
+    this.width,
   });
 
   final List<Category> categories;
+
+  /// Items per section id, shown under each name.
+  final Map<int, int> counts;
+
+  /// Null fills the page (the Sections page); a number is the Menu page's rail.
+  final double? width;
   final int? selected;
   final ValueChanged<int> onPick;
   final ValueChanged<Category> onEdit;
@@ -328,8 +374,10 @@ class _CategoryList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-    width: 260,
-    decoration: BoxDecoration(border: Border(right: context.pos.hairline)),
+    width: width,
+    decoration: BoxDecoration(
+      border: width == null ? null : Border(right: context.pos.hairline),
+    ),
     child: ListView(
       children: [
         for (final category in categories)
@@ -346,13 +394,25 @@ class _CategoryList extends StatelessWidget {
               child: Row(
                 children: [
                   Expanded(
-                    child: Text(
-                      category.displayName(context.strings.languageCode),
-                      style: PosText.ui(
-                        size: 14,
-                        weight: FontWeight.w600,
-                        color: context.pos.ink,
-                      ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          category.displayName(context.strings.languageCode),
+                          style: PosText.ui(
+                            size: 14,
+                            weight: FontWeight.w600,
+                            color: context.pos.ink,
+                          ),
+                        ),
+                        const SizedBox(height: PosSpace.xs),
+                        Text(
+                          context.strings.sectionItemCount(
+                            counts[category.id] ?? 0,
+                          ),
+                          style: PosText.ui(size: 12, color: context.pos.muted),
+                        ),
+                      ],
                     ),
                   ),
                   IconButton(
@@ -378,11 +438,18 @@ class _CategoryList extends StatelessWidget {
 
 class _ProductList extends StatelessWidget {
   const _ProductList({
+    required this.sectionName,
+    required this.onAdd,
     required this.products,
     required this.onEdit,
     required this.onToggle,
   });
 
+  /// The section whose items these are, said in the header above them.
+  final String sectionName;
+
+  /// Add an item to that section. Null only when there is no section.
+  final VoidCallback? onAdd;
   final List<Product> products;
   final ValueChanged<Product> onEdit;
   final ValueChanged<Product> onToggle;
@@ -390,10 +457,67 @@ class _ProductList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final strings = context.strings;
-    if (products.isEmpty) {
-      return _Centred(text: strings.nothingInCategoryYet);
-    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Add item lives HERE, with the items it adds to, not in the toolbar
+        // far above: the header says which section it is, and the button is
+        // there whether the section holds forty items or none.
+        Container(
+          key: const Key('menu-section-header'),
+          padding: const EdgeInsets.symmetric(
+            horizontal: PosSpace.xl,
+            vertical: PosSpace.md,
+          ),
+          decoration: BoxDecoration(
+            border: Border(bottom: context.pos.hairline),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        sectionName,
+                        overflow: TextOverflow.ellipsis,
+                        style: PosText.ui(
+                          size: 15,
+                          weight: FontWeight.w700,
+                          color: context.pos.ink,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: PosSpace.md),
+                    Text(
+                      strings.sectionItemCount(products.length),
+                      style: PosText.ui(size: 12.5, color: context.pos.muted),
+                    ),
+                  ],
+                ),
+              ),
+              KeyedSubtree(
+                key: const Key('menu-add-item'),
+                child: PosButton(
+                  label: strings.addItem,
+                  background: context.pos.ink,
+                  foreground: context.pos.onInk,
+                  onPressed: onAdd,
+                ),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: products.isEmpty
+              ? _Centred(text: strings.nothingInCategoryYet)
+              : _items(context, strings),
+        ),
+      ],
+    );
+  }
 
+  Widget _items(BuildContext context, AppStrings strings) {
     return ListView(
       children: [
         for (final product in products)

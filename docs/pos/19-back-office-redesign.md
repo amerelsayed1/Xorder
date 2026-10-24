@@ -12,7 +12,7 @@ office only — till, start and lock screens untouched.
 gates in `lib/features/admin/presentation/management_screen.dart`, the bar in
 `lib/app/app.dart`, table definitions in `lib/data/postgres/migrations.dart`,
 interfaces in `lib/domain/repositories/`. The cloud dashboard **is** on this
-machine (`/Users/amerelsayed/Projects/Web Application/xorder-new`, contrary to
+machine (`/Users/amerelsayed/Projects/Web Application/xorder-cloud`, contrary to
 the brief) and was read, not run: `apps/web/src/pages/dashboard/nav.config.js`,
 `settings/settings.config.js`, `HomeView.vue`, `OrdersView.vue`, `StaffView.vue`,
 `InsightsView.vue`.
