@@ -59,6 +59,7 @@ class _Recorder implements ProvisioningRepository {
     required String password,
     required String terminalName,
     required int branchId,
+    required String? installId,
   }) async {
     registeredName = terminalName;
     return const ClaimResult(

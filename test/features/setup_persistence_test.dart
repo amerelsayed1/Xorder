@@ -9,6 +9,7 @@ import 'package:xorder_pos/core/config/deployment.dart';
 import 'package:xorder_pos/core/config/printer_config.dart';
 import 'package:xorder_pos/core/config/terminal_config.dart';
 import 'package:xorder_pos/core/ui/theme.dart';
+import 'package:xorder_pos/data/config/setup_progress_store.dart';
 import 'package:xorder_pos/data/config/terminal_config_store.dart';
 import 'package:xorder_pos/data/config/pos_db_secret_store.dart';
 import 'package:xorder_pos/data/fakes/fake_repositories.dart';
@@ -897,6 +898,164 @@ void main() {
       await container.read(terminalResetProvider).run();
 
       expect(progress.saved, isNull);
+    });
+  });
+
+  // P0-4. The offline twin of the group above, for a seat rather than a code:
+  // a registration on the branch database spends one of the licence's
+  // `max_terminals`, and a wizard that forgot it had registered spent another.
+  group('an offline registration made on an earlier run', () {
+    const issued = '7f1c9a52-3b64-4f0e-9a11-0c2d5e8b7a10';
+
+    ProviderContainer launch(
+      InMemorySetupProgressStore progress,
+      FakeProvisioningRepository provisioning, {
+      InMemoryTerminalConfigStore? config,
+    }) {
+      final container = ProviderContainer(
+        overrides: [
+          ...fakeRepositoryOverrides(),
+          setupProgressStoreProvider.overrideWithValue(progress),
+          provisioningRepositoryProvider.overrideWithValue(provisioning),
+          if (config != null)
+            terminalConfigStoreProvider.overrideWithValue(config),
+        ],
+      );
+      addTearDown(container.dispose);
+      return container;
+    }
+
+    /// Licensed, offline, database built, first administrator typed — the
+    /// state the terminal step's Register button is pressed from.
+    Future<SetupController> readyToRegister(ProviderContainer container) async {
+      final controller = container.read(setupProvider.notifier);
+      controller.setLicenceKey('DEV-KEY');
+      await controller.activateLicence();
+      controller.setMode(DeploymentMode.offline);
+      controller.setDatabaseHost('192.168.1.20');
+      controller.setDatabasePassword('s3cret');
+      controller.setOwnerName('Amer');
+      controller.setOwnerUsername('amer');
+      controller.setOwnerPin('4321');
+      controller.setBranch(13, 'Maadi');
+      controller.setTerminalName('Counter 1');
+      // `bootstrapDatabase` needs a real PostgreSQL; what it leaves behind is
+      // this flag, and the registration is what is under test.
+      controller.state = container
+          .read(setupProvider)
+          .copyWith(bootstrapped: true);
+      expect(
+        container.read(setupProvider).deployment.mode,
+        DeploymentMode.offline,
+      );
+      return controller;
+    }
+
+    test('is written before the registration and again after it', () async {
+      final progress = InMemorySetupProgressStore();
+      final provisioning = FakeProvisioningRepository();
+      final container = launch(progress, provisioning);
+      final controller = await readyToRegister(container);
+      final installationId = container.read(setupProvider).installationId;
+
+      await controller.registerTerminal();
+
+      expect(container.read(setupProvider).claimed, isTrue);
+      // The install id went to the database, so the row it made is keyed.
+      expect(provisioning.registrations, [installationId]);
+      // Once with the id alone, before the row existed; once with the row.
+      expect(progress.writes, 2);
+      final written = progress.saved!;
+      expect(written.claimed, isTrue);
+      expect(written.installationId, installationId);
+      expect(written.terminalId, issued);
+      expect(written.bootstrapped, isTrue);
+      expect(written.deployment.mode, DeploymentMode.offline);
+      // Same rule as the cloud record: no password has a field to land in.
+      final json = jsonEncode(written.toJson());
+      expect(json, isNot(contains('s3cret')));
+      expect(json, isNot(contains('4321')));
+    });
+
+    test('resumes with the terminal it registered, and registers '
+        'nothing', () async {
+      final progress = InMemorySetupProgressStore();
+      final first = FakeProvisioningRepository();
+      final firstRun = launch(progress, first);
+      await (await readyToRegister(firstRun)).registerTerminal();
+      final installationId = firstRun.read(setupProvider).installationId;
+
+      // A fresh process: a fresh installation id was minted in memory, and
+      // nothing has been typed.
+      final second = FakeProvisioningRepository();
+      final config = InMemoryTerminalConfigStore();
+      final container = launch(progress, second, config: config);
+      expect(container.read(setupProvider).step, SetupStep.licence);
+      await pumpEventQueue();
+
+      final draft = container.read(setupProvider);
+      // On the screen whose passwords are in no file, everything else filled.
+      expect(draft.step, SetupStep.deployment);
+      expect(draft.claimed, isTrue);
+      expect(draft.terminalId, issued);
+      expect(draft.installationId, installationId);
+      // The licence fingerprints the profile's id, not the draft's.
+      expect(
+        container.read(terminalProfileProvider).installationId,
+        installationId,
+      );
+      expect(draft.bootstrapped, isTrue);
+      expect(draft.branchId, 13);
+      expect(draft.deployment.mode, DeploymentMode.offline);
+      expect(draft.entitlement, isNotNull);
+      expect(draft.resumed, isTrue);
+      // The terminal step lets a claimed draft through, and its Register
+      // button is dead on one — so the walk to the end spends no seat.
+      expect(draft.copyWith(step: SetupStep.terminal).canAdvance, isTrue);
+
+      final controller = container.read(setupProvider.notifier);
+      controller.setDatabasePassword('s3cret');
+      expect(await controller.complete(), isNull);
+
+      expect(second.registrations, isEmpty);
+      expect(config.saved!.terminal.terminalId, issued);
+      expect(config.saved!.terminal.installationId, installationId);
+      expect(progress.saved, isNull);
+    });
+
+    test('a registration that never came back gives up only its '
+        'identity', () async {
+      // Killed after the first record and before the second: the row may or
+      // may not exist, so nothing may claim it does — but the id it would be
+      // keyed on must be the one the next attempt sends.
+      final progress = InMemorySetupProgressStore()
+        ..saved = const SetupProgress(
+          deployment: DeploymentConfig(
+            mode: DeploymentMode.offline,
+            databaseHost: '192.168.1.20',
+          ),
+          terminalId: 'guessed-on-this-device',
+          terminalName: 'Counter 1',
+          installationId: 'install-from-the-first-run',
+          claimed: false,
+        );
+      final provisioning = FakeProvisioningRepository();
+      final container = launch(progress, provisioning);
+      container.read(setupProvider);
+      await pumpEventQueue();
+
+      final draft = container.read(setupProvider);
+      expect(draft.step, SetupStep.licence);
+      expect(draft.claimed, isFalse);
+      expect(draft.terminalId, isNot('guessed-on-this-device'));
+      expect(draft.installationId, 'install-from-the-first-run');
+      expect(
+        container.read(terminalProfileProvider).installationId,
+        'install-from-the-first-run',
+      );
+
+      await (await readyToRegister(container)).registerTerminal();
+      expect(provisioning.registrations, ['install-from-the-first-run']);
     });
   });
 

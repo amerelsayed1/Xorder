@@ -803,6 +803,10 @@ class FakeProvisioningRepository implements ProvisioningRepository {
 
   final Set<String> _spent = <String>{};
 
+  /// The install id of every [registerManually] call, in order — so a test can
+  /// say a resumed wizard registered nothing, rather than infer it.
+  final List<String?> registrations = [];
+
   /// The credentials the fake accepts, mirroring the demo pairing code.
   static const demoUsername = 'manager';
   static const demoPassword = 'secret';
@@ -936,7 +940,9 @@ class FakeProvisioningRepository implements ProvisioningRepository {
     required String password,
     required String terminalName,
     required int branchId,
+    required String? installId,
   }) async {
+    registrations.add(installId);
     await Future<void>.delayed(const Duration(milliseconds: 260));
 
     if (username.trim().isEmpty || password.isEmpty) {

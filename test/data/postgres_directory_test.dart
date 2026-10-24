@@ -364,6 +364,7 @@ void main() {
         password: pin,
         terminalName: 'Counter 2',
         branchId: branchId,
+        installId: null,
       );
 
       expect(result.succeeded, isTrue);
@@ -384,6 +385,7 @@ void main() {
         password: '0000',
         terminalName: 'Counter 3',
         branchId: branchId,
+        installId: null,
       );
       final unknownUser = await provisioning().registerManually(
         tenantSlug: slug,
@@ -391,6 +393,7 @@ void main() {
         password: pin,
         terminalName: 'Counter 3',
         branchId: branchId,
+        installId: null,
       );
 
       // Identical on purpose: a wizard that distinguished them would enumerate

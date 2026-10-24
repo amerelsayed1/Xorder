@@ -4467,6 +4467,28 @@ const posMigrations = <PosMigration>[
         "pos_stock_movements_not_nothing "
         "CHECK (quantity_milli <> 0 OR kind = 'opening')",
   ]),
+  PosMigration(53, 'a terminal is the machine, registered once', [
+    // The hand-registration path inserted a row with a fresh id on every call,
+    // so a wizard that was retried, killed or reset spent one `max_terminals`
+    // seat per attempt — and a child's seat check counts these rows. The id
+    // each installation already mints once (`TerminalProfile.installationId`,
+    // the one the licence fingerprint hashes) is now kept on its row, and is
+    // unique per restaurant, so `registerManually` can upsert on it.
+    //
+    // Nullable, and the index partial, so every row already written stays
+    // valid untouched. A till registered before this has no id here, so if it
+    // registers again it gets a keyed row beside its old one — one duplicate,
+    // once, and never another. Not backfilled by matching names: two tills on
+    // a branch may share one, and guessing would hand one machine another's
+    // terminal id and put two tills' sales under one name.
+    //
+    // No grant: the till already holds table-wide SELECT, INSERT and UPDATE on
+    // `pos_terminals`, which covers a new column and the ON CONFLICT upsert.
+    'ALTER TABLE pos_terminals ADD COLUMN IF NOT EXISTS install_id text',
+    'CREATE UNIQUE INDEX IF NOT EXISTS pos_terminals_install_id_unique '
+        'ON pos_terminals (restaurant_id, install_id) '
+        'WHERE install_id IS NOT NULL',
+  ]),
 ];
 
 /// Brings the branch database up to the current schema.
