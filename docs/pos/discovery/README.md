@@ -48,3 +48,5 @@ Data: restore discards unsent sales; 2xx non-JSON marks orders delivered; stuck 
 ## E–F. Questions and discussion order
 
 See GAPS_AND_OPEN_QUESTIONS.md §5–§6. Recommended order: data-authority policy → Plan B offline licensing → backup/restore → server availability & LAN security → secrets/PIN/permissions → plan switching & device lifecycle → outbox tooling → inventory scope → UX/localisation & diagnostics.
+
+**Next: roadmap.** The decisions taken on these findings are in [`../adr/README.md`](../adr/README.md) (ADR-001…010) and the sequenced plan (P0 fixes, Phases 1–8) in [`../20-implementation-roadmap.md`](../20-implementation-roadmap.md).
