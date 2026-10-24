@@ -1625,6 +1625,9 @@ sealed class AppStrings {
   String get backupRestoreBlocked;
   String restoreBlockerOpenShifts(int count);
   String restoreBlockerOpenDay(int count);
+  String restoreBlockerPendingSync(int count);
+  String backupRestorePendingSyncWarning(int count);
+  String backupRestoreHeldSyncWarning(int count);
   String backupRestoreOrdersLost(int count, String value);
   String get backupRestoreEverythingElseLost;
   String get backupRestoreNoWayBack;
@@ -1632,6 +1635,8 @@ sealed class AppStrings {
   String get backupRestoreKeep;
   String get backupRestoreDone;
   String backupRestoreFailed(String detail);
+  String backupRestoreSafetyCopyKept(String folder);
+  String backupRestoreSnapshotFailed(String reason);
   String get backupAccount;
   String get backupAccountHint;
   String get backupAccountStored;
@@ -6510,6 +6515,24 @@ final class EnStrings extends AppStrings {
   String restoreBlockerOpenDay(int count) =>
       'The trading day has not been closed';
   @override
+  String restoreBlockerPendingSync(int count) => count == 1
+      ? '1 record has not reached the platform yet — keep this till online '
+            'until it has gone'
+      : '$count records have not reached the platform yet — keep this till '
+            'online until they have gone';
+  @override
+  String backupRestorePendingSyncWarning(int count) => count == 1
+      ? '1 record was never sent to the platform, and is discarded with the '
+            'rest.'
+      : '$count records were never sent to the platform, and are discarded '
+            'with the rest.';
+  @override
+  String backupRestoreHeldSyncWarning(int count) => count == 1
+      ? '1 record the platform refused is waiting for a person. It is '
+            'discarded too; only the copy taken first keeps it.'
+      : '$count records the platform refused are waiting for a person. They '
+            'are discarded too; only the copy taken first keeps them.';
+  @override
   String backupRestoreOrdersLost(int count, String value) => count == 1
       ? '1 order taken since then, worth $value, will be discarded.'
       : '$count orders taken since then, worth $value, will be discarded.';
@@ -6519,8 +6542,8 @@ final class EnStrings extends AppStrings {
       'changes and the audit trail.';
   @override
   String get backupRestoreNoWayBack =>
-      'There is no way back. Nothing here keeps a copy of what is about to be '
-      'replaced.';
+      'There is no undo. A copy of this database is taken first and kept in '
+      'the backup folder; putting it back is another restore.';
   @override
   String get backupRestoreConfirm => 'Replace the database';
   @override
@@ -6531,6 +6554,15 @@ final class EnStrings extends AppStrings {
   @override
   String backupRestoreFailed(String detail) =>
       'The restore did not complete and nothing was changed. $detail';
+  @override
+  String backupRestoreSafetyCopyKept(String folder) =>
+      'The database as it was just before is in $folder, in the file whose '
+      'name starts pre-restore-. It is not in the list; use Restore from a '
+      'file… to put it back.';
+  @override
+  String backupRestoreSnapshotFailed(String reason) =>
+      'Nothing was replaced. A copy of this database could not be taken '
+      'first, and a restore never runs without one. $reason';
   @override
   String get backupAccount => 'Backup account';
   @override
@@ -11303,6 +11335,22 @@ final class ArStrings extends AppStrings {
   @override
   String restoreBlockerOpenDay(int count) => 'يوم العمل لم يُقفل بعد';
   @override
+  String restoreBlockerPendingSync(int count) => count == 1
+      ? 'سجلّ واحد لم يصل إلى المنصة بعد — اترك هذا الجهاز متصلاً بالإنترنت '
+            'حتى يُرسَل'
+      : '$count من السجلات لم تصل إلى المنصة بعد — اترك هذا الجهاز متصلاً '
+            'بالإنترنت حتى تُرسَل';
+  @override
+  String backupRestorePendingSyncWarning(int count) => count == 1
+      ? 'سجلّ واحد لم يُرسَل إلى المنصة قط، وسيضيع مع الباقي.'
+      : '$count من السجلات لم تُرسَل إلى المنصة قط، وستضيع مع الباقي.';
+  @override
+  String backupRestoreHeldSyncWarning(int count) => count == 1
+      ? 'سجلّ واحد رفضته المنصة ينتظر مراجعة شخص. سيضيع هو أيضاً، ولا يحتفظ '
+            'به إلا النسخة المأخوذة قبل الاستعادة.'
+      : '$count من السجلات رفضتها المنصة تنتظر مراجعة شخص. ستضيع هي أيضاً، '
+            'ولا يحتفظ بها إلا النسخة المأخوذة قبل الاستعادة.';
+  @override
   String backupRestoreOrdersLost(int count, String value) => count == 1
       ? 'سيضيع طلب واحد سُجّل بعد ذلك الوقت، بقيمة $value.'
       : 'سيضيع $count طلباً سُجّلت بعد ذلك الوقت، بقيمة $value.';
@@ -11312,7 +11360,8 @@ final class ArStrings extends AppStrings {
       'الموظفين وسجل التدقيق.';
   @override
   String get backupRestoreNoWayBack =>
-      'لا رجوع بعدها. لا شيء هنا يحتفظ بنسخة مما سيُستبدل.';
+      'لا تراجع بضغطة زر. تُؤخذ أولاً نسخة من قاعدة البيانات هذه وتُحفظ في '
+      'مجلد النسخ الاحتياطية، وإرجاعها يكون باستعادة أخرى.';
   @override
   String get backupRestoreConfirm => 'استبدل قاعدة البيانات';
   @override
@@ -11323,6 +11372,15 @@ final class ArStrings extends AppStrings {
   @override
   String backupRestoreFailed(String detail) =>
       'لم تكتمل الاستعادة ولم يتغيّر شيء. $detail';
+  @override
+  String backupRestoreSafetyCopyKept(String folder) =>
+      'قاعدة البيانات كما كانت قبل الاستعادة مباشرةً محفوظة في $folder، في '
+      'الملف الذي يبدأ اسمه بـ pre-restore-. لا تظهر في القائمة؛ استخدم '
+      '«استعادة من ملف…» لإرجاعها.';
+  @override
+  String backupRestoreSnapshotFailed(String reason) =>
+      'لم يُستبدل شيء. تعذّر أخذ نسخة من قاعدة البيانات هذه أولاً، ولا تتم '
+      'الاستعادة أبداً بدونها. $reason';
   @override
   String get backupAccount => 'حساب النسخ الاحتياطي';
   @override

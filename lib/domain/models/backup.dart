@@ -227,6 +227,20 @@ enum RestoreBlockerKind {
   /// The trading day has not been closed. Same problem one level up: the day's
   /// takings would be replaced by a day that had not happened yet.
   openBusinessDay,
+
+  /// Sales or cash events this database still owes the platform — on a cloud
+  /// terminal only. The copy being restored predates them, so the rows that
+  /// would have carried them up are among the rows the restore drops, and the
+  /// platform never hears about money that changed hands (scenario D3).
+  ///
+  /// **A blocker in cloud mode and a warning offline, deliberately not the
+  /// same everywhere.** Offline the outbox is never drained, so a count there
+  /// is a leftover from a terminal that used to be cloud — refusing on it would
+  /// lock somebody out of their own backups with nothing they could do to clear
+  /// it. Rows the platform *rejected* (quarantined) are not a blocker in either
+  /// mode: they wait on a person rather than on the network, so refusing on
+  /// them would be the same lock-out — see [RestoreCheck.heldSync].
+  pendingSync,
 }
 
 /// What restoring [from] would cost, in the concrete terms a person can weigh.
@@ -242,6 +256,8 @@ class RestoreCheck {
     required this.ordersSince,
     required this.valueSince,
     this.lastOrderAt,
+    this.pendingSync = 0,
+    this.heldSync = 0,
   });
 
   final BackupRecord from;
@@ -256,8 +272,38 @@ class RestoreCheck {
 
   final DateTime? lastOrderAt;
 
+  /// Rows in `pos_outbox` and `pos_sync_outbox` not yet delivered and not held
+  /// — what this terminal still means to send. On a cloud terminal a non-zero
+  /// count is also a [RestoreBlockerKind.pendingSync] blocker; offline it is
+  /// only said, because nothing there would ever send it.
+  final int pendingSync;
+
+  /// Rows the platform refused and that wait for a person (quarantined, never
+  /// delivered). A warning in every mode: the restore drops them with the rest,
+  /// and the only record of what they were is then the safety copy taken just
+  /// before.
+  final int heldSync;
+
   /// Whether the restore may proceed at all. Not "whether it is wise".
   bool get isPermitted => blockers.isEmpty;
+}
+
+/// The copy of *this* database that a restore takes first could not be made.
+///
+/// Thrown, like [RestoreRefused], because a caller must be unable to read past
+/// it — and not an `AdminRefusal`, because nothing about the person or the
+/// request is wrong: the disk, the folder or `pg_dump` is. [attempt] is
+/// the row that records it, so the screen can name the same [BackupFailure]
+/// the backup list does and show PostgreSQL's own words beside it.
+class RestoreSnapshotFailed implements Exception {
+  const RestoreSnapshotFailed(this.attempt);
+
+  final BackupRecord attempt;
+
+  @override
+  String toString() =>
+      'RestoreSnapshotFailed(${attempt.failure?.wire ?? attempt.outcome.wire}'
+      '${attempt.detail == null ? '' : ': ${attempt.detail}'})';
 }
 
 /// The refusal a restore comes back with when it must not run.

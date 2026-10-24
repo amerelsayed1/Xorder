@@ -175,6 +175,9 @@ abstract final class AdminText {
         RestoreBlockerKind.openBusinessDay => s.restoreBlockerOpenDay(
           blocker.count,
         ),
+        RestoreBlockerKind.pendingSync => s.restoreBlockerPendingSync(
+          blocker.count,
+        ),
       };
 
   /// A file size, as somebody reading a folder listing would say it.
