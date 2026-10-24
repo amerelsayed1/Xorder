@@ -216,7 +216,7 @@ void main() {
       terminalId: terminal,
       branchCode: 'MAADI',
     ),
-    shiftId: shiftId,
+    shiftId: () => shiftId,
   );
 
   OrderRecord record(int id, {int total = 20000}) => OrderRecord(

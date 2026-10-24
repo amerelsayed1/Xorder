@@ -36,7 +36,11 @@ class _AdminContext {
   final int restaurantId;
   final int? branchId;
   final String? terminalId;
-  final int? shiftId;
+
+  /// Asked per ledger row, not captured: an audit row belongs to the shift
+  /// open when the thing happened, and the audit repository lives longer than
+  /// any one shift. See `PostgresOrdersRepository.shiftId`.
+  final int? Function()? shiftId;
 
   /// Write one ledger row on an open transaction.
   ///
@@ -66,7 +70,7 @@ class _AdminContext {
       'restaurant': restaurantId,
       'branch': branchId,
       'terminal': terminalId,
-      'shift': shiftId,
+      'shift': shiftId?.call(),
       'actorId': by.id,
       'actorName': by.name,
       'approverId': approvedBy?.id,
@@ -1113,7 +1117,7 @@ class PostgresAuditRepository implements AuditRepository {
     required int restaurantId,
     int? branchId,
     String? terminalId,
-    int? shiftId,
+    int? Function()? shiftId,
   }) : _c = _AdminContext(
          database: database,
          config: config,

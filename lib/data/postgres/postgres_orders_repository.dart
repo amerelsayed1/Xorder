@@ -56,13 +56,23 @@ class PostgresOrdersRepository implements OrdersRepository {
   }) : _db = database,
        _now = clock ?? DateTime.now;
 
-  /// The shift this sale belongs to, so a Z report can total it.
+  /// The shift this sale belongs to, so a Z report can total it — asked at the
+  /// moment of the write, not when the repository was built.
   ///
-  /// Nullable because a till can be selling before the shift concept reaches
-  /// every deployment, and an order that cannot name its shift is still an
-  /// order that must be recorded. It shows up as an unattributed sale on the
-  /// report rather than being silently dropped from it.
-  final int? shiftId;
+  /// A function rather than an `int?` because this repository outlives shifts.
+  /// It used to take the id at construction, and the provider builds it once:
+  /// a till that rang its first sale before the morning shift was opened kept
+  /// stamping NULL on every sale after it, and a till that closed one shift
+  /// and opened the next kept stamping the CLOSED one. Either way the sales
+  /// fell out of the open drawer's Z report and expected cash. Rebuilding the
+  /// repository on every shift change was the rejected alternative: it would
+  /// swap the object out from under a payment already in flight.
+  ///
+  /// Null, or a function answering null, because a till can be selling before
+  /// the shift concept reaches every deployment, and an order that cannot name
+  /// its shift is still an order that must be recorded. It shows up as an
+  /// unattributed sale on the report rather than being silently dropped.
+  final int? Function()? shiftId;
 
   final PosDatabase _db;
   final DeploymentConfig _config;
@@ -142,7 +152,7 @@ class PostgresOrdersRepository implements OrdersRepository {
           'vat': totals.vat.minor,
           'total': totals.total.minor,
           'occurredAt': occurredAt,
-          'shift': shiftId,
+          'shift': shiftId?.call(),
           // Who closed the sale, passed in at settlement. Null is a real
           // answer — a till selling before anybody signed in still records
           // the order, unattributed, rather than refusing it.
@@ -276,7 +286,7 @@ class PostgresOrdersRepository implements OrdersRepository {
           'vat': totals.vat.minor,
           'total': totals.total.minor,
           'occurredAt': occurredAt,
-          'shift': shiftId,
+          'shift': shiftId?.call(),
           'voidedBy': by.id,
           // Falls back to the person voiding. On the live cart they are the
           // one who rang it up; a manager voiding somebody else's ticket is

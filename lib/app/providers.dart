@@ -268,10 +268,15 @@ ordersRepositoryProvider = Provider<OrdersRepository>((ref) {
     database: ref.watch(posDatabaseProvider),
     config: config,
     context: context,
-    // Read, not watched. A sale stamps the shift that was open when it was
-    // rung up; rebuilding the repository mid-payment because a shift closed
-    // elsewhere would be worse than an unattributed order.
-    shiftId: ref.read(shiftProvider).valueOrNull?.id,
+    // Read, not watched — and read at the WRITE, not here. Watching would
+    // rebuild the repository mid-payment when a shift changed. Reading here,
+    // once, is what this used to do, and nothing rebuilds this provider when
+    // a shift opens or closes: the first sale of the day fixed the id for the
+    // life of the process, so a till that sold before opening its shift, or
+    // closed one and opened the next, stamped NULL or the closed shift on
+    // every later sale and they fell out of the Z report. The function is
+    // asked inside the transaction that writes the order.
+    shiftId: () => ref.read(shiftProvider).valueOrNull?.id,
   );
 
   // On a cloud terminal every settled sale pokes the drain, so "sold" and
@@ -427,7 +432,9 @@ final refundHistorySummaryProvider = FutureProvider.autoDispose
 /// Takes the shift by `read`, not `watch`, for the same reason the orders
 /// repository does: a refund stamps the shift that was open when it was given,
 /// and rebuilding this mid-transaction because a shift closed at another till
-/// would be worse than an unattributed refund.
+/// would be worse than an unattributed refund. Read when the refund is
+/// written, through a function, not once here — a captured id outlived the
+/// shift it named.
 final refundsRepositoryProvider = Provider<RefundsRepository>((ref) {
   final config = ref.watch(deploymentProvider);
   final context = ref.watch(posWriteContextProvider);
@@ -439,7 +446,7 @@ final refundsRepositoryProvider = Provider<RefundsRepository>((ref) {
     database: ref.watch(posDatabaseProvider),
     config: config,
     context: context,
-    shiftId: ref.read(shiftProvider).valueOrNull?.id,
+    shiftId: () => ref.read(shiftProvider).valueOrNull?.id,
   );
 
   // A refund is a receipt too — a credit note naming the sale it undoes.
@@ -2974,9 +2981,10 @@ final auditRepositoryProvider = Provider<AuditRepository>((ref) {
     restaurantId: context.restaurantId,
     branchId: context.branchId,
     terminalId: context.terminalId,
-    // Read, not watched, for the same reason the orders repository does it: an
-    // audit row belongs to the shift that was open when the thing happened.
-    shiftId: ref.read(shiftProvider).valueOrNull?.id,
+    // Read, not watched, and read per row, for the same reasons the orders
+    // repository does it: an audit row belongs to the shift that was open
+    // when the thing happened, not the one open when this was first built.
+    shiftId: () => ref.read(shiftProvider).valueOrNull?.id,
   );
 });
 

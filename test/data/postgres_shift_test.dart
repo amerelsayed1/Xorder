@@ -156,7 +156,7 @@ void main() {
         terminalId: terminalId,
         branchCode: 'SHF',
       ),
-      shiftId: shift.id,
+      shiftId: () => shift.id,
     ).submit(ticket);
 
     return ticket.totals.total.minor;

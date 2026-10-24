@@ -44,9 +44,15 @@ class PostgresRefundsRepository implements RefundsRepository {
   final DeploymentConfig config;
   final PosWriteContext context;
 
-  /// The shift the money left. Nullable for the same reason an order's is: a
-  /// refund that cannot name its shift is still a refund that must be recorded.
-  final int? shiftId;
+  /// The shift the money left, asked when the refund is written rather than
+  /// when this repository was built — see `PostgresOrdersRepository.shiftId`
+  /// for the stale-shift failure a captured id caused. A refund stamped with
+  /// yesterday's closed shift is cash that left today's drawer without
+  /// today's expected cash knowing.
+  ///
+  /// Nullable for the same reason an order's is: a refund that cannot name
+  /// its shift is still a refund that must be recorded.
+  final int? Function()? shiftId;
 
   final String currency;
   final int exponent;
@@ -121,7 +127,7 @@ class PostgresRefundsRepository implements RefundsRepository {
           'branch': context.branchId,
           'terminal': context.terminalId,
           'order': order.id,
-          'shift': shiftId,
+          'shift': shiftId?.call(),
           'kind': quote.kind.wire,
           'subtotal': quote.subtotal.minor,
           'discount': quote.discount.minor,
