@@ -112,3 +112,23 @@ cloud back office, licence server URL editability).
 7. **Outbox operations tooling** (Q8, R-DATA-2/3/4): visibility and release path for stuck rows.
 8. **Inventory scope** (Q7, R-DATA-5).
 9. **UX/localisation decisions** (Q23–Q25) and diagnostics (Q20).
+
+## 7. Addendum — sales-floor gaps and questions (from FEATURE_INVENTORY.md Part 1)
+
+| ID | Gap / risk | Status |
+|---|---|---|
+| R-SALE-1 | Shift id captured with `ref.read` at provider build and not invalidated on shift open/close → sales/refunds may carry stale or NULL shift id and drop out of Z report / expected cash (runtime unverified) | Suspected defect |
+| R-SALE-2 | Parked tickets restored after restart lose tax mode, tax groups, service charges and customer; `TaxConfig ==` ignores those fields | Suspected defect |
+| R-SALE-3 | `TicketEngine.setLineNote` drops a line's combo / free-allowance snapshot | Suspected defect |
+| R-SALE-4 | Business day is never opened by the app (no caller of `BusinessDayRepository.open`); the day-close blocker for unpaid orders is always 0 | Gap |
+| R-SALE-5 | No persisted open-order lifecycle: abandoned/cleared unsent tickets leave no record (audit/loss-prevention gap) | Gap |
+| R-SALE-6 | Order upload carries no customer reference; sale-to-customer link stays local | Gap |
+| R-SALE-7 | Refunds and voids do not restock; no recipes → inventory drift | Gap |
+
+Further product-owner questions:
+26. Is a kitchen ticket / KDS / per-station routing required? (Today: not implemented.)
+27. Is delivery (driver, zone, fee, status) in scope? Are merge / transfer / split-bill required?
+28. Should the business day open automatically (or on first shift)?
+29. Where do named discounts come from (no in-app writer today)? Who may author price overrides?
+30. Is ETA e-invoicing signing/submission meant to live in this repo? Should card/wallet payments integrate with a terminal?
+31. Should refunds restore stock? Is recipe/BOM-based inventory in v1?

@@ -9,7 +9,7 @@ documents linked from each section.
 | Component | Status | Evidence / note |
 |---|---|---|
 | Flutter POS desktop (Windows/macOS) | IMPLEMENTED | `lib/` (~214k lines incl. 12k-line `core/l10n/app_strings.dart` and 4.5k-line `data/postgres/migrations.dart`); `windows/`, `macos/` runners. `android/ios/linux/web` folders exist; the installer treats Android/iOS as "child" tablets (see MULTI_DEVICE.md §1.2) — mobile UX unverified. |
-| In-app Management / back office (Admin Mode) | IMPLEMENTED (PARTIAL for cloud tills) | `lib/features/admin/**`. A claimed cloud terminal gets only a signpost to the dashboard (`lib/app/router.dart:138-160`). See FEATURE_INVENTORY_ADMIN.md. |
+| In-app Management / back office (Admin Mode) | IMPLEMENTED (PARTIAL for cloud tills) | `lib/features/admin/**`. A claimed cloud terminal gets only a signpost to the dashboard (`lib/app/router.dart:138-160`). See FEATURE_INVENTORY.md (Part 2). |
 | PostgreSQL (local, per branch) | IMPLEMENTED | Schema in `lib/data/postgres/migrations.dart`; installed by `installer/xorder-pos.iss` + `installer/provision.ps1`, or `bin/pos_migrate.dart`. No PostgreSQL server was reachable here, so the schema was read, never run. |
 | Local sync queue | IMPLEMENTED | `pos_outbox` / `pos_sync_outbox` tables, `lib/data/cloud/outbox_drain.dart`. See DATABASE_AND_SYNC.md. |
 | Cloud transport client (POS side) | IMPLEMENTED (client only) | `lib/data/cloud/cloud_api.dart`, `branch_sales_api.dart`, `cloud_sync.dart`. |
@@ -17,7 +17,7 @@ documents linked from each section.
 | Vue admin panel / cloud dashboard | **UNKNOWN — inaccessible** | Referenced as "dashboard" (`/api/dashboard/pos/terminals/{id}/pairing-code`, `/api/auth/login` in POS code). |
 | `Xorder-Menus` repository | Empty | Remote has no commits (`git ls-remote` returned nothing; local branch has no commits). Nothing to audit. |
 | Licensing service | PARTIAL | POS-side verification and CLI issuer (`bin/pos_licence.dart`) exist; the platform side (`/api/pos/licence/activate`, `/api/pos/license/check`) is UNKNOWN. See LICENSING.md. |
-| Hardware | PARTIAL | ESC/POS over Windows spooler (`lib/data/hardware/winspool.dart`, `spooler_printer_ports.dart`) and raw TCP 9100 (`network_printer_ports.dart`). No card-terminal, scale, customer-display or cash-drawer-driver code was identified beyond printer-triggered pulses (see FEATURE_INVENTORY_SALES.md). |
+| Hardware | PARTIAL | ESC/POS over Windows spooler (`lib/data/hardware/winspool.dart`, `spooler_printer_ports.dart`) and raw TCP 9100 (`network_printer_ports.dart`). No card-terminal, KDS or kitchen-routing integration found (FEATURE_INVENTORY.md Part 1); other peripherals (scale, customer display, drawer) were not specifically searched by the audit — treat as UNKNOWN. |
 | CI | PARTIAL | Only `.github/workflows/windows-installer.yml`, manually triggered; tests are run locally via `scripts/check.sh`. |
 
 ## 2. Layering
@@ -130,7 +130,7 @@ one DB per machine. There is no multi-site/central database in this repo.
 | Fingerprint is hardware-derived | Random UUID in `config.json` + constant salt | LICENSING.md |
 | Docs say `hostssl` for LAN | Installer writes `host` entries, no `ssl=on` | DATABASE_AND_SYNC.md |
 | Wizard language applies immediately (comment) | Applied at `complete()` | CURRENT_SETUP_WIZARD.md |
-| Cloud tills have an in-app back office (pane logic/docs) | Router shows only a signpost for claimed cloud terminals | FEATURE_INVENTORY_ADMIN.md |
+| Cloud tills have an in-app back office (pane logic/docs) | Router shows only a signpost for claimed cloud terminals | FEATURE_INVENTORY.md (Part 2) |
 | `PlatformEndpoint`: operators can't repoint licence checks | Licence step has an editable licence-server URL | LICENSING.md |
 
 ## 7. Test assets (observed to exist; not executed)
