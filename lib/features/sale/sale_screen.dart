@@ -14,6 +14,7 @@ import '../../domain/repositories/repositories.dart';
 import '../payment/payment_screen.dart';
 import '../../domain/models/permissions.dart';
 import '../../domain/services/authorization.dart';
+import '../payment/customer_dialog.dart';
 import '../../domain/services/ticket_engine.dart';
 import '../admin/presentation/supervisor_override.dart';
 import '../receipt/receipt_dialog.dart';
@@ -764,6 +765,11 @@ class _SaleScreenState extends ConsumerState<SaleScreen> {
     onVoid: () => _void(ticket),
     onCharge: () => _charge(ticket),
     onChangeTable: widget.onChangeTable ?? widget.onTables,
+    // Choosing who the order is for is part of ringing it up (XORD-001), so it
+    // needs the same key the sale screen itself does.
+    onChooseCustomer: ref.watch(canProvider(PosCapability.operate)) is Allowed
+        ? () => chooseCustomerForTicket(context, ref)
+        : null,
     heldCount: ref.watch(openTicketsProvider).heldOtherThan(ticket.id).length,
     onShowHeld: () => _showHeld(ticket),
   );

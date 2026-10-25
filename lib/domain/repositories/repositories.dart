@@ -159,13 +159,28 @@ abstract interface class CustomersRepository {
   /// person; a till that created a duplicate locally would upload a split the
   /// platform then has to merge. So this upserts too, and a re-entered regular
   /// simply comes back with their details corrected.
+  ///
+  /// **[by] must hold `customers.create`** — checked here, not only by the
+  /// button that calls this (XORD-001). A repeat that only *selects* somebody
+  /// already on file does not come through here at all. Throws
+  /// [CustomerNotPermitted] when [by] may not.
   Future<PosCustomer> upsert({
+    required PosStaff? by,
     required String name,
     required String phone,
     String? email,
     String? address,
     String? note,
   });
+}
+
+/// [CustomersRepository.upsert] was asked by somebody without
+/// `customers.create`. Nothing was written.
+class CustomerNotPermitted implements Exception {
+  const CustomerNotPermitted();
+
+  @override
+  String toString() => 'Adding a customer needs the customers.create permission.';
 }
 
 /// The customer directory as the back office reads it: everyone on file, with

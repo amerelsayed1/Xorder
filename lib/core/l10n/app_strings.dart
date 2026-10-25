@@ -1022,6 +1022,8 @@ sealed class AppStrings {
   String get capBackupManage;
   String get capAdminEnter;
   String get capPaymentRemove;
+  String get capCustomersCreate;
+  String get customerCreateNotAllowed;
   String get capReportExport;
 
   /// Taking a payment back off an unsettled bill: the act, in words, for the
@@ -5214,6 +5216,13 @@ final class EnStrings extends AppStrings {
   String get capAdminEnter => 'Open Admin Mode';
   @override
   String get capPaymentRemove => 'Take a payment off an unsettled bill';
+
+  @override
+  String get capCustomersCreate => 'Add a customer from the order';
+
+  @override
+  String get customerCreateNotAllowed =>
+      'Adding a new customer needs permission. Ask a manager, or pick somebody already on file.';
   @override
   String get capReportExport => 'Export reports and sales to Excel';
   @override
@@ -7670,8 +7679,7 @@ final class ArStrings extends AppStrings {
   @override
   String get reasonNoteHint => 'أي تفصيل يستحق التسجيل';
   @override
-  String get reasonRequiredHelp =>
-      'يُسجَّل السبب مع هذا الإجراء ويمكن الرجوع إليه في التقارير.';
+  String get reasonRequiredHelp => 'يُسجَّل السبب مع هذا الإجراء ويمكن الرجوع إليه في التقارير.';
   @override
   String get reasonOptionalHelp =>
       'السبب اختياري هنا. وما تكتبه يُحفظ مع السجل.';
@@ -10136,6 +10144,13 @@ final class ArStrings extends AppStrings {
   String get capAdminEnter => 'فتح وضع المسؤول';
   @override
   String get capPaymentRemove => 'حذف دفعة من فاتورة لم تُسدَّد بعد';
+
+  @override
+  String get capCustomersCreate => 'إضافة عميل من الطلب';
+
+  @override
+  String get customerCreateNotAllowed =>
+      'إضافة عميل جديد تحتاج صلاحية. اطلب من المدير، أو اختر عميلًا مسجّلًا.';
   @override
   String get capReportExport => 'تصدير التقارير والمبيعات إلى Excel';
   @override

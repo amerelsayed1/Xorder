@@ -16,6 +16,8 @@ import '../../../domain/models/shift.dart';
 import '../../../domain/models/ticket.dart';
 import '../../../domain/services/ticket_engine.dart';
 import '../../admin/presentation/supervisor_override.dart';
+import '../../../core/ui/widgets/fold_digits_formatter.dart';
+import '../../../core/text/digits.dart';
 
 /// Take money off — a configured discount, or one the person types.
 ///
@@ -125,7 +127,7 @@ class _DiscountSheetState extends ConsumerState<DiscountSheet> {
   int? get _typedValue {
     final text = _value.text.trim();
     if (text.isEmpty) return null;
-    final parsed = double.tryParse(text);
+    final parsed = double.tryParse(foldDigits(text));
     if (parsed == null || parsed <= 0) return null;
     return _customKind == DiscountKind.percentage
         ? (parsed * 100).round()
@@ -579,6 +581,7 @@ class _DiscountSheetState extends ConsumerState<DiscountSheet> {
             controller: _value,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             inputFormatters: [
+              const FoldDigitsFormatter(),
               FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
             ],
             textDirection: TextDirection.ltr,

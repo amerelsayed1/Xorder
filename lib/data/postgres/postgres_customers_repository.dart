@@ -1,5 +1,7 @@
 import '../../core/config/deployment.dart';
 import '../../domain/models/customer.dart';
+import '../../domain/models/permissions.dart';
+import '../../domain/services/authorization.dart';
 import '../../domain/repositories/repositories.dart';
 import 'pos_database.dart';
 
@@ -67,12 +69,19 @@ class PostgresCustomersRepository implements CustomersRepository {
 
   @override
   Future<PosCustomer> upsert({
+    required PosStaff? by,
     required String name,
     required String phone,
     String? email,
     String? address,
     String? note,
   }) async {
+    // Re-checked where the write happens, as every repository does: a button
+    // that is wrong can only ever show less than is allowed (XORD-001).
+    if (Authorization.check(by, PosCapability.customersCreate) is! Allowed) {
+      throw const CustomerNotPermitted();
+    }
+
     final normalised = PosCustomer.normalisePhone(phone);
     if (normalised.isEmpty) {
       throw ArgumentError.value(
@@ -180,6 +189,7 @@ class UnconfiguredCustomersRepository implements CustomersRepository {
 
   @override
   Future<PosCustomer> upsert({
+    required PosStaff? by,
     required String name,
     required String phone,
     String? email,

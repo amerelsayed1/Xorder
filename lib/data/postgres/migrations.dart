@@ -4467,6 +4467,27 @@ const posMigrations = <PosMigration>[
         "pos_stock_movements_not_nothing "
         "CHECK (quantity_milli <> 0 OR kind = 'opening')",
   ]),
+  // `customers.create` — adding a customer from the order (XORD-001). The
+  // payment screen's customer box let anybody add one, with no key at all.
+  // Now it has one, and the roles that could keep doing it: the owner (who
+  // holds everything), the manager, the supervisor and the cashier — a cashier
+  // is the person at the counter taking the phone number, so withholding it
+  // from them would turn a feature into a regression on the day of the update.
+  //
+  // The seeded roles by code only, and additively, as 47 does: a restaurant's
+  // own roles are the restaurant's to decide about in Roles, and the people on
+  // them can still pick a customer already on file, which needs only
+  // `pos.operate`. Idempotent: a role that already holds it is left alone.
+  PosMigration(53, 'the roles that added customers at the counter keep it', [
+    '''
+    UPDATE pos_roles
+       SET capabilities = ARRAY(
+             SELECT DISTINCT unnest(
+               capabilities || ARRAY['customers.create']::text[]))
+     WHERE code IN ('owner', 'manager', 'supervisor', 'cashier')
+       AND NOT (capabilities @> ARRAY['customers.create']::text[])
+    ''',
+  ]),
 ];
 
 /// Brings the branch database up to the current schema.

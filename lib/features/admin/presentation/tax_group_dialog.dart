@@ -6,6 +6,7 @@ import '../../../core/ui/tokens.dart';
 import '../../../core/ui/widgets/pos_widgets.dart';
 import '../../../domain/models/tax.dart';
 import 'admin_pane_bits.dart';
+import '../../../core/text/digits.dart';
 
 /// A named rate (§17).
 ///
@@ -62,7 +63,7 @@ class _TaxGroupDialogState extends State<TaxGroupDialog> {
       return;
     }
 
-    final typed = double.tryParse(_rate.text.trim());
+    final typed = double.tryParse(foldDigits(_rate.text.trim()));
     if (typed == null || typed < 0 || typed > 100) {
       setState(() => _problem = strings.taxGroupRateNotValid);
       return;

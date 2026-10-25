@@ -17,6 +17,17 @@ abstract final class PosCapability {
   /// this; without it a person can sign in but the till will not sell.
   static const operate = 'pos.operate';
 
+  /// Add a customer to the directory — at the counter, from the order — so the
+  /// next order can be tied to them (XORD-001).
+  ///
+  /// Its own key rather than part of [operate] because it writes a name and a
+  /// phone number into a list the platform shares with the restaurant's other
+  /// tills and its marketing. *Choosing* somebody already on file needs only
+  /// [operate]: that changes who an order is for, not who is on file. The
+  /// string is the platform's own (`TenantCapability::CUSTOMERS_CREATE`), so a
+  /// cloud till's roles carry it through the bootstrap bundle untouched.
+  static const customersCreate = 'customers.create';
+
   /// See the menu. Separate from [operate] because a manager who never touches
   /// the till still needs to read the catalogue to manage it.
   static const catalogView = 'catalog.view';
@@ -137,6 +148,7 @@ abstract final class PosCapability {
   /// understand yet, and silently dropping it would quietly demote somebody.
   static const all = <String>[
     operate,
+    customersCreate,
     catalogView,
     orderViewAll,
     catalogManage,
@@ -277,6 +289,8 @@ abstract final class PosCapability {
   /// rather than the one that grants access.
   static const _risk = <String, PermissionRisk>{
     operate: PermissionRisk.low,
+    // Personal data, but only ever added to, and the audit row names who.
+    customersCreate: PermissionRisk.medium,
     catalogView: PermissionRisk.low,
     orderViewAll: PermissionRisk.low,
     receiptReprint: PermissionRisk.low,
@@ -488,6 +502,7 @@ enum PermissionRisk {
 enum CapabilityGroup {
   selling([
     PosCapability.operate,
+    PosCapability.customersCreate,
     PosCapability.catalogView,
     PosCapability.orderViewAll,
   ]),
@@ -598,6 +613,7 @@ abstract final class SystemRoles {
 
   static const manager = <String>{
     PosCapability.operate,
+    PosCapability.customersCreate,
     PosCapability.catalogView,
     PosCapability.catalogManage,
     PosCapability.staffManage,
@@ -627,6 +643,7 @@ abstract final class SystemRoles {
   /// changes what the restaurant sells or who works there.
   static const supervisor = <String>{
     PosCapability.operate,
+    PosCapability.customersCreate,
     PosCapability.catalogView,
     PosCapability.orderViewAll,
     PosCapability.discountApply,
@@ -652,6 +669,7 @@ abstract final class SystemRoles {
   /// just printed. Nothing in [PosCapability.backOffice], by requirement.
   static const cashier = <String>{
     PosCapability.operate,
+    PosCapability.customersCreate,
     PosCapability.catalogView,
     // Correcting a mis-tap before the kitchen sees it is part of ringing up a
     // sale, not a privilege. Voiding something already cooked is not here: a

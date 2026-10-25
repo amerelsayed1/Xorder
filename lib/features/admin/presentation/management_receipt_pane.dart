@@ -16,6 +16,7 @@ import '../../receipt/receipt_data.dart';
 import '../../receipt/receipt_paper.dart';
 import 'admin_messages.dart';
 import 'admin_pane_bits.dart';
+import '../../../core/text/digits.dart';
 
 /// Who the receipt says sold the food.
 ///
@@ -142,7 +143,7 @@ class _ManagementReceiptPaneState extends ConsumerState<ManagementReceiptPane> {
       landmark: _text('landmark'),
       additionalInformation: _text('additional_info'),
     ),
-    phone: _text('phone'),
+    phone: foldDigits(_text('phone')),
     headerNote: _text('header_note'),
     footerNote: _text('footer_note'),
   );

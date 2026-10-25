@@ -121,6 +121,7 @@ class CartPanel extends StatelessWidget {
     required this.onVoid,
     required this.onCharge,
     this.onChangeTable,
+    this.onChooseCustomer,
     this.heldCount = 0,
     this.onShowHeld,
     this.selectedLineKey,
@@ -153,6 +154,11 @@ class CartPanel extends StatelessWidget {
   final VoidCallback onVoid;
   final VoidCallback onCharge;
   final VoidCallback? onChangeTable;
+
+  /// Open the customer picker (XORD-001). Null hides the row: the person at the
+  /// till may not choose who an order is for, and a control that does nothing
+  /// is not drawn.
+  final VoidCallback? onChooseCustomer;
 
   /// How many parked tickets with no table are waiting, excluding this one.
   final int heldCount;
@@ -196,6 +202,7 @@ class CartPanel extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _header(strings, pos: context.pos),
+          if (onChooseCustomer != null) _customerRow(strings, pos: context.pos),
           Expanded(
             child: ticket.isEmpty
                 ? _emptyState(strings, pos: context.pos)
@@ -218,6 +225,27 @@ class CartPanel extends StatelessWidget {
   }
 
   bool get showsHeld => heldCount > 0 && onShowHeld != null;
+
+  /// Who the order is for, and the way to change it, without leaving the sale.
+  ///
+  /// Always one line: the name once somebody is chosen, "Who is this for?"
+  /// until then — a walk-in is a valid order and nothing here asks for more.
+  Widget _customerRow(AppStrings s, {required PosPalette pos}) => Container(
+    padding: const EdgeInsets.symmetric(
+      horizontal: PosSpace.lg,
+      vertical: PosSpace.sm,
+    ),
+    decoration: BoxDecoration(border: Border(bottom: pos.shellBorder)),
+    child: PosButton(
+      key: const Key('cart-customer'),
+      label: ticket.customer?.name ?? s.whoIsThisFor,
+      height: 36,
+      background: ticket.customer == null ? pos.shellCard : pos.accent,
+      foreground: ticket.customer == null ? pos.shellText : Colors.white,
+      fontSize: 12.5,
+      onPressed: onChooseCustomer,
+    ),
+  );
 
   Widget _header(AppStrings s, {required PosPalette pos}) => Container(
     padding: const EdgeInsets.symmetric(

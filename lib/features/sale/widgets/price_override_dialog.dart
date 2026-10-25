@@ -18,6 +18,7 @@ import '../../../domain/repositories/repositories.dart';
 import '../../../domain/services/authorization.dart';
 import '../../../domain/services/ticket_engine.dart';
 import '../../admin/presentation/supervisor_override.dart';
+import '../../../core/ui/widgets/fold_digits_formatter.dart';
 
 /// What the dialog came back with.
 ///
@@ -207,6 +208,7 @@ class _PriceOverrideDialogState extends ConsumerState<PriceOverrideDialog> {
           autofocus: true,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           inputFormatters: [
+            const FoldDigitsFormatter(),
             FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
           ],
           textDirection: TextDirection.ltr,

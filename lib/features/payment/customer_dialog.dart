@@ -8,6 +8,10 @@ import '../../core/ui/theme.dart';
 import '../../core/ui/tokens.dart';
 import '../../core/ui/widgets/pos_widgets.dart';
 import '../../domain/models/customer.dart';
+import '../../domain/models/permissions.dart';
+import '../../domain/repositories/repositories.dart' show CustomerNotPermitted;
+import '../../domain/services/authorization.dart';
+import '../../core/ui/widgets/fold_digits_formatter.dart';
 
 /// Finding a regular, or adding one, at the moment the money is taken.
 ///
@@ -42,6 +46,21 @@ class CustomerDialog extends ConsumerStatefulWidget {
 
   @override
   ConsumerState<CustomerDialog> createState() => _CustomerDialogState();
+}
+
+/// Attach, replace or remove the customer on the open ticket — the one flow
+/// the sale screen's cart and the payment screen's header both open (XORD-001).
+///
+/// Nothing here touches the lines, discounts, quantities, order type or table:
+/// a customer is who, not what, so the cart is exactly as it was whether the
+/// dialog is saved, cancelled or dismissed. Returns whether a choice was made.
+Future<bool> chooseCustomerForTicket(BuildContext context, WidgetRef ref) async {
+  final choice = await CustomerDialog.show(
+    context,
+    attached: ref.read(ticketProvider).customer,
+  );
+  if (choice == null || !context.mounted) return false;
+  return ref.read(ticketProvider.notifier).setCustomer(choice.customer);
 }
 
 /// What the dialog came back with.
@@ -113,11 +132,35 @@ class _CustomerDialogState extends ConsumerState<CustomerDialog> {
       _error = null;
     });
     try {
-      final saved = await ref
-          .read(customersRepositoryProvider)
-          .upsert(name: name, phone: phone, address: _address.text);
+      final customers = ref.read(customersRepositoryProvider);
+
+      // One person per number. Somebody already on file under this number is
+      // selected as they are — not written over with whatever name the cashier
+      // happened to type — and choosing them needs no `customers.create`.
+      final number = PosCustomer.normalisePhone(phone);
+      final onFile = (await customers.search(number)).where(
+        (c) => PosCustomer.normalisePhone(c.phone) == number,
+      );
+      if (onFile.isNotEmpty) {
+        if (!mounted) return;
+        Navigator.of(context).pop(CustomerChoice(onFile.first));
+        return;
+      }
+
+      final saved = await customers.upsert(
+        by: ref.read(signedInStaffProvider),
+        name: name,
+        phone: phone,
+        address: _address.text,
+      );
       if (!mounted) return;
       Navigator.of(context).pop(CustomerChoice(saved));
+    } on CustomerNotPermitted {
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _error = context.strings.customerCreateNotAllowed;
+      });
     } on Object catch (error) {
       if (!mounted) return;
       setState(() {
@@ -131,6 +174,9 @@ class _CustomerDialogState extends ConsumerState<CustomerDialog> {
   Widget build(BuildContext context) {
     final s = context.strings;
     final palette = context.pos;
+    // Re-checked by the repository on save; this only decides what is drawn.
+    final canCreate =
+        ref.watch(canProvider(PosCapability.customersCreate)) is Allowed;
 
     return Dialog(
       backgroundColor: palette.surface,
@@ -165,7 +211,12 @@ class _CustomerDialogState extends ConsumerState<CustomerDialog> {
                 ),
                 if (_adding) ...[
                   const SizedBox(height: PosSpace.sm),
-                  _field(controller: _phone, hint: s.customerPhone),
+                  _field(
+                    controller: _phone,
+                    hint: s.customerPhone,
+                    keyboardType: TextInputType.phone,
+                    foldDigits: true,
+                  ),
                   const SizedBox(height: PosSpace.sm),
                   _field(controller: _address, hint: s.customerAddress),
                 ],
@@ -184,12 +235,28 @@ class _CustomerDialogState extends ConsumerState<CustomerDialog> {
                             padding: const EdgeInsets.symmetric(
                               vertical: PosSpace.lg,
                             ),
-                            child: Text(
-                              s.noCustomerFound,
-                              style: PosText.ui(
-                                size: 13,
-                                color: palette.muted,
-                              ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  s.noCustomerFound,
+                                  style: PosText.ui(
+                                    size: 13,
+                                    color: palette.muted,
+                                  ),
+                                ),
+                                if (!canCreate) ...[
+                                  const SizedBox(height: PosSpace.xs),
+                                  Text(
+                                    s.customerCreateNotAllowed,
+                                    key: const Key('customer-create-denied'),
+                                    style: PosText.ui(
+                                      size: 12.5,
+                                      color: palette.muted,
+                                    ),
+                                  ),
+                                ],
+                              ],
                             ),
                           )
                         : ListView.builder(
@@ -259,18 +326,21 @@ class _CustomerDialogState extends ConsumerState<CustomerDialog> {
                       ),
                     ),
                     const SizedBox(width: PosSpace.sm),
-                    Expanded(
-                      flex: 2,
-                      child: PosButton(
-                        label: _adding ? s.save : s.addCustomer,
-                        background: palette.accent,
-                        foreground: Colors.white,
-                        fontWeight: FontWeight.w700,
-                        onPressed: _busy
-                            ? null
-                            : (_adding ? _save : _startAdding),
+                    // Not drawn without `customers.create` — there is nothing
+                    // behind it to press. Choosing from the list still works.
+                    if (canCreate)
+                      Expanded(
+                        flex: 2,
+                        child: PosButton(
+                          label: _adding ? s.save : s.addCustomer,
+                          background: palette.accent,
+                          foreground: Colors.white,
+                          fontWeight: FontWeight.w700,
+                          onPressed: _busy
+                              ? null
+                              : (_adding ? _save : _startAdding),
+                        ),
                       ),
-                    ),
                   ],
                 ),
               ],
@@ -286,12 +356,17 @@ class _CustomerDialogState extends ConsumerState<CustomerDialog> {
     required String hint,
     bool autofocus = false,
     void Function(String)? onChanged,
+    TextInputType? keyboardType,
+    bool foldDigits = false,
   }) {
     final palette = context.pos;
     return TextField(
       controller: controller,
       autofocus: autofocus,
       onChanged: onChanged,
+      keyboardType: keyboardType,
+      // Arabic digits become ASCII as they are typed (XORD-004).
+      inputFormatters: foldDigits ? const [FoldDigitsFormatter()] : null,
       style: PosText.ui(size: 14, color: palette.ink),
       decoration: InputDecoration(
         hintText: hint,

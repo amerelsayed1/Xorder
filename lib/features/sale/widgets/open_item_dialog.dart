@@ -13,6 +13,7 @@ import '../../../domain/models/ticket.dart';
 import '../../../domain/services/authorization.dart';
 import '../../../domain/services/ticket_engine.dart';
 import '../../admin/presentation/supervisor_override.dart';
+import '../../../core/ui/widgets/fold_digits_formatter.dart';
 
 /// What the dialog came back with.
 class OpenItemDraft {
@@ -186,7 +187,10 @@ class _OpenItemDialogState extends State<OpenItemDialog> {
           ? const TextInputType.numberWithOptions(decimal: true)
           : TextInputType.text,
       inputFormatters: numeric
-          ? [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))]
+          ? [
+              const FoldDigitsFormatter(),
+              FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
+            ]
           : null,
       textDirection: numeric ? TextDirection.ltr : null,
       maxLength: numeric ? null : 60,

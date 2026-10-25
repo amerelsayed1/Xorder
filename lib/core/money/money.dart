@@ -1,3 +1,4 @@
+import '../text/digits.dart';
 import 'rounding.dart';
 
 /// Money as **integer minor units**, never a double.
@@ -29,7 +30,7 @@ class Money implements Comparable<Money> {
     String currency = 'EGP',
     int exponent = 2,
   }) {
-    final trimmed = input.trim().replaceAll(',', '');
+    final trimmed = foldDigits(input).trim().replaceAll(',', '');
     if (trimmed.isEmpty) return null;
 
     final match = RegExp(r'^(-?)(\d*)(?:\.(\d*))?$').firstMatch(trimmed);

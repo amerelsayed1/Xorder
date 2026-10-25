@@ -1529,9 +1529,17 @@ class TicketController extends Notifier<Ticket> {
   ///
   /// Never refuses and never touches the totals — a customer is who, not what.
   /// A cashier who picked the wrong person simply opens the dialog again.
-  void setCustomer(PosCustomer? customer) => state = customer == null
-      ? TicketEngine.detachCustomer(state)
-      : TicketEngine.attachCustomer(state, customer);
+  ///
+  /// **Needs `pos.operate`** (XORD-001): choosing who an order is for is part
+  /// of ringing it up. Returns whether it was done; the cart is never touched
+  /// either way.
+  bool setCustomer(PosCustomer? customer) {
+    if (ref.read(canProvider(PosCapability.operate)) is! Allowed) return false;
+    state = customer == null
+        ? TicketEngine.detachCustomer(state)
+        : TicketEngine.attachCustomer(state, customer);
+    return true;
+  }
 
   bool addTender({
     required int typeId,

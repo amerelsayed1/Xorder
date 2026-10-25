@@ -56,6 +56,7 @@ abstract final class AdminText {
         PosCapability.backupManage => s.capBackupManage,
         PosCapability.adminEnter => s.capAdminEnter,
         PosCapability.paymentRemove => s.capPaymentRemove,
+        PosCapability.customersCreate => s.capCustomersCreate,
         // A capability from a newer build. Shown rather than hidden: a manager
         // seeing a permission they do not recognise is better informed than one
         // looking at a list that quietly omits it. Untranslated of course —

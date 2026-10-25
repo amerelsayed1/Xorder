@@ -298,16 +298,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
   /// Nothing here touches the money: a customer is who, not what, and the
   /// totals are the same either way. So this never refuses and never has to
   /// be undone if the cashier picked the wrong person — they open it again.
-  Future<void> _chooseCustomer() async {
-    final ticket = ref.read(ticketProvider);
-    final choice = await CustomerDialog.show(
-      context,
-      attached: ticket.customer,
-    );
-    if (choice == null || !mounted) return;
-
-    ref.read(ticketProvider.notifier).setCustomer(choice.customer);
-  }
+  Future<void> _chooseCustomer() => chooseCustomerForTicket(context, ref);
 
   Widget _left(AppStrings strings, Ticket ticket, TicketTotals totals) =>
       Container(
