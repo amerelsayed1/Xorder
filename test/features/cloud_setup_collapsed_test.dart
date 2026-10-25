@@ -595,10 +595,11 @@ void main() {
       expect(container.read(setupProvider).step, SetupStep.connecting);
       expect(container.read(setupProvider).needsDatabase, isTrue);
       expect(find.text('NO INSTALLED DATABASE FOUND'), findsOneWidget);
-      // Prefilled with the defaults every wizard-built install shares.
+      // Prefilled: the restaurant's own name for its database, and the
+      // till account every wizard-built install shares.
       expect(
         container.read(setupProvider).deployment.databaseName,
-        'xorder_pos',
+        'islanded_db',
       );
       expect(container.read(setupProvider).deployment.databaseUser, 'pos_till');
       // And it cannot be walked past: the till has nowhere to write a sale.
@@ -635,7 +636,8 @@ void main() {
       // either, and the build is the only thing that can create it — with
       // this, the password every sale after tonight connects with.
       expect(builder.tillPassword, 'typed-by-hand');
-      expect(builder.config!.databaseName, 'xorder_pos');
+      // Built under the restaurant's own name — no installer named it first.
+      expect(builder.config!.databaseName, 'islanded_db');
       expect(builder.config!.databaseUser, 'pos_till');
       expect(builder.config!.adminDatabaseUser, 'pos_admin');
       expect(container.read(setupProvider).provisioned, isTrue);
@@ -713,7 +715,7 @@ void main() {
 
       expect(builder.calls, 1);
       expect(
-        find.text(en.bootstrapDatabaseMissing('xorder_pos', 'pos_admin')),
+        find.text(en.bootstrapDatabaseMissing('islanded_db', 'pos_admin')),
         findsOneWidget,
         reason: 'the operator reads a sentence, not a driver',
       );

@@ -79,6 +79,22 @@ abstract final class SyncSchedule {
   /// How long after [outcome] the next pass should run.
   static Duration after(SyncOutcome outcome) =>
       outcome.settled ? idle : retry;
+
+  /// A nudge waits this long, so a sale and its shift open, or three cash
+  /// movements in a row, make one pass rather than three.
+  static const nudgeDelay = Duration(seconds: 2);
+
+  /// And never runs passes closer together than this, however busy the
+  /// counter is: a heartbeat every two seconds would be noise in the
+  /// platform's logs and no faster for anybody.
+  static const nudgeFloor = Duration(seconds: 20);
+
+  /// How long a nudge at [now] should wait, given when the last pass ran.
+  static Duration nudgeAfter({required DateTime? lastPass, required DateTime now}) {
+    if (lastPass == null) return nudgeDelay;
+    final since = now.difference(lastPass);
+    return since >= nudgeFloor ? nudgeDelay : nudgeFloor - since;
+  }
 }
 
 /// The cloud terminal's background conversation with the platform.
@@ -112,13 +128,51 @@ class CloudSync {
   final OutboxDrain _drain;
   Future<SyncOutcome>? _running;
 
-  /// Kick a pass without waiting for it — what the sale screen does after
-  /// settling, so "sold" and "synced" are seconds apart, not a timer apart.
+  /// Kick a pass without waiting for it — what "Sync now" does.
   void kick() => unawaited(run());
+
+  Timer? _nudge;
+  DateTime? _lastPass;
+
+  /// Ask for a pass soon, because something just changed that the platform
+  /// should hear about: a sale, a shift, a cash movement, a customer — or a
+  /// till arriving at its lock screen, where a PIN set on the dashboard a
+  /// minute ago is exactly what it needs.
+  ///
+  /// Debounced and rate-limited by [SyncSchedule.nudgeAfter], and only on
+  /// the automatic policy: a till whose operator chose to sync by hand is
+  /// not synced behind their back. Before this, "automatic" meant one pass
+  /// at launch and one every four hours, so a sale rung up at noon reached
+  /// the dashboard at four, and a cashier added on the dashboard could not
+  /// sign in until the till was restarted (16 Oct 2026).
+  void nudge({DateTime Function() now = DateTime.now}) {
+    if (config.syncPolicy != SyncPolicy.automatic) return;
+    if (_nudge != null) return;
+    final wait = SyncSchedule.nudgeAfter(lastPass: _lastPass, now: now());
+    _nudge = Timer(wait, () {
+      _nudge = null;
+      kick();
+    });
+  }
+
+  /// Whether a nudge is waiting to run.
+  bool get nudgePending => _nudge != null;
+
+  /// How long ago the last pass finished, or null before the first.
+  Duration? get sinceLastPass {
+    final last = _lastPass;
+    return last == null ? null : DateTime.now().difference(last);
+  }
+
+  void dispose() {
+    _nudge?.cancel();
+    _nudge = null;
+  }
 
   /// Run one pass, or join the one already running.
   Future<SyncOutcome> run() => _running ??= _pass().whenComplete(() {
     _running = null;
+    _lastPass = DateTime.now();
   });
 
   Future<SyncOutcome> _pass() async {

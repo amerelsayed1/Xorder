@@ -18,6 +18,9 @@ import '../domain/online_verdict.dart';
 abstract interface class LicenceCheckStore {
   Future<LicenceCheckRecord?> read();
   Future<void> write(LicenceCheckRecord record);
+
+  /// Forget the cached verdict (hard reset). A missing file is not an error.
+  Future<void> clear();
 }
 
 class FileLicenceCheckStore implements LicenceCheckStore {
@@ -55,6 +58,12 @@ class FileLicenceCheckStore implements LicenceCheckStore {
     await temporary.writeAsString(jsonEncode(record.toJson()), flush: true);
     await temporary.rename(target.path);
   }
+
+  @override
+  Future<void> clear() async {
+    final file = await _file();
+    if (await file.exists()) await file.delete();
+  }
 }
 
 class InMemoryLicenceCheckStore implements LicenceCheckStore {
@@ -67,4 +76,7 @@ class InMemoryLicenceCheckStore implements LicenceCheckStore {
 
   @override
   Future<void> write(LicenceCheckRecord record) async => _record = record;
+
+  @override
+  Future<void> clear() async => _record = null;
 }

@@ -8,6 +8,7 @@ import '../../../core/ui/tokens.dart';
 import '../../../core/ui/widgets/pos_widgets.dart';
 import '../application/setup_controller.dart';
 import '../domain/setup_state.dart';
+import 'hard_reset_dialog.dart';
 import 'setup_panes.dart';
 
 /// First-run setup.
@@ -122,7 +123,29 @@ class _StepRail extends StatelessWidget {
             ],
           ),
         ),
+        const _HardResetButton(),
       ],
+    ),
+  );
+}
+
+/// Start from scratch, from the first screen. See `confirmAndHardReset`.
+class _HardResetButton extends ConsumerWidget {
+  const _HardResetButton();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) => Padding(
+    padding: const EdgeInsets.all(PosSpace.xl),
+    child: KeyedSubtree(
+      key: const Key('hard-reset'),
+      child: PosButton(
+        label: context.strings.hardResetButton,
+        height: 44,
+        fontSize: 12.5,
+        border: Border.all(color: context.pos.danger),
+        foreground: context.pos.shellDangerText,
+        onPressed: () => confirmAndHardReset(context, ref),
+      ),
     ),
   );
 }

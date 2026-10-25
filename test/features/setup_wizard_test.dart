@@ -131,6 +131,33 @@ void main() {
       expect(draft.copyWith(step: SetupStep.deployment).canAdvance, isTrue);
     });
 
+    /// Found driving the real till offline (report 2026-10-24, F-1): the
+    /// database password field was left empty on a machine whose PostgreSQL
+    /// trusts localhost. The till never contacts PostgreSQL without a password,
+    /// yet the wizard said "PostgreSQL rejected the username or password" and
+    /// sent the installer to check a role that was fine.
+    test('an empty database password is named, not blamed on PostgreSQL', () async {
+      final container = ProviderContainer(
+        overrides: [
+          ...fakeRepositoryOverrides(),
+          // What the real pool does with no credential: an auth failure.
+          posDatabaseProvider.overrideWithValue(_ProbesAs(PosDbFailure.auth)),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final controller = container.read(setupProvider.notifier);
+      controller.setMode(DeploymentMode.offline);
+      controller.setDatabasePassword('');
+
+      expect(await controller.testConnection(), isFalse);
+
+      final draft = container.read(setupProvider);
+      final strings = container.read(stringsProvider);
+      expect(draft.error, strings.databasePasswordRequired);
+      expect(draft.error, isNot(strings.authFailure(draft.deployment.databaseUser)));
+    });
+
     test('a login that is refused is still a refusal', () async {
       final container = ProviderContainer(
         overrides: [
@@ -438,6 +465,30 @@ void main() {
         reason: 'the licence names its tenant; the operator should not have to',
       );
       expect(draft.licensedModes, contains(draft.deployment.mode));
+      // And names the database after the restaurant: the wizard builds it,
+      // and `mahsoub_db` says whose it is where `xorder_pos` said nothing.
+      expect(draft.deployment.databaseName, 'mahsoub_db');
+
+      // A name the operator typed is theirs; the default is only a default.
+      controller.setDatabaseName('shop_db');
+      await controller.activateLicence();
+      expect(container.read(setupProvider).deployment.databaseName, 'shop_db');
+    });
+
+    test('the draft follows the language bar, so the last word is the operator\'s', () async {
+      // The claim sets the restaurant's own language, and the Settings bar
+      // lets whoever is standing there switch back. The draft used to keep
+      // the claim's answer, and `complete()` wrote that to disk — a till
+      // switched to English on the last screen booted in Arabic.
+      final container = ProviderContainer(overrides: fakeRepositoryOverrides());
+      addTearDown(container.dispose);
+      final controller = container.read(setupProvider.notifier);
+      container.read(localeProvider.notifier).apply('ar');
+      expect(container.read(setupProvider).locale, 'ar');
+
+      container.read(localeProvider.notifier).apply('en');
+      expect(container.read(setupProvider).locale, 'en');
+      expect(controller.state.locale, 'en');
     });
 
     test('a licence activated against a typed platform is claimed there too', () async {

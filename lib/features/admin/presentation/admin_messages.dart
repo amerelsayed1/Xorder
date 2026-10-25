@@ -382,6 +382,7 @@ abstract final class AdminText {
         CatalogProblem.itemNameMissing => s.refusalItemNameMissing,
         CatalogProblem.offerAbovePrice => s.refusalOfferAbovePrice,
         CatalogProblem.categoryNameMissing => s.refusalCategoryNameMissing,
+        CatalogProblem.skuTaken => s.refusalSkuTaken,
       };
 
   /// Why a size or extra could not be saved.

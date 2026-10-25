@@ -8,6 +8,7 @@ import '../../domain/models/refund.dart';
 import '../../domain/repositories/repositories.dart';
 import '../../domain/services/authorization.dart';
 import '../../domain/services/refund_engine.dart' show RefundQuote;
+import 'open_shift.dart';
 import 'pos_database.dart';
 import 'postgres_orders_repository.dart' show PosWriteContext;
 
@@ -35,24 +36,17 @@ class PostgresRefundsRepository implements RefundsRepository {
     required PosDatabase database,
     required this.config,
     required this.context,
-    this.shiftId,
     this.currency = 'EGP',
     this.exponent = 2,
+    this.onQueued,
   }) : _db = database;
+
+  /// Told after a refund is queued — see `PostgresOrdersRepository.onQueued`.
+  final void Function()? onQueued;
 
   final PosDatabase _db;
   final DeploymentConfig config;
   final PosWriteContext context;
-
-  /// The shift the money left, asked when the refund is written rather than
-  /// when this repository was built — see `PostgresOrdersRepository.shiftId`
-  /// for the stale-shift failure a captured id caused. A refund stamped with
-  /// yesterday's closed shift is cash that left today's drawer without
-  /// today's expected cash knowing.
-  ///
-  /// Nullable for the same reason an order's is: a refund that cannot name
-  /// its shift is still a refund that must be recorded.
-  final int? Function()? shiftId;
 
   final String currency;
   final int exponent;
@@ -105,6 +99,12 @@ class PostgresRefundsRepository implements RefundsRepository {
         );
       }
 
+      // The shift the money leaves, which is the one open now — not the one
+      // open when this repository was built (see [openShiftIdFor]). Null when
+      // no drawer is open: a refund that cannot name its shift is still a
+      // refund that must be recorded.
+      final shiftId = await openShiftIdFor(tx, context.terminalId);
+
       final inserted = await tx.execute(
         Sql.named('''
           INSERT INTO pos_refunds (
@@ -127,7 +127,7 @@ class PostgresRefundsRepository implements RefundsRepository {
           'branch': context.branchId,
           'terminal': context.terminalId,
           'order': order.id,
-          'shift': shiftId?.call(),
+          'shift': shiftId,
           'kind': quote.kind.wire,
           'subtotal': quote.subtotal.minor,
           'discount': quote.discount.minor,
@@ -237,6 +237,7 @@ class PostgresRefundsRepository implements RefundsRepository {
         );
       }
 
+      onQueued?.call();
       return RefundResult(
         clientRefundId: clientRefundId,
         refundId: refundId,

@@ -108,6 +108,7 @@ void main() {
     int price = 3500,
     Money? discounted,
     int? taxGroupId,
+    String? sku,
   }) =>
       Product(
         id: id,
@@ -116,6 +117,7 @@ void main() {
         price: Money(price),
         discountedPrice: discounted,
         taxGroupId: taxGroupId,
+        sku: sku,
       );
 
   /// A named rate to put an item on.
@@ -322,6 +324,59 @@ void main() {
         (result.refusal! as CatalogRefused).problem,
         CatalogProblem.offerAbovePrice,
       );
+    });
+
+    /// Report 2026-10-24, F-2: a second item typed with a SKU the first already
+    /// used reached `pos_products_sku_unique` and came back as an exception, so
+    /// the editor froze on "Saving…". It is now a refusal, asked inside the save.
+    test('a SKU another item already uses is refused, as a code', () async {
+      final first = await repository.saveProduct(
+        draft(sku: 'HD-001'),
+        by: manager,
+      );
+      expect(first.refusal, isNull);
+
+      final clash = await repository.saveProduct(
+        draft(name: 'Tea', sku: ' HD-001 '),
+        by: manager,
+      );
+      expect(clash.refusal, isA<CatalogRefused>());
+      expect(
+        (clash.refusal! as CatalogRefused).problem,
+        CatalogProblem.skuTaken,
+      );
+
+      // Nothing was written for the refused one.
+      final rows = await db.query(
+        pg.config,
+        'SELECT count(*) FROM pos_products WHERE sku = @sku',
+        parameters: {'sku': 'HD-001'},
+      );
+      expect(rows.first[0], 1);
+    });
+
+    test('the item that owns a SKU can be edited without clashing with itself',
+        () async {
+      final first = await repository.saveProduct(
+        draft(sku: 'HD-001'),
+        by: manager,
+      );
+      final edited = await repository.saveProduct(
+        first.value!.copyWith(price: const Money(3600)),
+        by: manager,
+      );
+      expect(edited.refusal, isNull);
+      expect(edited.value!.price.minor, 3600);
+    });
+
+    test('blank SKUs never clash with each other', () async {
+      final a = await repository.saveProduct(draft(sku: '  '), by: manager);
+      final b = await repository.saveProduct(
+        draft(name: 'Tea'),
+        by: manager,
+      );
+      expect(a.refusal, isNull);
+      expect(b.refusal, isNull);
     });
 
     test('an item edited on another till is refused, not overwritten', () async {

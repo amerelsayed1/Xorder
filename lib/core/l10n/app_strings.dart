@@ -125,6 +125,11 @@ sealed class AppStrings {
   String get closeShift;
   String get noShift;
 
+  /// The open shift as the top bar names it — "SHIFT #0001". [number] is the
+  /// shift's four digits, kept Western like every other figure on the till;
+  /// only the word is translated.
+  String shiftLabel(String number);
+
   // ── Category rail ─────────────────────────────────────────────────────────
   String get categories;
   String get allItems;
@@ -141,6 +146,7 @@ sealed class AppStrings {
   /// are part of it.
   String cartStatusLine(String cashier, bool online);
   String get changeTable;
+  String tableTaken(String label);
   String get cartEmptyHelp;
   String alreadySent(int lines);
   String get newRound;
@@ -228,6 +234,15 @@ sealed class AppStrings {
   String get newSale;
   String get printAndNew;
 
+  /// Over the receipt, for the seconds the cashier is counting coins back —
+  /// the one number on that dialog that is read aloud across the counter.
+  String get changeDue;
+
+  /// What the print button says, disabled, on a till with no printer. A dead
+  /// control with no explanation is a fault the cashier reports; this names
+  /// the cause instead.
+  String get receiptNoPrinter;
+
   /// The three answers the till can honestly give after trying to print, plus
   /// the one it gives when the queue could not be written either. See
   /// `PrintOutcome` — the toast used to say "queued" in every case, including
@@ -271,6 +286,10 @@ sealed class AppStrings {
   /// Asked of NOBODY in particular — the lock screen signs in whoever's PIN
   /// it is, so it cannot name a person before one has typed anything.
   String get enterYourPin;
+
+  /// Over the name tiles on the lock screen: who can take this till, one tap
+  /// each, so switching user is not typing a name on a keypad screen.
+  String get lockPickYourName;
 
   // ── Start ─────────────────────────────────────────────────────────────────
   String get pointOfSale;
@@ -318,6 +337,16 @@ sealed class AppStrings {
   String closeShiftTitle(String reference);
   String closeShiftHelp(String openedBy);
 
+  /// Over the close-shift count when tickets are still parked on tables or
+  /// held: how many, and what they come to. The audit (S3-5) watched a shift
+  /// closed over an 80.00 ticket the dialog never mentioned. Closing is still
+  /// allowed — the owner may close over them — so this warns, and does not
+  /// refuse.
+  String closeShiftOpenTickets(int count, String total);
+
+  /// One parked ticket on that warning, when it is on no table.
+  String get closeShiftHeldTicket;
+
   /// What the supervisor is being asked to approve, in the cashier's words.
   /// Shown only — the audit row keeps its own stable English wording, so a
   /// record written on an Arabic till still reads the same to whoever
@@ -330,6 +359,12 @@ sealed class AppStrings {
   /// that belongs to somebody else.
   String closeShiftNotYours(String openedBy);
   String get countedInDrawer;
+
+  /// The optional note under the count on a shift close. It goes to the
+  /// platform as the close's reason, which the platform asks for whenever its
+  /// own expected cash differs from the count.
+  String get closeShiftNoteLabel;
+  String get closeShiftNoteHint;
   String expectedInDrawerHelp(String expected, String float, String taken);
   String get varianceBalances;
   String get varianceOver;
@@ -487,6 +522,15 @@ sealed class AppStrings {
   String get signInInstead;
   String get useASetupCodeInstead;
   String get tryAgain;
+
+  // The till cannot open its database (start screen). Plain sentences for the
+  // person at the counter, not the installer's wizard wording.
+  String get dbUnavailableTitle;
+  String dbUnavailableMissing(String database);
+  String get dbUnavailableUnreachable;
+  String get dbUnavailableSignIn;
+  String get dbUnavailableGeneric;
+  String get dbUnavailableDetails;
 
   /// The fallback on a machine the Windows installer never ran on.
   String get noInstalledDatabase;
@@ -661,6 +705,11 @@ sealed class AppStrings {
   String get missingTerminalId;
   String couldNotSaveSetup(Object error);
   String get platformAddressRequired;
+
+  /// The database password was left empty. The till does not connect without
+  /// one, so this is said instead of blaming PostgreSQL for a refusal it never
+  /// made.
+  String get databasePasswordRequired;
   String couldNotReach(String address);
   String get noPlatformAddressInForce;
   String get terminalNotRegisteredYet;
@@ -910,6 +959,12 @@ sealed class AppStrings {
   String get terminalRejectedQueued;
 
   // ── Forced re-setup (Cmd+Shift+S) ─────────────────────────────────────────
+  // Hard reset (setup wizard): erase this machine's memory of the till.
+  String get hardResetButton;
+  String get hardResetTitle;
+  String get hardResetBody;
+  String get hardResetConfirm;
+  String hardResetFailed(String error);
   String get forceResetTitle;
   String get forceResetBody;
   String get forceResetShiftOpen;
@@ -1967,6 +2022,14 @@ sealed class AppStrings {
   String menuSummary(int categories, int items);
   String get noCategoriesYet;
   String get nothingInCategoryYet;
+
+  /// How many items one section holds, under its name on the Sections page and
+  /// in the Menu page's header for it.
+  String sectionItemCount(int count);
+
+  /// The Sections page's one-line description: sections only, items live on the
+  /// Menu page.
+  String get paneSectionsBlurb;
   String get addCategory;
   String get addItem;
   String get rename;
@@ -2112,6 +2175,11 @@ sealed class AppStrings {
   String get refusalItemNameMissing;
   String get refusalOfferAbovePrice;
   String get refusalCategoryNameMissing;
+  String get refusalSkuTaken;
+
+  /// A save that failed for a reason this screen has no sentence for. Said
+  /// instead of leaving the editor frozen on "Saving…".
+  String get refusalSaveFailed;
 
   // ── Reasons ───────────────────────────────────────────────────────────────
   // The chrome around the reason picker. The reasons THEMSELVES are rows in
@@ -2614,6 +2682,15 @@ sealed class AppStrings {
   String get dayForceReasonLabel;
   String get dayForceReasonNeeded;
   String dayClosed(String gross);
+
+  /// A trading day opened on an earlier date is still open (nobody closed the
+  /// night). [date] is `YYYY-MM-DD`. Sales keep going into it until somebody
+  /// closes it from the start screen.
+  String dayStillOpenFrom(String date);
+
+  /// Selling after [date]'s business day was closed: these sales are not filed
+  /// under any day.
+  String dayClosedTodayNotice(String date);
   String get dayCouldNotBeClosed;
   String get dayGross;
   String get dayNet;
@@ -3424,6 +3501,14 @@ final class EnStrings extends AppStrings {
   @override
   String dayClosed(String gross) => 'Day closed. Gross $gross';
   @override
+  String dayStillOpenFrom(String date) =>
+      'The business day of $date is still open. Close it from this screen '
+      'when trading ends.';
+  @override
+  String dayClosedTodayNotice(String date) =>
+      'The business day of $date was already closed. Sales from now are not '
+      'filed under a day.';
+  @override
   String get dayCouldNotBeClosed =>
       'The day could not be closed, so it is still open. Try again.';
   @override
@@ -3532,6 +3617,8 @@ final class EnStrings extends AppStrings {
   String get closeShift => 'Close shift';
   @override
   String get noShift => 'NO SHIFT';
+  @override
+  String shiftLabel(String number) => 'SHIFT #$number';
 
   @override
   String get categories => 'Categories';
@@ -3557,6 +3644,9 @@ final class EnStrings extends AppStrings {
       'OPEN · ${cashier.toUpperCase()} · ${online ? 'LIVE' : 'OFFLINE'}';
   @override
   String get changeTable => 'Change table';
+  @override
+  String tableTaken(String label) =>
+      'Table $label already has an order on it — pick an empty table.';
   @override
   String get cartEmptyHelp =>
       'Ticket is empty. Tap a product, or press F2 and type to search. '
@@ -3716,6 +3806,10 @@ final class EnStrings extends AppStrings {
   @override
   String get printAndNew => 'Print & new';
   @override
+  String get changeDue => 'CHANGE DUE';
+  @override
+  String get receiptNoPrinter => 'No printer configured';
+  @override
   String get receiptPrintedToast => 'Receipt printed.';
   @override
   String get receiptQueuedToast =>
@@ -3777,6 +3871,8 @@ final class EnStrings extends AppStrings {
   String enterPinFor(String name) => '$name · enter PIN';
   @override
   String get enterYourPin => 'Enter your PIN';
+  @override
+  String get lockPickYourName => 'WHO IS BACK?';
 
   @override
   String get pointOfSale => 'POINT OF SALE';
@@ -3853,6 +3949,12 @@ final class EnStrings extends AppStrings {
   String closeShiftHelp(String openedBy) =>
       'Opened by $openedBy. Count the drawer, then confirm.';
   @override
+  String closeShiftOpenTickets(int count, String total) => count == 1
+      ? '1 ticket is still open, $total — it is not in this count.'
+      : '$count tickets are still open, $total in all — they are not in this count.';
+  @override
+  String get closeShiftHeldTicket => 'Held';
+  @override
   String closeShiftApproval(String reference) =>
       'Close $reference and count the drawer';
   @override
@@ -3864,6 +3966,10 @@ final class EnStrings extends AppStrings {
       'Close a drawer opened by $openedBy';
   @override
   String get countedInDrawer => 'Counted in the drawer';
+  @override
+  String get closeShiftNoteLabel => 'Note (optional)';
+  @override
+  String get closeShiftNoteHint => 'Anything worth knowing about this count';
   @override
   String expectedInDrawerHelp(String expected, String float, String taken) =>
       'Expected $expected — float $float plus $taken taken in cash.';
@@ -4193,6 +4299,27 @@ final class EnStrings extends AppStrings {
   @override
   String get tryAgain => 'Try again';
   @override
+  String get dbUnavailableTitle => "The till can't open its database";
+  @override
+  String dbUnavailableMissing(String database) =>
+      'The database «$database» was not found on this computer. It may have '
+      'been deleted, or the database server was reset. Your installer can '
+      'restore it from a backup or set this till up again.';
+  @override
+  String get dbUnavailableUnreachable =>
+      "The till can't reach its database server. Check that the computer that "
+      'holds it is switched on and on the same network, then try again.';
+  @override
+  String get dbUnavailableSignIn =>
+      "The database server did not accept this till's login. Your installer "
+      "needs to check the till's database account.";
+  @override
+  String get dbUnavailableGeneric =>
+      'Something went wrong while opening the till. Try again. If it keeps '
+      'happening, call your installer.';
+  @override
+  String get dbUnavailableDetails => 'Details for support';
+  @override
   String get noInstalledDatabase => 'No installed database found';
   @override
   String get noInstalledDatabaseHelp =>
@@ -4497,6 +4624,11 @@ final class EnStrings extends AppStrings {
   String get platformAddressRequired =>
       'Enter the platform address first, or choose Offline if this terminal '
       'keeps its sales in the building.';
+  @override
+  String get databasePasswordRequired =>
+      'Enter the database password first. This terminal does not connect '
+      'without one — if PostgreSQL does not ask for a password on this '
+      'machine, type any value.';
   @override
   String couldNotReach(String address) =>
       'Could not reach $address. Check the address, and that the server is '
@@ -4883,7 +5015,7 @@ final class EnStrings extends AppStrings {
   String get noTablesYet =>
       'No tables yet. Add one so a waiter can seat somebody at it.';
   @override
-  String tableSummary(int tables) => '\$tables tables';
+  String tableSummary(int tables) => '$tables tables';
   @override
   String get fromDeviceConfiguration => 'From device configuration';
   @override
@@ -5005,6 +5137,22 @@ final class EnStrings extends AppStrings {
       '{count} sale(s) waiting to be sent. They are held safely and will go '
       'once this terminal is paired again.';
 
+  @override
+  String get hardResetButton => 'Hard reset this terminal';
+  @override
+  String get hardResetTitle => 'Erase this terminal and start from scratch?';
+  @override
+  String get hardResetBody =>
+      'This removes everything this computer remembers about this till: its '
+      'saved setup, the saved database and device passwords, the licence file '
+      'and its check, and any setup in progress. You start again from entering '
+      'a licence key. It does not delete any database, sale or backup, and '
+      'nothing on the platform changes.';
+  @override
+  String get hardResetConfirm => 'Erase and start over';
+  @override
+  String hardResetFailed(String error) =>
+      'Could not erase everything: $error';
   @override
   String get forceResetTitle => 'Delete this terminal and set it up again?';
   @override
@@ -7282,6 +7430,12 @@ final class EnStrings extends AppStrings {
   @override
   String get nothingInCategoryYet => 'Nothing in this category yet.';
   @override
+  String sectionItemCount(int count) => count == 1 ? '1 item' : '$count items';
+  @override
+  String get paneSectionsBlurb =>
+      'Group the menu into sections: add, rename or take one off the rail. '
+      'Add the items themselves from the Menu page.';
+  @override
   String get addCategory => 'Add category';
   @override
   String get addItem => 'Add item';
@@ -7619,6 +7773,11 @@ final class EnStrings extends AppStrings {
       'The offer price is higher than the normal price.';
   @override
   String get refusalCategoryNameMissing => 'A category needs a name.';
+  @override
+  String get refusalSkuTaken => 'Another item already uses this SKU.';
+  @override
+  String get refusalSaveFailed =>
+      'Could not save this item. Check it and try again.';
 }
 
 /// Arabic.
@@ -8418,6 +8577,14 @@ final class ArStrings extends AppStrings {
   @override
   String dayClosed(String gross) => 'أُقفل اليوم. الإجمالي $gross';
   @override
+  String dayStillOpenFrom(String date) =>
+      'يوم العمل بتاريخ $date ما زال مفتوحاً. أقفله من هذه الشاشة عند انتهاء '
+      'العمل.';
+  @override
+  String dayClosedTodayNotice(String date) =>
+      'تم إقفال يوم العمل بتاريخ $date بالفعل. المبيعات من الآن لا تُسجَّل '
+      'ضمن أي يوم.';
+  @override
   String get dayCouldNotBeClosed =>
       'تعذّر إقفال اليوم، وما زال مفتوحًا. حاول مرة أخرى.';
   @override
@@ -8526,6 +8693,10 @@ final class ArStrings extends AppStrings {
   String get closeShift => 'تقفيل الوردية';
   @override
   String get noShift => 'لا توجد وردية';
+  @override
+  // Isolated, so the bidi algorithm keeps "#0001" one run after the word
+  // rather than floating the hash to the other side of it.
+  String shiftLabel(String number) => 'الوردية ${_bidi('#$number')}';
 
   @override
   String get categories => 'الأقسام';
@@ -8551,6 +8722,9 @@ final class ArStrings extends AppStrings {
       'مفتوح · $cashier · ${online ? 'متصل' : 'غير متصل'}';
   @override
   String get changeTable => 'تغيير الطاولة';
+  @override
+  String tableTaken(String label) =>
+      'الطاولة $label عليها طلب بالفعل — اختر طاولة فارغة.';
   @override
   String get cartEmptyHelp =>
       'الطلب فارغ. اضغط على أي صنف، أو اضغط F2 واكتب للبحث. الأصناف التي لها '
@@ -8711,6 +8885,10 @@ final class ArStrings extends AppStrings {
   @override
   String get printAndNew => 'طباعة وبيع جديد';
   @override
+  String get changeDue => 'الباقي للعميل';
+  @override
+  String get receiptNoPrinter => 'لا توجد طابعة مضبوطة';
+  @override
   String get receiptPrintedToast => 'تمت طباعة الفاتورة.';
   @override
   String get receiptQueuedToast =>
@@ -8771,6 +8949,8 @@ final class ArStrings extends AppStrings {
   String enterPinFor(String name) => '$name · أدخل الرقم السري';
   @override
   String get enterYourPin => 'أدخل رقمك السري';
+  @override
+  String get lockPickYourName => 'من عاد إلى الجهاز؟';
 
   @override
   String get pointOfSale => 'نقطة بيع';
@@ -8847,6 +9027,12 @@ final class ArStrings extends AppStrings {
   String closeShiftHelp(String openedBy) =>
       'فتحها $openedBy. اعدّ الدرج ثم أكّد.';
   @override
+  String closeShiftOpenTickets(int count, String total) => count == 1
+      ? 'ما زالت هناك تذكرة مفتوحة بقيمة $total — ليست ضمن هذا العدّ.'
+      : 'ما زالت هناك $count تذاكر مفتوحة بإجمالي $total — ليست ضمن هذا العدّ.';
+  @override
+  String get closeShiftHeldTicket => 'معلّقة';
+  @override
   String closeShiftApproval(String reference) => 'تقفيل $reference وعدّ الدرج';
   @override
   String get countTheDrawer => 'اعدّ الدرج وأدخل الإجمالي.';
@@ -8857,6 +9043,10 @@ final class ArStrings extends AppStrings {
       'تقفيل درج فتحه $openedBy';
   @override
   String get countedInDrawer => 'المعدود في الدرج';
+  @override
+  String get closeShiftNoteLabel => 'ملاحظة (اختياري)';
+  @override
+  String get closeShiftNoteHint => 'أي شيء يجدر معرفته عن هذا العدّ';
   @override
   String expectedInDrawerHelp(String expected, String float, String taken) =>
       'المتوقع $expected — رصيد بداية $float زائد $taken محصَّلة نقداً.';
@@ -9170,6 +9360,27 @@ final class ArStrings extends AppStrings {
   @override
   String get tryAgain => 'حاول مرة أخرى';
   @override
+  String get dbUnavailableTitle => 'تعذّر على الكاشير فتح قاعدة بياناته';
+  @override
+  String dbUnavailableMissing(String database) =>
+      'لم يتم العثور على قاعدة البيانات «$database» على هذا الجهاز. ربما '
+      'حُذفت أو أُعيد ضبط خادم قواعد البيانات. يستطيع المُثبّت استعادتها من '
+      'نسخة احتياطية أو إعداد هذا الكاشير من جديد.';
+  @override
+  String get dbUnavailableUnreachable =>
+      'لا يستطيع الكاشير الوصول إلى خادم قاعدة البيانات. تأكد أن الجهاز الذي '
+      'يحمله مُشغَّل ومتصل بنفس الشبكة، ثم حاول مرة أخرى.';
+  @override
+  String get dbUnavailableSignIn =>
+      'لم يقبل خادم قاعدة البيانات تسجيل دخول هذا الكاشير. يحتاج المُثبّت إلى '
+      'مراجعة حساب قاعدة البيانات الخاص به.';
+  @override
+  String get dbUnavailableGeneric =>
+      'حدث خطأ أثناء فتح الكاشير. حاول مرة أخرى، وإن تكرر ذلك فاتصل '
+      'بالمُثبّت.';
+  @override
+  String get dbUnavailableDetails => 'تفاصيل للدعم الفني';
+  @override
   String get noInstalledDatabase => 'لم يُعثر على قاعدة بيانات مثبّتة';
   @override
   String get noInstalledDatabaseHelp =>
@@ -9458,6 +9669,10 @@ final class ArStrings extends AppStrings {
   String get platformAddressRequired =>
       'أدخل عنوان المنصة أولاً، أو اختر «بدون اتصال» إن كان هذا الجهاز يحتفظ '
       'بمبيعاته داخل المبنى.';
+  @override
+  String get databasePasswordRequired =>
+      'أدخل كلمة مرور قاعدة البيانات أولاً. لا يتصل هذا الجهاز بدونها — وإن '
+      'كان PostgreSQL لا يطلب كلمة مرور على هذا الجهاز فاكتب أي قيمة.';
   @override
   String couldNotReach(String address) =>
       'تعذّر الوصول إلى $address. تأكد من العنوان، ومن أن الخادم يعمل وعلى هذه '
@@ -9828,7 +10043,7 @@ final class ArStrings extends AppStrings {
   String get noTablesYet =>
       'لا توجد طاولات بعد. أضف واحدة ليتمكن النادل من إجلاس الضيوف عليها.';
   @override
-  String tableSummary(int tables) => '\$tables طاولة';
+  String tableSummary(int tables) => '$tables طاولة';
   @override
   String get fromDeviceConfiguration => 'من إعدادات الجهاز';
   @override
@@ -9949,6 +10164,20 @@ final class ArStrings extends AppStrings {
       'هناك {count} عملية بيع بانتظار الإرسال. محفوظة بأمان وسيتم إرسالها '
       'فور إعادة اقتران هذا الجهاز.';
 
+  @override
+  String get hardResetButton => 'إعادة ضبط كاملة لهذا الجهاز';
+  @override
+  String get hardResetTitle => 'مسح هذا الجهاز والبدء من الصفر؟';
+  @override
+  String get hardResetBody =>
+      'سيُزال كل ما يتذكره هذا الكمبيوتر عن هذا الكاشير: إعداده المحفوظ، '
+      'وكلمات مرور قاعدة البيانات والجهاز المحفوظة، وملف الترخيص وفحصه، وأي '
+      'إعداد غير مكتمل. ستبدأ من جديد بإدخال مفتاح الترخيص. لا يحذف هذا أي '
+      'قاعدة بيانات أو مبيعات أو نسخ احتياطية، ولا يتغير شيء على المنصة.';
+  @override
+  String get hardResetConfirm => 'امسح وابدأ من جديد';
+  @override
+  String hardResetFailed(String error) => 'تعذّر مسح كل شيء: $error';
   @override
   String get forceResetTitle => 'حذف هذا الجهاز وإعادة إعداده؟';
   @override
@@ -12155,6 +12384,12 @@ final class ArStrings extends AppStrings {
   @override
   String get nothingInCategoryYet => 'لا شيء في هذا القسم بعد.';
   @override
+  String sectionItemCount(int count) => '$count صنف';
+  @override
+  String get paneSectionsBlurb =>
+      'قسّم المنيو إلى أقسام: أضف قسماً أو غيّر اسمه أو أزله من الشاشة. '
+      'أما الأصناف نفسها فتُضاف من صفحة المنيو.';
+  @override
   String get addCategory => 'إضافة قسم';
   @override
   String get addItem => 'إضافة صنف';
@@ -12486,6 +12721,11 @@ final class ArStrings extends AppStrings {
   String get refusalOfferAbovePrice => 'سعر العرض أعلى من السعر العادي.';
   @override
   String get refusalCategoryNameMissing => 'التصنيف يحتاج إلى اسم.';
+  @override
+  String get refusalSkuTaken => 'صنف آخر يستخدم رمز الصنف هذا بالفعل.';
+  @override
+  String get refusalSaveFailed =>
+      'تعذّر حفظ هذا الصنف. راجعه وحاول مرة أخرى.';
 }
 
 /// Makes [AppStrings] reachable from a [BuildContext], and tells Flutter which

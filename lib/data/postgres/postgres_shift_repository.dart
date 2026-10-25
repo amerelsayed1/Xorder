@@ -31,7 +31,12 @@ class PostgresShiftRepository implements ShiftRepository {
     required this._restaurantId,
     required this._branchId,
     required this._terminalId,
+    this.onQueued,
   }) : _db = database;
+
+  /// Told when a shift open or close is queued for the platform — see
+  /// `PostgresOrdersRepository.onQueued`.
+  final void Function()? onQueued;
 
   final PosDatabase _db;
   final DeploymentConfig _config;
@@ -99,6 +104,7 @@ class PostgresShiftRepository implements ShiftRepository {
           sourceId: id,
           clientTransactionId: clientId,
         );
+        onQueued?.call();
       }
       return PosShift(
         id: id,
@@ -403,6 +409,7 @@ class PostgresShiftRepository implements ShiftRepository {
           sourceId: shift.id,
           clientTransactionId: closeClientId,
         );
+        onQueued?.call();
       }
 
       return ShiftClose(

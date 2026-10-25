@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../core/config/deployment.dart';
+import '../core/ui/widgets/pos_widgets.dart' show posToast;
 import '../features/admin/presentation/cloud_back_office_screen.dart';
 import '../features/admin/presentation/management_screen.dart';
 import '../features/floor/floor_screen.dart';
@@ -198,7 +199,16 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: PosRoutes.floor,
         builder: (context, state) => FloorScreen(
           onClose: () => context.go(PosRoutes.start),
-          onSellWithoutTable: () {
+          // Carried back to the sale screen whichever way the floor resolves,
+          // so a collect that came here for a table goes on into payment.
+          onSellWithoutTable: () async {
+            // A ticket being moved off its table leaves it behind.
+            if (state.extra == SaleIntent.moveTable) {
+              await ref
+                  .read(openTicketsProvider.notifier)
+                  .release(ref.read(ticketProvider));
+              if (!context.mounted) return;
+            }
             // Nobody is seated, so the ticket must not stay on a type that
             // expects a table — it would price a service charge for one that
             // does not exist. Take the first unseated type the branch sells.
@@ -210,9 +220,26 @@ final routerProvider = Provider<GoRouter>((ref) {
             if (counter != null) {
               ref.read(ticketProvider.notifier).setOrderType(counter);
             }
-            context.go(PosRoutes.sale);
+            context.go(PosRoutes.sale, extra: state.extra);
           },
-          onTablePicked: (table) {
+          onTablePicked: (table) async {
+            // Changing table: the ticket on screen moves, rather than a new
+            // one starting here or a parked one being adopted over it.
+            if (state.extra == SaleIntent.moveTable) {
+              final moved = await ref
+                  .read(ticketProvider.notifier)
+                  .moveTo(table);
+              if (!context.mounted) return;
+              if (!moved) {
+                posToast(
+                  context,
+                  ref.read(stringsProvider).tableTaken(table.label),
+                );
+                return;
+              }
+              context.go(PosRoutes.sale);
+              return;
+            }
             // A busy table resumes its parked ticket — same transaction id,
             // same lines. A free one seats the live ticket.
             final parked = ref.read(openTicketsProvider.notifier).at(table.id);
@@ -221,14 +248,19 @@ final routerProvider = Provider<GoRouter>((ref) {
             } else {
               ref.read(ticketProvider.notifier).attachTable(table);
             }
-            context.go(PosRoutes.sale);
+            context.go(PosRoutes.sale, extra: state.extra);
           },
         ),
       ),
       GoRoute(
         path: PosRoutes.sale,
         builder: (context, state) => SaleScreen(
+          collectOnOpen: state.extra == SaleIntent.collect,
           onLock: () => context.go(PosRoutes.lock),
+          onTablesToCollect: () =>
+              context.go(PosRoutes.floor, extra: SaleIntent.collect),
+          onChangeTable: () =>
+              context.go(PosRoutes.floor, extra: SaleIntent.moveTable),
           onTables: () async {
             // Leaving a seated, non-empty ticket parks it on its table — the
             // floor then shows the table busy with its running total, and the

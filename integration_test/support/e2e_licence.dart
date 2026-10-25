@@ -24,15 +24,23 @@ abstract final class E2eLicence {
   }
 
   /// A one-year licence for [tenantSlug], covering branch-server tills.
+  /// Sign with `POS_LICENCE_KEY` when it is set — the issuer's own seed, so
+  /// the file verifies against the key compiled into the build, as a
+  /// customer's would. Without it, a key minted for this run: the file then
+  /// carries its public half as `issuer_public_key`, exactly as an activation
+  /// reply does, and a development build trusts that (see
+  /// `LicenseVerifier.trustIssuerKey`). A release build would refuse it,
+  /// which is the point of the compiled-in key — and is why the documented
+  /// release run still sets `POS_LICENCE_KEY`.
   static Future<String> issue({
     required String tenantSlug,
     required String tenantName,
     Duration term = const Duration(days: 365),
   }) async {
     final key = signingKey;
-    if (key == null) {
-      throw StateError('POS_LICENCE_KEY is not set — nothing to sign with.');
-    }
+    final pair = key == null
+        ? await Ed25519().newKeyPair()
+        : await Ed25519().newKeyPairFromSeed(base64.decode(key));
 
     final now = DateTime.now().toUtc();
     final claims = LicenseClaims(
@@ -48,12 +56,15 @@ abstract final class E2eLicence {
     final payload = base64Url.encode(utf8.encode(jsonEncode(claims.toJson())));
     final signature = await Ed25519().sign(
       base64Url.decode(payload.padRight(payload.length + ((4 - payload.length % 4) % 4), '=')),
-      keyPair: await Ed25519().newKeyPairFromSeed(base64.decode(key)),
+      keyPair: pair,
     );
 
     return LicenseFile(
       payloadB64: payload,
       signatureB64: base64Url.encode(signature.bytes),
+      issuerPublicKeyB64: key == null
+          ? base64.encode((await pair.extractPublicKey()).bytes)
+          : null,
     ).serialize();
   }
 }

@@ -3,6 +3,7 @@ import '../../../data/cloud/cloud_api.dart';
 import '../domain/license.dart';
 import '../domain/license_verifier.dart';
 import '../domain/online_verdict.dart';
+import 'licence_check_gate.dart';
 import 'licence_check_store.dart';
 import 'licence_service.dart';
 import 'license_store.dart';
@@ -35,7 +36,8 @@ class OnlineLicenceService implements LicenceService {
     required this.fingerprint,
     required this.clock,
     this.appVersion,
-  });
+    LicenceCheckGate? gate,
+  }) : gate = gate ?? LicenceCheckGate();
 
   final LicenceService inner;
   final LicenceCheckStore checks;
@@ -45,6 +47,14 @@ class OnlineLicenceService implements LicenceService {
   final TerminalFingerprint fingerprint;
   final DateTime Function() clock;
   final String? appVersion;
+
+  /// What stops [check] leaving the till twice for one question.
+  ///
+  /// Handed in by the app so it outlives this service: the providers rebuild
+  /// the service as its parts settle at launch, and a gate built here with
+  /// it would be rebuilt with it — which is how three checks left in one
+  /// second (S3-4). A test that builds the service by hand gets its own.
+  final LicenceCheckGate gate;
 
   @override
   bool get canActivateOnline => inner.canActivateOnline;
@@ -65,14 +75,24 @@ class OnlineLicenceService implements LicenceService {
   @override
   Future<LicenseFile?> installed() => inner.installed();
 
+  /// [force] asks the platform now even if it answered within the last
+  /// minute — for a caller that was told to, such as a renewal just typed in.
+  /// Without it, see [gate].
   @override
-  Future<LicenseEntitlement> current(DeploymentConfig deployment) async {
+  Future<LicenseEntitlement> current(
+    DeploymentConfig deployment, {
+    bool force = false,
+  }) async {
     final record = await checks.read() ?? const LicenceCheckRecord();
     // Told it is islanded: the file is the whole truth, and asking would only
     // be noise in the platform's logs.
     if (record.enforcement == 'offline') return inner.current(deployment);
 
-    final reply = await _ask(deployment);
+    final reply = await gate.ask(
+      () => _ask(deployment),
+      now: clock(),
+      force: force,
+    );
     final now = clock();
 
     if (reply != null && reply.ok) {

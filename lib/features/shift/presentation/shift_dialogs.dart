@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/providers.dart';
@@ -13,7 +14,9 @@ import '../../admin/presentation/supervisor_override.dart';
 import '../../../domain/models/permissions.dart';
 import '../../../domain/models/shift.dart';
 import '../../../domain/services/authorization.dart';
+import '../../../domain/services/ticket_engine.dart';
 import '../../../core/security/pin_hash.dart';
+import '../../../core/ui/widgets/mono_amount.dart';
 
 /// Opening a shift: who is on the till, and what is in the drawer.
 ///
@@ -112,6 +115,12 @@ class _OpenShiftDialogState extends ConsumerState<OpenShiftDialog> {
     });
 
     try {
+      // The trading day first: a trigger files the shift under the day whose
+      // window contains its `opened_at` when the row is inserted (migration 36),
+      // so a day opened afterwards would leave this shift unfiled. Returns
+      // rather than throws — the shift opens whatever the day does (the till
+      // never stops selling because of it).
+      await ref.read(ensureBusinessDayProvider)(staff);
       final shift = await ref
           .read(shiftRepositoryProvider)
           .open(by: staff, openingFloat: float);
@@ -250,6 +259,12 @@ class CloseShiftDialog extends ConsumerStatefulWidget {
 
 class _CloseShiftDialogState extends ConsumerState<CloseShiftDialog> {
   final _counted = TextEditingController();
+
+  /// Optional, and there for everybody — including a cashier counting blind,
+  /// who cannot see a variance and may still know why the drawer is short.
+  /// What the platform accepts as a close's reason, and no more.
+  final _note = TextEditingController();
+  static const _noteMax = 255;
   ShiftSummary? _summary;
   ShiftClose? _closed;
   bool _busy = true;
@@ -275,6 +290,7 @@ class _CloseShiftDialogState extends ConsumerState<CloseShiftDialog> {
   @override
   void dispose() {
     _counted.dispose();
+    _note.dispose();
     super.dispose();
   }
 
@@ -386,6 +402,9 @@ class _CloseShiftDialogState extends ConsumerState<CloseShiftDialog> {
             shift: widget.shift,
             by: by,
             countedCash: counted,
+            // Spaces are no note. Null reaches the platform as a generated line
+            // of the till's own figures; a note reaches it as the reason.
+            note: _note.text.trim().isEmpty ? null : _note.text.trim(),
             // The handover, when there was one: it is what lets somebody who
             // did not open this drawer close it, and it covers the permission
             // too.
@@ -460,6 +479,10 @@ class _CloseShiftDialogState extends ConsumerState<CloseShiftDialog> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               mainAxisSize: MainAxisSize.min,
               children: [
+                // What is still open goes FIRST, above the figures: a
+                // warning under a Z report is a warning read after the
+                // decision it was meant to inform.
+                _OpenTicketsWarning(ref.watch(openTicketsProvider)),
                 // Blind while counting (§25): the expected figure and the
                 // live difference are hidden from anybody who may not see
                 // them, so the count is a count rather than a reconciliation
@@ -476,8 +499,26 @@ class _CloseShiftDialogState extends ConsumerState<CloseShiftDialog> {
                   onChanged: (_) => setState(() {}),
                   onSubmitted: (_) => _close(),
                 ),
-                const SizedBox(height: PosSpace.md),
-                _variance(strings, summary, pos: context.pos),
+                if (!_blind) const SizedBox(height: PosSpace.md),
+                // Not while blind. Every line of this panel is the expected
+                // cash one subtraction away: the difference as it is typed,
+                // the expected figure itself once the count matches, and, with
+                // nothing typed yet, "Expected X". The count is revealed after
+                // closing, to whoever holds `cash.variance.view` (see
+                // [_closedShell]).
+                if (!_blind) _variance(strings, summary, pos: context.pos),
+                const SizedBox(height: PosSpace.lg),
+                MicroLabel(strings.closeShiftNoteLabel),
+                const SizedBox(height: PosSpace.sm),
+                TextField(
+                  key: const Key('close-shift-note'),
+                  controller: _note,
+                  maxLines: 2,
+                  minLines: 1,
+                  inputFormatters: [LengthLimitingTextInputFormatter(_noteMax)],
+                  style: PosText.ui(color: context.pos.inkWarm, size: 14),
+                  decoration: InputDecoration(hintText: strings.closeShiftNoteHint),
+                ),
               ],
             ),
     );
@@ -566,6 +607,88 @@ class _CloseShiftDialogState extends ConsumerState<CloseShiftDialog> {
   }
 }
 
+/// What is still parked when somebody goes to close the shift (S3-5).
+///
+/// The audit watched a shift closed with an 80.00 ticket parked and a close
+/// dialog that said nothing about it. Now every open ticket is listed — its
+/// table, or *Held* for one with no table, and what it comes to — under one
+/// line that counts them and adds them up. **A warning, not a refusal.**
+/// Closing over them is still the owner's call (the day close is where a
+/// parked ticket is a blocker); what this removes is closing over them
+/// without knowing.
+///
+/// Nothing when nothing is open: a warning box with "0 tickets" in it would
+/// teach everybody to stop reading it.
+class _OpenTicketsWarning extends StatelessWidget {
+  const _OpenTicketsWarning(this.open);
+
+  final OpenTickets open;
+
+  @override
+  Widget build(BuildContext context) {
+    if (open.isEmpty) return const SizedBox.shrink();
+
+    final strings = context.strings;
+    final pos = context.pos;
+    // Tables first, in table order, then the held ones oldest first — the
+    // order a manager walks the floor and then the counter.
+    final tickets = [
+      ...open.onTables.values,
+      ...open.held,
+    ];
+    // Added up by the engine, not here: money is added up in one place.
+    final total = TicketEngine.totalOf(tickets);
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: PosSpace.lg),
+      child: Container(
+        key: const Key('close-shift-open-tickets'),
+        padding: const EdgeInsets.all(PosSpace.md),
+        decoration: BoxDecoration(
+          color: pos.warnSoft,
+          border: Border.all(color: pos.warn, width: 2),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              strings.closeShiftOpenTickets(
+                tickets.length,
+                total.format(withCurrency: true),
+              ),
+              style: PosText.ui(
+                size: 13,
+                weight: FontWeight.w700,
+                color: pos.ink,
+                height: 1.4,
+              ),
+            ),
+            const SizedBox(height: PosSpace.sm),
+            for (final ticket in tickets)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 2),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        ticket.tableLabel ?? strings.closeShiftHeldTicket,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: PosText.ui(size: 12.5, color: pos.body),
+                      ),
+                    ),
+                    MonoAmount(ticket.totals.total, size: 12.5, color: pos.ink),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// The Z report, in the order somebody standing at a drawer reads it.
 ///
 /// Public since People › Shifts reads a shift's report back in the back
@@ -592,11 +715,19 @@ class ZReportView extends StatelessWidget {
   /// difference from the one on the list beside it.
   final Money? expected;
 
-  /// Hide the expected figure and the live difference (§25).
+  /// Hide the expected figure and the live difference (§25), and what the
+  /// expected figure is made of.
   ///
   /// The count itself is never hidden — a cashier has to see what they typed.
   /// What blind withholds is the *answer*, so that counting is counting rather
-  /// than reconciling to a number already on screen.
+  /// than reconciling to a number already on screen. The expected cash is the
+  /// float plus the cash tenders plus pay-ins less pay-outs, so the tender rows
+  /// and the pay-in and pay-out rows go too: shown beside the float they are the
+  /// sum with the answer masked (audit, 17 Oct 2026).
+  ///
+  /// The sales totals stay. The cashier rang those sales, and a Z report
+  /// without them is no report. What that leaves is a limit worth knowing: on a
+  /// shift paid only in cash, *gross taken* is the cash taken.
   final bool blind;
 
   @override
@@ -660,20 +791,26 @@ class ZReportView extends StatelessWidget {
           // The tender label is whatever was WRITTEN with the payment, and it
           // stays as written. What the drawer's cash is worked out from is the
           // tender *type* beside it — see `TenderMethod.countsAsCash`.
-          for (final tender in summary.tenders)
-            CashUpRow(
-              label: strings.zTenderRow(tender.label, tender.count),
-              value: tender.amount,
-            ),
+          //
+          // Not while blind: these are the cash the drawer should hold, in
+          // pieces (see [blind]).
+          if (!blind)
+            for (final tender in summary.tenders)
+              CashUpRow(
+                label: strings.zTenderRow(tender.label, tender.count),
+                value: tender.amount,
+              ),
 
           // ── The drawer ─────────────────────────────────────────────────
           CashUpRow(
             label: strings.zOpeningFloat,
             value: summary.shift.openingFloat,
           ),
-          if (!summary.cashIn.isZero)
+          // Pay-ins and pay-outs change what the drawer should hold, so they
+          // are withheld while blind like the tenders above.
+          if (!blind && !summary.cashIn.isZero)
             CashUpRow(label: strings.zCashIn, value: summary.cashIn),
-          if (!summary.cashOut.isZero)
+          if (!blind && !summary.cashOut.isZero)
             CashUpRow(
               label: strings.zCashOut,
               value: -summary.cashOut,

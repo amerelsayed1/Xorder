@@ -81,7 +81,7 @@ Why this is critical rather than an inventory nit: the entire two-agent
 coordination model rests on one rule — *"Agent 1 integrates against a contract
 only at `READY`"*. `READY` is the single trusted word in the channel. Here it
 is attached to work that is absent from the repository under review. Possible
-explanations (work done in an unpushed `xorder-new` checkout; a lost branch;
+explanations (work done in an unpushed `xorder-cloud` checkout; a lost branch;
 or the status was written ahead of the work) — but **every one of them means
 the channel can no longer be trusted without repo evidence**.
 

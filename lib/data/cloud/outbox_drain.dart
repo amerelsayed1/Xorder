@@ -761,6 +761,38 @@ class OutboxDrain {
     return _LifecycleEvent(request: request, send: () => api.openShift(request));
   }
 
+  /// The platform's cap on `variance_reason` (`CloseShiftRequest`).
+  static const _varianceReasonMax = 255;
+
+  /// What goes out as a shift close's `variance_reason`.
+  ///
+  /// The cashier's own note when there is one. The till has no field for a note
+  /// today, so most closes have none, and then the reason is the till's own
+  /// figures: that is a fact the platform can set against its own, which is
+  /// what a reason is for. It is sent even when the till saw no variance — the
+  /// platform's expected cash comes from the sales it attributed to the shift,
+  /// and the two can disagree while the till's count balances.
+  ///
+  /// Never empty and never longer than the platform accepts.
+  static String shiftCloseReason({
+    required String? note,
+    required int countedMinor,
+    required int expectedMinor,
+    required int varianceMinor,
+  }) {
+    final trimmed = note?.trim() ?? '';
+    final reason = trimmed.isNotEmpty
+        ? trimmed
+        : 'No cashier note. Till closed with counted $countedMinor against '
+              'expected $expectedMinor (variance $varianceMinor, minor units).';
+    // Characters, as the platform counts them, not UTF-16 units: an Arabic or
+    // emoji note cut by `substring` could end in half a character.
+    final characters = reason.runes;
+    return characters.length <= _varianceReasonMax
+        ? reason
+        : String.fromCharCodes(characters.take(_varianceReasonMax));
+  }
+
   Future<_LifecycleEvent?> _shiftCloseEvent(
     int sourceId,
     String clientTransactionId,
@@ -769,7 +801,8 @@ class OutboxDrain {
       config,
       '''
       SELECT client_transaction_id, close_client_transaction_id, closed_by,
-             closed_at, counted_cash_minor
+             closed_at, counted_cash_minor, expected_cash_minor,
+             variance_minor, closing_note
         FROM pos_shifts WHERE id = @id
       ''',
       parameters: {'id': sourceId},
@@ -779,7 +812,9 @@ class OutboxDrain {
         rows.first[1]?.toString() != clientTransactionId ||
         rows.first[2] == null ||
         rows.first[3] == null ||
-        rows.first[4] == null) {
+        rows.first[4] == null ||
+        rows.first[5] == null ||
+        rows.first[6] == null) {
       return null;
     }
     final row = rows.first;
@@ -789,6 +824,16 @@ class OutboxDrain {
       'acting_user_id': row[2] as int,
       'closed_at': (row[3] as DateTime).toUtc().toIso8601String(),
       'counted_cash_minor': row[4] as int,
+      // Always sent. The platform works out its own expected cash and answers
+      // 422 to a count that differs from it unless a reason comes with it;
+      // this drain quarantines a 422, so a close sent without one that the
+      // platform disagreed with would stay open on the dashboard for good.
+      'variance_reason': shiftCloseReason(
+        note: row[7] as String?,
+        countedMinor: row[4] as int,
+        expectedMinor: row[5] as int,
+        varianceMinor: row[6] as int,
+      ),
     };
     return _LifecycleEvent(
       request: request,

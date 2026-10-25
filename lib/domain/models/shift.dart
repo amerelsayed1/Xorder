@@ -151,11 +151,20 @@ class PosShift {
 
   bool get isOpen => closedAt == null;
 
+  /// The four-digit number alone — `0001` — for a screen that puts its own
+  /// word in front of it.
+  ///
+  /// [reference] bakes the English word in, which is fine for a ledger row and
+  /// wrong for a label: the Arabic top bar read "SHIFT #0001" because the word
+  /// travelled with the number. A screen asks `AppStrings.shiftLabel` for the
+  /// word in its own language and hands it this.
+  String get number => id.toString().padLeft(4, '0');
+
   /// Derived from the id rather than stored.
   ///
   /// A denormalised reference is a string that drifts: renumber, restore from a
   /// backup, or copy a row, and the label stops matching the thing it labels.
-  String get reference => 'SHIFT #${id.toString().padLeft(4, '0')}';
+  String get reference => 'SHIFT #$number';
 }
 
 /// Who has held a drawer at this branch — the Users section's two shift facts.

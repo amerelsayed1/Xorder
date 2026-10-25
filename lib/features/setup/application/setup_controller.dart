@@ -1,3 +1,5 @@
+import 'dart:ui' show Locale;
+
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
@@ -60,6 +62,19 @@ class SetupController extends Notifier<SetupDraft> {
   @override
   SetupDraft build() {
     ref.onDispose(() => _disposed = true);
+
+    // The Settings bar's language switch is on every screen of this wizard,
+    // and whoever is standing here has the last word — including after a
+    // claim has set the restaurant's own language. The draft used to keep the
+    // claim's answer regardless, and `complete()` wrote THAT to disk and
+    // applied it, so a till switched to English on the last screen booted in
+    // Arabic. The draft now follows the bar.
+    ref.listen<Locale>(localeProvider, (_, next) {
+      if (_disposed || stateOrNull == null) return;
+      if (next.languageCode != state.locale) {
+        state = state.copyWith(locale: next.languageCode);
+      }
+    });
 
     // A licence installed on an earlier run is still installed — it is a file,
     // and it outlived the process that wrote it. Reading it back is what stops
@@ -395,6 +410,10 @@ class SetupController extends Notifier<SetupDraft> {
         tenantSlug: state.deployment.tenantSlug,
         // Supplied, never asked — see [_adopt]. An offline terminal keeps none.
         baseUrl: mode.needsBaseUrl ? _platformFor(state.deployment) : null,
+        // The restaurant's own name for its database, as [_adopt] gives it.
+        databaseName: DeploymentConfig.databaseNameFor(
+          state.deployment.tenantSlug,
+        ),
         // A one-terminal plan has no shared database to point at, so the host
         // stays on this machine and the wizard never asks.
         databaseHost: state.allowsSharedDatabase
@@ -1084,6 +1103,17 @@ class SetupController extends Notifier<SetupDraft> {
       }
     }
 
+    // The pool refuses to open without a password, so probing with an empty one
+    // reported "PostgreSQL rejected the username or password" for a refusal
+    // PostgreSQL never made (report 2026-10-24, F-1). Said as what it is.
+    if (state.databasePassword.isEmpty) {
+      state = state.copyWith(
+        busy: false,
+        error: ref.read(stringsProvider).databasePasswordRequired,
+      );
+      return false;
+    }
+
     // Probe with what the operator just typed, not with whatever the store
     // holds from an earlier attempt.
     ref.read(posDbCredentialsStoreProvider).set(state.databasePassword);
@@ -1311,6 +1341,13 @@ class SetupController extends Notifier<SetupDraft> {
       databaseHost: claims.maxTerminals > 1
           ? current.databaseHost
           : DeploymentConfig.localhost,
+      // Named after the restaurant, unless somebody already named it: the
+      // wizard builds this database, and `demo_db` says whose it is where
+      // `xorder_pos` said nothing (owner decision, 16 Oct 2026). A name the
+      // installer wrote replaces it at the connecting step, as before.
+      databaseName: current.databaseName == DeploymentConfig.defaultDatabaseName
+          ? DeploymentConfig.databaseNameFor(claims.tenantSlug)
+          : current.databaseName,
     );
   }
 

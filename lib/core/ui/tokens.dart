@@ -432,6 +432,13 @@ abstract final class PosSize {
   static const secondaryAction = 52.0;
   static const keypadKey = 42.0;
   static const pinKey = 62.0;
+
+  /// The width a PIN pad is designed at: three [pinKey]-tall keys across.
+  ///
+  /// The pad keeps its keys' aspect ratio, so it has to be given this width
+  /// rather than whatever column it lands in — laid out across a 620px dialog
+  /// it grew to four rows of 110px and pushed its own 0 key off the screen.
+  static const pinPad = 320.0;
   static const productGridGutter = 10.0;
   static const tableGridGutter = 12.0;
 

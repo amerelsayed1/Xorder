@@ -27,6 +27,7 @@ class SavedTerminalConfig {
     this.brightness,
     this.setupComplete = true,
     this.adminMode = AdminModeSettings.standard,
+    this.lastUsername,
   });
 
   /// Bumped when a field's meaning changes rather than when one is added.
@@ -68,6 +69,16 @@ class SavedTerminalConfig {
   /// with nobody touching it.
   final AdminModeSettings adminMode;
 
+  /// The username of the last person to sign in at this till, or null when
+  /// nobody has yet.
+  ///
+  /// A fact about the machine, like the language: the same cashier comes back
+  /// to the same till lock after lock, and typing their name on a keypad
+  /// screen every time was the thing the audit (S3-2) watched them do. The
+  /// lock screen offers it as a prefill the next person can change — never as
+  /// an identity, which is still the PIN's to prove.
+  final String? lastUsername;
+
   Map<String, Object?> toJson() => {
     'version': currentVersion,
     'setup_complete': setupComplete,
@@ -77,6 +88,7 @@ class SavedTerminalConfig {
     'terminal': terminal.toJson(),
     'printer': printer.toJson(),
     'admin_mode': adminMode.toJson(),
+    'last_username': lastUsername,
   };
 
   static SavedTerminalConfig fromJson(Map<String, Object?> json) =>
@@ -106,6 +118,12 @@ class SavedTerminalConfig {
         adminMode: AdminModeSettings.fromJson(
           (json['admin_mode'] as Map?)?.cast<String, Object?>() ?? const {},
         ),
+        // Absent on every file written before the lock screen remembered
+        // anybody, and an empty name is no name.
+        lastUsername: switch (json['last_username']) {
+          final String name when name.trim().isNotEmpty => name.trim(),
+          _ => null,
+        },
       );
 
   /// True when this config can actually open a till.
@@ -116,17 +134,19 @@ class SavedTerminalConfig {
   bool get isUsable =>
       setupComplete && terminal.isSet && deployment.isConfigured;
 
-  /// For the settings a terminal changes AFTER setup — the language and the
-  /// brightness. Everything else in here is the wizard's to write.
+  /// For the settings a terminal changes AFTER setup — the language, the
+  /// brightness, who signed in last. Everything else in here is the wizard's
+  /// to write.
   ///
-  /// [brightness] takes a sentinel rather than a plain null, because null is a
-  /// value this field holds ("follow the machine") and not only the absence of
-  /// an argument.
+  /// [brightness] and [lastUsername] take a sentinel rather than a plain
+  /// null, because null is a value each field holds ("follow the machine",
+  /// "nobody yet") and not only the absence of an argument.
   SavedTerminalConfig copyWith({
     String? languageCode,
     Object? brightness = _unset,
     PrinterConfig? printer,
     AdminModeSettings? adminMode,
+    Object? lastUsername = _unset,
   }) => SavedTerminalConfig(
     deployment: deployment,
     terminal: terminal,
@@ -137,6 +157,9 @@ class SavedTerminalConfig {
         : brightness as Brightness?,
     setupComplete: setupComplete,
     adminMode: adminMode ?? this.adminMode,
+    lastUsername: lastUsername == _unset
+        ? this.lastUsername
+        : lastUsername as String?,
   );
 }
 

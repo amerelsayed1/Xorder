@@ -7,8 +7,14 @@ POS_LICENCE_KEY=… \
   --dart-define=POS_E2E_REQUIRED=true
 ```
 
-For local convenience the suite skips itself when either required service
-credential is absent. The documented command sets `POS_E2E_REQUIRED`, turning
+`POS_LICENCE_KEY` is the issuer's seed, so the licence verifies against the
+key compiled into the build as a customer's would. Leave it unset on a
+development machine: the suite then signs with a key minted for the run and
+carries its public half in the file, which a development build trusts (and a
+release build, rightly, does not).
+
+For local convenience the suite skips itself when the database or the platform
+address is absent. The documented command sets `POS_E2E_REQUIRED`, turning
 that situation into a failure so CI and release runs cannot pass without
 executing E2E coverage.
 

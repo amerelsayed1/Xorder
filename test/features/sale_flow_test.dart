@@ -192,6 +192,96 @@ void main() {
       expect(find.byType(PaymentScreen), findsOneWidget);
       expect(sale.events, isEmpty);
     });
+
+    testWidgets('collecting on a table-less dine-in ticket leaves for the '
+        'floor WITH the intent, so the floor can send it on into payment', (
+      tester,
+    ) async {
+      final events = <String>[];
+      late WidgetRef capturedRef;
+      tester.view
+        ..physicalSize = _desktop
+        ..devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: fakeRepositoryOverrides(),
+          child: MaterialApp(
+            theme: buildPosTheme(),
+            home: Consumer(builder: (context, ref, _) {
+              capturedRef = ref;
+              return SaleScreen(
+                onLock: () {},
+                onTables: () => events.add('tables'),
+                onTablesToCollect: () => events.add('tables-to-collect'),
+                onOrders: () {},
+                onCloseShift: () {},
+              );
+            }),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      capturedRef.read(ticketProvider.notifier).setOrderType(OrderType.dineIn);
+      await tester.tap(find.text('Soft Drink'));
+      await tester.pumpAndSettle();
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.f9);
+      await tester.pumpAndSettle();
+
+      expect(events, ['tables-to-collect']);
+      expect(find.byType(PaymentScreen), findsNothing);
+    });
+
+    testWidgets('and opened with that intent, the sale screen goes straight '
+        'to payment — the cashier does not press F9 twice', (tester) async {
+      // What the floor hands back: the ticket, now takeaway or seated, and
+      // the intent it left with. Before this the cashier landed on the sale
+      // screen and had to press collect again (16 Oct 2026).
+      late WidgetRef capturedRef;
+      late StateSetter rebuild;
+      var collectOnOpen = false;
+      tester.view
+        ..physicalSize = _desktop
+        ..devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: fakeRepositoryOverrides(),
+          child: MaterialApp(
+            theme: buildPosTheme(),
+            home: Consumer(builder: (context, ref, _) {
+              capturedRef = ref;
+              return StatefulBuilder(
+                builder: (context, setState) {
+                  rebuild = setState;
+                  // A new key remounts the screen, as arriving from the
+                  // floor does; the ticket lives in the container and stays.
+                  return SaleScreen(
+                    key: ValueKey(collectOnOpen),
+                    collectOnOpen: collectOnOpen,
+                    onLock: () {},
+                    onTables: () {},
+                    onOrders: () {},
+                    onCloseShift: () {},
+                  );
+                },
+              );
+            }),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      capturedRef.read(ticketProvider.notifier).setOrderType(OrderType.takeaway);
+      await tester.tap(find.text('Soft Drink'));
+      await tester.pumpAndSettle();
+      expect(find.byType(PaymentScreen), findsNothing);
+
+      rebuild(() => collectOnOpen = true);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(PaymentScreen), findsOneWidget);
+    });
   });
 
   testWidgets('a product with required modifiers opens the sheet first', (tester) async {

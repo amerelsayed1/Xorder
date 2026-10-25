@@ -237,8 +237,32 @@ abstract final class PosCapability {
   /// The current name for [stored]. Unknown strings pass through unchanged.
   static String canonical(String stored) => _renamed[stored] ?? stored;
 
+  /// What a key from the platform's vocabulary carries **besides** its rename.
+  ///
+  /// The platform has one drawer key, `pos.cash_movement`
+  /// (`TenantCapability::POS_CASH_MOVEMENT`), and nothing for opening the
+  /// drawer with no sale behind it; the till splits the two so §23's act can
+  /// be granted on its own by a local role editor. A person the platform
+  /// trusts with the drawer therefore arrives holding both — otherwise the
+  /// owner, signed in on a cloud till with every capability the platform
+  /// knows, was asked for a supervisor's PIN to open their own drawer, and
+  /// nobody the platform had sent could give it, because the key the prompt
+  /// wanted exists nowhere on the platform. The first build's local seed meant
+  /// the whole drawer by the same string, so a row it wrote reads the same way.
+  ///
+  /// Keyed on the platform's spelling, not the canonical one: a local role
+  /// that holds [cashMovement] without [cashOpenWithoutSale] — the seeded
+  /// shift manager — chose that, and keeps it.
+  static const _implied = <String, Set<String>>{
+    'pos.cash_movement': {cashOpenWithoutSale},
+  };
+
+  /// [stored] under their current names, with what each one implies.
   static Set<String> canonicalAll(Iterable<String> stored) => {
-    for (final capability in stored) canonical(capability),
+    for (final capability in stored) ...[
+      canonical(capability),
+      ...?_implied[capability],
+    ],
   };
 
   static bool isKnown(String capability) => all.contains(capability);

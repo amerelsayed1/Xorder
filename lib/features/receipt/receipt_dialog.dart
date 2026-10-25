@@ -6,7 +6,9 @@ import '../../core/config/deployment.dart';
 import '../../core/l10n/app_strings.dart';
 import '../../domain/models/receipt_profile.dart';
 import '../../domain/models/tender_method.dart';
+import '../../core/ui/theme.dart';
 import '../../core/ui/tokens.dart';
+import '../../core/ui/widgets/mono_amount.dart';
 import '../../core/ui/widgets/pos_widgets.dart';
 import '../../domain/models/ticket.dart';
 import '../../domain/repositories/repositories.dart';
@@ -100,6 +102,13 @@ class _ReceiptDialogState extends ConsumerState<ReceiptDialog> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              // Above the paper, not on it: the slip is the customer's and
+              // says "Change 170.00" in its own small type. This is the
+              // cashier's, for the seconds they are counting it out.
+              if (ticket.totals.change.isPositive) ...[
+                _changeDue(strings),
+                const SizedBox(height: PosSpace.md),
+              ],
               Flexible(
                 child: SingleChildScrollView(
                   child: ReceiptPaper(
@@ -122,37 +131,114 @@ class _ReceiptDialogState extends ConsumerState<ReceiptDialog> {
     );
   }
 
-  Widget _actions(BuildContext context, WidgetRef ref, AppStrings strings) =>
-      Row(
-        children: [
-          Expanded(
-            child: PosButton(
-              label: strings.newSale,
-              height: 48,
-              background: _receipt.ink,
-              foreground: Colors.white,
-              onPressed: _printing
-                  ? null
-                  : () => _finish(
-                      context,
-                      ref,
-                      openDrawer: _drawerOpens(),
-                    ),
-            ),
-          ),
-          const SizedBox(width: PosSpace.sm),
-          Expanded(
-            child: PosButton(
-              label: strings.printAndNew,
-              height: 48,
-              border: Border.fromBorderSide(
-                BorderSide(color: _receipt.inkWarm),
+  /// The change, as the biggest number on the screen.
+  ///
+  /// The audit watched a cashier hand back 170 on a 500 note by reading it
+  /// off a line of the slip in 11px mono — the same size as the VAT. The
+  /// amount is the engine's (`TicketTotals.change`, the same figure the slip
+  /// prints); nothing here adds or subtracts. 46px is `bigNumeric`, the size
+  /// the payment screen gave the amount due a moment ago, so what was owed
+  /// and what goes back are read at the same size.
+  ///
+  /// Keyed, so a test can tell this figure from the slip's own change row.
+  Widget _changeDue(AppStrings strings) => Container(
+    key: const ValueKey('change-due'),
+    width: double.infinity,
+    padding: const EdgeInsets.symmetric(
+      horizontal: PosSpace.lg,
+      vertical: PosSpace.s14,
+    ),
+    color: _receipt.ink,
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        MicroLabel(strings.changeDue, color: Colors.white),
+        const SizedBox(height: PosSpace.xs),
+        // Scaled down, never clipped: a figure that lost its leading digit
+        // to the dialog's edge would be the one lie this banner must not
+        // tell. At 46px mono the widest change a till hands back fits the
+        // 296px inside the paper; this is for the day one does not.
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: AlignmentDirectional.centerStart,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              MonoAmount(
+                ticket.totals.change,
+                size: 46,
+                weight: FontWeight.w600,
+                color: Colors.white,
               ),
-              onPressed: _printing ? null : () => _print(context, strings),
-            ),
+              Padding(
+                // Directional: after the figure, which is its right in
+                // English and its left in Arabic.
+                padding: const EdgeInsetsDirectional.only(bottom: 6, start: 6),
+                child: Text(
+                  ticket.currency,
+                  style: PosText.ui(size: 14, color: Colors.white),
+                ),
+              ),
+            ],
           ),
-        ],
-      );
+        ),
+      ],
+    ),
+  );
+
+  Widget _actions(BuildContext context, WidgetRef ref, AppStrings strings) {
+    final printer = ref.watch(printerConfigProvider);
+    return Row(
+      children: [
+        Expanded(
+          child: PosButton(
+            label: strings.newSale,
+            height: 48,
+            background: _receipt.ink,
+            foreground: Colors.white,
+            onPressed: _printing
+                ? null
+                : () => _finish(
+                    context,
+                    ref,
+                    openDrawer: _drawerOpens(),
+                  ),
+          ),
+        ),
+        const SizedBox(width: PosSpace.sm),
+        // On a till with no printer the print button is disabled and says
+        // why, in its own place: it used to stay live, print nothing and
+        // toast about it afterwards, and a disabled control with no words
+        // on it is a fault the cashier reports. Not hidden, because the
+        // dialog's two-button layout is what hands learn, and the day the
+        // printer is plugged in the button should be where it always was.
+        Expanded(
+          child: printer.isConfigured
+              ? PosButton(
+                  label: strings.printAndNew,
+                  height: 48,
+                  border: Border.fromBorderSide(
+                    BorderSide(color: _receipt.inkWarm),
+                  ),
+                  onPressed: _printing
+                      ? null
+                      : () => _print(context, strings),
+                )
+              : Tooltip(
+                  message: strings.receiptNoPrinterToast,
+                  child: PosButton(
+                    label: strings.receiptNoPrinter,
+                    height: 48,
+                    border: Border.fromBorderSide(
+                      BorderSide(color: _receipt.inkWarm),
+                    ),
+                  ),
+                ),
+        ),
+      ],
+    );
+  }
 
   /// Print the slip, then start the next sale.
   ///

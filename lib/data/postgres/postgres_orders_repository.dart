@@ -8,6 +8,7 @@ import '../../domain/models/ticket.dart';
 import '../../domain/repositories/repositories.dart';
 import '../../domain/services/authorization.dart';
 import '../../domain/services/stock_costing.dart';
+import 'open_shift.dart';
 import 'pos_database.dart';
 
 /// Identifies which terminal and tenant a write belongs to.
@@ -51,28 +52,16 @@ class PostgresOrdersRepository implements OrdersRepository {
     required PosDatabase database,
     required this._config,
     required this._context,
-    this.shiftId,
+    this.onQueued,
     DateTime Function()? clock,
   }) : _db = database,
        _now = clock ?? DateTime.now;
 
-  /// The shift this sale belongs to, so a Z report can total it — asked at the
-  /// moment of the write, not when the repository was built.
-  ///
-  /// A function rather than an `int?` because this repository outlives shifts.
-  /// It used to take the id at construction, and the provider builds it once:
-  /// a till that rang its first sale before the morning shift was opened kept
-  /// stamping NULL on every sale after it, and a till that closed one shift
-  /// and opened the next kept stamping the CLOSED one. Either way the sales
-  /// fell out of the open drawer's Z report and expected cash. Rebuilding the
-  /// repository on every shift change was the rejected alternative: it would
-  /// swap the object out from under a payment already in flight.
-  ///
-  /// Null, or a function answering null, because a till can be selling before
-  /// the shift concept reaches every deployment, and an order that cannot name
-  /// its shift is still an order that must be recorded. It shows up as an
-  /// unattributed sale on the report rather than being silently dropped.
-  final int? Function()? shiftId;
+  /// Told after a sale is queued for the platform, so the drain can be
+  /// nudged rather than waited for. Called inside the transaction; the nudge
+  /// it feeds is debounced past the commit, and a nudge with nothing to
+  /// drain costs one heartbeat.
+  final void Function()? onQueued;
 
   final PosDatabase _db;
   final DeploymentConfig _config;
@@ -106,6 +95,11 @@ class PostgresOrdersRepository implements OrdersRepository {
       }
 
       final invoiceNumber = await _nextInvoiceNumber(tx, occurredAt);
+
+      // The shift open at this moment, so a Z report can total the sale. Read
+      // here, not remembered: see [openShiftIdFor]. Null when no drawer is
+      // open — the order is still recorded, as an unattributed sale.
+      final shiftId = await openShiftIdFor(tx, _context.terminalId);
 
       final inserted = await tx.execute(
         Sql.named('''
@@ -152,7 +146,7 @@ class PostgresOrdersRepository implements OrdersRepository {
           'vat': totals.vat.minor,
           'total': totals.total.minor,
           'occurredAt': occurredAt,
-          'shift': shiftId?.call(),
+          'shift': shiftId,
           // Who closed the sale, passed in at settlement. Null is a real
           // answer — a till selling before anybody signed in still records
           // the order, unattributed, rather than refusing it.
@@ -245,6 +239,10 @@ class PostgresOrdersRepository implements OrdersRepository {
 
       final invoiceNumber = await _nextInvoiceNumber(tx, occurredAt);
 
+      // As in [submit]: the shift open now, not the one open when this
+      // repository was built.
+      final shiftId = await openShiftIdFor(tx, _context.terminalId);
+
       final inserted = await tx.execute(
         Sql.named('''
           INSERT INTO pos_orders (
@@ -286,7 +284,7 @@ class PostgresOrdersRepository implements OrdersRepository {
           'vat': totals.vat.minor,
           'total': totals.total.minor,
           'occurredAt': occurredAt,
-          'shift': shiftId?.call(),
+          'shift': shiftId,
           'voidedBy': by.id,
           // Falls back to the person voiding. On the live cart they are the
           // one who rang it up; a manager voiding somebody else's ticket is
@@ -364,6 +362,7 @@ class PostgresOrdersRepository implements OrdersRepository {
       },
     );
 
+    onQueued?.call();
     return true;
   }
 

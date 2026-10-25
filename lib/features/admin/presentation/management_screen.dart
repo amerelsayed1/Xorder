@@ -940,7 +940,7 @@ ManagementDestination _purchasing(PurchasingTab tab, {bool create = false}) =>
         s.reportsEmployeesBlurb,
       ),
       ManagementPane.menu => (s.paneMenu, s.paneMenuBlurb),
-      ManagementPane.categories => (s.categories, s.paneMenuBlurb),
+      ManagementPane.categories => (s.categories, s.paneSectionsBlurb),
       ManagementPane.extras => (s.extrasTitle, s.extrasSubtitle),
       ManagementPane.combos => (s.combosTitle, s.combosSubtitle),
       ManagementPane.floor => (s.floorPlan, s.floorPlanHint),
@@ -1102,7 +1102,7 @@ bool _permits(PosStaff admin, ManagementPane pane) =>
 ///
 /// **Who is told where a platform-authored pane went.** The pointer stands in
 /// for the pane, so it reaches the people the pane would have and nobody else:
-/// a rota manager has no Purchasing offline, and xorder-new's sidebar hides the
+/// a rota manager has no Purchasing offline, and xorder-cloud's sidebar hides the
 /// Purchasing group from whoever lacks `purchase.manage` — sending them there
 /// would be a door to a refusal.
 bool _wouldPermit(PosStaff admin, ManagementPane pane) => _paneRequires(
@@ -1609,9 +1609,14 @@ class _ManagementScreenState extends ConsumerState<ManagementScreen> {
     // The item editor's "Manage extras" link. Moved here rather than through
     // the router: this screen already owns which pane is showing, as the
     // backup notice's button does.
-    ManagementPane.menu || ManagementPane.categories => ManagementMenuPane(
+    ManagementPane.menu => ManagementMenuPane(
       admin: admin,
       onOpenExtras: () => _open(ManagementPane.extras),
+    ),
+    // Its own page now: the sections alone, with how many items each holds.
+    ManagementPane.categories => ManagementMenuPane(
+      admin: admin,
+      mode: MenuPaneMode.sections,
     ),
     ManagementPane.extras => ManagementExtrasPane(admin: admin),
     ManagementPane.combos => ManagementCombosPane(admin: admin),

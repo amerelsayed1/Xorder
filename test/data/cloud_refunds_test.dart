@@ -73,7 +73,7 @@ void main() {
     await db.query(
       pg.config,
       'TRUNCATE pos_refunds, pos_orders, pos_outbox, pos_sync_outbox, '
-      'pos_invoice_sequences RESTART IDENTITY CASCADE',
+      'pos_invoice_sequences, pos_shifts RESTART IDENTITY CASCADE',
     );
     await db.query(pg.config, 'DELETE FROM pos_restaurants');
     cloud = pg.config.copyWith(mode: DeploymentMode.cloud);
@@ -206,7 +206,6 @@ void main() {
   PostgresRefundsRepository repositoryOn({
     PosDatabase? database,
     DeploymentConfig? config,
-    int? shiftId,
   }) => PostgresRefundsRepository(
     database: database ?? db,
     config: config ?? cloud,
@@ -216,7 +215,6 @@ void main() {
       terminalId: terminal,
       branchCode: 'MAADI',
     ),
-    shiftId: () => shiftId,
   );
 
   OrderRecord record(int id, {int total = 20000}) => OrderRecord(
@@ -242,8 +240,7 @@ void main() {
     int? tenderTypeId,
     String clientRefundId = '77777777-7777-4777-8777-000000000001',
     PostgresRefundsRepository? on,
-    int? shiftId,
-  }) => (on ?? repositoryOn(shiftId: shiftId)).issue(
+  }) => (on ?? repositoryOn()).issue(
     order: record(orderId),
     quote: RefundQuote(
       subtotal: Money(amount),
@@ -719,6 +716,62 @@ void main() {
   });
 
   // ── The credential a real install runs on ─────────────────────────────────
+
+  // ── Which drawer the money left ───────────────────────────────────────────
+
+  group('the shift a refund is stamped with', () {
+    // The same fault the audit of 17 Oct 2026 found on sales: the repository
+    // used to capture the open shift's id when it was built, and a till that
+    // closes one shift and opens the next without restarting went on naming
+    // the first. The repository here is built BEFORE either shift exists.
+    test('is the one open when it is issued, not when the repository was built',
+        () async {
+      await db.query(
+        pg.config,
+        "INSERT INTO pos_terminals (id, restaurant_id, branch_id, name) "
+        "VALUES (@t::uuid, @r, @b, 'Counter 1')",
+        parameters: {'t': terminal, 'r': restaurantId, 'b': branchId},
+      );
+      final repository = repositoryOn();
+
+      Future<int> openShift() async => (await db.query(
+        pg.config,
+        'INSERT INTO pos_shifts (restaurant_id, branch_id, terminal_id, opened_by) '
+        'VALUES (@r, @b, @t::uuid, @by) RETURNING id',
+        parameters: {
+          'r': restaurantId,
+          'b': branchId,
+          't': terminal,
+          'by': staffId,
+        },
+      )).first[0] as int;
+
+      final first = await openShift();
+      await db.query(
+        pg.config,
+        'UPDATE pos_shifts SET closed_at = now(), counted_cash_minor = 0, '
+        '  expected_cash_minor = 0, variance_minor = 0, closed_by = @by '
+        'WHERE id = @id',
+        parameters: {'by': staffId, 'id': first},
+      );
+      final second = await openShift();
+
+      final orderId = await insertOrder();
+      final lineId = await insertLine(orderId);
+      final result = await issueRefund(
+        orderId: orderId,
+        lineId: lineId,
+        on: repository,
+      );
+
+      final stamped = await db.query(
+        pg.config,
+        'SELECT shift_id FROM pos_refunds WHERE id = @id',
+        parameters: {'id': result.refundId},
+      );
+      expect(stamped.first[0], second);
+    });
+  });
 
   group('the till\'s own credential', () {
     test('writes the claim and stores the credit note number', () async {

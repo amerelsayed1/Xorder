@@ -7,12 +7,12 @@
 | What | Path | Verdict |
 |---|---|---|
 | Flutter POS app | `~/Projects/Mobile Application/xorder-pos` | Bare `flutter create` output. `lib/main.dart` = counter demo. No git history. **Greenfield.** |
-| XOrder backend + web | `~/Projects/Web Application/xorder-new` | Live product (`https://xorder.io`). Laravel 13 API + 3 Vue SPAs, pnpm/Turborepo. **Authoritative source of truth.** |
-| Prior research | `xorder-new/docs/RESEARCH_RBAC_AND_POS.md` (2026-08-22) | Still accurate on the POS gap. Its recommendation of a Vue `apps/pos` is **superseded** by the decision to build a Flutter desktop app. |
+| XOrder backend + web | `~/Projects/Web Application/xorder-cloud` | Live product (`https://xorder.io`). Laravel 13 API + 3 Vue SPAs, pnpm/Turborepo. **Authoritative source of truth.** |
+| Prior research | `xorder-cloud/docs/RESEARCH_RBAC_AND_POS.md` (2026-08-22) | Still accurate on the POS gap. Its recommendation of a Vue `apps/pos` is **superseded** by the decision to build a Flutter desktop app. |
 
 > **Cross-repo note.** The POS app and the backend live in two different
 > repositories on this machine. Agent 1 owns `xorder-pos/` only, and has made
-> **no** change of any kind inside `xorder-new/`. The coordination files under
+> **no** change of any kind inside `xorder-cloud/`. The coordination files under
 > `xorder-pos/docs/coordination/` are the shared channel; their absolute path is
 > stated at the top of each file so Agent 2 can find them.
 

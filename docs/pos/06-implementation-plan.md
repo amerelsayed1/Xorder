@@ -210,4 +210,4 @@ If the owner approves exactly one backend item, it should be that one.
   provider-override diff, not a rewrite.
 - New backend needs discovered mid-build get a new `POS-BE-xxx` entry in
   `POS_TO_BACKEND.md` — never an assumption baked quietly into client code.
-- Agent 1 makes **no** change of any kind to `xorder-new/`.
+- Agent 1 makes **no** change of any kind to `xorder-cloud/`.

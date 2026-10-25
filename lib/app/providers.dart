@@ -76,6 +76,7 @@ import '../features/admin/application/admin_session.dart'
     show adminSessionProvider;
 import '../features/history/history_scope.dart';
 import '../features/licensing/data/file_license_store.dart';
+import '../features/licensing/data/licence_check_gate.dart';
 import '../features/licensing/data/licence_check_store.dart';
 import '../features/licensing/data/licence_service.dart';
 import '../features/licensing/data/license_keys.dart';
@@ -113,6 +114,7 @@ import '../domain/models/tender_method.dart';
 import '../domain/repositories/admin_repositories.dart';
 import '../domain/repositories/repositories.dart';
 import '../domain/services/authorization.dart';
+import '../domain/services/business_day_service.dart';
 import '../domain/services/floor_overlay.dart';
 import '../domain/services/ticket_engine.dart';
 
@@ -270,15 +272,11 @@ ordersRepositoryProvider = Provider<OrdersRepository>((ref) {
     database: ref.watch(posDatabaseProvider),
     config: config,
     context: context,
-    // Read, not watched — and read at the WRITE, not here. Watching would
-    // rebuild the repository mid-payment when a shift changed. Reading here,
-    // once, is what this used to do, and nothing rebuilds this provider when
-    // a shift opens or closes: the first sale of the day fixed the id for the
-    // life of the process, so a till that sold before opening its shift, or
-    // closed one and opened the next, stamped NULL or the closed shift on
-    // every later sale and they fell out of the Z report. The function is
-    // asked inside the transaction that writes the order.
-    shiftId: () => ref.read(shiftProvider).valueOrNull?.id,
+    // No shift here. A sale names the shift open when it is rung up, and the
+    // repository asks the database for that inside the sale's own transaction
+    // (`openShiftIdFor`) — a value captured when this provider built would go
+    // on naming a shift that had since closed.
+    onQueued: () => ref.read(cloudSyncProvider)?.nudge(),
   );
 
   // On a cloud terminal every settled sale pokes the drain, so "sold" and
@@ -448,7 +446,7 @@ final refundsRepositoryProvider = Provider<RefundsRepository>((ref) {
     database: ref.watch(posDatabaseProvider),
     config: config,
     context: context,
-    shiftId: () => ref.read(shiftProvider).valueOrNull?.id,
+    onQueued: () => ref.read(cloudSyncProvider)?.nudge(),
   );
 
   // A refund is a receipt too — a credit note naming the sale it undoes.
@@ -557,6 +555,62 @@ final businessDayProvider = FutureProvider<BusinessDay?>(
   (ref) => ref.watch(businessDayRepositoryProvider).current(),
 );
 
+/// Make sure the branch is trading in a day, for [PosStaff] who is signing in
+/// or opening a shift. **Never throws and never blocks selling** — see
+/// `ensureBusinessDay`. A provider holding a function so a test can hand the
+/// screens a double, and so the two doors (the shift dialog and the lock
+/// screen) cannot drift apart.
+final ensureBusinessDayProvider =
+    Provider<Future<BusinessDayResult> Function(PosStaff by)>((ref) {
+      return (by) async {
+        // Guarded here as well as inside `ensureBusinessDay`: the two doors
+        // await this inside their own `try`, whose `catch` would stop the shift
+        // opening and print the raw exception. "The till never stops selling
+        // because of the day" is held by this guard, not by everything below it
+        // happening never to throw.
+        try {
+          final result = await ensureBusinessDay(
+            days: ref.read(businessDayRepositoryProvider),
+            policy: ref.read(dayPolicyProvider),
+            now: DateTime.now(),
+            by: by,
+          );
+          if (result.outcome == BusinessDayOutcome.failed) {
+            // Logged, not shown: the shift opens regardless and the next
+            // sign-in tries again.
+            debugPrint('business day: could not open one: ${result.error}');
+          }
+          // The close button, Home and the start-screen notice all read the
+          // day; the notice watches it, so this refreshes all three.
+          ref.invalidate(businessDayProvider);
+          return result;
+        } on Object catch (error) {
+          debugPrint('business day: unexpected failure: $error');
+          return BusinessDayResult(BusinessDayOutcome.failed, error: error);
+        }
+      };
+    });
+
+/// What the start screen should say about the day, if anything. Derived from
+/// current state each time rather than stored, so it cannot outlive the
+/// condition it describes. Not `autoDispose`, like [businessDayProvider]: it is
+/// refreshed by invalidation, and a disposal timer outliving a screen is what
+/// the start-screen tests would trip over.
+final dayNoticeProvider = FutureProvider<DayNotice?>((ref) async {
+  final open = await ref.watch(businessDayProvider.future);
+  final shiftOpen = ref.watch(shiftProvider).valueOrNull != null;
+  final lastClosed = open == null
+      ? await ref.watch(businessDayRepositoryProvider).lastClosed()
+      : null;
+  return dayNotice(
+    open: open,
+    lastClosed: lastClosed,
+    policy: ref.watch(dayPolicyProvider),
+    now: DateTime.now(),
+    shiftOpen: shiftOpen,
+  );
+});
+
 /// Money into and out of the drawer that is not a sale.
 final cashMovementsRepositoryProvider = Provider<CashMovementsRepository>((
   ref,
@@ -571,6 +625,7 @@ final cashMovementsRepositoryProvider = Provider<CashMovementsRepository>((
     database: ref.watch(posDatabaseProvider),
     config: config,
     context: context,
+    onQueued: () => ref.read(cloudSyncProvider)?.nudge(),
   );
 });
 
@@ -736,6 +791,14 @@ final Provider<CloudSync?> cloudSyncProvider = Provider<CloudSync?>((ref) {
     void schedule(Duration delay) {
       next = Timer(delay, () async {
         if (!alive) return;
+        // A nudge may have just run a pass — the start screen asks for one
+        // on launch, two seconds before this first tick. Yield to it rather
+        // than heartbeat twice in the same breath.
+        final since = sync.sinceLastPass;
+        if (since != null && since < SyncSchedule.nudgeFloor) {
+          schedule(SyncSchedule.nudgeFloor - since);
+          return;
+        }
         final outcome = await sync.run();
         if (!alive) return;
         schedule(SyncSchedule.after(outcome));
@@ -745,6 +808,7 @@ final Provider<CloudSync?> cloudSyncProvider = Provider<CloudSync?>((ref) {
     schedule(const Duration(seconds: 5));
     ref.onDispose(() => next?.cancel());
   }
+  ref.onDispose(sync.dispose);
   return sync;
 });
 
@@ -1000,6 +1064,11 @@ class OpenTicketsController extends Notifier<OpenTickets> {
       state = OpenTickets(onTables: tables, held: held);
     }
   }
+
+  /// Forget where [ticket] was parked — the table it is leaving, when it is
+  /// moved to another. The same forgetting a settlement does; a second name
+  /// because the ticket is very much still open.
+  Future<void> release(Ticket ticket) => settle(ticket);
 }
 
 final openTicketsProvider =
@@ -1486,6 +1555,24 @@ class TicketController extends Notifier<Ticket> {
     guests: table.seats,
   );
 
+  /// Move this ticket to [table]: "Change table" on the cart.
+  ///
+  /// False when another ticket already sits there — the floor shows that
+  /// table as taken, and a move onto it would stack two bills on one table.
+  /// Otherwise the old table is released, so the floor stops showing the
+  /// order there, and the ticket is seated at the new one with its lines and
+  /// rounds intact. Before this, "Change table" parked the ticket on its OLD
+  /// table and started a fresh one for the new table, so the order never
+  /// moved and the cashier found it still on the first table (16 Oct 2026).
+  Future<bool> moveTo(DiningTable table) async {
+    final parked = ref.read(openTicketsProvider.notifier);
+    final other = parked.at(table.id);
+    if (other != null && other.id != state.id) return false;
+    await parked.release(state);
+    attachTable(table);
+    return true;
+  }
+
   /// Who the food is for (POS-BE-014), or null to take them off again.
   ///
   /// Never refuses and never touches the totals — a customer is who, not what.
@@ -1556,6 +1643,7 @@ final shiftRepositoryProvider = Provider<ShiftRepository>((ref) {
     restaurantId: context.restaurantId,
     branchId: context.branchId,
     terminalId: context.terminalId,
+    onQueued: () => ref.read(cloudSyncProvider)?.nudge(),
   );
 });
 
@@ -1600,12 +1688,79 @@ class SignedInStaffController extends Notifier<PosStaff?> {
   @override
   PosStaff? build() => null;
 
-  void signIn(PosStaff staff) => state = staff;
+  /// Here rather than on each door — the start screen's shift dialog and the
+  /// lock screen both sign people in — so the till remembers whoever came
+  /// through either one, and a third door added later cannot forget to.
+  void signIn(PosStaff staff) {
+    state = staff;
+    ref.read(lastUsernameProvider.notifier).remember(staff.username);
+  }
 
   /// Closing a shift signs the person out with it. The next shift is somebody
   /// else's responsibility until they say otherwise.
   void signOut() => state = null;
 }
+
+/// The username of whoever signed in at this till last, for the lock screen
+/// to offer back.
+///
+/// **A prefill, not an identity.** The PIN still has to belong to the name,
+/// and the name is one tap away from being somebody else's — what this saves
+/// is the same cashier typing their own name on a keypad screen at every
+/// lock, which the audit (S3-2) watched happen all shift.
+///
+/// A property of the terminal, kept in the terminal's config file beside the
+/// language and the brightness, and with their bargain: written without
+/// being awaited, because unlocking must not wait on a file, and silent on
+/// failure, because the name is already in [state] for this process and the
+/// worst a lost write costs is one typed name tomorrow morning.
+class LastUsernameController extends Notifier<String?> {
+  @override
+  String? build() => ref.watch(terminalBootProvider).config?.lastUsername;
+
+  void remember(String? username) {
+    final name = username?.trim();
+    if (name == null || name.isEmpty) return;
+    state = name;
+    unawaited(_persist(name));
+  }
+
+  /// See [TerminalLocaleController._persist] for why a terminal with no
+  /// config yet is left alone, and why this catches `Object`.
+  Future<void> _persist(String username) async {
+    final store = ref.read(terminalConfigStoreProvider);
+    try {
+      final saved = await store.read();
+      if (saved == null || saved.lastUsername == username) return;
+      await store.write(saved.copyWith(lastUsername: username));
+    } on Object {
+      // The name on screen is already right; see above.
+    }
+  }
+}
+
+final lastUsernameProvider = NotifierProvider<LastUsernameController, String?>(
+  LastUsernameController.new,
+);
+
+/// Who can take this till by name and PIN: the active staff with a username,
+/// for the lock screen to show as tiles.
+///
+/// Read through the staff directory, which is bound on the till's own
+/// credential for exactly this reason (see [staffDirectoryRepositoryProvider]):
+/// a cashier switching user at the counter must not need the back office's
+/// password to see who works here. Nobody without a username is listed —
+/// they cannot sign in at a till at all, and a tile that leads to a refusal
+/// is worse than no tile.
+final signInCandidatesProvider = FutureProvider<List<PosStaff>>((ref) async {
+  final staff = await ref
+      .watch(staffDirectoryRepositoryProvider)
+      .all(includeInactive: false);
+  return [
+    for (final person in staff)
+      if (person.username?.trim().isNotEmpty ?? false) person,
+  ];
+});
 
 /// Who is acting on this terminal right now: whoever came through Admin
 /// Mode's door while its session lasts, and the person signed in at the till
@@ -1724,8 +1879,20 @@ final licenceServiceProvider = Provider<LicenceService>((ref) {
     fingerprint: fingerprint,
     clock: DateTime.now,
     appVersion: posAppVersion,
+    gate: ref.watch(licenceCheckGateProvider),
   );
 });
+
+/// The one [LicenceCheckGate] for the process.
+///
+/// **No dependencies, on purpose.** [licenceServiceProvider] is rebuilt as
+/// the vault, the deployment config and the cloud API settle at launch, and
+/// every rebuild used to be a new service sending its own check — three
+/// identical `POST /api/pos/license/check` in the first second (S3-4). This
+/// provider never rebuilds, so the gate remembers across them.
+final licenceCheckGateProvider = Provider<LicenceCheckGate>(
+  (ref) => LicenceCheckGate(),
+);
 
 /// The last online licence verdict and where this till takes its verdict from
 /// (POS-BE-031). On disk, beside the licence file — see [LicenceCheckStore].
@@ -2144,9 +2311,42 @@ class TerminalReset {
     // from what is actually still true rather than from a half-filled attempt.
     _ref.invalidate(setupProvider);
   }
+
+  /// **Back to a blank till.** Everything [run] does, and also what it keeps on
+  /// purpose: the licence file and its cached verdict, every saved password and
+  /// token (the whole `secrets.json`, not only the two entries [run] touches),
+  /// and this machine's identity, so the wizard opens on "enter a licence key"
+  /// as on a machine that has never run it.
+  ///
+  /// **It erases this machine's memory, nothing more.** No database is dropped,
+  /// no sale, backup or platform record is touched; the dialog that offers it
+  /// says so. Every file goes through its own store, and every store resolves
+  /// its folder the same way (`getApplicationSupportDirectory`), so this is the
+  /// same wipe on macOS and Windows. Files the installer wrote elsewhere (the
+  /// Windows `ProgramData` role and credentials) are not this till's to delete.
+  Future<void> runHard() async {
+    await run();
+    await _ref.read(licenseStoreProvider).clear();
+    await _ref.read(licenceCheckStoreProvider).clear();
+    await _ref.read(secretsFileProvider).deleteFile();
+
+    _ref.read(terminalProfileProvider.notifier).renew();
+    _ref.read(signedInStaffProvider.notifier).signOut();
+
+    // The wizard and everything that read the licence start again from disk.
+    _ref.invalidate(licenceEntitlementProvider);
+    _ref.invalidate(licenceClaimsProvider);
+    _ref.invalidate(setupProvider);
+  }
 }
 
 final terminalResetProvider = Provider<TerminalReset>(TerminalReset.new);
+
+/// The shared `secrets.json`, for the hard reset to delete whole. A provider so
+/// a test can point it at a temporary folder.
+final secretsFileProvider = Provider<FileSecretStore>(
+  (ref) => FileSecretStore(key: FileSecretStore.databasePasswordKey),
+);
 
 /// The licence entitlement currently in force.
 ///
@@ -2184,6 +2384,10 @@ class TerminalProfileController extends Notifier<TerminalProfile> {
     terminalId: state.terminalId,
     installationId: state.installationId,
   );
+
+  /// A brand-new installation: no terminal id, a new installation id. The hard
+  /// reset's counterpart to [reset], which deliberately keeps both.
+  void renew() => state = TerminalProfile(installationId: _uuid.v4());
 }
 
 final terminalProfileProvider =
@@ -2745,6 +2949,7 @@ final customersRepositoryProvider = Provider<CustomersRepository>((ref) {
     restaurantId: context.restaurantId,
     branchId: context.branchId,
     syncsToPlatform: config.mode.syncsSalesToPlatform,
+    onQueued: () => ref.read(cloudSyncProvider)?.nudge(),
   );
 });
 
@@ -3027,10 +3232,6 @@ final auditRepositoryProvider = Provider<AuditRepository>((ref) {
     restaurantId: context.restaurantId,
     branchId: context.branchId,
     terminalId: context.terminalId,
-    // Read, not watched, and read per row, for the same reasons the orders
-    // repository does it: an audit row belongs to the shift that was open
-    // when the thing happened, not the one open when this was first built.
-    shiftId: () => ref.read(shiftProvider).valueOrNull?.id,
   );
 });
 

@@ -251,23 +251,54 @@ void main() {
     expect(find.text(strings.drawerCouldNotOpen), findsOneWidget);
   });
 
-  testWidgets('a till with no printer says so and queues nothing', (
-    tester,
-  ) async {
+  testWidgets('a till with no printer disables the print button and says '
+      'why on it', (tester) async {
     const strings = EnStrings();
     final (ports, queue) = await open(tester, printer: PrinterConfig.none);
 
-    await printAndNew(tester, strings);
+    // The audit (S5-1) found a disabled control on this dialog with nothing
+    // written on it. The button keeps its place — the two-button layout is
+    // what hands learn — but it is disabled and carries the reason.
+    expect(find.text(strings.printAndNew), findsNothing);
+    expect(find.text(strings.receiptNoPrinter), findsOneWidget);
+    expect(
+      tester.widget<Tooltip>(find.byType(Tooltip)).message,
+      strings.receiptNoPrinterToast,
+    );
 
+    // Tapping it does nothing: the dialog stays, nothing is printed and
+    // nothing is queued. Deliberately not queued — a till with no printer
+    // would otherwise spool a month of receipts and print all of them on
+    // the day one is plugged in.
+    await tester.tap(find.text(strings.receiptNoPrinter), warnIfMissed: false);
+    await tester.pumpAndSettle();
+    expect(find.byType(ReceiptDialog), findsOneWidget);
     expect(ports.jobs, isEmpty);
-    // Deliberately not queued. A till with no printer would otherwise spool a
-    // month of receipts and print all of them on the day one is plugged in.
     expect(queue.jobs, isEmpty);
-    // And one sentence, this one. A cash sale also asks for the drawer, and
-    // a till with no printer has nothing to kick it through — saying so a
-    // second time would only replace the sentence that explains why.
-    expect(find.text(strings.receiptNoPrinterToast), findsOneWidget);
+
+    // New sale still moves on. A cash sale also asks for the drawer, and a
+    // till with no printer has nothing to kick it through — and says nothing
+    // about it, because there is no printer to blame.
+    await tester.tap(find.text(strings.newSale));
+    await tester.pumpAndSettle();
+    expect(ports.jobs, isEmpty);
     expect(find.text(strings.drawerCouldNotOpen), findsNothing);
+  });
+
+  testWidgets('and says it in Arabic on an Arabic till', (tester) async {
+    const strings = ArStrings();
+    await open(tester, printer: PrinterConfig.none, locale: 'ar');
+
+    expect(find.text(strings.receiptNoPrinter), findsOneWidget);
+    expect(find.text(strings.printAndNew), findsNothing);
+  });
+
+  testWidgets('a till with a printer keeps the live button', (tester) async {
+    const strings = EnStrings();
+    await open(tester);
+
+    expect(find.text(strings.printAndNew), findsOneWidget);
+    expect(find.text(strings.receiptNoPrinter), findsNothing);
   });
 
   testWidgets('the queue is retried before the receipt in hand', (tester) async {

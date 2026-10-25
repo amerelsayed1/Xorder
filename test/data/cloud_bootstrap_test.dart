@@ -304,5 +304,50 @@ void main() {
       })!;
       expect(bundle.categories.single.nameEn, 'Drinks');
     });
+
+    test('a menu named in Arabic only is a menu, not nothing', () {
+      // The platform lets a restaurant name its menu in one language; the
+      // dashboard and the diner's menu resolve by locale and fall back. The
+      // till required `name_en` and dropped every row without one — every
+      // category, then every item under them — and opened its sale screen on
+      // "no matching items" over a menu of forty-six (Good Cafe, 16 Oct 2026).
+      final bundle = BootstrapBundle.tryParse({
+        'config_version': 1,
+        'catalog': {
+          'categories': {
+            'data': [
+              {'id': 73, 'name_en': null, 'name_ar': 'Iced Coffee'},
+              {'id': 74, 'name_ar': 'فرابتشينو'},
+              // Nameless in both: the one row nothing can be sold under.
+              {'id': 75, 'name_en': null, 'name_ar': ''},
+            ],
+          },
+          'items': {
+            'data': [
+              {'id': 1, 'category_id': 73, 'name_ar': 'كراميل', 'price_minor': 13000},
+            ],
+          },
+          'option_groups': {
+            'data': [
+              {
+                'id': 7,
+                'name_ar': 'الحجم',
+                'options': [
+                  {'id': 71, 'name_ar': 'كبير', 'price_delta_minor': 1000},
+                ],
+              },
+            ],
+          },
+        },
+      })!;
+
+      expect(bundle.categories.map((c) => c.id), [73, 74]);
+      expect(bundle.categories.first.nameEn, 'Iced Coffee');
+      expect(bundle.categories.first.nameAr, 'Iced Coffee');
+      expect(bundle.categories.last.nameEn, 'فرابتشينو');
+      expect(bundle.products.single.nameEn, 'كراميل');
+      expect(bundle.optionGroups.single.nameEn, 'الحجم');
+      expect(bundle.optionGroups.single.options.single.nameEn, 'كبير');
+    });
   });
 }
