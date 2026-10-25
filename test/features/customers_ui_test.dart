@@ -181,7 +181,7 @@ void main() {
         'Mona Fathy',
         '01012345678',
         '2',
-        '225.00',
+        '225.00 EGP',
         '2026-09-11 14:30',
       ]);
     });
@@ -333,15 +333,15 @@ void main() {
       final dialog = find.byKey(const Key('customer-detail'));
       // 300.00 − 75.00; the average is that over two orders; the 75.00 is said.
       expect(
-        find.descendant(of: dialog, matching: find.text('225.00')),
+        find.descendant(of: dialog, matching: find.text('225.00 EGP')),
         findsWidgets,
       );
       expect(
-        find.descendant(of: dialog, matching: find.text('112.50')),
+        find.descendant(of: dialog, matching: find.text('112.50 EGP')),
         findsOneWidget,
       );
       expect(
-        find.descendant(of: dialog, matching: find.text('75.00')),
+        find.descendant(of: dialog, matching: find.text('75.00 EGP')),
         findsWidgets,
       );
     });
@@ -352,12 +352,12 @@ void main() {
       expect(_texts(tester, 'customer-order-21'), [
         'POS-21',
         '2026-09-11 14:30',
-        '25.00',
+        '25.00 EGP',
       ]);
       expect(_texts(tester, 'customer-order-20'), [
         'POS-20',
         '2026-09-10 12:00',
-        '200.00',
+        '200.00 EGP',
       ]);
     });
 

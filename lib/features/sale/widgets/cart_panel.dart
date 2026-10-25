@@ -385,14 +385,14 @@ class CartPanel extends StatelessWidget {
     decoration: BoxDecoration(border: Border(top: pos.accentBorder)),
     child: Column(
       children: [
-        _totalRow(s.subtotal, totals.subtotal.format(), pos: pos),
+        _totalRow(s.subtotal, totals.subtotal.format(withCurrency: true), pos: pos),
         // **Order-level discounts live here, never inside a line.** A discount
         // that came off the whole bill has no line to belong to, and drawing it
         // under one would be a claim about what it discounted.
         for (final discount in ticket.orderDiscounts)
           _totalRow(
             discount.nameSnapshot,
-            '-${discount.amount.format()}',
+            '-${discount.amount.format(withCurrency: true)}',
             pos: pos,
             emphasis: pos.accent,
           ),
@@ -411,13 +411,13 @@ class CartPanel extends StatelessWidget {
             s.servicePercent(
               (ticket.taxConfig.serviceBp / 100).toStringAsFixed(0),
             ),
-            totals.service.format(),
+            totals.service.format(withCurrency: true),
             pos: pos,
           ),
         if (ticket.taxConfig.vatBp != 0 || !totals.vat.isZero)
           _totalRow(
             s.vatPercent((ticket.taxConfig.vatBp / 100).toStringAsFixed(0)),
-            totals.vat.format(),
+            totals.vat.format(withCurrency: true),
             pos: pos,
           ),
         Padding(
@@ -535,7 +535,7 @@ class CartPanel extends StatelessWidget {
           ),
         ),
         PosButton(
-          label: '$ctaLabel  ${totals.total.format()}',
+          label: '$ctaLabel  ${totals.total.format(withCurrency: true)}',
           height: PosSize.primaryCta,
           alignLeft: true,
           background: hasAnything ? pos.accent : pos.ctaDisabled,
@@ -707,7 +707,7 @@ class _LineRow extends StatelessWidget {
               // just a line at an odd price that nobody can explain later.
               if (line.isRepriced && !line.isVoided)
                 Text(
-                  (line.menuUnitPrice * line.quantity).format(),
+                  (line.menuUnitPrice * line.quantity).format(withCurrency: true),
                   style:
                       PosText.mono(
                         size: 11.5,
@@ -718,7 +718,7 @@ class _LineRow extends StatelessWidget {
                       ),
                 ),
               Text(
-                line.lineTotal.format(),
+                line.lineTotal.format(withCurrency: true),
                 style:
                     PosText.mono(
                       size: density.amountSize,
@@ -825,7 +825,7 @@ class _LineRow extends StatelessWidget {
           Directionality(
             textDirection: TextDirection.ltr,
             child: Text(
-              '-${discount.amount.format()}',
+              '-${discount.amount.format(withCurrency: true)}',
               style: PosText.mono(
                 size: 13,
                 weight: FontWeight.w600,

@@ -353,20 +353,20 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                 ),
                 const Spacer(),
                 Text(
-                  strings.totalIs(totals.total.format()),
+                  strings.totalIs(totals.total.format(withCurrency: true)),
                   style: PosText.mono(size: 12, color: context.pos.muted),
                 ),
               ],
             ),
             const SizedBox(height: PosSpace.sm),
-            Text(totals.due.format(), style: PosText.bigNumeric(color: context.pos.ink)),
+            Text(totals.due.format(withCurrency: true), style: PosText.bigNumeric(color: context.pos.ink)),
             const SizedBox(height: PosSpace.md),
             _progress(totals),
             const SizedBox(height: PosSpace.sm),
             Text(
               strings.paidOfTotal(
-                totals.paid.format(),
-                totals.total.format(),
+                totals.paid.format(withCurrency: true),
+                totals.total.format(withCurrency: true),
                 ticket.tenders.length,
               ),
               style: PosText.ui(size: 12, color: context.pos.muted),
@@ -478,7 +478,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
               style: PosText.ui(color: context.pos.inkWarm, size: 13, weight: FontWeight.w600),
             ),
           ),
-          Text(tender.amount.format(), style: PosText.mono(color: context.pos.inkWarm, size: 15)),
+          Text(tender.amount.format(withCurrency: true), style: PosText.mono(color: context.pos.inkWarm, size: 15)),
           const SizedBox(width: PosSpace.md),
           InkWell(
             onTap: () => _removeTender(ticket, index),
@@ -541,7 +541,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
               fontWeight: FontWeight.w800,
               padding: const EdgeInsets.symmetric(horizontal: PosSpace.lg),
               trailing: Text(
-                (_parsedEntry(ticket) ?? totals.due).format(),
+                (_parsedEntry(ticket) ?? totals.due).format(withCurrency: true),
                 style: PosText.mono(
                   size: 16,
                   weight: FontWeight.w600,
@@ -617,7 +617,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                 MicroLabel(strings.amount),
                 const Spacer(),
                 Text(
-                  _entry.isEmpty ? totals.due.format() : _entry,
+                  _entry.isEmpty ? totals.due.format(withCurrency: true) : '$_entry ${totals.total.currency}',
                   style: PosText.mono(
                     size: 22,
                     color: _entry.isEmpty ? context.pos.muted : context.pos.ink,

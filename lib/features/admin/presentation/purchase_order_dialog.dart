@@ -227,22 +227,41 @@ class _PurchaseOrderDialogState extends State<PurchaseOrderDialog> {
               ),
               child: Row(
                 children: [
-                  Text(
-                    strings.subtotal,
-                    style: PosText.ui(size: 12.5, color: palette.muted),
+                  // Scaled down rather than clipped: three amounts, each with
+                  // its currency, are wider than the footer in a narrow window
+                  // or a long language, and a total that is cut off is worse
+                  // than a small one.
+                  Expanded(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: AlignmentDirectional.centerStart,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            strings.subtotal,
+                            style: PosText.ui(size: 12.5, color: palette.muted),
+                          ),
+                          const SizedBox(width: PosSpace.sm),
+                          MonoAmount(totals.subtotal, size: 13),
+                          const SizedBox(width: PosSpace.lg),
+                          Text(
+                            strings.vat,
+                            style: PosText.ui(size: 12.5, color: palette.muted),
+                          ),
+                          const SizedBox(width: PosSpace.sm),
+                          MonoAmount(totals.tax, size: 13),
+                          const SizedBox(width: PosSpace.lg),
+                          MonoAmount(
+                            totals.total,
+                            size: 17,
+                            weight: FontWeight.w800,
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
-                  const SizedBox(width: PosSpace.sm),
-                  MonoAmount(totals.subtotal, size: 13),
-                  const SizedBox(width: PosSpace.lg),
-                  Text(
-                    strings.vat,
-                    style: PosText.ui(size: 12.5, color: palette.muted),
-                  ),
-                  const SizedBox(width: PosSpace.sm),
-                  MonoAmount(totals.tax, size: 13),
-                  const SizedBox(width: PosSpace.lg),
-                  MonoAmount(totals.total, size: 17, weight: FontWeight.w800),
-                  const Spacer(),
+                  const SizedBox(width: PosSpace.md),
                   PosButton(
                     label: strings.cancel,
                     border: Border.fromBorderSide(palette.resting),

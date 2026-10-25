@@ -45,8 +45,8 @@ void main() {
     testWidgets('renders left-to-right in an English app', (tester) async {
       await pump(tester, const MonoAmount(Money(48650)));
 
-      expect(find.text('486.50'), findsOneWidget);
-      expect(directionOf(tester, find.text('486.50')), TextDirection.ltr);
+      expect(find.text('486.50 EGP'), findsOneWidget);
+      expect(directionOf(tester, find.text('486.50 EGP')), TextDirection.ltr);
     });
 
     testWidgets('stays left-to-right inside an Arabic, RTL app', (
@@ -60,7 +60,7 @@ void main() {
         Directionality.of(tester.element(find.byType(Scaffold))),
         TextDirection.rtl,
       );
-      expect(directionOf(tester, find.text('486.50')), TextDirection.ltr);
+      expect(directionOf(tester, find.text('486.50 EGP')), TextDirection.ltr);
     });
 
     testWidgets('keeps a negative amount left-to-right in Arabic', (
@@ -70,8 +70,8 @@ void main() {
       // renders with its sign on the wrong end.
       await pump(tester, const MonoAmount(Money(-5000)), locale: 'ar');
 
-      expect(find.text('-50.00'), findsOneWidget);
-      expect(directionOf(tester, find.text('-50.00')), TextDirection.ltr);
+      expect(find.text('-50.00 EGP'), findsOneWidget);
+      expect(directionOf(tester, find.text('-50.00 EGP')), TextDirection.ltr);
     });
 
     testWidgets('a negative amount is coloured danger by default', (
@@ -79,7 +79,7 @@ void main() {
     ) async {
       await pump(tester, const MonoAmount(Money(-5000)));
 
-      final style = tester.widget<Text>(find.text('-50.00')).style!;
+      final style = tester.widget<Text>(find.text('-50.00 EGP')).style!;
       expect(style.color, PosPalette.light.danger);
     });
 
@@ -88,8 +88,26 @@ void main() {
     ) async {
       await pump(tester, const MonoAmount(Money(-5000), color: Color(0xFF00FF00)));
 
-      final style = tester.widget<Text>(find.text('-50.00')).style!;
+      final style = tester.widget<Text>(find.text('-50.00 EGP')).style!;
       expect(style.color, const Color(0xFF00FF00));
+    });
+
+    testWidgets('shows the currency by default, and can be told not to', (
+      tester,
+    ) async {
+      await pump(
+        tester,
+        const Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            MonoAmount(Money(1500)),
+            MonoAmount(Money(2500), withCurrency: false),
+          ],
+        ),
+      );
+
+      expect(find.text('15.00 EGP'), findsOneWidget);
+      expect(find.text('25.00'), findsOneWidget);
     });
 
     testWidgets('masks to a fixed length that does not leak the magnitude', (
@@ -118,7 +136,7 @@ void main() {
     testWidgets('renders in mono', (tester) async {
       await pump(tester, const MonoAmount(Money(48650)));
 
-      final style = tester.widget<Text>(find.text('486.50')).style!;
+      final style = tester.widget<Text>(find.text('486.50 EGP')).style!;
       expect(style.fontFamily, PosFonts.mono);
     });
   });

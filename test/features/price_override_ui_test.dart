@@ -152,10 +152,10 @@ void main() {
       // is just a line at an odd price that nobody can explain later.
       await pumpCart(tester, [line(quantity: 2, override: override())]);
 
-      expect(find.text('100.00'), findsOneWidget); // struck through
-      expect(find.text('80.00'), findsWidgets); // charged
+      expect(find.text('100.00 EGP'), findsOneWidget); // struck through
+      expect(find.text('80.00 EGP'), findsWidgets); // charged
 
-      final struck = tester.widget<Text>(find.text('100.00'));
+      final struck = tester.widget<Text>(find.text('100.00 EGP'));
       expect(struck.style?.decoration, TextDecoration.lineThrough);
     });
 
@@ -224,7 +224,7 @@ void main() {
     ) async {
       await pumpDialog(tester, line(quantity: 3));
       expect(find.textContaining('3×'), findsOneWidget);
-      expect(find.text('150.00'), findsOneWidget);
+      expect(find.text('150.00 EGP'), findsOneWidget);
     });
 
     testWidgets('will not confirm without the reason it requires', (

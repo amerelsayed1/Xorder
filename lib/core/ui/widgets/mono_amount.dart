@@ -34,7 +34,7 @@ class MonoAmount extends StatelessWidget {
     this.weight = FontWeight.w400,
     this.color,
     this.masked = false,
-    this.withCurrency = false,
+    this.withCurrency = true,
     this.semanticLabel,
   });
 
@@ -66,6 +66,8 @@ class MonoAmount extends StatelessWidget {
   /// present, and merely must not be read yet, has one way to be hidden.
   final bool masked;
 
+  /// Append the currency code. On by default: a price without its currency is
+  /// ambiguous, so leaving it off is the deliberate choice, not the other way.
   final bool withCurrency;
 
   /// What a screen reader announces. Defaults to the formatted value.

@@ -767,7 +767,7 @@ void main() {
     await enter(tester, 'amer');
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('price: 45.00 → 50.00'), findsOneWidget);
+    expect(find.textContaining('price: 45.00 EGP → 50.00 EGP'), findsOneWidget);
   });
 
   testWidgets('purchasing is a permission an owner can grant by name', (

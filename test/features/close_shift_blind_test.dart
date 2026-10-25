@@ -176,7 +176,7 @@ void main() {
 
       await count(tester, '300.00');
       expect(find.text(s.varianceShort), findsOneWidget);
-      expect(find.text('-53.45'), findsOneWidget);
+      expect(find.text('-53.45 EGP'), findsOneWidget);
 
       await count(tester, '400.00');
       expect(find.text(s.varianceOver), findsOneWidget);
@@ -228,12 +228,12 @@ void main() {
       // taken in cash" help line, which is not what this is about.
       expect(shows('Cash ×'), findsOneWidget);
       expect(shows('Card ×'), findsOneWidget);
-      expect(find.text('123.45'), findsOneWidget);
-      expect(find.text('126.55'), findsOneWidget);
+      expect(find.text('123.45 EGP'), findsOneWidget);
+      expect(find.text('126.55 EGP'), findsOneWidget);
       expect(find.text(s.zCashIn), findsOneWidget);
       expect(find.text(s.zCashOut), findsOneWidget);
-      expect(find.text('50.00'), findsOneWidget);
-      expect(find.text('-20.00'), findsOneWidget);
+      expect(find.text('50.00 EGP'), findsOneWidget);
+      expect(find.text('-20.00 EGP'), findsOneWidget);
       expect(find.text(s.zExpectedInDrawer), findsOneWidget);
     });
 

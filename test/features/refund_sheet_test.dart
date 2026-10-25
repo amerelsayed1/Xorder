@@ -159,7 +159,7 @@ void main() {
       expect(find.text('Refund HST-000481'), findsOneWidget);
       expect(find.text('LEFT TO REFUND'), findsOneWidget);
       // Twice: what is left to refund, and the tender it would go back to.
-      expect(find.text('219.45'), findsNWidgets(2));
+      expect(find.text('219.45 EGP'), findsNWidgets(2));
     });
 
     testWidgets('what is left already accounts for earlier refunds', (
@@ -182,7 +182,7 @@ void main() {
           ),
         ],
       );
-      expect(find.text('156.75'), findsOneWidget);
+      expect(find.text('156.75 EGP'), findsOneWidget);
     });
 
     testWidgets('shows the engine\'s figures, not a recomputed tax', (
@@ -194,9 +194,9 @@ void main() {
 
       // 50.00 of a 175.00 subtotal: service 5.00, VAT 7.70, total 62.70.
       // Every one of those is a share of what the order charged.
-      expect(find.text('5.00'), findsWidgets);
-      expect(find.text('7.70'), findsOneWidget);
-      expect(find.text('62.70'), findsOneWidget);
+      expect(find.text('5.00 EGP'), findsWidgets);
+      expect(find.text('7.70 EGP'), findsOneWidget);
+      expect(find.text('62.70 EGP'), findsOneWidget);
     });
 
     testWidgets('a line with nothing left says why', (tester) async {
@@ -509,7 +509,7 @@ void main() {
       final directionality = tester.widget<Directionality>(
         find
             .ancestor(
-              of: find.text('219.45'),
+              of: find.text('219.45 EGP'),
               matching: find.byType(Directionality),
             )
             .first,

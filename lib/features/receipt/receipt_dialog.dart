@@ -170,6 +170,8 @@ class _ReceiptDialogState extends ConsumerState<ReceiptDialog> {
                 size: 46,
                 weight: FontWeight.w600,
                 color: Colors.white,
+                // The currency is the smaller label beside it.
+                withCurrency: false,
               ),
               Padding(
                 // Directional: after the figure, which is its right in

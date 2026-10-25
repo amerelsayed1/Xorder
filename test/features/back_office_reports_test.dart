@@ -335,13 +335,13 @@ void main() {
     String delta(int now, int before) => formatDeltaBp(deltaBp(now, before)!);
     expect(_texts(tester, 'reports-tile-net'), [
       s.homeKpiNetSales.toUpperCase(),
-      report.net.format(),
+      report.net.format(withCurrency: true),
       delta(report.net.minor, previous.net.minor),
       s.reportVsPrevious,
     ]);
     expect(_texts(tester, 'reports-tile-average'), [
       s.homeKpiAverage.toUpperCase(),
-      report.averageOrder!.format(),
+      report.averageOrder!.format(withCurrency: true),
       delta(report.averageOrder!.minor, previous.averageOrder!.minor),
       s.reportVsPrevious,
     ]);
@@ -353,7 +353,7 @@ void main() {
     ]);
     expect(_texts(tester, 'reports-tile-refunds'), [
       s.reportKpiRefunds.toUpperCase(),
-      report.refunds.format(),
+      report.refunds.format(withCurrency: true),
       s.reportRefundCount(report.refundCount),
       delta(report.refunds.minor, previous.refunds.minor),
       s.reportVsPrevious,
@@ -384,7 +384,7 @@ void main() {
         '${i + 1}',
         product.name,
         '${product.quantity}',
-        product.amount.format(),
+        product.amount.format(withCurrency: true),
       ]);
       final bar = _painter<RankBarPainter>(
         tester,
@@ -415,13 +415,13 @@ void main() {
       final bp = share.basisPoints;
       expect(_texts(tester, 'reports-tender-$i'), [
         share.method.label,
-        share.method.amount.format(),
+        share.method.amount.format(withCurrency: true),
         '${bp ~/ 100}.${(bp % 100).toString().padLeft(2, '0')}%',
       ]);
     }
     expect(_texts(tester, 'reports-on-account'), [
       s.reportOnAccount,
-      report.onAccount.format(),
+      report.onAccount.format(withCurrency: true),
     ]);
 
     // Every till, the stranger included, and the branch under them.
@@ -432,19 +432,19 @@ void main() {
           s.reportUnregistered,
         ],
         '${till.orders}',
-        till.gross.format(),
-        till.discounts.format(),
-        till.refunds.format(),
-        till.net.format(),
+        till.gross.format(withCurrency: true),
+        till.discounts.format(withCurrency: true),
+        till.refunds.format(withCurrency: true),
+        till.net.format(withCurrency: true),
       ]);
     }
     expect(_texts(tester, 'reports-terminal-total'), [
       s.reportBranchTotal,
       '${report.orders}',
-      report.gross.format(),
-      report.discounts.format(),
-      report.refunds.format(),
-      report.net.format(),
+      report.gross.format(withCurrency: true),
+      report.discounts.format(withCurrency: true),
+      report.refunds.format(withCurrency: true),
+      report.net.format(withCurrency: true),
     ]);
 
     // What stood out: picks from the same lists, and the net tile's change.
@@ -454,12 +454,12 @@ void main() {
     expect(_texts(tester, 'reports-insight-bestDay'), [
       s.reportInsightBestDay.toUpperCase(),
       businessDayWire(best.date),
-      best.net.format(),
+      best.net.format(withCurrency: true),
     ]);
     expect(_texts(tester, 'reports-insight-topTerminal'), [
       s.reportInsightTopTerminal.toUpperCase(),
       'Counter 1',
-      report.terminal('a1')!.net.format(),
+      report.terminal('a1')!.net.format(withCurrency: true),
     ]);
     expect(_texts(tester, 'reports-insight-growth'), [
       s.reportInsightGrowth.toUpperCase(),
@@ -536,7 +536,7 @@ void main() {
       final (report, _) = _shown(repository, DateTime(2026, 9, 1));
       expect(
         _texts(tester, 'reports-tile-net'),
-        contains(report.net.format()),
+        contains(report.net.format(withCurrency: true)),
       );
     });
 

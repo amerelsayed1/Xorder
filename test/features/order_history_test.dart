@@ -443,16 +443,16 @@ void main() {
       // 268.00 + 500.00 + 300.00. The void and the full refund are struck
       // through on the list, and a total that added them back would disagree
       // with the rows under it.
-      expect(figure(tester, OrderHistoryScreen.summaryTotalKey), '1,068.00');
+      expect(figure(tester, OrderHistoryScreen.summaryTotalKey), '1,068.00 EGP');
       expect(figure(tester, OrderHistoryScreen.summaryCountKey), '5');
       expect(find.text('Of which 2 voided or refunded'), findsOneWidget);
       // Taken, before refunds: 268.00 + 200.00 + 300.00.
-      expect(figure(tester, OrderHistoryScreen.summaryPaidKey), '768.00');
+      expect(figure(tester, OrderHistoryScreen.summaryPaidKey), '768.00 EGP');
       // Only the part-paid sale owes. The void reads UNPAID too, and owes
       // nothing to anybody.
       expect(
         figure(tester, OrderHistoryScreen.summaryOutstandingKey),
-        '300.00',
+        '300.00 EGP',
       );
       // Asked of the data layer with the list's own filter.
       expect(repository.summaries.last, repository.queries.last.unpaged);
@@ -482,7 +482,7 @@ void main() {
         ],
       );
 
-      expect(figure(tester, OrderHistoryScreen.summaryTotalKey), '100.00');
+      expect(figure(tester, OrderHistoryScreen.summaryTotalKey), '100.00 EGP');
       expect(figure(tester, OrderHistoryScreen.summaryCountKey), '1');
       expect(repository.summaries, isNotEmpty);
       expect(
@@ -819,18 +819,18 @@ void main() {
 
       // 666.40 − 66.64 + 59.98 + 93.30 = 753.04. Read, never derived: today's
       // tax configuration must not be able to change what a customer paid.
-      expect(find.text('666.40'), findsOneWidget);
-      expect(find.text('-66.64'), findsOneWidget);
-      expect(find.text('59.98'), findsOneWidget);
+      expect(find.text('666.40 EGP'), findsOneWidget);
+      expect(find.text('-66.64 EGP'), findsOneWidget);
+      expect(find.text('59.98 EGP'), findsOneWidget);
       // The list row's total and the pane's, which agree because both read
       // the same written number — and the strip's twice more (BO-3), as the
       // total and, this sale having taken nothing, as what is outstanding.
-      expect(find.text('93.30'), findsOneWidget);
-      expect(find.text('753.04'), findsNWidgets(4));
+      expect(find.text('93.30 EGP'), findsOneWidget);
+      expect(find.text('753.04 EGP'), findsNWidgets(4));
       expect(
         find.descendant(
           of: find.byType(OrderDetailPane),
-          matching: find.text('753.04'),
+          matching: find.text('753.04 EGP'),
         ),
         findsOneWidget,
       );

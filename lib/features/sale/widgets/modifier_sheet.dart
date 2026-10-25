@@ -156,7 +156,7 @@ class _ModifierSheetState extends State<ModifierSheet> {
             ),
           ),
           Text(
-            _headerPrice.format(),
+            _headerPrice.format(withCurrency: true),
             style: PosText.mono(
               size: 22,
               weight: FontWeight.w600,
@@ -284,8 +284,8 @@ class _ModifierSheetState extends State<ModifierSheet> {
               if (modifier.isVariant || !modifier.priceDelta.isZero)
                 Text(
                   modifier.isVariant
-                      ? modifier.priceDelta.format()
-                      : '+${modifier.priceDelta.format()}',
+                      ? modifier.priceDelta.format(withCurrency: true)
+                      : '+${modifier.priceDelta.format(withCurrency: true)}',
                   style: PosText.mono(
                     size: 13,
                     color: out
@@ -340,7 +340,7 @@ class _ModifierSheetState extends State<ModifierSheet> {
             fontSize: 15,
             fontWeight: FontWeight.w800,
             trailing: Text(
-              (_unitPrice * _quantity).format(),
+              (_unitPrice * _quantity).format(withCurrency: true),
               style: PosText.mono(
                 size: 15,
                 weight: FontWeight.w600,

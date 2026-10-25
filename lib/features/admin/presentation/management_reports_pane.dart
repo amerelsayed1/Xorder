@@ -665,7 +665,7 @@ class _Trend extends StatelessWidget {
     String figure(int value) => switch (metric) {
       ReportTrendMetric.orders => '$value',
       ReportTrendMetric.net ||
-      ReportTrendMetric.average => report.net.copyWith(minor: value).format(),
+      ReportTrendMetric.average => report.net.copyWith(minor: value).format(withCurrency: true),
     };
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,

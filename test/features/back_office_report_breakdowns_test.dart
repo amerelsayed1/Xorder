@@ -336,7 +336,7 @@ List<String> _texts(WidgetTester tester, String key) => [
     ?text.data,
 ];
 
-String _dashOr(Money? value) => value?.format() ?? '—';
+String _dashOr(Money? value) => value?.format(withCurrency: true) ?? '—';
 
 const _breakdowns = <Widget>[
   ReportSalesPane(),
@@ -364,10 +364,10 @@ void main() {
       expect(_texts(tester, 'reports-day-${businessDayWire(day.date)}'), [
         businessDayWire(day.date),
         '${day.orders}',
-        day.gross.format(),
-        day.discounts.format(),
-        day.net.format(),
-        day.refunds.format(),
+        day.gross.format(withCurrency: true),
+        day.discounts.format(withCurrency: true),
+        day.net.format(withCurrency: true),
+        day.refunds.format(withCurrency: true),
         _dashOr(day.averageOrder),
       ]);
     }
@@ -379,11 +379,11 @@ void main() {
     expect(_texts(tester, 'reports-days-total'), [
       s.reportBranchTotal,
       '${report.orders}',
-      report.gross.format(),
-      report.discounts.format(),
-      report.net.format(),
-      report.refunds.format(),
-      report.averageOrder!.format(),
+      report.gross.format(withCurrency: true),
+      report.discounts.format(withCurrency: true),
+      report.net.format(withCurrency: true),
+      report.refunds.format(withCurrency: true),
+      report.averageOrder!.format(withCurrency: true),
     ]);
 
     final plot = find.byKey(const Key('reports-trend-plot'));
@@ -405,14 +405,14 @@ void main() {
         '${i + 1}',
         product.name,
         '${product.quantity}',
-        product.amount.format(),
+        product.amount.format(withCurrency: true),
       ]);
     }
     final totals = productTotals(_products);
     expect(_texts(tester, 'reports-items-total'), [
       s.reportAllItems,
       '${totals.quantity}',
-      totals.amount.format(),
+      totals.amount.format(withCurrency: true),
     ]);
     expect(find.text(s.reportItemsNote), findsOneWidget);
 
@@ -423,7 +423,7 @@ void main() {
     expect(_texts(tester, 'reports-item-5')[1], 'Tea');
     expect(
       _texts(tester, 'reports-items-total').last,
-      totals.amount.format(),
+      totals.amount.format(withCurrency: true),
       reason: 'the order changes, the total does not',
     );
   });
@@ -447,21 +447,21 @@ void main() {
       expect(_texts(tester, 'reports-method-$i'), [
         share.method.label,
         '${share.method.count}',
-        share.method.amount.format(),
+        share.method.amount.format(withCurrency: true),
         percent(share.basisPoints),
       ]);
     }
     expect(_texts(tester, 'reports-methods-total'), [
       s.financeKpiCollected,
       '${report.collectedPayments}',
-      report.collected.format(),
+      report.collected.format(withCurrency: true),
       '100.00%',
     ]);
     expect(report.collectedPayments, 4, reason: 'Cash twice, Visa, Vodafone');
     expect(_texts(tester, 'reports-methods-on-account'), [
       s.reportOnAccount,
       '1',
-      report.onAccount.format(),
+      report.onAccount.format(withCurrency: true),
     ]);
   });
 
@@ -477,20 +477,20 @@ void main() {
           s.reportUnregistered,
         ],
         '${till.orders}',
-        till.gross.format(),
-        till.discounts.format(),
-        till.refunds.format(),
-        till.net.format(),
+        till.gross.format(withCurrency: true),
+        till.discounts.format(withCurrency: true),
+        till.refunds.format(withCurrency: true),
+        till.net.format(withCurrency: true),
       ]);
     }
     expect(_texts(tester, 'reports-terminal-c3')[1], '0');
     expect(_texts(tester, 'reports-terminal-total'), [
       s.reportBranchTotal,
       '${report.orders}',
-      report.gross.format(),
-      report.discounts.format(),
-      report.refunds.format(),
-      report.net.format(),
+      report.gross.format(withCurrency: true),
+      report.discounts.format(withCurrency: true),
+      report.refunds.format(withCurrency: true),
+      report.net.format(withCurrency: true),
     ]);
     // The rows are the branch, to the piastre.
     expect(
@@ -510,18 +510,18 @@ void main() {
       expect(_texts(tester, 'reports-staff-${person.staffId ?? 'none'}'), [
         person.name ?? s.reportSellerNotRecorded,
         '${person.orders}',
-        person.net.format(),
+        person.net.format(withCurrency: true),
         _dashOr(person.averageOrder),
-        person.refunds.format(),
+        person.refunds.format(withCurrency: true),
         '${person.voids}',
       ]);
     }
     expect(_texts(tester, 'reports-staff-total'), [
       s.reportBranchTotal,
       '${staff.orders}',
-      staff.net.format(),
-      staff.averageOrder!.format(),
-      staff.refunds.format(),
+      staff.net.format(withCurrency: true),
+      staff.averageOrder!.format(withCurrency: true),
+      staff.refunds.format(withCurrency: true),
       '${staff.voids}',
     ]);
     // The same period's summary, as the fake would give it.

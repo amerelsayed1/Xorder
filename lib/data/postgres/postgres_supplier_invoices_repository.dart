@@ -556,7 +556,7 @@ class PostgresSupplierInvoicesRepository implements SupplierInvoicesRepository {
         // the message can say how much, and say what to do about it.
         return AdminResult<int>.refused(
           CatalogInvalid(
-            'There is ${Money(allocated).format()} paid against this invoice. '
+            'There is ${Money(allocated).format(withCurrency: true)} paid against this invoice. '
             'Void the payments first.',
           ),
         );
@@ -749,7 +749,7 @@ class PostgresSupplierInvoicesRepository implements SupplierInvoicesRepository {
           return AdminResult<int>.refused(
             CatalogInvalid(
               room.isPositive
-                  ? 'Only ${room.format()} is left on that invoice. Anything '
+                  ? 'Only ${room.format(withCurrency: true)} is left on that invoice. Anything '
                         'more goes on account.'
                   : 'That invoice is already paid in full.',
             ),

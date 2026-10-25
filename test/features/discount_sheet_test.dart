@@ -160,7 +160,7 @@ void main() {
       expect(find.text('Ten off'), findsOneWidget);
       // Priced against this ticket, not shown as an abstract rate — the number
       // a cashier is deciding about is the one that comes off.
-      expect(find.text('10.00'), findsWidgets);
+      expect(find.text('10.00 EGP'), findsWidgets);
     });
 
     testWidgets('says so plainly when nothing is configured', (tester) async {
@@ -323,14 +323,14 @@ void main() {
       await open(tester, offered: [percentage(2500)]);
 
       // Undiscounted to begin with.
-      expect(find.text('100.00'), findsWidgets);
+      expect(find.text('100.00 EGP'), findsWidgets);
 
       await tester.tap(find.text('Ten off'));
       await tester.pumpAndSettle();
 
       // The number the customer will be told, before the cashier commits.
-      expect(find.text('75.00'), findsOneWidget);
-      expect(find.text('-25.00'), findsOneWidget);
+      expect(find.text('75.00 EGP'), findsOneWidget);
+      expect(find.text('-25.00 EGP'), findsOneWidget);
     });
   });
 

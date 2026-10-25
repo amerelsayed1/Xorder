@@ -165,7 +165,7 @@ class _ChargeRow extends StatelessWidget {
                 ),
               MonoCode(
                 charge.isFixed
-                    ? Money(charge.fixedMinor!).format()
+                    ? Money(charge.fixedMinor!).format(withCurrency: true)
                     : AdminText.rateBp(charge.rateBp!),
                 size: 12.5,
               ),

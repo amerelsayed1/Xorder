@@ -117,7 +117,7 @@ void main() {
     ) async {
       await open(tester);
 
-      final amount = tester.widget<Text>(find.text('486.50'));
+      final amount = tester.widget<Text>(find.text('486.50 EGP'));
       // 32/600 mono. A person deciding whether to void something is deciding
       // about an amount, and it must not be a detail buried in a sentence.
       expect(amount.style!.fontSize, 32);
@@ -349,7 +349,7 @@ void main() {
       await open(tester, locale: 'ar');
 
       expect(
-        Directionality.of(tester.element(find.text('486.50'))),
+        Directionality.of(tester.element(find.text('486.50 EGP'))),
         TextDirection.ltr,
       );
     });

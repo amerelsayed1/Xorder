@@ -205,7 +205,7 @@ class ReceiptDocument {
     // on it.
     if (data.isReprint) blocks.add(SlipStamp(strings.receiptReprintMark));
     if (data.wasRefunded) {
-      blocks.add(SlipStamp(strings.receiptRefundedMark(data.refunded.format())));
+      blocks.add(SlipStamp(strings.receiptRefundedMark(data.refunded.format(withCurrency: true))));
     }
 
     // No logo. The owner's design has one above the name, and neither the

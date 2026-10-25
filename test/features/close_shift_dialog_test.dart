@@ -137,8 +137,8 @@ void main() {
     // comes to — the engine's figure, service and VAT included.
     expect(find.text('T4'), findsOneWidget);
     expect(find.text('Held'), findsOneWidget);
-    expect(find.text(onTable.totals.total.format()), findsOneWidget);
-    expect(find.text(held.totals.total.format()), findsOneWidget);
+    expect(find.text(onTable.totals.total.format(withCurrency: true)), findsOneWidget);
+    expect(find.text(held.totals.total.format(withCurrency: true)), findsOneWidget);
 
     // Still closable: a warning, not a refusal.
     final close = tester.widget<InkWell>(

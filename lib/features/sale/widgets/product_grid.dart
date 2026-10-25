@@ -153,7 +153,7 @@ class ProductTile extends StatelessWidget {
                   Expanded(
                     child: Text(
                       product.isAvailable
-                          ? product.effectivePrice.format()
+                          ? product.effectivePrice.format(withCurrency: true)
                           : context.strings.outOfStockBadge,
                       overflow: TextOverflow.ellipsis,
                       style: PosText.mono(

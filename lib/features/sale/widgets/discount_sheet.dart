@@ -284,7 +284,7 @@ class _DiscountSheetState extends ConsumerState<DiscountSheet> {
       subjectLabel: _wholeOrder
           ? strings.discountWholeOrder.toUpperCase()
           : strings.discountThisLine.toUpperCase(),
-      subject: widget.lineLabel ?? refusal.base.format(),
+      subject: widget.lineLabel ?? refusal.base.format(withCurrency: true),
       // Both figures, so the supervisor is not left working out what the
       // cashier actually asked for.
       limitNote: strings.discountAboveLimitNote(
@@ -304,13 +304,13 @@ class _DiscountSheetState extends ConsumerState<DiscountSheet> {
     }
     return _customKind == DiscountKind.percentage
         ? '${_value.text.trim()}%'
-        : _preview?.format() ?? _value.text.trim();
+        : _preview?.format(withCurrency: true) ?? _value.text.trim();
   }
 
   String _limitLabel(DiscountLimit limit) {
     final bp = limit.maxBp;
     if (bp != null) return _percent(bp);
-    return limit.maxAmount?.format() ?? '—';
+    return limit.maxAmount?.format(withCurrency: true) ?? '—';
   }
 
   /// Basis points as a percentage, without trailing noise: 1000 → 10, 1250 →
@@ -320,7 +320,7 @@ class _DiscountSheetState extends ConsumerState<DiscountSheet> {
 
   /// A discount as a share of what it came off, for the limit sentence.
   String _shareOf(Money amount, Money base) {
-    if (base.minor <= 0) return amount.format();
+    if (base.minor <= 0) return amount.format(withCurrency: true);
     return _percent((amount.minor * 10000 / base.minor).round());
   }
 

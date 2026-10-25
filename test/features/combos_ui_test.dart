@@ -168,7 +168,7 @@ void main() {
         findsOneWidget,
       );
       // The price, in major units, on each row.
-      expect(find.text('85.00'), findsNWidgets(2));
+      expect(find.text('85.00 EGP'), findsNWidgets(2));
     });
 
     testWidgets('a cloud till has no editor, only a pointer', (tester) async {

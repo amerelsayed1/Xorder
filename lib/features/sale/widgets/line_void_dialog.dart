@@ -127,7 +127,7 @@ abstract final class LineVoidFlow {
         auditAction: 'order.item.void',
         entityId: ticket.id,
         requestedBy: staff?.name,
-        subject: '${line.quantity} × $item · ${line.lineTotal.format()}',
+        subject: '${line.quantity} × $item · ${line.lineTotal.format(withCurrency: true)}',
         approveLabel: strings.voidLineAction,
         reasons: reasons,
         reasonRequirement: SystemReasons.defaultRequirement(
@@ -158,13 +158,13 @@ abstract final class LineVoidFlow {
     final outcome = await DestructiveConfirmDialog.show(
       context,
       title: strings.voidLineTitle(item),
-      confirmLabel: '${strings.voidLineAction} · ${line.lineTotal.format()}',
+      confirmLabel: '${strings.voidLineAction} · ${line.lineTotal.format(withCurrency: true)}',
       keepLabel: strings.keepLineAction,
       amount: line.lineTotal,
       // Three, in the handoff's order: what happens · what it does to work
       // already done · what cannot be undone.
       consequences: [
-        strings.voidLineConsequenceRemoved(line.lineTotal.format()),
+        strings.voidLineConsequenceRemoved(line.lineTotal.format(withCurrency: true)),
         strings.voidLineConsequenceKitchen,
         strings.voidLineConsequenceIrreversible,
       ],
@@ -263,7 +263,7 @@ abstract final class OrderVoidFlow {
         auditAction: 'order.void',
         entityId: ticket.id,
         requestedBy: staff?.name,
-        subject: ticket.totals.total.format(),
+        subject: ticket.totals.total.format(withCurrency: true),
         approveLabel: strings.voidOrderAction,
         reasons: reasons,
         reasonRequirement: SystemReasons.defaultRequirement(
@@ -291,11 +291,11 @@ abstract final class OrderVoidFlow {
       context,
       title: strings.voidOrderTitle(reference),
       confirmLabel:
-          '${strings.voidOrderAction} · ${ticket.totals.total.format()}',
+          '${strings.voidOrderAction} · ${ticket.totals.total.format(withCurrency: true)}',
       keepLabel: strings.keepOrderAction,
       amount: ticket.totals.total,
       consequences: [
-        strings.voidOrderConsequenceBill(ticket.totals.total.format()),
+        strings.voidOrderConsequenceBill(ticket.totals.total.format(withCurrency: true)),
         strings.voidOrderConsequenceKitchen,
         strings.voidOrderConsequenceRecorded,
       ],

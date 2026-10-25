@@ -98,7 +98,7 @@ class ManagementStockPane extends ConsumerWidget {
                     _mayCost && levels.any((level) => !level.hasCost);
                 return [
                   Text(
-                    strings.stockTotalValue(valuation.total.format()),
+                    strings.stockTotalValue(valuation.total.format(withCurrency: true)),
                     key: const Key('stock-total'),
                     style: PosText.ui(
                       size: 15,

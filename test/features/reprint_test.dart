@@ -153,7 +153,7 @@ void main() {
 
     testWidgets('says what has already gone back', (tester) async {
       await open(tester, refunds: [refund()]);
-      expect(find.text('REFUNDED 62.70'), findsOneWidget);
+      expect(find.text('REFUNDED 62.70 EGP'), findsOneWidget);
     });
 
     testWidgets('says nothing about refunds when there were none', (

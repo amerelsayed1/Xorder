@@ -328,7 +328,7 @@ void main() {
             PurchaseOrderDialog.show(context, suppliers: suppliers),
       );
 
-      expect(find.text('120.00'), findsNothing);
+      expect(find.text('120.00 EGP'), findsNothing);
 
       await tester.enterText(find.byType(TextField).at(0), 'Milk 1L');
       await tester.enterText(find.byType(TextField).at(1), '12');
@@ -336,7 +336,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(
-        find.text('120.00'),
+        find.text('120.00 EGP'),
         findsWidgets,
         reason: '12 × 10.00, shown before anybody saves',
       );
@@ -538,6 +538,6 @@ void main() {
     await tester.enterText(find.byType(TextField).at(2), '15.50');
     await tester.pumpAndSettle();
 
-    expect(find.text('46.50'), findsWidgets);
+    expect(find.text('46.50 EGP'), findsWidgets);
   });
 }

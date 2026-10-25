@@ -481,7 +481,7 @@ class _SaleScreenState extends ConsumerState<SaleScreen> {
           ? null
           : '${line.quantity} × '
                 '${line.product.displayName(context.strings.languageCode)} · '
-                '${line.lineTotal.format()}',
+                '${line.lineTotal.format(withCurrency: true)}',
       preApprovedBy: approver,
     );
     if (updated == null || !mounted) return;

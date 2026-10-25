@@ -70,7 +70,7 @@ void main() {
     expect(find.text('48 Each'), findsOneWidget);
     // 12.5 × 95.00 + (−2 × 60.00) + 48 × 5.00 = 1307.50
     expect(
-      find.text('Stock value: ${const Money(130750).format()}'),
+      find.text('Stock value: ${const Money(130750).format(withCurrency: true)}'),
       findsOneWidget,
     );
   });
@@ -133,7 +133,7 @@ void main() {
       expect(
         find.descendant(
           of: find.byKey(const Key('stock-row-1')),
-          matching: find.text(const Money(500).format()),
+          matching: find.text(const Money(500).format(withCurrency: true)),
         ),
         findsWidgets,
       );
@@ -154,7 +154,7 @@ void main() {
       // 48 × 5.00 for the Cola. The Ketchup is not added as nothing: its worth
       // is unknown, and the line under the total says so.
       expect(
-        find.text('Stock value: ${const Money(24000).format()}'),
+        find.text('Stock value: ${const Money(24000).format(withCurrency: true)}'),
         findsOneWidget,
       );
       expect(find.byKey(const Key('stock-unvalued')), findsOneWidget);
@@ -179,7 +179,7 @@ void main() {
       expect(
         find.descendant(
           of: find.byKey(const Key('stock-row-1')),
-          matching: find.text(const Money(24000).format()),
+          matching: find.text(const Money(24000).format(withCurrency: true)),
         ),
         findsOneWidget,
       );

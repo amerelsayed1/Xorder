@@ -121,7 +121,7 @@ class _SupplierPaymentDialogState extends State<SupplierPaymentDialog> {
     final amount = _typed;
     if (room == null || amount == null) return null;
     if (amount.minor <= room.minor) return null;
-    return context.strings.paymentMoreThanTheBill(room.format());
+    return context.strings.paymentMoreThanTheBill(room.format(withCurrency: true));
   }
 
   void _selectInvoice(int? id) => setState(() {

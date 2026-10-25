@@ -777,7 +777,7 @@ class _LineRow extends StatelessWidget {
                   ),
                   Row(
                     children: [
-                      MonoCode('${line.unitPrice.format()} × ${line.quantity}'),
+                      MonoCode('${line.unitPrice.format(withCurrency: true)} × ${line.quantity}'),
                       if (spent) ...[
                         const SizedBox(width: PosSpace.sm),
                         Text(

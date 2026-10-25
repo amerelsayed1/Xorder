@@ -251,17 +251,17 @@ void main() {
 
     expect(_texts(tester, 'reports-profit-0'), [
       'Cola',
-      '80.00',
-      '42.00',
-      '38.00',
+      '80.00 EGP',
+      '42.00 EGP',
+      '38.00 EGP',
       '47.50%',
     ]);
     // Half costed: the margin is on the 15.00 that has a cost, not the 45.00.
     expect(_texts(tester, 'reports-profit-1'), [
       'Chips',
-      '45.00',
-      '10.00',
-      '5.00',
+      '45.00 EGP',
+      '10.00 EGP',
+      '5.00 EGP',
       '33.33%',
     ]);
   });
@@ -271,16 +271,16 @@ void main() {
 
     expect(_texts(tester, 'reports-profit-2'), [
       'Salad',
-      '16.00',
-      '17.00',
-      '-1.00',
+      '16.00 EGP',
+      '17.00 EGP',
+      '-1.00 EGP',
       '-6.25%',
     ]);
     expect(_texts(tester, 'reports-profit-3'), [
       'Steak',
-      '100.00',
-      '125.00',
-      '-25.00',
+      '100.00 EGP',
+      '125.00 EGP',
+      '-25.00 EGP',
       '-25.00%',
     ]);
   });
@@ -314,7 +314,7 @@ void main() {
     expect(_texts(tester, 'reports-profit-4'), [
       'Burger',
       s.profitNoCostTag,
-      '85.00',
+      '85.00 EGP',
       '—',
       '—',
       '—',
@@ -331,9 +331,9 @@ void main() {
 
     expect(_texts(tester, 'reports-profit-total'), [
       s.reportAllItems,
-      '326.00',
-      '194.00',
-      '17.00',
+      '326.00 EGP',
+      '194.00 EGP',
+      '17.00 EGP',
       '8.06%',
     ]);
   });
@@ -347,7 +347,7 @@ void main() {
     String caps(String text) => text.toUpperCase();
     expect(_texts(tester, 'profit-tile-profit'), [
       caps(s.profitKpiProfit),
-      '17.00',
+      '17.00 EGP',
     ]);
     expect(_texts(tester, 'profit-tile-margin'), [
       caps(s.profitColumnMargin),
@@ -362,7 +362,7 @@ void main() {
     // The revenue it cannot speak to has a line of its own.
     expect(_texts(tester, 'profit-tile-uncosted'), [
       caps(s.profitUncostedRevenue),
-      '115.00',
+      '115.00 EGP',
     ]);
     expect(find.text(s.profitNote), findsOneWidget);
   });

@@ -774,7 +774,7 @@ class _InvoiceRow extends StatelessWidget {
           // is the sentence, and the outstanding number alone reads as a
           // smaller invoice.
           if (part) ...[
-            MonoCode(invoice.total.format(), size: 11.5, color: palette.muted),
+            MonoCode(invoice.total.format(withCurrency: true), size: 11.5, color: palette.muted),
             const SizedBox(width: PosSpace.xs),
           ],
           MonoAmount(invoice.outstanding, size: 13.5),
@@ -1001,7 +1001,7 @@ class _SupplierRow extends StatelessWidget {
                   ),
                   if (owed.overdue.isPositive)
                     Text(
-                      '${owed.overdue.format()} ${strings.supplierOverdue}',
+                      '${owed.overdue.format(withCurrency: true)} ${strings.supplierOverdue}',
                       style: PosText.ui(
                         size: 10.5,
                         weight: FontWeight.w700,

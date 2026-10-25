@@ -546,7 +546,7 @@ class _ProductList extends StatelessWidget {
                 ),
                 if (product.discountedPrice != null) ...[
                   Text(
-                    product.price.format(),
+                    product.price.format(withCurrency: true),
                     style: PosText.mono(
                       size: 12.5,
                       color: context.pos.muted,
@@ -555,7 +555,7 @@ class _ProductList extends StatelessWidget {
                   const SizedBox(width: PosSpace.sm),
                 ],
                 Text(
-                  product.effectivePrice.format(),
+                  product.effectivePrice.format(withCurrency: true),
                   style: PosText.mono(size: 13.5, color: context.pos.ink),
                 ),
                 const SizedBox(width: PosSpace.lg),

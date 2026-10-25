@@ -319,9 +319,12 @@ class _SupplierInvoiceDialogState extends State<SupplierInvoiceDialog> {
                   const SizedBox(height: PosSpace.xs),
                   Row(
                     children: [
-                      Text(
-                        strings.invoiceTaxFromRate,
-                        style: PosText.ui(size: 11.5, color: palette.muted),
+                      Flexible(
+                        child: Text(
+                          strings.invoiceTaxFromRate,
+                          overflow: TextOverflow.ellipsis,
+                          style: PosText.ui(size: 11.5, color: palette.muted),
+                        ),
                       ),
                       const SizedBox(width: PosSpace.sm),
                       for (final rate in const [1400, 1000, 500])
@@ -506,14 +509,14 @@ class _Variance extends StatelessWidget {
           ),
           const SizedBox(width: PosSpace.sm),
           MonoCode(
-            order.receivedTotal.format(),
+            order.receivedTotal.format(withCurrency: true),
             size: 12,
             color: palette.muted,
           ),
           if (!agrees) ...[
             const SizedBox(width: PosSpace.sm),
             MonoCode(
-              '${off.isPositive ? '+' : ''}${off.format()}',
+              '${off.isPositive ? '+' : ''}${off.format(withCurrency: true)}',
               size: 12.5,
               color: palette.warn,
             ),

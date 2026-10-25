@@ -563,9 +563,9 @@ class _CloseShiftDialogState extends ConsumerState<CloseShiftDialog> {
     if (counted == null) {
       return Text(
         strings.expectedInDrawerHelp(
-          summary.expectedCash.format(),
-          summary.shift.openingFloat.format(),
-          summary.cashTaken.format(),
+          summary.expectedCash.format(withCurrency: true),
+          summary.shift.openingFloat.format(withCurrency: true),
+          summary.cashTaken.format(withCurrency: true),
         ),
         style: PosText.ui(size: 12.5, color: pos.muted, height: 1.5),
       );
@@ -599,7 +599,7 @@ class _CloseShiftDialogState extends ConsumerState<CloseShiftDialog> {
           ),
           const Spacer(),
           Text(
-            balances ? summary.expectedCash.format() : variance.format(),
+            balances ? summary.expectedCash.format(withCurrency: true) : variance.format(withCurrency: true),
             style: PosText.mono(color: pos.inkWarm, size: 18, weight: FontWeight.w600),
           ),
         ],
@@ -614,7 +614,7 @@ class _CloseShiftDialogState extends ConsumerState<CloseShiftDialog> {
       title: strings.shiftClosedTitle(widget.shift.reference),
       subtitle: closed.balances
           ? strings.drawerBalances
-          : strings.closedWithVariance(closed.variance.format()),
+          : strings.closedWithVariance(closed.variance.format(withCurrency: true)),
       busy: false,
       onCancel: null,
       action: PosButton(

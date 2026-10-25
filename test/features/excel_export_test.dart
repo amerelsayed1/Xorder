@@ -111,7 +111,8 @@ int _minor(Object? cell) => Money.tryParse('${cell! as num}')!.minor;
 /// A percentage cell back in basis points.
 int _bp(Object? cell) => ((cell! as num) * 10000).round();
 
-String _printed(Object? cell) => Money(_minor(cell)).format();
+String _printed(Object? cell) =>
+    Money(_minor(cell)).format(withCurrency: true);
 
 /// Every caption at or under [key], in reading order.
 List<String> _texts(WidgetTester tester, Key key) => [

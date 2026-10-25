@@ -159,7 +159,7 @@ class _ManagementBackupPaneState extends ConsumerState<ManagementBackupPane> {
       consequences: [
         strings.backupRestoreOrdersLost(
           check.ordersSince,
-          check.valueSince.format(),
+          check.valueSince.format(withCurrency: true),
         ),
         // A pending count reaches this dialog only offline — on a cloud till it
         // is a blocker and this dialog never opens. A leftover in the queue is

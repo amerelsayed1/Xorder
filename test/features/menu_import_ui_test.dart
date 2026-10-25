@@ -154,7 +154,7 @@ void main() {
       // "Changes 1 item" is not a sentence anybody can approve. The item and
       // its new price are what makes the press an informed one.
       expect(find.text('Mixed Grill'), findsOneWidget);
-      expect(find.text('55.00'), findsOneWidget);
+      expect(find.text('55.00 EGP'), findsOneWidget);
     });
 
     testWidgets('a file that matches the menu offers nothing to do', (
@@ -348,7 +348,7 @@ void main() {
       );
       await choose(tester);
 
-      final price = find.text('55.00');
+      final price = find.text('55.00 EGP');
       expect(Directionality.of(tester.element(price)), TextDirection.ltr);
     });
   });

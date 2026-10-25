@@ -125,7 +125,7 @@ void main() {
       );
       // Grouped, because `Money.format` groups thousands — and `tryParse`
       // strips the commas again, so the box round-trips.
-      expect(find.text('1,000.00'), findsWidgets, reason: 'the net, shown');
+      expect(find.text('1,000.00 EGP'), findsWidgets, reason: 'the net, shown');
     });
 
     testWidgets('the subtotal is shown, never typed', (tester) async {
@@ -387,7 +387,7 @@ void main() {
         '1500.00',
       );
       await tester.pumpAndSettle();
-      expect(find.textContaining('Only 1,000.00 is left'), findsOneWidget);
+      expect(find.textContaining('Only 1,000.00 EGP is left'), findsOneWidget);
 
       await tester.tap(find.byKey(const Key('payment-save')));
       await tester.pumpAndSettle();

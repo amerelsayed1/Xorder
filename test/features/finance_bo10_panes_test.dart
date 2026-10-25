@@ -449,11 +449,11 @@ void main() {
         [_egp(14500)],
       );
       expect(
-        _in('finance-tile-payouts', find.text(_egp(1500).format())),
+        _in('finance-tile-payouts', find.text(_egp(1500).format(withCurrency: true))),
         findsOneWidget,
       );
       expect(
-        _in('finance-tile-supplier-payments', find.text(_egp(13000).format())),
+        _in('finance-tile-supplier-payments', find.text(_egp(13000).format(withCurrency: true))),
         findsOneWidget,
       );
       // The label says exactly what the figure holds.
@@ -556,7 +556,7 @@ void main() {
 
       // The headline figures, and what the expenses one is made of.
       expect(
-        _in('finance-tile-expenses', find.text(_egp(14500).format())),
+        _in('finance-tile-expenses', find.text(_egp(14500).format(withCurrency: true))),
         findsOneWidget,
       );
       expect(
@@ -564,7 +564,7 @@ void main() {
         findsOneWidget,
       );
       expect(
-        _in('finance-tile-drawers', find.text(Money(41400).format())),
+        _in('finance-tile-drawers', find.text(Money(41400).format(withCurrency: true))),
         findsOneWidget,
       );
       expect(
@@ -608,7 +608,7 @@ void main() {
         expect(find.byKey(const Key('finance-recent-expenses')), findsOneWidget);
         // Expenses still shown, as pay-outs only.
         expect(
-          _in('finance-tile-expenses', find.text(_egp(4500).format())),
+          _in('finance-tile-expenses', find.text(_egp(4500).format(withCurrency: true))),
           findsOneWidget,
         );
         expect(doubles.ledger.reads, 0);
@@ -640,7 +640,7 @@ void main() {
       Money(41400),
     );
     expect(
-      _in('finance-tile-drawers', find.text(Money(41400).format())),
+      _in('finance-tile-drawers', find.text(Money(41400).format(withCurrency: true))),
       findsOneWidget,
     );
     // A snapshot of now: the business date, and no period to choose.

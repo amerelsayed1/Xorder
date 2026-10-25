@@ -170,12 +170,12 @@ void main() {
 
       // Net, orders and average — the day's own figures, not re-added.
       expect(
-        _in('home-tile-net', find.text(_todaySales.net.format())),
+        _in('home-tile-net', find.text(_todaySales.net.format(withCurrency: true))),
         findsOneWidget,
       );
       expect(_in('home-tile-orders', find.text('3')), findsOneWidget);
       expect(
-        _in('home-tile-average', find.text(_egp(18000).format())),
+        _in('home-tile-average', find.text(_egp(18000).format(withCurrency: true))),
         findsOneWidget,
       );
 
@@ -214,7 +214,7 @@ void main() {
       expect(find.textContaining('open since'), findsNothing);
       // Its figures, still.
       expect(
-        _in('home-tile-net', find.text(_todaySales.net.format())),
+        _in('home-tile-net', find.text(_todaySales.net.format(withCurrency: true))),
         findsOneWidget,
       );
       // And no earlier day to hold it against.
@@ -233,7 +233,7 @@ void main() {
       await _pump(tester, admin: _doorOnly);
 
       expect(find.byKey(const Key('home-tiles')), findsNothing);
-      expect(find.text(_todaySales.net.format()), findsNothing);
+      expect(find.text(_todaySales.net.format(withCurrency: true)), findsNothing);
       // The greeting is still theirs.
       expect(find.text(s.homeWelcome('Salma T.')), findsOneWidget);
       expect(find.text(s.paneHomeBlurb), findsOneWidget);

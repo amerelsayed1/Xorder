@@ -116,7 +116,7 @@ void main() {
       );
 
       expect(find.textContaining('Staff meal'), findsOneWidget);
-      expect(find.text('-20.00'), findsOneWidget);
+      expect(find.text('-20.00 EGP'), findsOneWidget);
     });
 
     testWidgets('names the approver, so the question is already answered', (
@@ -205,7 +205,7 @@ void main() {
       // A discount that came off the whole bill has no line to belong to, and
       // drawing it under one would be a claim about what it discounted.
       expect(find.text('Ten off'), findsOneWidget);
-      expect(find.text('-22.50'), findsOneWidget);
+      expect(find.text('-22.50 EGP'), findsOneWidget);
     });
 
     testWidgets('the total already reflects it', (tester) async {
@@ -288,7 +288,7 @@ void main() {
       );
 
       expect(
-        Directionality.of(tester.element(find.text('-20.00'))),
+        Directionality.of(tester.element(find.text('-20.00 EGP'))),
         TextDirection.ltr,
       );
     });
@@ -325,7 +325,7 @@ void main() {
     testWidgets('its price is struck through, not hidden', (tester) async {
       await pump(tester, withVoid());
 
-      final price = tester.widget<Text>(find.text('200.00'));
+      final price = tester.widget<Text>(find.text('200.00 EGP'));
       // The price is what the customer is being shown they are NOT paying.
       expect(price.style!.decoration, TextDecoration.lineThrough);
     });
@@ -341,13 +341,13 @@ void main() {
       await pump(tester, withVoid());
 
       // 200.00 of burger voided, 25.00 of chips left.
-      expect(find.text('25.00'), findsWidgets);
+      expect(find.text('25.00 EGP'), findsWidgets);
     });
 
     testWidgets('a live line is not struck through', (tester) async {
       await pump(tester, withVoid());
 
-      final price = tester.widget<Text>(find.text('25.00').first);
+      final price = tester.widget<Text>(find.text('25.00 EGP').first);
       expect(price.style?.decoration, isNot(TextDecoration.lineThrough));
     });
   });

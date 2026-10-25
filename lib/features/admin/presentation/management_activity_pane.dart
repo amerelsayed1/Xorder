@@ -194,7 +194,7 @@ class _EntryRow extends StatelessWidget {
         : (value is String ? int.tryParse(value) : null);
 
     if (number != null) {
-      if (key.endsWith('_minor')) return Money(number).format();
+      if (key.endsWith('_minor')) return Money(number).format(withCurrency: true);
       if (key.endsWith('_milli')) return Quantity(number).format();
       if (key.endsWith('_bp')) return AdminText.rateBp(number);
     }

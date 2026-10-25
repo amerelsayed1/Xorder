@@ -215,9 +215,9 @@ class TableCard extends StatelessWidget {
 
     final subtitle = switch (table.state) {
       TableState.free => strings.tableSeats(table.seats),
-      TableState.open => strings.tableOpenWith(table.openTotal?.format() ?? ''),
+      TableState.open => strings.tableOpenWith(table.openTotal?.format(withCurrency: true) ?? ''),
       TableState.billAsked => strings.tableBillRequested(
-        table.openTotal?.format() ?? '',
+        table.openTotal?.format(withCurrency: true) ?? '',
       ),
     };
 

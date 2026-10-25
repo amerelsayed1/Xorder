@@ -330,21 +330,21 @@ void main() {
       // Revenue is Reports' figure: the same provider, the same filter.
       final reports = container.read(salesReportProvider(thisMonth)).value!;
       expect(
-        _in('finance-tile-revenue', find.text(reports.net.format())),
+        _in('finance-tile-revenue', find.text(reports.net.format(withCurrency: true))),
         findsOneWidget,
       );
       expect(reports.net, _egp(74000));
       expect(
-        _in('finance-tile-collected', find.text(_egp(53000).format())),
+        _in('finance-tile-collected', find.text(_egp(53000).format(withCurrency: true))),
         findsOneWidget,
       );
       expect(
-        _in('finance-tile-on-account', find.text(_egp(12000).format())),
+        _in('finance-tile-on-account', find.text(_egp(12000).format(withCurrency: true))),
         findsOneWidget,
       );
       // 9,800 charged less 140 + 25 given back.
       expect(
-        _in('finance-tile-tax', find.text(_egp(9635).format())),
+        _in('finance-tile-tax', find.text(_egp(9635).format(withCurrency: true))),
         findsOneWidget,
       );
       expect(books.filters.toSet(), {thisMonth});
@@ -433,7 +433,7 @@ void main() {
     );
     expect(_in('finance-tile-orders', find.text('4')), findsOneWidget);
     expect(
-      _in('finance-tile-average', find.text(_egp(18500).format())),
+      _in('finance-tile-average', find.text(_egp(18500).format(withCurrency: true))),
       findsOneWidget,
     );
   });
