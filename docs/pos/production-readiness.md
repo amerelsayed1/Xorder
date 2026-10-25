@@ -307,8 +307,10 @@ changes need a human running `bin/pos_migrate.dart`, because the app boots as
 `docs/pos/10-setup-architecture.md` names two files that do not exist —
 `lib/core/config/terminal_role.dart` (`:648`) and
 `lib/data/network/postgres_host_scanner.dart` (`:684`) — and claims secrets live in the
-Windows Credential Manager via DPAPI (`:759-764`), which
-`lib/data/config/file_secret_store.dart:9-31` contradicts by explicit owner decision.
+Windows Credential Manager via DPAPI (`:759-764`). Since ADR-006 the secrets are
+DPAPI-sealed in `secrets.dpapi`, not in Credential Manager
+(`lib/data/config/windows_dpapi_secret_store.dart`), so that doc is still wrong
+about the mechanism.
 
 **Cost.** The product is sold for Windows and cannot be handed to a restaurant.
 Everything above is undeliverable without this.
@@ -450,8 +452,10 @@ Read this half. It is what stops someone building a dashboard while filing is br
 - **`pos_order_taxes`, `pos_order_line_items`, `pos_order_line_events`** are
   write-only. Correct: they exist so a filing and a line-level audit can be
   reconstructed later, not so a screen can read them today.
-- **Secrets in a plaintext file** (`file_secret_store.dart:9-31`) — an explicit owner
-  decision, 4 September 2026. Not a gap. But three places still tell an installer to
+- **Secrets in a plaintext file** (`file_secret_store.dart`) — an owner decision of
+  4 September 2026, **reversed by ADR-006**: secrets now go to DPAPI / the Keychain
+  (`lib/data/config/secret_store.dart`) and an old `secrets.json` is migrated and
+  wiped. The note below is kept for history. But three places still tell an installer to
   look in the OS keychain (`lib/app/providers.dart:1499`,
   `lib/data/config/pos_db_secret_store.dart:3`, and the operator-facing string at
   `app_strings.dart:2858` naming the Credential Manager). Correct those or an installer

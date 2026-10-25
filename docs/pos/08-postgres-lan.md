@@ -97,8 +97,8 @@ Each Flutter client opens a `Pool` to `postgres://…@192.168.1.10:5432/xorder_p
 - **For:** no server code at all. Transactions, sequences, `FOR UPDATE`, and
   `LISTEN/NOTIFY` are available directly. Fastest thing to stand up.
 - **Against:** the DB password ships inside the app on every till. A cashier with
-  file access has full SQL access to the branch's books — `flutter_secure_storage`
-  raises the bar but does not remove it, because the app must be able to decrypt
+  file access has full SQL access to the branch's books — the OS store (DPAPI /
+  Keychain, `lib/data/config/secret_store.dart`) raises the bar but does not remove it, because the app must be able to decrypt
   it to connect. Schema changes require every till to be on the same build. No
   offline selling unless SQLite stays.
 - **Verdict:** fine for a single-site pilot behind a locked network. Not what a
@@ -151,7 +151,7 @@ final pool = Pool.withEndpoints(
     port: 5432,
     database: 'xorder_pos',
     username: 'pos_till',
-    password: password,      // Keychain / DPAPI via flutter_secure_storage
+    password: password,      // DPAPI / Keychain via SecretStore.forPlatform()
   )],
   settings: const PoolSettings(
     maxConnectionCount: 4,

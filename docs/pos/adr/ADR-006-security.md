@@ -33,6 +33,28 @@ credential; secrets sit in a plaintext JSON file; LAN traffic is plaintext by th
 | Audit log append-only by grant + trigger, but the owner can drop the trigger; restore replaces the table; **no hash chain** | `migrations.dart:519-535`; R-05 |
 | No crash handler, log file, telemetry or support bundle | §12.9 |
 
+### Implemented since: secrets to the OS store (Phase 1, slice B)
+
+The first row above describes the code before this slice. Now:
+
+- `SecretStore.forPlatform()` (`lib/data/config/secret_store.dart`) is the only place a store is
+  chosen. Windows gets `WindowsDpapiSecretStore`: `CryptProtectData` in current-user scope,
+  `CRYPTPROTECT_UI_FORBIDDEN`, per-key entropy, ciphertext in `secrets.dpapi`. macOS gets
+  `MacKeychainSecretStore`: Security.framework via `dart:ffi`, generic-password items under the
+  service `io.xorder.pos`. Any other platform gets `DevelopmentFileSecretStore`, the old plaintext
+  file, named for what it is. Nothing falls back. A store that fails throws
+  `SecretStoreUnavailable`, and the setup wizard's existing `keystoreUnavailable` warning reports it.
+- `LegacySecretMigration` moves an existing `secrets.json` into the OS store at first launch:
+  write all, verify all, then zero and delete. Any failure rolls back what it wrote and leaves
+  the file untouched.
+- **Not done here:** `pos_admin` is still persisted, now in the OS store rather than the file.
+  Whether to persist it at all is still Q17. "`pos_admin` password not present on any till
+  disk" therefore still fails as an acceptance test. Neither native store has been run on its
+  OS yet: `test/data/os_secret_store_platform_test.dart` must pass on a Windows till and on a
+  Mac.
+- **Known cost on macOS:** an ad-hoc or unsigned build is a different app to the keychain after
+  every rebuild, so the 2026-09-04 prompt returns for those builds.
+
 ## Gaps
 
 - **Per-user authentication is meaningless while permissions are Dart-only and all tills share one

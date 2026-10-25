@@ -72,8 +72,9 @@ class TillRoleRefused implements Exception {
 /// **The credential used here is not the credential the till keeps.** Creating
 /// a database and applying DDL needs an owner or superuser; selling needs
 /// `pos_till`, which is granted the least it can work with and no DDL at all.
-/// The admin credential passes through this class and is never persisted —
-/// `PosDbSecretStore` only ever holds the till's.
+/// The admin credential passes through this class and is not persisted by it.
+/// The setup wizard does keep it, in the OS store, for Admin Mode; see
+/// `adminDbSecretStoreProvider`.
 class LocalBootstrap {
   const LocalBootstrap(this.database);
 

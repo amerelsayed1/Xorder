@@ -1799,7 +1799,8 @@ class SetupController extends Notifier<SetupDraft> {
       ),
       databasePassword: installed.tillPassword,
       // Kept, so Admin Mode is a username and a PIN rather than a password
-      // nobody was ever told. `complete()` is what writes it to `secrets.json`.
+      // nobody was ever told. `complete()` is what writes it to the OS store
+      // (DPAPI / Keychain, via `adminDbSecretStoreProvider`).
       adminDatabasePassword: installed.adminPassword,
     );
     return true;

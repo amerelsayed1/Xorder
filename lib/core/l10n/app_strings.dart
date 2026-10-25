@@ -4426,9 +4426,10 @@ final class EnStrings extends AppStrings {
       'The operating system’s credential store did not answer, so a password '
       'typed here will work now but will be gone after a restart — and this '
       'wizard will open again. Setup can be finished either way. On macOS, '
-      'unlock the login keychain; on Windows, check the Credential Manager '
-      'service. If it keeps happening, the application may need reinstalling '
-      'by someone who can sign it.';
+      'unlock the login keychain; on Windows, sign in with this till’s own '
+      'Windows account rather than a temporary profile (a password reset by '
+      'an administrator also locks saved credentials). If it keeps happening, '
+      'the application may need reinstalling by someone who can sign it.';
   @override
   String get machineNowHasDatabase => 'This machine now has a database.';
   @override
@@ -8969,7 +8970,6 @@ final class ArStrings extends AppStrings {
   String get enterYourPin => 'أدخل رقمك السري';
   @override
   String get lockPickYourName => 'من عاد إلى الجهاز؟';
-
   @override
   String signInLockedOut(int seconds) => seconds < 60
       ? 'محاولات خاطئة كثيرة. حاول مرة أخرى بعد '
@@ -8994,6 +8994,7 @@ final class ArStrings extends AppStrings {
     >= 3 && <= 10 => '$n $few',
     _ => '$n $many',
   };
+
   @override
   String get pointOfSale => 'نقطة بيع';
   @override
@@ -9508,8 +9509,10 @@ final class ArStrings extends AppStrings {
       'لم يستجب مخزن بيانات الاعتماد في نظام التشغيل، لذلك ستعمل كلمة المرور '
       'التي تُدخل هنا الآن لكنها ستُفقد بعد إعادة التشغيل، وسيُفتح هذا المعالج '
       'من جديد. يمكن إكمال الإعداد في الحالتين. على macOS افتح قفل سلسلة '
-      'المفاتيح، وعلى Windows تحقق من خدمة إدارة بيانات الاعتماد. إذا تكرر '
-      'الأمر فقد يحتاج التطبيق إلى إعادة تثبيت من شخص يستطيع توقيعه.';
+      'المفاتيح، وعلى Windows سجّل الدخول بحساب Windows الخاص بهذا الكاشير '
+      'وليس بملف تعريف مؤقت (إعادة تعيين كلمة المرور من قِبل المسؤول تقفل '
+      'أيضاً بيانات الاعتماد المحفوظة). إذا تكرر الأمر فقد يحتاج التطبيق إلى '
+      'إعادة تثبيت من شخص يستطيع توقيعه.';
   @override
   String get machineNowHasDatabase => 'صار لهذا الجهاز قاعدة بيانات.';
   @override

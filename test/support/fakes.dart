@@ -5,6 +5,7 @@ import 'package:mocktail/mocktail.dart';
 import 'package:xorder_pos/app/providers.dart';
 import 'package:xorder_pos/core/config/terminal_config.dart';
 import 'package:xorder_pos/data/config/pos_db_secret_store.dart';
+import 'package:xorder_pos/data/config/secret_store.dart';
 import 'package:xorder_pos/data/config/setup_progress_store.dart';
 import 'package:xorder_pos/data/config/terminal_config_store.dart';
 import 'package:xorder_pos/data/fakes/fake_repositories.dart';
@@ -110,6 +111,11 @@ List<Override> fakeRepositoryOverrides({
         (password) async =>
             password == 'test-credential' ? null : PosDbFailure.auth,
       ),
+      // The OS secret store as a whole, which the hard reset empties. In
+      // memory, for the same reason as the config store above: on Linux the
+      // real one is a file in Application Support, which a widget test cannot
+      // reach.
+      secretStoreProvider.overrideWithValue(InMemorySecretStore()),
     ];
 
 /// An offline terminal: one that authors its own catalogue, and so its own
@@ -167,6 +173,62 @@ class MemorySecretStore implements PosDbSecretStore {
 
   @override
   Future<void> clear() async => value = null;
+}
+
+/// The whole OS secret store in memory: what DPAPI or the Keychain would hold.
+///
+/// [refusing] makes every call throw [SecretStoreUnavailable], for the paths
+/// a locked keychain takes; [refuseWritesAfter] lets that many writes through
+/// first, for the migration that fails half way. [writes] counts calls, so a
+/// test can say "nothing was written".
+class InMemorySecretStore implements SecretStore {
+  InMemorySecretStore([Map<String, String>? values])
+    : values = {...?values};
+
+  final Map<String, String> values;
+  bool refusing = false;
+  int? refuseWritesAfter;
+  int writes = 0;
+
+  SecretStoreUnavailable _refusal(String operation) => SecretStoreUnavailable(
+    store: description,
+    operation: operation,
+    cause: 'refused by the test',
+  );
+
+  @override
+  bool get protectedByOperatingSystem => true;
+
+  @override
+  String get description => 'In-memory test store';
+
+  @override
+  Future<String?> read(String key) async {
+    if (refusing) throw _refusal('read');
+    return values[key];
+  }
+
+  @override
+  Future<void> write(String key, String value) async {
+    final limit = refuseWritesAfter;
+    if (refusing || (limit != null && writes >= limit)) {
+      throw _refusal('write');
+    }
+    writes++;
+    values[key] = value;
+  }
+
+  @override
+  Future<void> delete(String key) async {
+    if (refusing) throw _refusal('delete');
+    values.remove(key);
+  }
+
+  @override
+  Future<void> deleteAll() async {
+    if (refusing) throw _refusal('delete');
+    values.clear();
+  }
 }
 
 /// The saved terminal configuration, held in memory for the length of a test.

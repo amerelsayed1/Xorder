@@ -26,6 +26,7 @@ import '../data/backup/pg_tools.dart';
 import '../data/config/file_secret_store.dart';
 import '../data/config/installer_credentials.dart';
 import '../data/config/pos_db_secret_store.dart';
+import '../data/config/secret_store.dart';
 import '../data/config/setup_progress_store.dart';
 import '../data/config/terminal_config_store.dart';
 import '../data/hardware/network_printer_ports.dart';
@@ -733,8 +734,9 @@ final posCloudApiProvider = Provider<PosCloudApi?>((ref) {
 });
 
 /// The terminal's device credential. The default is in-memory; `main()`
-/// overrides it with the keychain-backed vault, restored before the first
-/// frame — the same arrangement as the database password.
+/// overrides it with a vault backed by [secretStoreProvider]'s store (DPAPI on
+/// Windows, the Keychain on macOS), restored before the first frame — the same
+/// arrangement as the database password.
 final deviceTokenVaultProvider = Provider<DeviceTokenVault>(
   (ref) => DeviceTokenVault(),
 );
@@ -1703,8 +1705,6 @@ class SignedInStaffController extends Notifier<PosStaff?> {
   void signOut() => state = null;
 }
 
-/// The username of whoever signed in at this till last, for the lock screen
-/// to offer back.
 /// The clock the till's sign-in doors and its idle lock read. A provider so a
 /// test can move it instead of waiting thirty seconds or five minutes — the
 /// same reason as `adminClockProvider`, kept apart from it because Admin Mode's
@@ -1757,6 +1757,8 @@ class IdleLockGuard {
 
 final idleLockGuardProvider = Provider<IdleLockGuard>((ref) => IdleLockGuard());
 
+/// The username of whoever signed in at this till last, for the lock screen
+/// to offer back.
 ///
 /// **A prefill, not an identity.** The PIN still has to belong to the name,
 /// and the name is one tap away from being somebody else's — what this saves
@@ -2368,9 +2370,10 @@ class TerminalReset {
 
   /// **Back to a blank till.** Everything [run] does, and also what it keeps on
   /// purpose: the licence file and its cached verdict, every saved password and
-  /// token (the whole `secrets.json`, not only the two entries [run] touches),
-  /// and this machine's identity, so the wizard opens on "enter a licence key"
-  /// as on a machine that has never run it.
+  /// token (everything in [secretStoreProvider]'s store, not only the two
+  /// entries [run] touches, and any legacy `secrets.json`), and this machine's
+  /// identity, so the wizard opens on "enter a licence key" as on a machine
+  /// that has never run it.
   ///
   /// **It erases this machine's memory, nothing more.** No database is dropped,
   /// no sale, backup or platform record is touched; the dialog that offers it
@@ -2383,6 +2386,10 @@ class TerminalReset {
     await _ref.read(licenseStoreProvider).clear();
     await _ref.read(licenceCheckStoreProvider).clear();
     await _ref.read(secretsFileProvider).deleteFile();
+    // The OS store as well as the file. On Windows and macOS the secrets have
+    // not been in `secrets.json` since the migration, and deleting only the
+    // file would hand the next restaurant this one's device token.
+    await _ref.read(secretStoreProvider).deleteAll();
 
     _ref.read(terminalProfileProvider.notifier).renew();
     _ref.read(signedInStaffProvider.notifier).signOut();
@@ -2398,8 +2405,24 @@ final terminalResetProvider = Provider<TerminalReset>(TerminalReset.new);
 
 /// The shared `secrets.json`, for the hard reset to delete whole. A provider so
 /// a test can point it at a temporary folder.
+///
+/// On Windows and macOS nothing writes this file any more; it is deleted here
+/// in case a migration could not finish, or an older build wrote it again
+/// after a downgrade. Deleting is all this provider is used for.
 final secretsFileProvider = Provider<FileSecretStore>(
   (ref) => FileSecretStore(key: FileSecretStore.databasePasswordKey),
+);
+
+/// Where every secret this till keeps actually lives: DPAPI on Windows, the
+/// Keychain on macOS, and a plaintext development file only on machines that
+/// do not sell (ADR-006). The choice is [SecretStore.forPlatform]'s.
+///
+/// `main()` overrides this with the instance it migrated and restored at boot,
+/// so the whole process shares one store. The DPAPI store serialises writes
+/// to its file, and two instances would each do it on their own. Widget tests
+/// get an in-memory store from `fakeRepositoryOverrides`.
+final secretStoreProvider = Provider<SecretStore>(
+  (ref) => SecretStore.forPlatform(),
 );
 
 /// The licence entitlement currently in force.
@@ -2464,10 +2487,11 @@ final posDbCredentialsStoreProvider = Provider<MutablePosDbCredentials>(
 /// nothing else. Never a superuser, never `DELETE`, never DDL, so a recovered
 /// credential cannot rewrite history.
 ///
-/// Kept in the OS keystore between launches — Keychain on macOS, DPAPI on
-/// Windows — never in `config.json`: a database password written to a file is a
-/// password that gets emailed to support. The keystore binding is attached in
-/// `main()`, so a widget test gets the in-memory one and touches no keychain.
+/// Kept in the OS store between launches — Keychain on macOS, DPAPI on
+/// Windows, see [secretStoreProvider] — never in `config.json`: a database
+/// password written to a file is a password that gets emailed to support. The
+/// store is attached in `main()`, so a widget test gets the in-memory one and
+/// touches no keychain.
 final posDbCredentialsProvider = Provider<PosDbCredentials>(
   (ref) => ref.watch(posDbCredentialsStoreProvider),
 );
@@ -3358,11 +3382,14 @@ final backupFileExistsProvider = Provider<bool Function(String path)>(
 
 /// Where the backup account's password is kept on this machine.
 ///
-/// Beside the till's own, in `secrets.json` — see
-/// [FileSecretStore.backupPasswordKey] for why that is safe for this one and
-/// would not be for the administrator's.
+/// Beside the till's own, in the OS store ([secretStoreProvider]) — see
+/// [FileSecretStore.backupPasswordKey] for why keeping this one is safe and
+/// keeping the administrator's is not.
 final backupPasswordStoreProvider = Provider<PosDbSecretStore>(
-  (ref) => FileSecretStore(key: FileSecretStore.backupPasswordKey),
+  (ref) => KeyedSecretStore(
+    ref.watch(secretStoreProvider),
+    FileSecretStore.backupPasswordKey,
+  ),
 );
 
 /// The back office's database password, kept on this machine.
@@ -3375,14 +3402,20 @@ final backupPasswordStoreProvider = Provider<PosDbSecretStore>(
 /// the till's, and Admin Mode loads it into [adminDbCredentialProvider] only
 /// for the length of a session. An install from before that asks for it once.
 ///
-/// What that costs, stated rather than implied: `secrets.json` is readable by
-/// the till's own OS account (see [FileSecretStore]), so anybody who has that
-/// account's files has the administrator's rights to the branch database
-/// without a PIN. What still holds: nobody at the till's screen gets a pane
-/// without a username and PIN holding `admin.enter`, and every write still goes
-/// through the repositories' own permission checks.
+/// What that costs, stated rather than implied. It is in the OS store now
+/// ([secretStoreProvider]), so a copy of the till's files is no longer a copy
+/// of it. But DPAPI and the login keychain open for anything running as the
+/// till's own OS account, so anybody with that session has the
+/// administrator's rights to the branch database without a PIN. What still
+/// holds: nobody at the till's screen gets a pane without a username and PIN
+/// holding `admin.enter`, and every write still goes through the repositories'
+/// own permission checks. Whether this one should be kept at all is open
+/// (GAPS Q17; ADR-006 proposes not), and is not decided here.
 final adminDbSecretStoreProvider = Provider<PosDbSecretStore>(
-  (ref) => FileSecretStore(key: FileSecretStore.adminPasswordKey),
+  (ref) => KeyedSecretStore(
+    ref.watch(secretStoreProvider),
+    FileSecretStore.adminPasswordKey,
+  ),
 );
 
 /// The backup account's password, or null when none has been entered.
