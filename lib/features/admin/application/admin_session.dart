@@ -5,6 +5,8 @@ import '../../../core/config/admin_mode_settings.dart';
 import '../../../core/security/attempt_limiter.dart';
 import '../../../core/security/pin_hash.dart';
 import '../../../data/postgres/pos_database.dart';
+import '../../../data/postgres/postgres_admin_repositories.dart'
+    show isUndefinedColumn;
 import '../../../domain/models/permissions.dart';
 import '../../../domain/repositories/admin_repositories.dart';
 import '../../../domain/repositories/repositories.dart';
@@ -582,6 +584,9 @@ class AdminSessionController extends Notifier<AdminSession?> {
     }
 
     AdminSignIn? failed;
+    // Whether the write failed because migration 54's column is not there —
+    // the one failure the PIN-only entry below exists for.
+    var columnMissing = false;
     try {
       final refusal = (await directory.setOwnPassword(
         by: step.staff,
@@ -597,18 +602,26 @@ class AdminSessionController extends Notifier<AdminSession?> {
         };
       }
     } on PosDbException catch (error) {
+      columnMissing = isUndefinedColumn(error);
       failed =
           error.failure == PosDbFailure.dns || error.failure == PosDbFailure.tcp
           ? const AdminSignInUnreachable()
           : const AdminDatabaseRefused();
-    } on Object {
+    } on Object catch (error) {
+      columnMissing = isUndefinedColumn(error);
       failed = const AdminDatabaseRefused();
     }
 
     // A write that failed on a schema the upgrade could not bring up is the
     // one failure that lets them in — see above. Any other is said, and
     // they stay on this step with the credential given back.
-    if (failed != null && upgraded) {
+    //
+    // **Both halves, asked of the SQLSTATE.** "The upgrade failed" alone let
+    // anything through once it had: a dropped connection or a refused grant
+    // on the write opened Admin Mode on four digits, the exact door slice D
+    // closed. A missing column is the only failure that says the password
+    // has nowhere to go yet, rather than that something is wrong.
+    if (failed != null && (upgraded || !columnMissing)) {
       door.credential.forget();
       return failed;
     }

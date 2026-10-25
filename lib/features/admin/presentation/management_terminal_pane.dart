@@ -193,7 +193,11 @@ class _LanEncryptionState extends ConsumerState<_LanEncryption> {
     'pinned_sha256': config.lanTls.pin?.sha256,
   };
 
-  Future<bool> _record(DeploymentConfig before, DeploymentConfig after) async {
+  Future<bool> _record(
+    DeploymentConfig before,
+    DeploymentConfig after, {
+    String? reason,
+  }) async {
     try {
       await ref
           .read(auditRepositoryProvider)
@@ -204,6 +208,7 @@ class _LanEncryptionState extends ConsumerState<_LanEncryption> {
             entityId: ref.read(posWriteContextProvider)?.terminalId,
             before: _transportOf(before),
             after: _transportOf(after),
+            reason: reason,
           );
       return true;
     } on Object {
@@ -211,17 +216,59 @@ class _LanEncryptionState extends ConsumerState<_LanEncryption> {
     }
   }
 
-  /// In force now, and in `config.json` for the next launch — the same
-  /// read-modify-write the Admin Mode settings above use.
-  Future<void> _apply(DeploymentConfig next) async {
-    ref.read(deploymentProvider.notifier).apply(next);
+  /// `config.json` for the next launch. False when it could not be written —
+  /// including when there is no saved file to modify, because a change with
+  /// nowhere to live is one a restart silently undoes.
+  Future<bool> _persist(DeploymentConfig next) async {
     try {
       final store = ref.read(terminalConfigStoreProvider);
       final saved = await store.read();
-      if (saved != null) await store.write(saved.copyWith(deployment: next));
+      if (saved == null) return false;
+      await store.write(saved.copyWith(deployment: next));
+      return true;
     } on Object {
-      // In force for this run; the next change tries the file again.
+      return false;
     }
+  }
+
+  /// Ledger, then disk, then in force — in that order, both directions.
+  ///
+  /// **The ledger first** because a transport change with no row is what
+  /// ADR-006 rules out, and the row has to travel over the connection as it
+  /// is: once the new transport is in force, a pin that does not connect
+  /// leaves nothing to write the row over. **The disk before memory** because
+  /// the pane once applied first and swallowed a failed write: it said
+  /// "encrypted", the ledger agreed, and the next restart quietly came back
+  /// on the old setting.
+  ///
+  /// That leaves one window — a row written, then a disk that refused — and
+  /// it is closed by a second row recording the reversal, so the ledger reads
+  /// "changed, then changed back" rather than a change that never happened.
+  /// If that row fails too the screen still says nothing was changed, which
+  /// is true of the till. The rejected order, disk first, would leave a
+  /// change in force on the next launch with no row at all whenever the
+  /// ledger was down — strictly worse for turning encryption off.
+  Future<void> _change(
+    DeploymentConfig before,
+    DeploymentConfig after, {
+    required String notRecorded,
+    required String notSaved,
+  }) async {
+    if (!await _record(before, after)) {
+      _refuse(notRecorded);
+      return;
+    }
+    if (!await _persist(after)) {
+      await _record(
+        after,
+        before,
+        reason: 'config.json could not be written; the change was not made',
+      );
+      _refuse(notSaved);
+      return;
+    }
+    ref.read(deploymentProvider.notifier).apply(after);
+    if (mounted) setState(() => _busy = false);
   }
 
   void _refuse(String message) {
@@ -257,12 +304,12 @@ class _LanEncryptionState extends ConsumerState<_LanEncryption> {
       allowInsecureLan: true,
       clearPinnedCertificate: true,
     );
-    if (!await _record(before, after)) {
-      _refuse(strings.lanEncryptionNotRecorded);
-      return;
-    }
-    await _apply(after);
-    if (mounted) setState(() => _busy = false);
+    await _change(
+      before,
+      after,
+      notRecorded: strings.lanEncryptionNotRecorded,
+      notSaved: strings.lanEncryptionNotSaved,
+    );
   }
 
   Future<void> _turnOn() async {
@@ -304,12 +351,12 @@ class _LanEncryptionState extends ConsumerState<_LanEncryption> {
       pinnedCertificateSha256: presented.sha256,
       pinnedCertificatePem: presented.pem,
     );
-    if (!await _record(before, after)) {
-      _refuse(strings.lanEncryptionNotRecorded);
-      return;
-    }
-    await _apply(after);
-    if (mounted) setState(() => _busy = false);
+    await _change(
+      before,
+      after,
+      notRecorded: strings.lanEncryptionNotRecorded,
+      notSaved: strings.lanEncryptionNotSaved,
+    );
   }
 
   @override

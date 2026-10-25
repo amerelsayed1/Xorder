@@ -83,12 +83,18 @@ void main() {
       );
     });
 
-    test('a till writes 600 000 iterations unless told otherwise', () async {
-      final stored = await PasswordHash.create('the real figure');
-      expect(stored, startsWith('pbkdf2-sha256\$600000\$'));
-      expect(PasswordHash.needsRehash(stored), isFalse);
-      expect(await PasswordHash.verify('the real figure', stored), isTrue);
-    });
+    test(
+      'a till writes 600 000 iterations unless told otherwise',
+      () async {
+        final stored = await PasswordHash.create('the real figure');
+        expect(stored, startsWith('pbkdf2-sha256\$600000\$'));
+        expect(PasswordHash.needsRehash(stored), isFalse);
+        expect(await PasswordHash.verify('the real figure', stored), isTrue);
+      },
+      // Two pure-Dart derivations at the real work, on whatever machine runs
+      // the suite: the default 30 s is a flaky test on a slow one.
+      timeout: const Timeout(Duration(minutes: 2)),
+    );
 
     test('a row made with less work than this build asks for says so',
         () async {

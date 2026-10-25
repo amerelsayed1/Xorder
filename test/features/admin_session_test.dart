@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:postgres/postgres.dart' show ServerException;
 import 'package:xorder_pos/app/providers.dart';
 import 'package:xorder_pos/core/config/admin_mode_settings.dart';
 import 'package:xorder_pos/core/l10n/app_strings.dart';
@@ -551,6 +552,44 @@ void main() {
       expect(container.read(schemaUpgradeFailureProvider), isNotNull);
     });
 
+    for (final (name, error, refusal) in [
+      (
+        'a server that stopped answering',
+        PosDbException(PosDbFailure.tcp, 'connection refused'),
+        isA<AdminSignInUnreachable>(),
+      ),
+      (
+        'a write the database refused',
+        PosDbException(PosDbFailure.query, 'permission denied for pos_staff'),
+        isA<AdminDatabaseRefused>(),
+      ),
+      ('anything else', StateError('boom'), isA<AdminDatabaseRefused>()),
+    ]) {
+      test('but a failed upgrade is no key on its own: $name keeps them out',
+          () async {
+        // It used to be: once the upgrade had failed, ANY failure of the
+        // write let them in on the PIN alone.
+        container = build([
+          schemaUpgraderProvider.overrideWithValue(
+            () async => throw StateError('relation does not exist'),
+          ),
+          staffDirectoryRepositoryProvider.overrideWithValue(
+            _WriteFails(roles: FakeRolesRepository(), error: error),
+          ),
+        ]);
+        admin = container.read(adminSessionProvider.notifier);
+
+        expect(await enterAsOwner(), refusal);
+        expect(container.read(adminSessionProvider), isNull);
+        expect(container.read(adminDbCredentialProvider), isNull);
+        expect(
+          ledger().where((e) => e.action == AuditAction.adminEntered),
+          isEmpty,
+          reason: 'no row naming anybody who did not get in',
+        );
+      });
+    }
+
     test('a write that fails on an up-to-date schema keeps them out', () async {
       container = build([
         staffDirectoryRepositoryProvider.overrideWithValue(
@@ -829,14 +868,33 @@ class _Returns implements SessionRepository {
 /// The fake directory, with a password write the database refuses — a
 /// column that is not there, or a constraint that says no.
 class _WriteFails extends FakeStaffDirectoryRepository {
-  _WriteFails({required super.roles});
+  _WriteFails({required super.roles, Object? error})
+    : _error =
+          error ??
+          PosDbException(PosDbFailure.query, const _UndefinedColumn());
+
+  final Object _error;
 
   @override
   Future<AdminResult<void>> setOwnPassword({
     required PosStaff by,
     required String password,
-  }) => throw PosDbException(
-    PosDbFailure.query,
-    'column "password_hash" of relation "pos_staff" does not exist',
-  );
+  }) => throw _error;
+}
+
+/// PostgreSQL's 42703, as the driver raises it for a database migration 54
+/// has not reached. Its constructor is private to the driver, so this
+/// answers the one question asked of it — the SQLSTATE — and nothing else.
+class _UndefinedColumn implements ServerException {
+  const _UndefinedColumn();
+
+  @override
+  String? get code => '42703';
+
+  @override
+  String toString() =>
+      'column "password_hash" of relation "pos_staff" does not exist';
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => null;
 }

@@ -122,15 +122,24 @@ class PostgresSyncQueueRepository implements SyncQueueRepository {
       // managers on two tills can both be looking at the same held sale, and
       // the audit row must carry what the row actually said when it was
       // released — not what one of them saw a minute ago.
+      //
+      // Scoped to this branch exactly as the list is. Restaurant alone let a
+      // manager at one branch release — and audit as theirs — a row held at
+      // another, by id, which every branch numbers from the same sequence.
       final held = await tx.execute(
         Sql.named('''
           SELECT quarantine_code, last_error, attempts
             FROM $table
            WHERE id = @id AND restaurant_id = @restaurant
+             AND branch_id = @branch
              AND delivered_at IS NULL AND quarantined_at IS NOT NULL
            FOR UPDATE
         '''),
-        parameters: {'id': item.id, 'restaurant': restaurantId},
+        parameters: {
+          'id': item.id,
+          'restaurant': restaurantId,
+          'branch': branchId,
+        },
       );
       if (held.isEmpty) {
         return const AdminResult<HeldSyncItem>.refused(EditedElsewhere(0));
@@ -145,8 +154,13 @@ class PostgresSyncQueueRepository implements SyncQueueRepository {
              SET quarantined_at = NULL, quarantine_code = NULL,
                  last_error = NULL
            WHERE id = @id AND restaurant_id = @restaurant
+             AND branch_id = @branch
         '''),
-        parameters: {'id': item.id, 'restaurant': restaurantId},
+        parameters: {
+          'id': item.id,
+          'restaurant': restaurantId,
+          'branch': branchId,
+        },
       );
 
       await tx.execute(

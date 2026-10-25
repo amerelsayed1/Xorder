@@ -80,7 +80,7 @@ class LegacySecretMigration {
       // it is: it may still be the only copy of a password somebody needs, and
       // a technician can open it. The OS store is not at fault, so this does
       // not mark it unavailable.
-      return LegacySecretsUnreadable(error);
+      return LegacySecretsUnreadable(_withoutContents(error));
     }
 
     final before = <String, String?>{};
@@ -146,6 +146,18 @@ class LegacySecretMigration {
           operation: operation,
           cause: error,
         );
+
+  /// [error] without the text it was raised over.
+  ///
+  /// `jsonDecode` and `utf8.decode` throw a `FormatException` whose `source`
+  /// is the whole of what they were reading — here, every password in the
+  /// file — and whose `toString` prints a line of it. The result outlives this
+  /// method (`main()` reports it), so the copy is dropped here rather than
+  /// trusting every reader to remember not to print it. The message and the
+  /// offset are the parser's own words and a number; they stay.
+  static Object _withoutContents(Object error) => error is FormatException
+      ? FormatException(error.message, null, error.offset)
+      : error;
 
   /// Put each key this run wrote back to what it was. True if all went back.
   Future<bool> _restore(
@@ -244,7 +256,12 @@ class LegacySecretsNotWiped extends LegacySecretMigrationResult {
 class LegacySecretsUnreadable extends LegacySecretMigrationResult {
   const LegacySecretsUnreadable(this.cause);
 
+  /// Never the file's contents — see `LegacySecretMigration._withoutContents`.
   final Object cause;
+
+  @override
+  String toString() =>
+      'LegacySecretsUnreadable(${SecretStoreUnavailable.describe(cause)})';
 }
 
 /// The OS store refused part way. The file is untouched; the keys this run

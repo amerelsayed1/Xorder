@@ -273,6 +273,15 @@ class PosDatabase {
   Pool<void>? _pool;
   String? _openedFor;
 
+  /// The transport settings the open pool was built with, handed again to
+  /// every checkout. In `postgres` 3.5.12 a pool's own `PoolSettings` reach
+  /// only the connections the pool opens through `withConnection(settings:)`;
+  /// `pool.execute` and `pool.runTx` resolve their settings without them, so a
+  /// pinned certificate's `SecurityContext` was silently dropped and a
+  /// self-signed LAN server was refused. Found by running
+  /// `lan_tls_handshake_test` against the real driver.
+  ConnectionSettings? _connectionSettings;
+
   /// The pool for [config], opening one if the endpoint changed.
   ///
   /// Keyed on the resolved host so that reconfiguring the terminal in the setup
@@ -345,6 +354,10 @@ class PosDatabase {
         securityContext: PosTlsSettings.securityContextFor(tls),
       ),
     );
+    _connectionSettings = ConnectionSettings(
+      sslMode: PosTlsSettings.sslModeFor(tls),
+      securityContext: PosTlsSettings.securityContextFor(tls),
+    );
     _openedFor = key;
     return _pool!;
   }
@@ -373,7 +386,10 @@ class PosDatabase {
   ) async {
     try {
       final session = await pool(config);
-      return await session.runTx(action);
+      return await session.withConnection(
+        (c) => c.runTx(action),
+        settings: _connectionSettings,
+      );
     } on PosDbException {
       rethrow;
     } on Object catch (error) {
@@ -389,7 +405,10 @@ class PosDatabase {
   }) async {
     try {
       final session = await pool(config);
-      return await session.execute(Sql.named(sql), parameters: parameters);
+      return await session.withConnection(
+        (c) => c.execute(Sql.named(sql), parameters: parameters),
+        settings: _connectionSettings,
+      );
     } on PosDbException {
       rethrow;
     } on Object catch (error) {

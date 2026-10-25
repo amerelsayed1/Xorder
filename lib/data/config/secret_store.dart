@@ -111,7 +111,27 @@ class SecretStoreUnavailable extends PosDbSecretStoreException {
   final String operation;
 
   @override
-  String toString() => '$store could not $operation a saved credential: $cause';
+  String toString() =>
+      '$store could not $operation a saved credential: ${describe(cause)}';
+
+  /// [failure] as it may appear in a log, a banner or a screenshot.
+  ///
+  /// **An allow-list, not `'$failure'`.** A `FormatException` from
+  /// `jsonDecode` keeps the whole text it was parsing as its `source` and
+  /// prints an excerpt of it — and the text being parsed here is a secrets
+  /// file. The platform's own status types and a file error carry a code and
+  /// a path, never a value, so those keep their words; anything else is
+  /// named by its type, which is enough to tell a technician where to look.
+  /// The rejected alternative, stripping the excerpt from known offenders,
+  /// would be right only until the next exception type nobody thought of.
+  static String describe(Object? failure) => switch (failure) {
+    null => 'no detail',
+    KeychainStatus() || DpapiFailure() || String() => '$failure',
+    FileSystemException(:final message, :final osError) =>
+      'FileSystemException: $message'
+          '${osError == null ? '' : ' (${osError.message}, ${osError.errorCode})'}',
+    _ => '${failure.runtimeType}',
+  };
 }
 
 /// One key of a [SecretStore], seen through the single-secret contract.
@@ -179,8 +199,7 @@ class KeyedSecretStore implements PosDbSecretStore {
 /// a developer's machine already has keeps working, and so the legacy
 /// migration reads exactly the file this writes.
 class DevelopmentFileSecretStore implements SecretStore {
-  DevelopmentFileSecretStore({Future<Directory> Function()? directory})
-    : _directory = directory;
+  DevelopmentFileSecretStore({this._directory});
 
   final Future<Directory> Function()? _directory;
 

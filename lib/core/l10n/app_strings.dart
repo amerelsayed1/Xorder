@@ -809,6 +809,10 @@ sealed class AppStrings {
   String get lanEncryptionTurnOn;
   String get lanEncryptionTurnOnBody;
   String get lanEncryptionNotRecorded;
+
+  /// `config.json` refused the change, so it was not made: a setting that
+  /// only lasts until the next restart is not one to show as in force.
+  String get lanEncryptionNotSaved;
   String get lanEncryptionNoCertificate;
 
   String queryFailure(String database);
@@ -4933,6 +4937,10 @@ final class EnStrings extends AppStrings {
   String get lanEncryptionNotRecorded =>
       'The change could not be written to the activity log, so nothing was '
       'changed.';
+  @override
+  String get lanEncryptionNotSaved =>
+      'The change could not be saved on this till, so nothing was changed. '
+      'Check the disk has space and try again.';
   @override
   String get lanEncryptionNoCertificate =>
       'The database server did not present a certificate to compare, so '
@@ -10155,6 +10163,10 @@ final class ArStrings extends AppStrings {
   @override
   String get lanEncryptionNotRecorded =>
       'تعذّر تسجيل التغيير في سجل النشاط، فلم يُغيَّر شيء.';
+  @override
+  String get lanEncryptionNotSaved =>
+      'تعذّر حفظ التغيير على هذا الجهاز، فلم يُغيَّر شيء. تأكّد من وجود مساحة '
+      'كافية على القرص ثم أعد المحاولة.';
   @override
   String get lanEncryptionNoCertificate =>
       'لم يقدّم خادم قاعدة البيانات شهادة يمكن مقارنتها، فبقي التشفير '

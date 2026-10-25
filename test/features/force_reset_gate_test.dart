@@ -122,6 +122,32 @@ void main() {
     expect(app.container.read(setupCompleteProvider), isTrue);
   });
 
+  testWidgets('five wrong tries shut the door, even to the right PIN', (
+    tester,
+  ) async {
+    // It took guesses as fast as somebody could type them: four digits and
+    // the chord were a way to walk the PIN space of an owner's account.
+    final app = await open(tester);
+
+    // A name nobody has is refused in the same words as a wrong PIN, and
+    // counted the same — the door must not say which names are real.
+    await signIn(tester, 'nobody', '1111');
+    expect(find.text(strings.forceResetSignInRefused), findsOneWidget);
+    // Five against one name shut that name.
+    for (var i = 0; i < 4; i++) {
+      await signIn(tester, 'amer', '0000');
+      expect(find.text(strings.forceResetSignInRefused), findsOneWidget);
+    }
+    await signIn(tester, 'amer', '0000');
+    expect(find.text(strings.signInLockedOut(30)), findsOneWidget);
+
+    // Shut means shut: the owner's own PIN is not looked at until it opens.
+    await signIn(tester, 'amer', '4321');
+    expect(find.text(strings.signInLockedOut(30)), findsOneWidget);
+    expect(find.text(strings.forceResetTitle), findsNothing);
+    expect(app.container.read(setupCompleteProvider), isTrue);
+  });
+
   testWidgets('a cashier with their right PIN is refused all the same', (
     tester,
   ) async {

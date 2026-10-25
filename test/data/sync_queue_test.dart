@@ -87,11 +87,12 @@ void main() {
   PostgresSyncQueueRepository queue({
     PosDatabase? database,
     DeploymentConfig? config,
+    int? branch,
   }) => PostgresSyncQueueRepository(
     database: database ?? db,
     config: config ?? cloud,
     restaurantId: restaurantId,
-    branchId: branchId,
+    branchId: branch ?? branchId,
     terminalId: terminalId,
   );
 
@@ -107,7 +108,7 @@ void main() {
   );
 
   /// A settled sale, queued for the platform. Returns its outbox row id.
-  Future<int> queueSale() async {
+  Future<int> queueSale({int? branch}) async {
     invoice++;
     final orderId = (await db.query(
       pg.config,
@@ -121,7 +122,7 @@ void main() {
       ''',
       parameters: {
         'r': restaurantId,
-        'b': branchId,
+        'b': branch ?? branchId,
         't': terminalId,
         'invoice': 'MAADI-${invoice.toString().padLeft(6, '0')}',
       },
@@ -150,7 +151,7 @@ void main() {
   );
 
   /// A flat-amount refund the till would not send (D13).
-  Future<int> heldRefund() async => (await db.query(
+  Future<int> heldRefund({int? branch}) async => (await db.query(
     pg.config,
     '''
     INSERT INTO pos_sync_outbox (restaurant_id, branch_id, event_type,
@@ -160,7 +161,7 @@ void main() {
       'REFUND_HAS_NO_LINES', 'This refund was given as an amount.')
     RETURNING id
     ''',
-    parameters: {'r': restaurantId, 'b': branchId},
+    parameters: {'r': restaurantId, 'b': branch ?? branchId},
   )).first[0]! as int;
 
   Future<List<Object?>> outboxRow(int id) async => (await db.query(
@@ -319,6 +320,42 @@ void main() {
 
     expect(second.refusal, isA<EditedElsewhere>());
     expect(await auditRows(), hasLength(1));
+  });
+
+  test("another branch's held record cannot be released from this one",
+      () async {
+    // The list was scoped to the branch and the release was not: the lock
+    // and the update asked only for the id and the restaurant, so a manager
+    // at Maadi could clear — and sign the ledger for — a sale held at
+    // Zamalek, by naming its id.
+    final zamalek = (await db.query(
+      pg.config,
+      'INSERT INTO pos_branches (restaurant_id, code, name) '
+      "VALUES (@r, 'ZAMALEK', 'Zamalek') RETURNING id",
+      parameters: {'r': restaurantId},
+    )).first[0]! as int;
+    final theirSale = await queueSale(branch: zamalek);
+    await holdSale(theirSale);
+    await heldRefund(branch: zamalek);
+    final theirs = await queue(branch: zamalek).listHeldSync();
+    expect(theirs, hasLength(2));
+    expect(await queue().listHeldSync(), isEmpty, reason: 'not listed here');
+
+    for (final item in theirs) {
+      final result = await queue().releaseHeldSync(item, by: owner);
+      expect(result.refusal, isA<EditedElsewhere>(), reason: item.kind.name);
+    }
+
+    expect((await outboxRow(theirSale))[1], 'MENU_ITEM_NOT_FOUND');
+    expect(await queue(branch: zamalek).heldSyncCount(), 2);
+    expect(await auditRows(), isEmpty);
+
+    // And their own branch still can.
+    expect(
+      (await queue(branch: zamalek).releaseHeldSync(theirs.first, by: owner))
+          .succeeded,
+      isTrue,
+    );
   });
 
   test('an offline till holds nothing it could ever send', () async {

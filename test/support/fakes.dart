@@ -326,11 +326,15 @@ class InMemoryTerminalConfigStore implements TerminalConfigStore {
 
   int writes = 0;
 
+  /// A disk that will not take the file — full, read-only, or gone.
+  bool refuseWrites = false;
+
   @override
   Future<SavedTerminalConfig?> read() async => saved;
 
   @override
   Future<void> write(SavedTerminalConfig config) async {
+    if (refuseWrites) throw StateError('No space left on device');
     saved = config;
     writes++;
   }

@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:xorder_pos/app/providers.dart';
 import 'package:xorder_pos/core/config/deployment.dart';
 import 'package:xorder_pos/core/config/lan_tls.dart';
+import 'package:xorder_pos/core/config/terminal_config.dart';
 import 'package:xorder_pos/core/l10n/app_strings.dart';
 import 'package:xorder_pos/core/ui/theme.dart';
 import 'package:xorder_pos/data/fakes/fake_repositories.dart';
@@ -30,6 +31,10 @@ void main() {
     role: TerminalRole.child,
   );
 
+  InMemoryTerminalConfigStore configStore(ProviderContainer container) =>
+      container.read(terminalConfigStoreProvider)
+          as InMemoryTerminalConfigStore;
+
   Future<ProviderContainer> open(
     WidgetTester tester, {
     required DeploymentConfig deployment,
@@ -54,6 +59,16 @@ void main() {
       ],
     );
     addTearDown(container.dispose);
+    // A configured till has a config.json; the change has to land in it.
+    configStore(container).saved = SavedTerminalConfig(
+      deployment: deployment,
+      terminal: const TerminalProfile(
+        branchName: 'Maadi',
+        terminalName: 'Counter 1',
+        restaurantId: 7,
+      ),
+      languageCode: 'en',
+    );
     container.read(deploymentProvider.notifier).apply(deployment);
     container.read(setupCompleteProvider.notifier).markComplete();
 
@@ -155,8 +170,51 @@ void main() {
     expect(row.before?['pinned_sha256'], fixtureASha256);
     expect(row.after?['transport'], LanTransport.insecureLan.name);
 
+    // And it survives a restart.
+    final saved = configStore(container).saved!.deployment;
+    expect(saved.isInsecureLan, isTrue);
+    expect(saved.pinnedCertificateSha256, isNull);
+
     // And the warning is up.
     expect(find.byKey(const Key('terminal-insecure-lan')), findsOneWidget);
+  });
+
+  testWidgets('a disk that refuses config.json changes nothing, and says so', (
+    tester,
+  ) async {
+    // The pane once applied first and swallowed this: it said "encryption
+    // off", the ledger agreed, and a restart came back pinned.
+    final container = await open(
+      tester,
+      deployment: child.copyWith(
+        pinnedCertificateSha256: fixtureASha256,
+        pinnedCertificatePem: fixtureACertificate,
+      ),
+    );
+    configStore(container).refuseWrites = true;
+
+    await tester.tap(find.byKey(const Key('terminal-lan-encryption-off')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('terminal-lan-encryption-confirm')));
+    await tester.pumpAndSettle();
+
+    expect(container.read(deploymentProvider).lanTls.transport,
+        LanTransport.pinned);
+    expect(configStore(container).saved!.deployment.lanTls.transport,
+        LanTransport.pinned);
+    expect(find.text(en.lanEncryptionNotSaved), findsOneWidget);
+    expect(find.byKey(const Key('terminal-insecure-lan')), findsNothing);
+
+    // The ledger reads "changed, then changed back" — never a change that
+    // stands in the log and nowhere else.
+    final rows = ledger(container)
+        .entries
+        .where((e) => e.action == AuditAction.lanEncryptionChanged)
+        .toList();
+    expect(rows, hasLength(2));
+    expect(rows.first.before?['transport'], LanTransport.insecureLan.name);
+    expect(rows.first.after?['transport'], LanTransport.pinned.name);
+    expect(rows.first.reason, isNotNull);
   });
 
   testWidgets('a ledger that refuses the row leaves encryption on', (
@@ -210,6 +268,11 @@ void main() {
     expect(
       ledger(container).entries.first.after?['transport'],
       LanTransport.pinned.name,
+    );
+    expect(
+      configStore(container).saved!.deployment.pinnedCertificateSha256,
+      fixtureASha256,
+      reason: 'pinned after a restart too',
     );
   });
 

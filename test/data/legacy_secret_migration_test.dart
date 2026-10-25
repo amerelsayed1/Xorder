@@ -159,6 +159,41 @@ void main() {
     expect(store.writes, 0);
   });
 
+  test('a damaged file is never quoted in what the migration reports',
+      () async {
+    // jsonDecode's FormatException keeps the text it parsed and prints a line
+    // of it; main() logged that, so a truncated secrets.json put a password
+    // into a log that goes out with support tickets.
+    const marker = 'MARKER-hunter2-till-password';
+    legacy().writeAsStringSync(
+      '{"${FileSecretStore.databasePasswordKey}": "$marker", "trunc',
+    );
+
+    final result = await migrate(InMemorySecretStore()).run();
+
+    expect(result, isA<LegacySecretsUnreadable>());
+    final cause = (result as LegacySecretsUnreadable).cause;
+    expect('$result', isNot(contains(marker)));
+    expect('$cause', isNot(contains(marker)));
+    expect(cause, isA<FormatException>());
+    expect((cause as FormatException).source, isNull,
+        reason: 'not carried, so nobody downstream can print it');
+    expect(SecretStoreUnavailable.describe(cause), isNot(contains(marker)));
+    // Left where it was, for a technician who can open it.
+    expect(legacy().readAsStringSync(), contains(marker));
+  });
+
+  test('a refusal never quotes a parser that was reading a secret', () {
+    const marker = 'MARKER-hunter2';
+    final refusal = SecretStoreUnavailable(
+      store: 'Development secrets file (plaintext)',
+      operation: 'read',
+      cause: FormatException('Unexpected end of input', '{"k": "$marker"', 14),
+    );
+    expect('$refusal', isNot(contains(marker)));
+    expect('$refusal', contains('FormatException'));
+  });
+
   test('run twice: the second run finds nothing to do', () async {
     final values = await writeLegacy();
     final store = InMemorySecretStore();

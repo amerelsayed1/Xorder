@@ -2,8 +2,11 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
+import 'package:xorder_pos/core/config/deployment.dart';
 import 'package:xorder_pos/data/backup/pg_archive.dart';
 import 'package:xorder_pos/data/backup/pg_tools.dart';
+
+import '../support/lan_tls_fixtures.dart';
 
 /// The rules a copy has to keep before anybody trusts it with a restaurant's
 /// only record of its trading. Run against a fake `pg_dump`, so they hold on a
@@ -117,6 +120,72 @@ void main() {
         verifyTls: true,
       );
       expect(remote.environment['PGSSLMODE'], 'verify-full');
+      // No pin: libpq's own default trust, never a temp file.
+      expect(remote.environment.containsKey('PGSSLROOTCERT'), isFalse);
+    });
+
+    test('a paired till hands its pinned certificate to libpq, for one run',
+        () async {
+      // Without PGSSLROOTCERT, verify-full looks for ~/.postgresql/root.crt,
+      // finds nothing, and every backup on a paired LAN till fails.
+      final paired = BackupConnection.forDeployment(
+        const DeploymentConfig(
+          mode: DeploymentMode.offline,
+          databaseHost: '192.168.1.20',
+          role: TerminalRole.child,
+          pinnedCertificateSha256: fixtureASha256,
+          pinnedCertificatePem: fixtureACertificate,
+        ),
+        user: 'pos_backup',
+        password: 's3cret-backup',
+      )!;
+      expect(paired.verifyTls, isTrue);
+      // The config keeps the PEM trimmed, so compare the text, not the newline.
+      expect(paired.pinnedCertificatePem?.trim(), fixtureACertificate.trim());
+
+      final f = fake();
+      String? seen;
+      Future<ProcessResult> run(
+        String exe,
+        List<String> args, {
+        Map<String, String>? environment,
+      }) async {
+        if (exe == tools.pgDump) {
+          // Read while the tool runs: the file must be there now…
+          seen = File(environment!['PGSSLROOTCERT']!).readAsStringSync();
+        }
+        return f.run(exe, args, environment: environment);
+      }
+
+      await PgArchive(tools, run: run).dump(from: paired, to: target());
+
+      final (_, _, env) = f.calls.first;
+      expect(env!['PGSSLMODE'], 'verify-full', reason: 'never downgraded');
+      expect(seen?.trim(), fixtureACertificate.trim());
+      // …and gone once it has finished.
+      expect(File(env['PGSSLROOTCERT']!).existsSync(), isFalse);
+      expect(Directory(p.dirname(env['PGSSLROOTCERT']!)).existsSync(), isFalse);
+
+      // A restore into the same server trusts the same anchor.
+      final file = target()..writeAsStringSync('PGDMP');
+      await PgArchive(tools, run: f.run).restore(from: file, into: paired);
+      final (_, _, restoreEnv) = f.calls.last;
+      expect(restoreEnv!['PGSSLROOTCERT'], isNotNull);
+      expect(File(restoreEnv['PGSSLROOTCERT']!).existsSync(), isFalse);
+    });
+
+    test('loopback keeps plaintext, pin or no pin', () {
+      // A pin left on a till that later moved its database onto itself.
+      final local = BackupConnection.forDeployment(
+        const DeploymentConfig(
+          mode: DeploymentMode.offline,
+          pinnedCertificateSha256: fixtureASha256,
+          pinnedCertificatePem: fixtureACertificate,
+        ),
+        user: 'pos_backup',
+      )!;
+      expect(local.environment['PGSSLMODE'], 'disable');
+      expect(local.environment.containsKey('PGSSLROOTCERT'), isFalse);
     });
 
     test('a sound dump is kept under its finished name, and nothing else',

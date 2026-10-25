@@ -101,6 +101,11 @@ bool get _isDesktop =>
 
 /// One line per migration outcome that a technician might need, and none for
 /// the ordinary boot. Key names only, never values.
+///
+/// **Exception types only, never `'$cause'`.** An unreadable `secrets.json`
+/// fails as a `FormatException`, whose text quotes the file — and this line
+/// lands in a log that gets attached to support tickets. The type says which
+/// of the failures it was; the file itself is still there for a technician.
 void _reportMigration(LegacySecretMigrationResult result) {
   switch (result) {
     case LegacySecretsNotApplicable() || NoLegacySecrets():
@@ -110,13 +115,18 @@ void _reportMigration(LegacySecretMigrationResult result) {
     case LegacySecretsNotWiped(:final keys, :final cause):
       debugPrint(
         'secrets: moved ${keys.join(', ')} into the OS store, but '
-        'secrets.json could not be wiped ($cause); retrying next launch',
+        'secrets.json could not be wiped (${cause.runtimeType}); retrying '
+        'next launch',
       );
     case LegacySecretsUnreadable(:final cause):
-      debugPrint('secrets: secrets.json left untouched, unreadable: $cause');
+      debugPrint(
+        'secrets: secrets.json left untouched, unreadable '
+        '(${cause.runtimeType})',
+      );
     case LegacySecretsNotMigrated(:final cause, :final restoredAfterwards):
       debugPrint(
-        'secrets: secrets.json left untouched, the OS store refused: $cause'
+        'secrets: secrets.json left untouched, ${cause.store} refused to '
+        '${cause.operation} (${cause.cause.runtimeType})'
         '${restoredAfterwards ? '' : ' (and refused the roll-back)'}',
       );
   }
