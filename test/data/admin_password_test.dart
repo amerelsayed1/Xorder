@@ -17,7 +17,7 @@ import 'pg_fixture.dart';
 ///
 /// Tested twice, as every rule here is: through the repositories — set,
 /// verify, clear, the technician's reset, each with its ledger row — and by
-/// raw SQL that goes round them, because migration 54's CHECKs are what hold
+/// raw SQL that goes round them, because migration 55's CHECKs are what hold
 /// for the writers that are not this code (a psql prompt, a support script).
 ///
 /// **What this does not prove:** the suites run as a superuser, so nothing
@@ -333,7 +333,7 @@ void main() {
     });
   });
 
-  test('a database migration 54 has not reached reads as nobody having one',
+  test('a database migration 55 has not reached reads as nobody having one',
       () async {
     // The back-office door is what upgrades an installed till, so the door
     // reads this column before the upgrade that adds it has run. Undone and
@@ -346,7 +346,7 @@ void main() {
       pg.config,
       'ALTER TABLE pos_staff DROP COLUMN password_set_at CASCADE',
     );
-    await db.query(pg.config, 'DELETE FROM schema_migrations WHERE version = 54');
+    await db.query(pg.config, 'DELETE FROM schema_migrations WHERE version = 55');
     try {
       expect(await staff.withPassword(), isEmpty);
       expect(
@@ -354,7 +354,7 @@ void main() {
         isNull,
       );
     } finally {
-      expect(await PosMigrator(db).migrate(pg.config), [54]);
+      expect(await PosMigrator(db).migrate(pg.config), [55]);
     }
     expect(
       (await staff.setOwnPassword(by: owner, password: password)).succeeded,

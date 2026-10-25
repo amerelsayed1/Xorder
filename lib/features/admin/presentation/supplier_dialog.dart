@@ -5,6 +5,7 @@ import '../../../core/ui/theme.dart';
 import '../../../core/ui/tokens.dart';
 import '../../../core/ui/widgets/pos_widgets.dart';
 import '../../../domain/models/supplier.dart';
+import '../../../core/text/digits.dart';
 
 /// Recording who the restaurant buys from.
 ///
@@ -43,6 +44,13 @@ class _SupplierDialogState extends State<SupplierDialog> {
     return value.isEmpty ? null : value;
   }
 
+  /// The phone as typed, with Arabic digits folded to ASCII (XORD-004). Kept as
+  /// text: spaces, dashes and a leading `+` are the owner's to keep.
+  String? _phone() {
+    final value = _text('phone');
+    return value == null ? null : foldDigits(value);
+  }
+
   @override
   void dispose() {
     for (final c in _controllers.values) {
@@ -58,7 +66,7 @@ class _SupplierDialogState extends State<SupplierDialog> {
       nameAr: _text('name_ar'),
       code: _text('code') ?? '',
       contactName: _text('contact'),
-      phone: _text('phone'),
+      phone: _phone(),
       email: _text('email'),
       address: _text('address'),
       taxNumber: _text('tax'),

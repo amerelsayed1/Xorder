@@ -162,7 +162,7 @@ const testAdminPassword = 'correct horse battery';
 /// in [FakeSessionRepository] is 4321.
 ///
 /// **The door asks for a password now**, and every fake account starts with
-/// none — as every real one does the day migration 54 runs. So the first
+/// none — as every real one does the day migration 55 runs. So the first
 /// entry types the PIN and then chooses [testAdminPassword] on the step that
 /// follows; a later entry in the same test types the password, because the
 /// PIN no longer opens that account.

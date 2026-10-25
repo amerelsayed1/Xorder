@@ -55,7 +55,7 @@ void main() {
 
   /// The owner's first entry, whole: the PIN, then the password it makes
   /// him choose. Every fake account starts with none, as every real one did
-  /// the day migration 54 ran.
+  /// the day migration 55 ran.
   Future<AdminSignIn> enterAsOwner() async {
     expect(
       await admin.signIn(username: 'amer', secret: '4321'),
@@ -525,7 +525,7 @@ void main() {
         schemaUpgraderProvider.overrideWithValue(() async {
           upgrades++;
           seen.add(passwords().passwordOf('amer'));
-          return const [54];
+          return const [55];
         }),
       ]);
       admin = container.read(adminSessionProvider.notifier);
@@ -882,7 +882,7 @@ class _WriteFails extends FakeStaffDirectoryRepository {
   }) => throw _error;
 }
 
-/// PostgreSQL's 42703, as the driver raises it for a database migration 54
+/// PostgreSQL's 42703, as the driver raises it for a database migration 55
 /// has not reached. Its constructor is private to the driver, so this
 /// answers the one question asked of it — the SQLSTATE — and nothing else.
 class _UndefinedColumn implements ServerException {

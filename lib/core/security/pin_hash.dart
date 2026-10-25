@@ -171,7 +171,7 @@ class PasswordHashParts {
 /// can never be raised: every stored PIN would stop verifying at once. Here
 /// the scheme and the count travel with the row, so a later build can raise
 /// [iterations] and re-hash on the next sign-in ([needsRehash]) while every
-/// old row still verifies. Migration 54's CHECK holds the same shape, so no
+/// old row still verifies. Migration 55's CHECK holds the same shape, so no
 /// writer — the CLI, a psql prompt — can put a plaintext in the column.
 ///
 /// **600 000 iterations**, OWASP's 2023 figure for PBKDF2-HMAC-SHA256, against
@@ -205,7 +205,7 @@ abstract final class PasswordHash {
   /// A fresh salt and a stored-form hash of [password].
   ///
   /// [rounds] exists for unit tests, which cannot spend half a second per
-  /// case; every writer in `lib/` takes the default, and migration 54 refuses
+  /// case; every writer in `lib/` takes the default, and migration 55 refuses
   /// a row below it.
   static Future<String> create(String password, {int rounds = iterations}) async {
     final salt = List<int>.generate(saltLength, (_) => _random.nextInt(256));

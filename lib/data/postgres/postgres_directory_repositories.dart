@@ -276,7 +276,7 @@ class PostgresProvisioningRepository implements ProvisioningRepository {
     // fresh id every time, so a wizard retried, killed and re-run, or run again
     // after a reset left one row per attempt — and a child's seat check counts
     // those rows against `max_terminals`, so a restaurant could run out of
-    // terminals it never had. Keyed on the installation id (migration 53) and
+    // terminals it never had. Keyed on the installation id (migration 54) and
     // scoped to the restaurant, so the same machine moved to another tenant is
     // a new terminal there. The fresh uuid is only used when no row matches:
     // RETURNING hands back the id the machine registered with the first time,
@@ -489,7 +489,7 @@ class PostgresSessionRepository implements SessionRepository {
         },
       );
     } on PosDbException catch (error) {
-      // A database migration 54 has not reached: there is no column, so
+      // A database migration 55 has not reached: there is no column, so
       // there are no passwords, and the door falls to the PIN.
       if (isUndefinedColumn(error)) return null;
       rethrow;

@@ -864,7 +864,7 @@ class PostgresStaffDirectoryRepository implements StaffDirectoryRepository {
       );
       return {for (final row in rows) row[0]! as int};
     } on PosDbException catch (error) {
-      // Migration 54 not applied yet: nobody has one — see the interface.
+      // Migration 55 not applied yet: nobody has one — see the interface.
       if (isUndefinedColumn(error)) return const {};
       rethrow;
     }

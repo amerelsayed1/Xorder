@@ -13,6 +13,7 @@ import '../../../domain/models/tax.dart';
 import 'admin_messages.dart';
 import 'admin_pane_bits.dart';
 import 'tax_group_dialog.dart';
+import '../../../core/text/digits.dart';
 
 /// What the restaurant charges in tax (§17).
 ///
@@ -79,7 +80,7 @@ class _ManagementTaxesPaneState extends ConsumerState<ManagementTaxesPane> {
   static int? _basisPoints(String text) {
     final trimmed = text.trim();
     if (trimmed.isEmpty) return 0;
-    final value = double.tryParse(trimmed);
+    final value = double.tryParse(foldDigits(trimmed));
     if (value == null || value < 0) return null;
     return (value * 100).round();
   }

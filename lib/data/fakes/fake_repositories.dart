@@ -483,7 +483,7 @@ class FakeTablesRepository implements TablesRepository {
 /// each kept their own would let a test pass that the product fails.
 ///
 /// Plain text because nothing is stored. Starts empty, as every real install
-/// does on the day migration 54 runs: the first Admin Mode entry is by PIN.
+/// does on the day migration 55 runs: the first Admin Mode entry is by PIN.
 class FakePasswords {
   final _byUsername = <String, ({PosStaff staff, String password})>{};
 

@@ -7,6 +7,7 @@ import '../../../core/ui/widgets/pos_widgets.dart';
 import '../../../domain/models/service_charge.dart';
 import '../../../domain/models/ticket.dart';
 import '../../../app/labels.dart';
+import '../../../core/text/digits.dart';
 
 /// Authoring one service charge (§38).
 ///
@@ -71,7 +72,7 @@ class _ServiceChargeDialogState extends State<ServiceChargeDialog> {
   static String _major(int minor) => (minor / 100).toStringAsFixed(2);
 
   void _save() {
-    final typed = double.tryParse(_amount.text.trim()) ?? 0;
+    final typed = double.tryParse(foldDigits(_amount.text.trim())) ?? 0;
     Navigator.of(context).pop(
       ServiceCharge(
         id: widget.charge?.id ?? 0,

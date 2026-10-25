@@ -18,6 +18,7 @@
 /// 0.5 kg would eventually turn 500 boxes into half a something.
 library;
 
+import '../text/digits.dart';
 import 'rounding.dart';
 
 /// What a quantity is counted in.
@@ -138,7 +139,7 @@ class Quantity {
     String input, {
     QuantityUnit unit = QuantityUnit.each,
   }) {
-    final trimmed = input.trim();
+    final trimmed = foldDigits(input).trim();
     if (trimmed.isEmpty) return null;
 
     final negative = trimmed.startsWith('-');

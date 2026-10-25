@@ -72,7 +72,7 @@ void main() {
       expect(parts.iterations, 1000);
       expect(parts.salt, hasLength(PasswordHash.saltLength));
       expect(parts.key, hasLength(PasswordHash.keyLength));
-      // The shape migration 54's CHECK holds every writer to.
+      // The shape migration 55's CHECK holds every writer to.
       expect(
         RegExp(
           r'^pbkdf2-sha256\$[0-9]{1,9}\$[A-Za-z0-9+/]+={0,2}\$'

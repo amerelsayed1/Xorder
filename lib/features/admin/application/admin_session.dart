@@ -26,7 +26,7 @@ import '../../../domain/services/authorization.dart';
 /// * **Entered** with a username and PASSWORD from somebody holding
 ///   [PosCapability.adminEnter] — asked here, not in a widget, so no screen can
 ///   open the back office by forgetting to ask. Somebody who has not chosen a
-///   password yet (everybody, the day migration 54 runs) gets through once on
+///   password yet (everybody, the day migration 55 runs) gets through once on
 ///   their PIN and is then held at [AdminMustSetPassword] until they choose
 ///   one: there is no way past it but [AdminSessionController.setPassword].
 ///   Every other door — the lock screen, the open-shift sign-in, the idle
@@ -536,7 +536,7 @@ class AdminSessionController extends Notifier<AdminSession?> {
   /// person's Admin Mode password, and only then does Admin Mode open.
   ///
   /// **The schema upgrade runs first, here.** The column the password goes
-  /// in is migration 54's, and the back-office door is what applies
+  /// in is migration 55's, and the back-office door is what applies
   /// migrations to an installed till — so on the first entry after an
   /// upgrade it does not exist until this has run. If the upgrade fails and
   /// the password cannot be stored for that reason, the person is let in on
@@ -584,7 +584,7 @@ class AdminSessionController extends Notifier<AdminSession?> {
     }
 
     AdminSignIn? failed;
-    // Whether the write failed because migration 54's column is not there —
+    // Whether the write failed because migration 55's column is not there —
     // the one failure the PIN-only entry below exists for.
     var columnMissing = false;
     try {

@@ -19,6 +19,7 @@ import '../../../domain/models/refund.dart';
 import '../../../domain/services/authorization.dart';
 import '../../../domain/services/refund_engine.dart';
 import '../../admin/presentation/supervisor_override.dart';
+import '../../../core/ui/widgets/fold_digits_formatter.dart';
 
 const _uuid = Uuid();
 
@@ -411,6 +412,7 @@ class _RefundSheetState extends ConsumerState<RefundSheet> {
           autofocus: true,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           inputFormatters: [
+            const FoldDigitsFormatter(),
             FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
           ],
           textDirection: TextDirection.ltr,

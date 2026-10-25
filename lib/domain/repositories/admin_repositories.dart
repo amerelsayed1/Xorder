@@ -956,7 +956,7 @@ abstract interface class StaffDirectoryRepository {
   /// Who has an Admin Mode password, by staff id (ADR-006b slice D).
   ///
   /// Read on the till's connection, like [all]. **Empty, not an error, on a
-  /// database migration 54 has not reached** — the column does not exist yet,
+  /// database migration 55 has not reached** — the column does not exist yet,
   /// which is exactly "nobody has one", and the upgrade that adds it runs at
   /// the same door that asks.
   Future<Set<int>> withPassword();

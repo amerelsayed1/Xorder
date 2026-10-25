@@ -387,13 +387,18 @@ class _ManagementStaffPaneState extends ConsumerState<ManagementStaffPane> {
 
     // A refusal is shown where the action was, not as a toast that has gone by
     // the time somebody looks up from the keypad.
+    //
+    // Everything inside the dialog reads the dialog's OWN context. The pane's
+    // can be gone by the time Close is tapped — the screen was swapped, the
+    // till locked — and `Navigator.of` on an unmounted element throws "Null
+    // check operator used on a null value" (XORD-010).
     showDialog<void>(
       context: context,
       barrierColor: context.pos.scrim,
-      builder: (_) => Dialog(
-        backgroundColor: context.pos.page,
+      builder: (dialogContext) => Dialog(
+        backgroundColor: dialogContext.pos.page,
         shape: RoundedRectangleBorder(
-          side: context.pos.emphasis,
+          side: dialogContext.pos.emphasis,
           borderRadius: PosBorders.radius,
         ),
         child: ConstrainedBox(
@@ -404,21 +409,21 @@ class _ManagementStaffPaneState extends ConsumerState<ManagementStaffPane> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(context.strings.notSaved, style: PosText.panelTitle(color: context.pos.ink)),
+                Text(dialogContext.strings.notSaved, style: PosText.panelTitle(color: dialogContext.pos.ink)),
                 const SizedBox(height: PosSpace.sm),
                 Text(
-                  AdminText.refusal(context.strings, refusal),
+                  AdminText.refusal(dialogContext.strings, refusal),
                   style: PosText.ui(
                     size: 13,
-                    color: context.pos.body,
+                    color: dialogContext.pos.body,
                     height: 1.6,
                   ),
                 ),
                 const SizedBox(height: PosSpace.lg),
                 PosButton(
-                  label: context.strings.close,
-                  border: Border.fromBorderSide(context.pos.resting),
-                  onPressed: () => Navigator.of(context).pop(),
+                  label: dialogContext.strings.close,
+                  border: Border.fromBorderSide(dialogContext.pos.resting),
+                  onPressed: () => Navigator.of(dialogContext).pop(),
                 ),
               ],
             ),

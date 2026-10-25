@@ -7,6 +7,7 @@ import '../../../core/ui/widgets/pos_widgets.dart';
 import '../../../domain/models/permissions.dart';
 import '../../../domain/models/shift.dart';
 import 'admin_messages.dart';
+import '../../../core/text/digits.dart';
 
 /// What [StaffGrantsDialog] hands back.
 class StaffGrants {
@@ -130,7 +131,7 @@ class _StaffGrantsDialogState extends State<StaffGrantsDialog> {
   void _save() {
     final bp = _discount.text.trim().isEmpty
         ? null
-        : (double.tryParse(_discount.text.trim()) ?? 0) * 100;
+        : (double.tryParse(foldDigits(_discount.text.trim())) ?? 0) * 100;
 
     Navigator.of(context).pop(
       StaffGrants(
