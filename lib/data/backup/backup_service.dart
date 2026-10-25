@@ -83,9 +83,12 @@ class BackupService {
   /// job.** The till's credential holds SELECT on the tables it sells from and
   /// not on all of them, and a dump that silently omitted a table is the exact
   /// failure this feature exists to prevent. The administrator's password is
-  /// held in memory for a Management session and never written to disk — and
-  /// the nightly copy is taken at day close, when nobody has opened the back
-  /// office. So the backup runs as a member of `pg_read_all_data` and nothing
+  /// kept in the operating system's secret store (`adminDbSecretStoreProvider`
+  /// — saved at install, or the first time it is typed at the back-office
+  /// door), but it is loaded into a connection only for the length of an
+  /// Admin Mode session — and the nightly copy is taken at day close, when
+  /// nobody has opened the back office. Nor is a credential that can rewrite
+  /// every table the one to leave running unattended. So the backup runs as a member of `pg_read_all_data` and nothing
   /// else: it can read every row and change none, which makes it the one
   /// credential it is safe to keep beside the till's.
   ///

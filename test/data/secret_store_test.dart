@@ -147,6 +147,27 @@ void main() {
         expect('$error', isNot(contains('hunter2')));
       }
     });
+
+    test('the plain refusal never quotes a cause that may hold the secret', () {
+      // What a parse of the secrets file throws: the excerpt it prints IS the
+      // file. This used to be quoted whole into the wizard's banner.
+      const parsing = PosDbSecretStoreException(
+        FormatException('Unexpected character', '{"pos_db":"hunter2"'),
+      );
+      expect('$parsing', isNot(contains('hunter2')));
+      expect('$parsing', contains('FormatException'));
+
+      // A file error has a code and the OS's words, never a value: kept.
+      const disk = PosDbSecretStoreException(
+        FileSystemException(
+          'Cannot open file',
+          '/x/secrets.json',
+          OSError('Permission denied', 13),
+        ),
+      );
+      expect('$disk', contains('Cannot open file'));
+      expect('$disk', contains('Permission denied, 13'));
+    });
   });
 
   group('the DPAPI store', () {
