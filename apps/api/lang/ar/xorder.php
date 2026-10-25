@@ -38,6 +38,7 @@ return [
         'PAIRING_CODE_USED' => 'هذا الرمز مستخدم من قبل.',
         'IDEMPOTENCY_PAYLOAD_MISMATCH' => 'معرّف العملية مستخدم بالفعل لحمولة مختلفة.',
         'BRANCH_NOT_IN_TENANT' => 'الفرع غير موجود.',
+        'CUSTOMER_NOT_FOUND' => 'العميل غير موجود.',
         'SHIFT_ALREADY_OPEN' => 'هناك وردية مفتوحة بالفعل على هذا الجهاز.',
         'SHIFT_NOT_OPEN' => 'لا توجد وردية مفتوحة على هذا الجهاز.',
         'VALIDATION_FAILED' => 'الطلب غير صالح.',

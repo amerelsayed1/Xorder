@@ -5,6 +5,7 @@ namespace Tests\Feature\Pos;
 use App\Models\Branch;
 use App\Models\Category;
 use App\Models\Charge;
+use App\Models\Customer;
 use App\Models\MenuItem;
 use App\Models\Order;
 use App\Models\OrderItem;
@@ -413,6 +414,93 @@ class PosOrdersTest extends PosTestCase
 
         $this->getJson('/api/pos/orders/by-client-id/'.Str::uuid(), $this->deviceHeaders($token))
             ->assertNotFound();
+    }
+
+    // ------------------------------------------------------- order customer
+
+    private function customerOf(Restaurant $restaurant, string $name = 'Mona'): Customer
+    {
+        $customer = new Customer(['name' => $name]);
+        $customer->restaurant_id = $restaurant->id;
+        $customer->save();
+
+        return $customer;
+    }
+
+    public function test_an_order_may_carry_its_own_restaurants_customer(): void
+    {
+        $customer = $this->customerOf($this->restaurant);
+
+        $this->postJson('/api/pos/orders', $this->payload(['customer_id' => $customer->id]), $this->deviceHeaders($this->token()))
+            ->assertCreated();
+
+        $this->assertSame(
+            $customer->id,
+            Order::withoutGlobalScopes()->where('channel', 'pos')->sole()->customer_id,
+        );
+    }
+
+    public function test_another_restaurants_customer_is_refused_and_nothing_is_written(): void
+    {
+        $foreign = $this->customerOf(Restaurant::factory()->create(), 'Someone Else');
+
+        $this->postJson('/api/pos/orders', $this->payload(['customer_id' => $foreign->id]), $this->deviceHeaders($this->token()))
+            ->assertStatus(422)->assertJsonPath('code', 'CUSTOMER_NOT_FOUND');
+
+        $this->assertSame(0, Order::withoutGlobalScopes()->count());
+    }
+
+    public function test_an_unknown_customer_is_refused_the_same_way_as_a_foreign_one(): void
+    {
+        $token = $this->token();
+        $foreign = $this->customerOf(Restaurant::factory()->create(), 'Someone Else');
+
+        $foreignBody = $this->postJson('/api/pos/orders', $this->payload(['customer_id' => $foreign->id]), $this->deviceHeaders($token))
+            ->assertStatus(422)->json();
+        $unknownBody = $this->postJson('/api/pos/orders', $this->payload(['customer_id' => 999999]), $this->deviceHeaders($token))
+            ->assertStatus(422)->assertJsonPath('code', 'CUSTOMER_NOT_FOUND')->json();
+
+        // Indistinguishable to the caller: a till cannot probe other tenants' ids.
+        $this->assertSame($foreignBody, $unknownBody);
+        $this->assertSame(0, Order::withoutGlobalScopes()->count());
+    }
+
+    public function test_a_walk_in_order_with_no_customer_still_works(): void
+    {
+        $token = $this->token();
+
+        // Absent and explicit null are both a walk-in.
+        $this->postJson('/api/pos/orders', $this->payload(), $this->deviceHeaders($token))->assertCreated();
+        $this->postJson('/api/pos/orders', $this->payload(['customer_id' => null]), $this->deviceHeaders($token))->assertCreated();
+
+        $this->assertSame(2, Order::withoutGlobalScopes()->where('channel', 'pos')->count());
+        $this->assertSame(0, Order::withoutGlobalScopes()->whereNotNull('customer_id')->count());
+    }
+
+    public function test_replaying_a_stored_order_with_a_customer_added_returns_it_not_a_mismatch(): void
+    {
+        $token = $this->token();
+        $payload = $this->payload();
+
+        $first = $this->postJson('/api/pos/orders', $payload, $this->deviceHeaders($token))
+            ->assertCreated()->json('data');
+
+        // Same key, same money, now naming a customer — customer_id is not in
+        // the idempotency hash, so this is a replay, never a 422. Even a
+        // customer that would be refused on a fresh order does not unseat a
+        // stored one: the replay short-circuit runs first.
+        $customer = $this->customerOf($this->restaurant);
+        $foreign = $this->customerOf(Restaurant::factory()->create(), 'Someone Else');
+
+        foreach ([$customer->id, $foreign->id] as $customerId) {
+            $replay = $this->postJson('/api/pos/orders', array_merge($payload, ['customer_id' => $customerId]), $this->deviceHeaders($token))
+                ->assertOk()->json('data');
+
+            $this->assertSame($first, $replay);
+        }
+
+        $this->assertSame(1, Order::withoutGlobalScopes()->where('channel', 'pos')->count());
+        $this->assertNull(Order::withoutGlobalScopes()->where('channel', 'pos')->sole()->customer_id);
     }
 
     // ------------------------------------------------------- plumbing

@@ -43,6 +43,7 @@ return [
         'PAIRING_CODE_USED' => 'That setup code was already used.',
         'IDEMPOTENCY_PAYLOAD_MISMATCH' => 'This transaction id was already used for a different payload.',
         'BRANCH_NOT_IN_TENANT' => 'Branch not found.',
+        'CUSTOMER_NOT_FOUND' => 'Customer not found.',
         'SHIFT_ALREADY_OPEN' => 'A shift is already open on this terminal.',
         'SHIFT_NOT_OPEN' => 'No open shift on this terminal.',
         'VALIDATION_FAILED' => 'The request was invalid.',
