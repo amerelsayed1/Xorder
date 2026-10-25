@@ -80,7 +80,8 @@ class BackupConnection {
 
   /// The one certificate a paired till trusts — the same anchor `PosDatabase`
   /// gives the driver. Null on a till with no pin, which verifies against
-  /// whatever libpq trusts by default.
+  /// the operating system's roots where the tools are libpq 16 or newer, and
+  /// against whatever libpq trusts by default below that.
   ///
   /// Without it libpq's `verify-full` looks for `~/.postgresql/root.crt`,
   /// finds nothing on a till, and refuses: every backup on a paired LAN till
@@ -94,7 +95,8 @@ class BackupConnection {
   Map<String, String> get environment => environmentWith();
 
   /// [environment], plus `PGSSLROOTCERT` when [rootCertificate] is the path
-  /// [PgArchive] wrote [pinnedCertificatePem] to.
+  /// [PgArchive] wrote [pinnedCertificatePem] to — or libpq's `system`, for
+  /// an unpinned till whose tools understand it (see `PgArchive._trusting`).
   ///
   /// **The password never goes on the command line**, where every process on
   /// the machine can read it from the process table. And only when there is
@@ -330,8 +332,32 @@ class PgArchive {
     Future<ProcessResult> Function(Map<String, String> environment) body,
   ) async {
     final pem = connection.pinnedCertificatePem?.trim() ?? '';
-    if (!connection.verifyTls || pem.isEmpty) {
-      return body(connection.environment);
+    if (!connection.verifyTls) return body(connection.environment);
+    if (pem.isEmpty) {
+      // Unpinned, and encrypted — a LAN or remote host whose certificate a
+      // real authority issued; loopback never gets here, it is `disable`.
+      // The till itself verifies that chain against the operating system's
+      // roots (`PosTls`: no SecurityContext, so dart:io's default). libpq
+      // does NOT: under verify-full with no PGSSLROOTCERT it reads
+      // `~/.postgresql/root.crt`, which no till has, and refuses — the
+      // backup fails while the till connects fine, the same split the pin
+      // file above was written to close.
+      //
+      // `system` is libpq 16's word for "the OS store". Older libpq reads
+      // it as a FILE named `system`, fails the same way it does today, and
+      // says so less clearly — so it is only set where the located pg_dump
+      // is 16 or newer. Below that, or when the version did not parse, this
+      // stays as it was: still verify-full, never `require`, which would
+      // "fix" it by trusting any certificate on the switch. (The libpq that
+      // runs is the one shipped with the located pg_dump — EDB's bin folder
+      // on Windows, Homebrew's or Postgres.app's keg on macOS — so the
+      // tool's major version stands in for libpq's.)
+      final systemRoots = (tools.majorVersion ?? 0) >= 16;
+      return body(
+        systemRoots
+            ? connection.environmentWith(rootCertificate: 'system')
+            : connection.environment,
+      );
     }
     final Directory folder;
     try {

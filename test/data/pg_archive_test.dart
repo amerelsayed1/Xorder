@@ -174,6 +174,69 @@ void main() {
       expect(File(restoreEnv['PGSSLROOTCERT']!).existsSync(), isFalse);
     });
 
+    test('an unpinned LAN till verifies against the OS store, as the till does',
+        () async {
+      // No pin: the till's own connection trusts the operating system's
+      // roots, and libpq without PGSSLROOTCERT trusts only a root.crt no till
+      // has — so the backup failed against a server the till reached fine.
+      final unpinned = BackupConnection.forDeployment(
+        const DeploymentConfig(
+          mode: DeploymentMode.offline,
+          databaseHost: 'db.kashri.example',
+          role: TerminalRole.child,
+        ),
+        user: 'pos_backup',
+        password: 's3cret-backup',
+      )!;
+      expect(unpinned.verifyTls, isTrue);
+      expect(unpinned.pinnedCertificatePem, isNull);
+
+      final f = fake();
+      await PgArchive(tools, run: f.run).dump(from: unpinned, to: target());
+      final (_, _, env) = f.calls.first;
+      expect(env!['PGSSLMODE'], 'verify-full', reason: 'never downgraded');
+      expect(env['PGSSLROOTCERT'], 'system');
+
+      final file = target()..writeAsStringSync('PGDMP');
+      await PgArchive(tools, run: f.run).restore(from: file, into: unpinned);
+      final (_, _, restoreEnv) = f.calls.last;
+      expect(restoreEnv!['PGSSLROOTCERT'], 'system');
+    });
+
+    test('tools older than 16, or of no known version, are left as they were',
+        () async {
+      // libpq before 16 reads `system` as a file of that name: no better than
+      // root.crt, and a more confusing error.
+      const remote = BackupConnection(
+        host: 'db.kashri.example',
+        port: 5432,
+        database: 'x',
+        user: 'u',
+        verifyTls: true,
+      );
+      for (final version in ['15.8', 'pg_dump (PostgreSQL) unknown']) {
+        final older = PgToolset(
+          pgDump: tools.pgDump,
+          pgRestore: tools.pgRestore,
+          version: version,
+        );
+        final f = fake();
+        await PgArchive(older, run: f.run).dump(from: remote, to: target());
+        final (_, _, env) = f.calls.first;
+        expect(env!['PGSSLMODE'], 'verify-full', reason: version);
+        expect(env.containsKey('PGSSLROOTCERT'), isFalse, reason: version);
+      }
+    });
+
+    test('a plaintext connection is never handed a root to verify', () async {
+      // [reader] is loopback-shaped: `disable`, so `system` would mean nothing.
+      final f = fake();
+      await PgArchive(tools, run: f.run).dump(from: reader, to: target());
+      final (_, _, env) = f.calls.first;
+      expect(env!['PGSSLMODE'], 'disable');
+      expect(env.containsKey('PGSSLROOTCERT'), isFalse);
+    });
+
     test('loopback keeps plaintext, pin or no pin', () {
       // A pin left on a till that later moved its database onto itself.
       final local = BackupConnection.forDeployment(
