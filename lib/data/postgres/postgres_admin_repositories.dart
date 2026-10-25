@@ -106,9 +106,11 @@ const joinedRoleColumns =
 /// For the reads of a column a recent migration added, on a database the
 /// upgrade has not reached yet — the back-office door is what upgrades an
 /// installed till, so the till reads before it. Asked of the SQLSTATE and
-/// not the text: `PosDbFailure.classify` reads the message, and a missing
-/// `password_hash` contains the word "password", which it reports as a
-/// refused login.
+/// not the text — a missing `password_hash` contains the word "password".
+/// Not `PosDbFailure.classify(...) == query` either: that now reads 42703
+/// as `query` too, but so is every other failed statement, and this is the
+/// one failure the PIN-only entry in `AdminSession.setPassword` lets
+/// through.
 bool isUndefinedColumn(Object error) {
   final raw = error is PosDbException ? error.raw : error;
   return raw is ServerException && raw.code == '42703';

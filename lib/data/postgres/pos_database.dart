@@ -73,6 +73,34 @@ enum PosDbFailure {
     // certificate.", and a certificate refused is the case that must never be
     // mistaken for a network fault somebody might "fix" by turning TLS off.
     if (error is BadCertificateException) return tls;
+    // Then by SQLSTATE, where the server sent one. The text rules below read
+    // the MESSAGE, and a message quotes whatever the statement named: a
+    // migration that has not run yet fails as `column "password_hash" does
+    // not exist` (42703), and the word `password` in it used to report a
+    // missing column as a refused login — sending an installer to retype a
+    // password that was fine. A code cannot be fooled by a column's name.
+    //
+    // Only the codes whose answer is unambiguous are mapped. 28000 is NOT:
+    // PostgreSQL uses it both for a role that does not exist and for a
+    // pg_hba.conf refusal, which the text rules already tell apart (and the
+    // second of those is TLS or auth depending on how the till came in).
+    // Nor are 08xxx and 57P0x mapped to [tcp]: "unreachable" opens the
+    // forced-reset rescue path in Admin Mode, and a server that answered
+    // "shutting down" or "starting up" is not one that nothing answered —
+    // widening that door belongs in its own change, not in a classifier fix.
+    // Every unmapped code falls through to the text rules exactly as before.
+    if (error is ServerException) {
+      switch (error.code) {
+        case '28P01': // invalid_password
+          return auth;
+        case '3D000': // invalid_catalog_name: no database by that name
+          return missingDatabase;
+        case '42501': // insufficient_privilege
+          return permissionDenied;
+        case '42703' || '42P01': // undefined_column, undefined_table
+          return query;
+      }
+    }
     final text = error.toString().toLowerCase();
     if (text.contains('failed host lookup') || text.contains('nodename')) {
       return dns;

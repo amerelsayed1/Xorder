@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:postgres/postgres.dart' show ServerException;
 import 'package:xorder_pos/data/postgres/pos_database.dart';
 
 /// What the till TELLS an installer when the database will not open.
@@ -128,6 +129,81 @@ void main() {
       );
     });
 
+    test('a missing column is a failed statement, whatever it is called', () {
+      // 42703, as a till reads it before the back-office door has run the
+      // migration that adds the column. The message quotes the column's
+      // name, and `password_hash` used to make this a refused LOGIN — the
+      // till signed in fine; the statement asked for a column not there yet.
+      expect(
+        PosDbFailure.classify(
+          const _ServerError(
+            '42703',
+            'column "password_hash" of relation "pos_staff" does not exist',
+          ),
+        ),
+        PosDbFailure.query,
+      );
+      // Same shape, a different trap: `database` in a column's name used to
+      // read as a first install.
+      expect(
+        PosDbFailure.classify(
+          const _ServerError('42703', 'column "database_name" does not exist'),
+        ),
+        PosDbFailure.query,
+      );
+      expect(
+        PosDbFailure.classify(
+          const _ServerError('42P01', 'relation "pos_password_resets" does '
+              'not exist'),
+        ),
+        PosDbFailure.query,
+      );
+    });
+
+    test('the SQLSTATE decides where the server sent one', () {
+      expect(
+        PosDbFailure.classify(
+          const _ServerError('28P01', 'password authentication failed for '
+              'user "pos_till"'),
+        ),
+        PosDbFailure.auth,
+      );
+      expect(
+        PosDbFailure.classify(
+          const _ServerError('3D000', 'database "xorder_pos" does not exist'),
+        ),
+        PosDbFailure.missingDatabase,
+      );
+      expect(
+        PosDbFailure.classify(
+          const _ServerError('42501', 'permission denied for table '
+              'pos_password_audit'),
+        ),
+        PosDbFailure.permissionDenied,
+      );
+    });
+
+    test('28000 is left to the text, which tells its two meanings apart', () {
+      // PostgreSQL sends 28000 for a missing role AND for a pg_hba refusal;
+      // mapping the code alone would collapse them back into one answer.
+      expect(
+        PosDbFailure.classify(
+          const _ServerError('28000', 'role "pos_till" does not exist'),
+        ),
+        PosDbFailure.missingRole,
+      );
+      expect(
+        PosDbFailure.classify(
+          const _ServerError(
+            '28000',
+            'no pg_hba.conf entry for host "192.168.1.31", user "pos_till", '
+                'database "xorder_pos", no encryption',
+          ),
+        ),
+        PosDbFailure.tls,
+      );
+    });
+
     test('anything unrecognised stays unknown rather than guessing', () {
       // The comment on `unknown` is a promise: never assume, report the raw
       // error alongside. A classifier that guessed here would be worse than one
@@ -138,4 +214,23 @@ void main() {
       );
     });
   });
+}
+
+/// A server error as the driver raises it. Its constructor is private to the
+/// driver, so this answers what `classify` asks — the SQLSTATE and the text —
+/// and nothing else.
+class _ServerError implements ServerException {
+  const _ServerError(this.code, this.message);
+
+  @override
+  final String? code;
+
+  @override
+  final String message;
+
+  @override
+  String toString() => 'Severity.error $code: $message';
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => null;
 }
