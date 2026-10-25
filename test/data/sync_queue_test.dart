@@ -62,6 +62,10 @@ void main() {
   );
 
   setUp(() async {
+    // The database is emptied for every test, so the invoice numbers start
+    // again too; left running across the file, `MAADI-000001` below was only
+    // true when that test happened to run first.
+    invoice = 0;
     pg = await PgFixture.open('sync_queue');
     db = pg.database;
     await PosMigrator(db).migrate(pg.config);
