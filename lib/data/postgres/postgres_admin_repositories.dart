@@ -41,9 +41,14 @@ class _AdminContext {
   ///
   /// Takes the session rather than opening its own, so it cannot commit
   /// separately from the change it describes.
+  ///
+  /// [by] is null only for an act no member of staff performed — the
+  /// technician's password reset — and then [actorName] says who did:
+  /// `actor_staff_id` is nullable for exactly this, and `actor_name` is not.
   Future<void> audit(
     TxSession tx, {
-    required PosStaff by,
+    required PosStaff? by,
+    String? actorName,
     required String action,
     required String entityType,
     PosStaff? approvedBy,
@@ -71,8 +76,8 @@ class _AdminContext {
         'branch': branchId,
         'terminal': terminalId,
         'shift': shiftId,
-        'actorId': by.id,
-        'actorName': by.name,
+        'actorId': by?.id,
+        'actorName': actorName ?? by?.name,
         'approverId': approvedBy?.id,
         'approverName': approvedBy?.name,
         'action': action,
@@ -95,6 +100,19 @@ const roleColumns = 'id, code, name_en, name_ar, capabilities, is_system';
 /// unprefixed list is ambiguous the moment the two are joined.
 const joinedRoleColumns =
     'r.id, r.code, r.name_en, r.name_ar, r.capabilities, r.is_system';
+
+/// Whether [error] is PostgreSQL saying a column does not exist (42703).
+///
+/// For the reads of a column a recent migration added, on a database the
+/// upgrade has not reached yet — the back-office door is what upgrades an
+/// installed till, so the till reads before it. Asked of the SQLSTATE and
+/// not the text: `PosDbFailure.classify` reads the message, and a missing
+/// `password_hash` contains the word "password", which it reports as a
+/// refused login.
+bool isUndefinedColumn(Object error) {
+  final raw = error is PosDbException ? error.raw : error;
+  return raw is ServerException && raw.code == '42703';
+}
 
 PosRole roleFromRow(List<Object?> row, [int offset = 0]) => PosRole(
   id: row[offset] as int,
@@ -832,6 +850,168 @@ class PostgresStaffDirectoryRepository implements StaffDirectoryRepository {
         after: {'name': rows.first[0] as String},
       );
       return const AdminResult<void>.done(null);
+    });
+  }
+
+  @override
+  Future<Set<int>> withPassword() async {
+    try {
+      final rows = await _read.database.query(
+        _read.config,
+        'SELECT id FROM pos_staff '
+        'WHERE restaurant_id = @r AND password_hash IS NOT NULL',
+        parameters: {'r': _read.restaurantId},
+      );
+      return {for (final row in rows) row[0]! as int};
+    } on PosDbException catch (error) {
+      // Migration 55 not applied yet: nobody has one — see the interface.
+      if (isUndefinedColumn(error)) return const {};
+      rethrow;
+    }
+  }
+
+  /// No `staff.manage` check, and no [offline] one: this is the person's own
+  /// secret, and the proof is the PIN the door has just verified plus the
+  /// administrator credential only the door holds. Asking `staff.manage`
+  /// would lock out a supervisor the owner let into Admin Mode.
+  @override
+  Future<AdminResult<void>> setOwnPassword({
+    required PosStaff by,
+    required String password,
+  }) async {
+    if (!adminAvailable) {
+      return const AdminResult<void>.refused(AdministratorCredentialRequired());
+    }
+    if (PasswordPolicy.validate(password, username: by.username)
+        case final problem?) {
+      return AdminResult<void>.refused(PasswordRejected(problem));
+    }
+
+    // Hashed before the transaction opens: 600 000 iterations is long enough
+    // that holding a row lock across it would make every other write to this
+    // person's row wait on a key derivation.
+    final hash = await PasswordHash.create(password);
+
+    return _c.database.runTx(_c.config, (tx) async {
+      final rows = await tx.execute(
+        Sql.named(
+          'UPDATE pos_staff SET password_hash = @hash, password_set_at = now() '
+          'WHERE id = @id AND restaurant_id = @r AND is_active RETURNING name',
+        ),
+        parameters: {'id': by.id, 'r': _c.restaurantId, 'hash': hash},
+      );
+      if (rows.isEmpty) {
+        return const AdminResult<void>.refused(EditedElsewhere(0));
+      }
+
+      // The fact and nothing else, as for a PIN: no before, no after beyond
+      // the name. A hash on the ledger is a hash anybody who can read the
+      // ledger can attack.
+      await _c.audit(
+        tx,
+        by: by,
+        action: AuditAction.staffPasswordSet,
+        entityType: AuditAction.entityStaff,
+        entityId: '${by.id}',
+        after: {'name': rows.first[0] as String},
+      );
+      return const AdminResult<void>.done(null);
+    });
+  }
+
+  @override
+  Future<AdminResult<void>> clearPassword({
+    required PosStaff by,
+    required int staffId,
+  }) async {
+    if (!adminAvailable) {
+      return const AdminResult<void>.refused(AdministratorCredentialRequired());
+    }
+    if (!Authorization.check(by, PosCapability.staffManage).isAllowed) {
+      return const AdminResult.refused(NotPermitted(PosCapability.staffManage));
+    }
+
+    return _c.database.runTx(_c.config, (tx) async {
+      // Read and locked with the write, as `resetPin` does, so a role change
+      // landing between the two cannot slip the owner's row past the rule.
+      final target = await _readStaffOrNull(tx, staffId, lock: true);
+      if (target == null) {
+        return const AdminResult<void>.refused(EditedElsewhere(0));
+      }
+      if (target.role?.code == SystemRoles.ownerCode) {
+        return const AdminResult<void>.refused(OwnerPasswordIsTheirs());
+      }
+
+      final rows = await tx.execute(
+        Sql.named(
+          'UPDATE pos_staff SET password_hash = NULL, password_set_at = NULL '
+          'WHERE id = @id AND restaurant_id = @r '
+          '  AND password_hash IS NOT NULL RETURNING name',
+        ),
+        parameters: {'id': staffId, 'r': _c.restaurantId},
+      );
+      // Nothing to clear is not a refusal: the person is where the manager
+      // wanted them, and a ledger row for a change that did not happen would
+      // be one more thing to explain.
+      if (rows.isEmpty) return const AdminResult<void>.done(null);
+
+      await _c.audit(
+        tx,
+        by: by,
+        action: AuditAction.staffPasswordCleared,
+        entityType: AuditAction.entityStaff,
+        entityId: '$staffId',
+        after: {'name': rows.first[0] as String},
+      );
+      return const AdminResult<void>.done(null);
+    });
+  }
+
+  /// No capability check, on purpose: nobody is signed in — that is why a
+  /// technician is here. [adminAvailable] is the whole gate, and the caller
+  /// builds this repository on the credential the technician has just typed
+  /// rather than the one this till keeps, so knowing the database password
+  /// is what it takes. Matched as every door matches a username: trimmed,
+  /// case-blind, active only.
+  @override
+  Future<AdminResult<String?>> clearPasswordAsTechnician({
+    required String username,
+  }) async {
+    if (!adminAvailable) {
+      return const AdminResult<String?>.refused(
+        AdministratorCredentialRequired(),
+      );
+    }
+    final wanted = username.trim().toLowerCase();
+    if (wanted.isEmpty) return const AdminResult<String?>.done(null);
+
+    return _c.database.runTx(_c.config, (tx) async {
+      final rows = await tx.execute(
+        Sql.named(
+          'UPDATE pos_staff SET password_hash = NULL, password_set_at = NULL '
+          'WHERE restaurant_id = @r AND is_active '
+          '  AND lower(trim(username)) = @u AND password_hash IS NOT NULL '
+          'RETURNING id, name',
+        ),
+        parameters: {'r': _c.restaurantId, 'u': wanted},
+      );
+      if (rows.isEmpty) return const AdminResult<String?>.done(null);
+
+      // One row per account cleared. Usernames are unique as typed, not
+      // case-blind, so "Amer" and "amer" are two rows a case-blind door
+      // treats as one name — both are cleared, and both are written down.
+      for (final row in rows) {
+        await _c.audit(
+          tx,
+          by: null,
+          actorName: AuditAction.technicianActor,
+          action: AuditAction.staffPasswordCleared,
+          entityType: AuditAction.entityStaff,
+          entityId: '${row[0]}',
+          after: {'name': row[1] as String, 'by': AuditAction.technicianActor},
+        );
+      }
+      return AdminResult<String?>.done(rows.first[1] as String);
     });
   }
 

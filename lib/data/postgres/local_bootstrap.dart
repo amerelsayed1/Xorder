@@ -8,6 +8,7 @@ import '../../domain/models/permissions.dart';
 import '../../domain/models/reason_code.dart';
 import 'migrations.dart';
 import 'pos_database.dart';
+import 'pos_tls.dart';
 
 /// What [LocalBootstrap.seedOwner] did, or why it did not.
 ///
@@ -72,8 +73,9 @@ class TillRoleRefused implements Exception {
 /// **The credential used here is not the credential the till keeps.** Creating
 /// a database and applying DDL needs an owner or superuser; selling needs
 /// `pos_till`, which is granted the least it can work with and no DDL at all.
-/// The admin credential passes through this class and is never persisted —
-/// `PosDbSecretStore` only ever holds the till's.
+/// The admin credential passes through this class and is not persisted by it.
+/// The setup wizard does keep it, in the OS store, for Admin Mode; see
+/// `adminDbSecretStoreProvider`.
 class LocalBootstrap {
   const LocalBootstrap(this.database);
 
@@ -152,10 +154,14 @@ class LocalBootstrap {
           username: admin.databaseUser,
           password: adminPassword,
         ),
+        // The till's own transport rule, not one of this file's. This used
+        // to be `require` off loopback — which in the postgres package
+        // accepts any certificate at all, so the administrator's password
+        // for building the database was the one credential sent to whoever
+        // answered. A pinned or verified certificate, or nothing.
         settings: ConnectionSettings(
-          sslMode: admin.allowsInsecureTransport
-              ? SslMode.disable
-              : SslMode.require,
+          sslMode: PosTlsSettings.sslModeFor(admin.lanTls),
+          securityContext: PosTlsSettings.securityContextFor(admin.lanTls),
         ),
       );
     } on Object catch (error) {

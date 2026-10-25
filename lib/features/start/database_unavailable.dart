@@ -42,9 +42,13 @@ class DatabaseUnavailable extends ConsumerWidget {
         : null;
     final message = switch (failure) {
       PosDbFailure.missingDatabase => strings.dbUnavailableMissing(database),
-      PosDbFailure.dns ||
-      PosDbFailure.tcp ||
-      PosDbFailure.tls => strings.dbUnavailableUnreachable,
+      PosDbFailure.dns || PosDbFailure.tcp => strings.dbUnavailableUnreachable,
+      // Not "can't reach": it reached *something*, and that something could
+      // not prove it was the restaurant's server. Calling it a network fault
+      // invites the one fix that must never be made from the counter —
+      // turning encryption off — so the sentence says what happened and who
+      // to call, and the till does not try again in the clear.
+      PosDbFailure.tls => strings.dbUnavailableSecureConnection,
       PosDbFailure.auth ||
       PosDbFailure.missingRole ||
       PosDbFailure.permissionDenied => strings.dbUnavailableSignIn,

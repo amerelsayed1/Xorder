@@ -68,9 +68,9 @@ dart bin/pos_migrate.dart     # prepare a branch PostgreSQL before first run
   sequence, shifts, money config, provisioning, PIN) are `READY`; branch-server, upstream-sync
   and setup contracts are `APPROVED`. Integrate against `READY` items only; keep local/fake
   implementations for the rest.
-- **Three deployment modes, one API + schema:** cloud · branch-server · islanded — differ only
-  in `base_url` and check-in cadence. **Cloud and offline setup are both built** (the licence decides which the wizard offers). Every mode is
-  offline-first; a desktop till always has a disk.
+- **Two deployment modes, one API + schema:** `cloud` · `offline` (`lib/core/config/deployment.dart`;
+  legacy wire values `branch_server`/`standalone` parse to `offline`). **Cloud and offline setup are both built** (the licence decides which the wizard offers). Every mode is
+  offline-first; a desktop till always has a disk. Decisions: `docs/pos/adr/`, roadmap: `docs/pos/20-implementation-roadmap.md`.
 - **Unconfigured, it refuses to take money, on purpose.** No database → logo-only welcome
   screen; **Ctrl+Shift+S** (⌘+Shift+S on macOS) opens the setup wizard.
 - **Design language, two rules:** border-radius is **0 everywhere**; **no shadows** —

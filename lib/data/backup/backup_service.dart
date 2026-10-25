@@ -107,6 +107,9 @@ class BackupService {
   /// The read-only account the installer creates for backups.
   static const readerRole = 'pos_backup';
 
+  /// What a safety copy taken by [restore] is called before the usual name.
+  static const preRestorePrefix = 'pre-restore-';
+
   /// Closes every pool before a restore drops the objects underneath them.
   final Future<void> Function()? quiesce;
 
@@ -165,9 +168,11 @@ class BackupService {
   Future<BackupRecord> _take({
     required PosStaff by,
     required BackupTrigger trigger,
+    bool preRestore = false,
+    BackupConnection? using,
   }) async {
     final at = DateTime.now();
-    final path = _fileFor(at);
+    final path = _fileFor(at, preRestore: preRestore);
 
     final tools = toolset;
     if (tools == null) {
@@ -203,7 +208,7 @@ class BackupService {
       );
     }
 
-    final from = reader;
+    final from = using ?? reader;
     if (from == null) {
       return _record(
         by: by,
@@ -284,7 +289,12 @@ class BackupService {
 
     // Only after a copy that counts. Pruning after a failure would delete a
     // good old copy to make room for a bad new one.
-    if (stored.isRestorable) {
+    //
+    // And never for the copy a restore takes first: the oldest file in the
+    // folder may be the very one about to be restored from, and housekeeping
+    // that deleted it would turn a safety step into the reason the restore
+    // fails. Its own name is outside the prefix, so later prunes pass it by too.
+    if (stored.isRestorable && !preRestore) {
       try {
         PgArchive.prune(
           Directory(directory),
@@ -332,7 +342,7 @@ class BackupService {
 
   /// What restoring [from] would cost, and what stands in the way.
   ///
-  /// **Both guards are read here rather than enforced by a trigger, and that is
+  /// **The guards are read here rather than enforced by a trigger, and that is
   /// a limitation worth naming.** Every other cross-row rule in this codebase
   /// lives in the database because a rule in Dart holds only until somebody
   /// writes the second writer. A restore is not a row write — it is a process
@@ -361,7 +371,26 @@ class BackupService {
             AND o.received_at > @since),
         (SELECT max(o.received_at) FROM pos_orders o
           WHERE o.restaurant_id = @restaurant AND o.branch_id = @branch
-            AND o.received_at > @since)
+            AND o.received_at > @since),
+        -- Owed to the platform, across BOTH queues: a refund or a shift close
+        -- that never went up is as lost as a sale. The predicate is the one
+        -- `pos_sync_outbox_pending_idx` is built on, so "pending" here means
+        -- what the drain means by it.
+        (SELECT count(*) FROM pos_outbox q
+          WHERE q.restaurant_id = @restaurant AND q.branch_id = @branch
+            AND q.delivered_at IS NULL AND q.quarantined_at IS NULL)
+        + (SELECT count(*) FROM pos_sync_outbox q
+          WHERE q.restaurant_id = @restaurant AND q.branch_id = @branch
+            AND q.delivered_at IS NULL AND q.quarantined_at IS NULL),
+        -- Refused by the platform and waiting on a person. Never delivered, so
+        -- just as lost to a restore — counted apart because it is a warning,
+        -- not a blocker; see `RestoreBlockerKind.pendingSync`.
+        (SELECT count(*) FROM pos_outbox q
+          WHERE q.restaurant_id = @restaurant AND q.branch_id = @branch
+            AND q.delivered_at IS NULL AND q.quarantined_at IS NOT NULL)
+        + (SELECT count(*) FROM pos_sync_outbox q
+          WHERE q.restaurant_id = @restaurant AND q.branch_id = @branch
+            AND q.delivered_at IS NULL AND q.quarantined_at IS NOT NULL)
       ''',
       parameters: {
         'restaurant': restaurantId,
@@ -376,6 +405,15 @@ class BackupService {
     final counts = rows.first.toList();
     final openShifts = counts[0] as int? ?? 0;
     final openDays = counts[1] as int? ?? 0;
+    final pendingSync = counts[5] as int? ?? 0;
+    final heldSync = counts[6] as int? ?? 0;
+
+    // Decided by the mode and not by the count alone. An offline terminal never
+    // drains its outbox, so anything in it is a leftover from a past life as a
+    // cloud till — refusing on it would be a lock-out with no way to clear it,
+    // where on a cloud till the way to clear it is to let it finish sending.
+    final owesThePlatform =
+        config.mode == DeploymentMode.cloud && pendingSync > 0;
 
     return RestoreCheck(
       from: from,
@@ -390,6 +428,11 @@ class BackupService {
             kind: RestoreBlockerKind.openBusinessDay,
             count: openDays,
           ),
+        if (owesThePlatform)
+          RestoreBlocker(
+            kind: RestoreBlockerKind.pendingSync,
+            count: pendingSync,
+          ),
       ],
       ordersSince: counts[2] as int? ?? 0,
       valueSince: Money(
@@ -398,6 +441,8 @@ class BackupService {
         exponent: exponent,
       ),
       lastOrderAt: (counts[4] as DateTime?)?.toLocal(),
+      pendingSync: pendingSync,
+      heldSync: heldSync,
     );
   }
 
@@ -421,6 +466,15 @@ class BackupService {
   /// of a few hundred milliseconds. `pos_backups` is the mitigation: the copy
   /// being restored *from* is itself a dated file on disk, so "what did this
   /// database used to be" is answerable even when the ledger row is missing.
+  ///
+  /// **And a copy of this database is taken first, every time** — see
+  /// [preRestorePrefix] for its name. If it cannot be taken the restore does
+  /// not happen ([RestoreSnapshotFailed]). Thrown rather than returned as a
+  /// refusal, like [RestoreRefused] and every other precondition here: an
+  /// `AdminRefusal` says the person may not, and nothing about the person is
+  /// wrong — the disk, the folder or `pg_dump` is. Its path goes in the
+  /// audit row, because that row is written into the restored database and so
+  /// is the one record of it that survives.
   Future<AdminResult<BackupRecord>> restore(
     BackupRecord from, {
     required PosStaff by,
@@ -439,8 +493,10 @@ class BackupService {
       );
     }
 
-    final check = await checkRestore(from);
-    if (!check.isPermitted) throw RestoreRefused(check.blockers);
+    // Checked before the safety copy as well as after it, so a restore that
+    // was never going to be allowed does not cost a full dump to find out.
+    final early = await checkRestore(from);
+    if (!early.isPermitted) throw RestoreRefused(early.blockers);
 
     // Not a backup, so not a thing to replace a database with. The pane never
     // offers the button on such a row; this is the second line, because a
@@ -479,6 +535,36 @@ class BackupService {
       );
     }
 
+    // A copy of what is about to be replaced, taken through the same path as
+    // every other backup, verified and recorded the same way. **No safety
+    // copy, no restore.** The alternative was to warn and carry on, which is
+    // the shape of the incident this exists for (D3): an older file put back
+    // over an evening nobody had uploaded, and nothing left anywhere that held
+    // it. A restore that waits for the disk or the folder to be fixed
+    // costs minutes; one that went ahead without the copy costs the evening,
+    // and is the one an owner rings about. Unverified counts as failed here,
+    // for the reason it does in the list: a file `pg_restore` cannot read is
+    // not a way back.
+    //
+    // **Dumped as the restorer, not as [reader].** The owner's password is
+    // already in hand — the restore cannot run without it — and it can read
+    // every object it is about to drop. The backup account's password is kept
+    // per machine, and the restore that matters most is the one on a
+    // replacement till brought up from a USB copy, where nobody has entered it
+    // yet; demanding it there would turn the safety step into a lock-out.
+    final safety = await _take(
+      by: by,
+      trigger: BackupTrigger.manual,
+      preRestore: true,
+      using: into,
+    );
+    if (!safety.isRestorable) throw RestoreSnapshotFailed(safety);
+
+    // Again, now: the copy took seconds, and a shift opened at the next till
+    // during them is exactly the race the first check cannot see.
+    final check = await checkRestore(from);
+    if (!check.isPermitted) throw RestoreRefused(check.blockers);
+
     // Let go of every pooled connection first. An idle session holds no locks,
     // so this is belt and braces rather than a fix — but `--clean` drops every
     // object in the database and the failure mode if it does block is a till
@@ -505,11 +591,17 @@ class BackupService {
       before: {
         'orders_discarded': check.ordersSince,
         'value_discarded_minor': check.valueSince.minor,
+        'sync_pending_discarded': check.pendingSync,
+        'sync_held_discarded': check.heldSync,
       },
       after: {
         'restored_from': from.filePath,
         'backup_taken_at': from.takenAt.toIso8601String(),
         'checksum': from.checksum,
+        // The only durable pointer to it: the `pos_backups` row the safety
+        // copy wrote went with the database it described.
+        'pre_restore_snapshot': safety.filePath,
+        'pre_restore_checksum': safety.checksum,
       },
     );
 
@@ -610,12 +702,25 @@ class BackupService {
   /// two branches' copies must not need a technician to open them to tell which
   /// is which. Local time, because the person reading the folder is standing in
   /// the restaurant.
-  String _fileFor(DateTime at) {
+  ///
+  /// The copy a restore takes first is `pre-restore-xorder_pos-….dump`. **The
+  /// name is the label, because nothing else could carry it.** `trigger_kind`
+  /// is CHECKed to `manual`/`day_close`, and widening that is a migration for a
+  /// row that does not survive anyway — it is written into the database the
+  /// restore then replaces. The file is what survives, so the file says what it
+  /// is. A prefix rather than a suffix for two reasons: [describeFile] reads
+  /// the time off the end of the name, so "Restore from a file…" undoes a
+  /// restore like any other copy; and [PgArchive.prune] matches on the
+  /// database's own prefix, so these are never counted against [keep] — a
+  /// suffix would have counted them among the nightly copies, and a few
+  /// attempts at a restore would have pushed real ones out of the folder.
+  String _fileFor(DateTime at, {bool preRestore = false}) {
     String two(int value) => value.toString().padLeft(2, '0');
     final stamp =
         '${at.year}${two(at.month)}${two(at.day)}-'
         '${two(at.hour)}${two(at.minute)}${two(at.second)}';
     return '$directory${Platform.pathSeparator}'
+        '${preRestore ? preRestorePrefix : ''}'
         '${config.databaseName}-$stamp.dump';
   }
 

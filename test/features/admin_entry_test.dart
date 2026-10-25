@@ -103,7 +103,12 @@ void main() {
       ),
       username,
     );
-    await tester.enterText(find.byKey(const Key('admin-pin')), pin);
+    // The PIN the first time, the password chosen then every time after —
+    // see `enterAdminMode`.
+    await tester.enterText(
+      find.byKey(const Key('admin-password')),
+      adminSecretFor(tester, username, pin: pin),
+    );
     if (databasePassword != null) {
       await tester.enterText(
         find.byKey(const Key('admin-db-password')),
@@ -112,6 +117,7 @@ void main() {
     }
     await tester.tap(find.byKey(const Key('admin-open')));
     await tester.pumpAndSettle();
+    await completeAdminPasswordStep(tester);
   }
 
   List<String> ledger(ProviderContainer container) => [

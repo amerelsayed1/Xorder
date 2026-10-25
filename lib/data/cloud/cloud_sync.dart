@@ -271,26 +271,39 @@ class CloudSync {
   /// Deliberately tiny, never carries a sale (POS-BE-022). `pending_count` and
   /// `oldest_pending_at` are the two fields Super Admin actually watches:
   /// unsynced money, per till, in real time.
+  ///
+  /// **Pending is what the drain will try; held is reported beside it.** Both
+  /// used to be one number, so a single refused sale made `oldest_pending_at`
+  /// the date of that sale for ever and the fleet view showed a till weeks
+  /// behind that was in fact current (D8). Splitting them keeps the headline
+  /// honest — "is this till's money moving" — while `held_count` is the money
+  /// that is stuck, which is what support needs to ring about. Additive: a
+  /// platform that has not added the column ignores the key.
   Future<Map<String, Object?>> _heartbeatPayload() async {
     int pending = 0;
+    int held = 0;
     String? oldest;
     bool shiftOpen = false;
     try {
       final rows = await _db.query(
         config,
         '''
-        SELECT count(*), min(enqueued_at) FROM (
-          SELECT enqueued_at FROM pos_outbox
+        SELECT count(*) FILTER (WHERE quarantined_at IS NULL),
+               min(enqueued_at) FILTER (WHERE quarantined_at IS NULL),
+               count(*) FILTER (WHERE quarantined_at IS NOT NULL)
+        FROM (
+          SELECT enqueued_at, quarantined_at FROM pos_outbox
            WHERE restaurant_id = @restaurant AND delivered_at IS NULL
           UNION ALL
-          SELECT enqueued_at FROM pos_sync_outbox
+          SELECT enqueued_at, quarantined_at FROM pos_sync_outbox
            WHERE restaurant_id = @restaurant AND delivered_at IS NULL
-        ) pending
+        ) owed
         ''',
         parameters: {'restaurant': profile.restaurantId},
       );
       pending = rows.first[0] as int;
       oldest = (rows.first[1] as DateTime?)?.toUtc().toIso8601String();
+      held = rows.first[2] as int;
 
       final shifts = await _db.query(
         config,
@@ -311,6 +324,7 @@ class CloudSync {
       'sync_policy': config.syncPolicy.wire,
       'pending_count': pending,
       'oldest_pending_at': oldest,
+      'held_count': held,
       'shift_open': shiftOpen,
     };
   }

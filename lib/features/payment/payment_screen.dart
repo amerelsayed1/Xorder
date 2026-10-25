@@ -64,8 +64,14 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
   bool _busy = false;
   String? _message;
 
+  /// Holds the idle lock off while money is part-way through this screen.
+  /// Read once: [dispose] must release it without asking a [ref] that is
+  /// going away.
+  late final IdleLockGuard _idleGuard = ref.read(idleLockGuardProvider);
+
   @override
   void dispose() {
+    _idleGuard.release(this);
     _reference.dispose();
     super.dispose();
   }
@@ -211,6 +217,23 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
     final ticket = ref.watch(ticketProvider);
     final totals = ticket.totals;
     final strings = context.strings;
+
+    // **No idle lock while money is in flight**: a settlement waiting on the
+    // database, or a ticket part-paid with the balance still to take. Locking
+    // closes every dialog, and closing this one mid-settlement leaves an order
+    // committed with nobody to print it, free its table or clear the screen.
+    // Merely open, with nothing taken, it is only a view of the bill — the
+    // lock closes it as Back would, and the ticket is untouched. The cost is
+    // that a cashier who walks off half-way through a split payment leaves the
+    // till unlocked until they come back. Chosen over locking a part-paid bill
+    // because the tenders already taken would then sit on a ticket behind a
+    // lock screen, for whoever signs in next to find; whether that trade is
+    // right is open (ADR-006), and this is the one line to change if not.
+    if (_busy || ticket.tenders.isNotEmpty) {
+      _idleGuard.hold(this);
+    } else {
+      _idleGuard.release(this);
+    }
 
     return Dialog(
       backgroundColor: context.pos.surface,

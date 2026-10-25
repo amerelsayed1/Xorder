@@ -514,16 +514,38 @@ class TaxConfig {
   /// Value equality, because callers compare configurations to decide whether
   /// anything actually changed — and an identity comparison there would
   /// rewrite a live ticket on every sync pass.
+  ///
+  /// **Every field that moves a total is in here.** It once compared only the
+  /// four scalars, so `TicketController`'s `previous == next` guard read a
+  /// restaurant switching to inclusive prices, or its tax groups arriving a
+  /// beat after its rates, as "nothing changed" — and the live ticket kept
+  /// pricing with the old rules. The lists compare element-wise through
+  /// [TaxGroup] and [ServiceCharge]'s own equality, so what counts as the same
+  /// rate or charge is decided once, there, rather than a second time here.
   @override
   bool operator ==(Object other) =>
       other is TaxConfig &&
       other.serviceBp == serviceBp &&
       other.vatBp == vatBp &&
       other.serviceDineInOnly == serviceDineInOnly &&
-      other.source == source;
+      other.source == source &&
+      other.taxMode == taxMode &&
+      const ListEquality<TaxGroup>().equals(other.taxGroups, taxGroups) &&
+      const ListEquality<ServiceCharge>().equals(
+        other.serviceCharges,
+        serviceCharges,
+      );
 
   @override
-  int get hashCode => Object.hash(serviceBp, vatBp, serviceDineInOnly, source);
+  int get hashCode => Object.hash(
+    serviceBp,
+    vatBp,
+    serviceDineInOnly,
+    source,
+    taxMode,
+    Object.hashAll(taxGroups),
+    Object.hashAll(serviceCharges),
+  );
 }
 
 enum TaxSource {

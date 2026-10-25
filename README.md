@@ -335,8 +335,10 @@ itself and says which of DNS, TCP, auth, TLS or database-name failed, because
 sending an installer to open a firewall port when the password is wrong wastes a
 site visit.
 
-Database credentials are stored with `flutter_secure_storage` (Keychain on
-macOS and the platform credential store on Windows). Cloud-mode sales are
+Database credentials and the device token are stored in the OS store
+(DPAPI on Windows, the Keychain on macOS; `lib/data/config/secret_store.dart`).
+A `secrets.json` left by an older build is moved there and wiped at first
+launch. Cloud-mode sales are
 recorded in a transactional PostgreSQL outbox, but no drain exists until the
 platform order contract is finalized. A till still cannot sell while its own
 PostgreSQL source of truth is unreachable.

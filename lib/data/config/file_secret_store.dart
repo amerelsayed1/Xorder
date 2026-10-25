@@ -6,28 +6,29 @@ import 'package:path_provider/path_provider.dart';
 
 import 'pos_db_secret_store.dart';
 
-/// Machine-bound secrets in a file beside `config.json` — **not** in the OS
-/// keychain, by explicit decision (owner, 2026-09-04).
+/// `secrets.json`: every secret in **plaintext**, in a file beside
+/// `config.json`. Since ADR-006 this is the development store only, plus the
+/// format the legacy migration reads.
 ///
-/// The keychain binding this replaces produced the macOS *"XOrder POS wants to
-/// use your confidential information"* password prompt on launch — and on an
-/// unsigned or ad-hoc-signed build (which is every dev build, and every
-/// Developer ID install until notarised), each rebuild looks like a new app to
-/// the keychain, so the prompt returns forever. A till that asks the operator
-/// for the *machine's* login password at open is a support call every morning.
+/// **No Windows or macOS till writes this any more.** `SecretStore.forPlatform`
+/// gives those DPAPI and the Keychain, and hands this file (wrapped as
+/// `DevelopmentFileSecretStore`) only to Linux and test runs.
+/// `LegacySecretMigration` moves an older till's copy into the OS store at its
+/// first launch, then zeroes and deletes it.
 ///
-/// The honest threat model, stated rather than implied: on a single-user till,
-/// the login keychain is unlocked the moment the operator logs in, so a
-/// keychain item and a user-readable file resist the same attacker — someone
-/// at the till's own session reads both; someone without it reads neither.
-/// The protections that actually matter stay where they were: the `pos_till`
-/// database role holds `SELECT`/`INSERT` and nothing else, the device token
-/// dies with terminal revocation server-side, and neither secret opens the
-/// dashboard. The file is created `0600` where the platform honours it.
+/// Why it existed: on 2026-09-04 the owner moved secrets *out* of the
+/// keychain, because an ad-hoc-signed or unsigned build looks like a new app
+/// to the keychain after every rebuild, and the macOS *"XOrder POS wants to
+/// use your confidential information"* prompt came back every morning.
+/// ADR-006 reversed that. The file's protection was `chmod 600` on POSIX and
+/// nothing at all on Windows, so a copy of the profile folder was a copy of
+/// every password. The prompt's cost is recorded in
+/// `mac_keychain_secret_store.dart`.
 ///
 /// One file, many keys — the database password and the cloud device token are
 /// two entries in one JSON object, so a support engineer clearing "the
-/// credentials" clears one thing.
+/// credentials" clears one thing. The key names are kept as the names in the
+/// OS store too, which is what lets the migration move them one for one.
 class FileSecretStore implements PosDbSecretStore {
   FileSecretStore({required this.key, Future<Directory> Function()? directory})
     : _directory = directory ?? getApplicationSupportDirectory;
@@ -37,7 +38,7 @@ class FileSecretStore implements PosDbSecretStore {
 
   static const fileName = 'secrets.json';
 
-  /// The database password, as `KeychainPosDbSecretStore` used to hold it.
+  /// The till's database password (`pos_till`).
   static const databasePasswordKey = 'pos_till_database_password';
 
   /// The cloud device token (POS-BE-011 Option C).
@@ -45,16 +46,17 @@ class FileSecretStore implements PosDbSecretStore {
 
   /// The read-only backup account's password (`pos_backup`).
   ///
-  /// Kept here, beside the till's, because it can do no more than the till's
-  /// file already can: it reads every row and writes none.
+  /// Kept beside the till's because it reads every row and writes none. Every
+  /// row includes the `pos_staff` PIN hashes, which the till's own role can
+  /// also read (SECURITY_AND_RECOVERY §3).
   static const backupPasswordKey = 'pos_backup_database_password';
 
   /// The back office's database password (`pos_admin`).
   ///
-  /// **Unlike the two above, this one can do more than the till's file.** It
+  /// **Unlike the three above, this one can do more than the till's own.** It
   /// was never kept anywhere until Admin Mode became a username and a PIN
   /// (owner decision, 12 Sep 2026) — see `adminDbSecretStoreProvider` for what
-  /// keeping it here costs, and why that was accepted.
+  /// keeping it costs. Whether to keep it at all is open (Q17).
   static const adminPasswordKey = 'pos_admin_database_password';
 
   final Future<Directory> Function() _directory;

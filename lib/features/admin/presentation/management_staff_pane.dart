@@ -6,7 +6,9 @@ import '../../../core/config/deployment.dart';
 import '../../../core/l10n/app_strings.dart';
 import '../../../core/ui/theme.dart';
 import '../../../core/ui/tokens.dart';
+import '../../../core/ui/widgets/destructive_confirm_dialog.dart';
 import '../../../core/ui/widgets/pos_widgets.dart';
+import '../../../domain/models/reason_code.dart';
 import '../../../domain/models/permissions.dart';
 import '../../../domain/models/shift.dart';
 import '../../../domain/repositories/admin_repositories.dart';
@@ -82,6 +84,10 @@ class _ManagementStaffPaneState extends ConsumerState<ManagementStaffPane> {
     // hold the list of people — and every action on it — behind a spinner.
     // Until they arrive, or if they never do, they read "—".
     final activity = ref.watch(shiftActivityProvider).valueOrNull;
+    // Beside the directory for the same reason: who has an Admin Mode
+    // password is one button on some rows, and until it answers — or if it
+    // never does — the button is simply not offered.
+    final passwords = ref.watch(staffWithPasswordProvider).valueOrNull;
 
     return staff.when(
       loading: () => Center(
@@ -91,7 +97,13 @@ class _ManagementStaffPaneState extends ConsumerState<ManagementStaffPane> {
         ),
       ),
       error: (error, _) => _Centred(text: '$error'),
-      data: (people) => _body(context, people, roles.valueOrNull, activity),
+      data: (people) => _body(
+        context,
+        people,
+        roles.valueOrNull,
+        activity,
+        passwords ?? const {},
+      ),
     );
   }
 
@@ -100,6 +112,7 @@ class _ManagementStaffPaneState extends ConsumerState<ManagementStaffPane> {
     List<PosStaff> people,
     List<PosRole>? roles,
     ShiftActivity? activity,
+    Set<int> passwords,
   ) {
     // A role deleted while its filter was chosen: the dropdown already shows
     // "all roles" for a value it no longer offers, so the table must too, or
@@ -123,6 +136,7 @@ class _ManagementStaffPaneState extends ConsumerState<ManagementStaffPane> {
             roles: roles ?? const [],
             ownerTaken: ownerTaken,
             activity: activity,
+            hasPassword: passwords.contains(person.id),
             onAction: (action) => _act(context, ref, person, action),
           ),
       ],
@@ -329,6 +343,10 @@ class _ManagementStaffPaneState extends ConsumerState<ManagementStaffPane> {
         staffId: person.id,
         pin: pin,
       )).refusal,
+      _ClearPassword() => (await repository.clearPassword(
+        by: admin,
+        staffId: person.id,
+      )).refusal,
       _SetGrants(:final grants) => (await repository.setGrants(
         by: admin,
         staffId: person.id,
@@ -364,6 +382,7 @@ class _ManagementStaffPaneState extends ConsumerState<ManagementStaffPane> {
 
   void _report(BuildContext context, WidgetRef ref, AdminRefusal? refusal) {
     ref.invalidate(staffDirectoryProvider);
+    ref.invalidate(staffWithPasswordProvider);
     if (refusal == null) return;
 
     // A refusal is shown where the action was, not as a toast that has gone by
@@ -444,6 +463,13 @@ class _ResetPin extends _StaffAction {
   final String pin;
 }
 
+/// Their Admin Mode password taken away: next time they come in on their PIN
+/// and choose a new one. Never offered on the owner's row — see
+/// [OwnerPasswordIsTheirs].
+class _ClearPassword extends _StaffAction {
+  const _ClearPassword();
+}
+
 /// One person's line in the table.
 ///
 /// A [TableRow] rather than a widget of its own, so that every column — the
@@ -461,9 +487,14 @@ class _StaffRow {
     required this.admin,
     required this.ownerTaken,
     required this.activity,
+    required this.hasPassword,
   });
 
   final PosStaff staff;
+
+  /// Whether they have an Admin Mode password. Shown as a line under the
+  /// username, and the only rows that offer Clear password.
+  final bool hasPassword;
   final bool isSelf;
   final List<PosRole> roles;
   final ValueChanged<_StaffAction> onAction;
@@ -560,6 +591,14 @@ class _StaffRow {
                   style: PosText.ui(size: 12, color: pos.warn),
                 ),
               ],
+              if (hasPassword) ...[
+                const SizedBox(height: PosSpace.xs),
+                Text(
+                  strings.passwordSetLabel,
+                  key: Key('password-set-${staff.id}'),
+                  style: PosText.ui(size: 12, color: pos.muted),
+                ),
+              ],
             ],
           ),
         ),
@@ -639,6 +678,32 @@ class _StaffRow {
                   if (pin != null) onAction(_ResetPin(pin));
                 },
               ),
+              // Only where there is a password to clear, and never on the
+              // owner's row. Absent there rather than shut, unlike Reset
+              // PIN: a shut button reads as "not now", and for the owner it
+              // is "never from here" — the way that works is the technician
+              // reset on the Admin Mode door. Absent on rows with no
+              // password too, so a branch where nobody has set one yet sees
+              // the table it always did.
+              if (hasPassword && !_onOwnerRole) ...[
+                const SizedBox(width: PosSpace.sm),
+                PosButton(
+                  key: Key('clear-password-${staff.id}'),
+                  label: strings.clearPasswordAction,
+                  border: Border.fromBorderSide(pos.resting),
+                  onPressed: () async {
+                    final confirmed = await DestructiveConfirmDialog.show(
+                      context,
+                      title: strings.clearPasswordTitle(staff.name),
+                      confirmLabel: strings.clearPasswordAction,
+                      keepLabel: strings.keepPassword,
+                      consequences: [strings.clearPasswordConsequence],
+                      requirement: ReasonRequirement.disabled,
+                    );
+                    if (confirmed != null) onAction(const _ClearPassword());
+                  },
+                ),
+              ],
               const SizedBox(width: PosSpace.sm),
               PosButton(
                 label: staff.isActive ? strings.disable : strings.enable,

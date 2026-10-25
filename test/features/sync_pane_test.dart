@@ -11,6 +11,8 @@ import 'package:xorder_pos/data/cloud/cloud_sync.dart';
 import 'package:xorder_pos/data/cloud/outbox_drain.dart';
 import 'package:xorder_pos/data/fakes/fake_repositories.dart';
 import 'package:xorder_pos/domain/models/backup.dart';
+import 'package:xorder_pos/domain/models/held_sync.dart';
+import 'package:xorder_pos/domain/models/permissions.dart';
 import 'package:xorder_pos/domain/models/shift.dart';
 import 'package:xorder_pos/features/admin/application/back_office_home.dart';
 import 'package:xorder_pos/features/admin/presentation/management_sync_pane.dart';
@@ -38,6 +40,7 @@ Future<ProviderContainer> _pump(
   CloudSync? cloud,
   String language = 'en',
   List<Override> overrides = const [],
+  PosStaff admin = _owner,
 }) async {
   // The back office's narrowest: 1100 px across, pane and all.
   tester.view
@@ -76,7 +79,7 @@ Future<ProviderContainer> _pump(
         ],
         supportedLocales: AppLocalizations.supportedLocales,
         theme: buildPosTheme(),
-        home: const Scaffold(body: ManagementSyncPane(admin: _owner)),
+        home: Scaffold(body: ManagementSyncPane(admin: admin)),
       ),
     ),
   );
@@ -154,6 +157,171 @@ void main() {
         _in('sync-problem', find.text(s.terminalRejectedTitle)),
         findsOneWidget,
       );
+    });
+  });
+
+  group('held sync items (D1/D2/D13)', () {
+    // A sale the platform refused because the item was deleted there, and a
+    // refund the till would not send. One from each queue, with the same id,
+    // because the two tables number their rows independently.
+    final sale = HeldSyncItem(
+      id: 7,
+      kind: HeldSyncKind.sale,
+      code: QuarantineCode.menuItemNotFound,
+      rawCode: 'MENU_ITEM_NOT_FOUND',
+      lastError: '422 MENU_ITEM_NOT_FOUND Menu item 88 does not exist.',
+      reference: 'MAADI-000042',
+      quarantinedAt: DateTime(2026, 9, 9, 13, 5),
+      attempts: 1,
+    );
+    final refund = HeldSyncItem(
+      id: 7,
+      kind: HeldSyncKind.refund,
+      code: QuarantineCode.refundHasNoLines,
+      rawCode: 'REFUND_HAS_NO_LINES',
+      sourceId: 31,
+      quarantinedAt: DateTime(2026, 9, 9, 14),
+      attempts: 0,
+    );
+
+    const cashier = PosStaff(
+      id: 4,
+      name: 'Rana A.',
+      role: PosRole(
+        id: 9,
+        code: 'cashier',
+        nameEn: 'Cashier',
+        capabilities: {PosCapability.operate},
+      ),
+    );
+
+    testWidgets('are counted apart from the unsent, and named as the problem '
+        'without a pass having run', (tester) async {
+      final queue = FakeSyncQueueRepository([sale, refund]);
+      await _pump(
+        tester,
+        cloud: _Sync(),
+        overrides: [syncQueueRepositoryProvider.overrideWithValue(queue)],
+      );
+
+      // Three unsent, two held — never five unsent.
+      expect(_in('sync-unsent', find.text('3')), findsOneWidget);
+      expect(_in('sync-held', find.text('2')), findsOneWidget);
+      // Read from the queue, so a restart does not forget them (D8).
+      expect(_in('sync-problem', find.text(s.syncHeld(2))), findsOneWidget);
+    });
+
+    testWidgets('each says what it is, why in words, and what the platform '
+        'said', (tester) async {
+      final queue = FakeSyncQueueRepository([sale, refund]);
+      await _pump(
+        tester,
+        cloud: _Sync(),
+        overrides: [syncQueueRepositoryProvider.overrideWithValue(queue)],
+      );
+
+      final saleRow = find.byKey(const Key('held-sale-7'));
+      expect(
+        find.descendant(of: saleRow, matching: find.text(s.heldKindSale)),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: saleRow, matching: find.text('MAADI-000042')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: saleRow,
+          matching: find.text(s.quarantineMenuItemNotFound),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: saleRow,
+          matching: find.text(
+            '422 MENU_ITEM_NOT_FOUND Menu item 88 does not exist.',
+          ),
+        ),
+        findsOneWidget,
+      );
+
+      final refundRow = find.byKey(const Key('held-event-7'));
+      expect(
+        find.descendant(
+          of: refundRow,
+          matching: find.text(s.quarantineRefundHasNoLines),
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('Retry puts that one record back and runs the drain', (
+      tester,
+    ) async {
+      final cloud = _Sync();
+      when(cloud.kick).thenReturn(null);
+      final queue = FakeSyncQueueRepository([sale, refund]);
+      await _pump(
+        tester,
+        cloud: cloud,
+        overrides: [syncQueueRepositoryProvider.overrideWithValue(queue)],
+      );
+
+      await tester.tap(find.byKey(const Key('held-retry-sale-7')));
+      await tester.pumpAndSettle();
+
+      // The sale, not the refund that shares its id.
+      expect(queue.released.single.kind, HeldSyncKind.sale);
+      expect(queue.held.single.kind, HeldSyncKind.refund);
+      verify(cloud.kick).called(1);
+      expect(find.byKey(const Key('held-sale-7')), findsNothing);
+      expect(find.byKey(const Key('held-event-7')), findsOneWidget);
+    });
+
+    testWidgets('somebody who may not manage the terminal sees them and '
+        'cannot retry', (tester) async {
+      final cloud = _Sync();
+      final queue = FakeSyncQueueRepository([sale]);
+      await _pump(
+        tester,
+        cloud: cloud,
+        admin: cashier,
+        overrides: [syncQueueRepositoryProvider.overrideWithValue(queue)],
+      );
+
+      expect(find.byKey(const Key('held-sale-7')), findsOneWidget);
+      expect(find.text(s.heldSyncNotYours), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('held-retry-sale-7')));
+      await tester.pumpAndSettle();
+
+      expect(queue.released, isEmpty);
+      verifyNever(cloud.kick);
+    });
+
+    testWidgets('nothing held says so', (tester) async {
+      await _pump(tester, cloud: _Sync());
+      expect(find.byKey(const Key('held-sync-none')), findsOneWidget);
+      expect(_in('sync-held', find.text('0')), findsOneWidget);
+    });
+
+    testWidgets('in Arabic: the reason in Arabic, the codes left to right', (
+      tester,
+    ) async {
+      final queue = FakeSyncQueueRepository([sale]);
+      await _pump(
+        tester,
+        cloud: _Sync(),
+        language: 'ar',
+        overrides: [syncQueueRepositoryProvider.overrideWithValue(queue)],
+      );
+
+      expect(find.text(ar.quarantineMenuItemNotFound), findsOneWidget);
+      expect(find.text(ar.heldSyncRetry), findsOneWidget);
+      final reference = tester.widget<Text>(find.text('MAADI-000042'));
+      expect(reference.textDirection, TextDirection.ltr);
+      expect(tester.takeException(), isNull);
     });
   });
 
@@ -252,6 +420,18 @@ void main() {
           countUnreadable: true,
         ),
         SyncProblem.terminalRejected,
+      );
+    });
+
+    test('held records are named from the queue, not only by a pass', () {
+      expect(
+        syncProblemOf(
+          terminalRejected: false,
+          online: true,
+          countUnreadable: false,
+          heldCount: 1,
+        ),
+        SyncProblem.held,
       );
     });
 

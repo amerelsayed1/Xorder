@@ -139,7 +139,8 @@ void main() {
     for (final (failure, sentence) in [
       (PosDbFailure.tcp, en.dbUnavailableUnreachable),
       (PosDbFailure.dns, en.dbUnavailableUnreachable),
-      (PosDbFailure.tls, en.dbUnavailableUnreachable),
+      // Its own sentence since slice C: a refused certificate is not a cable.
+      (PosDbFailure.tls, en.dbUnavailableSecureConnection),
       (PosDbFailure.auth, en.dbUnavailableSignIn),
       (PosDbFailure.missingRole, en.dbUnavailableSignIn),
       (PosDbFailure.permissionDenied, en.dbUnavailableSignIn),
@@ -167,6 +168,7 @@ void main() {
       (en.dbUnavailableTitle, ar.dbUnavailableTitle),
       (en.dbUnavailableMissing('x'), ar.dbUnavailableMissing('x')),
       (en.dbUnavailableUnreachable, ar.dbUnavailableUnreachable),
+      (en.dbUnavailableSecureConnection, ar.dbUnavailableSecureConnection),
       (en.dbUnavailableSignIn, ar.dbUnavailableSignIn),
       (en.dbUnavailableGeneric, ar.dbUnavailableGeneric),
       (en.dbUnavailableDetails, ar.dbUnavailableDetails),

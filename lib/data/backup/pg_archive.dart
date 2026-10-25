@@ -37,6 +37,7 @@ class BackupConnection {
     required this.user,
     required this.verifyTls,
     this.password,
+    this.pinnedCertificatePem,
   });
 
   /// The host, port and database the till itself connects to, as [user] —
@@ -50,13 +51,15 @@ class BackupConnection {
   }) {
     final host = PosDatabase.hostFor(config);
     if (host == null) return null;
+    final tls = config.lanTls;
     return BackupConnection(
       host: host,
       port: config.databasePort,
       database: config.databaseName,
       user: user,
       password: password,
-      verifyTls: !config.allowsInsecureTransport,
+      verifyTls: tls.transport.encrypted,
+      pinnedCertificatePem: tls.pin?.pem,
     );
   }
 
@@ -75,15 +78,32 @@ class BackupConnection {
   /// verified its certificate would undo it.
   final bool verifyTls;
 
+  /// The one certificate a paired till trusts — the same anchor `PosDatabase`
+  /// gives the driver. Null on a till with no pin, which verifies against
+  /// whatever libpq trusts by default.
+  ///
+  /// Without it libpq's `verify-full` looks for `~/.postgresql/root.crt`,
+  /// finds nothing on a till, and refuses: every backup on a paired LAN till
+  /// failed while the till itself connected fine. Falling back to `require`
+  /// would have made them work by trusting any certificate on the switch —
+  /// the exact hole pinning closes — so [PgArchive] writes this to a file for
+  /// the length of one run instead.
+  final String? pinnedCertificatePem;
+
   /// What the tools read their credentials and encryption from.
+  Map<String, String> get environment => environmentWith();
+
+  /// [environment], plus `PGSSLROOTCERT` when [rootCertificate] is the path
+  /// [PgArchive] wrote [pinnedCertificatePem] to.
   ///
   /// **The password never goes on the command line**, where every process on
   /// the machine can read it from the process table. And only when there is
   /// one: an empty `PGPASSWORD` is not "no password", it is a wrong one.
-  Map<String, String> get environment => {
+  Map<String, String> environmentWith({String? rootCertificate}) => {
     if (password case final secret? when secret.isNotEmpty)
       'PGPASSWORD': secret,
     'PGSSLMODE': verifyTls ? 'verify-full' : 'disable',
+    if (verifyTls && rootCertificate != null) 'PGSSLROOTCERT': rootCertificate,
     // A server that is not there fails in ten seconds, not in the operating
     // system's two minutes with the day-close dialog frozen in front of it.
     'PGCONNECT_TIMEOUT': '10',
@@ -160,14 +180,18 @@ class PgArchive {
   }) async {
     final part = File('${to.path}.part');
     try {
-      final dumped = await _start(ArchiveFailureKind.dumpFailed, tools.pgDump, [
-        '--format=custom',
-        '--file',
-        part.path,
-        ...from.arguments,
-        '--dbname',
-        from.database,
-      ], environment: from.environment);
+      final dumped = await _trusting(
+        ArchiveFailureKind.dumpFailed,
+        from,
+        (environment) => _start(ArchiveFailureKind.dumpFailed, tools.pgDump, [
+          '--format=custom',
+          '--file',
+          part.path,
+          ...from.arguments,
+          '--dbname',
+          from.database,
+        ], environment: environment),
+      );
       if (dumped.exitCode != 0) {
         throw ArchiveFailure(ArchiveFailureKind.dumpFailed, _tail(dumped.stderr));
       }
@@ -234,20 +258,24 @@ class PgArchive {
   }) async {
     await readBack(from);
 
-    final restored = await _start(
+    final restored = await _trusting(
       ArchiveFailureKind.restoreFailed,
-      tools.pgRestore,
-      [
-        '--clean',
-        '--if-exists',
-        '--no-owner',
-        '--single-transaction',
-        ...into.arguments,
-        '--dbname',
-        into.database,
-        from.path,
-      ],
-      environment: into.environment,
+      into,
+      (environment) => _start(
+        ArchiveFailureKind.restoreFailed,
+        tools.pgRestore,
+        [
+          '--clean',
+          '--if-exists',
+          '--no-owner',
+          '--single-transaction',
+          ...into.arguments,
+          '--dbname',
+          into.database,
+          from.path,
+        ],
+        environment: environment,
+      ),
     );
     if (restored.exitCode != 0) {
       throw ArchiveFailure(
@@ -284,6 +312,57 @@ class PgArchive {
       old.deleteSync();
     }
     return gone;
+  }
+
+  /// Runs [body] with [connection]'s environment, and — on a paired till —
+  /// its pinned certificate in a file libpq can be pointed at.
+  ///
+  /// **A fresh folder per run, gone when the run is.** `createTemp` makes it
+  /// owner-only on macOS (mkdtemp, 0700) and under the signed-in user's own
+  /// profile on Windows. The certificate is public; what the folder protects
+  /// is the *file*, because whoever can replace a trust anchor between our
+  /// write and libpq's read chooses which server the backup is sent to. A
+  /// fixed path beside `config.json` would be one more thing to keep
+  /// writable by the till and nobody else, for ever.
+  Future<ProcessResult> _trusting(
+    ArchiveFailureKind kind,
+    BackupConnection connection,
+    Future<ProcessResult> Function(Map<String, String> environment) body,
+  ) async {
+    final pem = connection.pinnedCertificatePem?.trim() ?? '';
+    if (!connection.verifyTls || pem.isEmpty) {
+      return body(connection.environment);
+    }
+    final Directory folder;
+    try {
+      folder = await Directory.systemTemp.createTemp('xorder-pos-tls-');
+    } on FileSystemException catch (error) {
+      throw ArchiveFailure(
+        kind,
+        'the paired certificate could not be written: ${error.message}',
+      );
+    }
+    final anchor = File('${folder.path}${Platform.pathSeparator}root.crt');
+    try {
+      try {
+        await anchor.writeAsString('$pem\n', flush: true);
+      } on FileSystemException catch (error) {
+        throw ArchiveFailure(
+          kind,
+          'the paired certificate could not be written: ${error.message}',
+        );
+      }
+      return await body(
+        connection.environmentWith(rootCertificate: anchor.path),
+      );
+    } finally {
+      try {
+        await folder.delete(recursive: true);
+      } on FileSystemException {
+        // A public certificate left in the user's temp folder is untidy, not
+        // a leak; failing a backup that succeeded over it would be worse.
+      }
+    }
   }
 
   Future<ProcessResult> _start(

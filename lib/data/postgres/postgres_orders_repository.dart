@@ -370,17 +370,23 @@ class PostgresOrdersRepository implements OrdersRepository {
   Future<int> pendingSyncCount() async {
     if (!_config.mode.syncsSalesToPlatform) return 0;
 
+    // Held rows are left out, on purpose: the drain will not touch them until
+    // a person releases one, so counting them here put a number on the sync
+    // pill that no pass could ever bring down (D8). They are counted apart, by
+    // `SyncQueueRepository.heldSyncCount`. The predicate is the drain's own —
+    // the one `pos_sync_outbox_pending_idx` is built on — so "pending" means
+    // "the next pass will try it".
     final rows = await _db.query(
       _config,
       '''
       SELECT (
         (SELECT count(*) FROM pos_outbox
           WHERE restaurant_id = @restaurant AND branch_id = @branch
-            AND delivered_at IS NULL)
+            AND delivered_at IS NULL AND quarantined_at IS NULL)
         +
         (SELECT count(*) FROM pos_sync_outbox
           WHERE restaurant_id = @restaurant AND branch_id = @branch
-            AND delivered_at IS NULL)
+            AND delivered_at IS NULL AND quarantined_at IS NULL)
       )::bigint
       ''',
       parameters: {

@@ -4488,6 +4488,68 @@ const posMigrations = <PosMigration>[
        AND NOT (capabilities @> ARRAY['customers.create']::text[])
     ''',
   ]),
+  PosMigration(54, 'a terminal is the machine, registered once', [
+    // The hand-registration path inserted a row with a fresh id on every call,
+    // so a wizard that was retried, killed or reset spent one `max_terminals`
+    // seat per attempt — and a child's seat check counts these rows. The id
+    // each installation already mints once (`TerminalProfile.installationId`,
+    // the one the licence fingerprint hashes) is now kept on its row, and is
+    // unique per restaurant, so `registerManually` can upsert on it.
+    //
+    // Nullable, and the index partial, so every row already written stays
+    // valid untouched. A till registered before this has no id here, so if it
+    // registers again it gets a keyed row beside its old one — one duplicate,
+    // once, and never another. Not backfilled by matching names: two tills on
+    // a branch may share one, and guessing would hand one machine another's
+    // terminal id and put two tills' sales under one name.
+    //
+    // No grant: the till already holds table-wide SELECT, INSERT and UPDATE on
+    // `pos_terminals`, which covers a new column and the ON CONFLICT upsert.
+    'ALTER TABLE pos_terminals ADD COLUMN IF NOT EXISTS install_id text',
+    'CREATE UNIQUE INDEX IF NOT EXISTS pos_terminals_install_id_unique '
+        'ON pos_terminals (restaurant_id, install_id) '
+        'WHERE install_id IS NOT NULL',
+  ]),
+  PosMigration(55, 'admin mode asks for a password', [
+    // ADR-006b slice D, as the owner narrowed it: a password for Admin Mode
+    // only. Cashiers keep their PIN at every other door, so `pin_salt` and
+    // `pin_hash` are not touched — four writers fill them, and POS-BE-024
+    // owns what they mean on a cloud till.
+    //
+    // A new column, nullable: NULL is "has not set one yet", which is every
+    // row on the day this runs. That person opens Admin Mode with their PIN
+    // once and is made to choose a password before it opens. One text column
+    // in the format `PasswordHash` writes — scheme, iterations, salt, key —
+    // so the work factor can be raised later without a second migration.
+    //
+    // No grant. The till already holds table-wide SELECT on `pos_staff`,
+    // which is what the Dart-side check reads the hash with until slice E
+    // moves it behind a function; the administrator holds table-wide
+    // SELECT, INSERT, UPDATE, which is what Management writes it with. The
+    // offline till's REVOKE of INSERT/UPDATE on `pos_staff` covers the new
+    // columns too, so a stolen till credential cannot set anybody's password.
+    'ALTER TABLE pos_staff ADD COLUMN IF NOT EXISTS password_hash text',
+    'ALTER TABLE pos_staff ADD COLUMN IF NOT EXISTS password_set_at timestamptz',
+    // The shape, held where every writer meets it. Without this the column
+    // takes anything — a plaintext typed at a psql prompt by somebody trying
+    // to help, which the till would then refuse to match and nobody would
+    // know why. The iteration floor is the same: a row hashed with ten
+    // rounds is a password in all but name. The regex bounds the count to
+    // nine digits before the cast, so the cast cannot overflow, and CASE is
+    // what makes the order certain — AND does not promise to short-circuit.
+    'ALTER TABLE pos_staff DROP CONSTRAINT IF EXISTS pos_staff_password_hash_shape',
+    r"ALTER TABLE pos_staff ADD CONSTRAINT pos_staff_password_hash_shape CHECK ("
+        r"password_hash IS NULL OR CASE "
+        r"WHEN password_hash ~ '^pbkdf2-sha256\$[0-9]{1,9}\$[A-Za-z0-9+/]+={0,2}\$[A-Za-z0-9+/]+={0,2}$' "
+        r"THEN split_part(password_hash, '$', 2)::integer >= 600000 "
+        r"ELSE false END)",
+    // A hash and the moment it was set travel together: clearing one and not
+    // the other would leave the staff pane saying "set on 3 May" about a
+    // password that is not there.
+    'ALTER TABLE pos_staff DROP CONSTRAINT IF EXISTS pos_staff_password_set_together',
+    'ALTER TABLE pos_staff ADD CONSTRAINT pos_staff_password_set_together '
+        'CHECK ((password_hash IS NULL) = (password_set_at IS NULL))',
+  ]),
 ];
 
 /// Brings the branch database up to the current schema.

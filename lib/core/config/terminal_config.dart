@@ -141,14 +141,19 @@ class SavedTerminalConfig {
   /// [brightness] and [lastUsername] take a sentinel rather than a plain
   /// null, because null is a value each field holds ("follow the machine",
   /// "nobody yet") and not only the absence of an argument.
+  ///
+  /// [deployment] is the one exception to "the wizard's to write": a
+  /// technician changing this till's LAN encryption in Management › Devices
+  /// rewrites only its transport fields, through here.
   SavedTerminalConfig copyWith({
     String? languageCode,
     Object? brightness = _unset,
     PrinterConfig? printer,
     AdminModeSettings? adminMode,
     Object? lastUsername = _unset,
+    DeploymentConfig? deployment,
   }) => SavedTerminalConfig(
-    deployment: deployment,
+    deployment: deployment ?? this.deployment,
     terminal: terminal,
     languageCode: languageCode ?? this.languageCode,
     printer: printer ?? this.printer,

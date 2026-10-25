@@ -4,6 +4,8 @@ import 'package:xorder_pos/app/providers.dart';
 import 'package:xorder_pos/core/money/money.dart';
 import 'package:xorder_pos/domain/models/catalog.dart';
 import 'package:xorder_pos/domain/models/dining_table.dart';
+import 'package:xorder_pos/domain/models/service_charge.dart';
+import 'package:xorder_pos/domain/models/tax.dart';
 import 'package:xorder_pos/domain/models/ticket.dart';
 
 import '../support/fakes.dart';
@@ -49,5 +51,27 @@ void main() {
     expect(const TaxConfig(vatBp: 1400), isNot(const TaxConfig(vatBp: 1500)));
     expect(const TaxConfig(source: TaxSource.server),
         isNot(const TaxConfig(source: TaxSource.deviceConfig)));
+  });
+
+  test('TaxConfig sees a change of mode, groups or charges (R-SALE-2)', () {
+    // It used to compare the four scalars only, so the controller's
+    // `previous == next` guard read each of these as "nothing changed" and
+    // the live ticket kept pricing under the old rules.
+    const zero = TaxGroup(id: 2, nameEn: 'Zero-rated', rateBp: 0);
+    const fee = ServiceCharge(id: 6, nameEn: 'Delivery', fixedMinor: 2500);
+
+    expect(const TaxConfig(taxMode: TaxMode.inclusive),
+        isNot(const TaxConfig()));
+    expect(const TaxConfig().withTaxGroups(const [zero]),
+        isNot(const TaxConfig()));
+    expect(const TaxConfig().withServiceCharges(const [fee]),
+        isNot(const TaxConfig()));
+
+    // Fresh lists with the same contents are the same config, or every sync
+    // pass would rewrite the ticket.
+    final a = const TaxConfig().withTaxGroups([zero]).withServiceCharges([fee]);
+    final b = const TaxConfig().withTaxGroups([zero]).withServiceCharges([fee]);
+    expect(a, b);
+    expect(a.hashCode, b.hashCode);
   });
 }

@@ -228,6 +228,7 @@ class PostgresProvisioningRepository implements ProvisioningRepository {
     required String password,
     required String terminalName,
     required int branchId,
+    required String? installId,
   }) async {
     final tenant = await _tenantFor(tenantSlug);
     if (tenant == null) return _unknownTenant(tenantSlug);
@@ -271,18 +272,46 @@ class PostgresProvisioningRepository implements ProvisioningRepository {
       );
     }
 
-    final terminalId = _uuid.v4();
-    await _db.query(
+    // An upsert on the machine, not an insert per call. This used to mint a
+    // fresh id every time, so a wizard retried, killed and re-run, or run again
+    // after a reset left one row per attempt — and a child's seat check counts
+    // those rows against `max_terminals`, so a restaurant could run out of
+    // terminals it never had. Keyed on the installation id (migration 54) and
+    // scoped to the restaurant, so the same machine moved to another tenant is
+    // a new terminal there. The fresh uuid is only used when no row matches:
+    // RETURNING hands back the id the machine registered with the first time,
+    // which is the id its orders and shifts already carry.
+    //
+    // A null install id never matches the partial index, so a caller without
+    // one gets the old fresh-row behaviour. Legacy rows (install_id NULL) are
+    // never adopted by name: two tills on one branch may share a name, and
+    // handing a new machine an existing till's id would put two machines'
+    // sales under one terminal — worse than the one duplicate row it saves.
+    //
+    // Runs on the till credential: `pos_till` holds table-wide SELECT, INSERT
+    // and UPDATE on `pos_terminals` (`LocalBootstrap.tillGrants`), which is
+    // what ON CONFLICT DO UPDATE needs.
+    final rows = await _db.query(
       _config,
-      'INSERT INTO pos_terminals (id, restaurant_id, branch_id, name, claimed_at) '
-      'VALUES (@id, @restaurant, @branch, @name, now())',
+      'INSERT INTO pos_terminals '
+      '(id, restaurant_id, branch_id, name, install_id, claimed_at) '
+      'VALUES (@id, @restaurant, @branch, @name, @install, now()) '
+      'ON CONFLICT (restaurant_id, install_id) WHERE install_id IS NOT NULL '
+      'DO UPDATE SET name = EXCLUDED.name, branch_id = EXCLUDED.branch_id, '
+      'claimed_at = now() '
+      'RETURNING id',
       parameters: {
-        'id': terminalId,
+        'id': _uuid.v4(),
         'restaurant': tenant.id,
         'branch': branchId,
         'name': terminalName.trim(),
+        'install': switch (installId?.trim()) {
+          final id? when id.isNotEmpty => id,
+          _ => null,
+        },
       },
     );
+    final terminalId = rows.first[0].toString();
 
     return ClaimResult(
       claim: TerminalClaim(
@@ -422,6 +451,73 @@ class PostgresSessionRepository implements SessionRepository {
     return wanted.isEmpty
         ? Future<PosStaff?>.value()
         : _match(pin: pin, username: wanted);
+  }
+
+  /// Admin Mode's password, checked here in Dart (slice E moves it into the
+  /// database). Narrowed by name in SQL, unlike the PIN walk: a password is
+  /// never "whoever holds it", so there is no list to keep the timing flat
+  /// across — only the three ways of being refused to keep alike.
+  ///
+  /// **Every refusal costs one full derivation.** A username that names
+  /// nobody, and a person with no password yet, are verified against
+  /// [PasswordHash.unmatchable] so they take the 600 000 iterations a wrong
+  /// password takes. Answering those two at once would make the door a
+  /// stopwatch for who has an account.
+  @override
+  Future<PosStaff?> signInWithPassword({
+    required String username,
+    required String password,
+  }) async {
+    final wanted = username.trim().toLowerCase();
+    if (wanted.isEmpty || password.isEmpty) return null;
+
+    final List<List<Object?>> rows;
+    try {
+      rows = await _db.query(
+        _config,
+        'SELECT s.id, s.name, s.username, s.capabilities, s.is_active, '
+        '       $joinedRoleColumns, s.password_hash '
+        'FROM pos_staff s LEFT JOIN pos_roles r ON r.id = s.role_id '
+        'WHERE s.restaurant_id = @restaurant AND s.is_active '
+        '  AND (s.branch_id IS NULL OR s.branch_id = @branch) '
+        '  AND lower(trim(s.username)) = @username '
+        'ORDER BY s.id',
+        parameters: {
+          'restaurant': _restaurantId,
+          'branch': _branchId,
+          'username': wanted,
+        },
+      );
+    } on PosDbException catch (error) {
+      // A database migration 55 has not reached: there is no column, so
+      // there are no passwords, and the door falls to the PIN.
+      if (isUndefinedColumn(error)) return null;
+      rethrow;
+    }
+
+    if (rows.isEmpty) {
+      await PasswordHash.verify(password, PasswordHash.unmatchable);
+      return null;
+    }
+
+    PosStaff? matched;
+    for (final row in rows) {
+      final ok = await PasswordHash.verify(
+        password,
+        (row[11] as String?) ?? PasswordHash.unmatchable,
+      );
+      if (ok && matched == null) {
+        matched = PosStaff(
+          id: row[0] as int,
+          name: row[1] as String,
+          username: row[2] as String?,
+          capabilities: PosCapability.canonicalAll(_textArray(row[3])),
+          isActive: row[4] as bool,
+          role: optionalRoleFromRow(row, 5),
+        );
+      }
+    }
+    return matched == null ? null : _withGrants(matched);
   }
 
   /// [username] narrows the match; null accepts whoever holds the PIN.

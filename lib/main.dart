@@ -10,6 +10,8 @@ import 'core/config/terminal_config.dart';
 import 'data/cloud/device_token_vault.dart';
 import 'data/config/file_secret_store.dart';
 import 'data/config/installed_role.dart';
+import 'data/config/legacy_secret_migration.dart';
+import 'data/config/secret_store.dart';
 import 'data/config/terminal_config_store.dart';
 import 'data/postgres/pos_database.dart';
 
@@ -38,16 +40,27 @@ Future<void> main() async {
   final configStore = FileTerminalConfigStore();
   final saved = await configStore.read();
 
+  // DPAPI on Windows, the Keychain on macOS (ADR-006); plaintext only on a
+  // development machine. One instance for the whole process.
+  final secrets = SecretStore.forPlatform();
+
+  // An older build's `secrets.json`, moved into that store once and wiped.
+  // Before the first read, so the reads below find the migrated values. It
+  // never throws: a failure leaves the file exactly as it was, and the next
+  // launch tries again.
+  final migration = await LegacySecretMigration(target: secrets).run();
+  _reportMigration(migration);
+
   final credentials = MutablePosDbCredentials(
-    store: FileSecretStore(key: FileSecretStore.databasePasswordKey),
+    store: KeyedSecretStore(secrets, FileSecretStore.databasePasswordKey),
   );
   await credentials.restore();
 
-  // The cloud device token (POS-BE-011 Option C) lives in the same secrets
-  // file under its own key, and is restored the same way: once, before the
-  // first frame, so the sync loop finds it synchronously.
+  // The cloud device token (POS-BE-011 Option C) lives in the same store
+  // under its own key, and is restored the same way: once, before the first
+  // frame, so the sync loop finds it synchronously.
   final deviceTokens = DeviceTokenVault(
-    store: FileSecretStore(key: FileSecretStore.deviceTokenKey),
+    store: KeyedSecretStore(secrets, FileSecretStore.deviceTokenKey),
   );
   await deviceTokens.restore();
 
@@ -66,13 +79,17 @@ Future<void> main() async {
             config: saved,
             hasDatabaseCredential: credentials.isSet,
             // Asked after `restore()`, because that read is what makes a broken
-            // keystore visible at all.
-            credentialStoreUnavailable: credentials.storeUnavailable,
+            // keystore visible at all. A migration the store refused counts
+            // too: the passwords it could not take are not where the till
+            // will look for them.
+            credentialStoreUnavailable:
+                credentials.storeUnavailable || migration.storeRefused,
           ),
         ),
         terminalConfigStoreProvider.overrideWithValue(configStore),
         posDbCredentialsStoreProvider.overrideWithValue(credentials),
         deviceTokenVaultProvider.overrideWithValue(deviceTokens),
+        secretStoreProvider.overrideWithValue(secrets),
       ],
       child: const XorderPosApp(),
     ),
@@ -81,3 +98,36 @@ Future<void> main() async {
 
 bool get _isDesktop =>
     Platform.isWindows || Platform.isMacOS || Platform.isLinux;
+
+/// One line per migration outcome that a technician might need, and none for
+/// the ordinary boot. Key names only, never values.
+///
+/// **Exception types only, never `'$cause'`.** An unreadable `secrets.json`
+/// fails as a `FormatException`, whose text quotes the file — and this line
+/// lands in a log that gets attached to support tickets. The type says which
+/// of the failures it was; the file itself is still there for a technician.
+void _reportMigration(LegacySecretMigrationResult result) {
+  switch (result) {
+    case LegacySecretsNotApplicable() || NoLegacySecrets():
+      return;
+    case LegacySecretsMigrated(:final keys):
+      debugPrint('secrets: moved ${keys.join(', ')} into the OS store');
+    case LegacySecretsNotWiped(:final keys, :final cause):
+      debugPrint(
+        'secrets: moved ${keys.join(', ')} into the OS store, but '
+        'secrets.json could not be wiped (${cause.runtimeType}); retrying '
+        'next launch',
+      );
+    case LegacySecretsUnreadable(:final cause):
+      debugPrint(
+        'secrets: secrets.json left untouched, unreadable '
+        '(${cause.runtimeType})',
+      );
+    case LegacySecretsNotMigrated(:final cause, :final restoredAfterwards):
+      debugPrint(
+        'secrets: secrets.json left untouched, ${cause.store} refused to '
+        '${cause.operation} (${cause.cause.runtimeType})'
+        '${restoredAfterwards ? '' : ' (and refused the roll-back)'}',
+      );
+  }
+}

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/providers.dart';
 import '../../../core/l10n/app_strings.dart';
+import '../../../core/security/attempt_limiter.dart';
 import '../../../core/ui/theme.dart';
 import '../../../core/ui/tokens.dart';
 import '../../../core/ui/widgets/pos_widgets.dart';
@@ -66,7 +67,12 @@ Future<bool> showForceResetDialog(BuildContext context, WidgetRef ref) async {
 
   var queued = 0;
   try {
-    queued = await ref.read(ordersRepositoryProvider).pendingSyncCount();
+    // Pending AND held. The pending count leaves out what the drain has held
+    // for a person, because no pass will send it — but this question is what
+    // a reset leaves behind unsent, and a held sale is exactly that.
+    queued =
+        await ref.read(ordersRepositoryProvider).pendingSyncCount() +
+        await ref.read(syncQueueRepositoryProvider).heldSyncCount();
   } on Exception {
     queued = 0;
   }
@@ -129,6 +135,19 @@ class _ForceResetSignInState extends ConsumerState<_ForceResetSignIn> {
     final strings = context.strings;
     // Before the await, for the reason [checkStaffPin] takes a repository.
     final sessions = ref.read(sessionRepositoryProvider);
+    // The lock screen's limiter, not a count of this door's own: a separate
+    // one would be five more guesses per lockout window for anybody who knew
+    // the shortcut. Asked before the PIN is looked at, as there.
+    final limiter = ref.read(signInLimiterProvider);
+    if (limiter.lockedFor(username) case final wait?) {
+      _pin.clear();
+      setState(
+        () => _error = strings.signInLockedOut(
+          AttemptLimiter.secondsToWait(wait),
+        ),
+      );
+      return;
+    }
     setState(() {
       _busy = true;
       _error = null;
@@ -143,13 +162,26 @@ class _ForceResetSignInState extends ConsumerState<_ForceResetSignIn> {
     if (!mounted) return;
 
     switch (check) {
-      case StaffVerified() || StaffUnreachable():
+      case StaffVerified():
+        limiter.succeed(username);
+        Navigator.of(context).pop(true);
+      case StaffUnreachable():
+        // Nothing was checked, so nothing is counted. See the class comment.
         Navigator.of(context).pop(true);
       case StaffRefused():
+        // Every refusal counts — unknown name, wrong PIN, and the right PIN
+        // from somebody without `terminal.manage` alike. Sparing the last
+        // would make the count itself say which PIN was right.
+        final failure = limiter.fail(username);
         _pin.clear();
         setState(() {
           _busy = false;
-          _error = strings.forceResetSignInRefused;
+          _error = switch (failure) {
+            AttemptRefused() => strings.forceResetSignInRefused,
+            AttemptLockedOut(:final wait) => strings.signInLockedOut(
+              AttemptLimiter.secondsToWait(wait),
+            ),
+          };
         });
     }
   }

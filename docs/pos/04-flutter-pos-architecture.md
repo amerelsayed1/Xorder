@@ -132,7 +132,7 @@ A feature never imports another feature's `data/` or `presentation/` — only it
 | Routing | `go_router` | Declarative redirects express the real guard chain: not set up → setup; not authed → login; no open shift → shift screen. |
 | HTTP | `dio` | Interceptors for auth, `X-Locale`, `X-POS-Terminal`, `Idempotency-Key`, and typed error mapping. |
 | Local DB | `sqflite_common_ffi` + `sqlite3_flutter_libs` | Real SQLite on Windows and macOS, hand-written schema + migrations, no codegen. |
-| Secrets | `flutter_secure_storage` | Keychain on macOS, DPAPI-backed on Windows. Token only. |
+| Secrets | `win32`/`ffi` (no plugin) | DPAPI on Windows, Keychain (Security.framework via `dart:ffi`) on macOS — `lib/data/config/secret_store.dart`. `flutter_secure_storage` was never adopted. |
 | Paths | `path_provider`, `path` | DB and log locations. |
 | Window | `window_manager` | Minimum size, restore geometry, title. |
 | Ids | `uuid` | `clientTransactionId`, `terminalId`. |

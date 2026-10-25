@@ -7,6 +7,7 @@ import 'package:uuid/uuid.dart';
 import '../../../app/labels.dart';
 import '../../../app/providers.dart';
 import '../../../core/config/deployment.dart';
+import '../../../core/config/lan_tls.dart';
 import '../../../core/config/platform_endpoint.dart';
 import '../../../core/config/printer_config.dart';
 import '../../../core/config/terminal_config.dart';
@@ -96,8 +97,9 @@ class SetupController extends Notifier<SetupDraft> {
       // A claim made on an earlier run is still made — the code is spent and
       // the platform holds the terminal. Reading it back is what stops a
       // restart mid-setup from asking for a pairing code that cannot be
-      // redeemed twice. A child never claims, so it has nothing to resume.
-      if (!child) Future.microtask(_restoreProgress);
+      // redeemed twice. A child is included now: it never claims, but it does
+      // register, and a registration spends a seat the same way.
+      Future.microtask(_restoreProgress);
 
       return SetupDraft(
         step: child ? SetupStep.deployment : SetupStep.licence,
@@ -217,6 +219,12 @@ class SetupController extends Notifier<SetupDraft> {
   /// Every step of that is an upsert, so a database half-built before the
   /// restart costs nothing to finish.
   ///
+  /// An offline or child till resumes from its registration the same way,
+  /// but on the deployment screen: the database passwords are typed there and
+  /// are in no file. A record written before a registration that never came
+  /// back gives up its installation id and nothing else — see
+  /// [SetupProgress.claimed].
+  ///
   /// Only ever fills a gap, like [_restoreInstalledLicence]: a wizard the
   /// operator has already moved off the first screen keeps what they did.
   Future<void> _restoreProgress() async {
@@ -234,7 +242,39 @@ class SetupController extends Notifier<SetupDraft> {
       return;
     }
     if (_disposed || progress == null) return;
-    if (state.claimed || state.step != SetupStep.licence) return;
+    // The first step of this device's path: the licence on a main device, the
+    // deployment screen on a child.
+    if (state.claimed || state.step != state.visibleSteps.first) return;
+    // Written by the other kind of device. The role is the installer's marker
+    // file, not the wizard's, so a record that disagrees with it belongs to an
+    // install that no longer exists and resuming it would be guessing.
+    if (progress.deployment.isChild != state.deployment.isChild) return;
+
+    // The identity first, and on its own: it is the one thing worth taking
+    // from a record whose registration never came back. This machine's
+    // installation id was minted in memory when this process started, and
+    // the branch database's upsert is keyed on the one the earlier run sent;
+    // a re-run under the new id would be a second terminal and a second seat.
+    // The profile is moved as well as the draft, because the licence service
+    // fingerprints the profile's — a licence activated on the earlier run is
+    // pinned to the earlier id, and judged under a fresh one it would not
+    // match.
+    final installationId = progress.installationId;
+    if (installationId != null &&
+        installationId.isNotEmpty &&
+        installationId != state.installationId) {
+      final profile = ref.read(terminalProfileProvider);
+      ref
+          .read(terminalProfileProvider.notifier)
+          .apply(
+            TerminalProfile(
+              terminalId: profile.terminalId,
+              installationId: installationId,
+            ),
+          );
+      state = state.copyWith(installationId: installationId);
+    }
+    if (!progress.claimed) return;
 
     // The licence the bundle embedded, judged again rather than trusted: the
     // file is signed, and re-verifying costs nothing. Null when the wizard was
@@ -251,10 +291,28 @@ class SetupController extends Notifier<SetupDraft> {
           .evaluate(licence, progress.deployment);
       claims = LicenseVerifier.claimsOf(licence);
     }
-    if (_disposed || state.claimed || state.step != SetupStep.licence) return;
+    if (_disposed ||
+        state.claimed ||
+        state.step != state.visibleSteps.first) {
+      return;
+    }
 
+    // A cloud main device carries on at the connecting step, which asks
+    // nothing. An offline or child till cannot: its database passwords were
+    // typed on the deployment screen and are, rightly, in no file, so it opens
+    // there with everything else filled in and its registration already made
+    // — the terminal step's Register button is dead on a claimed draft, so the
+    // seat is not spent again on the way through.
+    final cloud =
+        progress.deployment.mode == DeploymentMode.cloud &&
+        !progress.deployment.isChild;
     state = state.copyWith(
-      step: SetupStep.connecting,
+      step: cloud ? SetupStep.connecting : SetupStep.deployment,
+      // The offline account step lets only a built database through, and a
+      // till that registered had built one. Only a claimed record gets this
+      // far: skipping the build on an unclaimed one would also skip asking for
+      // the first administrator, whom the registration then signs in as.
+      bootstrapped: progress.bootstrapped,
       locale: progress.locale,
       deployment: progress.deployment,
       entitlement: entitlement,
@@ -281,14 +339,16 @@ class SetupController extends Notifier<SetupDraft> {
   /// The claim, on disk, until the wizard finishes — see [_restoreProgress].
   ///
   /// Best effort: a progress file that cannot be written costs a restart its
-  /// resume, not the claim its success. Cloud main devices only — a child never
-  /// claims, and an offline till registers on its last screen with nothing
-  /// left to lose.
-  Future<void> _rememberProgress() async {
-    if (state.deployment.mode != DeploymentMode.cloud ||
-        state.deployment.isChild) {
-      return;
-    }
+  /// resume, not the claim its success. Every kind of till: this used to be
+  /// cloud main devices only, on the reasoning that an offline till registers
+  /// with nothing left to lose — but its registration spends a seat of the
+  /// licence, and a re-run that registered again spent another.
+  ///
+  /// [claimed] false is the record written just before an offline or child
+  /// registration is sent: the installation id it is keyed on, down on disk
+  /// before the row exists, so that a process killed in between comes back as
+  /// the same machine. See [SetupProgress.claimed].
+  Future<void> _rememberProgress({bool claimed = true}) async {
     final terminalId = state.terminalId;
     if (terminalId == null || terminalId.isEmpty) return;
 
@@ -306,6 +366,9 @@ class SetupController extends Notifier<SetupDraft> {
               restaurantId: state.restaurantId,
               branchCode: state.branchCode,
               licence: state.licenceFile?.serialize(),
+              installationId: state.installationId,
+              claimed: claimed,
+              bootstrapped: state.bootstrapped,
             ),
           );
     } on Exception catch (error) {
@@ -410,9 +473,18 @@ class SetupController extends Notifier<SetupDraft> {
 
   // Every connection edit below forgets a child's link to its main device: the
   // licence on the draft was read from the database as it was addressed then.
+  //
+  // The address also forgets the server's certificate: a pin belongs to the
+  // server it was confirmed against, and carrying it to another address
+  // would either refuse a server that is fine or — worse — be the reason a
+  // technician reaches for the plaintext override.
   void setDatabaseHost(String host) => state = state.copyWith(
-    deployment: state.deployment.copyWith(databaseHost: host.trim()),
+    deployment: state.deployment.copyWith(
+      databaseHost: host.trim(),
+      clearPinnedCertificate: true,
+    ),
     mainDeviceLinked: false,
+    clearPresentedCertificate: true,
     clearError: true,
   );
 
@@ -460,10 +532,69 @@ class SetupController extends Notifier<SetupDraft> {
     );
   }
 
-  void setVerifyTls(bool verify) => state = state.copyWith(
-    deployment: state.deployment.copyWith(verifyTls: verify),
-    mainDeviceLinked: false,
-  );
+  /// Trust the certificate the server presented — the technician has compared
+  /// its fingerprint with the one on the main device and pressed the button.
+  ///
+  /// Then tries again at once, through the same step that was refused, so
+  /// the confirmation is judged by a real connection rather than by the
+  /// button. Pairing also clears any plaintext override: a till that can be
+  /// encrypted is.
+  ///
+  /// There is no "trust without a certificate" here any more. The wizard is
+  /// where a till is set up, so it only ever sets one up encrypted; turning
+  /// encryption off is a technician's audited act in Management.
+  Future<void> trustPresentedCertificate() async {
+    final presented = state.presentedCertificate;
+    if (presented == null) return;
+    state = state.copyWith(
+      deployment: state.deployment.copyWith(
+        pinnedCertificateSha256: presented.sha256,
+        pinnedCertificatePem: presented.pem,
+        allowInsecureLan: false,
+      ),
+      clearPresentedCertificate: true,
+      clearError: true,
+    );
+    if (state.deployment.isChild) {
+      await connectToMainDevice();
+    } else {
+      await testConnection();
+    }
+  }
+
+  /// Why the secure connection to [config]'s server was refused, and — when
+  /// a fingerprint comparison would settle it — the certificate to compare.
+  ///
+  /// Asks the server directly rather than reading the driver's error,
+  /// because the driver only says *that* a certificate was refused. Nothing
+  /// is retried in the clear, here or anywhere: the answer is a sentence and,
+  /// at most, a fingerprint waiting for a person.
+  Future<String> _explainTlsRefusal(DeploymentConfig config) async {
+    final s = ref.read(stringsProvider);
+    final host = config.databaseHost.trim();
+    final fetch = await ref
+        .read(serverCertificateProbeProvider)
+        .fetch(host, config.databasePort);
+    final diagnosis = LanTls.diagnose(pin: config.lanTls.pin, fetch: fetch);
+
+    final offer = switch (diagnosis) {
+      LanTlsDiagnosis.untrusted || LanTlsDiagnosis.changed =>
+        fetch is CertificateFetched ? fetch.certificate : null,
+      _ => null,
+    };
+    state = state.copyWith(
+      presentedCertificate: offer,
+      clearPresentedCertificate: offer == null,
+    );
+
+    return switch (diagnosis) {
+      LanTlsDiagnosis.untrusted => s.tlsUntrusted,
+      LanTlsDiagnosis.changed => s.tlsCertificateChanged,
+      LanTlsDiagnosis.nameMismatch => s.tlsNameMismatch(host),
+      LanTlsDiagnosis.notOffered => s.tlsNotOffered,
+      LanTlsDiagnosis.unreachable => s.tlsFailure(),
+    };
+  }
 
   void setDatabaseName(String name) => state = state.copyWith(
     deployment: state.deployment.copyWith(databaseName: name.trim()),
@@ -481,8 +612,12 @@ class SetupController extends Notifier<SetupDraft> {
     final parsed = int.tryParse(port.trim());
     if (parsed == null || parsed <= 0 || parsed > 65535) return;
     state = state.copyWith(
-      deployment: state.deployment.copyWith(databasePort: parsed),
+      deployment: state.deployment.copyWith(
+        databasePort: parsed,
+        clearPinnedCertificate: true,
+      ),
       mainDeviceLinked: false,
+      clearPresentedCertificate: true,
     );
   }
 
@@ -1066,6 +1201,12 @@ class SetupController extends Notifier<SetupDraft> {
     final expected = failure == PosDbFailure.missingDatabase;
     final s = ref.read(stringsProvider);
 
+    if (failure == PosDbFailure.tls) {
+      final why = await _explainTlsRefusal(config);
+      state = state.copyWith(busy: false, error: why, clearNotice: true);
+      return false;
+    }
+
     // Success used to be SILENT — the error bar cleared and nothing took its
     // place, so the only difference between "it worked" and "the button does
     // nothing" was the absence of red. A test whose good outcome is invisible
@@ -1369,10 +1510,10 @@ class SetupController extends Notifier<SetupDraft> {
       // The same four causes the main device's own test names, because they
       // are the same four things — an installer sent to open a firewall when
       // the password is wrong will not fix it.
-      state = state.copyWith(
-        busy: false,
-        error: _describe(error.failure, state.deployment),
-      );
+      final why = error.failure == PosDbFailure.tls
+          ? await _explainTlsRefusal(state.deployment)
+          : _describe(error.failure, state.deployment);
+      state = state.copyWith(busy: false, error: why);
       return;
     }
 
@@ -1737,7 +1878,8 @@ class SetupController extends Notifier<SetupDraft> {
       ),
       databasePassword: installed.tillPassword,
       // Kept, so Admin Mode is a username and a PIN rather than a password
-      // nobody was ever told. `complete()` is what writes it to `secrets.json`.
+      // nobody was ever told. `complete()` is what writes it to the OS store
+      // (DPAPI / Keychain, via `adminDbSecretStoreProvider`).
       adminDatabasePassword: installed.adminPassword,
     );
     return true;
@@ -1809,6 +1951,17 @@ class SetupController extends Notifier<SetupDraft> {
         : state.operatorUsername;
     final password = firstInstall ? state.ownerPin : state.operatorPassword;
 
+    // The installation id on disk before the row it keys exists — see
+    // [_rememberProgress]. Only where the registration is the branch
+    // database's upsert: a cloud main device registers with the platform, and
+    // its record is the claim afterwards, as it always was.
+    final branchDatabase =
+        state.deployment.mode == DeploymentMode.offline ||
+        state.deployment.isChild;
+    if (adopting == null && branchDatabase) {
+      await _rememberProgress(claimed: false);
+    }
+
     // Adopting takes the row the dashboard already created — its name, branch
     // and terminal id all come back from the server, exactly as they do on the
     // pairing-code path. Registering is the fallback for a tenant that has no
@@ -1826,6 +1979,7 @@ class SetupController extends Notifier<SetupDraft> {
             password: password,
             terminalName: state.terminalName.trim(),
             branchId: branchId!,
+            installId: state.installationId,
           );
 
     final claim = result.claim;

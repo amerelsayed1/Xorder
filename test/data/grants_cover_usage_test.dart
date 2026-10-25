@@ -107,6 +107,11 @@ void main() {
     // tablets that sell through it — both at the till, on the till's
     // credential. See `TerminalRole`.
     'postgres_site_licence.dart',
+    // Held sync records, read and released from the Sync pane. On the till's
+    // credential because the drain holds them through it, and a cloud
+    // terminal's back office has no administrator connection to release
+    // them through. See `PostgresSyncQueueRepository`.
+    'postgres_sync_queue_repository.dart',
   ];
 
   /// The repositories bound on the **administrator's** credential.

@@ -2,7 +2,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/providers.dart';
 import '../../../core/config/admin_mode_settings.dart';
+import '../../../core/security/attempt_limiter.dart';
+import '../../../core/security/pin_hash.dart';
 import '../../../data/postgres/pos_database.dart';
+import '../../../data/postgres/postgres_admin_repositories.dart'
+    show isUndefinedColumn;
 import '../../../domain/models/permissions.dart';
 import '../../../domain/repositories/admin_repositories.dart';
 import '../../../domain/repositories/repositories.dart';
@@ -19,9 +23,15 @@ import '../../../domain/services/authorization.dart';
 ///
 /// Now it has a start, a person, and an end:
 ///
-/// * **Entered** with a username and PIN from somebody holding
+/// * **Entered** with a username and PASSWORD from somebody holding
 ///   [PosCapability.adminEnter] — asked here, not in a widget, so no screen can
-///   open the back office by forgetting to ask.
+///   open the back office by forgetting to ask. Somebody who has not chosen a
+///   password yet (everybody, the day migration 55 runs) gets through once on
+///   their PIN and is then held at [AdminMustSetPassword] until they choose
+///   one: there is no way past it but [AdminSessionController.setPassword].
+///   Every other door — the lock screen, the open-shift sign-in, the idle
+///   unlock, the supervisor keypad, the forced reset — stays on the PIN, by
+///   the owner's decision (25 Oct 2026).
 /// * **Separate from the till.** Entering does not change who is signed in at
 ///   the till, and leaving hands the till back to them as it was.
 /// * **Ended** by Exit, by the till being locked or left, and by the inactivity
@@ -58,8 +68,10 @@ final class AdminSignedIn extends AdminSignIn {
   const AdminSignedIn();
 }
 
-/// Wrong username, wrong PIN, or the right person without the permission. One
-/// answer for all three, so the door is no way of finding out who may pass it.
+/// Wrong username, wrong password, no password and a PIN that is not the
+/// account's, a PIN typed for an account that has a password, or the right
+/// person without the permission. One answer for all of them, so the door is
+/// no way of finding out who may pass it — or who has set a password.
 final class AdminSignInRefused extends AdminSignIn {
   const AdminSignInRefused(this.attemptsLeft);
 
@@ -93,6 +105,81 @@ final class AdminDatabasePasswordRefused extends AdminSignIn {
   const AdminDatabasePasswordRefused();
 }
 
+/// The PIN was right, for somebody who may enter and has no password yet.
+///
+/// **Not in.** Nothing of the back office is open, no entry is on the ledger,
+/// and the only way on is [AdminSessionController.setPassword] — or back out
+/// and start again. The PIN is accepted this once because it is the one
+/// secret an upgraded account has; it is not accepted twice, because the
+/// moment it has been used a password exists.
+final class AdminMustSetPassword extends AdminSignIn {
+  const AdminMustSetPassword();
+}
+
+/// The two entries of the new password differ.
+final class AdminPasswordMismatch extends AdminSignIn {
+  const AdminPasswordMismatch();
+}
+
+/// The new password breaks [PasswordPolicy].
+final class AdminPasswordRejected extends AdminSignIn {
+  const AdminPasswordRejected(this.problem);
+
+  final PasswordProblem problem;
+}
+
+/// The database would not store the new password, for [refusal]. Still not
+/// in, and still on the password step.
+final class AdminPasswordNotSaved extends AdminSignIn {
+  const AdminPasswordNotSaved(this.refusal);
+
+  final AdminRefusal refusal;
+}
+
+/// The PIN step has gone — left too long, or Admin Mode was ended under it.
+/// Start again from the username.
+final class AdminPasswordStepExpired extends AdminSignIn {
+  const AdminPasswordStepExpired();
+}
+
+/// What a technician's password reset came to.
+sealed class TechnicianReset {
+  const TechnicianReset();
+}
+
+/// [name]'s password is gone; they open Admin Mode with their PIN next and
+/// choose a new one.
+final class TechnicianResetDone extends TechnicianReset {
+  const TechnicianResetDone(this.name);
+
+  final String name;
+}
+
+/// The database password was right, and nobody active by that username has
+/// a password to clear. Said plainly: whoever typed the database password
+/// can read the staff table anyway, so there is nothing here to hide.
+final class TechnicianResetNobody extends TechnicianReset {
+  const TechnicianResetNobody();
+}
+
+/// PostgreSQL did not accept the typed database password. Counted against
+/// Admin Mode's door, as a wrong password there is.
+final class TechnicianResetDatabasePasswordRefused extends TechnicianReset {
+  const TechnicianResetDatabasePasswordRefused();
+}
+
+final class TechnicianResetLockedOut extends TechnicianReset {
+  const TechnicianResetLockedOut(this.wait);
+
+  final Duration wait;
+}
+
+/// Nothing answered, or the database refused for another reason, or the
+/// ledger would not take the row. Nothing was cleared.
+final class TechnicianResetFailed extends TechnicianReset {
+  const TechnicianResetFailed();
+}
+
 /// Connected, and the database refused the administrator for some other reason
 /// — TLS, a missing database, a role with no rights to it.
 final class AdminDatabaseRefused extends AdminSignIn {
@@ -105,9 +192,13 @@ sealed class StaffCheck {
 }
 
 final class StaffVerified extends StaffCheck {
-  const StaffVerified(this.staff);
+  const StaffVerified(this.staff, {this.mustSetPassword = false});
 
   final PosStaff staff;
+
+  /// Got in on their PIN, at Admin Mode's door, with no password yet — see
+  /// [AdminMustSetPassword]. Always false from [checkStaffPin].
+  final bool mustSetPassword;
 }
 
 /// Refused. [identified] is the person when the username and PIN were right
@@ -163,6 +254,76 @@ Future<StaffCheck> checkStaffPin(
       : StaffRefused(identified: staff);
 }
 
+/// Whether [username] and [secret] open Admin Mode's door (ADR-006b slice D).
+///
+/// **The shape of [secret] decides which it is checked as**, and nothing
+/// about the account does. Four digits is a PIN — no password can be, since
+/// a password is at least [PasswordPolicy.minLength] characters — and is
+/// accepted only from somebody who has NOT set a password; anything else is a
+/// password. Deciding from the account instead ("this person has a password,
+/// so ask for it") would mean asking the database who has one before anybody
+/// has proved who they are, and the door's question would leak the answer.
+///
+/// A PIN for an account that has a password is refused exactly as a wrong
+/// password is, and names nobody: the PIN is no longer a key to Admin Mode
+/// for that person, so typing it is a wrong guess, not a refusal to record.
+///
+/// **Checked in Dart against the stored hash** (the till role can read it);
+/// moving the check into the database, so the hash is never readable by a
+/// till, is slice E.
+Future<StaffCheck> checkAdminSecret(
+  SessionRepository sessions,
+  StaffDirectoryRepository directory, {
+  required String username,
+  required String secret,
+}) async {
+  if (username.trim().isEmpty || secret.isEmpty) return const StaffRefused();
+
+  if (PinRules.isWellFormed(secret)) {
+    final check = await checkStaffPin(
+      sessions,
+      username: username,
+      pin: secret,
+      capability: PosCapability.adminEnter,
+    );
+    if (check is! StaffVerified) return check;
+    final Set<int> holders;
+    try {
+      holders = await directory.withPassword();
+    } on Object catch (error) {
+      // Unknown is refused, never waved through on the PIN: letting a PIN in
+      // because the password column could not be read would make an
+      // unreadable column a way round every password.
+      return error is PosDbException &&
+              (error.failure == PosDbFailure.dns ||
+                  error.failure == PosDbFailure.tcp)
+          ? const StaffUnreachable()
+          : const StaffRefused();
+    }
+    return holders.contains(check.staff.id)
+        ? const StaffRefused()
+        : StaffVerified(check.staff, mustSetPassword: true);
+  }
+
+  final PosStaff? staff;
+  try {
+    staff = await sessions.signInWithPassword(
+      username: username.trim(),
+      password: secret,
+    );
+  } on PosDbException catch (error) {
+    return error.failure == PosDbFailure.dns || error.failure == PosDbFailure.tcp
+        ? const StaffUnreachable()
+        : const StaffRefused();
+  }
+  if (staff == null) return const StaffRefused();
+
+  return Authorization.check(staff, PosCapability.adminEnter).isAllowed ||
+          _ownerBeforeTheGrant(staff, PosCapability.adminEnter)
+      ? StaffVerified(staff)
+      : StaffRefused(identified: staff);
+}
+
 /// **The owner is let into Admin Mode before their role says so.**
 ///
 /// Migration 46 is what gives the owner role `admin.enter`, and migrations run
@@ -195,38 +356,42 @@ final adminClockProvider = Provider<DateTime Function()>(
 class AdminSessionController extends Notifier<AdminSession?> {
   DateTime? _lastActivity;
 
-  /// Five wrong tries, then the door shuts — the supervisor keypad's number,
-  /// and for its reason: enough that a manager mistyping under pressure is not
-  /// shut out, few enough that the door is not a way to walk a four-digit
-  /// space. Without it, the one door to everything took guesses as fast as
+  /// Somebody whose PIN got them as far as [AdminMustSetPassword], and what
+  /// they will need once they have chosen a password. Null otherwise.
+  ///
+  /// Held here, not in the widget, so the password step cannot be reached
+  /// without the PIN step: [setPassword] has nothing to act on unless
+  /// [signIn] put it here. It lasts no longer than Admin Mode's own
+  /// inactivity timeout, and goes with [end], [cancelPasswordStep] and any
+  /// new [signIn].
+  _PasswordStep? _passwordStep;
+
+  /// Five wrong tries, then the door shuts for thirty seconds doubling to
+  /// fifteen minutes — [AttemptLimiter]'s rule, which began here and is now
+  /// the lock screen's, the open-shift sign-in's and the supervisor keypad's
+  /// too. Without it, the one door to everything took guesses as fast as
   /// somebody could type them.
-  static const maxFailures = 5;
+  static const maxFailures = AttemptLimiter.defaultMaxFailures;
 
-  /// The first wait, doubled for every lockout since the last PIN that got
-  /// somebody in, up to [longestLockout]. Thirty seconds is nothing to an
-  /// owner who fat-fingered it; doubling makes the ten thousand PINs a matter
-  /// of weeks rather than an afternoon.
-  static const firstLockout = Duration(seconds: 30);
-
-  /// Capped, because this also shuts out the owner, and a door locked for a
-  /// day on a Friday night is a restaurant that cannot close its shift.
-  static const longestLockout = Duration(minutes: 15);
-
-  /// Counted per terminal, not per username: counting per username would
-  /// let somebody walk the PINs by trying every name in turn. In memory, as
-  /// the session is — a restart clears it, and restarting the till is not
-  /// quiet or quick enough to be a way round it worth a file.
-  int _failures = 0;
-  int _lockouts = 0;
-  DateTime? _lockedUntil;
-
-  static Duration _lockoutFor(int lockouts) {
-    var wait = firstLockout;
-    for (var i = 1; i < lockouts && wait < longestLockout; i++) {
-      wait *= 2;
-    }
-    return wait > longestLockout ? longestLockout : wait;
-  }
+  /// Counted per terminal, not per username — every try is
+  /// [AttemptLimiter.anyone] — so this door behaves exactly as it did before
+  /// the rule was shared. Its own limiter rather than the till's sign-in one:
+  /// a cashier's typos at the lock screen are no reason to shut the owner out
+  /// of the back office, and the back office's five are on top of the till's.
+  ///
+  /// In memory, as the session is — a restart clears it, and restarting the
+  /// till is not quiet or quick enough to be a way round it worth a file.
+  /// Lazily built so the clock is read through [ref] at each try: a test moves
+  /// [adminClockProvider]'s answer between them.
+  ///
+  /// Passwords are counted here too, on the same five, and so are wrong
+  /// database passwords at the technician's reset. The owner's decision
+  /// (25 Oct 2026) keeps this in-memory limiter rather than ADR-006b's
+  /// `pos_auth_attempts` table: a persisted count is deferred until per-till
+  /// roles (slice E) stop a till credential deleting its own lockout row.
+  late final _limiter = AttemptLimiter(
+    clock: () => ref.read(adminClockProvider)(),
+  );
 
   /// False once the container holding this is gone. Management ends the
   /// session a moment after its screen goes away, and on the app's way down —
@@ -259,14 +424,16 @@ class AdminSessionController extends Notifier<AdminSession?> {
     if (state != null) _lastActivity = ref.read(adminClockProvider)();
   }
 
-  /// Let [username] in, if their [pin] is right and they hold `admin.enter`.
+  /// Let [username] in, if [secret] is their password and they hold
+  /// `admin.enter` — or hold them at [AdminMustSetPassword] if [secret] is
+  /// their PIN and they have no password yet. See [checkAdminSecret].
   ///
   /// [databasePassword] is only for a till that has never kept the back
   /// office's database password — see [AdminNeedsDatabasePassword]. It is
   /// tried before it is kept, and kept only once it has got somebody in.
   Future<AdminSignIn> signIn({
     required String username,
-    required String pin,
+    required String secret,
     String? databasePassword,
   }) async {
     // Everything from [ref] before the first await, by habit: the answer can
@@ -275,26 +442,26 @@ class AdminSessionController extends Notifier<AdminSession?> {
     final audit = ref.read(auditRepositoryProvider);
     final secrets = ref.read(adminDbSecretStoreProvider);
     final probe = ref.read(adminPasswordProbeProvider);
-    final credential = ref.read(adminDbCredentialProvider.notifier);
     final directory = ref.read(staffDirectoryRepositoryProvider);
-    final upgrade = ref.read(schemaUpgraderProvider);
-    final upgradeFailures = ref.read(schemaUpgradeFailureProvider.notifier);
-    final now = ref.read(adminClockProvider);
+    final door = _door();
 
-    // Shut: answered before the PIN is looked at, so a guess made while the
-    // door is shut is not a guess at all.
-    if (_lockedUntil case final until?) {
-      final wait = until.difference(now());
-      if (wait > Duration.zero) return AdminSignInLockedOut(wait);
-      _lockedUntil = null;
+    // A new try starts from the beginning: whatever PIN step was open is not
+    // somebody else's to finish.
+    _passwordStep = null;
+
+    // Shut: answered before the secret is looked at, so a guess made while
+    // the door is shut is not a guess at all.
+    if (_limiter.lockedFor(AttemptLimiter.anyone) case final wait?) {
+      return AdminSignInLockedOut(wait);
     }
 
     final PosStaff staff;
-    switch (await checkStaffPin(
+    final bool mustSetPassword;
+    switch (await checkAdminSecret(
       sessions,
+      directory,
       username: username,
-      pin: pin,
-      capability: PosCapability.adminEnter,
+      secret: secret,
     )) {
       case StaffUnreachable():
         return const AdminSignInUnreachable();
@@ -302,17 +469,16 @@ class AdminSessionController extends Notifier<AdminSession?> {
         if (identified != null) {
           await _record(audit, identified, AuditAction.adminRefused);
         }
-        return _refused(audit, directory, username, now());
-      case StaffVerified(staff: final verified):
+        return _refused(audit, directory, username);
+      case StaffVerified(staff: final verified, mustSetPassword: final must):
         staff = verified;
+        mustSetPassword = must;
     }
 
-    // A PIN that got somebody in clears the count and the backoff — whether
-    // or not the database password below then works, because the PIN was not
-    // the problem.
-    _failures = 0;
-    _lockouts = 0;
-    _lockedUntil = null;
+    // A secret that got somebody in clears the count and the backoff —
+    // whether or not the database password below then works, because the
+    // secret was not the problem.
+    _limiter.succeed(AttemptLimiter.anyone);
 
     final typed = databasePassword ?? '';
     String? password = typed;
@@ -350,20 +516,200 @@ class AdminSessionController extends Notifier<AdminSession?> {
       }
     }
 
-    // The ledger first: no row, no entry.
-    final started = now();
+    // Asked for the database password BEFORE the new one, not after: the
+    // new password is written on the administrator connection, so a till
+    // that cannot reach it would otherwise take a password it cannot keep.
+    if (mustSetPassword) {
+      _passwordStep = _PasswordStep(
+        staff: staff,
+        databasePassword: password,
+        pin: secret,
+        at: door.now(),
+      );
+      return const AdminMustSetPassword();
+    }
+
+    return _enter(door, staff, password, upgraded: false);
+  }
+
+  /// The second half of a first entry: [password], typed twice, becomes the
+  /// person's Admin Mode password, and only then does Admin Mode open.
+  ///
+  /// **The schema upgrade runs first, here.** The column the password goes
+  /// in is migration 55's, and the back-office door is what applies
+  /// migrations to an installed till — so on the first entry after an
+  /// upgrade it does not exist until this has run. If the upgrade fails and
+  /// the password cannot be stored for that reason, the person is let in on
+  /// the PIN this once, with the failure said above every pane, as a failed
+  /// upgrade always is: Backup is behind this door, and a restaurant whose
+  /// upgrade broke must still be able to reach it. Next time they are asked
+  /// again.
+  Future<AdminSignIn> setPassword({
+    required String password,
+    required String confirm,
+  }) async {
+    final door = _door();
+    final step = _passwordStep;
+    if (step == null ||
+        !door.now().isBefore(step.at.add(door.timeout))) {
+      _passwordStep = null;
+      return const AdminPasswordStepExpired();
+    }
+    if (password != confirm) return const AdminPasswordMismatch();
+    if (PasswordPolicy.validate(
+          password,
+          username: step.staff.username,
+          pin: step.pin,
+        )
+        case final problem?) {
+      return AdminPasswordRejected(problem);
+    }
+
+    // The write needs the administrator connection, and that exists only
+    // while the credential is held — so it is held from here, and given back
+    // below if this does not end inside. Management is still shut meanwhile:
+    // its door is [state], which nothing here sets until the very end.
+    door.credential.set(step.databasePassword);
+    final directory = ref.read(staffDirectoryRepositoryProvider);
+
+    var upgraded = true;
+    if (door.upgrade case final upgrade?) {
+      try {
+        await upgrade();
+        door.upgradeFailures.clear();
+      } on Object catch (error) {
+        upgraded = false;
+        door.upgradeFailures.report('$error');
+      }
+    }
+
+    AdminSignIn? failed;
+    // Whether the write failed because migration 55's column is not there —
+    // the one failure the PIN-only entry below exists for.
+    var columnMissing = false;
     try {
-      await audit.record(
+      final refusal = (await directory.setOwnPassword(
+        by: step.staff,
+        password: password,
+      )).refusal;
+      // A refusal is an answer about this person — disabled since the PIN
+      // step, say — and stands whether or not the upgrade ran.
+      if (refusal != null) {
+        door.credential.forget();
+        return switch (refusal) {
+          PasswordRejected(:final problem) => AdminPasswordRejected(problem),
+          _ => AdminPasswordNotSaved(refusal),
+        };
+      }
+    } on PosDbException catch (error) {
+      columnMissing = isUndefinedColumn(error);
+      failed =
+          error.failure == PosDbFailure.dns || error.failure == PosDbFailure.tcp
+          ? const AdminSignInUnreachable()
+          : const AdminDatabaseRefused();
+    } on Object catch (error) {
+      columnMissing = isUndefinedColumn(error);
+      failed = const AdminDatabaseRefused();
+    }
+
+    // A write that failed on a schema the upgrade could not bring up is the
+    // one failure that lets them in — see above. Any other is said, and
+    // they stay on this step with the credential given back.
+    //
+    // **Both halves, asked of the SQLSTATE.** "The upgrade failed" alone let
+    // anything through once it had: a dropped connection or a refused grant
+    // on the write opened Admin Mode on four digits, the exact door slice D
+    // closed. A missing column is the only failure that says the password
+    // has nowhere to go yet, rather than that something is wrong.
+    if (failed != null && (upgraded || !columnMissing)) {
+      door.credential.forget();
+      return failed;
+    }
+
+    _passwordStep = null;
+    return _enter(door, step.staff, step.databasePassword, upgraded: true);
+  }
+
+  /// Back out of the password step. The PIN that reached it is spent: the
+  /// next try starts again from the username.
+  void cancelPasswordStep() => _passwordStep = null;
+
+  /// The technician's reset of [username]'s password — the owner's included,
+  /// which nobody can clear from Management ([OwnerPasswordIsTheirs]).
+  ///
+  /// **The proof is the database password, typed.** Not the one this till
+  /// keeps: anybody at the till could use that, and then choose the owner's
+  /// new password with the owner's four-digit PIN. A technician who knows
+  /// the administrator's database password can already change any row with
+  /// psql; this only saves them the psql, and writes the ledger row psql
+  /// would not.
+  ///
+  /// Wrong database passwords count against this door's own five, so the
+  /// reset is no way of guessing the database password at leisure.
+  Future<TechnicianReset> technicianClearPassword({
+    required String username,
+    required String databasePassword,
+  }) async {
+    final probe = ref.read(adminPasswordProbeProvider);
+    final reset = ref.read(technicianPasswordResetProvider);
+
+    if (_limiter.lockedFor(AttemptLimiter.anyone) case final wait?) {
+      return TechnicianResetLockedOut(wait);
+    }
+    if (username.trim().isEmpty || databasePassword.isEmpty) {
+      return const TechnicianResetNobody();
+    }
+
+    final failure = await probe(databasePassword);
+    if (failure == PosDbFailure.auth) {
+      return switch (_limiter.fail(AttemptLimiter.anyone)) {
+        AttemptRefused() => const TechnicianResetDatabasePasswordRefused(),
+        AttemptLockedOut(:final wait) => TechnicianResetLockedOut(wait),
+      };
+    }
+    if (failure != null) return const TechnicianResetFailed();
+    _limiter.succeed(AttemptLimiter.anyone);
+
+    try {
+      final result = await reset(
+        username: username,
+        databasePassword: databasePassword,
+      );
+      if (result.refusal != null) return const TechnicianResetFailed();
+      final name = result.value;
+      return name == null
+          ? const TechnicianResetNobody()
+          : TechnicianResetDone(name);
+    } on Object {
+      return const TechnicianResetFailed();
+    }
+  }
+
+  /// In: the ledger row, the credential, the upgrade unless it has run, and
+  /// last the session — which is what opens Management.
+  Future<AdminSignIn> _enter(
+    _Door door,
+    PosStaff staff,
+    String password, {
+    required bool upgraded,
+  }) async {
+    // The ledger first: no row, no entry.
+    final started = door.now();
+    try {
+      await door.audit.record(
         by: staff,
         action: AuditAction.adminEntered,
         entityType: AuditAction.entityAdminSession,
         entityId: '${staff.id}',
       );
     } on Object {
+      // The password step holds the credential already; an entry that did
+      // not happen must not leave it held.
+      door.credential.forget();
       return const AdminSignInUnreachable();
     }
 
-    credential.set(password);
+    door.credential.set(password);
 
     // Whatever migrations this build carries and the database lacks — see
     // `schemaUpgraderProvider` for why at the door. After the credential,
@@ -371,12 +717,12 @@ class AdminSessionController extends Notifier<AdminSession?> {
     // what lets Management past its door, and a pane that loaded first would
     // read a table the upgrade was about to create. A failure is said above
     // every pane and does not keep anybody out: Backup is in here.
-    if (upgrade != null) {
+    if (!upgraded && door.upgrade != null) {
       try {
-        await upgrade();
-        upgradeFailures.clear();
+        await door.upgrade!();
+        door.upgradeFailures.clear();
       } on Object catch (error) {
-        upgradeFailures.report('$error');
+        door.upgradeFailures.report('$error');
       }
     }
 
@@ -385,6 +731,16 @@ class AdminSessionController extends Notifier<AdminSession?> {
     return const AdminSignedIn();
   }
 
+  /// What the door needs from [ref], read in one go before anything awaits.
+  _Door _door() => _Door(
+    audit: ref.read(auditRepositoryProvider),
+    credential: ref.read(adminDbCredentialProvider.notifier),
+    upgrade: ref.read(schemaUpgraderProvider),
+    upgradeFailures: ref.read(schemaUpgradeFailureProvider.notifier),
+    now: ref.read(adminClockProvider),
+    timeout: ref.read(adminModeSettingsProvider).timeout,
+  );
+
   /// One more wrong try at this terminal, and the door shut if it was one too
   /// many. The count moves before the first await, so two submits racing each
   /// other cannot both be the fourth.
@@ -392,16 +748,14 @@ class AdminSessionController extends Notifier<AdminSession?> {
     AuditRepository audit,
     StaffDirectoryRepository directory,
     String username,
-    DateTime at,
   ) async {
-    _failures++;
-    if (_failures < maxFailures) {
-      return AdminSignInRefused(maxFailures - _failures);
+    final Duration wait;
+    switch (_limiter.fail(AttemptLimiter.anyone)) {
+      case AttemptRefused(:final attemptsLeft):
+        return AdminSignInRefused(attemptsLeft);
+      case AttemptLockedOut(wait: final shut):
+        wait = shut;
     }
-    _failures = 0;
-    _lockouts++;
-    final wait = _lockoutFor(_lockouts);
-    _lockedUntil = at.add(wait);
 
     // Against whoever the username names, because the ledger's every row has
     // somebody on it and a guessed-at account is the thing worth reading
@@ -441,6 +795,7 @@ class AdminSessionController extends Notifier<AdminSession?> {
   /// open because the ledger is slow is the failure this exists to prevent.
   Future<void> end(AdminSessionEnd how) async {
     if (!_alive) return;
+    _passwordStep = null;
     final session = state;
     if (session == null) return;
     final audit = ref.read(auditRepositoryProvider);
@@ -477,6 +832,41 @@ class AdminSessionController extends Notifier<AdminSession?> {
       // Leaving and refusing must happen whether or not the ledger answers.
     }
   }
+}
+
+/// See [AdminSessionController._passwordStep].
+class _PasswordStep {
+  const _PasswordStep({
+    required this.staff,
+    required this.databasePassword,
+    required this.pin,
+    required this.at,
+  });
+
+  final PosStaff staff;
+  final String databasePassword;
+
+  /// Kept only so the new password can be refused for being the same.
+  final String pin;
+  final DateTime at;
+}
+
+class _Door {
+  const _Door({
+    required this.audit,
+    required this.credential,
+    required this.upgrade,
+    required this.upgradeFailures,
+    required this.now,
+    required this.timeout,
+  });
+
+  final AuditRepository audit;
+  final AdminDbCredential credential;
+  final Future<List<int>> Function()? upgrade;
+  final SchemaUpgradeFailure upgradeFailures;
+  final DateTime Function() now;
+  final Duration timeout;
 }
 
 final adminSessionProvider =

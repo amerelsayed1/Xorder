@@ -15,6 +15,7 @@ import '../../../domain/models/permissions.dart';
 import '../../../domain/models/shift.dart';
 import '../../../domain/services/authorization.dart';
 import '../../../domain/services/ticket_engine.dart';
+import '../../../core/security/attempt_limiter.dart';
 import '../../../core/security/pin_hash.dart';
 import '../../../core/ui/widgets/mono_amount.dart';
 
@@ -64,6 +65,21 @@ class _OpenShiftDialogState extends ConsumerState<OpenShiftDialog> {
     });
     if (_pin.length < PinRules.length) return;
 
+    // The lock screen's limiter, not one of this dialog's own: both doors take
+    // the same names and PINs, and a count per door would be five more guesses
+    // for every lockout window. Shut means the PIN is not even looked at.
+    final limiter = ref.read(signInLimiterProvider);
+    final username = _username.text;
+    if (limiter.lockedFor(username) case final wait?) {
+      setState(() {
+        _pin = '';
+        _error = context.strings.signInLockedOut(
+          AttemptLimiter.secondsToWait(wait),
+        );
+      });
+      return;
+    }
+
     setState(() => _busy = true);
     // Name and PIN, exactly as switching user asks for them. Opening a shift is
     // the same act by another name: the person becomes the operator, and the
@@ -73,9 +89,20 @@ class _OpenShiftDialogState extends ConsumerState<OpenShiftDialog> {
     // necessarily the person standing at the till.
     final staff = await ref
         .read(sessionRepositoryProvider)
-        .signInAs(username: _username.text, pin: _pin);
+        .signInAs(username: username, pin: _pin);
     if (!mounted) return;
     final strings = context.strings;
+
+    // A right name and PIN clears the count even when the person may not open
+    // a shift: the PIN was not what was wrong, and the refusal below says so
+    // by name. A wrong one counts, named or not, in the same words.
+    final AttemptFailure? failure;
+    if (staff != null) {
+      limiter.succeed(username);
+      failure = null;
+    } else {
+      failure = limiter.fail(username);
+    }
 
     // Recognising the PIN and being allowed to open a shift are two different
     // questions, and they are asked separately so the second can be answered
@@ -92,7 +119,12 @@ class _OpenShiftDialogState extends ConsumerState<OpenShiftDialog> {
       _error = switch (staff) {
         // One message for both halves, so this cannot be used to find out
         // which usernames exist.
-        null => strings.wrongUsernameOrPin,
+        null => switch (failure) {
+          AttemptLockedOut(:final wait) => strings.signInLockedOut(
+            AttemptLimiter.secondsToWait(wait),
+          ),
+          AttemptRefused() || null => strings.wrongUsernameOrPin,
+        },
         _ when !permitted => strings.notPermittedToOpenShift(staff.name),
         _ => null,
       };

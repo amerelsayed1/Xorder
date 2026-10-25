@@ -179,6 +179,58 @@ void main() {
     },
   );
 
+  /// A sale still owed to the platform — an order and its `pos_outbox` row.
+  ///
+  /// Raw SQL, like the shifts and days above, so the guard is reading the
+  /// queue itself and not anything the drain keeps in memory about it.
+  Future<void> owedSale(
+    String invoice, {
+    bool held = false,
+    bool delivered = false,
+  }) async {
+    await order(invoice);
+    await db.query(
+      pg.config,
+      'INSERT INTO pos_outbox (order_id, client_transaction_id, restaurant_id, '
+      '  branch_id, delivered_at, quarantined_at, quarantine_code) '
+      'SELECT id, client_transaction_id, restaurant_id, branch_id, '
+      '  CASE WHEN @delivered::boolean THEN now() ELSE NULL END, '
+      '  CASE WHEN @held::boolean THEN now() ELSE NULL END, '
+      "  CASE WHEN @held::boolean THEN 'MENU_ITEM_NOT_FOUND' ELSE NULL END "
+      'FROM pos_orders WHERE restaurant_id = @r AND invoice_number = @invoice',
+      parameters: {
+        'r': restaurantId,
+        'invoice': invoice,
+        'held': held,
+        'delivered': delivered,
+      },
+    );
+  }
+
+  /// A cash movement still owed to the platform, on the second queue. A
+  /// guard that read only `pos_outbox` would miss every refund and shift
+  /// close the till had not sent.
+  Future<void> owedEvent({bool held = false}) => db.query(
+    pg.config,
+    'INSERT INTO pos_sync_outbox (restaurant_id, branch_id, event_type, '
+    '  source_id, client_transaction_id, quarantined_at, quarantine_code) '
+    "VALUES (@r, @b, 'cash_movement', 1, gen_random_uuid(), "
+    '  CASE WHEN @held::boolean THEN now() ELSE NULL END, '
+    "  CASE WHEN @held::boolean THEN 'REJECTED' ELSE NULL END)",
+    parameters: {'r': restaurantId, 'b': branchId, 'held': held},
+  );
+
+  /// The safety copies a restore has taken, in this suite's folder.
+  List<File> safetyCopies() => [
+    for (final entry in folder.listSync())
+      if (entry is File &&
+          entry.uri.pathSegments.last.startsWith(
+            BackupService.preRestorePrefix,
+          ) &&
+          entry.path.endsWith('.dump'))
+        entry,
+  ];
+
   /// This restaurant's invoices, in order.
   ///
   /// Scoped, because a restore puts the WHOLE database back — including the
@@ -617,6 +669,64 @@ void main() {
       expect((await service.checkRestore(copy)).isPermitted, isTrue);
     });
 
+    test('on a cloud till, a sale not yet sent blocks it', () async {
+      // Scenario D3: an older file put back over an evening that never went
+      // up. The rows that would have carried it are among the rows the restore
+      // drops, and the platform never hears about that money.
+      final cloud = serviceWith(
+        config: pg.config.copyWith(mode: DeploymentMode.cloud),
+      );
+      await owedSale('INV-UNSENT');
+      await owedEvent();
+
+      final check = await cloud.checkRestore(copy);
+      expect(check.isPermitted, isFalse);
+      // Both queues, in one count: a refund that never went up is as lost as
+      // a sale.
+      expect(check.pendingSync, 2);
+      expect(check.blockers.single.kind, RestoreBlockerKind.pendingSync);
+      expect(check.blockers.single.count, 2);
+
+      await expectLater(
+        cloud.restore(copy, by: owner),
+        throwsA(isA<RestoreRefused>()),
+      );
+      // Refused before the safety copy, not after it: a restore that was never
+      // going to run should not cost a full dump to find that out.
+      expect(safetyCopies(), isEmpty);
+      expect(await invoices(), ['INV-UNSENT']);
+    });
+
+    test('offline, the same queue is a warning and not a blocker', () async {
+      // An offline till never drains, so a row here is a leftover from a past
+      // life as a cloud till — refusing on it would be a lock-out nothing on
+      // the machine could ever clear.
+      await owedSale('INV-LEFTOVER');
+
+      final check = await service.checkRestore(copy);
+      expect(check.isPermitted, isTrue);
+      expect(check.blockers, isEmpty);
+      expect(check.pendingSync, 1, reason: 'said, even though it does not stop');
+    });
+
+    test('a row the platform refused warns in both modes and blocks in neither',
+        () async {
+      await owedSale('INV-REFUSED', held: true);
+      await owedEvent(held: true);
+      // Delivered is neither pending nor held — it is already the platform's.
+      await owedSale('INV-SENT', delivered: true);
+
+      final cloud = serviceWith(
+        config: pg.config.copyWith(mode: DeploymentMode.cloud),
+      );
+      for (final guard in [service, cloud]) {
+        final check = await guard.checkRestore(copy);
+        expect(check.isPermitted, isTrue, reason: guard.config.mode.name);
+        expect(check.heldSync, 2, reason: guard.config.mode.name);
+        expect(check.pendingSync, 0, reason: guard.config.mode.name);
+      }
+    });
+
     test('a copy that failed verification cannot be restored from', () async {
       // The pane never offers the button on such a row; this is the second
       // line. Restoring from a file `pg_restore` already said it could not read
@@ -730,6 +840,78 @@ void main() {
       // did this database used to be".
       expect(
         ledger.where((e) => e.action == AuditAction.backupTaken),
+        isEmpty,
+      );
+    });
+  });
+
+  group('the copy a restore takes first', () {
+    test('it is on disk afterwards, and putting it back undoes the restore',
+        () async {
+      await order('INV-BEFORE');
+      final copy = (await service.take(
+        by: owner,
+        trigger: BackupTrigger.manual,
+      )).value!;
+      await order('INV-AFTER');
+
+      final result = await service.restore(copy, by: owner);
+      expect(result.succeeded, isTrue, reason: '${result.refusal}');
+      expect(await invoices(), ['INV-BEFORE']);
+
+      final kept = safetyCopies();
+      expect(kept, hasLength(1));
+
+      // The ledger row is the one record of it that survives: the
+      // `pos_backups` row the copy wrote went with the database it described.
+      final ledger = await audit.recent(entityType: AuditAction.entityBackup);
+      final restored = ledger.firstWhere(
+        (entry) => entry.action == AuditAction.backupRestored,
+      );
+      expect(restored.after!['pre_restore_snapshot'], kept.single.path);
+
+      // And it is a way back, not a file with a reassuring name. Named for
+      // the second it was taken in, so the next safety copy must not land in
+      // the same one and overwrite it.
+      await Future<void>.delayed(const Duration(milliseconds: 1100));
+      final undo = await service.describeFile(kept.single, by: owner);
+      expect((await service.restore(undo, by: owner)).succeeded, isTrue);
+      expect(await invoices(), ['INV-AFTER', 'INV-BEFORE']);
+    });
+
+    test('when it cannot be taken, nothing is restored', () async {
+      await order('INV-BEFORE');
+      final copy = (await service.take(
+        by: owner,
+        trigger: BackupTrigger.manual,
+      )).value!;
+      await order('INV-AFTER');
+
+      // A folder that cannot be created, because a file is in the way. Not a
+      // permissions trick: those do nothing to a suite running as root.
+      final inTheWay = File('${folder.path}/in-the-way')..writeAsStringSync('');
+      final cornered = serviceWith(directory: '${inTheWay.path}/backups');
+
+      await expectLater(
+        cornered.restore(copy, by: owner),
+        throwsA(
+          isA<RestoreSnapshotFailed>().having(
+            (e) => e.attempt.failure,
+            'failure',
+            BackupFailure.destinationUnwritable,
+          ),
+        ),
+      );
+
+      // The whole claim: the evening is still here.
+      expect(await invoices(), ['INV-AFTER', 'INV-BEFORE']);
+      // And the attempt is on the record, in the database that was kept.
+      final newest = (await backups.recent()).first;
+      expect(newest.outcome, BackupOutcome.failed);
+      expect(newest.failure, BackupFailure.destinationUnwritable);
+      expect(
+        (await audit.recent(entityType: AuditAction.entityBackup))
+            .where((e) => e.action == AuditAction.backupRestored),
         isEmpty,
       );
     });

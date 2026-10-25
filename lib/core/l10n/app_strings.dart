@@ -291,6 +291,15 @@ sealed class AppStrings {
   /// each, so switching user is not typing a name on a keypad screen.
   String get lockPickYourName;
 
+  /// Too many wrong PINs at the lock screen, the open-shift sign-in or the
+  /// supervisor keypad: nothing is checked until the wait is over. Says no
+  /// name, so a locked username and a username nobody has read the same.
+  String signInLockedOut(int seconds);
+
+  /// Why the till is on the lock screen when nobody pressed Lock: five minutes
+  /// without a touch or a key signed the cashier out.
+  String get lockedAfterInactivity;
+
   // ── Start ─────────────────────────────────────────────────────────────────
   String get pointOfSale;
   String get renewLicence;
@@ -559,8 +568,6 @@ sealed class AppStrings {
   String get platformAddress;
   String get platformCaps;
   String get platformAddressHelp;
-  String get trustWithoutCertificate;
-  String get trustWithoutCertificateBlurb;
   String get theDatabase;
   String get databaseHost;
   String get databaseHostHelp;
@@ -772,6 +779,42 @@ sealed class AppStrings {
   String tcpFailure(int port);
   String authFailure(String user);
   String tlsFailure();
+
+  // ── LAN encryption (ADR-006 slice C) ──────────────────────────────────────
+  // The wizard's reasons a secure connection was refused, the fingerprint a
+  // technician compares, and Management's view of this till's transport.
+  // Fingerprints and dates are rendered beside these in mono, LTR — never
+  // inside them.
+  String get tlsUntrusted;
+  String get tlsCertificateChanged;
+  String tlsNameMismatch(String host);
+  String get tlsNotOffered;
+  String get serverCertificateTitle;
+  String get serverCertificateCompare;
+  String get serverCertificateConfirm;
+  String get serverCertificatePaired;
+  String get certificateValidUntil;
+  String get copyFingerprint;
+  String get fingerprintCopied;
+  String get dbUnavailableSecureConnection;
+  String get insecureLanWarning;
+  String get lanEncryptionTitle;
+  String get serverCertificateThisMachine;
+  String get serverCertificateNone;
+  String get lanEncryptedPinned;
+  String get lanEncryptedVerified;
+  String get lanEncryptionTurnOff;
+  String get lanEncryptionTurnOffTitle;
+  String get lanEncryptionTurnOffBody;
+  String get lanEncryptionTurnOn;
+  String get lanEncryptionTurnOnBody;
+  String get lanEncryptionNotRecorded;
+
+  /// `config.json` refused the change, so it was not made: a setting that
+  /// only lasts until the next restart is not one to show as in force.
+  String get lanEncryptionNotSaved;
+  String get lanEncryptionNoCertificate;
+
   String queryFailure(String database);
 
   /// The connection test WORKED. Said out loud, because its good outcome used
@@ -1682,6 +1725,9 @@ sealed class AppStrings {
   String get backupRestoreBlocked;
   String restoreBlockerOpenShifts(int count);
   String restoreBlockerOpenDay(int count);
+  String restoreBlockerPendingSync(int count);
+  String backupRestorePendingSyncWarning(int count);
+  String backupRestoreHeldSyncWarning(int count);
   String backupRestoreOrdersLost(int count, String value);
   String get backupRestoreEverythingElseLost;
   String get backupRestoreNoWayBack;
@@ -1689,6 +1735,8 @@ sealed class AppStrings {
   String get backupRestoreKeep;
   String get backupRestoreDone;
   String backupRestoreFailed(String detail);
+  String backupRestoreSafetyCopyKept(String folder);
+  String backupRestoreSnapshotFailed(String reason);
   String get backupAccount;
   String get backupAccountHint;
   String get backupAccountStored;
@@ -1709,6 +1757,8 @@ sealed class AppStrings {
   String get actAdminTimedOut;
   String get actAdminRefused;
   String get actAdminLockedOut;
+  String get actSyncRecordReleased;
+  String get actLanEncryptionChanged;
 
   // ── Admin Mode ────────────────────────────────────────────────────────────
   //
@@ -1729,8 +1779,9 @@ sealed class AppStrings {
   String get openAdminMode;
 
   /// One refusal for every way of being wrong — an unknown username, a wrong
-  /// PIN, and the right PIN from somebody without `admin.enter` all read the
-  /// same, so the form is no way of finding out who may get in.
+  /// password, a PIN for an account that has a password, and the right
+  /// secret from somebody without `admin.enter` all read the same, so the
+  /// form is no way of finding out who may get in.
   String get adminSignInRefused;
 
   /// The same refusal, and how many more tries this terminal allows before
@@ -1744,6 +1795,46 @@ sealed class AppStrings {
   /// got them in: installs from before Admin Mode never kept this password.
   String get adminDatabasePasswordNeeded;
   String get adminDatabasePasswordRefused;
+
+  // ── Admin Mode password (ADR-006b slice D) ────────────────────────────
+  /// The door's secret field. A password — or, the one time somebody has
+  /// none yet, their PIN; [adminPasswordFirstTime] says so under it.
+  String get adminPasswordLabel;
+  String get adminPasswordFirstTime;
+
+  /// The step a PIN-only account is held at until it chooses a password.
+  String get adminSetPasswordTitle;
+  String adminSetPasswordHelp(int minLength);
+  String get adminNewPassword;
+  String get adminConfirmPassword;
+  String get adminSavePassword;
+  String get adminPasswordStepExpired;
+
+  /// Why a new password was refused — see `AdminText.passwordProblem`.
+  String get passwordSameAsPin;
+  String passwordTooShort(int minLength);
+  String passwordTooLong(int maxLength);
+  String get passwordSameAsUsername;
+  String get passwordsDoNotMatch;
+
+  /// The technician's way back in when the owner's password is forgotten.
+  String get technicianResetLink;
+  String get technicianResetTitle;
+  String get technicianResetHelp;
+  String get technicianResetAction;
+  String technicianResetDone(String name);
+  String get technicianResetNobody;
+
+  /// Management › Staff: taking somebody's password away.
+  String get clearPasswordAction;
+  String clearPasswordTitle(String name);
+  String get clearPasswordConsequence;
+  String get keepPassword;
+  String get passwordSetLabel;
+  String get refusalOwnerPasswordIsTheirs;
+  String get actStaffPasswordSet;
+  String get actStaffPasswordCleared;
+  // ── end of the Admin Mode password block ──────────────────────────────
   String adminLockedAfter(int minutes);
   String get adminModeSettingsHint;
   String get adminLockAfter;
@@ -1797,6 +1888,35 @@ sealed class AppStrings {
   String syncPassSent(int count);
   String get syncOfflineTill;
   String get syncBranchServer;
+
+  // Back office › System › Sync › Held sync items (D1/D2/D13).
+  String get syncHeldCount;
+  String get heldSyncTitle;
+  String get heldSyncBlurb;
+  String get heldSyncNone;
+  String get heldSyncRetry;
+  String get heldSyncReleased;
+  String get heldSyncNotYours;
+  String get heldSyncAttempts;
+  String get heldSyncRetryFailed;
+  String get heldKindSale;
+  String get heldKindShiftOpen;
+  String get heldKindShiftClose;
+  String get heldKindCashMovement;
+  String get heldKindRefund;
+  String get heldKindCustomer;
+  String get heldKindOther;
+  String get quarantineValidationFailed;
+  String get quarantineIdempotencyPayloadMismatch;
+  String get quarantineMenuItemNotFound;
+  String get quarantineBranchNotInTenant;
+  String get quarantineCustomerNotFound;
+  String get quarantineRefundExceedsSold;
+  String get quarantineSaleNeverQueued;
+  String get quarantineRefundHasNoLines;
+  String get quarantineTenderNotFromPlatform;
+  String get quarantineLocalSourceMissing;
+  String get quarantineUnknown;
 
   // Back office › Settings › Printer & cash drawer.
   String get printerNotYours;
@@ -3840,6 +3960,15 @@ final class EnStrings extends AppStrings {
   String get enterYourPin => 'Enter your PIN';
   @override
   String get lockPickYourName => 'WHO IS BACK?';
+  @override
+  String signInLockedOut(int seconds) => seconds < 60
+      ? 'Too many wrong attempts. Try again in $seconds '
+            '${seconds == 1 ? 'second' : 'seconds'}.'
+      : 'Too many wrong attempts. Try again in ${(seconds + 59) ~/ 60} '
+            '${(seconds + 59) ~/ 60 == 1 ? 'minute' : 'minutes'}.';
+  @override
+  String get lockedAfterInactivity =>
+      'Locked after inactivity. The ticket is kept — sign in to carry on.';
 
   @override
   String get pointOfSale => 'POINT OF SALE';
@@ -4339,12 +4468,6 @@ final class EnStrings extends AppStrings {
       'Where this terminal sends its sales. Selling never waits on it — the '
       'local database takes the sale first and the queue drains behind it.';
   @override
-  String get trustWithoutCertificate =>
-      'Trust this database without a certificate';
-  @override
-  String get trustWithoutCertificateBlurb =>
-      'Only for a box on this local network. Never for a public address.';
-  @override
   String get theDatabase => 'Database';
   @override
   String get databaseHost => 'Database address';
@@ -4375,9 +4498,10 @@ final class EnStrings extends AppStrings {
       'The operating system’s credential store did not answer, so a password '
       'typed here will work now but will be gone after a restart — and this '
       'wizard will open again. Setup can be finished either way. On macOS, '
-      'unlock the login keychain; on Windows, check the Credential Manager '
-      'service. If it keeps happening, the application may need reinstalling '
-      'by someone who can sign it.';
+      'unlock the login keychain; on Windows, sign in with this till’s own '
+      'Windows account rather than a temporary profile (a password reset by '
+      'an administrator also locks saved credentials). If it keeps happening, '
+      'the application may need reinstalling by someone who can sign it.';
   @override
   String get machineNowHasDatabase => 'This machine now has a database.';
   @override
@@ -4723,8 +4847,107 @@ final class EnStrings extends AppStrings {
       'exists and the password is right.';
   @override
   String tlsFailure() =>
-      'PostgreSQL rejected the secure connection. Check its certificate, or '
-      'tick the option above if this really is a box on this network.';
+      'The secure connection to the database server failed, and the till '
+      'will not connect without one. Check that the server is switched on '
+      'and reachable, then try again.';
+  @override
+  String get tlsUntrusted =>
+      'The database server answered with a certificate this till does not '
+      'know yet. Compare its fingerprint below with the one on the main '
+      'device before you trust it.';
+  @override
+  String get tlsCertificateChanged =>
+      'The database server presented a different certificate from the one '
+      'this till was paired with. If the main device was set up again, '
+      'compare the new fingerprint below and confirm it. If nobody did that, '
+      'stop and call your technician: somebody may be intercepting the '
+      'network.';
+  @override
+  String tlsNameMismatch(String host) =>
+      'This is the certificate this till trusts, but it was not issued for '
+      '«$host». Connect using the main device\'s computer name, or the '
+      'address it had when its setup ran — or run its setup again.';
+  @override
+  String get tlsNotOffered =>
+      'The database server does not offer an encrypted connection. Run '
+      'XOrder POS setup on the main device again, with "Let other tills on '
+      'this network use this database" ticked.';
+  @override
+  String get serverCertificateTitle => 'Database server certificate';
+  @override
+  String get serverCertificateCompare =>
+      'Compare this fingerprint with the one on the main device, under '
+      'Management › Devices. Confirm only if every character matches.';
+  @override
+  String get serverCertificateConfirm =>
+      'The fingerprints match — trust this server';
+  @override
+  String get serverCertificatePaired =>
+      'Paired. This till accepts only the certificate with this fingerprint.';
+  @override
+  String get certificateValidUntil => 'Valid until';
+  @override
+  String get copyFingerprint => 'Copy the fingerprint';
+  @override
+  String get fingerprintCopied => 'Fingerprint copied';
+  @override
+  String get dbUnavailableSecureConnection =>
+      "The till could not confirm it is talking to the restaurant's own "
+      'database server, so it did not connect. Call your installer, and do '
+      'not change any network settings.';
+  @override
+  String get insecureLanWarning =>
+      'This till sends its database traffic over the network unencrypted. A '
+      'technician turned encryption off under Management › Devices.';
+  @override
+  String get lanEncryptionTitle => 'Network encryption';
+  @override
+  String get serverCertificateThisMachine =>
+      'Tills on the network are paired with this machine by this '
+      'fingerprint. Read it to whoever is setting one up.';
+  @override
+  String get serverCertificateNone =>
+      'This machine has no network certificate: its setup did not open the '
+      'database to other tills.';
+  @override
+  String get lanEncryptedPinned =>
+      'Encrypted. This till trusts only the database server certificate with '
+      'this fingerprint.';
+  @override
+  String get lanEncryptedVerified =>
+      "Encrypted, and verified against this computer's trusted certificate "
+      'authorities.';
+  @override
+  String get lanEncryptionTurnOff => 'Turn encryption off';
+  @override
+  String get lanEncryptionTurnOffTitle => 'Send database traffic unencrypted?';
+  @override
+  String get lanEncryptionTurnOffBody =>
+      "Anyone on this network will be able to read sales and this till's "
+      'database password. Do this only when the database server cannot offer '
+      'encryption, and only for an address on this local network — the server '
+      'has to allow it too. It is recorded in the activity log, and the start '
+      'screen will say so until encryption is back on.';
+  @override
+  String get lanEncryptionTurnOn => 'Turn encryption back on';
+  @override
+  String get lanEncryptionTurnOnBody =>
+      'This is the fingerprint of the certificate the database server '
+      'presents now. Compare it with the one on the main device, and confirm '
+      'only if every character matches.';
+  @override
+  String get lanEncryptionNotRecorded =>
+      'The change could not be written to the activity log, so nothing was '
+      'changed.';
+  @override
+  String get lanEncryptionNotSaved =>
+      'The change could not be saved on this till, so nothing was changed. '
+      'Check the disk has space and try again.';
+  @override
+  String get lanEncryptionNoCertificate =>
+      'The database server did not present a certificate to compare, so '
+      'encryption stays off. Check the server is running and that its setup '
+      'turned encryption on.';
   @override
   String queryFailure(String database) =>
       'Connected, but the database did not answer as expected. Check that '
@@ -6667,6 +6890,24 @@ final class EnStrings extends AppStrings {
   String restoreBlockerOpenDay(int count) =>
       'The trading day has not been closed';
   @override
+  String restoreBlockerPendingSync(int count) => count == 1
+      ? '1 record has not reached the platform yet — keep this till online '
+            'until it has gone'
+      : '$count records have not reached the platform yet — keep this till '
+            'online until they have gone';
+  @override
+  String backupRestorePendingSyncWarning(int count) => count == 1
+      ? '1 record was never sent to the platform, and is discarded with the '
+            'rest.'
+      : '$count records were never sent to the platform, and are discarded '
+            'with the rest.';
+  @override
+  String backupRestoreHeldSyncWarning(int count) => count == 1
+      ? '1 record the platform refused is waiting for a person. It is '
+            'discarded too; only the copy taken first keeps it.'
+      : '$count records the platform refused are waiting for a person. They '
+            'are discarded too; only the copy taken first keeps them.';
+  @override
   String backupRestoreOrdersLost(int count, String value) => count == 1
       ? '1 order taken since then, worth $value, will be discarded.'
       : '$count orders taken since then, worth $value, will be discarded.';
@@ -6676,8 +6917,8 @@ final class EnStrings extends AppStrings {
       'changes and the audit trail.';
   @override
   String get backupRestoreNoWayBack =>
-      'There is no way back. Nothing here keeps a copy of what is about to be '
-      'replaced.';
+      'There is no undo. A copy of this database is taken first and kept in '
+      'the backup folder; putting it back is another restore.';
   @override
   String get backupRestoreConfirm => 'Replace the database';
   @override
@@ -6688,6 +6929,15 @@ final class EnStrings extends AppStrings {
   @override
   String backupRestoreFailed(String detail) =>
       'The restore did not complete and nothing was changed. $detail';
+  @override
+  String backupRestoreSafetyCopyKept(String folder) =>
+      'The database as it was just before is in $folder, in the file whose '
+      'name starts pre-restore-. It is not in the list; use Restore from a '
+      'file… to put it back.';
+  @override
+  String backupRestoreSnapshotFailed(String reason) =>
+      'Nothing was replaced. A copy of this database could not be taken '
+      'first, and a restore never runs without one. $reason';
   @override
   String get backupAccount => 'Backup account';
   @override
@@ -6737,6 +6987,11 @@ final class EnStrings extends AppStrings {
   String get actAdminLockedOut =>
       'Admin Mode shut its door after repeated wrong PINs for this username';
   @override
+  String get actSyncRecordReleased => 'Sent a held sync record again';
+  @override
+  String get actLanEncryptionChanged =>
+      'Changed how this till encrypts its database connection';
+  @override
   String get actAdminRefused => 'Was refused Admin Mode';
   @override
   String adminTitle(String pane) => pane;
@@ -6746,15 +7001,15 @@ final class EnStrings extends AppStrings {
   String get adminSignInTitle => 'Admin Mode';
   @override
   String adminSignInHelp(int minutes) =>
-      'Your username and PIN. Admin Mode locks itself after $minutes minutes '
-      'without a tap or a key press.';
+      'Your username and password. Admin Mode locks itself after $minutes '
+      'minutes without a tap or a key press.';
   @override
   String get yourPin => 'Your PIN';
   @override
   String get openAdminMode => 'Open Admin Mode';
   @override
   String get adminSignInRefused =>
-      'That username and PIN cannot open Admin Mode.';
+      'That username and password cannot open Admin Mode.';
   @override
   String adminSignInAttemptsLeft(int attempts) => attempts == 1
       ? '$adminSignInRefused One attempt left.'
@@ -6774,13 +7029,87 @@ final class EnStrings extends AppStrings {
   String get adminDatabasePasswordRefused =>
       'PostgreSQL did not accept that back-office password.';
   @override
+  String get adminPasswordLabel => 'Your password';
+  @override
+  String get adminPasswordFirstTime =>
+      'First time in Admin Mode? Type your PIN here — you will choose a '
+      'password before it opens.';
+  @override
+  String get adminSetPasswordTitle => 'Choose your Admin Mode password';
+  @override
+  String adminSetPasswordHelp(int minLength) =>
+      'Your PIN got you this far, once. From now on Admin Mode asks for a '
+      'password: at least $minLength characters, in any language. Your PIN '
+      'still works everywhere else at the till.';
+  @override
+  String get adminNewPassword => 'New password';
+  @override
+  String get adminConfirmPassword => 'The same password again';
+  @override
+  String get adminSavePassword => 'Save and open Admin Mode';
+  @override
+  String get adminPasswordStepExpired =>
+      'That took too long. Sign in again with your PIN.';
+  @override
+  String get passwordSameAsPin => 'A password cannot be your PIN.';
+  @override
+  String passwordTooShort(int minLength) =>
+      'A password needs at least $minLength characters.';
+  @override
+  String passwordTooLong(int maxLength) =>
+      'A password can be at most $maxLength characters.';
+  @override
+  String get passwordSameAsUsername => 'A password cannot be your username.';
+  @override
+  String get passwordsDoNotMatch => 'The two passwords are not the same.';
+  @override
+  String get technicianResetLink => 'Forgotten password? Technician reset';
+  @override
+  String get technicianResetTitle => 'Technician reset';
+  @override
+  String get technicianResetHelp =>
+      "Clears one person's Admin Mode password, the owner's included. It "
+      'needs the back-office database password typed here — the one kept on '
+      'this till is not used. They then open Admin Mode with their PIN once '
+      'and choose a new password.';
+  @override
+  String get technicianResetAction => 'Clear the password';
+  @override
+  String technicianResetDone(String name) =>
+      "$name's password is cleared. They can open Admin Mode with their PIN "
+      'and choose a new one.';
+  @override
+  String get technicianResetNobody =>
+      'Nobody active with that username has a password to clear.';
+  @override
+  String get clearPasswordAction => 'Clear password';
+  @override
+  String clearPasswordTitle(String name) =>
+      "Clear $name's Admin Mode password?";
+  @override
+  String get clearPasswordConsequence =>
+      'Next time they open Admin Mode with their PIN, and must choose a new '
+      'password before it opens.';
+  @override
+  String get keepPassword => 'Keep password';
+  @override
+  String get passwordSetLabel => 'Admin Mode password set';
+  @override
+  String get refusalOwnerPasswordIsTheirs =>
+      "Only a technician can clear the owner's password — from the Admin Mode "
+      'sign-in, with the back-office database password.';
+  @override
+  String get actStaffPasswordSet => 'Chose their Admin Mode password';
+  @override
+  String get actStaffPasswordCleared => 'Cleared an Admin Mode password';
+  @override
   String adminLockedAfter(int minutes) =>
       'Admin Mode locked itself after $minutes minutes without activity. Sign '
       'in again to carry on.';
   @override
   String get adminModeSettingsHint =>
       'How this till lets somebody into Admin Mode. The shortcut is only a '
-      'hidden way in — the username and PIN are the lock.';
+      'hidden way in — the username and password are the lock.';
   @override
   String get adminLockAfter => 'Lock after';
   @override
@@ -6890,6 +7219,78 @@ final class EnStrings extends AppStrings {
       'server below, and a backup is the copy that keeps them safe.';
   @override
   String get syncBranchServer => 'Branch server';
+  @override
+  String get syncHeldCount => 'Held for a person';
+  @override
+  String get heldSyncTitle => 'Held sync items';
+  @override
+  String get heldSyncBlurb =>
+      'Records the platform refused, or that this till would not send. They '
+      'wait here and are never deleted. Retry puts one back in the queue once '
+      'whatever stopped it is fixed; if the platform refuses it again, it '
+      'comes back here.';
+  @override
+  String get heldSyncNone => 'Nothing is held.';
+  @override
+  String get heldSyncRetry => 'Retry';
+  @override
+  String get heldSyncReleased =>
+      'Back in the queue. It goes on the next sync.';
+  @override
+  String get heldSyncNotYours =>
+      'Only somebody who may manage this terminal can retry a held record.';
+  @override
+  String get heldSyncAttempts => 'Attempts';
+  @override
+  String get heldSyncRetryFailed =>
+      'The database did not answer, so nothing changed. Try again.';
+  @override
+  String get heldKindSale => 'Sale';
+  @override
+  String get heldKindShiftOpen => 'Shift opened';
+  @override
+  String get heldKindShiftClose => 'Shift closed';
+  @override
+  String get heldKindCashMovement => 'Cash movement';
+  @override
+  String get heldKindRefund => 'Refund';
+  @override
+  String get heldKindCustomer => 'Customer';
+  @override
+  String get heldKindOther => 'Other record';
+  @override
+  String get quarantineValidationFailed =>
+      'The platform found a problem with the record itself';
+  @override
+  String get quarantineIdempotencyPayloadMismatch =>
+      'The platform already has a different record under the same key';
+  @override
+  String get quarantineMenuItemNotFound =>
+      'An item on it no longer exists on the platform';
+  @override
+  String get quarantineBranchNotInTenant =>
+      "The platform does not recognise this branch as this restaurant's";
+  @override
+  String get quarantineCustomerNotFound =>
+      'The customer on it is not on the platform';
+  @override
+  String get quarantineRefundExceedsSold =>
+      'The platform says this would refund more than was sold';
+  @override
+  String get quarantineSaleNeverQueued =>
+      'The sale it belongs to was never queued to send';
+  @override
+  String get quarantineRefundHasNoLines =>
+      'A refund of an amount with no items, which the platform cannot accept';
+  @override
+  String get quarantineTenderNotFromPlatform =>
+      'Paid by a payment method the platform never sent this till';
+  @override
+  String get quarantineLocalSourceMissing =>
+      'The record it was made from is missing on this till';
+  @override
+  String get quarantineUnknown =>
+      'Held for a reason this version does not recognise';
   @override
   String get printerNotYours =>
       'Only somebody who may manage this terminal can change its printer.';
@@ -8823,6 +9224,30 @@ final class ArStrings extends AppStrings {
   String get enterYourPin => 'أدخل رقمك السري';
   @override
   String get lockPickYourName => 'من عاد إلى الجهاز؟';
+  @override
+  String signInLockedOut(int seconds) => seconds < 60
+      ? 'محاولات خاطئة كثيرة. حاول مرة أخرى بعد '
+            '${_arCount(seconds, 'ثانية واحدة', 'ثانيتين', 'ثوانٍ', 'ثانية')}.'
+      : 'محاولات خاطئة كثيرة. حاول مرة أخرى بعد '
+            '${_arCount((seconds + 59) ~/ 60, 'دقيقة واحدة', 'دقيقتين', 'دقائق', 'دقيقة')}.';
+  @override
+  String get lockedAfterInactivity =>
+      'قُفل الجهاز بسبب عدم النشاط. الطلب محفوظ — سجّل الدخول للمتابعة.';
+
+  /// An Arabic count with its noun: the word itself for one and two, the
+  /// plural from three to ten, the singular from eleven up. Digits stay Latin.
+  static String _arCount(
+    int n,
+    String one,
+    String two,
+    String few,
+    String many,
+  ) => switch (n) {
+    1 => one,
+    2 => two,
+    >= 3 && <= 10 => '$n $few',
+    _ => '$n $many',
+  };
 
   @override
   String get pointOfSale => 'نقطة بيع';
@@ -9303,11 +9728,6 @@ final class ArStrings extends AppStrings {
       'الوجهة التي يرسل إليها هذا الجهاز مبيعاته. البيع لا ينتظرها أبداً — '
       'قاعدة البيانات المحلية تستقبل البيع أولاً ثم تُفرَّغ قائمة الانتظار.';
   @override
-  String get trustWithoutCertificate => 'الوثوق بقاعدة البيانات هذه بدون شهادة';
-  @override
-  String get trustWithoutCertificateBlurb =>
-      'فقط لجهاز على هذه الشبكة المحلية. لا تفعل ذلك أبداً لعنوان عام.';
-  @override
   String get theDatabase => 'قاعدة البيانات';
   @override
   String get databaseHost => 'عنوان قاعدة البيانات';
@@ -9338,8 +9758,10 @@ final class ArStrings extends AppStrings {
       'لم يستجب مخزن بيانات الاعتماد في نظام التشغيل، لذلك ستعمل كلمة المرور '
       'التي تُدخل هنا الآن لكنها ستُفقد بعد إعادة التشغيل، وسيُفتح هذا المعالج '
       'من جديد. يمكن إكمال الإعداد في الحالتين. على macOS افتح قفل سلسلة '
-      'المفاتيح، وعلى Windows تحقق من خدمة إدارة بيانات الاعتماد. إذا تكرر '
-      'الأمر فقد يحتاج التطبيق إلى إعادة تثبيت من شخص يستطيع توقيعه.';
+      'المفاتيح، وعلى Windows سجّل الدخول بحساب Windows الخاص بهذا الكاشير '
+      'وليس بملف تعريف مؤقت (إعادة تعيين كلمة المرور من قِبل المسؤول تقفل '
+      'أيضاً بيانات الاعتماد المحفوظة). إذا تكرر الأمر فقد يحتاج التطبيق إلى '
+      'إعادة تثبيت من شخص يستطيع توقيعه.';
   @override
   String get machineNowHasDatabase => 'صار لهذا الجهاز قاعدة بيانات.';
   @override
@@ -9665,8 +10087,98 @@ final class ArStrings extends AppStrings {
       'وأن كلمة المرور صحيحة.';
   @override
   String tlsFailure() =>
-      'رفض PostgreSQL الاتصال المؤمَّن. راجع شهادته، أو فعّل الخيار أعلاه إذا '
-      'كان هذا فعلاً جهازاً على هذه الشبكة.';
+      'فشل الاتصال المؤمَّن بخادم قاعدة البيانات، ولن يتصل الكاشير بدونه. '
+      'تأكد أن الخادم يعمل ويمكن الوصول إليه، ثم حاول مرة أخرى.';
+  @override
+  String get tlsUntrusted =>
+      'ردّ خادم قاعدة البيانات بشهادة لا يعرفها هذا الجهاز بعد. قارن بصمتها '
+      'أدناه بالبصمة الظاهرة على الجهاز الرئيسي قبل أن تعتمدها.';
+  @override
+  String get tlsCertificateChanged =>
+      'قدّم خادم قاعدة البيانات شهادة غير التي اقتُرن بها هذا الجهاز. إذا '
+      'أُعيد إعداد الجهاز الرئيسي فقارن البصمة الجديدة أدناه وأكّدها. وإن لم '
+      'يفعل أحد ذلك فتوقف واتصل بالفني: قد يكون هناك من يعترض الشبكة.';
+  @override
+  String tlsNameMismatch(String host) =>
+      'هذه هي الشهادة التي يثق بها هذا الجهاز، لكنها لم تُصدَر للعنوان '
+      '«$host». اتصل باسم كمبيوتر الجهاز الرئيسي أو بالعنوان الذي كان له '
+      'عند إعداده — أو أعد تشغيل إعداده.';
+  @override
+  String get tlsNotOffered =>
+      'خادم قاعدة البيانات لا يوفّر اتصالاً مشفّراً. أعد تشغيل إعداد XOrder '
+      'POS على الجهاز الرئيسي مع تفعيل «السماح لأجهزة الكاشير الأخرى على هذه '
+      'الشبكة باستخدام قاعدة البيانات».';
+  @override
+  String get serverCertificateTitle => 'شهادة خادم قاعدة البيانات';
+  @override
+  String get serverCertificateCompare =>
+      'قارن هذه البصمة بالبصمة الظاهرة على الجهاز الرئيسي في الإدارة › '
+      'الأجهزة. لا تؤكّد إلا إذا تطابق كل حرف.';
+  @override
+  String get serverCertificateConfirm => 'البصمتان متطابقتان — اعتمد هذا الخادم';
+  @override
+  String get serverCertificatePaired =>
+      'تم الإقران. لا يقبل هذا الجهاز إلا الشهادة التي لها هذه البصمة.';
+  @override
+  String get certificateValidUntil => 'صالحة حتى';
+  @override
+  String get copyFingerprint => 'انسخ البصمة';
+  @override
+  String get fingerprintCopied => 'نُسخت البصمة';
+  @override
+  String get dbUnavailableSecureConnection =>
+      'لم يستطع الكاشير التأكد من أنه يتصل بخادم قاعدة بيانات المطعم نفسه، '
+      'فلم يتصل. اتصل بالمُثبّت، ولا تغيّر أي إعدادات للشبكة.';
+  @override
+  String get insecureLanWarning =>
+      'يرسل هذا الكاشير بيانات قاعدة البيانات عبر الشبكة بلا تشفير. أوقف أحد '
+      'الفنيين التشفير من الإدارة › الأجهزة.';
+  @override
+  String get lanEncryptionTitle => 'تشفير الشبكة';
+  @override
+  String get serverCertificateThisMachine =>
+      'تُقرَن أجهزة الكاشير على الشبكة بهذا الجهاز عبر هذه البصمة. اقرأها '
+      'لمن يُعِدّ أحدها.';
+  @override
+  String get serverCertificateNone =>
+      'لا توجد شهادة شبكة على هذا الجهاز: لم يفتح إعداده قاعدة البيانات '
+      'لأجهزة الكاشير الأخرى.';
+  @override
+  String get lanEncryptedPinned =>
+      'مشفّر. لا يثق هذا الجهاز إلا بشهادة خادم قاعدة البيانات التي لها هذه '
+      'البصمة.';
+  @override
+  String get lanEncryptedVerified =>
+      'مشفّر، ومُتحقَّق منه عبر جهات إصدار الشهادات الموثوقة على هذا '
+      'الكمبيوتر.';
+  @override
+  String get lanEncryptionTurnOff => 'أوقف التشفير';
+  @override
+  String get lanEncryptionTurnOffTitle => 'إرسال بيانات قاعدة البيانات بلا تشفير؟';
+  @override
+  String get lanEncryptionTurnOffBody =>
+      'سيتمكن أي شخص على هذه الشبكة من قراءة المبيعات وكلمة مرور قاعدة بيانات '
+      'هذا الكاشير. لا تفعل ذلك إلا إذا كان خادم قاعدة البيانات لا يستطيع '
+      'توفير التشفير، ولعنوان على هذه الشبكة المحلية فقط — ويجب أن يسمح الخادم '
+      'بذلك أيضاً. يُسجَّل هذا في سجل النشاط، وستُظهره شاشة البدء حتى يعود '
+      'التشفير.';
+  @override
+  String get lanEncryptionTurnOn => 'أعد تشغيل التشفير';
+  @override
+  String get lanEncryptionTurnOnBody =>
+      'هذه بصمة الشهادة التي يقدّمها خادم قاعدة البيانات الآن. قارنها بالبصمة '
+      'الظاهرة على الجهاز الرئيسي، ولا تؤكّد إلا إذا تطابق كل حرف.';
+  @override
+  String get lanEncryptionNotRecorded =>
+      'تعذّر تسجيل التغيير في سجل النشاط، فلم يُغيَّر شيء.';
+  @override
+  String get lanEncryptionNotSaved =>
+      'تعذّر حفظ التغيير على هذا الجهاز، فلم يُغيَّر شيء. تأكّد من وجود مساحة '
+      'كافية على القرص ثم أعد المحاولة.';
+  @override
+  String get lanEncryptionNoCertificate =>
+      'لم يقدّم خادم قاعدة البيانات شهادة يمكن مقارنتها، فبقي التشفير '
+      'موقوفاً. تأكد أن الخادم يعمل وأن إعداده فعّل التشفير.';
   @override
   String queryFailure(String database) =>
       'تم الاتصال، لكن قاعدة البيانات لم ترد كما هو متوقع. تأكد أن «$database» '
@@ -11547,6 +12059,22 @@ final class ArStrings extends AppStrings {
   @override
   String restoreBlockerOpenDay(int count) => 'يوم العمل لم يُقفل بعد';
   @override
+  String restoreBlockerPendingSync(int count) => count == 1
+      ? 'سجلّ واحد لم يصل إلى المنصة بعد — اترك هذا الجهاز متصلاً بالإنترنت '
+            'حتى يُرسَل'
+      : '$count من السجلات لم تصل إلى المنصة بعد — اترك هذا الجهاز متصلاً '
+            'بالإنترنت حتى تُرسَل';
+  @override
+  String backupRestorePendingSyncWarning(int count) => count == 1
+      ? 'سجلّ واحد لم يُرسَل إلى المنصة قط، وسيضيع مع الباقي.'
+      : '$count من السجلات لم تُرسَل إلى المنصة قط، وستضيع مع الباقي.';
+  @override
+  String backupRestoreHeldSyncWarning(int count) => count == 1
+      ? 'سجلّ واحد رفضته المنصة ينتظر مراجعة شخص. سيضيع هو أيضاً، ولا يحتفظ '
+            'به إلا النسخة المأخوذة قبل الاستعادة.'
+      : '$count من السجلات رفضتها المنصة تنتظر مراجعة شخص. ستضيع هي أيضاً، '
+            'ولا يحتفظ بها إلا النسخة المأخوذة قبل الاستعادة.';
+  @override
   String backupRestoreOrdersLost(int count, String value) => count == 1
       ? 'سيضيع طلب واحد سُجّل بعد ذلك الوقت، بقيمة $value.'
       : 'سيضيع $count طلباً سُجّلت بعد ذلك الوقت، بقيمة $value.';
@@ -11556,7 +12084,8 @@ final class ArStrings extends AppStrings {
       'الموظفين وسجل التدقيق.';
   @override
   String get backupRestoreNoWayBack =>
-      'لا رجوع بعدها. لا شيء هنا يحتفظ بنسخة مما سيُستبدل.';
+      'لا تراجع بضغطة زر. تُؤخذ أولاً نسخة من قاعدة البيانات هذه وتُحفظ في '
+      'مجلد النسخ الاحتياطية، وإرجاعها يكون باستعادة أخرى.';
   @override
   String get backupRestoreConfirm => 'استبدل قاعدة البيانات';
   @override
@@ -11567,6 +12096,15 @@ final class ArStrings extends AppStrings {
   @override
   String backupRestoreFailed(String detail) =>
       'لم تكتمل الاستعادة ولم يتغيّر شيء. $detail';
+  @override
+  String backupRestoreSafetyCopyKept(String folder) =>
+      'قاعدة البيانات كما كانت قبل الاستعادة مباشرةً محفوظة في $folder، في '
+      'الملف الذي يبدأ اسمه بـ pre-restore-. لا تظهر في القائمة؛ استخدم '
+      '«استعادة من ملف…» لإرجاعها.';
+  @override
+  String backupRestoreSnapshotFailed(String reason) =>
+      'لم يُستبدل شيء. تعذّر أخذ نسخة من قاعدة البيانات هذه أولاً، ولا تتم '
+      'الاستعادة أبداً بدونها. $reason';
   @override
   String get backupAccount => 'حساب النسخ الاحتياطي';
   @override
@@ -11614,6 +12152,11 @@ final class ArStrings extends AppStrings {
   String get actAdminLockedOut =>
       'أُغلق باب وضع المسؤول بعد أكواد خاطئة متكررة لاسم المستخدم هذا';
   @override
+  String get actSyncRecordReleased => 'أعاد إرسال سجل مزامنة محتجز';
+  @override
+  String get actLanEncryptionChanged =>
+      'غيّر طريقة تشفير اتصال هذا الجهاز بقاعدة البيانات';
+  @override
   String get actAdminRefused => 'رُفض دخوله وضع المسؤول';
   @override
   String adminTitle(String pane) => pane;
@@ -11623,15 +12166,15 @@ final class ArStrings extends AppStrings {
   String get adminSignInTitle => 'وضع المسؤول';
   @override
   String adminSignInHelp(int minutes) =>
-      'اسم المستخدم والكود الخاص بك. يُقفل وضع المسؤول نفسه بعد $minutes '
-      'دقيقة دون لمس أو ضغط مفتاح.';
+      'اسم المستخدم وكلمة المرور الخاصة بك. يُقفل وضع المسؤول نفسه بعد '
+      '$minutes دقيقة دون لمس أو ضغط مفتاح.';
   @override
   String get yourPin => 'الكود الخاص بك';
   @override
   String get openAdminMode => 'فتح وضع المسؤول';
   @override
   String get adminSignInRefused =>
-      'اسم المستخدم والكود هذان لا يفتحان وضع المسؤول.';
+      'اسم المستخدم وكلمة المرور هذان لا يفتحان وضع المسؤول.';
   @override
   String adminSignInAttemptsLeft(int attempts) => attempts == 1
       ? '$adminSignInRefused بقيت محاولة واحدة.'
@@ -11650,13 +12193,89 @@ final class ArStrings extends AppStrings {
   String get adminDatabasePasswordRefused =>
       'لم تقبل PostgreSQL كلمة مرور الإدارة هذه.';
   @override
+  String get adminPasswordLabel => 'كلمة المرور الخاصة بك';
+  @override
+  String get adminPasswordFirstTime =>
+      'أول مرة في وضع المسؤول؟ اكتب الكود الخاص بك هنا — وستختار كلمة مرور '
+      'قبل أن يُفتح.';
+  @override
+  String get adminSetPasswordTitle => 'اختر كلمة مرور وضع المسؤول';
+  @override
+  String adminSetPasswordHelp(int minLength) =>
+      'أوصلك الكود الخاص بك إلى هنا مرة واحدة. من الآن يطلب وضع المسؤول كلمة '
+      'مرور: $minLength أحرف على الأقل، بأي لغة. ويبقى الكود صالحاً في كل مكان '
+      'آخر على الكاشير.';
+  @override
+  String get adminNewPassword => 'كلمة المرور الجديدة';
+  @override
+  String get adminConfirmPassword => 'كلمة المرور نفسها مرة أخرى';
+  @override
+  String get adminSavePassword => 'حفظ وفتح وضع المسؤول';
+  @override
+  String get adminPasswordStepExpired =>
+      'انتهت المهلة. سجّل الدخول مرة أخرى بالكود الخاص بك.';
+  @override
+  String get passwordSameAsPin =>
+      'لا يمكن أن تكون كلمة المرور هي الكود الخاص بك.';
+  @override
+  String passwordTooShort(int minLength) =>
+      'يجب أن تتكون كلمة المرور من $minLength أحرف على الأقل.';
+  @override
+  String passwordTooLong(int maxLength) =>
+      'لا يمكن أن تزيد كلمة المرور على $maxLength حرفاً.';
+  @override
+  String get passwordSameAsUsername =>
+      'لا يمكن أن تكون كلمة المرور هي اسم المستخدم.';
+  @override
+  String get passwordsDoNotMatch => 'كلمتا المرور غير متطابقتين.';
+  @override
+  String get technicianResetLink => 'نسيت كلمة المرور؟ إعادة تعيين بواسطة الفني';
+  @override
+  String get technicianResetTitle => 'إعادة تعيين بواسطة الفني';
+  @override
+  String get technicianResetHelp =>
+      'يمسح كلمة مرور وضع المسؤول لشخص واحد، بما في ذلك المالك. يحتاج إلى '
+      'كلمة مرور قاعدة بيانات الإدارة مكتوبة هنا — لا تُستخدم الكلمة المحفوظة '
+      'على هذا الجهاز. بعد ذلك يفتح الشخص وضع المسؤول بالكود الخاص به مرة '
+      'واحدة ويختار كلمة مرور جديدة.';
+  @override
+  String get technicianResetAction => 'مسح كلمة المرور';
+  @override
+  String technicianResetDone(String name) =>
+      'تم مسح كلمة مرور $name. يمكنه فتح وضع المسؤول بالكود الخاص به واختيار '
+      'كلمة مرور جديدة.';
+  @override
+  String get technicianResetNobody =>
+      'لا يوجد شخص نشط بهذا الاسم لديه كلمة مرور لمسحها.';
+  @override
+  String get clearPasswordAction => 'مسح كلمة المرور';
+  @override
+  String clearPasswordTitle(String name) =>
+      'مسح كلمة مرور وضع المسؤول الخاصة بـ $name؟';
+  @override
+  String get clearPasswordConsequence =>
+      'في المرة القادمة يفتح وضع المسؤول بالكود الخاص به، ويجب أن يختار كلمة '
+      'مرور جديدة قبل أن يُفتح.';
+  @override
+  String get keepPassword => 'الإبقاء على كلمة المرور';
+  @override
+  String get passwordSetLabel => 'لديه كلمة مرور لوضع المسؤول';
+  @override
+  String get refusalOwnerPasswordIsTheirs =>
+      'لا يمسح كلمة مرور المالك إلا فني — من شاشة الدخول إلى وضع المسؤول، '
+      'باستخدام كلمة مرور قاعدة بيانات الإدارة.';
+  @override
+  String get actStaffPasswordSet => 'اختار كلمة مرور وضع المسؤول';
+  @override
+  String get actStaffPasswordCleared => 'مسح كلمة مرور وضع المسؤول';
+  @override
   String adminLockedAfter(int minutes) =>
       'أقفل وضع المسؤول نفسه بعد $minutes دقيقة دون نشاط. سجّل الدخول مرة '
       'أخرى للمتابعة.';
   @override
   String get adminModeSettingsHint =>
       'كيف يسمح هذا الجهاز بالدخول إلى وضع المسؤول. الاختصار مجرد مدخل مخفي — '
-      'اسم المستخدم والكود هما القفل.';
+      'اسم المستخدم وكلمة المرور هما القفل.';
   @override
   String get adminLockAfter => 'الإقفال بعد';
   @override
@@ -11760,6 +12379,75 @@ final class ArStrings extends AppStrings {
       'والنسخة الاحتياطية هي ما يحفظها.';
   @override
   String get syncBranchServer => 'خادم الفرع';
+  @override
+  String get syncHeldCount => 'محتجزة لمراجعة شخص';
+  @override
+  String get heldSyncTitle => 'عناصر مزامنة محتجزة';
+  @override
+  String get heldSyncBlurb =>
+      'سجلات رفضتها المنصة، أو امتنع هذا الجهاز عن إرسالها. تبقى هنا ولا '
+      'تُحذف أبدًا. «إعادة المحاولة» تعيد السجل إلى قائمة الإرسال بعد إصلاح ما '
+      'أوقفه، وإن رفضته المنصة مرة أخرى يعود إلى هنا.';
+  @override
+  String get heldSyncNone => 'لا يوجد شيء محتجز.';
+  @override
+  String get heldSyncRetry => 'إعادة المحاولة';
+  @override
+  String get heldSyncReleased =>
+      'عاد إلى قائمة الإرسال، وسيُرسل في المزامنة التالية.';
+  @override
+  String get heldSyncNotYours =>
+      'إعادة محاولة السجلات المحتجزة لمن يملك صلاحية إدارة هذا الجهاز فقط.';
+  @override
+  String get heldSyncAttempts => 'المحاولات';
+  @override
+  String get heldSyncRetryFailed =>
+      'لم تستجب قاعدة البيانات، فلم يتغيّر شيء. حاول مرة أخرى.';
+  @override
+  String get heldKindSale => 'عملية بيع';
+  @override
+  String get heldKindShiftOpen => 'فتح وردية';
+  @override
+  String get heldKindShiftClose => 'إغلاق وردية';
+  @override
+  String get heldKindCashMovement => 'حركة نقدية';
+  @override
+  String get heldKindRefund => 'استرداد';
+  @override
+  String get heldKindCustomer => 'عميل';
+  @override
+  String get heldKindOther => 'سجل آخر';
+  @override
+  String get quarantineValidationFailed => 'وجدت المنصة مشكلة في السجل نفسه';
+  @override
+  String get quarantineIdempotencyPayloadMismatch =>
+      'لدى المنصة سجل مختلف بالمفتاح نفسه';
+  @override
+  String get quarantineMenuItemNotFound =>
+      'أحد الأصناف فيه لم يعد موجودًا على المنصة';
+  @override
+  String get quarantineBranchNotInTenant =>
+      'لا تعرف المنصة هذا الفرع كفرع تابع لهذا المطعم';
+  @override
+  String get quarantineCustomerNotFound =>
+      'العميل المذكور فيه غير موجود على المنصة';
+  @override
+  String get quarantineRefundExceedsSold =>
+      'تقول المنصة إن هذا الاسترداد أكبر مما بيع';
+  @override
+  String get quarantineSaleNeverQueued =>
+      'عملية البيع التي يتبعها لم تُدرج للإرسال أصلًا';
+  @override
+  String get quarantineRefundHasNoLines =>
+      'استرداد بمبلغ دون أصناف، ولا تقبله المنصة';
+  @override
+  String get quarantineTenderNotFromPlatform =>
+      'مدفوع بوسيلة دفع لم ترسلها المنصة إلى هذا الجهاز';
+  @override
+  String get quarantineLocalSourceMissing =>
+      'السجل الذي أُنشئ منه مفقود على هذا الجهاز';
+  @override
+  String get quarantineUnknown => 'محتجز لسبب لا يعرفه هذا الإصدار';
   @override
   String get printerNotYours =>
       'تغيير الطابعة لمن يملك صلاحية إدارة هذا الجهاز فقط.';

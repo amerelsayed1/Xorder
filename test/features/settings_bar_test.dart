@@ -124,9 +124,9 @@ void main() {
     WidgetTester tester,
     ProviderContainer container,
   ) async {
-    await container
-        .read(adminSessionProvider.notifier)
-        .signIn(username: 'amer', pin: '4321');
+    // The PIN the first time, then the password it makes him choose — the
+    // door is not open until both are done.
+    await signInToAdminMode(container);
     // And onto the back office's screen, as the chord does: Admin Mode is
     // never a session over the till's own screens, and the header — the one
     // place Exit is said since 15 Sep 2026 — is that screen's. Exit goes back

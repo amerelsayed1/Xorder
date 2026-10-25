@@ -1,4 +1,5 @@
 import '../../../core/config/deployment.dart';
+import '../../../core/config/lan_tls.dart' show PresentedCertificate;
 import '../../../core/config/printer_config.dart';
 import '../../../domain/repositories/repositories.dart'
     show PosBranch, PosTerminalSummary;
@@ -127,6 +128,7 @@ class SetupDraft {
     this.scannerAttached = false,
     this.catalogueItems,
     this.mainDeviceLinked = false,
+    this.presentedCertificate,
     this.busy = false,
     this.error,
     this.notice,
@@ -451,6 +453,14 @@ class SetupDraft {
   /// at.
   final bool mainDeviceLinked;
 
+  /// The certificate the database server presented when the connection was
+  /// refused for one, waiting for the technician to compare its fingerprint
+  /// with the main device's and confirm. Null when there is nothing to
+  /// confirm. **Never trusted by being here** — only
+  /// `SetupController.trustPresentedCertificate` moves it into the
+  /// deployment's pin, and only when a person presses the button.
+  final PresentedCertificate? presentedCertificate;
+
   final bool busy;
   final String? error;
 
@@ -582,6 +592,8 @@ class SetupDraft {
     bool? scannerAttached,
     int? catalogueItems,
     bool? mainDeviceLinked,
+    PresentedCertificate? presentedCertificate,
+    bool clearPresentedCertificate = false,
     bool? busy,
     String? error,
     String? notice,
@@ -644,6 +656,9 @@ class SetupDraft {
     scannerAttached: scannerAttached ?? this.scannerAttached,
     catalogueItems: catalogueItems ?? this.catalogueItems,
     mainDeviceLinked: mainDeviceLinked ?? this.mainDeviceLinked,
+    presentedCertificate: clearPresentedCertificate
+        ? null
+        : (presentedCertificate ?? this.presentedCertificate),
     busy: busy ?? this.busy,
     error: clearError ? null : (error ?? this.error),
     notice: clearNotice ? null : (notice ?? this.notice),

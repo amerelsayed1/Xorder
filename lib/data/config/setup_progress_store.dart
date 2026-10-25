@@ -21,6 +21,15 @@ import '../../core/config/deployment.dart';
 /// signed file the bundle embedded — public by construction and verified again
 /// on the way back in.
 ///
+/// Offline and child tills keep one too, for the seat rather than the code: a
+/// registration on the branch database is an upsert keyed on [installationId],
+/// and the installation id of a machine that has not finished setup lives only
+/// in memory until `config.json` is written. A wizard killed after registering
+/// and re-run under a freshly minted id would spend a second seat of the
+/// licence's `max_terminals`. So that id is written down *before* the
+/// registration is sent, with [claimed] false, and again after it with the
+/// terminal the database answered.
+///
 /// Written after a claim, deleted when setup completes or the till is reset.
 /// A damaged file reads as **no progress**, for the same reason a damaged
 /// `config.json` reads as no configuration: the wizard from the top is a
@@ -36,6 +45,9 @@ class SetupProgress {
     this.restaurantId,
     this.branchCode,
     this.licence,
+    this.installationId,
+    this.claimed = true,
+    this.bootstrapped = false,
   });
 
   final DeploymentConfig deployment;
@@ -54,6 +66,21 @@ class SetupProgress {
   /// — one restored from disk is already there and is read back the same way.
   final String? licence;
 
+  /// `TerminalProfile.installationId` of the machine that wrote this. Not a
+  /// secret — `config.json` holds it in the clear, and the licence only ever
+  /// sees its hash — but the identity the registration upsert is keyed on.
+  final String? installationId;
+
+  /// Whether [terminalId] is a terminal the platform or the branch database
+  /// actually issued. False for the record an offline till writes just before
+  /// registering, when the id in the draft is only this machine's guess.
+  /// Defaults to true because every record written before this field existed
+  /// was a cloud claim, and was written only once the claim had succeeded.
+  final bool claimed;
+
+  /// The offline wizard built the database and its first administrator.
+  final bool bootstrapped;
+
   Map<String, Object?> toJson() => {
     'deployment': deployment.toJson(),
     'terminal_id': terminalId,
@@ -64,6 +91,9 @@ class SetupProgress {
     'restaurant_id': restaurantId,
     'branch_code': branchCode,
     'licence': licence,
+    'installation_id': installationId,
+    'claimed': claimed,
+    'bootstrapped': bootstrapped,
   };
 
   /// Null for a file this build cannot carry on from — no terminal, or no
@@ -85,11 +115,14 @@ class SetupProgress {
       restaurantId: json['restaurant_id'] as int?,
       branchCode: json['branch_code'] as String?,
       licence: json['licence'] as String?,
+      installationId: json['installation_id'] as String?,
+      claimed: json['claimed'] as bool? ?? true,
+      bootstrapped: json['bootstrapped'] as bool? ?? false,
     );
   }
 }
 
-/// Where an unfinished cloud setup is kept between launches.
+/// Where an unfinished setup is kept between launches.
 ///
 /// Behind an interface for the reason [TerminalConfigStore] is: a widget test
 /// must not touch the operator's Application Support directory.

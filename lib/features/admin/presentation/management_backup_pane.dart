@@ -161,6 +161,14 @@ class _ManagementBackupPaneState extends ConsumerState<ManagementBackupPane> {
           check.ordersSince,
           check.valueSince.format(),
         ),
+        // A pending count reaches this dialog only offline — on a cloud till it
+        // is a blocker and this dialog never opens. A leftover in the queue is
+        // still somebody's sales, so it is named rather than folded into
+        // "everything else".
+        if (check.pendingSync > 0)
+          strings.backupRestorePendingSyncWarning(check.pendingSync),
+        if (check.heldSync > 0)
+          strings.backupRestoreHeldSyncWarning(check.heldSync),
         strings.backupRestoreEverythingElseLost,
         strings.backupRestoreNoWayBack,
       ],
@@ -177,9 +185,30 @@ class _ManagementBackupPaneState extends ConsumerState<ManagementBackupPane> {
       setState(() {
         _busy = false;
         _noteIsGood = result.succeeded;
+        // Where the safety copy went, said here because nowhere else will:
+        // its row in the list was written into the database just replaced.
         _note = result.succeeded
-            ? strings.backupRestoreDone
+            ? '${strings.backupRestoreDone} '
+                  '${strings.backupRestoreSafetyCopyKept(service.directory)}'
             : AdminText.refusal(strings, result.refusal!);
+      });
+      ref.invalidate(backupsProvider);
+    } on RestoreSnapshotFailed catch (failed) {
+      if (!mounted) return;
+      final attempt = failed.attempt;
+      setState(() {
+        _busy = false;
+        _noteIsGood = false;
+        // The list's own sentence for the failure, then PostgreSQL's words —
+        // the same pair the row this attempt left in the list shows. That row
+        // survives: nothing was restored over it.
+        _note = strings.backupRestoreSnapshotFailed(
+          [
+            if (attempt.failure != null)
+              AdminText.backupFailure(strings, attempt.failure!),
+            if (attempt.detail != null) attempt.detail!,
+          ].join(' '),
+        );
       });
       ref.invalidate(backupsProvider);
     } on RestoreRefused catch (refused) {

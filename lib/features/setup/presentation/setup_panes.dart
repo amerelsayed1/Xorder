@@ -3,12 +3,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/providers.dart';
 import '../../../core/config/deployment.dart';
+import '../../../core/config/lan_tls.dart';
 import '../../../core/config/platform_endpoint.dart';
 import '../../../core/config/printer_config.dart';
 import '../../../app/labels.dart';
 import '../../../core/l10n/app_strings.dart';
 import '../../../core/ui/theme.dart';
 import '../../../core/ui/tokens.dart';
+import '../../../core/ui/widgets/certificate_fingerprint.dart';
 import '../../../core/ui/widgets/pos_widgets.dart';
 import '../../../domain/repositories/repositories.dart';
 import '../../licensing/domain/license.dart';
@@ -389,15 +391,7 @@ class _DeploymentPane extends ConsumerWidget {
             onChanged: controller.setDatabaseHost,
             help: s.databaseHostHelp,
           ),
-          if (config.isPrivateHost && !config.isSingleMachine) ...[
-            const SizedBox(height: PosSpace.lg),
-            _ChoiceTile(
-              title: s.trustWithoutCertificate,
-              blurb: s.trustWithoutCertificateBlurb,
-              selected: !config.verifyTls,
-              onTap: () => controller.setVerifyTls(!config.verifyTls),
-            ),
-          ],
+          _ServerCertificatePanel(draft: draft),
           const SizedBox(height: PosSpace.xl),
         ],
         Row(
@@ -548,15 +542,7 @@ class _MainDevicePane extends ConsumerWidget {
           onChanged: controller.setDatabaseHost,
           help: s.mainDeviceAddressHelp,
         ),
-        if (config.isPrivateHost && !config.isSingleMachine) ...[
-          const SizedBox(height: PosSpace.lg),
-          _ChoiceTile(
-            title: s.trustWithoutCertificate,
-            blurb: s.trustWithoutCertificateBlurb,
-            selected: !config.verifyTls,
-            onTap: () => controller.setVerifyTls(!config.verifyTls),
-          ),
-        ],
+        _ServerCertificatePanel(draft: draft),
         const SizedBox(height: PosSpace.xl),
         // Defaults every install the wizard made shares; shown because one set
         // up by hand may not.
@@ -610,6 +596,96 @@ class _MainDevicePane extends ConsumerWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// The database server's certificate, on the step where its address is typed.
+///
+/// **Pairing is part of connecting, not a step of its own.** A till learns to
+/// trust its server the first time it reaches it: the connection is refused
+/// for a certificate nobody has confirmed, the controller asks the server
+/// which one it presents, and this shows the fingerprint beside the button
+/// that trusts it. The technician reads the same characters off the main
+/// device (Management › Devices) and presses it only if they match.
+///
+/// Nothing here can be skipped by ticking a box. The old wizard offered
+/// "trust this database without a certificate"; it is gone, because the one
+/// place a till is set up should only ever set it up encrypted. Turning
+/// encryption off is a technician's audited act in Management.
+class _ServerCertificatePanel extends ConsumerWidget {
+  const _ServerCertificatePanel({required this.draft});
+
+  final SetupDraft draft;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final s = context.strings;
+    final pos = context.pos;
+    final presented = draft.presentedCertificate;
+    final pin = draft.deployment.lanTls.pin;
+
+    if (presented == null && pin == null) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(top: PosSpace.lg),
+      child: Container(
+        key: const Key('setup-server-certificate'),
+        padding: const EdgeInsets.all(PosSpace.lg),
+        decoration: BoxDecoration(
+          color: presented == null ? pos.surface : pos.warnSoft,
+          // Emphasised while it is a question, resting once it is answered:
+          // selection and attention are borders here, never elevation.
+          border: presented == null
+              ? Border.fromBorderSide(pos.resting)
+              : Border.all(color: pos.warn, width: 2),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            MicroLabel(
+              s.serverCertificateTitle,
+              color: presented == null ? null : pos.warn,
+            ),
+            const SizedBox(height: PosSpace.sm),
+            Text(
+              presented == null
+                  ? s.serverCertificatePaired
+                  : s.serverCertificateCompare,
+              style: PosText.ui(size: 13, color: pos.ink, height: 1.5),
+            ),
+            const SizedBox(height: PosSpace.md),
+            if (presented != null) ...[
+              CertificateFingerprint(
+                sha256: presented.sha256,
+                notAfter: presented.notAfter,
+              ),
+              const SizedBox(height: PosSpace.md),
+              Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: PosButton(
+                  key: const Key('setup-trust-certificate'),
+                  label: s.serverCertificateConfirm,
+                  background: pos.ink,
+                  foreground: pos.onInk,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: PosSpace.xl,
+                  ),
+                  onPressed: draft.busy
+                      ? null
+                      : ref
+                            .read(setupProvider.notifier)
+                            .trustPresentedCertificate,
+                ),
+              ),
+            ] else if (pin != null)
+              CertificateFingerprint(
+                sha256: pin.sha256,
+                notAfter: LanTls.notAfterOfPem(pin.pem),
+              ),
+          ],
+        ),
+      ),
     );
   }
 }

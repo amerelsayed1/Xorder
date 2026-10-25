@@ -14,6 +14,7 @@ import '../../../domain/models/shift.dart';
 import '../../../domain/repositories/admin_repositories.dart';
 import '../../../domain/services/authorization.dart';
 import 'admin_messages.dart';
+import '../../../core/security/attempt_limiter.dart';
 import '../../../core/security/pin_hash.dart';
 
 /// Ask whether the person at the till may do something, offering a supervisor
@@ -243,13 +244,19 @@ class SupervisorOverrideDialog extends ConsumerStatefulWidget {
 
 class _SupervisorOverrideDialogState
     extends ConsumerState<SupervisorOverrideDialog> {
-  /// Five, then the keypad stops. Enough that a manager mistyping under
-  /// pressure is not locked out, few enough that the pad is not a way to walk
-  /// a four-digit space.
-  static const _maxAttempts = 5;
+  /// Five, then the keypad stops — counted by [signInLimiterProvider], not by
+  /// this dialog.
+  ///
+  /// **It used not to stop.** The dialog kept its own count, and after the
+  /// fifth wrong PIN it changed its message and went on checking every PIN it
+  /// was given; and since the count lived in the dialog, Cancel and asking
+  /// again was five fresh tries. Now the count belongs to the terminal and is
+  /// shared with the lock screen, and a shut keypad does not look at the PIN.
+  /// Keyed as [AttemptLimiter.anyone]: the pad asks for a PIN alone, so there
+  /// is no name to count against.
+  static const _limiterKey = AttemptLimiter.anyone;
 
   String _pin = '';
-  int _used = 0;
   bool _busy = false;
   String? _error;
 
@@ -268,8 +275,6 @@ class _SupervisorOverrideDialogState
 
   bool get _canApprove =>
       _pin.length >= PinRules.length && _reasonSatisfied && !_busy;
-
-  int get _attemptsLeft => _maxAttempts - _used;
 
   void _digit(String digit) {
     if (_pin.length >= PinRules.length || _busy || _approved != null) return;
@@ -298,6 +303,19 @@ class _SupervisorOverrideDialogState
       return;
     }
 
+    // Shut: answered before the PIN is looked at, so the right PIN typed
+    // during the wait approves nothing.
+    final limiter = ref.read(signInLimiterProvider);
+    if (limiter.lockedFor(_limiterKey) case final wait?) {
+      setState(() {
+        _pin = '';
+        _error = context.strings.signInLockedOut(
+          AttemptLimiter.secondsToWait(wait),
+        );
+      });
+      return;
+    }
+
     setState(() => _busy = true);
     final staff = await ref.read(staffDirectoryRepositoryProvider).byPin(_pin);
     if (!mounted) return;
@@ -307,6 +325,7 @@ class _SupervisorOverrideDialogState
       capability: widget.capability,
     );
     if (decision is Allowed && decision.approvedBy != null) {
+      limiter.succeed(_limiterKey);
       setState(() {
         _busy = false;
         _approved = ApprovalOutcome(
@@ -322,16 +341,22 @@ class _SupervisorOverrideDialogState
       return;
     }
 
+    // Deliberately one count and one message for both "no such PIN" and "that
+    // person may not approve this". Distinguishing them would turn the keypad
+    // into a way of discovering who holds which permission.
+    final failure = limiter.fail(_limiterKey);
+    final strings = context.strings;
     setState(() {
       _busy = false;
       _pin = '';
-      _used++;
-      // Deliberately one message for both "no such PIN" and "that person may
-      // not approve this". Distinguishing them would turn the keypad into a
-      // way of discovering who holds which permission.
-      _error = _attemptsLeft > 0
-          ? context.strings.wrongPinAttemptsLeft(_attemptsLeft)
-          : context.strings.pinCannotApprove;
+      _error = switch (failure) {
+        AttemptRefused(:final attemptsLeft) => strings.wrongPinAttemptsLeft(
+          attemptsLeft,
+        ),
+        AttemptLockedOut(:final wait) => strings.signInLockedOut(
+          AttemptLimiter.secondsToWait(wait),
+        ),
+      };
     });
   }
 

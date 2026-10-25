@@ -1,6 +1,17 @@
+import 'dart:typed_data';
+
+import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:xorder_pos/core/config/deployment.dart';
 import 'package:xorder_pos/data/cloud/cloud_api.dart';
 import 'package:xorder_pos/data/cloud/outbox_drain.dart';
+import 'package:xorder_pos/data/postgres/migrations.dart';
+import 'package:xorder_pos/data/postgres/pos_database.dart';
+import 'package:xorder_pos/data/postgres/postgres_sync_queue_repository.dart';
+import 'package:xorder_pos/domain/models/permissions.dart';
+import 'package:xorder_pos/domain/models/shift.dart';
+
+import 'pg_fixture.dart';
 
 void main() {
   group('OutboxDrain.buildOrderRequest', () {
@@ -300,6 +311,310 @@ void main() {
     });
   });
 
+  group('a 2xx that proves nothing (D4)', () {
+    PosCloudApi answering(String body, int status, {String? contentType}) =>
+        PosCloudApi(
+          baseUrl: 'http://127.0.0.1:9',
+          client: Dio(BaseOptions(validateStatus: (_) => true))
+            ..httpClientAdapter = _ScriptedPlatform.always(
+              body,
+              status,
+              contentType: contentType,
+            ),
+        );
+
+    test('a body that is not a JSON object is a reply, but not a parsed one',
+        () async {
+      const portal = '<html><body>Sign in to Hotel Wi-Fi</body></html>';
+      final page = await answering(portal, 200, contentType: 'text/html')
+          .submitOrder(const {'client_transaction_id': 'txn'});
+      final nothing = await answering('', 200, contentType: 'text/html')
+          .submitOrder(const {'client_transaction_id': 'txn'});
+      final empty = await answering('{}', 200)
+          .submitOrder(const {'client_transaction_id': 'txn'});
+
+      // `ok` keeps its meaning for every other caller; `parsed` is the news.
+      expect(page.ok, isTrue);
+      expect(page.offline, isFalse, reason: 'something did answer');
+      expect(page.parsed, isFalse);
+      expect(nothing.ok, isTrue);
+      expect(nothing.parsed, isFalse);
+      expect(empty.ok, isTrue);
+      expect(empty.parsed, isTrue, reason: '`{}` is an object, just an empty one');
+    });
+
+    test('a refusal served as a page is still deferred, not mistaken for '
+        'silence', () async {
+      final reply = await answering('<html>502</html>', 502,
+              contentType: 'text/html')
+          .submitOrder(const {'client_transaction_id': 'txn'});
+
+      expect(reply.offline, isFalse);
+      expect(reply.ok, isFalse);
+      expect(reply.code, isNull);
+      expect(OutboxDrain.classify(reply.code), DrainAction.defer);
+    });
+
+    test('only the platform\'s order id acknowledges a sale', () {
+      expect(
+        OutboxDrain.acknowledgesOrder(const CloudReply.malformed(200)),
+        isFalse,
+        reason: 'a login page',
+      );
+      expect(
+        OutboxDrain.acknowledgesOrder(const CloudReply(status: 200, body: {})),
+        isFalse,
+        reason: 'an object with nothing in it',
+      );
+      expect(
+        OutboxDrain.acknowledgesOrder(
+          const CloudReply(status: 201, body: {
+            'data': {'invoice_number': 'MAADI-2026-001042'},
+          }),
+        ),
+        isFalse,
+        reason: 'an invoice number with no order behind it',
+      );
+      expect(
+        OutboxDrain.acknowledgesOrder(
+          const CloudReply(status: 201, body: {
+            'data': {'id': 8814, 'invoice_number': null},
+          }),
+        ),
+        isTrue,
+        reason: '§006 lets the invoice number be null; the id it promises',
+      );
+      expect(
+        OutboxDrain.acknowledgesOrder(
+          const CloudReply(status: 422, body: {
+            'data': {'id': 8814},
+          }),
+        ),
+        isFalse,
+        reason: 'and a refusal is never an acknowledgement, whatever it carries',
+      );
+    });
+
+    test('a lifecycle record needs at least a JSON object', () {
+      expect(
+        OutboxDrain.acknowledgesRecord(const CloudReply.malformed(201)),
+        isFalse,
+      );
+      expect(
+        OutboxDrain.acknowledgesRecord(const CloudReply(status: 201, body: {})),
+        isTrue,
+        reason: 'a shift open tells the till nothing it keeps',
+      );
+      expect(
+        OutboxDrain.acknowledgesRecord(const CloudReply.offline()),
+        isFalse,
+      );
+    });
+  });
+
+  group('the drain on a network that answers with a page (D4)', () {
+    if (PgFixture.host == null) {
+      test('skipped — set POS_PG_HOST to run', () {}, skip: true);
+      return;
+    }
+
+    late PgFixture pg;
+    late PosDatabase db;
+    late DeploymentConfig cloud;
+    late int restaurantId;
+    var invoice = 0;
+
+    const branchId = 3;
+    const terminalId = '0c9adf1e-9e3f-4a2e-b8a5-6a1f6f0f2f10';
+    const accepted =
+        '{"data":{"id":8814,"invoice_number":"MAADI-2026-001042"}}';
+
+    setUp(() async {
+      pg = await PgFixture.open('outbox_drain');
+      db = pg.database;
+      await PosMigrator(db).migrate(pg.config);
+      await pg.truncate();
+      await db.query(pg.config, 'DELETE FROM pos_restaurants');
+      cloud = pg.config.copyWith(mode: DeploymentMode.cloud);
+      restaurantId = (await db.query(
+        pg.config,
+        "INSERT INTO pos_restaurants (slug, name) VALUES ('cloud', 'Cloud') "
+        'RETURNING id',
+      )).first[0]! as int;
+    });
+
+    tearDown(() => pg.close());
+
+    /// One settled sale with no payments, queued — the smallest row the drain
+    /// will send. Returns the outbox id and the key the platform sees.
+    Future<({int outboxId, String client})> queueSale() async {
+      invoice++;
+      final orderId = (await db.query(
+        pg.config,
+        '''
+        INSERT INTO pos_orders (client_transaction_id, restaurant_id, branch_id,
+          terminal_id, invoice_number, order_type, currency, exponent,
+          subtotal_minor, service_minor, vat_minor, total_minor, occurred_at)
+        VALUES (gen_random_uuid(), @r, @b, @t, @invoice, 'takeaway', 'EGP', 2,
+          10000, 0, 1400, 11400, now())
+        RETURNING id
+        ''',
+        parameters: {
+          'r': restaurantId,
+          'b': branchId,
+          't': terminalId,
+          'invoice': 'MAADI-${invoice.toString().padLeft(6, '0')}',
+        },
+      )).first[0]! as int;
+      final row = (await db.query(
+        pg.config,
+        'INSERT INTO pos_outbox (order_id, client_transaction_id, restaurant_id, '
+        '  branch_id) SELECT id, client_transaction_id, restaurant_id, branch_id '
+        'FROM pos_orders WHERE id = @o '
+        'RETURNING id, client_transaction_id::text',
+        parameters: {'o': orderId},
+      )).first;
+      return (outboxId: row[0]! as int, client: row[1]! as String);
+    }
+
+    Future<List<Object?>> outboxRow(int id) async => (await db.query(
+      pg.config,
+      'SELECT delivered_at, quarantined_at, last_error, attempts, '
+      '       last_attempt_at, server_order_id '
+      'FROM pos_outbox WHERE id = @id',
+      parameters: {'id': id},
+    )).first;
+
+    Future<DrainReport> drain(_ScriptedPlatform platform) => OutboxDrain(
+      database: db,
+      config: cloud,
+      api: PosCloudApi(
+        baseUrl: 'http://127.0.0.1:9',
+        client: Dio(BaseOptions(validateStatus: (_) => true))
+          ..httpClientAdapter = platform,
+      ),
+    ).run();
+
+    test('only the reply that carries the order back marks it delivered',
+        () async {
+      final page = await queueSale();
+      final empty = await queueSale();
+      final real = await queueSale();
+
+      final report = await drain(
+        _ScriptedPlatform({
+          page.client: (
+            '<html><body>Sign in to Hotel Wi-Fi</body></html>',
+            'text/html',
+          ),
+          empty.client: ('{}', Headers.jsonContentType),
+          real.client: (accepted, Headers.jsonContentType),
+        }),
+      );
+
+      expect(report.delivered, 1);
+      expect(report.deferred, 2);
+      expect(report.quarantined, 0);
+      expect(report.wentOffline, isFalse, reason: 'a page is not silence');
+
+      for (final deferred in [page, empty]) {
+        final row = await outboxRow(deferred.outboxId);
+        expect(row[0], isNull, reason: 'never marked delivered');
+        expect(row[1], isNull, reason: 'never held for a person');
+        expect(row[2], OutboxDrain.malformedAck);
+        expect(row[2], 'MALFORMED_ACK');
+        expect(row[3], 1, reason: 'one conversation, counted');
+        expect(row[4], isNotNull);
+        expect(row[5], isNull);
+      }
+
+      final delivered = await outboxRow(real.outboxId);
+      expect(delivered[0], isNotNull);
+      expect(delivered[2], isNull);
+      expect(delivered[5], 8814);
+    });
+
+    test('a deferred sale goes on the next pass over a real connection',
+        () async {
+      final sale = await queueSale();
+
+      await drain(
+        _ScriptedPlatform({sale.client: ('', 'text/html')}),
+      );
+      expect((await outboxRow(sale.outboxId))[0], isNull);
+
+      final report = await drain(
+        _ScriptedPlatform({sale.client: (accepted, Headers.jsonContentType)}),
+      );
+
+      expect(report.delivered, 1);
+      final row = await outboxRow(sale.outboxId);
+      expect(row[0], isNotNull);
+      expect(row[2], isNull, reason: 'the stale MALFORMED_ACK is cleared');
+      expect(row[3], 2);
+      expect(row[5], 8814);
+    });
+
+    test('a held sale is skipped until somebody releases it, and goes on the '
+        'next pass after (D1)', () async {
+      final sale = await queueSale();
+      // What a pass that met `422 MENU_ITEM_NOT_FOUND` left behind: the
+      // product was deleted on the dashboard after the sale was rung up.
+      await db.query(
+        pg.config,
+        '''
+        UPDATE pos_outbox
+           SET quarantined_at = now(), quarantine_code = 'MENU_ITEM_NOT_FOUND',
+               last_error = '422 MENU_ITEM_NOT_FOUND', attempts = 1
+         WHERE id = @id
+        ''',
+        parameters: {'id': sale.outboxId},
+      );
+
+      // The platform would take it now — the product is back — but nobody
+      // has said so, and the drain must not decide that for itself.
+      final skipped = await drain(
+        _ScriptedPlatform({sale.client: (accepted, Headers.jsonContentType)}),
+      );
+      expect(skipped.attempted, 0);
+      expect((await outboxRow(sale.outboxId))[3], 1, reason: 'not tried');
+
+      final queue = PostgresSyncQueueRepository(
+        database: db,
+        config: cloud,
+        restaurantId: restaurantId,
+        branchId: branchId,
+        terminalId: terminalId,
+      );
+      final [held] = await queue.listHeldSync();
+      final released = await queue.releaseHeldSync(
+        held,
+        by: const PosStaff(
+          id: 0,
+          name: 'Amer M.',
+          role: PosRole(
+            id: 1,
+            code: 'owner',
+            nameEn: 'Owner',
+            capabilities: {PosCapability.terminalManage},
+          ),
+        ),
+      );
+      expect(released.succeeded, isTrue);
+
+      final report = await drain(
+        _ScriptedPlatform({sale.client: (accepted, Headers.jsonContentType)}),
+      );
+
+      expect(report.delivered, 1);
+      final row = await outboxRow(sale.outboxId);
+      expect(row[0], isNotNull, reason: 'delivered');
+      expect(row[1], isNull, reason: 'no longer held');
+      expect(row[3], 2, reason: 'the first refusal, and this acceptance');
+      expect(row[5], 8814);
+    });
+  });
+
   // The platform answers 422 to a shift close whose count differs from the
   // expected cash IT worked out, unless a reason comes with it, and the drain
   // quarantines a 422 for good. Found in the 17 Oct 2026 audit: the till never
@@ -377,4 +692,45 @@ void main() {
       expect(reason.runes.every((r) => r == 0x1F600), isTrue);
     });
   });
+}
+
+/// A platform — or whatever stands between the till and it — answering each
+/// order by its `client_transaction_id`, always with a 200. Below Dio rather
+/// than above [PosCloudApi], so the body goes through the same decoding a
+/// captive portal's page would.
+class _ScriptedPlatform implements HttpClientAdapter {
+  _ScriptedPlatform(this.byClient) : _always = null;
+
+  _ScriptedPlatform.always(String body, int status, {String? contentType})
+    : byClient = const {},
+      _always = (body, status, contentType ?? Headers.jsonContentType);
+
+  final Map<String, (String body, String contentType)> byClient;
+  final (String, int, String)? _always;
+
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) async {
+    final (body, status, contentType) =
+        _always ??
+        switch (byClient[(options.data as Map)['client_transaction_id']]) {
+          (final scripted, final type) => (scripted, 200, type),
+          // An order this script did not expect is a broken test, not a
+          // platform answer: fail loudly rather than invent a reply.
+          null => throw StateError('unscripted order ${options.data}'),
+        };
+    return ResponseBody.fromString(
+      body,
+      status,
+      headers: {
+        Headers.contentTypeHeader: [contentType],
+      },
+    );
+  }
+
+  @override
+  void close({bool force = false}) {}
 }

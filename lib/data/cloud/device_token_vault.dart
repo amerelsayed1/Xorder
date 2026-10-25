@@ -6,8 +6,10 @@ import '../config/pos_db_secret_store.dart';
 /// claim or register, no TTL, killed only by terminal revocation. It follows
 /// the same storage rules as the database password and reuses the same keystore
 /// contract: memory is the read path (the API client asks on every request),
-/// the OS keystore is the persistence, and a file is never an option — a
-/// bearer token in `config.json` is a bearer token in a support email.
+/// and the OS store (DPAPI on Windows, the Keychain on macOS; see
+/// `SecretStore.forPlatform`) is the persistence. Plaintext in a file is never
+/// an option on a till — a bearer token in `config.json` is a bearer token in
+/// a support email.
 ///
 /// With no [store] — tests, and the wizard before its first save — this is
 /// purely in-memory, lost on exit.

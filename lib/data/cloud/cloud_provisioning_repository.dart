@@ -291,6 +291,10 @@ class CloudProvisioningRepository implements ProvisioningRepository {
     required String password,
     required String terminalName,
     required int branchId,
+    // Unused: the platform already identifies this machine by the fingerprint
+    // this repository was built with, so passing the raw id as well would be a
+    // second, unhashed copy of the same identity on the wire.
+    required String? installId,
   }) async {
     final slug = tenantSlug.trim().toLowerCase();
 

@@ -10,13 +10,33 @@ import '../../core/network/network_log.dart';
 /// as [offline], because "the platform said no" and "the platform said nothing"
 /// demand opposite behaviour from a queue.
 class CloudReply {
-  const CloudReply({required this.status, this.body = const {}});
+  const CloudReply({
+    required this.status,
+    this.body = const {},
+    this.parsed = true,
+  });
 
-  const CloudReply.offline() : status = null, body = const {};
+  const CloudReply.offline() : status = null, body = const {}, parsed = false;
+
+  /// Something answered, and what it said was not a JSON object — a captive
+  /// portal's sign-in page, a proxy's HTML error, an empty 200. [body] is
+  /// empty, as it always was for these; [parsed] is what tells them apart
+  /// from a server that genuinely answered `{}`.
+  const CloudReply.malformed(this.status) : body = const {}, parsed = false;
 
   /// Null when the platform could not be reached at all.
   final int? status;
   final Map<String, Object?> body;
+
+  /// False when the reply's body was not a JSON object (see [malformed]).
+  ///
+  /// A separate flag rather than folding it into [ok], because [ok] has many
+  /// readers — the wizard, the heartbeat, the licence check — and each
+  /// already copes with an empty body in its own way. Narrowing [ok] would
+  /// have changed all of them at once to fix one: the drain, which writes
+  /// `delivered_at` on a 2xx and so must not believe a hotel Wi-Fi login page
+  /// that answered 200 (D4). The drain reads this; nothing else has to.
+  final bool parsed;
 
   bool get ok => status != null && status! >= 200 && status! < 300;
   bool get offline => status == null;
@@ -256,14 +276,20 @@ class PosCloudApi {
   Future<CloudReply> _send(Future<Response<Object?>> Function() call) async {
     try {
       final response = await call();
-      return CloudReply(
-        status: response.statusCode,
-        body: switch (response.data) {
-          final Map<String, Object?> map => map,
-          final Map map => map.cast<String, Object?>(),
-          _ => const {},
-        },
-      );
+      return switch (response.data) {
+        final Map<String, Object?> map => CloudReply(
+          status: response.statusCode,
+          body: map,
+        ),
+        final Map map => CloudReply(
+          status: response.statusCode,
+          body: map.cast<String, Object?>(),
+        ),
+        // Still a reply, not [CloudReply.offline]: something on the path did
+        // answer, and a 4xx/5xx from it must keep being deferred exactly as
+        // before. Only a 2xx changes meaning, and only for a reader that asks.
+        _ => CloudReply.malformed(response.statusCode),
+      };
     } on DioException {
       return const CloudReply.offline();
     }

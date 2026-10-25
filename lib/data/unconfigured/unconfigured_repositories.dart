@@ -1,6 +1,7 @@
 import '../../core/money/money.dart';
 import '../../domain/models/catalog.dart';
 import '../../domain/models/dining_table.dart';
+import '../../domain/models/held_sync.dart';
 import '../../domain/models/ticket.dart';
 import '../../domain/models/permissions.dart';
 import '../../domain/repositories/admin_repositories.dart';
@@ -63,6 +64,12 @@ class UnconfiguredSessionRepository implements SessionRepository {
 
   @override
   Future<PosStaff?> signIn(String pin) async => null;
+
+  @override
+  Future<PosStaff?> signInWithPassword({
+    required String username,
+    required String password,
+  }) async => null;
 }
 
 /// Refuses to open a shift, because there is nowhere to record one.
@@ -151,6 +158,7 @@ class UnconfiguredProvisioningRepository implements ProvisioningRepository {
     required String password,
     required String terminalName,
     required int branchId,
+    required String? installId,
   }) async => _message;
 
   @override
@@ -296,6 +304,26 @@ class UnconfiguredStaffDirectoryRepository implements StaffDirectoryRepository {
   }) async => const AdminResult.refused(NoDatabaseConfigured());
 
   @override
+  Future<Set<int>> withPassword() async => const {};
+
+  @override
+  Future<AdminResult<void>> setOwnPassword({
+    required PosStaff by,
+    required String password,
+  }) async => const AdminResult.refused(NoDatabaseConfigured());
+
+  @override
+  Future<AdminResult<void>> clearPassword({
+    required PosStaff by,
+    required int staffId,
+  }) async => const AdminResult.refused(NoDatabaseConfigured());
+
+  @override
+  Future<AdminResult<String?>> clearPasswordAsTechnician({
+    required String username,
+  }) async => const AdminResult.refused(NoDatabaseConfigured());
+
+  @override
   Future<AdminResult<PosStaff>> setGrants({
     required PosStaff by,
     required int staffId,
@@ -333,4 +361,25 @@ class UnconfiguredAuditRepository implements AuditRepository {
     String? entityId,
     int? staffId,
   }) async => const [];
+}
+
+/// Nothing held, because there is nothing to hold it in.
+///
+/// Also what an offline till binds: it owes the platform nothing, so it has no
+/// queue for the platform to refuse anything from. Release refuses rather than
+/// pretending, for the reason every write here does.
+class UnconfiguredSyncQueueRepository implements SyncQueueRepository {
+  const UnconfiguredSyncQueueRepository();
+
+  @override
+  Future<List<HeldSyncItem>> listHeldSync() async => const [];
+
+  @override
+  Future<int> heldSyncCount() async => 0;
+
+  @override
+  Future<AdminResult<HeldSyncItem>> releaseHeldSync(
+    HeldSyncItem item, {
+    required PosStaff by,
+  }) async => const AdminResult.refused(NoDatabaseConfigured());
 }

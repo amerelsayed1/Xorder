@@ -5,7 +5,10 @@ import 'package:xorder_pos/core/money/money.dart';
 import 'package:xorder_pos/data/postgres/parked_ticket_codec.dart';
 import 'package:xorder_pos/domain/models/catalog.dart';
 import 'package:xorder_pos/domain/models/combo.dart';
+import 'package:xorder_pos/domain/models/customer.dart';
 import 'package:xorder_pos/domain/models/discount.dart';
+import 'package:xorder_pos/domain/models/service_charge.dart';
+import 'package:xorder_pos/domain/models/tax.dart';
 import 'package:xorder_pos/domain/models/ticket.dart';
 import 'package:xorder_pos/domain/services/ticket_engine.dart';
 
@@ -49,6 +52,8 @@ Ticket _parked() {
 }
 
 void main() {
+  _fullTicketTests();
+
   _comboTests();
 
   _priceOverrideTests();
@@ -443,6 +448,310 @@ void _tenderCashTests() {
       }, _catalog)!;
 
       expect(restored.tenders.map((t) => t.countsAsCash), [true, false, false]);
+    });
+  });
+}
+
+Ticket _roundTrip(Ticket ticket) => ParkedTicketCodec.decode(
+  (jsonDecode(jsonEncode(ParkedTicketCodec.encode(ticket))) as Map)
+      .cast<String, Object?>(),
+  _catalog,
+)!;
+
+void _fullTicketTests() {
+  group('the rules a ticket was priced under survive a restart (R-SALE-2)', () {
+    /// The failure this guards against is a parked table that comes back
+    /// priced under different rules than it was rung up under: an inclusive
+    /// restaurant's bill growing its VAT on top, a zero-rated bottle charged
+    /// the standard rate, a delivery fee turned back into 12%, and a delivery
+    /// with nobody to deliver it to. Before the fix only the four scalar rates
+    /// were written, and `adopt` takes the decoded ticket as it is.
+    const standard = TaxGroup(
+      id: 1,
+      nameEn: 'VAT 14%',
+      nameAr: 'ضريبة ١٤٪',
+      rateBp: 1400,
+      isDefault: true,
+    );
+    const zeroRated = TaxGroup(
+      id: 2,
+      nameEn: 'Zero-rated',
+      nameAr: 'معفاة',
+      rateBp: 0,
+      etaSubType: EtaTaxCode.zeroRated,
+    );
+    const service = ServiceCharge(
+      id: 5,
+      nameEn: 'Service',
+      nameAr: 'خدمة',
+      rateBp: 1200,
+      orderTypes: {OrderType.dineIn},
+      sortOrder: 1,
+    );
+    const deliveryFee = ServiceCharge(
+      id: 6,
+      nameEn: 'Delivery fee',
+      nameAr: 'رسوم التوصيل',
+      fixedMinor: 2500,
+      orderTypes: {OrderType.delivery},
+      isTaxable: false,
+      isOptional: true,
+      sortOrder: 2,
+    );
+    const config = TaxConfig(
+      serviceBp: 1000,
+      vatBp: 1400,
+      serviceDineInOnly: false,
+      source: TaxSource.server,
+      taxMode: TaxMode.inclusive,
+      taxGroups: [standard, zeroRated],
+      serviceCharges: [service, deliveryFee],
+    );
+    const customer = PosCustomer(
+      id: 44,
+      platformId: 9001,
+      name: 'Mona Adel',
+      phone: '01012345678',
+      email: 'mona@example.com',
+      address: '12 Tahrir St, flat 4',
+      note: 'Ring twice',
+    );
+    // Not in `_catalog`, so it comes back from its snapshot — which is the
+    // only place its zero rating can come from.
+    const water = Product(
+      id: 301,
+      categoryId: 11,
+      nameEn: 'Water',
+      price: Money(1000),
+      taxGroupId: 2,
+    );
+
+    Ticket full() {
+      final combo = Combo(
+        id: 90,
+        categoryId: 11,
+        nameEn: 'Lunch meal',
+        nameAr: 'وجبة الغداء',
+        price: const Money(6000),
+        taxGroupId: 1,
+        groups: [
+          ComboGroup(
+            id: 1,
+            nameEn: 'Main',
+            options: [ComboOption(id: 11, product: _burger)],
+          ),
+        ],
+      );
+
+      var ticket = Ticket(
+        id: 'txn-full',
+        orderType: OrderType.dineIn,
+        taxConfig: config,
+      );
+      ticket = TicketEngine.attachTable(ticket, 12, 'T12', guests: 4);
+      ticket = TicketEngine.attachCustomer(ticket, customer);
+      ticket = TicketEngine.addLine(
+        ticket,
+        _burger,
+        modifiers: const [_cheese],
+        groups: const [_extras],
+        quantity: 2,
+        note: 'no onions',
+      ).ticket!;
+      ticket = TicketEngine.addLine(ticket, water, quantity: 3).ticket!;
+      ticket = TicketEngine.addComboLine(
+        ticket,
+        combo,
+        chosen: combo.fixedSelection,
+        note: 'sauce on the side',
+      ).ticket!;
+      ticket = TicketEngine.sendRound(ticket);
+      return TicketEngine.addTender(
+        ticket,
+        typeId: 1,
+        label: 'Cash',
+        amount: const Money(5000),
+        countsAsCash: true,
+      ).ticket!;
+    }
+
+    test('the tax config comes back equal to the one it was parked with', () {
+      final original = full();
+      final restored = _roundTrip(original);
+
+      // Meaningful only because `TaxConfig ==` now covers the mode, the
+      // groups and the charges. Under the old equality this held even while
+      // all three were being thrown away.
+      expect(restored.taxConfig, original.taxConfig);
+      expect(restored.taxConfig.hashCode, original.taxConfig.hashCode);
+      expect(restored.taxConfig.taxMode, TaxMode.inclusive);
+      expect(restored.taxConfig.taxGroups, [standard, zeroRated]);
+      expect(restored.taxConfig.serviceCharges, [service, deliveryFee]);
+    });
+
+    test('what the group and charge equalities do not compare comes back too',
+        () {
+      // `TaxGroup ==` and `ServiceCharge ==` leave these out on purpose, so
+      // the equality above cannot vouch for them. Scope, in particular, moves
+      // a total: lose it and a delivery fee lands on a dine-in table.
+      final restored = _roundTrip(full()).taxConfig;
+
+      final zero = restored.taxGroups.last;
+      expect(zero.nameAr, 'معفاة');
+      expect(zero.isActive, isTrue);
+      expect(zero.etaSubType, EtaTaxCode.zeroRated);
+
+      final fee = restored.serviceCharges.last;
+      expect(fee.nameAr, 'رسوم التوصيل');
+      expect(fee.orderTypes, {OrderType.delivery});
+      expect(fee.isOptional, isTrue);
+      expect(fee.sortOrder, 2);
+      expect(restored.serviceCharges.first.orderTypes, {OrderType.dineIn});
+    });
+
+    test('the customer comes back whole', () {
+      final restored = _roundTrip(full()).customer!;
+
+      expect(restored.id, 44);
+      expect(restored.platformId, 9001);
+      expect(restored.name, 'Mona Adel');
+      expect(restored.phone, '01012345678');
+      expect(restored.email, 'mona@example.com');
+      expect(restored.address, '12 Tahrir St, flat 4');
+      expect(restored.note, 'Ring twice');
+    });
+
+    test('lines, notes and the meal come back as they were rung up', () {
+      final original = full();
+      final restored = _roundTrip(original);
+
+      expect(restored.id, original.id);
+      expect(restored.tableId, 12);
+      expect(restored.guestCount, 4);
+      expect(restored.roundsSent, 1);
+      expect(restored.lines.map((l) => l.note), [
+        'no onions',
+        null,
+        'sauce on the side',
+      ]);
+      expect(restored.lines.map((l) => l.taxGroupId), [null, 2, 1]);
+      expect(restored.lines.last.isCombo, isTrue);
+      expect(restored.lines.last.combo!.items.single.nameEn, 'Classic Burger');
+      expect(restored.tenders.single.countsAsCash, isTrue);
+    });
+
+    test('the bill is the same, rate by rate, for every order type', () {
+      // The number that must not drift. Checked across order types because
+      // the charges are scoped by them, and inclusive because that is where
+      // a lost mode costs the most: VAT added on top of prices that hold it.
+      final original = full();
+      final restored = _roundTrip(original);
+
+      for (final type in OrderType.values) {
+        final before = original.copyWith(orderType: type).totals;
+        final after = restored.copyWith(orderType: type).totals;
+        expect(after.total.minor, before.total.minor, reason: type.wire);
+        expect(after.service.minor, before.service.minor, reason: type.wire);
+        expect(after.vat.minor, before.vat.minor, reason: type.wire);
+        expect(
+          after.taxLines.map((l) => (l.taxGroupId, l.amount.minor)),
+          before.taxLines.map((l) => (l.taxGroupId, l.amount.minor)),
+          reason: type.wire,
+        );
+      }
+      // Inclusive: the tax is inside the total, never on top of it.
+      final totals = restored.totals;
+      expect(totals.total.minor, totals.net.minor + totals.service.minor);
+      // And the zero-rated water is billed as zero-rated.
+      expect(totals.taxLines.map((l) => l.taxGroupId), contains(2));
+    });
+
+    test('a payload parked before these keys existed decodes to the old '
+        'defaults', () {
+      // Exactly what the previous encoder wrote: the four scalars and no
+      // customer. Every parked table already on a branch server looks like
+      // this, and must come back priced as it was the day before the upgrade.
+      final restored = ParkedTicketCodec.decode(const {
+        'v': 1,
+        'client_transaction_id': 'txn-legacy',
+        'order_type': 'dine_in',
+        'table_id': 12,
+        'table_label': 'T12',
+        'currency': 'EGP',
+        'exponent': 2,
+        'tax': {
+          'service_bp': 1200,
+          'vat_bp': 1400,
+          'service_dine_in_only': true,
+          'source': 'server',
+        },
+        'lines': [
+          {
+            'product_id': 101,
+            'name_en': 'Classic Burger',
+            'price_minor': 9500,
+            'quantity': 1,
+          },
+        ],
+      }, _catalog)!;
+
+      expect(
+        restored.taxConfig,
+        const TaxConfig(source: TaxSource.server),
+        reason: 'exclusive, no named rates, no §38 charges',
+      );
+      expect(restored.customer, isNull);
+      // 95.00 + 12% service = 106.40, + 14% VAT on that = 121.30.
+      expect(restored.totals.total.minor, 12130);
+    });
+
+    test('a charge scoped only to an order type this build cannot read is '
+        'off, not everywhere', () {
+      // An empty scope means "every order type". Decoding an unreadable one
+      // as empty would put a newer build's kerbside fee on a dine-in table.
+      final restored = ParkedTicketCodec.decode(const {
+        'client_transaction_id': 'txn-future-type',
+        'order_type': 'dine_in',
+        'tax': {
+          'service_charges': [
+            {
+              'id': 7,
+              'name_en': 'Kerbside fee',
+              'fixed_minor': 1500,
+              'order_types': ['kerbside'],
+            },
+          ],
+        },
+      }, _catalog)!;
+
+      final charge = restored.taxConfig.serviceCharges.single;
+      expect(charge.isActive, isFalse);
+      expect(charge.appliesTo(OrderType.dineIn), isFalse);
+    });
+
+    test('a charge or a group with no readable figure is dropped, not '
+        'invented', () {
+      final restored = ParkedTicketCodec.decode(const {
+        'client_transaction_id': 'txn-broken-tax',
+        'order_type': 'dine_in',
+        'tax': {
+          'mode': 'something-new',
+          'groups': [
+            {'id': 3, 'name_en': 'Float rate', 'rate_bp': 14.0},
+            {'name_en': 'No id', 'rate_bp': 500},
+          ],
+          'service_charges': [
+            {'id': 8, 'name_en': 'Nothing to charge'},
+          ],
+        },
+        'customer': {'name': 'No id'},
+      }, _catalog)!;
+
+      expect(restored.taxConfig.taxGroups, isEmpty);
+      expect(restored.taxConfig.serviceCharges, isEmpty);
+      // `TaxMode.fromWire`'s documented fallback.
+      expect(restored.taxConfig.taxMode, TaxMode.exclusive);
+      expect(restored.customer, isNull);
     });
   });
 }

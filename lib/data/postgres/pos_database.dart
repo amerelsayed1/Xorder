@@ -3,7 +3,9 @@ import 'dart:developer' show log;
 import 'package:postgres/postgres.dart';
 
 import '../../core/config/deployment.dart';
+import '../../core/config/lan_tls.dart';
 import '../config/pos_db_secret_store.dart';
+import 'pos_tls.dart';
 
 /// Why a connection failed, as data rather than a string.
 ///
@@ -22,7 +24,12 @@ enum PosDbFailure {
   /// Reached Postgres; it rejected the credential. `pg_hba.conf`, first match wins.
   auth,
 
-  /// Reached Postgres; it rejected the certificate.
+  /// The secure connection failed: a certificate this till does not trust,
+  /// a server that does not offer TLS, or a handshake that died. **Never
+  /// followed by a plaintext attempt** — see `LanTls.decide`. The wizard
+  /// asks the server which certificate it presents to say which of these it
+  /// was; the start screen just says the till could not confirm whose
+  /// database it reached.
   tls,
 
   /// Reached Postgres, but there is no database by that name yet.
@@ -62,6 +69,10 @@ enum PosDbFailure {
   /// Classify a driver error without depending on its exception hierarchy,
   /// which folds several of these into one type.
   static PosDbFailure classify(Object error) {
+    // By type first: the driver's text for this one is only "Bad server
+    // certificate.", and a certificate refused is the case that must never be
+    // mistaken for a network fault somebody might "fix" by turning TLS off.
+    if (error is BadCertificateException) return tls;
     final text = error.toString().toLowerCase();
     if (text.contains('failed host lookup') || text.contains('nodename')) {
       return dns;
@@ -71,9 +82,20 @@ enum PosDbFailure {
         text.contains('unreachable')) {
       return tcp;
     }
+    // A pg_hba refusal names how the client came in: `no encryption` is a
+    // plaintext till meeting a hostssl-only server (the remedy is encryption),
+    // `SSL encryption` is an encrypted till from an address no line admits
+    // (the remedy is pg_hba). Decided here, before the `ssl` below claims
+    // the second one as a TLS fault it is not.
+    if (text.contains('no pg_hba.conf entry')) {
+      return text.contains('no encryption') ? tls : auth;
+    }
+    // `ssl` for the driver's "Server does not support SSL, but it was
+    // required".
     if (text.contains('certificate') ||
         text.contains('handshake') ||
-        text.contains('tls')) {
+        text.contains('tls') ||
+        text.contains('ssl')) {
       return tls;
     }
     // BEFORE the auth check, both of them. Postgres phrases the two the same
@@ -230,12 +252,35 @@ class MutablePosDbCredentials implements PosDbCredentials {
 /// caller goes through a repository contract, so replacing these with HTTP
 /// implementations later changes `providers.dart` and nothing else.
 class PosDatabase {
-  PosDatabase({required this.credentials});
+  PosDatabase({
+    required this.credentials,
+    LanTlsDecision Function(DeploymentConfig config)? transportFor,
+  }) : _transportFor = transportFor ?? _configuredTransport;
 
   final PosDbCredentials credentials;
 
+  /// How a connection to [DeploymentConfig.databaseHost] is protected —
+  /// always [DeploymentConfig.lanTls] in the app.
+  ///
+  /// A parameter only so `test/data/lan_tls_handshake_test.dart` can point
+  /// the TLS path at a fake server on 127.0.0.1, which the real rule
+  /// (rightly) never encrypts. Nothing in `lib/` passes it.
+  final LanTlsDecision Function(DeploymentConfig config) _transportFor;
+
+  static LanTlsDecision _configuredTransport(DeploymentConfig config) =>
+      config.lanTls;
+
   Pool<void>? _pool;
   String? _openedFor;
+
+  /// The transport settings the open pool was built with, handed again to
+  /// every checkout. In `postgres` 3.5.12 a pool's own `PoolSettings` reach
+  /// only the connections the pool opens through `withConnection(settings:)`;
+  /// `pool.execute` and `pool.runTx` resolve their settings without them, so a
+  /// pinned certificate's `SecurityContext` was silently dropped and a
+  /// self-signed LAN server was refused. Found by running
+  /// `lan_tls_handshake_test` against the real driver.
+  ConnectionSettings? _connectionSettings;
 
   /// The pool for [config], opening one if the endpoint changed.
   ///
@@ -258,15 +303,32 @@ class PosDatabase {
       );
     }
 
+    final tls = _transportFor(config);
+    // Checked before every pool, not once at pairing: `config.json` is a
+    // plain file an engineer is invited to read, and one who edited the PEM
+    // or the fingerprint by hand must get a refusal that names the file, not
+    // a connection that trusts whichever half they changed.
+    if (tls.pin case final pin? when !pin.isConsistent) {
+      throw PosDbException(
+        PosDbFailure.tls,
+        'The certificate this till is paired with does not match the '
+        'fingerprint saved beside it in config.json. Pair this till with its '
+        'database server again.',
+      );
+    }
+
     // Keyed on everything that identifies the connection — including the
     // credential. `Pool.withEndpoints` does not connect eagerly, so a wrong
     // password still produces a pool; without the credential in the key, an
     // operator who corrects a typo in the wizard would keep getting the stale
     // pool back and the fix would appear not to work. Hashed, never the value,
-    // so the key stays safe to put in a log line.
+    // so the key stays safe to put in a log line. The transport is in it for
+    // the same reason: a till just paired must not keep the pool that was
+    // refused a moment ago.
     final key =
         '$host:${config.databasePort}/${config.databaseName}'
-        '@${config.databaseUser}#${password.hashCode}';
+        '@${config.databaseUser}#${password.hashCode}'
+        '|${tls.transport.name}:${tls.pin?.sha256 ?? ''}';
     if (_pool != null && _openedFor == key) return _pool!;
     await close();
 
@@ -284,16 +346,17 @@ class PosDatabase {
         maxConnectionCount: 4,
         connectTimeout: const Duration(seconds: 5),
         queryTimeout: const Duration(seconds: 10),
-        // Relaxed only for a private address the operator explicitly trusted in
-        // the wizard. `allowsInsecureTransport` already refuses to do this for a
-        // public host, so a mistyped hostname cannot downgrade the till.
-        // `require` encrypts but deliberately accepts every certificate in the
-        // postgres package. The secure path must verify the certificate and
-        // hostname against the platform trust store.
-        sslMode: config.allowsInsecureTransport
-            ? SslMode.disable
-            : SslMode.verifyFull,
+        // One transport per pool, decided before it opens and never revised
+        // by a failure: a refused handshake surfaces as PosDbFailure.tls and
+        // the pool is not rebuilt in the clear. `require` is never used — in
+        // the postgres package it accepts every certificate. See pos_tls.dart.
+        sslMode: PosTlsSettings.sslModeFor(tls),
+        securityContext: PosTlsSettings.securityContextFor(tls),
       ),
+    );
+    _connectionSettings = ConnectionSettings(
+      sslMode: PosTlsSettings.sslModeFor(tls),
+      securityContext: PosTlsSettings.securityContextFor(tls),
     );
     _openedFor = key;
     return _pool!;
@@ -323,7 +386,10 @@ class PosDatabase {
   ) async {
     try {
       final session = await pool(config);
-      return await session.runTx(action);
+      return await session.withConnection(
+        (c) => c.runTx(action),
+        settings: _connectionSettings,
+      );
     } on PosDbException {
       rethrow;
     } on Object catch (error) {
@@ -339,7 +405,10 @@ class PosDatabase {
   }) async {
     try {
       final session = await pool(config);
-      return await session.execute(Sql.named(sql), parameters: parameters);
+      return await session.withConnection(
+        (c) => c.execute(Sql.named(sql), parameters: parameters),
+        settings: _connectionSettings,
+      );
     } on PosDbException {
       rethrow;
     } on Object catch (error) {

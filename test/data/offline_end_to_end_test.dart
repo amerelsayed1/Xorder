@@ -52,7 +52,7 @@ void main() {
     databaseUser: PgFixture.user,
     // The local instance has no certificate, and only a private address is ever
     // allowed to skip verification — the same terms `PgFixture` runs on.
-    verifyTls: false,
+    allowInsecureLan: true,
     tenantSlug: 'islanded',
   );
 

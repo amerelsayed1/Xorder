@@ -102,6 +102,33 @@ class OutboxDrain {
   /// `docs/coordination/POS_TO_BACKEND.md`.
   static const refundHasNoLines = 'REFUND_HAS_NO_LINES';
 
+  /// The `last_error` on a row whose 2xx did not prove the platform wrote it.
+  ///
+  /// A captive portal, a proxy, a half-deployed backend: each can answer 200
+  /// with a page, or with nothing, and before this the drain wrote
+  /// `delivered_at` on the strength of the status alone — a sale the platform
+  /// never saw, marked sent, never retried (D4). Deferred, never quarantined:
+  /// the record is fine and the network is not, so the next pass on a real
+  /// connection gets the real answer — and §007 idempotency makes the resend
+  /// safe even if the platform did write it behind the page.
+  static const malformedAck = 'MALFORMED_ACK';
+
+  /// Whether a reply to `POST /api/pos/orders` proves the order exists there.
+  ///
+  /// The platform's own id is the proof, because it is the one field §006
+  /// promises on both the 201 and the idempotent replay. The invoice number is
+  /// deliberately not required: the contract makes it nullable, and refusing a
+  /// genuine acceptance for lacking it would be a sale resent forever behind a
+  /// server that had already said yes.
+  static bool acknowledgesOrder(CloudReply reply) =>
+      reply.ok && reply.parsed && reply.data['id'] is int;
+
+  /// Whether a 2xx to a lifecycle endpoint proves anything at all: a JSON
+  /// object. Most of these replies tell the till nothing it keeps, so there is
+  /// no field to insist on — the customer's id is the exception, and it asks
+  /// for it through its event's own `acknowledges`.
+  static bool acknowledgesRecord(CloudReply reply) => reply.ok && reply.parsed;
+
   static String paymentClientId({
     required String orderClientId,
     required int paymentRowId,
@@ -369,6 +396,26 @@ class OutboxDrain {
         );
       }
 
+      // A 2xx that does not carry the order back is not a delivery (D4). Not
+      // treated as offline either: something did answer, and stopping the
+      // pass would let one portal page hold the whole backlog — while every
+      // row it touches still counts the attempt, so a network that only ever
+      // answers like this shows up as a climbing `attempts`, not as silence.
+      if (reply.ok && !acknowledgesOrder(reply)) {
+        await _db.query(
+          config,
+          '''
+          UPDATE pos_outbox
+             SET attempts = attempts + 1, last_attempt_at = now(),
+                 last_error = @error
+           WHERE id = @id
+          ''',
+          parameters: {'id': outboxId, 'error': malformedAck},
+        );
+        deferred++;
+        continue;
+      }
+
       if (reply.ok) {
         final data = reply.data;
         final invoice = data['invoice_number'] as String?;
@@ -507,6 +554,22 @@ class OutboxDrain {
               deferred: deferred,
               wentOffline: true,
             );
+          }
+          // Same rule as the order path, same reason: a 2xx is only a
+          // delivery when the body proves the platform wrote the record.
+          if (reply.ok && !event.acknowledges(reply)) {
+            await _db.query(
+              config,
+              '''
+              UPDATE pos_sync_outbox
+                 SET attempts = attempts + 1, last_attempt_at = now(),
+                     last_error = @error
+               WHERE id = @id
+              ''',
+              parameters: {'id': eventId, 'error': malformedAck},
+            );
+            deferred++;
+            continue;
           }
           if (reply.ok) {
             // One transaction, so "this was delivered" and whatever the reply
@@ -650,6 +713,13 @@ class OutboxDrain {
     return _LifecycleEvent(
       request: request,
       send: () => api.createCustomer(request),
+      // The id is the point of sending a customer at all. Marked delivered
+      // without one, the row is never resent and `platform_id` is never
+      // written — permanently, since a delivered row is never looked at
+      // again — so the customer stays a local row number to the platform.
+      // Requiring only a JSON object would have let `{}` do exactly that.
+      acknowledges: (reply) =>
+          acknowledgesRecord(reply) && reply.data['id'] is int,
       record: (tx, data) async {
         if (data['id'] case final int platformId) {
           await tx.execute(
@@ -1175,10 +1245,16 @@ class _LifecycleEvent {
     required this.request,
     required this.send,
     this.record,
+    this.acknowledges = OutboxDrain.acknowledgesRecord,
   });
 
   final Map<String, Object?> request;
   final Future<CloudReply> Function() send;
+
+  /// Whether a 2xx reply proves this record landed — checked before
+  /// `delivered_at` is written. Per record because what counts as proof is:
+  /// any JSON object for a shift, the platform's id for a customer.
+  final bool Function(CloudReply reply) acknowledges;
 
   /// What to write back out of a successful reply, in the same transaction
   /// that marks the row delivered. Null for the three records whose reply

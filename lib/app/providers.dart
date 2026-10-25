@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
 import '../core/config/deployment.dart';
+import '../core/config/lan_tls.dart';
 import '../data/cloud/cloud_api.dart';
 import '../data/cloud/cloud_provisioning_repository.dart';
 import '../data/cloud/cloud_sync.dart';
@@ -18,6 +19,7 @@ import '../core/config/terminal_config.dart';
 import '../core/config/terminal_profile.dart';
 import '../core/l10n/app_strings.dart';
 import '../core/money/money.dart';
+import '../core/security/attempt_limiter.dart';
 import '../core/network/connectivity_probe.dart';
 import '../data/backup/backup_service.dart';
 import '../data/backup/pg_archive.dart';
@@ -25,11 +27,13 @@ import '../data/backup/pg_tools.dart';
 import '../data/config/file_secret_store.dart';
 import '../data/config/installer_credentials.dart';
 import '../data/config/pos_db_secret_store.dart';
+import '../data/config/secret_store.dart';
 import '../data/config/setup_progress_store.dart';
 import '../data/config/terminal_config_store.dart';
 import '../data/hardware/network_printer_ports.dart';
 import '../data/hardware/spooler_printer_ports.dart';
 import '../data/postgres/pos_database.dart';
+import '../data/postgres/pos_tls.dart';
 import '../data/postgres/local_bootstrap.dart';
 import '../data/postgres/postgres_admin_repositories.dart';
 import '../data/postgres/postgres_backup_repository.dart';
@@ -69,6 +73,7 @@ import '../data/postgres/money_config_codec.dart';
 import '../data/postgres/postgres_parked_tickets.dart';
 import '../data/postgres/postgres_print_queue_repository.dart';
 import '../data/postgres/postgres_shift_repository.dart';
+import '../data/postgres/postgres_sync_queue_repository.dart';
 import '../data/postgres/postgres_site_licence.dart';
 import '../data/unconfigured/unconfigured_repositories.dart';
 import '../features/admin/application/admin_session.dart'
@@ -88,6 +93,7 @@ import '../features/licensing/domain/license.dart';
 import '../features/licensing/domain/online_verdict.dart';
 import '../features/setup/application/setup_controller.dart';
 import '../domain/models/backup.dart';
+import '../domain/models/held_sync.dart';
 import '../domain/models/catalog.dart';
 import '../domain/models/customer.dart';
 import '../domain/models/dining_table.dart';
@@ -430,7 +436,9 @@ final refundHistorySummaryProvider = FutureProvider.autoDispose
 /// Takes the shift by `read`, not `watch`, for the same reason the orders
 /// repository does: a refund stamps the shift that was open when it was given,
 /// and rebuilding this mid-transaction because a shift closed at another till
-/// would be worse than an unattributed refund.
+/// would be worse than an unattributed refund. Read when the refund is
+/// written, through a function, not once here — a captured id outlived the
+/// shift it named.
 final refundsRepositoryProvider = Provider<RefundsRepository>((ref) {
   final config = ref.watch(deploymentProvider);
   final context = ref.watch(posWriteContextProvider);
@@ -728,8 +736,9 @@ final posCloudApiProvider = Provider<PosCloudApi?>((ref) {
 });
 
 /// The terminal's device credential. The default is in-memory; `main()`
-/// overrides it with the keychain-backed vault, restored before the first
-/// frame — the same arrangement as the database password.
+/// overrides it with a vault backed by [secretStoreProvider]'s store (DPAPI on
+/// Windows, the Keychain on macOS), restored before the first frame — the same
+/// arrangement as the database password.
 final deviceTokenVaultProvider = Provider<DeviceTokenVault>(
   (ref) => DeviceTokenVault(),
 );
@@ -1087,9 +1096,49 @@ final floorTablesProvider = FutureProvider<List<DiningTable>>((ref) async {
 /// prevent it saying.
 ///
 /// Invalidate it after anything that enqueues or drains.
+///
+/// **What the next pass will try** — not what the drain has held for a person,
+/// which is [heldSyncCountProvider]. The two were one number until a single
+/// refused sale left the pill reading "1 unsent" for ever.
 final FutureProvider<int> pendingSyncCountProvider = FutureProvider<int>(
   (ref) => ref.watch(ordersRepositoryProvider).pendingSyncCount(),
 );
+
+/// The records the drain has held for a person (D1/D2/D13).
+///
+/// Unconfigured — empty — on an offline till as well as on one with no
+/// database: an offline till owes the platform nothing, so nothing it holds
+/// would ever be drained, and a Retry button there would do nothing at all.
+/// On the till's credential, which already holds UPDATE on both outboxes; see
+/// [PostgresSyncQueueRepository].
+final Provider<SyncQueueRepository> syncQueueRepositoryProvider =
+    Provider<SyncQueueRepository>((ref) {
+      final config = ref.watch(deploymentProvider);
+      final context = ref.watch(posWriteContextProvider);
+      if (context == null ||
+          PosDatabase.hostFor(config) == null ||
+          !config.mode.syncsSalesToPlatform) {
+        return const UnconfiguredSyncQueueRepository();
+      }
+      return PostgresSyncQueueRepository(
+        database: ref.watch(posDatabaseProvider),
+        config: config,
+        restaurantId: context.restaurantId,
+        branchId: context.branchId,
+        terminalId: context.terminalId,
+      );
+    });
+
+/// How many records are held. Invalidated with [pendingSyncCountProvider].
+final FutureProvider<int> heldSyncCountProvider = FutureProvider<int>(
+  (ref) => ref.watch(syncQueueRepositoryProvider).heldSyncCount(),
+);
+
+/// The held records themselves, for the Sync pane.
+final FutureProvider<List<HeldSyncItem>> heldSyncItemsProvider =
+    FutureProvider<List<HeldSyncItem>>(
+      (ref) => ref.watch(syncQueueRepositoryProvider).listHeldSync(),
+    );
 
 /// Fan a finished sync pass out into the providers that care.
 ///
@@ -1100,7 +1149,11 @@ final FutureProvider<int> pendingSyncCountProvider = FutureProvider<int>(
 /// widget test can notice. Keeping the handling here means the wiring itself
 /// is the thing under test.
 void applySyncOutcome(ProviderContainer container, SyncOutcome outcome) {
-  container.invalidate(pendingSyncCountProvider);
+  container
+    ..invalidate(pendingSyncCountProvider)
+    // A pass that held something moves it from one count to the other.
+    ..invalidate(heldSyncCountProvider)
+    ..invalidate(heldSyncItemsProvider);
 
   // Written on every pass, not only on rejection, so a till that gets
   // re-paired clears the banner by itself instead of carrying it until
@@ -1657,9 +1710,62 @@ class SignedInStaffController extends Notifier<PosStaff?> {
   }
 
   /// Closing a shift signs the person out with it. The next shift is somebody
-  /// else's responsibility until they say otherwise.
+  /// else's responsibility until they say otherwise. So does five idle minutes
+  /// (`TillIdleLock`): an unattended till is nobody's.
   void signOut() => state = null;
 }
+
+/// The clock the till's sign-in doors and its idle lock read. A provider so a
+/// test can move it instead of waiting thirty seconds or five minutes — the
+/// same reason as `adminClockProvider`, kept apart from it because Admin Mode's
+/// clock belongs to Admin Mode's tests.
+final tillClockProvider = Provider<DateTime Function()>((ref) => DateTime.now);
+
+/// Wrong PINs at the till's own doors: the lock screen, the open-shift
+/// sign-in and the supervisor keypad. See [AttemptLimiter].
+///
+/// **One limiter for all three**, because they check the same PINs: separate
+/// counts would give somebody five guesses at the lock screen, five more in the
+/// shift dialog and five at the keypad for every lockout window. Keyed by the
+/// username typed at the two doors that ask for one, and by
+/// [AttemptLimiter.anyone] at the keypad, which asks for a PIN alone — and the
+/// terminal-wide ceiling is shared across all of it. A PIN submitted at the
+/// lock screen with the name left empty lands on the keypad's key too: it is
+/// the same kind of try, a PIN with no claim of who.
+///
+/// Admin Mode keeps its own (see `AdminSessionController`). Held for the life
+/// of the process and lost on restart; see [AttemptLimiter] for why that is
+/// accepted for now.
+final signInLimiterProvider = Provider<AttemptLimiter>(
+  (ref) => AttemptLimiter(clock: () => ref.read(tillClockProvider)()),
+);
+
+/// Whether something on screen is in the middle of moving money, so the idle
+/// lock must wait for it.
+///
+/// **A plain object, not provider state.** Nothing rebuilds when it changes —
+/// only the idle lock asks, and only when its timer fires — so a payment
+/// screen marking itself on every build costs nothing and cannot trip
+/// Riverpod's rule against changing state while widgets build. Holders are a
+/// set, so holding twice is holding once and a holder that is disposed
+/// releases exactly what it held.
+///
+/// Rejected: closing the payment dialog from under the cashier, as locking
+/// does to every other dialog. A settlement awaiting the database when its
+/// dialog went would commit the order with nobody left to print the receipt,
+/// free the table or start the next ticket — the sale screen would still be
+/// showing a bill the drawer has already been paid for.
+class IdleLockGuard {
+  final _holders = <Object>{};
+
+  bool get isHeld => _holders.isNotEmpty;
+
+  void hold(Object holder) => _holders.add(holder);
+
+  void release(Object holder) => _holders.remove(holder);
+}
+
+final idleLockGuardProvider = Provider<IdleLockGuard>((ref) => IdleLockGuard());
 
 /// The username of whoever signed in at this till last, for the lock screen
 /// to offer back.
@@ -2274,9 +2380,10 @@ class TerminalReset {
 
   /// **Back to a blank till.** Everything [run] does, and also what it keeps on
   /// purpose: the licence file and its cached verdict, every saved password and
-  /// token (the whole `secrets.json`, not only the two entries [run] touches),
-  /// and this machine's identity, so the wizard opens on "enter a licence key"
-  /// as on a machine that has never run it.
+  /// token (everything in [secretStoreProvider]'s store, not only the two
+  /// entries [run] touches, and any legacy `secrets.json`), and this machine's
+  /// identity, so the wizard opens on "enter a licence key" as on a machine
+  /// that has never run it.
   ///
   /// **It erases this machine's memory, nothing more.** No database is dropped,
   /// no sale, backup or platform record is touched; the dialog that offers it
@@ -2289,6 +2396,10 @@ class TerminalReset {
     await _ref.read(licenseStoreProvider).clear();
     await _ref.read(licenceCheckStoreProvider).clear();
     await _ref.read(secretsFileProvider).deleteFile();
+    // The OS store as well as the file. On Windows and macOS the secrets have
+    // not been in `secrets.json` since the migration, and deleting only the
+    // file would hand the next restaurant this one's device token.
+    await _ref.read(secretStoreProvider).deleteAll();
 
     _ref.read(terminalProfileProvider.notifier).renew();
     _ref.read(signedInStaffProvider.notifier).signOut();
@@ -2304,8 +2415,24 @@ final terminalResetProvider = Provider<TerminalReset>(TerminalReset.new);
 
 /// The shared `secrets.json`, for the hard reset to delete whole. A provider so
 /// a test can point it at a temporary folder.
+///
+/// On Windows and macOS nothing writes this file any more; it is deleted here
+/// in case a migration could not finish, or an older build wrote it again
+/// after a downgrade. Deleting is all this provider is used for.
 final secretsFileProvider = Provider<FileSecretStore>(
   (ref) => FileSecretStore(key: FileSecretStore.databasePasswordKey),
+);
+
+/// Where every secret this till keeps actually lives: DPAPI on Windows, the
+/// Keychain on macOS, and a plaintext development file only on machines that
+/// do not sell (ADR-006). The choice is [SecretStore.forPlatform]'s.
+///
+/// `main()` overrides this with the instance it migrated and restored at boot,
+/// so the whole process shares one store. The DPAPI store serialises writes
+/// to its file, and two instances would each do it on their own. Widget tests
+/// get an in-memory store from `fakeRepositoryOverrides`.
+final secretStoreProvider = Provider<SecretStore>(
+  (ref) => SecretStore.forPlatform(),
 );
 
 /// The licence entitlement currently in force.
@@ -2370,10 +2497,11 @@ final posDbCredentialsStoreProvider = Provider<MutablePosDbCredentials>(
 /// nothing else. Never a superuser, never `DELETE`, never DDL, so a recovered
 /// credential cannot rewrite history.
 ///
-/// Kept in the OS keystore between launches — Keychain on macOS, DPAPI on
-/// Windows — never in `config.json`: a database password written to a file is a
-/// password that gets emailed to support. The keystore binding is attached in
-/// `main()`, so a widget test gets the in-memory one and touches no keychain.
+/// Kept in the OS store between launches — Keychain on macOS, DPAPI on
+/// Windows, see [secretStoreProvider] — never in `config.json`: a database
+/// password written to a file is a password that gets emailed to support. The
+/// store is attached in `main()`, so a widget test gets the in-memory one and
+/// touches no keychain.
 final posDbCredentialsProvider = Provider<PosDbCredentials>(
   (ref) => ref.watch(posDbCredentialsStoreProvider),
 );
@@ -2386,6 +2514,28 @@ final posDatabaseProvider = Provider<PosDatabase>((ref) {
   ref.onDispose(database.close);
   return database;
 });
+
+/// Reads which certificate a database server presents, for pairing.
+///
+/// Opens a socket and sends nothing but PostgreSQL's SSLRequest and a TLS
+/// handshake it refuses; tests that reach a TLS failure override it.
+final serverCertificateProbeProvider = Provider<ServerCertificateProbe>(
+  (ref) => const PostgresCertificateProbe(),
+);
+
+/// This machine's own LAN certificate, as the installer published it — what
+/// a technician reads off the main device to pair a till with it. Null on
+/// a machine the installer did not open to the LAN, and everywhere but
+/// Windows.
+final publishedServerCertificateSourceProvider =
+    Provider<PublishedServerCertificateSource>(
+      (ref) => const FilePublishedServerCertificate(),
+    );
+
+final publishedServerCertificateProvider =
+    FutureProvider<PresentedCertificate?>(
+      (ref) => ref.watch(publishedServerCertificateSourceProvider).read(),
+    );
 
 /// Which tenant, branch and terminal a write belongs to.
 ///
@@ -2486,6 +2636,50 @@ final adminPasswordProbeProvider =
         }
       };
     });
+
+/// The technician's reset of somebody's Admin Mode password (ADR-006b D5.4).
+typedef TechnicianPasswordReset =
+    Future<AdminResult<String?>> Function({
+      required String username,
+      required String databasePassword,
+    });
+
+/// Clears [username]'s Admin Mode password on a pool of its own, opened on
+/// the database password the technician has just typed and closed after.
+///
+/// **Not [staffDirectoryRepositoryProvider].** That one writes on
+/// [adminDbCredentialProvider], which holds the password this till KEEPS —
+/// and the kept one is the one thing that must not be enough: anybody at the
+/// till could then clear the owner's password and choose a new one with the
+/// owner's PIN. Typing it is the proof, as on the forced reset. The caller
+/// (`AdminSessionController.technicianClearPassword`) has already probed it
+/// and counted a wrong one against Admin Mode's lockout. A function, so a
+/// test can answer without a server.
+final technicianPasswordResetProvider = Provider<TechnicianPasswordReset>((
+  ref,
+) {
+  final config = ref.watch(adminDeploymentProvider);
+  final context = ref.watch(posWriteContextProvider);
+  return ({required username, required databasePassword}) async {
+    if (context == null || PosDatabase.hostFor(config) == null) {
+      return const AdminResult<String?>.refused(NoDatabaseConfigured());
+    }
+    final database = PosDatabase(
+      credentials: InMemoryPosDbCredentials(databasePassword),
+    );
+    try {
+      return await PostgresStaffDirectoryRepository(
+        database: database,
+        config: config,
+        restaurantId: context.restaurantId,
+        branchId: context.branchId,
+        terminalId: context.terminalId,
+      ).clearPasswordAsTechnician(username: username);
+    } finally {
+      await database.close();
+    }
+  };
+});
 
 /// Applies the migrations this build carries and the database lacks, as the
 /// back office's administrator.
@@ -3264,11 +3458,14 @@ final backupFileExistsProvider = Provider<bool Function(String path)>(
 
 /// Where the backup account's password is kept on this machine.
 ///
-/// Beside the till's own, in `secrets.json` — see
-/// [FileSecretStore.backupPasswordKey] for why that is safe for this one and
-/// would not be for the administrator's.
+/// Beside the till's own, in the OS store ([secretStoreProvider]) — see
+/// [FileSecretStore.backupPasswordKey] for why keeping this one is safe and
+/// keeping the administrator's is not.
 final backupPasswordStoreProvider = Provider<PosDbSecretStore>(
-  (ref) => FileSecretStore(key: FileSecretStore.backupPasswordKey),
+  (ref) => KeyedSecretStore(
+    ref.watch(secretStoreProvider),
+    FileSecretStore.backupPasswordKey,
+  ),
 );
 
 /// The back office's database password, kept on this machine.
@@ -3281,14 +3478,20 @@ final backupPasswordStoreProvider = Provider<PosDbSecretStore>(
 /// the till's, and Admin Mode loads it into [adminDbCredentialProvider] only
 /// for the length of a session. An install from before that asks for it once.
 ///
-/// What that costs, stated rather than implied: `secrets.json` is readable by
-/// the till's own OS account (see [FileSecretStore]), so anybody who has that
-/// account's files has the administrator's rights to the branch database
-/// without a PIN. What still holds: nobody at the till's screen gets a pane
-/// without a username and PIN holding `admin.enter`, and every write still goes
-/// through the repositories' own permission checks.
+/// What that costs, stated rather than implied. It is in the OS store now
+/// ([secretStoreProvider]), so a copy of the till's files is no longer a copy
+/// of it. But DPAPI and the login keychain open for anything running as the
+/// till's own OS account, so anybody with that session has the
+/// administrator's rights to the branch database without a PIN. What still
+/// holds: nobody at the till's screen gets a pane without a username and PIN
+/// holding `admin.enter`, and every write still goes through the repositories'
+/// own permission checks. Whether this one should be kept at all is open
+/// (GAPS Q17; ADR-006 proposes not), and is not decided here.
 final adminDbSecretStoreProvider = Provider<PosDbSecretStore>(
-  (ref) => FileSecretStore(key: FileSecretStore.adminPasswordKey),
+  (ref) => KeyedSecretStore(
+    ref.watch(secretStoreProvider),
+    FileSecretStore.adminPasswordKey,
+  ),
 );
 
 /// The backup account's password, or null when none has been entered.
@@ -3361,6 +3564,14 @@ final rolesProvider = FutureProvider<List<PosRole>>(
 
 final staffDirectoryProvider = FutureProvider<List<PosStaff>>(
   (ref) => ref.watch(staffDirectoryRepositoryProvider).all(),
+);
+
+/// Who has an Admin Mode password, by staff id — what the staff pane's Clear
+/// password button asks. Not a field read by `all()`: that query is also the
+/// lock screen's roster ([signInCandidatesProvider]), which must keep working
+/// on a database the upgrade that adds this column has not reached.
+final staffWithPasswordProvider = FutureProvider<Set<int>>(
+  (ref) => ref.watch(staffDirectoryRepositoryProvider).withPassword(),
 );
 
 /// Whether the person currently signed in at this till may do something.

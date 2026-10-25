@@ -38,7 +38,8 @@ class InstallerCredentials {
   final String adminPassword;
 
   /// `pos_till` — SELECT and INSERT on the POS tables and nothing else. The
-  /// credential the till trades on, and the only one in the keystore.
+  /// credential the till trades on. Not the only one in the OS store: the
+  /// admin password above is kept there too, by `SetupController.complete`.
   final String tillUser;
   final String tillPassword;
 

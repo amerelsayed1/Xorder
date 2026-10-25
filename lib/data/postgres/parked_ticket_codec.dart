@@ -1,7 +1,10 @@
 import '../../core/money/money.dart';
 import '../../domain/models/catalog.dart';
 import '../../domain/models/combo.dart';
+import '../../domain/models/customer.dart';
 import '../../domain/models/discount.dart';
+import '../../domain/models/service_charge.dart';
+import '../../domain/models/tax.dart';
 import '../../domain/models/tender_method.dart';
 import '../../domain/models/ticket.dart';
 
@@ -27,12 +30,67 @@ abstract final class ParkedTicketCodec {
     'currency': ticket.currency,
     'exponent': ticket.exponent,
     'rounds_sent': ticket.roundsSent,
+    // The rules the ticket was priced under travel with it, all of them. The
+    // four scalars alone used to: a parked table at an inclusive restaurant
+    // came back exclusive and grew its VAT on top, a zero-rated line came back
+    // at the standard rate, and a delivery fee came back as the legacy 12%.
+    // Snapshotted rather than re-read from the live config on resume because
+    // that is what every other price here is — and `adopt` takes the ticket
+    // as decoded, so whatever is missing here is missing from the bill.
     'tax': {
       'service_bp': ticket.taxConfig.serviceBp,
       'vat_bp': ticket.taxConfig.vatBp,
       'service_dine_in_only': ticket.taxConfig.serviceDineInOnly,
       'source': ticket.taxConfig.source.name,
+      'mode': ticket.taxConfig.taxMode.wire,
+      'groups': [
+        for (final group in ticket.taxConfig.taxGroups)
+          {
+            'id': group.id,
+            'name_en': group.nameEn,
+            'name_ar': group.nameAr,
+            'rate_bp': group.rateBp,
+            'is_default': group.isDefault,
+            'is_active': group.isActive,
+            'eta_tax_type': group.etaTaxType,
+            // The resolved code, fallback included. Equal under
+            // `TaxGroup ==` either way, and a zero-rated group that came back
+            // without it would still file as zero-rated.
+            'eta_sub_type': group.etaSubType,
+          },
+      ],
+      'service_charges': [
+        for (final charge in ticket.taxConfig.serviceCharges)
+          {
+            'id': charge.id,
+            'name_en': charge.nameEn,
+            'name_ar': charge.nameAr,
+            'rate_bp': charge.rateBp,
+            'fixed_minor': charge.fixedMinor,
+            'order_types': [for (final type in charge.orderTypes) type.wire],
+            'is_taxable': charge.isTaxable,
+            'is_automatic': charge.isAutomatic,
+            'is_optional': charge.isOptional,
+            'is_active': charge.isActive,
+            'sort_order': charge.sortOrder,
+          },
+      ],
     },
+    // A parked delivery that lost its customer overnight is food with nowhere
+    // to go, and an order that settles referencing nobody. A snapshot, like
+    // everything else here: the order references [PosCustomer.id], and the
+    // name and address are what the docket printed when it was rung up.
+    'customer': ticket.customer == null
+        ? null
+        : {
+            'id': ticket.customer!.id,
+            'platform_id': ticket.customer!.platformId,
+            'name': ticket.customer!.name,
+            'phone': ticket.customer!.phone,
+            'email': ticket.customer!.email,
+            'address': ticket.customer!.address,
+            'note': ticket.customer!.note,
+          },
     'lines': [
       for (final line in ticket.lines)
         {
@@ -218,7 +276,18 @@ abstract final class ParkedTicketCodec {
         source: tax['source'] == TaxSource.server.name
             ? TaxSource.server
             : TaxSource.deviceConfig,
+        // Absent on every payload parked before these keys existed, and each
+        // absence decodes to the constructor's default — exclusive, no named
+        // rates, no §38 charges — which is exactly what those payloads were
+        // decoded to before. What an older payload lost it stays without:
+        // nothing in it says the restaurant was inclusive.
+        taxMode: TaxMode.fromWire(
+          tax['mode'] is String ? tax['mode'] as String : null,
+        ),
+        taxGroups: _taxGroups(tax['groups']),
+        serviceCharges: _serviceCharges(tax['service_charges']),
       ),
+      customer: _customer(json['customer']),
       lines: lines,
       tenders: [
         if (json['tenders'] is List)
@@ -410,6 +479,98 @@ abstract final class ParkedTicketCodec {
       priceOverride: _priceOverride(raw['price_override'], minor),
       includedAllowance: minor(raw['included_allowance_minor']),
       combo: _combo(raw['combo'], minor),
+    );
+  }
+
+  /// The named rates the ticket was priced at.
+  ///
+  /// A group without a readable id or rate is dropped rather than guessed:
+  /// a line naming it then falls to [TaxConfig.defaultTaxGroup], which is the
+  /// same answer `groupFor` gives a group this till has not synced — the
+  /// documented safe direction. A rate arriving as a float is refused, as
+  /// `MoneyConfigCodec` refuses one, rather than rounded into a bill.
+  static List<TaxGroup> _taxGroups(Object? value) => [
+    if (value is List)
+      for (final raw in value)
+        if (raw is Map && raw['id'] is int && raw['rate_bp'] is int)
+          TaxGroup(
+            id: raw['id'] as int,
+            nameEn: raw['name_en'] is String ? raw['name_en'] as String : 'VAT',
+            nameAr: raw['name_ar'] is String ? raw['name_ar'] as String : null,
+            rateBp: raw['rate_bp'] as int,
+            isDefault: raw['is_default'] == true,
+            isActive: raw['is_active'] != false,
+            etaTaxType: raw['eta_tax_type'] is String
+                ? raw['eta_tax_type'] as String
+                : EtaTaxCode.valueAdded,
+            etaSubType: raw['eta_sub_type'] is String
+                ? raw['eta_sub_type'] as String
+                : null,
+          ),
+  ];
+
+  /// What was added on top of the food when the ticket was parked.
+  ///
+  /// A charge with neither a readable rate nor a readable amount is dropped:
+  /// there is no figure to charge, and inventing one is the bug
+  /// `MoneyConfigCodec` exists to end. If that leaves the list empty the
+  /// ticket falls back to the legacy single rate, which is what it was being
+  /// charged before §38 — the least surprising bill available.
+  static List<ServiceCharge> _serviceCharges(Object? value) => [
+    if (value is List)
+      for (final raw in value)
+        if (raw is Map &&
+            raw['id'] is int &&
+            (raw['rate_bp'] is int || raw['fixed_minor'] is int))
+          _serviceCharge(raw.cast<String, Object?>()),
+  ];
+
+  static ServiceCharge _serviceCharge(Map<String, Object?> raw) {
+    final wires = raw['order_types'] is List
+        ? raw['order_types'] as List
+        : const [];
+    final types = <OrderType>{
+      for (final wire in wires)
+        if (wire is String) ?OrderType.fromWire(wire),
+    };
+
+    return ServiceCharge(
+      id: raw['id'] as int,
+      nameEn: raw['name_en'] is String ? raw['name_en'] as String : 'Service',
+      nameAr: raw['name_ar'] is String ? raw['name_ar'] as String : null,
+      rateBp: raw['rate_bp'] is int ? raw['rate_bp'] as int : null,
+      fixedMinor: raw['fixed_minor'] is int ? raw['fixed_minor'] as int : null,
+      orderTypes: types,
+      isTaxable: raw['is_taxable'] != false,
+      isAutomatic: raw['is_automatic'] != false,
+      isOptional: raw['is_optional'] == true,
+      // **Scoped to types this build cannot read means off, not everywhere.**
+      // An empty set means "every order type", so decoding a charge scoped to
+      // a type a newer build invented as empty would put a delivery-only fee
+      // on a dine-in table. Switching it off under-charges instead, which is
+      // the error a cashier sees and can correct.
+      isActive:
+          raw['is_active'] != false && (wires.isEmpty || types.isNotEmpty),
+      sortOrder: raw['sort_order'] is int ? raw['sort_order'] as int : 0,
+    );
+  }
+
+  /// Who the ticket was for, as the till knew them when it was parked.
+  ///
+  /// Needs an id and nothing else: the id is what the order references, and
+  /// a delivery whose name has gone unreadable is still somebody's food.
+  static PosCustomer? _customer(Object? value) {
+    if (value is! Map || value['id'] is! int) return null;
+    final raw = value.cast<String, Object?>();
+
+    return PosCustomer(
+      id: raw['id'] as int,
+      platformId: raw['platform_id'] is int ? raw['platform_id'] as int : null,
+      name: raw['name'] is String ? raw['name'] as String : '',
+      phone: raw['phone'] is String ? raw['phone'] as String : '',
+      email: raw['email'] is String ? raw['email'] as String : null,
+      address: raw['address'] is String ? raw['address'] as String : null,
+      note: raw['note'] is String ? raw['note'] as String : null,
     );
   }
 
