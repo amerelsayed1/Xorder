@@ -187,6 +187,9 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: PosRoutes.lock,
         builder: (context, state) => LockScreen(
+          // The idle lock says why it came here; Lock and the redirect above
+          // carry nothing, and the screen says nothing extra.
+          afterInactivity: state.extra == LockReason.inactivity,
           // Unlocking returns to the sale screen: the shift stayed open and the
           // ticket is still in memory, so the cashier lands where they left off.
           onUnlocked: () => context.go(PosRoutes.sale),

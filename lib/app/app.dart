@@ -15,6 +15,7 @@ import '../features/settings/printer_settings_dialog.dart';
 import '../features/setup/presentation/force_reset_dialog.dart';
 import '../features/admin/application/admin_session.dart';
 import '../features/admin/presentation/admin_shortcut.dart';
+import '../features/lock/idle_lock.dart';
 import 'providers.dart';
 import '../features/admin/presentation/management_screen.dart';
 import 'router.dart';
@@ -67,32 +68,38 @@ class XorderPosApp extends ConsumerWidget {
       // than a button for the reason it always was one: it can discard an open
       // shift, so it is for somebody who knows it exists. On a till that is set
       // up it asks for a username and PIN holding `terminal.manage` first.
-      builder: (context, child) => _menuBar(
-        AppStrings.of(ref.watch(localeProvider)),
-        CallbackShortcuts(
-          bindings: {
-            for (final activator in adminShortcutActivators(adminShortcut))
-              activator: () => _openAdmin(ref),
-            // Both chords, matching the welcome screen's existing convention:
-            // Ctrl for the Windows tills this ships to, Cmd for macOS.
-            const SingleActivator(
-              LogicalKeyboardKey.keyR,
-              control: true,
-              shift: true,
-            ): () =>
-                _forceReset(ref),
-            const SingleActivator(
-              LogicalKeyboardKey.keyR,
-              meta: true,
-              shift: true,
-            ): () =>
-                _forceReset(ref),
-          },
-          // Root focus so the binding receives keys wherever focus currently
-          // sits — key events bubble up to here from any focused field.
-          child: Focus(
-            autofocus: true,
-            child: _settingsBar(child ?? const SizedBox()),
+      //
+      // **The idle lock** wraps all of it, the settings bar included, so a tap
+      // anywhere in the window is somebody at the till. Here and only here:
+      // see [TillIdleLock] for why one watch at the root and not one a screen.
+      builder: (context, child) => TillIdleLock(
+        child: _menuBar(
+          AppStrings.of(ref.watch(localeProvider)),
+          CallbackShortcuts(
+            bindings: {
+              for (final activator in adminShortcutActivators(adminShortcut))
+                activator: () => _openAdmin(ref),
+              // Both chords, matching the welcome screen's existing convention:
+              // Ctrl for the Windows tills this ships to, Cmd for macOS.
+              const SingleActivator(
+                LogicalKeyboardKey.keyR,
+                control: true,
+                shift: true,
+              ): () =>
+                  _forceReset(ref),
+              const SingleActivator(
+                LogicalKeyboardKey.keyR,
+                meta: true,
+                shift: true,
+              ): () =>
+                  _forceReset(ref),
+            },
+            // Root focus so the binding receives keys wherever focus currently
+            // sits — key events bubble up to here from any focused field.
+            child: Focus(
+              autofocus: true,
+              child: _settingsBar(child ?? const SizedBox()),
+            ),
           ),
         ),
       ),

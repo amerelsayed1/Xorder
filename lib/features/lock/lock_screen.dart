@@ -9,8 +9,16 @@ import '../../core/l10n/app_strings.dart';
 import '../../core/ui/theme.dart';
 import '../../core/ui/tokens.dart';
 import '../../core/ui/widgets/pos_widgets.dart';
+import '../../core/security/attempt_limiter.dart';
 import '../../core/security/pin_hash.dart';
 import '../../domain/models/shift.dart';
+
+/// Why the till went to the lock screen, when it was not somebody pressing
+/// Lock. Carried as the route's `extra`, so the screen can say so.
+enum LockReason {
+  /// `TillIdleLock`: nobody touched the till for the idle timeout.
+  inactivity,
+}
 
 /// Lock screen — step away without closing the shift.
 ///
@@ -24,17 +32,49 @@ import '../../domain/models/shift.dart';
 /// everybody who can sign in here is a tile — one tap to switch user. The PIN
 /// still has to belong to the name: what is remembered is a convenience, and
 /// what is checked is a claim.
+///
+/// **Wrong PINs are limited** by [signInLimiterProvider]: five against one
+/// name, or ten across names at this terminal, and nothing is checked — not
+/// even the right PIN — until the wait is over. A name nobody has is counted
+/// and answered exactly as a wrong PIN is, so the screen says nothing about
+/// which usernames exist.
+///
+/// **Arrived at two ways.** Lock, which leaves whoever was here signed in
+/// until somebody else signs in over them; and five idle minutes
+/// (`TillIdleLock`), which signs them out first and says so — see
+/// [afterInactivity].
+///
+/// **The ticket is not this screen's.** Locking, by hand or idle, leaves
+/// [ticketProvider] exactly as it was — lines, table, tenders already taken,
+/// and the same transaction id — and unlocking returns to the sale screen on
+/// it. That holds whoever unlocks: **a different cashier signing in here
+/// carries on the same ticket**, and nothing asks them to. What is on the
+/// ticket keeps who did it (each void and price change carries its own staff
+/// id), but the sale as a whole is filed under whoever takes the payment —
+/// `PaymentScreen` reads the signed-in person at settlement, by design, since
+/// on a seated table that is routinely not whoever opened it. So a ticket left
+/// half-rung by one cashier is settled under the next one's name without
+/// either being told. That is today's behaviour, kept; whether the next person
+/// should be asked to take the ticket over is a product question, not this
+/// screen's to answer.
 class LockScreen extends ConsumerStatefulWidget {
   const LockScreen({
     super.key,
     required this.onUnlocked,
     required this.onBack,
+    this.afterInactivity = false,
   });
 
   final VoidCallback onUnlocked;
 
   /// Leave for the start screen. Called after the screen has signed out.
   final VoidCallback onBack;
+
+  /// The idle lock brought the till here, not somebody pressing Lock. Said on
+  /// screen, because a cashier who comes back to a locked till they left
+  /// unlocked deserves to know it was the till that did it — and that the
+  /// ticket is still there.
+  final bool afterInactivity;
 
   @override
   ConsumerState<LockScreen> createState() => _LockScreenState();
@@ -53,7 +93,10 @@ class _LockScreenState extends ConsumerState<LockScreen> {
   final _pad = FocusNode();
 
   String _pin = '';
-  bool _error = false;
+
+  /// What went wrong with the last try, or null. A message rather than a flag
+  /// since a shut door says something different from a wrong PIN.
+  String? _error;
 
   /// Whether the name arrived filled in. Then the pad takes the keyboard
   /// first: the only thing left to type is the PIN.
@@ -87,7 +130,7 @@ class _LockScreenState extends ConsumerState<LockScreen> {
     setState(() {
       _username.text = person.username ?? '';
       _pin = '';
-      _error = false;
+      _error = null;
     });
     _pad.requestFocus();
   }
@@ -96,10 +139,24 @@ class _LockScreenState extends ConsumerState<LockScreen> {
     if (_pin.length >= PinRules.length) return;
     setState(() {
       _pin += digit;
-      _error = false;
+      _error = null;
     });
 
     if (_pin.length == PinRules.length) {
+      // Shut: answered before the PIN is looked at, so a guess made while the
+      // door is shut is not a guess at all — and a right PIN is not a way in.
+      final limiter = ref.read(signInLimiterProvider);
+      final username = _username.text;
+      if (limiter.lockedFor(username) case final wait?) {
+        setState(() {
+          _pin = '';
+          _error = context.strings.signInLockedOut(
+            AttemptLimiter.secondsToWait(wait),
+          );
+        });
+        return;
+      }
+
       // Name AND PIN. A PIN alone is four digits that get shared, watched over
       // a shoulder and reused, and `signIn` hands the till to whichever active
       // member of staff happens to hold them — fine for approving a discount
@@ -113,10 +170,11 @@ class _LockScreenState extends ConsumerState<LockScreen> {
       // and the capabilities of whoever had been standing there before.
       final staff = await ref
           .read(sessionRepositoryProvider)
-          .signInAs(username: _username.text, pin: _pin);
+          .signInAs(username: username, pin: _pin);
       if (!mounted) return;
 
       if (staff != null) {
+        limiter.succeed(username);
         ref.read(signedInStaffProvider.notifier).signIn(staff);
         // Resuming a shift: make sure the branch is trading in a day. Covers a
         // till upgraded mid-shift and a day that failed to open earlier. Not
@@ -126,9 +184,18 @@ class _LockScreenState extends ConsumerState<LockScreen> {
         }
         widget.onUnlocked();
       } else {
+        final strings = context.strings;
+        // Counted against the name typed, whether or not it names anybody —
+        // the same count and the same words either way.
+        final failure = limiter.fail(username);
         setState(() {
           _pin = '';
-          _error = true;
+          _error = switch (failure) {
+            AttemptRefused() => strings.wrongUsernameOrPin,
+            AttemptLockedOut(:final wait) => strings.signInLockedOut(
+              AttemptLimiter.secondsToWait(wait),
+            ),
+          };
         });
         // A wrong PIN is the moment a just-changed one would be wrong: ask
         // the platform again, so the second try can be against the new one.
@@ -196,16 +263,26 @@ class _LockScreenState extends ConsumerState<LockScreen> {
                 ),
               ),
               Text(
-                _error ? strings.wrongUsernameOrPin : strings.enterYourPin,
+                _error ?? strings.enterYourPin,
+                key: const Key('lock-message'),
                 textAlign: TextAlign.center,
                 style: PosText.ui(
                   size: 20,
                   weight: FontWeight.w800,
-                  color: _error
+                  color: _error != null
                       ? context.pos.offlinePillText
                       : context.pos.shellText,
                 ),
               ),
+              if (widget.afterInactivity) ...[
+                const SizedBox(height: PosSpace.sm),
+                Text(
+                  strings.lockedAfterInactivity,
+                  key: const Key('lock-after-inactivity'),
+                  textAlign: TextAlign.center,
+                  style: PosText.ui(size: 13, color: context.pos.shellMuted),
+                ),
+              ],
               const SizedBox(height: PosSpace.s24),
               if (people.isNotEmpty) ...[
                 MicroLabel(
@@ -237,7 +314,7 @@ class _LockScreenState extends ConsumerState<LockScreen> {
               UsernameField(
                 controller: _username,
                 autofocus: !_prefilled,
-                onChanged: (_) => setState(() => _error = false),
+                onChanged: (_) => setState(() => _error = null),
                 onSubmitted: _pad.requestFocus,
               ),
               const SizedBox(height: PosSpace.s24),

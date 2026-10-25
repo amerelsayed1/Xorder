@@ -18,6 +18,7 @@ import '../core/config/terminal_config.dart';
 import '../core/config/terminal_profile.dart';
 import '../core/l10n/app_strings.dart';
 import '../core/money/money.dart';
+import '../core/security/attempt_limiter.dart';
 import '../core/network/connectivity_probe.dart';
 import '../data/backup/backup_service.dart';
 import '../data/backup/pg_archive.dart';
@@ -1697,12 +1698,65 @@ class SignedInStaffController extends Notifier<PosStaff?> {
   }
 
   /// Closing a shift signs the person out with it. The next shift is somebody
-  /// else's responsibility until they say otherwise.
+  /// else's responsibility until they say otherwise. So does five idle minutes
+  /// (`TillIdleLock`): an unattended till is nobody's.
   void signOut() => state = null;
 }
 
 /// The username of whoever signed in at this till last, for the lock screen
 /// to offer back.
+/// The clock the till's sign-in doors and its idle lock read. A provider so a
+/// test can move it instead of waiting thirty seconds or five minutes — the
+/// same reason as `adminClockProvider`, kept apart from it because Admin Mode's
+/// clock belongs to Admin Mode's tests.
+final tillClockProvider = Provider<DateTime Function()>((ref) => DateTime.now);
+
+/// Wrong PINs at the till's own doors: the lock screen, the open-shift
+/// sign-in and the supervisor keypad. See [AttemptLimiter].
+///
+/// **One limiter for all three**, because they check the same PINs: separate
+/// counts would give somebody five guesses at the lock screen, five more in the
+/// shift dialog and five at the keypad for every lockout window. Keyed by the
+/// username typed at the two doors that ask for one, and by
+/// [AttemptLimiter.anyone] at the keypad, which asks for a PIN alone — and the
+/// terminal-wide ceiling is shared across all of it. A PIN submitted at the
+/// lock screen with the name left empty lands on the keypad's key too: it is
+/// the same kind of try, a PIN with no claim of who.
+///
+/// Admin Mode keeps its own (see `AdminSessionController`). Held for the life
+/// of the process and lost on restart; see [AttemptLimiter] for why that is
+/// accepted for now.
+final signInLimiterProvider = Provider<AttemptLimiter>(
+  (ref) => AttemptLimiter(clock: () => ref.read(tillClockProvider)()),
+);
+
+/// Whether something on screen is in the middle of moving money, so the idle
+/// lock must wait for it.
+///
+/// **A plain object, not provider state.** Nothing rebuilds when it changes —
+/// only the idle lock asks, and only when its timer fires — so a payment
+/// screen marking itself on every build costs nothing and cannot trip
+/// Riverpod's rule against changing state while widgets build. Holders are a
+/// set, so holding twice is holding once and a holder that is disposed
+/// releases exactly what it held.
+///
+/// Rejected: closing the payment dialog from under the cashier, as locking
+/// does to every other dialog. A settlement awaiting the database when its
+/// dialog went would commit the order with nobody left to print the receipt,
+/// free the table or start the next ticket — the sale screen would still be
+/// showing a bill the drawer has already been paid for.
+class IdleLockGuard {
+  final _holders = <Object>{};
+
+  bool get isHeld => _holders.isNotEmpty;
+
+  void hold(Object holder) => _holders.add(holder);
+
+  void release(Object holder) => _holders.remove(holder);
+}
+
+final idleLockGuardProvider = Provider<IdleLockGuard>((ref) => IdleLockGuard());
+
 ///
 /// **A prefill, not an identity.** The PIN still has to belong to the name,
 /// and the name is one tap away from being somebody else's — what this saves

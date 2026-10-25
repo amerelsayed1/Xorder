@@ -291,6 +291,15 @@ sealed class AppStrings {
   /// each, so switching user is not typing a name on a keypad screen.
   String get lockPickYourName;
 
+  /// Too many wrong PINs at the lock screen, the open-shift sign-in or the
+  /// supervisor keypad: nothing is checked until the wait is over. Says no
+  /// name, so a locked username and a username nobody has read the same.
+  String signInLockedOut(int seconds);
+
+  /// Why the till is on the lock screen when nobody pressed Lock: five minutes
+  /// without a touch or a key signed the cashier out.
+  String get lockedAfterInactivity;
+
   // ── Start ─────────────────────────────────────────────────────────────────
   String get pointOfSale;
   String get renewLicence;
@@ -3873,6 +3882,15 @@ final class EnStrings extends AppStrings {
   String get enterYourPin => 'Enter your PIN';
   @override
   String get lockPickYourName => 'WHO IS BACK?';
+  @override
+  String signInLockedOut(int seconds) => seconds < 60
+      ? 'Too many wrong attempts. Try again in $seconds '
+            '${seconds == 1 ? 'second' : 'seconds'}.'
+      : 'Too many wrong attempts. Try again in ${(seconds + 59) ~/ 60} '
+            '${(seconds + 59) ~/ 60 == 1 ? 'minute' : 'minutes'}.';
+  @override
+  String get lockedAfterInactivity =>
+      'Locked after inactivity. The ticket is kept — sign in to carry on.';
 
   @override
   String get pointOfSale => 'POINT OF SALE';
@@ -8952,6 +8970,30 @@ final class ArStrings extends AppStrings {
   @override
   String get lockPickYourName => 'من عاد إلى الجهاز؟';
 
+  @override
+  String signInLockedOut(int seconds) => seconds < 60
+      ? 'محاولات خاطئة كثيرة. حاول مرة أخرى بعد '
+            '${_arCount(seconds, 'ثانية واحدة', 'ثانيتين', 'ثوانٍ', 'ثانية')}.'
+      : 'محاولات خاطئة كثيرة. حاول مرة أخرى بعد '
+            '${_arCount((seconds + 59) ~/ 60, 'دقيقة واحدة', 'دقيقتين', 'دقائق', 'دقيقة')}.';
+  @override
+  String get lockedAfterInactivity =>
+      'قُفل الجهاز بسبب عدم النشاط. الطلب محفوظ — سجّل الدخول للمتابعة.';
+
+  /// An Arabic count with its noun: the word itself for one and two, the
+  /// plural from three to ten, the singular from eleven up. Digits stay Latin.
+  static String _arCount(
+    int n,
+    String one,
+    String two,
+    String few,
+    String many,
+  ) => switch (n) {
+    1 => one,
+    2 => two,
+    >= 3 && <= 10 => '$n $few',
+    _ => '$n $many',
+  };
   @override
   String get pointOfSale => 'نقطة بيع';
   @override

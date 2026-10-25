@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/providers.dart';
 import '../../../core/config/admin_mode_settings.dart';
+import '../../../core/security/attempt_limiter.dart';
 import '../../../data/postgres/pos_database.dart';
 import '../../../domain/models/permissions.dart';
 import '../../../domain/repositories/admin_repositories.dart';
@@ -195,38 +196,26 @@ final adminClockProvider = Provider<DateTime Function()>(
 class AdminSessionController extends Notifier<AdminSession?> {
   DateTime? _lastActivity;
 
-  /// Five wrong tries, then the door shuts — the supervisor keypad's number,
-  /// and for its reason: enough that a manager mistyping under pressure is not
-  /// shut out, few enough that the door is not a way to walk a four-digit
-  /// space. Without it, the one door to everything took guesses as fast as
+  /// Five wrong tries, then the door shuts for thirty seconds doubling to
+  /// fifteen minutes — [AttemptLimiter]'s rule, which began here and is now
+  /// the lock screen's, the open-shift sign-in's and the supervisor keypad's
+  /// too. Without it, the one door to everything took guesses as fast as
   /// somebody could type them.
-  static const maxFailures = 5;
+  static const maxFailures = AttemptLimiter.defaultMaxFailures;
 
-  /// The first wait, doubled for every lockout since the last PIN that got
-  /// somebody in, up to [longestLockout]. Thirty seconds is nothing to an
-  /// owner who fat-fingered it; doubling makes the ten thousand PINs a matter
-  /// of weeks rather than an afternoon.
-  static const firstLockout = Duration(seconds: 30);
-
-  /// Capped, because this also shuts out the owner, and a door locked for a
-  /// day on a Friday night is a restaurant that cannot close its shift.
-  static const longestLockout = Duration(minutes: 15);
-
-  /// Counted per terminal, not per username: counting per username would
-  /// let somebody walk the PINs by trying every name in turn. In memory, as
-  /// the session is — a restart clears it, and restarting the till is not
-  /// quiet or quick enough to be a way round it worth a file.
-  int _failures = 0;
-  int _lockouts = 0;
-  DateTime? _lockedUntil;
-
-  static Duration _lockoutFor(int lockouts) {
-    var wait = firstLockout;
-    for (var i = 1; i < lockouts && wait < longestLockout; i++) {
-      wait *= 2;
-    }
-    return wait > longestLockout ? longestLockout : wait;
-  }
+  /// Counted per terminal, not per username — every try is
+  /// [AttemptLimiter.anyone] — so this door behaves exactly as it did before
+  /// the rule was shared. Its own limiter rather than the till's sign-in one:
+  /// a cashier's typos at the lock screen are no reason to shut the owner out
+  /// of the back office, and the back office's five are on top of the till's.
+  ///
+  /// In memory, as the session is — a restart clears it, and restarting the
+  /// till is not quiet or quick enough to be a way round it worth a file.
+  /// Lazily built so the clock is read through [ref] at each try: a test moves
+  /// [adminClockProvider]'s answer between them.
+  late final _limiter = AttemptLimiter(
+    clock: () => ref.read(adminClockProvider)(),
+  );
 
   /// False once the container holding this is gone. Management ends the
   /// session a moment after its screen goes away, and on the app's way down —
@@ -283,10 +272,8 @@ class AdminSessionController extends Notifier<AdminSession?> {
 
     // Shut: answered before the PIN is looked at, so a guess made while the
     // door is shut is not a guess at all.
-    if (_lockedUntil case final until?) {
-      final wait = until.difference(now());
-      if (wait > Duration.zero) return AdminSignInLockedOut(wait);
-      _lockedUntil = null;
+    if (_limiter.lockedFor(AttemptLimiter.anyone) case final wait?) {
+      return AdminSignInLockedOut(wait);
     }
 
     final PosStaff staff;
@@ -302,7 +289,7 @@ class AdminSessionController extends Notifier<AdminSession?> {
         if (identified != null) {
           await _record(audit, identified, AuditAction.adminRefused);
         }
-        return _refused(audit, directory, username, now());
+        return _refused(audit, directory, username);
       case StaffVerified(staff: final verified):
         staff = verified;
     }
@@ -310,9 +297,7 @@ class AdminSessionController extends Notifier<AdminSession?> {
     // A PIN that got somebody in clears the count and the backoff — whether
     // or not the database password below then works, because the PIN was not
     // the problem.
-    _failures = 0;
-    _lockouts = 0;
-    _lockedUntil = null;
+    _limiter.succeed(AttemptLimiter.anyone);
 
     final typed = databasePassword ?? '';
     String? password = typed;
@@ -392,16 +377,14 @@ class AdminSessionController extends Notifier<AdminSession?> {
     AuditRepository audit,
     StaffDirectoryRepository directory,
     String username,
-    DateTime at,
   ) async {
-    _failures++;
-    if (_failures < maxFailures) {
-      return AdminSignInRefused(maxFailures - _failures);
+    final Duration wait;
+    switch (_limiter.fail(AttemptLimiter.anyone)) {
+      case AttemptRefused(:final attemptsLeft):
+        return AdminSignInRefused(attemptsLeft);
+      case AttemptLockedOut(wait: final shut):
+        wait = shut;
     }
-    _failures = 0;
-    _lockouts++;
-    final wait = _lockoutFor(_lockouts);
-    _lockedUntil = at.add(wait);
 
     // Against whoever the username names, because the ledger's every row has
     // somebody on it and a guessed-at account is the thing worth reading
