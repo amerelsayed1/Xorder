@@ -293,7 +293,7 @@ void main() {
       const lan = DeploymentConfig(
         mode: DeploymentMode.offline,
         databaseHost: '192.168.1.20',
-        verifyTls: false,
+        allowInsecureLan: true,
       );
       expect(lan.isPrivateHost, isTrue);
       expect(lan.allowsInsecureTransport, isTrue);
@@ -304,7 +304,7 @@ void main() {
       const public = DeploymentConfig(
         mode: DeploymentMode.offline,
         databaseHost: 'evil.example.com',
-        verifyTls: false,
+        allowInsecureLan: true,
       );
       expect(public.isPrivateHost, isFalse);
       expect(public.allowsInsecureTransport, isFalse);

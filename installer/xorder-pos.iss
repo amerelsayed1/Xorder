@@ -89,6 +89,14 @@ english.DatabaseFailed=The database could not be set up (code %1). The log is at
 arabic.DatabaseFailed=تعذّر إعداد قاعدة البيانات (الرمز %1). السجل في %2.
 english.DatabaseReady=The database is ready. Its accounts and passwords are in %1 — only administrators can open that file. The setup wizard will ask for them when XOrder POS first starts.
 arabic.DatabaseReady=قاعدة البيانات جاهزة. الحسابات وكلمات المرور في %1 — ولا يفتح هذا الملف إلا المسؤولون. سيطلبها معالج الإعداد عند أول تشغيل لـ XOrder POS.
+english.LanSecured=Other tills will reach this database over an encrypted connection. When you set each one up, compare the certificate fingerprint it shows with the one under Management › Devices on this machine.
+arabic.LanSecured=ستتصل أجهزة الكاشير الأخرى بقاعدة البيانات هذه عبر اتصال مشفّر. عند إعداد كل جهاز، قارن بصمة الشهادة التي يعرضها بالبصمة الظاهرة في الإدارة › الأجهزة على هذا الجهاز.
+english.LanTlsFailed=The database is ready on this machine, but other tills cannot use it yet: the network certificate could not be made, and the network is never opened without one. The log is at %1.
+arabic.LanTlsFailed=قاعدة البيانات جاهزة على هذا الجهاز، لكن لا تستطيع أجهزة الكاشير الأخرى استخدامها بعد: تعذّر إنشاء شهادة الشبكة، ولا تُفتح الشبكة أبداً بدونها. السجل في %1.
+english.CertificateRenewed=The network certificate was close to expiring and has been replaced. Pair every till on the network with this machine again.
+arabic.CertificateRenewed=اقتربت شهادة الشبكة من انتهاء صلاحيتها فاستُبدلت. أعد إقران كل جهاز كاشير على الشبكة بهذا الجهاز.
+english.LanCarriedOver=Tills set up before this version connect without encryption, and this database still lets them, alongside encrypted ones. On each till, open Management › Devices and turn encryption back on; then run setup with encryption required. The log has the command.
+arabic.LanCarriedOver=أجهزة الكاشير التي أُعدّت قبل هذا الإصدار تتصل بلا تشفير، وما زالت قاعدة البيانات هذه تسمح لها بذلك إلى جانب الاتصالات المشفّرة. على كل جهاز، افتح الإدارة › الأجهزة وأعد تشغيل التشفير؛ ثم شغّل الإعداد مع اشتراط التشفير. الأمر مكتوب في السجل.
 
 [Types]
 Name: "server"; Description: "{cm:TypeServer}"
@@ -140,7 +148,7 @@ end;
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   ResultCode: Integer;
-  Params, LogFile, CredFile, RoleFile: String;
+  Params, LogFile, CredFile, RoleFile, Msg: String;
 begin
   if CurStep <> ssPostInstall then
     Exit;
@@ -171,10 +179,30 @@ begin
 
   WizardForm.StatusLabel.Caption := CustomMessage('SettingUpDatabase');
   if not Exec('powershell.exe', Params, '', SW_HIDE, ewWaitUntilTerminated,
-      ResultCode) or (ResultCode <> 0) then
-    SuppressibleMsgBox(FmtMessage(CustomMessage('DatabaseFailed'),
-      [IntToStr(ResultCode), LogFile]), mbError, MB_OK, IDOK)
+      ResultCode) then
+    ResultCode := -1;
+
+  // provision.ps1's exit codes, listed at its top. 2 is not a failure of the
+  // database — it is ready on this machine — but of the LAN, which is never
+  // opened unencrypted, so it is said as an error rather than buried in a
+  // success message.
+  case ResultCode of
+    0, 3, 4:
+      begin
+        Msg := FmtMessage(CustomMessage('DatabaseReady'), [CredFile]);
+        if WizardIsTaskSelected('lan') then
+          Msg := Msg + #13#10#13#10 + CustomMessage('LanSecured');
+        if ResultCode = 3 then
+          Msg := Msg + #13#10#13#10 + CustomMessage('CertificateRenewed');
+        if ResultCode = 4 then
+          Msg := Msg + #13#10#13#10 + CustomMessage('LanCarriedOver');
+        SuppressibleMsgBox(Msg, mbInformation, MB_OK, IDOK);
+      end;
+    2:
+      SuppressibleMsgBox(FmtMessage(CustomMessage('LanTlsFailed'), [LogFile]),
+        mbError, MB_OK, IDOK);
   else
-    SuppressibleMsgBox(FmtMessage(CustomMessage('DatabaseReady'), [CredFile]),
-      mbInformation, MB_OK, IDOK);
+    SuppressibleMsgBox(FmtMessage(CustomMessage('DatabaseFailed'),
+      [IntToStr(ResultCode), LogFile]), mbError, MB_OK, IDOK);
+  end;
 end;

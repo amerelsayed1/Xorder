@@ -273,7 +273,7 @@ void main() {
           databaseName: databaseName,
           databaseUser: PgFixture.user,
           adminDatabaseUser: PgFixture.user,
-          verifyTls: false,
+          allowInsecureLan: true,
         ),
         adminDatabasePassword: PgFixture.password,
         ownerName: 'Nour',

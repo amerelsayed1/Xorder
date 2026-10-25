@@ -3,9 +3,9 @@ import 'package:xorder_pos/core/config/deployment.dart';
 
 /// Which connections may go unencrypted.
 ///
-/// `PosDatabase` reads exactly one flag for this — `allowsInsecureTransport`
-/// picks `SslMode.disable` over `SslMode.require` — so the rules below are the
-/// whole of the policy.
+/// `PosDatabase` reads exactly one decision for this — `DeploymentConfig.lanTls`
+/// — so the rules below are the whole of the policy. The decision function
+/// itself has its own suite, `lan_tls_test.dart`.
 void main() {
   group('a database on this machine', () {
     test('connects without TLS, because there is no wire to protect', () {
@@ -33,10 +33,12 @@ void main() {
         databaseHost: '127.0.0.1',
       );
 
-      // verifyTls is still true — the default — and the concession stands
-      // anyway. Loopback is a fact about the route, not a decision.
-      expect(local.verifyTls, isTrue);
+      // Nobody turned encryption off — the default — and the concession
+      // stands anyway. Loopback is a fact about the route, not a decision.
+      expect(local.allowInsecureLan, isFalse);
       expect(local.allowsInsecureTransport, isTrue);
+      expect(local.isInsecureLan, isFalse,
+          reason: 'loopback is not the override, so it earns no warning');
     });
   });
 
@@ -51,7 +53,12 @@ void main() {
       expect(lan.allowsInsecureTransport, isFalse,
           reason: 'nobody has waived certificate checks for it yet');
 
-      expect(lan.copyWith(verifyTls: false).allowsInsecureTransport, isTrue);
+      expect(
+        lan.copyWith(allowInsecureLan: true).allowsInsecureTransport,
+        isTrue,
+      );
+      expect(lan.copyWith(allowInsecureLan: true).isInsecureLan, isTrue,
+          reason: 'the start screen warns for exactly this');
     });
   });
 
@@ -60,7 +67,7 @@ void main() {
       const public = DeploymentConfig(
         mode: DeploymentMode.cloud,
         databaseHost: 'db.example.com',
-        verifyTls: false,
+        allowInsecureLan: true,
       );
 
       // A cashier mistyping a hostname must not silently downgrade the till.

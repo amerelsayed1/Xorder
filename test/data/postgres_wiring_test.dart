@@ -216,7 +216,6 @@ void main() {
       final controller = container.read(setupProvider.notifier);
       controller.setMode(DeploymentMode.offline);
       controller.setDatabaseHost(branchConfig.databaseHost);
-      controller.setVerifyTls(false);
       controller.setDatabaseName(branchConfig.databaseName);
       controller.setDatabaseUser(branchConfig.databaseUser);
       controller.setDatabasePort(branchConfig.databasePort.toString());

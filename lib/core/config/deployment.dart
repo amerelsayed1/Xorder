@@ -1,3 +1,5 @@
+import 'lan_tls.dart';
+
 /// Where this terminal's authoritative server lives.
 ///
 /// On-premises is deliberately **a configuration choice, not a second product**.
@@ -147,7 +149,9 @@ class DeploymentConfig {
     this.baseUrl,
     this.licenceServerUrl,
     this.tenantSlug,
-    this.verifyTls = true,
+    this.allowInsecureLan = false,
+    this.pinnedCertificateSha256,
+    this.pinnedCertificatePem,
     this.syncPolicy = SyncPolicy.automatic,
     this.databaseHost = localhost,
     this.databaseName = defaultDatabaseName,
@@ -191,10 +195,30 @@ class DeploymentConfig {
   /// tenant, so asking the operator to name it again invites a mismatch.
   final String? tenantSlug;
 
-  /// A database on a LAN box often has no public certificate. Allowing a private
-  /// address to be trusted is a decision the operator must make explicitly in
-  /// the wizard, never a silent default — see [allowsInsecureTransport].
-  final bool verifyTls;
+  /// A technician turned encryption off for this till's LAN database.
+  ///
+  /// **Off by default, and only ever turned on in Management › Devices**
+  /// — behind `terminal.manage`, written to the audit ledger before it takes
+  /// effect, and shown on the start screen for as long as it is on. Honoured
+  /// for a private address only ([LanTls.decide]); a public host ignores it.
+  ///
+  /// It replaced `verify_tls`, the wizard's old "trust this database without
+  /// a certificate" tick, which `fromJson` still reads so that a LAN till
+  /// that was working in the clear before slice C keeps working — with the
+  /// warning on — rather than stopping mid-service the morning it upgrades.
+  final bool allowInsecureLan;
+
+  /// The SHA-256 of the database server's certificate, as the technician
+  /// confirmed it against the main device's Management pane. Lower-case hex.
+  ///
+  /// With [pinnedCertificatePem], the whole of what this till trusts on the
+  /// LAN: not the platform's roots, not any other certificate. Not secret — a
+  /// certificate is public by nature — so it lives here, in `config.json`.
+  final String? pinnedCertificateSha256;
+
+  /// The certificate itself, in PEM, because the driver can only be told to
+  /// trust a certificate, not a fingerprint. See [PinnedCertificate].
+  final String? pinnedCertificatePem;
 
   /// Where this terminal's PostgreSQL lives.
   ///
@@ -251,10 +275,7 @@ class DeploymentConfig {
   /// Narrower than [isSingleMachine], which counts an empty host as "this
   /// machine" for the benefit of the wizard's copy. An empty host is not a
   /// destination and must never earn a transport concession.
-  bool get isLoopback {
-    final host = databaseHost.trim();
-    return host == localhost || host == '127.0.0.1' || host == '::1';
-  }
+  bool get isLoopback => LanTls.isLoopbackHost(databaseHost);
 
   /// Whether [databaseName] may be quoted into DDL as an identifier.
   ///
@@ -334,23 +355,20 @@ class DeploymentConfig {
 
   /// True when the database is on a private/loopback address, i.e. this machine
   /// or a box on the same LAN. Only such a host may ever skip TLS.
-  bool get isPrivateHost {
-    final host = databaseHost.trim();
-    if (host.isEmpty) return false;
-    if (host == localhost || host.endsWith('.local')) return true;
+  bool get isPrivateHost => LanTls.isPrivateHost(databaseHost);
 
-    final octets = host.split('.');
-    if (octets.length != 4) return false;
-    final first = int.tryParse(octets.first);
-    final second = int.tryParse(octets[1]);
-    if (first == null || second == null) return false;
+  /// How the connection to [databaseHost] is protected — the one decision
+  /// `PosDatabase`, the bootstrap and the backup tools all read.
+  LanTlsDecision get lanTls => LanTls.decide(
+    host: databaseHost,
+    allowInsecureLan: allowInsecureLan,
+    pinnedSha256: pinnedCertificateSha256,
+    pinnedPem: pinnedCertificatePem,
+  );
 
-    // RFC 1918 plus loopback.
-    return first == 10 ||
-        first == 127 ||
-        (first == 192 && second == 168) ||
-        (first == 172 && second >= 16 && second <= 31);
-  }
+  /// True while a technician's "encryption off" is in force on a LAN address:
+  /// what the start screen's warning and the Management pane read.
+  bool get isInsecureLan => lanTls.transport == LanTransport.insecureLan;
 
   /// Refuse to skip certificate checks against a public host. A cashier
   /// mistyping a hostname must not silently downgrade the till to plaintext.
@@ -366,16 +384,17 @@ class DeploymentConfig {
   /// when they have typed a *LAN* address.
   ///
   /// A LAN address is a different question and keeps its explicit decision:
-  /// that traffic crosses a switch other people can reach.
-  bool get allowsInsecureTransport =>
-      isLoopback || (!verifyTls && isPrivateHost);
+  /// that traffic crosses a switch other people can reach. See [lanTls].
+  bool get allowsInsecureTransport => !lanTls.transport.encrypted;
 
   DeploymentConfig copyWith({
     DeploymentMode? mode,
     String? baseUrl,
     String? licenceServerUrl,
     String? tenantSlug,
-    bool? verifyTls,
+    bool? allowInsecureLan,
+    String? pinnedCertificateSha256,
+    String? pinnedCertificatePem,
     SyncPolicy? syncPolicy,
     String? databaseHost,
     String? databaseName,
@@ -391,6 +410,10 @@ class DeploymentConfig {
 
     /// Blanking the field returns this terminal to the build's own default.
     bool clearLicenceServerUrl = false,
+
+    /// Forget the paired certificate: a new address is a new server, and the
+    /// pin belonged to the old one.
+    bool clearPinnedCertificate = false,
   }) => DeploymentConfig(
     mode: mode ?? this.mode,
     baseUrl: baseUrl ?? this.baseUrl,
@@ -398,7 +421,13 @@ class DeploymentConfig {
         ? null
         : (licenceServerUrl ?? this.licenceServerUrl),
     tenantSlug: clearTenantSlug ? null : (tenantSlug ?? this.tenantSlug),
-    verifyTls: verifyTls ?? this.verifyTls,
+    allowInsecureLan: allowInsecureLan ?? this.allowInsecureLan,
+    pinnedCertificateSha256: clearPinnedCertificate
+        ? null
+        : (pinnedCertificateSha256 ?? this.pinnedCertificateSha256),
+    pinnedCertificatePem: clearPinnedCertificate
+        ? null
+        : (pinnedCertificatePem ?? this.pinnedCertificatePem),
     syncPolicy: syncPolicy ?? this.syncPolicy,
     databaseHost: databaseHost ?? this.databaseHost,
     databaseName: databaseName ?? this.databaseName,
@@ -416,7 +445,9 @@ class DeploymentConfig {
     // production nine months later.
     'licence_server_url': licenceServerUrl,
     'tenant_slug': tenantSlug,
-    'verify_tls': verifyTls,
+    'allow_insecure_lan': allowInsecureLan,
+    'pinned_certificate_sha256': pinnedCertificateSha256,
+    'pinned_certificate_pem': pinnedCertificatePem,
     'sync_policy': syncPolicy.wire,
     'database_host': databaseHost,
     'database_name': databaseName,
@@ -443,7 +474,18 @@ class DeploymentConfig {
       // no platform address for anything else and still has to renew.
       licenceServerUrl: json['licence_server_url'] as String?,
       tenantSlug: json['tenant_slug'] as String?,
-      verifyTls: json['verify_tls'] as bool? ?? true,
+      // `verify_tls: false` was the pre-slice-C wizard's "trust without a
+      // certificate", and on a LAN address it meant plaintext. Read as the
+      // override it always was, so an upgraded child keeps selling — with the
+      // start-screen warning now saying so — instead of failing its first
+      // connection after the update. Absent, or true, is off.
+      allowInsecureLan:
+          json['allow_insecure_lan'] as bool? ??
+          (json['verify_tls'] == false),
+      pinnedCertificateSha256: LanTls.normaliseFingerprint(
+        json['pinned_certificate_sha256'] as String?,
+      ),
+      pinnedCertificatePem: json['pinned_certificate_pem'] as String?,
       // An unknown policy from a newer build falls back to automatic rather
       // than throwing: a till must boot even holding a config it half-knows.
       syncPolicy:

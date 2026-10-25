@@ -208,6 +208,29 @@ class _StartScreenState extends ConsumerState<StartScreen> {
           ),
         ),
         _identityGrid(strings, session, terminal, pos: context.pos),
+        // For as long as a technician's "encryption off" is in force, on the
+        // screen every shift starts from: an override nobody can see is an
+        // override nobody remembers to undo.
+        if (ref.watch(deploymentProvider).isInsecureLan) ...[
+          const SizedBox(height: PosSpace.lg),
+          Container(
+            key: const Key('start-insecure-lan'),
+            padding: const EdgeInsets.all(PosSpace.md),
+            decoration: BoxDecoration(
+              color: context.pos.offlinePillBg,
+              border: Border.all(color: context.pos.warn),
+            ),
+            child: Text(
+              strings.insecureLanWarning,
+              textAlign: TextAlign.center,
+              style: PosText.ui(
+                size: 12.5,
+                color: context.pos.offlinePillText,
+                height: 1.5,
+              ),
+            ),
+          ),
+        ],
         if (ref.watch(terminalRejectedProvider)) ...[
           const SizedBox(height: PosSpace.lg),
           _terminalRejectedBanner(pos: context.pos),

@@ -391,4 +391,5 @@ const _actionsThisBuildWrites = <String>[
   AuditAction.adminRefused,
   AuditAction.adminLockedOut,
   AuditAction.syncRecordReleased,
+  AuditAction.lanEncryptionChanged,
 ];

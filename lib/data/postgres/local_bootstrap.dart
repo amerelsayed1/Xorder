@@ -8,6 +8,7 @@ import '../../domain/models/permissions.dart';
 import '../../domain/models/reason_code.dart';
 import 'migrations.dart';
 import 'pos_database.dart';
+import 'pos_tls.dart';
 
 /// What [LocalBootstrap.seedOwner] did, or why it did not.
 ///
@@ -153,10 +154,14 @@ class LocalBootstrap {
           username: admin.databaseUser,
           password: adminPassword,
         ),
+        // The till's own transport rule, not one of this file's. This used
+        // to be `require` off loopback — which in the postgres package
+        // accepts any certificate at all, so the administrator's password
+        // for building the database was the one credential sent to whoever
+        // answered. A pinned or verified certificate, or nothing.
         settings: ConnectionSettings(
-          sslMode: admin.allowsInsecureTransport
-              ? SslMode.disable
-              : SslMode.require,
+          sslMode: PosTlsSettings.sslModeFor(admin.lanTls),
+          securityContext: PosTlsSettings.securityContextFor(admin.lanTls),
         ),
       );
     } on Object catch (error) {

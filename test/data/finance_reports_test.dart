@@ -617,7 +617,7 @@ void main() {
         config: DeploymentConfig(
           mode: DeploymentMode.offline,
           databaseHost: pg.config.databaseHost,
-          verifyTls: false,
+          allowInsecureLan: true,
           databaseName: pg.config.databaseName,
           databaseUser: role,
           databasePort: pg.config.databasePort,

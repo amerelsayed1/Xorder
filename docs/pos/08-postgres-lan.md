@@ -182,6 +182,13 @@ Two details worth knowing:
 `Pool.withUrl` accepts `max_connection_count`, `max_connection_age` and friends as
 query parameters.
 
+> **As built (ADR-006 slice C, 2026-10-25):** the app never uses `SslMode.require`
+> — in this package it accepts *any* certificate. Off loopback it is `verifyFull`,
+> either against the platform's roots or with a `SecurityContext` whose only trust
+> anchor is the certificate the till was paired with
+> (`lib/data/postgres/pos_tls.dart`); plaintext only under a technician's audited
+> override. A refused handshake is an error, never a retry in the clear.
+
 ---
 
 ## 4. Platform gates that will bite before any SQL runs
@@ -262,6 +269,25 @@ hostssl xorder_pos   pos_till   192.168.1.0/24    scram-sha-256
 
 Never `0.0.0.0/0`. Never `trust` on a `host` line.
 
+> **What the Windows installer writes (ADR-006 slice C).** With the *Let other tills
+> on this network use this database* task, `installer/provision.ps1` makes a
+> self-signed certificate (825 days; computer name, `.local`, FQDN and every private
+> IPv4 as SANs) into `server.crt`/`server.key` in the data directory — key readable
+> by the service account only — and writes `ssl = on`, `ssl_cert_file`,
+> `ssl_key_file` and `ssl_min_protocol_version = 'TLSv1.2'`, plus **`hostssl`** lines
+> for 10/8, 172.16/12 and 192.168/16 (`scram-sha-256`). The public half is copied to
+> `%ProgramData%\XOrder POS\server-certificate.pem`, which is where Management ›
+> Devices reads the fingerprint a child is paired against. No certificate, no LAN:
+> the script leaves PostgreSQL on `localhost` rather than opening it in plaintext.
+> A re-run keeps the certificate (and every till's pairing) until its last 60 days.
+>
+> A technician who needs plaintext tills accepted as well runs, elevated,
+> `powershell -ExecutionPolicy Bypass -File "<app>\tools\provision.ps1" -AppDir "<app>" -Lan -LanTls Off`
+> (`host` instead of `hostssl`; encrypted tills still work), and `-LanTls On` to take
+> it back. **Pass `-Lan` every time** — a run without it closes the LAN. An upgrade of
+> an install from before slice C carries plaintext acceptance over until `-LanTls On`,
+> because every till it already had was set up unencrypted.
+
 Windows firewall on the host, scoped to the subnet:
 
 ```powershell
@@ -292,7 +318,9 @@ GRANT SELECT ON menu_items, categories, tax_rules TO pos_till;   -- read-only re
 
 Then: one role per terminal so a lost machine is one `ALTER ROLE … NOLOGIN`;
 `sslmode=verify-full` with a pinned root cert so a laptop on the guest Wi-Fi
-cannot MITM the connection; and treat the local DB password like the access
+cannot MITM the connection (**built in slice C**: the child's setup step shows the
+server certificate's SHA-256, the technician compares it with the main device and
+confirms, and the till trusts exactly that certificate from then on — ADR-006); and treat the local DB password like the access
 token in `03 §3` — Keychain/DPAPI, never in the `.db` and never in the repo.
 
 None of this fixes the underlying issue, only bounds it. That is the argument for

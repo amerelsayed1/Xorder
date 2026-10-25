@@ -555,7 +555,19 @@ abstract final class AuditAction {
   /// time" is the question. The row keeps the code and the error it cleared.
   static const syncRecordReleased = 'sync_record.released';
 
+  /// This till's LAN encryption turned off, or back on by pairing with a
+  /// certificate (ADR-006 slice C). Its own action because "who let this till
+  /// send the database password in the clear, and when" is exactly what a
+  /// leaked password asks, and the override has no other record. Written on
+  /// the connection as it was *before* the change, and the change is refused
+  /// when the row cannot be written. `before`/`after` carry the transport and
+  /// the pinned fingerprint — never a password, never key material.
+  static const lanEncryptionChanged = 'terminal.lan_encryption_changed';
+
   static const entityAdminSession = 'admin_session';
+
+  /// This till. The entity id is its terminal id.
+  static const entityTerminal = 'terminal';
 
   /// An outbox row; the entity id is `<table>:<id>`, because the two outbox
   /// tables number their rows independently.

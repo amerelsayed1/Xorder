@@ -96,4 +96,68 @@ void main() {
     expect(ps1Code, contains("'scram-sha-256'"));
     expect(ps1Code, isNot(contains('trust')));
   });
+
+  group('the LAN is encrypted (ADR-006 slice C)', () {
+    test('the private ranges are hostssl unless a technician said otherwise',
+        () {
+      for (final range in ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16']) {
+        expect(ps1Code, contains('\$kind all all $range scram-sha-256'));
+      }
+      expect(ps1Code, contains("if (\$plaintextLan) { 'host' } else { 'hostssl' }"));
+      // No plain `host` line for a LAN range is written unconditionally.
+      expect(ps1Code, isNot(contains('"host all all 10.')));
+      expect(ps1Code, isNot(contains("'host all all 192.")));
+    });
+
+    test('ssl is switched on with the files the script writes', () {
+      expect(ps1Code, contains("ssl = on"));
+      expect(ps1Code, contains("ssl_cert_file = 'server.crt'"));
+      expect(ps1Code, contains("ssl_key_file = 'server.key'"));
+      expect(ps1Code, contains("Join-Path \$DataDir 'server.crt'"));
+      expect(ps1Code, contains("Join-Path \$DataDir 'server.key'"));
+    });
+
+    test('the LAN is opened only when the certificate was made', () {
+      expect(ps1Code, contains("\$listen = if (\$lanOpen) { '*' }"));
+      expect(ps1Code, contains('if (\$lanOpen) {\n    New-NetFirewallRule'));
+    });
+
+    test('the key file is locked down before the key is written into it', () {
+      final write = RegExp(
+        r'function Write-PrivateKey.*?\n}',
+        dotAll: true,
+      ).firstMatch(ps1Code)!.group(0)!;
+      expect(
+        write.indexOf('Set-Owners'),
+        lessThan(write.indexOf('WriteAllText')),
+      );
+    });
+
+    test('the published certificate is the file the app reads', () {
+      final tls = File('lib/data/postgres/pos_tls.dart').readAsStringSync();
+      expect(ps1, contains("Join-Path \$Root 'server-certificate.pem'"));
+      expect(tls, contains("fileName = 'server-certificate.pem'"));
+      expect(tls, contains("directoryName = 'XOrder POS'"));
+    });
+
+    test('every exit code the script documents, the installer answers', () {
+      for (final code in ['exit 2', 'exit 3', 'exit 4']) {
+        expect(ps1Code, contains(code));
+      }
+      expect(iss, contains('0, 3, 4:'));
+      expect(iss, contains("CustomMessage('LanTlsFailed')"));
+    });
+
+    test('every new installer message is in both languages', () {
+      for (final key in [
+        'LanSecured',
+        'LanTlsFailed',
+        'CertificateRenewed',
+        'LanCarriedOver',
+      ]) {
+        expect(iss, contains('english.$key='), reason: key);
+        expect(iss, contains('arabic.$key='), reason: key);
+      }
+    });
+  });
 }

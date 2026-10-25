@@ -28,7 +28,7 @@ void main() {
     databasePort: PgFixture.port,
     databaseName: 'wizard_bootstrap_test',
     databaseUser: PgFixture.user,
-    verifyTls: false,
+    allowInsecureLan: true,
   );
 
   /// Self-cleaning, so the test is repeatable rather than passing once.

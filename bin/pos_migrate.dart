@@ -771,7 +771,11 @@ class Options {
   /// own rather than being read back out of a URL that existed to hold it.
   DeploymentConfig get config => DeploymentConfig(
     mode: DeploymentMode.offline,
-    verifyTls: verifyTls,
+    // `--no-verify-tls` is the CLI's spelling of the till's override, and is
+    // honoured on the same terms: loopback needs nothing, a private address
+    // may skip TLS, a public host never does. The CLI cannot pair with a
+    // certificate; on the database server itself it runs over 127.0.0.1.
+    allowInsecureLan: !verifyTls,
     databaseHost: host,
     databaseName: database,
     databaseUser: user,

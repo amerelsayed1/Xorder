@@ -28,7 +28,7 @@ credential; secrets sit in a plaintext JSON file; LAN traffic is plaintext by th
 | **Permissions enforced in Dart only**; `discount.apply`, `price.override`, `payment.remove`, `day.close` are UI gates only; `Approval` is "not a cryptographic token" | `authorization.dart:62-70`; §7.3 |
 | **One shared `pos_till` role**; `terminal_id` and `staff_id` are caller-supplied | `deployment.dart:211`, `providers.dart:2178-2201` |
 | Cloud till role can write `pos_staff` and the catalogue (seeder grants) | `local_bootstrap.dart:876-925` |
-| Installer never sets `ssl=on`; `host` not `hostssl`; client uses `SslMode.disable` on loopback or trusted private host | `provision.ps1:158-168`, `pos_database.dart:293-295`, `deployment.dart:350-351` |
+| Installer never sets `ssl=on`; `host` not `hostssl`; client uses `SslMode.disable` on loopback or trusted private host — **superseded by slice C below** | `provision.ps1:158-168`, `pos_database.dart:293-295`, `deployment.dart:350-351` |
 | Refund counters already move only via a `SECURITY DEFINER` trigger with pinned `search_path` — the pattern exists | `migrations.dart:1231-1305` |
 | Audit log append-only by grant + trigger, but the owner can drop the trigger; restore replaces the table; **no hash chain** | `migrations.dart:519-535`; R-05 |
 | No crash handler, log file, telemetry or support bundle | §12.9 |
@@ -87,6 +87,79 @@ The first row above describes the code before this slice. Now:
 - **Open items to carry in this ADR:** audit-log tamper evidence (hash chain per restaurant, optional
   external anchor; restore re-verifies the chain) and **diagnostics** (crash handler, rotating local log
   with redaction, support bundle export without credentials; no cloud telemetry in offline plan).
+
+## Slice C design — LAN TLS (2026-10-25)
+
+Accepted rule: TLS on by default, off only by an explicit technician action, **never** a silent
+downgrade on handshake failure. Nothing here was run: no Windows, Flutter or PostgreSQL in the
+sandbox that wrote it.
+
+**Server certificate (installer, `lan` task).** The bundle is EDB's binaries-only zip; whether its
+`pgsql\bin` carries `openssl.exe` could not be confirmed, and one that does needs an `openssl.cnf`
+the zip does not ship. So `provision.ps1` makes the certificate with .NET's `CertificateRequest`
+(Framework 4.7.2+, on every serviced Windows 10), in memory, with an ephemeral CNG key created
+`AllowPlaintextExport` and exported as PKCS#8. Rejected: `New-SelfSignedCertificate` (leaves the key
+in the machine store). Shape: self-signed RSA-2048/SHA-256, `CA:TRUE pathlen:0` + `keyCertSign` (so
+it can be its own trust anchor, the shape PostgreSQL's docs use for `verify-full`), EKU
+`serverAuth`, SAN = computer name, `<name>.local`, FQDN, `localhost`, `127.0.0.1` and every current
+RFC 1918 IPv4. **825 days** — Apple's TLS ceiling, and a child may be an iPad. Idempotent: an existing
+pair is kept unless missing, unreadable or inside its last 60 days (renewal = every till re-pairs;
+the installer says so, exit 3).
+
+**Files.** `server.crt`/`server.key` in the data directory (Administrators, SYSTEM, NetworkService).
+The key file is created empty, `icacls /inheritance:r` to Administrators + SYSTEM full and
+NetworkService read, *then* written; re-asserted every run (PostgreSQL on Windows checks no key
+permissions itself). A public copy goes to `%ProgramData%\XOrder POS\server-certificate.pem` for the
+Management pane. Key material is never printed; the log gets the fingerprint and expiry only.
+`postgresql.conf` managed block: `ssl = on`, `ssl_cert_file = 'server.crt'`, `ssl_key_file =
+'server.key'`, `ssl_min_protocol_version = 'TLSv1.2'`. `pg_hba.conf` managed block: **`hostssl`**
+for 10/8, 172.16/12, 192.168/16 (initdb's loopback lines untouched). No certificate → LAN not
+opened at all (listen localhost, no firewall rule, exit 2), never opened plaintext.
+
+**Server-side override.** `provision.ps1 -Lan -LanTls Off` (elevated prompt, technician only, never
+the installer UI) writes those lines as `host` — encrypted still accepted, plaintext too — and
+records who/when in a marker inside the data directory (ProgramData lets any user create files);
+`-LanTls On` removes it. An **upgrade of a pre-slice-C LAN install** carries the old answer over
+(exit 4): every existing child was set up plaintext, and a child that cannot reach its database
+cannot open Management to pair, so `hostssl` on upgrade would strand them all at once.
+
+**Child trust: fingerprint pinning, confirmed by a person.** `postgres` 3.5.12 (source read) has no
+certificate callback and does not expose the peer certificate: `verifyFull` throws
+`BadCertificateException(cert)`, `require` accepts *everything*. So a pin is a
+`SecurityContext(withTrustedRoots: false)` whose only anchor is the paired certificate, with
+`verifyFull` (`lib/data/postgres/pos_tls.dart`). Flow: no pin → verified chain → a self-signed server
+refuses → the wizard's connection step asks the server for its certificate (SSLRequest + a TLS
+handshake it refuses; nothing else is sent) → shows the SHA-256 (`AB:CD:…`, mono, LTR) → the
+technician compares it with Management › Devices on the main device and presses *The fingerprints
+match* → `config.json` stores `pinned_certificate_sha256` **and** `pinned_certificate_pem` (the
+driver can trust a certificate, not a hash) → reconnect. Both halves are cross-checked before every
+pool opens. A changed address clears the pin. A CA-issued server needs no pin (verified chain).
+
+**Decision (pure, `LanTls.decide`).** loopback → plaintext; pin → pinned; `allow_insecure_lan` on a
+private address → plaintext; else verified chain. Pin beats the flag. `verify_tls: false` from an
+old `config.json` reads as `allow_insecure_lan: true` (it *was* plaintext), with the warning on.
+
+**Client override.** Only in Management › Devices, behind `terminal.manage`; the audit row
+(`terminal.lan_encryption_changed`, before/after transport + fingerprint) is written first and a
+refused row means no change. It clears the pin; turning encryption back on is a pairing. While on,
+the start screen and the pane show a warning. The wizard has no plaintext option at all — the
+pre-slice-C "trust without a certificate" tick is gone.
+
+**Failure.** Every TLS failure is `PosDbFailure.tls` (by type for `BadCertificateException`, by text
+for "does not support SSL" / `no encryption`). The pool is not rebuilt in the clear; the start
+screen says the till could not confirm whose server it reached; the wizard says which of untrusted /
+changed / name mismatch / not offered it was. `LocalBootstrap`'s maintenance connection, which used
+`require`, now uses the same rule.
+
+**To verify on real machines:** that `setTrustedCertificatesBytes` makes the pin the only anchor on
+Windows and macOS; that a self-signed `CA:TRUE` leaf verifies as its own anchor; that IP SANs are
+checked when the till dialled an IP; the PowerShell under 5.1 on a clean Windows 10.
+`test/data/lan_tls_handshake_test.dart` checks the first three on whatever machine runs it.
+
+**Not in this slice:** re-pairing from the start screen (a child whose server certificate changed
+cannot reach Management — same gap as a changed till password today); `pg_dump`/`pg_restore` over a
+pinned LAN connection (they get `PGSSLMODE=verify-full` and no root file, so they fail closed);
+`pos_migrate --no-verify-tls` stays its LAN spelling and cannot pin.
 
 ## Acceptance tests
 

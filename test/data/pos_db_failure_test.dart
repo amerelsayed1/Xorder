@@ -97,6 +97,37 @@ void main() {
       );
     });
 
+    test('a refused secure connection is TLS, never a password or a cable', () {
+      // The driver's words when the server answers the SSLRequest with `N`.
+      expect(
+        PosDbFailure.classify(
+          'PgException: Server does not support SSL, but it was required '
+          '(default configuration).',
+        ),
+        PosDbFailure.tls,
+      );
+      // PostgreSQL's words when a plaintext client meets a hostssl-only
+      // pg_hba.conf. It says `pg_hba` too, and used to read as a password
+      // problem — which sends an installer to retype a password that was
+      // fine, when the remedy is encryption.
+      expect(
+        PosDbFailure.classify(
+          'Severity.fatal 28000: no pg_hba.conf entry for host "192.168.1.31", '
+          'user "pos_till", database "xorder_pos", no encryption',
+        ),
+        PosDbFailure.tls,
+      );
+      // …while an ENCRYPTED till from an address no line admits is still the
+      // pg_hba problem it always was, whatever the word SSL in it suggests.
+      expect(
+        PosDbFailure.classify(
+          'Severity.fatal 28000: no pg_hba.conf entry for host "203.0.113.9", '
+          'user "pos_till", database "xorder_pos", SSL encryption',
+        ),
+        PosDbFailure.auth,
+      );
+    });
+
     test('anything unrecognised stays unknown rather than guessing', () {
       // The comment on `unknown` is a promise: never assume, report the raw
       // error alongside. A classifier that guessed here would be worse than one

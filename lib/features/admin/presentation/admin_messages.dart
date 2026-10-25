@@ -133,6 +133,7 @@ abstract final class AdminText {
     AuditAction.adminRefused => s.actAdminRefused,
     AuditAction.adminLockedOut => s.actAdminLockedOut,
     AuditAction.syncRecordReleased => s.actSyncRecordReleased,
+    AuditAction.lanEncryptionChanged => s.actLanEncryptionChanged,
     _ => action,
   };
 

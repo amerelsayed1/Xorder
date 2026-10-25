@@ -7,6 +7,7 @@ import 'package:uuid/uuid.dart';
 import '../../../app/labels.dart';
 import '../../../app/providers.dart';
 import '../../../core/config/deployment.dart';
+import '../../../core/config/lan_tls.dart';
 import '../../../core/config/platform_endpoint.dart';
 import '../../../core/config/printer_config.dart';
 import '../../../core/config/terminal_config.dart';
@@ -472,9 +473,18 @@ class SetupController extends Notifier<SetupDraft> {
 
   // Every connection edit below forgets a child's link to its main device: the
   // licence on the draft was read from the database as it was addressed then.
+  //
+  // The address also forgets the server's certificate: a pin belongs to the
+  // server it was confirmed against, and carrying it to another address
+  // would either refuse a server that is fine or — worse — be the reason a
+  // technician reaches for the plaintext override.
   void setDatabaseHost(String host) => state = state.copyWith(
-    deployment: state.deployment.copyWith(databaseHost: host.trim()),
+    deployment: state.deployment.copyWith(
+      databaseHost: host.trim(),
+      clearPinnedCertificate: true,
+    ),
     mainDeviceLinked: false,
+    clearPresentedCertificate: true,
     clearError: true,
   );
 
@@ -522,10 +532,69 @@ class SetupController extends Notifier<SetupDraft> {
     );
   }
 
-  void setVerifyTls(bool verify) => state = state.copyWith(
-    deployment: state.deployment.copyWith(verifyTls: verify),
-    mainDeviceLinked: false,
-  );
+  /// Trust the certificate the server presented — the technician has compared
+  /// its fingerprint with the one on the main device and pressed the button.
+  ///
+  /// Then tries again at once, through the same step that was refused, so
+  /// the confirmation is judged by a real connection rather than by the
+  /// button. Pairing also clears any plaintext override: a till that can be
+  /// encrypted is.
+  ///
+  /// There is no "trust without a certificate" here any more. The wizard is
+  /// where a till is set up, so it only ever sets one up encrypted; turning
+  /// encryption off is a technician's audited act in Management.
+  Future<void> trustPresentedCertificate() async {
+    final presented = state.presentedCertificate;
+    if (presented == null) return;
+    state = state.copyWith(
+      deployment: state.deployment.copyWith(
+        pinnedCertificateSha256: presented.sha256,
+        pinnedCertificatePem: presented.pem,
+        allowInsecureLan: false,
+      ),
+      clearPresentedCertificate: true,
+      clearError: true,
+    );
+    if (state.deployment.isChild) {
+      await connectToMainDevice();
+    } else {
+      await testConnection();
+    }
+  }
+
+  /// Why the secure connection to [config]'s server was refused, and — when
+  /// a fingerprint comparison would settle it — the certificate to compare.
+  ///
+  /// Asks the server directly rather than reading the driver's error,
+  /// because the driver only says *that* a certificate was refused. Nothing
+  /// is retried in the clear, here or anywhere: the answer is a sentence and,
+  /// at most, a fingerprint waiting for a person.
+  Future<String> _explainTlsRefusal(DeploymentConfig config) async {
+    final s = ref.read(stringsProvider);
+    final host = config.databaseHost.trim();
+    final fetch = await ref
+        .read(serverCertificateProbeProvider)
+        .fetch(host, config.databasePort);
+    final diagnosis = LanTls.diagnose(pin: config.lanTls.pin, fetch: fetch);
+
+    final offer = switch (diagnosis) {
+      LanTlsDiagnosis.untrusted || LanTlsDiagnosis.changed =>
+        fetch is CertificateFetched ? fetch.certificate : null,
+      _ => null,
+    };
+    state = state.copyWith(
+      presentedCertificate: offer,
+      clearPresentedCertificate: offer == null,
+    );
+
+    return switch (diagnosis) {
+      LanTlsDiagnosis.untrusted => s.tlsUntrusted,
+      LanTlsDiagnosis.changed => s.tlsCertificateChanged,
+      LanTlsDiagnosis.nameMismatch => s.tlsNameMismatch(host),
+      LanTlsDiagnosis.notOffered => s.tlsNotOffered,
+      LanTlsDiagnosis.unreachable => s.tlsFailure(),
+    };
+  }
 
   void setDatabaseName(String name) => state = state.copyWith(
     deployment: state.deployment.copyWith(databaseName: name.trim()),
@@ -543,8 +612,12 @@ class SetupController extends Notifier<SetupDraft> {
     final parsed = int.tryParse(port.trim());
     if (parsed == null || parsed <= 0 || parsed > 65535) return;
     state = state.copyWith(
-      deployment: state.deployment.copyWith(databasePort: parsed),
+      deployment: state.deployment.copyWith(
+        databasePort: parsed,
+        clearPinnedCertificate: true,
+      ),
       mainDeviceLinked: false,
+      clearPresentedCertificate: true,
     );
   }
 
@@ -1128,6 +1201,12 @@ class SetupController extends Notifier<SetupDraft> {
     final expected = failure == PosDbFailure.missingDatabase;
     final s = ref.read(stringsProvider);
 
+    if (failure == PosDbFailure.tls) {
+      final why = await _explainTlsRefusal(config);
+      state = state.copyWith(busy: false, error: why, clearNotice: true);
+      return false;
+    }
+
     // Success used to be SILENT — the error bar cleared and nothing took its
     // place, so the only difference between "it worked" and "the button does
     // nothing" was the absence of red. A test whose good outcome is invisible
@@ -1431,10 +1510,10 @@ class SetupController extends Notifier<SetupDraft> {
       // The same four causes the main device's own test names, because they
       // are the same four things — an installer sent to open a firewall when
       // the password is wrong will not fix it.
-      state = state.copyWith(
-        busy: false,
-        error: _describe(error.failure, state.deployment),
-      );
+      final why = error.failure == PosDbFailure.tls
+          ? await _explainTlsRefusal(state.deployment)
+          : _describe(error.failure, state.deployment);
+      state = state.copyWith(busy: false, error: why);
       return;
     }
 

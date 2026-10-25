@@ -65,7 +65,7 @@ class PgFixture {
         databaseHost: address,
         // The throwaway container has no certificate. Only a private host may
         // ever skip verification, and 127.0.0.1 qualifies.
-        verifyTls: false,
+        allowInsecureLan: true,
         databaseName: databaseName,
         databaseUser: user,
         databasePort: port,

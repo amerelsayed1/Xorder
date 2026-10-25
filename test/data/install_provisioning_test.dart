@@ -54,7 +54,7 @@ void main() {
   DeploymentConfig configFor(String database, String user) => DeploymentConfig(
     mode: DeploymentMode.offline,
     databaseHost: PgFixture.host!,
-    verifyTls: false,
+    allowInsecureLan: true,
     databaseName: database,
     databaseUser: user,
     databasePort: PgFixture.port,

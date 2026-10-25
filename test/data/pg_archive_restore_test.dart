@@ -249,7 +249,7 @@ void main() {
     targetConfig = DeploymentConfig(
       mode: DeploymentMode.offline,
       databaseHost: PgFixture.host!,
-      verifyTls: false,
+      allowInsecureLan: true,
       databaseName: target,
       databaseUser: PgFixture.user,
       databasePort: PgFixture.port,

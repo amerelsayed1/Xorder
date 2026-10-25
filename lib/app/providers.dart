@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
 import '../core/config/deployment.dart';
+import '../core/config/lan_tls.dart';
 import '../data/cloud/cloud_api.dart';
 import '../data/cloud/cloud_provisioning_repository.dart';
 import '../data/cloud/cloud_sync.dart';
@@ -32,6 +33,7 @@ import '../data/config/terminal_config_store.dart';
 import '../data/hardware/network_printer_ports.dart';
 import '../data/hardware/spooler_printer_ports.dart';
 import '../data/postgres/pos_database.dart';
+import '../data/postgres/pos_tls.dart';
 import '../data/postgres/local_bootstrap.dart';
 import '../data/postgres/postgres_admin_repositories.dart';
 import '../data/postgres/postgres_backup_repository.dart';
@@ -2504,6 +2506,28 @@ final posDatabaseProvider = Provider<PosDatabase>((ref) {
   ref.onDispose(database.close);
   return database;
 });
+
+/// Reads which certificate a database server presents, for pairing.
+///
+/// Opens a socket and sends nothing but PostgreSQL's SSLRequest and a TLS
+/// handshake it refuses; tests that reach a TLS failure override it.
+final serverCertificateProbeProvider = Provider<ServerCertificateProbe>(
+  (ref) => const PostgresCertificateProbe(),
+);
+
+/// This machine's own LAN certificate, as the installer published it — what
+/// a technician reads off the main device to pair a till with it. Null on
+/// a machine the installer did not open to the LAN, and everywhere but
+/// Windows.
+final publishedServerCertificateSourceProvider =
+    Provider<PublishedServerCertificateSource>(
+      (ref) => const FilePublishedServerCertificate(),
+    );
+
+final publishedServerCertificateProvider =
+    FutureProvider<PresentedCertificate?>(
+      (ref) => ref.watch(publishedServerCertificateSourceProvider).read(),
+    );
 
 /// Which tenant, branch and terminal a write belongs to.
 ///

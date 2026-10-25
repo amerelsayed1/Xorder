@@ -568,8 +568,6 @@ sealed class AppStrings {
   String get platformAddress;
   String get platformCaps;
   String get platformAddressHelp;
-  String get trustWithoutCertificate;
-  String get trustWithoutCertificateBlurb;
   String get theDatabase;
   String get databaseHost;
   String get databaseHostHelp;
@@ -781,6 +779,38 @@ sealed class AppStrings {
   String tcpFailure(int port);
   String authFailure(String user);
   String tlsFailure();
+
+  // ── LAN encryption (ADR-006 slice C) ──────────────────────────────────────
+  // The wizard's reasons a secure connection was refused, the fingerprint a
+  // technician compares, and Management's view of this till's transport.
+  // Fingerprints and dates are rendered beside these in mono, LTR — never
+  // inside them.
+  String get tlsUntrusted;
+  String get tlsCertificateChanged;
+  String tlsNameMismatch(String host);
+  String get tlsNotOffered;
+  String get serverCertificateTitle;
+  String get serverCertificateCompare;
+  String get serverCertificateConfirm;
+  String get serverCertificatePaired;
+  String get certificateValidUntil;
+  String get copyFingerprint;
+  String get fingerprintCopied;
+  String get dbUnavailableSecureConnection;
+  String get insecureLanWarning;
+  String get lanEncryptionTitle;
+  String get serverCertificateThisMachine;
+  String get serverCertificateNone;
+  String get lanEncryptedPinned;
+  String get lanEncryptedVerified;
+  String get lanEncryptionTurnOff;
+  String get lanEncryptionTurnOffTitle;
+  String get lanEncryptionTurnOffBody;
+  String get lanEncryptionTurnOn;
+  String get lanEncryptionTurnOnBody;
+  String get lanEncryptionNotRecorded;
+  String get lanEncryptionNoCertificate;
+
   String queryFailure(String database);
 
   /// The connection test WORKED. Said out loud, because its good outcome used
@@ -1722,6 +1752,7 @@ sealed class AppStrings {
   String get actAdminRefused;
   String get actAdminLockedOut;
   String get actSyncRecordReleased;
+  String get actLanEncryptionChanged;
 
   // ── Admin Mode ────────────────────────────────────────────────────────────
   //
@@ -4390,12 +4421,6 @@ final class EnStrings extends AppStrings {
       'Where this terminal sends its sales. Selling never waits on it — the '
       'local database takes the sale first and the queue drains behind it.';
   @override
-  String get trustWithoutCertificate =>
-      'Trust this database without a certificate';
-  @override
-  String get trustWithoutCertificateBlurb =>
-      'Only for a box on this local network. Never for a public address.';
-  @override
   String get theDatabase => 'Database';
   @override
   String get databaseHost => 'Database address';
@@ -4775,8 +4800,103 @@ final class EnStrings extends AppStrings {
       'exists and the password is right.';
   @override
   String tlsFailure() =>
-      'PostgreSQL rejected the secure connection. Check its certificate, or '
-      'tick the option above if this really is a box on this network.';
+      'The secure connection to the database server failed, and the till '
+      'will not connect without one. Check that the server is switched on '
+      'and reachable, then try again.';
+  @override
+  String get tlsUntrusted =>
+      'The database server answered with a certificate this till does not '
+      'know yet. Compare its fingerprint below with the one on the main '
+      'device before you trust it.';
+  @override
+  String get tlsCertificateChanged =>
+      'The database server presented a different certificate from the one '
+      'this till was paired with. If the main device was set up again, '
+      'compare the new fingerprint below and confirm it. If nobody did that, '
+      'stop and call your technician: somebody may be intercepting the '
+      'network.';
+  @override
+  String tlsNameMismatch(String host) =>
+      'This is the certificate this till trusts, but it was not issued for '
+      '«$host». Connect using the main device\'s computer name, or the '
+      'address it had when its setup ran — or run its setup again.';
+  @override
+  String get tlsNotOffered =>
+      'The database server does not offer an encrypted connection. Run '
+      'XOrder POS setup on the main device again, with "Let other tills on '
+      'this network use this database" ticked.';
+  @override
+  String get serverCertificateTitle => 'Database server certificate';
+  @override
+  String get serverCertificateCompare =>
+      'Compare this fingerprint with the one on the main device, under '
+      'Management › Devices. Confirm only if every character matches.';
+  @override
+  String get serverCertificateConfirm =>
+      'The fingerprints match — trust this server';
+  @override
+  String get serverCertificatePaired =>
+      'Paired. This till accepts only the certificate with this fingerprint.';
+  @override
+  String get certificateValidUntil => 'Valid until';
+  @override
+  String get copyFingerprint => 'Copy the fingerprint';
+  @override
+  String get fingerprintCopied => 'Fingerprint copied';
+  @override
+  String get dbUnavailableSecureConnection =>
+      "The till could not confirm it is talking to the restaurant's own "
+      'database server, so it did not connect. Call your installer, and do '
+      'not change any network settings.';
+  @override
+  String get insecureLanWarning =>
+      'This till sends its database traffic over the network unencrypted. A '
+      'technician turned encryption off under Management › Devices.';
+  @override
+  String get lanEncryptionTitle => 'Network encryption';
+  @override
+  String get serverCertificateThisMachine =>
+      'Tills on the network are paired with this machine by this '
+      'fingerprint. Read it to whoever is setting one up.';
+  @override
+  String get serverCertificateNone =>
+      'This machine has no network certificate: its setup did not open the '
+      'database to other tills.';
+  @override
+  String get lanEncryptedPinned =>
+      'Encrypted. This till trusts only the database server certificate with '
+      'this fingerprint.';
+  @override
+  String get lanEncryptedVerified =>
+      "Encrypted, and verified against this computer's trusted certificate "
+      'authorities.';
+  @override
+  String get lanEncryptionTurnOff => 'Turn encryption off';
+  @override
+  String get lanEncryptionTurnOffTitle => 'Send database traffic unencrypted?';
+  @override
+  String get lanEncryptionTurnOffBody =>
+      "Anyone on this network will be able to read sales and this till's "
+      'database password. Do this only when the database server cannot offer '
+      'encryption, and only for an address on this local network — the server '
+      'has to allow it too. It is recorded in the activity log, and the start '
+      'screen will say so until encryption is back on.';
+  @override
+  String get lanEncryptionTurnOn => 'Turn encryption back on';
+  @override
+  String get lanEncryptionTurnOnBody =>
+      'This is the fingerprint of the certificate the database server '
+      'presents now. Compare it with the one on the main device, and confirm '
+      'only if every character matches.';
+  @override
+  String get lanEncryptionNotRecorded =>
+      'The change could not be written to the activity log, so nothing was '
+      'changed.';
+  @override
+  String get lanEncryptionNoCertificate =>
+      'The database server did not present a certificate to compare, so '
+      'encryption stays off. Check the server is running and that its setup '
+      'turned encryption on.';
   @override
   String queryFailure(String database) =>
       'Connected, but the database did not answer as expected. Check that '
@@ -6810,6 +6930,9 @@ final class EnStrings extends AppStrings {
       'Admin Mode shut its door after repeated wrong PINs for this username';
   @override
   String get actSyncRecordReleased => 'Sent a held sync record again';
+  @override
+  String get actLanEncryptionChanged =>
+      'Changed how this till encrypts its database connection';
   @override
   String get actAdminRefused => 'Was refused Admin Mode';
   @override
@@ -9474,11 +9597,6 @@ final class ArStrings extends AppStrings {
       'الوجهة التي يرسل إليها هذا الجهاز مبيعاته. البيع لا ينتظرها أبداً — '
       'قاعدة البيانات المحلية تستقبل البيع أولاً ثم تُفرَّغ قائمة الانتظار.';
   @override
-  String get trustWithoutCertificate => 'الوثوق بقاعدة البيانات هذه بدون شهادة';
-  @override
-  String get trustWithoutCertificateBlurb =>
-      'فقط لجهاز على هذه الشبكة المحلية. لا تفعل ذلك أبداً لعنوان عام.';
-  @override
   String get theDatabase => 'قاعدة البيانات';
   @override
   String get databaseHost => 'عنوان قاعدة البيانات';
@@ -9838,8 +9956,94 @@ final class ArStrings extends AppStrings {
       'وأن كلمة المرور صحيحة.';
   @override
   String tlsFailure() =>
-      'رفض PostgreSQL الاتصال المؤمَّن. راجع شهادته، أو فعّل الخيار أعلاه إذا '
-      'كان هذا فعلاً جهازاً على هذه الشبكة.';
+      'فشل الاتصال المؤمَّن بخادم قاعدة البيانات، ولن يتصل الكاشير بدونه. '
+      'تأكد أن الخادم يعمل ويمكن الوصول إليه، ثم حاول مرة أخرى.';
+  @override
+  String get tlsUntrusted =>
+      'ردّ خادم قاعدة البيانات بشهادة لا يعرفها هذا الجهاز بعد. قارن بصمتها '
+      'أدناه بالبصمة الظاهرة على الجهاز الرئيسي قبل أن تعتمدها.';
+  @override
+  String get tlsCertificateChanged =>
+      'قدّم خادم قاعدة البيانات شهادة غير التي اقتُرن بها هذا الجهاز. إذا '
+      'أُعيد إعداد الجهاز الرئيسي فقارن البصمة الجديدة أدناه وأكّدها. وإن لم '
+      'يفعل أحد ذلك فتوقف واتصل بالفني: قد يكون هناك من يعترض الشبكة.';
+  @override
+  String tlsNameMismatch(String host) =>
+      'هذه هي الشهادة التي يثق بها هذا الجهاز، لكنها لم تُصدَر للعنوان '
+      '«$host». اتصل باسم كمبيوتر الجهاز الرئيسي أو بالعنوان الذي كان له '
+      'عند إعداده — أو أعد تشغيل إعداده.';
+  @override
+  String get tlsNotOffered =>
+      'خادم قاعدة البيانات لا يوفّر اتصالاً مشفّراً. أعد تشغيل إعداد XOrder '
+      'POS على الجهاز الرئيسي مع تفعيل «السماح لأجهزة الكاشير الأخرى على هذه '
+      'الشبكة باستخدام قاعدة البيانات».';
+  @override
+  String get serverCertificateTitle => 'شهادة خادم قاعدة البيانات';
+  @override
+  String get serverCertificateCompare =>
+      'قارن هذه البصمة بالبصمة الظاهرة على الجهاز الرئيسي في الإدارة › '
+      'الأجهزة. لا تؤكّد إلا إذا تطابق كل حرف.';
+  @override
+  String get serverCertificateConfirm => 'البصمتان متطابقتان — اعتمد هذا الخادم';
+  @override
+  String get serverCertificatePaired =>
+      'تم الإقران. لا يقبل هذا الجهاز إلا الشهادة التي لها هذه البصمة.';
+  @override
+  String get certificateValidUntil => 'صالحة حتى';
+  @override
+  String get copyFingerprint => 'انسخ البصمة';
+  @override
+  String get fingerprintCopied => 'نُسخت البصمة';
+  @override
+  String get dbUnavailableSecureConnection =>
+      'لم يستطع الكاشير التأكد من أنه يتصل بخادم قاعدة بيانات المطعم نفسه، '
+      'فلم يتصل. اتصل بالمُثبّت، ولا تغيّر أي إعدادات للشبكة.';
+  @override
+  String get insecureLanWarning =>
+      'يرسل هذا الكاشير بيانات قاعدة البيانات عبر الشبكة بلا تشفير. أوقف أحد '
+      'الفنيين التشفير من الإدارة › الأجهزة.';
+  @override
+  String get lanEncryptionTitle => 'تشفير الشبكة';
+  @override
+  String get serverCertificateThisMachine =>
+      'تُقرَن أجهزة الكاشير على الشبكة بهذا الجهاز عبر هذه البصمة. اقرأها '
+      'لمن يُعِدّ أحدها.';
+  @override
+  String get serverCertificateNone =>
+      'لا توجد شهادة شبكة على هذا الجهاز: لم يفتح إعداده قاعدة البيانات '
+      'لأجهزة الكاشير الأخرى.';
+  @override
+  String get lanEncryptedPinned =>
+      'مشفّر. لا يثق هذا الجهاز إلا بشهادة خادم قاعدة البيانات التي لها هذه '
+      'البصمة.';
+  @override
+  String get lanEncryptedVerified =>
+      'مشفّر، ومُتحقَّق منه عبر جهات إصدار الشهادات الموثوقة على هذا '
+      'الكمبيوتر.';
+  @override
+  String get lanEncryptionTurnOff => 'أوقف التشفير';
+  @override
+  String get lanEncryptionTurnOffTitle => 'إرسال بيانات قاعدة البيانات بلا تشفير؟';
+  @override
+  String get lanEncryptionTurnOffBody =>
+      'سيتمكن أي شخص على هذه الشبكة من قراءة المبيعات وكلمة مرور قاعدة بيانات '
+      'هذا الكاشير. لا تفعل ذلك إلا إذا كان خادم قاعدة البيانات لا يستطيع '
+      'توفير التشفير، ولعنوان على هذه الشبكة المحلية فقط — ويجب أن يسمح الخادم '
+      'بذلك أيضاً. يُسجَّل هذا في سجل النشاط، وستُظهره شاشة البدء حتى يعود '
+      'التشفير.';
+  @override
+  String get lanEncryptionTurnOn => 'أعد تشغيل التشفير';
+  @override
+  String get lanEncryptionTurnOnBody =>
+      'هذه بصمة الشهادة التي يقدّمها خادم قاعدة البيانات الآن. قارنها بالبصمة '
+      'الظاهرة على الجهاز الرئيسي، ولا تؤكّد إلا إذا تطابق كل حرف.';
+  @override
+  String get lanEncryptionNotRecorded =>
+      'تعذّر تسجيل التغيير في سجل النشاط، فلم يُغيَّر شيء.';
+  @override
+  String get lanEncryptionNoCertificate =>
+      'لم يقدّم خادم قاعدة البيانات شهادة يمكن مقارنتها، فبقي التشفير '
+      'موقوفاً. تأكد أن الخادم يعمل وأن إعداده فعّل التشفير.';
   @override
   String queryFailure(String database) =>
       'تم الاتصال، لكن قاعدة البيانات لم ترد كما هو متوقع. تأكد أن «$database» '
@@ -11807,6 +12011,9 @@ final class ArStrings extends AppStrings {
       'أُغلق باب وضع المسؤول بعد أكواد خاطئة متكررة لاسم المستخدم هذا';
   @override
   String get actSyncRecordReleased => 'أعاد إرسال سجل مزامنة محتجز';
+  @override
+  String get actLanEncryptionChanged =>
+      'غيّر طريقة تشفير اتصال هذا الجهاز بقاعدة البيانات';
   @override
   String get actAdminRefused => 'رُفض دخوله وضع المسؤول';
   @override
