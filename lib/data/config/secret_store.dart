@@ -124,13 +124,13 @@ class SecretStoreUnavailable extends PosDbSecretStoreException {
   /// named by its type, which is enough to tell a technician where to look.
   /// The rejected alternative, stripping the excerpt from known offenders,
   /// would be right only until the next exception type nobody thought of.
+  ///
+  /// The platform statuses are added here; the rest of the list is
+  /// [PosDbSecretStoreException.describeCause], shared so the two cannot
+  /// drift into one that quotes what the other names by type.
   static String describe(Object? failure) => switch (failure) {
-    null => 'no detail',
-    KeychainStatus() || DpapiFailure() || String() => '$failure',
-    FileSystemException(:final message, :final osError) =>
-      'FileSystemException: $message'
-          '${osError == null ? '' : ' (${osError.message}, ${osError.errorCode})'}',
-    _ => '${failure.runtimeType}',
+    KeychainStatus() || DpapiFailure() => '$failure',
+    _ => PosDbSecretStoreException.describeCause(failure),
   };
 }
 

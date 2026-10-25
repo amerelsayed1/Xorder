@@ -201,8 +201,10 @@ class EditedElsewhere extends AdminRefusal {
 /// Distinct from [NotPermitted], and the distinction is the whole point: the
 /// person may well hold the capability, and the till may well be configured.
 /// What is missing is the *database* credential the back office runs on, which
-/// is asked for when Management opens and is never written to disk — the till's
-/// own credential holds SELECT and nothing more, deliberately.
+/// is kept in the operating system's secret store (`adminDbSecretStoreProvider`)
+/// and loaded only when Admin Mode opens — asked for at the door when it is not
+/// there, or no longer works. The till's own credential holds SELECT and
+/// nothing more, deliberately.
 /// The values do not make sense, in a way the database cannot see.
 ///
 /// Carries the sentence to show rather than a code to look up — which is why

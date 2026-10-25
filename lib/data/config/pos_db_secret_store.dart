@@ -1,3 +1,5 @@
+import 'dart:io' show FileSystemException;
+
 /// Where the till's PostgreSQL password is kept between launches.
 ///
 /// The OS store: DPAPI on Windows, the Keychain on macOS (ADR-006), reached
@@ -40,5 +42,26 @@ class PosDbSecretStoreException implements Exception {
   final Object cause;
 
   @override
-  String toString() => 'The credential store refused the operation: $cause';
+  String toString() =>
+      'The credential store refused the operation: ${describeCause(cause)}';
+
+  /// [failure] as it may appear in a log, a banner or a screenshot — the
+  /// part of `SecretStoreUnavailable.describe` that needs no platform type,
+  /// here so this file stays importable by `bin/pos_migrate.dart`.
+  ///
+  /// **An allow-list, not `'$failure'`.** This used to quote [cause] whole,
+  /// and a cause is whatever the store was doing when it failed: a
+  /// `FormatException` from parsing the secrets file prints an excerpt of the
+  /// file, which is the password. A file error carries a code and an OS
+  /// message, never a value, so it keeps its words; anything else is named
+  /// by its type, which tells a technician where to look and nobody else
+  /// anything.
+  static String describeCause(Object? failure) => switch (failure) {
+    null => 'no detail',
+    String() => failure,
+    FileSystemException(:final message, :final osError) =>
+      'FileSystemException: $message'
+          '${osError == null ? '' : ' (${osError.message}, ${osError.errorCode})'}',
+    _ => '${failure.runtimeType}',
+  };
 }
