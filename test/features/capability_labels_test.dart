@@ -340,6 +340,8 @@ const _actionsThisBuildWrites = <String>[
   AuditAction.staffDisabled,
   AuditAction.staffReactivated,
   AuditAction.staffPinReset,
+  AuditAction.staffPasswordSet,
+  AuditAction.staffPasswordCleared,
   AuditAction.staffRoleChanged,
   AuditAction.staffGrantsChanged,
   AuditAction.roleCreated,

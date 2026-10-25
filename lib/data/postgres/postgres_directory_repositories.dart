@@ -453,6 +453,73 @@ class PostgresSessionRepository implements SessionRepository {
         : _match(pin: pin, username: wanted);
   }
 
+  /// Admin Mode's password, checked here in Dart (slice E moves it into the
+  /// database). Narrowed by name in SQL, unlike the PIN walk: a password is
+  /// never "whoever holds it", so there is no list to keep the timing flat
+  /// across — only the three ways of being refused to keep alike.
+  ///
+  /// **Every refusal costs one full derivation.** A username that names
+  /// nobody, and a person with no password yet, are verified against
+  /// [PasswordHash.unmatchable] so they take the 600 000 iterations a wrong
+  /// password takes. Answering those two at once would make the door a
+  /// stopwatch for who has an account.
+  @override
+  Future<PosStaff?> signInWithPassword({
+    required String username,
+    required String password,
+  }) async {
+    final wanted = username.trim().toLowerCase();
+    if (wanted.isEmpty || password.isEmpty) return null;
+
+    final List<List<Object?>> rows;
+    try {
+      rows = await _db.query(
+        _config,
+        'SELECT s.id, s.name, s.username, s.capabilities, s.is_active, '
+        '       $joinedRoleColumns, s.password_hash '
+        'FROM pos_staff s LEFT JOIN pos_roles r ON r.id = s.role_id '
+        'WHERE s.restaurant_id = @restaurant AND s.is_active '
+        '  AND (s.branch_id IS NULL OR s.branch_id = @branch) '
+        '  AND lower(trim(s.username)) = @username '
+        'ORDER BY s.id',
+        parameters: {
+          'restaurant': _restaurantId,
+          'branch': _branchId,
+          'username': wanted,
+        },
+      );
+    } on PosDbException catch (error) {
+      // A database migration 54 has not reached: there is no column, so
+      // there are no passwords, and the door falls to the PIN.
+      if (isUndefinedColumn(error)) return null;
+      rethrow;
+    }
+
+    if (rows.isEmpty) {
+      await PasswordHash.verify(password, PasswordHash.unmatchable);
+      return null;
+    }
+
+    PosStaff? matched;
+    for (final row in rows) {
+      final ok = await PasswordHash.verify(
+        password,
+        (row[11] as String?) ?? PasswordHash.unmatchable,
+      );
+      if (ok && matched == null) {
+        matched = PosStaff(
+          id: row[0] as int,
+          name: row[1] as String,
+          username: row[2] as String?,
+          capabilities: PosCapability.canonicalAll(_textArray(row[3])),
+          isActive: row[4] as bool,
+          role: optionalRoleFromRow(row, 5),
+        );
+      }
+    }
+    return matched == null ? null : _withGrants(matched);
+  }
+
   /// [username] narrows the match; null accepts whoever holds the PIN.
   Future<PosStaff?> _match({required String pin, String? username}) async {
     if (pin.trim().isEmpty) return null;

@@ -1,4 +1,5 @@
 import '../../core/money/quantity.dart';
+import '../../core/security/pin_hash.dart' show PasswordProblem;
 import '../models/backup.dart';
 import '../models/catalog.dart';
 import '../models/combo_draft.dart';
@@ -153,6 +154,29 @@ class OwnerIsNotAnExtraRole extends AdminRefusal {
 /// legitimately, and neither is a person.
 class OwnerPinIsTheirs extends AdminRefusal {
   const OwnerPinIsTheirs();
+}
+
+/// Nobody clears the owner's Admin Mode password from Management — not a
+/// manager, not the owner.
+///
+/// Clearing a password puts the account back on its PIN for one Admin Mode
+/// entry, and whoever types that PIN first chooses the new password. For the
+/// owner that is the restaurant: a manager who knew the owner's PIN (it is
+/// four digits, typed at the counter all day) could clear, sign in, and own
+/// the back office under the owner's name. And the owner has no need — they
+/// are signed in with the password they would be clearing. A forgotten one
+/// is a technician's job, with the back-office database password typed at
+/// the door; see `AdminSessionController.technicianClearPassword`.
+class OwnerPasswordIsTheirs extends AdminRefusal {
+  const OwnerPasswordIsTheirs();
+}
+
+/// The password breaks `PasswordPolicy`'s rule, for [problem]. Asked by the
+/// form and again by the write, so a second writer cannot skip it.
+class PasswordRejected extends AdminRefusal {
+  const PasswordRejected(this.problem);
+
+  final PasswordProblem problem;
 }
 
 /// Somebody else saved this record first.
@@ -375,6 +399,20 @@ abstract final class AuditAction {
   static const staffDisabled = 'staff.disabled';
   static const staffReactivated = 'staff.reactivated';
   static const staffPinReset = 'staff.pin_reset';
+
+  /// Somebody chose their Admin Mode password — the first time, after their
+  /// PIN let them through the door once. Never the value, nor its hash.
+  static const staffPasswordSet = 'staff.password_set';
+
+  /// An Admin Mode password taken away, so the next entry is by PIN and asks
+  /// for a new one. By a manager from Management, or by a technician at the
+  /// door with the database password — the row's actor says which, and a
+  /// technician's row has no staff id because no member of staff did it.
+  static const staffPasswordCleared = 'staff.password_cleared';
+
+  /// The actor name on a row nobody on the staff wrote: the technician reset.
+  /// Not an action (no dot), so the labels test does not mistake it for one.
+  static const technicianActor = 'technician';
   static const staffRoleChanged = 'staff.role_changed';
 
   /// Extra roles, per-person exceptions or a ceiling changed (§105, §16).
@@ -913,6 +951,48 @@ abstract interface class StaffDirectoryRepository {
     required PosStaff by,
     required int staffId,
     required String pin,
+  });
+
+  /// Who has an Admin Mode password, by staff id (ADR-006b slice D).
+  ///
+  /// Read on the till's connection, like [all]. **Empty, not an error, on a
+  /// database migration 54 has not reached** — the column does not exist yet,
+  /// which is exactly "nobody has one", and the upgrade that adds it runs at
+  /// the same door that asks.
+  Future<Set<int>> withPassword();
+
+  /// [by] chooses their own Admin Mode password. Only ever their own: nobody
+  /// sets a password for somebody else, so nobody knows another person's.
+  ///
+  /// Checked against `PasswordPolicy` here as well as on the form, hashed
+  /// with `PasswordHash` (600 000 iterations), written on the administrator
+  /// connection and audited as [AuditAction.staffPasswordSet] — the row says
+  /// that it was set, never what to. Not refused on a cloud till: the column
+  /// is local and the bootstrap seeder never writes it, so unlike a PIN it is
+  /// not overwritten by the next bundle.
+  Future<AdminResult<void>> setOwnPassword({
+    required PosStaff by,
+    required String password,
+  });
+
+  /// Takes [staffId]'s Admin Mode password away (`staff.manage`). Their next
+  /// entry is by PIN, and they must choose a new password before it opens.
+  /// Refused for the owner — see [OwnerPasswordIsTheirs].
+  Future<AdminResult<void>> clearPassword({
+    required PosStaff by,
+    required int staffId,
+  });
+
+  /// The technician's reset: clears the password of the active member of
+  /// staff called [username], owner included, with no member of staff
+  /// signed in.
+  ///
+  /// Only on a repository built on the administrator credential the
+  /// technician has just typed — the authority here is knowing the database
+  /// password, not holding a role. The value is the name of whose password
+  /// was cleared, or null when [username] names nobody active with one.
+  Future<AdminResult<String?>> clearPasswordAsTechnician({
+    required String username,
   });
 
   /// One person's exceptions to their roles, and their ceilings (§105, §16).

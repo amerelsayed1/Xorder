@@ -2629,6 +2629,50 @@ final adminPasswordProbeProvider =
       };
     });
 
+/// The technician's reset of somebody's Admin Mode password (ADR-006b D5.4).
+typedef TechnicianPasswordReset =
+    Future<AdminResult<String?>> Function({
+      required String username,
+      required String databasePassword,
+    });
+
+/// Clears [username]'s Admin Mode password on a pool of its own, opened on
+/// the database password the technician has just typed and closed after.
+///
+/// **Not [staffDirectoryRepositoryProvider].** That one writes on
+/// [adminDbCredentialProvider], which holds the password this till KEEPS —
+/// and the kept one is the one thing that must not be enough: anybody at the
+/// till could then clear the owner's password and choose a new one with the
+/// owner's PIN. Typing it is the proof, as on the forced reset. The caller
+/// (`AdminSessionController.technicianClearPassword`) has already probed it
+/// and counted a wrong one against Admin Mode's lockout. A function, so a
+/// test can answer without a server.
+final technicianPasswordResetProvider = Provider<TechnicianPasswordReset>((
+  ref,
+) {
+  final config = ref.watch(adminDeploymentProvider);
+  final context = ref.watch(posWriteContextProvider);
+  return ({required username, required databasePassword}) async {
+    if (context == null || PosDatabase.hostFor(config) == null) {
+      return const AdminResult<String?>.refused(NoDatabaseConfigured());
+    }
+    final database = PosDatabase(
+      credentials: InMemoryPosDbCredentials(databasePassword),
+    );
+    try {
+      return await PostgresStaffDirectoryRepository(
+        database: database,
+        config: config,
+        restaurantId: context.restaurantId,
+        branchId: context.branchId,
+        terminalId: context.terminalId,
+      ).clearPasswordAsTechnician(username: username);
+    } finally {
+      await database.close();
+    }
+  };
+});
+
 /// Applies the migrations this build carries and the database lacks, as the
 /// back office's administrator.
 ///
@@ -3512,6 +3556,14 @@ final rolesProvider = FutureProvider<List<PosRole>>(
 
 final staffDirectoryProvider = FutureProvider<List<PosStaff>>(
   (ref) => ref.watch(staffDirectoryRepositoryProvider).all(),
+);
+
+/// Who has an Admin Mode password, by staff id — what the staff pane's Clear
+/// password button asks. Not a field read by `all()`: that query is also the
+/// lock screen's roster ([signInCandidatesProvider]), which must keep working
+/// on a database the upgrade that adds this column has not reached.
+final staffWithPasswordProvider = FutureProvider<Set<int>>(
+  (ref) => ref.watch(staffDirectoryRepositoryProvider).withPassword(),
 );
 
 /// Whether the person currently signed in at this till may do something.

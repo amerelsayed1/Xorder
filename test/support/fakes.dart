@@ -11,6 +11,7 @@ import 'package:xorder_pos/data/config/terminal_config_store.dart';
 import 'package:xorder_pos/data/fakes/fake_repositories.dart';
 import 'package:xorder_pos/data/postgres/pos_database.dart';
 import 'package:xorder_pos/domain/repositories/admin_repositories.dart';
+import 'package:xorder_pos/features/admin/application/admin_session.dart';
 import 'package:xorder_pos/features/licensing/data/licence_service.dart';
 
 /// The `Fake…` repositories, bound explicitly.
@@ -55,7 +56,6 @@ List<Override> fakeRepositoryOverrides({
       schemaUpgraderProvider.overrideWithValue(schemaUpgrader),
       catalogRepositoryProvider.overrideWithValue(FakeCatalogRepository()),
       tablesRepositoryProvider.overrideWithValue(FakeTablesRepository()),
-      sessionRepositoryProvider.overrideWithValue(FakeSessionRepository()),
       branchRepositoryProvider.overrideWithValue(FakeBranchRepository()),
       provisioningRepositoryProvider.overrideWithValue(FakeProvisioningRepository()),
       ordersRepositoryProvider.overrideWithValue(FakeOrdersRepository()),
@@ -69,11 +69,28 @@ List<Override> fakeRepositoryOverrides({
         // Roles and staff share one store, because a fake staff directory that
         // pointed at different role objects than the roles pane shows would let
         // a test pass while the screen it models could not work.
+        //
+        // Admin Mode's passwords likewise: the door reads them through the
+        // session repository and the staff pane writes them through the
+        // directory, and in the real build those are one column.
         final roles = FakeRolesRepository();
+        final passwords = FakePasswords();
+        final directory = FakeStaffDirectoryRepository(
+          roles: roles,
+          passwords: passwords,
+        );
         return [
+          sessionRepositoryProvider.overrideWithValue(
+            FakeSessionRepository(passwords: passwords),
+          ),
           rolesRepositoryProvider.overrideWithValue(roles),
-          staffDirectoryRepositoryProvider
-              .overrideWithValue(FakeStaffDirectoryRepository(roles: roles)),
+          staffDirectoryRepositoryProvider.overrideWithValue(directory),
+          // The technician's reset, on the same book. The database password
+          // it needs is checked before this is reached, by the probe below.
+          technicianPasswordResetProvider.overrideWithValue(
+            ({required username, required databasePassword}) =>
+                directory.clearPasswordAsTechnician(username: username),
+          ),
           auditRepositoryProvider.overrideWithValue(FakeAuditRepository()),
         ];
       })(),
@@ -134,11 +151,21 @@ Override offlineTerminal() =>
 
 class _OfflineCatalogueAdmin extends Mock implements CatalogAdminRepository {}
 
+/// The Admin Mode password the harness chooses for anybody who comes in on
+/// their PIN. Over the ten-character floor, and not anybody's username.
+const testAdminPassword = 'correct horse battery';
+
 /// Through Admin Mode's door as the owner, for a test about what is behind it.
 ///
 /// Typed, not injected: the door is the one way in, and a harness that could
 /// put somebody past it would be a way round it that nothing tests. Amer's PIN
 /// in [FakeSessionRepository] is 4321.
+///
+/// **The door asks for a password now**, and every fake account starts with
+/// none — as every real one does the day migration 54 runs. So the first
+/// entry types the PIN and then chooses [testAdminPassword] on the step that
+/// follows; a later entry in the same test types the password, because the
+/// PIN no longer opens that account.
 Future<void> enterAdminMode(
   WidgetTester tester, {
   String username = 'amer',
@@ -151,8 +178,67 @@ Future<void> enterAdminMode(
     ),
     username,
   );
-  await tester.enterText(find.byKey(const Key('admin-pin')), pin);
+  await tester.enterText(
+    find.byKey(const Key('admin-password')),
+    adminSecretFor(tester, username, pin: pin),
+  );
   await tester.tap(find.byKey(const Key('admin-open')));
+  await tester.pumpAndSettle();
+  await completeAdminPasswordStep(tester);
+}
+
+/// [enterAdminMode] without a screen: through the controller, the PIN the
+/// first time and the password it then chooses, or the password once there
+/// is one.
+Future<AdminSignIn> signInToAdminMode(
+  ProviderContainer container, {
+  String username = 'amer',
+  String pin = '4321',
+}) async {
+  final admin = container.read(adminSessionProvider.notifier);
+  final directory = container.read(staffDirectoryRepositoryProvider);
+  final secret = directory is FakeStaffDirectoryRepository
+      ? directory.passwords.passwordOf(username) ?? pin
+      : pin;
+  final door = await admin.signIn(username: username, secret: secret);
+  return door is AdminMustSetPassword
+      ? admin.setPassword(
+          password: testAdminPassword,
+          confirm: testAdminPassword,
+        )
+      : door;
+}
+
+/// What [username] types into the door's secret field: their password once
+/// they have one in the fake book, otherwise [pin].
+String adminSecretFor(
+  WidgetTester tester,
+  String username, {
+  required String pin,
+}) {
+  final container = ProviderScope.containerOf(
+    tester.element(find.byKey(const Key('admin-username'))),
+  );
+  final directory = container.read(staffDirectoryRepositoryProvider);
+  return directory is FakeStaffDirectoryRepository
+      ? directory.passwords.passwordOf(username) ?? pin
+      : pin;
+}
+
+/// If the door is showing the choose-a-password step, choose [password]
+/// twice and save. A no-op otherwise, so a helper can call it after every
+/// sign-in without knowing which kind it was.
+Future<void> completeAdminPasswordStep(
+  WidgetTester tester, {
+  String password = testAdminPassword,
+}) async {
+  if (find.byKey(const Key('admin-new-password')).evaluate().isEmpty) return;
+  await tester.enterText(find.byKey(const Key('admin-new-password')), password);
+  await tester.enterText(
+    find.byKey(const Key('admin-confirm-password')),
+    password,
+  );
+  await tester.tap(find.byKey(const Key('admin-set-password')));
   await tester.pumpAndSettle();
 }
 

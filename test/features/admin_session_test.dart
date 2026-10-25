@@ -3,12 +3,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:xorder_pos/app/providers.dart';
 import 'package:xorder_pos/core/config/admin_mode_settings.dart';
 import 'package:xorder_pos/core/l10n/app_strings.dart';
+import 'package:xorder_pos/core/security/pin_hash.dart';
 import 'package:xorder_pos/data/fakes/fake_repositories.dart';
 import 'package:xorder_pos/data/postgres/pos_database.dart';
 import 'package:xorder_pos/domain/models/permissions.dart';
 import 'package:xorder_pos/domain/repositories/admin_repositories.dart';
 import 'package:xorder_pos/domain/repositories/repositories.dart';
 import 'package:xorder_pos/features/admin/application/admin_session.dart';
+import 'package:xorder_pos/features/admin/presentation/admin_messages.dart';
 
 import '../support/fakes.dart';
 
@@ -45,20 +47,52 @@ void main() {
   List<AuditEntry> ledger() =>
       (container.read(auditRepositoryProvider) as FakeAuditRepository).entries;
 
+  FakePasswords passwords() =>
+      (container.read(staffDirectoryRepositoryProvider)
+              as FakeStaffDirectoryRepository)
+          .passwords;
+
+  /// The owner's first entry, whole: the PIN, then the password it makes
+  /// him choose. Every fake account starts with none, as every real one did
+  /// the day migration 54 ran.
+  Future<AdminSignIn> enterAsOwner() async {
+    expect(
+      await admin.signIn(username: 'amer', secret: '4321'),
+      isA<AdminMustSetPassword>(),
+    );
+    return admin.setPassword(
+      password: testAdminPassword,
+      confirm: testAdminPassword,
+    );
+  }
+
   group('who gets in', () {
-    test('the owner, by username and PIN', () async {
+    test('the owner, by PIN the first time — and only once a password is '
+        'chosen', () async {
       expect(
-        await admin.signIn(username: 'amer', pin: '4321'),
+        await admin.signIn(username: 'amer', secret: '4321'),
+        isA<AdminMustSetPassword>(),
+      );
+      expect(container.read(adminSessionProvider), isNull);
+      expect(container.read(adminDbCredentialProvider), isNull);
+      expect(ledger(), isEmpty, reason: 'nobody is in yet');
+
+      expect(
+        await admin.setPassword(
+          password: testAdminPassword,
+          confirm: testAdminPassword,
+        ),
         isA<AdminSignedIn>(),
       );
       expect(container.read(adminSessionProvider)!.staff.name, 'Amer M.');
       expect(container.read(adminDbCredentialProvider), 'test-credential');
       expect(ledger().single.action, AuditAction.adminEntered);
+      expect(passwords().passwordOf('amer'), testAdminPassword);
     });
 
     test('not a cashier with their right PIN — and it is written down', () async {
       expect(
-        await admin.signIn(username: 'rana', pin: '1234'),
+        await admin.signIn(username: 'rana', secret: '1234'),
         isA<AdminSignInRefused>(),
       );
       expect(container.read(adminSessionProvider), isNull);
@@ -69,7 +103,7 @@ void main() {
 
     test('not a wrong PIN, which names nobody to write down', () async {
       expect(
-        await admin.signIn(username: 'amer', pin: '1234'),
+        await admin.signIn(username: 'amer', secret: '1234'),
         isA<AdminSignInRefused>(),
       );
       expect(ledger(), isEmpty);
@@ -77,7 +111,7 @@ void main() {
 
     test('not a PIN without the name', () async {
       expect(
-        await admin.signIn(username: '', pin: '4321'),
+        await admin.signIn(username: '', secret: '4321'),
         isA<AdminSignInRefused>(),
       );
     });
@@ -85,10 +119,7 @@ void main() {
     test('not when the ledger cannot record the entry', () async {
       (container.read(auditRepositoryProvider) as FakeAuditRepository)
           .failWith = StateError('ledger down');
-      expect(
-        await admin.signIn(username: 'amer', pin: '4321'),
-        isA<AdminSignInUnreachable>(),
-      );
+      expect(await enterAsOwner(), isA<AdminSignInUnreachable>());
       expect(container.read(adminSessionProvider), isNull);
       expect(container.read(adminDbCredentialProvider), isNull);
     });
@@ -99,7 +130,7 @@ void main() {
       ]);
       admin = container.read(adminSessionProvider.notifier);
       expect(
-        await admin.signIn(username: 'amer', pin: '4321'),
+        await admin.signIn(username: 'amer', secret: '4321'),
         isA<AdminSignInUnreachable>(),
       );
     });
@@ -107,7 +138,7 @@ void main() {
 
   group('too many wrong PINs', () {
     Future<AdminSignIn> wrongPin([String username = 'amer']) =>
-        admin.signIn(username: username, pin: '0000');
+        admin.signIn(username: username, secret: '0000');
 
     Future<void> wrongPins(int times, [String username = 'amer']) async {
       for (var i = 0; i < times; i++) {
@@ -129,7 +160,7 @@ void main() {
 
       now = now.add(const Duration(seconds: 29));
       expect(
-        await admin.signIn(username: 'amer', pin: '4321'),
+        await admin.signIn(username: 'amer', secret: '4321'),
         isA<AdminSignInLockedOut>(),
       );
       expect(container.read(adminSessionProvider), isNull);
@@ -139,9 +170,11 @@ void main() {
     test('and opens again once the wait is over', () async {
       await wrongPins(5);
       now = now.add(const Duration(seconds: 30));
+      // Checked, and right: what comes next is the password step, not the
+      // lockout.
       expect(
-        await admin.signIn(username: 'amer', pin: '4321'),
-        isA<AdminSignedIn>(),
+        await admin.signIn(username: 'amer', secret: '4321'),
+        isA<AdminMustSetPassword>(),
       );
     });
 
@@ -175,10 +208,7 @@ void main() {
       await wrongPins(5);
       now = now.add(const Duration(seconds: 30));
       await wrongPins(3);
-      expect(
-        await admin.signIn(username: 'amer', pin: '4321'),
-        isA<AdminSignedIn>(),
-      );
+      expect(await enterAsOwner(), isA<AdminSignedIn>());
       await admin.end(AdminSessionEnd.exited);
 
       expect(
@@ -229,7 +259,7 @@ void main() {
     test('a till that never kept it asks, once, after the PIN', () async {
       kept.value = null;
       expect(
-        await admin.signIn(username: 'amer', pin: '4321'),
+        await admin.signIn(username: 'amer', secret: '4321'),
         isA<AdminNeedsDatabasePassword>(),
       );
       expect(container.read(adminSessionProvider), isNull);
@@ -240,7 +270,7 @@ void main() {
       expect(
         await admin.signIn(
           username: 'amer',
-          pin: '4321',
+          secret: '4321',
           databasePassword: 'not-it',
         ),
         isA<AdminDatabasePasswordRefused>(),
@@ -253,10 +283,13 @@ void main() {
       expect(
         await admin.signIn(
           username: 'amer',
-          pin: '4321',
+          secret: '4321',
           databasePassword: 'test-credential',
         ),
-        isA<AdminSignedIn>(),
+        // Past the door's first half: an account with no password yet is
+        // asked to choose one next, and the database password is kept by
+        // then because it is what that write runs on.
+        isA<AdminMustSetPassword>(),
       );
       expect(kept.value, 'test-credential');
     });
@@ -264,7 +297,7 @@ void main() {
     test('a kept one that stopped working is asked for again', () async {
       kept.value = 'changed-since';
       expect(
-        await admin.signIn(username: 'amer', pin: '4321'),
+        await admin.signIn(username: 'amer', secret: '4321'),
         isA<AdminNeedsDatabasePassword>(),
       );
     });
@@ -272,7 +305,7 @@ void main() {
     test('is never asked of somebody the PIN did not let in', () async {
       kept.value = null;
       expect(
-        await admin.signIn(username: 'rana', pin: '1234'),
+        await admin.signIn(username: 'rana', secret: '1234'),
         isA<AdminSignInRefused>(),
       );
     });
@@ -280,7 +313,7 @@ void main() {
 
   group('the end of it', () {
     setUp(() async {
-      await admin.signIn(username: 'amer', pin: '4321');
+      await enterAsOwner();
     });
 
     test('Exit forgets the credential and says so', () async {
@@ -333,6 +366,266 @@ void main() {
           .save(const AdminModeSettings(timeoutMinutes: 1));
       now = now.add(const Duration(minutes: 1));
       expect(admin.isIdle, isTrue);
+    });
+  });
+
+  group('the Admin Mode password', () {
+    Future<AdminSignIn> choose(String password, [String? again]) =>
+        admin.setPassword(password: password, confirm: again ?? password);
+
+    test('once chosen it opens the door, and the PIN no longer does', () async {
+      await enterAsOwner();
+      await admin.end(AdminSessionEnd.exited);
+
+      expect(
+        await admin.signIn(username: 'amer', secret: '4321'),
+        isA<AdminSignInRefused>().having((r) => r.attemptsLeft, 'left', 4),
+      );
+      expect(
+        ledger().where((e) => e.action == AuditAction.adminRefused),
+        isEmpty,
+        reason: 'a PIN for a password account is a wrong guess, not a name',
+      );
+      expect(
+        await admin.signIn(username: 'amer', secret: testAdminPassword),
+        isA<AdminSignedIn>(),
+      );
+      expect(container.read(adminSessionProvider)!.staff.username, 'amer');
+    });
+
+    test('a wrong password and an unknown username are the same refusal',
+        () async {
+      await enterAsOwner();
+      await admin.end(AdminSessionEnd.exited);
+      final before = ledger().length;
+
+      final wrong = await admin.signIn(
+        username: 'amer',
+        secret: 'not the password at all',
+      );
+      final unknown = await admin.signIn(
+        username: 'nobody',
+        secret: 'not the password at all',
+      );
+      expect(wrong, isA<AdminSignInRefused>());
+      expect(unknown, isA<AdminSignInRefused>());
+      expect(
+        (wrong as AdminSignInRefused).attemptsLeft,
+        (unknown as AdminSignInRefused).attemptsLeft + 1,
+        reason: 'one count for both: the terminal\'s',
+      );
+      expect(ledger(), hasLength(before), reason: 'neither names anybody');
+    });
+
+    test('wrong passwords shut the door as wrong PINs do', () async {
+      await enterAsOwner();
+      await admin.end(AdminSessionEnd.exited);
+      for (var i = 0; i < 4; i++) {
+        await admin.signIn(username: 'amer', secret: 'wrong password $i');
+      }
+      expect(
+        ((await admin.signIn(username: 'amer', secret: 'wrong password 5'))
+                as AdminSignInLockedOut)
+            .wait,
+        const Duration(seconds: 30),
+      );
+      expect(
+        await admin.signIn(username: 'amer', secret: testAdminPassword),
+        isA<AdminSignInLockedOut>(),
+        reason: 'shut means the right password is not checked either',
+      );
+    });
+
+    test('the step cannot be reached without the PIN', () async {
+      expect(await choose(testAdminPassword), isA<AdminPasswordStepExpired>());
+      expect(passwords().passwordOf('amer'), isNull);
+      expect(container.read(adminSessionProvider), isNull);
+    });
+
+    test('backing out spends the PIN step', () async {
+      await admin.signIn(username: 'amer', secret: '4321');
+      admin.cancelPasswordStep();
+      expect(await choose(testAdminPassword), isA<AdminPasswordStepExpired>());
+      expect(passwords().passwordOf('amer'), isNull);
+    });
+
+    test('and it lasts no longer than Admin Mode would', () async {
+      await admin.signIn(username: 'amer', secret: '4321');
+      now = now.add(const Duration(minutes: 5));
+      expect(await choose(testAdminPassword), isA<AdminPasswordStepExpired>());
+      expect(container.read(adminSessionProvider), isNull);
+    });
+
+    test('a weak one is refused, and the step stays open for a better one',
+        () async {
+      await admin.signIn(username: 'amer', secret: '4321');
+
+      expect(
+        await choose('4321'),
+        isA<AdminPasswordRejected>().having(
+          (r) => r.problem,
+          'problem',
+          PasswordProblem.sameAsPin,
+        ),
+      );
+      expect(
+        await choose('nine char'),
+        isA<AdminPasswordRejected>().having(
+          (r) => r.problem,
+          'problem',
+          PasswordProblem.tooShort,
+        ),
+      );
+      expect(
+        await choose(testAdminPassword, 'correct horse batteries'),
+        isA<AdminPasswordMismatch>(),
+      );
+      expect(container.read(adminSessionProvider), isNull);
+      expect(container.read(adminDbCredentialProvider), isNull);
+
+      expect(await choose(testAdminPassword), isA<AdminSignedIn>());
+    });
+
+    test('its refusals are said in both languages, in Latin digits', () {
+      const en = EnStrings();
+      const ar = ArStrings();
+      for (final problem in PasswordProblem.values) {
+        final english = AdminText.passwordProblem(en, problem);
+        final arabic = AdminText.passwordProblem(ar, problem);
+        expect(arabic, isNot(english), reason: problem.name);
+        expect(RegExp('[٠-٩]').hasMatch(arabic), isFalse, reason: arabic);
+      }
+      // The number is the rule's own, in both.
+      expect(AdminText.passwordProblem(en, PasswordProblem.tooShort), contains('10'));
+      expect(AdminText.passwordProblem(ar, PasswordProblem.tooShort), contains('10'));
+      expect(
+        AdminText.refusal(ar, const OwnerPasswordIsTheirs()),
+        contains('المالك'),
+      );
+    });
+
+    test('a supervisor the owner let in sets their own, as the owner does',
+        () async {
+      expect(
+        await admin.signIn(username: 'nour', secret: '2468'),
+        isA<AdminMustSetPassword>(),
+      );
+      expect(await choose('nour-password-1'), isA<AdminSignedIn>());
+      expect(container.read(adminSessionProvider)!.staff.username, 'nour');
+      expect(passwords().passwordOf('amer'), isNull, reason: 'only their own');
+    });
+  });
+
+  group('the schema, at the first password', () {
+    test('is brought up once, before the password is written', () async {
+      final seen = <String?>[];
+      var upgrades = 0;
+      container = build([
+        schemaUpgraderProvider.overrideWithValue(() async {
+          upgrades++;
+          seen.add(passwords().passwordOf('amer'));
+          return const [54];
+        }),
+      ]);
+      admin = container.read(adminSessionProvider.notifier);
+
+      expect(await enterAsOwner(), isA<AdminSignedIn>());
+      expect(upgrades, 1, reason: 'not again on the way in');
+      expect(seen, [null], reason: 'the column the password goes in is 54');
+    });
+
+    test('an upgrade that failed, and a write that failed with it, still let '
+        'the owner in this once', () async {
+      container = build([
+        schemaUpgraderProvider.overrideWithValue(
+          () async => throw StateError('relation does not exist'),
+        ),
+        staffDirectoryRepositoryProvider.overrideWithValue(
+          _WriteFails(roles: FakeRolesRepository()),
+        ),
+      ]);
+      admin = container.read(adminSessionProvider.notifier);
+
+      // Backup is behind this door; a broken upgrade must not lock it away.
+      expect(await enterAsOwner(), isA<AdminSignedIn>());
+      expect(container.read(schemaUpgradeFailureProvider), isNotNull);
+    });
+
+    test('a write that fails on an up-to-date schema keeps them out', () async {
+      container = build([
+        staffDirectoryRepositoryProvider.overrideWithValue(
+          _WriteFails(roles: FakeRolesRepository()),
+        ),
+      ]);
+      admin = container.read(adminSessionProvider.notifier);
+
+      expect(await enterAsOwner(), isA<AdminDatabaseRefused>());
+      expect(container.read(adminSessionProvider), isNull);
+      expect(
+        container.read(adminDbCredentialProvider),
+        isNull,
+        reason: 'held for the write, and given back when it did not happen',
+      );
+    });
+  });
+
+  group("the technician's reset", () {
+    test("clears the owner's password with the database password, typed",
+        () async {
+      await enterAsOwner();
+      await admin.end(AdminSessionEnd.exited);
+
+      expect(
+        await admin.technicianClearPassword(
+          username: 'AMER ',
+          databasePassword: 'test-credential',
+        ),
+        isA<TechnicianResetDone>().having((r) => r.name, 'name', 'Amer M.'),
+      );
+      expect(passwords().passwordOf('amer'), isNull);
+      // Back to the PIN, once, and the password step after it.
+      expect(
+        await admin.signIn(username: 'amer', secret: '4321'),
+        isA<AdminMustSetPassword>(),
+      );
+    });
+
+    test('a wrong database password clears nothing, and counts', () async {
+      await enterAsOwner();
+      await admin.end(AdminSessionEnd.exited);
+
+      for (var i = 0; i < 4; i++) {
+        expect(
+          await admin.technicianClearPassword(
+            username: 'amer',
+            databasePassword: 'guess $i',
+          ),
+          isA<TechnicianResetDatabasePasswordRefused>(),
+        );
+      }
+      expect(
+        await admin.technicianClearPassword(
+          username: 'amer',
+          databasePassword: 'guess 5',
+        ),
+        isA<TechnicianResetLockedOut>(),
+      );
+      expect(passwords().passwordOf('amer'), testAdminPassword);
+      expect(
+        await admin.signIn(username: 'amer', secret: testAdminPassword),
+        isA<AdminSignInLockedOut>(),
+        reason: 'the same door, the same five',
+      );
+    });
+
+    test('says so when nobody by that name has one', () async {
+      expect(
+        await admin.technicianClearPassword(
+          username: 'nobody',
+          databasePassword: 'test-credential',
+        ),
+        isA<TechnicianResetNobody>(),
+      );
     });
   });
 
@@ -496,6 +789,12 @@ class _Unreachable implements SessionRepository {
   @override
   Future<PosStaff?> signInAs({required String username, required String pin}) =>
       throw _refused;
+
+  @override
+  Future<PosStaff?> signInWithPassword({
+    required String username,
+    required String password,
+  }) => throw _refused;
 }
 
 /// A directory holding one person, found by any username and PIN — the
@@ -519,4 +818,25 @@ class _Returns implements SessionRepository {
     required String username,
     required String pin,
   }) async => staff;
+
+  @override
+  Future<PosStaff?> signInWithPassword({
+    required String username,
+    required String password,
+  }) async => staff;
+}
+
+/// The fake directory, with a password write the database refuses — a
+/// column that is not there, or a constraint that says no.
+class _WriteFails extends FakeStaffDirectoryRepository {
+  _WriteFails({required super.roles});
+
+  @override
+  Future<AdminResult<void>> setOwnPassword({
+    required PosStaff by,
+    required String password,
+  }) => throw PosDbException(
+    PosDbFailure.query,
+    'column "password_hash" of relation "pos_staff" does not exist',
+  );
 }

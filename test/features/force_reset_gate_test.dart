@@ -184,4 +184,10 @@ class _Unreachable implements SessionRepository {
   @override
   Future<PosStaff?> signInAs({required String username, required String pin}) =>
       throw _refused;
+
+  @override
+  Future<PosStaff?> signInWithPassword({
+    required String username,
+    required String password,
+  }) => throw _refused;
 }

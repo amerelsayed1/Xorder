@@ -1,5 +1,6 @@
 import '../../../core/l10n/app_strings.dart';
 import '../../../core/money/quantity.dart';
+import '../../../core/security/pin_hash.dart';
 import '../../../domain/models/backup.dart';
 import '../../../domain/models/catalog.dart';
 import '../../../domain/models/combo_draft.dart';
@@ -82,6 +83,8 @@ abstract final class AdminText {
     AuditAction.staffDisabled => s.actStaffDisabled,
     AuditAction.staffReactivated => s.actStaffReactivated,
     AuditAction.staffPinReset => s.actStaffPinReset,
+    AuditAction.staffPasswordSet => s.actStaffPasswordSet,
+    AuditAction.staffPasswordCleared => s.actStaffPasswordCleared,
     AuditAction.staffRoleChanged => s.actStaffRoleChanged,
     AuditAction.staffGrantsChanged => s.actStaffGrantsChanged,
     AuditAction.roleCreated => s.actRoleCreated,
@@ -136,6 +139,20 @@ abstract final class AdminText {
     AuditAction.lanEncryptionChanged => s.actLanEncryptionChanged,
     _ => action,
   };
+
+  /// Why a new Admin Mode password was refused. Enum-keyed, so a rule added
+  /// to `PasswordPolicy` cannot reach the door without both languages. The
+  /// numbers are the policy's own constants, so the sentence and the rule
+  /// cannot disagree about how long "long enough" is.
+  static String passwordProblem(AppStrings s, PasswordProblem problem) =>
+      switch (problem) {
+        PasswordProblem.sameAsPin => s.passwordSameAsPin,
+        PasswordProblem.tooShort => s.passwordTooShort(
+          PasswordPolicy.minLength,
+        ),
+        PasswordProblem.tooLong => s.passwordTooLong(PasswordPolicy.maxLength),
+        PasswordProblem.sameAsUsername => s.passwordSameAsUsername,
+      };
 
   /// What kind of record is held. Enum-keyed, so a lifecycle event added to the
   /// outbox without a word here fails to compile.
@@ -345,6 +362,8 @@ abstract final class AdminText {
         OwnerIsFixed() => s.refusalOwnerIsFixed,
         OwnerIsNotAnExtraRole() => s.refusalOwnerIsNotAnExtraRole,
         OwnerPinIsTheirs() => s.refusalOwnerPinIsTheirs,
+        OwnerPasswordIsTheirs() => s.refusalOwnerPasswordIsTheirs,
+        PasswordRejected(:final problem) => passwordProblem(s, problem),
         EditedElsewhere() => s.refusalEditedElsewhere,
         // The reason comes from the catalogue importer, which speaks for
         // itself; there is nothing here to translate it into.

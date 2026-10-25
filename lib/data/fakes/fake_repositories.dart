@@ -3,6 +3,7 @@ import '../../core/money/money.dart';
 import '../../domain/models/backup.dart';
 import '../../domain/models/pos_unit.dart';
 import '../../core/money/quantity.dart';
+import '../../core/security/pin_hash.dart';
 import '../../domain/models/stock_item.dart';
 import '../../domain/models/stock_level.dart';
 import '../../domain/models/catalog.dart';
@@ -473,7 +474,71 @@ class FakeTablesRepository implements TablesRepository {
   }
 }
 
+/// Admin Mode passwords, in memory and in plain text, keyed by username.
+///
+/// **Shared by [FakeSessionRepository] and [FakeStaffDirectoryRepository]**,
+/// because in the real build they are one column read by one and written by
+/// the other: a password the staff pane cleared must stop the door accepting
+/// it, and one the door set must show on the pane. Two separate fakes that
+/// each kept their own would let a test pass that the product fails.
+///
+/// Plain text because nothing is stored. Starts empty, as every real install
+/// does on the day migration 54 runs: the first Admin Mode entry is by PIN.
+class FakePasswords {
+  final _byUsername = <String, ({PosStaff staff, String password})>{};
+
+  static String _key(String username) => username.trim().toLowerCase();
+
+  /// The password [username] chose, for a test that needs to type it again.
+  String? passwordOf(String username) => _byUsername[_key(username)]?.password;
+
+  bool hasPassword(int staffId) => holder(staffId) != null;
+
+  /// Who set the password held against [staffId], as the door knew them.
+  PosStaff? holder(int staffId) {
+    for (final entry in _byUsername.values) {
+      if (entry.staff.id == staffId) return entry.staff;
+    }
+    return null;
+  }
+
+  Set<int> get staffIds => {
+    for (final entry in _byUsername.values) entry.staff.id,
+  };
+
+  PosStaff? match(String username, String password) {
+    final entry = _byUsername[_key(username)];
+    return entry != null && entry.password == password ? entry.staff : null;
+  }
+
+  void set(PosStaff staff, String password) {
+    final username = staff.username;
+    if (username == null) return;
+    _byUsername[_key(username)] = (staff: staff, password: password);
+  }
+
+  /// The person whose password was cleared, or null when there was none.
+  PosStaff? clearById(int staffId) {
+    for (final MapEntry(:key, :value) in _byUsername.entries.toList()) {
+      if (value.staff.id == staffId) {
+        _byUsername.remove(key);
+        return value.staff;
+      }
+    }
+    return null;
+  }
+
+  PosStaff? clearByUsername(String username) =>
+      _byUsername.remove(_key(username))?.staff;
+}
+
 class FakeSessionRepository implements SessionRepository {
+  FakeSessionRepository({FakePasswords? passwords})
+    : passwords = passwords ?? FakePasswords();
+
+  /// Admin Mode's passwords — see [FakePasswords] for why this is shared.
+  final FakePasswords passwords;
+
   /// A real cashier, on the role a real cashier would be on.
   ///
   /// This used to be a person holding `pos.operate` and nothing else, which was
@@ -557,6 +622,12 @@ class FakeSessionRepository implements SessionRepository {
       _ => null,
     };
   }
+
+  @override
+  Future<PosStaff?> signInWithPassword({
+    required String username,
+    required String password,
+  }) async => passwords.match(username, password);
 }
 
 /// Holds one shift in memory. Enough for a widget test to walk open → close
@@ -1082,9 +1153,16 @@ class FakeRolesRepository implements RolesRepository {
 }
 
 class FakeStaffDirectoryRepository implements StaffDirectoryRepository {
-  FakeStaffDirectoryRepository({required this.roles});
+  FakeStaffDirectoryRepository({
+    required this.roles,
+    FakePasswords? passwords,
+  }) : passwords = passwords ?? FakePasswords();
 
   final FakeRolesRepository roles;
+
+  /// Admin Mode's passwords — the same book [FakeSessionRepository] reads,
+  /// when the harness hands both one. See [FakePasswords].
+  final FakePasswords passwords;
 
   PosRole _role(String code) => roles.roles.firstWhere((r) => r.code == code);
 
@@ -1262,6 +1340,51 @@ class FakeStaffDirectoryRepository implements StaffDirectoryRepository {
     pins[pin] = staffId;
     return const AdminResult.done(null);
   }
+
+  @override
+  Future<Set<int>> withPassword() async => passwords.staffIds;
+
+  @override
+  Future<AdminResult<void>> setOwnPassword({
+    required PosStaff by,
+    required String password,
+  }) async {
+    // The same rule as the Postgres repository, which asks it again before
+    // it writes.
+    if (PasswordPolicy.validate(password, username: by.username)
+        case final problem?) {
+      return AdminResult.refused(PasswordRejected(problem));
+    }
+    passwords.set(by, password);
+    return const AdminResult.done(null);
+  }
+
+  @override
+  Future<AdminResult<void>> clearPassword({
+    required PosStaff by,
+    required int staffId,
+  }) async {
+    if (!Authorization.check(by, PosCapability.staffManage).isAllowed) {
+      return const AdminResult.refused(NotPermitted(PosCapability.staffManage));
+    }
+    // The owner's is a technician's to clear — see [OwnerPasswordIsTheirs].
+    // Asked of this directory's row, falling back to the person the
+    // password was set by: the session fake's people are not all on it.
+    final index = staff.indexWhere((person) => person.id == staffId);
+    final role = index >= 0
+        ? staff[index].role
+        : passwords.holder(staffId)?.role;
+    if (role?.code == SystemRoles.ownerCode) {
+      return const AdminResult.refused(OwnerPasswordIsTheirs());
+    }
+    passwords.clearById(staffId);
+    return const AdminResult.done(null);
+  }
+
+  @override
+  Future<AdminResult<String?>> clearPasswordAsTechnician({
+    required String username,
+  }) async => AdminResult.done(passwords.clearByUsername(username)?.name);
 
   @override
   Future<AdminResult<PosStaff>> setGrants({

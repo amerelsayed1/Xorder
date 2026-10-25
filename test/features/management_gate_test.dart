@@ -74,27 +74,18 @@ void main() {
     return container;
   }
 
-  /// The door: a username and PIN. Amer is the owner, and his PIN in the fake
-  /// session repository is 4321; the harness keeps the back-office database
-  /// password as the setup wizard would.
+  /// The door: a username and a password — or, the first time, the PIN and
+  /// then a password chosen on the step after it (see [enterAdminMode]).
+  /// Amer is the owner, and his PIN in the fake session repository is 4321;
+  /// the harness keeps the back-office database password as the setup wizard
+  /// would.
   Future<void> enter(
     WidgetTester tester,
     String username, {
     String pin = '4321',
-  }) async {
-    await tester.enterText(
-      find.descendant(
-        of: find.byKey(const Key('admin-username')),
-        matching: find.byType(TextField),
-      ),
-      username,
-    );
-    await tester.enterText(find.byKey(const Key('admin-pin')), pin);
-    await tester.tap(find.byKey(const Key('admin-open')));
-    await tester.pumpAndSettle();
-  }
+  }) => enterAdminMode(tester, username: username, pin: pin);
 
-  testWidgets('asks for a username and PIN before it opens', (
+  testWidgets('asks for a username and password before it opens', (
     tester,
   ) async {
     // Nothing of the back office renders before somebody is in — not even for
@@ -119,7 +110,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('admin-username')), findsOneWidget);
-    expect(find.byKey(const Key('admin-pin')), findsOneWidget);
+    expect(find.byKey(const Key('admin-password')), findsOneWidget);
     // Typed, not tapped: a PIN pad on a back-office door is a PIN anybody
     // behind the counter can read off the screen.
     expect(find.byType(PinPad), findsNothing);
@@ -154,7 +145,7 @@ void main() {
     await open(tester, onClose: () => closed++);
 
     // A username and a PIN are nothing to lose: one key, not two.
-    await tester.tap(find.byKey(const Key('admin-pin')));
+    await tester.tap(find.byKey(const Key('admin-password')));
     await tester.pump();
     await tester.sendKeyEvent(LogicalKeyboardKey.escape);
     await tester.pumpAndSettle();
@@ -274,7 +265,7 @@ void main() {
 
     await enter(tester, 'rana', pin: '1234'); // Rana, a cashier.
 
-    expect(find.text('That username and PIN cannot open Admin Mode. 4 attempts left.'), findsOneWidget);
+    expect(find.text('That username and password cannot open Admin Mode. 4 attempts left.'), findsOneWidget);
     expect(find.text('Rana A.'), findsNothing, reason: 'the staff list must not render');
     expect(
       container.read(adminSessionProvider),
@@ -289,13 +280,13 @@ void main() {
     await enter(tester, 'amer', pin: '0000');
 
     expect(
-      find.text('That username and PIN cannot open Admin Mode. 4 attempts left.'),
+      find.text('That username and password cannot open Admin Mode. 4 attempts left.'),
       findsOneWidget,
     );
     expect(container.read(adminSessionProvider), isNull);
     expect(
       tester
-          .widget<TextField>(find.byKey(const Key('admin-pin')))
+          .widget<TextField>(find.byKey(const Key('admin-password')))
           .controller!
           .text,
       isEmpty,
@@ -308,7 +299,248 @@ void main() {
     // into a way of finding out who may pass it.
     await open(tester);
     await enter(tester, 'nobody');
-    expect(find.text('That username and PIN cannot open Admin Mode. 4 attempts left.'), findsOneWidget);
+    expect(find.text('That username and password cannot open Admin Mode. 4 attempts left.'), findsOneWidget);
+  });
+
+  group('the Admin Mode password', () {
+    Future<void> typeAtDoor(
+      WidgetTester tester,
+      String username,
+      String secret,
+    ) async {
+      await tester.enterText(
+        find.descendant(
+          of: find.byKey(const Key('admin-username')),
+          matching: find.byType(TextField),
+        ),
+        username,
+      );
+      await tester.enterText(find.byKey(const Key('admin-password')), secret);
+      await tester.tap(find.byKey(const Key('admin-open')));
+      await tester.pumpAndSettle();
+    }
+
+    Future<void> choose(
+      WidgetTester tester,
+      String password, [
+      String? again,
+    ]) async {
+      await tester.enterText(
+        find.byKey(const Key('admin-new-password')),
+        password,
+      );
+      await tester.enterText(
+        find.byKey(const Key('admin-confirm-password')),
+        again ?? password,
+      );
+      await tester.tap(find.byKey(const Key('admin-set-password')));
+      await tester.pumpAndSettle();
+    }
+
+    String? error(WidgetTester tester) {
+      final shown = find.byKey(const Key('admin-error'));
+      return shown.evaluate().isEmpty ? null : tester.widget<Text>(shown).data;
+    }
+
+    testWidgets('the first entry is by PIN, and nothing opens until a password '
+        'is chosen', (tester) async {
+      final container = await open(tester);
+      await typeAtDoor(tester, 'amer', '4321');
+
+      expect(find.byKey(const Key('admin-set-password-title')), findsOneWidget);
+      expect(find.text('Add somebody'), findsNothing);
+      expect(container.read(adminSessionProvider), isNull);
+      expect(
+        container.read(adminDbCredentialProvider),
+        isNull,
+        reason: 'the PIN step holds nothing the back office writes with',
+      );
+
+      // Back is the only other way, and it spends the PIN step.
+      await tester.tap(find.byKey(const Key('admin-back')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('admin-open')), findsOneWidget);
+      expect(container.read(adminSessionProvider), isNull);
+    });
+
+    testWidgets('a short password is refused with the rule, in numbers',
+        (tester) async {
+      final container = await open(tester);
+      await typeAtDoor(tester, 'amer', '4321');
+
+      await choose(tester, 'too-short'); // Nine characters.
+      expect(error(tester), 'A password needs at least 10 characters.');
+      expect(container.read(adminSessionProvider), isNull);
+
+      // Ten Arabic letters are ten characters: counted as typed, not in bytes.
+      await choose(tester, 'كلمةسرطويل');
+      expect(container.read(adminSessionProvider)!.staff.username, 'amer');
+    });
+
+    testWidgets('two different entries are refused, and nothing opens',
+        (tester) async {
+      final container = await open(tester);
+      await typeAtDoor(tester, 'amer', '4321');
+
+      await choose(tester, testAdminPassword, 'correct horse batteries');
+      expect(error(tester), 'The two passwords are not the same.');
+      expect(container.read(adminSessionProvider), isNull);
+    });
+
+    testWidgets('once chosen, the password opens it and the PIN no longer does',
+        (tester) async {
+      final container = await open(tester);
+      await enter(tester, 'amer');
+      expect(container.read(adminSessionProvider), isNotNull);
+
+      // Out, and back to the door on the same till — the same book of
+      // passwords, which a new harness would not have.
+      await container
+          .read(adminSessionProvider.notifier)
+          .end(AdminSessionEnd.exited);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('admin-open')), findsOneWidget);
+
+      await typeAtDoor(tester, 'amer', '4321');
+      final pinRefusal = error(tester);
+      expect(
+        pinRefusal,
+        'That username and password cannot open Admin Mode. 4 attempts left.',
+        reason: 'a PIN for a password account is a wrong guess, nothing more',
+      );
+      expect(find.byKey(const Key('admin-set-password-title')), findsNothing);
+      expect(container.read(adminSessionProvider), isNull);
+
+      await typeAtDoor(tester, 'amer', testAdminPassword);
+      expect(container.read(adminSessionProvider)!.staff.username, 'amer');
+    });
+
+    testWidgets('a wrong password and an unknown username read the same',
+        (tester) async {
+      final container = await open(tester);
+      final directory =
+          container.read(staffDirectoryRepositoryProvider)
+              as FakeStaffDirectoryRepository;
+      directory.passwords.set(
+        const PosStaff(
+          id: 1,
+          name: 'Amer M.',
+          username: 'amer',
+          role: FakeSessionRepository.owner,
+        ),
+        testAdminPassword,
+      );
+
+      await typeAtDoor(tester, 'amer', 'not the password at all');
+      final wrong = error(tester);
+      await typeAtDoor(tester, 'nobody', 'not the password at all');
+      final unknown = error(tester);
+
+      expect(wrong, startsWith(const EnStrings().adminSignInRefused));
+      // Same words; only the count of tries left moves, and it moves for both.
+      expect(
+        wrong!.replaceAll(RegExp('[0-9]'), ''),
+        unknown!.replaceAll(RegExp('[0-9]'), ''),
+      );
+
+      await typeAtDoor(tester, 'amer', testAdminPassword);
+      expect(container.read(adminSessionProvider)!.staff.username, 'amer');
+    });
+
+    testWidgets("the technician's reset at the door clears the owner's, on "
+        'the database password typed there', (tester) async {
+      final container = await open(tester);
+      final directory =
+          container.read(staffDirectoryRepositoryProvider)
+              as FakeStaffDirectoryRepository;
+      directory.passwords.set(
+        const PosStaff(
+          id: 1,
+          name: 'Amer M.',
+          username: 'amer',
+          role: FakeSessionRepository.owner,
+        ),
+        testAdminPassword,
+      );
+
+      await tester.tap(find.byKey(const Key('admin-technician-reset')));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.descendant(
+          of: find.byKey(const Key('technician-username')),
+          matching: find.byType(TextField),
+        ),
+        'amer',
+      );
+
+      // A wrong one first: refused, and nothing cleared.
+      await tester.enterText(
+        find.byKey(const Key('technician-db-password')),
+        'not-it',
+      );
+      await tester.tap(find.byKey(const Key('technician-clear')));
+      await tester.pumpAndSettle();
+      expect(
+        find.text(const EnStrings().adminDatabasePasswordRefused),
+        findsOneWidget,
+      );
+      expect(directory.passwords.passwordOf('amer'), testAdminPassword);
+
+      await tester.enterText(
+        find.byKey(const Key('technician-db-password')),
+        'test-credential',
+      );
+      await tester.tap(find.byKey(const Key('technician-clear')));
+      await tester.pumpAndSettle();
+      expect(
+        find.text(const EnStrings().technicianResetDone('Amer M.')),
+        findsOneWidget,
+      );
+      expect(directory.passwords.passwordOf('amer'), isNull);
+      expect(container.read(adminSessionProvider), isNull, reason: 'not in');
+
+      // And the owner is back on the PIN, once.
+      await tester.tap(find.byKey(const Key('technician-close')));
+      await tester.pumpAndSettle();
+      await typeAtDoor(tester, 'amer', '4321');
+      expect(find.byKey(const Key('admin-set-password-title')), findsOneWidget);
+    });
+
+    testWidgets('a manager can clear somebody\'s password from Staff, never the '
+        'owner\'s', (tester) async {
+      final container = await open(tester);
+      await enter(tester, 'amer'); // Chooses Amer's password on the way in.
+
+      final directory =
+          container.read(staffDirectoryRepositoryProvider)
+              as FakeStaffDirectoryRepository;
+      final rana = directory.staff.firstWhere((p) => p.username == 'rana');
+      directory.passwords.set(rana, 'rana-password-1');
+      container.invalidate(staffWithPasswordProvider);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('password-set-1')), findsOneWidget);
+      expect(
+        find.byKey(const Key('clear-password-1')),
+        findsNothing,
+        reason: "the owner's is a technician's to clear",
+      );
+
+      await tester.tap(find.byKey(Key('clear-password-${rana.id}')));
+      await tester.pumpAndSettle();
+      expect(find.text("Clear Rana A.'s Admin Mode password?"), findsOneWidget);
+      await tester.tap(
+        find.descendant(
+          of: find.byType(Dialog),
+          matching: find.text('Clear password'),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(directory.passwords.passwordOf('rana'), isNull);
+      expect(find.byKey(Key('clear-password-${rana.id}')), findsNothing);
+      expect(directory.passwords.passwordOf('amer'), testAdminPassword);
+    });
   });
 
   testWidgets('asked for nothing, it opens on Home', (tester) async {
@@ -817,7 +1049,7 @@ void main() {
         ),
         'amer',
       );
-      await tester.enterText(find.byKey(const Key('admin-pin')), '4321');
+      await tester.enterText(find.byKey(const Key('admin-password')), '4321');
       await tester.tap(find.byKey(const Key('admin-open')));
       // One frame, not settle: the database has not answered yet.
       await tester.pump();
@@ -838,6 +1070,10 @@ void main() {
 
       door.answer.complete(null);
       await tester.pumpAndSettle();
+      // Amer has no password yet: the PIN got him to the step that asks for
+      // one, and the back office opens only after it.
+      expect(find.text('Add somebody'), findsNothing);
+      await completeAdminPasswordStep(tester);
 
       expect(find.text('Add somebody'), findsOneWidget);
       expect(door.container.read(adminDbCredentialProvider), 'test-credential');

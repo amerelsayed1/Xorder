@@ -64,6 +64,12 @@ class UnconfiguredSessionRepository implements SessionRepository {
 
   @override
   Future<PosStaff?> signIn(String pin) async => null;
+
+  @override
+  Future<PosStaff?> signInWithPassword({
+    required String username,
+    required String password,
+  }) async => null;
 }
 
 /// Refuses to open a shift, because there is nowhere to record one.
@@ -295,6 +301,26 @@ class UnconfiguredStaffDirectoryRepository implements StaffDirectoryRepository {
     required PosStaff by,
     required int staffId,
     required String pin,
+  }) async => const AdminResult.refused(NoDatabaseConfigured());
+
+  @override
+  Future<Set<int>> withPassword() async => const {};
+
+  @override
+  Future<AdminResult<void>> setOwnPassword({
+    required PosStaff by,
+    required String password,
+  }) async => const AdminResult.refused(NoDatabaseConfigured());
+
+  @override
+  Future<AdminResult<void>> clearPassword({
+    required PosStaff by,
+    required int staffId,
+  }) async => const AdminResult.refused(NoDatabaseConfigured());
+
+  @override
+  Future<AdminResult<String?>> clearPasswordAsTechnician({
+    required String username,
   }) async => const AdminResult.refused(NoDatabaseConfigured());
 
   @override

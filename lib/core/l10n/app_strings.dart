@@ -1773,8 +1773,9 @@ sealed class AppStrings {
   String get openAdminMode;
 
   /// One refusal for every way of being wrong — an unknown username, a wrong
-  /// PIN, and the right PIN from somebody without `admin.enter` all read the
-  /// same, so the form is no way of finding out who may get in.
+  /// password, a PIN for an account that has a password, and the right
+  /// secret from somebody without `admin.enter` all read the same, so the
+  /// form is no way of finding out who may get in.
   String get adminSignInRefused;
 
   /// The same refusal, and how many more tries this terminal allows before
@@ -1788,6 +1789,46 @@ sealed class AppStrings {
   /// got them in: installs from before Admin Mode never kept this password.
   String get adminDatabasePasswordNeeded;
   String get adminDatabasePasswordRefused;
+
+  // ── Admin Mode password (ADR-006b slice D) ────────────────────────────
+  /// The door's secret field. A password — or, the one time somebody has
+  /// none yet, their PIN; [adminPasswordFirstTime] says so under it.
+  String get adminPasswordLabel;
+  String get adminPasswordFirstTime;
+
+  /// The step a PIN-only account is held at until it chooses a password.
+  String get adminSetPasswordTitle;
+  String adminSetPasswordHelp(int minLength);
+  String get adminNewPassword;
+  String get adminConfirmPassword;
+  String get adminSavePassword;
+  String get adminPasswordStepExpired;
+
+  /// Why a new password was refused — see `AdminText.passwordProblem`.
+  String get passwordSameAsPin;
+  String passwordTooShort(int minLength);
+  String passwordTooLong(int maxLength);
+  String get passwordSameAsUsername;
+  String get passwordsDoNotMatch;
+
+  /// The technician's way back in when the owner's password is forgotten.
+  String get technicianResetLink;
+  String get technicianResetTitle;
+  String get technicianResetHelp;
+  String get technicianResetAction;
+  String technicianResetDone(String name);
+  String get technicianResetNobody;
+
+  /// Management › Staff: taking somebody's password away.
+  String get clearPasswordAction;
+  String clearPasswordTitle(String name);
+  String get clearPasswordConsequence;
+  String get keepPassword;
+  String get passwordSetLabel;
+  String get refusalOwnerPasswordIsTheirs;
+  String get actStaffPasswordSet;
+  String get actStaffPasswordCleared;
+  // ── end of the Admin Mode password block ──────────────────────────────
   String adminLockedAfter(int minutes);
   String get adminModeSettingsHint;
   String get adminLockAfter;
@@ -6943,15 +6984,15 @@ final class EnStrings extends AppStrings {
   String get adminSignInTitle => 'Admin Mode';
   @override
   String adminSignInHelp(int minutes) =>
-      'Your username and PIN. Admin Mode locks itself after $minutes minutes '
-      'without a tap or a key press.';
+      'Your username and password. Admin Mode locks itself after $minutes '
+      'minutes without a tap or a key press.';
   @override
   String get yourPin => 'Your PIN';
   @override
   String get openAdminMode => 'Open Admin Mode';
   @override
   String get adminSignInRefused =>
-      'That username and PIN cannot open Admin Mode.';
+      'That username and password cannot open Admin Mode.';
   @override
   String adminSignInAttemptsLeft(int attempts) => attempts == 1
       ? '$adminSignInRefused One attempt left.'
@@ -6971,13 +7012,87 @@ final class EnStrings extends AppStrings {
   String get adminDatabasePasswordRefused =>
       'PostgreSQL did not accept that back-office password.';
   @override
+  String get adminPasswordLabel => 'Your password';
+  @override
+  String get adminPasswordFirstTime =>
+      'First time in Admin Mode? Type your PIN here — you will choose a '
+      'password before it opens.';
+  @override
+  String get adminSetPasswordTitle => 'Choose your Admin Mode password';
+  @override
+  String adminSetPasswordHelp(int minLength) =>
+      'Your PIN got you this far, once. From now on Admin Mode asks for a '
+      'password: at least $minLength characters, in any language. Your PIN '
+      'still works everywhere else at the till.';
+  @override
+  String get adminNewPassword => 'New password';
+  @override
+  String get adminConfirmPassword => 'The same password again';
+  @override
+  String get adminSavePassword => 'Save and open Admin Mode';
+  @override
+  String get adminPasswordStepExpired =>
+      'That took too long. Sign in again with your PIN.';
+  @override
+  String get passwordSameAsPin => 'A password cannot be your PIN.';
+  @override
+  String passwordTooShort(int minLength) =>
+      'A password needs at least $minLength characters.';
+  @override
+  String passwordTooLong(int maxLength) =>
+      'A password can be at most $maxLength characters.';
+  @override
+  String get passwordSameAsUsername => 'A password cannot be your username.';
+  @override
+  String get passwordsDoNotMatch => 'The two passwords are not the same.';
+  @override
+  String get technicianResetLink => 'Forgotten password? Technician reset';
+  @override
+  String get technicianResetTitle => 'Technician reset';
+  @override
+  String get technicianResetHelp =>
+      "Clears one person's Admin Mode password, the owner's included. It "
+      'needs the back-office database password typed here — the one kept on '
+      'this till is not used. They then open Admin Mode with their PIN once '
+      'and choose a new password.';
+  @override
+  String get technicianResetAction => 'Clear the password';
+  @override
+  String technicianResetDone(String name) =>
+      "$name's password is cleared. They can open Admin Mode with their PIN "
+      'and choose a new one.';
+  @override
+  String get technicianResetNobody =>
+      'Nobody active with that username has a password to clear.';
+  @override
+  String get clearPasswordAction => 'Clear password';
+  @override
+  String clearPasswordTitle(String name) =>
+      "Clear $name's Admin Mode password?";
+  @override
+  String get clearPasswordConsequence =>
+      'Next time they open Admin Mode with their PIN, and must choose a new '
+      'password before it opens.';
+  @override
+  String get keepPassword => 'Keep password';
+  @override
+  String get passwordSetLabel => 'Admin Mode password set';
+  @override
+  String get refusalOwnerPasswordIsTheirs =>
+      "Only a technician can clear the owner's password — from the Admin Mode "
+      'sign-in, with the back-office database password.';
+  @override
+  String get actStaffPasswordSet => 'Chose their Admin Mode password';
+  @override
+  String get actStaffPasswordCleared => 'Cleared an Admin Mode password';
+  @override
   String adminLockedAfter(int minutes) =>
       'Admin Mode locked itself after $minutes minutes without activity. Sign '
       'in again to carry on.';
   @override
   String get adminModeSettingsHint =>
       'How this till lets somebody into Admin Mode. The shortcut is only a '
-      'hidden way in — the username and PIN are the lock.';
+      'hidden way in — the username and password are the lock.';
   @override
   String get adminLockAfter => 'Lock after';
   @override
@@ -12024,15 +12139,15 @@ final class ArStrings extends AppStrings {
   String get adminSignInTitle => 'وضع المسؤول';
   @override
   String adminSignInHelp(int minutes) =>
-      'اسم المستخدم والكود الخاص بك. يُقفل وضع المسؤول نفسه بعد $minutes '
-      'دقيقة دون لمس أو ضغط مفتاح.';
+      'اسم المستخدم وكلمة المرور الخاصة بك. يُقفل وضع المسؤول نفسه بعد '
+      '$minutes دقيقة دون لمس أو ضغط مفتاح.';
   @override
   String get yourPin => 'الكود الخاص بك';
   @override
   String get openAdminMode => 'فتح وضع المسؤول';
   @override
   String get adminSignInRefused =>
-      'اسم المستخدم والكود هذان لا يفتحان وضع المسؤول.';
+      'اسم المستخدم وكلمة المرور هذان لا يفتحان وضع المسؤول.';
   @override
   String adminSignInAttemptsLeft(int attempts) => attempts == 1
       ? '$adminSignInRefused بقيت محاولة واحدة.'
@@ -12051,13 +12166,89 @@ final class ArStrings extends AppStrings {
   String get adminDatabasePasswordRefused =>
       'لم تقبل PostgreSQL كلمة مرور الإدارة هذه.';
   @override
+  String get adminPasswordLabel => 'كلمة المرور الخاصة بك';
+  @override
+  String get adminPasswordFirstTime =>
+      'أول مرة في وضع المسؤول؟ اكتب الكود الخاص بك هنا — وستختار كلمة مرور '
+      'قبل أن يُفتح.';
+  @override
+  String get adminSetPasswordTitle => 'اختر كلمة مرور وضع المسؤول';
+  @override
+  String adminSetPasswordHelp(int minLength) =>
+      'أوصلك الكود الخاص بك إلى هنا مرة واحدة. من الآن يطلب وضع المسؤول كلمة '
+      'مرور: $minLength أحرف على الأقل، بأي لغة. ويبقى الكود صالحاً في كل مكان '
+      'آخر على الكاشير.';
+  @override
+  String get adminNewPassword => 'كلمة المرور الجديدة';
+  @override
+  String get adminConfirmPassword => 'كلمة المرور نفسها مرة أخرى';
+  @override
+  String get adminSavePassword => 'حفظ وفتح وضع المسؤول';
+  @override
+  String get adminPasswordStepExpired =>
+      'انتهت المهلة. سجّل الدخول مرة أخرى بالكود الخاص بك.';
+  @override
+  String get passwordSameAsPin =>
+      'لا يمكن أن تكون كلمة المرور هي الكود الخاص بك.';
+  @override
+  String passwordTooShort(int minLength) =>
+      'يجب أن تتكون كلمة المرور من $minLength أحرف على الأقل.';
+  @override
+  String passwordTooLong(int maxLength) =>
+      'لا يمكن أن تزيد كلمة المرور على $maxLength حرفاً.';
+  @override
+  String get passwordSameAsUsername =>
+      'لا يمكن أن تكون كلمة المرور هي اسم المستخدم.';
+  @override
+  String get passwordsDoNotMatch => 'كلمتا المرور غير متطابقتين.';
+  @override
+  String get technicianResetLink => 'نسيت كلمة المرور؟ إعادة تعيين بواسطة الفني';
+  @override
+  String get technicianResetTitle => 'إعادة تعيين بواسطة الفني';
+  @override
+  String get technicianResetHelp =>
+      'يمسح كلمة مرور وضع المسؤول لشخص واحد، بما في ذلك المالك. يحتاج إلى '
+      'كلمة مرور قاعدة بيانات الإدارة مكتوبة هنا — لا تُستخدم الكلمة المحفوظة '
+      'على هذا الجهاز. بعد ذلك يفتح الشخص وضع المسؤول بالكود الخاص به مرة '
+      'واحدة ويختار كلمة مرور جديدة.';
+  @override
+  String get technicianResetAction => 'مسح كلمة المرور';
+  @override
+  String technicianResetDone(String name) =>
+      'تم مسح كلمة مرور $name. يمكنه فتح وضع المسؤول بالكود الخاص به واختيار '
+      'كلمة مرور جديدة.';
+  @override
+  String get technicianResetNobody =>
+      'لا يوجد شخص نشط بهذا الاسم لديه كلمة مرور لمسحها.';
+  @override
+  String get clearPasswordAction => 'مسح كلمة المرور';
+  @override
+  String clearPasswordTitle(String name) =>
+      'مسح كلمة مرور وضع المسؤول الخاصة بـ $name؟';
+  @override
+  String get clearPasswordConsequence =>
+      'في المرة القادمة يفتح وضع المسؤول بالكود الخاص به، ويجب أن يختار كلمة '
+      'مرور جديدة قبل أن يُفتح.';
+  @override
+  String get keepPassword => 'الإبقاء على كلمة المرور';
+  @override
+  String get passwordSetLabel => 'لديه كلمة مرور لوضع المسؤول';
+  @override
+  String get refusalOwnerPasswordIsTheirs =>
+      'لا يمسح كلمة مرور المالك إلا فني — من شاشة الدخول إلى وضع المسؤول، '
+      'باستخدام كلمة مرور قاعدة بيانات الإدارة.';
+  @override
+  String get actStaffPasswordSet => 'اختار كلمة مرور وضع المسؤول';
+  @override
+  String get actStaffPasswordCleared => 'مسح كلمة مرور وضع المسؤول';
+  @override
   String adminLockedAfter(int minutes) =>
       'أقفل وضع المسؤول نفسه بعد $minutes دقيقة دون نشاط. سجّل الدخول مرة '
       'أخرى للمتابعة.';
   @override
   String get adminModeSettingsHint =>
       'كيف يسمح هذا الجهاز بالدخول إلى وضع المسؤول. الاختصار مجرد مدخل مخفي — '
-      'اسم المستخدم والكود هما القفل.';
+      'اسم المستخدم وكلمة المرور هما القفل.';
   @override
   String get adminLockAfter => 'الإقفال بعد';
   @override

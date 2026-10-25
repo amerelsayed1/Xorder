@@ -846,6 +846,22 @@ abstract interface class SessionRepository {
   /// PIN. Deliberately one answer for both, so this cannot be used to find out
   /// which usernames exist.
   Future<PosStaff?> signInAs({required String username, required String pin});
+
+  /// Identify somebody by NAME and Admin Mode PASSWORD (ADR-006b slice D).
+  ///
+  /// Only Admin Mode's door asks this; every till door stays on [signInAs].
+  /// Null — one answer for all of them — when the username names nobody
+  /// active here, when that person has set no password, and when the
+  /// password is wrong. The person comes back with their extra roles and
+  /// overrides, as [signInAs] returns them, because the door then asks
+  /// whether they hold `admin.enter` and a DENY override must count.
+  ///
+  /// Verified in Dart against the stored hash, which the till role can read;
+  /// the database-side check is slice E.
+  Future<PosStaff?> signInWithPassword({
+    required String username,
+    required String password,
+  });
 }
 
 /// Opening and closing a till session, and counting the drawer.
