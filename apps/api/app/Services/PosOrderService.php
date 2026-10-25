@@ -7,6 +7,7 @@ use App\Enums\TenantCapability;
 use App\Enums\UserStatus;
 use App\Exceptions\PosApiException;
 use App\Models\Branch;
+use App\Models\Customer;
 use App\Models\DiningTable;
 use App\Models\Order;
 use App\Models\OrderItem;
@@ -65,6 +66,11 @@ class PosOrderService
             // 404, not 403 — a foreign branch id is invisible, not forbidden.
             throw new PosApiException('BRANCH_NOT_IN_TENANT', 404);
         }
+
+        // A customer on the ticket must be this restaurant's own. After the
+        // replay short-circuit (a stored order is returned as stored, never
+        // re-judged) and before anything is written. A walk-in carries none.
+        $this->assertCustomerInTenant($terminal, $data['customer_id'] ?? null);
 
         // Two vocabularies, one meaning. The onboarding wizard and the plan
         // features write `pickup`; the POS sends `takeaway`. They are the same
@@ -527,6 +533,29 @@ class PosOrderService
             throw new PosApiException('VALIDATION_FAILED', 422, [
                 'errors' => ['payments' => ['Unknown tender type.']],
             ]);
+        }
+    }
+
+    /**
+     * `customer_id` is the platform's own id (the till uploads the customer
+     * first). Looked up against the TERMINAL's restaurant explicitly rather
+     * than through the global scope, so the answer does not depend on which
+     * tenant the request context happens to have pinned. A customer of another
+     * restaurant and one that never existed get the same answer.
+     */
+    private function assertCustomerInTenant(PosTerminal $terminal, mixed $customerId): void
+    {
+        if ($customerId === null) {
+            return;
+        }
+
+        $owned = Customer::withoutGlobalScopes()
+            ->where('restaurant_id', $terminal->restaurant_id)
+            ->whereKey((int) $customerId)
+            ->exists();
+
+        if (! $owned) {
+            throw new PosApiException('CUSTOMER_NOT_FOUND', 422);
         }
     }
 
