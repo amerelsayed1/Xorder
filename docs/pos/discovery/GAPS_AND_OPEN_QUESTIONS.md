@@ -117,10 +117,10 @@ cloud back office, licence server URL editability).
 
 | ID | Gap / risk | Status |
 |---|---|---|
-| R-SALE-1 | Shift id captured with `ref.read` at provider build and not invalidated on shift open/close → sales/refunds may carry stale or NULL shift id and drop out of Z report / expected cash (runtime unverified) | Suspected defect |
+| R-SALE-1 | Shift id captured with `ref.read` at provider build and not invalidated on shift open/close → sales/refunds may carry stale or NULL shift id and drop out of Z report / expected cash (runtime unverified) | Suspected defect — **Fixed on `main` (a1085cc, 2026-10-17 audit) via `openShiftIdFor`.** |
 | R-SALE-2 | Parked tickets restored after restart lose tax mode, tax groups, service charges and customer; `TaxConfig ==` ignores those fields | Suspected defect |
 | R-SALE-3 | `TicketEngine.setLineNote` drops a line's combo / free-allowance snapshot | Suspected defect |
-| R-SALE-4 | Business day is never opened by the app (no caller of `BusinessDayRepository.open`); the day-close blocker for unpaid orders is always 0 | Gap |
+| R-SALE-4 | Business day is never opened by the app (no caller of `BusinessDayRepository.open`); the day-close blocker for unpaid orders is always 0 | Gap — **Addressed on `main` (9784def: the business day opens with the first shift); re-verify.** |
 | R-SALE-5 | No persisted open-order lifecycle: abandoned/cleared unsent tickets leave no record (audit/loss-prevention gap) | Gap |
 | R-SALE-6 | Order upload carries no customer reference; sale-to-customer link stays local | Gap |
 | R-SALE-7 | Refunds and voids do not restock; no recipes → inventory drift | Gap |
