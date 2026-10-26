@@ -15,7 +15,7 @@ enum TableBatchProblem {
   /// past [TableBatch.maxNumber].
   start,
 
-  /// A table seats at least one person.
+  /// A stated seat count is less than one. Not stating one is allowed.
   seats,
 
   /// The prefix is longer than [TableBatch.maxPrefix] characters.
@@ -62,6 +62,8 @@ abstract final class TableBatch {
     required String prefix,
     required int? start,
     required int? quantity,
+    // Null is "not stated", which is allowed; a stated number must be 1 or more
+    // (the form passes 0 for text that is not a number).
     required int? seats,
     Set<String> existing = const {},
   }) {
@@ -74,7 +76,7 @@ abstract final class TableBatch {
     if (start == null || start < 1 || start + quantity - 1 > maxNumber) {
       return const TableBatchPlan(labels: [], problem: TableBatchProblem.start);
     }
-    if (seats == null || seats < 1) {
+    if (seats != null && seats < 1) {
       return const TableBatchPlan(labels: [], problem: TableBatchProblem.seats);
     }
     if (prefix.trim().length > maxPrefix) {

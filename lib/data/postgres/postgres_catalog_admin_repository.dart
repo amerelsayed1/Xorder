@@ -1117,7 +1117,7 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
         CatalogInvalid('A table needs a label.'),
       );
     }
-    if (tables.any((t) => t.seats < 1)) {
+    if (tables.any((t) => t.seats != null && t.seats! < 1)) {
       return const AdminResult.refused(
         CatalogInvalid('A table seats at least one person.'),
       );
@@ -1202,7 +1202,7 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
         CatalogInvalid('A table needs a label.'),
       );
     }
-    if (table.seats < 1) {
+    if (table.seats != null && table.seats! < 1) {
       return const AdminResult.refused(
         CatalogInvalid('A table seats at least one person.'),
       );
@@ -1334,7 +1334,7 @@ class PostgresCatalogAdminRepository implements CatalogAdminRepository {
   DiningTable _tableFrom(ResultRow row) => DiningTable(
     id: row[0]! as int,
     label: row[1]! as String,
-    seats: row[2]! as int,
+    seats: row[2] as int?,
     areaName: row[3] as String?,
   );
 

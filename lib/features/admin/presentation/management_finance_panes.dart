@@ -816,11 +816,24 @@ class _LegendRow extends StatelessWidget {
           amount,
           weight: strong ? FontWeight.w600 : FontWeight.w400,
         ),
+        // A plain mono Text, not `_code`: MonoCode pins itself to the top of
+        // its box, which lifted the percent above the amount's baseline and
+        // butted it against the amount in Arabic.
         SizedBox(
           width: 88,
           child: Align(
             alignment: AlignmentDirectional.centerEnd,
-            child: share == null ? null : _code(context, share!),
+            child: share == null
+                ? null
+                : Text(
+                    share!,
+                    textDirection: TextDirection.ltr,
+                    style: PosText.mono(
+                      size: 13,
+                      weight: strong ? FontWeight.w600 : FontWeight.w400,
+                      color: context.pos.ink,
+                    ),
+                  ),
           ),
         ),
       ],
@@ -1632,7 +1645,15 @@ class _RecentExpensesCard extends ConsumerWidget {
             final entries = report.entries;
             return [
               if (entries.isEmpty)
-                _Note(s.financeNoExpenses)
+                // A row's height, centred, so the note does not sit on the
+                // total's rule beneath it.
+                SizedBox(
+                  height: PosSize.reportRow,
+                  child: Align(
+                    alignment: AlignmentDirectional.centerStart,
+                    child: _Note(s.financeNoExpenses),
+                  ),
+                )
               else
                 for (final entry in entries.take(_recentExpenses))
                   _FigureLine(

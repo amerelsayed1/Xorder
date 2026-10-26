@@ -162,6 +162,20 @@ void main() {
     expect(find.text(strings.bulkTableSeatsInvalid), findsOneWidget);
   });
 
+  testWidgets('seats left blank are allowed and sent as not stated', (tester) async {
+    final repo = await pump(tester);
+    await open(tester);
+
+    await type(tester, 'bulk-seats', '');
+    expect(find.text(strings.bulkTableSeatsInvalid), findsNothing);
+    await tester.tap(find.byKey(const Key('bulk-create')));
+    await tester.pumpAndSettle();
+
+    final sent = repo.created.single;
+    expect(sent, hasLength(10));
+    expect(sent.every((t) => t.seats == null), isTrue);
+  });
+
   testWidgets('pressing Add twice sends one batch', (tester) async {
     final repo = await pump(tester);
     repo.gate = Completer<void>();

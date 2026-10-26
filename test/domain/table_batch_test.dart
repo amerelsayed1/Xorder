@@ -55,10 +55,17 @@ void main() {
     expect(plan(start: 9991, quantity: 10).problem, TableBatchProblem.start);
   });
 
-  test('seats are at least one', () {
-    for (final s in [0, -1, null]) {
+  test('a stated seat count is at least one', () {
+    for (final s in [0, -1]) {
       expect(plan(seats: s).problem, TableBatchProblem.seats, reason: '$s');
     }
+    expect(plan(seats: 1).problem, isNull);
+  });
+
+  test('seats are optional: not stating them is not a problem', () {
+    final p = plan(seats: null);
+    expect(p.problem, isNull);
+    expect(p.canCreate, isTrue);
   });
 
   test('a prefix of more than 40 characters is refused', () {

@@ -137,9 +137,9 @@ void main() {
       expect(group.options.first.priceDeltaMinor, 1500);
     });
 
-    test('clamps a zero-seat table instead of tripping the CHECK constraint', () {
+    test('reads a zero-seat table as "not stated" instead of tripping the CHECK constraint', () {
       expect(bundle.tables, hasLength(2));
-      expect(bundle.tables.last.seats, 2);
+      expect(bundle.tables.last.seats, isNull);
     });
 
     test('reads staff PIN verifiers and tolerates their absence', () {

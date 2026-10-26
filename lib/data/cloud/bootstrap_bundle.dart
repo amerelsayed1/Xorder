@@ -368,7 +368,7 @@ class BootstrapTable {
     required this.id,
     required this.branchId,
     required this.label,
-    this.seats = 2,
+    this.seats,
     this.areaName,
     this.isActive = true,
   });
@@ -376,7 +376,7 @@ class BootstrapTable {
   final int id;
   final int branchId;
   final String label;
-  final int seats;
+  final int? seats;
   final String? areaName;
   final bool isActive;
 
@@ -389,11 +389,12 @@ class BootstrapTable {
       id: id,
       branchId: branchId,
       label: label,
-      // Zero seats would trip the local CHECK constraint; a table with an
-      // unknown size is a two-top, not a crash.
+      // Zero seats would trip the local CHECK constraint, so a non-positive
+      // number is "not stated" rather than a crash — and not stated stays
+      // null: the platform allows it, and a table is not a two-top by default.
       seats: switch (_asInt(json['seats'])) {
         final s? when s > 0 => s,
-        _ => 2,
+        _ => null,
       },
       areaName: _asString(json['area_name']),
       isActive: _asBool(json['is_active'], orElse: true),

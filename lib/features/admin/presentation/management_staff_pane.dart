@@ -1077,13 +1077,20 @@ class _FilterBar extends StatelessWidget {
               key: const Key('users-search'),
               controller: search,
               onChanged: (text) => onChanged(filter.copyWith(search: text)),
+              // Fills the box: a TextField is only as tall as its text unless
+              // told to expand, so the bare SizedBox drew a short strip beside
+              // the status chips (same fix as the history search).
+              expands: true,
+              minLines: null,
+              maxLines: null,
+              textAlignVertical: TextAlignVertical.center,
               style: PosText.ui(size: 13, color: pos.ink),
               decoration: InputDecoration(
                 isDense: true,
                 hintText: strings.usersSearchHint,
                 hintStyle: PosText.ui(size: 13, color: pos.muted),
                 contentPadding: const EdgeInsets.symmetric(
-                  horizontal: PosSpace.sm,
+                  horizontal: PosSpace.md,
                 ),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.zero,

@@ -25,7 +25,9 @@ class DiningTable {
 
   final int id;
   final String label;
-  final int seats;
+  /// How many it seats, or null when the restaurant did not say. Never a
+  /// guessed number: a pickup spot has no size.
+  final int? seats;
   final TableState state;
   final int openLineCount;
   final Money? openTotal;

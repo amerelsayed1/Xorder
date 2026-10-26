@@ -167,13 +167,14 @@ class _ManagementFloorPaneState extends ConsumerState<ManagementFloorPane> {
                                   ),
                                 ),
                               ),
-                              Text(
-                                strings.tableSeats(table.seats),
-                                style: PosText.mono(
-                                  size: 13,
-                                  color: context.pos.muted,
+                              if (table.seats case final seats?)
+                                Text(
+                                  strings.tableSeats(seats),
+                                  style: PosText.mono(
+                                    size: 13,
+                                    color: context.pos.muted,
+                                  ),
                                 ),
-                              ),
                               if (table.areaName != null) ...[
                                 const SizedBox(width: PosSpace.lg),
                                 Text(
@@ -225,8 +226,10 @@ class _TableDialog extends StatefulWidget {
 
 class _TableDialogState extends State<_TableDialog> {
   late final _label = TextEditingController(text: widget.table?.label ?? '');
+  // Blank for a new table: seats are optional, and a prefilled 2 would state
+  // a size nobody chose.
   late final _seats = TextEditingController(
-    text: '${widget.table?.seats ?? 2}',
+    text: widget.table?.seats?.toString() ?? '',
   );
   late final _area = TextEditingController(text: widget.table?.areaName ?? '');
 
@@ -284,10 +287,11 @@ class _TableDialogState extends State<_TableDialog> {
                         DiningTable(
                           id: widget.table?.id ?? 0,
                           label: _label.text,
-                          // A non-number reads as zero, which the repository
-                          // refuses with "a table seats at least one person" —
-                          // one rule, stated in one place.
-                          seats: int.tryParse(_seats.text.trim()) ?? 0,
+                          // Blank is "not stated" (null). A non-number reads
+                          // as zero, which the repository refuses with "a table
+                          // seats at least one person" — one rule, stated in
+                          // one place.
+                          seats: _seatsFrom(_seats.text),
                           areaName: _area.text.trim().isEmpty
                               ? null
                               : _area.text,
@@ -327,7 +331,7 @@ class _BulkTablesDialogState extends State<_BulkTablesDialog> {
   TextEditingController? _prefix;
   final _start = TextEditingController(text: '1');
   final _quantity = TextEditingController(text: '10');
-  final _seats = TextEditingController(text: '2');
+  final _seats = TextEditingController();
   final _area = TextEditingController();
   bool _busy = false;
   String? _error;
@@ -355,7 +359,7 @@ class _BulkTablesDialogState extends State<_BulkTablesDialog> {
     prefix: _prefix!.text,
     start: int.tryParse(_start.text.trim()),
     quantity: int.tryParse(_quantity.text.trim()),
-    seats: int.tryParse(_seats.text.trim()),
+    seats: _seatsFrom(_seats.text),
     existing: widget.existing,
   );
 
@@ -365,7 +369,7 @@ class _BulkTablesDialogState extends State<_BulkTablesDialog> {
       _busy = true;
       _error = null;
     });
-    final seats = int.parse(_seats.text.trim());
+    final seats = _seatsFrom(_seats.text);
     final area = _area.text.trim().isEmpty ? null : _area.text.trim();
     final refusal = await widget.onCreate([
       for (final label in plan.labels)
@@ -569,4 +573,13 @@ class _Centred extends StatelessWidget {
       ),
     ),
   );
+}
+
+/// What the Seats box says: blank is "not stated" (null), a number is that
+/// number, and anything else is 0, which the planner and the repository both
+/// refuse as "a table seats at least one person".
+int? _seatsFrom(String text) {
+  final trimmed = text.trim();
+  if (trimmed.isEmpty) return null;
+  return int.tryParse(trimmed) ?? 0;
 }

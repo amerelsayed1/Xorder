@@ -4732,6 +4732,16 @@ const posMigrations = <PosMigration>[
        AND NOT (capabilities @> ARRAY['finance.accounts']::text[])
     ''',
   ]),
+  // A table need not say how many it seats. The platform already allows it
+  // (`seats_count` is nullable there), a food truck's or a cloud kitchen's
+  // "table" is a pickup spot with no size, and the till used to invent a 2 for
+  // it. Dropping NOT NULL is metadata-only in PostgreSQL (no rewrite, no scan,
+  // a momentary lock); the `seats > 0` CHECK stays and passes for NULL, so a
+  // stated number is still positive. Idempotent: DROP NOT NULL on a nullable
+  // column is a no-op.
+  PosMigration(61, 'a table need not say how many it seats', [
+    'ALTER TABLE pos_dining_tables ALTER COLUMN seats DROP NOT NULL',
+  ]),
 ];
 
 /// Brings the branch database up to the current schema.

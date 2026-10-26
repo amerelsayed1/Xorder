@@ -43,7 +43,7 @@ class PostgresFloorRepository implements TablesRepository {
         DiningTable(
           id: row[0] as int,
           label: row[1] as String,
-          seats: row[2] as int,
+          seats: row[2] as int?,
           areaName: row[3] as String?,
         ),
     ];

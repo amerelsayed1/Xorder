@@ -11009,7 +11009,7 @@ final class ArStrings extends AppStrings {
   @override
   String get management => 'الإدارة';
   @override
-  String get staffAndAccounts => 'الموظفون والحسابات…';
+  String get staffAndAccounts => 'المستخدمون والحسابات…';
   @override
   String get windowMenu => 'النافذة';
 
@@ -11989,7 +11989,7 @@ final class ArStrings extends AppStrings {
   @override
   String get tabSettings => 'الإعدادات';
   @override
-  String get tabPeople => 'الموظفون والعملاء';
+  String get tabPeople => 'المستخدمون والعملاء';
   @override
   String get reportsSummary => 'ملخص الأعمال';
   @override
@@ -12438,7 +12438,7 @@ final class ArStrings extends AppStrings {
   @override
   String get backToTill => 'رجوع إلى الكاشير';
   @override
-  String get paneStaff => 'الموظفون';
+  String get paneStaff => 'المستخدمون';
   @override
   String get paneStaffBlurb => 'من يعمل هنا، وما المسموح له به';
   @override
@@ -13386,7 +13386,7 @@ final class ArStrings extends AppStrings {
   @override
   String get fieldRole => 'الدور';
   @override
-  String get usersKpiStaff => 'الموظفون';
+  String get usersKpiStaff => 'المستخدمون';
   @override
   String get usersKpiActive => 'النشطون';
   @override
@@ -13469,7 +13469,7 @@ final class ArStrings extends AppStrings {
   @override
   String notPermittedBody(String capability) =>
       'هذا يحتاج صلاحية «$capability»، ولا يستطيع أي مشرف إعارتها على '
-      'الكاشير. يمنحها المدير من الإدارة ← الموظفون.';
+      'الكاشير. يمنحها المدير من الإدارة ← المستخدمون.';
 
   @override
   String get menuComesFromPlatform => 'هذا الجهاز يأخذ منيوه من المنصة.';
